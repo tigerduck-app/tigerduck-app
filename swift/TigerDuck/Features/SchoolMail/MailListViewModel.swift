@@ -38,6 +38,16 @@ final class MailListViewModel {
     @ObservationIgnored private var unfetchedMatches: [String: (uidValidity: UInt32, uids: [UInt32])] = [:]
     @ObservationIgnored private var searchGeneration = 0
     @ObservationIgnored private var indexLookup: Task<(uidValidity: UInt32, uids: [UInt32])?, Never>?
+    /// The query of the search under way or shown; empty when there is none.
+    @ObservationIgnored private var searchQuery = ""
+    /// The search whose results `searchResults` shows.
+    @ObservationIgnored private var resultsGeneration = -1
+    @ObservationIgnored private var searchIsBehind = false
+    /// Matches of the search shown that the server listed as deleted or no longer had, which its
+    /// catch-ups leave out rather than fetch again.
+    @ObservationIgnored private var searchGone: [String: Set<UInt32>] = [:]
+    @ObservationIgnored private var searchCatchUp: Task<Void, Never>?
+    @ObservationIgnored private let catchUpDelay: @Sendable () async -> Void
     @ObservationIgnored private var warmTask: Task<Void, Never>?
     @ObservationIgnored private var warmDone = false
     @ObservationIgnored private var isPaused = false
@@ -51,7 +61,8 @@ final class MailListViewModel {
         cache: MailCache? = nil,
         noteSeenByPage: ((MailboxStatusInfo) async -> Void)? = nil,
         signOutEvents: NotificationCenter = .default,
-        warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: MailConstants.warmStartDelay) }
+        warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: MailConstants.warmStartDelay) },
+        catchUpDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: MailConstants.searchCatchUpInterval) }
     ) {
         // Resolved in the body, not the parameter list: a default-argument expression runs outside
         // the init's MainActor isolation, where `MailPageSession()` and `MailAccountManager.shared`
@@ -63,8 +74,10 @@ final class MailListViewModel {
         self.noteSeenByPage = noteSeenByPage ?? { await MailChecker.shared.noteSeenByPage($0) }
         self.signOutEvents = signOutEvents
         self.warmDelay = warmDelay
+        self.catchUpDelay = catchUpDelay
         // Starts after the warm's delay too, so the refresh that follows a paint goes first.
         indexer = MailIndexer(session: session, cache: cache, startDelay: warmDelay)
+        indexer.onFill = { [weak self] folder in self?.indexDidFill(folder) }
         signOutObserver = signOutEvents.addObserver(forName: MailAccountManager.didSignOut, object: nil, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.resetForAccountChange() }
         }
@@ -83,13 +96,31 @@ final class MailListViewModel {
         return unreadOnly ? base.filter { !$0.summary.isSeen } : base
     }
 
-    var targets: [String] { selection.targets(roles: folderRoles) }
+    var targets: [String] { selection.targets(roles: folderRoles, others: otherFolders) }
 
-    var showsAllMailChip: Bool { MailFolderSelection.allMail.targets(roles: folderRoles).count > 1 }
+    var showsAllMailChip: Bool {
+        MailFolderSelection.allMail.targets(roles: folderRoles, others: otherFolders).count > 1
+    }
 
     var showsInbox: Bool { targets.contains(MailConstants.inbox) }
 
-    var indexProgress: MailIndexProgress? { indexer.progress }
+    /// The status dot's text, which says OK only once the search index is complete: until then,
+    /// and while a pass downloads, it counts the index's mail, or says it is syncing before the
+    /// first count. A failed server shows its failure first.
+    var statusText: String {
+        guard serverStatus == .ok, isIndexBusy else { return SyncStatusDot.statusText(serverStatus) }
+        return indexer.progress?.text() ?? String(localized: "sync_status_syncing")
+    }
+
+    /// Whether the status dot spins: a load, or a pass with mail to download.
+    var isSyncing: Bool {
+        isRefreshing || (serverStatus == .ok && indexer.isRunning && indexer.progress?.total != 0)
+    }
+
+    /// An index that is already current shows nothing rather than spinning at 0/0.
+    private var isIndexBusy: Bool {
+        !indexer.isComplete || (indexer.isRunning && indexer.progress?.total != 0)
+    }
 
     // MARK: Loading
 
@@ -97,10 +128,10 @@ final class MailListViewModel {
     /// from the server. The refresh is merged into what is already loaded, not swapped in: new
     /// mail is added, and mail the user paginated to beyond this first page is kept.
     ///
-    /// One page per real folder: one round trip for an ordinary folder, two for All mail,
-    /// however far the merged list has been scrolled. That bound is why the merged view refreshes
-    /// only the newest page per folder: Mail2000 caps connections and starts answering
-    /// "The mail server is busy" under load.
+    /// One page per real folder: one round trip for an ordinary folder, one per covered folder
+    /// for All mail, however far the merged list has been scrolled. That bound is why the merged
+    /// view refreshes only the newest page per folder: Mail2000 caps connections and starts
+    /// answering "The mail server is busy" under load.
     func load() async {
         var selection = self.selection
         let epoch = accountEpoch
@@ -130,17 +161,31 @@ final class MailListViewModel {
             }
             guard isCurrent(selection, epoch) else { return }
             let folders = targets
-            let fetched = try await session.use { client -> [(String, MailFolderPage)] in
-                var result: [(String, MailFolderPage)] = []
+            // A folder that fails leaves the others' pages; a lost connection, a busy server or a
+            // rejected password stops at that folder, as each one after it would fail the same way.
+            typealias Fetched = (pages: [(String, MailFolderPage)], failure: MailClientError?)
+            let fetched = try await session.use { client -> Fetched in
+                var pages: [(String, MailFolderPage)] = []
+                var failure: MailClientError?
                 for folder in folders {
-                    result.append((folder, try await client.page(folder: folder, olderThanSequence: nil,
-                                                                 pageSize: MailConstants.pageSize)))
+                    do {
+                        pages.append((folder, try await client.page(folder: folder, olderThanSequence: nil,
+                                                                    pageSize: MailConstants.pageSize)))
+                    } catch let error as MailClientError {
+                        failure = error
+                        if MailChecker.endsPrefetch(error) { break }
+                    }
                 }
-                return result
+                return (pages, failure)
+            }
+            // Caught above to keep the other folders' pages, so `use(_:)` never saw it. A sign-out
+            // since makes it the old account's, which the new one must not inherit.
+            if fetched.failure == .authenticationFailed, epoch == accountEpoch {
+                session.reportAuthenticationRejection()
             }
             guard isCurrent(selection, epoch) else { return }
             let fetchedAt = Date()
-            for (folder, page) in fetched {
+            for (folder, page) in fetched.pages {
                 var fresh = page
                 fresh.fetchedAt = fetchedAt
                 if pages[folder]?.uidNext != fresh.uidNext { indexer.noteNewMail() }
@@ -158,6 +203,7 @@ final class MailListViewModel {
                 await save(merged)
             }
             rebuildRows()
+            if let failure = fetched.failure { throw failure }
             serverStatus = .ok
             loadState = .loaded
             startIndexIfLoaded()
@@ -176,9 +222,11 @@ final class MailListViewModel {
     /// (SwiftMail commands run to completion), so this waits at most one page, and the warm's
     /// start delay makes even that unlikely. Without the restart the first pull would end warming
     /// for the visit. The 60 s poll calls `load()` alone: re-warming each minute is not its job.
-    func refresh() async {
+    func refresh(forcingIndex: Bool = false) async {
         cancelWarm()
         await load()
+        // A pull starts the search index's download at once, however recent the last one.
+        if forcingIndex { startIndexIfLoaded(for: .pull) }
         startWarmIfLoaded()
     }
 
@@ -236,6 +284,10 @@ final class MailListViewModel {
         clearSearch()
         cancelWarm()
         await load()
+        // The query stays in the field, so the new mailbox shows its results, not its plain list.
+        if self.selection == selection, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            await submitSearch()
+        }
         startWarmIfLoaded()
     }
 
@@ -264,6 +316,7 @@ final class MailListViewModel {
         let selection = self.selection
         let epoch = accountEpoch
         supersedeSearch()
+        searchQuery = query
         let generation = searchGeneration
         var found: [MailListRow] = []
         var unfetched: [String: (uidValidity: UInt32, uids: [UInt32])] = [:]
@@ -272,43 +325,148 @@ final class MailListViewModel {
         var recreated: [String] = []
         for folder in targets {
             guard !Task.isCancelled, generation == searchGeneration else { return }
-            let lookup = Task.detached { [index = cache.searchIndex] in index.search(folder: folder, query: query) }
-            indexLookup = lookup
-            let indexed = await lookup.value
+            let matched = await matchingUIDs(in: folder, query: query)
             guard !Task.isCancelled, isCurrent(selection, epoch), generation == searchGeneration else { return }
-            let page = pages[folder]
-            guard let validity = page?.uidValidity ?? indexed?.uidValidity else { continue }
-            // Loaded mail counts too: it may have arrived since the index last caught up.
-            let loaded = page?.summaries ?? []
-            var matched = Set(indexed?.uidValidity == validity ? indexed?.uids ?? [] : [])
-            matched.formUnion(loaded.filter { Self.matches($0, query) }.map(\.uid))
-            let matches = matched.sorted(by: >)
-            guard !matches.isEmpty else { continue }
-            let newest = Array(matches.prefix(MailConstants.pageSize))
+            guard let matched, !matched.uids.isEmpty else { continue }
+            let validity = matched.uidValidity
+            let newest = Array(matched.uids.prefix(MailConstants.pageSize))
             do {
                 let summaries = try await session.use { client in
                     try await client.summaries(folder: folder, uids: newest, expectedUIDValidity: validity)
                 }
                 guard isCurrent(selection, epoch), generation == searchGeneration else { return }
+                noteGone(newest, summaries, folder: folder)
                 found += summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
-                unfetched[folder] = (validity, Array(matches.dropFirst(newest.count)))
+                unfetched[folder] = (validity, Array(matched.uids.dropFirst(newest.count)))
             } catch MailClientError.folderChanged {
                 guard isCurrent(selection, epoch) else { return }
                 recreated.append(folder)
             } catch {
                 guard isCurrent(selection, epoch) else { return }
                 serverFailed = true
-                found += loaded.filter { matched.contains($0.uid) }.map { MailListRow(folder: folder, summary: $0) }
+                let uids = Set(matched.uids)
+                found += (pages[folder]?.summaries ?? []).filter { uids.contains($0.uid) }
+                    .map { MailListRow(folder: folder, summary: $0) }
                 usedFallback = true
             }
         }
         guard isCurrent(selection, epoch), generation == searchGeneration else { return }
         if serverFailed { serverStatus = .failed }
         searchResults = ordered(found)
+        resultsGeneration = generation
         unfetchedMatches = unfetched
         searchUsedLocalFallback = usedFallback
         for folder in recreated { await recoverFromFolderChange(folder) }
         if displayedRows.isEmpty { await loadMoreSearchResults() }
+        guard generation == searchGeneration else { return }
+        if searchIsBehind { scheduleSearchCatchUp() }
+        // A folder the index has not caught up with is downloaded now; its matches join as they arrive.
+        if targets.contains(where: { !indexer.isIndexed($0) }) { startIndexIfLoaded(for: .search) }
+    }
+
+    /// `folder`'s mail that matches `query`, newest first: the index's, and the loaded mail's, which
+    /// may have arrived since the index last caught up. Nil when neither knows the folder.
+    private func matchingUIDs(in folder: String, query: String) async -> (uidValidity: UInt32, uids: [UInt32])? {
+        let lookup = Task.detached { [index = cache.searchIndex] in index.search(folder: folder, query: query) }
+        indexLookup = lookup
+        let indexed = await lookup.value
+        let page = pages[folder]
+        guard let validity = page?.uidValidity ?? indexed?.uidValidity else { return nil }
+        var matched = Set(indexed?.uidValidity == validity ? indexed?.uids ?? [] : [])
+        matched.formUnion((page?.summaries ?? []).filter { Self.matches($0, query) }.map(\.uid))
+        return (validity, matched.sorted(by: >))
+    }
+
+    /// A pass that fills a folder the search covers adds its new matches to the results, at most
+    /// once per `catchUpDelay`, so the last fill's are added after the pass ends.
+    private func indexDidFill(_ folder: String) {
+        guard !searchQuery.isEmpty, targets.contains(folder) else { return }
+        searchIsBehind = true
+        if resultsGeneration == searchGeneration { scheduleSearchCatchUp() }
+    }
+
+    /// A closed page leaves `searchIsBehind` set, for the catch-up its reopening runs.
+    private func scheduleSearchCatchUp() {
+        guard searchCatchUp == nil, !isPaused else { return }
+        let generation = searchGeneration
+        let delay = catchUpDelay
+        searchCatchUp = Task { [weak self] in
+            await delay()
+            while let self, !Task.isCancelled, !self.isPaused, generation == self.searchGeneration, self.searchIsBehind {
+                self.searchIsBehind = false
+                guard await self.catchUpSearch() else {
+                    // Left for the next fill or the page reopening rather than retried at once.
+                    if generation == self.searchGeneration { self.searchIsBehind = true }
+                    break
+                }
+                await delay()
+            }
+            guard let self, !Task.isCancelled, generation == self.searchGeneration else { return }
+            self.searchCatchUp = nil
+        }
+    }
+
+    /// Adds the matches the index gained since the search ran, leaving the listed rows in place:
+    /// a folder's matches newer than its oldest listed row are fetched now, with older ones only
+    /// to fill its first page, and the rest wait for the end of the list. False when it stopped
+    /// before the last folder.
+    private func catchUpSearch() async -> Bool {
+        let query = searchQuery
+        let selection = self.selection
+        let epoch = accountEpoch
+        let generation = searchGeneration
+        for folder in targets {
+            let matched = await matchingUIDs(in: folder, query: query)
+            guard !Task.isCancelled, isCurrent(selection, epoch), generation == searchGeneration,
+                  let results = searchResults else { return false }
+            guard let matched, unfetchedMatches[folder].map({ $0.uidValidity == matched.uidValidity }) ?? true else {
+                continue
+            }
+            let listed = Set(results.filter { $0.folder == folder }.map(\.uid))
+            let skipped = listed.union(searchGone[folder] ?? [])
+            let waiting = matched.uids.filter { !skipped.contains($0) }
+            let oldestListed = listed.min() ?? .max
+            let wanted = waiting.prefix { $0 > oldestListed }.count + max(0, MailConstants.pageSize - listed.count)
+            let batch = Array(waiting.prefix(min(wanted, MailConstants.pageSize)))
+            unfetchedMatches[folder] = (matched.uidValidity, waiting)
+            guard !batch.isEmpty else { continue }
+            do {
+                let summaries = try await session.use { client in
+                    try await client.summaries(folder: folder, uids: batch, expectedUIDValidity: matched.uidValidity)
+                }
+                guard isCurrent(selection, epoch), generation == searchGeneration, let current = searchResults else {
+                    return false
+                }
+                noteGone(batch, summaries, folder: folder)
+                unfetchedMatches[folder]?.uids.removeAll { batch.contains($0) }
+                let shown = Set(current.map(\.id))
+                let rows = summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
+                    .filter { !shown.contains($0.id) }
+                if !rows.isEmpty { searchResults = ordered(current + rows) }
+            } catch MailClientError.folderChanged {
+                guard isCurrent(selection, epoch), generation == searchGeneration else { return false }
+                unfetchedMatches[folder] = nil
+                searchResults?.removeAll { $0.folder == folder }
+                await recoverFromFolderChange(folder)
+                return false
+            } catch {
+                // A stop, as the page closing, can be what failed it; the server is not to blame.
+                guard !Task.isCancelled, isCurrent(selection, epoch) else { return false }
+                serverStatus = .failed
+                return false
+            }
+        }
+        // Under the unread filter every row added can be read, and an empty list has no row whose
+        // appearance asks for the next page.
+        guard !Task.isCancelled, isCurrent(selection, epoch), generation == searchGeneration else { return false }
+        if displayedRows.isEmpty, !isPaginating { await loadMoreSearchResults() }
+        return true
+    }
+
+    /// Records the `requested` mail the server answered as deleted or not at all.
+    private func noteGone(_ requested: [UInt32], _ summaries: [MailSummary], folder: String) {
+        let kept = Set(summaries.filter { !$0.isDeleted }.map(\.uid))
+        searchGone[folder, default: []].formUnion(requested.filter { !kept.contains($0) })
     }
 
     private func loadMoreSearchResults() async {
@@ -322,13 +480,21 @@ final class MailListViewModel {
             let pending = unfetchedMatches.filter { !$0.value.uids.isEmpty }
             guard !pending.isEmpty else { return }
             for (folder, matches) in pending {
+                // A stopped catch-up or a closed page fetches no further page; the reopening's
+                // catch-up pages on, since an empty unread-only list has no row to ask for it.
+                guard !Task.isCancelled, !isPaused else {
+                    if isPaused, generation == searchGeneration { searchIsBehind = true }
+                    return
+                }
                 let batch = Array(matches.uids.prefix(MailConstants.pageSize))
                 do {
                     let more = try await session.use { client in
                         try await client.summaries(folder: folder, uids: batch, expectedUIDValidity: matches.uidValidity)
                     }
                     guard isCurrent(selection, epoch), generation == searchGeneration, let results = searchResults else { return }
-                    unfetchedMatches[folder]?.uids = Array(matches.uids.dropFirst(batch.count))
+                    noteGone(batch, more, folder: folder)
+                    // Only what this page fetched: a catch-up may have queued more meanwhile.
+                    unfetchedMatches[folder]?.uids.removeAll { batch.contains($0) }
                     let listed = Set(results.map(\.id))
                     let rows = more.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
                     searchResults = ordered(results + rows.filter { !listed.contains($0.id) })
@@ -339,7 +505,7 @@ final class MailListViewModel {
                     await recoverFromFolderChange(folder)
                     return
                 } catch {
-                    guard isCurrent(selection, epoch) else { return }
+                    guard !Task.isCancelled, isCurrent(selection, epoch) else { return }
                     serverStatus = .failed
                     return
                 }
@@ -349,6 +515,7 @@ final class MailListViewModel {
 
     func clearSearch() {
         supersedeSearch()
+        searchQuery = ""
         searchResults = nil
         searchUsedLocalFallback = false
     }
@@ -357,6 +524,10 @@ final class MailListViewModel {
     private func supersedeSearch() {
         searchGeneration += 1
         indexLookup?.cancel()
+        searchCatchUp?.cancel()
+        searchCatchUp = nil
+        searchIsBehind = false
+        searchGone = [:]
     }
 
     private static func matches(_ summary: MailSummary, _ query: String) -> Bool {
@@ -410,6 +581,7 @@ final class MailListViewModel {
 
     func startPolling(pollFirst: Bool = false) {
         isPaused = false
+        if searchIsBehind, resultsGeneration == searchGeneration { scheduleSearchCatchUp() }
         if !warmDone, warmTask == nil { startWarmIfLoaded() }
         startIndexIfLoaded()
         pollTask?.cancel()
@@ -431,6 +603,10 @@ final class MailListViewModel {
         pollTask = nil
         cancelWarm()
         indexer.stop()
+        // A catch-up's fetch would open the connection again; the page reopening runs it instead.
+        if searchCatchUp != nil { searchIsBehind = true }
+        searchCatchUp?.cancel()
+        searchCatchUp = nil
         session.releaseSoon()
     }
 
@@ -443,6 +619,8 @@ final class MailListViewModel {
     func waitForWarm() async { await warmTask?.value }
 
     func waitForIndex() async { await indexer.waitForPass() }
+
+    func waitForSearchCatchUp() async { await searchCatchUp?.value }
 
     func waitForCacheWrites() async {
         await pendingCacheWrite?.value
@@ -612,11 +790,11 @@ final class MailListViewModel {
         startWarm()
     }
 
-    /// Inbox and Sent first, the folders All mail searches.
-    private func startIndexIfLoaded() {
+    /// Inbox and Sent first: most searches look there.
+    private func startIndexIfLoaded(for request: MailIndexer.Request? = nil) {
         guard !isPaused, loadState == .loaded, serverStatus == .ok, !folderRoles.isEmpty else { return }
         let roles = MailFolderRole.allCases.compactMap { folderRoles[$0] }
-        indexer.startIfDue(folders: roles + otherFolders.filter { !roles.contains($0) })
+        indexer.startIfDue(folders: roles + otherFolders.filter { !roles.contains($0) }, for: request)
     }
 
     private func cancelWarm() {

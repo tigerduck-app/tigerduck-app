@@ -1,6 +1,7 @@
 #if os(iOS)
 import Foundation
 import Observation
+import os
 
 /// How far a pass of `MailIndexer` has come: `done` of the `total` mails the index lacked, or
 /// `counting` while the pass still lists every folder for that total.
@@ -29,12 +30,26 @@ nonisolated struct MailIndexProgress: Equatable, Sendable {
 /// Downloads every folder's mail into `MailSearchIndex` while the mail page is on screen, newest
 /// first and `MailConstants.indexBatchSize` mails per command. A pass that got through holds off
 /// the next for `MailConstants.indexResyncInterval`, unless mail arrived since; one that failed
-/// waits longer before each retry, and Low Data Mode pauses it.
+/// waits longer before each retry, unless the cache was cleared since, and Low Data Mode pauses it.
+/// A pass the user asks for skips some of these waits (`Request`).
 /// See docs/decisions/0027-mail-local-search-index.md.
 @MainActor
 @Observable
 final class MailIndexer {
-    private enum Outcome { case complete, failed, paused }
+    /// A pass the user asked for: a search skips the wait after a pass that got through, and a
+    /// pull also the wait after one that failed, which a folder failing every pass would otherwise
+    /// turn into a full listing per search.
+    enum Request { case search, pull }
+
+    private enum Outcome: String { case complete, failed, paused }
+
+    /// A pass's counts for the log, which never names a folder or a mail.
+    private struct Tally {
+        var listed = 0
+        var failed = 0
+        var toFetch = 0
+        var done = 0
+    }
 
     /// What a folder's index lacks, newest first.
     private struct Plan {
@@ -63,10 +78,21 @@ final class MailIndexer {
     private var failedPasses = 0
     private var arrivals = 0
     /// Mails of a batch whose answer would not parse: fetched one at a time from then on, and
-    /// skipped after failing alone `failuresBeforeSkipping` times. Kept until the account changes
-    /// or the app quits.
+    /// skipped after failing alone `failuresBeforeSkipping` times. Kept until the account changes,
+    /// the cache is cleared or the app quits.
     private var strikes: [MailKey: Int] = [:]
-    private(set) var progress: MailIndexProgress?
+    /// The cache's `wipeCount` when the last pass began, which its retry and strikes belong to.
+    private var passWipeCount: Int?
+    /// The folders the index held all the mail of when a pass last listed or filled them.
+    private var indexedFolders: Set<String> = []
+    private var lastPassCompleted = false
+    private var lastProgress: MailIndexProgress?
+    /// Moves on each `reset()`, so a pass it stopped writes nothing after it.
+    private var resets = 0
+    /// Whether a pass is listing or downloading.
+    private(set) var isRunning = false
+    /// Told the folder each time a batch of its mail joins the index.
+    @ObservationIgnored var onFill: ((String) -> Void)?
 
     init(
         session: MailPageSession,
@@ -82,10 +108,19 @@ final class MailIndexer {
         self.isConstrained = isConstrained ?? { NetworkMonitor.shared.isConstrained }
     }
 
-    func startIfDue(folders: [String]) {
-        guard task == nil, !isFresh, retryAt.map({ now() >= $0 }) ?? true, !isConstrained() else { return }
+    func startIfDue(folders: [String], for request: Request? = nil) {
+        // A cleared cache emptied the index: a pass under way can no longer write to it, and the
+        // failures before it no longer hold the next pass off.
+        if let passWipeCount, passWipeCount != cache.wipeCount { reset() }
+        if request != nil { completed = nil }
+        if request == .pull { retryAt = nil }
+        if let reason = notDueReason {
+            AppLogger.mail.info("Index pass not started: \(reason, privacy: .public)")
+            return
+        }
         let arrivals = self.arrivals
         let wipeCount = cache.wipeCount
+        passWipeCount = wipeCount
         let delay = startDelay
         let previous = stopping
         task = Task { [weak self] in
@@ -93,11 +128,28 @@ final class MailIndexer {
             await previous?.value
             await delay()
             guard let self, !Task.isCancelled else { return }
-            let outcome = await self.pass(folders: folders, wipeCount: wipeCount)
-            guard !Task.isCancelled else { return }
+            AppLogger.mail.info("Index pass started: folders=\(folders.count, privacy: .public)")
+            var tally = Tally()
+            let outcome = await self.pass(folders: folders, wipeCount: wipeCount, tally: &tally)
+            guard !Task.isCancelled else {
+                self.lastPassCompleted = false
+                Self.logEnd(.paused, tally)
+                return
+            }
             self.task = nil
-            self.finish(outcome, arrivals: arrivals, wipeCount: wipeCount, folders: folders)
+            self.finish(outcome, tally: tally, arrivals: arrivals, wipeCount: wipeCount, folders: folders)
         }
+    }
+
+    /// Why `startIfDue` starts no pass now, as a fixed label for the log; nil when one is due.
+    private var notDueReason: String? {
+        if task != nil { return "running" }
+        if isFresh { return "fresh" }
+        if let retryAt, now() < retryAt {
+            return "waiting for retry in \(Int(retryAt.timeIntervalSince(now()).rounded(.up)))s"
+        }
+        if isConstrained() { return "Low Data Mode" }
+        return nil
     }
 
     /// Stops after the batch in flight, which SwiftMail cannot abort.
@@ -113,6 +165,26 @@ final class MailIndexer {
         retryAt = nil
         failedPasses = 0
         strikes = [:]
+        indexedFolders = []
+        lastPassCompleted = false
+        lastProgress = nil
+        resets += 1
+    }
+
+    /// The last pass's count, kept after it ends; nil before a pass since the last wipe.
+    var progress: MailIndexProgress? {
+        passWipeCount == cache.wipeCount ? lastProgress : nil
+    }
+
+    /// Whether a pass got through since the last wipe or account change, and none failed or
+    /// paused after it.
+    var isComplete: Bool {
+        lastPassCompleted && passWipeCount == cache.wipeCount
+    }
+
+    /// Whether the index held all of `folder`'s mail when a pass last reached it.
+    func isIndexed(_ folder: String) -> Bool {
+        passWipeCount == cache.wipeCount && indexedFolders.contains(folder)
     }
 
     func noteNewMail() {
@@ -129,15 +201,19 @@ final class MailIndexer {
         return now().timeIntervalSince(completed.at) < MailConstants.indexResyncInterval
     }
 
-    private func finish(_ outcome: Outcome, arrivals: Int, wipeCount: Int, folders: [String]) {
+    private func finish(_ outcome: Outcome, tally: Tally, arrivals: Int, wipeCount: Int, folders: [String]) {
+        lastPassCompleted = outcome == .complete
         switch outcome {
         case .paused:
-            return
+            Self.logEnd(outcome, tally)
         case .failed:
             failedPasses += 1
             let delay = MailConstants.indexRetryDelay * Double(1 << min(failedPasses - 1, 4))
-            retryAt = now().addingTimeInterval(min(delay, MailConstants.indexResyncInterval))
+            let retryIn = min(delay, MailConstants.indexResyncInterval)
+            retryAt = now().addingTimeInterval(retryIn)
+            Self.logEnd(outcome, tally, retryIn: retryIn)
         case .complete:
+            Self.logEnd(outcome, tally)
             failedPasses = 0
             retryAt = nil
             if self.arrivals == arrivals {
@@ -151,35 +227,61 @@ final class MailIndexer {
     /// Lists every folder before it downloads any, so the progress has one total from the start.
     /// A lost connection, a busy server or a rejected password ends the pass rather than trying
     /// each folder again: NTUST counts failed logins towards a lockout.
-    private func pass(folders: [String], wipeCount: Int) async -> Outcome {
-        progress = .counting
-        defer { progress = nil }
-        var failed = false
+    private func pass(folders: [String], wipeCount: Int, tally: inout Tally) async -> Outcome {
+        let resets = self.resets
+        isRunning = true
+        lastProgress = .counting
+        defer {
+            tally.done = lastProgress?.done ?? 0
+            isRunning = false
+        }
         do {
             var plans: [Plan] = []
             for folder in folders {
                 guard !Task.isCancelled, !isConstrained() else { return .paused }
-                if let plan = try await attempt({ try await self.plan(folder: folder, wipeCount: wipeCount) }) {
+                let plan = try await attempt { try await self.plan(folder: folder, wipeCount: wipeCount) }
+                guard resets == self.resets else { return .paused }
+                if let plan {
                     plans.append(plan)
+                    tally.listed += 1
+                    if plan.missing.isEmpty { indexedFolders.insert(folder) } else { indexedFolders.remove(folder) }
                 } else {
-                    failed = true
+                    indexedFolders.remove(folder)
+                    tally.failed += 1
                 }
             }
             let total = plans.reduce(0) { $0 + $1.missing.count }
-            // An index that is already current shows nothing rather than spinning at 0/0.
-            progress = total > 0 ? MailIndexProgress(total: total) : nil
+            tally.toFetch = total
+            lastProgress = MailIndexProgress(total: total)
             for plan in plans {
                 guard !Task.isCancelled, !isConstrained() else { return .paused }
                 let filled = try await attempt {
-                    try await self.fill(plan, wipeCount: wipeCount) { self.progress?.advance(by: $0) }
+                    try await self.fill(plan, wipeCount: wipeCount) { count in
+                        if resets == self.resets { self.lastProgress?.advance(by: count) }
+                    }
                 }
-                if filled != true { failed = true }
+                guard resets == self.resets else { return .paused }
+                if filled == true {
+                    indexedFolders.insert(plan.folder)
+                } else {
+                    tally.failed += 1
+                }
             }
         } catch {
+            tally.failed += 1
             return isConstrained() ? .paused : .failed
         }
         if isConstrained() { return .paused }
-        return failed ? .failed : .complete
+        return tally.failed > 0 ? .failed : .complete
+    }
+
+    private static func logEnd(_ outcome: Outcome, _ tally: Tally, retryIn: TimeInterval? = nil) {
+        let retry = retryIn.map { "\(Int($0))s" } ?? "none"
+        AppLogger.mail.info("""
+            Index pass \(outcome.rawValue, privacy: .public): listed=\(tally.listed, privacy: .public) \
+            failed=\(tally.failed, privacy: .public) toFetch=\(tally.toFetch, privacy: .public) \
+            done=\(tally.done, privacy: .public) retryIn=\(retry, privacy: .public)
+            """)
     }
 
     /// One folder's step; nil when it failed. Throws only an error that ends the pass.
@@ -231,6 +333,7 @@ final class MailIndexer {
                     index.add(texts, folder: folder, uidValidity: validity, wipeCount: wipeCount)
                 }.value
                 guard added else { return false }
+                onFill?(folder)
             } catch let error as MailClientError where Self.blamesTheMail(error) {
                 // A stop, as at sign-out, can be what failed it.
                 guard !Task.isCancelled else { return false }

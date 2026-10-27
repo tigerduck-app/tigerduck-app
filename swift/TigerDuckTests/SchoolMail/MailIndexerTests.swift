@@ -220,6 +220,79 @@ struct MailIndexerTests {
         #expect(await h.passes() == 6)
     }
 
+    @Test func theIndexIsIncompleteUntilAPassGetsThroughAndAgainAfterAWipeOrAFailure() async {
+        let h = Self.harness(inboxCount: 3)
+        #expect(!h.indexer.isComplete)
+        await h.runPass()
+        #expect(h.indexer.isComplete)
+
+        h.cache.clearAll()
+        #expect(!h.indexer.isComplete)
+        #expect(h.indexer.progress == nil)
+
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.runPass()
+        #expect(!h.indexer.isComplete)
+        #expect(h.indexer.progress?.text(locale: Locale(identifier: "en_US")) == "0/3")
+    }
+
+    @Test func clearingTheCacheStartsThePassAFailureWasHoldingOff() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.runPass()
+        await h.fake.update { $0.searchTextsError = nil }
+        await h.runPass()
+        #expect(await h.passes() == 1)
+
+        h.cache.clearAll()
+        await h.runPass()
+
+        #expect(await h.passes() == 2)
+        #expect(h.search("公告") == [3, 2, 1])
+    }
+
+    @Test func aSearchSkipsTheWaitAfterAPassThatGotThroughAndAPullTheWaitAfterAFailedOne() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.runPass()
+        h.indexer.startIfDue(folders: ["INBOX"], for: .search)
+        await h.indexer.waitForPass()
+        #expect(await h.passes() == 2)
+
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?.append(FakeMailClient.message(uid: 4, subject: "公告 4"))
+            fake.searchTextsError = .serverBusy
+        }
+        h.indexer.noteNewMail()
+        await h.runPass()
+        await h.fake.update { $0.searchTextsError = nil }
+        h.indexer.startIfDue(folders: ["INBOX"], for: .search)
+        await h.indexer.waitForPass()
+        #expect(await h.passes() == 3)
+
+        h.indexer.startIfDue(folders: ["INBOX"], for: .pull)
+        await h.indexer.waitForPass()
+        #expect(await h.passes() == 4)
+        #expect(h.search("公告 4") == [4])
+
+        h.network.isConstrained = true
+        h.indexer.startIfDue(folders: ["INBOX"], for: .pull)
+        await h.indexer.waitForPass()
+        #expect(await h.passes() == 4)
+    }
+
+    @Test func aPassStoppedByAResetMarksNoFolderIndexedAfterIt() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.hold("searchTexts")
+        h.indexer.startIfDue(folders: ["INBOX"])
+        await h.fake.waitForArrival("searchTexts")
+        h.indexer.reset()
+        await h.fake.release("searchTexts")
+        try await waitUntil { !h.indexer.isRunning }
+
+        #expect(!h.indexer.isIndexed("INBOX"))
+        #expect(h.indexer.progress == nil)
+    }
+
     @Test func aMailWhoseTextNeverArrivesIsSkippedAfterFailingAloneTwice() async throws {
         let h = Self.harness()
         await h.fake.update { $0.searchTextsFailingUIDs = [30] }
@@ -294,7 +367,9 @@ struct MailIndexerTests {
         await h.indexer.waitForPass()
         #expect(await h.textBatches().count == 1)
         #expect(h.search("公告 45") == [45])
-        #expect(h.indexer.progress == nil)
+        #expect(!h.indexer.isRunning)
+        #expect(!h.indexer.isComplete)
+        #expect(h.indexer.progress?.text(locale: Locale(identifier: "en_US")) == "20/45")
 
         h.network.isConstrained = false
         await h.runPass()
@@ -325,7 +400,8 @@ struct MailIndexerTests {
         #expect(h.indexer.progress?.text(locale: Locale(identifier: "en_US")) == "20/46")
         await h.fake.release("searchTexts")
         await h.indexer.waitForPass()
-        #expect(h.indexer.progress == nil)
+        #expect(h.indexer.progress?.text(locale: Locale(identifier: "en_US")) == "46/46")
+        #expect(h.indexer.isComplete)
         #expect(h.search("寄件", in: "Sent") == [1])
     }
 

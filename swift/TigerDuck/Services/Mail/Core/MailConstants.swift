@@ -30,6 +30,7 @@ nonisolated enum MailConstants {
     static let indexBatchSize = 20
     static let indexResyncInterval: TimeInterval = 15 * 60
     static let indexRetryDelay: TimeInterval = 60
+    static let searchCatchUpInterval: Duration = .seconds(3)
     static let searchTextPartBytes = 256 * 1024
 
     static let backgroundTaskIdentifier = "org.ntust.app.TigerDuck.mailRefresh"

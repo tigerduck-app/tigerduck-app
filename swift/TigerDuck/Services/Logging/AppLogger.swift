@@ -9,6 +9,7 @@ nonisolated enum AppLogger {
     static let moodle = Logger(subsystem: subsystem, category: "Moodle")
     static let persistence = Logger(subsystem: subsystem, category: "Persistence")
     static let sync = Logger(subsystem: subsystem, category: "Sync")
+    static let mail = Logger(subsystem: subsystem, category: "Mail")
     /// The category `swift/Shared/TLSPins/` logs under, so one filter shows the whole pin flow.
     static let tlsPins = Logger(subsystem: subsystem, category: "Security.TLSPin")
     private static let diagnostics = Logger(subsystem: subsystem, category: "Diagnostics")
