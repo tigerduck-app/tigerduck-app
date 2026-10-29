@@ -33,7 +33,7 @@ struct CourseTimelineResolver {
     }
 
     func nonSkippedState(at time: Date, in timeline: [CourseTimeSlot]) -> CourseState {
-        let filtered = timeline.filter { !$0.course.isSkipped(on: $0.date) }
+        let filtered = timeline.filter { !$0.isSkippedOrCancelled }
         return state(at: time, in: filtered)
     }
 
