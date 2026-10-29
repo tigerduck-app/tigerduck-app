@@ -78,6 +78,8 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | defaults | `classroomMandarinDisplay` | device |  |
 | defaults | `cloudSyncEnabled` | account | `swift/TigerDuck/App/AppState+Account.swift` `logoutNTUST` |
 | defaults | `configuredTabsData` | device |  |
+| defaults | `courseChangesCache` | device |  |
+| defaults | `courseChangesETag` | device |  |
 | defaults | `courseRowIdsSeen` | account | `swift/TigerDuck/App/AppState+Account.swift` `forgetSyncProgress` |
 | defaults | `emptyClassroomBuilding` | account | `swift/TigerDuck/App/AppState+Account.swift` `forgetAccountOnDevice` |
 | defaults | `flipToLibraryEnabled` | device |  |
