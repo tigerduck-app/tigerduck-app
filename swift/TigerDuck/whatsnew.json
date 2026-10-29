@@ -800,5 +800,37 @@
         }
       ]
     }
+  },
+  "2.9.0": {
+    "zh-TW": {
+      "title": "2.9.0 更新內容",
+      "items": [
+        {
+          "symbol": "calendar.badge.exclamationmark",
+          "title": "課程異動",
+          "body": "課表、首頁、Widget 與 Apple Watch 會顯示停課、換教室與時間異動。"
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "修正部分 Moodle 成員名稱的顯示。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.9.0",
+      "items": [
+        {
+          "symbol": "calendar.badge.exclamationmark",
+          "title": "Course changes",
+          "body": "The class table, Home, widgets and Apple Watch show cancelled classes and room and time changes."
+        },
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "Fixed how some Moodle member names are shown."
+        }
+      ]
+    }
   }
 }
