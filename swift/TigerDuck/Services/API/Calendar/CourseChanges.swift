@@ -130,7 +130,6 @@ private nonisolated extension CourseChange {
 final class CourseChangeStore {
     static let shared = CourseChangeStore()
 
-    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CourseChanges")
     private let session: URLSession
     private let baseURL: () -> URL
     private let hasCompletedOnboarding: () -> Bool
@@ -188,7 +187,7 @@ final class CourseChangeStore {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode != 304 else { return false }
             guard (200..<300).contains(http.statusCode) else {
-                logger.error("course changes HTTP \(http.statusCode, privacy: .public)")
+                AppLogger.network.error("course changes HTTP \(http.statusCode, privacy: .public)")
                 APIVersionGate.shared.note(statusCode: http.statusCode)
                 return false
             }
@@ -202,7 +201,9 @@ final class CourseChangeStore {
             }
             return changed
         } catch {
-            logger.error("course changes refresh failed: \(error.localizedDescription, privacy: .private)")
+            if !AppLogger.isCancellation(error) {
+                AppLogger.captureError(error, context: ["service": "courseChangesRefresh"])
+            }
             return false
         }
     }
