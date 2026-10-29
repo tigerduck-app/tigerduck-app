@@ -101,7 +101,6 @@ extension ClassTableViewModel {
         return calendar.date(byAdding: .day, value: ahead, to: start) ?? start
     }
 
-    /// The block's meeting on its column's date, or nil when the school changed nothing there.
     func changedMeeting(of course: SDCourse, weekday: Int, at periodId: String, today: Date) -> CourseTimeSlot? {
         guard showsThisWeek else { return nil }
         let date = Self.columnDate(weekday: weekday, today: today)

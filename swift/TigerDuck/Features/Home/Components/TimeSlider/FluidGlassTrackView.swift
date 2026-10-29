@@ -50,7 +50,6 @@ struct FluidGlassTrackView: View {
                             bottomTrailingRadius: bottom,
                             topTrailingRadius: top
                         )
-                        // A cancelled class keeps its place on the track as an outline.
                         segment
                             .fill(slot.course.color.opacity(slot.isCancelled ? 0.06 : segOpacity))
                             .overlay {

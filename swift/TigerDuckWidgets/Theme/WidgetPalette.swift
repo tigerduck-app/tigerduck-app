@@ -13,7 +13,6 @@ struct WidgetPalette {
     let onSurfaceVariant: Color
     let emptyCell: Color
     let highlight: Color
-    /// A value the school changed for the day.
     let changeInk: Color
     let isFullColor: Bool
 

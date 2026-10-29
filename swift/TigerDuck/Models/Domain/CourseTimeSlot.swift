@@ -55,7 +55,6 @@ struct CourseTimeSlot: Identifiable, Equatable {
         )
     }
 
-    /// The course's timetable meetings on a day that carry a change.
     static func changedMeetings(of course: SDCourse, on date: Date, changes: CourseChanges = .cached) -> [CourseTimeSlot] {
         let weekday = date.scheduleWeekday
         var left = (course.schedule[weekday] ?? []).sortedByPeriodOrder()
@@ -69,7 +68,6 @@ struct CourseTimeSlot: Identifiable, Equatable {
         return meetings
     }
 
-    /// The days from `today` on that change one of the course's meetings, earliest first.
     static func upcomingChanges(
         of course: SDCourse, from today: Date, changes: CourseChanges = .cached
     ) -> [(day: Date, meetings: [CourseTimeSlot])] {

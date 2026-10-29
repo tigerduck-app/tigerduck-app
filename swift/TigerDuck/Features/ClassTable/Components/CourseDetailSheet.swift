@@ -239,7 +239,6 @@ struct CourseDetailSheet: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    /// The shown day's meeting when the school changed it.
     private var shownMeeting: CourseTimeSlot? {
         guard let date, let periods = periods ?? course.schedule[date.scheduleWeekday] else { return nil }
         return CourseTimeSlot.meeting(of: course, periods: periods, on: date, changes: changes)

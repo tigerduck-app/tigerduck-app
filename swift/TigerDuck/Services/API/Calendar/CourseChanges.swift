@@ -44,7 +44,6 @@ nonisolated struct CourseChanges: Equatable, Sendable {
         byCourseDay[Key(courseNo: courseNo, day: AcademicCalendar.startOfDay(day))] ?? []
     }
 
-    /// The class days the course has changes on, earliest first.
     func days(courseNo: String) -> [Date] {
         byCourseDay.keys.filter { $0.courseNo == courseNo }.map(\.day).sorted()
     }

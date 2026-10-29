@@ -407,7 +407,6 @@ struct TimetableGridView: View {
         }
     }
 
-    /// The line at a block's foot: its room hint, the room the school moved it to, or the cancellation.
     private enum BlockLine {
         case room(String), changedRoom(String), cancelled
 
@@ -461,7 +460,6 @@ struct TimetableGridView: View {
         .foregroundStyle(Color.changeInk)
     }
 
-    /// The new start, the new end after a dash, or both when the school moved both.
     private static func changedTimeText(_ meeting: CourseTimeSlot) -> String? {
         guard !meeting.isCancelled else { return nil }
         switch (meeting.originalStart != nil, meeting.originalEnd != nil) {
