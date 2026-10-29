@@ -30,7 +30,7 @@ extension Array where Element == SDCourse {
             while blockStart < periods.count {
                 var blockEnd = blockStart
                 while blockEnd + 1 < periods.count,
-                      periodOrder(periods[blockEnd + 1]) == periodOrder(periods[blockEnd]) + 1 {
+                      periodOrder(periods[blockEnd + 1]) - 1 == periodOrder(periods[blockEnd]) {
                     blockEnd += 1
                 }
                 let firstId = periods[blockStart]

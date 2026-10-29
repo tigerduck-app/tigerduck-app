@@ -464,6 +464,32 @@ struct CourseChangesTests {
         #expect(sent == [nil, #"W/"a""#, #"W/"a""#, #"W/"a""#])
     }
 
+    @Test func aStoredFeedThisBuildCannotReadIsFetchedAgain() async throws {
+        let savedCache = Defaults[.courseChangesCache]
+        let savedTag = Defaults[.courseChangesETag]
+        defer {
+            Defaults[.courseChangesCache] = savedCache
+            Defaults[.courseChangesETag] = savedTag
+        }
+        Defaults[.courseChangesCache] = Data("not a feed".utf8)
+        Defaults[.courseChangesETag] = #"W/"a""#
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let store = CourseChangeStore(
+            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+        )
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")]), headerFields: ["ETag": #"W/"a""#]),
+            for: url
+        )
+
+        #expect(await store.refresh())
+        #expect(SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") } == [nil])
+        #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).map(\.id) == [1])
+    }
+
     @Test func aRefreshAnEndpointChangeReplacedLeavesTheNewOneToBeJoined() async throws {
         let savedCache = Defaults[.courseChangesCache]
         let savedTag = Defaults[.courseChangesETag]

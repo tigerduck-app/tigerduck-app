@@ -178,7 +178,8 @@ final class CourseChangeStore {
         )
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let tag = Defaults[.courseChangesETag]
-        if !tag.isEmpty {
+        // A stored feed this build cannot read is fetched again, not kept by a 304.
+        if !tag.isEmpty, (try? CourseChanges(json: Defaults[.courseChangesCache])) != nil {
             request.setValue(tag, forHTTPHeaderField: "If-None-Match")
         }
 

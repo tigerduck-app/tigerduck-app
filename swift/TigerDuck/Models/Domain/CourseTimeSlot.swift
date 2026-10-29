@@ -144,7 +144,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
         let periods = (course.schedule[weekday ?? date.scheduleWeekday] ?? []).sortedByPeriodOrder()
         var runs: [[String]] = []
         for period in periods {
-            if let last = runs.last?.last, periodOrder(period) == periodOrder(last) + 1 {
+            if let last = runs.last?.last, periodOrder(period) - 1 == periodOrder(last) {
                 runs[runs.count - 1].append(period)
             } else {
                 runs.append([period])
