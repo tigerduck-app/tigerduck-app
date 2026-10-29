@@ -285,7 +285,7 @@ private func terminalLabel(for scenario: LiveActivityScenarioKind) -> String {
 
 /// The app's change ink: a value the school changed for the day.
 private func changeInk(_ scheme: ColorScheme) -> Color {
-    scheme == .dark ? hexColor(0xFDBA74) : hexColor(0x9A3412)
+    scheme == .dark ? hexColor(0xFDBA74) : hexColor(0x7C2D12)
 }
 
 private extension View {

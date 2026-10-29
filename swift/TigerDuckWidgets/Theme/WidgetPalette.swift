@@ -43,7 +43,7 @@ struct WidgetPalette {
         onSurfaceVariant: Color(widgetHex: 0x6E6E73),
         emptyCell: Color(widgetHex: 0xECECEC),
         highlight: .blue,
-        changeInk: Color(widgetHex: 0x9A3412),
+        changeInk: Color(widgetHex: 0x7C2D12),
         isFullColor: true
     )
 
