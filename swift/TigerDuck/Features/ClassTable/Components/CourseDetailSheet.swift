@@ -336,20 +336,22 @@ struct CourseDetailSheet: View {
 
     @ViewBuilder
     private var courseChangesSection: some View {
-        let days = date == nil ? [] : CourseTimeSlot.upcomingChanges(of: course, from: AppClock.now())
-        if !days.isEmpty {
+        let rows = date == nil ? [] : Self.changeRows(
+            CourseTimeSlot.upcomingChanges(of: course, from: AppClock.now()), besides: shownMeeting
+        )
+        if !rows.isEmpty {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
                 Divider()
                 Text(String(localized: "course_detail_changes"))
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
                 Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: TigerDuckTheme.Spacing.lg, verticalSpacing: 6) {
-                    ForEach(days, id: \.day) { day in
+                    ForEach(rows, id: \.day) { row in
                         GridRow {
-                            Text(Date.dayWeekdayFormatter.string(from: day.day))
+                            Text(Date.dayWeekdayFormatter.string(from: row.day))
                                 .foregroundStyle(Color.textSecondary)
                                 .fixedSize()
-                            Text(Self.changeSummary(day.meetings))
+                            Text(row.summary)
                                 .foregroundStyle(Color.textPrimary)
                                 .lineLimit(1)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -362,10 +364,26 @@ struct CourseDetailSheet: View {
         }
     }
 
-    /// One day's changes in a line: the cancellation or the new room and time, then the notes.
-    static func changeSummary(_ meetings: [CourseTimeSlot]) -> String {
+    /// At most eight days' changes in a line each. The room, time or cancellation of the meeting
+    /// the cards show is left to the cards; its notes stay, as the cards have no place for them.
+    static func changeRows(
+        _ days: [(day: Date, meetings: [CourseTimeSlot])], besides shown: CourseTimeSlot?
+    ) -> [(day: Date, summary: String)] {
+        let rows = days.lazy
+            .map { day in
+                (day: day.day, summary: changeSummary(day.meetings, besides: shown))
+            }
+            .filter { !$0.summary.isEmpty }
+        return Array(rows.prefix(8))
+    }
+
+    private static func changeSummary(_ meetings: [CourseTimeSlot], besides shown: CourseTimeSlot?) -> String {
         var parts: [String] = []
         for meeting in meetings {
+            if let shown, meeting.periods == shown.periods,
+               AcademicCalendar.startOfDay(meeting.date) == AcademicCalendar.startOfDay(shown.date) {
+                continue
+            }
             if meeting.isCancelled {
                 parts.append(String(localized: "course_card_cancelled"))
                 continue

@@ -66,16 +66,13 @@ struct CourseTimeSlot: Identifiable, Equatable {
 
     /// The days from `today` on that change one of the course's meetings, earliest first.
     static func upcomingChanges(
-        of course: SDCourse, from today: Date, changes: CourseChanges = .cached, limit: Int = 8
+        of course: SDCourse, from today: Date, changes: CourseChanges = .cached
     ) -> [(day: Date, meetings: [CourseTimeSlot])] {
         let start = AcademicCalendar.startOfDay(today)
-        return Array(
-            changes.days(courseNo: course.courseNo).lazy
-                .filter { $0 >= start }
-                .map { (day: $0, meetings: changedMeetings(of: course, on: $0, changes: changes)) }
-                .filter { !$0.meetings.isEmpty }
-                .prefix(limit)
-        )
+        return changes.days(courseNo: course.courseNo)
+            .filter { $0 >= start }
+            .map { (day: $0, meetings: changedMeetings(of: course, on: $0, changes: changes)) }
+            .filter { !$0.meetings.isEmpty }
     }
 
     static func buildSlots(

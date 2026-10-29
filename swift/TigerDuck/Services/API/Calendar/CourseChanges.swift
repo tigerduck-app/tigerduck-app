@@ -24,7 +24,7 @@ nonisolated struct CourseChange: Equatable, Sendable {
     }
 
     func note(for locale: Locale = .current) -> String? {
-        locale.language.languageCode?.identifier == "zh" ? noteZh ?? noteEn : noteEn ?? noteZh
+        locale.language.languageCode?.identifier == "zh" ? noteZh : noteEn
     }
 }
 

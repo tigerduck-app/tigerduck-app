@@ -232,9 +232,27 @@ struct CourseChangesTests {
                 + [Self.row(99, "room", days: ["2026-11-06"], values: ["room": "TR-313"])]
         )
 
-        let rows = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.at("23:00"), changes: changes)
+        let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.at("23:00"), changes: changes)
+        #expect(days.map { SharedTaipei.dayKey(for: $0.day) } == Array(thursdays[1...]))
+        #expect(days.allSatisfy { $0.meetings.count == 2 && $0.meetings.allSatisfy { $0.isCancelled } })
+        let rows = CourseDetailSheet.changeRows(days, besides: nil)
         #expect(rows.map { SharedTaipei.dayKey(for: $0.day) } == Array(thursdays[1...8]))
-        #expect(rows.allSatisfy { $0.meetings.count == 2 && $0.meetings.allSatisfy { $0.isCancelled } })
+        #expect(rows.allSatisfy { $0.summary == String(localized: "course_card_cancelled") })
+    }
+
+    @Test func theChangesListLeavesTheShownMeetingsRoomAndTimeToTheCards() throws {
+        let changes = try Self.changes([
+            Self.row(1, "room", periods: ["2", "3", "4"], values: ["room": "TR-313"]),
+            Self.row(2, "start", periods: ["7", "8"], days: ["2026-11-12"], values: ["start": "14:40"]),
+            Self.row(3, "note", periods: ["7"], days: ["2026-11-12"], values: ["note_zh": "Quiz"]),
+        ])
+        let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
+        let today = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes))
+        let nextWeek = try #require(days.last?.meetings.first)
+
+        #expect(CourseDetailSheet.changeRows(days, besides: nil).map { $0.summary } == ["TR-313", "14:40 - 16:20 · Quiz"])
+        #expect(CourseDetailSheet.changeRows(days, besides: today).map { $0.summary } == ["14:40 - 16:20 · Quiz"])
+        #expect(CourseDetailSheet.changeRows(days, besides: nextWeek).map { $0.summary } == ["TR-313", "Quiz"])
     }
 
     @Test func theTimeLineCrossesAPeriodByItsShareAndSitsInTheGapBetweenTwo() {
