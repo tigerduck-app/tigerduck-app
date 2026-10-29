@@ -47,7 +47,7 @@ enum WidgetSnapshotBuilder {
                 .filter { $0.isCancelled || $0.hasChangedRoom || $0.hasChangedTime }
                 .map { meeting in
                     SnapshotCourseChange(
-                        day: SharedTaipei.dayKey(for: day),
+                        day: WidgetTimelineDerivation.dateKey(for: day),
                         periods: meeting.periods,
                         cancelled: meeting.isCancelled,
                         room: meeting.hasChangedRoom ? meeting.room : nil,
