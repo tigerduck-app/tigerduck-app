@@ -227,9 +227,9 @@ struct CourseTimeSlot: Identifiable, Equatable {
             || changes.isCancelled(courseNo: courseNo, on: day, period: String(parts[parts.count - 1]))
     }
 
-    /// Whether the meeting holding the period `id` names has no class left at `now` by its changed
-    /// times. A change can drop or split the piece an activity began with, so the id may no longer
-    /// name a slot; every piece of its meeting that is not cancelled decides.
+    /// Whether the class `id` names is over at `now` by its changed times: its own piece when one
+    /// still has that id, or else every piece of its meeting that is not cancelled, as a change can
+    /// drop the piece an activity began with.
     static func hasEnded(slotId id: String, in courses: [SDCourse], at now: Date, changes: CourseChanges = .cached) -> Bool {
         let parts = id.split(separator: "_", omittingEmptySubsequences: false)
         guard parts.count >= 3, let day = dayKeyFormatter.date(from: String(parts[parts.count - 2])) else {
@@ -241,9 +241,9 @@ struct CourseTimeSlot: Identifiable, Equatable {
             guard let meeting = meetings(of: course, on: day, changes: changes).first(where: { $0.periods.contains(period) })
             else { return false }
             let pieces = meeting.fragments()
-            return (pieces.isEmpty ? [merged([meeting])].compactMap { $0 } : pieces)
-                .filter { !$0.isCancelled }
-                .allSatisfy { $0.end <= now }
+            let running = (pieces.isEmpty ? [merged([meeting])].compactMap { $0 } : pieces).filter { !$0.isCancelled }
+            if let own = running.first(where: { $0.id == id }) { return own.end <= now }
+            return running.allSatisfy { $0.end <= now }
         }
     }
 

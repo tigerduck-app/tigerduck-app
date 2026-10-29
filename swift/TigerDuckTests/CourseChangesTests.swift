@@ -442,6 +442,8 @@ struct CourseChangesTests {
         #expect(CourseTimeSlot.hasEnded(slotId: id, in: [Self.course()], at: Self.at("11:30"), changes: changes))
         #expect(!CourseTimeSlot.hasEnded(slotId: id, in: [Self.course()], at: Self.at("10:30"), changes: changes))
         #expect(!CourseTimeSlot.hasEnded(slotId: id, in: [Self.course()], at: Self.at("11:30"), changes: .empty))
+        let split = try Self.changes([Self.row(2, "room", periods: ["4"], values: ["room": "TR-313"])])
+        #expect(CourseTimeSlot.hasEnded(slotId: id, in: [Self.course()], at: Self.at("11:30"), changes: split))
     }
 
     @Test func aClassWhoseFirstPieceAChangeDroppedEndsWithTheRestOfItsMeeting() throws {
