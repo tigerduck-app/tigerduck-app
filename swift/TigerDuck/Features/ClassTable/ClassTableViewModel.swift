@@ -436,14 +436,7 @@ final class ClassTableViewModel {
     var ongoingCourses: [OngoingCourseInfo] {
         _ = AppClockState.shared.version
         _ = minuteTicker.tick
-        let now = AppClock.now()
-        let cal = AppConstants.taipeiCalendar
-        let comps = cal.dateComponents([.hour, .minute], from: now)
-        let minuteOfDay = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
-        return currentSemesterCourses.ongoingCourses(
-            weekday: now.scheduleWeekday,
-            minuteOfDay: minuteOfDay
-        )
+        return currentSemesterCourses.ongoingCourses(at: AppClock.now(), changes: courseChanges)
     }
 
     @ObservationIgnored

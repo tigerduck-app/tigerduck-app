@@ -414,6 +414,18 @@ struct CourseChangesTests {
         #expect(CourseDetailSheet.changeRows(days, besides: shown(slots[0])).map(\.summary) == ["TR-313"])
     }
 
+    @Test func theCurrentClassIsTheChangedOneAndACancelledClassIsNotRunning() throws {
+        let changes = try Self.changes([
+            Self.row(1, "room", periods: ["2", "3", "4"], values: ["room": "TR-313"]),
+            Self.row(2, "cancelled", periods: ["7", "8"]),
+        ])
+
+        let morning = try #require([Self.course()].ongoingCourses(at: Self.at("10:30"), changes: changes).first)
+        #expect((morning.periods, morning.classroom) == (["2", "3", "4"], "TR-313"))
+        #expect([Self.course()].ongoingCourses(at: Self.at("14:30"), changes: changes).isEmpty)
+        #expect([Self.course()].ongoingCourses(at: Self.at("14:30"), changes: .empty).count == 1)
+    }
+
     @Test func theTimeLineCrossesAPeriodByItsShareAndSitsInTheGapBetweenTwo() {
         let periods = [(start: 490, end: 540), (start: 550, end: 600), (start: 800, end: 850)]
         func offset(_ minute: Int) -> CGFloat? {

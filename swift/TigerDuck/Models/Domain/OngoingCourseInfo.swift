@@ -7,11 +7,22 @@ struct OngoingCourseInfo: Identifiable {
     let periods: [String]
     let startMinute: Int
     let endMinute: Int
+    let classroom: String
 
     var id: String { "\(course.courseNo)-\(weekday)-\(firstPeriodId)" }
 
-    var classroom: String {
-        course.classroom(weekday: weekday, periods: periods)
+    init(slot: CourseTimeSlot) {
+        func minute(_ date: Date) -> Int {
+            let parts = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: date)
+            return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+        }
+        course = slot.course
+        weekday = slot.date.scheduleWeekday
+        firstPeriodId = slot.periods.first ?? ""
+        periods = slot.periods
+        startMinute = minute(slot.start)
+        endMinute = minute(slot.end)
+        classroom = slot.room
     }
 
     var formattedTimeRange: String {
@@ -21,51 +32,10 @@ struct OngoingCourseInfo: Identifiable {
 }
 
 extension Array where Element == SDCourse {
-    func ongoingCourses(weekday: Int, minuteOfDay: Int) -> [OngoingCourseInfo] {
-        var results: [OngoingCourseInfo] = []
-        for course in self {
-            guard let raw = course.schedule[weekday], !raw.isEmpty else { continue }
-            let periods = raw.sortedByPeriodOrder()
-            var blockStart = 0
-            while blockStart < periods.count {
-                var blockEnd = blockStart
-                while blockEnd + 1 < periods.count,
-                      periodOrder(periods[blockEnd + 1]) - 1 == periodOrder(periods[blockEnd]) {
-                    blockEnd += 1
-                }
-                let firstId = periods[blockStart]
-                let lastId = periods[blockEnd]
-                if let startMin = parseHm(AppConstants.PeriodTimes.mapping[firstId]?.start),
-                   let endMin = parseHm(AppConstants.PeriodTimes.mapping[lastId]?.end),
-                   (startMin..<endMin).contains(minuteOfDay) {
-                    results.append(
-                        OngoingCourseInfo(
-                            course: course,
-                            weekday: weekday,
-                            firstPeriodId: firstId,
-                            periods: [String](periods[blockStart...blockEnd]),
-                            startMinute: startMin,
-                            endMinute: endMin
-                        )
-                    )
-                    break
-                }
-                blockStart = blockEnd + 1
-            }
-        }
-        return results
+    /// The classes running at `date` as the school changed them; a cancelled one is not running.
+    func ongoingCourses(at date: Date, changes: CourseChanges = .cached) -> [OngoingCourseInfo] {
+        CourseTimeSlot.buildSlots(from: self, weekday: date.scheduleWeekday, on: date, changes: changes)
+            .filter { !$0.isCancelled && $0.start <= date && date < $0.end }
+            .map(OngoingCourseInfo.init(slot:))
     }
-}
-
-private func periodOrder(_ periodId: String) -> Int {
-    AppConstants.Periods.chronologicalOrder.firstIndex(of: periodId) ?? Int.max
-}
-
-private func parseHm(_ hhmm: String?) -> Int? {
-    guard let hhmm else { return nil }
-    let parts = hhmm.split(separator: ":")
-    guard parts.count == 2,
-          let h = Int(parts[0]),
-          let m = Int(parts[1]) else { return nil }
-    return h * 60 + m
 }
