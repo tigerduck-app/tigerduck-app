@@ -156,6 +156,12 @@ struct CourseChangesTests {
         let snapshot = LiveActivityScenarioResolver.classPreparingSnapshot(slot: next, accentHex: 0)
         #expect(snapshot.locationText == "TR-313")
         #expect(snapshot.countdownTarget == Self.at("14:00"))
+        #expect(snapshot.roomChanged == true && snapshot.timeChanged == true)
+        let plain = CourseTimeSlot.buildSlots(from: [Self.course()], weekday: 4, on: Self.thursday, changes: .empty)[0]
+        let json = try String(decoding: JSONEncoder().encode(
+            LiveActivityScenarioResolver.classPreparingSnapshot(slot: plain, accentHex: 0)
+        ), as: UTF8.self)
+        #expect(!json.contains("roomChanged") && !json.contains("timeChanged"))
     }
 
     @Test func theScheduleSentToTheServerSkipsACancelledClassAndUsesTheChangedStart() {

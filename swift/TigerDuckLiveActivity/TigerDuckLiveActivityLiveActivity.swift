@@ -42,7 +42,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                 if let loc = snapshot.locationText, !loc.isEmpty {
                     Text(loc)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(hexColor(snapshot.accentHex))
+                        .foregroundStyle(snapshot.roomChanged == true ? changeInk(.dark) : hexColor(snapshot.accentHex))
                         .lineLimit(1)
                 } else {
                     scenarioIcon(snapshot)
@@ -162,6 +162,7 @@ private struct AutoProgressBar: View {
 
 private struct MetadataRowView: View {
     let snapshot: LiveActivitySnapshot
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: 0) {
@@ -193,6 +194,7 @@ private struct MetadataRowView: View {
                             Text(loc)
                         }
                     }
+                    .changed(snapshot.roomChanged == true, ink: changeInk(colorScheme))
 
                     Spacer(minLength: 8)
                 }
@@ -203,6 +205,7 @@ private struct MetadataRowView: View {
                         Text(snapshot.subtitle)
                     }
                 }
+                .changed(snapshot.timeChanged == true, ink: changeInk(colorScheme))
 
                 Spacer(minLength: 8)
 
@@ -277,6 +280,22 @@ private func terminalLabel(for scenario: LiveActivityScenarioKind) -> String {
         return String(localized: "live_activity_countdown_done_class_preparing")
     case .assignmentUrgent:
         return String(localized: "live_activity_countdown_done_assignment_urgent")
+    }
+}
+
+/// The app's change ink: a value the school changed for the day.
+private func changeInk(_ scheme: ColorScheme) -> Color {
+    scheme == .dark ? hexColor(0xFDBA74) : hexColor(0x9A3412)
+}
+
+private extension View {
+    @ViewBuilder
+    func changed(_ isChanged: Bool, ink: Color) -> some View {
+        if isChanged {
+            foregroundStyle(ink).fontWeight(.semibold)
+        } else {
+            self
+        }
     }
 }
 

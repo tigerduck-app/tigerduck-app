@@ -70,7 +70,9 @@ struct LiveActivityScenarioResolver {
             progressStart: slot.start < slot.end ? slot.start : nil,
             accentHex: accentHex,
             deepLink: nil,
-            sourceId: slot.id
+            sourceId: slot.id,
+            roomChanged: slot.hasChangedRoom ? true : nil,
+            timeChanged: slot.hasChangedTime ? true : nil
         )
     }
 
@@ -85,7 +87,9 @@ struct LiveActivityScenarioResolver {
             progressStart: nil,
             accentHex: accentHex,
             deepLink: nil,
-            sourceId: slot.id
+            sourceId: slot.id,
+            roomChanged: slot.hasChangedRoom ? true : nil,
+            timeChanged: slot.hasChangedTime ? true : nil
         )
     }
 
