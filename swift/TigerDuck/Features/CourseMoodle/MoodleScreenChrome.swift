@@ -398,21 +398,32 @@ struct MoodleOpenCapsule: View {
     }
 }
 
-/// A Moodle user as the app names them. NTUST's Moodle spells a full name "student ID @ name";
-/// the part after the `@` is the name, and a name without one is used whole.
+/// A Moodle user as the app names them. NTUST's Moodle spells a full name "student ID @ name",
+/// or "name student ID@" in some users' display order; any other full name is the name whole.
+/// The backend's `display_name_from` in server/auth/moodle.py reads it the same way.
 nonisolated enum MoodlePersonName {
     static func displayName(_ fullName: String) -> String {
         let trimmed = fullName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let at = trimmed.firstIndex(of: "@") else { return trimmed }
-        let name = trimmed[trimmed.index(after: at)...].trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? trimmed : name
+        return parts(of: trimmed)?.name ?? trimmed
     }
 
-    /// The part before the `@`, for a user whose `idnumber` Moodle leaves out.
+    /// The student ID in the full name, for a user whose `idnumber` Moodle leaves out.
     static func studentId(_ fullName: String) -> String? {
         guard let at = fullName.firstIndex(of: "@") else { return nil }
-        let id = fullName[..<at].trimmingCharacters(in: .whitespacesAndNewlines)
+        let id = parts(of: fullName)?.id ?? fullName[..<at].trimmingCharacters(in: .whitespacesAndNewlines)
         return id.isEmpty ? nil : id
+    }
+
+    private static func parts(of fullName: String) -> (id: String, name: String)? {
+        guard let at = fullName.firstIndex(of: "@") else { return nil }
+        let before = fullName[..<at].trimmingCharacters(in: .whitespacesAndNewlines)
+        let after = fullName[fullName.index(after: at)...].trimmingCharacters(in: .whitespacesAndNewlines)
+        if !after.isEmpty { return (before, after) }
+        // "name student ID@": the last word before the `@` is the ID, and it has digits.
+        guard let space = before.lastIndex(where: \.isWhitespace) else { return nil }
+        let id = String(before[before.index(after: space)...])
+        let name = before[..<space].trimmingCharacters(in: .whitespacesAndNewlines)
+        return id.contains(where: \.isNumber) && !name.isEmpty ? (id, name) : nil
     }
 }
 
