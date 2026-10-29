@@ -31,11 +31,12 @@ struct MacHomeWidgetsRow: View {
     private func upcomingSlots(for now: Date) -> [CourseTimeSlot] {
         let calendar = AppConstants.taipeiCalendar
         let start = calendar.startOfDay(for: now)
+        let changes = CourseChanges.cached
         var slots: [CourseTimeSlot] = []
         for offset in 0...7 {
             guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { continue }
             slots.append(contentsOf: CourseTimeSlot.meetingSlots(
-                from: courses, on: date, isClassDay: AcademicCalendarStore.shared.isClassDay
+                from: courses, on: date, isClassDay: AcademicCalendarStore.shared.isClassDay, changes: changes
             ))
         }
         return slots.sorted { $0.start < $1.start }

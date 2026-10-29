@@ -143,11 +143,12 @@ struct CourseTimeSlot: Identifiable, Equatable {
     static func meetingSlots(
         from courses: [SDCourse],
         on date: Date,
-        isClassDay: (Date) -> Bool
+        isClassDay: (Date) -> Bool,
+        changes: CourseChanges = .cached
     ) -> [CourseTimeSlot] {
         guard isClassDay(date) else { return [] }
-        return buildSlots(from: courses, weekday: date.scheduleWeekday, on: date)
-            .filter { !$0.course.isSkipped(on: $0.date) }
+        return buildSlots(from: courses, weekday: date.scheduleWeekday, on: date, changes: changes)
+            .filter { !$0.isSkippedOrCancelled }
     }
 
     static func isSkipped(slotId id: String, in courses: [SDCourse], changes: CourseChanges = .cached) -> Bool {

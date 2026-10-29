@@ -21,6 +21,7 @@ struct CourseDetailSheet: View {
     var date: Date? = nil
     var moodlePath: Binding<[MoodleCourseRoute]>? = nil
     var showsMoodle = true
+    private let changes = CourseChanges.cached
 
     @State private var ownMoodlePath: [MoodleCourseRoute] = []
     @State private var moodle: MoodleCourseStore?
@@ -241,7 +242,8 @@ struct CourseDetailSheet: View {
     /// The shown day's meeting when the school changed it.
     private var shownMeeting: CourseTimeSlot? {
         guard let date, let periods = periods ?? course.schedule[date.scheduleWeekday] else { return nil }
-        return CourseTimeSlot.meeting(of: course, periods: periods, on: date).flatMap { $0.changes.isEmpty ? nil : $0 }
+        return CourseTimeSlot.meeting(of: course, periods: periods, on: date, changes: changes)
+            .flatMap { $0.changes.isEmpty ? nil : $0 }
     }
 
     private static func changedTime(_ meeting: CourseTimeSlot) -> String? {
@@ -337,7 +339,7 @@ struct CourseDetailSheet: View {
     @ViewBuilder
     private var courseChangesSection: some View {
         let rows = date == nil ? [] : Self.changeRows(
-            CourseTimeSlot.upcomingChanges(of: course, from: AppClock.now()), besides: shownMeeting
+            CourseTimeSlot.upcomingChanges(of: course, from: AppClock.now(), changes: changes), besides: shownMeeting
         )
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {

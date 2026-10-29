@@ -91,6 +91,15 @@ struct CourseChangesTests {
         #expect(slots.map(\.room) == ["TR-313", "T4-501"])
     }
 
+    @Test func meetingSlotsLeaveOutACancelledMeeting() throws {
+        let changes = try Self.changes([Self.row(1, "cancelled", periods: ["2", "3", "4"])])
+
+        let slots = CourseTimeSlot.meetingSlots(
+            from: [Self.course()], on: Self.thursday, isClassDay: { _ in true }, changes: changes
+        )
+        #expect(slots.map(\.periods) == [["7", "8"]])
+    }
+
     @Test func aNewStartAndEndMoveTheirMeetingAndKeepTheTimetableTimes() throws {
         let changes = try Self.changes([
             Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "09:40"]),
@@ -303,4 +312,5 @@ struct CourseChangesTests {
         let sent = SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") }
         #expect(sent == [nil, #"W/"a""#, #"W/"a""#, #"W/"a""#])
     }
+
 }
