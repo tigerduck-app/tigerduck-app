@@ -86,4 +86,23 @@ struct ClassStopTests {
         #expect(stops.map(\.firstPeriod) == [0, 2])
         #expect(stops.map(\.lastPeriod) == [1, 3])
     }
+
+    @Test("a block the school moved that day is a stop in the new room")
+    func aMovedBlockStopsInItsNewRoom() throws {
+        let course = SDCourse(
+            courseNo: "CS1001303", courseName: "編譯器", classroom: "TR-214", schedule: [3: ["1", "2", "6"]]
+        )
+        let changes = try CourseChanges(json: JSONSerialization.data(withJSONObject: ["term": "1151", "changes": [
+            ["id": 1, "course_no": "CS1001303", "kind": "room", "periods": ["1", "2"],
+             "class_days": ["2026-10-14"], "room": "IB-305"],
+        ]] as [String: Any]))
+        let slots = CourseTimeSlot.meetingSlots(
+            from: [course], on: Self.wednesday, isClassDay: { _ in true }, changes: changes
+        )
+
+        let stops = ClassStop.stops(from: slots) { $0 }
+
+        #expect(stops.map(\.room) == ["IB-305", "TR-214"])
+        #expect(stops.map(\.firstPeriod) == [0, 5])
+    }
 }
