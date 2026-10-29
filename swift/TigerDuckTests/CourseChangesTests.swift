@@ -444,6 +444,19 @@ struct CourseChangesTests {
         #expect(!CourseTimeSlot.hasEnded(slotId: id, in: [Self.course()], at: Self.at("11:30"), changes: .empty))
     }
 
+    @Test func aClassWhoseFirstPieceAChangeDroppedEndsWithTheRestOfItsMeeting() throws {
+        let changes = try Self.changes([
+            Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "10:30"]),
+            Self.row(2, "end", periods: ["2", "3", "4"], values: ["end": "11:00"]),
+            Self.row(3, "room", periods: ["2"], values: ["room": "TR-313"]),
+        ])
+        let id = try #require(Self.slots(.empty).first?.id)
+        #expect(Self.slots(changes).first.map(\.periods) == ["3", "4"])
+
+        #expect(CourseTimeSlot.hasEnded(slotId: id, in: [Self.course()], at: Self.at("11:30"), changes: changes))
+        #expect(!CourseTimeSlot.hasEnded(slotId: id, in: [Self.course()], at: Self.at("10:45"), changes: changes))
+    }
+
     @Test func theTimeLineCrossesAPeriodByItsShareAndSitsInTheGapBetweenTwo() {
         let periods = [(start: 490, end: 540), (start: 550, end: 600), (start: 800, end: 850)]
         func offset(_ minute: Int) -> CGFloat? {
