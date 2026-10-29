@@ -159,6 +159,7 @@ struct HomeView: View {
             // `triggerRefresh` coalesces repeated pulls into one in-flight fetch, and
             // the top-right SyncStatusDot shows its status.
             viewModel.triggerRefresh(authService: appState.authService)
+            Task { await CourseChangeStore.shared.refresh() }
             if Defaults[.cloudSyncEnabled] {
                 Task { await appState.syncOverridesFromBackend() }
             }
