@@ -11,26 +11,31 @@ nonisolated struct ClassStop: Equatable, Sendable {
 extension ClassStop {
     static func stops(from slots: [CourseTimeSlot], rawRoom: (String) -> String) -> [ClassStop] {
         slots.flatMap { slot -> [ClassStop] in
-            // A changed time sets the hours the class holds, whichever periods the timetable gives it.
-            if slot.hasChangedTime {
-                let periods = EmptyClassroomSchedule.periods(from: slot.start, to: slot.end)
-                return [stop(slot, shown: slot.room, periods: periods, rawRoom: rawRoom)].compactMap { $0 }
-            }
             let weekday = slot.date.scheduleWeekday
-            var runs: [(room: String, periods: [String])] = []
-            for period in slot.periods {
-                let room = slot.hasChangedRoom ? slot.room : slot.course.classroom(weekday: weekday, period: period)
-                if let last = runs.last, last.room == room {
-                    runs[runs.count - 1].periods.append(period)
+            var runs: [(moved: String?, key: String, positions: [Int])] = []
+            for (position, period) in slot.periods.enumerated() {
+                let moved = slot.changes.first { $0.kind == .room && $0.covers(period) }?.room
+                let key = moved ?? slot.course.classroom(weekday: weekday, period: period)
+                if let last = runs.last, last.key == key {
+                    runs[runs.count - 1].positions.append(position)
                 } else {
-                    runs.append((room, [period]))
+                    runs.append((moved, key, [position]))
                 }
             }
+            let hours = slot.hasChangedTime ? EmptyClassroomSchedule.periods(from: slot.start, to: slot.end) : nil
             return runs.compactMap { run in
-                stop(
+                let originals = run.positions.map { slot.periods[$0] }
+                // A changed time sets the hours the class holds; its rooms keep their order and
+                // share those hours as they shared the timetable periods.
+                let periods = hours.map { hours in
+                    hours.indices
+                        .filter { run.positions.contains($0 * slot.periods.count / hours.count) }
+                        .map { hours[$0] }
+                } ?? originals.compactMap { EmptyClassroomSchedule.periodIDs.firstIndex(of: $0) }
+                return stop(
                     slot,
-                    shown: slot.hasChangedRoom ? slot.room : slot.course.classroom(weekday: weekday, periods: run.periods),
-                    periods: run.periods.compactMap { EmptyClassroomSchedule.periodIDs.firstIndex(of: $0) },
+                    shown: run.moved ?? slot.course.classroom(weekday: weekday, periods: originals),
+                    periods: periods,
                     rawRoom: rawRoom
                 )
             }
