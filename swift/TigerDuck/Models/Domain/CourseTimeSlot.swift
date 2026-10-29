@@ -106,13 +106,20 @@ struct CourseTimeSlot: Identifiable, Equatable {
                 let firstPeriod = periods[blockStart]
                 let lastPeriod = periods[blockEnd]
                 let run = Array(periods[blockStart...blockEnd])
-                let applied = dayChanges.filter { run.contains(where: $0.covers) }
+                var applied = dayChanges.filter { run.contains(where: $0.covers) }
                 if let firstTime = AppConstants.PeriodTimes.mapping[firstPeriod],
                    let lastTime = AppConstants.PeriodTimes.mapping[lastPeriod],
                    let startDate = Self.dateFromTimeString(firstTime.start, on: date, calendar: calendar),
                    let endDate = Self.dateFromTimeString(lastTime.end, on: date, calendar: calendar) {
-                    let newStart = Self.changedTime(.start, in: applied, on: date)
-                    let newEnd = Self.changedTime(.end, in: applied, on: date)
+                    var newStart = Self.changedTime(.start, in: applied, on: date)
+                    var newEnd = Self.changedTime(.end, in: applied, on: date)
+                    // A lone new start past the timetable end, or a new end before its start, is a
+                    // feed error; the meeting keeps its times and its other changes.
+                    if (newEnd ?? endDate) <= (newStart ?? startDate) {
+                        newStart = nil
+                        newEnd = nil
+                        applied.removeAll { $0.kind == .start || $0.kind == .end }
+                    }
                     slots.append(CourseTimeSlot(
                         id: "\(course.courseNo)_\(dayKey)_\(firstPeriod)",
                         course: course,

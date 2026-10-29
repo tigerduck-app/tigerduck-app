@@ -100,6 +100,22 @@ struct CourseChangesTests {
         #expect(slots.map(\.periods) == [["7", "8"]])
     }
 
+    @Test func aTimeChangeThatWouldEndBeforeItStartsIsDroppedButTheRestStays() throws {
+        let changes = try Self.changes([
+            Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "15:00"]),
+            Self.row(2, "room", periods: ["2", "3", "4"], values: ["room": "TR-313"]),
+            Self.row(3, "end", periods: ["7", "8"], values: ["end": "13:00"]),
+            Self.row(4, "cancelled", periods: ["7", "8"]),
+        ])
+
+        let slots = Self.slots(changes)
+        #expect(slots.map(\.start) == [Self.at("09:10"), Self.at("14:20")])
+        #expect(slots.map(\.end) == [Self.at("12:10"), Self.at("16:20")])
+        #expect(slots.map(\.hasChangedTime) == [false, false])
+        #expect(slots.map(\.room) == ["TR-313", "T4-501"])
+        #expect(slots.map(\.isCancelled) == [false, true])
+    }
+
     @Test func aNewStartAndEndMoveTheirMeetingAndKeepTheTimetableTimes() throws {
         let changes = try Self.changes([
             Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "09:40"]),
