@@ -15,7 +15,20 @@ struct WatchTheme: ViewModifier {
     }
 }
 
+/// A changed room with the small swap glyph in front, as the phone draws it.
+struct ChangedRoomLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 3) {
+            configuration.icon.imageScale(.small)
+            configuration.title
+        }
+    }
+}
+
 extension Color {
+    /// A value the school changed for the day; the phone's dark-surface change color.
+    static let changeInk = Color(.sRGB, red: 0xFD / 255.0, green: 0xBA / 255.0, blue: 0x74 / 255.0, opacity: 1)
+
     init?(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }

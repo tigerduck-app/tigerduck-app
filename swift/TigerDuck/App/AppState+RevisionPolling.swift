@@ -116,6 +116,8 @@ extension AppState {
     func backgroundSync(recheckSubmissions: Bool = false) {
         guard hasCompletedOnboarding else { return }
         startRevisionPolling(pollNow: false)
+        // The first scene of a launch, and the end of onboarding, bring no scene-active refresh.
+        Task { await CourseChangeStore.shared.refresh() }
         syncTask?.cancel()
         syncTask = Task {
             // Behind a hotel or campus Wi-Fi login page the link is "satisfied" but

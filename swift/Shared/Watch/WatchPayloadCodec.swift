@@ -19,6 +19,15 @@ public enum WatchPayloadCodec {
         static let endHHmm      = "endHHmm"
         static let periodLabel  = "periodLabel"
         static let skippedDates = "skippedDates"
+        static let changes      = "changes"
+        static let dayChange    = "dayChange"
+    }
+
+    private nonisolated enum ChangeKey {
+        static let cancelled = "cancelled"
+        static let room      = "room"
+        static let start     = "start"
+        static let end       = "end"
     }
 
     public static func encode(_ snapshot: WatchSnapshot) throws -> [String: Any] {
@@ -57,6 +66,16 @@ public enum WatchPayloadCodec {
         ]
         if let skipped = c.skippedDates, !skipped.isEmpty {
             dict[CourseKey.skippedDates] = skipped.sorted()
+        }
+        if let changes = c.changes, !changes.isEmpty {
+            dict[CourseKey.changes] = changes.mapValues { $0.map(encodeCourse) }
+        }
+        if let change = c.dayChange {
+            var entry: [String: Any] = [ChangeKey.cancelled: change.cancelled]
+            entry[ChangeKey.room] = change.room
+            entry[ChangeKey.start] = change.start
+            entry[ChangeKey.end] = change.end
+            dict[CourseKey.dayChange] = entry
         }
         return dict
     }
@@ -110,7 +129,17 @@ public enum WatchPayloadCodec {
             startHHmm:   try req(CourseKey.startHHmm),
             endHHmm:     try req(CourseKey.endHHmm),
             periodLabel: try req(CourseKey.periodLabel),
-            skippedDates: (dict[CourseKey.skippedDates] as? [String]).map(Set.init)
+            skippedDates: (dict[CourseKey.skippedDates] as? [String]).map(Set.init),
+            changes: (dict[CourseKey.changes] as? [String: [[String: Any]]])?
+                .compactMapValues { try? $0.map(decodeCourse) },
+            dayChange: (dict[CourseKey.dayChange] as? [String: Any]).map { entry in
+                WatchCourseChange(
+                    cancelled: entry[ChangeKey.cancelled] as? Bool ?? false,
+                    room: entry[ChangeKey.room] as? String,
+                    start: entry[ChangeKey.start] as? String,
+                    end: entry[ChangeKey.end] as? String
+                )
+            }
         )
     }
 

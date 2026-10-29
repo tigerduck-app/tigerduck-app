@@ -9,6 +9,7 @@ enum WidgetSnapshotBuilder {
         let accentColorHex: UInt32
         let now: Date
         var quietDayKeys: Set<String> = []
+        var changes: CourseChanges = .empty
     }
 
     static func build(_ input: Input) -> WidgetSnapshot {
@@ -20,7 +21,9 @@ enum WidgetSnapshotBuilder {
                 schedule: course.schedule,
                 colorHex: resolveColor(courseNo: course.courseNo, colorMap: input.colorMap),
                 skippedDates: Set(course.skippedDates),
-                classroomMap: course.classroomMap
+                classroomMap: course.classroomMap,
+                changes: snapshotChanges(of: course, changes: input.changes),
+                meetingChanges: snapshotMeetingChanges(of: course, changes: input.changes)
             )
         }
 
@@ -35,6 +38,33 @@ enum WidgetSnapshotBuilder {
             activeWeekdays: computeActiveWeekdays(input.courses),
             activePeriodIds: computeActivePeriodIds(input.courses),
             quietDayKeys: Array(input.quietDayKeys).sorted()
+        )
+    }
+
+    /// The classes of every changed meeting of the term, so a widget left alone for days still
+    /// shows them.
+    static func snapshotChanges(of course: SDCourse, changes: CourseChanges) -> [SnapshotCourseChange] {
+        changes.days(courseNo: course.courseNo).flatMap { day in
+            CourseTimeSlot.changedClasses(of: course, on: day, changes: changes).map(snapshotChange)
+        }
+    }
+
+    static func snapshotMeetingChanges(of course: SDCourse, changes: CourseChanges) -> [SnapshotCourseChange] {
+        changes.days(courseNo: course.courseNo).flatMap { day in
+            CourseTimeSlot.changedMeetings(of: course, on: day, changes: changes)
+                .filter { $0.isCancelled || $0.hasChangedRoom || $0.hasChangedTime }
+                .map(snapshotChange)
+        }
+    }
+
+    private static func snapshotChange(_ slot: CourseTimeSlot) -> SnapshotCourseChange {
+        SnapshotCourseChange(
+            day: WidgetTimelineDerivation.dateKey(for: slot.date),
+            periods: slot.periods,
+            cancelled: slot.isCancelled,
+            room: slot.hasChangedRoom ? slot.room : nil,
+            start: slot.originalStart == nil ? nil : slot.start.timeString,
+            end: slot.originalEnd == nil ? nil : slot.end.timeString
         )
     }
 

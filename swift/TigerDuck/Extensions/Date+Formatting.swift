@@ -62,6 +62,16 @@ extension Date {
     private static let moodleMonthDayTimeFormatter = posixFormatter("MM/dd HH:mm")
     private static let moodleDateTimeFormatter = posixFormatter("yyyy/MM/dd HH:mm")
 
+    /// `M/d (EEEEE)`. The pinned gregorian calendar keeps the numeric date stable on ROC or
+    /// Buddhist-calendar devices; the weekday still follows `Locale.current`.
+    static let dayWeekdayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
+        f.dateFormat = "M/d (EEEEE)"
+        return f
+    }()
+
     private static func posixFormatter(_ format: String) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.dateFormat = format

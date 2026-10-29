@@ -48,6 +48,8 @@ extension Color {
     static let onboardingAccent = Color(hex: 0x007AFF)
     static let badgeRed = Color(hex: 0xFF3B30)
     static let badgeRedText = adaptive(light: Color(hex: 0xD70015), dark: Color(hex: 0xFF7A72))
+    /// A value the school changed for one day, such as a moved room or a new start time.
+    static let changeInk = adaptive(light: Color(hex: 0x7C2D12), dark: Color(hex: 0xFDBA74))
     static let textOnPastel = Color(hex: 0x1A1A1A)
     static let textOnPastelSecondary = Color(hex: 0x1A1A1A, alpha: 0.8)
     static let rowBand = Color.primary.opacity(0.08)

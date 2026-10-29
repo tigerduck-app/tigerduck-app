@@ -74,7 +74,10 @@ nonisolated enum DebugEndpointStore {
     static func store(_ url: URL) async -> Bool {
         let written = KeychainManager.saveStringReportingSuccess(key: keychainKey, value: url.absoluteString)
         stored.forget()
-        if written { await AcademicCalendarStore.shared.endpointDidChange() }
+        if written {
+            await AcademicCalendarStore.shared.endpointDidChange()
+            await CourseChangeStore.shared.endpointDidChange()
+        }
         return written
     }
 
@@ -83,6 +86,7 @@ nonisolated enum DebugEndpointStore {
         KeychainManager.delete(key: keychainKey)
         stored.forget()
         AcademicCalendarStore.shared.endpointDidChange()
+        CourseChangeStore.shared.endpointDidChange()
     }
 }
 

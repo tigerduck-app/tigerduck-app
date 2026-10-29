@@ -89,7 +89,9 @@ struct HomeView: View {
                 assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
                 timeRange: slot.map { "\($0.start.timeString) - \($0.end.timeString)" },
                 weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday,
-                periods: slot?.periods
+                periods: slot?.periods,
+                date: slot?.date,
+                slot: slot
             )
             .linkRouting()
             .onDisappear { viewModel.selectedCourseSlot = nil }
@@ -157,6 +159,7 @@ struct HomeView: View {
             // `triggerRefresh` coalesces repeated pulls into one in-flight fetch, and
             // the top-right SyncStatusDot shows its status.
             viewModel.triggerRefresh(authService: appState.authService)
+            Task { await CourseChangeStore.shared.refresh() }
             if Defaults[.cloudSyncEnabled] {
                 Task { await appState.syncOverridesFromBackend() }
             }

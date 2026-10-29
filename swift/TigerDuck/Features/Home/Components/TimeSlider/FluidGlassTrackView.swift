@@ -44,13 +44,21 @@ struct FluidGlassTrackView: View {
                         let top: CGFloat = lane.lane == 0 ? 4 : 0
                         let bottom: CGFloat = lane.lane == lane.count - 1 ? 4 : 0
 
-                        UnevenRoundedRectangle(
+                        let segment = UnevenRoundedRectangle(
                             topLeadingRadius: top,
                             bottomLeadingRadius: bottom,
                             bottomTrailingRadius: bottom,
                             topTrailingRadius: top
                         )
-                            .fill(slot.course.color.opacity(segOpacity))
+                        segment
+                            .fill(slot.course.color.opacity(slot.isCancelled ? 0.06 : segOpacity))
+                            .overlay {
+                                if slot.isCancelled {
+                                    segment.strokeBorder(
+                                        slot.course.color.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                                    )
+                                }
+                            }
                             .frame(width: segWidth, height: laneHeight)
                             .position(x: segCenterX, y: laneTop + laneHeight / 2)
                             .animation(.smooth(duration: 0.2), value: isActive)
@@ -139,7 +147,7 @@ struct FluidGlassTrackView: View {
         guard policy.timeSliderUsesCourseColoredThumb else {
             return Color.textPrimary
         }
-        if case .inClass(let slots) = viewModel.currentCourseState, let slot = slots.first {
+        if case .inClass(let slots) = viewModel.currentCourseState, let slot = slots.first(where: { !$0.isCancelled }) {
             return slot.course.color
         }
         return Color.textPrimary

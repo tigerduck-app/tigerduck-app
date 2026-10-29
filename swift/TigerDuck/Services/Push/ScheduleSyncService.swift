@@ -75,7 +75,7 @@ final class ScheduleSyncService {
                 resolver.timeline(for: term.courses, around: now)
                     .filter { CourseSelectionService.semesterCode(on: $0.date, calendar: inputs.calendar) == term.code }
             }
-            .filter { !$0.course.isSkipped(on: $0.date) }
+            .filter { !$0.isSkippedOrCancelled }
             .filter { inputs.calendar.isClassDay($0.date, optedIn: inputs.optedInHolidayIDs) }
             .filter { $0.start >= now && $0.start <= horizonEnd }
 

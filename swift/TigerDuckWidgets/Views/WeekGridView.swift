@@ -112,9 +112,11 @@ struct WeekGridView: View {
 
         case let .solo(course, spanCount):
             let block = Array(periods[periodIndex..<min(periodIndex + spanCount, periods.count)])
+            let change = course.change(on: dayKey(of: weekday), startingAt: block.first)
             courseBlock(
                 course,
-                classroom: course.classroom(weekday: weekday, periods: block),
+                classroom: change?.room ?? course.classroom(weekday: weekday, periods: block),
+                change: change,
                 spanCount: spanCount,
                 cellHeight: cellHeight,
                 fontScale: fontScale
@@ -161,29 +163,57 @@ struct WeekGridView: View {
         }
     }
 
+    /// The week runs from today, as the app's class table does, so each column has one date.
+    private func dayKey(of weekday: Int) -> String {
+        let ahead = (weekday - WidgetTimelineDerivation.weekdayFor(now) + 7) % 7
+        let day = WidgetTaipei.calendar.date(byAdding: .day, value: ahead, to: now) ?? now
+        return WidgetTimelineDerivation.dateKey(for: day)
+    }
+
     @ViewBuilder
     private func courseBlock(
-        _ course: SnapshotCourse, classroom: String, spanCount: Int, cellHeight: CGFloat, fontScale: CGFloat
+        _ course: SnapshotCourse, classroom: String, change: SnapshotCourseChange?,
+        spanCount: Int, cellHeight: CGFloat, fontScale: CGFloat
     ) -> some View {
         let totalHeight = CGFloat(spanCount) * cellHeight + CGFloat(spanCount - 1) * rowSpacing
         let courseColor = Color(widgetHex: course.colorHex)
+        let isCancelled = change?.cancelled == true
         Color.clear
             .overlay(alignment: .top) {
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(courseColor.opacity(0.25))
+                    .fill(courseColor.opacity(isCancelled ? 0.1 : 0.25))
                     .overlay {
                         RoundedRectangle(cornerRadius: cornerRadius)
                             .strokeBorder(courseColor.opacity(0.4), lineWidth: 0.5)
                     }
                     .overlay {
                         VStack(spacing: 1) {
+                            if !isCancelled, spanCount > 1, let time = Self.changedTime(change) {
+                                Label(time, systemImage: "clock.fill")
+                                    .labelStyle(ChangedValueLabelStyle())
+                                    .font(.system(size: 7 * fontScale, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(palette.changeInk)
+                                    .lineLimit(1)
+                            }
                             Text(course.displayName)
                                 .font(.system(size: soloCourseNameBase * fontScale * userCourseNameScale, weight: .medium))
-                                .foregroundStyle(palette.onSurface)
+                                .strikethrough(isCancelled)
+                                .foregroundStyle(isCancelled ? palette.onSurfaceVariant : palette.onSurface)
                                 .lineLimit(spanCount > 1 ? 3 : 2)
                                 .multilineTextAlignment(.center)
                                 .minimumScaleFactor(0.7)
-                            if !classroom.isEmpty && spanCount > 1 {
+                            if isCancelled, spanCount > 1 {
+                                Text(String(localized: "course_card_cancelled"))
+                                    .font(.system(size: 7 * fontScale, weight: .semibold))
+                                    .foregroundStyle(palette.onSurfaceVariant)
+                                    .lineLimit(1)
+                            } else if change?.room != nil, spanCount > 1 {
+                                Label(classroom, systemImage: "arrow.left.arrow.right")
+                                    .labelStyle(ChangedValueLabelStyle())
+                                    .font(.system(size: 7 * fontScale, weight: .semibold))
+                                    .foregroundStyle(palette.changeInk)
+                                    .lineLimit(1)
+                            } else if !classroom.isEmpty && spanCount > 1 {
                                 Text(classroom)
                                     .font(.system(size: 7 * fontScale))
                                     .foregroundStyle(palette.onSurfaceVariant)
@@ -195,6 +225,15 @@ struct WeekGridView: View {
                     .frame(height: totalHeight)
             }
             .zIndex(1)
+    }
+
+    private static func changedTime(_ change: SnapshotCourseChange?) -> String? {
+        switch (change?.start, change?.end) {
+        case let (start?, end?): "\(start)–\(end)"
+        case let (start?, nil): start
+        case let (nil, end?): "–\(end)"
+        case (nil, nil): nil
+        }
     }
 
     @ViewBuilder

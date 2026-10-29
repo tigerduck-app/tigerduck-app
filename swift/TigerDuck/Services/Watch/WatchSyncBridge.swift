@@ -50,7 +50,8 @@ extension WatchSyncCoordinator.Payload {
             loggedIn: appState.authService.hasStoredCredentials,
             languageTag: appState.appLanguage == LanguageManager.system ? nil : appState.appLanguage,
             visualPreset: appState.visualPreset,
-            quietDays: WidgetSnapshotWriter.quietDayKeys()
+            quietDays: WidgetSnapshotWriter.quietDayKeys(),
+            changes: .cached
         )
     }
 }

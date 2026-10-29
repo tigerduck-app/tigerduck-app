@@ -159,6 +159,7 @@ struct TigerDuckApp: App {
                 widgetSnapshotWriter.regenerate()
             }
         }
+        Task { await CourseChangeStore.shared.refresh() }
         sceneRefreshTask?.cancel()
         sceneRefreshTask = Task {
             await appState.refreshLiveActivity()
@@ -336,6 +337,7 @@ struct TigerDuckApp: App {
                 widgetSnapshotWriter?.regenerate()
             }
         }
+        Task { await CourseChangeStore.shared.refresh() }
         sceneRefreshTask?.cancel()
         sceneRefreshTask = Task {
             appState.requestPushScheduleSync()

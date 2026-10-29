@@ -10,10 +10,11 @@ enum WatchPayloadEncoder {
         loggedIn: Bool,
         languageTag: String?,
         visualPreset: VisualPreset,
-        quietDays: Set<String> = []
+        quietDays: Set<String> = [],
+        changes: CourseChanges = .empty
     ) -> WatchSnapshot {
         let watchCourses = loggedIn
-            ? courses.flatMap { flatten($0, customNames: customNames) }
+            ? courses.flatMap { flatten($0, customNames: customNames, changes: changes) }
             : []
         let syncedAtMs = Int64((syncedAt.timeIntervalSince1970 * 1000).rounded())
         return WatchSnapshot(
@@ -39,30 +40,41 @@ enum WatchPayloadEncoder {
         #endif
     }
 
-    private static func flatten(_ course: SDCourse, customNames: [String: String]) -> [WatchCourse] {
+    private static func flatten(
+        _ course: SDCourse, customNames: [String: String], changes: CourseChanges
+    ) -> [WatchCourse] {
         let order = AppConstants.Periods.chronologicalOrder
         let skipped = Set(course.skippedDates)
+        let changed = WidgetSnapshotBuilder.snapshotChanges(of: course, changes: changes)
         return course.schedule.flatMap { weekday, periodIds -> [WatchCourse] in
-            let sorted = periodIds.sortedByPeriodOrder()
-            return contiguousRuns(sorted, by: order).compactMap { run -> WatchCourse? in
-                guard let first = run.first,
-                      let last = run.last,
+            func meeting(
+                _ periods: [String], change: SnapshotCourseChange? = nil, classes: [String: [WatchCourse]]? = nil
+            ) -> WatchCourse? {
+                guard let first = periods.first,
+                      let last = periods.last,
                       let startPeriod = TimetablePeriod.byId[first],
                       let endPeriod = TimetablePeriod.byId[last] else { return nil }
-                let label = run.count > 1 ? "\(first)-\(last)" : first
                 return WatchCourse(
                     id: "\(course.courseNo)-\(weekday)-\(first)",
                     courseNo: course.courseNo,
                     name: resolveDisplayName(course: course, customNames: customNames),
                     teacher: course.instructor,
-                    classroom: course.classroom(weekday: weekday, periods: run),
+                    classroom: change?.room ?? course.classroom(weekday: weekday, periods: periods),
                     colorHex: courseColorHex(course),
                     weekday: weekday,
-                    startHHmm: startPeriod.startTime,
-                    endHHmm: endPeriod.endTime,
-                    periodLabel: label,
-                    skippedDates: skipped.isEmpty ? nil : skipped
+                    startHHmm: change?.start ?? startPeriod.startTime,
+                    endHHmm: change?.end ?? endPeriod.endTime,
+                    periodLabel: periods.count > 1 ? "\(first)-\(last)" : first,
+                    skippedDates: skipped.isEmpty ? nil : skipped,
+                    changes: classes,
+                    dayChange: change.map { WatchCourseChange(cancelled: $0.cancelled, room: $0.room, start: $0.start, end: $0.end) }
                 )
+            }
+            return contiguousRuns(periodIds.sortedByPeriodOrder(), by: order).compactMap { run -> WatchCourse? in
+                let classes = Dictionary(
+                    grouping: changed.filter { !$0.periods.isEmpty && run.contains($0.periods[0]) }, by: \.day
+                ).mapValues { $0.compactMap { meeting($0.periods, change: $0) } }
+                return meeting(run, classes: classes.isEmpty ? nil : classes)
             }
         }
         .sorted { ($0.weekday, $0.startHHmm) < ($1.weekday, $1.startHHmm) }

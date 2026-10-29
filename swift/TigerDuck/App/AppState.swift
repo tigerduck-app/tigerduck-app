@@ -146,7 +146,9 @@ final class AppState {
             )
         }
         liveActivityCoordinator.setSkippedClassProvider { slotId in
-            CourseTimeSlot.isSkipped(slotId: slotId, in: CanonicalCourseProvider().currentCourses())
+            let courses = CanonicalCourseProvider().currentCourses()
+            return CourseTimeSlot.isSkipped(slotId: slotId, in: courses)
+                || CourseTimeSlot.hasEnded(slotId: slotId, in: courses, at: AppClock.now())
         }
         #endif
 

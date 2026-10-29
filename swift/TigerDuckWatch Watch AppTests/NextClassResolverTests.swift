@@ -128,4 +128,38 @@ final class NextClassResolverTests: XCTestCase {
         XCTAssertEqual(r.current?.id, "A")
         XCTAssertEqual(r.next?.id, "B")
     }
+
+    func test_aDaysClassesReplaceTheMeetingAndACancelledClassDrops() {
+        let thursday = SharedTaipei.calendar.date(from: DateComponents(year: 2026, month: 11, day: 5, hour: 8))!
+        let key = SharedTaipei.dayKey(for: thursday)
+        func meeting(
+            _ id: String, _ label: String, start: String, end: String, room: String = "TR-313",
+            classes: [WatchCourse]? = nil, change: WatchCourseChange? = nil
+        ) -> WatchCourse {
+            WatchCourse(
+                id: id, courseNo: "A", name: "A", teacher: "", classroom: room, colorHex: "#FF8800",
+                weekday: 4, startHHmm: start, endHHmm: end, periodLabel: label,
+                changes: classes.map { [key: $0] }, dayChange: change
+            )
+        }
+        let split = meeting("A-2", "2-4", start: "09:10", end: "12:10", classes: [
+            meeting("A-2", "2", start: "09:10", end: "10:00", change: WatchCourseChange(cancelled: true)),
+            meeting(
+                "A-3", "3-4", start: "10:40", end: "12:10", room: "TR-411",
+                change: WatchCourseChange(cancelled: false, room: "TR-411", start: "10:40")
+            ),
+        ])
+
+        let today = NextClassResolver.todaysClasses(courses: [split], now: thursday, quietDays: [])
+        XCTAssertEqual(today.map(\.id), ["A-3"])
+        XCTAssertEqual(today.first?.classroom, "TR-411")
+        XCTAssertEqual(today.first?.dayChange?.start, "10:40")
+        let duringPeriod2 = NextClassResolver.resolve(courses: [split], now: thursday.addingTimeInterval(80 * 60))
+        XCTAssertNil(duringPeriod2.current)
+        XCTAssertEqual(duringPeriod2.next?.id, "A-3")
+        let nextWeek = SharedTaipei.calendar.date(byAdding: .day, value: 7, to: thursday)!
+        let later = NextClassResolver.todaysClasses(courses: [split], now: nextWeek, quietDays: [])
+        XCTAssertEqual(later.map(\.periodLabel), ["2-4"])
+        XCTAssertTrue(later.allSatisfy { $0.dayChange == nil })
+    }
 }
