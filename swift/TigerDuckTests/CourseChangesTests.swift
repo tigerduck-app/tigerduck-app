@@ -100,7 +100,7 @@ struct CourseChangesTests {
         #expect(slots.map(\.periods) == [["7", "8"]])
     }
 
-    @Test func aRoomChangeOverPartOfAMovedMeetingLeavesItOneMeeting() throws {
+    @Test func aRoomChangeOverPartOfAMovedMeetingSplitsItWithoutOverlap() throws {
         let changes = try Self.changes([
             Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "10:00"]),
             Self.row(2, "end", periods: ["2", "3", "4"], values: ["end": "13:00"]),
@@ -108,8 +108,75 @@ struct CourseChangesTests {
         ])
 
         let slots = Self.slots(changes)
-        #expect(slots.map(\.periods) == [["2", "3", "4"], ["7", "8"]])
-        #expect(slots.first?.start == Self.at("10:00") && slots.first?.end == Self.at("13:00"))
+        #expect(slots.map(\.periods) == [["2", "3"], ["4"], ["7", "8"]])
+        #expect(slots.map(\.start) == [Self.at("10:00"), Self.at("11:20"), Self.at("14:20")])
+        #expect(slots.map(\.end) == [Self.at("11:10"), Self.at("13:00"), Self.at("16:20")])
+        #expect(slots.map(\.room) == ["T4-501", "TR-313", "T4-501"])
+    }
+
+    enum MatrixTime: CaseIterable, Sendable { case none, start, end, both, invalidStart }
+    enum MatrixPartial: CaseIterable, Sendable { case none, room, cancellation, both }
+
+    private static func timetable(_ period: String, end: Bool) -> Date {
+        let times = AppConstants.PeriodTimes.mapping[period]!
+        return Self.at(end ? times.end : times.start)
+    }
+
+    /// A three-period meeting under every mix of a whole-meeting time change and a change to
+    /// some of its periods, as fragments, as one meeting and as the classes that meet.
+    @Test(arguments: MatrixTime.allCases, MatrixPartial.allCases)
+    func aMeetingCombinesItsTimeAndItsPartialChanges(time: MatrixTime, partial: MatrixPartial) throws {
+        var rows: [[String: Any]] = []
+        if time == .start || time == .both { rows.append(Self.row(1, "start", values: ["start": "09:40"])) }
+        if time == .end || time == .both { rows.append(Self.row(2, "end", values: ["end": "11:50"])) }
+        if time == .invalidStart { rows.append(Self.row(1, "start", values: ["start": "13:00"])) }
+        if partial == .room || partial == .both { rows.append(Self.row(3, "room", periods: ["4"], values: ["room": "TR-313"])) }
+        if partial == .cancellation || partial == .both { rows.append(Self.row(4, "cancelled", periods: ["2"])) }
+        let changes = try Self.changes(rows)
+        let course = SDCourse(courseNo: "CC900", courseName: "Compilers", classroom: "T4-501", schedule: [4: ["2", "3", "4"]])
+        let start = time == .start || time == .both ? Self.at("09:40") : Self.at("09:10")
+        let end = time == .end || time == .both ? Self.at("11:50") : Self.at("12:10")
+        let pieces: [(periods: [String], cancelled: Bool, room: String)] = switch partial {
+        case .none: [(["2", "3", "4"], false, "T4-501")]
+        case .room: [(["2", "3"], false, "T4-501"), (["4"], false, "TR-313")]
+        case .cancellation: [(["2"], true, "T4-501"), (["3", "4"], false, "T4-501")]
+        case .both: [(["2"], true, "T4-501"), (["3"], false, "T4-501"), (["4"], false, "TR-313")]
+        }
+
+        let fragments = CourseTimeSlot.buildSlots(from: [course], weekday: 4, on: Self.thursday, changes: changes)
+        #expect(fragments.map(\.periods) == pieces.map(\.periods))
+        #expect(fragments.map(\.isCancelled) == pieces.map(\.cancelled))
+        #expect(fragments.map(\.room) == pieces.map(\.room))
+        #expect(fragments.first?.start == start && fragments.last?.end == end)
+        for (left, right) in zip(fragments, fragments.dropFirst()) {
+            #expect(left.end == Self.timetable(left.periods[left.periods.count - 1], end: true))
+            #expect(right.start == Self.timetable(right.periods[0], end: false))
+        }
+
+        let meeting = try #require(CourseTimeSlot.meeting(of: course, periods: ["2", "3", "4"], on: Self.thursday, changes: changes))
+        #expect(meeting.periods == ["2", "3", "4"])
+        #expect(meeting.start == start && meeting.end == end)
+        #expect(meeting.originalStart == (start == Self.at("09:10") ? nil : Self.at("09:10")))
+        #expect(meeting.originalEnd == (end == Self.at("12:10") ? nil : Self.at("12:10")))
+        #expect(!meeting.isCancelled)
+        #expect(meeting.room == (partial == .room || partial == .both ? "TR-313" : "T4-501"))
+
+        let meets = CourseTimeSlot.meetingSlots(from: [course], on: Self.thursday, isClassDay: { _ in true }, changes: changes)
+        #expect(meets.map(\.periods) == pieces.filter { !$0.cancelled }.map(\.periods))
+    }
+
+    @Test func aFragmentTheNewTimesLeaveEmptyIsDropped() throws {
+        let changes = try Self.changes([
+            Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "10:30"]),
+            Self.row(2, "cancelled", periods: ["2"]),
+        ])
+
+        let slots = Self.slots(changes)
+        #expect(slots.map(\.periods) == [["3", "4"], ["7", "8"]])
+        #expect(slots.first?.start == Self.at("10:30") && slots.first?.end == Self.at("12:10"))
+        let meeting = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2"], on: Self.thursday, changes: changes))
+        #expect(meeting.periods == ["2", "3", "4"] && !meeting.isCancelled)
+        #expect(meeting.start == Self.at("10:30") && meeting.originalStart == Self.at("09:10"))
     }
 
     @Test func aTimeChangeThatWouldEndBeforeItStartsIsDroppedButTheRestStays() throws {

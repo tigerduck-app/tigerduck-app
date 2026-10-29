@@ -29,43 +29,18 @@ struct CourseTimeSlot: Identifiable, Equatable {
     var hasChangedRoom: Bool { changes.contains { $0.kind == .room } }
     var hasChangedTime: Bool { originalStart != nil || originalEnd != nil }
 
-    /// A timetable meeting on one day as the school changed it. A cancellation of some of its
-    /// periods leaves it standing; a room, time or note over any of them applies.
+    /// A timetable meeting on one day as the school changed it, its fragments merged back. A
+    /// cancellation of some of its periods leaves it standing; a room or note over any applies.
     static func meeting(
         of course: SDCourse, periods: [String], on date: Date, changes: CourseChanges = .cached
     ) -> CourseTimeSlot? {
-        let parts = buildSlots(from: [course], weekday: date.scheduleWeekday, on: date, changes: changes)
-            .filter { $0.periods.contains(where: periods.contains) }
-            .sorted { periodOrder($0.periods.first ?? "") < periodOrder($1.periods.first ?? "") }
-        guard let first = parts.first, let last = parts.last,
-              let start = parts.map(\.start).min(), let end = parts.map(\.end).max() else { return nil }
-        let timetableStart = first.originalStart ?? first.start
-        let timetableEnd = last.originalEnd ?? last.end
-        let isCancelled = parts.allSatisfy(\.isCancelled)
-        var merged: [CourseChange] = []
-        for change in parts.flatMap(\.changes)
-        where (isCancelled || change.kind != .cancelled) && !merged.contains(where: { $0.id == change.id }) {
-            merged.append(change)
-        }
-        return CourseTimeSlot(
-            id: first.id, course: course, start: start, end: end, date: date,
-            periods: parts.flatMap(\.periods), changes: merged,
-            originalStart: start == timetableStart ? nil : timetableStart,
-            originalEnd: end == timetableEnd ? nil : timetableEnd
-        )
+        merged(meetings(of: course, on: date, changes: changes).filter { $0.periods.contains(where: periods.contains) })
     }
 
     static func changedMeetings(of course: SDCourse, on date: Date, changes: CourseChanges = .cached) -> [CourseTimeSlot] {
-        let weekday = date.scheduleWeekday
-        var left = (course.schedule[weekday] ?? []).sortedByPeriodOrder()
-        var meetings: [CourseTimeSlot] = []
-        while let period = left.first, let block = course.block(weekday: weekday, at: period) {
-            left.removeAll(where: block.contains)
-            if let meeting = meeting(of: course, periods: block, on: date, changes: changes), !meeting.changes.isEmpty {
-                meetings.append(meeting)
-            }
-        }
-        return meetings
+        meetings(of: course, on: date, changes: changes)
+            .compactMap { merged([$0]) }
+            .filter { !$0.changes.isEmpty }
     }
 
     static func upcomingChanges(
@@ -84,69 +59,130 @@ struct CourseTimeSlot: Identifiable, Equatable {
         on date: Date = AppClock.now(),
         changes: CourseChanges = .cached
     ) -> [CourseTimeSlot] {
-        let calendar = AppConstants.taipeiCalendar
-        var slots: [CourseTimeSlot] = []
-        let dayKey = Self.dayKeyFormatter.string(from: date)
-
-        for course in courses {
-            guard let raw = course.schedule[weekday], !raw.isEmpty else { continue }
-            let periods = raw.sortedByPeriodOrder()
-            let dayChanges = changes.changes(courseNo: course.courseNo, on: date)
-
-            var blockStart = 0
-            while blockStart < periods.count {
-                var blockEnd = blockStart
-                // A meeting splits where a change covers only some of its periods, except where a
-                // new time moves both sides, which would give each part the whole new span.
-                while blockEnd + 1 < periods.count,
-                      Self.periodOrder(periods[blockEnd + 1]) == Self.periodOrder(periods[blockEnd]) + 1,
-                      Self.reshaping(dayChanges, at: periods[blockEnd + 1])
-                          == Self.reshaping(dayChanges, at: periods[blockEnd])
-                          || Self.retimesTogether(dayChanges, periods[blockEnd], periods[blockEnd + 1]) {
-                    blockEnd += 1
+        courses
+            .flatMap { course in
+                meetings(of: course, weekday: weekday, on: date, changes: changes).flatMap { meeting in
+                    let fragments = meeting.fragments()
+                    return fragments.isEmpty ? [merged([meeting])].compactMap { $0 } : fragments
                 }
-                let firstPeriod = periods[blockStart]
-                let lastPeriod = periods[blockEnd]
-                let run = Array(periods[blockStart...blockEnd])
-                var applied = dayChanges.filter { run.contains(where: $0.covers) }
-                if let firstTime = AppConstants.PeriodTimes.mapping[firstPeriod],
-                   let lastTime = AppConstants.PeriodTimes.mapping[lastPeriod],
-                   let startDate = Self.dateFromTimeString(firstTime.start, on: date, calendar: calendar),
-                   let endDate = Self.dateFromTimeString(lastTime.end, on: date, calendar: calendar) {
-                    var newStart = Self.changedTime(.start, in: applied, on: date)
-                    var newEnd = Self.changedTime(.end, in: applied, on: date)
-                    // A lone new start past the timetable end, or a new end before its start, is a
-                    // feed error; the meeting keeps its times and its other changes.
-                    if (newEnd ?? endDate) <= (newStart ?? startDate) {
-                        newStart = nil
-                        newEnd = nil
-                        applied.removeAll { $0.kind == .start || $0.kind == .end }
-                    }
-                    slots.append(CourseTimeSlot(
-                        id: "\(course.courseNo)_\(dayKey)_\(firstPeriod)",
-                        course: course,
-                        start: newStart ?? startDate,
-                        end: newEnd ?? endDate,
-                        date: date,
-                        periods: run,
-                        changes: applied,
-                        originalStart: newStart == nil ? nil : startDate,
-                        originalEnd: newEnd == nil ? nil : endDate
-                    ))
-                }
-                blockStart = blockEnd + 1
             }
+            .sorted { $0.start < $1.start }
+    }
+
+    /// One run of consecutive timetable periods on a day. A new start or end moves the run as a
+    /// whole; a cancellation or a room covers only its own periods.
+    private struct Meeting {
+        let course: SDCourse
+        let date: Date
+        let dayKey: String
+        let periods: [String]
+        let start: Date
+        let end: Date
+        let timetableStart: Date
+        let timetableEnd: Date
+        let changes: [CourseChange]
+
+        func isCancelled(_ period: String) -> Bool {
+            changes.contains { $0.kind == .cancelled && $0.covers(period) }
         }
 
-        return slots.sorted { $0.start < $1.start }
+        func room(_ period: String) -> String? {
+            changes.first { $0.kind == .room && $0.covers(period) }?.room
+        }
+
+        /// Runs of periods alike in cancellation and room. The outer ones meet the meeting's own
+        /// start and end; inner boundaries keep the timetable times, clamped into the meeting.
+        func fragments() -> [CourseTimeSlot] {
+            var runs: [[String]] = []
+            for period in periods {
+                if let last = runs.last?.last, isCancelled(last) == isCancelled(period), room(last) == room(period) {
+                    runs[runs.count - 1].append(period)
+                } else {
+                    runs.append([period])
+                }
+            }
+            return runs.enumerated().compactMap { index, run in
+                guard let ownStart = CourseTimeSlot.periodTime(run[0], end: false, on: date),
+                      let ownEnd = CourseTimeSlot.periodTime(run[run.count - 1], end: true, on: date) else { return nil }
+                let fragmentStart = index == 0 ? start : min(max(ownStart, start), end)
+                let fragmentEnd = index == runs.count - 1 ? end : min(max(ownEnd, start), end)
+                guard fragmentStart < fragmentEnd else { return nil }
+                return CourseTimeSlot(
+                    id: "\(course.courseNo)_\(dayKey)_\(run[0])",
+                    course: course,
+                    start: fragmentStart,
+                    end: fragmentEnd,
+                    date: date,
+                    periods: run,
+                    changes: changes.filter { $0.kind == .start || $0.kind == .end || run.contains(where: $0.covers) },
+                    originalStart: fragmentStart == ownStart ? nil : ownStart,
+                    originalEnd: fragmentEnd == ownEnd ? nil : ownEnd
+                )
+            }
+        }
     }
 
-    private static func retimesTogether(_ changes: [CourseChange], _ period: String, _ next: String) -> Bool {
-        changes.contains { ($0.kind == .start || $0.kind == .end) && $0.covers(period) && $0.covers(next) }
+    private static func meetings(
+        of course: SDCourse, weekday: Int? = nil, on date: Date, changes: CourseChanges
+    ) -> [Meeting] {
+        let periods = (course.schedule[weekday ?? date.scheduleWeekday] ?? []).sortedByPeriodOrder()
+        var runs: [[String]] = []
+        for period in periods {
+            if let last = runs.last?.last, periodOrder(period) == periodOrder(last) + 1 {
+                runs[runs.count - 1].append(period)
+            } else {
+                runs.append([period])
+            }
+        }
+        let dayChanges = changes.changes(courseNo: course.courseNo, on: date)
+        let dayKey = dayKeyFormatter.string(from: date)
+        return runs.compactMap { run in
+            guard let timetableStart = periodTime(run[0], end: false, on: date),
+                  let timetableEnd = periodTime(run[run.count - 1], end: true, on: date) else { return nil }
+            var applied = dayChanges.filter { run.contains(where: $0.covers) }
+            var start = changedTime(.start, in: applied, on: date) ?? timetableStart
+            var end = changedTime(.end, in: applied, on: date) ?? timetableEnd
+            // A new start past the end, or a new end before the start, is a feed error; the
+            // meeting keeps its times and its other changes.
+            if end <= start {
+                start = timetableStart
+                end = timetableEnd
+                applied.removeAll { $0.kind == .start || $0.kind == .end }
+            }
+            return Meeting(
+                course: course, date: date, dayKey: dayKey, periods: run, start: start, end: end,
+                timetableStart: timetableStart, timetableEnd: timetableEnd, changes: applied
+            )
+        }
     }
 
-    private static func reshaping(_ changes: [CourseChange], at period: String) -> [Int] {
-        changes.filter { $0.kind != .note && $0.covers(period) }.map(\.id)
+    /// The meetings as one slot: the span of their fragments, the times their own changes set
+    /// and cancelled only when every period is.
+    private static func merged(_ meetings: [Meeting]) -> CourseTimeSlot? {
+        guard let first = meetings.first, let last = meetings.last else { return nil }
+        let fragments = meetings.flatMap { $0.fragments() }
+        let isCancelled = meetings.allSatisfy { meeting in meeting.periods.allSatisfy(meeting.isCancelled) }
+        var merged: [CourseChange] = []
+        for change in meetings.flatMap(\.changes)
+        where (isCancelled || change.kind != .cancelled) && !merged.contains(where: { $0.id == change.id }) {
+            merged.append(change)
+        }
+        return CourseTimeSlot(
+            id: "\(first.course.courseNo)_\(first.dayKey)_\(first.periods[0])",
+            course: first.course,
+            start: fragments.map(\.start).min() ?? first.start,
+            end: fragments.map(\.end).max() ?? last.end,
+            date: first.date,
+            periods: meetings.flatMap(\.periods),
+            changes: merged,
+            originalStart: first.start == first.timetableStart ? nil : first.timetableStart,
+            originalEnd: last.end == last.timetableEnd ? nil : last.timetableEnd
+        )
+    }
+
+    private static func periodTime(_ period: String, end: Bool, on date: Date) -> Date? {
+        guard let times = AppConstants.PeriodTimes.mapping[period] else { return nil }
+        return dateFromTimeString(end ? times.end : times.start, on: date)
     }
 
     private static func changedTime(_ kind: CourseChange.Kind, in changes: [CourseChange], on date: Date) -> Date? {
