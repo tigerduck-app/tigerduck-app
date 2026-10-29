@@ -400,7 +400,8 @@ struct MoodleOpenCapsule: View {
 
 /// A Moodle user as the app names them. NTUST's Moodle spells a full name "student ID @ name",
 /// or "name student ID@" in some users' display order; any other full name is the name whole.
-/// The backend's `display_name_from` in server/auth/moodle.py reads it the same way.
+/// The backend stores names by the same rule:
+/// https://github.com/tigerduck-app/tigerduck-backend/blob/main/server/auth/moodle.py
 nonisolated enum MoodlePersonName {
     static func displayName(_ fullName: String) -> String {
         let trimmed = fullName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -419,7 +420,7 @@ nonisolated enum MoodlePersonName {
         let before = fullName[..<at].trimmingCharacters(in: .whitespacesAndNewlines)
         let after = fullName[fullName.index(after: at)...].trimmingCharacters(in: .whitespacesAndNewlines)
         if !after.isEmpty { return (before, after) }
-        // "name student ID@": the last word before the `@` is the ID, and it has digits.
+        // A student ID has digits, so a name that only ends in `@` stays whole.
         guard let space = before.lastIndex(where: \.isWhitespace) else { return nil }
         let id = String(before[before.index(after: space)...])
         let name = before[..<space].trimmingCharacters(in: .whitespacesAndNewlines)
