@@ -14,7 +14,6 @@ nonisolated enum EmptyClassroomSchedule {
         return AppConstants.PeriodTimes.mapping[periodIDs[period]]
     }
 
-    /// The indexes into `periodIDs` of the periods a span of time overlaps.
     static func periods(from start: Date, to end: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> [Int] {
         let from = minuteOfDay(start, calendar: calendar)
         let to = minuteOfDay(end, calendar: calendar)
