@@ -94,4 +94,29 @@ struct WidgetSnapshotBuilderTests {
         }
         #expect(snapshot.periodTimes.count == AppConstants.PeriodTimes.mapping.count)
     }
+
+    @Test func carriesTheTermsChangedMeetingsButNotTheNotes() throws {
+        let course = SDCourse(courseNo: "CC900", courseName: "Compilers", classroom: "T4-501", schedule: [4: ["2", "3", "7"]])
+        func row(_ id: Int, _ kind: String, _ day: String, periods: [String]? = nil, _ values: [String: String] = [:]) -> [String: Any] {
+            var row: [String: Any] = ["id": id, "course_no": "CC900", "kind": kind, "class_days": [day]]
+            if let periods { row["periods"] = periods }
+            values.forEach { row[$0.key] = $0.value }
+            return row
+        }
+        let feed = try JSONSerialization.data(withJSONObject: ["term": "1151", "changes": [
+            row(1, "cancelled", "2026-11-05", periods: ["7"]),
+            row(2, "room", "2026-11-12", periods: ["2", "3"], ["room": "TR-411"]),
+            row(3, "start", "2026-11-12", periods: ["2", "3"], ["start": "09:30"]),
+            row(4, "note", "2026-11-19", ["note_zh": "期中考"]),
+        ]] as [String: Any])
+        let input = WidgetSnapshotBuilder.Input(
+            courses: [course], customNames: [:], colorMap: [:], isLoggedIn: true,
+            accentColorHex: 0x007AFF, now: Date(), changes: try CourseChanges(json: feed)
+        )
+
+        #expect(WidgetSnapshotBuilder.build(input).courses.first?.changes == [
+            SnapshotCourseChange(day: "2026-11-05", periods: ["7"], cancelled: true, room: nil, start: nil, end: nil),
+            SnapshotCourseChange(day: "2026-11-12", periods: ["2", "3"], cancelled: false, room: "TR-411", start: "09:30", end: nil),
+        ])
+    }
 }

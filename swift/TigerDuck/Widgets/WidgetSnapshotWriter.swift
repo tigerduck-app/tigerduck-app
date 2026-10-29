@@ -116,7 +116,8 @@ final class WidgetSnapshotWriter {
                 isLoggedIn: isLoggedIn(),
                 accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: accentColorHex())),
                 now: AppClock.now(),
-                quietDayKeys: Self.quietDayKeys()
+                quietDayKeys: Self.quietDayKeys(),
+                changes: .cached
             )
         )
         if !forceReload, let stored = store.readSnapshot(), Self.hasSameContent(snapshot, as: stored) {

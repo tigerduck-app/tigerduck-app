@@ -13,6 +13,8 @@ struct WidgetPalette {
     let onSurfaceVariant: Color
     let emptyCell: Color
     let highlight: Color
+    /// A value the school changed for the day.
+    let changeInk: Color
     let isFullColor: Bool
 
     static func resolve(
@@ -29,6 +31,7 @@ struct WidgetPalette {
             onSurfaceVariant: base.onSurfaceVariant,
             emptyCell: isFullColor ? base.emptyCell : Color.white.opacity(0.10),
             highlight: Color(widgetHex: snapshot.accentColorHex),
+            changeInk: base.changeInk,
             isFullColor: isFullColor
         )
     }
@@ -40,6 +43,7 @@ struct WidgetPalette {
         onSurfaceVariant: Color(widgetHex: 0x6E6E73),
         emptyCell: Color(widgetHex: 0xECECEC),
         highlight: .blue,
+        changeInk: Color(widgetHex: 0x9A3412),
         isFullColor: true
     )
 
@@ -50,6 +54,7 @@ struct WidgetPalette {
         onSurfaceVariant: Color(widgetHex: 0x8E8E93),
         emptyCell: Color(widgetHex: 0x2C2C2E),
         highlight: .blue,
+        changeInk: Color(widgetHex: 0xFDBA74),
         isFullColor: true
     )
 }

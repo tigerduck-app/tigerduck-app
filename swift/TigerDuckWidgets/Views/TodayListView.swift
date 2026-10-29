@@ -67,6 +67,7 @@ struct TodayListView: View {
 
     private func row(_ todayRow: WidgetTimelineDerivation.TodayRow, isOngoing: Bool) -> some View {
         let course = todayRow.course
+        let change = todayRow.change
 
         let rowFill: Color
         let primary: Color
@@ -80,9 +81,10 @@ struct TodayListView: View {
                 : palette.onSurfaceVariant
         } else {
             rowFill = palette.surface
-            primary = palette.onSurface
+            primary = todayRow.isCancelled ? palette.onSurfaceVariant : palette.onSurface
             secondary = palette.onSurfaceVariant
         }
+        let ink = isOngoing && palette.isFullColor ? primary : palette.changeInk
 
         return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
@@ -91,16 +93,27 @@ struct TodayListView: View {
                     .foregroundStyle(primary)
                 Text("\(todayRow.startTime)–\(todayRow.endTime)")
                     .font(.caption2)
-                    .foregroundStyle(secondary)
+                    .foregroundStyle(!todayRow.isCancelled && (change?.start ?? change?.end) != nil ? ink : secondary)
             }
             .frame(width: 60, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
                 Text(course.displayName)
                     .font(.system(size: captionBase * userScale, weight: .medium))
+                    .strikethrough(todayRow.isCancelled)
                     .foregroundStyle(primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                if !todayRow.classroom.isEmpty {
+                if todayRow.isCancelled {
+                    Text(String(localized: "course_card_cancelled"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(secondary)
+                } else if change?.room != nil {
+                    Label(todayRow.classroom, systemImage: "arrow.left.arrow.right")
+                        .labelStyle(ChangedValueLabelStyle())
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(ink)
+                        .lineLimit(1)
+                } else if !todayRow.classroom.isEmpty {
                     Text(todayRow.classroom)
                         .font(.caption2)
                         .foregroundStyle(secondary)
