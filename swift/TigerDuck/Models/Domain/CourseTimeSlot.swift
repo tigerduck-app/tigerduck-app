@@ -227,6 +227,18 @@ struct CourseTimeSlot: Identifiable, Equatable {
             || changes.isCancelled(courseNo: courseNo, on: day, period: String(parts[parts.count - 1]))
     }
 
+    /// Whether the class `id` names is over at `now` by its changed times, as the earlier piece of
+    /// a meeting is once a change cancels the later one.
+    static func hasEnded(slotId id: String, in courses: [SDCourse], at now: Date, changes: CourseChanges = .cached) -> Bool {
+        let parts = id.split(separator: "_", omittingEmptySubsequences: false)
+        guard parts.count >= 3, let day = dayKeyFormatter.date(from: String(parts[parts.count - 2])) else {
+            return false
+        }
+        let courseNo = parts.dropLast(2).joined(separator: "_")
+        return buildSlots(from: courses.filter { $0.courseNo == courseNo }, weekday: day.scheduleWeekday, on: day, changes: changes)
+            .contains { $0.id == id && $0.end <= now }
+    }
+
     private static func periodOrder(_ periodId: String) -> Int {
         AppConstants.Periods.chronologicalOrder.firstIndex(of: periodId) ?? Int.max
     }

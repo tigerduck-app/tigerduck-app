@@ -435,6 +435,15 @@ struct CourseChangesTests {
         #expect([Self.course()].ongoingCourses(at: Self.at("14:30"), changes: .empty).count == 1)
     }
 
+    @Test func aClassIsOverOnceTheCancelledLaterPieceOfItsMeetingBegins() throws {
+        let changes = try Self.changes([Self.row(1, "cancelled", periods: ["4"])])
+        let id = try #require(Self.slots(.empty).first?.id)
+
+        #expect(CourseTimeSlot.hasEnded(slotId: id, in: [Self.course()], at: Self.at("11:30"), changes: changes))
+        #expect(!CourseTimeSlot.hasEnded(slotId: id, in: [Self.course()], at: Self.at("10:30"), changes: changes))
+        #expect(!CourseTimeSlot.hasEnded(slotId: id, in: [Self.course()], at: Self.at("11:30"), changes: .empty))
+    }
+
     @Test func theTimeLineCrossesAPeriodByItsShareAndSitsInTheGapBetweenTwo() {
         let periods = [(start: 490, end: 540), (start: 550, end: 600), (start: 800, end: 850)]
         func offset(_ minute: Int) -> CGFloat? {
