@@ -410,6 +410,25 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
+    @Test func aMeetingSplitByItsChangesRunsAsItsClasses() {
+        let now = monday(9, 20)
+        let gone = changed(["A", "B"], on: now, cancelled: true)
+        let moved = changed(["C"], on: now, room: "R9")
+        let split = SnapshotCourse(
+            courseNo: "A", displayName: "Split", classroom: "R1", schedule: [1: ["A", "B", "C"]], colorHex: 0,
+            changes: [gone, moved]
+        )
+        let snap = snapshot(courses: [split])
+
+        #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .nextToday(.init(
+            course: split, startTime: "10:20", periodRange: "C", day: .today, classroom: "R9", change: moved
+        )))
+        let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: now)
+        #expect(rows.map(\.periods) == [["A", "B"], ["C"]])
+        #expect(rows.map(\.isCancelled) == [true, false])
+        #expect(rows.map(\.classroom) == ["R1", "R9"])
+    }
+
     @Test func aChangedStartAndRoomReplaceTheTimetableValues() {
         let now = monday(9, 20)
         let change = changed(["B"], on: now, room: "R9", start: "09:40")

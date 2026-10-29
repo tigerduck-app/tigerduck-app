@@ -114,9 +114,34 @@ struct WidgetSnapshotBuilderTests {
             accentColorHex: 0x007AFF, now: Date(), changes: try CourseChanges(json: feed)
         )
 
-        #expect(WidgetSnapshotBuilder.build(input).courses.first?.changes == [
+        let whole = [
             SnapshotCourseChange(day: "2026-11-05", periods: ["7"], cancelled: true, room: nil, start: nil, end: nil),
             SnapshotCourseChange(day: "2026-11-12", periods: ["2", "3"], cancelled: false, room: "TR-411", start: "09:30", end: nil),
+        ]
+        let built = WidgetSnapshotBuilder.build(input).courses.first
+        #expect(built?.changes == whole)
+        #expect(built?.meetingChanges == whole)
+    }
+
+    @Test func splitsAMeetingChangedInPartIntoItsClassesButKeepsItWholeForTheTable() throws {
+        let course = SDCourse(courseNo: "CC900", courseName: "Compilers", classroom: "T4-501", schedule: [4: ["2", "3", "4"]])
+        let feed = try JSONSerialization.data(withJSONObject: ["term": "1151", "changes": [
+            ["id": 1, "course_no": "CC900", "kind": "cancelled", "periods": ["2"], "class_days": ["2026-11-05"]],
+            ["id": 2, "course_no": "CC900", "kind": "room", "periods": ["4"], "room": "TR-411", "class_days": ["2026-11-05"]],
+        ]] as [String: Any])
+        let input = WidgetSnapshotBuilder.Input(
+            courses: [course], customNames: [:], colorMap: [:], isLoggedIn: true,
+            accentColorHex: 0x007AFF, now: Date(), changes: try CourseChanges(json: feed)
+        )
+
+        let built = WidgetSnapshotBuilder.build(input).courses.first
+        #expect(built?.changes == [
+            SnapshotCourseChange(day: "2026-11-05", periods: ["2"], cancelled: true, room: nil, start: nil, end: nil),
+            SnapshotCourseChange(day: "2026-11-05", periods: ["3"], cancelled: false, room: nil, start: nil, end: nil),
+            SnapshotCourseChange(day: "2026-11-05", periods: ["4"], cancelled: false, room: "TR-411", start: nil, end: nil),
+        ])
+        #expect(built?.meetingChanges == [
+            SnapshotCourseChange(day: "2026-11-05", periods: ["2", "3", "4"], cancelled: false, room: "TR-411", start: nil, end: nil),
         ])
     }
 }

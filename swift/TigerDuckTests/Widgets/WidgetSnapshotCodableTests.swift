@@ -102,8 +102,12 @@ struct WidgetSnapshotCodableTests {
         let course = SnapshotCourse(
             courseNo: "EC1013701", displayName: "資料結構", classroom: "TR-313", schedule: [4: ["2", "3"]],
             colorHex: 0xFF6B6B,
-            changes: [SnapshotCourseChange(
-                day: "2026-11-05", periods: ["2", "3"], cancelled: false, room: "TR-411", start: "09:30", end: nil
+            changes: [
+                SnapshotCourseChange(day: "2026-11-05", periods: ["2"], cancelled: true, room: nil, start: nil, end: nil),
+                SnapshotCourseChange(day: "2026-11-05", periods: ["3"], cancelled: false, room: "TR-411", start: nil, end: nil),
+            ],
+            meetingChanges: [SnapshotCourseChange(
+                day: "2026-11-05", periods: ["2", "3"], cancelled: false, room: "TR-411", start: nil, end: nil
             )]
         )
         let data = try JSONEncoder().encode(course)
@@ -114,6 +118,6 @@ struct WidgetSnapshotCodableTests {
             colorHex: 0xFF6B6B
         ))
         let fixture = try JSONDecoder().decode(WidgetSnapshot.self, from: Self.loadFixtureData(name: "WidgetSnapshot-v1", ext: "json"))
-        #expect(fixture.courses.allSatisfy { $0.changes.isEmpty })
+        #expect(fixture.courses.allSatisfy { $0.changes.isEmpty && $0.meetingChanges.isEmpty })
     }
 }

@@ -25,8 +25,11 @@ nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
     let colorHex: UInt32
     let skippedDates: Set<String>
     let classroomMap: [String: String]
-    /// The school's changes to this course's meetings; a reader that predates them ignores the key.
+    /// The classes of each meeting the school changed, split as the app's day view splits them;
+    /// a reader that predates them ignores the key.
     let changes: [SnapshotCourseChange]
+    /// The same meetings whole, as the class table shows them.
+    let meetingChanges: [SnapshotCourseChange]
 
     init(
         courseNo: String,
@@ -36,7 +39,8 @@ nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
         colorHex: UInt32,
         skippedDates: Set<String> = [],
         classroomMap: [String: String] = [:],
-        changes: [SnapshotCourseChange] = []
+        changes: [SnapshotCourseChange] = [],
+        meetingChanges: [SnapshotCourseChange] = []
     ) {
         self.courseNo = courseNo
         self.displayName = displayName
@@ -46,6 +50,7 @@ nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
         self.skippedDates = skippedDates
         self.classroomMap = classroomMap
         self.changes = changes
+        self.meetingChanges = meetingChanges
     }
 
     func classroom(weekday: Int, periods: [String]) -> String {
@@ -54,11 +59,11 @@ nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
 
     /// The change to the meeting that starts with `firstPeriod` on the `yyyy-MM-dd` day.
     func change(on day: String, startingAt firstPeriod: String?) -> SnapshotCourseChange? {
-        changes.first { $0.day == day && $0.periods.first == firstPeriod }
+        meetingChanges.first { $0.day == day && $0.periods.first == firstPeriod }
     }
 }
 
-/// One meeting as the school changed it on one day; nil fields keep the timetable's value.
+/// One class or meeting as the school changed it on one day; nil fields keep the timetable's value.
 nonisolated struct SnapshotCourseChange: Codable, Equatable, Hashable, Sendable {
     /// `yyyy-MM-dd`, Taipei time.
     let day: String
@@ -72,7 +77,7 @@ nonisolated struct SnapshotCourseChange: Codable, Equatable, Hashable, Sendable 
 
 nonisolated extension SnapshotCourse {
     private enum CodingKeys: String, CodingKey {
-        case courseNo, displayName, classroom, schedule, colorHex, skippedDates, classroomMap, changes
+        case courseNo, displayName, classroom, schedule, colorHex, skippedDates, classroomMap, changes, meetingChanges
     }
 
     init(from decoder: Decoder) throws {
@@ -85,7 +90,8 @@ nonisolated extension SnapshotCourse {
             colorHex: c.decode(UInt32.self, forKey: .colorHex),
             skippedDates: c.decodeIfPresent(Set<String>.self, forKey: .skippedDates) ?? [],
             classroomMap: c.decodeIfPresent([String: String].self, forKey: .classroomMap) ?? [:],
-            changes: c.decodeIfPresent([SnapshotCourseChange].self, forKey: .changes) ?? []
+            changes: c.decodeIfPresent([SnapshotCourseChange].self, forKey: .changes) ?? [],
+            meetingChanges: c.decodeIfPresent([SnapshotCourseChange].self, forKey: .meetingChanges) ?? []
         )
     }
 }

@@ -12,10 +12,11 @@ public nonisolated struct WatchCourse: Codable, Hashable, Identifiable, Sendable
     public let endHHmm: String
     public let periodLabel: String
     public let skippedDates: Set<String>?
-    /// The school's changes to this meeting, by Taipei day key (`yyyy-MM-dd`).
-    public let changes: [String: WatchCourseChange]?
-    /// The change ``on(_:)`` applied, so a view can mark the values it replaced.
-    public private(set) var dayChange: WatchCourseChange?
+    /// The classes this meeting holds on each day the school changed it, by Taipei day key
+    /// (`yyyy-MM-dd`), with their changed times and rooms in place.
+    public let changes: [String: [WatchCourse]]?
+    /// What the school changed in this class, so a view can mark the values it replaced.
+    public let dayChange: WatchCourseChange?
 
     public init(
         id: String,
@@ -29,7 +30,8 @@ public nonisolated struct WatchCourse: Codable, Hashable, Identifiable, Sendable
         endHHmm: String,
         periodLabel: String,
         skippedDates: Set<String>? = nil,
-        changes: [String: WatchCourseChange]? = nil
+        changes: [String: [WatchCourse]]? = nil,
+        dayChange: WatchCourseChange? = nil
     ) {
         self.id = id
         self.courseNo = courseNo
@@ -43,25 +45,17 @@ public nonisolated struct WatchCourse: Codable, Hashable, Identifiable, Sendable
         self.periodLabel = periodLabel
         self.skippedDates = skippedDates
         self.changes = changes
+        self.dayChange = dayChange
     }
 
-    /// This meeting as it runs on a day: nil when the school cancelled it, otherwise with the
-    /// day's changed time and room in place.
-    public func on(_ dayKey: String) -> WatchCourse? {
-        guard let change = changes?[dayKey] else { return self }
-        guard !change.cancelled else { return nil }
-        var shown = WatchCourse(
-            id: id, courseNo: courseNo, name: name, teacher: teacher,
-            classroom: change.room ?? classroom, colorHex: colorHex, weekday: weekday,
-            startHHmm: change.start ?? startHHmm, endHHmm: change.end ?? endHHmm,
-            periodLabel: periodLabel, skippedDates: skippedDates, changes: changes
-        )
-        shown.dayChange = change
-        return shown
+    /// The classes this meeting holds on a day, leaving out the ones the school cancelled.
+    public func on(_ dayKey: String) -> [WatchCourse] {
+        guard let classes = changes?[dayKey] else { return [self] }
+        return classes.filter { $0.dayChange?.cancelled != true }
     }
 }
 
-/// One day's change to a meeting; nil fields keep the timetable's value.
+/// One day's change to a class; nil fields keep the timetable's value.
 public nonisolated struct WatchCourseChange: Codable, Hashable, Sendable {
     public let cancelled: Bool
     public let room: String?

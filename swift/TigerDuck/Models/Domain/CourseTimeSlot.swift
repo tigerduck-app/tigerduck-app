@@ -43,6 +43,14 @@ struct CourseTimeSlot: Identifiable, Equatable {
             .filter { !$0.changes.isEmpty }
     }
 
+    /// The classes of each meeting the school moved, cancelled or gave a new room on a day, as
+    /// the day's slots show them.
+    static func changedClasses(of course: SDCourse, on date: Date, changes: CourseChanges = .cached) -> [CourseTimeSlot] {
+        meetings(of: course, on: date, changes: changes)
+            .filter { meeting in meeting.changes.contains { $0.kind != .note } }
+            .flatMap { $0.slots() }
+    }
+
     static func upcomingChanges(
         of course: SDCourse, from today: Date, changes: CourseChanges = .cached
     ) -> [(day: Date, meetings: [CourseTimeSlot])] {
@@ -61,10 +69,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
     ) -> [CourseTimeSlot] {
         courses
             .flatMap { course in
-                meetings(of: course, weekday: weekday, on: date, changes: changes).flatMap { meeting in
-                    let fragments = meeting.fragments()
-                    return fragments.isEmpty ? [merged([meeting])].compactMap { $0 } : fragments
-                }
+                meetings(of: course, weekday: weekday, on: date, changes: changes).flatMap { $0.slots() }
             }
             .sorted { $0.start < $1.start }
     }
@@ -88,6 +93,12 @@ struct CourseTimeSlot: Identifiable, Equatable {
 
         func room(_ period: String) -> String? {
             changes.first { $0.kind == .room && $0.covers(period) }?.room
+        }
+
+        /// Its fragments, or the meeting whole when its new times leave none.
+        func slots() -> [CourseTimeSlot] {
+            let fragments = fragments()
+            return fragments.isEmpty ? [CourseTimeSlot.merged([self])].compactMap { $0 } : fragments
         }
 
         /// Runs of periods alike in cancellation and room. Inner boundaries keep the timetable

@@ -20,6 +20,7 @@ public enum WatchPayloadCodec {
         static let periodLabel  = "periodLabel"
         static let skippedDates = "skippedDates"
         static let changes      = "changes"
+        static let dayChange    = "dayChange"
     }
 
     private nonisolated enum ChangeKey {
@@ -67,13 +68,14 @@ public enum WatchPayloadCodec {
             dict[CourseKey.skippedDates] = skipped.sorted()
         }
         if let changes = c.changes, !changes.isEmpty {
-            dict[CourseKey.changes] = changes.mapValues { change in
-                var entry: [String: Any] = [ChangeKey.cancelled: change.cancelled]
-                entry[ChangeKey.room] = change.room
-                entry[ChangeKey.start] = change.start
-                entry[ChangeKey.end] = change.end
-                return entry
-            }
+            dict[CourseKey.changes] = changes.mapValues { $0.map(encodeCourse) }
+        }
+        if let change = c.dayChange {
+            var entry: [String: Any] = [ChangeKey.cancelled: change.cancelled]
+            entry[ChangeKey.room] = change.room
+            entry[ChangeKey.start] = change.start
+            entry[ChangeKey.end] = change.end
+            dict[CourseKey.dayChange] = entry
         }
         return dict
     }
@@ -128,7 +130,9 @@ public enum WatchPayloadCodec {
             endHHmm:     try req(CourseKey.endHHmm),
             periodLabel: try req(CourseKey.periodLabel),
             skippedDates: (dict[CourseKey.skippedDates] as? [String]).map(Set.init),
-            changes: (dict[CourseKey.changes] as? [String: [String: Any]])?.mapValues { entry in
+            changes: (dict[CourseKey.changes] as? [String: [[String: Any]]])?
+                .compactMapValues { try? $0.map(decodeCourse) },
+            dayChange: (dict[CourseKey.dayChange] as? [String: Any]).map { entry in
                 WatchCourseChange(
                     cancelled: entry[ChangeKey.cancelled] as? Bool ?? false,
                     room: entry[ChangeKey.room] as? String,

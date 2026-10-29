@@ -124,22 +124,25 @@ enum WidgetTimelineDerivation {
         var isCancelled: Bool { change?.cancelled == true }
     }
 
-    /// The course's meetings on a day, earliest first, with the day's changed room and times in
-    /// place; a changed time can put a later period's meeting first.
+    /// The course's classes on a day, earliest first: a changed meeting as the classes it splits
+    /// into, with their changed rooms and times; a changed time can put a later class first.
     static func meetings(of course: SnapshotCourse, on date: Date, in snapshot: WidgetSnapshot) -> [TodayRow] {
         let weekday = weekdayFor(date)
         let key = dateKey(for: date)
         let order = snapshot.periodOrder
-        return contiguousRuns(sortPeriods(course.schedule[weekday] ?? [], by: order), by: order).map { run in
-            let change = course.change(on: key, startingAt: run.first)
-            return TodayRow(
+        func row(_ periods: [String], _ change: SnapshotCourseChange?) -> TodayRow {
+            TodayRow(
                 course: course,
-                periods: run,
-                startTime: change?.start ?? snapshot.periodTimes[run[0]]?.start ?? "",
-                endTime: change?.end ?? snapshot.periodTimes[run[run.count - 1]]?.end ?? "",
-                classroom: change?.room ?? course.classroom(weekday: weekday, periods: run),
+                periods: periods,
+                startTime: change?.start ?? snapshot.periodTimes[periods[0]]?.start ?? "",
+                endTime: change?.end ?? snapshot.periodTimes[periods[periods.count - 1]]?.end ?? "",
+                classroom: change?.room ?? course.classroom(weekday: weekday, periods: periods),
                 change: change
             )
+        }
+        return contiguousRuns(sortPeriods(course.schedule[weekday] ?? [], by: order), by: order).flatMap { run in
+            let classes = course.changes.filter { $0.day == key && !$0.periods.isEmpty && run.contains($0.periods[0]) }
+            return classes.isEmpty ? [row(run, nil)] : classes.map { row($0.periods, $0) }
         }
         .sorted { (parseHm($0.startTime) ?? .max) < (parseHm($1.startTime) ?? .max) }
     }

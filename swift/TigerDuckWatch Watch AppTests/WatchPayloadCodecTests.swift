@@ -131,14 +131,25 @@ final class WatchPayloadCodecTests: XCTestCase {
     }
 
     func test_courseChanges_roundTripAndAnOlderPayloadDecodesWithout() throws {
-        let changed = WatchCourse(
-            id: "X-4-2", courseNo: "X", name: "X", teacher: "", classroom: "TR-313", colorHex: "#FF8800",
-            weekday: 4, startHHmm: "09:10", endHHmm: "11:10", periodLabel: "2-3",
-            changes: [
-                "2026-11-05": WatchCourseChange(cancelled: true),
-                "2026-11-12": WatchCourseChange(cancelled: false, room: "TR-411", start: "09:30"),
-            ]
-        )
+        func meeting(
+            _ first: String, _ label: String, _ start: String, _ end: String, room: String = "TR-313",
+            classes: [String: [WatchCourse]]? = nil, change: WatchCourseChange? = nil
+        ) -> WatchCourse {
+            WatchCourse(
+                id: "X-4-\(first)", courseNo: "X", name: "X", teacher: "", classroom: room, colorHex: "#FF8800",
+                weekday: 4, startHHmm: start, endHHmm: end, periodLabel: label, changes: classes, dayChange: change
+            )
+        }
+        let changed = meeting("2", "2-3", "09:10", "11:10", classes: [
+            "2026-11-05": [
+                meeting("2", "2", "09:10", "10:00", change: WatchCourseChange(cancelled: true)),
+                meeting("3", "3", "10:20", "11:10", change: WatchCourseChange(cancelled: false)),
+            ],
+            "2026-11-12": [meeting(
+                "2", "2-3", "09:30", "11:10", room: "TR-411",
+                change: WatchCourseChange(cancelled: false, room: "TR-411", start: "09:30")
+            )],
+        ])
         let snapshot = WatchSnapshot(courses: [changed], accentHex: "#FF8800", syncedAtMs: 1, loggedIn: true, languageTag: nil)
 
         XCTAssertEqual(try WatchPayloadCodec.decode(WatchPayloadCodec.encode(snapshot)), snapshot)
