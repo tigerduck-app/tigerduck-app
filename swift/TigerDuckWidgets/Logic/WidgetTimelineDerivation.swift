@@ -124,7 +124,8 @@ enum WidgetTimelineDerivation {
         var isCancelled: Bool { change?.cancelled == true }
     }
 
-    /// The course's meetings on a day, with the day's changed room and times in place.
+    /// The course's meetings on a day, earliest first, with the day's changed room and times in
+    /// place; a changed time can put a later period's meeting first.
     static func meetings(of course: SnapshotCourse, on date: Date, in snapshot: WidgetSnapshot) -> [TodayRow] {
         let weekday = weekdayFor(date)
         let key = dateKey(for: date)
@@ -140,6 +141,7 @@ enum WidgetTimelineDerivation {
                 change: change
             )
         }
+        .sorted { (parseHm($0.startTime) ?? .max) < (parseHm($1.startTime) ?? .max) }
     }
 
     static func todayRows(snapshot: WidgetSnapshot, at date: Date) -> [TodayRow] {
@@ -149,9 +151,10 @@ enum WidgetTimelineDerivation {
         let rows = snapshot.courses
             .filter { !$0.skippedDates.contains(todayKey) }
             .flatMap { meetings(of: $0, on: date, in: snapshot) }
-        return rows.sorted { lhs, rhs in
-            (order.firstIndex(of: lhs.periods[0]) ?? Int.max) < (order.firstIndex(of: rhs.periods[0]) ?? Int.max)
+        func key(_ row: TodayRow) -> (Int, Int) {
+            (parseHm(row.startTime) ?? .max, order.firstIndex(of: row.periods[0]) ?? .max)
         }
+        return rows.sorted { key($0) < key($1) }
     }
 
     static func dateKey(for date: Date) -> String {

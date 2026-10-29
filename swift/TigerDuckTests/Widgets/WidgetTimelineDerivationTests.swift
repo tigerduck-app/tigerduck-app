@@ -431,4 +431,23 @@ struct WidgetTimelineDerivationTests {
         let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: now)
         #expect(rows.map(\.startTime) == ["09:40"] && rows.map(\.endTime) == ["10:00"])
     }
+
+    @Test func theNextMeetingIsTheEarliestByItsChangedStart() {
+        let now = monday(8, 0)
+        let split = SnapshotCourse(
+            courseNo: "A", displayName: "Split", classroom: "R1", schedule: [1: ["A", "C"]], colorHex: 0,
+            changes: [changed(["A"], on: now, start: "12:00", end: "12:50")]
+        )
+        let snap = snapshot(courses: [split])
+        let sunday = WidgetTaipei.calendar.date(byAdding: .day, value: -1, to: monday(20, 0))!
+
+        guard case .nextToday(let today) = WidgetTimelineDerivation.derive(snapshot: snap, at: now),
+              case .tomorrowFirst(let tomorrow) = WidgetTimelineDerivation.derive(snapshot: snap, at: sunday) else {
+            Issue.record("Expected a next meeting today and tomorrow")
+            return
+        }
+        #expect(today.startTime == "10:20" && today.periodRange == "C")
+        #expect(tomorrow.startTime == "10:20" && tomorrow.periodRange == "C")
+        #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).map { $0.startTime } == ["10:20", "12:00"])
+    }
 }
