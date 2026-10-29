@@ -100,6 +100,18 @@ struct CourseChangesTests {
         #expect(slots.map(\.periods) == [["7", "8"]])
     }
 
+    @Test func aRoomChangeOverPartOfAMovedMeetingLeavesItOneMeeting() throws {
+        let changes = try Self.changes([
+            Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "10:00"]),
+            Self.row(2, "end", periods: ["2", "3", "4"], values: ["end": "13:00"]),
+            Self.row(3, "room", periods: ["4"], values: ["room": "TR-313"]),
+        ])
+
+        let slots = Self.slots(changes)
+        #expect(slots.map(\.periods) == [["2", "3", "4"], ["7", "8"]])
+        #expect(slots.first?.start == Self.at("10:00") && slots.first?.end == Self.at("13:00"))
+    }
+
     @Test func aTimeChangeThatWouldEndBeforeItStartsIsDroppedButTheRestStays() throws {
         let changes = try Self.changes([
             Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "15:00"]),

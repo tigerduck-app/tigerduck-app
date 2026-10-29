@@ -96,11 +96,13 @@ struct CourseTimeSlot: Identifiable, Equatable {
             var blockStart = 0
             while blockStart < periods.count {
                 var blockEnd = blockStart
-                // A meeting splits where a change covers only some of its periods.
+                // A meeting splits where a change covers only some of its periods, except where a
+                // new time moves both sides, which would give each part the whole new span.
                 while blockEnd + 1 < periods.count,
                       Self.periodOrder(periods[blockEnd + 1]) == Self.periodOrder(periods[blockEnd]) + 1,
                       Self.reshaping(dayChanges, at: periods[blockEnd + 1])
-                          == Self.reshaping(dayChanges, at: periods[blockEnd]) {
+                          == Self.reshaping(dayChanges, at: periods[blockEnd])
+                          || Self.retimesTogether(dayChanges, periods[blockEnd], periods[blockEnd + 1]) {
                     blockEnd += 1
                 }
                 let firstPeriod = periods[blockStart]
@@ -137,6 +139,10 @@ struct CourseTimeSlot: Identifiable, Equatable {
         }
 
         return slots.sorted { $0.start < $1.start }
+    }
+
+    private static func retimesTogether(_ changes: [CourseChange], _ period: String, _ next: String) -> Bool {
+        changes.contains { ($0.kind == .start || $0.kind == .end) && $0.covers(period) && $0.covers(next) }
     }
 
     private static func reshaping(_ changes: [CourseChange], at period: String) -> [Int] {
