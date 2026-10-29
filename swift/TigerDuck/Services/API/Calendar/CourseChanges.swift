@@ -133,16 +133,24 @@ final class CourseChangeStore {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CourseChanges")
     private let session: URLSession
     private let baseURL: () -> URL
+    private let hasCompletedOnboarding: () -> Bool
     private var refreshTask: Task<Bool, Never>?
     private var endpointGeneration = 0
 
-    init(session: URLSession = .shared, baseURL: @escaping () -> URL = PushServerConfig.resolveServerURL) {
+    init(
+        session: URLSession = .shared,
+        baseURL: @escaping () -> URL = PushServerConfig.resolveServerURL,
+        hasCompletedOnboarding: @escaping () -> Bool = { Defaults[.hasCompletedOnboarding] }
+    ) {
         self.session = session
         self.baseURL = baseURL
+        self.hasCompletedOnboarding = hasCompletedOnboarding
     }
 
     @discardableResult
     func refresh() async -> Bool {
+        // A fresh install reaches here from launch code before the user has seen a screen.
+        guard hasCompletedOnboarding() else { return false }
         if let existing = refreshTask { return await existing.value }
         let generation = endpointGeneration
         let task = Task<Bool, Never> { [weak self] in

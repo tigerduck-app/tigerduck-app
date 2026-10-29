@@ -306,7 +306,9 @@ struct CourseChangesTests {
         let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
-        let store = CourseChangeStore(session: URLSession(configuration: config), baseURL: { base })
+        let store = CourseChangeStore(
+            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+        )
         let first = Self.feed([Self.row(1, "cancelled")])
 
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: first, headerFields: ["ETag": #"W/"a""#]), for: url)
@@ -339,7 +341,9 @@ struct CourseChangesTests {
         let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
-        let store = CourseChangeStore(session: URLSession(configuration: config), baseURL: { base })
+        let store = CourseChangeStore(
+            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+        )
         let old = SettingsAPIStub.ReplyGate()
         let new = SettingsAPIStub.ReplyGate()
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([]), gate: old), for: url)
@@ -356,5 +360,19 @@ struct CourseChangesTests {
 
         #expect(await joined.value)
         #expect(SettingsAPIStub.requests(for: url).count == 2)
+    }
+
+    @Test func theStoreAsksNothingBeforeOnboardingEnds() async {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let store = CourseChangeStore(
+            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { false }
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")])), for: url)
+
+        #expect(await store.refresh() == false)
+        #expect(SettingsAPIStub.requests(for: url).isEmpty)
     }
 }
