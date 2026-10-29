@@ -188,6 +188,13 @@ struct WeekGridView: View {
                     }
                     .overlay {
                         VStack(spacing: 1) {
+                            if !isCancelled, spanCount > 1, let time = Self.changedTime(change) {
+                                Label(time, systemImage: "clock.fill")
+                                    .labelStyle(ChangedValueLabelStyle())
+                                    .font(.system(size: 7 * fontScale, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(palette.changeInk)
+                                    .lineLimit(1)
+                            }
                             Text(course.displayName)
                                 .font(.system(size: soloCourseNameBase * fontScale * userCourseNameScale, weight: .medium))
                                 .strikethrough(isCancelled)
@@ -218,6 +225,15 @@ struct WeekGridView: View {
                     .frame(height: totalHeight)
             }
             .zIndex(1)
+    }
+
+    private static func changedTime(_ change: SnapshotCourseChange?) -> String? {
+        switch (change?.start, change?.end) {
+        case let (start?, end?): "\(start)–\(end)"
+        case let (start?, nil): start
+        case let (nil, end?): "–\(end)"
+        case (nil, nil): nil
+        }
     }
 
     @ViewBuilder
