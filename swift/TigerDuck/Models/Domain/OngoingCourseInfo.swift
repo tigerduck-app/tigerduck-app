@@ -8,6 +8,7 @@ struct OngoingCourseInfo: Identifiable {
     let startMinute: Int
     let endMinute: Int
     let classroom: String
+    let slot: CourseTimeSlot
 
     var id: String { "\(course.courseNo)-\(weekday)-\(firstPeriodId)" }
 
@@ -23,6 +24,7 @@ struct OngoingCourseInfo: Identifiable {
         startMinute = minute(slot.start)
         endMinute = minute(slot.end)
         classroom = slot.room
+        self.slot = slot
     }
 
     var formattedTimeRange: String {

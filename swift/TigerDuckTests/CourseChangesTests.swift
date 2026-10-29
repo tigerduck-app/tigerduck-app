@@ -422,6 +422,15 @@ struct CourseChangesTests {
 
         let morning = try #require([Self.course()].ongoingCourses(at: Self.at("10:30"), changes: changes).first)
         #expect((morning.periods, morning.classroom) == (["2", "3", "4"], "TR-313"))
+        let partly = try Self.changes([Self.row(1, "room", periods: ["4"], values: ["room": "TR-313"])])
+        let piece = try #require([Self.course()].ongoingCourses(at: Self.at("10:30"), changes: partly).first)
+        let viewModel = ClassTableViewModel()
+        viewModel.selectOngoing(piece)
+        let opened = CourseDetailSheet.shownMeeting(
+            of: Self.course(), slot: viewModel.selectedSlot, periods: viewModel.selectedCoursePeriods,
+            on: viewModel.selectedDate, changes: partly
+        )
+        #expect(piece.periods == ["2", "3"] && opened == nil)
         #expect([Self.course()].ongoingCourses(at: Self.at("14:30"), changes: changes).isEmpty)
         #expect([Self.course()].ongoingCourses(at: Self.at("14:30"), changes: .empty).count == 1)
     }

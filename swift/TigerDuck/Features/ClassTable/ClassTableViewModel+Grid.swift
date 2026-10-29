@@ -75,6 +75,7 @@ extension ClassTableViewModel {
         selectedPeriodId = periodId
         selectedCoursePeriods = course.block(weekday: weekday, at: periodId, in: activePeriods.map(\.id))
         selectedDate = showsThisWeek ? Self.columnDate(weekday: weekday, today: AppClock.now()) : nil
+        selectedSlot = nil
         selectedCourse = course
     }
 
@@ -83,6 +84,7 @@ extension ClassTableViewModel {
         selectedWeekday = info.weekday
         selectedPeriodId = info.firstPeriodId
         selectedCoursePeriods = info.periods
+        selectedSlot = info.slot
         selectedCourse = info.course
     }
 

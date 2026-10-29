@@ -150,6 +150,7 @@ struct ClassTableView: View {
                     weekday: viewModel.selectedWeekday,
                     periods: viewModel.selectedCoursePeriods,
                     date: viewModel.selectedDate,
+                    slot: viewModel.selectedSlot,
                     showsMoodle: viewModel.shownPerson == nil
                 )
                 .linkRouting()
@@ -468,6 +469,7 @@ struct ClassTableView: View {
                     viewModel.selectedPeriodId = nil
                     viewModel.selectedWeekday = AppClock.now().scheduleWeekday
                     viewModel.selectedDate = AppClock.now()
+                    viewModel.selectedSlot = nil
                     viewModel.selectedCourse = course
                 },
                 onSelectOngoing: { info in

@@ -14,6 +14,8 @@ final class ClassTableViewModel {
     var selectedPeriodId: String? = nil
     var selectedCoursePeriods: [String]? = nil
     var selectedDate: Date? = nil
+    /// The running class the Current class card opened, which can be one piece of its meeting.
+    var selectedSlot: CourseTimeSlot? = nil
     var courseChanges: CourseChanges = .cached
 
     var currentSemester: String = SemesterCatalog.selectedSemester(
