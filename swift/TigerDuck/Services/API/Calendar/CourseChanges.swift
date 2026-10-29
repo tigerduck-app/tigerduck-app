@@ -144,10 +144,12 @@ final class CourseChangeStore {
     @discardableResult
     func refresh() async -> Bool {
         if let existing = refreshTask { return await existing.value }
+        let generation = endpointGeneration
         let task = Task<Bool, Never> { [weak self] in
             guard let self else { return false }
             let changed = await self.performRefresh()
-            self.refreshTask = nil
+            // A task an endpoint change replaced leaves its successor's slot alone.
+            if self.endpointGeneration == generation { self.refreshTask = nil }
             return changed
         }
         refreshTask = task

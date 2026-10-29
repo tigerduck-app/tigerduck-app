@@ -313,4 +313,33 @@ struct CourseChangesTests {
         #expect(sent == [nil, #"W/"a""#, #"W/"a""#, #"W/"a""#])
     }
 
+    @Test func aRefreshAnEndpointChangeReplacedLeavesTheNewOneToBeJoined() async throws {
+        let savedCache = Defaults[.courseChangesCache]
+        let savedTag = Defaults[.courseChangesETag]
+        defer {
+            Defaults[.courseChangesCache] = savedCache
+            Defaults[.courseChangesETag] = savedTag
+        }
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let store = CourseChangeStore(session: URLSession(configuration: config), baseURL: { base })
+        let old = SettingsAPIStub.ReplyGate()
+        let new = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([]), gate: old), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")]), gate: new), for: url)
+
+        let first = Task { await store.refresh() }
+        try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
+        store.endpointDidChange()
+        try await waitUntil { SettingsAPIStub.requests(for: url).count == 2 }
+        old.open()
+        _ = await first.value
+        let joined = Task { await store.refresh() }
+        new.open()
+
+        #expect(await joined.value)
+        #expect(SettingsAPIStub.requests(for: url).count == 2)
+    }
 }
