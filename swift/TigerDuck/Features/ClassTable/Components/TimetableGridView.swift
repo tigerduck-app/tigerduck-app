@@ -240,7 +240,8 @@ struct TimetableGridView: View {
     private func changedMeeting(
         _ role: ClassTableViewModel.CellRole, weekday: Int, periodId: String, now: Date
     ) -> CourseTimeSlot? {
-        // shortcut: conflicting courses keep the weekly look; style their changes if conflicts in a term with changes show up.
+        // A conflict cell lays its courses out in lanes by their timetable spans, which a changed
+        // time would break, so conflicting courses keep the weekly look.
         guard case .solo(let course, _) = role else { return nil }
         return viewModel.changedMeeting(of: course, weekday: weekday, at: periodId, today: now)
     }
