@@ -19,6 +19,14 @@ public enum WatchPayloadCodec {
         static let endHHmm      = "endHHmm"
         static let periodLabel  = "periodLabel"
         static let skippedDates = "skippedDates"
+        static let changes      = "changes"
+    }
+
+    private nonisolated enum ChangeKey {
+        static let cancelled = "cancelled"
+        static let room      = "room"
+        static let start     = "start"
+        static let end       = "end"
     }
 
     public static func encode(_ snapshot: WatchSnapshot) throws -> [String: Any] {
@@ -57,6 +65,15 @@ public enum WatchPayloadCodec {
         ]
         if let skipped = c.skippedDates, !skipped.isEmpty {
             dict[CourseKey.skippedDates] = skipped.sorted()
+        }
+        if let changes = c.changes, !changes.isEmpty {
+            dict[CourseKey.changes] = changes.mapValues { change in
+                var entry: [String: Any] = [ChangeKey.cancelled: change.cancelled]
+                entry[ChangeKey.room] = change.room
+                entry[ChangeKey.start] = change.start
+                entry[ChangeKey.end] = change.end
+                return entry
+            }
         }
         return dict
     }
@@ -110,7 +127,15 @@ public enum WatchPayloadCodec {
             startHHmm:   try req(CourseKey.startHHmm),
             endHHmm:     try req(CourseKey.endHHmm),
             periodLabel: try req(CourseKey.periodLabel),
-            skippedDates: (dict[CourseKey.skippedDates] as? [String]).map(Set.init)
+            skippedDates: (dict[CourseKey.skippedDates] as? [String]).map(Set.init),
+            changes: (dict[CourseKey.changes] as? [String: [String: Any]])?.mapValues { entry in
+                WatchCourseChange(
+                    cancelled: entry[ChangeKey.cancelled] as? Bool ?? false,
+                    room: entry[ChangeKey.room] as? String,
+                    start: entry[ChangeKey.start] as? String,
+                    end: entry[ChangeKey.end] as? String
+                )
+            }
         )
     }
 

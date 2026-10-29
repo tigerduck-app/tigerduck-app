@@ -10,10 +10,11 @@ enum WatchPayloadEncoder {
         loggedIn: Bool,
         languageTag: String?,
         visualPreset: VisualPreset,
-        quietDays: Set<String> = []
+        quietDays: Set<String> = [],
+        changes: CourseChanges = .empty
     ) -> WatchSnapshot {
         let watchCourses = loggedIn
-            ? courses.flatMap { flatten($0, customNames: customNames) }
+            ? courses.flatMap { flatten($0, customNames: customNames, changes: changes) }
             : []
         let syncedAtMs = Int64((syncedAt.timeIntervalSince1970 * 1000).rounded())
         return WatchSnapshot(
@@ -39,9 +40,12 @@ enum WatchPayloadEncoder {
         #endif
     }
 
-    private static func flatten(_ course: SDCourse, customNames: [String: String]) -> [WatchCourse] {
+    private static func flatten(
+        _ course: SDCourse, customNames: [String: String], changes: CourseChanges
+    ) -> [WatchCourse] {
         let order = AppConstants.Periods.chronologicalOrder
         let skipped = Set(course.skippedDates)
+        let changed = WidgetSnapshotBuilder.snapshotChanges(of: course, changes: changes)
         return course.schedule.flatMap { weekday, periodIds -> [WatchCourse] in
             let sorted = periodIds.sortedByPeriodOrder()
             return contiguousRuns(sorted, by: order).compactMap { run -> WatchCourse? in
@@ -50,6 +54,11 @@ enum WatchPayloadEncoder {
                       let startPeriod = TimetablePeriod.byId[first],
                       let endPeriod = TimetablePeriod.byId[last] else { return nil }
                 let label = run.count > 1 ? "\(first)-\(last)" : first
+                let runChanges = Dictionary(
+                    changed.filter { $0.periods.first == first }
+                        .map { ($0.day, WatchCourseChange(cancelled: $0.cancelled, room: $0.room, start: $0.start, end: $0.end)) },
+                    uniquingKeysWith: { first, _ in first }
+                )
                 return WatchCourse(
                     id: "\(course.courseNo)-\(weekday)-\(first)",
                     courseNo: course.courseNo,
@@ -61,7 +70,8 @@ enum WatchPayloadEncoder {
                     startHHmm: startPeriod.startTime,
                     endHHmm: endPeriod.endTime,
                     periodLabel: label,
-                    skippedDates: skipped.isEmpty ? nil : skipped
+                    skippedDates: skipped.isEmpty ? nil : skipped,
+                    changes: runChanges.isEmpty ? nil : runChanges
                 )
             }
         }

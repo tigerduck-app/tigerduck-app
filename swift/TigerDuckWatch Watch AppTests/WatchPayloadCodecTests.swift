@@ -129,4 +129,23 @@ final class WatchPayloadCodecTests: XCTestCase {
         XCTAssertEqual(decoded.quietDays, [])
         XCTAssertNil(decoded.courses.first?.skippedDates)
     }
+
+    func test_courseChanges_roundTripAndAnOlderPayloadDecodesWithout() throws {
+        let changed = WatchCourse(
+            id: "X-4-2", courseNo: "X", name: "X", teacher: "", classroom: "TR-313", colorHex: "#FF8800",
+            weekday: 4, startHHmm: "09:10", endHHmm: "11:10", periodLabel: "2-3",
+            changes: [
+                "2026-11-05": WatchCourseChange(cancelled: true),
+                "2026-11-12": WatchCourseChange(cancelled: false, room: "TR-411", start: "09:30"),
+            ]
+        )
+        let snapshot = WatchSnapshot(courses: [changed], accentHex: "#FF8800", syncedAtMs: 1, loggedIn: true, languageTag: nil)
+
+        XCTAssertEqual(try WatchPayloadCodec.decode(WatchPayloadCodec.encode(snapshot)), snapshot)
+        let old = try WatchPayloadCodec.decode(WatchPayloadCodec.encode(sampleSnapshot()))
+        XCTAssertNil(old.courses.first?.changes)
+        XCTAssertEqual(
+            try JSONDecoder().decode(WatchSnapshot.self, from: JSONEncoder().encode(snapshot)), snapshot
+        )
+    }
 }

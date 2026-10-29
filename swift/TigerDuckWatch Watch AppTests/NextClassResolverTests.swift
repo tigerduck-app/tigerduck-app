@@ -128,4 +128,27 @@ final class NextClassResolverTests: XCTestCase {
         XCTAssertEqual(r.current?.id, "A")
         XCTAssertEqual(r.next?.id, "B")
     }
+
+    func test_aDaysChangesReplaceTheValuesAndACancelledMeetingDrops() {
+        let thursday = SharedTaipei.calendar.date(from: DateComponents(year: 2026, month: 11, day: 5, hour: 8))!
+        let key = SharedTaipei.dayKey(for: thursday)
+        func meeting(_ id: String, start: String, end: String, change: WatchCourseChange) -> WatchCourse {
+            WatchCourse(
+                id: id, courseNo: id, name: id, teacher: "", classroom: "TR-313", colorHex: "#FF8800",
+                weekday: 4, startHHmm: start, endHHmm: end, periodLabel: "", changes: [key: change]
+            )
+        }
+        let gone = meeting("A", start: "09:10", end: "10:00", change: WatchCourseChange(cancelled: true))
+        let moved = meeting("B", start: "10:20", end: "12:10", change: WatchCourseChange(cancelled: false, room: "TR-411", start: "10:40"))
+
+        let today = NextClassResolver.todaysClasses(courses: [gone, moved], now: thursday, quietDays: [])
+        XCTAssertEqual(today.map(\.id), ["B"])
+        XCTAssertEqual(today.first?.startHHmm, "10:40")
+        XCTAssertEqual(today.first?.classroom, "TR-411")
+        XCTAssertEqual(today.first?.dayChange?.room, "TR-411")
+        let nextWeek = SharedTaipei.calendar.date(byAdding: .day, value: 7, to: thursday)!
+        let later = NextClassResolver.todaysClasses(courses: [gone, moved], now: nextWeek, quietDays: [])
+        XCTAssertEqual(later.map(\.startHHmm), ["09:10", "10:20"])
+        XCTAssertTrue(later.allSatisfy { $0.dayChange == nil })
+    }
 }

@@ -133,4 +133,23 @@ final class WatchPayloadEncoderTests: XCTestCase {
             XCTAssertEqual(SharedTaipei.dayKey(for: day), WidgetTimelineDerivation.dateKey(for: day))
         }
     }
+
+    func test_carriesEachMeetingsChangesOnIt() throws {
+        let c = makeCourse(no: "CC900", schedule: [4: ["2", "3", "7"]])
+        let feed = try JSONSerialization.data(withJSONObject: ["term": "1151", "changes": [
+            ["id": 1, "course_no": "CC900", "kind": "cancelled", "periods": ["7"], "class_days": ["2026-11-05"]],
+            ["id": 2, "course_no": "CC900", "kind": "room", "room": "TR-411", "class_days": ["2026-11-12"]],
+        ]] as [String: Any])
+        let snap = WatchPayloadEncoder.encode(
+            courses: [c], customNames: [:], accentHex: "#000", syncedAt: Date(), loggedIn: true,
+            languageTag: nil, visualPreset: .default, changes: try CourseChanges(json: feed)
+        )
+
+        let byLabel = Dictionary(uniqueKeysWithValues: snap.courses.map { ($0.periodLabel, $0.changes) })
+        XCTAssertEqual(byLabel["2-3"], ["2026-11-12": WatchCourseChange(cancelled: false, room: "TR-411")])
+        XCTAssertEqual(byLabel["7"], [
+            "2026-11-05": WatchCourseChange(cancelled: true),
+            "2026-11-12": WatchCourseChange(cancelled: false, room: "TR-411"),
+        ])
+    }
 }
