@@ -36,7 +36,11 @@ struct CourseTimeSlot: Identifiable, Equatable {
     ) -> CourseTimeSlot? {
         let parts = buildSlots(from: [course], weekday: date.scheduleWeekday, on: date, changes: changes)
             .filter { $0.periods.contains(where: periods.contains) }
-        guard let first = parts.first, let last = parts.last else { return nil }
+            .sorted { periodOrder($0.periods.first ?? "") < periodOrder($1.periods.first ?? "") }
+        guard let first = parts.first, let last = parts.last,
+              let start = parts.map(\.start).min(), let end = parts.map(\.end).max() else { return nil }
+        let timetableStart = first.originalStart ?? first.start
+        let timetableEnd = last.originalEnd ?? last.end
         let isCancelled = parts.allSatisfy(\.isCancelled)
         var merged: [CourseChange] = []
         for change in parts.flatMap(\.changes)
@@ -44,9 +48,10 @@ struct CourseTimeSlot: Identifiable, Equatable {
             merged.append(change)
         }
         return CourseTimeSlot(
-            id: first.id, course: course, start: first.start, end: last.end, date: date,
+            id: first.id, course: course, start: start, end: end, date: date,
             periods: parts.flatMap(\.periods), changes: merged,
-            originalStart: first.originalStart, originalEnd: last.originalEnd
+            originalStart: start == timetableStart ? nil : timetableStart,
+            originalEnd: end == timetableEnd ? nil : timetableEnd
         )
     }
 

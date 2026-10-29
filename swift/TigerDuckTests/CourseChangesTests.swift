@@ -232,6 +232,21 @@ struct CourseChangesTests {
         #expect(CourseTimeSlot.changedMeetings(of: Self.course(), on: Self.thursday, changes: partly).map(\.periods) == [morning])
     }
 
+    @Test func aMergedMeetingSpansItsPartsAndKeepsTheTimetableOrder() throws {
+        let later = try Self.changes([Self.row(1, "end", periods: ["3"], values: ["end": "13:00"])])
+        let earlier = try Self.changes([Self.row(1, "start", periods: ["3"], values: ["start": "08:30"])])
+        let morning = ["2", "3", "4"]
+
+        let longer = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: morning, on: Self.thursday, changes: later))
+        #expect(longer.periods == morning)
+        #expect(longer.start == Self.at("09:10") && longer.end == Self.at("13:00"))
+        #expect(longer.originalStart == nil && longer.originalEnd == Self.at("12:10"))
+        let sooner = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: morning, on: Self.thursday, changes: earlier))
+        #expect(sooner.periods == morning)
+        #expect(sooner.start == Self.at("08:30") && sooner.end == Self.at("12:10"))
+        #expect(sooner.originalStart == Self.at("09:10") && sooner.originalEnd == nil)
+    }
+
     @Test func theChangesListShowsUpcomingDaysEarliestFirstAndAtMostEight() throws {
         let thursdays = (-1...9).map { offset in
             SharedTaipei.dayKey(for: Self.thursday.addingTimeInterval(Double(offset) * 7 * 86400))
