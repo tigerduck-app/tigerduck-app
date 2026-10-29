@@ -133,4 +133,30 @@ final class WatchPayloadEncoderTests: XCTestCase {
             XCTAssertEqual(SharedTaipei.dayKey(for: day), WidgetTimelineDerivation.dateKey(for: day))
         }
     }
+
+    func test_carriesEachChangedDaysClassesOnTheirMeeting() throws {
+        let c = makeCourse(no: "CC900", schedule: [4: ["2", "3", "7"]])
+        let feed = try JSONSerialization.data(withJSONObject: ["term": "1151", "changes": [
+            ["id": 1, "course_no": "CC900", "kind": "cancelled", "periods": ["7"], "class_days": ["2026-11-05"]],
+            ["id": 2, "course_no": "CC900", "kind": "room", "room": "TR-411", "class_days": ["2026-11-12"]],
+            ["id": 3, "course_no": "CC900", "kind": "cancelled", "periods": ["2"], "class_days": ["2026-11-19"]],
+            ["id": 4, "course_no": "CC900", "kind": "room", "room": "TR-411", "periods": ["3"], "class_days": ["2026-11-26"]],
+        ]] as [String: Any])
+        let snap = WatchPayloadEncoder.encode(
+            courses: [c], customNames: [:], accentHex: "#000", syncedAt: Date(), loggedIn: true,
+            languageTag: nil, visualPreset: .default, changes: try CourseChanges(json: feed)
+        )
+
+        let byLabel = Dictionary(uniqueKeysWithValues: snap.courses.map { ($0.periodLabel, $0) })
+        func shown(_ label: String, on day: String) -> [String] {
+            byLabel[label]?.on(day).map { "\($0.periodLabel) \($0.startHHmm)-\($0.endHHmm) \($0.classroom)" } ?? []
+        }
+        XCTAssertEqual(shown("2-3", on: "2026-11-05"), ["2-3 09:10-11:10 TR-313"])
+        XCTAssertEqual(shown("7", on: "2026-11-05"), [])
+        XCTAssertEqual(shown("2-3", on: "2026-11-12"), ["2-3 09:10-11:10 TR-411"])
+        XCTAssertEqual(byLabel["2-3"]?.on("2026-11-12").first?.dayChange, WatchCourseChange(cancelled: false, room: "TR-411"))
+        XCTAssertEqual(shown("2-3", on: "2026-11-19"), ["3 10:20-11:10 TR-313"])
+        XCTAssertEqual(shown("2-3", on: "2026-11-26"), ["2 09:10-10:00 TR-313", "3 10:20-11:10 TR-411"])
+        XCTAssertEqual(byLabel["2-3"]?.on("2026-11-26").map(\.dayChange?.room), [nil, "TR-411"])
+    }
 }

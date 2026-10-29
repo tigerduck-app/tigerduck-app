@@ -12,11 +12,20 @@ struct RectangularView: View {
                 .widgetAccentable()
             Text(subhead)
                 .font(.subheadline)
+                .foregroundStyle(displayCourse?.dayChange?.start ?? displayCourse?.dayChange?.end != nil ? Color.changeInk : .primary)
                 .lineLimit(1)
             if let room = displayRoom {
-                Text(room)
-                    .font(.caption2)
-                    .lineLimit(1)
+                if displayCourse?.dayChange?.room != nil {
+                    Label(room, systemImage: "arrow.left.arrow.right")
+                        .labelStyle(ChangedRoomLabelStyle())
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.changeInk)
+                        .lineLimit(1)
+                } else {
+                    Text(room)
+                        .font(.caption2)
+                        .lineLimit(1)
+                }
             }
         }
         .containerBackground(.fill.tertiary, for: .widget)

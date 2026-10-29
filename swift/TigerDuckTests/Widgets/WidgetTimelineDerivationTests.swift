@@ -378,4 +378,95 @@ struct WidgetTimelineDerivationTests {
             Issue.record("Expected Tuesday's class as next today at midnight, got \(atMidnight)")
         }
     }
+
+    private func changed(
+        _ periods: [String], on date: Date, cancelled: Bool = false,
+        room: String? = nil, start: String? = nil, end: String? = nil
+    ) -> SnapshotCourseChange {
+        SnapshotCourseChange(
+            day: WidgetTimelineDerivation.dateKey(for: date), periods: periods,
+            cancelled: cancelled, room: room, start: start, end: end
+        )
+    }
+
+    @Test func aCancelledMeetingIsNeitherOngoingNorNextButStaysInTodaysList() {
+        let now = monday(8, 30)
+        let gone = SnapshotCourse(
+            courseNo: "A", displayName: "Gone", classroom: "R1", schedule: [1: ["A", "B"]], colorHex: 0,
+            changes: [changed(["A", "B"], on: now, cancelled: true)]
+        )
+        let later = course(courseNo: "B", displayName: "Later", weekday: 1, periods: ["C"])
+        let snap = snapshot(courses: [gone, later])
+
+        #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .nextToday(.init(
+            course: later, startTime: "10:20", periodRange: "C", day: .today, classroom: ""
+        )))
+        #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).map(\.isCancelled) == [true, false])
+        let nextWeek = WidgetTaipei.calendar.date(byAdding: .day, value: 7, to: now)!
+        if case .ongoing(let list) = WidgetTimelineDerivation.derive(snapshot: snap, at: nextWeek) {
+            #expect(list.map(\.course.courseNo) == ["A"])
+        } else {
+            Issue.record("Expected next week's meeting to run")
+        }
+    }
+
+    @Test func aMeetingSplitByItsChangesRunsAsItsClasses() {
+        let now = monday(9, 20)
+        let gone = changed(["A", "B"], on: now, cancelled: true)
+        let moved = changed(["C"], on: now, room: "R9")
+        let split = SnapshotCourse(
+            courseNo: "A", displayName: "Split", classroom: "R1", schedule: [1: ["A", "B", "C"]], colorHex: 0,
+            changes: [gone, moved]
+        )
+        let snap = snapshot(courses: [split])
+
+        #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .nextToday(.init(
+            course: split, startTime: "10:20", periodRange: "C", day: .today, classroom: "R9", change: moved
+        )))
+        let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: now)
+        #expect(rows.map(\.periods) == [["A", "B"], ["C"]])
+        #expect(rows.map(\.isCancelled) == [true, false])
+        #expect(rows.map(\.classroom) == ["R1", "R9"])
+    }
+
+    @Test func aChangedStartAndRoomReplaceTheTimetableValues() {
+        let now = monday(9, 20)
+        let change = changed(["B"], on: now, room: "R9", start: "09:40")
+        let moved = SnapshotCourse(
+            courseNo: "A", displayName: "Moved", classroom: "R1", schedule: [1: ["B"]], colorHex: 0, changes: [change]
+        )
+        let snap = snapshot(courses: [moved])
+
+        #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .nextToday(.init(
+            course: moved, startTime: "09:40", periodRange: "B", day: .today, classroom: "R9", change: change
+        )))
+        if case .ongoing(let list) = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 45)) {
+            #expect(list.map(\.startTime) == ["09:40"])
+            #expect(list.map(\.classroom) == ["R9"])
+        } else {
+            Issue.record("Expected the moved meeting to run at 09:45")
+        }
+        #expect(WidgetTimelineDerivation.entryDates(snapshot: snap, after: monday(9, 0)).contains(monday(9, 40)))
+        let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: now)
+        #expect(rows.map(\.startTime) == ["09:40"] && rows.map(\.endTime) == ["10:00"])
+    }
+
+    @Test func theNextMeetingIsTheEarliestByItsChangedStart() {
+        let now = monday(8, 0)
+        let split = SnapshotCourse(
+            courseNo: "A", displayName: "Split", classroom: "R1", schedule: [1: ["A", "C"]], colorHex: 0,
+            changes: [changed(["A"], on: now, start: "12:00", end: "12:50")]
+        )
+        let snap = snapshot(courses: [split])
+        let sunday = WidgetTaipei.calendar.date(byAdding: .day, value: -1, to: monday(20, 0))!
+
+        guard case .nextToday(let today) = WidgetTimelineDerivation.derive(snapshot: snap, at: now),
+              case .tomorrowFirst(let tomorrow) = WidgetTimelineDerivation.derive(snapshot: snap, at: sunday) else {
+            Issue.record("Expected a next meeting today and tomorrow")
+            return
+        }
+        #expect(today.startTime == "10:20" && today.periodRange == "C")
+        #expect(tomorrow.startTime == "10:20" && tomorrow.periodRange == "C")
+        #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).map { $0.startTime } == ["10:20", "12:00"])
+    }
 }

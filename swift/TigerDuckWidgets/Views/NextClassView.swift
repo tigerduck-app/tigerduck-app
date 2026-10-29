@@ -72,7 +72,7 @@ struct NextClassView: View {
             Text(String.localizedStringWithFormat(
                 String(localized: "widget_until_time"), info.endTime))
                 .font(.caption)
-                .foregroundStyle(palette.onSurfaceVariant)
+                .foregroundStyle(info.change?.end != nil ? palette.changeInk : palette.onSurfaceVariant)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -92,12 +92,8 @@ struct NextClassView: View {
                 .minimumScaleFactor(0.7)
             Text("\(info.startTime)–\(info.endTime)  \(info.periodRange)")
                 .font(.caption)
-                .foregroundStyle(palette.onSurfaceVariant)
-            if !info.classroom.isEmpty {
-                Text(info.classroom)
-                    .font(.caption)
-                    .foregroundStyle(palette.onSurfaceVariant)
-            }
+                .foregroundStyle(info.change?.start ?? info.change?.end != nil ? palette.changeInk : palette.onSurfaceVariant)
+            room(info.classroom, changed: info.change?.room != nil)
             Spacer(minLength: 4)
             ProgressView(value: info.progress)
                 .progressViewStyle(.linear)
@@ -123,14 +119,25 @@ struct NextClassView: View {
                 .minimumScaleFactor(0.7)
             Text(info.startTime)
                 .font(.caption)
-                .foregroundStyle(palette.onSurfaceVariant)
-            if !info.classroom.isEmpty {
-                Text(info.classroom)
-                    .font(.caption)
-                    .foregroundStyle(palette.onSurfaceVariant)
-            }
+                .foregroundStyle(info.change?.start != nil ? palette.changeInk : palette.onSurfaceVariant)
+            room(info.classroom, changed: info.change?.room != nil)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func room(_ room: String, changed: Bool) -> some View {
+        if changed {
+            Label(room, systemImage: "arrow.left.arrow.right")
+                .labelStyle(ChangedValueLabelStyle())
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(palette.changeInk)
+                .lineLimit(1)
+        } else if !room.isEmpty {
+            Text(room)
+                .font(.caption)
+                .foregroundStyle(palette.onSurfaceVariant)
+        }
     }
 
     private var emptyBody: some View {
@@ -138,6 +145,16 @@ struct NextClassView: View {
             .font(.subheadline.weight(.bold))
             .foregroundStyle(palette.onSurface)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// A changed value with its small leading glyph, as the app's class table draws it.
+struct ChangedValueLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 2) {
+            configuration.icon.imageScale(.small)
+            configuration.title
+        }
     }
 }
 

@@ -75,6 +75,7 @@ public nonisolated enum NextClassResolver {
         let isoWeekday = ((raw + 5) % 7) + 1
         return courses
             .filter { $0.weekday == isoWeekday && $0.skippedDates?.contains(todayKey) != true }
+            .flatMap { $0.on(todayKey) }
             .sorted { minutes(of: $0.startHHmm) < minutes(of: $1.startHHmm) }
     }
 

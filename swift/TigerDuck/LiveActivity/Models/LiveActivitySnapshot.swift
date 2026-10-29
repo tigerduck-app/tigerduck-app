@@ -14,6 +14,10 @@ nonisolated struct LiveActivitySnapshot: Codable, Equatable, Hashable, Sendable 
     let accentHex: Int
     let deepLink: URL?
     let sourceId: String
+    /// True when the school changed the room or the time that day. Nil is left out of the JSON,
+    /// so an unchanged class encodes as before and the server passes the keys on untouched.
+    var roomChanged: Bool? = nil
+    var timeChanged: Bool? = nil
 
     /// activity and the follow-up inClass activity are distinct as far as
     /// ActivityKit is concerned — PTS cannot update an existing activity, so

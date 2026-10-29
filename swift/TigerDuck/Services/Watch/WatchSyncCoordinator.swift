@@ -29,6 +29,7 @@ final class WatchSyncCoordinator: NSObject {
         let languageTag: String?
         let visualPreset: VisualPreset
         var quietDays: Set<String> = []
+        var changes: CourseChanges = .empty
     }
 
     private let session: WatchSessionPushing
@@ -127,13 +128,14 @@ final class WatchSyncCoordinator: NSObject {
         languageTag: String?,
         visualPreset: VisualPreset,
         quietDays: Set<String> = [],
+        changes: CourseChanges = .empty,
         force: Bool = false
     ) {
         let snapshot = { (syncedAt: Date) in
             WatchPayloadEncoder.encode(
                 courses: courses, customNames: customNames, accentHex: accentHex,
                 syncedAt: syncedAt, loggedIn: loggedIn, languageTag: languageTag,
-                visualPreset: visualPreset, quietDays: quietDays
+                visualPreset: visualPreset, quietDays: quietDays, changes: changes
             )
         }
         if !force, pendingSnapshot == nil, let last = lastDelivered, snapshot(last.syncedAt) == last {
@@ -182,7 +184,7 @@ final class WatchSyncCoordinator: NSObject {
             self.pendingForce = false
             self.push(courses: p.courses, customNames: p.customNames, accentHex: p.accentHex,
                       loggedIn: p.loggedIn, languageTag: p.languageTag,
-                      visualPreset: p.visualPreset, quietDays: p.quietDays, force: force)
+                      visualPreset: p.visualPreset, quietDays: p.quietDays, changes: p.changes, force: force)
         }
     }
 }

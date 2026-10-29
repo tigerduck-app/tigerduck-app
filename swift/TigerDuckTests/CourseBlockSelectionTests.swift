@@ -15,9 +15,13 @@ struct CourseBlockSelectionTests {
         )
     }
 
+    private static let mondayAt1030 = AppConstants.taipeiCalendar.date(
+        from: DateComponents(year: 2026, month: 11, day: 2, hour: 10, minute: 30)
+    )!
+
     @Test("the Current class card shows the running block's room")
     func currentClassShowsItsBlocksRoom() throws {
-        let info = try #require([Self.twiceOnMonday()].ongoingCourses(weekday: 1, minuteOfDay: 10 * 60 + 30).first)
+        let info = try #require([Self.twiceOnMonday()].ongoingCourses(at: Self.mondayAt1030, changes: .empty).first)
         #expect(info.periods == ["3", "4"])
         #expect(info.classroom == "TR-313")
     }
@@ -42,7 +46,7 @@ struct CourseBlockSelectionTests {
     @Test("a Current class tap opens the running block")
     func aCurrentClassTapOpensTheRunningBlock() throws {
         let course = Self.twiceOnMonday()
-        let info = try #require([course].ongoingCourses(weekday: 1, minuteOfDay: 10 * 60 + 30).first)
+        let info = try #require([course].ongoingCourses(at: Self.mondayAt1030, changes: .empty).first)
         let viewModel = ClassTableViewModel()
         viewModel.selectOngoing(info)
         #expect(viewModel.selectedCourseTimeRange == "10:20 - 12:10")

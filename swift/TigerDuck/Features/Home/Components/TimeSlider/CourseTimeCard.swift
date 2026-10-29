@@ -44,8 +44,8 @@ struct CourseTimeCard: View {
     @ViewBuilder
     private func cardSurface(slot: CourseTimeSlot, opacity: Double) -> some View {
         let course = slot.course
-        let weekday = slot.date.scheduleWeekday
         let isToday = AppConstants.taipeiCalendar.isDateInToday(slot.date)
+        let showsChangedTime = slot.hasChangedTime && !slot.isCancelled
 
         HStack(alignment: .top, spacing: 10) {
             if policy.courseColorUsage == .smallAccent {
@@ -57,9 +57,16 @@ struct CourseTimeCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("\(slot.start.timeString) - \(slot.end.timeString)")
+                    HStack(spacing: 3) {
+                        if showsChangedTime {
+                            Image(systemName: "clock.fill")
+                                .font(.caption2)
+                        }
+                        Text("\(slot.start.timeString) - \(slot.end.timeString)")
+                            .strikethrough(slot.isCancelled)
+                    }
                         .font(.caption.bold())
-                        .foregroundStyle(timeRangeColor)
+                        .foregroundStyle(showsChangedTime ? Color.changeInk : timeRangeColor)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .layoutPriority(1)
@@ -71,9 +78,10 @@ struct CourseTimeCard: View {
 
                 Text(course.displayName)
                     .font(.headline)
+                    .strikethrough(slot.isCancelled)
                     .foregroundStyle(courseNameColor(for: course))
                     .lineLimit(1)
-                Text(subtitle(for: course, weekday: weekday, periods: slot.periods))
+                subtitle(for: slot)
                     .font(.caption)
                     .foregroundStyle(subtitleColor)
                     .lineLimit(1)
@@ -86,14 +94,21 @@ struct CourseTimeCard: View {
         .opacity(opacity)
     }
 
-    private func subtitle(for course: SDCourse, weekday: Int, periods: [String]) -> String {
-        let classroom = course.classroom(weekday: weekday, periods: periods).trimmingCharacters(in: .whitespaces)
-        let instructor = course.instructor.trimmingCharacters(in: .whitespaces)
+    private func subtitle(for slot: CourseTimeSlot) -> Text {
+        if slot.isCancelled {
+            return Text(String(localized: "course_card_cancelled")).fontWeight(.semibold)
+        }
+        let classroom = slot.room.trimmingCharacters(in: .whitespaces)
+        let instructor = slot.course.instructor.trimmingCharacters(in: .whitespaces)
+        let room = slot.hasChangedRoom && !classroom.isEmpty
+            ? Text("\(Image(systemName: "arrow.left.arrow.right")) \(Text(classroom).fontWeight(.semibold))")
+                .foregroundStyle(Color.changeInk)
+            : Text(classroom)
         switch (classroom.isEmpty, instructor.isEmpty) {
-        case (true, true): return ""
-        case (false, true): return classroom
-        case (true, false): return instructor
-        case (false, false): return "\(classroom) · \(instructor)"
+        case (true, true): return Text(verbatim: "")
+        case (false, true): return room
+        case (true, false): return Text(instructor)
+        case (false, false): return Text("\(room) · \(instructor)")
         }
     }
 
@@ -118,17 +133,7 @@ struct CourseTimeCard: View {
         }
     }
 
-    // The pinned gregorian calendar, and `en_US_POSIX` in the short form, keep the
-    // numeric date stable on ROC or Buddhist-calendar devices. The EEEEE weekday
-    // still follows `Locale.current`; only the calendar arithmetic is overridden.
-    private static let dateLabelFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = AppConstants.taipeiTimeZone
-        f.dateFormat = "M/d (EEEEE)"
-        return f
-    }()
-
+    // `en_US_POSIX` keeps the numeric date stable on ROC or Buddhist-calendar devices.
     private static let shortDateLabelFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -141,7 +146,7 @@ struct CourseTimeCard: View {
     @ViewBuilder
     private static func dateLabel(from date: Date) -> some View {
         ViewThatFits(in: .horizontal) {
-            Text(dateLabelFormatter.string(from: date))
+            Text(Date.dayWeekdayFormatter.string(from: date))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             Text(shortDateLabelFormatter.string(from: date))

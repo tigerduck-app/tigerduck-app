@@ -60,34 +60,36 @@ struct LiveActivityScenarioResolver {
     #endif
 
     static func inClassSnapshot(slot: CourseTimeSlot, now: Date, accentHex: Int) -> LiveActivitySnapshot {
-        let weekday = slot.date.scheduleWeekday
-        return LiveActivitySnapshot(
+        LiveActivitySnapshot(
             scenario: .inClass,
             title: slot.course.displayName,
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
-            locationText: slot.course.classroom(weekday: weekday, periods: slot.periods),
+            locationText: slot.room,
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.end,
             progressStart: slot.start < slot.end ? slot.start : nil,
             accentHex: accentHex,
             deepLink: nil,
-            sourceId: slot.id
+            sourceId: slot.id,
+            roomChanged: slot.hasChangedRoom ? true : nil,
+            timeChanged: slot.hasChangedTime ? true : nil
         )
     }
 
     static func classPreparingSnapshot(slot: CourseTimeSlot, accentHex: Int) -> LiveActivitySnapshot {
-        let weekday = slot.date.scheduleWeekday
-        return LiveActivitySnapshot(
+        LiveActivitySnapshot(
             scenario: .classPreparing,
             title: slot.course.displayName,
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
-            locationText: slot.course.classroom(weekday: weekday, periods: slot.periods),
+            locationText: slot.room,
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.start,
             progressStart: nil,
             accentHex: accentHex,
             deepLink: nil,
-            sourceId: slot.id
+            sourceId: slot.id,
+            roomChanged: slot.hasChangedRoom ? true : nil,
+            timeChanged: slot.hasChangedTime ? true : nil
         )
     }
 
@@ -123,7 +125,7 @@ struct LiveActivityScenarioResolver {
 
     static func nextNonSkippedSlot(in timeline: [CourseTimeSlot], after time: Date) -> CourseTimeSlot? {
         timeline
-            .filter { !$0.course.isSkipped(on: $0.date) && $0.start > time }
+            .filter { !$0.isSkippedOrCancelled && $0.start > time }
             .min { $0.start < $1.start }
     }
 

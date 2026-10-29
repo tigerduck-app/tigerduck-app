@@ -86,4 +86,67 @@ struct ClassStopTests {
         #expect(stops.map(\.firstPeriod) == [0, 2])
         #expect(stops.map(\.lastPeriod) == [1, 3])
     }
+
+    @Test("a block the school moved that day is a stop in the new room")
+    func aMovedBlockStopsInItsNewRoom() throws {
+        let course = SDCourse(
+            courseNo: "CS1001303", courseName: "編譯器", classroom: "TR-214", schedule: [3: ["1", "2", "6"]]
+        )
+        let changes = try CourseChanges(json: JSONSerialization.data(withJSONObject: ["term": "1151", "changes": [
+            ["id": 1, "course_no": "CS1001303", "kind": "room", "periods": ["1", "2"],
+             "class_days": ["2026-10-14"], "room": "IB-305"],
+        ]] as [String: Any]))
+        let slots = CourseTimeSlot.meetingSlots(
+            from: [course], on: Self.wednesday, isClassDay: { _ in true }, changes: changes
+        )
+
+        let stops = ClassStop.stops(from: slots) { $0 }
+
+        #expect(stops.map(\.room) == ["IB-305", "TR-214"])
+        #expect(stops.map(\.firstPeriod) == [0, 5])
+    }
+
+    @Test("a block the school moved to other hours that day is a stop at the periods it now meets")
+    func aRetimedBlockStopsAtItsNewPeriods() throws {
+        let course = SDCourse(
+            courseNo: "CS1001304", courseName: "資料庫", classroom: "TR-214", schedule: [3: ["8"]]
+        )
+        let changes = try CourseChanges(json: JSONSerialization.data(withJSONObject: ["term": "1151", "changes": [
+            ["id": 1, "course_no": "CS1001304", "kind": "start", "class_days": ["2026-10-14"], "start": "09:10"],
+            ["id": 2, "course_no": "CS1001304", "kind": "end", "class_days": ["2026-10-14"], "end": "10:00"],
+        ]] as [String: Any]))
+        let slots = CourseTimeSlot.meetingSlots(
+            from: [course], on: Self.wednesday, isClassDay: { _ in true }, changes: changes
+        )
+
+        let stops = ClassStop.stops(from: slots) { $0 }
+
+        #expect(stops.map(\.room) == ["TR-214"])
+        #expect(stops.map(\.firstPeriod) == [1])
+        #expect(stops.map(\.lastPeriod) == [1])
+    }
+
+    @Test("a retimed block that changes rooms halfway keeps a stop for each room, in order")
+    func aRetimedBlockKeepsItsRooms() throws {
+        let course = SDCourse(
+            courseNo: "CS1001305",
+            courseName: "作業系統",
+            classroom: "TR-214, IB-305",
+            schedule: [3: ["1", "2", "3", "4"]],
+            classroomMap: ["3-1": "TR-214", "3-2": "TR-214", "3-3": "IB-305", "3-4": "IB-305"]
+        )
+        let changes = try CourseChanges(json: JSONSerialization.data(withJSONObject: ["term": "1151", "changes": [
+            ["id": 1, "course_no": "CS1001305", "kind": "start", "class_days": ["2026-10-14"], "start": "13:20"],
+            ["id": 2, "course_no": "CS1001305", "kind": "end", "class_days": ["2026-10-14"], "end": "17:20"],
+        ]] as [String: Any]))
+        let slots = CourseTimeSlot.meetingSlots(
+            from: [course], on: Self.wednesday, isClassDay: { _ in true }, changes: changes
+        )
+
+        let stops = ClassStop.stops(from: slots) { $0 }
+
+        #expect(stops.map(\.room) == ["TR-214", "IB-305"])
+        #expect(stops.map(\.firstPeriod) == [5, 7])
+        #expect(stops.map(\.lastPeriod) == [6, 8])
+    }
 }

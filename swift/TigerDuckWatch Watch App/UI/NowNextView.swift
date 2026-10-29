@@ -74,8 +74,13 @@ private struct ClassCard: View {
                         .lineLimit(2)
                     Text("\(course.startHHmm)–\(course.endHHmm)")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    if !course.classroom.isEmpty {
+                        .foregroundStyle(course.dayChange?.start ?? course.dayChange?.end != nil ? AnyShapeStyle(Color.changeInk) : AnyShapeStyle(.secondary))
+                    if course.dayChange?.room != nil {
+                        Label(course.classroom, systemImage: "arrow.left.arrow.right")
+                            .labelStyle(ChangedRoomLabelStyle())
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.changeInk)
+                    } else if !course.classroom.isEmpty {
                         Text(course.classroom)
                             .font(.caption2)
                             .foregroundStyle(.secondary)

@@ -16,8 +16,14 @@ struct CourseDetailSheet: View {
     var timeRange: String? = nil
     var weekday: Int? = nil
     var periods: [String]? = nil
+    /// A current-term day the sheet shows: its cards carry that day's changes and the coming ones
+    /// are listed. Nil, as for another term, shows the weekly timetable alone.
+    var date: Date? = nil
+    /// The class tapped on Home, which the cards show as it is rather than its whole meeting.
+    var slot: CourseTimeSlot? = nil
     var moodlePath: Binding<[MoodleCourseRoute]>? = nil
     var showsMoodle = true
+    private let changes = CourseChanges.cached
 
     @State private var ownMoodlePath: [MoodleCourseRoute] = []
     @State private var moodle: MoodleCourseStore?
@@ -38,6 +44,7 @@ struct CourseDetailSheet: View {
                         headerSection
                         emphasisCards
                         secondaryInfo
+                        courseChangesSection
                         assignmentsSection
                     }
                     if let moodle {
@@ -216,19 +223,41 @@ struct CourseDetailSheet: View {
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.md))
             : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
 
+        let meeting = shownMeeting
         return layout {
             EmphasisCard(
                 label: String(localized: "course_detail_classroom_label"),
-                value: classroomValue,
+                value: meeting?.hasChangedRoom == true ? meeting?.room ?? classroomValue : classroomValue,
+                isChanged: meeting?.hasChangedRoom == true,
                 policy: appState.visualStylePolicy
             )
             EmphasisCard(
                 label: String(localized: "course_detail_time_label"),
-                value: timeValue,
+                value: meeting.flatMap(Self.changedTime) ?? timeValue,
+                isChanged: meeting.flatMap(Self.changedTime) != nil,
                 policy: appState.visualStylePolicy
             )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+
+    private var shownMeeting: CourseTimeSlot? {
+        Self.shownMeeting(of: course, slot: slot, periods: periods, on: date, changes: changes)
+    }
+
+    static func shownMeeting(
+        of course: SDCourse, slot: CourseTimeSlot?, periods: [String]?, on date: Date?, changes: CourseChanges
+    ) -> CourseTimeSlot? {
+        let meeting = slot ?? date.flatMap { date in
+            (periods ?? course.schedule[date.scheduleWeekday])
+                .flatMap { CourseTimeSlot.meeting(of: course, periods: $0, on: date, changes: changes) }
+        }
+        return meeting.flatMap { $0.changes.isEmpty ? nil : $0 }
+    }
+
+    private static func changedTime(_ meeting: CourseTimeSlot) -> String? {
+        if meeting.isCancelled { return String(localized: "course_card_cancelled") }
+        return meeting.hasChangedTime ? "\(meeting.start.timeString) - \(meeting.end.timeString)" : nil
     }
 
     private var classroomValue: String {
@@ -314,6 +343,73 @@ struct CourseDetailSheet: View {
         case "E": return String(localized: "course_detail_require_option_elective")
         default: return nil
         }
+    }
+
+    @ViewBuilder
+    private var courseChangesSection: some View {
+        let rows = date == nil ? [] : Self.changeRows(
+            CourseTimeSlot.upcomingChanges(of: course, from: AppClock.now(), changes: changes), besides: shownMeeting
+        )
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
+                Divider()
+                Text(String(localized: "course_detail_changes"))
+                    .font(TigerDuckTheme.Typography.headline)
+                    .foregroundStyle(Color.textPrimary)
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: TigerDuckTheme.Spacing.lg, verticalSpacing: 6) {
+                    ForEach(rows, id: \.day) { row in
+                        GridRow {
+                            Text(Date.dayWeekdayFormatter.string(from: row.day))
+                                .foregroundStyle(Color.textSecondary)
+                                .fixedSize()
+                            Text(row.summary)
+                                .foregroundStyle(Color.textPrimary)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .font(.subheadline.monospacedDigit())
+            }
+            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        }
+    }
+
+    /// At most eight days' changes in a line each. The room, time or cancellation of the meeting
+    /// the cards show is left to the cards; its notes stay, as the cards have no place for them.
+    static func changeRows(
+        _ days: [(day: Date, meetings: [CourseTimeSlot])], besides shown: CourseTimeSlot?
+    ) -> [(day: Date, summary: String)] {
+        let rows = days.lazy
+            .map { day in
+                (day: day.day, summary: changeSummary(day.meetings, besides: shown))
+            }
+            .filter { !$0.summary.isEmpty }
+        return Array(rows.prefix(8))
+    }
+
+    private static func changeSummary(_ meetings: [CourseTimeSlot], besides shown: CourseTimeSlot?) -> String {
+        var parts: [String] = []
+        for meeting in meetings {
+            if let shown, meeting.periods.contains(where: shown.periods.contains),
+               AcademicCalendar.startOfDay(meeting.date) == AcademicCalendar.startOfDay(shown.date) {
+                // The cards show the tapped class; a room its meeting's other classes move to does not.
+                parts += meeting.changes
+                    .filter { $0.kind == .room && !shown.periods.contains(where: $0.covers) }
+                    .compactMap(\.room)
+                continue
+            }
+            if meeting.isCancelled {
+                parts.append(String(localized: "course_card_cancelled"))
+                continue
+            }
+            if meeting.hasChangedRoom { parts.append(meeting.room) }
+            if meeting.hasChangedTime { parts.append("\(meeting.start.timeString) - \(meeting.end.timeString)") }
+        }
+        var noteIds = Set<Int>()
+        parts += meetings.flatMap(\.notes).filter { noteIds.insert($0.id).inserted }.compactMap { $0.note() }
+        var seen = Set<String>()
+        return parts.filter { seen.insert($0).inserted }.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -423,6 +519,7 @@ struct CourseDetailSheet: View {
 private struct EmphasisCard: View {
     let label: String
     let value: String
+    var isChanged = false
     let policy: VisualStylePolicy
 
     var body: some View {
@@ -433,7 +530,7 @@ private struct EmphasisCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(value)
                 .font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit())
-                .foregroundStyle(Color.textPrimary)
+                .foregroundStyle(isChanged ? Color.changeInk : Color.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .allowsTightening(true)
