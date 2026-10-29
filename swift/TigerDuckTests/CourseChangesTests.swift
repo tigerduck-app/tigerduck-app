@@ -411,6 +411,7 @@ struct CourseChangesTests {
         #expect(block.periods == ["2", "3", "4"] && !block.isCancelled && block.room == "TR-313")
         let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
         #expect(CourseDetailSheet.changeRows(days, besides: shown(slots[2])).isEmpty)
+        #expect(CourseDetailSheet.changeRows(days, besides: shown(slots[0])).map(\.summary) == ["TR-313"])
     }
 
     @Test func theTimeLineCrossesAPeriodByItsShareAndSitsInTheGapBetweenTwo() {
