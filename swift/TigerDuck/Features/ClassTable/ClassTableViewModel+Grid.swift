@@ -74,14 +74,41 @@ extension ClassTableViewModel {
         selectedWeekday = weekday
         selectedPeriodId = periodId
         selectedCoursePeriods = course.block(weekday: weekday, at: periodId, in: activePeriods.map(\.id))
+        selectedDate = showsThisWeek ? Self.columnDate(weekday: weekday, today: AppClock.now()) : nil
         selectedCourse = course
     }
 
     func selectOngoing(_ info: OngoingCourseInfo) {
+        selectedDate = AppClock.now()
         selectedWeekday = info.weekday
         selectedPeriodId = info.firstPeriodId
         selectedCoursePeriods = info.periods
         selectedCourse = info.course
     }
 
+    /// The table shows the current term as a week from today once the changes feed has answered;
+    /// other terms, and every term before then, stay a plain timetable.
+    var showsThisWeek: Bool {
+        !courseChanges.term.isEmpty && currentSemester == CourseSelectionService.currentSemesterCode()
+    }
+
+    /// The date a weekday column shows. The week runs from today, so on a Wednesday the Monday
+    /// and Tuesday columns are next week's.
+    static func columnDate(weekday: Int, today: Date) -> Date {
+        let calendar = AppConstants.taipeiCalendar
+        let start = calendar.startOfDay(for: today)
+        let ahead = (weekday - today.scheduleWeekday + 7) % 7
+        return calendar.date(byAdding: .day, value: ahead, to: start) ?? start
+    }
+
+    /// The block's meeting on its column's date, or nil when the school changed nothing there.
+    func changedMeeting(of course: SDCourse, weekday: Int, at periodId: String, today: Date) -> CourseTimeSlot? {
+        guard showsThisWeek else { return nil }
+        let date = Self.columnDate(weekday: weekday, today: today)
+        guard !courseChanges.changes(courseNo: course.courseNo, on: date).isEmpty,
+              let block = course.block(weekday: weekday, at: periodId, in: activePeriods.map(\.id))
+        else { return nil }
+        return CourseTimeSlot.meeting(of: course, periods: block, on: date, changes: courseChanges)
+            .flatMap { $0.changes.isEmpty ? nil : $0 }
+    }
 }

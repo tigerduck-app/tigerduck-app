@@ -4,9 +4,12 @@ import SwiftUI
 import UIKit
 #endif
 
-func spokenCourse(_ course: SDCourse, room: String? = nil, hasAssignment: Bool, ignoresAssignments: Bool) -> String {
+func spokenCourse(
+    _ course: SDCourse, room: String? = nil, changes: [String] = [], hasAssignment: Bool, ignoresAssignments: Bool
+) -> String {
     var parts = [course.displayName]
     if let room { parts.append(room) }
+    parts += changes
     if hasAssignment { parts.append(String(localized: "a11y_class_table_cell_assignment_indicator")) }
     if ignoresAssignments { parts.append(String(localized: "a11y_class_table_cell_assignments_ignored")) }
     return parts.joined(separator: ", ")
@@ -50,6 +53,8 @@ struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
     var showsAssignmentBadges = true
     var differentiateWithoutColor: Bool? = nil
+    /// Off for the export, which shares the plain timetable without today's date or changes.
+    var showsThisWeek = true
     var switchCount = 0
     var onSwitch: ((_ before: TimetableRowTops, _ after: TimetableRowTops) -> Void)? = nil
     @Environment(AppState.self) private var appState
@@ -92,18 +97,27 @@ struct TimetableGridView: View {
     }
 
     var body: some View {
+        TimelineView(.everyMinute) { _ in
+            let _ = AppClockState.shared.version
+            grid(now: AppClock.now())
+        }
+    }
+
+    private func grid(now: Date) -> some View {
         let periods = viewModel.activePeriods
         let firstRowTop = headerHeight + rowSpacing
         let rowPitch = cellHeight + rowSpacing
         let switchCount = switchCount
-        VStack(spacing: rowSpacing) {
+        let thisWeek = showsThisWeek && viewModel.showsThisWeek
+        let today = thisWeek ? now.scheduleWeekday : nil
+        return VStack(spacing: rowSpacing) {
             HStack(spacing: colSpacing) {
                 Text("")
                     .frame(width: periodWidth, height: headerHeight)
-                ForEach(Array(weekdayLabels.enumerated()), id: \.offset) { _, label in
+                ForEach(Array(zip(viewModel.activeWeekdays, weekdayLabels)), id: \.0) { weekday, label in
                     Text(label)
                         .font(TigerDuckTheme.Typography.caption.bold())
-                        .foregroundStyle(Color.textSecondary)
+                        .foregroundStyle(weekday == today ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textSecondary))
                         .frame(maxWidth: .infinity)
                         .frame(height: headerHeight)
                 }
@@ -132,13 +146,25 @@ struct TimetableGridView: View {
 
                     ForEach(viewModel.activeWeekdays, id: \.self) { weekday in
                         let role = viewModel.cellRole(weekday: weekday, periodIndex: periodIndex)
-                        let key = contentKey(of: role, weekday: weekday, periodId: period.id)
-                        cellView(role, key: key, weekday: weekday, periodId: period.id)
+                        let meeting = thisWeek ? changedMeeting(role, weekday: weekday, periodId: period.id, now: now) : nil
+                        let key = contentKey(of: role, weekday: weekday, periodId: period.id, meeting: meeting)
+                        cellView(role, key: key, weekday: weekday, periodId: period.id, meeting: meeting)
                             .frame(maxWidth: .infinity)
                             .frame(height: cellHeight)
                             .animation(.linear(duration: 0.25), value: key)
                     }
                 }
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if let today, viewModel.activeWeekdays.contains(today),
+               let offset = Self.nowLineOffset(
+                   minute: Self.minuteOfDay(now), periods: periods.compactMap(Self.minutes),
+                   rowPitch: rowPitch, cellHeight: cellHeight
+               ) {
+                nowLine
+                    .padding(.leading, periodWidth + colSpacing)
+                    .offset(y: firstRowTop + offset - Self.nowLineWidth / 2)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.xs)
@@ -165,12 +191,68 @@ struct TimetableGridView: View {
         }
     }
 
+    private static let nowLineWidth: CGFloat = 1.5
+    private static let nowDotSize: CGFloat = 7
+
+    private var nowLine: some View {
+        Rectangle()
+            .fill(.tint)
+            .frame(height: Self.nowLineWidth)
+            .overlay(alignment: .leading) {
+                Circle()
+                    .fill(.tint)
+                    .frame(width: Self.nowDotSize, height: Self.nowDotSize)
+                    .offset(x: -Self.nowDotSize / 2)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    /// Where the current-time line crosses the rows, from the top of the first one: inside a period
+    /// by the share of it gone, between two shown periods in the middle of their gap.
+    nonisolated static func nowLineOffset(
+        minute: Int, periods: [(start: Int, end: Int)], rowPitch: CGFloat, cellHeight: CGFloat
+    ) -> CGFloat? {
+        for (index, period) in periods.enumerated() {
+            let top = CGFloat(index) * rowPitch
+            if minute < period.start { return index == 0 ? nil : top - (rowPitch - cellHeight) / 2 }
+            if minute <= period.end {
+                return top + cellHeight * CGFloat(minute - period.start) / CGFloat(max(1, period.end - period.start))
+            }
+        }
+        return nil
+    }
+
+    private static func minutes(_ period: TimetablePeriod) -> (start: Int, end: Int)? {
+        func parse(_ time: String) -> Int? {
+            let parts = time.split(separator: ":").compactMap { Int($0) }
+            return parts.count == 2 ? parts[0] * 60 + parts[1] : nil
+        }
+        guard let start = parse(period.startTime), let end = parse(period.endTime) else { return nil }
+        return (start, end)
+    }
+
+    private static func minuteOfDay(_ date: Date) -> Int {
+        let parts = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: date)
+        return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+    }
+
+    private func changedMeeting(
+        _ role: ClassTableViewModel.CellRole, weekday: Int, periodId: String, now: Date
+    ) -> CourseTimeSlot? {
+        // shortcut: conflicting courses keep the weekly look; style their changes if conflicts in a term with changes show up.
+        guard case .solo(let course, _) = role else { return nil }
+        return viewModel.changedMeeting(of: course, weekday: weekday, at: periodId, today: now)
+    }
+
     private static let courseFade = AnyTransition.asymmetric(
         insertion: .opacity.animation(.easeOut(duration: 0.15).delay(0.1)),
         removal: .opacity.animation(.easeIn(duration: 0.1))
     )
 
-    private func contentKey(of role: ClassTableViewModel.CellRole, weekday: Int, periodId: String) -> String {
+    private func contentKey(
+        of role: ClassTableViewModel.CellRole, weekday: Int, periodId: String, meeting: CourseTimeSlot?
+    ) -> String {
         func shown(_ course: SDCourse) -> String { "\(course.courseNo)|\(course.displayName)" }
         switch role {
         case .empty:
@@ -181,7 +263,8 @@ struct TimetableGridView: View {
             let room = appState.showClassroomInClassTable
                 ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId) ?? ""
                 : ""
-            return "solo \(spanCount) \(shown(course))|\(room)"
+            let change = meeting.map { "\($0.isCancelled)|\($0.room)|\($0.start)|\($0.end)|\($0.notes.count)" } ?? ""
+            return "solo \(spanCount) \(shown(course))|\(room)|\(change)"
         case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
             return "pair \(combinedSpan) \(spanA) \(offsetA) \(shown(courseA)) \(spanB) \(offsetB) \(shown(courseB))"
         case let .conflictMany(segments, combinedSpan, laneCount):
@@ -191,7 +274,9 @@ struct TimetableGridView: View {
     }
 
     @ViewBuilder
-    private func cellView(_ role: ClassTableViewModel.CellRole, key: String, weekday: Int, periodId: String) -> some View {
+    private func cellView(
+        _ role: ClassTableViewModel.CellRole, key: String, weekday: Int, periodId: String, meeting: CourseTimeSlot?
+    ) -> some View {
         switch role {
         case .empty:
             RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
@@ -205,6 +290,8 @@ struct TimetableGridView: View {
             let roomHint = appState.showClassroomInClassTable
                 ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
                 : nil
+            let bottomLine = BlockLine(meeting: meeting, roomHint: roomHint, showsRooms: appState.showClassroomInClassTable)
+            let changedTime = meeting.flatMap(Self.changedTimeText)
             let markColor = policy.classTableCourseSecondaryTextColor.opacity(0.5)
 
             Color.clear
@@ -214,18 +301,34 @@ struct TimetableGridView: View {
                     // scroll view. See View+ScrollSafeGesture.
                     courseFace(
                         course, spanCount: spanCount,
-                        showsRoomHint: roomHint != nil, showsMark: hasBadge || ignoresAssignments
+                        showsRoomHint: bottomLine != nil, showsMark: hasBadge || ignoresAssignments,
+                        isCancelled: meeting?.isCancelled == true, showsTimeLine: changedTime != nil
                     )
                         .overlay(alignment: .bottomLeading) {
-                            if let room = roomHint {
-                                Text(room)
-                                    .font(.system(size: roomHintSize))
-                                    .foregroundStyle(policy.classTableCourseSecondaryTextColor)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.6)
+                            if let bottomLine {
+                                blockLine(bottomLine)
                                     .padding(.leading, 3)
                                     .padding(.bottom, 2)
                                     .padding(.trailing, hasBadge || ignoresAssignments ? badgeIconSize + 6 : 3)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .overlay(alignment: .topLeading) {
+                            if let changedTime {
+                                changeLabel(changedTime, systemImage: "clock.fill")
+                                    .monospacedDigit()
+                                    .padding(.leading, 3)
+                                    .padding(.top, 3)
+                                    .padding(.trailing, 3)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .overlay(alignment: .topTrailing) {
+                            if meeting?.notes.isEmpty == false {
+                                Image(systemName: "bubble.left.fill")
+                                    .font(.system(size: badgeIconSize + 2))
+                                    .foregroundStyle(Color.changeInk)
+                                    .padding(4)
                                     .accessibilityHidden(true)
                             }
                         }
@@ -243,7 +346,7 @@ struct TimetableGridView: View {
                                 AppConstants.Periods.shortWeekdayLabel(weekday),
                                 viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
                                 spokenCourse(
-                                    course, room: roomHint,
+                                    course, room: bottomLine?.room ?? roomHint, changes: Self.spokenChanges(meeting),
                                     hasAssignment: hasBadge, ignoresAssignments: ignoresAssignments
                                 )
                             ))
@@ -304,8 +407,84 @@ struct TimetableGridView: View {
         }
     }
 
+    /// The line at a block's foot: its room hint, the room the school moved it to, or the cancellation.
+    private enum BlockLine {
+        case room(String), changedRoom(String), cancelled
+
+        init?(meeting: CourseTimeSlot?, roomHint: String?, showsRooms: Bool) {
+            if meeting?.isCancelled == true {
+                self = .cancelled
+            } else if let meeting, meeting.hasChangedRoom, showsRooms {
+                self = .changedRoom(meeting.room)
+            } else if let roomHint {
+                self = .room(roomHint)
+            } else {
+                return nil
+            }
+        }
+
+        var room: String? {
+            if case .changedRoom(let room) = self { return room }
+            return nil
+        }
+    }
+
     @ViewBuilder
-    private func courseFace(_ course: SDCourse, spanCount: Int, showsRoomHint: Bool, showsMark: Bool) -> some View {
+    private func blockLine(_ line: BlockLine) -> some View {
+        switch line {
+        case .room(let room):
+            Text(room)
+                .font(.system(size: roomHintSize))
+                .foregroundStyle(policy.classTableCourseSecondaryTextColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        case .changedRoom(let room):
+            changeLabel(room, systemImage: "arrow.left.arrow.right")
+        case .cancelled:
+            Text(String(localized: "course_card_cancelled"))
+                .font(.system(size: roomHintSize, weight: .semibold))
+                .foregroundStyle(policy.classTableCourseSecondaryTextColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+    }
+
+    private func changeLabel(_ text: String, systemImage: String) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: systemImage)
+                .font(.system(size: roomHintSize * 0.8, weight: .bold))
+            Text(text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .font(.system(size: roomHintSize, weight: .semibold))
+        .foregroundStyle(Color.changeInk)
+    }
+
+    /// The new start, the new end after a dash, or both when the school moved both.
+    private static func changedTimeText(_ meeting: CourseTimeSlot) -> String? {
+        guard !meeting.isCancelled else { return nil }
+        switch (meeting.originalStart != nil, meeting.originalEnd != nil) {
+        case (true, true): return "\(meeting.start.timeString)–\(meeting.end.timeString)"
+        case (true, false): return meeting.start.timeString
+        case (false, true): return "–\(meeting.end.timeString)"
+        case (false, false): return nil
+        }
+    }
+
+    private static func spokenChanges(_ meeting: CourseTimeSlot?) -> [String] {
+        guard let meeting else { return [] }
+        let state = meeting.isCancelled
+            ? [String(localized: "course_card_cancelled")]
+            : meeting.hasChangedTime ? ["\(meeting.start.timeString) - \(meeting.end.timeString)"] : []
+        return state + meeting.notes.compactMap { $0.note() }
+    }
+
+    @ViewBuilder
+    private func courseFace(
+        _ course: SDCourse, spanCount: Int, showsRoomHint: Bool, showsMark: Bool,
+        isCancelled: Bool = false, showsTimeLine: Bool = false
+    ) -> some View {
         if drawsPeriodTiles {
             VStack(spacing: rowSpacing) {
                 ForEach(0..<spanCount, id: \.self) { index in
@@ -313,7 +492,9 @@ struct TimetableGridView: View {
                         course,
                         cornerRadius: TigerDuckTheme.CornerRadius.xs,
                         lineLimit: 3,
-                        leavesBottomLine: (showsRoomHint || showsMark) && index == spanCount - 1
+                        leavesBottomLine: (showsRoomHint || showsMark) && index == spanCount - 1,
+                        leavesTopLine: showsTimeLine && index == 0,
+                        isCancelled: isCancelled
                     )
                     .frame(height: cellHeight)
                 }
@@ -323,16 +504,19 @@ struct TimetableGridView: View {
                 course,
                 cornerRadius: TigerDuckTheme.CornerRadius.sm,
                 lineLimit: spanCount > 1 ? 3 : 2,
-                leavesBottomLine: showsRoomHint
+                leavesBottomLine: showsRoomHint,
+                leavesTopLine: showsTimeLine,
+                isCancelled: isCancelled
             )
         }
     }
 
     private func courseTile(
-        _ course: SDCourse, cornerRadius: CGFloat, lineLimit: Int, leavesBottomLine: Bool
+        _ course: SDCourse, cornerRadius: CGFloat, lineLimit: Int, leavesBottomLine: Bool,
+        leavesTopLine: Bool = false, isCancelled: Bool = false
     ) -> some View {
         RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(policy.classTableCourseFill(course.color))
+            .fill(policy.classTableCourseFill(course.color).opacity(isCancelled ? 0.4 : 1))
             .overlay {
                 if outlineRequiredCourses, course.isRequired {
                     RoundedRectangle(cornerRadius: cornerRadius)
@@ -342,12 +526,14 @@ struct TimetableGridView: View {
             .overlay {
                 Text(course.displayName)
                     .font(.system(size: courseNameSize, weight: policy.classTableCourseNameWeight))
-                    .foregroundStyle(policy.classTableCourseTextColor)
+                    .strikethrough(isCancelled)
+                    .foregroundStyle(policy.classTableCourseTextColor.opacity(isCancelled ? 0.45 : 1))
                     .lineLimit(lineLimit)
                     .minimumScaleFactor(0.7)
                     .multilineTextAlignment(.center)
                     .padding(2)
                     .padding(.bottom, leavesBottomLine ? roomHintSize + 2 : 0)
+                    .padding(.top, leavesTopLine ? roomHintSize + 2 : 0)
             }
     }
 

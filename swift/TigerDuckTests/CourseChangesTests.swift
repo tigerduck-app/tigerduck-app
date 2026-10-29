@@ -184,6 +184,67 @@ struct CourseChangesTests {
         #expect(events.allSatisfy { $0.snapshot.locationText == "TR-313" })
     }
 
+    @Test func theClassTableRunsAWeekFromToday() {
+        let wednesday = Self.thursday.addingTimeInterval(-86400 + 6 * 3600)
+        let shown = (1...7).map { ClassTableViewModel.columnDate(weekday: $0, today: wednesday) }
+
+        #expect(shown.map { SharedTaipei.dayKey(for: $0) } == [
+            "2026-11-09", "2026-11-10", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08",
+        ])
+        #expect(shown.allSatisfy { $0 == AppConstants.taipeiCalendar.startOfDay(for: $0) })
+    }
+
+    @Test func aMeetingIsCancelledOnlyWhenEveryPeriodOfItIs() throws {
+        let partly = try Self.changes([
+            Self.row(1, "cancelled", periods: ["4"]),
+            Self.row(2, "room", periods: ["3"], values: ["room": "TR-313"]),
+        ])
+        let whole = try Self.changes([
+            Self.row(1, "cancelled"),
+            Self.row(2, "start", periods: ["7", "8"], values: ["start": "14:40"]),
+        ])
+        let morning = ["2", "3", "4"]
+
+        let kept = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: morning, on: Self.thursday, changes: partly))
+        #expect(!kept.isCancelled)
+        #expect(kept.periods == morning)
+        #expect(kept.start == Self.at("09:10") && kept.end == Self.at("12:10"))
+        #expect(kept.hasChangedRoom && kept.room == "TR-313")
+        let gone = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: morning, on: Self.thursday, changes: whole))
+        #expect(gone.isCancelled && !gone.hasChangedRoom && !gone.hasChangedTime)
+        let afternoon = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["7", "8"], on: Self.thursday, changes: whole))
+        #expect(afternoon.hasChangedTime && afternoon.start == Self.at("14:40") && afternoon.end == Self.at("16:20"))
+        #expect(CourseTimeSlot.changedMeetings(of: Self.course(), on: Self.thursday, changes: partly).map(\.periods) == [morning])
+    }
+
+    @Test func theChangesListShowsUpcomingDaysEarliestFirstAndAtMostEight() throws {
+        let thursdays = (-1...9).map { offset in
+            SharedTaipei.dayKey(for: Self.thursday.addingTimeInterval(Double(offset) * 7 * 86400))
+        }
+        let changes = try Self.changes(
+            thursdays.reversed().enumerated().map { Self.row($0.offset, "cancelled", days: [$0.element]) }
+                + [Self.row(99, "room", days: ["2026-11-06"], values: ["room": "TR-313"])]
+        )
+
+        let rows = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.at("23:00"), changes: changes)
+        #expect(rows.map { SharedTaipei.dayKey(for: $0.day) } == Array(thursdays[1...8]))
+        #expect(rows.allSatisfy { $0.meetings.count == 2 && $0.meetings.allSatisfy { $0.isCancelled } })
+    }
+
+    @Test func theTimeLineCrossesAPeriodByItsShareAndSitsInTheGapBetweenTwo() {
+        let periods = [(start: 490, end: 540), (start: 550, end: 600), (start: 800, end: 850)]
+        func offset(_ minute: Int) -> CGFloat? {
+            TimetableGridView.nowLineOffset(minute: minute, periods: periods, rowPitch: 55, cellHeight: 52)
+        }
+
+        #expect(offset(489) == nil)
+        #expect(offset(515) == 26)
+        #expect(offset(545) == 53.5)
+        #expect(offset(700) == 108.5)
+        #expect(offset(825) == 136)
+        #expect(offset(851) == nil)
+    }
+
     @Test func theStoreSendsItsETagKeepsItsCopyOnA304AndReplacesItOnA200() async throws {
         let savedCache = Defaults[.courseChangesCache]
         let savedTag = Defaults[.courseChangesETag]

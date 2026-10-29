@@ -30,7 +30,8 @@ struct ClassTableExportView: View {
             TimetableGridView(
                 viewModel: viewModel,
                 showsAssignmentBadges: false,
-                differentiateWithoutColor: differentiateWithoutColor
+                differentiateWithoutColor: differentiateWithoutColor,
+                showsThisWeek: false
             )
         }
         .padding(.vertical, TigerDuckTheme.Spacing.lg)

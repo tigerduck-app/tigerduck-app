@@ -13,6 +13,8 @@ final class ClassTableViewModel {
     var selectedWeekday: Int? = nil
     var selectedPeriodId: String? = nil
     var selectedCoursePeriods: [String]? = nil
+    var selectedDate: Date? = nil
+    var courseChanges: CourseChanges = .cached
 
     var currentSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
@@ -282,6 +284,7 @@ final class ClassTableViewModel {
         if let shownPerson {
             reloadCurrentSemesterCourses()
             courses = shownPerson.courses(in: currentSemester)
+            courseChanges = .cached
             return
         }
         guard !followNewestSemesterIfUnpicked() else { return }
@@ -296,6 +299,7 @@ final class ClassTableViewModel {
             DataCache.shared.loadUserAddedCourses(semester: currentSemester)
         )
         assignments = DataCache.shared.loadAssignments()
+        courseChanges = .cached
     }
 
     var shownTable: ImportedClassTableStore.ShownTable { importedTables.shownTable }

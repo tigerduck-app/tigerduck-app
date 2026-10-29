@@ -22,6 +22,10 @@ nonisolated struct CourseChange: Equatable, Sendable {
     func covers(_ period: String) -> Bool {
         periods?.contains(period) ?? true
     }
+
+    func note(for locale: Locale = .current) -> String? {
+        locale.language.languageCode?.identifier == "zh" ? noteZh ?? noteEn : noteEn ?? noteZh
+    }
 }
 
 /// The current term's course changes from `/v3/calendar/course-changes`, by course and class day.
@@ -38,6 +42,11 @@ nonisolated struct CourseChanges: Equatable, Sendable {
 
     func changes(courseNo: String, on day: Date) -> [CourseChange] {
         byCourseDay[Key(courseNo: courseNo, day: AcademicCalendar.startOfDay(day))] ?? []
+    }
+
+    /// The class days the course has changes on, earliest first.
+    func days(courseNo: String) -> [Date] {
+        byCourseDay.keys.filter { $0.courseNo == courseNo }.map(\.day).sorted()
     }
 
     func isCancelled(courseNo: String, on day: Date, period: String) -> Bool {

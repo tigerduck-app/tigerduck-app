@@ -26,6 +26,57 @@ struct CourseTimeSlot: Identifiable, Equatable {
             ?? course.classroom(weekday: date.scheduleWeekday, periods: periods)
     }
     var isSkippedOrCancelled: Bool { isCancelled || course.isSkipped(on: date) }
+    var hasChangedRoom: Bool { changes.contains { $0.kind == .room } }
+    var hasChangedTime: Bool { originalStart != nil || originalEnd != nil }
+
+    /// A timetable meeting on one day as the school changed it. A cancellation of some of its
+    /// periods leaves it standing; a room, time or note over any of them applies.
+    static func meeting(
+        of course: SDCourse, periods: [String], on date: Date, changes: CourseChanges = .cached
+    ) -> CourseTimeSlot? {
+        let parts = buildSlots(from: [course], weekday: date.scheduleWeekday, on: date, changes: changes)
+            .filter { $0.periods.contains(where: periods.contains) }
+        guard let first = parts.first, let last = parts.last else { return nil }
+        let isCancelled = parts.allSatisfy(\.isCancelled)
+        var merged: [CourseChange] = []
+        for change in parts.flatMap(\.changes)
+        where (isCancelled || change.kind != .cancelled) && !merged.contains(where: { $0.id == change.id }) {
+            merged.append(change)
+        }
+        return CourseTimeSlot(
+            id: first.id, course: course, start: first.start, end: last.end, date: date,
+            periods: parts.flatMap(\.periods), changes: merged,
+            originalStart: first.originalStart, originalEnd: last.originalEnd
+        )
+    }
+
+    /// The course's timetable meetings on a day that carry a change.
+    static func changedMeetings(of course: SDCourse, on date: Date, changes: CourseChanges = .cached) -> [CourseTimeSlot] {
+        let weekday = date.scheduleWeekday
+        var left = (course.schedule[weekday] ?? []).sortedByPeriodOrder()
+        var meetings: [CourseTimeSlot] = []
+        while let period = left.first, let block = course.block(weekday: weekday, at: period) {
+            left.removeAll(where: block.contains)
+            if let meeting = meeting(of: course, periods: block, on: date, changes: changes), !meeting.changes.isEmpty {
+                meetings.append(meeting)
+            }
+        }
+        return meetings
+    }
+
+    /// The days from `today` on that change one of the course's meetings, earliest first.
+    static func upcomingChanges(
+        of course: SDCourse, from today: Date, changes: CourseChanges = .cached, limit: Int = 8
+    ) -> [(day: Date, meetings: [CourseTimeSlot])] {
+        let start = AcademicCalendar.startOfDay(today)
+        return Array(
+            changes.days(courseNo: course.courseNo).lazy
+                .filter { $0 >= start }
+                .map { (day: $0, meetings: changedMeetings(of: course, on: $0, changes: changes)) }
+                .filter { !$0.meetings.isEmpty }
+                .prefix(limit)
+        )
+    }
 
     static func buildSlots(
         from courses: [SDCourse],
