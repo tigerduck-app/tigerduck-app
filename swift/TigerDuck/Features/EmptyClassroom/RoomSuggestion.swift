@@ -26,11 +26,12 @@ extension ClassStop {
             return runs.compactMap { run in
                 let originals = run.positions.map { slot.periods[$0] }
                 // A changed time sets the hours the class holds; its rooms keep their order and
-                // share those hours as they shared the timetable periods.
-                let periods = hours.map { hours in
-                    hours.indices
-                        .filter { run.positions.contains($0 * slot.periods.count / hours.count) }
-                        .map { hours[$0] }
+                // share those hours as they shared the timetable periods, each room at least one.
+                let periods = hours.map { hours -> [Int] in
+                    guard let first = run.positions.first, let last = run.positions.last, !hours.isEmpty else { return [] }
+                    let count = slot.periods.count
+                    let low = first * hours.count / count
+                    return Array(hours[low...max(low, ((last + 1) * hours.count - 1) / count)])
                 } ?? originals.compactMap { EmptyClassroomSchedule.periodIDs.firstIndex(of: $0) }
                 return stop(
                     slot,
