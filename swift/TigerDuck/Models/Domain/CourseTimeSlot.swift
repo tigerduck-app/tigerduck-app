@@ -90,8 +90,9 @@ struct CourseTimeSlot: Identifiable, Equatable {
             changes.first { $0.kind == .room && $0.covers(period) }?.room
         }
 
-        /// Runs of periods alike in cancellation and room. The outer ones meet the meeting's own
-        /// start and end; inner boundaries keep the timetable times, clamped into the meeting.
+        /// Runs of periods alike in cancellation and room. Inner boundaries keep the timetable
+        /// times, clamped into the meeting; a run left empty is dropped, and the outer surviving
+        /// ones meet the meeting's own start and end.
         func fragments() -> [CourseTimeSlot] {
             var runs: [[String]] = []
             for period in periods {
@@ -101,22 +102,26 @@ struct CourseTimeSlot: Identifiable, Equatable {
                     runs.append([period])
                 }
             }
-            return runs.enumerated().compactMap { index, run in
+            let pieces = runs.enumerated().compactMap { index, run -> (run: [String], start: Date, end: Date, ownStart: Date, ownEnd: Date)? in
                 guard let ownStart = CourseTimeSlot.periodTime(run[0], end: false, on: date),
                       let ownEnd = CourseTimeSlot.periodTime(run[run.count - 1], end: true, on: date) else { return nil }
-                let fragmentStart = index == 0 ? start : min(max(ownStart, start), end)
-                let fragmentEnd = index == runs.count - 1 ? end : min(max(ownEnd, start), end)
-                guard fragmentStart < fragmentEnd else { return nil }
+                let pieceStart = index == 0 ? start : min(max(ownStart, start), end)
+                let pieceEnd = index == runs.count - 1 ? end : min(max(ownEnd, start), end)
+                return pieceStart < pieceEnd ? (run, pieceStart, pieceEnd, ownStart, ownEnd) : nil
+            }
+            return pieces.enumerated().map { index, piece in
+                let fragmentStart = index == 0 ? start : piece.start
+                let fragmentEnd = index == pieces.count - 1 ? end : piece.end
                 return CourseTimeSlot(
-                    id: "\(course.courseNo)_\(dayKey)_\(run[0])",
+                    id: "\(course.courseNo)_\(dayKey)_\(piece.run[0])",
                     course: course,
                     start: fragmentStart,
                     end: fragmentEnd,
                     date: date,
-                    periods: run,
-                    changes: changes.filter { $0.kind == .start || $0.kind == .end || run.contains(where: $0.covers) },
-                    originalStart: fragmentStart == ownStart ? nil : ownStart,
-                    originalEnd: fragmentEnd == ownEnd ? nil : ownEnd
+                    periods: piece.run,
+                    changes: changes.filter { $0.kind == .start || $0.kind == .end || piece.run.contains(where: $0.covers) },
+                    originalStart: fragmentStart == piece.ownStart ? nil : piece.ownStart,
+                    originalEnd: fragmentEnd == piece.ownEnd ? nil : piece.ownEnd
                 )
             }
         }
@@ -156,11 +161,9 @@ struct CourseTimeSlot: Identifiable, Equatable {
         }
     }
 
-    /// The meetings as one slot: the span of their fragments, the times their own changes set
-    /// and cancelled only when every period is.
+    /// The meetings as one slot: their own start and end, and cancelled only when every period is.
     private static func merged(_ meetings: [Meeting]) -> CourseTimeSlot? {
         guard let first = meetings.first, let last = meetings.last else { return nil }
-        let fragments = meetings.flatMap { $0.fragments() }
         let isCancelled = meetings.allSatisfy { meeting in meeting.periods.allSatisfy(meeting.isCancelled) }
         var merged: [CourseChange] = []
         for change in meetings.flatMap(\.changes)
@@ -170,8 +173,8 @@ struct CourseTimeSlot: Identifiable, Equatable {
         return CourseTimeSlot(
             id: "\(first.course.courseNo)_\(first.dayKey)_\(first.periods[0])",
             course: first.course,
-            start: fragments.map(\.start).min() ?? first.start,
-            end: fragments.map(\.end).max() ?? last.end,
+            start: first.start,
+            end: last.end,
             date: first.date,
             periods: meetings.flatMap(\.periods),
             changes: merged,

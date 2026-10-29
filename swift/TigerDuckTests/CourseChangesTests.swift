@@ -179,6 +179,25 @@ struct CourseChangesTests {
         #expect(meeting.start == Self.at("10:30") && meeting.originalStart == Self.at("09:10"))
     }
 
+    @Test func aDroppedOuterFragmentLeavesTheMeetingTimesOnTheNextOne() throws {
+        let changes = try Self.changes([
+            Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "10:05"]),
+            Self.row(2, "end", periods: ["7", "8"], values: ["end": "15:15"]),
+            Self.row(3, "room", periods: ["3", "4", "7"], values: ["room": "TR-313"]),
+        ])
+
+        let slots = Self.slots(changes)
+        #expect(slots.map(\.periods) == [["3", "4"], ["7"]])
+        #expect(slots.map(\.start) == [Self.at("10:05"), Self.at("14:20")])
+        #expect(slots.map(\.end) == [Self.at("12:10"), Self.at("15:15")])
+        #expect(slots.map(\.originalStart) == [Self.at("10:20"), nil])
+        #expect(slots.map(\.originalEnd) == [nil, Self.at("15:10")])
+        let moved = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["3"], on: Self.thursday, changes: changes))
+        #expect(moved.start == Self.at("10:05") && moved.end == Self.at("12:10"))
+        let shortened = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["7"], on: Self.thursday, changes: changes))
+        #expect(shortened.start == Self.at("14:20") && shortened.end == Self.at("15:15"))
+    }
+
     @Test func aTimeChangeThatWouldEndBeforeItStartsIsDroppedButTheRestStays() throws {
         let changes = try Self.changes([
             Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "15:00"]),
