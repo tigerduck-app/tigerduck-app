@@ -19,6 +19,8 @@ struct CourseDetailSheet: View {
     /// A current-term day the sheet shows: its cards carry that day's changes and the coming ones
     /// are listed. Nil, as for another term, shows the weekly timetable alone.
     var date: Date? = nil
+    /// The class tapped on Home, which the cards show as it is rather than its whole meeting.
+    var slot: CourseTimeSlot? = nil
     var moodlePath: Binding<[MoodleCourseRoute]>? = nil
     var showsMoodle = true
     private let changes = CourseChanges.cached
@@ -240,9 +242,17 @@ struct CourseDetailSheet: View {
     }
 
     private var shownMeeting: CourseTimeSlot? {
-        guard let date, let periods = periods ?? course.schedule[date.scheduleWeekday] else { return nil }
-        return CourseTimeSlot.meeting(of: course, periods: periods, on: date, changes: changes)
-            .flatMap { $0.changes.isEmpty ? nil : $0 }
+        Self.shownMeeting(of: course, slot: slot, periods: periods, on: date, changes: changes)
+    }
+
+    static func shownMeeting(
+        of course: SDCourse, slot: CourseTimeSlot?, periods: [String]?, on date: Date?, changes: CourseChanges
+    ) -> CourseTimeSlot? {
+        let meeting = slot ?? date.flatMap { date in
+            (periods ?? course.schedule[date.scheduleWeekday])
+                .flatMap { CourseTimeSlot.meeting(of: course, periods: $0, on: date, changes: changes) }
+        }
+        return meeting.flatMap { $0.changes.isEmpty ? nil : $0 }
     }
 
     private static func changedTime(_ meeting: CourseTimeSlot) -> String? {
@@ -381,7 +391,7 @@ struct CourseDetailSheet: View {
     private static func changeSummary(_ meetings: [CourseTimeSlot], besides shown: CourseTimeSlot?) -> String {
         var parts: [String] = []
         for meeting in meetings {
-            if let shown, meeting.periods == shown.periods,
+            if let shown, meeting.periods.contains(where: shown.periods.contains),
                AcademicCalendar.startOfDay(meeting.date) == AcademicCalendar.startOfDay(shown.date) {
                 continue
             }

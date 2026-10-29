@@ -393,6 +393,26 @@ struct CourseChangesTests {
         #expect(CourseDetailSheet.changeRows(days, besides: nextWeek).map { $0.summary } == ["TR-313", "Quiz"])
     }
 
+    @Test func aTappedClassShowsItsOwnChangesWhileATimetableBlockShowsItsMeeting() throws {
+        let changes = try Self.changes([
+            Self.row(1, "cancelled", periods: ["2"]),
+            Self.row(2, "room", periods: ["4"], values: ["room": "TR-313"]),
+        ])
+        let slots = Self.slots(changes)
+        #expect(slots.map(\.periods) == [["2"], ["3"], ["4"], ["7", "8"]])
+        func shown(_ slot: CourseTimeSlot?, periods: [String]? = nil) -> CourseTimeSlot? {
+            CourseDetailSheet.shownMeeting(of: Self.course(), slot: slot, periods: periods, on: Self.thursday, changes: changes)
+        }
+
+        #expect(shown(slots[0])?.isCancelled == true)
+        #expect(shown(slots[1]) == nil)
+        #expect(shown(slots[2])?.room == "TR-313")
+        let block = try #require(shown(nil, periods: ["2", "3", "4"]))
+        #expect(block.periods == ["2", "3", "4"] && !block.isCancelled && block.room == "TR-313")
+        let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
+        #expect(CourseDetailSheet.changeRows(days, besides: shown(slots[2])).isEmpty)
+    }
+
     @Test func theTimeLineCrossesAPeriodByItsShareAndSitsInTheGapBetweenTwo() {
         let periods = [(start: 490, end: 540), (start: 550, end: 600), (start: 800, end: 850)]
         func offset(_ minute: Int) -> CGFloat? {
