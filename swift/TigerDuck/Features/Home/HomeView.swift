@@ -89,7 +89,8 @@ struct HomeView: View {
                 assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
                 timeRange: slot.map { "\($0.start.timeString) - \($0.end.timeString)" },
                 weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday,
-                periods: slot?.periods
+                periods: slot?.periods,
+                date: slot?.date
             )
             .linkRouting()
             .onDisappear { viewModel.selectedCourseSlot = nil }
