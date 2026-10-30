@@ -443,29 +443,19 @@ struct ClassTableShareSheetTests {
         let boundingBox: CGRect
     }
 
-    /// The lines Vision reads in `image`, recognized on a GCD thread while the caller awaits. One
-    /// recognition takes 15 seconds to over a minute on a CI runner, and every other test waits on
-    /// the main actor (https://github.com/tigerduck-app/tigerduck-app/issues/530). A detached task
-    /// would hold one of the cooperative pool's threads instead, a third of a CI runner's.
     private nonisolated static func lines(in image: CGImage, words: [String]) async throws -> [RecognizedLine] {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let request = VNRecognizeTextRequest()
-                request.recognitionLevel = .accurate
-                // Vision reads mostly its first language: English first misses a Chinese screen.
-                let chinese = Bundle.main.preferredLocalizations.first?.hasPrefix("zh") == true
-                request.recognitionLanguages = chinese ? ["zh-Hant", "en-US"] : ["en-US", "zh-Hant"]
-                request.usesLanguageCorrection = false
-                request.customWords = words
-                do {
-                    try VNImageRequestHandler(cgImage: image).perform([request])
-                    continuation.resume(returning: (request.results ?? []).compactMap { observation in
-                        observation.topCandidates(1).first.map {
-                            RecognizedLine(text: $0.string, boundingBox: observation.boundingBox)
-                        }
-                    })
-                } catch {
-                    continuation.resume(throwing: error)
+        try await onGlobalQueue {
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            // Vision reads mostly its first language: English first misses a Chinese screen.
+            let chinese = Bundle.main.preferredLocalizations.first?.hasPrefix("zh") == true
+            request.recognitionLanguages = chinese ? ["zh-Hant", "en-US"] : ["en-US", "zh-Hant"]
+            request.usesLanguageCorrection = false
+            request.customWords = words
+            try VNImageRequestHandler(cgImage: image).perform([request])
+            return (request.results ?? []).compactMap { observation in
+                observation.topCandidates(1).first.map {
+                    RecognizedLine(text: $0.string, boundingBox: observation.boundingBox)
                 }
             }
         }

@@ -351,7 +351,7 @@ struct ClassTableImportModelTests {
         let text = try Self.code("B11300001")
         let image = try Self.qrImage(text)
 
-        #expect(ClassTableImportModel.qrPayloads(in: image) == [text])
+        #expect(try await onGlobalQueue { ClassTableImportModel.qrPayloads(in: image) } == [text])
         let model = makeModel()
         await model.readImage(image)
         #expect(model.pending?.code.studentId == "B11300001")
