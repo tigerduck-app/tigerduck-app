@@ -1042,6 +1042,30 @@ struct DepartingSessionTests {
         #expect(try Self.kept(backend) == nil)
     }
 
+    @Test("a session kept on a cleartext backend is retried only while that backend is in use")
+    func aCleartextSessionIsRetriedOnlyWhileInUse() async throws {
+        let backend = BackendFixture(
+            accessTokenExpiry: Date.now.addingTimeInterval(600),
+            baseURL: URL(string: "http://settings-stub.invalid/\(UUID().uuidString)/v3")!
+        )
+        _ = await backend.manager.endSession()
+        let unregistered = OSAllocatedUnfairLock(initialState: [URL]())
+        let unregister: @MainActor @Sendable (URL) async -> Bool = { url in
+            unregistered.withLock { $0.append(url) }
+            return true
+        }
+
+        await backend.relaunched(at: SettingsAPIStub.uniqueBaseURL()).retryDepartingUnregister(unregister)
+        #expect(SettingsAPIStub.requests(for: backend.refreshURL).isEmpty)
+
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+        await backend.relaunched().retryDepartingUnregister(unregister)
+
+        #expect(try backend.sentRefreshTokens() == ["R0"])
+        #expect(unregistered.withLock { $0 } == [backend.baseURL])
+        #expect(try Self.kept(backend) == nil)
+    }
+
     @Test("a kept session the backend turns down is forgotten")
     func aTurnedDownSessionIsForgotten() async throws {
         let backend = await Self.signedOut()
@@ -1783,9 +1807,9 @@ struct BackendFixture {
     init(
         signedIn: Bool = true,
         accessTokenExpiry: Date = Date(timeIntervalSince1970: 0),
-        refreshTimeout: TimeInterval = 600
+        refreshTimeout: TimeInterval = 600,
+        baseURL: URL = SettingsAPIStub.uniqueBaseURL()
     ) {
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
         self.baseURL = baseURL
         refreshURL = baseURL.appendingPathComponent("auth/refresh")
         loginURL = baseURL.appendingPathComponent("auth/login")

@@ -306,8 +306,18 @@ actor AuthTokenManager {
         return server(one) == server(other)
     }
 
+    /// Whether a launch sends the session kept on `kept`. While signed in, one on the backend in use
+    /// went to the new account with the device. One on a cleartext backend goes out only while that
+    /// backend is in use: on another network its private address may name another host.
+    nonisolated static func retriesKeptSession(on kept: URL, signedIn: Bool, backend: URL) -> Bool {
+        let inUse = isSameBackend(kept, backend)
+        return (!signedIn || !inUse) && (kept.scheme?.lowercased() != "http" || inUse)
+    }
+
     func retryDepartingUnregister(_ unregister: @MainActor @Sendable (_ backend: URL) async -> Bool) async {
-        for session in storedDepartingSessions() where keepsAlongside(session) {
+        let backend = baseURLProvider()
+        for session in storedDepartingSessions()
+        where Self.retriesKeptSession(on: session.baseURL, signedIn: refreshToken != nil, backend: backend) {
             guard let token = await departingAccessToken(for: session) else { continue }
             let target = session.baseURL
             await unregisterDeparting(session, accessToken: token) { await unregister(target) }

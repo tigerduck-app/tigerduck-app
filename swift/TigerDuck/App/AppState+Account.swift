@@ -114,10 +114,8 @@ extension AppState {
         #endif
     }
 
-    /// A sign-in hands the device on its backend to the new account, so while signed in only a
-    /// session kept on another backend still has an unregister to send.
     nonisolated static func retriesDepartingUnregister(onboarded: Bool, signedIn: Bool, keptOn: [URL], backend: URL) -> Bool {
-        onboarded && keptOn.contains { !signedIn || !AuthTokenManager.isSameBackend($0, backend) }
+        onboarded && keptOn.contains { AuthTokenManager.retriesKeptSession(on: $0, signedIn: signedIn, backend: backend) }
     }
 
     func signOutDeletesUnsyncedData() async -> Bool {
