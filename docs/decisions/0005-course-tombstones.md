@@ -61,5 +61,11 @@ with no rows for the term and a tombstone for every course it held.
   delete lands. Until then the server still lists it, and the reconcile keeps it hidden here for
   as long as its delete is queued (`CloudSyncCoordinator.pendingCourseDeleteKeys`). A hand-added
   course whose delete the outbox gives up on comes back, as nothing hides it.
+- The outbox sends a course delete with the time the hide was made (`hlc`), and a course add as
+  a protocol-2 upload of that course alone with its time in `adds`. The backend applies either
+  only when that time is later than the course's last add, hide and reset, so an edit that waited
+  in the outbox, or a retry after a lost reply, does not undo a newer one from another device
+  (tigerduck-app/tigerduck-app#689). One the backend refuses as ahead of its clock goes again
+  without its time and counts from when it arrives.
 - A hand-added course deleted before this rule keeps its local hide, since nothing recorded
   which hides came from one.
