@@ -161,6 +161,32 @@ struct ScheduleSendNowTests {
         await push.disable()
     }
 
+    private final class TokenSource: PushTokenSource {
+        var forwardToken: ((Data) -> Void)?
+        var forwardError: ((Error) -> Void)?
+        var onSyncTrigger: (() async -> FullSyncOutcome)?
+    }
+
+    @Test("After a sign-in or a new push token, the same list goes again")
+    func theSameListGoesAfterARegistration() async {
+        let backend = Backend()
+        for _ in 0..<3 { SettingsAPIStub.enqueue(Self.ok, for: backend.schedule) }
+        let push = Self.coordinator(backend)
+        let tokens = TokenSource()
+        push.bindTokenForwarding(tokens)
+        push.enable()
+        await push.syncNow { Self.inputs }
+
+        push.refreshRegistrationAfterAuth()
+        await push.syncNow { Self.inputs }
+        #expect(backend.sent().count == 2)
+
+        tokens.forwardToken?(Data([1, 2, 3]))
+        await push.syncNow { Self.inputs }
+        #expect(backend.sent().count == 3)
+        await push.disable()
+    }
+
     @Test("A sync trigger's handler sends the schedule only after a sync that synced, with the app in the background",
           arguments: [FullSyncOutcome.synced, .skipped, .failed],
           [UIApplication.State.background, .inactive, .active])

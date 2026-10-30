@@ -89,6 +89,7 @@ final class PushCoordinator {
     func bindTokenForwarding(_ appDelegate: some PushTokenSource) {
         appDelegate.forwardToken = { [weak self] data in
             guard let self else { return }
+            scheduleSync.forgetAcceptedList()
             Task { await self.registration.update(deviceToken: data) }
         }
         appDelegate.forwardError = { [weak self] error in
@@ -335,7 +336,10 @@ final class PushCoordinator {
         try await apiClient.deleteCourse(courseKey: courseKey)
     }
 
+    /// A new session or device registration may come to a server without this device's schedule,
+    /// so the next list goes up even when unchanged.
     func refreshRegistrationAfterAuth() {
+        scheduleSync.forgetAcceptedList()
         if stoppedBySignOut {
             stoppedBySignOut = false
             enable()
