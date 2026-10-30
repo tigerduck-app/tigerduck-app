@@ -66,7 +66,7 @@ struct BulletinCardView: View {
     private func summaryRow(policy: VisualStylePolicy) -> some View {
         if let summary = bulletin.summary, !summary.isEmpty {
             Text(summary)
-                .font(summaryFont(policy: policy))
+                .font(policy.cardBodyFont)
                 .foregroundStyle(Color.textSecondary)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
@@ -108,12 +108,5 @@ struct BulletinCardView: View {
             .padding(.vertical, 2)
             .background(Color.orange.opacity(0.18), in: Capsule())
             .foregroundStyle(Color.orange)
-    }
-
-    private func summaryFont(policy: VisualStylePolicy) -> Font {
-        switch policy.preset {
-        case .default, .tat: return TigerDuckTheme.Typography.body
-        case .iosInspired: return .subheadline
-        }
     }
 }
