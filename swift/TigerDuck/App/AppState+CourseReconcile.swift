@@ -263,12 +263,17 @@ extension AppState {
         }
     }
 
-    /// The term's courses the server lists, read as the reconcile reads them: a course a roster
-    /// dropped is absent unless it was added by hand.
-    static func serverCourseNos(_ rows: [[String: Any]], semester: String, userAdded: [SDCourse]) -> Set<String> {
+    /// The term's courses on the server and here as turning sync back on compares them, read as the
+    /// reconcile reads them: a course a roster dropped is on neither side unless it was added by
+    /// hand here, as the next sync takes it out of the courses fetched here.
+    static func reenableCourseNos(
+        _ rows: [[String: Any]], semester: String, local: Set<String>, userAdded: [SDCourse],
+        liveAnswer: CourseSelectionService.LiveAnswer?
+    ) -> (server: Set<String>, local: Set<String>) {
         let termRows = rows.filter { $0["semester"] as? String == semester }
-        let kept = keptRows(termRows, semester: semester, dropped: [], userAdded: userAdded)
-        return Set(kept.compactMap { $0["course_no"] as? String })
+        let kept = keptRows(termRows, semester: semester, dropped: [], userAdded: userAdded, liveAnswer: liveAnswer)
+        let server = Set(kept.compactMap { $0["course_no"] as? String })
+        return (server, local.subtracting(droppedOnServer(termRows, liveAnswer: liveAnswer).subtracting(server)))
     }
 
     /// The courses a roster dropped on the server, less one course selection here listed live

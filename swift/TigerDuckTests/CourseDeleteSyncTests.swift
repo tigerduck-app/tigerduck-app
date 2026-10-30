@@ -332,8 +332,8 @@ struct CourseDeleteSyncTests {
         #expect(AppState.coursesOnOneSide(server: ["EE2"], local: [], semester: "1151", deleting: []) == nil)
     }
 
-    @Test("The courses re-enable check reads a course a roster dropped as gone from the server, unless added by hand here")
-    func droppedCourseIsNoServerOnlyCourse() {
+    @Test("The courses re-enable check reads a course a roster dropped as gone from both sides, unless added by hand here")
+    func droppedCourseIsOnNeitherSide() {
         let rows: [[String: Any]] = [
             ["semester": "1151", "course_no": "CS1", "enrollment_status": "enrolled"],
             ["semester": "1151", "course_no": "EE2", "enrollment_status": "dropped"],
@@ -342,10 +342,13 @@ struct CourseDeleteSyncTests {
         ]
         let addedHere = [SDCourse(courseNo: "GE3", courseName: "GE3", semester: "1151")]
 
-        let server = AppState.serverCourseNos(rows, semester: "1151", userAdded: addedHere)
+        let compared = AppState.reenableCourseNos(
+            rows, semester: "1151", local: ["CS1", "EE2", "GE3"], userAdded: addedHere, liveAnswer: nil
+        )
 
-        #expect(server == ["CS1", "GE3"])
-        #expect(AppState.coursesOnOneSide(server: server, local: ["CS1", "GE3"], semester: "1151", deleting: [])
+        #expect(compared.server == ["CS1", "GE3"])
+        #expect(compared.local == ["CS1", "GE3"])
+        #expect(AppState.coursesOnOneSide(server: compared.server, local: compared.local, semester: "1151", deleting: [])
             .map { [$0.localOnly, $0.serverOnly] } == [0, 0])
     }
 
