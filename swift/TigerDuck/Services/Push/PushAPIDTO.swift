@@ -242,12 +242,16 @@ enum PushAPI {
         /// Sent with `X-TigerSync-Protocol: 2`, under which the backend reads them in place of
         /// `forceKeys` and files the rest of `courses` as the school's roster.
         var adds: [CourseAdd]?
+        /// The terms whose listed courses are the school's whole roster; the backend drops the
+        /// school courses of those terms that the upload leaves out.
+        var rosterTerms: [String]?
 
         enum CodingKeys: String, CodingKey {
             case courses
             case courseOverrides = "course_overrides"
             case forceKeys = "force_keys"
             case adds
+            case rosterTerms = "roster_terms"
         }
     }
 

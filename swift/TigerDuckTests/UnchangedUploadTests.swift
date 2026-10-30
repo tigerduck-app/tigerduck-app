@@ -61,6 +61,20 @@ struct UnchangedUploadTests {
         #expect(one != moved)
     }
 
+    @Test("A roster names its terms in roster_terms, and is another list than the same courses sent without")
+    func rosterTermsGoUpAndCount() throws {
+        let plain = Self.courses(Self.entry("CS1"))
+        var roster = plain
+        roster.rosterTerms = ["1151"]
+
+        let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(roster)) as? [String: Any]
+        let sentPlain = try JSONSerialization.jsonObject(with: JSONEncoder().encode(plain)) as? [String: Any]
+
+        #expect(sent?["roster_terms"] as? [String] == ["1151"])
+        #expect(sentPlain?["roster_terms"] == nil)
+        #expect(PushCoordinator.fingerprint(of: roster) != PushCoordinator.fingerprint(of: plain))
+    }
+
     @Test("An unchanged list is skipped; force keys, a resend, a reset and another term still go")
     func unchangedListIsSkipped() async throws {
         let backend = Backend()

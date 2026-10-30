@@ -309,7 +309,8 @@ final class PushCoordinator {
     static func fingerprint(of request: PushAPI.CourseUploadRequest) -> Int {
         encodedFingerprint(PushAPI.CourseUploadRequest(
             courses: request.courses.sorted { $0.courseNo < $1.courseNo },
-            courseOverrides: request.courseOverrides.sorted { $0.courseKey < $1.courseKey }
+            courseOverrides: request.courseOverrides.sorted { $0.courseKey < $1.courseKey },
+            rosterTerms: request.rosterTerms?.sorted()
         ))
     }
 
