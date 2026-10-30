@@ -20,7 +20,7 @@
 
 ## 3. Backend release and deploy
 
-- [ ] 3.1 Bump to 3.10.1, open the release PR, deploy with backup, start check and post-check; verify the post-check passes and the class reminder scan files nothing for `dropped` rows
+- [x] 3.1 Bump to 3.10.1, open the release PR, deploy with backup, start check and post-check; verify the post-check passes and the class reminder scan files nothing for `dropped` rows
 
 ## 4. iOS release
 
