@@ -83,6 +83,24 @@ iOS can ship first: the backend ignores `roster_terms` until it reads it, and th
 already in the snapshot. The backend change can ship before or after; until then the hand
 corrections hold, because today's upsert does not touch the status either.
 
+### D9. The backend asks for a roster instead of fetching one
+The backend has no school password, so it cannot read course selection. It records when each
+user's roster for a term last arrived (a small table keyed by user and term, written by a roster
+upload) and lists the current term in `/v3/sync/full`'s `roster_requests` when that is older than
+7 days (a setting). The app answers with a fresh course selection fetch and an upload that skips
+the unchanged-fingerprint check.
+- Lost: having the app upload a roster on every fetch. The policy would live in two apps instead
+  of one place, and every refresh would cost an upload.
+- Lost: reading Moodle on the backend. Moodle keeps a dropped class in its course list, so it
+  cannot show a drop; sites that are not classes (language tests and the like) would need a
+  filter as well.
+
+### D10. Retire released versions with 410 after the fix ships
+iOS has shown an "update required" alert on any 410 since 2.0.2 (`APIVersionGate`). Once both
+fixed apps are out, the backend answers sync requests from devices below a minimum version
+(`user_devices.app_version`) with 410. The minimum and the date are set then, with the owner.
+- Lost: retiring now. Students would be asked to update before a fixed version exists.
+
 ## Risks / Trade-offs
 
 - [Course selection answers with a partial list] → the device drops a real course until its next
@@ -108,4 +126,6 @@ corrections hold, because today's upsert does not touch the status either.
 ## Open Questions
 
 - Whether past terms' stale rows should be retired too, for the course changes query, once a
-  device sends a past-term roster (iOS rebuilds past terms from the final transcript, D1).
+  device sends a past-term roster (iOS rebuilds past terms from the final transcript, D1). The
+  owner agreed to leave them for now.
+- The minimum app version and the date for D10.

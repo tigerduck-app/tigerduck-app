@@ -85,6 +85,31 @@ Activities, class reminders and widgets SHALL NOT be built from it.
 - **WHEN** a device merged C from the backend before C was dropped
 - **THEN** after its next sync C is gone from its class table
 
+### Requirement: The backend asks for a stale roster
+`/v3/sync/full` SHALL list the current term in `roster_requests` when no upload with that term in
+`roster_terms` arrived for the user in the last 7 days. Otherwise `roster_requests` SHALL be empty.
+
+#### Scenario: No recent roster
+- **WHEN** the user's last roster for the current term arrived 8 days ago, or never
+- **THEN** the snapshot's `roster_requests` lists the current term
+
+#### Scenario: A recent roster
+- **WHEN** a roster for the current term arrived yesterday
+- **THEN** `roster_requests` is empty
+
+### Requirement: A device answers a roster request
+An app that finds a term in `roster_requests` SHALL fetch that term from course selection afresh
+and, if course selection serves it with a non-empty list, upload it with the term in
+`roster_terms` even when the list did not change since its last upload.
+
+#### Scenario: Unchanged roster on request
+- **WHEN** the snapshot requests term T and course selection returns the same courses the device uploaded before
+- **THEN** the device uploads them again with T in `roster_terms`
+
+#### Scenario: Course selection unavailable on request
+- **WHEN** the snapshot requests term T and course selection does not answer
+- **THEN** the device uploads no roster, and the request stays until a roster arrives
+
 ### Requirement: Backend jobs read enrolled courses only
 Every backend job that reads a student's courses to send class reminders, build a class table or
 resolve course changes SHALL read only `enrolled` courses.

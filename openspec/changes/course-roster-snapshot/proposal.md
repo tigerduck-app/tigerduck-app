@@ -24,7 +24,13 @@ started working on 2026-10-29, students have been getting reminders for courses 
 - Both apps read `enrollment_status` from `/v3/sync/full` and treat a dropped course as absent:
   it is not merged into the class table, a copy merged earlier is removed, and nothing (Live
   Activities, class reminders, widgets) is built from it.
+- The backend asks for a roster it lacks: `/v3/sync/full` names the current term in
+  `roster_requests` when no roster for it arrived in the last 7 days, and an app that sees it
+  fetches course selection afresh and uploads the roster even if it did not change.
 - Backend jobs that build a class table from `user_courses` read enrolled courses only.
+- Once the fixed iOS and Android versions are out, released versions are retired: the backend
+  answers their sync requests with 410, which iOS (from 2.0.2) shows as "update required". The
+  minimum version and the date are set at that point.
 - Production's current-term rows were corrected by hand on 2026-10-30, so no data migration.
 
 This reverses one out-of-scope line of `tigersync-last-writer-wins` ("Removing school rows that a
@@ -42,8 +48,10 @@ None.
 
 ## Out of scope
 
-- Released app versions: they send no `roster_terms`, so their uploads drop nothing, and they
-  keep showing a merged dropped course until they update.
+- Released app versions until they are retired: they send no `roster_terms`, so their uploads
+  drop nothing, and they keep showing a merged dropped course until they update.
+- Reading drops from Moodle on the backend: Moodle keeps a dropped class in its course list (as
+  `Bridge/AppServiceBridge.swift` notes), so it can add courses but cannot show a drop.
 - Delete-path uploads that send the device's whole list: they stay as they are. With the rule
   above they no longer affect enrollment.
 - Past terms' stale rows: the backend sends no reminders for past terms, so they are left.
