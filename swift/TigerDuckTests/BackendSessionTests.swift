@@ -1191,6 +1191,35 @@ struct DepartingSessionTests {
         #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
     }
 
+    @Test("a sign-out after a sign-in refreshes the sign-in's token, not the pair of a refresh still out from before")
+    func aSignOutAfterASignInLeavesTheOlderRefresh() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL
+        )
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "B2", refresh: "BR2"), for: backend.refreshURL)
+        // Inside the sign-out's window, so the sign-out refreshes for its unregister.
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1", expiresIn: 60), for: backend.loginURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+        _ = try await manager.login(
+            studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+
+        let ending = Task { await manager.endSession().accessToken }
+        while await manager.isLoggedIn { try await Task.sleep(for: .milliseconds(5)) }
+        gate.open()
+
+        #expect(await ending.value == "B2")
+        #expect(await refresh.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0", "BR1"])
+        #expect(try Self.kept(backend)?.token == "BR2")
+        #expect(try Self.kept(backend)?.uses == 0)
+    }
+
     @Test("a kept session is refreshed and unregistered on the backend it was kept against, after the endpoint changed")
     func theRetryGoesToTheBackendTheSessionWasKeptAgainst() async throws {
         let backend = await Self.signedOut()
@@ -2105,10 +2134,10 @@ struct BackendFixture {
     }
 
     static func loginReply(
-        access: String, refresh: String, heldBy gate: SettingsAPIStub.ReplyGate? = nil
+        access: String, refresh: String, expiresIn: Int = 900, heldBy gate: SettingsAPIStub.ReplyGate? = nil
     ) -> SettingsAPIStub.StubResponse {
         .init(statusCode: 200, body: Data("""
-            {"access_token":"\(access)","refresh_token":"\(refresh)","token_type":"Bearer","expires_in":900,\
+            {"access_token":"\(access)","refresh_token":"\(refresh)","token_type":"Bearer","expires_in":\(expiresIn),\
             "user":{"id":"user-1","student_id":"B11000000","display_name":null},"device_id":"device-1"}
             """.utf8), gate: gate)
     }

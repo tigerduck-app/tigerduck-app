@@ -139,7 +139,7 @@ actor AuthTokenManager {
         let task = Task { await refresh() }
         refreshTask = task
         let token = await task.value
-        refreshTask = nil
+        if refreshTask == task { refreshTask = nil }
         return token
     }
 
@@ -241,6 +241,8 @@ actor AuthTokenManager {
         let result = try JSONDecoder().decode(LoginResponse.self, from: data)
         guard signInGeneration == generation else { throw CancellationError() }
         store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
+        // A refresh still out is the replaced pair's, so neither a caller nor a sign-out waits on it.
+        refreshTask = nil
         // A session kept on another backend still has the device there; the launch retry sends it.
         let kept = storedDepartingSessions()
         let elsewhere = kept.filter { !Self.isSameBackend($0.baseURL, baseURL) }
@@ -444,15 +446,16 @@ actor AuthTokenManager {
     }
 
     private func refresh() async -> String? {
-        guard refreshToken != nil else { return nil }
+        guard let refreshToken else { return nil }
         let generation = signInGeneration
         let endBackgroundTask = await beginBackgroundTask()
-        let token = await refreshStoredToken(generation: generation)
+        let token = await refreshStoredToken(refreshToken, generation: generation)
         await endBackgroundTask()
         return token
     }
 
-    private func refreshStoredToken(generation: Int) async -> String? {
+    /// Sends only the token it was started for, the one a sign-out counts a refresh still out against.
+    private func refreshStoredToken(_ refreshToken: String, generation: Int) async -> String? {
         struct RefreshResponse: Decodable {
             let access_token: String
             let refresh_token: String
@@ -462,9 +465,8 @@ actor AuthTokenManager {
         // Read before the check: a sign-out holds the tokens before it stores another endpoint.
         // The resend goes where the first send went, whatever endpoint is stored meanwhile.
         let backend = baseURLProvider()
-        guard signInGeneration == generation, signOutsStarting.withLock({ $0 == 0 }), let refreshToken else {
-            return nil
-        }
+        guard signInGeneration == generation, signOutsStarting.withLock({ $0 == 0 }),
+              self.refreshToken == refreshToken else { return nil }
         guard refreshTokenUses < Self.refreshTokenUseLimit else {
             return await signedInAgain(since: generation) ? accessToken : nil
         }
