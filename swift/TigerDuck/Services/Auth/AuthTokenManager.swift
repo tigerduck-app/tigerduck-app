@@ -48,6 +48,7 @@ actor AuthTokenManager {
 
     struct DepartingAccount: Sendable {
         let accessToken: String?
+        var baseURL: URL?
     }
 
     /// One per backend a sign-out could not unregister from yet. `id` names the sign-out that
@@ -228,14 +229,16 @@ actor AuthTokenManager {
         clearTokens()
     }
 
-    func endSession() async -> String? {
+    nonisolated var backend: URL { baseURLProvider() }
+
+    func endSession(on backend: URL? = nil) async -> String? {
         let access = accessToken, refresh = refreshToken, expiry = expiresAt
         let refreshOut = refreshTask, generation = signInGeneration, uses = refreshTokenUses
         logout()
         signOutSession = nil
         guard let refresh else { return nil }
         let departing = DepartingSession(
-            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURLProvider(),
+            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: backend ?? baseURLProvider(),
             id: UUID().uuidString
         )
         signOutSession = departing
@@ -318,7 +321,9 @@ actor AuthTokenManager {
     private func unregisterDeparting(
         _ session: DepartingSession?, accessToken: String?, _ unregister: @MainActor @Sendable () async -> Bool
     ) async {
-        let landed = await Self.$departing.withValue(DepartingAccount(accessToken: accessToken)) {
+        // A token whose session a later sign-out replaced has no known backend, so it goes nowhere.
+        let account = DepartingAccount(accessToken: session == nil ? nil : accessToken, baseURL: session?.baseURL)
+        let landed = await Self.$departing.withValue(account) {
             await unregister()
         }
         if landed, let session { forgetDeparting(session) }

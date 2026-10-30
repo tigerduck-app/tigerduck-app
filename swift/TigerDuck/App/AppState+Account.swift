@@ -67,7 +67,9 @@ extension AppState {
 
         // The order and what each step clears: docs/decisions/0026-one-sign-out-path.md.
         authService.logout()
-        let endingSession = Task { await authTokenManager.endSession() }
+        // Read before any await: an API endpoint change stores the new endpoint once this returns.
+        let backend = authTokenManager.backend
+        let endingSession = Task { await authTokenManager.endSession(on: backend) }
         Self.forgetAccountOnDevice()
         didSkipMacLogin = false
         syncConflicts = []

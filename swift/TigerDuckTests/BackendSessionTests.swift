@@ -1253,6 +1253,41 @@ struct DepartingSessionTests {
         #expect(await manager.validAccessToken() == "B1")
     }
 
+    @Test("a sign-out's unregister goes to the backend that issued its session, though the endpoint changed first")
+    func theSignOutsUnregisterGoesWhereItsSessionWasIssued() async throws {
+        let backend = BackendFixture(accessTokenExpiry: Date.now.addingTimeInterval(600))
+        let manager = backend.relaunched(at: SettingsAPIStub.uniqueBaseURL())
+        let registration = RegistrationFixture(manager: manager, resolvingAsTheApp: true)
+        let unregisterURL = backend.baseURL.appendingPathComponent("devices/test-device")
+        SettingsAPIStub.enqueue(.init(statusCode: 204, body: Data()), for: unregisterURL)
+
+        let token = await manager.endSession(on: backend.baseURL)
+        await manager.unregisterDeparting(accessToken: token) { await registration.service.unregisterDevice() }
+
+        let unregister = try #require(SettingsAPIStub.requests(for: unregisterURL).first)
+        #expect(unregister.value(forHTTPHeaderField: "Authorization") == "Bearer A0")
+        #expect(try Self.kept(backend) == nil)
+    }
+
+    @Test("a sign-out's token whose session a later sign-out replaced is sent nowhere")
+    func aTokenWithoutItsSessionGoesNowhere() async throws {
+        let backend = BackendFixture(accessTokenExpiry: Date.now.addingTimeInterval(600))
+        let manager = backend.manager
+        let token = await manager.endSession()
+        #expect(await manager.endSession() == nil)
+        let sent = OSAllocatedUnfairLock<String?>(initialState: "unset")
+
+        await manager.unregisterDeparting(accessToken: token) {
+            let header = await manager.validAccessToken()
+            sent.withLock { $0 = header }
+            return true
+        }
+
+        #expect(token == "A0")
+        #expect(sent.withLock { $0 } == nil)
+        #expect(try Self.kept(backend)?.token == "R0")
+    }
+
     @Test("the device's unregister lands when answered, or when the account has the device no more",
           arguments: zip([204, 404, 401, 500], [true, true, false, false]))
     func theUnregisterLandsOnlyWhenTheServerHasIt(status: Int, lands: Bool) async {
@@ -1867,7 +1902,8 @@ private struct RegistrationFixture {
     let registerURL: URL
     let unregisterURL: URL
 
-    init(manager: AuthTokenManager, baseURL: URL = SettingsAPIStub.uniqueBaseURL()) {
+    /// `resolvingAsTheApp` sends to `PushServerConfig.resolveServerURL()` instead of `baseURL`.
+    init(manager: AuthTokenManager, baseURL: URL = SettingsAPIStub.uniqueBaseURL(), resolvingAsTheApp: Bool = false) {
         announceURL = baseURL.appendingPathComponent("devices/anonymous")
         registerURL = baseURL.appendingPathComponent("devices/register")
         unregisterURL = baseURL.appendingPathComponent("devices/test-device")
@@ -1876,7 +1912,7 @@ private struct RegistrationFixture {
         service = PushRegistrationService(
             identity: PushIdentity(uuid: "test-device"),
             apiClient: PushAPIClient(
-                baseURLProvider: { baseURL },
+                baseURLProvider: { resolvingAsTheApp ? PushServerConfig.resolveServerURL() : baseURL },
                 session: URLSession(configuration: config),
                 authHeaderProvider: { await manager.authorizationHeader() }
             ),

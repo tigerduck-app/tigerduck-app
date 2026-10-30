@@ -5,7 +5,9 @@ import Foundation
 nonisolated enum PushServerConfig {
 
     static func resolveServerURL() -> URL {
-        resolveServerURL(candidates: [DebugEndpointStore.currentOverride()] + debugEndpoints())
+        // A sign-out's calls carry its session's token, so they go where that session was issued.
+        if let departing = AuthTokenManager.departing?.baseURL { return departing }
+        return resolveServerURL(candidates: [DebugEndpointStore.currentOverride()] + debugEndpoints())
     }
 
     /// The endpoint in use once the user-set override is cleared.

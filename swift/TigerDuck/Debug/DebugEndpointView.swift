@@ -246,14 +246,14 @@ struct EndpointChangeSignOut {
         return notes
     }
 
+    /// Does not wait for the sign-out's backend calls: each goes to the backend its session was
+    /// issued by, whatever endpoint is stored meanwhile.
     func run() async {
-        let calls: Task<Void, Never>? = await endsSchoolAccount()
-            ? appState.logoutNTUST() : appState.authService.signOutCalls
+        if await endsSchoolAccount() { appState.logoutNTUST() }
         if appState.isLibraryLoggedIn { appState.logoutLibrary() }
         #if os(iOS)
         if MailAccountManager.shared.isLoggedIn { MailAccountManager.shared.logout() }
         #endif
-        await calls?.value
     }
 
     private func endsSchoolAccount() async -> Bool {
