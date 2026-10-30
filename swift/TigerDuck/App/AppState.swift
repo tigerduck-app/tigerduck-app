@@ -262,9 +262,8 @@ final class AppState {
 
     var resettingSemesters: Set<String> = []
 
-    /// Each term's roster request answered, by the login generation that answered it.
     @ObservationIgnored
-    var answeredRosterRequests: [String: Int] = [:]
+    var rosterRequests = RosterRequestLog()
 
     var useLocalHold = UseLocalHold()
 

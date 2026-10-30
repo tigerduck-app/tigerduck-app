@@ -105,4 +105,17 @@ struct CourseRefreshUploadTests {
         #expect(Self.uploads(["CS1"], roster: nil, resendingRoster: true)
             == [Upload(courses: ["CS1"], asRoster: false, resend: false)])
     }
+
+    @Test("A roster request goes to the school once, then again only after an hour or a new sign-in")
+    func rosterRequestRetriesAfterAnHour() {
+        var log = RosterRequestLog()
+        let now = Date()
+        let snapshot: [String: Any] = ["roster_requests": ["1151", "1151"]]
+
+        #expect(log.termsToAsk(in: [:], generation: 1, now: now).isEmpty)
+        #expect(log.termsToAsk(in: snapshot, generation: 1, now: now) == ["1151"])
+        #expect(log.termsToAsk(in: snapshot, generation: 1, now: now + 3599).isEmpty)
+        #expect(log.termsToAsk(in: snapshot, generation: 2, now: now + 3599) == ["1151"])
+        #expect(log.termsToAsk(in: snapshot, generation: 2, now: now + 3599 + 3600) == ["1151"])
+    }
 }
