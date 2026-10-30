@@ -28,6 +28,8 @@ final class ScheduleSyncService {
     /// The list the server last took, as sent; nil while a send is out, after one failed and after
     /// a sign-out, when the server's copy is not known.
     private var accepted: Data?
+    /// Moved by each forget, so a send that started before one does not record its list after it.
+    private var acceptedGeneration = 0
 
     static let horizon: TimeInterval = 48 * 3600
 
@@ -53,6 +55,7 @@ final class ScheduleSyncService {
         logger.info("sync start events=\(events.count, privacy: .public)")
 
         accepted = nil
+        let generation = acceptedGeneration
         inflight?.cancel()
         inflight = Task { [apiClient, logger] in
             do {
@@ -60,7 +63,7 @@ final class ScheduleSyncService {
                 logger.info(
                     "sync ok pending=\(response.pending, privacy: .public) replaced=\(response.replaced, privacy: .public)"
                 )
-                if !Task.isCancelled { self.accepted = sent }
+                if !Task.isCancelled, generation == self.acceptedGeneration { self.accepted = sent }
             } catch {
                 logger.error("sync failed: \(error.localizedDescription, privacy: .private)")
             }
@@ -173,6 +176,7 @@ final class ScheduleSyncService {
 
     func forgetAcceptedList() {
         accepted = nil
+        acceptedGeneration &+= 1
     }
 
     private static let listEncoder: JSONEncoder = {

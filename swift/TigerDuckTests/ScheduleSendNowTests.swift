@@ -187,6 +187,26 @@ struct ScheduleSendNowTests {
         await push.disable()
     }
 
+    @Test("A sign-in while a send waits for its reply still has the next list sent")
+    func aSendThatEndsAfterASignInDoesNotCountForIt() async throws {
+        let backend = Backend()
+        let reply = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.ok.body, gate: reply), for: backend.schedule)
+        SettingsAPIStub.enqueue(Self.ok, for: backend.schedule)
+        let push = Self.coordinator(backend)
+        push.enable()
+        let send = Task { await push.syncNow { Self.inputs } }
+        try await waitUntil(timeout: .seconds(5)) { backend.sent().count == 1 }
+
+        push.refreshRegistrationAfterAuth()
+        reply.open()
+        await send.value
+        await push.syncNow { Self.inputs }
+
+        #expect(backend.sent().count == 2)
+        await push.disable()
+    }
+
     @Test("A sync trigger's handler sends the schedule only after a sync that synced, with the app in the background",
           arguments: [FullSyncOutcome.synced, .skipped, .failed],
           [UIApplication.State.background, .inactive, .active])
