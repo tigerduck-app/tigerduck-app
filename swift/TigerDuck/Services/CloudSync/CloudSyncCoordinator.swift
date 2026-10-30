@@ -514,13 +514,14 @@ final class CloudSyncCoordinator {
                 // names it settles the op; anything else counts as a refusal.
                 guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
 
-            case .courseDelete(let courseKey):
-                try await pushCoordinator.deleteCourse(courseKey: courseKey)
+            case .courseDelete(let courseKey, let stamp):
+                try await pushCoordinator.deleteCourse(courseKey: courseKey, madeAt: stamp)
 
-            case .courseAdd(let semester, let courseNo):
+            case .courseAdd(let semester, let courseNo, let stamp):
                 guard isProtectedDataAvailable() else { throw CancellationError() }
                 let generation = loginGeneration()
-                guard let request = addedCourseUpload(semester, courseNo) else { return }
+                guard var request = addedCourseUpload(semester, courseNo) else { return }
+                request.adds = request.forceKeys.map { PushAPI.CourseAdd(courseKey: $0, hlc: PushAPI.clock(of: stamp)) }
                 guard try await pushCoordinator.uploadCoursesIfChanged(
                     request, semester: semester,
                     isCurrent: { [uploadsCourses, loginGeneration] in uploadsCourses() && loginGeneration() == generation }
@@ -587,7 +588,7 @@ final class CloudSyncCoordinator {
     }
 
     private func isUnauthorized(_ error: Error) -> Bool {
-        if case PushAPIError.httpStatus(401, _) = error { return true }
+        if case PushAPIError.httpStatus(401, _, _) = error { return true }
         if case PushAPIError.notSignedIn = error { return true }
         return false
     }

@@ -61,6 +61,39 @@ struct UnchangedUploadTests {
         #expect(one != moved)
     }
 
+    @Test("A roster names its terms in roster_terms, and is another list than the same courses sent without")
+    func rosterTermsGoUpAndCount() throws {
+        let plain = Self.courses(Self.entry("CS1"))
+        var roster = plain
+        roster.rosterTerms = ["1151"]
+
+        let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(roster)) as? [String: Any]
+        let sentPlain = try JSONSerialization.jsonObject(with: JSONEncoder().encode(plain)) as? [String: Any]
+
+        #expect(sent?["roster_terms"] as? [String] == ["1151"])
+        #expect(sentPlain?["roster_terms"] == nil)
+        #expect(PushCoordinator.fingerprint(of: roster) != PushCoordinator.fingerprint(of: plain))
+    }
+
+    @Test("A roster the backend asks for goes again unchanged, roster_terms and all")
+    func requestedRosterGoesAgainUnchanged() async throws {
+        let backend = Backend()
+        backend.answer(times: 2)
+        let coordinator = backend.makeCoordinator()
+        let roster = AppState.courseUploadRequest(
+            [SDCourse(courseNo: "CS1", courseName: "CS1")], semester: "1151", forceKeys: [], rosterTerms: ["1151"],
+            colors: [:]
+        )
+
+        #expect(try await coordinator.uploadCoursesIfChanged(roster, semester: "1151", isCurrent: { true }))
+        #expect(try await !coordinator.uploadCoursesIfChanged(roster, semester: "1151", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(roster, semester: "1151", resend: true, isCurrent: { true }))
+        let sent = SettingsAPIStub.requests(for: backend.uploadURL).map { request in
+            (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any]
+        }
+        #expect(sent.map { $0?["roster_terms"] as? [String] } == [["1151"], ["1151"]])
+    }
+
     @Test("An unchanged list is skipped; force keys, a resend, a reset and another term still go")
     func unchangedListIsSkipped() async throws {
         let backend = Backend()

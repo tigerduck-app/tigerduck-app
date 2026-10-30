@@ -13,6 +13,7 @@ struct ModalClosingTests {
         var filesRefuseToClose = false
         var filesKept = false
         var draft = false
+        var whatsNew = false
         var conflict = false
         var courseDismissals = 0
     }
@@ -31,6 +32,9 @@ struct ModalClosingTests {
                 }
                 .background(Color.clear.sheet(isPresented: $sheets.draft) {
                     Text("Draft").interactiveDismissDisabled()
+                })
+                .background(Color.clear.sheet(isPresented: $sheets.whatsNew) {
+                    Text("What's New").whatsNewSheetPresentation()
                 })
                 .alert("Conflict", isPresented: $sheets.conflict) { Button("Keep") {} }
         }
@@ -155,6 +159,29 @@ struct ModalClosingTests {
             == AtThen(closedAll: false, isPresenting: true, course: true, files: true, courseDismissals: 0))
 
         sheets.course = false
+        try await waitUntil { root.presentedViewController == nil }
+    }
+
+    @Test("What's New stays up for a reminder, also one tapped while it still slides up")
+    func whatsNewStays() async throws {
+        let sheets = Sheets()
+        let window = try Self.show(sheets)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        sheets.whatsNew = true
+        try await waitUntil { root.presentedViewController?.isBeingPresented == true }
+
+        let told = Told()
+        root.closePresentations { told.closedAll = $0 }
+
+        try await waitUntil(timeout: .seconds(10)) { told.closedAll != nil }
+        #expect(told.closedAll == false)
+        try await waitUntil { root.presentedViewController.map { !$0.isBeingPresented } == true }
+        #expect(await Self.close(root, sheets).closedAll == false)
+        #expect(root.presentedViewController != nil)
+        #expect(sheets.whatsNew)
+
+        sheets.whatsNew = false
         try await waitUntil { root.presentedViewController == nil }
     }
 

@@ -8,7 +8,11 @@ struct CourseDeleteSyncTests {
     private struct Backend {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
 
-        func url(_ path: String) -> URL { baseURL.appendingPathComponent(path) }
+        func url(_ path: String) -> URL {
+            let parts = path.split(separator: "?", maxSplits: 1).map(String.init)
+            let url = baseURL.appendingPathComponent(parts[0])
+            return parts.count == 2 ? URL(string: "\(url.absoluteString)?\(parts[1])")! : url
+        }
 
         func requests(_ path: String) -> [URLRequest] { SettingsAPIStub.requests(for: url(path)) }
 
@@ -17,7 +21,8 @@ struct CourseDeleteSyncTests {
         }
     }
 
-    private static let path = "sync/courses/client:1151:CS1001301"
+    private static let hiddenAt = Date(timeIntervalSince1970: 1_790_000_000)
+    private static let path = "sync/courses/client:1151:CS1001301?hlc=\(PushAPI.clock(of: hiddenAt))"
 
     private static func freshDirectory() -> URL {
         FileManager.default.temporaryDirectory
@@ -55,7 +60,7 @@ struct CourseDeleteSyncTests {
                                                   moodleCourseId: nil, ignore: true)
         }
 
-        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
 
         #expect(backend.requests(Self.path).map(\.httpMethod) == ["DELETE"])
         #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
@@ -73,7 +78,7 @@ struct CourseDeleteSyncTests {
         let drain = Task { await coordinator.syncTick() }
         try await waitUntil { !backend.requests("sync/courses/1151EE2005301/override").isEmpty }
 
-        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
         gate.open()
         await drain.value
 
@@ -85,7 +90,7 @@ struct CourseDeleteSyncTests {
         let backend = Backend()
         backend.answer(Self.path)
         let coordinator = Self.makeCoordinator(backend)
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1001301")
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
 
         let (fetched, deleting) = await coordinator.courseDeletes(around: {
             await coordinator.syncTick()
@@ -104,7 +109,7 @@ struct CourseDeleteSyncTests {
         backend.answer(Self.path, .noReply)
         backend.answer(Self.path)
         let coordinator = Self.makeCoordinator(backend)
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1001301")
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
 
         await coordinator.syncTick()
 
@@ -147,6 +152,18 @@ struct CourseDeleteSyncTests {
 
         #expect(await outbox.pendingCount() == 0)
         #expect(await outbox.parkedSnapshot().isEmpty)
+    }
+
+    @Test("A delete answered 409 with a code other than clock_ahead stays queued without spending an attempt")
+    func deleteAnsweredAnotherConflictStays() async {
+        let outbox = SyncOutbox(directory: Self.freshDirectory())
+        await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "CS1001301", stamp: Date()))
+
+        for _ in 0...SyncOutbox.maxAttempts {
+            await outbox.drain { _ in throw PushAPIError.httpStatus(409, body: #"{"detail":"something_else"}"#) }
+        }
+
+        #expect(await outbox.snapshot().map(\.attempts) == [0])
     }
 
     @Test("A course added back drops its own queued delete, and a reset its term's or every term's")
@@ -313,6 +330,26 @@ struct CourseDeleteSyncTests {
         #expect(counts(["1142:EE2"]) == [1, 1])
         #expect(AppState.coursesOnOneSide(server: ["EE2"], local: ["CS1"], semester: "1151", deleting: ["1151:EE2"]) == nil)
         #expect(AppState.coursesOnOneSide(server: ["EE2"], local: [], semester: "1151", deleting: []) == nil)
+    }
+
+    @Test("The courses re-enable check reads a course a roster dropped as gone from both sides, unless added by hand here")
+    func droppedCourseIsOnNeitherSide() {
+        let rows: [[String: Any]] = [
+            ["semester": "1151", "course_no": "CS1", "enrollment_status": "enrolled"],
+            ["semester": "1151", "course_no": "EE2", "enrollment_status": "dropped"],
+            ["semester": "1151", "course_no": "GE3", "enrollment_status": "dropped"],
+            ["semester": "1142", "course_no": "MA4"],
+        ]
+        let addedHere = [SDCourse(courseNo: "GE3", courseName: "GE3", semester: "1151")]
+
+        let compared = AppState.reenableCourseNos(
+            rows, semester: "1151", local: ["CS1", "EE2", "GE3"], userAdded: addedHere, liveAnswer: nil
+        )
+
+        #expect(compared.server == ["CS1", "GE3"])
+        #expect(compared.local == ["CS1", "GE3"])
+        #expect(AppState.coursesOnOneSide(server: compared.server, local: compared.local, semester: "1151", deleting: [])
+            .map { [$0.localOnly, $0.serverOnly] } == [0, 0])
     }
 
     @Test("A course whose delete is queued keeps this device's setting through a pull, in its own term only")

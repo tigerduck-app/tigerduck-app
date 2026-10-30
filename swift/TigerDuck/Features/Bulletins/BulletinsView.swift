@@ -151,11 +151,14 @@ struct BulletinsView: View {
                     ? String(localized: "bulletin_show_all_action")
                     : String(localized: "bulletin_show_unread_only_action"))
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showNotificationSettings = true
-                } label: {
-                    Image(systemName: "bell.badge")
+            // The backend stores bulletin subscriptions only for a signed-in account.
+            if appState.authService.hasStoredCredentials {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showNotificationSettings = true
+                    } label: {
+                        Image(systemName: "bell.badge")
+                    }
                 }
             }
         }

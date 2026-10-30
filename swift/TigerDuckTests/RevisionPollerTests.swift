@@ -99,7 +99,7 @@ struct RevisionPollerTests {
         _ poll: ScriptedPoll,
         sleeper: ManualSleeper,
         clock: TestClock = TestClock(),
-        relogin: @escaping @MainActor () async -> Bool = { false }
+        relogin: @escaping @MainActor (_ refused: String?) async -> Bool = { _ in false }
     ) -> RevisionPoller {
         let poller = RevisionPoller(sleep: { await sleeper.sleep(for: $0) }, now: { clock.now }, jitter: { 1 })
         poller.poll = { await poll.run() }
@@ -187,25 +187,25 @@ struct RevisionPollerTests {
         #expect(await sleeper.armedCount == 0)
     }
 
-    @Test("A 401 gets one relogin, and a second 401 stops polling until the next return")
+    @Test("A 401 gets one relogin for the token it refused, and a second 401 stops polling until the next return")
     func secondUnauthorizedSuspendsUntilReturn() async throws {
         let poll = ScriptedPoll()
-        poll.outcomes = [.unauthorized, .unauthorized]
+        poll.outcomes = [.unauthorized(refused: "A1"), .unauthorized(refused: "A2")]
         let sleeper = ManualSleeper()
         let clock = TestClock()
-        var relogins = 0
-        let poller = Self.makePoller(poll, sleeper: sleeper, clock: clock) {
-            relogins += 1
+        var relogins: [String?] = []
+        let poller = Self.makePoller(poll, sleeper: sleeper, clock: clock) { refused in
+            relogins.append(refused)
             return true
         }
 
         poller.start(pollNow: true)
         try await sleeper.waitUntilArmed()
-        #expect(relogins == 1)
+        #expect(relogins == ["A1"])
         await sleeper.fire()
         try await waitUntil { poller.isSuspended && !poller.isPolling }
         #expect(poll.calls == 2)
-        #expect(relogins == 1)
+        #expect(relogins == ["A1"])
         #expect(await sleeper.armedCount == 1)
 
         poller.noteActivity()
@@ -219,9 +219,9 @@ struct RevisionPollerTests {
     @Test("A failed relogin stops polling until the next return")
     func failedReloginSuspendsUntilReturn() async throws {
         let poll = ScriptedPoll()
-        poll.outcomes = [.unauthorized]
+        poll.outcomes = [.unauthorized(refused: nil)]
         let sleeper = ManualSleeper()
-        let poller = Self.makePoller(poll, sleeper: sleeper) { false }
+        let poller = Self.makePoller(poll, sleeper: sleeper) { _ in false }
 
         poller.start(pollNow: true)
         try await waitUntil { poller.isSuspended && !poller.isPolling }

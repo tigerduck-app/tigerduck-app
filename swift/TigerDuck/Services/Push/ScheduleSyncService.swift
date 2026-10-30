@@ -25,6 +25,11 @@ final class ScheduleSyncService {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Sync")
 
     private var inflight: Task<Void, Never>?
+    /// The list the server last took, as sent; nil while a send is out, after one failed and after
+    /// a sign-out, when the server's copy is not known.
+    private var accepted: Data?
+    /// Moved by each forget, so a send that started before one does not record its list after it.
+    private var acceptedGeneration = 0
 
     static let horizon: TimeInterval = 48 * 3600
 
@@ -38,12 +43,19 @@ final class ScheduleSyncService {
         self.horizonSeconds = horizonHours * 3600
     }
 
-    func sync(inputs: Inputs, now: Date = AppClock.now()) {
+    func sync(inputs: Inputs, now: Date = AppClock.now(), unlessUnchanged: Bool = false) {
         let end = now.addingTimeInterval(horizonSeconds)
         let events = Self.buildEvents(inputs: inputs, now: now, horizonEnd: end)
         let request = PushAPI.ScheduleSyncRequest(events: events)
+        let sent = try? Self.listEncoder.encode(request)
+        if unlessUnchanged, let sent, sent == accepted {
+            logger.info("sync skipped, list unchanged")
+            return
+        }
         logger.info("sync start events=\(events.count, privacy: .public)")
 
+        accepted = nil
+        let generation = acceptedGeneration
         inflight?.cancel()
         inflight = Task { [apiClient, logger] in
             do {
@@ -51,6 +63,7 @@ final class ScheduleSyncService {
                 logger.info(
                     "sync ok pending=\(response.pending, privacy: .public) replaced=\(response.replaced, privacy: .public)"
                 )
+                if !Task.isCancelled, generation == self.acceptedGeneration { self.accepted = sent }
             } catch {
                 logger.error("sync failed: \(error.localizedDescription, privacy: .private)")
             }
@@ -160,6 +173,17 @@ final class ScheduleSyncService {
     func awaitInflight() async {
         await inflight?.value
     }
+
+    func forgetAcceptedList() {
+        accepted = nil
+        acceptedGeneration &+= 1
+    }
+
+    private static let listEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return encoder
+    }()
 }
 
 #if os(iOS)

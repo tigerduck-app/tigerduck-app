@@ -1,5 +1,6 @@
 import Foundation
 import Defaults
+import os
 
 struct CourseData: Sendable {
     let courseNo: String
@@ -19,18 +20,23 @@ struct CourseData: Sendable {
 
 enum AppServiceBridge {
 
-    static var courseUploader: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+    typealias CourseUploader = (_ courses: [SDCourse], _ semester: String, _ asRoster: Bool, _ resend: Bool) -> Void
+
+    static var courseUploader: CourseUploader?
     static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
+    static var rosterRequests = RosterRequestLog()
 
     static func fetchCourses(
         authService: AuthService,
         semester: String = CourseSelectionService.currentSemesterCode(),
-        forceRefresh: Bool = false
+        forceRefresh: Bool = false,
+        resendingRoster: Bool = false
     ) async -> [SDCourse] {
         await fetchCourses(
             authService: authService,
             semester: semester,
             forceRefresh: forceRefresh,
+            resendingRoster: resendingRoster,
             startGeneration: authService.loginGeneration,
             moodle: { await fetchMoodleCourses(authService: authService) },
             transcript: { await fetchTranscript(authService: authService) }
@@ -129,6 +135,7 @@ enum AppServiceBridge {
         authService: AuthService,
         semester: String,
         forceRefresh: Bool,
+        resendingRoster: Bool = false,
         startGeneration: Int,
         moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
@@ -150,12 +157,13 @@ enum AppServiceBridge {
 
         let session = NTUSTSessionManager.shared.session
         var courseSelectionNos: [String]?
+        var selectionIsLive = false
         if servesSelectionSemester {
             do {
                 #if DEBUG
                 try await ServerFailureSimulator.shared.check(.courseSelection)
                 #endif
-                courseSelectionNos = try await CourseSelectionService.fetchEnrolledCourseNos(
+                let answer = try await CourseSelectionService.fetchEnrolledCourseNos(
                     session: session,
                     studentId: studentId,
                     password: password,
@@ -164,6 +172,8 @@ enum AppServiceBridge {
                         authService?.loginGeneration == startGeneration
                     }
                 )
+                courseSelectionNos = answer.courseNos
+                selectionIsLive = answer.live
                 await MainActor.run {
                     record(.ok, for: .courseSelection, round: startGeneration, authService: authService)
                 }
@@ -196,6 +206,10 @@ enum AppServiceBridge {
         guard let term else { return cachedCourses }
         if let roster = term.roster, !Task.isCancelled, authService.loginGeneration == startGeneration {
             DataCache.shared.recordSelectionRoster(semester: semester, roster: roster)
+            if selectionIsLive {
+                let stillDropped = DataCache.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
+                DataCache.shared.saveServerDroppedNos(stillDropped, semester: semester)
+            }
         }
 
         let moodleAll = await moodle()
@@ -248,14 +262,17 @@ enum AppServiceBridge {
             others: Array(moodleByNo.keys) + (report?.courses.filter { $0.term == semester }.map(\.code) ?? []),
             userAdded: DataCache.shared.loadUserAddedCourses().filter { DataCache.userAddedCourse($0, belongsTo: semester) }
         )
-        let courses = pastTerm?.courses ?? drawnCourses(
+        let drawn = pastTerm?.courses ?? drawnCourses(
             looked.map(\.course), fromSelection: term.roster != nil, cached: Set(cachedByNo.keys)
         )
 
         guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
             return DataCache.shared.loadCourses(semester: semester)
         }
-        guard !courses.isEmpty || pastTerm != nil else { return cachedCourses }
+        guard let courses = savedCourses(
+            drawn, pastTerm: pastTerm != nil, live: selectionIsLive && term.roster != nil,
+            dropped: DataCache.shared.loadServerDroppedNos(semester: semester)
+        ) else { return cachedCourses }
         if let pastTerm {
             DataCache.shared.recordSelectionRoster(
                 semester: semester, roster: pastTerm.roster, alsoListed: pastTerm.dropping, isFinal: true
@@ -263,20 +280,63 @@ enum AppServiceBridge {
         }
         DataCache.shared.saveCourses(courses, semester: semester)
         uploadVisibleCourses(
-            courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()), to: courseUploader
+            courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()),
+            roster: uploadedRoster(selection: term.roster, live: selectionIsLive, pastTerm: pastTerm?.roster),
+            resendingRoster: resendingRoster, to: courseUploader
         )
         return courses
     }
 
+    /// A requested term goes up even when unchanged: the backend asks because no roster of it
+    /// arrived for a week.
+    static func answerRosterRequests(in snapshot: [String: Any], authService: AuthService) {
+        guard CourseUploadPolicy.uploadsCourses else { return }
+        for term in rosterRequests.termsToAsk(in: snapshot, generation: authService.loginGeneration, now: Date()) {
+            AppLogger.sync.info("[sync] roster requested for \(term, privacy: .public)")
+            Task {
+                _ = await fetchCourses(authService: authService, semester: term, forceRefresh: true, resendingRoster: true)
+                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+            }
+        }
+    }
+
+    /// The courses a fetch saves, or nil when it drew none and the term keeps its cache. Those
+    /// dropped on the server are read as it saves: a full sync during its lookups may drop one a
+    /// cached course selection answer or the transcript still lists, and a fetch whose every
+    /// course was dropped saves none. Only a live answer or a past term's final transcript brings
+    /// one back.
+    static func savedCourses(_ drawn: [SDCourse], pastTerm: Bool, live: Bool, dropped: Set<String>) -> [SDCourse]? {
+        guard !drawn.isEmpty || pastTerm else { return nil }
+        return pastTerm || live ? drawn : drawn.filter { !dropped.contains($0.courseNo) }
+    }
+
+    /// The roster a fetch uploads: a past term's final transcript, or course selection's answer
+    /// only when this fetch got it from the school. One cached for up to a day may still name a
+    /// course another device's roster dropped since, and would enroll it again.
+    static func uploadedRoster(selection: [String]?, live: Bool, pastTerm: [String]?) -> [String]? {
+        pastTerm ?? (live ? selection : nil)
+    }
+
+    /// Uploads the term's courses but those hidden here. They go as the term's roster when
+    /// `roster`, course selection's answer or a past term's final transcript, names no course they
+    /// leave out but a hidden one: the backend drops each school course a roster leaves out, so a
+    /// failed lookup must not drop its course. A hidden course has no server row once its delete
+    /// lands; listing it would file one for a course hidden before the server held it, and the
+    /// next sync would show it again.
     static func uploadVisibleCourses(
         _ courses: [SDCourse],
         semester: String,
         hidden: Set<String>,
-        to upload: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+        roster: [String]? = nil,
+        resendingRoster: Bool = false,
+        to upload: CourseUploader?
     ) {
-        let visible = courses.filter { !CourseTombstone.isHidden($0.courseNo, semester: semester, in: hidden) }
+        let isHidden = { (courseNo: String) in CourseTombstone.isHidden(courseNo, semester: semester, in: hidden) }
+        let visible = courses.filter { !isHidden($0.courseNo) }
         guard !visible.isEmpty else { return }
-        upload?(visible, semester)
+        let listed = Set(visible.map(\.courseNo))
+        let asRoster = roster?.allSatisfy { listed.contains($0) || isHidden($0) } ?? false
+        upload?(visible, semester, asRoster, resendingRoster && asRoster)
     }
 
     static func record(
@@ -831,5 +891,24 @@ private extension CourseData {
             allYear: course.allYear,
             requireOption: course.requireOption
         )
+    }
+}
+
+/// When each term's roster request last went to the school. A request stays until a roster
+/// arrives, so while course selection does not answer, a term is asked again after an hour, not
+/// on every full sync.
+nonisolated struct RosterRequestLog: Sendable {
+    static let retryInterval: TimeInterval = 3600
+    private var asked: [String: (generation: Int, at: Date)] = [:]
+
+    /// The terms of the snapshot's `roster_requests` to ask now, recorded as asked. A snapshot
+    /// without the key, from a backend that predates it, requests nothing.
+    mutating func termsToAsk(in snapshot: [String: Any], generation: Int, now: Date) -> [String] {
+        let due = Set(snapshot["roster_requests"] as? [String] ?? []).filter { term in
+            guard let last = asked[term], last.generation == generation else { return true }
+            return now.timeIntervalSince(last.at) >= Self.retryInterval || now < last.at
+        }
+        for term in due { asked[term] = (generation, now) }
+        return due.sorted()
     }
 }

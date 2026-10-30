@@ -30,4 +30,25 @@ struct CourseSelectionServiceTests {
     func shape(text: String, isCourseNo: Bool) {
         #expect(CourseSelectionService.isCourseNo(text[...]) == isCourseNo)
     }
+
+    @Test("an answer from the day-long cache is no live answer and keeps when the school gave it")
+    func cachedAnswerIsNotLive() async throws {
+        try await withExclusiveRealDefaults {
+            let studentId = "T\(UUID().uuidString.prefix(8))"
+            let semester = SemesterCatalog.selectionSemesterCode()
+            let savedAt = Date()
+            CourseSelectionService.saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: ["CS1001301"])
+            defer { CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId) }
+
+            let answer = try await CourseSelectionService.fetchEnrolledCourseNos(
+                session: .shared, studentId: studentId, password: "unused"
+            )
+            let last = try #require(CourseSelectionService.lastAnswer(studentId: studentId, semester: semester))
+
+            #expect(answer.courseNos == ["CS1001301"])
+            #expect(!answer.live)
+            #expect(last.courseNos == ["CS1001301"])
+            #expect(abs(last.at.timeIntervalSince(savedAt)) < 5)
+        }
+    }
 }

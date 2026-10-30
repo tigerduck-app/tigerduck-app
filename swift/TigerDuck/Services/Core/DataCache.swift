@@ -79,6 +79,21 @@ final class DataCache {
         revision &+= 1
     }
 
+    /// Removes the courses from the term's cache in every language, or switching the language
+    /// would show one again.
+    func removeCourses(_ courseNos: Set<String>, semester: String) {
+        guard !courseNos.isEmpty else { return }
+        let prefix = "courses_\(semester)_"
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: cacheDir, includingPropertiesForKeys: nil
+        )) ?? []
+        for url in contents where url.lastPathComponent.hasPrefix(prefix) && url.pathExtension == "json" {
+            let dtos: [CachedCourse] = load(from: url.lastPathComponent) ?? []
+            let kept = dtos.filter { !courseNos.contains($0.courseNo) }
+            if kept.count != dtos.count { save(kept, to: url.lastPathComponent) }
+        }
+    }
+
     private func coursesFilename(_ semester: String, _ language: String) -> String {
         "courses_\(semester)_\(language).json"
     }
@@ -286,6 +301,10 @@ final class DataCache {
         load(from: bulletinDetailFilename(id), in: bulletinDetailDir())
     }
 
+    func clearBulletinDetails() {
+        try? FileManager.default.removeItem(at: cacheDir.appendingPathComponent("bulletin_details", isDirectory: true))
+    }
+
     private func bulletinDetailDir() -> URL {
         let dir = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -312,6 +331,20 @@ final class DataCache {
 
     func loadSelectionDroppedNos() -> [String: [String]] {
         load(from: "selection_dropped.json", in: persistentDir) ?? [:]
+    }
+
+    /// The term's courses the last full sync found dropped on the server. A fetch course selection
+    /// did not answer leaves them out, as a running term's transcript may still list them.
+    func saveServerDroppedNos(_ courseNos: Set<String>, semester: String) {
+        var stored: [String: [String]] = load(from: "server_dropped.json", in: persistentDir) ?? [:]
+        guard Set(stored[semester] ?? []) != courseNos else { return }
+        stored[semester] = courseNos.isEmpty ? nil : courseNos.sorted()
+        save(stored, to: "server_dropped.json", in: persistentDir)
+    }
+
+    func loadServerDroppedNos(semester: String) -> Set<String> {
+        let stored: [String: [String]] = load(from: "server_dropped.json", in: persistentDir) ?? [:]
+        return Set(stored[semester] ?? [])
     }
 
     /// The roster comes from course selection or, for a past term, the transcript. A course in
@@ -429,8 +462,15 @@ final class DataCache {
     /// lock screen (`completeFileProtectionUnlessOpen`). A missing file is an empty map.
     func loadCourseColorMapIfReadable() -> [String: UInt32]? {
         let url = persistentDir.appendingPathComponent("course_color_map.json")
-        if FileManager.default.fileExists(atPath: url.path), (try? Data(contentsOf: url)) == nil { return nil }
-        return loadCourseColorMap()
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch CocoaError.fileReadNoSuchFile {
+            return loadCourseColorMap()
+        } catch {
+            return nil
+        }
+        return (try? decoder.decode([String: UInt32].self, from: data)) ?? loadCourseColorMap()
     }
 
     func loadCourseColorMap() -> [String: UInt32] {
@@ -493,6 +533,7 @@ final class DataCache {
             ("user_added_courses.json", persistentDir),
             ("deleted_courses.json", persistentDir),
             ("selection_dropped.json", persistentDir),
+            ("server_dropped.json", persistentDir),
             ("course_custom_names.json", persistentDir),
             ("course_custom_colors.json", persistentDir),
             ("course_color_map.json", persistentDir),

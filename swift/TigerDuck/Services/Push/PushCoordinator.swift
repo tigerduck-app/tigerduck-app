@@ -89,6 +89,7 @@ final class PushCoordinator {
     func bindTokenForwarding(_ appDelegate: some PushTokenSource) {
         appDelegate.forwardToken = { [weak self] data in
             guard let self else { return }
+            scheduleSync.forgetAcceptedList()
             Task { await self.registration.update(deviceToken: data) }
         }
         appDelegate.forwardError = { [weak self] error in
@@ -272,7 +273,7 @@ final class PushCoordinator {
                 if !AppLogger.isCancellation(error), isCurrent() {
                     self.uploads.recordFailure(key, fingerprint: fingerprint, startedIn: started)
                     // A 401 is retried at once after signing in again, so it holds nothing back.
-                    if case PushAPIError.httpStatus(let status, _) = error, status != 401 {
+                    if case PushAPIError.httpStatus(let status, _, _) = error, status != 401 {
                         self.uploads.recordRefusal(key, fingerprint: fingerprint, at: self.clock(), startedIn: started)
                     }
                 }
@@ -308,7 +309,8 @@ final class PushCoordinator {
     static func fingerprint(of request: PushAPI.CourseUploadRequest) -> Int {
         encodedFingerprint(PushAPI.CourseUploadRequest(
             courses: request.courses.sorted { $0.courseNo < $1.courseNo },
-            courseOverrides: request.courseOverrides.sorted { $0.courseKey < $1.courseKey }
+            courseOverrides: request.courseOverrides.sorted { $0.courseKey < $1.courseKey },
+            rosterTerms: request.rosterTerms?.sorted()
         ))
     }
 
@@ -335,7 +337,14 @@ final class PushCoordinator {
         try await apiClient.deleteCourse(courseKey: courseKey)
     }
 
+    func deleteCourse(courseKey: String, madeAt stamp: Date) async throws {
+        try await apiClient.deleteCourse(courseKey: courseKey, madeAt: stamp)
+    }
+
+    /// A new session or device registration may come to a server without this device's schedule,
+    /// so the next list goes up even when unchanged.
     func refreshRegistrationAfterAuth() {
+        scheduleSync.forgetAcceptedList()
         if stoppedBySignOut {
             stoppedBySignOut = false
             enable()
@@ -379,6 +388,7 @@ final class PushCoordinator {
         pendingSyncTask?.cancel()
         await pendingSyncTask?.value
         await scheduleSync.awaitInflight()
+        scheduleSync.forgetAcceptedList()
         return await registration.unregister()
     }
 
@@ -407,10 +417,12 @@ final class PushCoordinator {
         }
     }
 
+    /// Sends nothing when the list is the one the server last took, as most sync triggers change
+    /// nothing in it.
     func syncNow(inputsBuilder: @MainActor () -> ScheduleSyncService.Inputs) async {
         guard await apiClient.hasAuthSession(), isStarted else { return }
         guard isProtectedDataAvailable() else { return }
-        scheduleSync.sync(inputs: inputsBuilder())
+        scheduleSync.sync(inputs: inputsBuilder(), unlessUnchanged: true)
         await scheduleSync.awaitInflight()
     }
 

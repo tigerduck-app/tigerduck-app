@@ -90,9 +90,10 @@ nonisolated enum SecureStore {
 
     /// ``load(key:)``, but a throw where it answers nil because the Keychain cannot be read now,
     /// as before the first unlock after a restart, rather than because nothing is stored. An
-    /// earlier build's copy in ``shared``, which a locked launch cannot read or move, counts too.
+    /// earlier build's copy in ``shared``, which a locked launch cannot read or move, counts too;
+    /// a bare item from before v1.3.1 does not.
     static func loadIfReadable(key: String) throws -> Data? {
-        if let value = load(key: key) { return value }
+        if let value = loadSaved(key: key) { return value }
         let home = home(forKey: key)
         if home !== shared { try requireNoUnreadableCopyInShared(forKey: key) }
         do {
@@ -102,7 +103,13 @@ nonisolated enum SecureStore {
         }
     }
 
+    /// Falls back to the newest bare item, which `BareKeychainItemMoveMigration` moves only once
+    /// the phone is unlocked; a launch behind the lock screen still reads it after the unlock.
     static func load(key: String) -> Data? {
+        loadSaved(key: key) ?? legacyItems(key: key)?.lazy.compactMap { try? readLegacyItem($0) }.first
+    }
+
+    private static func loadSaved(key: String) -> Data? {
         let home = home(forKey: key)
         if let value = try? home.object(forKey: key) {
             return value
@@ -128,15 +135,7 @@ nonisolated enum SecureStore {
             }
             return value
         }
-
-        guard let legacy = legacyLoad(key: key) else {
-            return nil
-        }
-
-        if (try? home.setObject(legacy.value, forKey: key)) != nil {
-            deleteLegacyItem(legacy.item)
-        }
-        return legacy.value
+        return nil
     }
 
     static func delete(key: String) {
@@ -158,8 +157,7 @@ nonisolated enum SecureStore {
                 if !isMissing { ok = false }
             }
         }
-        legacyDelete(key: key)
-        return ok
+        return legacyDelete(key: key) && ok
     }
 
     static func removeAll(preserving preservedKeys: Set<String> = []) {
@@ -174,35 +172,43 @@ nonisolated enum SecureStore {
         }
     }
 
-    private static func legacyLoad(key: String) -> (value: Data, item: Data)? {
-        for item in legacyItems(key: key) {
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecValuePersistentRef as String: item,
-                kSecReturnData as String: true,
-                kSecMatchLimit as String: kSecMatchLimitOne,
-            ]
-            var result: AnyObject?
-            if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let value = result as? Data {
-                return (value, item)
-            }
+    /// A sign-out or a reinstall's purge before `BareKeychainItemMoveMigration` has moved the bare
+    /// items deletes them too, or that migration would bring the departed account back.
+    @discardableResult
+    private static func legacyDelete(key: String) -> Bool {
+        guard let items = legacyItems(key: key) else { return false }
+        return items.map(deleteLegacyItem).allSatisfy { $0 }
+    }
+
+    /// The bare item's value, nil when it is gone, or a throw when it cannot be read now.
+    static func readLegacyItem(_ item: Data) throws -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecValuePersistentRef as String: item,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        switch SecItemCopyMatching(query as CFDictionary, &result) {
+        case errSecSuccess: return result as? Data
+        case errSecItemNotFound: return nil
+        default: throw KeychainError.couldNotAccessKeychain
         }
-        return nil
     }
 
-    private static func legacyDelete(key: String) {
-        legacyItems(key: key).forEach(deleteLegacyItem)
-    }
-
-    private static func deleteLegacyItem(_ item: Data) {
+    @discardableResult
+    static func deleteLegacyItem(_ item: Data) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecValuePersistentRef as String: item,
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 
-    private static func legacyItems(key: String) -> [Data] {
+    /// The items builds up to v1.3.0 saved for `key` without a service, newest first, as persistent
+    /// references; nil when the Keychain cannot list them now.
+    static func legacyItems(key: String) -> [Data]? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
@@ -211,13 +217,14 @@ nonisolated enum SecureStore {
             kSecMatchLimit as String: kSecMatchLimitAll,
         ]
         var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let items = result as? [[String: Any]]
-        else { return [] }
-        return items.compactMap { item in
-            guard ((item[kSecAttrService as String] as? String) ?? "").isEmpty else { return nil }
-            return item[kSecValuePersistentRef as String] as? Data
-        }
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status != errSecItemNotFound else { return [] }
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else { return nil }
+        let modified = { (item: [String: Any]) in item[kSecAttrModificationDate as String] as? Date ?? .distantPast }
+        return items
+            .filter { (($0[kSecAttrService as String] as? String) ?? "").isEmpty }
+            .sorted { modified($0) > modified($1) }
+            .compactMap { $0[kSecValuePersistentRef as String] as? Data }
     }
 }
 

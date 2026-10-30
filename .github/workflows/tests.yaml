@@ -134,15 +134,6 @@ jobs:
           xcodebuild -version
           sysctl -n machdep.cpu.brand_string hw.ncpu
 
-      # Test fixtures use `Calendar.current` but the app pins Asia/Taipei (`AcademicCalendar`,
-      # `WidgetTaipei`), so a UTC runner shifts every fixture by eight hours. A simulator takes
-      # the host's zone when it boots, so this runs before the boot.
-      - name: Run in the school's timezone
-        if: steps.changes.outputs.run == 'true'
-        run: |
-          sudo systemsetup -settimezone Asia/Taipei
-          date
-
       # Take whichever devices the image has instead of naming one: images add and drop devices,
       # and `OS=latest` can resolve to a runtime the named device does not exist on.
       - name: Pick a simulator

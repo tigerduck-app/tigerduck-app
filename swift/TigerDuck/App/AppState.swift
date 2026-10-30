@@ -55,6 +55,9 @@ final class AppState {
                 Defaults[.appHasBeenInstalled] = true
             }
         }
+        // After the purge, which deletes a reinstall's bare items, and before AuthService reads them.
+        // A purge left for the next launch keeps them from moving.
+        if Defaults[.appHasBeenInstalled] { BareKeychainItemMoveMigration.runIfNeeded() }
 
         let authService = AuthService()
         self.authService = authService
@@ -153,8 +156,8 @@ final class AppState {
         #endif
 
         Task { [weak self] in
-            await atm.setRefreshFailedHandler { [weak self] in
-                await self?.attemptBackendRelogin() ?? false
+            await atm.setRefreshFailedHandler { [weak self, weak atm] in
+                await self?.attemptBackendRelogin(replacing: await atm?.storedAccessToken) ?? false
             }
             await atm.setNoSessionHandler { [weak self] in
                 await self?.authService.ensureBackendSignedIn()
@@ -191,14 +194,14 @@ final class AppState {
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
 
-        AppServiceBridge.courseUploader = { [weak self] courses, semester in
-            self?.uploadCourses(courses, semester: semester)
+        AppServiceBridge.courseUploader = { [weak self] courses, semester, asRoster, resend in
+            self?.uploadCourses(courses, semester: semester, asRoster: asRoster, resend: resend)
         }
         AppServiceBridge.assignmentUploader = { [weak self] request in
             self?.uploadAssignments(request)
         }
         revisionPoller.poll = { [weak self] in await self?.pollRevision() ?? .unchanged }
-        revisionPoller.relogin = { [weak self] in await self?.attemptBackendRelogin() ?? false }
+        revisionPoller.relogin = { [weak self] in await self?.attemptBackendRelogin(replacing: $0) ?? false }
 
         // Apply a stored in-app language override at launch so lookups use it. Skip
         // "system": apply() would remove AppleLanguages, wiping the per-app override

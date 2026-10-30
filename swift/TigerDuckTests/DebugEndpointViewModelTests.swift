@@ -21,6 +21,7 @@ struct DebugEndpointViewModelTests {
             currentOverride: { backend.stored },
             rejectedOverride: { nil },
             effectiveURL: { backend.stored.flatMap(URL.init(string:)) ?? inUse },
+            defaultURL: { inUse },
             check: { _ in checked },
             store: { url in
                 backend.events.append("store \(url.absoluteString)")
@@ -126,6 +127,32 @@ struct DebugEndpointViewModelTests {
 
         #expect(model.pendingChange == nil)
         #expect(backend.events == ["store \(Self.inUse.absoluteString)"])
+    }
+
+    @Test("the endpoint in use spelled with another host case or a trailing slash is saved without asking")
+    func sameServerSpelledOtherwiseSavesAtOnce() async {
+        let backend = Backend()
+        let respelled = URL(string: "https://API.TigerDuck.app/v3/")!
+        let model = Self.model(backend, checked: .accepted(respelled))
+        model.draft = respelled.absoluteString
+
+        await model.save { Issue.record("asked"); return [] }
+
+        #expect(model.pendingChange == nil)
+        #expect(backend.events == ["store \(respelled.absoluteString)"])
+    }
+
+    @Test("Reset when the stored endpoint is the default already clears it without asking or signing out")
+    func resetToTheDefaultItselfClearsAtOnce() async {
+        let backend = Backend()
+        backend.stored = "https://api.tigerduck.app/v3/"
+        let model = Self.model(backend)
+
+        await model.resetToDefault { Issue.record("asked"); return [] }
+
+        #expect(model.pendingChange == nil)
+        #expect(backend.events == ["clear"])
+        #expect(model.statusNote == String(localized: "settings_api_endpoint_reset_done"))
     }
 
     @Test("an endpoint the check turns down says why and asks nothing")

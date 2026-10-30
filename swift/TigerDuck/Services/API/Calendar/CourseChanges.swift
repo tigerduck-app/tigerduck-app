@@ -176,6 +176,8 @@ final class CourseChangeStore {
         var request = URLRequest(
             url: baseURL().appendingPathComponent("calendar").appendingPathComponent("course-changes")
         )
+        // The ETag is ours to send; URLCache would serve its copy for the feed's max-age and hide a change.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let tag = Defaults[.courseChangesETag]
         // A stored feed this build cannot read is fetched again, not kept by a 304.

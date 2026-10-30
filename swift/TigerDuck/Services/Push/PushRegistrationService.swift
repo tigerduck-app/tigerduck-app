@@ -424,7 +424,7 @@ actor PushRegistrationService {
             try await apiClient.unregisterDevice(deviceId: identity.uuid, at: baseURL)
             logger.info("unregistered device on server")
             return true
-        } catch PushAPIError.httpStatus(404, _) {
+        } catch PushAPIError.httpStatus(404, _, _) {
             logger.info("device already unregistered on server")
             return true
         } catch {
@@ -658,7 +658,7 @@ actor PushRegistrationService {
             activityRegistrationAttempts[registration.activityId] = nil
             activity404Attempts[registration.activityId] = nil
         } catch let error as PushAPIError {
-            if case .httpStatus(404, _) = error {
+            if case .httpStatus(404, _, _) = error {
                 let activityId = registration.activityId
                 let attempts = (activity404Attempts[activityId] ?? 0) + 1
                 activity404Attempts[activityId] = attempts

@@ -121,8 +121,8 @@ nonisolated enum ResolvedSyncOp: Sendable {
     case courseOverride(courseId: String, colorHex: String?, customName: String?, locale: String?)
     case assignmentOverride(assignmentId: Int, localStatus: String)
     case courseIgnore(courseId: String, moodleCourseId: Int?, ignore: Bool?)
-    case courseDelete(courseKey: String)
-    case courseAdd(semester: String, courseNo: String)
+    case courseDelete(courseKey: String, stamp: Date)
+    case courseAdd(semester: String, courseNo: String, stamp: Date)
 }
 
 nonisolated struct OutboxEntry: Codable, Sendable {
@@ -264,7 +264,10 @@ actor SyncOutbox {
     }
 
     static func keepsWithoutAttempt(_ error: Error, for op: SyncOp) -> Bool {
-        if case .courseAdd = op, case PushAPIError.httpStatus(_, _) = error { return false }
+        if case .courseAdd = op, case PushAPIError.httpStatus(_, _, _) = error { return false }
+        // The backend answers a course delete 409 only for its stamp, so another code is not a
+        // refusal of the delete, which a later attempt may still land.
+        if case .courseDelete = op, case PushAPIError.httpStatus(409, _, _) = error { return true }
         return keepsWithoutAttempt(error)
     }
 
@@ -274,7 +277,7 @@ actor SyncOutbox {
             return true
         case let auth as SyncOutboxAuthError:
             return auth.statusCode == 401
-        case PushAPIError.httpStatus(let code, _):
+        case PushAPIError.httpStatus(let code, _, _):
             return code == 408 || code == 429 || (500..<600).contains(code)
         default:
             return false
@@ -377,11 +380,11 @@ actor SyncOutbox {
         case .courseIgnore(_, _, let moodleId, let moodleCourseId, let ignore, _):
             return .courseIgnore(courseId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore)
 
-        case .courseDelete(let semester, let courseNo, _):
-            return .courseDelete(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo))
+        case .courseDelete(let semester, let courseNo, let stamp):
+            return .courseDelete(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), stamp: stamp)
 
-        case .courseAdd(let semester, let courseNo, _):
-            return .courseAdd(semester: semester, courseNo: courseNo)
+        case .courseAdd(let semester, let courseNo, let stamp):
+            return .courseAdd(semester: semester, courseNo: courseNo, stamp: stamp)
         }
     }
 

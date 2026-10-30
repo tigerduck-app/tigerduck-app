@@ -39,7 +39,7 @@ struct MoodleDiscussionCard: View {
             }
             if !discussion.preview.isEmpty {
                 Text(discussion.preview)
-                    .font(policy.preset == .iosInspired ? .subheadline : TigerDuckTheme.Typography.body)
+                    .font(policy.cardBodyFont)
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(2)
                     .truncationMode(.tail)

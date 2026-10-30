@@ -224,6 +224,7 @@ extension AppState {
             } else if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             }
+            AppServiceBridge.answerRosterRequests(in: json, authService: authService)
 
             if overrideEditGeneration == editGenerationAtFetch,
                let rev = json["current_revision"] as? Int {
@@ -248,8 +249,8 @@ extension AppState {
             ServerStatusTracker.shared.noteSyncResult(false)
             recordSyncSource(.local)
             var outcome = FullSyncOutcome.failed
-            if case PushAPIError.httpStatus(401, _) = error, !retried {
-                let reloginOk = await attemptBackendRelogin()
+            if case PushAPIError.httpStatus(401, _, let sent) = error, !retried {
+                let reloginOk = await attemptBackendRelogin(replacing: sent?.value)
                 if reloginOk {
                     AppLogger.sync.info("auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
@@ -645,8 +646,9 @@ extension AppState {
         return rows.sorted { ($0.at, $0.courseNo) < ($1.at, $1.courseNo) }.map { ($0.courseNo, $0.hex) }
     }
 
-    func attemptBackendRelogin() async -> Bool {
-        guard await authService.reloginToBackend() else { return false }
+    /// `refused` is the access token the request that got the 401 sent.
+    func attemptBackendRelogin(replacing refused: String?) async -> Bool {
+        guard await authService.reloginToBackend(replacing: refused) else { return false }
         pushCoordinator.refreshRegistrationAfterAuth()
         return true
     }
@@ -770,7 +772,9 @@ extension AppState {
         await coordinator.discardCourseDeletes(semester: semester, madeBefore: resetAt)
     }
 
-    func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = [], resend: Bool = false) {
+    func uploadCourses(
+        _ courses: [SDCourse], semester: String, forceKeys: [String] = [], asRoster: Bool = false, resend: Bool = false
+    ) {
         if !forceKeys.isEmpty {
             let addedAt = Date()
             Task { await cloudSyncCoordinator.discardCourseDeletes(courseKeys: Set(forceKeys), madeBefore: addedAt) }
@@ -783,7 +787,9 @@ extension AppState {
             }
             return
         }
-        let request = Self.courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
+        let request = Self.courseUploadRequest(
+            courses, semester: semester, forceKeys: forceKeys, rosterTerms: asRoster ? [semester] : nil
+        )
         let generation = authService.loginGeneration
         let coordinator = pushCoordinator
         Task { [weak self] in
@@ -795,14 +801,16 @@ extension AppState {
         }
     }
 
+    /// The added course alone: sent with its stamp, the backend files every other course an upload
+    /// lists as the school's roster.
     static func addedCourseUpload(
         semester: String, courseNo: String, cache: DataCache = .shared,
         colors: [String: UInt32] = CourseUploadPolicy.uploadedCourseColors
     ) -> PushAPI.CourseUploadRequest? {
         let shown = CanonicalCourseProvider(cache: cache).currentCourses(semester: semester)
-        guard shown.contains(where: { $0.courseNo == courseNo }) else { return nil }
+        guard let course = shown.first(where: { $0.courseNo == courseNo }) else { return nil }
         return courseUploadRequest(
-            shown, semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)],
+            [course], semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)],
             colors: colors
         )
     }
@@ -831,8 +839,8 @@ extension AppState {
         do {
             let sent = try await send(isCurrent)
             AppLogger.sync.info("\(label, privacy: .public): \(sent ? "sent" : "skipped", privacy: .public)")
-        } catch PushAPIError.httpStatus(401, _) where !retried && isCurrent() {
-            guard await attemptBackendRelogin() else {
+        } catch PushAPIError.httpStatus(401, _, let sent) where !retried && isCurrent() {
+            guard await attemptBackendRelogin(replacing: sent?.value) else {
                 AppLogger.sync.error("\(label, privacy: .public) failed: 401, relogin failed")
                 return
             }
@@ -846,6 +854,7 @@ extension AppState {
         _ courses: [SDCourse],
         semester: String,
         forceKeys: [String],
+        rosterTerms: [String]? = nil,
         colors: [String: UInt32] = CourseUploadPolicy.uploadedCourseColors
     ) -> PushAPI.CourseUploadRequest {
         let entries = courses.map { c in
@@ -869,7 +878,9 @@ extension AppState {
                 colorHex: String(format: "#%06X", hex)
             )
         }
-        return PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides, forceKeys: forceKeys)
+        return PushAPI.CourseUploadRequest(
+            courses: entries, courseOverrides: overrides, forceKeys: forceKeys, rosterTerms: rosterTerms
+        )
     }
 }
 

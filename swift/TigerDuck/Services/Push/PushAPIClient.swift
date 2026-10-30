@@ -154,8 +154,22 @@ final class PushAPIClient: Sendable {
         )
     }
 
+    /// An upload with `adds` goes under protocol 2; one the backend refuses as stamped ahead of its
+    /// clock goes again with `forceKeys` alone, which counts from when it arrives.
     func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws {
-        _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
+        guard request.adds != nil else {
+            _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
+            return
+        }
+        var stamped = try await makePostRequest(path: "/sync/courses/upload", body: request)
+        stamped.setValue("2", forHTTPHeaderField: "X-TigerSync-Protocol")
+        do {
+            _ = try await execute(stamped, expectedFailure: Self.clockAhead)
+        } catch PushAPIError.clockAhead {
+            var unstamped = request
+            unstamped.adds = nil
+            try await uploadCourses(unstamped)
+        }
     }
 
     func deleteAllCourses(semester: String? = nil) async throws {
@@ -167,8 +181,25 @@ final class PushAPIClient: Sendable {
         try await delete(path: components.string ?? "/sync/courses")
     }
 
-    func deleteCourse(courseKey: String) async throws {
-        try await delete(path: "/sync/courses/\(courseKey)")
+    /// With `madeAt`, the backend applies the delete only when that time is later than the
+    /// course's last add, hide and reset; without it, or once it refuses that time as ahead of its
+    /// clock (409 `clock_ahead`), the delete counts from when it arrives.
+    func deleteCourse(courseKey: String, madeAt stamp: Date? = nil) async throws {
+        let path = "/sync/courses/\(courseKey)"
+        guard let stamp else { return try await delete(path: path) }
+        do {
+            try await delete(path: "\(path)?hlc=\(PushAPI.clock(of: stamp))", expectedFailure: Self.clockAhead)
+        } catch PushAPIError.clockAhead {
+            try await delete(path: path)
+        }
+    }
+
+    private static func clockAhead(statusCode: Int, body: Data) -> PushAPIError? {
+        guard statusCode == 409,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              json["detail"] as? String == "clock_ahead"
+        else { return nil }
+        return .clockAhead
     }
 
     func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) async throws {
@@ -281,7 +312,10 @@ final class PushAPIClient: Sendable {
         }
     }
 
-    private func delete(path: String, at baseURL: URL? = nil) async throws {
+    private func delete(
+        path: String, at baseURL: URL? = nil,
+        expectedFailure: (_ statusCode: Int, _ body: Data) -> PushAPIError? = { _, _ in nil }
+    ) async throws {
         let baseURL = baseURL ?? baseURLProvider()
         // `path` may carry a query string; appendingPathComponent would
         // percent-escape the `?`, so splice it back on after the join.
@@ -293,7 +327,7 @@ final class PushAPIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         try await applyAuth(to: &request)
-        _ = try await execute(request)
+        _ = try await execute(request, expectedFailure: expectedFailure)
     }
 
     private func makePostRequest<Request: Encodable>(
@@ -335,7 +369,8 @@ final class PushAPIClient: Sendable {
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
             logger.error("Push.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .private): \(snippet, privacy: .private)")
             versionGate.note(statusCode: http.statusCode)
-            throw PushAPIError.httpStatus(http.statusCode, body: snippet)
+            let sent = request.value(forHTTPHeaderField: "Authorization")?.split(separator: " ").last
+            throw PushAPIError.httpStatus(http.statusCode, body: snippet, sent: sent.map { .init(value: String($0)) })
         }
         return data
     }
@@ -380,8 +415,11 @@ enum PushAPIError: Error, LocalizedError {
     case encodingFailed(Error)
     case decodingFailed(Error)
     case invalidResponse
-    case httpStatus(Int, body: String)
+    /// `sent` is the access token the request carried, which a relogin after a 401 compares with the stored one.
+    case httpStatus(Int, body: String, sent: SentToken? = nil)
     case syncRevisionExpired
+    /// 409 `clock_ahead`: a TigerSync stamp more than five seconds ahead of the backend's clock.
+    case clockAhead
     case notSignedIn
 
     var errorDescription: String? {
@@ -389,9 +427,17 @@ enum PushAPIError: Error, LocalizedError {
         case .encodingFailed(let error): return "Push encode failed: \(error.localizedDescription)"
         case .decodingFailed(let error): return "Push decode failed: \(error.localizedDescription)"
         case .invalidResponse: return "Push server returned a non-HTTP response."
-        case .httpStatus(let code, let body): return "Push server returned HTTP \(code): \(body)"
+        case .httpStatus(let code, let body, _): return "Push server returned HTTP \(code): \(body)"
         case .syncRevisionExpired: return "Push server has compacted the changes asked for."
+        case .clockAhead: return "Push server refused a time ahead of its clock."
         case .notSignedIn: return String(localized: "common_auto_sign_in_failed")
         }
+    }
+
+    /// Prints as stars, so a logged error does not carry the token.
+    nonisolated struct SentToken: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+        let value: String
+        var description: String { "***" }
+        var debugDescription: String { "***" }
     }
 }
