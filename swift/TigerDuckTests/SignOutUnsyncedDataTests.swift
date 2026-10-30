@@ -33,6 +33,34 @@ struct SignOutUnsyncedDataTests {
         )
     }
 
+    private static func leaves(
+        _ data: Held,
+        cloudSyncEnabled: Bool = true,
+        switchedOn: Set<String> = categories,
+        synced: Set<String> = categories,
+        pendingChecks: Set<String> = []
+    ) -> Bool {
+        AppState.signOutLeavesSyncedData(
+            data, cloudSyncEnabled: cloudSyncEnabled, switchedOn: switchedOn, synced: synced, pendingChecks: pendingChecks
+        )
+    }
+
+    @Test("each kind TigerSync took stays on its backend; with TigerSync off, or the kind not taken, it does not")
+    func syncedKindsStayOnTheBackend() {
+        for kind in Self.kinds {
+            #expect(Self.leaves(kind.data, switchedOn: kind.needs, synced: kind.needs))
+            #expect(!Self.leaves(kind.data, cloudSyncEnabled: false))
+            for category in kind.needs {
+                #expect(!Self.leaves(kind.data, switchedOn: kind.needs, synced: kind.needs.subtracting([category])))
+                #expect(!Self.leaves(kind.data, pendingChecks: [category]))
+            }
+        }
+        #expect(Self.leaves(Held(holidays: true), switchedOn: [], synced: []))
+        #expect(!Self.leaves(Held(holidays: true), cloudSyncEnabled: false))
+        #expect(!Self.leaves(Held(localOnlyCourseNames: true)))
+        #expect(!Self.leaves(Held()))
+    }
+
     @Test("with every category synced and nothing on its way up, a sign-out loses nothing")
     func everythingSyncedLosesNothing() {
         #expect(!Self.deletes(Self.everything))
