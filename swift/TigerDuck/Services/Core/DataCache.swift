@@ -79,6 +79,21 @@ final class DataCache {
         revision &+= 1
     }
 
+    /// Removes the courses from the term's cache in every language, or switching the language
+    /// would show one again.
+    func removeCourses(_ courseNos: Set<String>, semester: String) {
+        guard !courseNos.isEmpty else { return }
+        let prefix = "courses_\(semester)_"
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: cacheDir, includingPropertiesForKeys: nil
+        )) ?? []
+        for url in contents where url.lastPathComponent.hasPrefix(prefix) && url.pathExtension == "json" {
+            let dtos: [CachedCourse] = load(from: url.lastPathComponent) ?? []
+            let kept = dtos.filter { !courseNos.contains($0.courseNo) }
+            if kept.count != dtos.count { save(kept, to: url.lastPathComponent) }
+        }
+    }
+
     private func coursesFilename(_ semester: String, _ language: String) -> String {
         "courses_\(semester)_\(language).json"
     }

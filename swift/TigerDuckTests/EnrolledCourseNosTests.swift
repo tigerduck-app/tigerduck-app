@@ -245,6 +245,28 @@ struct SelectionDropsTests {
         #expect(cache.loadServerDroppedNos(semester: "1151") == alsoDropped.union(keptLive ? [] : ["MA1010003"]))
     }
 
+    @Test("A course dropped on the server leaves the term's cached courses in every language")
+    @MainActor
+    func serverDropLeavesEveryLanguage() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ServerDropTests-\(UUID().uuidString)", isDirectory: true)
+        let cacheDir = root.appendingPathComponent("cache", isDirectory: true)
+        let cache = DataCache(cacheDir: cacheDir, persistentDir: root.appendingPathComponent("persistent", isDirectory: true))
+        cache.saveCourses(["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
+        let files = FileManager.default
+        let current = try #require(try files.contentsOfDirectory(atPath: cacheDir.path).first { $0.hasPrefix("courses_1151_") })
+        let other = cacheDir.appendingPathComponent("courses_1151_other.json")
+        try files.copyItem(at: cacheDir.appendingPathComponent(current), to: other)
+
+        cache.removeCourses(["MA1010003"], semester: "1151")
+        let currentLeft = cache.loadCourses(semester: "1151").map(\.courseNo)
+        try files.removeItem(at: cacheDir.appendingPathComponent(current))
+        try files.moveItem(at: other, to: cacheDir.appendingPathComponent(current))
+
+        #expect(currentLeft == ["CS1001301"])
+        #expect(cache.loadCourses(semester: "1151").map(\.courseNo) == ["CS1001301"])
+    }
+
     @Test("A term whose every server row a roster dropped is not empty on the server, so its courses do not go up again")
     @MainActor
     func termOfDroppedRowsIsNotEmpty() {

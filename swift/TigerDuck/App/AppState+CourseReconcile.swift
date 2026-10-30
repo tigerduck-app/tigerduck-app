@@ -180,10 +180,8 @@ extension AppState {
         let fetched = cache.loadCourses(semester: semester)
         let localCourses = fetched.filter { !droppedOnServer.contains($0.courseNo) }
         let left = Set(fetched.map(\.courseNo)).subtracting(localCourses.map(\.courseNo))
-        if !left.isEmpty {
-            cache.saveCourses(localCourses, semester: semester)
-            if liveAnswer?.courseNos.contains(where: left.contains) == true { forgetAnswer() }
-        }
+        cache.removeCourses(droppedOnServer, semester: semester)
+        if liveAnswer?.courseNos.contains(where: left.contains) == true { forgetAnswer() }
         let tombstoned = tombstones.compactMap { tombstone -> String? in
             let ownReset = (tombstone["deleted_by_reset"] as? Bool ?? false)
                 && (tombstone["deleted_by_this_device"] as? Bool ?? false)
