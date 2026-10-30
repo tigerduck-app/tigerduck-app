@@ -98,7 +98,7 @@ extension AppState {
             let manualBefore = userAdded.count
             userAdded.removeAll { DataCache.userAddedCourse($0, belongsTo: semester) && unlisted.drop.contains($0.courseNo) }
 
-            guard !serverNos.isEmpty else {
+            guard !term.serverHoldsNothing else {
                 let uploadable = localCourses.filter { !isHidden($0.courseNo) }
                 if !uploadable.isEmpty {
                     uploadCourses(uploadable, semester: semester, resend: true)
@@ -158,6 +158,9 @@ extension AppState {
         let localCourses: [SDCourse]
         let left: Set<String>
         let unlisted: (hide: Set<String>, drop: Set<String>)
+        /// Whether the server holds no course of the term, so the courses fetched here go up again.
+        /// A course a roster dropped counts as held, or each sync would send them again.
+        let serverHoldsNothing: Bool
     }
 
     /// Reads one term of the snapshot against this device's courses. A course a roster dropped on
@@ -193,7 +196,10 @@ extension AppState {
             droppedMerges: droppedMerges(userAdded, semester: semester, dropped: selectionDropped.union(droppedOnServer)),
             hidden: hidden, adding: adding
         )
-        return TermRead(rows: rows, serverNos: serverNos, localCourses: localCourses, left: left, unlisted: unlisted)
+        return TermRead(
+            rows: rows, serverNos: serverNos, localCourses: localCourses, left: left, unlisted: unlisted,
+            serverHoldsNothing: serverNos.isEmpty && Self.droppedOnServer(termRows).isEmpty
+        )
     }
 
     nonisolated static func unhideListedCourses(

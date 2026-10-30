@@ -230,6 +230,22 @@ struct SelectionDropsTests {
         #expect(cache.loadDeletedCourseNos().isEmpty)
     }
 
+    @Test("A term whose every server row a roster dropped is not empty on the server, so its courses do not go up again")
+    @MainActor
+    func termOfDroppedRowsIsNotEmpty() {
+        let read = { (rows: [[String: Any]]) in
+            AppState.readTerm(
+                "1151", rows: rows, tombstones: [], selectionDropped: ["EE2005301"], userAdded: [], hidden: [], adding: [],
+                liveAnswer: nil, cache: Self.makeCache(fetched: ["CS1001301"], userAdded: []), forgetAnswer: {}
+            )
+        }
+        let dropped: [[String: Any]] = [["course_no": "MA1010003", "enrollment_status": "dropped"]]
+
+        #expect(!read(dropped).serverHoldsNothing)
+        #expect(read([]).serverHoldsNothing)
+        #expect(read([["course_no": "EE2005301", "enrollment_status": "enrolled"]]).serverHoldsNothing)
+    }
+
     @Test("A merged copy leaves when every row of its term was dropped on the server; a hand-add here stays")
     @MainActor
     func serverDropEmptyingATermTakesMergedCopies() {
