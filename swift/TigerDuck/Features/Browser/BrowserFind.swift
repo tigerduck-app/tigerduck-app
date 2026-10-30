@@ -196,8 +196,10 @@ final class BrowserFind {
       (document.head || document.documentElement).appendChild(style);
       return matches.length;
     }
+    // A page script that removes a match's text collapses its ranges, which measure as an empty box.
     function current() {
-      return (window.tigerduckFindMatches || [])[window.tigerduckFindCurrent] || [];
+      var pieces = (window.tigerduckFindMatches || [])[window.tigerduckFindCurrent] || [];
+      return pieces.filter(function(range) { return !range.collapsed; });
     }
     // A clear box over the current match whose shadow dims the rest of the page, as Safari's find does.
     function spotlight() {

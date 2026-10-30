@@ -66,6 +66,19 @@ struct BrowserFindPageTests {
         #expect(await evaluate(webView, "held.data = 'count 2'; return p.textContent") as? String == "count 2")
     }
 
+    @Test func aMatchThePageRemovedNeitherDimsNorMovesThePage() async {
+        let (webView, find) = await page("<p>作業 one</p><p id=\"gone\">作業 two</p>")
+        find.query = "作業"
+        await find.search()
+        #expect(find.count == 2)
+        _ = await evaluate(webView, "gone.innerHTML = 'replaced'")
+
+        await find.next()
+        #expect(await evaluate(webView, "return document.querySelector('[data-tigerduck-find-light]') === null") as? Bool == true)
+        // A match the script gives back is one the browser scrolls to.
+        #expect(await webView.runFind(["action": "select", "index": 1]) as? [Double] == nil)
+    }
+
     @Test func matchesAPhraseSplitByFormattingButNotAcrossALineBreakOrBlock() async {
         let (webView, find) = await page("""
         <p>期<b>末</b>作業</p><p><b>assignment</b>
