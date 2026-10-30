@@ -110,31 +110,21 @@ final class BrowserFind {
     }
 
     /// The body `run` calls with `action` and its arguments: texts gives the text of every run it
-    /// searches, mark wraps the ranges found in them and gives how many matches it marked. A run
-    /// is the text nodes of one stretch of inline text, so a phrase split by `<b>` still matches;
-    /// a block, a line break or skipped content that shows ends it. Editable text, such as a
-    /// rich-text answer, and SVG are skipped.
+    /// searches, mark highlights the ranges found in them and gives how many matches it marked. A
+    /// run is the text nodes of one stretch of inline text, so a phrase split by `<b>` still
+    /// matches; a block, a line break or skipped content that shows ends it. Editable text, such
+    /// as a rich-text answer, and SVG are skipped. Highlights leave the page's text nodes whole,
+    /// so the page's own scripts can still update them while find is on.
     nonisolated static let script = """
     var marker = 'data-tigerduck-find';
-    var marks = function() { return document.querySelectorAll('mark[' + marker + ']'); };
+    var all = 'tigerduck-find', shown = 'tigerduck-find-current';
     function clear() {
       window.tigerduckFindRuns = [];
+      window.tigerduckFindMatches = [];
       window.tigerduckFindCurrent = -1;
-      var light = document.querySelector('[' + marker + '-light]');
-      if (light) light.remove();
-      // Wrapping split one text node into the original, the mark and a new rest; joining them back
-      // into the original keeps the nodes a page script may hold, which normalize() would merge away.
-      marks().forEach(function(mark) {
-        var before = mark.previousSibling, after = mark.nextSibling;
-        if (before && before.nodeType === Node.TEXT_NODE && after && after.nodeType === Node.TEXT_NODE) {
-          before.data += mark.textContent + after.data;
-          after.remove();
-          mark.remove();
-          return;
-        }
-        while (mark.firstChild) mark.parentNode.insertBefore(mark.firstChild, mark);
-        mark.remove();
-      });
+      CSS.highlights.delete(all);
+      CSS.highlights.delete(shown);
+      document.querySelectorAll('[' + marker + '], [' + marker + '-light]').forEach(function(element) { element.remove(); });
       return 0;
     }
     function blockOf(element) {
@@ -181,39 +171,40 @@ final class BrowserFind {
     }
     function mark() {
       var runs = window.tigerduckFindRuns || [];
-      var pieces = [], count = 0;
-      ranges.forEach(function(found) {
+      var matches = ranges.map(function(found) {
         var run = runs[found[0]];
-        if (!run) return;
-        var before = pieces.length;
-        run.nodes.forEach(function(node, i) {
+        if (!run) return [];
+        return run.nodes.map(function(node, i) {
           var length = (i + 1 < run.nodes.length ? run.starts[i + 1] : run.text.length) - run.starts[i];
           var start = Math.max(found[1] - run.starts[i], 0), end = Math.min(found[2] - run.starts[i], length);
-          if (start < end && node.isConnected && node.nodeValue.length === length) pieces.push([node, start, end, count]);
-        });
-        if (pieces.length > before) count++;
-      });
-      // From the last piece back, so wrapping one leaves the offsets before it in place.
-      for (var i = pieces.length - 1; i >= 0; i--) {
-        var range = document.createRange();
-        range.setStart(pieces[i][0], pieces[i][1]);
-        range.setEnd(pieces[i][0], pieces[i][2]);
-        var mark = document.createElement('mark');
-        mark.setAttribute(marker, pieces[i][3]);
-        mark.style.cssText = 'color: #000; background: #FFE8A3; border-radius: 3px; padding: 0; box-shadow: none';
-        range.surroundContents(mark);
-      }
-      return count;
+          if (start >= end || !node.isConnected || node.nodeValue.length !== length) return null;
+          var range = document.createRange();
+          range.setStart(node, start);
+          range.setEnd(node, end);
+          return range;
+        }).filter(Boolean);
+      }).filter(function(pieces) { return pieces.length; });
+      window.tigerduckFindMatches = matches;
+      CSS.highlights.set(all, new Highlight(...matches.flat()));
+      var style = document.createElement('style');
+      style.setAttribute(marker, '');
+      // Dark Reader leaves a style of this class alone, as it is the Stylus extension's, so the
+      // matches keep their colors under a dark appearance.
+      style.className = 'stylus';
+      style.textContent = '::highlight(' + all + ') { color: #000; background-color: #FFE8A3 } '
+        + '::highlight(' + shown + ') { color: #000; background-color: #FFB340 }';
+      (document.head || document.documentElement).appendChild(style);
+      return matches.length;
     }
     function current() {
-      return document.querySelectorAll('mark[' + marker + '="' + window.tigerduckFindCurrent + '"]');
+      return (window.tigerduckFindMatches || [])[window.tigerduckFindCurrent] || [];
     }
     // A clear box over the current match whose shadow dims the rest of the page, as Safari's find does.
     function spotlight() {
-      var light = document.querySelector('[' + marker + '-light]'), shown = current();
-      if (!shown.length) return light && light.remove();
-      var box = Array.prototype.reduce.call(shown, function(box, mark) {
-        var r = mark.getBoundingClientRect();
+      var light = document.querySelector('[' + marker + '-light]'), pieces = current();
+      if (!pieces.length) return light && light.remove();
+      var box = pieces.reduce(function(box, range) {
+        var r = range.getBoundingClientRect();
         return [Math.min(box[0], r.left), Math.min(box[1], r.top), Math.max(box[2], r.right), Math.max(box[3], r.bottom)];
       }, [Infinity, Infinity, -Infinity, -Infinity]);
       if (!light) {
@@ -234,12 +225,12 @@ final class BrowserFind {
     // Centres the match in each scrolled box inside the page, vertically within what the browser's
     // bars leave visible: `view` is that band's top and bottom, the view's width and its scroll
     // offset, in points. The browser scrolls the page itself.
-    function centre(mark) {
+    function centre(range) {
       var scale = view[2] / innerWidth;
       var top = (view[0] + view[3]) / scale - scrollY, bottom = (view[1] + view[3]) / scale - scrollY;
-      for (var box = mark.parentElement; box; box = box.parentElement) {
+      for (var box = range.startContainer.parentElement; box; box = box.parentElement) {
         if (box === document.scrollingElement) continue;
-        var style = getComputedStyle(box), m = mark.getBoundingClientRect(), b = box.getBoundingClientRect();
+        var style = getComputedStyle(box), m = range.getBoundingClientRect(), b = box.getBoundingClientRect();
         if (box.scrollHeight > box.clientHeight && /auto|scroll/.test(style.overflowY)) {
           // A box outside the band is centred on its own; the browser then scrolls the page to it.
           var from = Math.max(b.top, top), to = Math.min(b.bottom, bottom);
@@ -253,14 +244,13 @@ final class BrowserFind {
     }
     function select() {
       window.tigerduckFindCurrent = index;
-      marks().forEach(function(mark) {
-        mark.style.background = Number(mark.getAttribute(marker)) === index ? '#FFB340' : '#FFE8A3';
-      });
-      var shown = current()[0];
-      if (shown) centre(shown);
+      var pieces = current(), highlight = new Highlight(...pieces);
+      highlight.priority = 1;
+      CSS.highlights.set(shown, highlight);
+      if (pieces.length) centre(pieces[0]);
       spotlight();
-      if (!shown) return null;
-      var r = shown.getBoundingClientRect();
+      if (!pieces.length) return null;
+      var r = pieces[0].getBoundingClientRect();
       return [r.left + scrollX, r.top + scrollY, r.right + scrollX, r.bottom + scrollY, innerWidth];
     }
     if (action === 'texts') return texts();

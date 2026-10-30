@@ -37,6 +37,11 @@ struct BrowserFindPageTests {
         try? await webView.callAsyncJavaScript(script, contentWorld: .page)
     }
 
+    /// Read from the page's world, so the highlights the find script registers in its own are the
+    /// page's. A world sees the registry as it was at that world's first read, so a page reads it once.
+    private static let highlighted = "return [...(CSS.highlights.get('tigerduck-find') || [])]"
+        + ".map(range => range.startContainer.parentElement.localName + ' ' + range.toString())"
+
     @Test func marksShownTextAndLeavesEditableTextAndSVGAlone() async {
         let (webView, find) = await page()
         let before = await evaluate(webView, "return document.body.innerHTML") as? String
@@ -44,12 +49,21 @@ struct BrowserFindPageTests {
         await find.search()
 
         #expect(find.count == 3)
-        #expect(await evaluate(webView, "return document.querySelector('[contenteditable]').innerHTML") as? String == "作業 answer")
-        #expect(await evaluate(webView, "return document.querySelector('svg mark') === null") as? Bool == true)
+        #expect(await evaluate(webView, Self.highlighted) as? [String] == ["p 作業", "p 作業", "p 作業"])
+        #expect(await evaluate(webView, "return document.body.innerHTML") as? String == before)
 
         find.query = ""
         await find.search()
-        #expect(await evaluate(webView, "return document.body.innerHTML") as? String == before)
+        #expect(await evaluate(webView, "return document.querySelector('[data-tigerduck-find]') === null") as? Bool == true)
+    }
+
+    @Test func aPageScriptUpdatesItsTextWhileFindIsOn() async {
+        let (webView, find) = await page("<p id=\"p\">count 1</p><script>window.held = p.firstChild</script>")
+        find.query = "count"
+        await find.search()
+        #expect(find.count == 1)
+
+        #expect(await evaluate(webView, "held.data = 'count 2'; return p.textContent") as? String == "count 2")
     }
 
     @Test func matchesAPhraseSplitByFormattingButNotAcrossALineBreakOrBlock() async {
@@ -62,7 +76,7 @@ struct BrowserFindPageTests {
         find.query = "期末作業"
         await find.search()
         #expect(find.count == 1)
-        #expect(await evaluate(webView, "return document.querySelectorAll('mark[data-tigerduck-find=\"0\"]').length") as? Int == 3)
+        #expect(await evaluate(webView, "return CSS.highlights.get('tigerduck-find-current').size") as? Int == 3)
 
         find.query = "assignment deadline"
         await find.search()
@@ -127,7 +141,8 @@ struct BrowserFindPageTests {
             if scroll.contentOffset.y == settled, settled > 0 { break }
             settled = scroll.contentOffset.y
         }
-        let place = "var m = document.querySelector('mark').getBoundingClientRect(), b = document.getElementById('box').getBoundingClientRect(); "
+        let place = "var m = [...CSS.highlights.get('tigerduck-find-current')][0].getBoundingClientRect(), "
+            + "b = document.getElementById('box').getBoundingClientRect(); "
             + "return [m.top - b.top, b.bottom - m.bottom, m.top, m.bottom]"
         let shown = try #require(await evaluate(webView, place) as? [Double])
         #expect(shown[0] >= 0 && shown[1] >= 0, "the match is scrolled out of its box: \(shown)")
@@ -148,7 +163,7 @@ struct BrowserFindPageTests {
         withExtendedLifetime(webView) {}
     }
 
-    /// On a page the browser darkens too, where the marks keep their colors and the shade stays dark.
+    /// On a page the browser darkens too, where the highlights keep their colors and the shade stays dark.
     @Test(arguments: [(1.0, false), (1.5, false), (1.0, true)])
     func showsTheMatchInTheMiddleOfWhatTheBarsLeaveAndDimsTheRest(zoom: Double, darkened: Bool) async throws {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
@@ -183,7 +198,8 @@ struct BrowserFindPageTests {
             if scroll.contentOffset.y == settled, settled > 0 { break }
             settled = scroll.contentOffset.y
         }
-        let shown = await Self.rows(of: webView, at: 16) { $0.red > 0.9 && (0.6...0.8).contains($0.green) && $0.blue < 0.4 }
+        let current: (Pixel) -> Bool = { $0.red > 0.9 && (0.6...0.8).contains($0.green) && $0.blue < 0.4 }
+        let shown = await Self.rows(of: webView, at: 16, current)
         let first = try #require(shown.first, "offset \(scroll.contentOffset.y), zoom \(scroll.zoomScale), band \(middle)")
         let last = try #require(shown.last)
         #expect(abs((first + last) / 2 - middle) < 3, "the match shows at \(first)...\(last), not around \(middle)")
@@ -193,6 +209,12 @@ struct BrowserFindPageTests {
         find.query = ""
         await find.search()
         #expect(await evaluate(webView, "return document.querySelector('[data-tigerduck-find-light]') === null") as? Bool == true)
+        var cleared = false
+        for _ in 0..<50 where !cleared {
+            cleared = await Self.rows(of: webView, at: 16, current).isEmpty
+            if !cleared { try await Task.sleep(for: .milliseconds(100)) }
+        }
+        #expect(cleared, "the match is still highlighted")
     }
 
     private struct Pixel { let red, green, blue: CGFloat }
