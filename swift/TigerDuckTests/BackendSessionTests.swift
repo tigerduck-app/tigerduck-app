@@ -238,6 +238,77 @@ struct BackendTokenRefreshTests {
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
     }
 
+    @Test("a refresh whose pair comes back after a sign-in stored its own leaves the sign-in's")
+    func aRefreshPairASignInOvertookIsNotStored() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL
+        )
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        _ = try await manager.login(
+            studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+
+        #expect(await refresh.value == nil)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+        #expect(await manager.validAccessToken() == "A9")
+    }
+
+    @Test("a refresh refused after a sign-in stored its pair keeps that pair and asks for no relogin")
+    func aRefusalASignInOvertookKeepsItsPair() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture()
+        let manager = backend.manager
+        let relogins = CallCount()
+        await manager.setRefreshFailedHandler {
+            relogins.increment()
+            return false
+        }
+        var revoked = BackendFixture.sessionRevoked
+        revoked.gate = gate
+        SettingsAPIStub.enqueue(revoked, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        _ = try await manager.login(
+            studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        gate.open()
+
+        #expect(await refresh.value == nil)
+        #expect(relogins.value == 0)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+        #expect(await manager.validAccessToken() == "A9")
+    }
+
+    @Test("a sign-in during a relogin that fails after a 401 keeps its pair")
+    func aSignInDuringAFailedReloginKeepsItsPair() async throws {
+        let backend = BackendFixture()
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(BackendFixture.sessionRevoked, for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        await manager.setRefreshFailedHandler {
+            _ = try? await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )
+            return false
+        }
+
+        #expect(await manager.validAccessToken() == nil)
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R9")
+        #expect(await manager.validAccessToken() == "A9")
+    }
+
     @Test("a new token the Keychain refused goes out only once it is stored, and the old one never again")
     func aRefusedNewTokenWaitsUntilStored() async throws {
         let backend = BackendFixture()
@@ -2012,6 +2083,10 @@ struct BackendFixture {
 
     static var reuseDetected: SettingsAPIStub.StubResponse {
         .init(statusCode: 401, body: Data(#"{"detail":"refresh_reuse_detected"}"#.utf8))
+    }
+
+    static var sessionRevoked: SettingsAPIStub.StubResponse {
+        .init(statusCode: 401, body: Data(#"{"detail":"session_revoked"}"#.utf8))
     }
 }
 

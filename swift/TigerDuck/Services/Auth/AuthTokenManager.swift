@@ -462,7 +462,8 @@ actor AuthTokenManager {
                 noteOvertaken(generation, accessToken: nil, mayResend: mayResend)
                 return nil
             }
-            guard signInGeneration == generation else {
+            // A sign-in that stored its pair meanwhile ended this token's session on the backend.
+            guard signInGeneration == generation, self.refreshToken == refreshToken else {
                 noteOvertaken(
                     generation, accessToken: result.access_token, refreshToken: result.refresh_token, mayResend: false
                 )
@@ -478,11 +479,14 @@ actor AuthTokenManager {
             noteOvertaken(generation, accessToken: nil, mayResend: mayResend && !turnedDown)
             return nil
         }
-        guard turnedDown else { return nil }
+        // A refusal of a token a sign-in has replaced says nothing of the sign-in's pair.
+        guard turnedDown, self.refreshToken == refreshToken else { return nil }
 
         if await signedInAgain(since: generation) { return accessToken }
         noteOvertaken(generation, accessToken: nil, mayResend: false)
-        guard http.statusCode == 401, signInGeneration == generation else { return nil }
+        guard http.statusCode == 401, signInGeneration == generation, self.refreshToken == refreshToken else {
+            return nil
+        }
         clearTokens()
         return nil
     }
