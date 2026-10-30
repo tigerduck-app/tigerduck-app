@@ -247,6 +247,11 @@ enum PushAPI {
         }
     }
 
+    /// The backend's TigerSync clock value for a time: whole microseconds since the Unix epoch.
+    nonisolated static func clock(of date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1_000_000).rounded(.down))
+    }
+
     struct AssignmentUploadEntry: Encodable, Sendable {
         let moodleAssignmentId: Int
         let courseNo: String

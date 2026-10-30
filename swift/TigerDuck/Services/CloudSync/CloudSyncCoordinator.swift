@@ -514,8 +514,8 @@ final class CloudSyncCoordinator {
                 // names it settles the op; anything else counts as a refusal.
                 guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
 
-            case .courseDelete(let courseKey):
-                try await pushCoordinator.deleteCourse(courseKey: courseKey)
+            case .courseDelete(let courseKey, let stamp):
+                try await pushCoordinator.deleteCourse(courseKey: courseKey, madeAt: stamp)
 
             case .courseAdd(let semester, let courseNo):
                 guard isProtectedDataAvailable() else { throw CancellationError() }

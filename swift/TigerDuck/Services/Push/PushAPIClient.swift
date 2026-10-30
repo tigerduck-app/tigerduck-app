@@ -167,8 +167,17 @@ final class PushAPIClient: Sendable {
         try await delete(path: components.string ?? "/sync/courses")
     }
 
-    func deleteCourse(courseKey: String) async throws {
-        try await delete(path: "/sync/courses/\(courseKey)")
+    /// With `madeAt`, the backend applies the delete only when that time is later than the
+    /// course's last add, hide and reset; without it, or once it refuses that time as ahead of its
+    /// clock (409 `clock_ahead`), the delete counts from when it arrives.
+    func deleteCourse(courseKey: String, madeAt stamp: Date? = nil) async throws {
+        let path = "/sync/courses/\(courseKey)"
+        guard let stamp else { return try await delete(path: path) }
+        do {
+            try await delete(path: "\(path)?hlc=\(PushAPI.clock(of: stamp))")
+        } catch PushAPIError.httpStatus(409, let body) where body.contains("clock_ahead") {
+            try await delete(path: path)
+        }
     }
 
     func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) async throws {

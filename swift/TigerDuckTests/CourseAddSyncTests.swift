@@ -63,6 +63,8 @@ struct CourseAddSyncTests {
         var isOn = true
     }
 
+    private static let hiddenAt = Date(timeIntervalSince1970: 1_790_000_000)
+
     private static func art() -> SDCourse {
         SDCourse(courseNo: "GE1010001", courseName: "Art", semester: "1151")
     }
@@ -362,11 +364,12 @@ struct CourseAddSyncTests {
         let backend = Backend()
         for _ in 0..<SyncOutbox.maxAttempts { backend.answer(503) }
         let deleteURL = backend.baseURL.appendingPathComponent("sync/courses/client:1151:CS1001301")
+            .appending(queryItems: [URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: Self.hiddenAt)))])
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"deleted": 1}"#.utf8)), for: deleteURL)
         let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
 
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
-        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
 
         #expect(SettingsAPIStub.requests(for: deleteURL).count == 1)
         for _ in 2..<SyncOutbox.maxAttempts { await coordinator.syncTick() }
@@ -411,11 +414,12 @@ struct CourseAddSyncTests {
     func addGoesAfterAnInFlightDelete() async throws {
         let backend = Backend()
         let deleteURL = backend.baseURL.appendingPathComponent("sync/courses/client:1151:GE1010001")
+            .appending(queryItems: [URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: Self.hiddenAt)))])
         let gate = SettingsAPIStub.ReplyGate()
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"deleted": 1}"#.utf8), gate: gate), for: deleteURL)
         backend.answer(200)
         let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
-        let delete = Task { await coordinator.deleteCourse(semester: "1151", courseNo: "GE1010001") }
+        let delete = Task { await coordinator.deleteCourse(semester: "1151", courseNo: "GE1010001", at: Self.hiddenAt) }
         try await waitUntil { !SettingsAPIStub.requests(for: deleteURL).isEmpty }
 
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value

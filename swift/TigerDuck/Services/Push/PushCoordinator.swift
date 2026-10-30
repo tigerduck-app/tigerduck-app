@@ -335,6 +335,10 @@ final class PushCoordinator {
         try await apiClient.deleteCourse(courseKey: courseKey)
     }
 
+    func deleteCourse(courseKey: String, madeAt stamp: Date) async throws {
+        try await apiClient.deleteCourse(courseKey: courseKey, madeAt: stamp)
+    }
+
     func refreshRegistrationAfterAuth() {
         if stoppedBySignOut {
             stoppedBySignOut = false

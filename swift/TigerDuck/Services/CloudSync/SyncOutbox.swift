@@ -121,7 +121,7 @@ nonisolated enum ResolvedSyncOp: Sendable {
     case courseOverride(courseId: String, colorHex: String?, customName: String?, locale: String?)
     case assignmentOverride(assignmentId: Int, localStatus: String)
     case courseIgnore(courseId: String, moodleCourseId: Int?, ignore: Bool?)
-    case courseDelete(courseKey: String)
+    case courseDelete(courseKey: String, stamp: Date)
     case courseAdd(semester: String, courseNo: String)
 }
 
@@ -377,8 +377,8 @@ actor SyncOutbox {
         case .courseIgnore(_, _, let moodleId, let moodleCourseId, let ignore, _):
             return .courseIgnore(courseId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore)
 
-        case .courseDelete(let semester, let courseNo, _):
-            return .courseDelete(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo))
+        case .courseDelete(let semester, let courseNo, let stamp):
+            return .courseDelete(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), stamp: stamp)
 
         case .courseAdd(let semester, let courseNo, _):
             return .courseAdd(semester: semester, courseNo: courseNo)

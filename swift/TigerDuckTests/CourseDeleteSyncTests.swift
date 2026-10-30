@@ -8,7 +8,11 @@ struct CourseDeleteSyncTests {
     private struct Backend {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
 
-        func url(_ path: String) -> URL { baseURL.appendingPathComponent(path) }
+        func url(_ path: String) -> URL {
+            let parts = path.split(separator: "?", maxSplits: 1).map(String.init)
+            let url = baseURL.appendingPathComponent(parts[0])
+            return parts.count == 2 ? URL(string: "\(url.absoluteString)?\(parts[1])")! : url
+        }
 
         func requests(_ path: String) -> [URLRequest] { SettingsAPIStub.requests(for: url(path)) }
 
@@ -17,7 +21,8 @@ struct CourseDeleteSyncTests {
         }
     }
 
-    private static let path = "sync/courses/client:1151:CS1001301"
+    private static let hiddenAt = Date(timeIntervalSince1970: 1_790_000_000)
+    private static let path = "sync/courses/client:1151:CS1001301?hlc=\(PushAPI.clock(of: hiddenAt))"
 
     private static func freshDirectory() -> URL {
         FileManager.default.temporaryDirectory
@@ -55,7 +60,7 @@ struct CourseDeleteSyncTests {
                                                   moodleCourseId: nil, ignore: true)
         }
 
-        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
 
         #expect(backend.requests(Self.path).map(\.httpMethod) == ["DELETE"])
         #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
@@ -73,7 +78,7 @@ struct CourseDeleteSyncTests {
         let drain = Task { await coordinator.syncTick() }
         try await waitUntil { !backend.requests("sync/courses/1151EE2005301/override").isEmpty }
 
-        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
         gate.open()
         await drain.value
 
@@ -85,7 +90,7 @@ struct CourseDeleteSyncTests {
         let backend = Backend()
         backend.answer(Self.path)
         let coordinator = Self.makeCoordinator(backend)
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1001301")
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
 
         let (fetched, deleting) = await coordinator.courseDeletes(around: {
             await coordinator.syncTick()
@@ -104,7 +109,7 @@ struct CourseDeleteSyncTests {
         backend.answer(Self.path, .noReply)
         backend.answer(Self.path)
         let coordinator = Self.makeCoordinator(backend)
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1001301")
+        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
 
         await coordinator.syncTick()
 
