@@ -336,6 +336,10 @@ final class PushCoordinator {
         try await apiClient.deleteCourse(courseKey: courseKey)
     }
 
+    func deleteCourse(courseKey: String, madeAt stamp: Date) async throws {
+        try await apiClient.deleteCourse(courseKey: courseKey, madeAt: stamp)
+    }
+
     /// A new session or device registration may come to a server without this device's schedule,
     /// so the next list goes up even when unchanged.
     func refreshRegistrationAfterAuth() {

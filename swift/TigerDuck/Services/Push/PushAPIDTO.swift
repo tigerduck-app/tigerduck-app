@@ -239,12 +239,33 @@ enum PushAPI {
         let courses: [CourseUploadEntry]
         var courseOverrides: [CourseOverrideUploadEntry] = []
         var forceKeys: [String] = []
+        /// Sent with `X-TigerSync-Protocol: 2`, under which the backend reads them in place of
+        /// `forceKeys` and files the rest of `courses` as the school's roster.
+        var adds: [CourseAdd]?
 
         enum CodingKeys: String, CodingKey {
             case courses
             case courseOverrides = "course_overrides"
             case forceKeys = "force_keys"
+            case adds
         }
+    }
+
+    /// An add the backend applies only when `hlc` is later than the course's last add, hide and
+    /// reset (`server/sync/membership.py` in tigerduck-backend).
+    struct CourseAdd: Encodable, Sendable {
+        let courseKey: String
+        let hlc: Int64
+
+        enum CodingKeys: String, CodingKey {
+            case courseKey = "course_key"
+            case hlc
+        }
+    }
+
+    /// The backend's TigerSync clock value for a time: whole microseconds since the Unix epoch.
+    nonisolated static func clock(of date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1_000_000).rounded(.down))
     }
 
     struct AssignmentUploadEntry: Encodable, Sendable {
