@@ -1,5 +1,4 @@
 import Foundation
-import Security
 #if os(iOS)
 import UIKit
 #elseif os(macOS)
@@ -7,9 +6,9 @@ import AppKit
 #endif
 
 /// Moves the Keychain items that builds up to v1.3.0 saved without a service into `SecureStore`,
-/// which no longer reads them. Such an item opens only while the phone is unlocked, so a locked
-/// launch leaves the flag unset and runs this again once protected data is available, in the same
-/// process, as unlocking resumes it.
+/// whose reads fall back to them until then. Such an item opens only while the phone is unlocked,
+/// so a locked launch leaves the flag unset and runs this again once protected data is available,
+/// in the same process, as unlocking resumes it.
 enum BareKeychainItemMoveMigration {
     private static let doneKey = "BareKeychainItemMoveMigration.v1.done"
     private static var waitingForReadableData: (center: NotificationCenter, observer: any NSObjectProtocol)?
@@ -42,32 +41,20 @@ enum BareKeychainItemMoveMigration {
         defaults.set(true, forKey: doneKey)
     }
 
-    /// Whether none of the key's bare items is left. A newer value already in `SecureStore` wins
-    /// over a bare item; one that cannot be read or saved now stays for the next run.
+    /// Whether none of the key's bare items is left. The newest goes first, so a value saved since
+    /// or a newer bare item wins over an older one; an item that cannot be listed, read or saved now
+    /// stays for the next run.
     private static func moveBareItems(forKey key: String) -> Bool {
-        SecureStore.legacyItems(key: key).map { item in
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecValuePersistentRef as String: item,
-                kSecReturnData as String: true,
-                kSecMatchLimit as String: kSecMatchLimitOne,
-            ]
-            var result: AnyObject?
-            switch SecItemCopyMatching(query as CFDictionary, &result) {
-            case errSecItemNotFound:
-                return true
-            case errSecSuccess:
-                guard let value = result as? Data else { return false }
-                do {
-                    if try SecureStore.loadIfReadable(key: key) == nil { try SecureStore.save(value, forKey: key) }
-                } catch {
-                    return false
-                }
-                SecureStore.deleteLegacyItem(item)
-                return true
-            default:
+        guard let items = SecureStore.legacyItems(key: key) else { return false }
+        return items.map { item in
+            do {
+                guard let value = try SecureStore.readLegacyItem(item) else { return true }
+                if try SecureStore.loadIfReadable(key: key) == nil { try SecureStore.save(value, forKey: key) }
+            } catch {
                 return false
             }
+            SecureStore.deleteLegacyItem(item)
+            return true
         }.allSatisfy { $0 }
     }
 }

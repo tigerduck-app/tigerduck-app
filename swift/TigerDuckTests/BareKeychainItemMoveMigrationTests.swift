@@ -49,6 +49,7 @@ struct BareKeychainItemMoveMigrationTests {
             BareKeychainItemMoveMigration.runIfNeeded(defaults: defaults, center: center, keys: [key])
             #expect(store.storedObject(forKey: key) == nil)
             #expect(Self.accessibilityClasses(of: key).count == 1)
+            #expect(SecureStore.load(key: key) == Data("value".utf8))
 
             store.isLocked = false
             center.post(name: BareKeychainItemMoveMigration.readableAgain, object: nil)
@@ -58,13 +59,33 @@ struct BareKeychainItemMoveMigrationTests {
         #expect(Self.accessibilityClasses(of: key).isEmpty)
     }
 
-    @Test func theStoreNoLongerReadsABareItem() throws {
+    @Test func theStoreReadsABareItemUntilTheMigrationMovesIt() throws {
         let key = Self.uniqueKey()
         defer { SecureStore.delete(key: key) }
         try Self.addBareItem(Data("value".utf8), forKey: key)
 
-        #expect(SecureStore.load(key: key) == nil)
-        #expect(Self.accessibilityClasses(of: key).count == 1)
+        #expect(SecureStore.load(key: key) == Data("value".utf8))
+        #expect(try SecureStore.loadIfReadable(key: key) == nil)
+        #expect(Self.accessibilityClasses(of: key) == [kSecAttrAccessibleWhenUnlocked as String])
+
+        BareKeychainItemMoveMigration.runIfNeeded(defaults: try Self.defaults(), center: NotificationCenter(), keys: [key])
+        #expect(SecureStore.load(key: key) == Data("value".utf8))
+        #expect(Self.accessibilityClasses(of: key) == [kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String])
+    }
+
+    @Test func theNewestOfTwoBareItemsWins() async throws {
+        let key = Self.uniqueKey()
+        defer { SecureStore.delete(key: key) }
+        try Self.addBareItem(Data("older".utf8), forKey: key)
+        // The Keychain keeps modification dates to the second.
+        try await Task.sleep(for: .seconds(1.2))
+        try Self.addBareItem(Data("newer".utf8), forKey: key, accessGroup: "group.org.ntust.app.TigerDuck")
+
+        #expect(SecureStore.load(key: key) == Data("newer".utf8))
+        BareKeychainItemMoveMigration.runIfNeeded(defaults: try Self.defaults(), center: NotificationCenter(), keys: [key])
+
+        #expect(SecureStore.load(key: key) == Data("newer".utf8))
+        #expect(Self.accessibilityClasses(of: key) == [kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String])
     }
 
     @Test func aDeleteTakesTheBareItemToo() throws {
@@ -104,12 +125,13 @@ struct BareKeychainItemMoveMigrationTests {
         try #require(UserDefaults(suiteName: UUID().uuidString))
     }
 
-    private static func addBareItem(_ data: Data, forKey key: String) throws {
-        let item: [String: Any] = [
+    private static func addBareItem(_ data: Data, forKey key: String, accessGroup: String? = nil) throws {
+        var item: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
         ]
+        item[kSecAttrAccessGroup as String] = accessGroup
         let status = SecItemAdd(item as CFDictionary, nil)
         try #require(status == errSecSuccess, "SecItemAdd failed with \(status)")
     }
