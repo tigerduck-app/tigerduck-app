@@ -164,8 +164,8 @@ final class PushAPIClient: Sendable {
         var stamped = try await makePostRequest(path: "/sync/courses/upload", body: request)
         stamped.setValue("2", forHTTPHeaderField: "X-TigerSync-Protocol")
         do {
-            _ = try await execute(stamped)
-        } catch PushAPIError.httpStatus(409, let body) where body.contains("clock_ahead") {
+            _ = try await execute(stamped, expectedFailure: Self.clockAhead)
+        } catch PushAPIError.clockAhead {
             var unstamped = request
             unstamped.adds = nil
             try await uploadCourses(unstamped)
@@ -188,10 +188,18 @@ final class PushAPIClient: Sendable {
         let path = "/sync/courses/\(courseKey)"
         guard let stamp else { return try await delete(path: path) }
         do {
-            try await delete(path: "\(path)?hlc=\(PushAPI.clock(of: stamp))")
-        } catch PushAPIError.httpStatus(409, let body) where body.contains("clock_ahead") {
+            try await delete(path: "\(path)?hlc=\(PushAPI.clock(of: stamp))", expectedFailure: Self.clockAhead)
+        } catch PushAPIError.clockAhead {
             try await delete(path: path)
         }
+    }
+
+    private static func clockAhead(statusCode: Int, body: Data) -> PushAPIError? {
+        guard statusCode == 409,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              json["detail"] as? String == "clock_ahead"
+        else { return nil }
+        return .clockAhead
     }
 
     func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) async throws {
@@ -304,7 +312,10 @@ final class PushAPIClient: Sendable {
         }
     }
 
-    private func delete(path: String, at baseURL: URL? = nil) async throws {
+    private func delete(
+        path: String, at baseURL: URL? = nil,
+        expectedFailure: (_ statusCode: Int, _ body: Data) -> PushAPIError? = { _, _ in nil }
+    ) async throws {
         let baseURL = baseURL ?? baseURLProvider()
         // `path` may carry a query string; appendingPathComponent would
         // percent-escape the `?`, so splice it back on after the join.
@@ -316,7 +327,7 @@ final class PushAPIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         try await applyAuth(to: &request)
-        _ = try await execute(request)
+        _ = try await execute(request, expectedFailure: expectedFailure)
     }
 
     private func makePostRequest<Request: Encodable>(
@@ -405,6 +416,8 @@ enum PushAPIError: Error, LocalizedError {
     case invalidResponse
     case httpStatus(Int, body: String)
     case syncRevisionExpired
+    /// 409 `clock_ahead`: a TigerSync stamp more than five seconds ahead of the backend's clock.
+    case clockAhead
     case notSignedIn
 
     var errorDescription: String? {
@@ -414,6 +427,7 @@ enum PushAPIError: Error, LocalizedError {
         case .invalidResponse: return "Push server returned a non-HTTP response."
         case .httpStatus(let code, let body): return "Push server returned HTTP \(code): \(body)"
         case .syncRevisionExpired: return "Push server has compacted the changes asked for."
+        case .clockAhead: return "Push server refused a time ahead of its clock."
         case .notSignedIn: return String(localized: "common_auto_sign_in_failed")
         }
     }

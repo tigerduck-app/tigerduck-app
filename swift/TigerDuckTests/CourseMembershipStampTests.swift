@@ -12,11 +12,15 @@ struct CourseMembershipStampTests {
     struct Attempt: Sendable {
         let reply: SettingsAPIStub.StubResponse
         let stamped: Bool
+        var landed: Bool { reply.statusCode == 200 }
 
         static let lands = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)), stamped: true)
         static let loses = Attempt(reply: .noReply, stamped: true)
         static let refusedAsAhead = Attempt(
             reply: .init(statusCode: 409, body: Data(#"{"detail":"clock_ahead"}"#.utf8)), stamped: true
+        )
+        static let otherConflict = Attempt(
+            reply: .init(statusCode: 409, body: Data(#"{"detail":"something_else"}"#.utf8)), stamped: true
         )
         static let landsUnstamped = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)), stamped: false)
     }
@@ -33,12 +37,16 @@ struct CourseMembershipStampTests {
                  edit: .hide, attempts: [.loses, .lands]),
             Case(testDescription: "A hide stamped ahead of the server's clock goes again without its time",
                  edit: .hide, attempts: [.refusedAsAhead, .landsUnstamped]),
+            Case(testDescription: "A hide answered with another conflict stays queued with its time",
+                 edit: .hide, attempts: [.otherConflict, .otherConflict]),
             Case(testDescription: "An add queued before a hide or reset elsewhere goes with the time it was made",
                  edit: .add, attempts: [.lands]),
             Case(testDescription: "An add whose reply was lost goes again with the same time",
                  edit: .add, attempts: [.loses, .lands]),
             Case(testDescription: "An add stamped ahead of the server's clock goes again with its key forced",
                  edit: .add, attempts: [.refusedAsAhead, .landsUnstamped]),
+            Case(testDescription: "An add answered with another conflict stays queued with its time",
+                 edit: .add, attempts: [.otherConflict, .otherConflict]),
         ]
     }
 
@@ -79,7 +87,7 @@ struct CourseMembershipStampTests {
                 try Self.expectAdd(request, stamped: attempt.stamped)
             }
         }
-        #expect(await coordinator.outbox.pendingCount() == 0)
+        #expect(await coordinator.outbox.pendingCount() == (example.attempts.last?.landed == true ? 0 : 1))
     }
 
     private static func expectAdd(_ request: URLRequest, stamped: Bool) throws {
