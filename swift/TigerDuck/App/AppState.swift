@@ -201,9 +201,7 @@ final class AppState {
             self?.uploadAssignments(request)
         }
         revisionPoller.poll = { [weak self] in await self?.pollRevision() ?? .unchanged }
-        revisionPoller.relogin = { [weak self] in
-            await self?.attemptBackendRelogin(replacing: self?.revisionPollAccessToken) ?? false
-        }
+        revisionPoller.relogin = { [weak self] in await self?.attemptBackendRelogin(replacing: $0) ?? false }
 
         // Apply a stored in-app language override at launch so lookups use it. Skip
         // "system": apply() would remove AppleLanguages, wiping the per-app override
@@ -276,8 +274,6 @@ final class AppState {
 
     @ObservationIgnored
     let revisionPoller = RevisionPoller()
-    @ObservationIgnored
-    var revisionPollAccessToken: String?
 
     #if os(iOS)
 

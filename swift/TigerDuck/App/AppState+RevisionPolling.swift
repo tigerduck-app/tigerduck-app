@@ -32,8 +32,7 @@ extension AppState {
             await cloudSyncCoordinator.onRevisionChanged()
             return outcome
         } catch PushAPIError.httpStatus(401, _, let sent) {
-            revisionPollAccessToken = sent?.value
-            return .unauthorized
+            return .unauthorized(refused: sent?.value)
         } catch {
             AppLogger.sync.info("[poll] tick failed: \(error, privacy: .private)")
             return .failed
@@ -179,7 +178,8 @@ nonisolated enum RevisionPollOutcome: Equatable, Sendable {
     case unchanged
     case changed
     case failed
-    case unauthorized
+    /// `refused` is the access token the refused request sent.
+    case unauthorized(refused: String?)
     case offline
 }
 
@@ -256,7 +256,7 @@ nonisolated struct RevisionPollSchedule: Sendable {
 @MainActor
 final class RevisionPoller {
     var poll: @MainActor () async -> RevisionPollOutcome = { .unchanged }
-    var relogin: @MainActor () async -> Bool = { false }
+    var relogin: @MainActor (_ refused: String?) async -> Bool = { _ in false }
 
     private let sleep: @Sendable (Duration) async -> Void
     private let now: () -> Date
@@ -336,13 +336,13 @@ final class RevisionPoller {
             delay = schedule.currentInterval(at: now())
         case .failed:
             delay = schedule.delayAfterFailure(at: now(), jitter: jitter())
-        case .unauthorized:
+        case .unauthorized(let refused):
             guard !reloginTried else {
                 isSuspended = true
                 return
             }
             reloginTried = true
-            guard await relogin() else {
+            guard await relogin(refused) else {
                 isSuspended = true
                 return
             }
