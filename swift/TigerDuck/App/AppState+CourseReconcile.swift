@@ -222,6 +222,14 @@ extension AppState {
         }
     }
 
+    /// The term's courses the server lists, read as the reconcile reads them: a course a roster
+    /// dropped is absent unless it was added by hand.
+    static func serverCourseNos(_ rows: [[String: Any]], semester: String, userAdded: [SDCourse]) -> Set<String> {
+        let termRows = rows.filter { $0["semester"] as? String == semester }
+        let kept = keptRows(termRows, semester: semester, dropped: [], userAdded: userAdded)
+        return Set(kept.compactMap { $0["course_no"] as? String })
+    }
+
     /// The courses a roster dropped on the server. A row without `enrollment_status` counts as
     /// enrolled.
     static func droppedOnServer(_ rows: [[String: Any]]) -> Set<String> {

@@ -332,6 +332,23 @@ struct CourseDeleteSyncTests {
         #expect(AppState.coursesOnOneSide(server: ["EE2"], local: [], semester: "1151", deleting: []) == nil)
     }
 
+    @Test("The courses re-enable check reads a course a roster dropped as gone from the server, unless added by hand here")
+    func droppedCourseIsNoServerOnlyCourse() {
+        let rows: [[String: Any]] = [
+            ["semester": "1151", "course_no": "CS1", "enrollment_status": "enrolled"],
+            ["semester": "1151", "course_no": "EE2", "enrollment_status": "dropped"],
+            ["semester": "1151", "course_no": "GE3", "enrollment_status": "dropped"],
+            ["semester": "1142", "course_no": "MA4"],
+        ]
+        let addedHere = [SDCourse(courseNo: "GE3", courseName: "GE3", semester: "1151")]
+
+        let server = AppState.serverCourseNos(rows, semester: "1151", userAdded: addedHere)
+
+        #expect(server == ["CS1", "GE3"])
+        #expect(AppState.coursesOnOneSide(server: server, local: ["CS1", "GE3"], semester: "1151", deleting: [])
+            .map { [$0.localOnly, $0.serverOnly] } == [0, 0])
+    }
+
     @Test("A course whose delete is queued keeps this device's setting through a pull, in its own term only")
     func queuedDeleteKeepsTheLocalSetting() {
         let left = AppState.courseKeysPullLeaves(
