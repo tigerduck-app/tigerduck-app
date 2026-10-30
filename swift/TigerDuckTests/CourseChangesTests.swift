@@ -508,6 +508,7 @@ struct CourseChangesTests {
 
         let sent = SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") }
         #expect(sent == [nil, #"W/"a""#, #"W/"a""#, #"W/"a""#])
+        #expect(SettingsAPIStub.requests(for: url).allSatisfy { $0.cachePolicy == .reloadIgnoringLocalCacheData })
     }
 
     @Test func aStoredFeedThisBuildCannotReadIsFetchedAgain() async throws {

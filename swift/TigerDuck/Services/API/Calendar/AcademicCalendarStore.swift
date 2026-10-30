@@ -61,6 +61,8 @@ final class AcademicCalendarStore {
             .appendingPathComponent("calendar")
             .appendingPathComponent("semesters")
         var request = URLRequest(url: url)
+        // The ETag is ours to send; URLCache would serve its copy for the feed's max-age and hide a change.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let tag = Defaults[.academicCalendarETag]
         if !tag.isEmpty {
