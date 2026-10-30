@@ -532,7 +532,8 @@ final class DataCache {
                 try? FileManager.default.removeItem(at: url)
             }
         }
-        clearBulletinDetails()
+        let bulletinDetails = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
+        try? FileManager.default.removeItem(at: bulletinDetails)
         try? FileManager.default.removeItem(at: moodleDir)
         try? FileManager.default.removeItem(at: moodleFilesDir)
         revision &+= 1
