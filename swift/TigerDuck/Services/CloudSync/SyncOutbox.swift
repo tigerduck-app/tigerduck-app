@@ -264,10 +264,10 @@ actor SyncOutbox {
     }
 
     static func keepsWithoutAttempt(_ error: Error, for op: SyncOp) -> Bool {
-        if case .courseAdd = op, case PushAPIError.httpStatus(_, _) = error { return false }
+        if case .courseAdd = op, case PushAPIError.httpStatus(_, _, _) = error { return false }
         // The backend answers a course delete 409 only for its stamp, so another code is not a
         // refusal of the delete, which a later attempt may still land.
-        if case .courseDelete = op, case PushAPIError.httpStatus(409, _) = error { return true }
+        if case .courseDelete = op, case PushAPIError.httpStatus(409, _, _) = error { return true }
         return keepsWithoutAttempt(error)
     }
 
@@ -277,7 +277,7 @@ actor SyncOutbox {
             return true
         case let auth as SyncOutboxAuthError:
             return auth.statusCode == 401
-        case PushAPIError.httpStatus(let code, _):
+        case PushAPIError.httpStatus(let code, _, _):
             return code == 408 || code == 429 || (500..<600).contains(code)
         default:
             return false

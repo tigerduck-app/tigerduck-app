@@ -23,7 +23,6 @@ extension AppState {
         guard NetworkMonitor.shared.isConnected else { return .offline }
         await authService.ensureBackendSignedIn()
         guard await authTokenManager.isLoggedIn else { return .unchanged }
-        revisionPollAccessToken = await authTokenManager.validAccessToken()
         do {
             let serverRevision = try await pushCoordinator.fetchRevision()
             retryOwedConflictCheck()
@@ -32,7 +31,8 @@ extension AppState {
             let outcome = await syncChangesSinceLastRevision()
             await cloudSyncCoordinator.onRevisionChanged()
             return outcome
-        } catch PushAPIError.httpStatus(401, _) {
+        } catch PushAPIError.httpStatus(401, _, let sent) {
+            revisionPollAccessToken = sent?.value
             return .unauthorized
         } catch {
             AppLogger.sync.info("[poll] tick failed: \(error, privacy: .private)")

@@ -369,7 +369,8 @@ final class PushAPIClient: Sendable {
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
             logger.error("Push.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .private): \(snippet, privacy: .private)")
             versionGate.note(statusCode: http.statusCode)
-            throw PushAPIError.httpStatus(http.statusCode, body: snippet)
+            let sent = request.value(forHTTPHeaderField: "Authorization")?.split(separator: " ").last
+            throw PushAPIError.httpStatus(http.statusCode, body: snippet, sent: sent.map { .init(value: String($0)) })
         }
         return data
     }
@@ -414,7 +415,8 @@ enum PushAPIError: Error, LocalizedError {
     case encodingFailed(Error)
     case decodingFailed(Error)
     case invalidResponse
-    case httpStatus(Int, body: String)
+    /// `sent` is the access token the request carried, which a relogin after a 401 compares with the stored one.
+    case httpStatus(Int, body: String, sent: SentToken? = nil)
     case syncRevisionExpired
     /// 409 `clock_ahead`: a TigerSync stamp more than five seconds ahead of the backend's clock.
     case clockAhead
@@ -425,10 +427,17 @@ enum PushAPIError: Error, LocalizedError {
         case .encodingFailed(let error): return "Push encode failed: \(error.localizedDescription)"
         case .decodingFailed(let error): return "Push decode failed: \(error.localizedDescription)"
         case .invalidResponse: return "Push server returned a non-HTTP response."
-        case .httpStatus(let code, let body): return "Push server returned HTTP \(code): \(body)"
+        case .httpStatus(let code, let body, _): return "Push server returned HTTP \(code): \(body)"
         case .syncRevisionExpired: return "Push server has compacted the changes asked for."
         case .clockAhead: return "Push server refused a time ahead of its clock."
         case .notSignedIn: return String(localized: "common_auto_sign_in_failed")
         }
+    }
+
+    /// Prints as stars, so a logged error does not carry the token.
+    nonisolated struct SentToken: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+        let value: String
+        var description: String { "***" }
+        var debugDescription: String { "***" }
     }
 }
