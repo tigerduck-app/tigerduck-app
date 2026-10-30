@@ -267,6 +267,26 @@ struct SelectionDropsTests {
         #expect(cache.loadCourses(semester: "1151").map(\.courseNo) == ["CS1001301"])
     }
 
+    @Test("A course selection answer older than a drop is forgotten even when this language's cache lacks the course")
+    @MainActor
+    func staleAnswerForgottenWithoutLocalCopy() {
+        let droppedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let rows: [[String: Any]] = [[
+            "course_no": "MA1010003", "source": "ntust_portal", "enrollment_status": "dropped",
+            "updated_at": TigerDuckDateFormatters.withFractional.string(from: droppedAt),
+        ]]
+        var forgotten = 0
+
+        let term = AppState.readTerm(
+            "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: [], hidden: [], adding: [],
+            liveAnswer: (courseNos: ["CS1001301", "MA1010003"], at: droppedAt - 3600),
+            cache: Self.makeCache(fetched: ["CS1001301"], userAdded: []), forgetAnswer: { forgotten += 1 }
+        )
+
+        #expect(term.left.isEmpty)
+        #expect(forgotten == 1)
+    }
+
     @Test("A term whose every server row a roster dropped is not empty on the server, so its courses do not go up again")
     @MainActor
     func termOfDroppedRowsIsNotEmpty() {
