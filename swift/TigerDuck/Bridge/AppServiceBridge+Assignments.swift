@@ -13,10 +13,14 @@ private final class AssignmentRound {
     }
 }
 
-extension AppServiceBridge {
+final class AssignmentRounds {
+    static let shared = AssignmentRounds()
 
-    private static var runningRound: AssignmentRound?
-    private static var statusAskedAt: [String: ContinuousClock.Instant] = [:]
+    fileprivate var running: AssignmentRound?
+    fileprivate var statusAskedAt: [String: ContinuousClock.Instant] = [:]
+}
+
+extension AppServiceBridge {
 
     static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
         let generation = authService.loginGeneration
@@ -33,10 +37,11 @@ extension AppServiceBridge {
         generation: Int,
         rechecks: Bool,
         isCurrent: @MainActor () -> Bool,
+        rounds: AssignmentRounds = .shared,
         run: @escaping @MainActor () async -> [SDAssignment]
     ) async -> [SDAssignment] {
         var waitedFor: AssignmentRound?
-        while let round = runningRound, round.generation == generation, round !== waitedFor {
+        while let round = rounds.running, round.generation == generation, round !== waitedFor {
             await round.task?.value
             if round.rechecks || !rechecks { return answer(round, isCurrent: isCurrent) }
             waitedFor = round
@@ -44,9 +49,9 @@ extension AppServiceBridge {
         guard isCurrent() else { return DataCache.shared.loadAssignments() }
         let round = AssignmentRound(generation: generation, rechecks: rechecks)
         round.task = Task { round.assignments = await run() }
-        runningRound = round
+        rounds.running = round
         await round.task?.value
-        if runningRound === round { runningRound = nil }
+        if rounds.running === round { rounds.running = nil }
         return answer(round, isCurrent: isCurrent)
     }
 
@@ -84,8 +89,8 @@ extension AppServiceBridge {
     }
 
     static func cancelAssignmentRound() {
-        runningRound?.task?.cancel()
-        runningRound = nil
+        AssignmentRounds.shared.running?.task?.cancel()
+        AssignmentRounds.shared.running = nil
     }
 
     static func moodleCalendarEvent(_ assignment: SDAssignment) -> SDCalendarEvent {
@@ -226,6 +231,7 @@ extension AppServiceBridge {
         account: String,
         fetchedAt: Date,
         cache: DataCache,
+        rounds: AssignmentRounds = .shared,
         isCurrent: () -> Bool
     ) -> Bool {
         guard !Task.isCancelled, isCurrent() else { return false }
@@ -233,7 +239,7 @@ extension AppServiceBridge {
         cache.saveMoodleData(records, fetchedAt: fetchedAt, name: MoodleAssignmentRecord.cacheName, account: account)
         cache.replaceClosedUnsubmittedAssignments(closed)
         saveMoodleCalendarEvents(of: assignments, in: cache)
-        for (id, askedAt) in answered { statusAskedAt[String(id)] = askedAt }
+        for (id, askedAt) in answered { rounds.statusAskedAt[String(id)] = askedAt }
         return true
     }
 
@@ -266,17 +272,18 @@ extension AppServiceBridge {
         _ status: MoodleSubmissionStatus,
         askedAt: ContinuousClock.Instant,
         cache: DataCache,
+        rounds: AssignmentRounds = .shared,
         isCurrent: () -> Bool,
         notifying center: NotificationCenter = .default
     ) async -> Bool {
         var waitedFor: AssignmentRound?
-        while let round = runningRound, round !== waitedFor {
+        while let round = rounds.running, round !== waitedFor {
             await round.task?.value
             waitedFor = round
         }
         let id = String(status.assignId)
-        guard !Task.isCancelled, isCurrent(), statusAskedAt[id].map({ $0 < askedAt }) ?? true else { return false }
-        statusAskedAt[id] = askedAt
+        guard !Task.isCancelled, isCurrent(), rounds.statusAskedAt[id].map({ $0 < askedAt }) ?? true else { return false }
+        rounds.statusAskedAt[id] = askedAt
         let assignments = cache.loadAssignments()
         guard let assignment = assignments.first(where: { $0.assignmentId == id }) else { return false }
         let dueBefore = assignment.dueDate

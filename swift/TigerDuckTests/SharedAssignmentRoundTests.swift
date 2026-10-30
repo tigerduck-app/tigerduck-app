@@ -7,6 +7,8 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct SharedAssignmentRoundTests {
+    private let shared = AssignmentRounds()
+
     @MainActor
     private final class Rounds {
         /// Callers that reached `sharedRound`, which decides whether to join before it first waits.
@@ -35,7 +37,7 @@ struct SharedAssignmentRoundTests {
     ) -> Task<Void, Never> {
         Task {
             rounds.entered += 1
-            _ = await AppServiceBridge.sharedRound(generation: generation, rechecks: rechecks, isCurrent: { true }) {
+            _ = await AppServiceBridge.sharedRound(generation: generation, rechecks: rechecks, isCurrent: { true }, rounds: shared) {
                 await rounds.run(name)
             }
         }
@@ -43,7 +45,6 @@ struct SharedAssignmentRoundTests {
 
     @Test("a round that starts while another runs for the account joins it")
     func roundsJoin() async throws {
-        AppServiceBridge.cancelAssignmentRound()
         let rounds = Rounds()
         let launch = start("launch", rounds, rechecks: false)
         try await waitUntil { rounds.started == ["launch"] }
@@ -57,7 +58,6 @@ struct SharedAssignmentRoundTests {
 
     @Test("a pull waits out a round that skips submissions, then rechecks in its own")
     func pullRunsItsOwnRecheck() async throws {
-        AppServiceBridge.cancelAssignmentRound()
         let rounds = Rounds()
         let launch = start("launch", rounds, rechecks: false)
         try await waitUntil { rounds.started == ["launch"] }
@@ -72,7 +72,6 @@ struct SharedAssignmentRoundTests {
 
     @Test("a round that skips submissions joins a pull")
     func launchJoinsPull() async throws {
-        AppServiceBridge.cancelAssignmentRound()
         let rounds = Rounds()
         let pull = start("pull", rounds, rechecks: true)
         try await waitUntil { rounds.started == ["pull"] }
@@ -90,12 +89,11 @@ struct SharedAssignmentRoundTests {
 
     @Test("a round its account signed out of hands back the cache, not that account's list")
     func aRoundOutlivedBySignOutHandsBackTheCache() async {
-        AppServiceBridge.cancelAssignmentRound()
         let signIn = SignIn()
         let departing = "departing-" + UUID().uuidString
         let due = Date(timeIntervalSince1970: 1_800_000_000)
 
-        let shown = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
+        let shown = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
             signIn.isCurrent = false
             return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
         }
@@ -105,14 +103,13 @@ struct SharedAssignmentRoundTests {
 
     @Test("a caller that joined a round its account signed out of gets the cache too")
     func aJoinerOfARoundOutlivedBySignOutGetsTheCache() async throws {
-        AppServiceBridge.cancelAssignmentRound()
         let rounds = Rounds()
         let signIn = SignIn()
         let departing = "departing-" + UUID().uuidString
         let due = Date(timeIntervalSince1970: 1_800_000_000)
         let pull = Task {
             rounds.entered += 1
-            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
+            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
                 _ = await rounds.run("pull")
                 return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
             }
@@ -120,7 +117,7 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["pull"] }
         let joined = Task {
             rounds.entered += 1
-            return await AppServiceBridge.sharedRound(generation: 1, rechecks: false, isCurrent: { signIn.isCurrent }) { [] }
+            return await AppServiceBridge.sharedRound(generation: 1, rechecks: false, isCurrent: { signIn.isCurrent }, rounds: shared) { [] }
         }
         try await waitUntil { rounds.entered == 2 }
         signIn.isCurrent = false
@@ -132,14 +129,13 @@ struct SharedAssignmentRoundTests {
 
     @Test("a pull whose account signed out while it waited starts no round")
     func aWaiterOutlivedBySignOutStartsNoRound() async throws {
-        AppServiceBridge.cancelAssignmentRound()
         let rounds = Rounds()
         let signIn = SignIn()
         let launch = start("launch", rounds, rechecks: false)
         try await waitUntil { rounds.started == ["launch"] }
         let pull = Task {
             rounds.entered += 1
-            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }) {
+            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
                 await rounds.run("pull")
             }
         }
@@ -153,7 +149,6 @@ struct SharedAssignmentRoundTests {
 
     @Test("the next account never joins the departing account's round")
     func roundsAreKeptPerSignIn() async throws {
-        AppServiceBridge.cancelAssignmentRound()
         let rounds = Rounds()
         let departing = start("departing", rounds, generation: 1, rechecks: false)
         try await waitUntil { rounds.started == ["departing"] }
@@ -185,14 +180,14 @@ struct SharedAssignmentRoundTests {
     }
 
     @discardableResult
-    private static func round(
+    private func round(
         of id: Int, askedAt: ContinuousClock.Instant, in cache: DataCache, isCurrent: Bool = true
     ) -> Bool {
         AppServiceBridge.persistRound(
             [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
-                          dueDate: due)],
-            records: [], closed: [:], answered: [id: askedAt], account: "B11399001", fetchedAt: due, cache: cache,
-            isCurrent: { isCurrent }
+                          dueDate: Self.due)],
+            records: [], closed: [:], answered: [id: askedAt], account: "B11399001", fetchedAt: Self.due, cache: cache,
+            rounds: shared, isCurrent: { isCurrent }
         )
     }
 
@@ -207,11 +202,10 @@ struct SharedAssignmentRoundTests {
 
     @Test("a status the page fetched reaches the cached assignment and tells Home, and the same one again writes nothing")
     func pageStatusIsWritten() async {
-        AppServiceBridge.cancelAssignmentRound()
         let folder = Folder()
         let id = Self.newId()
         let now = ContinuousClock.now
-        Self.round(of: id, askedAt: now - .seconds(60), in: folder.cache)
+        round(of: id, askedAt: now - .seconds(60), in: folder.cache)
         let center = NotificationCenter()
         let heard = OSAllocatedUnfairLock(initialState: 0)
         let observer = center.addObserver(forName: AppConstants.dataDidUpdate, object: nil, queue: nil) { _ in
@@ -220,7 +214,7 @@ struct SharedAssignmentRoundTests {
         defer { center.removeObserver(observer) }
 
         #expect(await AppServiceBridge.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now, cache: folder.cache, isCurrent: { true }, notifying: center
+            Self.handedIn(id), askedAt: now, cache: folder.cache, rounds: shared, isCurrent: { true }, notifying: center
         ))
 
         let cached = folder.cache.loadAssignments().first { $0.assignmentId == String(id) }
@@ -228,22 +222,21 @@ struct SharedAssignmentRoundTests {
         #expect(cached?.submittedAt == Self.submittedAt)
         #expect(heard.withLock { $0 } == 1)
         #expect(await !AppServiceBridge.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now + .seconds(1), cache: folder.cache, isCurrent: { true }, notifying: center
+            Self.handedIn(id), askedAt: now + .seconds(1), cache: folder.cache, rounds: shared, isCurrent: { true }, notifying: center
         ))
         #expect(heard.withLock { $0 } == 1)
     }
 
     @Test("an extension the page fetched sets the cached due date, longer, shorter or taken back, and one before it is kept without moving it")
     func pageExtensionIsWritten() async {
-        AppServiceBridge.cancelAssignmentRound()
         let folder = Folder()
         let id = Self.newId()
         let now = ContinuousClock.now
-        Self.round(of: id, askedAt: now - .seconds(60), in: folder.cache)
+        round(of: id, askedAt: now - .seconds(60), in: folder.cache)
         var status = MoodleSubmissionStatus(
             assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil, extensionDueDate: Self.due - 60
         )
-        #expect(await AppServiceBridge.takeSubmissionStatus(status, askedAt: now, cache: folder.cache, isCurrent: { true }))
+        #expect(await AppServiceBridge.takeSubmissionStatus(status, askedAt: now, cache: folder.cache, rounds: shared, isCurrent: { true }))
         let early = folder.cache.loadAssignments().first { $0.assignmentId == String(id) }
         #expect(early?.dueDate == Self.due)
         #expect(early?.extensionDueDate == Self.due - 60)
@@ -251,7 +244,7 @@ struct SharedAssignmentRoundTests {
         for (step, extensionDate) in [Self.due + 2 * 86_400, Self.due + 86_400, nil].enumerated() {
             status.extensionDueDate = extensionDate
             #expect(await AppServiceBridge.takeSubmissionStatus(
-                status, askedAt: now + .seconds(step + 1), cache: folder.cache, isCurrent: { true }
+                status, askedAt: now + .seconds(step + 1), cache: folder.cache, rounds: shared, isCurrent: { true }
             ))
             let cached = folder.cache.loadAssignments().first { $0.assignmentId == String(id) }
             #expect(cached?.dueDate == extensionDate ?? Self.due)
@@ -264,7 +257,6 @@ struct SharedAssignmentRoundTests {
 
     @Test("an extension the page fetched past a closed assignment's cutoff has rounds ask about it again")
     func pageExtensionReopensAClosedAssignment() async {
-        AppServiceBridge.cancelAssignmentRound()
         let folder = Folder()
         let id = Self.newId()
         let now = ContinuousClock.now
@@ -274,7 +266,7 @@ struct SharedAssignmentRoundTests {
             [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
                           dueDate: due, cutoffDate: due + 3600)],
             records: [], closed: [String(id): closedAt, "1": closedAt], answered: [id: now - .seconds(60)],
-            account: "B11399001", fetchedAt: closedAt, cache: folder.cache, isCurrent: { true }
+            account: "B11399001", fetchedAt: closedAt, cache: folder.cache, rounds: shared, isCurrent: { true }
         )
 
         #expect(await AppServiceBridge.takeSubmissionStatus(
@@ -282,7 +274,7 @@ struct SharedAssignmentRoundTests {
                 assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil,
                 extensionDueDate: Date() + 86_400
             ),
-            askedAt: now, cache: folder.cache, isCurrent: { true }
+            askedAt: now, cache: folder.cache, rounds: shared, isCurrent: { true }
         ))
 
         #expect(folder.cache.loadClosedUnsubmittedAssignments() == ["1": closedAt])
@@ -290,17 +282,16 @@ struct SharedAssignmentRoundTests {
 
     @Test("a round running when the page's status comes is waited out, and its older answer does not replace it")
     func pageStatusWaitsOutARound() async throws {
-        AppServiceBridge.cancelAssignmentRound()
         let folder = Folder()
         let cache = folder.cache
         let id = Self.newId()
         let pageAskedAt = ContinuousClock.now
-        Self.round(of: id, askedAt: pageAskedAt - .seconds(60), in: cache)
+        round(of: id, askedAt: pageAskedAt - .seconds(60), in: cache)
         let rounds = Rounds()
         let pull = Task {
-            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { true }) {
+            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { true }, rounds: shared) {
                 _ = await rounds.run("pull")
-                Self.round(of: id, askedAt: pageAskedAt - .seconds(5), in: cache)
+                round(of: id, askedAt: pageAskedAt - .seconds(5), in: cache)
                 return []
             }
         }
@@ -310,7 +301,7 @@ struct SharedAssignmentRoundTests {
         let page = Task {
             asked.isSet = true
             return await AppServiceBridge.takeSubmissionStatus(
-                Self.handedIn(id), askedAt: pageAskedAt, cache: cache, isCurrent: { true }
+                Self.handedIn(id), askedAt: pageAskedAt, cache: cache, rounds: shared, isCurrent: { true }
             )
         }
         try await waitUntil { asked.isSet }
@@ -324,48 +315,45 @@ struct SharedAssignmentRoundTests {
 
     @Test("an answer asked for before the one the assignment has, a round's or another page's, is dropped")
     func olderAnswersAreDropped() async {
-        AppServiceBridge.cancelAssignmentRound()
         let folder = Folder()
         let id = Self.newId()
         let now = ContinuousClock.now
-        Self.round(of: id, askedAt: now, in: folder.cache)
+        round(of: id, askedAt: now, in: folder.cache)
 
         #expect(await !AppServiceBridge.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now - .seconds(1), cache: folder.cache, isCurrent: { true }
+            Self.handedIn(id), askedAt: now - .seconds(1), cache: folder.cache, rounds: shared, isCurrent: { true }
         ))
         #expect(Self.isCompleted(id, in: folder.cache) == false)
 
         #expect(await AppServiceBridge.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now + .seconds(10), cache: folder.cache, isCurrent: { true }
+            Self.handedIn(id), askedAt: now + .seconds(10), cache: folder.cache, rounds: shared, isCurrent: { true }
         ))
         let reverted = MoodleSubmissionStatus(assignId: id, submissionStatus: "draft", gradingStatus: nil, submittedAt: nil)
         #expect(await !AppServiceBridge.takeSubmissionStatus(
-            reverted, askedAt: now + .seconds(5), cache: folder.cache, isCurrent: { true }
+            reverted, askedAt: now + .seconds(5), cache: folder.cache, rounds: shared, isCurrent: { true }
         ))
         #expect(Self.isCompleted(id, in: folder.cache) == true)
     }
 
     @Test("a round that wrote nothing, its account signed out, leaves no time a page's answer has to beat")
     func unwrittenRoundKeepsNoTime() async {
-        AppServiceBridge.cancelAssignmentRound()
         let folder = Folder()
         let id = Self.newId()
         let now = ContinuousClock.now
-        Self.round(of: id, askedAt: now - .seconds(60), in: folder.cache)
-        #expect(!Self.round(of: id, askedAt: now + .seconds(5), in: folder.cache, isCurrent: false))
+        round(of: id, askedAt: now - .seconds(60), in: folder.cache)
+        #expect(!round(of: id, askedAt: now + .seconds(5), in: folder.cache, isCurrent: false))
 
         #expect(await AppServiceBridge.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now, cache: folder.cache, isCurrent: { true }
+            Self.handedIn(id), askedAt: now, cache: folder.cache, rounds: shared, isCurrent: { true }
         ))
     }
 
     @Test("a status fetched for an account that signed out while a round ran writes nothing")
     func pageStatusAfterSignOut() async throws {
-        AppServiceBridge.cancelAssignmentRound()
         let folder = Folder()
         let cache = folder.cache
         let id = Self.newId()
-        Self.round(of: id, askedAt: .now - .seconds(60), in: cache)
+        round(of: id, askedAt: .now - .seconds(60), in: cache)
         let rounds = Rounds()
         let signIn = SignIn()
         let launch = start("launch", rounds, rechecks: false)
@@ -375,7 +363,7 @@ struct SharedAssignmentRoundTests {
         let page = Task {
             asked.isSet = true
             return await AppServiceBridge.takeSubmissionStatus(
-                Self.handedIn(id), askedAt: .now, cache: cache, isCurrent: { signIn.isCurrent }
+                Self.handedIn(id), askedAt: .now, cache: cache, rounds: shared, isCurrent: { signIn.isCurrent }
             )
         }
         try await waitUntil { asked.isSet }
@@ -389,10 +377,9 @@ struct SharedAssignmentRoundTests {
 
     @Test("the app's Moodle calls hand the page's status to the writer")
     func liveHandsStatusOn() async throws {
-        AppServiceBridge.cancelAssignmentRound()
         let folder = Folder()
         let id = Self.newId()
-        Self.round(of: id, askedAt: .now - .seconds(60), in: folder.cache)
+        round(of: id, askedAt: .now - .seconds(60), in: folder.cache)
 
         MoodleCourseAPI.live.submissionFetched(
             Self.handedIn(id), .now, MoodleCacheContext(account: "B11399001", cache: folder.cache, isCurrent: { true })
@@ -409,7 +396,6 @@ struct SharedAssignmentRoundTests {
     @Test("a status that changes the list sends it on for the reminders, with TigerSync on")
     func pageStatusIsUploaded() async {
         await withExclusiveRealDefaults {
-            AppServiceBridge.cancelAssignmentRound()
             let saved = Defaults[.cloudSyncEnabled]
             let sent = Sent()
             Defaults[.cloudSyncEnabled] = true
@@ -420,10 +406,10 @@ struct SharedAssignmentRoundTests {
             }
             let folder = Folder()
             let id = Self.newId()
-            Self.round(of: id, askedAt: .now - .seconds(60), in: folder.cache)
+            round(of: id, askedAt: .now - .seconds(60), in: folder.cache)
 
             await AppServiceBridge.takeSubmissionStatus(
-                Self.handedIn(id), askedAt: .now, cache: folder.cache, isCurrent: { true }
+                Self.handedIn(id), askedAt: .now, cache: folder.cache, rounds: shared, isCurrent: { true }
             )
 
             #expect(sent.requests.map { $0.assignments.map(\.moodleAssignmentId) } == [[id]])
