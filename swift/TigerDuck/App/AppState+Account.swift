@@ -67,8 +67,8 @@ extension AppState {
 
         // The order and what each step clears: docs/decisions/0026-one-sign-out-path.md.
         authService.logout()
-        // Read before any await: an API endpoint change stores the new endpoint once this returns.
-        let backend = authTokenManager.backend
+        // Before any await: an API endpoint change stores the new endpoint once this returns.
+        let backend = authTokenManager.beginSignOut()
         let endingSession = Task { await authTokenManager.endSession(on: backend) }
         Self.forgetAccountOnDevice()
         didSkipMacLogin = false
@@ -85,7 +85,7 @@ extension AppState {
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         return authService.startSignOutCalls { [self] in
             await cloudSyncCoordinator.settleForSignOut()
-            await authTokenManager.unregisterDeparting(accessToken: await endingSession.value) {
+            await authTokenManager.unregisterDeparting(as: await endingSession.value) {
                 await pushCoordinator.disable()
             }
             #if os(iOS)
