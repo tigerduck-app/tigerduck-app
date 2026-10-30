@@ -194,8 +194,8 @@ final class AppState {
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
 
-        AppServiceBridge.courseUploader = { [weak self] courses, semester, asRoster in
-            self?.uploadCourses(courses, semester: semester, asRoster: asRoster)
+        AppServiceBridge.courseUploader = { [weak self] courses, semester, asRoster, resend in
+            self?.uploadCourses(courses, semester: semester, asRoster: asRoster, resend: resend)
         }
         AppServiceBridge.assignmentUploader = { [weak self] request in
             self?.uploadAssignments(request)
@@ -261,6 +261,10 @@ final class AppState {
     static let courseDeleteGraceInterval: TimeInterval = 120
 
     var resettingSemesters: Set<String> = []
+
+    /// Each term's roster request answered, by the login generation that answered it.
+    @ObservationIgnored
+    var answeredRosterRequests: [String: Int] = [:]
 
     var useLocalHold = UseLocalHold()
 

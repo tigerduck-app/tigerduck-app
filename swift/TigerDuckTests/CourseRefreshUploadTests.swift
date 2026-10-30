@@ -9,16 +9,18 @@ struct CourseRefreshUploadTests {
     private struct Upload: Equatable {
         let courses: [String]
         let asRoster: Bool
+        var resend = false
     }
 
     private static func uploads(
-        _ courseNos: [String], roster: [String]?, hidden: Set<String> = []
+        _ courseNos: [String], roster: [String]?, hidden: Set<String> = [], resendingRoster: Bool = false
     ) -> [Upload] {
         var uploads: [Upload] = []
         AppServiceBridge.uploadVisibleCourses(
-            courseNos.map { SDCourse(courseNo: $0, courseName: $0) }, semester: "1151", hidden: hidden, roster: roster
-        ) { courses, _, asRoster in
-            uploads.append(Upload(courses: courses.map(\.courseNo), asRoster: asRoster))
+            courseNos.map { SDCourse(courseNo: $0, courseName: $0) }, semester: "1151", hidden: hidden,
+            roster: roster, resendingRoster: resendingRoster
+        ) { courses, _, asRoster, resend in
+            uploads.append(Upload(courses: courses.map(\.courseNo), asRoster: asRoster, resend: resend))
         }
         return uploads
     }
@@ -29,7 +31,7 @@ struct CourseRefreshUploadTests {
 
         AppServiceBridge.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"]
-        ) { courses, semester, _ in uploads.append((courses.map(\.courseNo), semester)) }
+        ) { courses, semester, _, _ in uploads.append((courses.map(\.courseNo), semester)) }
 
         #expect(uploads.map(\.courses) == [["CS1"]])
         #expect(uploads.map(\.semester) == ["1151"])
@@ -41,7 +43,7 @@ struct CourseRefreshUploadTests {
 
         AppServiceBridge.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"], roster: ["CS1", "CS2", "CS3"]
-        ) { _, _, _ in uploads += 1 }
+        ) { _, _, _, _ in uploads += 1 }
 
         #expect(uploads == 0)
     }
@@ -88,5 +90,13 @@ struct CourseRefreshUploadTests {
 
         #expect(Self.uploads(["CS1", "CS2"], roster: roster, hidden: ["1151:CS3"]).map(\.asRoster) == [true])
         #expect(Self.uploads(["CS1", "CS2"], roster: roster).map(\.asRoster) == [false])
+    }
+
+    @Test("A requested roster goes past the unchanged check; a fetch course selection did not answer forces nothing")
+    func requestedRosterResendsOnlyARoster() {
+        #expect(Self.uploads(["CS1"], roster: ["CS1"], resendingRoster: true)
+            == [Upload(courses: ["CS1"], asRoster: true, resend: true)])
+        #expect(Self.uploads(["CS1"], roster: nil, resendingRoster: true)
+            == [Upload(courses: ["CS1"], asRoster: false, resend: false)])
     }
 }

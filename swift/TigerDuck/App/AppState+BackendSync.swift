@@ -224,6 +224,7 @@ extension AppState {
             } else if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             }
+            answerRosterRequests(json["roster_requests"] as? [String] ?? [])
 
             if overrideEditGeneration == editGenerationAtFetch,
                let rev = json["current_revision"] as? Int {
@@ -796,6 +797,24 @@ extension AppState {
                 try await coordinator.uploadCoursesIfChanged(
                     request, semester: semester, resend: resend, isCurrent: isCurrent
                 )
+            }
+        }
+    }
+
+    /// Fetches each term the backend asks a roster for afresh from course selection and uploads it
+    /// even when unchanged. A request stays until a roster arrives, so while course selection does
+    /// not answer, a term goes to the school once per sign-in while the app runs, not every sync.
+    func answerRosterRequests(_ terms: [String]) {
+        guard CourseUploadPolicy.uploadsCourses else { return }
+        let generation = authService.loginGeneration
+        for term in Set(terms) where answeredRosterRequests[term] != generation {
+            answeredRosterRequests[term] = generation
+            AppLogger.sync.info("[sync] roster requested for \(term, privacy: .public)")
+            Task {
+                _ = await AppServiceBridge.fetchCourses(
+                    authService: authService, semester: term, forceRefresh: true, resendingRoster: true
+                )
+                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             }
         }
     }

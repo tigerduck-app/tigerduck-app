@@ -19,7 +19,7 @@ struct CourseData: Sendable {
 
 enum AppServiceBridge {
 
-    typealias CourseUploader = (_ courses: [SDCourse], _ semester: String, _ asRoster: Bool) -> Void
+    typealias CourseUploader = (_ courses: [SDCourse], _ semester: String, _ asRoster: Bool, _ resend: Bool) -> Void
 
     static var courseUploader: CourseUploader?
     static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
@@ -27,12 +27,14 @@ enum AppServiceBridge {
     static func fetchCourses(
         authService: AuthService,
         semester: String = CourseSelectionService.currentSemesterCode(),
-        forceRefresh: Bool = false
+        forceRefresh: Bool = false,
+        resendingRoster: Bool = false
     ) async -> [SDCourse] {
         await fetchCourses(
             authService: authService,
             semester: semester,
             forceRefresh: forceRefresh,
+            resendingRoster: resendingRoster,
             startGeneration: authService.loginGeneration,
             moodle: { await fetchMoodleCourses(authService: authService) },
             transcript: { await fetchTranscript(authService: authService) }
@@ -131,6 +133,7 @@ enum AppServiceBridge {
         authService: AuthService,
         semester: String,
         forceRefresh: Bool,
+        resendingRoster: Bool = false,
         startGeneration: Int,
         moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
@@ -266,7 +269,7 @@ enum AppServiceBridge {
         DataCache.shared.saveCourses(courses, semester: semester)
         uploadVisibleCourses(
             courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()),
-            roster: pastTerm?.roster ?? term.roster, to: courseUploader
+            roster: pastTerm?.roster ?? term.roster, resendingRoster: resendingRoster, to: courseUploader
         )
         return courses
     }
@@ -282,6 +285,7 @@ enum AppServiceBridge {
         semester: String,
         hidden: Set<String>,
         roster: [String]? = nil,
+        resendingRoster: Bool = false,
         to upload: CourseUploader?
     ) {
         let isHidden = { (courseNo: String) in CourseTombstone.isHidden(courseNo, semester: semester, in: hidden) }
@@ -289,7 +293,7 @@ enum AppServiceBridge {
         guard !visible.isEmpty else { return }
         let listed = Set(visible.map(\.courseNo))
         let asRoster = roster?.allSatisfy { listed.contains($0) || isHidden($0) } ?? false
-        upload?(visible, semester, asRoster)
+        upload?(visible, semester, asRoster, resendingRoster && asRoster)
     }
 
     static func record(
