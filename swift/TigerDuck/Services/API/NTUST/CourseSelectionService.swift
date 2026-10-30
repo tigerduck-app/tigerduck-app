@@ -18,7 +18,6 @@ enum CourseServiceError: LocalizedError {
 }
 
 enum CourseSelectionService {
-    /// Course selection's answer and when the school gave it.
     typealias LiveAnswer = (courseNos: [String], at: Date)
 
     private static let courseSelectionRoot = URL.knownGood("https://courseselection.ntust.edu.tw/")

@@ -1,5 +1,6 @@
 import Foundation
 import Defaults
+import os
 
 struct CourseData: Sendable {
     let courseNo: String
@@ -23,6 +24,7 @@ enum AppServiceBridge {
 
     static var courseUploader: CourseUploader?
     static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
+    static var rosterRequests = RosterRequestLog()
 
     static func fetchCourses(
         authService: AuthService,
@@ -277,6 +279,19 @@ enum AppServiceBridge {
             resendingRoster: resendingRoster, to: courseUploader
         )
         return courses
+    }
+
+    /// A requested term goes up even when unchanged: the backend asks because no roster of it
+    /// arrived for a week.
+    static func answerRosterRequests(in snapshot: [String: Any], authService: AuthService) {
+        guard CourseUploadPolicy.uploadsCourses else { return }
+        for term in rosterRequests.termsToAsk(in: snapshot, generation: authService.loginGeneration, now: Date()) {
+            AppLogger.sync.info("[sync] roster requested for \(term, privacy: .public)")
+            Task {
+                _ = await fetchCourses(authService: authService, semester: term, forceRefresh: true, resendingRoster: true)
+                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+            }
+        }
     }
 
     /// The roster a fetch uploads: a past term's final transcript, or course selection's answer
@@ -860,5 +875,24 @@ private extension CourseData {
             allYear: course.allYear,
             requireOption: course.requireOption
         )
+    }
+}
+
+/// When each term's roster request last went to the school. A request stays until a roster
+/// arrives, so while course selection does not answer, a term is asked again after an hour, not
+/// on every full sync.
+nonisolated struct RosterRequestLog: Sendable {
+    static let retryInterval: TimeInterval = 3600
+    private var asked: [String: (generation: Int, at: Date)] = [:]
+
+    /// The terms of the snapshot's `roster_requests` to ask now, recorded as asked. A snapshot
+    /// without the key, from a backend that predates it, requests nothing.
+    mutating func termsToAsk(in snapshot: [String: Any], generation: Int, now: Date) -> [String] {
+        let due = Set(snapshot["roster_requests"] as? [String] ?? []).filter { term in
+            guard let last = asked[term], last.generation == generation else { return true }
+            return now.timeIntervalSince(last.at) >= Self.retryInterval || now < last.at
+        }
+        for term in due { asked[term] = (generation, now) }
+        return due.sorted()
     }
 }

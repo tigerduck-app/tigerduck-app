@@ -262,9 +262,6 @@ final class AppState {
 
     var resettingSemesters: Set<String> = []
 
-    @ObservationIgnored
-    var rosterRequests = RosterRequestLog()
-
     var useLocalHold = UseLocalHold()
 
     var _libraryRevision = 0

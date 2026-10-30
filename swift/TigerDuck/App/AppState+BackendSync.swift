@@ -224,7 +224,7 @@ extension AppState {
             } else if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             }
-            answerRosterRequests(in: json)
+            AppServiceBridge.answerRosterRequests(in: json, authService: authService)
 
             if overrideEditGeneration == editGenerationAtFetch,
                let rev = json["current_revision"] as? Int {
@@ -801,21 +801,6 @@ extension AppState {
         }
     }
 
-    /// Fetches each term the backend asks a roster for afresh from course selection and uploads it
-    /// even when unchanged.
-    func answerRosterRequests(in snapshot: [String: Any]) {
-        guard CourseUploadPolicy.uploadsCourses else { return }
-        for term in rosterRequests.termsToAsk(in: snapshot, generation: authService.loginGeneration, now: Date()) {
-            AppLogger.sync.info("[sync] roster requested for \(term, privacy: .public)")
-            Task {
-                _ = await AppServiceBridge.fetchCourses(
-                    authService: authService, semester: term, forceRefresh: true, resendingRoster: true
-                )
-                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            }
-        }
-    }
-
     /// The added course alone: sent with its stamp, the backend files every other course an upload
     /// lists as the school's roster.
     static func addedCourseUpload(
@@ -896,25 +881,6 @@ extension AppState {
         return PushAPI.CourseUploadRequest(
             courses: entries, courseOverrides: overrides, forceKeys: forceKeys, rosterTerms: rosterTerms
         )
-    }
-}
-
-/// When each term's roster request last went to the school. A request stays until a roster
-/// arrives, so while course selection does not answer, a term is asked again after an hour, not
-/// on every full sync.
-nonisolated struct RosterRequestLog: Sendable {
-    static let retryInterval: TimeInterval = 3600
-    private var asked: [String: (generation: Int, at: Date)] = [:]
-
-    /// The terms of the snapshot's `roster_requests` to ask now, recorded as asked. A snapshot
-    /// without the key, from a backend that predates it, requests nothing.
-    mutating func termsToAsk(in snapshot: [String: Any], generation: Int, now: Date) -> [String] {
-        let due = Set(snapshot["roster_requests"] as? [String] ?? []).filter { term in
-            guard let last = asked[term], last.generation == generation else { return true }
-            return now.timeIntervalSince(last.at) >= Self.retryInterval || now < last.at
-        }
-        for term in due { asked[term] = (generation, now) }
-        return due.sorted()
     }
 }
 
