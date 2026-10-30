@@ -269,11 +269,10 @@ enum AppServiceBridge {
         guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
             return DataCache.shared.loadCourses(semester: semester)
         }
-        let courses = withoutServerDrops(
-            drawn, authoritative: pastTerm != nil || (selectionIsLive && term.roster != nil),
+        guard let courses = savedCourses(
+            drawn, pastTerm: pastTerm != nil, live: selectionIsLive && term.roster != nil,
             dropped: DataCache.shared.loadServerDroppedNos(semester: semester)
-        )
-        guard !courses.isEmpty || pastTerm != nil else { return cachedCourses }
+        ) else { return cachedCourses }
         if let pastTerm {
             DataCache.shared.recordSelectionRoster(
                 semester: semester, roster: pastTerm.roster, alsoListed: pastTerm.dropping, isFinal: true
@@ -301,11 +300,14 @@ enum AppServiceBridge {
         }
     }
 
-    /// The courses a fetch saves, less those dropped on the server as it saves: a full sync during
-    /// its lookups may drop one that a cached course selection answer or the transcript still
-    /// lists. Only a live answer or a past term's final transcript brings one back.
-    static func withoutServerDrops(_ courses: [SDCourse], authoritative: Bool, dropped: Set<String>) -> [SDCourse] {
-        authoritative ? courses : courses.filter { !dropped.contains($0.courseNo) }
+    /// The courses a fetch saves, or nil when it drew none and the term keeps its cache. Those
+    /// dropped on the server are read as it saves: a full sync during its lookups may drop one a
+    /// cached course selection answer or the transcript still lists, and a fetch whose every
+    /// course was dropped saves none. Only a live answer or a past term's final transcript brings
+    /// one back.
+    static func savedCourses(_ drawn: [SDCourse], pastTerm: Bool, live: Bool, dropped: Set<String>) -> [SDCourse]? {
+        guard !drawn.isEmpty || pastTerm else { return nil }
+        return pastTerm || live ? drawn : drawn.filter { !dropped.contains($0.courseNo) }
     }
 
     /// The roster a fetch uploads: a past term's final transcript, or course selection's answer
