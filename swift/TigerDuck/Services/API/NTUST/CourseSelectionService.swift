@@ -18,6 +18,9 @@ enum CourseServiceError: LocalizedError {
 }
 
 enum CourseSelectionService {
+    /// Course selection's answer and when the school gave it.
+    typealias LiveAnswer = (courseNos: [String], at: Date)
+
     private static let courseSelectionRoot = URL.knownGood("https://courseselection.ntust.edu.tw/")
     private static let courseListURL = URL.knownGood("https://courseselection.ntust.edu.tw/ChooseList/D01/D01")
 
@@ -142,11 +145,16 @@ enum CourseSelectionService {
     }
 
     nonisolated private static func loadEnrolledCoursesCache(studentId: String, semester: String) -> [String]? {
+        lastAnswer(studentId: studentId, semester: semester)?.courseNos
+    }
+
+    /// The term's last live answer while the day-long cache keeps it.
+    nonisolated static func lastAnswer(studentId: String, semester: String) -> LiveAnswer? {
         cacheLock.withLock {
             let dict = readCacheDict()
             guard let entry = dict["\(studentId):\(semester)"] else { return nil }
             if Date().timeIntervalSince1970 - entry.cachedAt > enrolledCoursesCacheTTL { return nil }
-            return entry.courseNos
+            return (entry.courseNos, Date(timeIntervalSince1970: entry.cachedAt))
         }
     }
 
