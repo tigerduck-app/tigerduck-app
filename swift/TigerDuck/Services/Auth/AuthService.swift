@@ -390,7 +390,7 @@ final class AuthService {
         }
     }
 
-    func reloginToBackend() async -> Bool {
+    func reloginToBackend(replacing refused: String? = nil) async -> Bool {
         guard let authTokenManager,
               Self.backendSignInIsDue(lastFailure: backendSignInFailedAt, now: Date()),
               let studentId = storedStudentId else { return false }
@@ -405,13 +405,14 @@ final class AuthService {
         )
         let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
         do {
-            _ = try await authTokenManager.login(
+            let result = try await authTokenManager.login(
                 studentId: studentId,
                 moodleToken: moodleToken,
                 moodlePrivateToken: moodlePrivateToken,
-                platform: platform
+                platform: platform,
+                replacing: refused
             )
-            AppLogger.sync.info("auto-relogin: v3 JWT refreshed")
+            AppLogger.sync.info("auto-relogin: \(result == nil ? "newer session kept" : "v3 JWT refreshed", privacy: .public)")
             backendSignInFailedAt = nil
             return true
         } catch {

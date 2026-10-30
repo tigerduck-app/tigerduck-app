@@ -125,6 +125,8 @@ actor AuthTokenManager {
 
     var isLoggedIn: Bool { refreshToken != nil }
 
+    var storedAccessToken: String? { accessToken }
+
     func validAccessToken() async -> String? {
         if let departing = Self.departing { return departing.accessToken }
         if signOutsStarting.withLock({ $0 > 0 }) { return nil }
@@ -156,12 +158,17 @@ actor AuthTokenManager {
         let deviceId: String
     }
 
+    /// `refused` is the access token a request was turned away with. A sign-in for it that finds
+    /// another pair stored once its turn comes sends nothing and returns nil: the request was
+    /// refused for that pair's sign-in or refresh, and the caller retries with it.
+    @discardableResult
     func login(
         studentId: String,
         moodleToken: String?,
         moodlePrivateToken: String?,
-        platform: String
-    ) async throws -> LoginResult {
+        platform: String,
+        replacing refused: String? = nil
+    ) async throws -> LoginResult? {
         // One at a time: a sign-in ends the device's older sessions, so the pair stored last has to be
         // the one the backend issued last (https://github.com/tigerduck-app/tigerduck-backend/issues/48).
         let generation = signInGeneration
@@ -173,6 +180,7 @@ actor AuthTokenManager {
         defer {
             if waitingSignIns.isEmpty { isSigningIn = false } else { waitingSignIns.removeFirst().resume() }
         }
+        if let refused, let stored = accessToken, stored != refused { return nil }
         return try await sendLogin(
             studentId: studentId, moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken,
             platform: platform, generation: generation

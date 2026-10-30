@@ -27,6 +27,7 @@ extension AppState {
         await authService.ensureBackendSignedIn()
         guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return .skipped }
         await retryUnsentEdits()
+        let accessToken = await authTokenManager.storedAccessToken
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)
@@ -249,7 +250,7 @@ extension AppState {
             recordSyncSource(.local)
             var outcome = FullSyncOutcome.failed
             if case PushAPIError.httpStatus(401, _) = error, !retried {
-                let reloginOk = await attemptBackendRelogin()
+                let reloginOk = await attemptBackendRelogin(replacing: accessToken)
                 if reloginOk {
                     AppLogger.sync.info("auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
@@ -645,8 +646,9 @@ extension AppState {
         return rows.sorted { ($0.at, $0.courseNo) < ($1.at, $1.courseNo) }.map { ($0.courseNo, $0.hex) }
     }
 
-    func attemptBackendRelogin() async -> Bool {
-        guard await authService.reloginToBackend() else { return false }
+    /// `refused` is the stored access token read before the request that got the 401.
+    func attemptBackendRelogin(replacing refused: String?) async -> Bool {
+        guard await authService.reloginToBackend(replacing: refused) else { return false }
         pushCoordinator.refreshRegistrationAfterAuth()
         return true
     }
@@ -830,11 +832,12 @@ extension AppState {
             self?.authService.loginGeneration == generation && Defaults[.cloudSyncEnabled]
         }
         guard isCurrent() else { return }
+        let accessToken = await authTokenManager.storedAccessToken
         do {
             let sent = try await send(isCurrent)
             AppLogger.sync.info("\(label, privacy: .public): \(sent ? "sent" : "skipped", privacy: .public)")
         } catch PushAPIError.httpStatus(401, _) where !retried && isCurrent() {
-            guard await attemptBackendRelogin() else {
+            guard await attemptBackendRelogin(replacing: accessToken) else {
                 AppLogger.sync.error("\(label, privacy: .public) failed: 401, relogin failed")
                 return
             }

@@ -794,6 +794,43 @@ struct BackendTokenRefreshTests {
         #expect(await !manager.isLoggedIn)
     }
 
+    @Test("a relogin for a refused access token sends nothing once another pair is stored, and signs in while it is not")
+    func aReloginForARefusedTokenChecksAfterItsTurn() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture(accessTokenExpiry: Date.now.addingTimeInterval(600))
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.loginReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.loginURL
+        )
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A2", refresh: "R2"), for: backend.loginURL)
+        let signIn = Task {
+            try await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )
+        }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.loginURL).count == 1 }
+        let relogin = Task {
+            try await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios",
+                replacing: "A0"
+            )
+        }
+        gate.open()
+
+        #expect(try await relogin.value == nil)
+        #expect(try await signIn.value != nil)
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R1")
+
+        let again = try await manager.login(
+            studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios",
+            replacing: "A1"
+        )
+        #expect(again != nil)
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R2")
+    }
+
     @Test("a sign-in waits for the one before it, so the pair kept is the one the backend issued last")
     func overlappingSignInsKeepTheLastPair() async throws {
         let gate = SettingsAPIStub.ReplyGate()

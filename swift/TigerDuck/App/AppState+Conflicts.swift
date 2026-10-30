@@ -123,6 +123,7 @@ extension AppState {
                     Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: generation) }
                 }
             }
+            let accessToken = await authTokenManager.storedAccessToken
             do {
                 let (json, courseDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
                     try await pushCoordinator.fetchFullSync()
@@ -282,7 +283,7 @@ extension AppState {
                 conflictCheckRetry.noteFailure(at: Date(), generation: generation)
                 AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .private) — pending kept for retry")
                 if case PushAPIError.httpStatus(401, _) = error, retriesLeft > 0 {
-                    let reloginOk = await attemptBackendRelogin()
+                    let reloginOk = await attemptBackendRelogin(replacing: accessToken)
                     if reloginOk {
                         AppLogger.sync.info("[reenable] relogin succeeded, retrying conflict check")
                         try? await Task.sleep(for: .milliseconds(500))
