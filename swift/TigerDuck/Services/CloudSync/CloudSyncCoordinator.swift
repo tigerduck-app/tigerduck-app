@@ -588,7 +588,7 @@ final class CloudSyncCoordinator {
     }
 
     private func isUnauthorized(_ error: Error) -> Bool {
-        if case PushAPIError.httpStatus(401, _) = error { return true }
+        if case PushAPIError.httpStatus(401, _, _) = error { return true }
         if case PushAPIError.notSignedIn = error { return true }
         return false
     }

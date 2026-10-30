@@ -273,7 +273,7 @@ final class PushCoordinator {
                 if !AppLogger.isCancellation(error), isCurrent() {
                     self.uploads.recordFailure(key, fingerprint: fingerprint, startedIn: started)
                     // A 401 is retried at once after signing in again, so it holds nothing back.
-                    if case PushAPIError.httpStatus(let status, _) = error, status != 401 {
+                    if case PushAPIError.httpStatus(let status, _, _) = error, status != 401 {
                         self.uploads.recordRefusal(key, fingerprint: fingerprint, at: self.clock(), startedIn: started)
                     }
                 }

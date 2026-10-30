@@ -248,8 +248,8 @@ extension AppState {
             ServerStatusTracker.shared.noteSyncResult(false)
             recordSyncSource(.local)
             var outcome = FullSyncOutcome.failed
-            if case PushAPIError.httpStatus(401, _) = error, !retried {
-                let reloginOk = await attemptBackendRelogin()
+            if case PushAPIError.httpStatus(401, _, let sent) = error, !retried {
+                let reloginOk = await attemptBackendRelogin(replacing: sent?.value)
                 if reloginOk {
                     AppLogger.sync.info("auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
@@ -645,8 +645,9 @@ extension AppState {
         return rows.sorted { ($0.at, $0.courseNo) < ($1.at, $1.courseNo) }.map { ($0.courseNo, $0.hex) }
     }
 
-    func attemptBackendRelogin() async -> Bool {
-        guard await authService.reloginToBackend() else { return false }
+    /// `refused` is the access token the request that got the 401 sent.
+    func attemptBackendRelogin(replacing refused: String?) async -> Bool {
+        guard await authService.reloginToBackend(replacing: refused) else { return false }
         pushCoordinator.refreshRegistrationAfterAuth()
         return true
     }
@@ -833,8 +834,8 @@ extension AppState {
         do {
             let sent = try await send(isCurrent)
             AppLogger.sync.info("\(label, privacy: .public): \(sent ? "sent" : "skipped", privacy: .public)")
-        } catch PushAPIError.httpStatus(401, _) where !retried && isCurrent() {
-            guard await attemptBackendRelogin() else {
+        } catch PushAPIError.httpStatus(401, _, let sent) where !retried && isCurrent() {
+            guard await attemptBackendRelogin(replacing: sent?.value) else {
                 AppLogger.sync.error("\(label, privacy: .public) failed: 401, relogin failed")
                 return
             }

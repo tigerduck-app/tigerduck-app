@@ -281,8 +281,8 @@ extension AppState {
             } catch {
                 conflictCheckRetry.noteFailure(at: Date(), generation: generation)
                 AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .private) — pending kept for retry")
-                if case PushAPIError.httpStatus(401, _) = error, retriesLeft > 0 {
-                    let reloginOk = await attemptBackendRelogin()
+                if case PushAPIError.httpStatus(401, _, let sent) = error, retriesLeft > 0 {
+                    let reloginOk = await attemptBackendRelogin(replacing: sent?.value)
                     if reloginOk {
                         AppLogger.sync.info("[reenable] relogin succeeded, retrying conflict check")
                         try? await Task.sleep(for: .milliseconds(500))
