@@ -372,27 +372,45 @@ extension TigerDuckApp {
             SDAnnouncement.self,
             SDCalendarEvent.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
-            deleteStoreFiles(at: modelConfiguration.url)
-            do {
-                return try ModelContainer(for: schema, configurations: [modelConfiguration])
-            } catch {
-                AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
-                do {
-                    let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-                    return try ModelContainer(for: schema, configurations: [memoryConfig])
-                } catch {
-                    AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
-                    fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
-                }
-            }
+        let onDisk = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        return openStore(at: onDisk.url) { inMemory in
+            try ModelContainer(for: schema, configurations: [
+                inMemory ? ModelConfiguration(schema: schema, isStoredInMemoryOnly: true) : onDisk,
+            ])
         }
     }()
+
+    /// A store that fails to open is deleted and made again only when its file opens: one that
+    /// does not, as before the first unlock after a restart, may read later, so this process keeps
+    /// its data in memory instead (https://github.com/tigerduck-app/tigerduck-app/issues/693).
+    static func openStore<Store>(at storeURL: URL, open: (_ inMemory: Bool) throws -> Store) -> Store {
+        do {
+            return try open(false)
+        } catch {
+            AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
+        }
+        if !cannotOpenYet(storeURL) {
+            deleteStoreFiles(at: storeURL)
+            do {
+                return try open(false)
+            } catch {
+                AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
+            }
+        }
+        do {
+            return try open(true)
+        } catch {
+            AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
+            fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
+        }
+    }
+
+    private static func cannotOpenYet(_ storeURL: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: storeURL.path) else { return false }
+        guard let handle = try? FileHandle(forReadingFrom: storeURL) else { return true }
+        try? handle.close()
+        return false
+    }
 
     /// Deletes the store and its SQLite sidecars. SQLite names them by appending "-wal" and
     /// "-shm" to the store's file name (`default.store-wal`); one left behind hands the retry
