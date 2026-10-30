@@ -795,14 +795,16 @@ extension AppState {
         }
     }
 
+    /// The added course alone: sent with its stamp, the backend files every other course an upload
+    /// lists as the school's roster.
     static func addedCourseUpload(
         semester: String, courseNo: String, cache: DataCache = .shared,
         colors: [String: UInt32] = CourseUploadPolicy.uploadedCourseColors
     ) -> PushAPI.CourseUploadRequest? {
         let shown = CanonicalCourseProvider(cache: cache).currentCourses(semester: semester)
-        guard shown.contains(where: { $0.courseNo == courseNo }) else { return nil }
+        guard let course = shown.first(where: { $0.courseNo == courseNo }) else { return nil }
         return courseUploadRequest(
-            shown, semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)],
+            [course], semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)],
             colors: colors
         )
     }

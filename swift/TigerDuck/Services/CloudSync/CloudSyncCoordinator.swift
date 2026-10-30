@@ -517,10 +517,11 @@ final class CloudSyncCoordinator {
             case .courseDelete(let courseKey, let stamp):
                 try await pushCoordinator.deleteCourse(courseKey: courseKey, madeAt: stamp)
 
-            case .courseAdd(let semester, let courseNo):
+            case .courseAdd(let semester, let courseNo, let stamp):
                 guard isProtectedDataAvailable() else { throw CancellationError() }
                 let generation = loginGeneration()
-                guard let request = addedCourseUpload(semester, courseNo) else { return }
+                guard var request = addedCourseUpload(semester, courseNo) else { return }
+                request.adds = request.forceKeys.map { PushAPI.CourseAdd(courseKey: $0, hlc: PushAPI.clock(of: stamp)) }
                 guard try await pushCoordinator.uploadCoursesIfChanged(
                     request, semester: semester,
                     isCurrent: { [uploadsCourses, loginGeneration] in uploadsCourses() && loginGeneration() == generation }

@@ -122,7 +122,7 @@ nonisolated enum ResolvedSyncOp: Sendable {
     case assignmentOverride(assignmentId: Int, localStatus: String)
     case courseIgnore(courseId: String, moodleCourseId: Int?, ignore: Bool?)
     case courseDelete(courseKey: String, stamp: Date)
-    case courseAdd(semester: String, courseNo: String)
+    case courseAdd(semester: String, courseNo: String, stamp: Date)
 }
 
 nonisolated struct OutboxEntry: Codable, Sendable {
@@ -380,8 +380,8 @@ actor SyncOutbox {
         case .courseDelete(let semester, let courseNo, let stamp):
             return .courseDelete(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), stamp: stamp)
 
-        case .courseAdd(let semester, let courseNo, _):
-            return .courseAdd(semester: semester, courseNo: courseNo)
+        case .courseAdd(let semester, let courseNo, let stamp):
+            return .courseAdd(semester: semester, courseNo: courseNo, stamp: stamp)
         }
     }
 

@@ -103,7 +103,7 @@ struct CourseAddSyncTests {
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["force_keys"] as? [String] == ["client:1151:GE1010001"])
         let sent = (json["courses"] as? [[String: Any]])?.compactMap { $0["course_no"] as? String }
-        #expect(sent?.sorted() == ["CS1001301", "GE1010001"])
+        #expect(sent == ["GE1010001"])
         #expect(await coordinator.courseAddKeys(unlandedAt: fetchedAt) == ["1151:GE1010001"])
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
     }

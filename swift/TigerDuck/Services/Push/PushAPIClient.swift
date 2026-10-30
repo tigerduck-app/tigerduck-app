@@ -154,8 +154,22 @@ final class PushAPIClient: Sendable {
         )
     }
 
+    /// An upload with `adds` goes under protocol 2; one the backend refuses as stamped ahead of its
+    /// clock goes again with `forceKeys` alone, which counts from when it arrives.
     func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws {
-        _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
+        guard request.adds != nil else {
+            _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
+            return
+        }
+        var stamped = try await makePostRequest(path: "/sync/courses/upload", body: request)
+        stamped.setValue("2", forHTTPHeaderField: "X-TigerSync-Protocol")
+        do {
+            _ = try await execute(stamped)
+        } catch PushAPIError.httpStatus(409, let body) where body.contains("clock_ahead") {
+            var unstamped = request
+            unstamped.adds = nil
+            try await uploadCourses(unstamped)
+        }
     }
 
     func deleteAllCourses(semester: String? = nil) async throws {
