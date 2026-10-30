@@ -401,7 +401,7 @@ extension TigerDuckApp {
             return try open(true)
         } catch {
             AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
-            fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
+            fatalError("Could not create ModelContainer, on disk or in memory: \(error)")
         }
     }
 
