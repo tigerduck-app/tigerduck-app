@@ -55,6 +55,9 @@ final class AppState {
                 Defaults[.appHasBeenInstalled] = true
             }
         }
+        // After the purge, which deletes a reinstall's bare items, and before AuthService reads them.
+        // A purge left for the next launch keeps them from moving.
+        if Defaults[.appHasBeenInstalled] { BareKeychainItemMoveMigration.runIfNeeded() }
 
         let authService = AuthService()
         self.authService = authService

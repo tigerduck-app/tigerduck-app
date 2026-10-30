@@ -88,7 +88,7 @@ struct AccessoryRectangularView: View {
             }
         case .tomorrowFirst(let info):
             VStack(alignment: .leading, spacing: 1) {
-                Text(info.day.headline)
+                Text(info.day.headline())
                     .font(.caption2.weight(.bold))
                 Text(info.course.displayName)
                     .font(.caption.weight(.semibold))

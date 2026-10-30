@@ -14,6 +14,7 @@ final class NextClassResolverTests: XCTestCase {
     private func mondayAt(_ hhmm: String) -> Date {
         let comps = hhmm.split(separator: ":").map(String.init)
         var dc = DateComponents()
+        dc.timeZone = TimeZone(identifier: "Asia/Taipei")
         dc.year = 2026; dc.month = 5; dc.day = 11
         dc.hour = Int(comps[0]); dc.minute = Int(comps[1])
         return Calendar(identifier: .iso8601).date(from: dc)!

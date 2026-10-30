@@ -286,6 +286,10 @@ final class DataCache {
         load(from: bulletinDetailFilename(id), in: bulletinDetailDir())
     }
 
+    func clearBulletinDetails() {
+        try? FileManager.default.removeItem(at: cacheDir.appendingPathComponent("bulletin_details", isDirectory: true))
+    }
+
     private func bulletinDetailDir() -> URL {
         let dir = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -429,8 +433,15 @@ final class DataCache {
     /// lock screen (`completeFileProtectionUnlessOpen`). A missing file is an empty map.
     func loadCourseColorMapIfReadable() -> [String: UInt32]? {
         let url = persistentDir.appendingPathComponent("course_color_map.json")
-        if FileManager.default.fileExists(atPath: url.path), (try? Data(contentsOf: url)) == nil { return nil }
-        return loadCourseColorMap()
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch CocoaError.fileReadNoSuchFile {
+            return loadCourseColorMap()
+        } catch {
+            return nil
+        }
+        return (try? decoder.decode([String: UInt32].self, from: data)) ?? loadCourseColorMap()
     }
 
     func loadCourseColorMap() -> [String: UInt32] {

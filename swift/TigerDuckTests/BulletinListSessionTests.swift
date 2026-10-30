@@ -274,6 +274,32 @@ extension BulletinListSessionTests {
         }
     }
 
+    @Test("an endpoint change drops the old backend's rows, so the next visit lists only the new backend's")
+    func anEndpointChangeStartsTheListOver() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinsSyncedAt]
+            defer { Defaults[.bulletinsSyncedAt] = saved }
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let (old, new) = (Stub(), Stub())
+            old.serve(Self.page([old.id]))
+            await BulletinsViewModel(apiClient: old.client).loadIfNeeded()
+            #expect(Self.cachedIds.contains(old.id))
+
+            let article = try JSONDecoder().decode(BulletinAPI.BulletinDetail.self, from: Self.detail(old.id))
+            DataCache.shared.saveBulletinDetail(article)
+
+            BulletinsViewModel.endpointDidChange()
+
+            #expect(!Self.cachedIds.contains(old.id))
+            #expect(DataCache.shared.loadBulletinDetail(id: old.id) == nil)
+            new.serve(Self.page([new.id]))
+            let visit = BulletinsViewModel(apiClient: new.client)
+            await visit.loadIfNeeded()
+            #expect(visit.items.map(\.id) == [new.id])
+        }
+    }
+
     @Test("the next visit after a sign-out drops the list on screen and reads it again")
     func aVisitAfterASignOutStartsOver() async throws {
         try await withExclusiveRealDefaults {

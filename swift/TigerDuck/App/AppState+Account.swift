@@ -67,7 +67,9 @@ extension AppState {
 
         // The order and what each step clears: docs/decisions/0026-one-sign-out-path.md.
         authService.logout()
-        let endingSession = Task { await authTokenManager.endSession() }
+        // Before any await: an API endpoint change stores the new endpoint once this returns.
+        let backend = authTokenManager.beginSignOut()
+        let endingSession = Task { await authTokenManager.endSession(on: backend) }
         Self.forgetAccountOnDevice()
         didSkipMacLogin = false
         syncConflicts = []
@@ -83,7 +85,7 @@ extension AppState {
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         return authService.startSignOutCalls { [self] in
             await cloudSyncCoordinator.settleForSignOut()
-            await authTokenManager.unregisterDeparting(accessToken: await endingSession.value) {
+            await authTokenManager.unregisterDeparting(as: await endingSession.value) {
                 await pushCoordinator.disable()
             }
             #if os(iOS)
@@ -112,18 +114,41 @@ extension AppState {
         #endif
     }
 
-    /// A sign-in hands the device on its backend to the new account, so while signed in only a
-    /// session kept on another backend still has an unregister to send.
     nonisolated static func retriesDepartingUnregister(onboarded: Bool, signedIn: Bool, keptOn: [URL], backend: URL) -> Bool {
-        onboarded && keptOn.contains { !signedIn || !AuthTokenManager.isSameBackend($0, backend) }
+        onboarded && keptOn.contains { AuthTokenManager.retriesKeptSession(on: $0, signedIn: signedIn, backend: backend) }
     }
 
     func signOutDeletesUnsyncedData() async -> Bool {
+        let unsent = await cloudSyncCoordinator.holdsUnsentEdits() || pushCoordinator.holdsUnsentCourseUploads
+            || !pendingOverrides.isEmpty
+            || !AcademicCalendarStore.shared.unacknowledgedHolidayIDs.isEmpty
+        return Self.signOutDeletesUnsyncedData(
+            heldSignOutData(),
+            cloudSyncEnabled: cloudSyncEnabled,
+            switchedOn: Self.switchedOnCategories(),
+            synced: Defaults[.categoriesSyncedOnce],
+            pendingChecks: Defaults[.pendingConflictCategories],
+            unsent: unsent
+        )
+    }
+
+    /// Whether TigerSync's backend holds data of the account, which a sign-in at another endpoint
+    /// does not bring back.
+    func signOutLeavesSyncedData() -> Bool {
+        Self.signOutLeavesSyncedData(
+            heldSignOutData(),
+            cloudSyncEnabled: cloudSyncEnabled,
+            switchedOn: Self.switchedOnCategories(),
+            synced: Defaults[.categoriesSyncedOnce],
+            pendingChecks: Defaults[.pendingConflictCategories]
+        )
+    }
+
+    private func heldSignOutData() -> SignOutData {
         let cache = DataCache.shared
-        let calendar = AcademicCalendarStore.shared
         let names = cache.loadCourseCustomNames()
         let userAdded = cache.loadUserAddedCourses()
-        let held = SignOutData(
+        return SignOutData(
             courses: !userAdded.isEmpty || !cache.loadDeletedCourseNos().isEmpty,
             courseNames: names.values.contains { !$0.isEmpty },
             localOnlyCourseNames: Self.holdsLocalOnlyCourseNames(
@@ -133,18 +158,7 @@ extension AppState {
             assignmentMarks: !cache.loadArchivedAssignmentIds().isEmpty
                 || !cache.loadLocallyCompletedAssignmentIds().isEmpty,
             ignoredCourses: !cache.loadIgnoredAssignmentCourses().isEmpty,
-            holidays: !calendar.optedInHolidayIDs.isEmpty
-        )
-        let unsent = await cloudSyncCoordinator.holdsUnsentEdits() || pushCoordinator.holdsUnsentCourseUploads
-            || !pendingOverrides.isEmpty
-            || !calendar.unacknowledgedHolidayIDs.isEmpty
-        return Self.signOutDeletesUnsyncedData(
-            held,
-            cloudSyncEnabled: cloudSyncEnabled,
-            switchedOn: Self.switchedOnCategories(),
-            synced: Defaults[.categoriesSyncedOnce],
-            pendingChecks: Defaults[.pendingConflictCategories],
-            unsent: unsent
+            holidays: !AcademicCalendarStore.shared.optedInHolidayIDs.isEmpty
         )
     }
 
@@ -164,6 +178,17 @@ extension AppState {
         var assignmentMarks = false
         var ignoredCourses = false
         var holidays = false
+
+        /// The TigerSync categories each kind syncs under.
+        var categoriesNeeded: [(held: Bool, categories: Set<String>)] {
+            [
+                (courses, ["courses"]),
+                (courseNames, ["course_names"]),
+                (courseColors, ["course_colors"]),
+                (assignmentMarks, ["assignments"]),
+                (ignoredCourses, ["assignments", "courses"]),
+            ]
+        }
     }
 
     nonisolated static func signOutDeletesUnsyncedData(
@@ -175,15 +200,20 @@ extension AppState {
         unsent: Bool
     ) -> Bool {
         let kept = cloudSyncEnabled ? switchedOn.intersection(synced).subtracting(pendingChecks) : []
-        let needs: [(held: Bool, categories: Set<String>)] = [
-            (data.courses, ["courses"]),
-            (data.courseNames, ["course_names"]),
-            (data.courseColors, ["course_colors"]),
-            (data.assignmentMarks, ["assignments"]),
-            (data.ignoredCourses, ["assignments", "courses"]),
-        ]
         return unsent || data.localOnlyCourseNames || (data.holidays && !cloudSyncEnabled)
-            || needs.contains { $0.held && !$0.categories.isSubset(of: kept) }
+            || data.categoriesNeeded.contains { $0.held && !$0.categories.isSubset(of: kept) }
+    }
+
+    nonisolated static func signOutLeavesSyncedData(
+        _ data: SignOutData,
+        cloudSyncEnabled: Bool,
+        switchedOn: Set<String>,
+        synced: Set<String>,
+        pendingChecks: Set<String>
+    ) -> Bool {
+        guard cloudSyncEnabled else { return false }
+        let kept = switchedOn.intersection(synced).subtracting(pendingChecks)
+        return data.holidays || data.categoriesNeeded.contains { $0.held && $0.categories.isSubset(of: kept) }
     }
 
     static func forgetSyncProgress() {

@@ -102,6 +102,20 @@ struct EndpointOverrideTests {
         #expect(!PushServerConfig.isPrivateOrLoopbackHost("::ffff:8.8.8.8"))
     }
 
+    @Test("one server is the same backend in any host or scheme case and with a trailing slash")
+    func sameBackendIgnoresSpelling() {
+        let url = { URL(string: $0)! }
+        let inUse = url("https://api.tigerduck.app/v3")
+        #expect(AuthTokenManager.isSameBackend(inUse, url("https://api.tigerduck.app/v3/")))
+        #expect(AuthTokenManager.isSameBackend(inUse, url("HTTPS://API.TigerDuck.app/v3")))
+        #expect(AuthTokenManager.isSameBackend(url("http://192.168.1.5:40000/v3"), url("http://192.168.1.5:40000/v3//")))
+        #expect(!AuthTokenManager.isSameBackend(inUse, url("https://api.tigerduck.app/v4")))
+        #expect(!AuthTokenManager.isSameBackend(inUse, url("https://api.tigerduck.app/V3")))
+        #expect(!AuthTokenManager.isSameBackend(inUse, url("https://api.tigerduck.app:8443/v3")))
+        #expect(!AuthTokenManager.isSameBackend(inUse, url("http://api.tigerduck.app/v3")))
+        #expect(!AuthTokenManager.isSameBackend(inUse, url("https://other.tigerduck.app/v3")))
+    }
+
     @Test("health url replaces the version segment rather than appending")
     func healthURL() {
         func health(_ base: String) -> String? {

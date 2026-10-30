@@ -1,4 +1,5 @@
 import Foundation
+import os
 #if os(iOS)
 import UIKit
 #endif
@@ -46,8 +47,12 @@ actor AuthTokenManager {
 
     @TaskLocal static var departing: DepartingAccount?
 
+    /// A sign-out's account for its unregister: the token, the backend that issued it and the
+    /// session it kept there, which the unregister forgets once it lands.
     struct DepartingAccount: Sendable {
         let accessToken: String?
+        var baseURL: URL?
+        var sessionID: String?
     }
 
     /// One per backend a sign-out could not unregister from yet. `id` names the sign-out that
@@ -72,8 +77,7 @@ actor AuthTokenManager {
         }
     }
 
-    /// The session the latest sign-out kept, which its unregister forgets once it lands.
-    private var signOutSession: DepartingSession?
+    private let signOutsStarting = OSAllocatedUnfairLock(initialState: 0)
 
     static let signOutCallsWindow: TimeInterval = 120
 
@@ -121,6 +125,7 @@ actor AuthTokenManager {
 
     func validAccessToken() async -> String? {
         if let departing = Self.departing { return departing.accessToken }
+        if signOutsStarting.withLock({ $0 > 0 }) { return nil }
         if refreshToken == nil, let onNoSession { await onNoSession() }
         guard refreshToken != nil else { return nil }
         if let token = accessToken, Date.now < expiresAt.addingTimeInterval(-30) {
@@ -228,18 +233,35 @@ actor AuthTokenManager {
         clearTokens()
     }
 
-    func endSession() async -> String? {
+    /// Holds back the session's tokens until `endSession(on:)` has ended it, and returns the backend in
+    /// use for its unregister. It runs at once on the caller's thread, so the tokens are held before
+    /// an API endpoint change can store its new endpoint.
+    nonisolated func beginSignOut() -> URL {
+        signOutsStarting.withLock { $0 += 1 }
+        return baseURLProvider()
+    }
+
+    func endSession(on backend: URL? = nil) async -> DepartingAccount {
+        let baseURL = backend ?? baseURLProvider()
         let access = accessToken, refresh = refreshToken, expiry = expiresAt
         let refreshOut = refreshTask, generation = signInGeneration, uses = refreshTokenUses
         logout()
-        signOutSession = nil
-        guard let refresh else { return nil }
+        signOutsStarting.withLock { $0 = max($0 - 1, 0) }
+        guard let refresh else { return DepartingAccount(accessToken: nil, baseURL: baseURL) }
         let departing = DepartingSession(
-            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURLProvider(),
-            id: UUID().uuidString
+            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURL, id: UUID().uuidString
         )
-        signOutSession = departing
-        storeDepartingSessions(storedDepartingSessions().filter { !Self.isSameBackend($0.baseURL, departing.baseURL) } + [departing])
+        storeDepartingSessions(storedDepartingSessions().filter { !Self.isSameBackend($0.baseURL, baseURL) } + [departing])
+        let token = await unregisterToken(
+            for: departing, access: access, expiry: expiry, refreshOut: refreshOut, generation: generation, uses: uses
+        )
+        return DepartingAccount(accessToken: token, baseURL: baseURL, sessionID: departing.id)
+    }
+
+    private func unregisterToken(
+        for departing: DepartingSession, access: String?, expiry: Date, refreshOut: Task<String?, Never>?,
+        generation: Int, uses: Int
+    ) async -> String? {
         if let access, Date.now < expiry.addingTimeInterval(-Self.signOutCallsWindow) { return access }
         if let refreshOut {
             _ = await refreshOut.value
@@ -290,28 +312,47 @@ actor AuthTokenManager {
         refreshToken == nil || !Self.isSameBackend(session.baseURL, baseURLProvider())
     }
 
-    /// One server's base URL can be spelled with or without a trailing slash.
+    /// One server's base URL can be spelled with or without a trailing slash, and with its scheme
+    /// and host in either case.
     nonisolated static func isSameBackend(_ one: URL, _ other: URL) -> Bool {
-        let spelling = { (url: URL) in String(url.standardized.absoluteString.reversed().drop { $0 == "/" }.reversed()) }
-        return spelling(one) == spelling(other)
+        let server = { (url: URL) -> [String?] in
+            let path = url.standardized.path(percentEncoded: true)
+            return [
+                url.scheme?.lowercased(), url.host(percentEncoded: true)?.lowercased(), url.port.map(String.init),
+                String(path.reversed().drop { $0 == "/" }.reversed()), url.query(percentEncoded: true),
+            ]
+        }
+        return server(one) == server(other)
+    }
+
+    /// Whether a launch sends the session kept on `kept`. While signed in, one on the backend in use
+    /// went to the new account with the device. One on a cleartext backend goes out only while that
+    /// backend is in use: on another network its private address may name another host.
+    nonisolated static func retriesKeptSession(on kept: URL, signedIn: Bool, backend: URL) -> Bool {
+        let inUse = isSameBackend(kept, backend)
+        return (!signedIn || !inUse) && (kept.scheme?.lowercased() != "http" || inUse)
     }
 
     func retryDepartingUnregister(_ unregister: @MainActor @Sendable (_ backend: URL) async -> Bool) async {
-        for session in storedDepartingSessions() where keepsAlongside(session) {
+        let backend = baseURLProvider()
+        for session in storedDepartingSessions()
+        where Self.retriesKeptSession(on: session.baseURL, signedIn: refreshToken != nil, backend: backend) {
             guard let token = await departingAccessToken(for: session) else { continue }
             let target = session.baseURL
-            await unregisterDeparting(session, accessToken: token) { await unregister(target) }
+            let account = DepartingAccount(accessToken: token, baseURL: target, sessionID: session.id)
+            await unregisterDeparting(session, as: account) { await unregister(target) }
         }
     }
 
-    func unregisterDeparting(accessToken: String?, _ unregister: @MainActor @Sendable () async -> Bool) async {
-        await unregisterDeparting(signOutSession, accessToken: accessToken, unregister)
+    func unregisterDeparting(as account: DepartingAccount, _ unregister: @MainActor @Sendable () async -> Bool) async {
+        let session = account.sessionID.flatMap { id in storedDepartingSessions().first { $0.id == id } }
+        await unregisterDeparting(session, as: account, unregister)
     }
 
     private func unregisterDeparting(
-        _ session: DepartingSession?, accessToken: String?, _ unregister: @MainActor @Sendable () async -> Bool
+        _ session: DepartingSession?, as account: DepartingAccount, _ unregister: @MainActor @Sendable () async -> Bool
     ) async {
-        let landed = await Self.$departing.withValue(DepartingAccount(accessToken: accessToken)) {
+        let landed = await Self.$departing.withValue(account) {
             await unregister()
         }
         if landed, let session { forgetDeparting(session) }
@@ -392,13 +433,18 @@ actor AuthTokenManager {
             let expires_in: Int
         }
 
-        guard signInGeneration == generation, let refreshToken else { return nil }
+        // Read before the check: a sign-out holds the tokens before it stores another endpoint.
+        // The resend goes where the first send went, whatever endpoint is stored meanwhile.
+        let backend = baseURLProvider()
+        guard signInGeneration == generation, signOutsStarting.withLock({ $0 == 0 }), let refreshToken else {
+            return nil
+        }
         guard refreshTokenUses < Self.refreshTokenUseLimit else {
             return await signedInAgain(since: generation) ? accessToken : nil
         }
-        var send = await postCounted(refreshToken, usedBefore: refreshTokenUses)
+        var send = await postCounted(refreshToken, usedBefore: refreshTokenUses, on: backend)
         if send.reply == nil, !send.uncounted, signInGeneration == generation, send.uses < Self.refreshTokenUseLimit {
-            send = await postCounted(refreshToken, usedBefore: send.uses)
+            send = await postCounted(refreshToken, usedBefore: send.uses, on: backend)
         }
         let uses = send.uses
         if self.refreshToken == refreshToken { refreshTokenUses = uses }
@@ -475,10 +521,10 @@ actor AuthTokenManager {
     /// `uncounted` when the Keychain refused the count, so nothing went out. A token a sign-in
     /// replaced meanwhile is not sent either, but it is no longer this refresh's to sign in for.
     private func postCounted(
-        _ refreshToken: String, usedBefore uses: Int
+        _ refreshToken: String, usedBefore uses: Int, on backend: URL
     ) async -> (reply: (Data, HTTPURLResponse)?, uses: Int, uncounted: Bool) {
         guard saveUses(uses + 1, of: refreshToken) else { return (nil, uses, self.refreshToken == refreshToken) }
-        let send = await postRefresh(refreshToken, on: baseURLProvider())
+        let send = await postRefresh(refreshToken, on: backend)
         let total = send.mayHaveUsed ? uses + 1 : uses
         _ = saveUses(total, of: refreshToken)
         return (send.reply, total, false)

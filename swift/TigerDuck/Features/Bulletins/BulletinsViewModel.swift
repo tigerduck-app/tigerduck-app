@@ -66,6 +66,13 @@ final class BulletinsViewModel {
         Defaults[.bulletinsSyncedAt] = nil
     }
 
+    /// Another backend numbers its bulletins apart, so the old rows cannot be merged with its pages.
+    static func endpointDidChange() {
+        DataCache.shared.saveBulletinSummaries([])
+        DataCache.shared.clearBulletinDetails()
+        forgetListSession()
+    }
+
     func loadIfNeeded() async {
         isPrefetchPaused = false
         if isFromBeforeSignOut { restartAfterSignOut() }

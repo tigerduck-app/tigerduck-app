@@ -29,8 +29,13 @@ backend carry the Bearer token from `AuthTokenManager`.
   checks the stored value against the gate again on every read.
 - A change of endpoint is stored (`DebugEndpointStore.store(_:)`, `clearOverride()`) only from
   `DebugEndpointViewModel.confirm(_:signingOut:)`, after the user agrees and every account is
-  signed out with its backend calls finished: a session goes to no server but the one that
-  issued it.
+  signed out. The sign-out's backend calls go on after the change: the session it keeps is bound
+  to the endpoint in use when it started (`AuthTokenManager.endSession(on:)`), and
+  `PushServerConfig.resolveServerURL()` sends a call made as the departing account there. A
+  session goes to no server but the one that issued it.
+- Endpoints are compared by server (`AuthTokenManager.isSameBackend(_:_:)`): a trailing slash or
+  the case of the scheme or host changes nothing, so saving such a spelling, or a Reset that
+  leaves the endpoint where it is, neither asks nor signs out.
 - `PushCoordinator.assertEnvConsistency()` skips its host check while a user-set endpoint is
   active: a self-hosted backend cannot be enumerated, and a launch crash would leave no UI to
   clear the Keychain entry.

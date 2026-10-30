@@ -70,8 +70,8 @@ enum BrowserPageScripts {
     private nonisolated static let darkenWithDarkReader = """
     (function() {
       var dark = matchMedia('(prefers-color-scheme: dark)');
-      // Find's marks and spotlight keep the colors it gives them.
-      var fixes = { ignoreInlineStyle: ['[data-tigerduck-find]', '[data-tigerduck-find-light]'] };
+      // Find's spotlight keeps the colors it gives it.
+      var fixes = { ignoreInlineStyle: ['[data-tigerduck-find-light]'] };
       // Lets a cross-origin stylesheet be recolored where its server allows CORS.
       DarkReader.setFetchMethod(window.fetch);
       // Dark Reader puts this rule in each sheet it adopts over one of the page's own.

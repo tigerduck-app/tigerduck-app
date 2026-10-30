@@ -33,6 +33,38 @@ enum WidgetDerivedState: nonisolated Equatable, Sendable {
     }
 }
 
+extension WidgetDerivedState.Day {
+    func headline(in bundle: Bundle = .main) -> String {
+        switch self {
+        case .today: return String(localized: "widget_next_class", bundle: bundle)
+        case .tomorrow: return String(localized: "widget_tomorrow", bundle: bundle)
+        case .later(let weekday): return Self.caption(of: weekday, in: bundle)
+        }
+    }
+
+    func inlineCaption(_ trailing: String, in bundle: Bundle = .main) -> String {
+        switch self {
+        case .later(let weekday):
+            return "\(Self.caption(of: weekday, in: bundle)) \(trailing)"
+        case .today, .tomorrow:
+            return String.localizedStringWithFormat(
+                String(localized: "widget_tomorrow_time", bundle: bundle), trailing)
+        }
+    }
+
+    private static func caption(of weekday: Int, in bundle: Bundle) -> String {
+        switch weekday {
+        case 1: return String(localized: "weekday_mon_caption", bundle: bundle)
+        case 2: return String(localized: "weekday_tue_caption", bundle: bundle)
+        case 3: return String(localized: "weekday_wed_caption", bundle: bundle)
+        case 4: return String(localized: "weekday_thu_caption", bundle: bundle)
+        case 5: return String(localized: "weekday_fri_caption", bundle: bundle)
+        case 6: return String(localized: "weekday_sat_caption", bundle: bundle)
+        default: return String(localized: "weekday_sun_caption", bundle: bundle)
+        }
+    }
+}
+
 enum WidgetTimelineDerivation {
     static func derive(snapshot: WidgetSnapshot, at date: Date) -> WidgetDerivedState {
         guard snapshot.isLoggedIn else { return .signInRequired }
