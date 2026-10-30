@@ -151,10 +151,8 @@ extension AppState {
     }
 
     struct TermRead {
-        /// The server rows the reconcile keeps, and their course numbers.
         let rows: [[String: Any]]
         let serverNos: Set<String>
-        /// This device's fetched courses, less those a roster dropped on the server, which `left` names.
         let localCourses: [SDCourse]
         let left: Set<String>
         let unlisted: (hide: Set<String>, drop: Set<String>)
@@ -165,14 +163,16 @@ extension AppState {
 
     /// Reads one term of the snapshot against this device's courses. A course a roster dropped on
     /// the server leaves the fetched courses in `cache` with no hide, so a later roster from here
-    /// can bring it back; a course selection answer cached before the drop that lists one is
-    /// forgotten, or the next fetch would draw it again.
+    /// can bring it back, and stays out of fetches without a roster until one does; a course
+    /// selection answer cached before the drop that lists one is forgotten, or the next fetch
+    /// would draw it again.
     static func readTerm(
         _ semester: String, rows termRows: [[String: Any]], tombstones: [[String: Any]],
         selectionDropped: Set<String>, userAdded: [SDCourse], hidden: Set<String>, adding: Set<String>,
         liveAnswer: CourseSelectionService.LiveAnswer?, cache: DataCache, forgetAnswer: () -> Void
     ) -> TermRead {
         let droppedOnServer = Self.droppedOnServer(termRows, liveAnswer: liveAnswer)
+        cache.saveServerDroppedNos(droppedOnServer, semester: semester)
         let rows = keptRows(
             termRows, semester: semester, dropped: selectionDropped, userAdded: userAdded, liveAnswer: liveAnswer
         )

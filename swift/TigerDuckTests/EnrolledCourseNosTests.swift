@@ -54,6 +54,19 @@ struct EnrolledCourseNosTests {
         #expect(term.roster == nil)
     }
 
+    @Test("A transcript does not bring back a course dropped on the server; course selection's answer does")
+    func transcriptSkipsServerDrops() throws {
+        let fallback = try #require(AppServiceBridge.termCourseNos(
+            selection: nil, transcript: ["CS1001301", "MA1010003"], cached: ["CS1001301"], droppedOnServer: ["MA1010003"]
+        ))
+        let answered = try #require(AppServiceBridge.termCourseNos(
+            selection: ["CS1001301", "MA1010003"], transcript: nil, cached: [], droppedOnServer: ["MA1010003"]
+        ))
+
+        #expect(fallback.courseNos == ["CS1001301"])
+        #expect(answered.courseNos == ["CS1001301", "MA1010003"])
+    }
+
     @Test("A class the transcript adds joins its term only with class times; course selection's and cached ones stay")
     func transcriptClassesNeedClassTimes() {
         let courses = [
@@ -228,6 +241,8 @@ struct SelectionDropsTests {
         #expect(term.unlisted.hide.isEmpty)
         #expect(term.unlisted.drop == ["EE2005301"])
         #expect(cache.loadDeletedCourseNos().isEmpty)
+        let alsoDropped: Set<String> = ["GE1010001", "EE2005301", "PH1010004"]
+        #expect(cache.loadServerDroppedNos(semester: "1151") == alsoDropped.union(keptLive ? [] : ["MA1010003"]))
     }
 
     @Test("A term whose every server row a roster dropped is not empty on the server, so its courses do not go up again")

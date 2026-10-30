@@ -199,7 +199,8 @@ enum AppServiceBridge {
             : termCourseNos(
                 selection: courseSelectionNos,
                 transcript: scoreCoursesForSemester?.map(\.code),
-                cached: cachedCourses.map(\.courseNo)
+                cached: cachedCourses.map(\.courseNo),
+                droppedOnServer: DataCache.shared.loadServerDroppedNos(semester: semester)
             )
         guard let term else { return cachedCourses }
         if let roster = term.roster, !Task.isCancelled, authService.loginGeneration == startGeneration {
@@ -322,18 +323,18 @@ enum AppServiceBridge {
     /// A term's course numbers, or nil when no source answers and the term keeps its cached
     /// courses. Course selection's answer owns the term it serves and is the roster its drops are
     /// read from. Any other term, or that one when course selection gives nothing, adds the
-    /// transcript's classes to its cached courses: a transcript lists a running term late or in
-    /// part, so it never removes one. Moodle lists course sites and keeps a dropped class, so it
-    /// adds none. An empty list counts as nil: the D01 regex scrape returns no matches, not an
-    /// error, when the page drifts.
+    /// transcript's classes to its cached courses, less those dropped on the server: a transcript
+    /// lists a running term late or in part, so it never removes one, and may still list a drop.
+    /// Moodle lists course sites and keeps a dropped class, so it adds none. An empty list counts
+    /// as nil: the D01 regex scrape returns no matches, not an error, when the page drifts.
     static func termCourseNos(
-        selection: [String]?, transcript: [String]?, cached: [String]
+        selection: [String]?, transcript: [String]?, cached: [String], droppedOnServer: Set<String> = []
     ) -> (courseNos: [String], roster: [String]?)? {
         let fromSelection = uniqueCourseNos(selection ?? [])
         if !fromSelection.isEmpty { return (fromSelection, fromSelection) }
         let fromTranscript = uniqueCourseNos(transcript ?? [])
         guard !fromTranscript.isEmpty else { return nil }
-        return (uniqueCourseNos(fromTranscript + cached), nil)
+        return (uniqueCourseNos(fromTranscript + cached).filter { !droppedOnServer.contains($0) }, nil)
     }
 
     struct LookedUpCourse {
