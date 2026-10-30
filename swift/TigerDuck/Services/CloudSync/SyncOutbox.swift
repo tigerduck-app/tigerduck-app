@@ -265,6 +265,9 @@ actor SyncOutbox {
 
     static func keepsWithoutAttempt(_ error: Error, for op: SyncOp) -> Bool {
         if case .courseAdd = op, case PushAPIError.httpStatus(_, _) = error { return false }
+        // The backend answers a course delete 409 only for its stamp, so another code is not a
+        // refusal of the delete, which a later attempt may still land.
+        if case .courseDelete = op, case PushAPIError.httpStatus(409, _) = error { return true }
         return keepsWithoutAttempt(error)
     }
 

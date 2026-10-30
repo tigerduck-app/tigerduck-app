@@ -154,6 +154,18 @@ struct CourseDeleteSyncTests {
         #expect(await outbox.parkedSnapshot().isEmpty)
     }
 
+    @Test("A delete answered 409 with a code other than clock_ahead stays queued without spending an attempt")
+    func deleteAnsweredAnotherConflictStays() async {
+        let outbox = SyncOutbox(directory: Self.freshDirectory())
+        await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "CS1001301", stamp: Date()))
+
+        for _ in 0...SyncOutbox.maxAttempts {
+            await outbox.drain { _ in throw PushAPIError.httpStatus(409, body: #"{"detail":"something_else"}"#) }
+        }
+
+        #expect(await outbox.snapshot().map(\.attempts) == [0])
+    }
+
     @Test("A course added back drops its own queued delete, and a reset its term's or every term's")
     func addingBackAndResetsDropTheirDeletes() async {
         let coordinator = Self.makeCoordinator(Backend())
