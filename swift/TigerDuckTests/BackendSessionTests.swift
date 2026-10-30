@@ -816,6 +816,7 @@ struct BackendTokenRefreshTests {
                 replacing: "A0"
             )
         }
+        while await manager.signInsWaiting < 1 { try await Task.sleep(for: .milliseconds(5)) }
         gate.open()
 
         #expect(try await relogin.value == nil)
@@ -829,6 +830,38 @@ struct BackendTokenRefreshTests {
         )
         #expect(again != nil)
         #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R2")
+    }
+
+    @Test("a sign-in still waiting for its turn when the account signs out sends nothing")
+    func aWaitingSignInASignOutOvertookSendsNothing() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture(signedIn: false)
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.loginReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.loginURL
+        )
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A2", refresh: "R2"), for: backend.loginURL)
+        let first = Task {
+            try await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )
+        }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.loginURL).count == 1 }
+        let second = Task {
+            try await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )
+        }
+        while await manager.signInsWaiting < 1 { try await Task.sleep(for: .milliseconds(5)) }
+
+        await manager.logout()
+        gate.open()
+
+        await #expect(throws: CancellationError.self) { try await first.value }
+        await #expect(throws: CancellationError.self) { try await second.value }
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+        #expect(await !manager.isLoggedIn)
     }
 
     @Test("a sign-in waits for the one before it, so the pair kept is the one the backend issued last")
@@ -852,8 +885,7 @@ struct BackendTokenRefreshTests {
                 studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
             )
         }
-        // Time for a second sign-in that does not wait to go out; one that waits passes either way.
-        try await Task.sleep(for: .milliseconds(200))
+        while await manager.signInsWaiting < 1 { try await Task.sleep(for: .milliseconds(5)) }
 
         #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
         gate.open()

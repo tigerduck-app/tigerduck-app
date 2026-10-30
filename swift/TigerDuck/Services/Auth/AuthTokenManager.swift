@@ -129,6 +129,8 @@ actor AuthTokenManager {
 
     var storedAccessToken: String? { accessToken }
 
+    var signInsWaiting: Int { waitingSignIns.count }
+
     func validAccessToken() async -> String? {
         if let departing = Self.departing { return departing.accessToken }
         if signOutsStarting.withLock({ $0 > 0 }) { return nil }
