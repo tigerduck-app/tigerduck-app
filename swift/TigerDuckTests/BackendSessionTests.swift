@@ -43,6 +43,51 @@ struct BackendTokenRefreshTests {
         #expect(SettingsAPIStub.requests(under: other).isEmpty)
     }
 
+    @Test("a refresh a sign-out overtakes before it sends goes nowhere, though the endpoint changed meanwhile")
+    func aRefreshASignOutOvertakesSendsNothing() async throws {
+        let backend = BackendFixture()
+        let other = SettingsAPIStub.uniqueBaseURL()
+        let endpoint = OSAllocatedUnfairLock(initialState: backend.baseURL)
+        let entered = OSAllocatedUnfairLock(initialState: false)
+        let released = OSAllocatedUnfairLock(initialState: false)
+        let manager = backend.relaunched(following: { endpoint.withLock { $0 } }, beginBackgroundTask: {
+            entered.withLock { $0 = true }
+            while !released.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(5)) }
+            return {}
+        })
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { entered.withLock { $0 } }
+
+        _ = manager.beginSignOut()
+        endpoint.withLock { $0 = other }
+        released.withLock { $0 = true }
+
+        #expect(await refresh.value == nil)
+        #expect(SettingsAPIStub.requests(under: other).isEmpty)
+        #expect(SettingsAPIStub.requests(for: backend.refreshURL).isEmpty)
+    }
+
+    @Test("a sign-out's hold on the tokens lasts until every sign-out started meanwhile has ended its session")
+    func overlappingSignOutsHoldTheTokensUntilTheLast() async throws {
+        let backend = BackendFixture(accessTokenExpiry: Date.now.addingTimeInterval(600))
+        let manager = backend.manager
+        _ = manager.beginSignOut()
+        _ = manager.beginSignOut()
+        _ = await manager.endSession()
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        _ = try await manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+
+        #expect(await manager.validAccessToken() == nil)
+        _ = await manager.endSession()
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "C1", refresh: "CR1"), for: backend.loginURL)
+        _ = try await manager.login(
+            studentId: "B11000002", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        #expect(await manager.validAccessToken() == "C1")
+    }
+
     @Test("a token whose two sends got no reply goes out no more, and the next refresh signs in again")
     func secondLostReplyGivesUp() async throws {
         let backend = BackendFixture()
@@ -1877,8 +1922,13 @@ struct BackendFixture {
     }
 
     /// A manager whose endpoint is what `endpoint` answers at each request.
-    func relaunched(following endpoint: @escaping @Sendable () -> URL) -> AuthTokenManager {
-        Self.manager(endpoint: endpoint, recorder: recorder, refreshTimeout: refreshTimeout)
+    func relaunched(
+        following endpoint: @escaping @Sendable () -> URL,
+        beginBackgroundTask: (@Sendable () async -> @Sendable () async -> Void)? = nil
+    ) -> AuthTokenManager {
+        Self.manager(
+            endpoint: endpoint, recorder: recorder, refreshTimeout: refreshTimeout, beginBackgroundTask: beginBackgroundTask
+        )
     }
 
     func refusingRefreshToken(while refused: OSAllocatedUnfairLock<Bool>) -> AuthTokenManager {
@@ -1909,7 +1959,7 @@ struct BackendFixture {
 
     private static func manager(
         endpoint: @escaping @Sendable () -> URL, recorder: Recorder, tokens: AuthTokenManager.TokenStore? = nil,
-        refreshTimeout: TimeInterval
+        refreshTimeout: TimeInterval, beginBackgroundTask: (@Sendable () async -> @Sendable () async -> Void)? = nil
     ) -> AuthTokenManager {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -1920,7 +1970,7 @@ struct BackendFixture {
             session: URLSession(configuration: config),
             tokens: tokens ?? recorder.tokenStore,
             refreshTimeout: refreshTimeout,
-            beginBackgroundTask: { recorder.beginBackgroundTask() }
+            beginBackgroundTask: beginBackgroundTask ?? { recorder.beginBackgroundTask() }
         )
     }
 

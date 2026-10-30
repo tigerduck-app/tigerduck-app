@@ -77,7 +77,7 @@ actor AuthTokenManager {
         }
     }
 
-    private let signingOut = OSAllocatedUnfairLock(initialState: false)
+    private let signOutsStarting = OSAllocatedUnfairLock(initialState: 0)
 
     static let signOutCallsWindow: TimeInterval = 120
 
@@ -125,7 +125,7 @@ actor AuthTokenManager {
 
     func validAccessToken() async -> String? {
         if let departing = Self.departing { return departing.accessToken }
-        if signingOut.withLock({ $0 }) { return nil }
+        if signOutsStarting.withLock({ $0 > 0 }) { return nil }
         if refreshToken == nil, let onNoSession { await onNoSession() }
         guard refreshToken != nil else { return nil }
         if let token = accessToken, Date.now < expiresAt.addingTimeInterval(-30) {
@@ -237,7 +237,7 @@ actor AuthTokenManager {
     /// use for its unregister. It runs at once on the caller's thread, so the tokens are held before
     /// an API endpoint change can store its new endpoint.
     nonisolated func beginSignOut() -> URL {
-        signingOut.withLock { $0 = true }
+        signOutsStarting.withLock { $0 += 1 }
         return baseURLProvider()
     }
 
@@ -246,7 +246,7 @@ actor AuthTokenManager {
         let access = accessToken, refresh = refreshToken, expiry = expiresAt
         let refreshOut = refreshTask, generation = signInGeneration, uses = refreshTokenUses
         logout()
-        signingOut.withLock { $0 = false }
+        signOutsStarting.withLock { $0 = max($0 - 1, 0) }
         guard let refresh else { return DepartingAccount(accessToken: nil, baseURL: baseURL) }
         let departing = DepartingSession(
             refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURL, id: UUID().uuidString
@@ -433,12 +433,15 @@ actor AuthTokenManager {
             let expires_in: Int
         }
 
-        guard signInGeneration == generation, let refreshToken else { return nil }
+        // Read before the check: a sign-out holds the tokens before it stores another endpoint.
+        // The resend goes where the first send went, whatever endpoint is stored meanwhile.
+        let backend = baseURLProvider()
+        guard signInGeneration == generation, signOutsStarting.withLock({ $0 == 0 }), let refreshToken else {
+            return nil
+        }
         guard refreshTokenUses < Self.refreshTokenUseLimit else {
             return await signedInAgain(since: generation) ? accessToken : nil
         }
-        // The resend goes where the first send went, whatever endpoint is stored meanwhile.
-        let backend = baseURLProvider()
         var send = await postCounted(refreshToken, usedBefore: refreshTokenUses, on: backend)
         if send.reply == nil, !send.uncounted, signInGeneration == generation, send.uses < Self.refreshTokenUseLimit {
             send = await postCounted(refreshToken, usedBefore: send.uses, on: backend)
