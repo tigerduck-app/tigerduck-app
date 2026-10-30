@@ -69,6 +69,7 @@ final class BulletinsViewModel {
     /// Another backend numbers its bulletins apart, so the old rows cannot be merged with its pages.
     static func endpointDidChange() {
         DataCache.shared.saveBulletinSummaries([])
+        DataCache.shared.clearBulletinDetails()
         forgetListSession()
     }
 

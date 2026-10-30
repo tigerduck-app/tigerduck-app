@@ -286,6 +286,10 @@ final class DataCache {
         load(from: bulletinDetailFilename(id), in: bulletinDetailDir())
     }
 
+    func clearBulletinDetails() {
+        try? FileManager.default.removeItem(at: cacheDir.appendingPathComponent("bulletin_details", isDirectory: true))
+    }
+
     private func bulletinDetailDir() -> URL {
         let dir = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -528,8 +532,7 @@ final class DataCache {
                 try? FileManager.default.removeItem(at: url)
             }
         }
-        let bulletinDetails = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
-        try? FileManager.default.removeItem(at: bulletinDetails)
+        clearBulletinDetails()
         try? FileManager.default.removeItem(at: moodleDir)
         try? FileManager.default.removeItem(at: moodleFilesDir)
         revision &+= 1

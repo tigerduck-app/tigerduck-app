@@ -286,9 +286,13 @@ extension BulletinListSessionTests {
             await BulletinsViewModel(apiClient: old.client).loadIfNeeded()
             #expect(Self.cachedIds.contains(old.id))
 
+            let article = try JSONDecoder().decode(BulletinAPI.BulletinDetail.self, from: Self.detail(old.id))
+            DataCache.shared.saveBulletinDetail(article)
+
             BulletinsViewModel.endpointDidChange()
 
             #expect(!Self.cachedIds.contains(old.id))
+            #expect(DataCache.shared.loadBulletinDetail(id: old.id) == nil)
             new.serve(Self.page([new.id]))
             let visit = BulletinsViewModel(apiClient: new.client)
             await visit.loadIfNeeded()
