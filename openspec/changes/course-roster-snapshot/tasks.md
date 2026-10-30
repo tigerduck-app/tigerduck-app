@@ -11,12 +11,12 @@
 
 ## 2. Backend PR: enrollment from rosters (3.10.1)
 
-- [ ] 2.1 Accept `roster_terms` on `POST /v3/sync/courses/upload` and, per roster term, set listed school courses to `enrolled` and unlisted ones without a hand-add to `dropped`; verify with tests that fail on `dev`
-- [ ] 2.2 Keep existing rows' status on uploads outside their roster terms and set `enrolled` on a hand-add (`adds`, `force_keys`); verify with tests for a stale relist and a hand-add of a dropped course
-- [ ] 2.3 Make an empty roster term a no-op; verify with a test
-- [ ] 2.4 Read only enrolled courses in `server/syncjobs/assignments.py`; verify with a test
-- [ ] 2.5 Record when each user's roster for a term arrives (new table and Alembic migration) and list the current term in `/v3/sync/full`'s `roster_requests` when that is older than a setting defaulting to 7 days; verify with tests for a missing, an old and a recent roster
-- [ ] 2.6 Add the 3.10.1 `MIGRATE.md` section (the migration, the rule, the hand correction) and the rule in `server/AGENTS.md`; verify the touched files and the full server suite pass on xs-mac
+- [x] 2.1 Accept `roster_terms` on `POST /v3/sync/courses/upload` and, per roster term, set listed school courses to `enrolled` and unlisted ones without a hand-add to `dropped`; verify with tests that fail on `dev`
+- [x] 2.2 Keep existing rows' status on uploads outside their roster terms and set `enrolled` on a hand-add (`adds`, `force_keys`); verify with tests for a stale relist and a hand-add of a dropped course
+- [x] 2.3 Make an empty roster term a no-op; verify with a test
+- [x] 2.4 Read only enrolled courses in `server/syncjobs/assignments.py`; verify with a test
+- [x] 2.5 Record when each user's roster for a term arrives (new table and Alembic migration) and list the current term in `/v3/sync/full`'s `roster_requests` when that is older than a setting defaulting to 7 days; verify with tests for a missing, an old and a recent roster
+- [x] 2.6 Add the 3.10.1 `MIGRATE.md` section (the migration, the rule, the hand correction) and the rule in `server/AGENTS.md`; verify the touched files and the full server suite pass on xs-mac
 
 ## 3. Backend release and deploy
 
