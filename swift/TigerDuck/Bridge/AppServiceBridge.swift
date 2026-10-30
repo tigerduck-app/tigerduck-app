@@ -201,8 +201,7 @@ enum AppServiceBridge {
             : termCourseNos(
                 selection: courseSelectionNos,
                 transcript: scoreCoursesForSemester?.map(\.code),
-                cached: cachedCourses.map(\.courseNo),
-                droppedOnServer: DataCache.shared.loadServerDroppedNos(semester: semester)
+                cached: cachedCourses.map(\.courseNo)
             )
         guard let term else { return cachedCourses }
         if let roster = term.roster, !Task.isCancelled, authService.loginGeneration == startGeneration {
@@ -263,13 +262,17 @@ enum AppServiceBridge {
             others: Array(moodleByNo.keys) + (report?.courses.filter { $0.term == semester }.map(\.code) ?? []),
             userAdded: DataCache.shared.loadUserAddedCourses().filter { DataCache.userAddedCourse($0, belongsTo: semester) }
         )
-        let courses = pastTerm?.courses ?? drawnCourses(
+        let drawn = pastTerm?.courses ?? drawnCourses(
             looked.map(\.course), fromSelection: term.roster != nil, cached: Set(cachedByNo.keys)
         )
 
         guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
             return DataCache.shared.loadCourses(semester: semester)
         }
+        let courses = withoutServerDrops(
+            drawn, authoritative: pastTerm != nil || (selectionIsLive && term.roster != nil),
+            dropped: DataCache.shared.loadServerDroppedNos(semester: semester)
+        )
         guard !courses.isEmpty || pastTerm != nil else { return cachedCourses }
         if let pastTerm {
             DataCache.shared.recordSelectionRoster(
@@ -296,6 +299,13 @@ enum AppServiceBridge {
                 NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             }
         }
+    }
+
+    /// The courses a fetch saves, less those dropped on the server as it saves: a full sync during
+    /// its lookups may drop one that a cached course selection answer or the transcript still
+    /// lists. Only a live answer or a past term's final transcript brings one back.
+    static func withoutServerDrops(_ courses: [SDCourse], authoritative: Bool, dropped: Set<String>) -> [SDCourse] {
+        authoritative ? courses : courses.filter { !dropped.contains($0.courseNo) }
     }
 
     /// The roster a fetch uploads: a past term's final transcript, or course selection's answer
@@ -342,18 +352,18 @@ enum AppServiceBridge {
     /// A term's course numbers, or nil when no source answers and the term keeps its cached
     /// courses. Course selection's answer owns the term it serves and is the roster its drops are
     /// read from. Any other term, or that one when course selection gives nothing, adds the
-    /// transcript's classes to its cached courses, less those dropped on the server: a transcript
-    /// lists a running term late or in part, so it never removes one, and may still list a drop.
-    /// Moodle lists course sites and keeps a dropped class, so it adds none. An empty list counts
-    /// as nil: the D01 regex scrape returns no matches, not an error, when the page drifts.
+    /// transcript's classes to its cached courses: a transcript lists a running term late or in
+    /// part, so it never removes one. Moodle lists course sites and keeps a dropped class, so it
+    /// adds none. An empty list counts as nil: the D01 regex scrape returns no matches, not an
+    /// error, when the page drifts.
     static func termCourseNos(
-        selection: [String]?, transcript: [String]?, cached: [String], droppedOnServer: Set<String> = []
+        selection: [String]?, transcript: [String]?, cached: [String]
     ) -> (courseNos: [String], roster: [String]?)? {
         let fromSelection = uniqueCourseNos(selection ?? [])
         if !fromSelection.isEmpty { return (fromSelection, fromSelection) }
         let fromTranscript = uniqueCourseNos(transcript ?? [])
         guard !fromTranscript.isEmpty else { return nil }
-        return (uniqueCourseNos(fromTranscript + cached).filter { !droppedOnServer.contains($0) }, nil)
+        return (uniqueCourseNos(fromTranscript + cached), nil)
     }
 
     struct LookedUpCourse {

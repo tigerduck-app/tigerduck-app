@@ -54,17 +54,15 @@ struct EnrolledCourseNosTests {
         #expect(term.roster == nil)
     }
 
-    @Test("A transcript does not bring back a course dropped on the server; course selection's answer does")
-    func transcriptSkipsServerDrops() throws {
-        let fallback = try #require(AppServiceBridge.termCourseNos(
-            selection: nil, transcript: ["CS1001301", "MA1010003"], cached: ["CS1001301"], droppedOnServer: ["MA1010003"]
-        ))
-        let answered = try #require(AppServiceBridge.termCourseNos(
-            selection: ["CS1001301", "MA1010003"], transcript: nil, cached: [], droppedOnServer: ["MA1010003"]
-        ))
+    @Test("A fetch saves no course dropped on the server unless a live answer or a final transcript lists it")
+    func savedCoursesSkipServerDrops() {
+        let courses = ["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }
 
-        #expect(fallback.courseNos == ["CS1001301"])
-        #expect(answered.courseNos == ["CS1001301", "MA1010003"])
+        let fromCacheOrTranscript = AppServiceBridge.withoutServerDrops(courses, authoritative: false, dropped: ["MA1010003"])
+        let fromLiveAnswer = AppServiceBridge.withoutServerDrops(courses, authoritative: true, dropped: ["MA1010003"])
+
+        #expect(fromCacheOrTranscript.map(\.courseNo) == ["CS1001301"])
+        #expect(fromLiveAnswer.map(\.courseNo) == ["CS1001301", "MA1010003"])
     }
 
     @Test("A class the transcript adds joins its term only with class times; course selection's and cached ones stay")
