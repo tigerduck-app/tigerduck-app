@@ -129,6 +129,7 @@ struct ClassTableView: View {
                     return
                 }
                 viewModel.triggerRefresh(authService: appState.authService)
+                Task { await CourseChangeStore.shared.refresh() }
                 if Defaults[.cloudSyncEnabled] {
                     Task { await appState.syncOverridesFromBackend() }
                 }
