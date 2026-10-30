@@ -794,6 +794,38 @@ struct BackendTokenRefreshTests {
         #expect(await !manager.isLoggedIn)
     }
 
+    @Test("a sign-in waits for the one before it, so the pair kept is the one the backend issued last")
+    func overlappingSignInsKeepTheLastPair() async throws {
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture(signedIn: false)
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.loginReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.loginURL
+        )
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A2", refresh: "R2"), for: backend.loginURL)
+        let first = Task {
+            try await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )
+        }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.loginURL).count == 1 }
+        let second = Task {
+            try await manager.login(
+                studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+            )
+        }
+        // Time for a second sign-in that does not wait to go out; one that waits passes either way.
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+        gate.open()
+        _ = try await (first.value, second.value)
+
+        #expect(backend.recorder.stored(AuthTokenManager.refreshTokenKey) == "R2")
+        #expect(await manager.validAccessToken() == "A2")
+    }
+
     @Test("a refresh whose reply comes back after a sign-out stores nothing")
     func refreshAfterSignOutStoresNothing() async throws {
         let gate = SettingsAPIStub.ReplyGate()

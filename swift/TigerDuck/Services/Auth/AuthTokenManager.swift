@@ -9,6 +9,8 @@ actor AuthTokenManager {
     private var refreshToken: String?
     private var expiresAt: Date = .distantPast
     private var refreshTask: Task<String?, Never>?
+    private var isSigningIn = false
+    private var waitingSignIns: [CheckedContinuation<Void, Never>] = []
     private var signInGeneration = 0
     private var lateRefresh: (generation: Int, accessToken: String?, refreshToken: String?, mayResend: Bool)?
     /// How many times the backend may have used the stored refresh token without this device
@@ -160,6 +162,30 @@ actor AuthTokenManager {
         moodlePrivateToken: String?,
         platform: String
     ) async throws -> LoginResult {
+        // One at a time: a sign-in ends the device's older sessions, so the pair stored last has to be
+        // the one the backend issued last (https://github.com/tigerduck-app/tigerduck-backend/issues/48).
+        let generation = signInGeneration
+        if isSigningIn {
+            await withCheckedContinuation { waitingSignIns.append($0) }
+        } else {
+            isSigningIn = true
+        }
+        defer {
+            if waitingSignIns.isEmpty { isSigningIn = false } else { waitingSignIns.removeFirst().resume() }
+        }
+        return try await sendLogin(
+            studentId: studentId, moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken,
+            platform: platform, generation: generation
+        )
+    }
+
+    private func sendLogin(
+        studentId: String,
+        moodleToken: String?,
+        moodlePrivateToken: String?,
+        platform: String,
+        generation: Int
+    ) async throws -> LoginResult {
         struct LoginRequest: Encodable {
             let student_id: String
             let moodle_token: String?
@@ -204,7 +230,7 @@ actor AuthTokenManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let generation = signInGeneration
+        guard signInGeneration == generation else { throw CancellationError() }
         let (data, response) = try await session.data(for: request, delegate: CredentialPostDelegate())
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             if let http = response as? HTTPURLResponse {
