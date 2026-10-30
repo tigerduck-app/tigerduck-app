@@ -54,17 +54,23 @@ struct EnrolledCourseNosTests {
         #expect(term.roster == nil)
     }
 
-    @Test("A transcript does not bring back a course dropped on the server; course selection's answer does")
-    func transcriptSkipsServerDrops() throws {
-        let fallback = try #require(AppServiceBridge.termCourseNos(
-            selection: nil, transcript: ["CS1001301", "MA1010003"], cached: ["CS1001301"], droppedOnServer: ["MA1010003"]
-        ))
-        let answered = try #require(AppServiceBridge.termCourseNos(
-            selection: ["CS1001301", "MA1010003"], transcript: nil, cached: [], droppedOnServer: ["MA1010003"]
-        ))
+    @Test("A fetch saves no course dropped on the server unless a live answer or a final transcript lists it")
+    func savedCoursesSkipServerDrops() {
+        let courses = ["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }
+        let saved = { (pastTerm: Bool, live: Bool, dropped: Set<String>) in
+            AppServiceBridge.savedCourses(courses, pastTerm: pastTerm, live: live, dropped: dropped)?.map(\.courseNo)
+        }
 
-        #expect(fallback.courseNos == ["CS1001301"])
-        #expect(answered.courseNos == ["CS1001301", "MA1010003"])
+        #expect(saved(false, false, ["MA1010003"]) == ["CS1001301"])
+        #expect(saved(false, false, ["CS1001301", "MA1010003"]) == [])
+        #expect(saved(false, true, ["MA1010003"]) == ["CS1001301", "MA1010003"])
+        #expect(saved(true, false, ["MA1010003"]) == ["CS1001301", "MA1010003"])
+    }
+
+    @Test("A fetch that drew nothing keeps the cache, unless a past term's final transcript lists no class")
+    func emptyDrawKeepsTheCache() {
+        #expect(AppServiceBridge.savedCourses([], pastTerm: false, live: false, dropped: []) == nil)
+        #expect(AppServiceBridge.savedCourses([], pastTerm: true, live: false, dropped: [])?.isEmpty == true)
     }
 
     @Test("A class the transcript adds joins its term only with class times; course selection's and cached ones stay")

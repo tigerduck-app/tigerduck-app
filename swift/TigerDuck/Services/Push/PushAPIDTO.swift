@@ -256,7 +256,7 @@ enum PushAPI {
     }
 
     /// An add the backend applies only when `hlc` is later than the course's last add, hide and
-    /// reset (`server/sync/membership.py` in tigerduck-backend).
+    /// reset.
     struct CourseAdd: Encodable, Sendable {
         let courseKey: String
         let hlc: Int64
