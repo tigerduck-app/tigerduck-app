@@ -240,6 +240,7 @@ struct EndpointChangeSignOut {
         guard await endsSchoolAccount() else { return [] }
         var notes: [String] = []
         if await appState.signOutDeletesUnsyncedData() { notes.append(String(localized: "settings_sign_out_unsynced_data")) }
+        if appState.signOutLeavesSyncedData() { notes.append(String(localized: "settings_api_endpoint_synced_data_stays")) }
         if ImportedClassTableStore.shared.hasImportedClassTables {
             notes.append(String(localized: "settings_sign_out_imported_tables"))
         }
