@@ -207,6 +207,10 @@ enum AppServiceBridge {
         guard let term else { return cachedCourses }
         if let roster = term.roster, !Task.isCancelled, authService.loginGeneration == startGeneration {
             DataCache.shared.recordSelectionRoster(semester: semester, roster: roster)
+            if selectionIsLive {
+                let stillDropped = DataCache.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
+                DataCache.shared.saveServerDroppedNos(stillDropped, semester: semester)
+            }
         }
 
         let moodleAll = await moodle()
