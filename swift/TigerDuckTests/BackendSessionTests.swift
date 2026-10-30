@@ -1257,6 +1257,56 @@ struct DepartingSessionTests {
         #expect(try Self.kept(backend)?.uses == 0)
     }
 
+    @Test("a sign-out takes the late pair of its own token's refresh, though an older refresh replies after it")
+    func aSignOutTakesTheLatePairOfItsOwnToken() async throws {
+        let older = SettingsAPIStub.ReplyGate()
+        let newer = SettingsAPIStub.ReplyGate()
+        defer { older.open(); newer.open() }
+        let backend = BackendFixture()
+        let begun = OSAllocatedUnfairLock(initialState: 0)
+        let newerEnding = OSAllocatedUnfairLock(initialState: false)
+        let released = OSAllocatedUnfairLock(initialState: false)
+        // The newer refresh is the second; it holds after storing its result, as a suspended end would.
+        let manager = backend.relaunched(following: { backend.baseURL }, beginBackgroundTask: {
+            let index = begun.withLock { count in
+                count += 1
+                return count
+            }
+            return {
+                guard index == 2 else { return }
+                newerEnding.withLock { $0 = true }
+                while !released.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(5)) }
+            }
+        })
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: older), for: backend.refreshURL
+        )
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "B2", refresh: "BR2", heldBy: newer), for: backend.refreshURL
+        )
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1", expiresIn: 0), for: backend.loginURL)
+        let olderRefresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+        _ = try await manager.login(
+            studentId: "B11000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        let newerRefresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 2 }
+
+        let ending = Task { await manager.endSession().accessToken }
+        while await manager.isLoggedIn { try await Task.sleep(for: .milliseconds(5)) }
+        newer.open()
+        try await waitUntil { newerEnding.withLock { $0 } }
+        older.open()
+        #expect(await olderRefresh.value == nil)
+        released.withLock { $0 = true }
+
+        #expect(await ending.value == "B2")
+        #expect(await newerRefresh.value == nil)
+        #expect(try backend.sentRefreshTokens() == ["R0", "BR1"])
+        #expect(try Self.kept(backend)?.token == "BR2")
+    }
+
     @Test("a kept session is refreshed and unregistered on the backend it was kept against, after the endpoint changed")
     func theRetryGoesToTheBackendTheSessionWasKeptAgainst() async throws {
         let backend = await Self.signedOut()

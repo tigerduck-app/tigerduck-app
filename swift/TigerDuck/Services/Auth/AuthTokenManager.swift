@@ -12,7 +12,9 @@ actor AuthTokenManager {
     private var isSigningIn = false
     private var waitingSignIns: [CheckedContinuation<Void, Never>] = []
     private var signInGeneration = 0
-    private var lateRefresh: (generation: Int, accessToken: String?, refreshToken: String?, mayResend: Bool)?
+    /// Keyed by the refresh token each sent: a refresh of a pair a sign-in replaced can end after the
+    /// next pair's, and a sign-out takes only the one of the token it ends.
+    private var lateRefreshes: [String: (generation: Int, accessToken: String?, refreshToken: String?, mayResend: Bool)] = [:]
     /// How many times the backend may have used the stored refresh token without this device
     /// keeping the pair: sends that may have reached it and got no reply, a server error or a 200
     /// it could not keep. The backend rotates a token sent again while its successor is unused and
@@ -301,8 +303,8 @@ actor AuthTokenManager {
         if let access, Date.now < expiry.addingTimeInterval(-Self.signOutCallsWindow) { return access }
         if let refreshOut {
             _ = await refreshOut.value
-            let late = lateRefresh?.generation == generation ? lateRefresh : nil
-            lateRefresh = nil
+            let late = lateRefreshes[departing.refreshToken].flatMap { $0.generation == generation ? $0 : nil }
+            lateRefreshes = [:]
             if let late, let token = late.accessToken {
                 if let next = late.refreshToken { keepDeparting(departing.rotated(to: next)) }
                 return token
@@ -489,19 +491,20 @@ actor AuthTokenManager {
         // A sign-in sends no refresh token, so a Keychain that refuses every count still leaves a session.
         if send.uncounted, await signedInAgain(since: generation) { return accessToken }
         guard let (data, http) = reply else {
-            noteOvertaken(generation, accessToken: nil, mayResend: mayResend)
+            noteOvertaken(generation, sent: refreshToken, accessToken: nil, mayResend: mayResend)
             return nil
         }
 
         if http.statusCode == 200 {
             guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data) else {
-                noteOvertaken(generation, accessToken: nil, mayResend: mayResend)
+                noteOvertaken(generation, sent: refreshToken, accessToken: nil, mayResend: mayResend)
                 return nil
             }
             // A sign-in that stored its pair meanwhile ended this token's session on the backend.
             guard signInGeneration == generation, self.refreshToken == refreshToken else {
                 noteOvertaken(
-                    generation, accessToken: result.access_token, refreshToken: result.refresh_token, mayResend: false
+                    generation, sent: refreshToken, accessToken: result.access_token,
+                    refreshToken: result.refresh_token, mayResend: false
                 )
                 return nil
             }
@@ -512,14 +515,14 @@ actor AuthTokenManager {
         await APIVersionGate.shared.note(statusCode: http.statusCode)
         let turnedDown = Self.turnsDown(http.statusCode)
         guard signInGeneration == generation else {
-            noteOvertaken(generation, accessToken: nil, mayResend: mayResend && !turnedDown)
+            noteOvertaken(generation, sent: refreshToken, accessToken: nil, mayResend: mayResend && !turnedDown)
             return nil
         }
         // A refusal of a token a sign-in has replaced says nothing of the sign-in's pair.
         guard turnedDown, self.refreshToken == refreshToken else { return nil }
 
         if await signedInAgain(since: generation) { return accessToken }
-        noteOvertaken(generation, accessToken: nil, mayResend: false)
+        noteOvertaken(generation, sent: refreshToken, accessToken: nil, mayResend: false)
         guard http.statusCode == 401, signInGeneration == generation, self.refreshToken == refreshToken else {
             return nil
         }
@@ -531,9 +534,11 @@ actor AuthTokenManager {
         (400...499).contains(statusCode) && ![410, 429].contains(statusCode)
     }
 
-    private func noteOvertaken(_ generation: Int, accessToken: String?, refreshToken: String? = nil, mayResend: Bool) {
+    private func noteOvertaken(
+        _ generation: Int, sent: String, accessToken: String?, refreshToken: String? = nil, mayResend: Bool
+    ) {
         guard signInGeneration != generation else { return }
-        lateRefresh = (generation, accessToken, refreshToken, mayResend)
+        lateRefreshes[sent] = (generation, accessToken, refreshToken, mayResend)
     }
 
     private func signedInAgain(since generation: Int) async -> Bool {
