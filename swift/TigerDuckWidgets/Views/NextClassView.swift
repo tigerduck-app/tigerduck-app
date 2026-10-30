@@ -105,7 +105,7 @@ struct NextClassView: View {
     private func nextBody(info: WidgetDerivedState.NextInfo) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             if !isCompact {
-                Text(info.day.headline)
+                Text(info.day.headline())
                     .font(.caption.weight(.bold))
                     .foregroundStyle(palette.onSurfaceVariant)
             }
@@ -154,38 +154,6 @@ struct ChangedValueLabelStyle: LabelStyle {
         HStack(spacing: 2) {
             configuration.icon.imageScale(.small)
             configuration.title
-        }
-    }
-}
-
-extension WidgetDerivedState.Day {
-    var headline: String {
-        switch self {
-        case .today: return String(localized: "widget_next_class")
-        case .tomorrow: return String(localized: "widget_tomorrow")
-        case .later(let weekday): return Self.caption(of: weekday)
-        }
-    }
-
-    func inlineCaption(_ trailing: String) -> String {
-        switch self {
-        case .later(let weekday):
-            return "\(Self.caption(of: weekday)) \(trailing)"
-        case .today, .tomorrow:
-            return String.localizedStringWithFormat(
-                String(localized: "widget_tomorrow_time"), trailing)
-        }
-    }
-
-    private static func caption(of weekday: Int) -> String {
-        switch weekday {
-        case 1: return String(localized: "weekday_mon_caption")
-        case 2: return String(localized: "weekday_tue_caption")
-        case 3: return String(localized: "weekday_wed_caption")
-        case 4: return String(localized: "weekday_thu_caption")
-        case 5: return String(localized: "weekday_fri_caption")
-        case 6: return String(localized: "weekday_sat_caption")
-        default: return String(localized: "weekday_sun_caption")
         }
     }
 }

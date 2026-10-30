@@ -23,6 +23,9 @@ extension AppState {
         guard Self.sendsScheduleAfterSyncTrigger(
             outcome: outcome, applicationState: UIApplication.shared.applicationState
         ) else { return }
+        // The sync queued a settings reconcile, which may take another device's lead times and
+        // scenarios; the background drops the schedule request a change there starts.
+        await NotificationSettingsPushQueue.tail?.value
         await pushCoordinator.syncNow { self.pushScheduleInputs() }
     }
 

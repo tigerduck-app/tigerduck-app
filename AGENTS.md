@@ -113,7 +113,8 @@ applies the rest. Before pushing, run `python3 tools/check_comments.py check --b
 
 ## Gotchas
 
-- CI runs the unit tests on a `macos-26` runner in the Asia/Taipei timezone.
+- CI runs the unit tests on a `macos-26` runner in UTC; a test builds its dates in the Taipei
+  zone, not the device's.
 - A phone test that makes a window key or brings up the keyboard, a view service, accessibility
   or WebKit goes in `on_screen_tests` in `.github/workflows/tests.yaml`. CI runs those
   after the rest, one at a time: on its just-booted simulator such a call can hold the main

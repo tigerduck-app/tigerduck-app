@@ -18,6 +18,13 @@ struct VisualStylePolicyTests {
         #expect(Self.tat.timeSliderUsesCourseColoredThumb == Self.tigerDuck.timeSliderUsesCourseColoredThumb)
         #expect(Self.tat.primaryTextColor == Self.tigerDuck.primaryTextColor)
         #expect(Self.tat.secondaryTextColor == Self.tigerDuck.secondaryTextColor)
+        #expect(Self.tat.cardBodyFont == Self.tigerDuck.cardBodyFont)
+    }
+
+    @Test("Bulletin and discussion cards set their body text in the preset's font")
+    func cardBodyFont() {
+        #expect(Self.tigerDuck.cardBodyFont == TigerDuckTheme.Typography.body)
+        #expect(VisualStylePolicy(preset: .iosInspired).cardBodyFont == .subheadline)
     }
 
     @Test("TigerDuck and Apple keep the class table's blocks in translucent course colours")

@@ -76,6 +76,13 @@ struct VisualStylePolicy: Sendable {
         }
     }
 
+    var cardBodyFont: Font {
+        switch preset {
+        case .default, .tat: return TigerDuckTheme.Typography.body
+        case .iosInspired: return .subheadline
+        }
+    }
+
     var primaryTextColor: Color {
         switch preset {
         case .default, .tat: return Color.textPrimary
