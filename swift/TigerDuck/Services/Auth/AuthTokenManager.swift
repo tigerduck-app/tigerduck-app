@@ -290,10 +290,17 @@ actor AuthTokenManager {
         refreshToken == nil || !Self.isSameBackend(session.baseURL, baseURLProvider())
     }
 
-    /// One server's base URL can be spelled with or without a trailing slash.
+    /// One server's base URL can be spelled with or without a trailing slash, and with its scheme
+    /// and host in either case.
     nonisolated static func isSameBackend(_ one: URL, _ other: URL) -> Bool {
-        let spelling = { (url: URL) in String(url.standardized.absoluteString.reversed().drop { $0 == "/" }.reversed()) }
-        return spelling(one) == spelling(other)
+        let server = { (url: URL) -> [String?] in
+            let path = url.standardized.path(percentEncoded: true)
+            return [
+                url.scheme?.lowercased(), url.host(percentEncoded: true)?.lowercased(), url.port.map(String.init),
+                String(path.reversed().drop { $0 == "/" }.reversed()), url.query(percentEncoded: true),
+            ]
+        }
+        return server(one) == server(other)
     }
 
     func retryDepartingUnregister(_ unregister: @MainActor @Sendable (_ backend: URL) async -> Bool) async {

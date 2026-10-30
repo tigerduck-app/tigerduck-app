@@ -31,6 +31,9 @@ backend carry the Bearer token from `AuthTokenManager`.
   `DebugEndpointViewModel.confirm(_:signingOut:)`, after the user agrees and every account is
   signed out with its backend calls finished: a session goes to no server but the one that
   issued it.
+- Endpoints are compared by server (`AuthTokenManager.isSameBackend(_:_:)`): a trailing slash or
+  the case of the scheme or host changes nothing, so saving such a spelling, or a Reset that
+  leaves the endpoint where it is, neither asks nor signs out.
 - `PushCoordinator.assertEnvConsistency()` skips its host check while a user-set endpoint is
   active: a self-hosted backend cannot be enumerated, and a launch crash would leave no UI to
   clear the Keychain entry.

@@ -113,6 +113,7 @@ final class DebugEndpointViewModel {
         var currentOverride: () -> String? = { DebugEndpointStore.currentOverride() }
         var rejectedOverride: () -> String? = { DebugEndpointStore.storedButRejectedOverride() }
         var effectiveURL: () -> URL = { PushServerConfig.resolveServerURL() }
+        var defaultURL: () -> URL = { PushServerConfig.defaultServerURL() }
         var check: (String) async -> DebugEndpointStore.CheckResult = { await DebugEndpointStore.check($0) }
         var store: (URL) async -> Bool = { await DebugEndpointStore.store($0) }
         var clear: () -> Void = { DebugEndpointStore.clearOverride() }
@@ -157,7 +158,7 @@ final class DebugEndpointViewModel {
             let change = PendingChange(
                 url: url, rewritten: submitted.lowercased().hasPrefix("https://") && url.scheme == "http"
             )
-            if url == backing.effectiveURL() {
+            if AuthTokenManager.isSameBackend(url, backing.effectiveURL()) {
                 await apply(change)
             } else {
                 var asked = change
@@ -172,8 +173,14 @@ final class DebugEndpointViewModel {
     func resetToDefault(notes: () async -> [String] = { [] }) async {
         guard !isChecking else { return }
         isChecking = true
+        validationError = nil
+        statusNote = nil
         defer { isChecking = false }
-        pendingChange = PendingChange(url: nil, notes: await notes())
+        if AuthTokenManager.isSameBackend(backing.defaultURL(), backing.effectiveURL()) {
+            await apply(PendingChange(url: nil))
+        } else {
+            pendingChange = PendingChange(url: nil, notes: await notes())
+        }
     }
 
     func confirm(_ change: PendingChange, signingOut signOut: () async -> Void) async {
