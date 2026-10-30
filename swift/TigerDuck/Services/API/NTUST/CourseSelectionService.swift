@@ -158,7 +158,7 @@ enum CourseSelectionService {
         }
     }
 
-    nonisolated private static func saveEnrolledCoursesCache(studentId: String, semester: String, courseNos: [String]) {
+    nonisolated static func saveEnrolledCoursesCache(studentId: String, semester: String, courseNos: [String]) {
         guard !courseNos.isEmpty else { return }
         cacheLock.withLock {
             var dict = readCacheDict()
