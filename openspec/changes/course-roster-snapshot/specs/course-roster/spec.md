@@ -26,7 +26,7 @@ SHALL NOT be reported as a roster.
 ### Requirement: A roster drops the school courses it does not list
 For each term in an upload's `roster_terms`, the backend SHALL set every school course of that
 term that the upload does not list to `dropped`, unless the user added that course by hand. It
-SHALL leave other terms and hand-added courses unchanged.
+SHALL leave other terms, hand-added courses and courses the user hid unchanged.
 
 #### Scenario: A course leaves the roster
 - **WHEN** the backend holds courses A, B and C for term T and an upload lists A and B with T in `roster_terms`
@@ -40,9 +40,13 @@ SHALL leave other terms and hand-added courses unchanged.
 - **WHEN** an upload names only term T in `roster_terms`
 - **THEN** no course of any other term changes its enrollment
 
+#### Scenario: A hidden course
+- **WHEN** the user hid course X, so X has a tombstone, and a roster for its term lists X or leaves it out
+- **THEN** the roster neither drops X nor brings it back
+
 ### Requirement: A roster brings a listed course back
-For each term in `roster_terms`, the backend SHALL set every school course the upload lists to
-`enrolled`, including one that was `dropped`.
+For each term in `roster_terms`, the backend SHALL set every school course the upload lists, other
+than one the user hid, to `enrolled`, including one that was `dropped`.
 
 #### Scenario: A student re-enrolls
 - **WHEN** course C is `dropped` and a roster for its term lists C
