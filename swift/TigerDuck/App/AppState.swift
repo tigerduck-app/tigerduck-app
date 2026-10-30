@@ -194,8 +194,8 @@ final class AppState {
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
 
-        AppServiceBridge.courseUploader = { [weak self] courses, semester in
-            self?.uploadCourses(courses, semester: semester)
+        AppServiceBridge.courseUploader = { [weak self] courses, semester, asRoster in
+            self?.uploadCourses(courses, semester: semester, asRoster: asRoster)
         }
         AppServiceBridge.assignmentUploader = { [weak self] request in
             self?.uploadAssignments(request)

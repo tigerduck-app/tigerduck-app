@@ -6,13 +6,30 @@ import Testing
 struct CourseRefreshUploadTests {
     private static let courses = ["CS1", "CS2", "CS3"].map { SDCourse(courseNo: $0, courseName: $0) }
 
+    private struct Upload: Equatable {
+        let courses: [String]
+        let asRoster: Bool
+    }
+
+    private static func uploads(
+        _ courseNos: [String], roster: [String]?, hidden: Set<String> = []
+    ) -> [Upload] {
+        var uploads: [Upload] = []
+        AppServiceBridge.uploadVisibleCourses(
+            courseNos.map { SDCourse(courseNo: $0, courseName: $0) }, semester: "1151", hidden: hidden, roster: roster
+        ) { courses, _, asRoster in
+            uploads.append(Upload(courses: courses.map(\.courseNo), asRoster: asRoster))
+        }
+        return uploads
+    }
+
     @Test("A course refresh uploads its term but the courses hidden here, in that term or in every term")
     func hiddenCoursesStayOutOfTheUpload() {
         var uploads: [(courses: [String], semester: String)] = []
 
         AppServiceBridge.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"]
-        ) { uploads.append(($0.map(\.courseNo), $1)) }
+        ) { courses, semester, _ in uploads.append((courses.map(\.courseNo), semester)) }
 
         #expect(uploads.map(\.courses) == [["CS1"]])
         #expect(uploads.map(\.semester) == ["1151"])
@@ -23,9 +40,53 @@ struct CourseRefreshUploadTests {
         var uploads = 0
 
         AppServiceBridge.uploadVisibleCourses(
-            Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"]
-        ) { _, _ in uploads += 1 }
+            Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"], roster: ["CS1", "CS2", "CS3"]
+        ) { _, _, _ in uploads += 1 }
 
         #expect(uploads == 0)
+    }
+
+    @Test("Course selection's answer goes up as its term's roster")
+    func selectionAnswerIsARoster() throws {
+        let term = try #require(AppServiceBridge.termCourseNos(
+            selection: ["CS1", "CS2"], transcript: ["CS3"], cached: ["CS4"]
+        ))
+
+        #expect(Self.uploads(term.courseNos, roster: term.roster) == [Upload(courses: ["CS1", "CS2"], asRoster: true)])
+    }
+
+    @Test("A running term's transcript and the cache, or what an empty or failed answer falls back to, are no roster",
+          arguments: [nil, [String]()])
+    func fallbackIsNoRoster(selection: [String]?) throws {
+        let term = try #require(AppServiceBridge.termCourseNos(
+            selection: selection, transcript: ["CS1"], cached: ["CS2"]
+        ))
+
+        #expect(Self.uploads(term.courseNos, roster: term.roster) == [Upload(courses: ["CS1", "CS2"], asRoster: false)])
+    }
+
+    @Test("A past term rebuilt from the final transcript goes up as its roster, once every class's lookup answered")
+    func rebuiltPastTermIsARoster() {
+        let course = { (courseNo: String) in
+            SDCourse(courseNo: courseNo, courseName: courseNo, schedule: [2: ["3", "4"]], semester: "1141")
+        }
+        let answered = AppServiceBridge.rebuiltPastTerm(
+            [.init(course: course("CS1"), answered: true)], unreadable: [], cached: [], others: [], userAdded: []
+        )
+        let waiting = AppServiceBridge.rebuiltPastTerm(
+            [.init(course: course("CS1"), answered: true), .init(course: course("CS2"), answered: false)],
+            unreadable: [], cached: [], others: [], userAdded: []
+        )
+
+        #expect(Self.uploads(answered.courses.map(\.courseNo), roster: answered.roster).map(\.asRoster) == [true])
+        #expect(Self.uploads(waiting.courses.map(\.courseNo), roster: waiting.roster).map(\.asRoster) == [false])
+    }
+
+    @Test("A roster may leave out a course hidden here, but not one whose lookup failed")
+    func rosterListsEveryShownCourse() {
+        let roster = ["CS1", "CS2", "CS3"]
+
+        #expect(Self.uploads(["CS1", "CS2"], roster: roster, hidden: ["1151:CS3"]).map(\.asRoster) == [true])
+        #expect(Self.uploads(["CS1", "CS2"], roster: roster).map(\.asRoster) == [false])
     }
 }

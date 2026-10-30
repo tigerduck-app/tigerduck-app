@@ -3,7 +3,7 @@
 ## 1. iOS PR: report rosters and read enrollment
 
 - [x] 1.1 Add `rosterTerms` (`roster_terms`) to `PushAPI.CourseUploadRequest` and verify a unit test encodes it and that the upload fingerprint changes with it
-- [ ] 1.2 Send the term in `roster_terms` from the roster fetch only when course selection served it (`term.roster != nil`) or a past term was rebuilt from the final transcript, never for an empty list; verify with tests for each source (selection, cache, transcript, empty)
+- [x] 1.2 Send the term in `roster_terms` from the roster fetch only when course selection served it (`term.roster != nil`) or a past term was rebuilt from the final transcript, never for an empty list; verify with tests for each source (selection, cache, transcript, empty)
 - [ ] 1.3 In the course reconcile, skip server rows whose `enrollment_status` is `dropped` when merging, and remove a merged copy (one with a Moodle ID) whose row is `dropped`, keeping courses added by hand on this device; verify with reconcile tests that fail on `dev`
 - [ ] 1.4 Verify Live Activity filing, widgets and the Watch payload read the merged class table, so a dropped course leaves them too; add a test if any reads the server rows directly
 - [ ] 1.5 Read `roster_requests` from `/v3/sync/full`; for a requested term run a fresh course selection fetch and upload the roster with `roster_terms` past the unchanged-fingerprint check, sending nothing when course selection does not answer; verify with tests for both cases

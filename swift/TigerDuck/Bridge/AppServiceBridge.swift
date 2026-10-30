@@ -19,7 +19,9 @@ struct CourseData: Sendable {
 
 enum AppServiceBridge {
 
-    static var courseUploader: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+    typealias CourseUploader = (_ courses: [SDCourse], _ semester: String, _ asRoster: Bool) -> Void
+
+    static var courseUploader: CourseUploader?
     static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
 
     static func fetchCourses(
@@ -263,20 +265,31 @@ enum AppServiceBridge {
         }
         DataCache.shared.saveCourses(courses, semester: semester)
         uploadVisibleCourses(
-            courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()), to: courseUploader
+            courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()),
+            roster: pastTerm?.roster ?? term.roster, to: courseUploader
         )
         return courses
     }
 
+    /// Uploads the term's courses but those hidden here. They go as the term's roster when
+    /// `roster`, course selection's answer or a past term's final transcript, names no course they
+    /// leave out but a hidden one: the backend drops each school course a roster leaves out, so a
+    /// failed lookup must not drop its course. A hidden course has no server row once its delete
+    /// lands; listing it would file one for a course hidden before the server held it, and the
+    /// next sync would show it again.
     static func uploadVisibleCourses(
         _ courses: [SDCourse],
         semester: String,
         hidden: Set<String>,
-        to upload: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+        roster: [String]? = nil,
+        to upload: CourseUploader?
     ) {
-        let visible = courses.filter { !CourseTombstone.isHidden($0.courseNo, semester: semester, in: hidden) }
+        let isHidden = { (courseNo: String) in CourseTombstone.isHidden(courseNo, semester: semester, in: hidden) }
+        let visible = courses.filter { !isHidden($0.courseNo) }
         guard !visible.isEmpty else { return }
-        upload?(visible, semester)
+        let listed = Set(visible.map(\.courseNo))
+        let asRoster = roster?.allSatisfy { listed.contains($0) || isHidden($0) } ?? false
+        upload?(visible, semester, asRoster)
     }
 
     static func record(
