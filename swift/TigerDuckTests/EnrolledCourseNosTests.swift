@@ -54,6 +54,19 @@ struct EnrolledCourseNosTests {
         #expect(term.roster == nil)
     }
 
+    @Test("A transcript does not bring back a course dropped on the server; course selection's answer does")
+    func transcriptSkipsServerDrops() throws {
+        let fallback = try #require(AppServiceBridge.termCourseNos(
+            selection: nil, transcript: ["CS1001301", "MA1010003"], cached: ["CS1001301"], droppedOnServer: ["MA1010003"]
+        ))
+        let answered = try #require(AppServiceBridge.termCourseNos(
+            selection: ["CS1001301", "MA1010003"], transcript: nil, cached: [], droppedOnServer: ["MA1010003"]
+        ))
+
+        #expect(fallback.courseNos == ["CS1001301"])
+        #expect(answered.courseNos == ["CS1001301", "MA1010003"])
+    }
+
     @Test("A class the transcript adds joins its term only with class times; course selection's and cached ones stay")
     func transcriptClassesNeedClassTimes() {
         let courses = [
@@ -154,6 +167,156 @@ struct SelectionDropsTests {
             in: "1151", listed: listed, tombstoned: [], fetched: ["CS1001301"],
             handAdded: ["GE1010001", "EE2005301"], droppedMerges: [], hidden: [], adding: []
         )
+        #expect(unlisted.drop == ["EE2005301"])
+    }
+
+    private static var rowsAfterARoster: [[String: Any]] {
+        [
+            ["course_no": "CS1001301", "source": "ntust_portal", "enrollment_status": "enrolled"],
+            ["course_no": "PE1001301", "source": "ntust_portal"],
+            ["course_no": "GE1010001", "source": "ntust_portal", "enrollment_status": "dropped"],
+            ["course_no": "EE2005301", "source": "ntust_portal", "enrollment_status": "dropped"],
+            ["course_no": "MA1010003", "source": "ntust_portal", "enrollment_status": "dropped"],
+            ["course_no": "PH1010004", "source": "ntust_portal", "enrollment_status": "dropped"],
+        ]
+    }
+
+    private static var addedAndMerged: [SDCourse] {
+        [
+            SDCourse(courseNo: "GE1010001", courseName: "Added here", semester: "1151"),
+            SDCourse(courseNo: "EE2005301", courseName: "Merged", moodleIdNumber: "1151EE2005301", semester: "1151"),
+        ]
+    }
+
+    @Test("A row a roster dropped is not merged and takes its merged copy along; a hand-add here stays")
+    @MainActor
+    func serverDropLeavesLikeASelectionDrop() {
+        let listed = Set(AppState.keptRows(
+            Self.rowsAfterARoster, semester: "1151", dropped: [], userAdded: Self.addedAndMerged
+        ).compactMap { $0["course_no"] as? String })
+        let unlisted = AppState.unlistedCourses(
+            in: "1151", listed: listed, tombstoned: [], fetched: ["CS1001301"],
+            handAdded: ["GE1010001", "EE2005301"], droppedMerges: [], hidden: [], adding: []
+        )
+
+        #expect(listed == ["CS1001301", "PE1001301", "GE1010001"])
+        #expect(unlisted.drop == ["EE2005301"])
+    }
+
+    @MainActor
+    private static func makeCache(fetched: [String], userAdded: [SDCourse]) -> DataCache {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SelectionDropsTests-\(UUID().uuidString)", isDirectory: true)
+        let cache = DataCache(
+            cacheDir: root.appendingPathComponent("cache", isDirectory: true),
+            persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
+        )
+        cache.saveCourses(fetched.map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
+        cache.saveUserAddedCourses(userAdded)
+        return cache
+    }
+
+    @Test("A course a roster dropped leaves the courses fetched here, with no hide, unless course selection listed it live since",
+          arguments: [nil, -3600, 3600] as [TimeInterval?])
+    @MainActor
+    func serverDropLeavesFetchedCourses(answeredSinceDrop offset: TimeInterval?) {
+        let droppedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let rows = Self.rowsAfterARoster.map { row in
+            row.merging(["updated_at": TigerDuckDateFormatters.withFractional.string(from: droppedAt)]) { kept, _ in kept }
+        }
+        let cache = Self.makeCache(fetched: ["CS1001301", "MA1010003"], userAdded: Self.addedAndMerged)
+        var forgotten = 0
+
+        let term = AppState.readTerm(
+            "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: Self.addedAndMerged, hidden: [],
+            adding: [], liveAnswer: offset.map { (courseNos: ["CS1001301", "MA1010003"], at: droppedAt + $0) },
+            cache: cache, forgetAnswer: { forgotten += 1 }
+        )
+
+        let keptLive = offset == 3600
+        #expect(term.left == (keptLive ? [] : ["MA1010003"]))
+        #expect(cache.loadCourses(semester: "1151").map(\.courseNo) == (keptLive ? ["CS1001301", "MA1010003"] : ["CS1001301"]))
+        #expect(term.serverNos.contains("MA1010003") == keptLive)
+        #expect(forgotten == (offset == -3600 ? 1 : 0))
+        #expect(term.unlisted.hide.isEmpty)
+        #expect(term.unlisted.drop == ["EE2005301"])
+        #expect(cache.loadDeletedCourseNos().isEmpty)
+        let alsoDropped: Set<String> = ["GE1010001", "EE2005301", "PH1010004"]
+        #expect(cache.loadServerDroppedNos(semester: "1151") == alsoDropped.union(keptLive ? [] : ["MA1010003"]))
+    }
+
+    @Test("A course dropped on the server leaves the term's cached courses in every language")
+    @MainActor
+    func serverDropLeavesEveryLanguage() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ServerDropTests-\(UUID().uuidString)", isDirectory: true)
+        let cacheDir = root.appendingPathComponent("cache", isDirectory: true)
+        let cache = DataCache(cacheDir: cacheDir, persistentDir: root.appendingPathComponent("persistent", isDirectory: true))
+        cache.saveCourses(["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
+        let files = FileManager.default
+        let current = try #require(try files.contentsOfDirectory(atPath: cacheDir.path).first { $0.hasPrefix("courses_1151_") })
+        let other = cacheDir.appendingPathComponent("courses_1151_other.json")
+        try files.copyItem(at: cacheDir.appendingPathComponent(current), to: other)
+
+        cache.removeCourses(["MA1010003"], semester: "1151")
+        let currentLeft = cache.loadCourses(semester: "1151").map(\.courseNo)
+        try files.removeItem(at: cacheDir.appendingPathComponent(current))
+        try files.moveItem(at: other, to: cacheDir.appendingPathComponent(current))
+
+        #expect(currentLeft == ["CS1001301"])
+        #expect(cache.loadCourses(semester: "1151").map(\.courseNo) == ["CS1001301"])
+    }
+
+    @Test("A course selection answer older than a drop is forgotten even when this language's cache lacks the course")
+    @MainActor
+    func staleAnswerForgottenWithoutLocalCopy() {
+        let droppedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let rows: [[String: Any]] = [[
+            "course_no": "MA1010003", "source": "ntust_portal", "enrollment_status": "dropped",
+            "updated_at": TigerDuckDateFormatters.withFractional.string(from: droppedAt),
+        ]]
+        var forgotten = 0
+
+        let term = AppState.readTerm(
+            "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: [], hidden: [], adding: [],
+            liveAnswer: (courseNos: ["CS1001301", "MA1010003"], at: droppedAt - 3600),
+            cache: Self.makeCache(fetched: ["CS1001301"], userAdded: []), forgetAnswer: { forgotten += 1 }
+        )
+
+        #expect(term.left.isEmpty)
+        #expect(forgotten == 1)
+    }
+
+    @Test("A term whose every server row a roster dropped is not empty on the server, so its courses do not go up again")
+    @MainActor
+    func termOfDroppedRowsIsNotEmpty() {
+        let read = { (rows: [[String: Any]]) in
+            AppState.readTerm(
+                "1151", rows: rows, tombstones: [], selectionDropped: ["EE2005301"], userAdded: [], hidden: [], adding: [],
+                liveAnswer: nil, cache: Self.makeCache(fetched: ["CS1001301"], userAdded: []), forgetAnswer: {}
+            )
+        }
+        let dropped: [[String: Any]] = [["course_no": "MA1010003", "enrollment_status": "dropped"]]
+
+        #expect(!read(dropped).serverHoldsNothing)
+        #expect(read([]).serverHoldsNothing)
+        #expect(read([["course_no": "EE2005301", "enrollment_status": "enrolled"]]).serverHoldsNothing)
+    }
+
+    @Test("A merged copy leaves when every row of its term was dropped on the server; a hand-add here stays")
+    @MainActor
+    func serverDropEmptyingATermTakesMergedCopies() {
+        let rows = Self.rowsAfterARoster.filter { $0["course_no"] as? String != "GE1010001" }
+            .map { $0.merging(["enrollment_status": "dropped"]) { _, dropped in dropped } }
+        let droppedOnServer = AppState.droppedOnServer(rows)
+        let kept = AppState.keptRows(rows, semester: "1151", dropped: [], userAdded: Self.addedAndMerged)
+        let unlisted = AppState.unlistedCourses(
+            in: "1151", listed: [], tombstoned: [], fetched: [], handAdded: ["GE1010001", "EE2005301"],
+            droppedMerges: AppState.droppedMerges(Self.addedAndMerged, semester: "1151", dropped: droppedOnServer),
+            hidden: [], adding: []
+        )
+
+        #expect(kept.isEmpty)
         #expect(unlisted.drop == ["EE2005301"])
     }
 

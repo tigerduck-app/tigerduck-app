@@ -137,16 +137,20 @@ extension AppState {
 
                 if pending.contains("courses") {
                     let deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
+                    let userAdded = DataCache.shared.loadUserAddedCourses()
+                    let studentId = authService.storedStudentId
                     let serverSemesters = coursesArray.compactMap { $0["semester"] as? String }.filter { !$0.isEmpty }
                     var localOnly = 0
                     var serverOnly = 0
                     for semester in Set(serverSemesters).union(SemesterCatalog.availableSemesters()) {
-                        let serverNos = Set(coursesArray
-                            .filter { ($0["semester"] as? String) == semester && Self.isFiled($0, under: semester) }
-                            .compactMap { $0["course_no"] as? String })
-                        let localNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
-                            .union(DataCache.shared.loadUserAddedCourses(semester: semester).map(\.courseNo))
-                            .filter { !CourseTombstone.isHidden($0, semester: semester, in: deletedNos) }
+                        let (serverNos, localNos) = Self.reenableCourseNos(
+                            coursesArray, semester: semester,
+                            local: Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
+                                .union(DataCache.shared.loadUserAddedCourses(semester: semester).map(\.courseNo))
+                                .filter { !CourseTombstone.isHidden($0, semester: semester, in: deletedNos) },
+                            userAdded: userAdded,
+                            liveAnswer: studentId.flatMap { CourseSelectionService.lastAnswer(studentId: $0, semester: semester) }
+                        )
                         guard let counts = Self.coursesOnOneSide(
                             server: serverNos, local: localNos, semester: semester, deleting: courseDeletes
                         ) else { continue }

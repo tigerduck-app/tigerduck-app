@@ -18,21 +18,25 @@ enum CourseServiceError: LocalizedError {
 }
 
 enum CourseSelectionService {
+    typealias LiveAnswer = (courseNos: [String], at: Date)
+
     private static let courseSelectionRoot = URL.knownGood("https://courseselection.ntust.edu.tw/")
     private static let courseListURL = URL.knownGood("https://courseselection.ntust.edu.tw/ChooseList/D01/D01")
 
+    /// The enrolled course numbers, and whether they came from the school in this call rather than
+    /// from the day-long cache.
     static func fetchEnrolledCourseNos(
         session: URLSession,
         studentId: String,
         password: String,
         forceRefresh: Bool = false,
         persistGuard: (@Sendable () -> Bool)? = nil
-    ) async throws -> [String] {
+    ) async throws -> (courseNos: [String], live: Bool) {
         // The D01 page returns whichever term course selection is open for, which runs ahead
         // of the term in session, so cache under that term, not the month heuristic's guess.
         let semester = SemesterCatalog.selectionSemesterCode()
         if !forceRefresh, let cached = loadEnrolledCoursesCache(studentId: studentId, semester: semester) {
-            return cached
+            return (cached, false)
         }
 
         let generation = NTUSTSessionManager.shared.generation
@@ -89,14 +93,14 @@ enum CourseSelectionService {
             if persistGuard?() ?? true {
                 saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: retryCourseNos)
             }
-            return retryCourseNos
+            return (retryCourseNos, true)
         }
 
         let courseNos = courseNos(inListPage: html)
         if persistGuard?() ?? true {
             saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: courseNos)
         }
-        return courseNos
+        return (courseNos, true)
     }
 
     /// NTUST's course-number shape: a head, then six or seven letters or digits. The head is `3` and
@@ -140,15 +144,20 @@ enum CourseSelectionService {
     }
 
     nonisolated private static func loadEnrolledCoursesCache(studentId: String, semester: String) -> [String]? {
+        lastAnswer(studentId: studentId, semester: semester)?.courseNos
+    }
+
+    /// The term's last live answer while the day-long cache keeps it.
+    nonisolated static func lastAnswer(studentId: String, semester: String) -> LiveAnswer? {
         cacheLock.withLock {
             let dict = readCacheDict()
             guard let entry = dict["\(studentId):\(semester)"] else { return nil }
             if Date().timeIntervalSince1970 - entry.cachedAt > enrolledCoursesCacheTTL { return nil }
-            return entry.courseNos
+            return (entry.courseNos, Date(timeIntervalSince1970: entry.cachedAt))
         }
     }
 
-    nonisolated private static func saveEnrolledCoursesCache(studentId: String, semester: String, courseNos: [String]) {
+    nonisolated static func saveEnrolledCoursesCache(studentId: String, semester: String, courseNos: [String]) {
         guard !courseNos.isEmpty else { return }
         cacheLock.withLock {
             var dict = readCacheDict()

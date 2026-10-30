@@ -224,6 +224,7 @@ extension AppState {
             } else if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             }
+            AppServiceBridge.answerRosterRequests(in: json, authService: authService)
 
             if overrideEditGeneration == editGenerationAtFetch,
                let rev = json["current_revision"] as? Int {
@@ -771,7 +772,9 @@ extension AppState {
         await coordinator.discardCourseDeletes(semester: semester, madeBefore: resetAt)
     }
 
-    func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = [], resend: Bool = false) {
+    func uploadCourses(
+        _ courses: [SDCourse], semester: String, forceKeys: [String] = [], asRoster: Bool = false, resend: Bool = false
+    ) {
         if !forceKeys.isEmpty {
             let addedAt = Date()
             Task { await cloudSyncCoordinator.discardCourseDeletes(courseKeys: Set(forceKeys), madeBefore: addedAt) }
@@ -784,7 +787,9 @@ extension AppState {
             }
             return
         }
-        let request = Self.courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
+        let request = Self.courseUploadRequest(
+            courses, semester: semester, forceKeys: forceKeys, rosterTerms: asRoster ? [semester] : nil
+        )
         let generation = authService.loginGeneration
         let coordinator = pushCoordinator
         Task { [weak self] in
@@ -849,6 +854,7 @@ extension AppState {
         _ courses: [SDCourse],
         semester: String,
         forceKeys: [String],
+        rosterTerms: [String]? = nil,
         colors: [String: UInt32] = CourseUploadPolicy.uploadedCourseColors
     ) -> PushAPI.CourseUploadRequest {
         let entries = courses.map { c in
@@ -872,7 +878,9 @@ extension AppState {
                 colorHex: String(format: "#%06X", hex)
             )
         }
-        return PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides, forceKeys: forceKeys)
+        return PushAPI.CourseUploadRequest(
+            courses: entries, courseOverrides: overrides, forceKeys: forceKeys, rosterTerms: rosterTerms
+        )
     }
 }
 

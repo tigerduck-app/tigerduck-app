@@ -151,4 +151,5 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | cache | `picked_course_colors.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
 | cache | `score_report_*` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
 | cache | `selection_dropped.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
+| cache | `server_dropped.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
 | cache | `user_added_courses.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
