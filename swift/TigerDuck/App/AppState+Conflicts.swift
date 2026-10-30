@@ -123,7 +123,7 @@ extension AppState {
                     Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: generation) }
                 }
             }
-            let accessToken = await authTokenManager.storedAccessToken
+            let accessToken = await authTokenManager.validAccessToken()
             do {
                 let (json, courseDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
                     try await pushCoordinator.fetchFullSync()

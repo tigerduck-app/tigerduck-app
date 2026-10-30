@@ -27,7 +27,7 @@ extension AppState {
         await authService.ensureBackendSignedIn()
         guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return .skipped }
         await retryUnsentEdits()
-        let accessToken = await authTokenManager.storedAccessToken
+        let accessToken = await authTokenManager.validAccessToken()
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)
@@ -832,7 +832,7 @@ extension AppState {
             self?.authService.loginGeneration == generation && Defaults[.cloudSyncEnabled]
         }
         guard isCurrent() else { return }
-        let accessToken = await authTokenManager.storedAccessToken
+        let accessToken = await authTokenManager.validAccessToken()
         do {
             let sent = try await send(isCurrent)
             AppLogger.sync.info("\(label, privacy: .public): \(sent ? "sent" : "skipped", privacy: .public)")

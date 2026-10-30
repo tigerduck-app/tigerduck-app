@@ -23,7 +23,7 @@ extension AppState {
         guard NetworkMonitor.shared.isConnected else { return .offline }
         await authService.ensureBackendSignedIn()
         guard await authTokenManager.isLoggedIn else { return .unchanged }
-        revisionPollAccessToken = await authTokenManager.storedAccessToken
+        revisionPollAccessToken = await authTokenManager.validAccessToken()
         do {
             let serverRevision = try await pushCoordinator.fetchRevision()
             retryOwedConflictCheck()
