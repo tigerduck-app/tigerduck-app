@@ -832,5 +832,27 @@
         }
       ]
     }
+  },
+  "2.9.1": {
+    "zh-TW": {
+      "title": "2.9.1 更新內容",
+      "items": [
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "改進與修正",
+          "body": "修正登入後偶爾被登出、過時的課程通知、手動更新時忽略快取。"
+        }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.9.1",
+      "items": [
+        {
+          "symbol": "wrench.and.screwdriver",
+          "title": "Improvements and fixes",
+          "body": "Fixed an occasional sign-out after signing in and outdated class notifications, and manual refreshes now skip the cache."
+        }
+      ]
+    }
   }
 }
