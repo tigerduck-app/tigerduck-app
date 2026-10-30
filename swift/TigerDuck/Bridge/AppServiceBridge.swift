@@ -155,12 +155,13 @@ enum AppServiceBridge {
 
         let session = NTUSTSessionManager.shared.session
         var courseSelectionNos: [String]?
+        var selectionIsLive = false
         if servesSelectionSemester {
             do {
                 #if DEBUG
                 try await ServerFailureSimulator.shared.check(.courseSelection)
                 #endif
-                courseSelectionNos = try await CourseSelectionService.fetchEnrolledCourseNos(
+                let answer = try await CourseSelectionService.fetchEnrolledCourseNos(
                     session: session,
                     studentId: studentId,
                     password: password,
@@ -169,6 +170,8 @@ enum AppServiceBridge {
                         authService?.loginGeneration == startGeneration
                     }
                 )
+                courseSelectionNos = answer.courseNos
+                selectionIsLive = answer.live
                 await MainActor.run {
                     record(.ok, for: .courseSelection, round: startGeneration, authService: authService)
                 }
@@ -269,9 +272,17 @@ enum AppServiceBridge {
         DataCache.shared.saveCourses(courses, semester: semester)
         uploadVisibleCourses(
             courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()),
-            roster: pastTerm?.roster ?? term.roster, resendingRoster: resendingRoster, to: courseUploader
+            roster: uploadedRoster(selection: term.roster, live: selectionIsLive, pastTerm: pastTerm?.roster),
+            resendingRoster: resendingRoster, to: courseUploader
         )
         return courses
+    }
+
+    /// The roster a fetch uploads: a past term's final transcript, or course selection's answer
+    /// only when this fetch got it from the school. One cached for up to a day may still name a
+    /// course another device's roster dropped since, and would enroll it again.
+    static func uploadedRoster(selection: [String]?, live: Bool, pastTerm: [String]?) -> [String]? {
+        pastTerm ?? (live ? selection : nil)
     }
 
     /// Uploads the term's courses but those hidden here. They go as the term's roster when

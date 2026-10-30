@@ -48,13 +48,15 @@ struct CourseRefreshUploadTests {
         #expect(uploads == 0)
     }
 
-    @Test("Course selection's answer goes up as its term's roster")
-    func selectionAnswerIsARoster() throws {
+    @Test("Course selection's answer goes up as its term's roster only when this fetch got it from the school",
+          arguments: [true, false])
+    func selectionAnswerIsARosterWhenLive(live: Bool) throws {
         let term = try #require(AppServiceBridge.termCourseNos(
             selection: ["CS1", "CS2"], transcript: ["CS3"], cached: ["CS4"]
         ))
+        let roster = AppServiceBridge.uploadedRoster(selection: term.roster, live: live, pastTerm: nil)
 
-        #expect(Self.uploads(term.courseNos, roster: term.roster) == [Upload(courses: ["CS1", "CS2"], asRoster: true)])
+        #expect(Self.uploads(term.courseNos, roster: roster) == [Upload(courses: ["CS1", "CS2"], asRoster: live)])
     }
 
     @Test("A running term's transcript and the cache, or what an empty or failed answer falls back to, are no roster",
@@ -80,8 +82,12 @@ struct CourseRefreshUploadTests {
             unreadable: [], cached: [], others: [], userAdded: []
         )
 
-        #expect(Self.uploads(answered.courses.map(\.courseNo), roster: answered.roster).map(\.asRoster) == [true])
-        #expect(Self.uploads(waiting.courses.map(\.courseNo), roster: waiting.roster).map(\.asRoster) == [false])
+        let roster = { (pastTerm: [String]) in
+            AppServiceBridge.uploadedRoster(selection: nil, live: false, pastTerm: pastTerm)
+        }
+
+        #expect(Self.uploads(answered.courses.map(\.courseNo), roster: roster(answered.roster)).map(\.asRoster) == [true])
+        #expect(Self.uploads(waiting.courses.map(\.courseNo), roster: roster(waiting.roster)).map(\.asRoster) == [false])
     }
 
     @Test("A roster may leave out a course hidden here, but not one whose lookup failed")
