@@ -77,6 +77,7 @@ nonisolated enum DebugEndpointStore {
         if written {
             await AcademicCalendarStore.shared.endpointDidChange()
             await CourseChangeStore.shared.endpointDidChange()
+            await BulletinsViewModel.endpointDidChange()
         }
         return written
     }
@@ -87,6 +88,7 @@ nonisolated enum DebugEndpointStore {
         stored.forget()
         AcademicCalendarStore.shared.endpointDidChange()
         CourseChangeStore.shared.endpointDidChange()
+        BulletinsViewModel.endpointDidChange()
     }
 }
 
