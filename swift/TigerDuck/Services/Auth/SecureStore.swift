@@ -128,15 +128,7 @@ nonisolated enum SecureStore {
             }
             return value
         }
-
-        guard let legacy = legacyLoad(key: key) else {
-            return nil
-        }
-
-        if (try? home.setObject(legacy.value, forKey: key)) != nil {
-            deleteLegacyItem(legacy.item)
-        }
-        return legacy.value
+        return nil
     }
 
     static func delete(key: String) {
@@ -174,27 +166,13 @@ nonisolated enum SecureStore {
         }
     }
 
-    private static func legacyLoad(key: String) -> (value: Data, item: Data)? {
-        for item in legacyItems(key: key) {
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecValuePersistentRef as String: item,
-                kSecReturnData as String: true,
-                kSecMatchLimit as String: kSecMatchLimitOne,
-            ]
-            var result: AnyObject?
-            if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let value = result as? Data {
-                return (value, item)
-            }
-        }
-        return nil
-    }
-
+    /// A sign-out or a reinstall's purge before `BareKeychainItemMoveMigration` has moved the bare
+    /// items deletes them too, or that migration would bring the departed account back.
     private static func legacyDelete(key: String) {
         legacyItems(key: key).forEach(deleteLegacyItem)
     }
 
-    private static func deleteLegacyItem(_ item: Data) {
+    static func deleteLegacyItem(_ item: Data) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecValuePersistentRef as String: item,
@@ -202,7 +180,8 @@ nonisolated enum SecureStore {
         SecItemDelete(query as CFDictionary)
     }
 
-    private static func legacyItems(key: String) -> [Data] {
+    /// The items builds up to v1.3.0 saved for `key` without a service, as persistent references.
+    static func legacyItems(key: String) -> [Data] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,

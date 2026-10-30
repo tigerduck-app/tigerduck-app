@@ -257,7 +257,7 @@ struct SecureStoreLockedReadTests {
 /// an item it holds, or writing one, is `couldNotAccessKeychain`
 /// (`errSecInteractionNotAllowed`). Deletes go through even when locked, so
 /// a test catches code that drops a copy it could not read.
-private final class LockablePhoneKeychain: KeychainStore, @unchecked Sendable {
+final class LockablePhoneKeychain: KeychainStore, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [String: Data] = [:]
     private var locked = false
