@@ -53,8 +53,7 @@ enum BareKeychainItemMoveMigration {
             } catch {
                 return false
             }
-            SecureStore.deleteLegacyItem(item)
-            return true
+            return SecureStore.deleteLegacyItem(item)
         }.allSatisfy { $0 }
     }
 }

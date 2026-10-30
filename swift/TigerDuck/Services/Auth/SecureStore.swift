@@ -157,8 +157,7 @@ nonisolated enum SecureStore {
                 if !isMissing { ok = false }
             }
         }
-        legacyDelete(key: key)
-        return ok
+        return legacyDelete(key: key) && ok
     }
 
     static func removeAll(preserving preservedKeys: Set<String> = []) {
@@ -175,8 +174,10 @@ nonisolated enum SecureStore {
 
     /// A sign-out or a reinstall's purge before `BareKeychainItemMoveMigration` has moved the bare
     /// items deletes them too, or that migration would bring the departed account back.
-    private static func legacyDelete(key: String) {
-        legacyItems(key: key)?.forEach(deleteLegacyItem)
+    @discardableResult
+    private static func legacyDelete(key: String) -> Bool {
+        guard let items = legacyItems(key: key) else { return false }
+        return items.map(deleteLegacyItem).allSatisfy { $0 }
     }
 
     /// The bare item's value, nil when it is gone, or a throw when it cannot be read now.
@@ -195,12 +196,14 @@ nonisolated enum SecureStore {
         }
     }
 
-    static func deleteLegacyItem(_ item: Data) {
+    @discardableResult
+    static func deleteLegacyItem(_ item: Data) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecValuePersistentRef as String: item,
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 
     /// The items builds up to v1.3.0 saved for `key` without a service, newest first, as persistent
