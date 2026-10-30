@@ -71,8 +71,10 @@ extension AppState {
             if resettingSemesters.contains(semester) { continue }
             if let reset = resetAt[semester], reset > fetchedAt { continue }
             let handAdded = Set(userAdded.filter { DataCache.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo))
+            let termRows = rowsBySemester[semester] ?? []
+            let droppedOnServer = Self.droppedOnServer(termRows)
             let dropped = Set(selectionDropped[semester] ?? [])
-            let rows = Self.keptRows(rowsBySemester[semester] ?? [], semester: semester, dropped: dropped, userAdded: userAdded)
+            let rows = Self.keptRows(termRows, semester: semester, dropped: dropped, userAdded: userAdded)
             let serverNos = Set(rows.compactMap { $0["course_no"] as? String })
             let localCourses = DataCache.shared.loadCourses(semester: semester)
 
@@ -91,9 +93,11 @@ extension AppState {
             }
             let unlisted = Self.unlistedCourses(
                 in: semester, listed: serverNos, tombstoned: Set(tombstoned),
-                fetched: Set(localCourses.map(\.courseNo)),
+                // A course this device's own course selection fetched leaves with its next roster:
+                // a hide would outlive a drop that roster undoes.
+                fetched: Set(localCourses.map(\.courseNo)).subtracting(droppedOnServer),
                 handAdded: handAdded,
-                droppedMerges: Self.droppedMerges(userAdded, semester: semester, dropped: dropped),
+                droppedMerges: Self.droppedMerges(userAdded, semester: semester, dropped: dropped.union(droppedOnServer)),
                 hidden: deletedNos, adding: adding
             )
             for courseNo in unlisted.hide { hide(courseNo) }
@@ -192,29 +196,36 @@ extension AppState {
         return (byTombstone.union(fetched.filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
     }
 
-    /// The term's courses merged from the server that course selection dropped. One added by hand
-    /// here has no Moodle ID; one added on another device keeps its `user_added` row in `keptRows`.
+    /// The term's courses merged from the server that were dropped. One added by hand here has no
+    /// Moodle ID; one added on another device keeps its `user_added` row in `keptRows`.
     static func droppedMerges(_ userAdded: [SDCourse], semester: String, dropped: Set<String>) -> Set<String> {
         Set(userAdded.filter {
             $0.moodleIdNumber != nil && dropped.contains($0.courseNo) && DataCache.userAddedCourse($0, belongsTo: semester)
         }.map(\.courseNo))
     }
 
-    /// The term's server rows, less those of courses course selection dropped. A course the user
-    /// added by hand keeps its row, so a drop never takes it out of the hand-added courses: one added
-    /// here has no Moodle ID, which a row merged from the server always has, and one added on
-    /// another device is a `user_added` row.
+    /// The term's server rows, less those of courses course selection here dropped or a roster
+    /// dropped on the server. A course the user added by hand keeps its row, so a drop never takes
+    /// it out of the hand-added courses: one added here has no Moodle ID, which a row merged from the
+    /// server always has, and one added on another device is a `user_added` row.
     static func keptRows(
         _ rows: [[String: Any]], semester: String, dropped: Set<String>, userAdded: [SDCourse]
     ) -> [[String: Any]] {
         let addedHere = Set(userAdded.filter {
             $0.moodleIdNumber == nil && DataCache.userAddedCourse($0, belongsTo: semester)
         }.map(\.courseNo))
+        let dropped = dropped.union(droppedOnServer(rows))
         return rows.filter { row in
             let courseNo = row["course_no"] as? String ?? ""
             return isFiled(row, under: semester)
                 && (!dropped.contains(courseNo) || addedHere.contains(courseNo) || row["source"] as? String == "user_added")
         }
+    }
+
+    /// The courses a roster dropped on the server. A row without `enrollment_status` counts as
+    /// enrolled.
+    static func droppedOnServer(_ rows: [[String: Any]]) -> Set<String> {
+        Set(rows.compactMap { $0["enrollment_status"] as? String == "dropped" ? $0["course_no"] as? String : nil })
     }
 
     static func isFiled(_ row: [String: Any], under semester: String) -> Bool {

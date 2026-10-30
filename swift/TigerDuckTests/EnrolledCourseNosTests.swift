@@ -157,6 +157,70 @@ struct SelectionDropsTests {
         #expect(unlisted.drop == ["EE2005301"])
     }
 
+    private static var rowsAfterARoster: [[String: Any]] {
+        [
+            ["course_no": "CS1001301", "source": "ntust_portal", "enrollment_status": "enrolled"],
+            ["course_no": "PE1001301", "source": "ntust_portal"],
+            ["course_no": "GE1010001", "source": "ntust_portal", "enrollment_status": "dropped"],
+            ["course_no": "EE2005301", "source": "ntust_portal", "enrollment_status": "dropped"],
+            ["course_no": "MA1010003", "source": "ntust_portal", "enrollment_status": "dropped"],
+            ["course_no": "PH1010004", "source": "ntust_portal", "enrollment_status": "dropped"],
+        ]
+    }
+
+    private static var addedAndMerged: [SDCourse] {
+        [
+            SDCourse(courseNo: "GE1010001", courseName: "Added here", semester: "1151"),
+            SDCourse(courseNo: "EE2005301", courseName: "Merged", moodleIdNumber: "1151EE2005301", semester: "1151"),
+        ]
+    }
+
+    @Test("A row a roster dropped is not merged and takes its merged copy along; a hand-add here stays")
+    @MainActor
+    func serverDropLeavesLikeASelectionDrop() {
+        let listed = Set(AppState.keptRows(
+            Self.rowsAfterARoster, semester: "1151", dropped: [], userAdded: Self.addedAndMerged
+        ).compactMap { $0["course_no"] as? String })
+        let unlisted = AppState.unlistedCourses(
+            in: "1151", listed: listed, tombstoned: [], fetched: ["CS1001301"],
+            handAdded: ["GE1010001", "EE2005301"], droppedMerges: [], hidden: [], adding: []
+        )
+
+        #expect(listed == ["CS1001301", "PE1001301", "GE1010001"])
+        #expect(unlisted.drop == ["EE2005301"])
+    }
+
+    @Test("A course this device fetched stays shown when a roster elsewhere dropped its row")
+    @MainActor
+    func serverDropHidesNoFetchedCourse() {
+        let droppedOnServer = AppState.droppedOnServer(Self.rowsAfterARoster)
+        let unlisted = AppState.unlistedCourses(
+            in: "1151", listed: ["CS1001301"], tombstoned: [],
+            fetched: Set(["CS1001301", "MA1010003"]).subtracting(droppedOnServer),
+            handAdded: [], droppedMerges: [], hidden: [], adding: []
+        )
+
+        #expect(droppedOnServer == ["GE1010001", "EE2005301", "MA1010003", "PH1010004"])
+        #expect(unlisted.hide.isEmpty)
+    }
+
+    @Test("A merged copy leaves when every row of its term was dropped on the server; a hand-add here stays")
+    @MainActor
+    func serverDropEmptyingATermTakesMergedCopies() {
+        let rows = Self.rowsAfterARoster.filter { $0["course_no"] as? String != "GE1010001" }
+            .map { $0.merging(["enrollment_status": "dropped"]) { _, dropped in dropped } }
+        let droppedOnServer = AppState.droppedOnServer(rows)
+        let kept = AppState.keptRows(rows, semester: "1151", dropped: [], userAdded: Self.addedAndMerged)
+        let unlisted = AppState.unlistedCourses(
+            in: "1151", listed: [], tombstoned: [], fetched: [], handAdded: ["GE1010001", "EE2005301"],
+            droppedMerges: AppState.droppedMerges(Self.addedAndMerged, semester: "1151", dropped: droppedOnServer),
+            hidden: [], adding: []
+        )
+
+        #expect(kept.isEmpty)
+        #expect(unlisted.drop == ["EE2005301"])
+    }
+
     @Test("An empty answer records nothing and clears nothing: parser drift is not a mass drop")
     func emptyAnswerIsInert() {
         #expect(AppServiceBridge.selectionDrops(
