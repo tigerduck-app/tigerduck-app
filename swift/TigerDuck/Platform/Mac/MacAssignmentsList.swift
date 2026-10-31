@@ -18,7 +18,7 @@ struct MacAssignmentsList: View {
     }
 
     private func content(now: Date) -> some View {
-        let store = AssignmentStore.shared
+        let store = MacAssignmentListModel.shared
         let filter = store.filter
         let visible = store.visibleAssignments(filter: filter, now: now)
 
@@ -118,13 +118,13 @@ struct MacAssignmentsList: View {
         switch status {
         case .pending, .overdueAcceptable, .overdueRejected:
             Button {
-                AssignmentStore.shared.markComplete(assignment)
+                MacAssignmentListModel.shared.markComplete(assignment)
                 appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "locally_completed")
             } label: {
                 Label(String(localized: "desktop_assignment_mark_complete"), systemImage: "checkmark.circle.fill")
             }
             Button {
-                AssignmentStore.shared.archive(assignment)
+                MacAssignmentListModel.shared.archive(assignment)
                 appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "archived")
             } label: {
                 Label(String(localized: "assignment_ignore"), systemImage: "archivebox.fill")
@@ -132,7 +132,7 @@ struct MacAssignmentsList: View {
 
         case .locallyCompleted:
             Button {
-                AssignmentStore.shared.undoComplete(assignment)
+                MacAssignmentListModel.shared.undoComplete(assignment)
                 appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
             } label: {
                 Label(String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward")
@@ -140,7 +140,7 @@ struct MacAssignmentsList: View {
 
         case .archived:
             Button {
-                AssignmentStore.shared.unarchive(assignment)
+                MacAssignmentListModel.shared.unarchive(assignment)
                 appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
             } label: {
                 Label(String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward")
@@ -204,8 +204,8 @@ struct MacAssignmentsList: View {
 
 @MainActor
 @Observable
-final class AssignmentStore {
-    static let shared = AssignmentStore()
+final class MacAssignmentListModel {
+    static let shared = MacAssignmentListModel()
 
     var filter: AssignmentFilter = .incomplete
     private(set) var version: Int = 0
