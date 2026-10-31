@@ -16,6 +16,7 @@ extension AppState {
             authHeaderProvider: { await atm.authorizationHeader() }
         )
         let local = NotificationSettingsSync.LocalPreferences(from: liveActivityPreferences)
+        var sent: [String: Any] = [:]
         do {
             let written = try await NotificationSettingsSync.push(
                 local: local,
@@ -24,10 +25,11 @@ extension AppState {
                 cloudSyncEnabled: Defaults[.cloudSyncEnabled],
                 syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
                 syncLiveActivityEnabled: Defaults[.syncLiveActivity],
-                isCurrent: isCurrent
+                isCurrent: isCurrent,
+                recordSent: { sent = $0 }
             )
             guard written, isCurrent() else { return false }
-            NotificationSettingsSync.recordPushed(local)
+            NotificationSettingsSync.recordPushed(local, fields: sent)
             if NotificationSettingsSync.canClearPendingMarker(
                 written: written,
                 sent: local,
@@ -110,9 +112,7 @@ extension AppState {
     /// A device switch turned back on takes the server's section: the section's values here become
     /// the synced copy, so a push sends only what is edited after, and a reconcile adopts the rest.
     func adoptNotificationSettingsSection(_ section: NotificationSettingsSync.OwnedSection) {
-        if let synced = NotificationSettingsSync.synced {
-            NotificationSettingsSync.synced = synced.replacing(section, from: .init(from: liveActivityPreferences))
-        }
+        NotificationSettingsSync.sectionTurnedOn(section, local: .init(from: liveActivityPreferences))
         reconcileNotificationSettings()
     }
 
@@ -286,6 +286,39 @@ nonisolated enum NotificationSettingsSync {
             return copy
         }
 
+        /// This copy with each field a push sent, named by its document key in `fields`, taken
+        /// from `other`, the values the push started with.
+        func taking(_ fields: [String: Any], from other: LocalPreferences) -> LocalPreferences {
+            let sent = { (section: OwnedSection) in
+                Set((fields[section.rawValue] as? [String: Any] ?? [:]).keys)
+            }
+            let assignments = sent(.assignments), liveActivity = sent(.liveActivity), courses = sent(.courses)
+            var copy = self
+            if assignments.contains("enabled") {
+                copy.isAssignmentReminderEnabled = other.isAssignmentReminderEnabled
+            }
+            if !assignments.isDisjoint(with: ["reminder_offsets_minutes", "reminder_offsets_hours"]) {
+                copy.assignmentReminderOffsets = other.assignmentReminderOffsets
+            }
+            if liveActivity.contains("show_class_preparing") {
+                copy.showClassPreparingScenario = other.showClassPreparingScenario
+            }
+            if liveActivity.contains("show_in_class") { copy.showInClassScenario = other.showInClassScenario }
+            if liveActivity.contains("show_assignment") { copy.showAssignmentScenario = other.showAssignmentScenario }
+            if liveActivity.contains("class_preparing_lead_seconds") {
+                copy.classPreparingLeadTime = other.classPreparingLeadTime
+            }
+            if liveActivity.contains("assignment_lead_seconds") {
+                copy.assignmentLiveActivityLeadTime = other.assignmentLiveActivityLeadTime
+            }
+            if courses.contains("enabled") { copy.isClassReminderEnabled = other.isClassReminderEnabled }
+            if courses.contains("reminder_offsets_minutes") {
+                copy.classReminderLeadMinutes = other.classReminderLeadMinutes
+                copy.hasPickedClassReminderLead = other.hasPickedClassReminderLead
+            }
+            return copy
+        }
+
         var reminderOffsetsMinutes: [Int] {
             assignmentReminderOffsets
                 .map { Int(($0.timeInterval / 60).rounded()) }
@@ -368,9 +401,11 @@ nonisolated enum NotificationSettingsSync {
         }
     }
 
-    /// What a push compares the device's values with; nil sends every field, which only the one
-    /// push an upgrade found pending does, as it holds an edit from an earlier build. A signed-in
-    /// device otherwise always has a copy; without one nothing counts as changed.
+    /// What a push compares the device's values with; nil sends every field. Only a push that
+    /// NotificationSettingsSyncedSeedMigration found pending gets nil: its edit is not on the
+    /// server yet, so compared with the device's own values it would send nothing and the next
+    /// reconcile would revert it. A signed-in device otherwise has a copy; without one nothing
+    /// counts as changed.
     @MainActor
     static func pushBase(local: LocalPreferences) -> LocalPreferences? {
         synced ?? (Defaults[.notificationSettingsPushSendsEveryField] ? nil : local)
@@ -385,8 +420,16 @@ nonisolated enum NotificationSettingsSync {
     }
 
     @MainActor
-    static func recordPushed(_ sent: LocalPreferences) {
-        synced = sent
+    static func sectionTurnedOn(_ section: OwnedSection, local: LocalPreferences) {
+        guard let synced else { return }
+        self.synced = synced.replacing(section, from: local)
+    }
+
+    /// Takes into the copy only the fields the push sent, since the copy may have changed while
+    /// the request was out, for example a section switch turned back on.
+    @MainActor
+    static func recordPushed(_ sent: LocalPreferences, fields: [String: Any]) {
+        synced = (synced ?? sent).taking(fields, from: sent)
         Defaults[.notificationSettingsPushSendsEveryField] = false
     }
 
@@ -461,7 +504,8 @@ nonisolated enum NotificationSettingsSync {
         cloudSyncEnabled: Bool,
         syncAssignmentRemindersEnabled: Bool = true,
         syncLiveActivityEnabled: Bool = true,
-        isCurrent: () -> Bool = { true }
+        isCurrent: () -> Bool = { true },
+        recordSent: ([String: Any]) -> Void = { _ in }
     ) async throws -> Bool {
         guard cloudSyncEnabled else { return false }
 
@@ -490,6 +534,7 @@ nonisolated enum NotificationSettingsSync {
 
             switch result {
             case .written:
+                recordSent(updates)
                 return isCurrent()
             case .conflict(let serverDocument, let serverRevision):
                 attempt += 1

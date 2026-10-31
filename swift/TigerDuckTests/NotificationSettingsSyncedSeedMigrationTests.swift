@@ -85,7 +85,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             #expect(written)
             #expect((sent["live_activity"] as? [String: Any])?["show_in_class"] as? Bool == true)
 
-            NotificationSettingsSync.recordPushed(local)
+            NotificationSettingsSync.recordPushed(local, fields: try local.documentUpdates(existing: [:]))
             #expect(NotificationSettingsSync.synced == local)
             #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == local)
         }
@@ -175,6 +175,62 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             )
 
             #expect(log.reads == 0)
+        }
+    }
+
+    @Test("a push records only the fields it sent, so a section turned back on while it was out keeps its new copy")
+    func pushRecordsOnlyWhatItSent() async throws {
+        try await Self.withCleanState {
+            let copy = Self.preferences(showInClass: true)
+            NotificationSettingsSync.synced = copy
+            var startOfPush = copy
+            startOfPush.isAssignmentReminderEnabled = false
+            var duringPush = startOfPush
+            duringPush.classPreparingLeadTime = 900
+            var server = copy
+            server.classPreparingLeadTime = 600
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = NotificationSettingsFixtures.documentURL(baseURL)
+            SettingsAPIStub.enqueue(
+                try NotificationSettingsFixtures.found(try server.documentUpdates(existing: [:]), revision: 1),
+                for: url
+            )
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 2), for: url)
+            let client = SettingsAPIStub.makeClient(baseURL: baseURL, authHeaderProvider: {
+                await MainActor.run {
+                    if SettingsAPIStub.requests(for: url).count == 1 {
+                        NotificationSettingsSync.sectionTurnedOn(.liveActivity, local: duringPush)
+                    }
+                }
+                return nil
+            })
+            var sent: [String: Any] = [:]
+
+            let written = try await NotificationSettingsSync.push(
+                local: startOfPush,
+                base: NotificationSettingsSync.pushBase(local: startOfPush),
+                client: client,
+                cloudSyncEnabled: true,
+                syncLiveActivityEnabled: false,
+                recordSent: { sent = $0 }
+            )
+            #expect(written)
+            NotificationSettingsSync.recordPushed(startOfPush, fields: sent)
+
+            #expect(NotificationSettingsSync.synced?.classPreparingLeadTime == 900)
+            #expect(NotificationSettingsSync.synced?.isAssignmentReminderEnabled == false)
+            let afterFirst = try NotificationSettingsFixtures.sentDocument(SettingsAPIStub.requests(for: url)[1])
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.found(afterFirst, revision: 2), for: url)
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 3), for: url)
+
+            try await NotificationSettingsSync.push(
+                local: duringPush,
+                base: NotificationSettingsSync.pushBase(local: duringPush),
+                client: client,
+                cloudSyncEnabled: true
+            )
+
+            #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT", "GET"])
         }
     }
 

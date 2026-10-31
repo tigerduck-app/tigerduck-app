@@ -425,6 +425,29 @@ struct NotificationSettingsSyncTests {
         #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
     }
 
+    @Test("taking the fields a push sent copies each of them, and only them, from the values sent")
+    func takingCopiesOnlyTheSentFields() throws {
+        let copy = Self.local()
+        let sentValues = Self.local(
+            isAssignmentReminderEnabled: false,
+            assignmentReminderOffsets: [.hr1],
+            showClassPreparingScenario: false,
+            showInClassScenario: true,
+            showAssignmentScenario: false,
+            classPreparingLeadTime: 900,
+            assignmentLiveActivityLeadTime: 600,
+            isClassReminderEnabled: false,
+            classReminderLeadMinutes: 30,
+            hasPickedClassReminderLead: true
+        )
+
+        #expect(copy.taking([:], from: sentValues) == copy)
+        #expect(copy.taking(try sentValues.documentUpdates(existing: [:]), from: sentValues) == sentValues)
+        let one = copy.taking(["live_activity": ["show_in_class": true]], from: sentValues)
+        #expect(one.showInClassScenario == true)
+        #expect(one.classPreparingLeadTime == copy.classPreparingLeadTime)
+    }
+
     @Test("push sends no request whatsoever when cloud sync is off, and reports that it did not write")
     func pushSendsNothingWhenSyncDisabled() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()

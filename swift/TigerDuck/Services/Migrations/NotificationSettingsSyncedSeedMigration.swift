@@ -4,10 +4,11 @@ import Foundation
 enum NotificationSettingsSyncedSeedMigration {
     private static let doneKey = "NotificationSettingsSyncedSeedMigration.v1.done"
 
-    /// Earlier builds kept no synced copy of the notification settings. With no push pending, the
-    /// device's values are that copy. A pending push holds an edit made on an earlier build, so it
-    /// sends every field once, as those builds did. Signed out, the next sign-in starts the copy.
-    /// docs/decisions/0024-launch-before-first-unlock.md says why stored data must read back first.
+    /// Starts the synced copy a push diffs against from the device's values. A push left pending
+    /// holds an edit not yet on the server; diffed against a copy of itself it would send nothing and
+    /// the next reconcile would revert it, so that push sends every field instead. Signed out, the
+    /// next sign-in starts the copy. docs/decisions/0002-notification-settings-json-merge.md has the
+    /// design; docs/decisions/0024-launch-before-first-unlock.md says why stored data must read back first.
     @MainActor
     static func runIfNeeded(
         current: @autoclosure () -> NotificationSettingsSync.LocalPreferences,
