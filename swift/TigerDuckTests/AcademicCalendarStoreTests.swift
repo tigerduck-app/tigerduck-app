@@ -151,6 +151,21 @@ struct AcademicCalendarStoreTests {
         }
     }
 
+    @Test("a pull that replaces a holiday setting drops its edit time, and one it leaves keeps it")
+    func pullDropsTheEditTimeOfAReplacedSetting() {
+        Self.withCleanHolidayDefaults {
+            let store = AcademicCalendarStore()
+            store.setNotify(true, forHoliday: 9)
+            store.setNotify(true, forHoliday: 5)
+
+            #expect(store.applySyncedOverrides([5], fetchedAt: Date().addingTimeInterval(1)))
+
+            #expect(store.holidayEdit(9).notify == false)
+            #expect(store.holidayEdit(9).madeAt == nil)
+            #expect(store.holidayEdit(5).madeAt != nil)
+        }
+    }
+
     @Test("logging out leaves no holiday state for the next account")
     func forgetHolidayOverridesClearsBothSets() {
         Self.withCleanHolidayDefaults {

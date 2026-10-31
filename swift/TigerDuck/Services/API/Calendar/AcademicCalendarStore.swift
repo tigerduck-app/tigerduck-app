@@ -154,6 +154,8 @@ final class AcademicCalendarStore {
         }
         guard merged != local else { return false }
         Defaults[.holidayNotifyOverrides] = merged.sorted()
+        let replaced = Set(merged.symmetricDifference(local).map(String.init))
+        Defaults[.holidayOverrideEditTimes] = Defaults[.holidayOverrideEditTimes].filter { !replaced.contains($0.key) }
         return true
     }
 
