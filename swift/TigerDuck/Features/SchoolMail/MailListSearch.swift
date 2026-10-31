@@ -24,7 +24,8 @@ final class MailListSearch {
     @ObservationIgnored private var generations = Generations()
     @ObservationIgnored private var indexLookup: Task<Matches?, Never>?
     @ObservationIgnored let catchUp: MailSearchCatchUp
-    @ObservationIgnored private unowned let list: MailListViewModel
+    /// Weak: a catch-up task outlives the list it searched once the page closes.
+    @ObservationIgnored private weak var list: MailListViewModel?
 
     init(list: MailListViewModel, catchUpDelay: @escaping @Sendable () async -> Void) {
         self.list = list
@@ -34,6 +35,7 @@ final class MailListSearch {
     var isShowingResults: Bool { results != nil }
 
     func submit() async {
+        guard let list else { return }
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
             clear()
@@ -95,6 +97,7 @@ final class MailListSearch {
     /// `folder`'s mail that matches `query`, newest first: the index's, and the loaded mail's, which
     /// may have arrived since the index last caught up. Nil when neither knows the folder.
     private func matchingUIDs(in folder: String, query: String) async -> Matches? {
+        guard let list else { return nil }
         let lookup = Task.detached { [index = list.writer.cache.searchIndex] in index.search(folder: folder, query: query) }
         indexLookup = lookup
         let indexed = await lookup.value
@@ -108,6 +111,7 @@ final class MailListSearch {
     /// A pass that fills a folder the search covers adds its new matches to the results, at most
     /// once per catch-up delay, so the last fill's are added after the pass ends.
     func indexDidFill(_ folder: String) {
+        guard let list else { return }
         guard !query.isEmpty, list.targets.contains(folder) else { return }
         catchUp.isBehind = true
         if generations.shown == generations.current { scheduleCatchUp() }
@@ -119,12 +123,13 @@ final class MailListSearch {
     }
 
     private func scheduleCatchUp() {
+        guard let list else { return }
         guard !list.background.isPaused else { return }
         let generation = generations.current
         catchUp.schedule(
             isCurrent: { [weak self] in
-                guard let self else { return false }
-                return !self.list.background.isPaused && generation == self.generations.current
+                guard let self, let list = self.list else { return false }
+                return !list.background.isPaused && generation == self.generations.current
             },
             run: { [weak self] in await self?.catchUpResults() ?? false },
             stillCurrent: { [weak self] in generation == self?.generations.current }
@@ -136,6 +141,7 @@ final class MailListSearch {
     /// to fill its first page, and the rest wait for the end of the list. False when it stopped
     /// before the last folder.
     private func catchUpResults() async -> Bool {
+        guard let list else { return false }
         let query = self.query
         let selection = list.selection
         let epoch = list.loads.accountEpoch
@@ -168,6 +174,7 @@ final class MailListSearch {
         _ batch: [UInt32], folder: String, uidValidity: UInt32,
         selection: MailFolderSelection, epoch: Int, generation: Int
     ) async -> Bool {
+        guard let list else { return false }
         do {
             let summaries = try await list.session.use { client in
                 try await client.summaries(folder: folder, uids: batch, expectedUIDValidity: uidValidity)
@@ -198,6 +205,7 @@ final class MailListSearch {
     }
 
     func loadMore() async {
+        guard let list else { return }
         let selection = list.selection
         let epoch = list.loads.accountEpoch
         let generation = generations.current
