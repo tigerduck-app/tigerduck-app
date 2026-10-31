@@ -83,7 +83,7 @@ final class CourseFiles: AccountScoped {
     }
 
     /// A term in `owned` still shows the tombstones of this device's reset, which stay this
-    /// device's for as long as they last (`AppState.isOwnReset`).
+    /// device's for as long as they last (`CourseRosterReconciler.isOwnReset`).
     func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = []) {
         let all = loadSemesterResetAt()
         let kept = all.filter { owned.contains($0.key) || fetchedAt.timeIntervalSince($0.value) <= Self.semesterResetGrace }

@@ -2,7 +2,7 @@ import Testing
 @testable import TigerDuck
 
 @Suite("Course-sync → course-colours cascade")
-struct AppStateCourseColorsTests {
+struct CourseColorCascadeTests {
     @Test("turning courses off turns colours off")
     func coursesOffTurnsColoursOff() {
         #expect(EditSender.courseColorsAfterCoursesChange(coursesNowOn: false) == false)
