@@ -1652,11 +1652,15 @@ struct DepartingSessionTests {
     }
 
     @Test("the device's unregister lands when answered, or when the account has the device no more",
-          arguments: zip([204, 404, 401, 500], [true, true, false, false]))
-    func theUnregisterLandsOnlyWhenTheServerHasIt(status: Int, lands: Bool) async {
+          arguments: zip(
+            [(204, ""), (404, #"{"error":"device_not_found"}"#), (404, #"{"error":"not_found"}"#), (401, ""), (500, "")]
+                as [(status: Int, body: String)],
+            [true, true, false, false, false]
+          ))
+    func theUnregisterLandsOnlyWhenTheServerHasIt(reply: (status: Int, body: String), lands: Bool) async {
         let backend = BackendFixture()
         let registration = RegistrationFixture(manager: backend.manager)
-        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data()), for: registration.unregisterURL)
+        SettingsAPIStub.enqueue(.init(statusCode: reply.status, body: Data(reply.body.utf8)), for: registration.unregisterURL)
 
         let landed = await AuthTokenManager.$departing.withValue(.init(accessToken: "A1")) {
             await registration.service.unregisterDevice()
