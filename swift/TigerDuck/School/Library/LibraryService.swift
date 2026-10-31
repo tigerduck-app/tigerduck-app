@@ -196,23 +196,14 @@ enum LibraryService {
         return loginData
     }
 
-    /// Each refusal counts toward the library account's lockout, so after one an automatic sign-in
-    /// waits as the school's does (``SSOLoginService/storedPasswordRetryDelay(afterRefusals:)``).
-    /// A sign-in the user types is never held back, and saving or clearing credentials resets it.
+    /// The library's count in ``StoredPasswordBackoff``, which saving or clearing credentials resets.
     static var storedPasswordRefusals: (count: Int, last: Date?) {
-        get { (Defaults[.libraryStoredPasswordRefusals], Defaults[.libraryStoredPasswordRefusedAt]) }
-        set {
-            Defaults[.libraryStoredPasswordRefusals] = newValue.count
-            Defaults[.libraryStoredPasswordRefusedAt] = newValue.last
-        }
+        get { StoredPasswordBackoff.library.refusals }
+        set { StoredPasswordBackoff.library.refusals = newValue }
     }
 
     static func storedPasswordPostIsDue(now: Date) -> Bool {
-        let refusals = storedPasswordRefusals
-        guard let retryAt = SSOLoginService.storedPasswordRetryAt(
-            refusals: refusals.count, lastRefusal: refusals.last, now: now
-        ) else { return true }
-        return retryAt <= now
+        StoredPasswordBackoff.library.postIsDue(now: now)
     }
 
     @MainActor private static var pendingSignIns: [String: Task<String, Error>] = [:]
@@ -261,10 +252,7 @@ enum LibraryService {
     ) {
         storedPasswordRetryMisses = 0
         let now = Date()
-        let refusals = storedPasswordRefusals
-        guard let retryAt = SSOLoginService.storedPasswordRetryAt(
-            refusals: refusals.count, lastRefusal: refusals.last, now: now
-        ) else { return cancelStoredPasswordRetry() }
+        guard let retryAt = StoredPasswordBackoff.library.retryAt(now: now) else { return cancelStoredPasswordRetry() }
         startStoredPasswordRetry(after: max(0, retryAt.timeIntervalSince(now)), signIn: signIn, retrySleep: retrySleep)
     }
 
@@ -290,7 +278,7 @@ enum LibraryService {
                   storedPasswordRefusals.count == refusals else { return }
             storedPasswordRetryMisses += 1
             startStoredPasswordRetry(
-                after: SSOLoginService.storedPasswordRetryDelay(afterRefusals: refusals + storedPasswordRetryMisses),
+                after: StoredPasswordBackoff.retryDelay(afterRefusals: refusals + storedPasswordRetryMisses),
                 signIn: signIn, retrySleep: retrySleep
             )
         }
@@ -331,7 +319,7 @@ enum LibraryService {
             } catch {
                 if AccountSession.library.isCurrent(ticket), storedPassword == password {
                     if case LibraryServiceError.loginFailed = error {
-                        storedPasswordRefusals = (storedPasswordRefusals.count + 1, Date())
+                        StoredPasswordBackoff.library.noteRefused(at: Date())
                         if typedSignIns == typedSignInsBefore {
                             armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
                         }

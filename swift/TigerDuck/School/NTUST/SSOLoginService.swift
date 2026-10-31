@@ -50,34 +50,15 @@ enum SSOLoginService {
     }
 
     nonisolated static var storedPasswordRefusals: (count: Int, last: Date?) {
-        get { (Defaults[.ntustStoredPasswordRefusals], Defaults[.ntustStoredPasswordRefusedAt]) }
-        set {
-            Defaults[.ntustStoredPasswordRefusals] = newValue.count
-            Defaults[.ntustStoredPasswordRefusedAt] = newValue.last
-        }
+        get { StoredPasswordBackoff.ntust.refusals }
+        set { StoredPasswordBackoff.ntust.refusals = newValue }
     }
 
     nonisolated static let storedPasswordPostWaits = Notification.Name("TigerDuck.storedPasswordPostWaits")
     nonisolated static let storedPasswordRetryAtKey = "retryAt"
 
-    nonisolated static let storedPasswordQuickRetries: [TimeInterval] = [10, 60, 5 * 60]
-    nonisolated static let storedPasswordRetryInterval: TimeInterval = 6 * 60 * 60
-
-    nonisolated static func storedPasswordRetryDelay(afterRefusals refusals: Int) -> TimeInterval {
-        refusals > storedPasswordQuickRetries.count
-            ? storedPasswordRetryInterval
-            : storedPasswordQuickRetries[max(refusals, 1) - 1]
-    }
-
-    nonisolated static func storedPasswordRetryAt(refusals: Int, lastRefusal: Date?, now: Date) -> Date? {
-        guard refusals > 0 else { return nil }
-        guard let lastRefusal, lastRefusal <= now else { return now }
-        return lastRefusal.addingTimeInterval(storedPasswordRetryDelay(afterRefusals: refusals))
-    }
-
     nonisolated static func storedPasswordRetryAt(now: Date = Date()) -> Date? {
-        let refusals = storedPasswordRefusals
-        return storedPasswordRetryAt(refusals: refusals.count, lastRefusal: refusals.last, now: now)
+        StoredPasswordBackoff.ntust.retryAt(now: now)
     }
 
     nonisolated static func storedPasswordPostMustWait(now: Date = Date()) -> Bool {
@@ -87,9 +68,7 @@ enum SSOLoginService {
     }
 
     nonisolated static func noteStoredPasswordRefused(at now: Date = Date()) {
-        let count = storedPasswordRefusals.count + 1
-        storedPasswordRefusals = (count, now)
-        announceStoredPasswordWait(until: now.addingTimeInterval(storedPasswordRetryDelay(afterRefusals: count)))
+        announceStoredPasswordWait(until: StoredPasswordBackoff.ntust.noteRefused(at: now))
     }
 
     private nonisolated static func announceStoredPasswordWait(until retryAt: Date) {
@@ -101,7 +80,7 @@ enum SSOLoginService {
     }
 
     nonisolated static func forgetStoredPasswordRefusals() {
-        storedPasswordRefusals = (0, nil)
+        StoredPasswordBackoff.ntust.forget()
     }
 
     private nonisolated static let storedPasswordPosts = AsyncSerialLock()

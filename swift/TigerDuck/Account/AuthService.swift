@@ -538,7 +538,7 @@ final class AuthService {
         guard refusals > 0 else { return }
         storedPasswordRetryMisses += 1
         startStoredPasswordRetry(
-            after: SSOLoginService.storedPasswordRetryDelay(afterRefusals: refusals + storedPasswordRetryMisses)
+            after: StoredPasswordBackoff.retryDelay(afterRefusals: refusals + storedPasswordRetryMisses)
         )
     }
 

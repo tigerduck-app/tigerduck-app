@@ -91,7 +91,7 @@ struct LibrarySignInTests {
             }
             #expect(calls.count == 1)
 
-            let firstWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
+            let firstWait = StoredPasswordBackoff.retryDelay(afterRefusals: 1)
             LibraryService.storedPasswordRefusals = (1, Date().addingTimeInterval(-firstWait))
             let token = try? await LibraryService.ensureToken { _, _ in
                 calls.count += 1
@@ -109,8 +109,8 @@ struct LibrarySignInTests {
     @Test func afterTheQuickRetriesARefusalWaitsSixHours() async throws {
         let calls = Calls()
         try await Self.withStoredAccount { _ in
-            let quickTries = SSOLoginService.storedPasswordQuickRetries.count
-            let lastQuickWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries)
+            let quickTries = StoredPasswordBackoff.quickRetries.count
+            let lastQuickWait = StoredPasswordBackoff.retryDelay(afterRefusals: quickTries)
             LibraryService.storedPasswordRefusals = (quickTries, Date().addingTimeInterval(-lastQuickWait))
             _ = try? await LibraryService.ensureToken { _, _ in
                 calls.count += 1
@@ -560,7 +560,7 @@ struct LibrarySignInTests {
     }
 
     private static func refusedOnceAndDue() {
-        let firstWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
+        let firstWait = StoredPasswordBackoff.retryDelay(afterRefusals: 1)
         LibraryService.storedPasswordRefusals = (1, Date().addingTimeInterval(-firstWait))
     }
 
@@ -682,7 +682,7 @@ struct LibrarySignInTests {
             await sleeper.fire()
             try await sleeper.waitUntilArmed(atLeast: 2)
             #expect(calls.count == 2)
-            #expect(await sleeper.requestedDurations.last == .seconds(SSOLoginService.storedPasswordRetryDelay(afterRefusals: 2)))
+            #expect(await sleeper.requestedDurations.last == .seconds(StoredPasswordBackoff.retryDelay(afterRefusals: 2)))
 
             let waiting = try #require(LibraryService.storedPasswordRetry)
             await sleeper.fire()

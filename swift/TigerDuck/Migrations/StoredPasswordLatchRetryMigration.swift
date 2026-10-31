@@ -10,6 +10,6 @@ enum StoredPasswordLatchRetryMigration {
         defer { defaults.set(true, forKey: doneKey) }
         guard defaults.bool(forKey: latchKey) else { return }
         defaults.removeObject(forKey: latchKey)
-        SSOLoginService.storedPasswordRefusals = (SSOLoginService.storedPasswordQuickRetries.count, .distantPast)
+        SSOLoginService.storedPasswordRefusals = (StoredPasswordBackoff.quickRetries.count, .distantPast)
     }
 }
