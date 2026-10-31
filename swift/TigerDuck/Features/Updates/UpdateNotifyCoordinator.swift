@@ -36,21 +36,10 @@ final class UpdateNotifyCoordinator {
         case failed
     }
 
-    typealias ErrorReporter = @Sendable (any Error, [String: String]) -> Void
+    typealias ErrorReporter = AppStoreLookup.ErrorReporter
 
-    private let bundleId: String
-    private let session: URLSession
+    private let appStore: AppStoreLookup
     private let repository: WhatsNewRepository
-    private let reportError: ErrorReporter
-    private var inFlight: Task<LookupResult, Never>?
-
-    private typealias Lookup = AppStoreUpdateService.Lookup
-
-    private enum LookupResult: Equatable {
-        case found(Lookup)
-        case noRecord
-        case failed
-    }
 
     nonisolated init(
         bundleId: String = Bundle.main.bundleIdentifier ?? "org.ntust.app.TigerDuck",
@@ -58,10 +47,8 @@ final class UpdateNotifyCoordinator {
         repository: WhatsNewRepository? = nil,
         reportError: @escaping ErrorReporter = { AppLogger.captureError($0, context: $1) }
     ) {
-        self.bundleId = bundleId
-        self.session = session
+        appStore = AppStoreLookup(bundleId: bundleId, session: session, reportError: reportError)
         self.repository = repository ?? WhatsNewRepository()
-        self.reportError = reportError
     }
 
     func hasWhatsNewContent(in app: AppEnvironment) -> Bool {
@@ -114,7 +101,7 @@ final class UpdateNotifyCoordinator {
         guard Defaults[.hasCompletedOnboarding] else { return }
         #endif
         #if DEBUG
-        if Self.consumeDebugSimulateUpdateFlag() {
+        if DebugSimulatedUpdate.consume() {
             Task { await surfaceSyntheticUpdatePrompt() }
             return
         }
@@ -129,35 +116,8 @@ final class UpdateNotifyCoordinator {
     }
 
     #if DEBUG
-    private static let debugSimulateUpdateKey = "debug.simulateUpdateOnNextLaunch"
-
-    static func armDebugSimulatedUpdate() {
-        AppUserDefaults.standard.set(true, forKey: debugSimulateUpdateKey)
-    }
-
-    static var isDebugSimulatedUpdateArmed: Bool {
-        AppUserDefaults.standard.bool(forKey: debugSimulateUpdateKey)
-    }
-
-    private static func consumeDebugSimulateUpdateFlag() -> Bool {
-        let armed = AppUserDefaults.standard.bool(forKey: debugSimulateUpdateKey)
-        if armed {
-            AppUserDefaults.standard.removeObject(forKey: debugSimulateUpdateKey)
-        }
-        return armed
-    }
-
     private func surfaceSyntheticUpdatePrompt() async {
-        let appStoreURL: URL
-        if case .found(let lookup)? = try? await AppStoreUpdateService.fetchLatest(
-            bundleId: bundleId,
-            session: session,
-            country: AppConstants.appStoreLookupStorefront
-        ) {
-            appStoreURL = URL.knownGoodAppStoreLink(trackId: lookup.trackId)
-        } else {
-            appStoreURL = URL(string: "https://apps.apple.com/")!
-        }
+        let appStoreURL = await appStore.anyStoreLink() ?? URL(string: "https://apps.apple.com/")!
         pendingUpdate = PendingUpdate(latestVersion: "99.0.0", appStoreURL: appStoreURL)
     }
     #endif
@@ -225,7 +185,7 @@ final class UpdateNotifyCoordinator {
         }
         defer { if manual { isCheckingForUpdate = false } }
 
-        let result = await sharedLookup()
+        let result = await appStore.latest()
         switch result {
         case .found, .noRecord:
             Defaults[.lastUpdateCheckAt] = Date()
@@ -249,7 +209,7 @@ final class UpdateNotifyCoordinator {
         guard case let .found(lookup) = result else { return }
 
         guard let latest = AppVersion(lookup.version) else {
-            reportUnparseableStoreVersion(lookup.version)
+            appStore.reportUnparseableVersion(lookup.version)
             if manual { lastManualCheckResult = .failed }
             return
         }
@@ -272,51 +232,9 @@ final class UpdateNotifyCoordinator {
             }
         }
 
-        let appStoreURL = URL.knownGoodAppStoreLink(trackId: lookup.trackId)
-        let pending = PendingUpdate(latestVersion: lookup.version, appStoreURL: appStoreURL)
+        let pending = PendingUpdate(latestVersion: lookup.version, appStoreURL: AppStoreLookup.storeLink(trackId: lookup.trackId))
         pendingUpdate = pending
         if manual { lastManualCheckResult = .offered(pending) }
-    }
-
-    private func reportUnparseableStoreVersion(_ version: String) {
-        guard Defaults[.lastReportedUnparseableStoreVersion] != version else { return }
-        Defaults[.lastReportedUnparseableStoreVersion] = version
-        reportError(
-            AppStoreUpdateService.LookupError.unparseableVersion,
-            [
-                "phase": "UpdateNotifyCoordinator.performCheck",
-                "storeVersion": version,
-            ]
-        )
-    }
-
-    private func sharedLookup() async -> LookupResult {
-        if let existing = inFlight {
-            return await existing.value
-        }
-        let task = Task<LookupResult, Never> { [bundleId, session, reportError] in
-            do {
-                // Pin the storefront so users abroad / on a VPN don't
-                // get an IP-inferred storefront that returns no record
-                // and silently masks an available update.
-                let outcome = try await AppStoreUpdateService.fetchLatest(
-                    bundleId: bundleId,
-                    session: session,
-                    country: AppConstants.appStoreLookupStorefront
-                )
-                switch outcome {
-                case .found(let lookup): return .found(lookup)
-                case .noRecord: return .noRecord
-                }
-            } catch {
-                reportError(error, ["phase": "AppStoreUpdateService.fetchLatest"])
-                return .failed
-            }
-        }
-        inFlight = task
-        let result = await task.value
-        inFlight = nil
-        return result
     }
 
     nonisolated static var bundleVersionString: String {
@@ -328,18 +246,4 @@ final class UpdateNotifyCoordinator {
     }
 
     private var bundleVersionString: String { Self.bundleVersionString }
-}
-
-private extension URL {
-    static func knownGoodAppStoreLink(trackId: Int) -> URL {
-        var components = URLComponents()
-        #if os(macOS)
-        components.scheme = "macappstore"
-        #else
-        components.scheme = "https"
-        #endif
-        components.host = "apps.apple.com"
-        components.path = "/app/id\(trackId)"
-        return components.url ?? URL(string: "https://apps.apple.com/app/id\(trackId)")!
-    }
 }
