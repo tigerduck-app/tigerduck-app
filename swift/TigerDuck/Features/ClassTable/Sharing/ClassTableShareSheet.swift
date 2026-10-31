@@ -137,7 +137,7 @@ private struct CopyLinkButton: View {
         .disabled(link == nil)
         .onChange(of: link) { isCopied = false }
         .task(id: copies) {
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.5))
             if !Task.isCancelled { isCopied = false }
         }
     }

@@ -26,8 +26,8 @@ final class MailListViewModel {
         cache: MailCache? = nil,
         noteSeenByPage: ((MailboxStatusInfo) async -> Void)? = nil,
         signOutEvents: NotificationCenter = .default,
-        warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: MailConstants.warmStartDelay) },
-        catchUpDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: MailConstants.searchCatchUpInterval) }
+        warmDelay: @escaping @Sendable () async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + MailConstants.warmStartDelay) },
+        catchUpDelay: @escaping @Sendable () async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + MailConstants.searchCatchUpInterval) }
     ) {
         // Resolved in the body, not the parameter list: a default-argument expression runs outside
         // the init's MainActor isolation, where `MailPageSession()` and `MailAccountManager.shared`

@@ -152,7 +152,7 @@ struct CourseDetailInfoRows: View {
         let generation = copyFeedback
         withAnimation { codeCopied = true }
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.5))
             guard copyFeedback == generation else { return }
             withAnimation { codeCopied = false }
         }

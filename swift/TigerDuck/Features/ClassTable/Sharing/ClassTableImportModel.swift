@@ -106,7 +106,7 @@ final class ClassTableImportModel: Identifiable {
         }
         // An alert replaced in one update stays up with the old job's buttons, so it closes first.
         linkTask = Task {
-            try? await Task.sleep(for: .milliseconds(50))
+            try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(50))
             guard !Task.isCancelled else { return }
             linkTask = nil
             read(link: text)

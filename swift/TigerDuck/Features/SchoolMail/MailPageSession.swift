@@ -20,7 +20,7 @@ final class MailPageSession {
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
         open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() },
         onAuthFailure: @escaping @MainActor () -> Void = { MailAccountManager.shared.handleAuthFailure() },
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
         signOutEvents: NotificationCenter = .default
     ) {
         self.idleClose = MailIdleClose(delay: idleClose, sleep: sleep)
