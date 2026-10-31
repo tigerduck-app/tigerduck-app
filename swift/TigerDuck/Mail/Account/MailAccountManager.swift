@@ -113,7 +113,7 @@ final class MailAccountManager {
         isLoggingIn = true
         loginError = nil
         defer { isLoggingIn = false }
-        let ticket = session.ticket
+        var ticket = session.ticket
 
         await pendingCacheClear?.value
         guard session.isCurrent(ticket) else { return }
@@ -135,6 +135,9 @@ final class MailAccountManager {
             loginError = failure
             return
         }
+        // A session opened with the password this replaced must not mark this sign-in failed.
+        session.moveOn()
+        ticket = session.ticket
 
         lastRejectedPassword = nil
         prefs.studentID = id
