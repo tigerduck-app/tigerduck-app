@@ -295,7 +295,7 @@ enum AppServiceBridge {
     /// A requested term goes up even when unchanged: the backend asks because no roster of it
     /// arrived for a week.
     static func answerRosterRequests(in snapshot: [String: Any], authService: AuthService) {
-        guard CourseUploadPolicy.uploadsCourses else { return }
+        guard SyncPolicy.current.uploadsCourses else { return }
         for term in rosterRequests.termsToAsk(in: snapshot, signIn: authService.session.ticket, now: Date()) {
             AppLogger.sync.info("[sync] roster requested for \(term, privacy: .public)")
             Task {
