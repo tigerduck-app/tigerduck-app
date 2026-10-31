@@ -42,13 +42,17 @@ HostWindow.swift
 UINavigationController+Swipeback.swift
 View+ScrollSafeGesture.swift
 
-# Features/Bulletins — iOS bulletin surfaces
+# Features/Bulletins and Stores/Bulletins — iOS bulletin surfaces
 BulletinNotificationSettingsView.swift
 BulletinSubscriptionsStore.swift
 BulletinsView.swift
 BulletinCardView.swift
 BulletinDetailView.swift
 BulletinFilterBar.swift
+BulletinPushSection.swift
+BulletinRows.swift
+BulletinRulesSections.swift
+BulletinsToolbar.swift
 BulletinTaxonomyPickerView.swift
 SubscriptionRuleEditorView.swift
 
