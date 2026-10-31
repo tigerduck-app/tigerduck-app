@@ -132,8 +132,8 @@ applies the rest. Before pushing, run `python3 tools/check_comments.py check --b
   thread for a minute, and every test waiting on the main actor meanwhile times out.
 - Every pull request to `main` or `dev` fails while a submodule is behind its upstream branch;
   bump the submodule first.
-- Pull requests from `dev` to `main` must raise `MARKETING_VERSION` by one SemVer step, or keep
-  it and raise `CURRENT_PROJECT_VERSION` by exactly 1, and `swift/TigerDuck/whatsnew.json` must
+- Pull requests from `dev` to `main` must raise `MARKETING_VERSION` by one SemVer step (the major
+  may skip to match the backend API's major), or keep it and raise `CURRENT_PROJECT_VERSION` by exactly 1, and `swift/TigerDuck/whatsnew.json` must
   have an entry for the marketing version. The `release-bump` skill does this.
 - Every version bump, a patch or a build-number-only one too, first gets a local code review of
   `origin/main...origin/dev`, repeated until no finding of High severity or above is left; the
