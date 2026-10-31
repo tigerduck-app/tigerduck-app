@@ -65,7 +65,7 @@ final class WatchSyncCoordinator: NSObject {
 
     init(
         session: WatchSessionPushing = WCSession.default,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0, clock: .suspending) },
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: SuspendingClock.now + $0, clock: .suspending) },
         republishCredentials: (@MainActor () -> Void)? = nil,
         isProtectedDataAvailable: (@MainActor () -> Bool)? = nil,
         notificationCenter: NotificationCenter = .default

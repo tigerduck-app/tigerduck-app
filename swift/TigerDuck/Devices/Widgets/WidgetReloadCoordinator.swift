@@ -26,7 +26,7 @@ final class WidgetReloadCoordinator {
     nonisolated init(
         reloader: Reloader = WidgetKitReloader(),
         debounceMs: Int = 300,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.reloader = reloader
         self.debounce = TimeInterval(debounceMs) / 1000.0

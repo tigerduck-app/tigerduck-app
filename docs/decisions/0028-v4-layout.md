@@ -42,7 +42,8 @@ and the macOS build's source list was kept by hand in two copies.
   under "Conventions" in a folder's AGENTS.md for a rule of that folder alone.
 - A type stays under 250 lines, its extensions in other files counted and its nested types not;
   a SwiftUI view under 200. A class or actor holds at most 10 stored instance properties, and a
-  file stays under 400 lines.
+  file stays under 400 lines. A SwiftData `@Model` class is left out of the stored-property
+  count: its stored properties are the stored schema, and moving them would migrate the store.
 - `tools/check_architecture.py` checks the Swift sources of the app target and of TigerDuckCore,
   tests left out. Each rule names the refactor phase that turns it on, and the script fails the
   rules of the phases up to `ENFORCED_PHASE` while it counts the others:

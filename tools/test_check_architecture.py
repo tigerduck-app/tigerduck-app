@@ -106,6 +106,13 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual(rules(found), ["stored-properties"])
         self.assertIn("holds 12 stored properties", found[0].message)
 
+    def test_a_swiftdata_model_keeps_its_stored_properties(self) -> None:
+        stored = "".join(f"    var value{i} = {i}\n" for i in range(11))
+        model = "@Model\nfinal class Row {\n    @Attribute(.unique) var id = 0\n" + stored + "}\n"
+        plain = "final class Plain {\n    @Attribute(.unique) var id = 0\n" + stored + "}\n"
+        found = ca.size_findings([source(APP + "A.swift", model), source(APP + "B.swift", plain)])
+        self.assertEqual([(f.rule, f.path) for f in found], [("stored-properties", APP + "B.swift")])
+
     def test_a_file_over_its_budget_fails(self) -> None:
         found = ca.size_findings([source(APP + "A.swift", "\n" * 401)])
         self.assertEqual(rules(found), ["file-size"])

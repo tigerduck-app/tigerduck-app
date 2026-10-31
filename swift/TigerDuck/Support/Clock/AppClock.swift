@@ -145,4 +145,15 @@ nonisolated enum AppClock {
     }
 
     static func removeObserver(_ token: ObserverToken) { core.removeObserver(token) }
+
+    /// Waits for a time on the continuous clock, which runs on while the device sleeps;
+    /// `Task.sleep(for: delay)` is `sleep(until: ContinuousClock.now + delay)`.
+    static func sleep(until deadline: ContinuousClock.Instant) async throws {
+        try await Task.sleep(until: deadline, clock: .continuous)
+    }
+
+    /// Waits for a time on `clock`, such as `.suspending` for a wait that stops while the device sleeps.
+    static func sleep<C: Clock>(until deadline: C.Instant, clock: C) async throws {
+        try await Task.sleep(until: deadline, clock: clock)
+    }
 }
