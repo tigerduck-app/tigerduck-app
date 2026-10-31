@@ -102,6 +102,15 @@ extension AppState {
         enqueueNotificationSettingsPush()
     }
 
+    /// A device switch turned back on takes the server's section: its values here become the
+    /// synced copy, so no push sends them, and a reconcile adopts the section.
+    func adoptNotificationSettingsSection(_ section: NotificationSettingsSync.OwnedSection) {
+        if let synced = NotificationSettingsSync.synced {
+            NotificationSettingsSync.synced = synced.replacing(section, from: .init(from: liveActivityPreferences))
+        }
+        reconcileNotificationSettings()
+    }
+
     func cancelNotificationSettingsPushes() {
         NotificationSettingsPushQueue.cancelAll()
         Defaults[.notificationSettingsPushPending] = false
@@ -240,6 +249,26 @@ nonisolated enum NotificationSettingsSync {
                 classReminderLeadMinutes: store.classReminderLeadMinutes,
                 hasPickedClassReminderLead: store.hasPickedClassReminderLead
             )
+        }
+
+        func replacing(_ section: OwnedSection, from other: LocalPreferences) -> LocalPreferences {
+            var copy = self
+            switch section {
+            case .assignments:
+                copy.isAssignmentReminderEnabled = other.isAssignmentReminderEnabled
+                copy.assignmentReminderOffsets = other.assignmentReminderOffsets
+            case .liveActivity:
+                copy.showClassPreparingScenario = other.showClassPreparingScenario
+                copy.showInClassScenario = other.showInClassScenario
+                copy.showAssignmentScenario = other.showAssignmentScenario
+                copy.classPreparingLeadTime = other.classPreparingLeadTime
+                copy.assignmentLiveActivityLeadTime = other.assignmentLiveActivityLeadTime
+            case .courses:
+                copy.isClassReminderEnabled = other.isClassReminderEnabled
+                copy.classReminderLeadMinutes = other.classReminderLeadMinutes
+                copy.hasPickedClassReminderLead = other.hasPickedClassReminderLead
+            }
+            return copy
         }
 
         var reminderOffsetsMinutes: [Int] {
@@ -446,7 +475,7 @@ nonisolated enum NotificationSettingsSync {
         written && current == sent
     }
 
-    static func shouldPushOnDeviceSwitchChange(old: Bool, new: Bool) -> Bool {
+    static func shouldAdoptOnDeviceSwitchChange(old: Bool, new: Bool) -> Bool {
         new && !old
     }
 

@@ -55,7 +55,9 @@ later build. Only the iOS build syncs the document: every synced field lives on
   different fields of one section both keep their change. The two offset lists count as one
   field. With no copy stored, after a sign-out or an upgrade, no field counts as changed: an
   unsent edit cannot be told from a value another device changed since, and that newer value
-  wins over the edit. Sign-out clears the copy.
+  wins over the edit. Turning a device switch back on makes that section's values the copy, so a
+  push leaves the section as the document holds it, and a reconcile adopts it. Sign-out clears
+  the copy.
 
 ## Alternatives
 
@@ -72,7 +74,7 @@ later build. Only the iOS build syncs the document: every synced field lives on
 ## Consequences
 
 - New fields must be Optional, and a push must go through the merge.
-- A new synced field needs a property on `LocalPreferences`; a copy stored by an earlier build
-  then fails to decode and counts as no copy.
+- A new synced field needs a property on `LocalPreferences` and a case in its `replacing`; a
+  copy stored by an earlier build then fails to decode and counts as no copy.
 - `NotificationSettingsSyncTests` pins the merge, the preserved minute values, the hours mirror,
   the class reminder offsets kept for another client and the fields a push leaves alone.

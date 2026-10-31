@@ -548,11 +548,11 @@ struct NotificationSettingsSyncTests {
         #expect(!NotificationSettingsSync.canClearPendingMarker(written: true, sent: sent, current: editedWhileInFlight))
     }
 
-    @Test("a device switch turning back on needs an extra push; turning it off does not")
-    func shouldPushOnDeviceSwitchChangeOnlyFiresOnTheOffToOnTransition() {
-        #expect(NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: false, new: true))
+    @Test("a device switch turning back on adopts the server's section; turning it off does not")
+    func shouldAdoptOnDeviceSwitchChangeOnlyFiresOnTheOffToOnTransition() {
+        #expect(NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: false, new: true))
 
-        #expect(!NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: true, new: false))
+        #expect(!NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: true, new: false))
     }
 
     @Test("a document with no assignments and no courses still pushes")

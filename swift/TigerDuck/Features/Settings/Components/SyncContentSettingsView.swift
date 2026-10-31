@@ -29,8 +29,8 @@ struct SyncContentSettingsView: View {
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncAssignmentReminders) { old, new in
                         appState.pushSyncPreferences()
-                        if NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: old, new: new) {
-                            appState.scheduleNotificationSettingsPush()
+                        if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) {
+                            appState.adoptNotificationSettingsSection(.assignments)
                         }
                     }
             }
@@ -40,8 +40,8 @@ struct SyncContentSettingsView: View {
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncLiveActivity) { old, new in
                         appState.pushSyncPreferences()
-                        if NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: old, new: new) {
-                            appState.scheduleNotificationSettingsPush()
+                        if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) {
+                            appState.adoptNotificationSettingsSection(.liveActivity)
                         }
                     }
             }
