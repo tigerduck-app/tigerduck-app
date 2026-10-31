@@ -6,6 +6,11 @@ import Testing
 /// driven here in the order that lost it.
 @MainActor
 struct SyncRaceTests {
+    @MainActor
+    private final class Asked {
+        var value = false
+    }
+
     private static let red: UInt32 = 0xFF6B6B
     private static let teal: UInt32 = 0x4ECDC4
 
@@ -212,7 +217,13 @@ struct SyncRaceTests {
         let save = Task { await store.save() }
         try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
         store.upsert(edited)
-        let second = Task { await store.save() }
+        let secondAsked = Asked()
+        let second = Task {
+            secondAsked.value = true
+            await store.save()
+        }
+        try await waitUntil { secondAsked.value }
+        try await Task.sleep(for: .milliseconds(200))
         #expect(SettingsAPIStub.requests(for: url).count == 1)
         first.open()
         await save.value
