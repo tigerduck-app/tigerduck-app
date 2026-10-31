@@ -2,7 +2,8 @@
 
 Rules for `swift/TigerDuck/`, the iOS app and its native macOS build. Read `School/AGENTS.md`,
 `Backend/AGENTS.md`, `Mail/AGENTS.md`, `Migrations/AGENTS.md` and `Devices/LiveActivity/AGENTS.md`
-before working in those directories.
+before working in those directories. docs/decisions/0028-v4-layout.md explains the folders,
+the shared homes and the size budget.
 
 ## Conventions
 
@@ -44,6 +45,36 @@ before working in those directories.
   `swift/Packages/TigerDuckCore/`, which the app, the Watch app and all three extensions link.
   Other code the Watch app also needs goes in `swift/Shared/`, which both targets compile; the
   `TigerDuckWidgets` and Live Activity extensions do not compile it.
+
+## Shared homes
+
+Each rule below has one home. Call it instead of writing the rule again;
+`tools/check_architecture.py` fails a second copy once the rule's phase is enforced. A home not
+yet in the tree arrives with its refactor phase; until then the rule stays where it is.
+
+- Signed-in account, sign-out, writes after a sign-out: `Account/AccountSession.swift`.
+  A store of one account's data conforms to `AccountScoped`.
+- Courses and assignments, and every edit to them: `Stores/CourseStore.swift`,
+  `Stores/AssignmentStore.swift`.
+- Course colors: `Stores/CourseColorStore.swift`.
+- Term codes: `AcademicTerm` in TigerDuckCore.
+- Today's classes, now and next: `ClassTimeline` in TigerDuckCore.
+- Taipei dates: `TaipeiTime` in TigerDuckCore.
+- What this device may send or apply: `Backend/Sync/SyncPolicy.swift`.
+- Whether an upload already went out: `Backend/Sync/SendLedger.swift`.
+- Requests to the TigerDuck backend: `Backend/Client/BackendClient.swift`.
+- A full sync's categories: one `CategoryReconciler` each, in `Backend/Sync/Reconcilers/`.
+- Freshness of a cached answer: `Persistence/FreshnessPolicy.swift`.
+- A school service bouncing to the portal: `School/NTUST/SchoolSessionRecovery.swift`.
+- Waiting for a state: `StateSignal`; for a time: `AppClock.sleep(until:)` in `Support/Clock/`.
+- Deep links and sheets: `App/Routing/AppRouter.swift`.
+- Widget, Watch and Live Activity refresh: `Devices/DeviceSurfaceSyncer.swift`.
+
+## Size
+
+A type stays under 250 lines, extensions in other files included, and a view under 200; a class
+or actor holds at most 10 stored properties, and a file stays under 400 lines. Split by
+responsibility; nested types are fine. `tools/check_architecture.py --report` lists what is over.
 
 ## Anti-patterns
 

@@ -100,6 +100,9 @@ applies the rest. Before pushing, run `python3 tools/check_comments.py check --b
   and pull request URLs. Never cite review rounds, dispatch or task numbers, sections of
   documents outside the repository, OpenSpec changes or paths, or agent and tool names.
 - Do not record who decided something or what a pull request discussion said; write the reason.
+- A comment that explains our own ordering, a flag or a guard means a type or a state is
+  missing; change the code instead. Comments stay for the school's servers and Apple's
+  behavior, on a type whose name says what it handles.
 - Use plain wording: no bold, no `IMPORTANT:` or `NOTE:`, no em dashes, and no "exactly",
   "deliberately", "intentionally" or "note that" as emphasis.
 - Put longer knowledge where it belongs: rationale that spans files in an ADR under

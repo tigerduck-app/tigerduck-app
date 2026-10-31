@@ -3,7 +3,7 @@
 
 Each rule names the phase of the v4 refactor that turns it on. Rules of a phase at or below
 ENFORCED_PHASE fail the run; the others are counted, so the work left stays visible without
-failing anything yet. Every finding prints as
+failing anything yet (docs/decisions/0028-v4-layout.md). Every finding prints as
 `path:line: rule: message`, and the message names the home to use instead.
 
 The scope is the Swift sources of the TigerDuck app target, as tools/check_macos_sources.py works
