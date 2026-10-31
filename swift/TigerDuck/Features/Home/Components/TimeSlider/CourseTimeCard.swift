@@ -44,14 +44,13 @@ struct CourseTimeCard: View {
 
     @ViewBuilder
     private func cardSurface(slot: CourseTimeSlot, opacity: Double) -> some View {
-        let course = slot.course
         let isToday = TaipeiTime.calendar.isDateInToday(slot.date)
         let showsChangedTime = slot.hasChangedTime && !slot.isCancelled
 
         HStack(alignment: .top, spacing: 10) {
             if policy.courseColorUsage == .smallAccent {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(course.color)
+                    .fill(slot.color)
                     .frame(width: 3)
                     .padding(.vertical, 2)
             }
@@ -77,10 +76,10 @@ struct CourseTimeCard: View {
                     }
                 }
 
-                Text(course.displayName)
+                Text(slot.title)
                     .font(.headline)
                     .strikethrough(slot.isCancelled)
-                    .foregroundStyle(courseNameColor(for: course))
+                    .foregroundStyle(courseNameColor)
                     .lineLimit(1)
                 subtitle(for: slot)
                     .font(.caption)
@@ -91,7 +90,7 @@ struct CourseTimeCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(CourseCardSurfaceModifier(tint: course.color, policy: policy))
+        .modifier(CourseCardSurfaceModifier(tint: slot.color, policy: policy))
         .opacity(opacity)
     }
 
@@ -100,7 +99,7 @@ struct CourseTimeCard: View {
             return Text(String(localized: "course_card_cancelled")).fontWeight(.semibold)
         }
         let classroom = slot.room.trimmingCharacters(in: .whitespaces)
-        let instructor = slot.course.instructor.trimmingCharacters(in: .whitespaces)
+        let instructor = slot.instructor.trimmingCharacters(in: .whitespaces)
         let room = slot.hasChangedRoom && !classroom.isEmpty
             ? Text("\(Image(systemName: "arrow.left.arrow.right")) \(Text(classroom).fontWeight(.semibold))")
                 .foregroundStyle(Color.changeInk)
@@ -127,7 +126,7 @@ struct CourseTimeCard: View {
         }
     }
 
-    private func courseNameColor(for course: SDCourse) -> Color {
+    private var courseNameColor: Color {
         switch policy.courseColorUsage {
         case .primarySurface: return Color.textPrimary
         case .smallAccent: return .primary

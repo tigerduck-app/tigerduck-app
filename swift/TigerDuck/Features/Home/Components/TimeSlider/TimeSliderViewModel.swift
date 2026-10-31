@@ -76,7 +76,7 @@ final class TimeSliderViewModel {
             from: allCourses,
             centerDate: center,
             dayRadius: TimeSliderMetrics.timelineDayRadius
-        ).filter { !isQuietDay($0.date) && !$0.course.isSkipped(on: $0.date) }
+        ).filter { !isQuietDay($0.date) && !$0.isSkipped }
         rebuildAnchors()
     }
 

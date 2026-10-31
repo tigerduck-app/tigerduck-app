@@ -374,7 +374,7 @@ private struct HomeSectionView: View {
                     courses: viewModel.allCourses,
                     onSelectCourse: { slot in
                         viewModel.selectedCourseSlot = slot
-                        viewModel.selectedCourse = slot.course
+                        viewModel.selectedCourse = slot.course(in: viewModel.allCourses)
                     }
                 )
             case .upcomingAssignments:
