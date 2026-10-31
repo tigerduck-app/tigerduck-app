@@ -128,4 +128,25 @@ struct EndpointOverrideTests {
         #expect(health("http://192.168.1.5:40000/v3") == "http://192.168.1.5:40000/health")
         #expect(health("https://example.com/v3?x=1#y") == "https://example.com/health")
     }
+
+    @Test("a server is a TigerDuck backend only when /version names the /v4 base path the app calls")
+    func probeNeedsTheV4BasePath() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let session = URLSession(configuration: config)
+        let versions: [(String, EndpointHealthCheck.Result)] = [
+            (#"{"version":"3.10.1","api_base_path":"/v3"}"#, .notTigerDuck),
+            (#"{"version":"4.0.0","api_base_path":"/v3","api_v4_base_path":"/v4"}"#, .ok),
+        ]
+        for (version, result) in versions {
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let health = try #require(EndpointHealthCheck.healthURL(for: base))
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"status":"ok"}"#.utf8)), for: health)
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Data(version.utf8)), for: try #require(EndpointHealthCheck.versionURL(for: base))
+            )
+
+            #expect(await EndpointHealthCheck.probe(base, session: session) == result)
+        }
+    }
 }

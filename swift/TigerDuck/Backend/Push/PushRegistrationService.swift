@@ -426,7 +426,7 @@ actor PushRegistrationService {
             try await apiClient.unregisterDevice(deviceId: identity.uuid, at: baseURL)
             logger.info("unregistered device on server")
             return true
-        } catch PushAPIError.httpStatus(404, _, _) {
+        } catch let error as PushAPIError where error.code == "device_not_found" {
             logger.info("device already unregistered on server")
             return true
         } catch {

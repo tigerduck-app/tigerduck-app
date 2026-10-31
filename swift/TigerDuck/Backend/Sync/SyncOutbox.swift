@@ -123,14 +123,19 @@ actor SyncOutbox {
         persist()
     }
 
-    /// A course's colour or name the backend cannot place yet, 404 `course_not_found` as the upload
-    /// that adds the course has not landed, or one whose course this device cannot name, waits
-    /// parked for the next course upload.
+    /// A course's colour, name or ignore setting the backend cannot place yet, 404
+    /// `course_not_found` as the upload that adds the course has not landed, or a colour or name
+    /// whose course this device cannot name, waits parked for the next course upload.
     static func parksAtOnce(_ error: Error, for op: SyncOp) -> Bool {
-        guard case .courseOverride = op else { return false }
-        if error is CourseKeyUnknownError { return true }
-        guard case PushAPIError.httpStatus(404, _, _) = error else { return false }
-        return (error as? PushAPIError)?.code == "course_not_found"
+        switch op {
+        case .courseOverride where error is CourseKeyUnknownError:
+            return true
+        case .courseOverride, .courseIgnore:
+            guard case PushAPIError.httpStatus(404, _, _) = error else { return false }
+            return (error as? PushAPIError)?.code == "course_not_found"
+        case .assignmentOverride, .courseDelete, .courseAdd:
+            return false
+        }
     }
 
     static func keepsWithoutAttempt(_ error: Error, for op: SyncOp) -> Bool {

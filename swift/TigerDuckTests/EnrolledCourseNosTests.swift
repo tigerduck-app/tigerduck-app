@@ -326,6 +326,55 @@ struct SelectionDropsTests {
         #expect(unlisted.drop == ["EE2005301"])
     }
 
+    @Test("A pull between this device's term reset and the roster after it hides none of the term's courses")
+    @MainActor
+    func ownResetBindsNothingBeforeTheRoster() {
+        let resetMadeAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let resetLandedAt = resetMadeAt.addingTimeInterval(0.4)
+        let fetched: Set<String> = ["CS1001301", "MA1010003"]
+        let tombstones = { (kind: String, stamped: Date) -> [[String: Any]] in
+            fetched.sorted().map {
+                ["course_key": "client:1151:\($0)", "course_no": $0, "semester": "1151", "kind": kind,
+                 "hlc": PushAPI.clock(of: stamped)]
+            }
+        }
+        let read = { (tombstones: [[String: Any]], landedAt: Date?) in
+            CourseRosterReconciler.readTerm(
+                "1151", rows: [], tombstones: tombstones, selectionDropped: [], userAdded: [], hidden: [], adding: [],
+                resetLandedAt: landedAt, liveAnswer: nil,
+                courses: Self.makeCache(fetched: fetched.sorted(), userAdded: []).courses, forgetAnswer: {}
+            )
+        }
+
+        let own = read(tombstones("reset", resetMadeAt), resetLandedAt)
+        #expect(own.unlisted.hide.isEmpty)
+        #expect(own.serverHoldsNothing)
+        #expect(own.localCourses.map(\.courseNo) == fetched.sorted())
+        #expect(read(tombstones("reset", resetLandedAt.addingTimeInterval(30)), resetLandedAt).unlisted.hide == fetched)
+        #expect(read(tombstones("reset", resetMadeAt), nil).unlisted.hide == fetched)
+        #expect(read(tombstones("remove", resetMadeAt), resetLandedAt).unlisted.hide == fetched)
+    }
+
+    @Test("This device's term reset is remembered past its grace while the snapshot shows its tombstones")
+    @MainActor
+    func ownResetOutlivesItsGrace() async {
+        await withExclusiveRealDefaults {
+            let courses = Self.makeCache(fetched: [], userAdded: []).courses
+            let (owned, other) = ("own-\(UUID().uuidString)", "other-\(UUID().uuidString)")
+            let landedAt = Date()
+            courses.recordSemesterReset(owned, at: landedAt)
+            courses.recordSemesterReset(other, at: landedAt)
+
+            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), keeping: [owned])
+            let left = courses.loadSemesterResetAt()
+            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120))
+
+            #expect(left[owned] == landedAt)
+            #expect(left[other] == nil)
+            #expect(courses.loadSemesterResetAt()[owned] == nil)
+        }
+    }
+
     @Test("An empty answer records nothing and clears nothing: parser drift is not a mass drop")
     func emptyAnswerIsInert() {
         #expect(TermRoster.selectionDrops(

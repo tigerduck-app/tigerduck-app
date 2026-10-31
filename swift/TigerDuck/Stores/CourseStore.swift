@@ -142,8 +142,8 @@ final class CourseStore {
         files.recordSemesterReset(semester, at: date)
     }
 
-    func clearSemesterResets(outlivedBy fetchedAt: Date) {
-        files.clearSemesterResets(outlivedBy: fetchedAt)
+    func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = []) {
+        files.clearSemesterResets(outlivedBy: fetchedAt, keeping: owned)
     }
 
     // MARK: - Fetched courses

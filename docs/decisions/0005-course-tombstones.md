@@ -18,9 +18,11 @@ with no rows for the term and a tombstone for every course it held.
 
 - `AppState.reconcileCourses` (`swift/TigerDuck/App/AppState+CourseReconcile.swift`) applies a
   term's tombstones before anything reads the term's emptiness.
-- A reset tombstone does not bind the device that wrote it, by the backend's rule: that
-  device's next upload releases the tombstones for the keys it names. The reconcile skips a
-  tombstone whose `deleted_by_reset` and `deleted_by_this_device` are both true.
+- A reset tombstone does not bind the device that wrote it, by the backend's rule: the next
+  roster upload lifts the reset tombstones of the keys it names. `/v4` names no device on a
+  tombstone, so the reconcile skips one of kind `reset` whose `hlc`, the reset's stamp, is at or
+  before the moment this device's own reset of the term landed (`AppState.isOwnReset`), and
+  keeps that moment while the snapshot still shows such a tombstone.
 - A single-course delete of a course the school lists for the term binds its author like every
   other device: the author hides it locally, and its roster uploads leave it out.
 - A single-course delete of a hand-added course does not bind its author. From backend 3.3.6

@@ -227,6 +227,27 @@ final class CloudSyncCoordinator {
         state != .disabled || Defaults[.cloudSyncEnabled]
     }
 
+    /// Sends the colours a full sync found missing or moved, and takes the colour the backend kept
+    /// when another device's landed first, unless a colour edit was queued here since. One that
+    /// fails goes at the next full sync, which finds it missing again.
+    func sendColorFills(_ fills: [CourseColorFill]) async {
+        let signOutsBefore = signOuts
+        let editsBefore = courseOverrideEdits
+        for fill in fills {
+            guard signOuts == signOutsBefore, signOutsSettling == 0, syncsCourseOverrides("course_colors") else { return }
+            do {
+                let reply = try await pushCoordinator.patchCourseOverride(
+                    courseKey: fill.courseKey, colorHex: fill.colorHex, madeAt: fill.stamp
+                )
+                guard signOuts == signOutsBefore, !reply.applied.contains("color_hex"),
+                      lastColorEdit[fill.identity, default: 0] <= editsBefore else { continue }
+                sender.kept.colorKept(reply.colorHex, courseNo: fill.courseNo)
+            } catch {
+                logger.error("course colour fill failed: \(error.localizedDescription, privacy: .private)")
+            }
+        }
+    }
+
     @discardableResult
     func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) -> Task<Void, Never>? {
         guard takesEdits else { return nil }

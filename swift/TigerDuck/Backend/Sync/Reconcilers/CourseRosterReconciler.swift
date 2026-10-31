@@ -5,7 +5,7 @@ import TigerDuckCore
 /// The courses themselves: the newest school roster with the user's own adds and hides.
 @MainActor
 struct CourseRosterReconciler: CategoryReconciler {
-    let category = "courses"
+    static let category = "courses"
     unowned let app: AppEnvironment
 
     func reconcile(_ pass: FullSyncPass) -> Bool {
@@ -48,7 +48,10 @@ struct CourseRosterReconciler: CategoryReconciler {
         }
         let deleting = Set(app.localEdits.recentCourseDeletions.keys).union(queuedDeletes)
         let resetAt = CourseStore.shared.loadSemesterResetAt()
-        CourseStore.shared.clearSemesterResets(outlivedBy: fetchedAt)
+        let ownResets = tombstonesBySemester.filter { semester, tombstones in
+            tombstones.contains { Self.isOwnReset($0, resetLandedAt: resetAt[semester]) }
+        }
+        CourseStore.shared.clearSemesterResets(outlivedBy: fetchedAt, keeping: Set(ownResets.keys))
 
         for semester in semesters.sorted() {
             if app.localEdits.resettingSemesters.contains(semester) { continue }
@@ -56,7 +59,7 @@ struct CourseRosterReconciler: CategoryReconciler {
             let term = Self.readTerm(
                 semester, rows: rowsBySemester[semester] ?? [], tombstones: tombstonesBySemester[semester] ?? [],
                 selectionDropped: Set(selectionDropped[semester] ?? []), userAdded: userAdded, hidden: deletedNos,
-                adding: adding,
+                adding: adding, resetLandedAt: resetAt[semester],
                 liveAnswer: studentId.flatMap { CourseSelectionService.lastAnswer(studentId: $0, semester: semester) },
                 courses: .shared,
                 forgetAnswer: { if let studentId { CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId) } }
@@ -149,7 +152,7 @@ struct CourseRosterReconciler: CategoryReconciler {
     static func readTerm(
         _ semester: String, rows termRows: [[String: Any]], tombstones: [[String: Any]],
         selectionDropped: Set<String>, userAdded: [SDCourse], hidden: Set<String>, adding: Set<String>,
-        liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore, forgetAnswer: () -> Void
+        resetLandedAt: Date? = nil, liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore, forgetAnswer: () -> Void
     ) -> TermRead {
         let droppedOnServer = Self.droppedOnServer(termRows, liveAnswer: liveAnswer)
         courses.saveServerDroppedNos(droppedOnServer, semester: semester)
@@ -163,9 +166,7 @@ struct CourseRosterReconciler: CategoryReconciler {
         courses.removeCourses(droppedOnServer, semester: semester)
         if liveAnswer?.courseNos.contains(where: droppedOnServer.contains) == true { forgetAnswer() }
         let tombstoned = tombstones.compactMap { tombstone -> String? in
-            let ownReset = (tombstone["deleted_by_reset"] as? Bool ?? false)
-                && (tombstone["deleted_by_this_device"] as? Bool ?? false)
-            return ownReset ? nil : tombstone["course_no"] as? String
+            isOwnReset(tombstone, resetLandedAt: resetLandedAt) ? nil : tombstone["course_no"] as? String
         }
         let unlisted = unlistedCourses(
             in: semester, listed: serverNos, tombstoned: Set(tombstoned),
@@ -178,6 +179,16 @@ struct CourseRosterReconciler: CategoryReconciler {
             rows: rows, serverNos: serverNos, localCourses: localCourses, left: left, unlisted: unlisted,
             serverHoldsNothing: serverNos.isEmpty && Self.droppedOnServer(termRows).isEmpty
         )
+    }
+
+    /// A reset tombstone of this device's own reset of the term, which leaves every tombstone of
+    /// the term stamped with it: the stamp is at or before the moment the reset landed here
+    /// (`CourseFiles.recordSemesterReset`). It binds no course here, as the roster this device
+    /// uploads next lifts it; a later reset made elsewhere still binds.
+    nonisolated static func isOwnReset(_ tombstone: [String: Any], resetLandedAt: Date?) -> Bool {
+        guard tombstone["kind"] as? String == "reset", let resetLandedAt,
+              let hlc = (tombstone["hlc"] as? NSNumber)?.int64Value else { return false }
+        return hlc <= PushAPI.clock(of: resetLandedAt)
     }
 
     nonisolated static func unhideListedCourses(

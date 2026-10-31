@@ -7,6 +7,9 @@ struct SyncOrderTests {
     @MainActor
     private final class Released {
         var value: Bool?
+        var entered = 0
+        var order: [Int] = []
+        var pendingChecks: Set<String> = []
     }
 
     @Test("What this device derives from school data waits for the sign-in's first pull, and goes once it is applied")
@@ -50,10 +53,60 @@ struct SyncOrderTests {
         #expect(!target.hasPulled(after))
     }
 
+    @Test("Uploads held for the first pull go out in the order they came, and one that comes as they go follows them")
+    func heldUploadsGoInTheirOrder() async throws {
+        let account = AccountSession()
+        let target = SyncTarget(account: account)
+        let ticket = account.ticket
+        let released = Released()
+        func held(_ index: Int) -> Task<Void, Never> {
+            Task {
+                released.entered += 1
+                _ = await target.waitForPull(ticket)
+                released.order.append(index)
+            }
+        }
+
+        var uploads: [Task<Void, Never>] = []
+        for index in 0..<20 {
+            uploads.append(held(index))
+            try await waitUntil { released.entered == index + 1 }
+        }
+        target.notePull(ticket)
+        uploads.append(held(20))
+        for upload in uploads { await upload.value }
+
+        #expect(released.order == Array(0...20))
+    }
+
+    @Test("A full sync reads the switches and the pending checks after settling its course edits")
+    func passReadsThePolicyAfterSettling() async throws {
+        let state = Released()
+
+        let settled = try #require(await FullSyncRunner.settle(
+            ["1151|CS1"], takingCourses: true,
+            settle: { deletes in
+                state.pendingChecks.insert("assignments")
+                return deletes
+            },
+            adds: {
+                state.pendingChecks.insert("courses")
+                return ["1151|CS2"]
+            },
+            mayWrite: { true },
+            policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: ["assignments"], pendingChecks: state.pendingChecks) }
+        ))
+
+        #expect(settled.policy.pendingChecks == ["assignments", "courses"])
+        #expect(settled.deletes == ["1151|CS1"])
+        #expect(settled.adds == ["1151|CS2"])
+    }
+
     @Test("A full sync applies marks, course ignores, colours and names, holidays and then the roster")
     func categoryOrder() {
-        #expect(FullSyncRunner.order == ["assignments", "course_ignores", "course_overrides", "holidays", "courses"])
-        #expect(HolidayOverridesReconciler().category == FullSyncRunner.order[3])
+        #expect(FullSyncRunner.reconcilers.map { $0.category } == [
+            "assignments", "course_ignores", "course_overrides", "holidays", "courses",
+        ])
     }
 
     /// The files as the 3.x app wrote them, one edit of each kind, with dates in seconds since 2001.
