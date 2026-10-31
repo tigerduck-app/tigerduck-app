@@ -6,19 +6,60 @@ import SwiftUI
 @MainActor
 @Observable
 final class AppPreferences {
+    @ObservationIgnored private var hooks = Hooks()
+    private var toggles = AppDisplayToggles()
+
     /// Runs before a language change is stored, so work fetched in the old language can stop.
-    @ObservationIgnored var onLanguageChange: () -> Void = {}
+    var onLanguageChange: () -> Void {
+        get { hooks.languageChange }
+        set { hooks.languageChange = newValue }
+    }
     /// Runs after a change to how course and classroom names are shown.
-    @ObservationIgnored var onCourseLabelsChange: () -> Void = {}
+    var onCourseLabelsChange: () -> Void {
+        get { hooks.courseLabelsChange }
+        set { hooks.courseLabelsChange = newValue }
+    }
+
+    private struct Hooks {
+        var languageChange: () -> Void = {}
+        var courseLabelsChange: () -> Void = {}
+    }
 
     /// The slider's stepped binding sets the font scale on every step of a drag, up to 16 across
     /// its range; the coordinator folds those into one debounced WidgetKit reload.
     @ObservationIgnored private let widgetReloadCoordinator = WidgetReloadCoordinator()
 
-    var accentColorHex: Int = Defaults[.accentColorHex] {
-        didSet {
-            Defaults[.accentColorHex] = accentColorHex
-        }
+    var accentColorHex: Int {
+        get { toggles.accentColorHex }
+        set { toggles.accentColorHex = newValue }
+    }
+    var macMoodleOpenTarget: MoodleOpenTarget {
+        get { toggles.macMoodleOpenTarget }
+        set { toggles.macMoodleOpenTarget = newValue }
+    }
+    var invertSliderDirection: Bool {
+        get { toggles.invertSliderDirection }
+        set { toggles.invertSliderDirection = newValue }
+    }
+    var showAbsoluteAssignmentTime: Bool {
+        get { toggles.showAbsoluteAssignmentTime }
+        set { toggles.showAbsoluteAssignmentTime = newValue }
+    }
+    var alwaysShowAllPeriods: Bool {
+        get { toggles.alwaysShowAllPeriods }
+        set { toggles.alwaysShowAllPeriods = newValue }
+    }
+    var showClassroomInClassTable: Bool {
+        get { toggles.showClassroomInClassTable }
+        set { toggles.showClassroomInClassTable = newValue }
+    }
+    var flipToLibraryEnabled: Bool {
+        get { toggles.flipToLibraryEnabled }
+        set { toggles.flipToLibraryEnabled = newValue }
+    }
+    var visualPreset: VisualPreset {
+        get { toggles.visualPreset }
+        set { toggles.visualPreset = newValue }
     }
 
     static let themeColors: [(nameKey: String, hex: Int)] = [
@@ -31,32 +72,6 @@ final class AppPreferences {
         ("color_name_cyan", 0x5AC8FA),
     ]
 
-    /// Mac only: where the "open in Moodle" actions route to. The iPad Moodle app installed from
-    /// the Mac App Store registers `moodlemobile://` too, so its users can choose the deep link.
-    var macMoodleOpenTarget: MoodleOpenTarget = Defaults[.macMoodleOpenTarget] {
-        didSet { Defaults[.macMoodleOpenTarget] = macMoodleOpenTarget }
-    }
-
-    var invertSliderDirection: Bool = Defaults[.invertSliderDirection] {
-        didSet { Defaults[.invertSliderDirection] = invertSliderDirection }
-    }
-
-    var showAbsoluteAssignmentTime: Bool = Defaults[.showAbsoluteAssignmentTime] {
-        didSet { Defaults[.showAbsoluteAssignmentTime] = showAbsoluteAssignmentTime }
-    }
-
-    var alwaysShowAllPeriods: Bool = Defaults[.alwaysShowAllPeriods] {
-        didSet { Defaults[.alwaysShowAllPeriods] = alwaysShowAllPeriods }
-    }
-
-    var showClassroomInClassTable: Bool = Defaults[.showClassroomInClassTable] {
-        didSet { Defaults[.showClassroomInClassTable] = showClassroomInClassTable }
-    }
-
-    var flipToLibraryEnabled: Bool = Defaults[.flipToLibraryEnabled] {
-        didSet { Defaults[.flipToLibraryEnabled] = flipToLibraryEnabled }
-    }
-
     var courseCardFontScale: Double = CourseCardFontScaleStore().read() {
         didSet {
             let newSnapped = CourseCardFontScale.normalize(courseCardFontScale)
@@ -68,10 +83,6 @@ final class AppPreferences {
                 coordinator.requestReload()
             }
         }
-    }
-
-    var visualPreset: VisualPreset = Defaults[.visualPreset] {
-        didSet { Defaults[.visualPreset] = visualPreset }
     }
 
     var appLanguage: String = Defaults[.appLanguage] {

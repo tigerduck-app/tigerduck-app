@@ -14,29 +14,29 @@ final class AppEnvironment {
     let router = AppRouter()
     let library = LibraryAccountStatus()
     let authService: AuthService
-    let authTokenManager: AuthTokenManager
-    let pushCoordinator: PushCoordinator
-    let cloudSyncCoordinator: CloudSyncCoordinator
-    let cloudSyncPreference = CloudSyncPreference()
     let updateNotifyCoordinator = UpdateNotifyCoordinator()
+    @ObservationIgnored let backend: AppBackend
+    @ObservationIgnored private(set) var sync: AppSyncParts!
 
-    @ObservationIgnored let syncTarget: SyncTarget
-    @ObservationIgnored let localEdits: LocalEdits
-    @ObservationIgnored let poller: RevisionPoller
-    @ObservationIgnored let edits: EditSender
-    @ObservationIgnored let uploads: SchoolDataUploader
-    @ObservationIgnored let holidays: HolidaySettingSender
-    @ObservationIgnored let relabeler = CourseRelabeler()
-    @ObservationIgnored private(set) lazy var feed = ChangeFeedPull(app: self)
-    @ObservationIgnored private(set) lazy var fullSync = FullSyncRunner(app: self)
-    @ObservationIgnored private(set) lazy var conflicts = SyncConflicts(app: self)
-    @ObservationIgnored private(set) lazy var pushSchedule = PushScheduleSync(app: self)
-    @ObservationIgnored private(set) lazy var activation = SceneActivation(app: self)
+    var authTokenManager: AuthTokenManager { backend.authTokenManager }
+    var pushCoordinator: PushCoordinator { backend.pushCoordinator }
+    var cloudSyncCoordinator: CloudSyncCoordinator { backend.cloudSyncCoordinator }
+    var cloudSyncPreference: CloudSyncPreference { backend.cloudSyncPreference }
+    var syncTarget: SyncTarget { backend.syncTarget }
+    var localEdits: LocalEdits { backend.localEdits }
+    var poller: RevisionPoller { backend.poller }
+    var edits: EditSender { backend.edits }
+    var uploads: SchoolDataUploader { backend.uploads }
+    var holidays: HolidaySettingSender { backend.holidays }
+    var relabeler: CourseRelabeler { backend.relabeler }
+    var feed: ChangeFeedPull { sync.feed }
+    var fullSync: FullSyncRunner { sync.fullSync }
+    var conflicts: SyncConflicts { sync.conflicts }
+    var pushSchedule: PushScheduleSync { sync.pushSchedule }
+    var activation: SceneActivation { sync.activation }
     #if os(iOS)
-    @ObservationIgnored private(set) lazy var liveActivity = LiveActivityRefresher(app: self)
-    @ObservationIgnored private(set) lazy var notificationSettings = NotificationSettingsSyncer(
-        authTokenManager: authTokenManager, preferences: liveActivity.preferences
-    )
+    var liveActivity: LiveActivityRefresher { sync.liveActivity }
+    var notificationSettings: NotificationSettingsSyncer { sync.notificationSettings }
     #endif
 
     var cloudSyncEnabled: Bool {
@@ -56,27 +56,18 @@ final class AppEnvironment {
         self.authService = authService
         let identity = PushIdentity.loadOrCreate()
         let atm = AuthTokenManager(deviceUUID: identity.uuid)
-        authTokenManager = atm
         let pushCoordinator = PushCoordinator(identity: identity, authTokenManager: atm)
-        self.pushCoordinator = pushCoordinator
         let cloudSync = CloudSyncCoordinator(
             pushCoordinator: pushCoordinator,
             addedCourseUpload: { SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1) },
             uploadsCourses: { SyncPolicy.current.uploadsCourses },
             account: authService.session
         )
-        cloudSyncCoordinator = cloudSync
         CloudSyncCoordinator.registerShared(cloudSync)
         preferences = AppPreferences()
-        let poller = RevisionPoller()
-        self.poller = poller
-        let syncTarget = SyncTarget(account: authService.session)
-        self.syncTarget = syncTarget
-        let localEdits = LocalEdits(account: authService.session)
-        self.localEdits = localEdits
-        edits = EditSender(coordinator: cloudSync, push: pushCoordinator, poller: poller, localEdits: localEdits)
-        uploads = SchoolDataUploader(account: authService.session, target: syncTarget, backend: pushCoordinator)
-        holidays = HolidaySettingSender(account: authService.session, push: pushCoordinator, poller: poller)
+        backend = AppBackend(authTokenManager: atm, pushCoordinator: pushCoordinator, cloudSync: cloudSync,
+                             account: authService.session)
+        sync = AppSyncParts(app: self)
 
         #if os(iOS)
         if isFreshInstall {
@@ -130,7 +121,7 @@ final class AppEnvironment {
             guard let self else { return }
             await SignOutPlan.school(self).run()?.value
         }
-        authService.forgetPages = { await AuthService.forgetSchoolPages() }
+        authService.forgetPages = { await AccountSignOutCleanup.forgetSchoolPages() }
 
         cloudSyncPreference.onChange { [weak self] enabled in
             self?.cloudSyncEnabledDidChange(to: enabled)
