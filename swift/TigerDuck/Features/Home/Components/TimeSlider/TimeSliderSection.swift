@@ -2,10 +2,10 @@ import SwiftUI
 import TigerDuckCore
 
 struct TimeSliderSection: View {
-    let courses: [SDCourse]
+    let courses: [CourseStore.Course]
     var onSelectCourse: ((CourseTimeSlot) -> Void)? = nil
     @Environment(AppEnvironment.self) private var app
-    @State private var viewModel = TimeSliderViewModel(calendarStore: .shared)
+    @State private var viewModel = TimeSliderViewModel(isQuietDay: { !SchoolCalendar.isClassDay($0) })
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {

@@ -1,0 +1,25 @@
+import Foundation
+
+/// One course's details beyond the class table: its syllabus, the school's meeting codes and
+/// its Moodle course.
+enum CourseLookup {
+    typealias Syllabus = CourseSyllabus
+
+    static func syllabus(semester: String, courseNo: String, language: String) async throws -> Syllabus? {
+        try await CourseLookupService.syllabus(semester: semester, courseNo: courseNo, language: language)
+    }
+
+    /// The weekdays and periods of a catalog row's meeting codes.
+    nonisolated static func schedule(of node: String?) -> [Int: [String]] {
+        CourseLookupService.parseNodeToSchedule(node)
+    }
+
+    static func moodleCourseId(idnumber: String) -> Int? {
+        MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber)
+    }
+
+    /// Every Moodle course id stored, by its Moodle id number.
+    static func moodleCourseIds() -> [String: Int] {
+        MoodleFiles.shared.loadMoodleCourseIdMap()
+    }
+}

@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import Vision
 import TigerDuckCore
 
 @Observable
@@ -31,12 +30,7 @@ final class ClassTableImportModel: Identifiable {
         let code: ClassTableShareCode
     }
 
-    struct Row: Equatable {
-        let title: String
-        let value: String
-    }
-
-    typealias CourseLookup = (_ semester: String, _ courseNos: [String]) async throws -> [SDCourse]
+    typealias CourseLookup = (_ semester: String, _ courseNos: [String]) async throws -> [CourseStore.Course]
 
     var prompt: Prompt?
     private(set) var pending: Pending?
@@ -48,10 +42,15 @@ final class ClassTableImportModel: Identifiable {
     @ObservationIgnored private var imageTask: Task<Void, Never>?
     private(set) var linkTask: Task<Void, Never>?
 
-    private let store: ImportedClassTableStore
-    private let signedInStudentId: () -> String?
-    private let isCurrent: () -> Bool
-    private let lookup: CourseLookup
+    private let account: Account
+
+    /// Where an import is saved, whose sign-in it runs under, and how it looks courses up.
+    private struct Account {
+        let store: ImportedClassTableStore
+        let signedInStudentId: () -> String?
+        let isCurrent: () -> Bool
+        let lookup: CourseLookup
+    }
 
     init(
         store: ImportedClassTableStore,
@@ -59,10 +58,7 @@ final class ClassTableImportModel: Identifiable {
         isCurrent: @escaping () -> Bool,
         lookup: @escaping CourseLookup
     ) {
-        self.store = store
-        self.signedInStudentId = signedInStudentId
-        self.isCurrent = isCurrent
-        self.lookup = lookup
+        account = Account(store: store, signedInStudentId: signedInStudentId, isCurrent: isCurrent, lookup: lookup)
     }
 
     static func live(authService: AuthService) -> ClassTableImportModel {
@@ -70,7 +66,7 @@ final class ClassTableImportModel: Identifiable {
             store: .shared,
             signedInStudentId: { authService.storedStudentId },
             isCurrent: authService.session.currentCheck(),
-            lookup: { try await CourseDetails.importedCourses(semester: $0, courseNos: $1) }
+            lookup: { try await SchoolRefresh.importedCourses(semester: $0, courseNos: $1) }
         )
     }
 
@@ -88,7 +84,7 @@ final class ClassTableImportModel: Identifiable {
     @discardableResult
     func scanned(_ text: String) -> Bool {
         guard isIdle else { return false }
-        switch Self.reading(text) {
+        switch ShareCodeReading(text) {
         case .notShareCode: return false
         case .invalid: prompt = .invalid
         case .needsUpdate: prompt = .needsUpdate
@@ -123,7 +119,7 @@ final class ClassTableImportModel: Identifiable {
 
     func imageRead(_ payloads: [String]) {
         guard isIdle else { return }
-        let readings = payloads.map { Self.reading($0) }
+        let readings = payloads.map { ShareCodeReading($0) }
         if let code = readings.lazy.compactMap(\.code).first {
             open(code)
         } else if readings.contains(.needsUpdate) {
@@ -143,14 +139,14 @@ final class ClassTableImportModel: Identifiable {
             guard !Task.isCancelled else { return }
             let payloads: [String]
             if let data {
-                payloads = await Task.detached { Self.qrPayloads(in: data) }.value
+                payloads = await Task.detached { ShareCodeReading.qrPayloads(in: data) }.value
             } else {
                 payloads = []
             }
             guard !Task.isCancelled else { return }
             isReadingImage = false
             imageTask = nil
-            guard isCurrent() else {
+            guard account.isCurrent() else {
                 isFinished = true
                 return
             }
@@ -166,42 +162,17 @@ final class ClassTableImportModel: Identifiable {
 
     func readImage(fileAt url: URL) async {
         await readImage(load: {
-            await Task.detached { () -> Data? in
-                let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                do {
-                    return try Data(contentsOf: url)
-                } catch {
-                    AppLogger.captureError(error, context: ["phase": "classTableImport.readFile"])
-                    return nil
-                }
-            }.value
+            await ShareCodeReading.data(fileAt: url)
         })?.value
-    }
-
-    nonisolated static func qrPayloads(in data: Data) -> [String] {
-        let request = VNDetectBarcodesRequest()
-        request.symbologies = [.qr]
-        #if targetEnvironment(simulator)
-        // The simulator cannot create the inference context the later revisions run in.
-        request.revision = 1
-        #endif
-        do {
-            try VNImageRequestHandler(data: data).perform([request])
-        } catch {
-            AppLogger.captureError(error, context: ["phase": "classTableImport.detectBarcodes"])
-            return []
-        }
-        return request.results?.compactMap(\.payloadStringValue) ?? []
     }
 
     private func open(_ code: ClassTableShareCode) {
         if let studentId = code.studentId {
-            if studentId == signedInStudentId()?.uppercased() {
+            if studentId == account.signedInStudentId()?.uppercased() {
                 prompt = .ownCode
                 return
             }
-            if let person = store.person(withStudentId: studentId) {
+            if let person = account.store.person(withStudentId: studentId) {
                 prompt = .replace(Job(code: code, nickname: person.nickname, updatesImport: person.importedAt))
                 return
             }
@@ -223,7 +194,7 @@ final class ClassTableImportModel: Identifiable {
             let courses = await courses(for: job.code)
             guard !Task.isCancelled else { return }
             isLookingUp = false
-            guard isCurrent() else {
+            guard account.isCurrent() else {
                 isFinished = true
                 return
             }
@@ -233,27 +204,27 @@ final class ClassTableImportModel: Identifiable {
             }
             var nickname = job.nickname
             if let importedAt = job.updatesImport {
-                guard let current = store.person(withStudentId: job.code.studentId ?? ""),
+                guard let current = account.store.person(withStudentId: job.code.studentId ?? ""),
                       current.importedAt == importedAt else {
                     isFinished = true
                     return
                 }
                 nickname = current.nickname
             }
-            guard let person = store.add(job.code, nickname: nickname, courses: courses) else {
+            guard let person = account.store.add(job.code, nickname: nickname, courses: courses) else {
                 prompt = .saveFailed(job)
                 return
             }
-            store.show(person.id)
+            account.store.show(person.id)
             isFinished = true
         }
     }
 
-    private func courses(for code: ClassTableShareCode) async -> [String: [SDCourse]]? {
+    private func courses(for code: ClassTableShareCode) async -> [String: [CourseStore.Course]]? {
         do {
-            var courses: [String: [SDCourse]] = [:]
+            var courses: [String: [CourseStore.Course]] = [:]
             for term in code.terms {
-                courses[term.semester] = try await lookup(term.semester, term.courseNos)
+                courses[term.semester] = try await account.lookup(term.semester, term.courseNos)
             }
             return courses
         } catch {
@@ -285,55 +256,7 @@ final class ClassTableImportModel: Identifiable {
         prompt = nil
     }
 
-    static func rows(for code: ClassTableShareCode) -> [Row] {
-        var rows: [Row] = []
-        if let studentId = code.studentId {
-            rows.append(Row(title: String(localized: "sign_in_student_id"), value: studentId))
-        }
-        rows.append(Row(
-            title: String(localized: "class_table_semester_picker_label"),
-            value: ListFormatter.localizedString(byJoining: code.terms.map { semesterLabel($0.semester) })
-        ))
-        rows.append(Row(
-            title: String(localized: "class_table_import_course_count"),
-            value: code.terms.reduce(0) { $0 + $1.courseNos.count }.formatted()
-        ))
-        if let sharedAt = code.sharedAt {
-            rows.append(Row(
-                title: String(localized: "class_table_import_shared_at"),
-                value: sharedAt.formatted(date: .numeric, time: .shortened)
-            ))
-        }
-        return rows
-    }
 
-    nonisolated static func semesterLabel(_ semester: String) -> String {
-        AcademicTerm.label(of: semester)
-    }
-
-    private enum Reading: Equatable {
-        case notShareCode
-        case invalid
-        case needsUpdate
-        case code(ClassTableShareCode)
-
-        var code: ClassTableShareCode? {
-            if case .code(let code) = self { code } else { nil }
-        }
-    }
-
-    private static func reading(_ text: String) -> Reading {
-        do {
-            return .code(try ClassTableShareCode.decode(text))
-        } catch ClassTableShareCodeError.unknownPrefix {
-            return .notShareCode
-        } catch ClassTableShareCodeError.unknownVersion, ClassTableShareCodeError.unknownType {
-            return .needsUpdate
-        } catch {
-            AppLogger.breadcrumb("share code refused: \(error)", category: "classTableImport")
-            return .invalid
-        }
-    }
 }
 
 extension ClassTableImportModel.Prompt {

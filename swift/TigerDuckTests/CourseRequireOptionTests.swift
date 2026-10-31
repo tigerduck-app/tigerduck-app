@@ -60,10 +60,10 @@ struct CourseRequireOptionTests {
     }
 
     @Test func theDetailRowNamesOnlyRequiredAndElective() {
-        #expect(CourseDetailSheet.requireOptionText("R") == String(localized: "course_detail_require_option_required"))
-        #expect(CourseDetailSheet.requireOptionText("e") == String(localized: "course_detail_require_option_elective"))
-        #expect(CourseDetailSheet.requireOptionText("") == nil)
-        #expect(CourseDetailSheet.requireOptionText("X") == nil)
+        #expect(CourseDetailInfoRows.requireOptionText("R") == String(localized: "course_detail_require_option_required"))
+        #expect(CourseDetailInfoRows.requireOptionText("e") == String(localized: "course_detail_require_option_elective"))
+        #expect(CourseDetailInfoRows.requireOptionText("") == nil)
+        #expect(CourseDetailInfoRows.requireOptionText("X") == nil)
     }
 
     @Test func requiredCoursesAreNotOutlinedUntilTheUserTurnsItOn() {

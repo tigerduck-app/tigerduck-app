@@ -208,13 +208,13 @@ struct ClassTableIgnoredCourseTests {
     @Test("Only the term on show marks its ignored courses")
     func markFollowsTheTermOnShow() {
         let viewModel = ClassTableViewModel()
-        viewModel.ignoredAssignmentCourses = [
+        viewModel.editor.ignoredAssignmentCourses = [
             CourseTombstone.key(semester: viewModel.currentSemester, courseNo: "CS1"),
             CourseTombstone.key(semester: "1001", courseNo: "EE2"),
         ]
 
-        #expect(viewModel.ignoresAssignments(of: "CS1"))
-        #expect(!viewModel.ignoresAssignments(of: "EE2"))
+        #expect(viewModel.editor.ignoresAssignments(of: "CS1"))
+        #expect(!viewModel.editor.ignoresAssignments(of: "EE2"))
     }
 
     @Test("Only the term assignments are fetched for offers the long-press items")
@@ -224,10 +224,10 @@ struct ClassTableIgnoredCourseTests {
         let viewModel = ClassTableViewModel()
 
         viewModel.currentSemester = CourseSelectionService.currentSemesterCode()
-        #expect(viewModel.offersIgnoreAssignments)
+        #expect(viewModel.editor.offersIgnoreAssignments)
 
         viewModel.currentSemester = "1001"
-        #expect(!viewModel.offersIgnoreAssignments)
+        #expect(!viewModel.editor.offersIgnoreAssignments)
     }
 }
 

@@ -785,7 +785,7 @@ struct MoodleCourseStoreTests {
     func summaryOfACoListedCourse() async {
         let folder = Folder()
         let idMap = ["1141CS3105301": Self.courseId, "1141EE3105301": Self.courseId, "1141CS1000301": 20103]
-        let codes = CourseDetailSheet.moodleCourseCodes(
+        let codes = CourseMoodleDestination.courseCodes(
             idnumber: "1141EE3105301", courseNo: "EE3105301", courseId: Self.courseId, idMap: idMap
         )
         #expect(!codes.contains("1141CS1000301"))

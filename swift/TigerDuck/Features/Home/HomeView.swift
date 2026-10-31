@@ -19,8 +19,8 @@ struct HomeView: View {
 
     private var visibleSections: [HomeSection] {
         _ = termTicker.tick
-        guard !AcademicCalendarStore.shared.calendar.isInSession() else { return viewModel.sections }
-        return viewModel.sections.filter { $0.type != .todayCourses }
+        guard !SchoolCalendar.isInSession() else { return viewModel.layout.sections }
+        return viewModel.layout.sections.filter { $0.type != .todayCourses }
     }
 
     var body: some View {
@@ -54,19 +54,11 @@ struct HomeView: View {
                 .presentationDetents([.medium])
         }
         .notImplementedAlert(isPresented: $showNotImplementedAlert)
-        .alert(
-            String(localized: "sync_conflict_title"),
-            isPresented: SyncConflicts.syncConflictAlertIsPresented(Bindable(app.conflicts).syncConflicts)
-        ) {
-            Button(String(localized: "sync_conflict_use_server")) { app.conflicts.resolveSyncConflicts(keepLocal: false) }
-            Button(String(localized: "sync_conflict_use_local")) { app.conflicts.resolveSyncConflicts(keepLocal: true) }
-        } message: {
-            Text(app.conflicts.syncConflictAlertMessage)
-        }
+        .syncConflictAlert(app)
         .navigationDestination(item: $selectedFeature) { feature in
-            homeDestination(for: feature)
+            HomeFeatureDestination(feature: feature)
         }
-        .navigationDestination(item: $viewModel.shownAssignment) { page in
+        .navigationDestination(item: $viewModel.sheets.shownAssignment) { page in
             MoodleAssignmentView(
                 store: page.store, entry: page.entry, courseName: page.courseName,
                 policy: app.preferences.visualStylePolicy, accent: app.preferences.accentColor
@@ -74,7 +66,7 @@ struct HomeView: View {
             .moodleLinkOpening()
         }
         .onChange(of: app.authService.session.ticket) {
-            viewModel.closeAssignment()
+            viewModel.sheets.closeAssignment()
         }
         .onChange(of: app.router.pendingDeepLink, initial: true) { _, link in
             guard case .assignment(let id) = link else { return }
@@ -82,11 +74,11 @@ struct HomeView: View {
             guard let assignment = AssignmentStore.shared.loadAssignments().first(where: { $0.assignmentId == id }) else { return }
             hostWindow.closePresentations { closedAll in openAssignment(assignment, closingSheet: closedAll) }
         }
-        .sheet(item: $viewModel.selectedCourse, onDismiss: viewModel.courseSheetDismissed) { course in
-            let slot = viewModel.selectedCourseSlot
+        .sheet(item: $viewModel.sheets.selectedCourse, onDismiss: { viewModel.sheets.courseSheetDismissed() }) { course in
+            let slot = viewModel.sheets.selectedCourseSlot
             CourseDetailSheet(
                 course: course,
-                assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
+                assignments: viewModel.assignments.unfinished(for: course.courseNo),
                 timeRange: slot.map { "\($0.start.timeString) - \($0.end.timeString)" },
                 weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday,
                 periods: slot?.periods,
@@ -94,7 +86,7 @@ struct HomeView: View {
                 slot: slot
             )
             .linkRouting()
-            .onDisappear { viewModel.selectedCourseSlot = nil }
+            .onDisappear { viewModel.sheets.selectedCourseSlot = nil }
         }
         // Leaving Home, by tab, by push or by going to the background, ends editing as Done does.
         .onDisappear { setEditing(false, keepingPlace: false) }
@@ -112,7 +104,20 @@ struct HomeView: View {
                 editingPage
                     .onAppear { restoreScroll(proxy) }
             } else {
-                sectionList
+                HomeBrowsePage(
+                    viewModel: viewModel,
+                    sections: visibleSections,
+                    scrollAnchor: scrollAnchor,
+                    onEdit: { setEditing(true) },
+                    onFeatureTap: { feature in
+                        if feature.isImplemented {
+                            selectedFeature = feature
+                        } else {
+                            showNotImplementedAlert = true
+                        }
+                    },
+                    onOpenAssignment: { openAssignment($0) }
+                )
                     .onAppear { restoreScroll(proxy) }
             }
         }
@@ -120,49 +125,8 @@ struct HomeView: View {
 
     private var editingPage: some View {
         HomeEditPage(viewModel: viewModel, sections: visibleSections, scrollAnchor: scrollAnchor) {
-            titleBar(showsControls: false)
+            HomeTitleBar(showsControls: false) { setEditing(true) }
                 .padding(.top, TigerDuckTheme.Spacing.md)
-        }
-    }
-
-    private var sectionList: some View {
-        List {
-            titleBar()
-                .homeListRow(top: TigerDuckTheme.Spacing.md)
-
-            if let reauthError = app.authService.reauthErrorMessage {
-                reauthBanner(reauthError)
-                    .homeListRow(top: TigerDuckTheme.Spacing.lg)
-            }
-
-            ForEach(visibleSections) { section in
-                if section.type == .upcomingAssignments {
-                    homeSection(section, asListRows: true)
-                } else {
-                    homeSection(section)
-                        .homeScrollAnchor(section.id, in: scrollAnchor)
-                        .homeListRow(top: TigerDuckTheme.Spacing.lg)
-                }
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .environment(\.defaultMinListRowHeight, 0)
-        .contentMargins(.bottom, TigerDuckTheme.Spacing.xxl, for: .scrollContent)
-        .homeScrollTop(in: scrollAnchor)
-        .animation(
-            UpcomingAssignmentsView.listChangeAnimation,
-            value: viewModel.upcomingAssignments.map(\.assignmentId)
-        )
-        .refreshable {
-            // Fire-and-forget so the UIRefreshControl spinner dismisses on release.
-            // `triggerRefresh` coalesces repeated pulls into one in-flight fetch, and
-            // the top-right SyncStatusDot shows its status.
-            viewModel.triggerRefresh(authService: app.authService)
-            Task { await CourseChangeStore.shared.refresh() }
-            if Defaults[.cloudSyncEnabled] {
-                Task { await app.fullSync.sync() }
-            }
         }
     }
 
@@ -182,75 +146,11 @@ struct HomeView: View {
         DispatchQueue.main.async { proxy.scrollTo(target, anchor: .top) }
     }
 
-    private func reauthBanner(_ message: String) -> some View {
-        NTUSTReauthErrorBanner(
-            message: message,
-            onRetry: {
-                app.authService.clearReauthError()
-                app.router.presentNTUSTLogin()
-            },
-            onDismiss: { app.authService.clearReauthError() }
-        )
-    }
-
-    /// The edit page keeps the controls' space but hides them. The menu reads as an edit control,
-    /// and the edit page's bar sits a navigation bar lower, below Done, so with a dot on both
-    /// pages the cross-fade between them would show two.
-    private func titleBar(showsControls: Bool = true) -> some View {
-        HStack {
-            Text(AppClock.now().greetingText())
-                .font(TigerDuckTheme.Typography.title)
-                .foregroundStyle(Color.textPrimary)
-            Spacer()
-            let controls = HStack(spacing: TigerDuckTheme.Spacing.lg) {
-                SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
-                HeaderMenuButton(accessibilityLabel: String(localized: "home_more_actions")) {
-                    Button { setEditing(true) } label: {
-                        Label(String(localized: "home_edit"), systemImage: "pencil")
-                    }
-                }
-            }
-            if showsControls { controls } else { controls.hidden() }
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-    }
-
-    private func homeSection(_ section: HomeSection, asListRows: Bool = false) -> some View {
-        HomeSectionView(
-            section: section,
-            viewModel: viewModel,
-            app: app,
-            asListRows: asListRows,
-            scrollAnchor: scrollAnchor,
-            onFeatureTap: { feature in
-                if feature.isImplemented {
-                    selectedFeature = feature
-                } else {
-                    showNotImplementedAlert = true
-                }
-            },
-            onOpenAssignment: { openAssignment($0) }
-        )
-    }
-
-    @ViewBuilder
-    private func homeDestination(for feature: AppFeature) -> some View {
-        switch feature {
-        case .announcements: BulletinsView(embedded: true)
-        case .classTable: ClassTableView(embedded: true)
-        case .calendar: CalendarTabView(embedded: true)
-        case .library: LibraryView(embedded: true)
-        case .gpa: ScoreView(embedded: true)
-        case .emptyClassroom: EmptyClassroomView(embedded: true)
-        default: PlaceholderFeatureView(feature: feature)
-        }
-    }
-
-    private func openAssignment(_ assignment: SDAssignment, closingSheet: Bool = true) {
+    private func openAssignment(_ assignment: AssignmentStore.Assignment, closingSheet: Bool = true) {
         if let context = MoodleCacheContext.signedIn(app.authService),
            let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context),
            let entry = store.assignments.entry(for: assignment) {
-            viewModel.show(
+            viewModel.sheets.show(
                 MoodleAssignmentPage(entry: entry, store: store, courseName: assignment.displayCourseName),
                 closingSheet: closingSheet
             )
@@ -258,159 +158,5 @@ struct HomeView: View {
             let web = assignment.moodleWebURL
             Task { await openURL(url, fallback: web) }
         }
-    }
-}
-
-private struct HomeSectionView: View {
-    let section: HomeSection
-    let viewModel: HomeViewModel
-    let app: AppEnvironment
-    var asListRows = false
-    let scrollAnchor: HomeScrollAnchor
-    var onFeatureTap: ((AppFeature) -> Void)? = nil
-    var onOpenAssignment: (SDAssignment) -> Void = { _ in }
-
-    private var filterPicker: some View {
-        Picker("", selection: Bindable(viewModel).assignmentFilter) {
-            ForEach(viewModel.availableAssignmentFilters, id: \.self) { filter in
-                Text(filter.displayName).tag(filter)
-            }
-        }
-        .pickerStyle(.segmented)
-        .padding(.horizontal)
-    }
-
-    private var assignmentAccess: NTUSTProtectedAccessState {
-        NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: viewModel.upcomingAssignments.isEmpty)
-    }
-
-    @ViewBuilder
-    private var assignmentPlaceholder: some View {
-        if assignmentAccess == .loginRequired {
-            LoginRequiredView(
-                layout: .section,
-                title: String(localized: "common_not_signed_in"),
-                message: String(localized: "home_assignments_sign_in_required_message"),
-                onPrimary: { app.router.presentNTUSTLogin() }
-            )
-        } else {
-            EmptyStateView(
-                icon: "checkmark.circle",
-                title: String(localized: "home_assignments_all_good"),
-                message: assignmentEmptyMessage
-            )
-        }
-    }
-
-    private var assignmentList: some View {
-        UpcomingAssignmentsView(
-            assignments: viewModel.upcomingAssignments,
-            courses: viewModel.allCourses,
-            filter: viewModel.assignmentFilter,
-            showAbsoluteTime: app.preferences.showAbsoluteAssignmentTime,
-            asListRows: asListRows,
-            scrollAnchor: scrollAnchor,
-            scrollSectionID: section.id,
-            onArchive: {
-                viewModel.archiveAssignment($0)
-                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "archived")
-            },
-            onMarkComplete: {
-                viewModel.markAssignmentAsLocallyCompleted($0)
-                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "locally_completed")
-            },
-            onUnarchive: {
-                viewModel.unarchiveAssignment($0)
-                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
-            },
-            onUndoComplete: {
-                viewModel.undoLocallyCompleted($0)
-                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
-            },
-            onOpen: onOpenAssignment
-        )
-    }
-
-    private var assignmentEmptyMessage: String {
-        switch viewModel.assignmentFilter {
-        case .incomplete:
-            return String(localized: "home_assignments_none_incomplete")
-        case .all:
-            return String(localized: "home_assignments_none")
-        case .ignored:
-            return String(localized: "home_assignments_no_ignored")
-        }
-    }
-
-    var body: some View {
-        if asListRows {
-            SectionHeader(title: section.title)
-                .homeScrollAnchor(section.id, in: scrollAnchor)
-                .homeListRow(top: TigerDuckTheme.Spacing.lg)
-            filterPicker
-                .homeScrollRow(section.id, in: scrollAnchor)
-                .homeListRow(top: TigerDuckTheme.Spacing.sm)
-            if assignmentAccess == .content {
-                assignmentList
-            } else {
-                assignmentPlaceholder
-                    .homeScrollRow(section.id, in: scrollAnchor)
-                    .homeListRow(top: TigerDuckTheme.Spacing.sm)
-            }
-        } else {
-            stackedBody
-        }
-    }
-
-    private var stackedBody: some View {
-        VStack(spacing: TigerDuckTheme.Spacing.sm) {
-            if section.type != .todayCourses {
-                SectionHeader(title: section.title)
-            }
-
-            switch section.type {
-            case .todayCourses:
-                TimeSliderSection(
-                    courses: viewModel.allCourses,
-                    onSelectCourse: { slot in
-                        viewModel.selectedCourseSlot = slot
-                        viewModel.selectedCourse = slot.course(in: viewModel.allCourses)
-                    }
-                )
-            case .upcomingAssignments:
-                filterPicker
-                if assignmentAccess == .content {
-                    assignmentList
-                } else {
-                    assignmentPlaceholder
-                }
-            case .quickWidgets, .custom:
-                WidgetGridView(
-                    widgets: Binding(
-                        get: {
-                            viewModel.sections.first(where: { $0.id == section.id })?.widgets ?? []
-                        },
-                        set: { newWidgets in
-                            if let idx = viewModel.sections.firstIndex(where: { $0.id == section.id }) {
-                                viewModel.sections[idx].widgets = newWidgets
-                            }
-                        }
-                    ),
-                    isEditing: false,
-                    dragContainerID: section.id,
-                    onTap: { feature in
-                        onFeatureTap?(feature)
-                    }
-                )
-            }
-        }
-    }
-}
-
-extension View {
-    func homeListRow(top: CGFloat, bottom: CGFloat = 0, horizontal: CGFloat = 0) -> some View {
-        listRowInsets(EdgeInsets(top: top, leading: horizontal, bottom: bottom, trailing: horizontal))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
     }
 }

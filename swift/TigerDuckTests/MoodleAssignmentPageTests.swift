@@ -357,24 +357,24 @@ struct MoodleAssignmentPageTests {
         )
         let viewModel = HomeViewModel()
 
-        viewModel.show(page)
-        #expect(viewModel.shownAssignment == page)
+        viewModel.sheets.show(page)
+        #expect(viewModel.sheets.shownAssignment == page)
 
-        viewModel.closeAssignment()
-        viewModel.selectedCourse = SDCourse(courseNo: "CS3105301", courseName: "Data Structures")
-        viewModel.show(page)
-        #expect(viewModel.selectedCourse == nil)
-        #expect(viewModel.shownAssignment == nil)
+        viewModel.sheets.closeAssignment()
+        viewModel.sheets.selectedCourse = SDCourse(courseNo: "CS3105301", courseName: "Data Structures")
+        viewModel.sheets.show(page)
+        #expect(viewModel.sheets.selectedCourse == nil)
+        #expect(viewModel.sheets.shownAssignment == nil)
 
-        viewModel.courseSheetDismissed()
-        #expect(viewModel.shownAssignment == page)
+        viewModel.sheets.courseSheetDismissed()
+        #expect(viewModel.sheets.shownAssignment == page)
 
-        viewModel.closeAssignment()
-        viewModel.selectedCourse = SDCourse(courseNo: "CS3105301", courseName: "Data Structures")
-        viewModel.show(page)
-        viewModel.closeAssignment()
-        viewModel.courseSheetDismissed()
-        #expect(viewModel.shownAssignment == nil)
+        viewModel.sheets.closeAssignment()
+        viewModel.sheets.selectedCourse = SDCourse(courseNo: "CS3105301", courseName: "Data Structures")
+        viewModel.sheets.show(page)
+        viewModel.sheets.closeAssignment()
+        viewModel.sheets.courseSheetDismissed()
+        #expect(viewModel.sheets.shownAssignment == nil)
     }
 
     @Test("with a sheet over the course sheet that refused to close, the page goes in behind and the course sheet stays")
@@ -386,12 +386,12 @@ struct MoodleAssignmentPageTests {
             store: Self.store(in: root), courseName: "Data Structures"
         )
         let viewModel = HomeViewModel()
-        viewModel.selectedCourse = SDCourse(courseNo: "CS3105301", courseName: "Data Structures")
+        viewModel.sheets.selectedCourse = SDCourse(courseNo: "CS3105301", courseName: "Data Structures")
 
-        viewModel.show(page, closingSheet: false)
+        viewModel.sheets.show(page, closingSheet: false)
 
-        #expect(viewModel.selectedCourse != nil)
-        #expect(viewModel.shownAssignment == page)
+        #expect(viewModel.sheets.selectedCourse != nil)
+        #expect(viewModel.sheets.shownAssignment == page)
     }
 }
 #endif

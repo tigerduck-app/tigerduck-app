@@ -756,12 +756,12 @@ struct MoodleHomeworkRegressionTests {
             dueDate: now.addingTimeInterval(5400)
         )
         let viewModel = HomeViewModel()
-        viewModel.allAssignmentsCache = [ignored, later, sooner]
+        viewModel.assignments.all = [ignored, later, sooner]
 
-        viewModel.assignmentFilter = .ignored
+        viewModel.assignments.filter = .ignored
 
-        #expect(viewModel.upcomingAssignments.map(\.assignmentId) == ["ignored"])
-        #expect(viewModel.assignmentsFor(courseNo: "CS1").map(\.assignmentId) == ["sooner", "later"])
+        #expect(viewModel.assignments.upcoming.map(\.assignmentId) == ["ignored"])
+        #expect(viewModel.assignments.unfinished(for: "CS1").map(\.assignmentId) == ["sooner", "later"])
     }
 #endif
 

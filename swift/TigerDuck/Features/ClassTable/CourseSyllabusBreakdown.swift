@@ -29,7 +29,7 @@ nonisolated enum CourseSyllabusBreakdown {
 
     /// The service fills all four methods, 0 or blank when unused, so only those above 0% show,
     /// followed by Others.
-    static func teaching(_ syllabus: CourseSyllabus) -> [Part]? {
+    static func teaching(_ syllabus: CourseLookup.Syllabus) -> [Part]? {
         let methods = [
             (syllabus.Instruction_1, String(localized: "course_detail_syllabus_lecture")),
             (syllabus.Instruction_2, String(localized: "course_detail_syllabus_group_discussion")),
@@ -82,7 +82,7 @@ nonisolated enum CourseSyllabusBreakdown {
 
 /// The service sends sections a teacher left empty as blank or whitespace, so each field is
 /// trimmed and a blank one is nil, which hides its section.
-nonisolated extension CourseSyllabus {
+nonisolated extension CourseLookup.Syllabus {
     var grading: String? { Self.text(CourseGrading) }
     var outline: String? { Self.text(CourseObject) }
     var content: String? { Self.text(CourseContent) }

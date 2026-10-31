@@ -160,7 +160,7 @@ struct CourseSearchTests {
 
     @Test("the filter lists come from the catalog, with each name in both languages")
     func optionsFromCatalog() throws {
-        let options = CourseSearch.options(try ["zh": Self.catalog("zh"), "en": Self.catalog("en")])
+        let options = CourseCatalogStore.options(try ["zh": Self.catalog("zh"), "en": Self.catalog("en")])
         #expect(options == CourseSearchOptions(
             colleges: [.init(name: "電資學院", englishName: "College of EECS", departments: [
                 .init(code: "CS", name: "資訊工程系", englishName: "Computer Science"),
@@ -168,7 +168,7 @@ struct CourseSearchTests {
             ])],
             dimensions: [.init(code: "A", name: "人文素養(A)", englishName: "Humanities and Thinking(A)")]
         ))
-        #expect(CourseSearch.options([:]) == CourseSearchOptions())
+        #expect(CourseCatalogStore.options([:]) == CourseSearchOptions())
     }
 
     // MARK: Filters

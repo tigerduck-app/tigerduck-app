@@ -156,7 +156,7 @@ struct CourseSearchFilterView: View {
 private struct CourseDepartmentPage: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selection: String?
-    let colleges: [CourseSearchOptions.College]
+    let colleges: [CourseCatalogStore.Options.College]
     let language: String
     @State private var query = ""
 

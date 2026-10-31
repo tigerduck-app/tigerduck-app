@@ -6,7 +6,7 @@ struct AddSectionSheet: View {
     @State private var customTitle = ""
 
     private var availableBuiltInTypes: [HomeSection.HomeSectionType] {
-        let existingTypes = Set(viewModel.sections.map(\.type))
+        let existingTypes = Set(viewModel.layout.sections.map(\.type))
         return [.todayCourses, .upcomingAssignments, .quickWidgets]
             .filter { !existingTypes.contains($0) }
     }
@@ -18,7 +18,7 @@ struct AddSectionSheet: View {
                     Section(String(localized: "home_builtin_sections")) {
                         ForEach(availableBuiltInTypes, id: \.self) { type in
                             Button {
-                                viewModel.addSection(type: type, title: type.defaultTitle)
+                                viewModel.layout.addSection(type: type, title: type.defaultTitle)
                                 dismiss()
                             } label: {
                                 Label(type.defaultTitle, systemImage: type.iconName)
@@ -32,7 +32,7 @@ struct AddSectionSheet: View {
                         TextField(String(localized: "home_section_name"), text: $customTitle)
                         Button {
                             guard !customTitle.isEmpty else { return }
-                            viewModel.addSection(type: .custom, title: customTitle)
+                            viewModel.layout.addSection(type: .custom, title: customTitle)
                             dismiss()
                         } label: {
                             Image(systemName: "plus.circle.fill")
@@ -43,7 +43,7 @@ struct AddSectionSheet: View {
                 }
 
                 Section(String(localized: "home_section_add_quick_features")) {
-                    let allWidgetFeatures = viewModel.sections
+                    let allWidgetFeatures = viewModel.layout.sections
                         .flatMap(\.widgets)
                         .map(\.feature)
                     let addable = AppFeature.widgetFeatures
@@ -55,7 +55,7 @@ struct AddSectionSheet: View {
                     } else {
                         ForEach(addable) { feature in
                             Button {
-                                viewModel.addQuickFeature(feature)
+                                viewModel.layout.addQuickFeature(feature)
                                 dismiss()
                             } label: {
                                 Label(feature.displayName, systemImage: feature.iconName)

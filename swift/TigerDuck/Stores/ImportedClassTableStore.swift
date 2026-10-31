@@ -62,7 +62,7 @@ final class ImportedClassTableStore: AccountScoped {
     var hasImportedClassTables: Bool { !people.isEmpty }
 
     @ObservationIgnored private var owner: String?
-    private let fileURL: URL
+    private let file: ImportedClassTableFile
     private let signedInStudentId: () -> String?
     @ObservationIgnored private var mayWrite = true
 
@@ -72,7 +72,7 @@ final class ImportedClassTableStore: AccountScoped {
             KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId)
         }
     ) {
-        self.fileURL = fileURL
+        file = ImportedClassTableFile(url: fileURL)
         self.signedInStudentId = signedInStudentId
         load()
     }
@@ -202,7 +202,7 @@ final class ImportedClassTableStore: AccountScoped {
 
     /// Deletes the file whether or not this process loaded it; `removeAll()` empties the store in memory.
     static func forgetAccount(in storage: AccountStorage) {
-        removeFile(at: storage.folders.persistent.appendingPathComponent(fileName))
+        ImportedClassTableFile.remove(at: storage.folders.persistent.appendingPathComponent(fileName))
     }
 
     func removeAll() {
@@ -211,17 +211,7 @@ final class ImportedClassTableStore: AccountScoped {
         previousShownID = nil
         owner = nil
         mayWrite = true
-        Self.removeFile(at: fileURL)
-    }
-
-    private static func removeFile(at url: URL) {
-        do {
-            try FileManager.default.removeItem(at: url)
-        } catch {
-            if !isMissingFile(error) {
-                AppLogger.captureError(error, context: ["phase": "importedClassTables.remove"])
-            }
-        }
+        ImportedClassTableFile.remove(at: file.url)
     }
 
     func accountDidSignIn(studentId: String) {
@@ -235,110 +225,43 @@ final class ImportedClassTableStore: AccountScoped {
     }
 
     private func load() {
-        let data: Data
-        do {
-            data = try Data(contentsOf: fileURL)
-        } catch {
-            if !Self.isMissingFile(error) {
-                mayWrite = false
-                AppLogger.captureError(error, context: ["phase": "importedClassTables.read"])
-            }
-            return
-        }
-        do {
-            let file = try JSONDecoder().decode(StoredFile.self, from: data)
-            owner = file.owner
-            people = file.people.map { $0.person }
-        } catch {
+        switch file.load() {
+        case .missing:
+            break
+        case .unreadable:
             mayWrite = false
-            AppLogger.captureError(error, context: ["phase": "importedClassTables.decode"])
+        case .contents(let contents):
+            owner = contents.owner
+            people = contents.people.map(ImportedPerson.init)
         }
     }
 
     @discardableResult
     private func save(people: [ImportedPerson], owner: String?) -> Bool {
         guard mayWrite else { return false }
-        do {
-            let manager = FileManager.default
-            try manager.createDirectory(
-                at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            let staging = try manager.url(
-                for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: fileURL, create: true
-            )
-            defer { try? manager.removeItem(at: staging) }
-            var replacement = staging.appendingPathComponent(fileURL.lastPathComponent)
-            let data = try JSONEncoder().encode(StoredFile(owner: owner, people: people.map { StoredPerson($0) }))
-            // Readable from the first unlock after a restart, unlike the course files: the store
-            // reads the file once, and a read refused while the phone is locked would leave it
-            // empty for the rest of the run.
-            try data.write(to: replacement, options: [.completeFileProtectionUntilFirstUserAuthentication])
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            try replacement.setResourceValues(values)
-            if manager.fileExists(atPath: fileURL.path) {
-                _ = try manager.replaceItemAt(fileURL, withItemAt: replacement, options: .usingNewMetadataOnly)
-            } else {
-                try manager.moveItem(at: replacement, to: fileURL)
+        return file.save(.init(owner: owner, people: people.map(\.stored)))
+    }
+}
+
+private extension ImportedPerson {
+    init(_ stored: ImportedClassTableFile.Person) {
+        self.init(
+            id: stored.id, studentId: stored.studentId, nickname: stored.nickname, importedAt: stored.importedAt,
+            sharedAt: stored.sharedAt,
+            terms: stored.terms.map { term in
+                Term(semester: term.semester, courseNos: term.courseNos, courses: term.courses.map { $0.toSDCourse() })
             }
-            return true
-        } catch {
-            AppLogger.captureError(error, context: ["phase": "importedClassTables.save"])
-            return false
-        }
+        )
     }
 
-    private static func isMissingFile(_ error: any Error) -> Bool {
-        let nsError = error as NSError
-        return nsError.domain == NSCocoaErrorDomain
-            && (nsError.code == NSFileReadNoSuchFileError || nsError.code == NSFileNoSuchFileError)
-    }
-}
-
-private struct StoredFile: Codable {
-    let owner: String?
-    let people: [StoredPerson]
-}
-
-private struct StoredPerson: Codable {
-    let id: UUID
-    let studentId: String?
-    let nickname: String
-    let importedAt: Date
-    let sharedAt: Date?
-    let terms: [StoredTerm]
-
-    init(_ person: ImportedPerson) {
-        id = person.id
-        studentId = person.studentId
-        nickname = person.nickname
-        importedAt = person.importedAt
-        sharedAt = person.sharedAt
-        terms = person.terms.map { term in
-            StoredTerm(
-                semester: term.semester,
-                courseNos: term.courseNos,
-                courses: term.courses.map { CachedCourse(from: $0) }
-            )
-        }
-    }
-
-    var person: ImportedPerson {
-        ImportedPerson(
+    var stored: ImportedClassTableFile.Person {
+        ImportedClassTableFile.Person(
             id: id, studentId: studentId, nickname: nickname, importedAt: importedAt, sharedAt: sharedAt,
             terms: terms.map { term in
-                ImportedPerson.Term(
-                    semester: term.semester,
-                    courseNos: term.courseNos,
-                    courses: term.courses.map { $0.toSDCourse() }
+                ImportedClassTableFile.Term(
+                    semester: term.semester, courseNos: term.courseNos, courses: term.courses.map { CachedCourse(from: $0) }
                 )
             }
         )
     }
-}
-
-private struct StoredTerm: Codable {
-    let semester: String
-    let courseNos: [String]
-    let courses: [CachedCourse]
 }

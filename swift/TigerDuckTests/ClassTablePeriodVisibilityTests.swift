@@ -13,12 +13,12 @@ struct ClassTablePeriodVisibilityTests {
 
         Defaults[.alwaysShowAllPeriods] = false
         let viewModel = ClassTableViewModel()
-        #expect(viewModel.activePeriods.map(\.id) == AppConstants.Periods.defaultVisible)
+        #expect(viewModel.grid.activePeriods.map(\.id) == AppConstants.Periods.defaultVisible)
 
         Defaults[.alwaysShowAllPeriods] = true
 
-        try await waitUntil { viewModel.showsAllPeriods }
-        #expect(viewModel.activePeriods.map(\.id) == AppConstants.Periods.chronologicalOrder)
+        try await waitUntil { viewModel.grid.showsAllPeriods }
+        #expect(viewModel.grid.activePeriods.map(\.id) == AppConstants.Periods.chronologicalOrder)
     }
 
     @Test func flippingTheToggle_clearsTheCellRoleCache() async throws {
@@ -27,12 +27,12 @@ struct ClassTablePeriodVisibilityTests {
 
         Defaults[.alwaysShowAllPeriods] = false
         let viewModel = ClassTableViewModel()
-        _ = viewModel.cellRole(weekday: 1, periodIndex: 0)
-        #expect(!viewModel.cellRoleCache.isEmpty)
+        _ = viewModel.grid.cellRole(weekday: 1, periodIndex: 0)
+        #expect(!viewModel.grid.cellRoleCache.isEmpty)
 
         Defaults[.alwaysShowAllPeriods] = true
 
-        try await waitUntil { viewModel.cellRoleCache.isEmpty }
+        try await waitUntil { viewModel.grid.cellRoleCache.isEmpty }
     }
 
     /// Set from `withObservationTracking`'s `onChange`, which is `@Sendable`.
@@ -44,12 +44,12 @@ struct ClassTablePeriodVisibilityTests {
         let viewModel = ClassTableViewModel()
         let redrawn = Flag()
         withObservationTracking {
-            _ = viewModel.cellRole(weekday: 1, periodIndex: 0)
+            _ = viewModel.grid.cellRole(weekday: 1, periodIndex: 0)
         } onChange: {
             redrawn.raised = true
         }
 
-        _ = viewModel.cellRole(weekday: 2, periodIndex: 0)
+        _ = viewModel.grid.cellRole(weekday: 2, periodIndex: 0)
 
         #expect(!redrawn.raised)
     }

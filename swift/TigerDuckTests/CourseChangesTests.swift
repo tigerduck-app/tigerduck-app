@@ -374,7 +374,7 @@ struct CourseChangesTests {
         let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.at("23:00"), changes: changes)
         #expect(days.map { TaipeiTime.dayKey(for: $0.day) } == Array(thursdays[1...]))
         #expect(days.allSatisfy { $0.meetings.count == 2 && $0.meetings.allSatisfy { $0.isCancelled } })
-        let rows = CourseDetailSheet.changeRows(days, besides: nil)
+        let rows = CourseDetailChanges.changeRows(days, besides: nil)
         #expect(rows.map { TaipeiTime.dayKey(for: $0.day) } == Array(thursdays[1...8]))
         #expect(rows.allSatisfy { $0.summary == String(localized: "course_card_cancelled") })
     }
@@ -389,9 +389,9 @@ struct CourseChangesTests {
         let today = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes))
         let nextWeek = try #require(days.last?.meetings.first)
 
-        #expect(CourseDetailSheet.changeRows(days, besides: nil).map { $0.summary } == ["TR-313", "14:40 - 16:20 · Quiz"])
-        #expect(CourseDetailSheet.changeRows(days, besides: today).map { $0.summary } == ["14:40 - 16:20 · Quiz"])
-        #expect(CourseDetailSheet.changeRows(days, besides: nextWeek).map { $0.summary } == ["TR-313", "Quiz"])
+        #expect(CourseDetailChanges.changeRows(days, besides: nil).map { $0.summary } == ["TR-313", "14:40 - 16:20 · Quiz"])
+        #expect(CourseDetailChanges.changeRows(days, besides: today).map { $0.summary } == ["14:40 - 16:20 · Quiz"])
+        #expect(CourseDetailChanges.changeRows(days, besides: nextWeek).map { $0.summary } == ["TR-313", "Quiz"])
     }
 
     @Test func aTappedClassShowsItsOwnChangesWhileATimetableBlockShowsItsMeeting() throws {
@@ -411,8 +411,8 @@ struct CourseChangesTests {
         let block = try #require(shown(nil, periods: ["2", "3", "4"]))
         #expect(block.periods == ["2", "3", "4"] && !block.isCancelled && block.room == "TR-313")
         let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
-        #expect(CourseDetailSheet.changeRows(days, besides: shown(slots[2])).isEmpty)
-        #expect(CourseDetailSheet.changeRows(days, besides: shown(slots[0])).map(\.summary) == ["TR-313"])
+        #expect(CourseDetailChanges.changeRows(days, besides: shown(slots[2])).isEmpty)
+        #expect(CourseDetailChanges.changeRows(days, besides: shown(slots[0])).map(\.summary) == ["TR-313"])
     }
 
     @Test func theCurrentClassIsTheChangedOneAndACancelledClassIsNotRunning() throws {
@@ -428,8 +428,8 @@ struct CourseChangesTests {
         let viewModel = ClassTableViewModel()
         viewModel.selectOngoing(piece)
         let opened = CourseDetailSheet.shownMeeting(
-            of: Self.course(), slot: viewModel.selectedSlot, periods: viewModel.selectedCoursePeriods,
-            on: viewModel.selectedDate, changes: partly
+            of: Self.course(), slot: viewModel.selection.slot, periods: viewModel.selection.coursePeriods,
+            on: viewModel.selection.date, changes: partly
         )
         #expect(piece.periods == ["2", "3"] && opened == nil)
         #expect([Self.course()].ongoingCourses(at: Self.at("14:30"), changes: changes).isEmpty)
@@ -463,7 +463,7 @@ struct CourseChangesTests {
     @Test func theTimeLineCrossesAPeriodByItsShareAndSitsInTheGapBetweenTwo() {
         let periods = [(start: 490, end: 540), (start: 550, end: 600), (start: 800, end: 850)]
         func offset(_ minute: Int) -> CGFloat? {
-            TimetableGridView.nowLineOffset(minute: minute, periods: periods, rowPitch: 55, cellHeight: 52)
+            TimetableNowLine.offset(minute: minute, periods: periods, rowPitch: 55, cellHeight: 52)
         }
 
         #expect(offset(489) == nil)
