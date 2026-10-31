@@ -77,7 +77,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `browserZoom` | school | `swift/TigerDuck/Features/Browser/BrowserData.swift` `reset` |
 | defaults | `bulletinPushEnabled` | device |  |
 | defaults | `bulletinReadIds` | device |  |
-| defaults | `bulletinsSyncedAt` | school | `swift/TigerDuck/Features/Bulletins/BulletinsViewModel.swift` `forgetListSession` |
+| defaults | `bulletinsSyncedAt` | school | `swift/TigerDuck/Stores/Bulletins/BulletinFeed.swift` `forgetListSession` |
 | defaults | `categoriesSyncedOnce` | school | `swift/TigerDuck/Account/SignOutCheck.swift` `forgetSyncProgress` |
 | defaults | `classPreparingLeadTime` | device |  |
 | defaults | `classReminderLeadMinutes` | device |  |

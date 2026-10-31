@@ -22,7 +22,7 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
         let isCurrent = AccountSession.school.currentCheck()
         let epoch = BrowserData.shared.epoch
         let cookies = store.httpCookieStore
-        let jars = [HTTPCookieStorage.shared, NTUSTSessionManager.shared.cookieStorage]
+        let jars = [HTTPCookieStorage.shared, SchoolWeb.schoolCookies]
         for cookie in Self.sessionCookies(in: jars.map { $0.cookies ?? [] }) {
             await cookies.setCookie(cookie)
         }

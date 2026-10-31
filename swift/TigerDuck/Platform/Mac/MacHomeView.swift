@@ -15,15 +15,7 @@ struct MacHomeView: View {
         .onChange(of: AppDataRevision.current) {
             cacheRevision &+= 1
         }
-        .alert(
-            String(localized: "sync_conflict_title"),
-            isPresented: SyncConflicts.syncConflictAlertIsPresented(Bindable(app.conflicts).syncConflicts)
-        ) {
-            Button(String(localized: "sync_conflict_use_server")) { app.conflicts.resolveSyncConflicts(keepLocal: false) }
-            Button(String(localized: "sync_conflict_use_local")) { app.conflicts.resolveSyncConflicts(keepLocal: true) }
-        } message: {
-            Text(app.conflicts.syncConflictAlertMessage)
-        }
+        .syncConflictAlert(app)
     }
 
     private var content: some View {

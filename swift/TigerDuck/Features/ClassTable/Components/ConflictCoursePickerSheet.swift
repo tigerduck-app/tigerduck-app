@@ -3,8 +3,8 @@ import SwiftUI
 struct ConflictCoursePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let courses: [SDCourse]
-    let onPick: (SDCourse) -> Void
+    let courses: [CourseStore.Course]
+    let onPick: (CourseStore.Course) -> Void
 
     var body: some View {
         NavigationStack {
@@ -30,7 +30,7 @@ struct ConflictCoursePickerSheet: View {
         }
     }
 
-    private func row(course: SDCourse) -> some View {
+    private func row(course: CourseStore.Course) -> some View {
         Button {
             onPick(course)
         } label: {
@@ -58,10 +58,10 @@ struct ConflictCoursePickerSheet: View {
         .buttonStyle(.plain)
     }
 
-    private func subtitle(for course: SDCourse) -> String {
+    private func subtitle(for course: CourseStore.Course) -> String {
         var parts = [course.courseNo]
         if !course.instructor.isEmpty { parts.append(course.instructor) }
-        let classroom = SDCourse.dedup(course.classroom)
+        let classroom = CourseStore.Course.dedup(course.classroom)
         if !classroom.isEmpty { parts.append(classroom) }
         return parts.joined(separator: " · ")
     }

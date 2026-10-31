@@ -2,7 +2,7 @@ import Defaults
 import SwiftUI
 
 struct EventRowView: View {
-    let event: SDCalendarEvent
+    let event: AssignmentStore.CalendarEvent
 
     #if os(iOS)
     @Environment(AppEnvironment.self) private var app
@@ -67,10 +67,10 @@ struct EventRowView: View {
     }
 
     private var holidayID: Int? {
-        AcademicCalendar.holidayID(for: event)
+        SchoolCalendar.holidayID(for: event)
     }
 
-    static func showsTime(of event: SDCalendarEvent) -> Bool {
+    static func showsTime(of event: AssignmentStore.CalendarEvent) -> Bool {
         !event.isAllDay
     }
 }

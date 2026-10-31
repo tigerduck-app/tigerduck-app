@@ -69,6 +69,9 @@ final class SyncConflicts {
         syncConflicts = []
     }
 
+    /// Whether the conflict alert shows; closing it unanswered leaves the marks as they are.
+    var alertIsPresented: Binding<Bool> { Self.syncConflictAlertIsPresented(Bindable(self).syncConflicts) }
+
     static func syncConflictAlertIsPresented(_ conflicts: Binding<[SyncConflictItem]>) -> Binding<Bool> {
         Binding(
             get: { !conflicts.wrappedValue.isEmpty },
@@ -440,6 +443,11 @@ final class SyncConflicts {
                 conflict.wrappedValue = nil
             }
         )
+    }
+
+    /// Whether the re-enable alert shows; closing it unanswered drops the conflict.
+    var reenableAlertIsPresented: Binding<Bool> {
+        Self.reenableAlertIsPresented(Bindable(self).reenableConflict)
     }
 
     func resolveReenableConflict(keepLocal: Bool) {

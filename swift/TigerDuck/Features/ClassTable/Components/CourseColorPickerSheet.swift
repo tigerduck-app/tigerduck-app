@@ -3,7 +3,7 @@ import SwiftUI
 struct CourseColorPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let course: SDCourse
+    let course: CourseStore.Course
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 5)
 
@@ -11,7 +11,7 @@ struct CourseColorPickerSheet: View {
     @State private var suppressNextColorChange = false
     @State private var customPicks: CustomColorPickDebouncer
 
-    init(course: SDCourse, isCurrent: @escaping () -> Bool, onSelect: @escaping (UInt32) -> Void) {
+    init(course: CourseStore.Course, isCurrent: @escaping () -> Bool, onSelect: @escaping (UInt32) -> Void) {
         self.course = course
         _customColor = State(initialValue: Color(hex: UInt(TigerDuckTheme.assignedHex(for: course.courseNo))))
         let courseNo = course.courseNo

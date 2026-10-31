@@ -2,6 +2,13 @@ import Defaults
 import SwiftUI
 
 struct CloudSyncSettingsView: View {
+    /// What the status section shows of this device's push registration.
+    private struct RegistrationStatus {
+        let isRegistered: Bool
+        let lastError: String?
+        let deviceId: String
+    }
+
     @Environment(AppEnvironment.self) private var app
     @Default(.cloudSyncEnabled) private var syncEnabled
     @Default(.syncCourses) private var syncCourses
@@ -11,7 +18,7 @@ struct CloudSyncSettingsView: View {
     @Default(.serverPushUserOptOut) private var serverPushOptOut
     @State private var serverPushOptOutFailed: Bool = false
     @State private var serverPushOptOutTask: Task<Void, Never>?
-    @State private var statusSnapshot: PushDiagnostic?
+    @State private var status: RegistrationStatus?
     @State private var asksToSignInAgain = false
     @State private var statusRefreshTimer: Timer?
 
@@ -61,16 +68,16 @@ struct CloudSyncSettingsView: View {
             }
 
             Section(String(localized: "sync_status_nav_label")) {
-                if let s = statusSnapshot {
+                if let s = status {
                     syncStatusRow(
                         label: String(localized: "sync_status_device_registered"),
-                        ok: s.registration.lastRegisteredAt != nil,
+                        ok: s.isRegistered,
                         okText: String(localized: "push_server_status_done"),
                         badText: String(localized: "push_server_pending_incomplete")
                     )
                     if asksToSignInAgain {
                         signInAgainRow
-                    } else if let err = s.registration.lastError {
+                    } else if let err = s.lastError {
                         LabeledContent(String(localized: "push_server_latest_error")) {
                             Text(err)
                                 .font(.caption)
@@ -79,7 +86,7 @@ struct CloudSyncSettingsView: View {
                         }
                     }
                     LabeledContent(String(localized: "cloud_sync_device_id")) {
-                        Text(s.uuid)
+                        Text(s.deviceId)
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -156,7 +163,11 @@ struct CloudSyncSettingsView: View {
         asksToSignInAgain = await app.authService.asksToSignInAgain(
             syncEnabled: syncEnabled, after: snapshot.registration
         )
-        statusSnapshot = snapshot
+        status = RegistrationStatus(
+            isRegistered: snapshot.registration.lastRegisteredAt != nil,
+            lastError: snapshot.registration.lastError,
+            deviceId: snapshot.uuid
+        )
     }
 
     private func startStatusRefreshTimer() {
@@ -194,7 +205,7 @@ struct ReenableConflictAlert: ViewModifier {
     func body(content: Content) -> some View {
         content.alert(
             String(localized: "sync_conflict_title"),
-            isPresented: SyncConflicts.reenableAlertIsPresented(Bindable(app.conflicts).reenableConflict)
+            isPresented: app.conflicts.reenableAlertIsPresented
         ) {
             Button(String(localized: "sync_conflict_use_server")) {
                 app.conflicts.resolveReenableConflict(keepLocal: false)

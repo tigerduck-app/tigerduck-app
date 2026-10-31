@@ -18,6 +18,13 @@ nonisolated enum BrowserRouting {
     /// Moodle's OIDC entry, which signs the browser in with the school SSO session it holds.
     static let webSignInURL = URL.knownGood("https://moodle2.ntust.edu.tw/auth/oidc/?source=loginpage")
 
+    /// What a page whose web content process ended loads, or nil to reload it: a reload does
+    /// nothing without a URL, and a one-time sign-in link must not be loaded again.
+    static func pageToRestore(url: URL?, address: URL?) -> URL? {
+        guard let url, !isMoodleSignInLink(url) else { return address }
+        return nil
+    }
+
     /// A download leaves the web view's navigation delegate, so its redirects get the same check here.
     static func allowsDownloadRedirect(to url: URL?) -> Bool {
         url.map { decision(for: $0) == .load } ?? false

@@ -26,7 +26,7 @@ struct RoomDaySheet: View {
                 }
                 .padding(.vertical, TigerDuckTheme.Spacing.sm)
                 .presetCard(policy: policy)
-                legend
+                RoomUseLegend(policy: policy)
             }
             .padding(TigerDuckTheme.Spacing.lg)
         }
@@ -73,7 +73,7 @@ struct RoomDaySheet: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(policy.primaryTextColor))
                 .frame(width: labelWidth)
-            Text(EmptyClassroomViewModel.timeRange(of: index))
+            Text(EmptyClassroomDayText.timeRange(of: index))
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(policy.secondaryTextColor)
@@ -186,25 +186,6 @@ struct RoomDaySheet: View {
         }
     }
 
-    private var legend: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.lg) {
-            legendItem(.green, String(localized: "empty_classroom_free"))
-            legendItem(.orange, String(localized: "empty_classroom_booked"))
-        }
-        .font(.caption)
-        .foregroundStyle(policy.secondaryTextColor)
-        .frame(maxWidth: .infinity)
-    }
-
-    private func legendItem(_ color: Color, _ title: String) -> some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(color)
-                .frame(width: 8, height: 14)
-            Text(title)
-        }
-    }
-
     private func accessibilityText(_ index: Int) -> String {
         let period = String(format: String(localized: "a11y_empty_classroom_period"), EmptyClassroomSchedule.periodIDs[index])
         let use: String
@@ -213,6 +194,30 @@ struct RoomDaySheet: View {
         case .booked: use = String(localized: "empty_classroom_booked")
         case .course(let name, let teacher): use = teacher.isEmpty ? name : "\(name), \(teacher)"
         }
-        return [period, EmptyClassroomViewModel.timeRange(of: index), use].joined(separator: ", ")
+        return [period, EmptyClassroomDayText.timeRange(of: index), use].joined(separator: ", ")
+    }
+}
+
+/// The colours of the free and booked lanes.
+private struct RoomUseLegend: View {
+    let policy: VisualStylePolicy
+
+    var body: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.lg) {
+            item(.green, String(localized: "empty_classroom_free"))
+            item(.orange, String(localized: "empty_classroom_booked"))
+        }
+        .font(.caption)
+        .foregroundStyle(policy.secondaryTextColor)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func item(_ color: Color, _ title: String) -> some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(color)
+                .frame(width: 8, height: 14)
+            Text(title)
+        }
     }
 }

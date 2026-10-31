@@ -15,12 +15,12 @@ struct HomeEditPageTests {
     @Test func onlyTheEditControlsRespond() async throws {
         try await withAccessibilityAutomation {
             let viewModel = HomeViewModel()
-            viewModel.sections = [
+            viewModel.layout.sections = [
                 Self.section(.todayCourses),
                 Self.section(.upcomingAssignments),
                 Self.section(.quickWidgets, widgets: [WidgetItem(id: "w", feature: .library, size: .small)]),
             ]
-            let page = HomeEditPage(viewModel: viewModel, sections: viewModel.sections, scrollAnchor: HomeScrollAnchor()) {
+            let page = HomeEditPage(viewModel: viewModel, sections: viewModel.layout.sections, scrollAnchor: HomeScrollAnchor()) {
                 EmptyView()
             }
             let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
@@ -44,7 +44,7 @@ struct HomeEditPageTests {
             // Only the remove buttons of the three sections and the one widget, each naming what it removes.
             let remove = String(localized: "action_remove")
             #expect(buttons() == Set(
-                viewModel.sections.map(\.title).map { "\(remove): \($0)" } + ["\(remove): \(AppFeature.library.displayName)"]
+                viewModel.layout.sections.map(\.title).map { "\(remove): \($0)" } + ["\(remove): \(AppFeature.library.displayName)"]
             ))
         }
     }

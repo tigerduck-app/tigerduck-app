@@ -83,7 +83,7 @@ private struct DayCellView: View {
     let date: Date
     let isSelected: Bool
     let isToday: Bool
-    let events: [SDCalendarEvent]
+    let events: [AssignmentStore.CalendarEvent]
     let onTap: () -> Void
 
     private var accessibleDateString: String {
@@ -120,7 +120,7 @@ private struct DayCellView: View {
                         .prefix(3)
                     ForEach(sources, id: \.self) { sourceRaw in
                         Circle()
-                            .fill((EventSource(rawValue: sourceRaw) ?? .school).color)
+                            .fill((AssignmentStore.CalendarEventSource(rawValue: sourceRaw) ?? .school).color)
                             .frame(width: 4, height: 4)
                     }
                 }

@@ -27,10 +27,10 @@ struct TriggersDebugView: View {
 
             Section {
                 Button("Trigger Update Available on next open") {
-                    UpdateNotifyCoordinator.armDebugSimulatedUpdate()
+                    DebugSimulatedUpdate.arm()
                     statusMessage = "Armed synthetic update prompt. Cold-launch or scene-active fires it once."
                 }
-                if UpdateNotifyCoordinator.isDebugSimulatedUpdateArmed {
+                if DebugSimulatedUpdate.isArmed {
                     Text("Currently armed — relaunch or background/foreground to fire.")
                         .font(.caption)
                         .foregroundStyle(.orange)

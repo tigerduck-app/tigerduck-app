@@ -1,55 +1,5 @@
 import Foundation
 
-nonisolated struct MoodleForum: Codable, Sendable, Hashable, Identifiable {
-    let id: Int
-    let courseId: Int
-    let type: String
-    let name: String
-    let cmid: Int
-    var discussionCount: Int
-    var unreadPostCount: Int
-    var intro: String? = nil
-
-    var isNews: Bool { type == "news" }
-}
-
-nonisolated struct MoodleDiscussion: Codable, Sendable, Hashable, Identifiable {
-    let id: Int
-    let postId: Int
-    let title: String
-    let message: String
-    let preview: String
-    let created: Date
-    let modified: Date
-    let isPinned: Bool
-    var unreadCount: Int
-    let replyCount: Int
-    let authorName: String?
-    let attachments: [MoodleFile]
-    var authorId: Int? = nil
-}
-
-nonisolated struct MoodlePost: Codable, Sendable, Hashable, Identifiable {
-    let id: Int
-    let parentId: Int?
-    let subject: String
-    let message: String
-    let created: Date?
-    let authorName: String?
-    let attachments: [MoodleFile]
-    var isUnread: Bool
-    let isDeleted: Bool
-}
-
-nonisolated struct MoodleFile: Codable, Sendable, Hashable {
-    let name: String
-    let size: Int
-    let url: String
-    let mimeType: String?
-    let modified: Date?
-    var path: String? = nil
-}
-
 nonisolated enum MoodleForumService {
     static let forumsFunction = "mod_forum_get_forums_by_courses"
     static let discussionsFunction = "mod_forum_get_forum_discussions"

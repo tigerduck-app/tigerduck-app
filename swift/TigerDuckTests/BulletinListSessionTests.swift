@@ -66,10 +66,10 @@ struct BulletinListSessionTests {
             stub.serve(Self.page([older]), cursor: older)
             stub.serve(Self.page([newest, newer], next: older))
 
-            let firstVisit = BulletinsViewModel(apiClient: stub.client)
+            let firstVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             await firstVisit.loadIfNeeded()
             try await waitUntil { firstVisit.items.contains { $0.id == older } }
-            let secondVisit = BulletinsViewModel(apiClient: stub.client)
+            let secondVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             await secondVisit.loadIfNeeded()
 
             #expect(SettingsAPIStub.requests(for: stub.listURL()).count == 2)
@@ -89,9 +89,9 @@ struct BulletinListSessionTests {
             stub.serve(Self.page([newest], next: gap))
             stub.serve(Self.page([gap]), cursor: gap)
 
-            let firstVisit = BulletinsViewModel(apiClient: stub.client)
+            let firstVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             await firstVisit.loadIfNeeded()
-            let secondVisit = BulletinsViewModel(apiClient: stub.client)
+            let secondVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             await secondVisit.loadIfNeeded()
 
             try await waitUntil { secondVisit.items.contains { $0.id == gap } }
@@ -109,7 +109,7 @@ extension BulletinListSessionTests {
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
             stub.serve(Self.page([stub.id]))
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             #expect(Defaults[.bulletinsSyncedAt] == nil)
 
             let before = Date()
@@ -130,7 +130,7 @@ extension BulletinListSessionTests {
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
             stub.serve(Self.page([stub.id]))
-            await BulletinsViewModel(apiClient: stub.client).refresh()
+            await BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client)).refresh()
             #expect(Defaults[.bulletinsSyncedAt] != nil)
 
             BulletinsViewModel.forgetListSession()
@@ -155,7 +155,7 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let departed = stub.id, next = stub.id + 1
             stub.serve(Self.page([departed]))
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             await model.refresh()
             #expect(Self.cachedIds.contains(departed))
 
@@ -184,7 +184,7 @@ extension BulletinListSessionTests {
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
             let gate = Self.serveHeld(Self.page([stub.id]), for: stub.listURL())
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             let refresh = Task { await model.refresh() }
             try await waitUntil { SettingsAPIStub.requests(for: stub.listURL()).count == 1 }
 
@@ -209,9 +209,9 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (kept, newest) = (stub.id, stub.id + 1)
             stub.serve(Self.page([kept]))
-            await BulletinsViewModel(apiClient: stub.client).loadIfNeeded()
+            await BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client)).loadIfNeeded()
             let gate = Self.serveHeld(Self.page([newest, kept]), for: stub.listURL())
-            let secondVisit = BulletinsViewModel(apiClient: stub.client)
+            let secondVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             let visit = Task { await secondVisit.loadIfNeeded() }
             try await waitUntil { SettingsAPIStub.requests(for: stub.listURL()).count == 2 }
 
@@ -236,7 +236,7 @@ extension BulletinListSessionTests {
             let (older, newer) = (stub.id, stub.id + 1)
             stub.serve(Self.page([newer], next: older))
             let gate = Self.serveHeld(Self.page([older]), for: stub.listURL(cursor: older))
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             await model.refresh()
             try await waitUntil { SettingsAPIStub.requests(for: stub.listURL(cursor: older)).count == 1 }
 
@@ -259,7 +259,7 @@ extension BulletinListSessionTests {
             let (older, newer) = (stub.id, stub.id + 1)
             stub.serve(Self.page([newer], next: older))
             let gate = Self.serveHeld(Self.page([older]), for: stub.listURL(cursor: older))
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             model.pausePrefetch()
             await model.refresh()
             let last = try #require(model.items.last)
@@ -283,7 +283,7 @@ extension BulletinListSessionTests {
             defer { BulletinsViewModel.forgetListSession() }
             let (old, new) = (Stub(), Stub())
             old.serve(Self.page([old.id]))
-            await BulletinsViewModel(apiClient: old.client).loadIfNeeded()
+            await BulletinsViewModel(feed: BulletinFeed(apiClient: old.client)).loadIfNeeded()
             #expect(Self.cachedIds.contains(old.id))
 
             let article = try JSONDecoder().decode(BulletinAPI.BulletinDetail.self, from: Self.detail(old.id))
@@ -294,7 +294,7 @@ extension BulletinListSessionTests {
             #expect(!Self.cachedIds.contains(old.id))
             #expect(BulletinFiles.shared.loadBulletinDetail(id: old.id) == nil)
             new.serve(Self.page([new.id]))
-            let visit = BulletinsViewModel(apiClient: new.client)
+            let visit = BulletinsViewModel(feed: BulletinFeed(apiClient: new.client))
             await visit.loadIfNeeded()
             #expect(visit.items.map(\.id) == [new.id])
         }
@@ -310,7 +310,7 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (kept, fresh) = (stub.id, stub.id + 1)
             stub.serve(Self.page([kept]))
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             await model.loadIfNeeded()
             BulletinsViewModel.forgetListSession()
             Self.wipeCached([kept])
@@ -334,7 +334,7 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (kept, fresh) = (stub.id, stub.id + 1)
             stub.serve(Self.page([kept]))
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             await model.refresh()
             BulletinsViewModel.forgetListSession()
             Self.wipeCached([kept])
@@ -359,7 +359,7 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (older, kept, fresh) = (stub.id, stub.id + 1, stub.id + 2)
             stub.serve(Self.page([kept], next: older))
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             model.pausePrefetch()
             await model.refresh()
             BulletinsViewModel.forgetListSession()
@@ -383,7 +383,7 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (kept, tapped) = (stub.id, stub.id + 1)
             stub.serve(Self.page([kept]))
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             await model.refresh()
             BulletinsViewModel.forgetListSession()
             Self.wipeCached([kept])
@@ -407,7 +407,7 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (tapped, fresh) = (stub.id, stub.id + 1)
             let gate = Self.serveHeld(Self.detail(tapped), for: stub.detailURL(tapped))
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             let resolve = Task { try await model.summary(forId: tapped) }
             try await waitUntil { SettingsAPIStub.requests(for: stub.detailURL(tapped)).count == 1 }
 
@@ -431,7 +431,7 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (shown, hidden) = (stub.id, stub.id + 1)
             stub.serve(Self.page([shown, hidden], orgs: [shown: "TEST-A", hidden: "TEST-B"]))
-            let model = BulletinsViewModel(apiClient: stub.client)
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
             await model.loadIfNeeded()
             try await waitUntil { model.items.contains { $0.id == hidden } }
             model.selectedOrgs = ["TEST-A"]
@@ -439,5 +439,63 @@ extension BulletinListSessionTests {
             #expect(unread.contains(shown))
             #expect(!unread.contains(hidden))
         }
+    }
+}
+
+extension BulletinListSessionTests {
+    @Test("a cancelled bulletin prefetch does not set the cursor after a refresh")
+    func aCancelledPrefetchDoesNotSetTheCursor() async throws {
+        try await withExclusiveRealDefaults {
+            BulletinsViewModel.forgetListSession()
+            defer { BulletinsViewModel.forgetListSession() }
+            let base = Int.random(in: 1_000_000_000...2_000_000_000)
+            let (first, refreshed, stale) = (base, base + 1, base + 2)
+            let (walked, walkedAfterRefresh) = (base + 10, base + 20)
+            defer { Self.wipeCached([first, refreshed, stale]) }
+            let decode = { try JSONDecoder().decode(BulletinAPI.BulletinListResponse.self, from: $0) }
+            var firstPages = [try decode(Self.page([first], next: walked)), try decode(Self.page([refreshed], next: walkedAfterRefresh))]
+            let olderPage = try decode(Self.page([stale], next: base + 30))
+            let held = HeldBulletinPages()
+            let feed = BulletinFeed(
+                page: { cursor, _ in
+                    guard let cursor else { return firstPages.removeFirst() }
+                    return await held.answer(cursor, with: olderPage)
+                },
+                detail: { _ in throw URLError(.badURL) }
+            )
+            let model = BulletinsViewModel(feed: feed)
+            await model.refresh()
+            try await waitUntil { held.isWaiting(walked) }
+
+            await model.refresh()
+            try await waitUntil { held.isWaiting(walkedAfterRefresh) }
+            held.release(walked)
+            try await waitUntil { held.answered.contains(walked) }
+
+            #expect(feed.nextCursor == walkedAfterRefresh)
+            #expect(!model.items.contains { $0.id == stale })
+            model.pausePrefetch()
+            held.release(walkedAfterRefresh)
+        }
+    }
+}
+
+/// Answers a page request when the test releases it, and answers even after its task is
+/// cancelled, as a response already received does.
+@MainActor
+private final class HeldBulletinPages {
+    private var waiting: [Int: CheckedContinuation<Void, Never>] = [:]
+    private(set) var answered: Set<Int> = []
+
+    func isWaiting(_ cursor: Int) -> Bool { waiting[cursor] != nil }
+
+    func answer(_ cursor: Int, with page: BulletinAPI.BulletinListResponse) async -> BulletinAPI.BulletinListResponse {
+        await withCheckedContinuation { waiting[cursor] = $0 }
+        answered.insert(cursor)
+        return page
+    }
+
+    func release(_ cursor: Int) {
+        waiting.removeValue(forKey: cursor)?.resume()
     }
 }

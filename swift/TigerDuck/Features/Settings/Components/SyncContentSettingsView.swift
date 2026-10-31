@@ -29,9 +29,7 @@ struct SyncContentSettingsView: View {
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncAssignmentReminders) { old, new in
                         app.pushSchedule.pushSyncPreferences()
-                        if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) {
-                            app.notificationSettings.adoptSection(.assignments)
-                        }
+                        app.notificationSettings.deviceSwitchChanged(.assignments, old: old, new: new)
                     }
             }
 
@@ -40,9 +38,7 @@ struct SyncContentSettingsView: View {
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncLiveActivity) { old, new in
                         app.pushSchedule.pushSyncPreferences()
-                        if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) {
-                            app.notificationSettings.adoptSection(.liveActivity)
-                        }
+                        app.notificationSettings.deviceSwitchChanged(.liveActivity, old: old, new: new)
                     }
             }
 
@@ -54,7 +50,7 @@ struct SyncContentSettingsView: View {
                                 app.conflicts.markCategoryReenabled("courses")
                                 app.conflicts.checkPendingConflicts()
                             }
-                            syncCourseColors = EditSender.courseColorsAfterCoursesChange(coursesNowOn: new)
+                            syncCourseColors = app.edits.syncsCourseColors(coursesNowOn: new)
                             app.pushSchedule.pushSyncPreferences()
                         }
 

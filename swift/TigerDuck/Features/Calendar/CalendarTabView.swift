@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct CalendarTabView: View {
     var embedded = false
@@ -68,7 +69,9 @@ struct CalendarTabView: View {
             Spacer()
             SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
             Button {
-                viewModel.goToToday()
+                withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .smoothSpring) {
+                    viewModel.goToToday()
+                }
             } label: {
                 Text(String(localized: "calendar_today"))
                     .font(.caption.weight(.semibold))

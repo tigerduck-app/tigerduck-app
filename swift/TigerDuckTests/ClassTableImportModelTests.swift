@@ -351,7 +351,7 @@ struct ClassTableImportModelTests {
         let text = try Self.code("B11300001")
         let image = try Self.qrImage(text)
 
-        #expect(try await onGlobalQueue { ClassTableImportModel.qrPayloads(in: image) } == [text])
+        #expect(try await onGlobalQueue { ShareCodeReading.qrPayloads(in: image) } == [text])
         let model = makeModel()
         await model.readImage(image)
         #expect(model.pending?.code.studentId == "B11300001")
@@ -431,7 +431,7 @@ struct ClassTableImportModelTests {
     @Test("the confirm screen lists the student ID, terms, courses and share time; a TAT code has no share time")
     func confirmRows() throws {
         let ours = try ClassTableShareCode.decode(try Self.code("B11300001", [Self.fall, Self.spring]))
-        let rows = ClassTableImportModel.rows(for: ours)
+        let rows = ClassTableImportSummary.rows(for: ours)
         #expect(rows.map(\.title) == [
             String(localized: "sign_in_student_id"),
             String(localized: "class_table_semester_picker_label"),
@@ -448,13 +448,13 @@ struct ClassTableImportModelTests {
         let tat = try ClassTableShareCode.decode(
             "HTTPS://NTUST-TAT.WEB.APP/S/TAT21151B11300001CS1010001.267-EE1010002.13.5N-MA1010003"
         )
-        #expect(ClassTableImportModel.rows(for: tat).map(\.title) == [
+        #expect(ClassTableImportSummary.rows(for: tat).map(\.title) == [
             String(localized: "sign_in_student_id"),
             String(localized: "class_table_semester_picker_label"),
             String(localized: "class_table_import_course_count"),
         ])
         let anonymous = try ClassTableShareCode.decode("HTTPS://NTUST-TAT.WEB.APP/S/TAT11142         CS1010004")
-        #expect(ClassTableImportModel.rows(for: anonymous).map(\.title) == [
+        #expect(ClassTableImportSummary.rows(for: anonymous).map(\.title) == [
             String(localized: "class_table_semester_picker_label"),
             String(localized: "class_table_import_course_count"),
         ])

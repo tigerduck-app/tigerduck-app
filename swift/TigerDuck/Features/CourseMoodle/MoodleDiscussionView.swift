@@ -273,12 +273,12 @@ private struct MoodlePostCard: View {
     @ViewBuilder
     private var message: some View {
         if post.isDeleted {
-            Text(MoodleHTMLText.plainText(fromHTML: post.message))
+            Text(MoodleText.plainText(fromHTML: post.message))
                 .font(TigerDuckTheme.Typography.body)
                 .italic()
                 .foregroundStyle(Color.textSecondary)
         } else {
-            Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: post.message)))
+            Markdown(BulletinBodyRenderer.normalize(MoodleText.markdown(fromHTML: post.message)))
                 .markdownTheme(.bulletin(accent: app.preferences.accentColor))
                 .environment(\.openURL, OpenURLAction { url in
                     files.forgetPendingOpen()
