@@ -452,6 +452,17 @@ struct PastTermRebuildTests {
         #expect(rebuilds(Self.report([("991", "CS1001301", .graded), ("1001", "MA1001301", .graded)]), "991", false))
     }
 
+    @Test("A summer term follows its year's second term: a running one only adds, an ended one is rebuilt")
+    func summerTermFollowsTheSecondTerm() {
+        let rebuilds = AppServiceBridge.rebuildsFromTranscript
+        let running = Self.report([("1141", "CS1001301", .graded), ("1142", "MA1001301", .graded), ("114H", "PE1001301", .unknown)])
+        #expect(!rebuilds(running, "114H", false))
+        #expect(rebuilds(running, "1142", false))
+
+        let ended = Self.report([("114H", "PE1001301", .graded), ("1151", "GE1001301", .graded)])
+        #expect(rebuilds(ended, "114H", false))
+    }
+
     @Test("A row the course query cannot read keeps its cached copy; rows the rule leaves out and courses off the transcript are dropped")
     func unreadableRowKeepsItsCachedCopy() {
         let report = Self.report([
