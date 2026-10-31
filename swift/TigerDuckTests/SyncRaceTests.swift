@@ -160,6 +160,34 @@ struct SyncRaceTests {
         #expect(settled)
     }
 
+    @Test("An ignore setting for a course the backend does not hold yet waits parked like a colour")
+    func ignoreBeforeItsCourseWaitsForTheUpload() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 404, body: Data(#"{"error":"course_not_found","message":"no course"}"#.utf8)), for: url
+        )
+        let cache = Self.cache()
+        let coordinator = CloudSyncCoordinator(
+            pushCoordinator: Self.push(baseURL),
+            outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
+            isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
+            syncsCourseOverrides: { _ in true }, courses: cache.courses,
+            kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
+                             courses: cache.courses, assignments: cache.assignments)
+        )
+
+        await coordinator.outbox.enqueue(.courseIgnore(
+            semester: "1151", courseNo: "CS1", moodleId: "1151CS1", moodleCourseId: 4242, ignore: true,
+            stamp: Date(timeIntervalSince1970: 1_790_000_000)
+        ))
+        await coordinator.syncTick()
+
+        #expect(SettingsAPIStub.requests(for: url).count == 1)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+        #expect(await coordinator.outbox.parkedSnapshot().map(\.op.dedupKey) == ["ci|1151|1151CS1"])
+    }
+
     // MARK: - R4
 
     @Test("A rule edited while the save before it is out stays on screen and goes in the next save")
