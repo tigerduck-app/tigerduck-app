@@ -79,7 +79,7 @@ struct RefreshOrderTests {
                 pushOutbox: { log.events.append("outbox") },
                 fetchSchool: { applyAfter in
                     log.events.append("fetched")
-                    await applyAfter()
+                    #expect(await applyAfter())
                     log.events.append("applied")
                     uploader.uploadCourses([Self.course], semester: "1151")
                 }
@@ -106,7 +106,7 @@ struct RefreshOrderTests {
             pull: { log.events.append("pull failed") },
             pushOutbox: { log.events.append("outbox") },
             fetchSchool: { applyAfter in
-                await applyAfter()
+                #expect(await applyAfter())
                 log.events.append("applied")
                 uploader.uploadCourses([Self.course], semester: "1151")
             }
@@ -117,6 +117,34 @@ struct RefreshOrderTests {
         target.notePull(account.ticket)
         try await waitUntil { log.events.last == "upload" }
         #expect(log.events == ["pull failed", "outbox", "applied", "upload"])
+    }
+
+    @Test("A refresh cancelled before its pull ends tells its school fetch to apply nothing")
+    func aCancelledRefreshAppliesNothing() async throws {
+        let log = Log()
+        let pull = Gate()
+        var applies: Bool?
+
+        let refresh = Task {
+            await RefreshOrder.run(
+                pull: {
+                    await pull.wait()
+                    log.events.append("pulled")
+                },
+                pushOutbox: { log.events.append("outbox") },
+                fetchSchool: { applyAfter in
+                    log.events.append("fetched")
+                    applies = await applyAfter()
+                }
+            )
+        }
+        try await waitUntil { log.events == ["fetched"] }
+        refresh.cancel()
+        pull.open()
+        await refresh.value
+
+        #expect(applies == false)
+        #expect(log.events == ["fetched", "pulled", "outbox"])
     }
 
     @Test("A colour edited here and not yet sent survives a pull of an older one, and the push after the pull sends it")
@@ -155,7 +183,7 @@ struct RefreshOrderTests {
                 ).map(\.courseNo)
             },
             pushOutbox: { await coordinator.syncTick() },
-            fetchSchool: { await $0() }
+            fetchSchool: { _ = await $0() }
         )
 
         #expect(sentBeforePull == 0)
