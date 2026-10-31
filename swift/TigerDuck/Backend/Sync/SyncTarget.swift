@@ -8,7 +8,8 @@ import Foundation
 final class SyncTarget {
     private let account: AccountSession
     private var pulledIn: AccountSession.Ticket?
-    private var waiters: [UUID: (ticket: AccountSession.Ticket, resume: CheckedContinuation<Bool, Never>)] = [:]
+    /// In the order the uploads came, so one channel's held uploads go out oldest first.
+    private var waiters: [(id: UUID, ticket: AccountSession.Ticket, resume: CheckedContinuation<Bool, Never>)] = []
 
     init(account: AccountSession) {
         self.account = account
@@ -38,17 +39,20 @@ final class SyncTarget {
         let id = UUID()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { resume in
-                if Task.isCancelled { resume.resume(returning: false) } else { waiters[id] = (ticket, resume) }
+                if Task.isCancelled { resume.resume(returning: false) } else { waiters.append((id, ticket, resume)) }
             }
         } onCancel: {
-            Task { @MainActor in self.waiters.removeValue(forKey: id)?.resume.resume(returning: false) }
+            Task { @MainActor in
+                guard let index = self.waiters.firstIndex(where: { $0.id == id }) else { return }
+                self.waiters.remove(at: index).resume.resume(returning: false)
+            }
         }
     }
 
     private func release(pulled: (AccountSession.Ticket) -> Bool) {
         let released = waiters
-        waiters = [:]
-        for waiter in released.values {
+        waiters = []
+        for waiter in released {
             waiter.resume.resume(returning: pulled(waiter.ticket) && account.isCurrent(waiter.ticket))
         }
     }

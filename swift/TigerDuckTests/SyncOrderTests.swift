@@ -7,6 +7,8 @@ struct SyncOrderTests {
     @MainActor
     private final class Released {
         var value: Bool?
+        var entered = 0
+        var order: [Int] = []
     }
 
     @Test("What this device derives from school data waits for the sign-in's first pull, and goes once it is applied")
@@ -48,6 +50,28 @@ struct SyncOrderTests {
         #expect(!target.hasPulled(after))
         target.notePull(before)
         #expect(!target.hasPulled(after))
+    }
+
+    @Test("Uploads held for the first pull go out in the order they came")
+    func heldUploadsGoInTheirOrder() async throws {
+        let account = AccountSession()
+        let target = SyncTarget(account: account)
+        let ticket = account.ticket
+        let released = Released()
+
+        var uploads: [Task<Void, Never>] = []
+        for index in 0..<20 {
+            uploads.append(Task {
+                released.entered += 1
+                _ = await target.waitForPull(ticket)
+                released.order.append(index)
+            })
+            try await waitUntil { released.entered == index + 1 }
+        }
+        target.notePull(ticket)
+        for upload in uploads { await upload.value }
+
+        #expect(released.order == Array(0..<20))
     }
 
     @Test("A full sync applies marks, course ignores, colours and names, holidays and then the roster")
