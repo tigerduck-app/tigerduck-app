@@ -16,13 +16,15 @@ enum CourseFetch {
         authService: AuthService,
         semester: String = CourseSelectionService.currentSemesterCode(),
         forceRefresh: Bool = false,
-        resendingRoster: Bool = false
+        resendingRoster: Bool = false,
+        applyAfter: @MainActor () async -> Void = {}
     ) async -> [SDCourse] {
         await fetchCourses(
             authService: authService,
             semester: semester,
             forceRefresh: forceRefresh,
             resendingRoster: resendingRoster,
+            applyAfter: applyAfter,
             ticket: authService.session.ticket,
             moodle: { await fetchMoodleCourses(authService: authService) },
             transcript: { await fetchTranscript(authService: authService) }
@@ -123,6 +125,7 @@ enum CourseFetch {
         semester: String,
         forceRefresh: Bool,
         resendingRoster: Bool = false,
+        applyAfter: @MainActor () async -> Void = {},
         ticket: AccountSession.Ticket,
         moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
@@ -192,13 +195,6 @@ enum CourseFetch {
                 cached: cachedCourses.map(\.courseNo)
             )
         guard let term else { return cachedCourses }
-        if let roster = term.roster, !Task.isCancelled, authService.session.isCurrent(ticket) {
-            CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster)
-            if selectionIsLive {
-                let stillDropped = CourseStore.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
-                CourseStore.shared.saveServerDroppedNos(stillDropped, semester: semester)
-            }
-        }
 
         let moodleAll = await moodle()
         // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
@@ -243,6 +239,16 @@ enum CourseFetch {
             }
             return (data, answered)
         }.compactMap { item in item.data.map { TermRoster.LookedUpCourse(course: $0.course(in: semester), answered: item.answered) } }
+
+        // The roster and the courses are applied once the backend's courses have been.
+        await applyAfter()
+        if let roster = term.roster, !Task.isCancelled, authService.session.isCurrent(ticket) {
+            CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster)
+            if selectionIsLive {
+                let stillDropped = CourseStore.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
+                CourseStore.shared.saveServerDroppedNos(stillDropped, semester: semester)
+            }
+        }
 
         let pastTerm = !rebuilds ? nil : TermRoster.rebuiltPastTerm(
             looked, unreadable: report.map { TermRoster.unreadableClassRows(of: $0, term: semester).map(\.code) } ?? [],

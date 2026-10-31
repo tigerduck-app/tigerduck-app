@@ -25,14 +25,20 @@ enum AssignmentFetch {
 
     static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
 
-    static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
+    /// `applyAfter` returns once the round may apply what it fetched, as after a refresh's pull.
+    static func fetchAssignments(
+        authService: AuthService, recheckSubmissions: Bool = false,
+        applyAfter: @escaping @MainActor () async -> Void = {}
+    ) async -> [SDAssignment] {
         let ticket = authService.session.ticket
         return await sharedRound(
             signIn: ticket,
             rechecks: recheckSubmissions,
             isCurrent: { authService.session.isCurrent(ticket) }
         ) {
-            await runAssignmentRound(authService: authService, recheckSubmissions: recheckSubmissions)
+            await runAssignmentRound(
+                authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: applyAfter
+            )
         }
     }
 
@@ -74,7 +80,9 @@ enum AssignmentFetch {
         }
     }
 
-    static func refreshAssignmentsIfDue(authService: AuthService) async {
+    static func refreshAssignmentsIfDue(
+        authService: AuthService, applyAfter: @escaping @MainActor () async -> Void = {}
+    ) async {
         let now = Date()
         guard authService.storedStudentId != nil,
               isForegroundRefreshDue(
@@ -86,7 +94,7 @@ enum AssignmentFetch {
         let showsProgress = manager.loadingState == .idle || manager.loadingState == .loaded
         if showsProgress { manager.loadingState = .loading }
         let starts = manager.loadingStarts
-        _ = await fetchAssignments(authService: authService)
+        _ = await fetchAssignments(authService: authService, applyAfter: applyAfter)
         if showsProgress, manager.loadingStarts == starts { manager.loadingState = .loaded }
     }
 
@@ -95,7 +103,9 @@ enum AssignmentFetch {
         AssignmentRounds.shared.running = nil
     }
 
-    private static func runAssignmentRound(authService: AuthService, recheckSubmissions: Bool) async -> [SDAssignment] {
+    private static func runAssignmentRound(
+        authService: AuthService, recheckSubmissions: Bool, applyAfter: @MainActor () async -> Void
+    ) async -> [SDAssignment] {
         let ticket = authService.session.ticket
         guard let account = authService.storedStudentId,
               authService.storedPassword != nil else {
@@ -163,6 +173,8 @@ enum AssignmentFetch {
                 try await MoodleAssignmentService.fetchSubmissionStatus(assignId: $0)
             }
             let statuses = answers.mapValues(\.status)
+            // The marks below, and what is saved, are read once the backend's have been applied.
+            await applyAfter()
 
             let freshAssignments = AssignmentRecords.assignments(
                 from: records,

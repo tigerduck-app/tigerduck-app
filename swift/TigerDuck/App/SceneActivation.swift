@@ -1,6 +1,7 @@
 import Foundation
 
-/// What a launch, a return to the foreground and a sign-in start.
+/// What a launch, a return to the foreground and a sign-in start. Each runs one ordered refresh
+/// (`RefreshOrder`): school data is applied after the backend pull, and uploaded after that.
 @MainActor
 final class SceneActivation {
     private unowned let app: AppEnvironment
@@ -67,21 +68,12 @@ final class SceneActivation {
             }
             NTUSTSessionManager.shared.loadingState = .loading
             if recheckSubmissions { MoodleEnrolledCoursesService.dropSharedAnswer() }
-            _ = await AssignmentFetch.fetchAssignments(
-                authService: app.authService, recheckSubmissions: recheckSubmissions
+            await RefreshOrder.run(
+                pull: { await app.fullSync.sync(followUpIfBusy: true) },
+                pushOutbox: { await app.cloudSyncCoordinator.syncTick() },
+                fetchSchool: { await Self.fetchSchoolData(app.authService, recheckSubmissions, applyAfter: $0) }
             )
-            await app.fullSync.sync(followUpIfBusy: true)
-            async let schoolEvents = CalendarService.fetchAndParseICS()
-            async let courses: Void = Self.fetchCurrentTerm(app.authService)
-            let fetchedSchoolEvents = await schoolEvents
-            await courses
             guard !Task.isCancelled else { return }
-            if let fetchedSchoolEvents {
-                var calendarCache = AssignmentStore.shared.loadCalendarEvents()
-                calendarCache.removeAll { $0.source == .school }
-                calendarCache.append(contentsOf: fetchedSchoolEvents)
-                AssignmentStore.shared.saveCalendarEvents(calendarCache)
-            }
             NTUSTSessionManager.shared.loadingState = .loaded
         }
     }
@@ -91,14 +83,41 @@ final class SceneActivation {
         refreshTask = nil
     }
 
+    /// A return reads the revision, and the change feed or a full sync when it moved.
     private func refreshOnReturn() {
-        if app.hasCompletedOnboarding {
-            Task { [app] in await AssignmentFetch.refreshAssignmentsIfDue(authService: app.authService) }
+        guard app.hasCompletedOnboarding else {
+            app.feed.startPolling()
+            return
         }
-        app.feed.startPolling()
+        Task { [app] in
+            await RefreshOrder.run(
+                pull: { await app.feed.pollOnReturn() },
+                pushOutbox: { await app.cloudSyncCoordinator.syncTick() },
+                fetchSchool: { await AssignmentFetch.refreshAssignmentsIfDue(authService: app.authService, applyAfter: $0) }
+            )
+        }
     }
 
-    private static func fetchCurrentTerm(_ authService: AuthService) async {
+    private static func fetchSchoolData(
+        _ authService: AuthService, _ recheckSubmissions: Bool, applyAfter: @escaping @MainActor () async -> Void
+    ) async {
+        _ = await AssignmentFetch.fetchAssignments(
+            authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: applyAfter
+        )
+        async let schoolEvents = CalendarService.fetchAndParseICS()
+        async let courses: Void = fetchCurrentTerm(authService, applyAfter: applyAfter)
+        let fetchedSchoolEvents = await schoolEvents
+        await courses
+        guard !Task.isCancelled, let fetchedSchoolEvents else { return }
+        var calendarCache = AssignmentStore.shared.loadCalendarEvents()
+        calendarCache.removeAll { $0.source == .school }
+        calendarCache.append(contentsOf: fetchedSchoolEvents)
+        AssignmentStore.shared.saveCalendarEvents(calendarCache)
+    }
+
+    private static func fetchCurrentTerm(
+        _ authService: AuthService, applyAfter: @escaping @MainActor () async -> Void
+    ) async {
         guard let studentId = authService.storedStudentId else { return }
         let semester = CourseSelectionService.currentSemesterCode()
         if CourseSelectionService.needsSchoolSession(studentId: studentId, semester: semester) {
@@ -106,6 +125,28 @@ final class SceneActivation {
         } else {
             await authService.ensureBackendSignedIn()
         }
-        _ = await CourseFetch.fetchCourses(authService: authService, semester: semester)
+        _ = await CourseFetch.fetchCourses(authService: authService, semester: semester, applyAfter: applyAfter)
+    }
+}
+
+/// One refresh in order: the pull and the school fetch start together, the fetch applies its
+/// result once the pull and the outbox send after it are done, and its uploads go after that
+/// (`SyncTarget` holds them until this sign-in's first pull).
+enum RefreshOrder {
+    static func run(
+        pull: @escaping @MainActor () async -> Void,
+        pushOutbox: @escaping @MainActor () async -> Void,
+        fetchSchool: @MainActor (_ applyAfter: @escaping @MainActor () async -> Void) async -> Void
+    ) async {
+        let pulled = Task { @MainActor in
+            await pull()
+            await pushOutbox()
+        }
+        await withTaskCancellationHandler {
+            await fetchSchool { await pulled.value }
+            await pulled.value
+        } onCancel: {
+            pulled.cancel()
+        }
     }
 }
