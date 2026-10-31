@@ -45,6 +45,12 @@ enum PushAPI {
         let hlc: Int64?
     }
 
+    /// Whether the backend took the value sent or kept a newer one; one before TigerSync stamps
+    /// leaves it out.
+    struct EditAnswer: Decodable, Sendable {
+        let applied: Bool?
+    }
+
     nonisolated struct DevicePreferencesRequest: Codable, Sendable {
         var serverPushEnabled: Bool?
         var syncCourses: Bool?
@@ -194,6 +200,9 @@ enum PushAPI {
         let customNames: [String: String]
         let ignoreAssignments: Bool?
         let updatedAt: String
+        /// The fields sent that the backend took, the rest losing to newer values; a backend
+        /// before TigerSync stamps leaves it out.
+        let applied: [String]?
 
         enum CodingKeys: String, CodingKey {
             case id
@@ -201,6 +210,11 @@ enum PushAPI {
             case customNames = "custom_names"
             case ignoreAssignments = "ignore_assignments"
             case updatedAt = "updated_at"
+            case applied
+        }
+
+        func keptNewer(than fields: [String]) -> Bool {
+            applied.map { !Set(fields).isSubset(of: $0) } ?? false
         }
     }
 

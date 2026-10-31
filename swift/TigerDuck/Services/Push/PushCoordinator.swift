@@ -173,7 +173,7 @@ final class PushCoordinator {
         moodleAssignmentId: String,
         localStatus: String,
         madeAt stamp: Date
-    ) async throws {
+    ) async throws -> Bool {
         try await apiClient.patchAssignmentOverride(
             moodleAssignmentId: moodleAssignmentId,
             localStatus: localStatus,

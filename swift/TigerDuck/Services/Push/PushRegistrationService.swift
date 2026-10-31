@@ -220,7 +220,7 @@ actor PushRegistrationService {
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .private)")
     }
 
-    func uploadHolidayOverride(holidayID: Int, notify: Bool, madeAt stamp: Date?) async throws {
+    func uploadHolidayOverride(holidayID: Int, notify: Bool, madeAt stamp: Date?) async throws -> Bool {
         try await apiClient.putHolidayOverride(holidayID: holidayID, notify: notify, madeAt: stamp)
     }
 

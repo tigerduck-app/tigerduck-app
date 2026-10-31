@@ -193,6 +193,9 @@ final class AppState {
         cloudSyncPreference.onChange { [weak self] enabled in
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
+        cloudSyncCoordinator.pullServerValues = { [weak self] in
+            Task { await self?.syncOverridesFromBackend(followUpIfBusy: true) }
+        }
 
         AppServiceBridge.courseUploader = { [weak self] courses, semester, asRoster, resend in
             self?.uploadCourses(courses, semester: semester, asRoster: asRoster, resend: resend)

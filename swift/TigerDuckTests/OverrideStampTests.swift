@@ -1,6 +1,7 @@
 import Defaults
 import Foundation
 import Testing
+import os
 @testable import TigerDuck
 
 /// The backend settles a colour, a name, an ignore setting, a mark and a holiday setting by the
@@ -79,6 +80,63 @@ struct OverrideStampTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
+    enum Settled: String, Sendable, CaseIterable { case applied, keptNewer, beforeStamps }
+
+    /// A reply that names the edit applied, one that names it kept out for a newer value, and one
+    /// from a backend before TigerSync stamps, which names neither.
+    private static func reply(_ edit: Edit, _ settled: Settled) -> Data {
+        let applied: String
+        switch (edit, settled) {
+        case (_, .beforeStamps): applied = ""
+        case (.mark, .applied): applied = #","applied":true"#
+        case (.mark, .keptNewer): applied = #","applied":false"#
+        case (_, .keptNewer): applied = #","applied":[]"#
+        case (.colour, .applied): applied = #","applied":["color_hex"]"#
+        case (.name, .applied): applied = #","applied":["custom_name"]"#
+        case (.ignore, .applied): applied = #","applied":["ignore_assignments"]"#
+        }
+        let reply = edit == .mark
+            ? #"{"id":1,"local_status":"locally_completed","updated_at":"2026-10-13T00:00:00+00:00""#
+            : ##"{"id":1,"color_hex":"#00AAFF","custom_names":{"zh":"Other"},"ignore_assignments":false,"updated_at":"2026-10-13T00:00:00+00:00""##
+        return Data((reply + applied + "}").utf8)
+    }
+
+    @Test("An edit the server keeps out for a newer value asks for a full sync once the drain ends", arguments: Edit.allCases, Settled.allCases)
+    func editKeptOutForANewerValuePullsIt(_ edit: Edit, _ settled: Settled) async {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent(
+            edit == .mark ? "sync/assignments/42/override" : "sync/courses/1151CS1001301/override"
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.reply(edit, settled)), for: url)
+        let coordinator = Self.makeCoordinator(baseURL)
+        let pulls = OSAllocatedUnfairLock(initialState: 0)
+        coordinator.pullServerValues = { pulls.withLock { $0 += 1 } }
+
+        await coordinator.outbox.enqueue(Self.op(edit))
+        await coordinator.syncTick()
+
+        #expect(SettingsAPIStub.requests(for: url).count == 1)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+        #expect(pulls.withLock { $0 } == (settled == .keptNewer ? 1 : 0))
+    }
+
+    @Test("A holiday setting the server keeps out for a newer one is acknowledged and asks for a pull", arguments: Settled.allCases)
+    func holidayKeptOutForANewerSettingPullsIt(_ settled: Settled) async throws {
+        try await Self.withCleanHolidayDefaults { id, url, registration in
+            let applied = [Settled.applied: #","applied":true"#, .keptNewer: #","applied":false"#][settled] ?? ""
+            let body = #"{"holiday_id":\#(id),"notify":false,"hlc":1"# + applied + "}"
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(body.utf8)), for: url)
+            let store = AcademicCalendarStore()
+            store.setNotify(true, forHoliday: id)
+            store.setHolidayAcknowledged(false, holidayID: id)
+
+            let pulls = await AppState.uploadHolidayOverride(id, from: store, via: registration)
+
+            #expect(pulls == (settled == .keptNewer))
+            #expect(!store.unacknowledgedHolidayIDs.contains(id))
+        }
+    }
+
     @Test("A holiday setting whose send failed goes again after a relaunch with the time it was made")
     func holidayRetryCarriesTheEditTime() async throws {
         try await Self.withCleanHolidayDefaults { id, url, registration in
@@ -89,11 +147,11 @@ struct OverrideStampTests {
             store.setHolidayAcknowledged(false, holidayID: id)
             let madeAt = try #require(store.holidayEdit(id).madeAt)
 
-            await AppState.uploadHolidayOverride(id, from: store, via: registration)
+            #expect(await AppState.uploadHolidayOverride(id, from: store, via: registration) == false)
             #expect(store.unacknowledgedHolidayIDs.contains(id))
             let retriedAt = Date()
             let relaunched = AcademicCalendarStore()
-            await AppState.uploadHolidayOverride(id, from: relaunched, via: registration)
+            #expect(await AppState.uploadHolidayOverride(id, from: relaunched, via: registration) == false)
 
             let sent = SettingsAPIStub.requests(for: url)
             #expect(sent.count == 2)
@@ -116,7 +174,7 @@ struct OverrideStampTests {
             store.setNotify(true, forHoliday: id)
             store.setHolidayAcknowledged(false, holidayID: id)
 
-            await AppState.uploadHolidayOverride(id, from: store, via: registration)
+            #expect(await AppState.uploadHolidayOverride(id, from: store, via: registration) == false)
 
             let stamps = try SettingsAPIStub.requests(for: url).map { try (Self.json($0)["hlc"] as? NSNumber)?.int64Value }
             let madeAt = try #require(store.holidayEdit(id).madeAt)
@@ -125,11 +183,11 @@ struct OverrideStampTests {
         }
     }
 
-    @Test("A holiday setting changed and changed back while its send is out stays unacknowledged for the newer time")
+    @Test("A holiday setting changed and changed back while its send is out stays unacknowledged for the newer time, which goes next instead of a pull")
     func holidayEditDuringTheSendKeepsItUnacknowledged() async throws {
         try await Self.withCleanHolidayDefaults { id, url, registration in
             let gate = SettingsAPIStub.ReplyGate()
-            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8), gate: gate), for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"applied":false}"#.utf8), gate: gate), for: url)
             let store = AcademicCalendarStore()
             store.setNotify(true, forHoliday: id)
             store.setHolidayAcknowledged(false, holidayID: id)
@@ -139,8 +197,8 @@ struct OverrideStampTests {
             store.setNotify(false, forHoliday: id)
             store.setNotify(true, forHoliday: id)
             gate.open()
-            await upload.value
 
+            #expect(await upload.value == false)
             #expect(store.unacknowledgedHolidayIDs.contains(id))
         }
     }

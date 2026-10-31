@@ -39,7 +39,8 @@ final class PushAPIClient: Sendable {
         try await delete(path: "/devices/\(safeDevice)", at: baseURL)
     }
 
-    func putHolidayOverride(holidayID: Int, notify: Bool, madeAt stamp: Date?) async throws {
+    /// Returns false when the backend kept a newer setting than the one sent.
+    func putHolidayOverride(holidayID: Int, notify: Bool, madeAt stamp: Date?) async throws -> Bool {
         try await sending(stamp) { hlc in
             var request = try await makePostRequest(
                 path: "/sync/holiday-overrides/\(holidayID)",
@@ -47,7 +48,7 @@ final class PushAPIClient: Sendable {
             )
             request.httpMethod = "PUT"
             request.setValue("application/json", forHTTPHeaderField: "Accept")
-            _ = try await execute(request, expectedFailure: Self.clockAhead)
+            return Self.applied(try await execute(request, expectedFailure: Self.clockAhead))
         }
     }
 
@@ -119,13 +120,13 @@ final class PushAPIClient: Sendable {
 
     // MARK: - Override sync
 
-    /// The reply is not read: the backend answers a cleared mark (`"none"`) with
-    /// `{"deleted": true}` rather than the override row, and no caller needs either.
+    /// Returns false when the backend kept a newer mark than the one sent. Only `applied` is read
+    /// from the reply, which for a cleared mark (`"none"`) holds no override row.
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String,
         madeAt stamp: Date
-    ) async throws {
+    ) async throws -> Bool {
         try await sending(stamp) { hlc in
             var request = try await makePostRequest(
                 path: "/sync/assignments/\(moodleAssignmentId)/override",
@@ -133,8 +134,13 @@ final class PushAPIClient: Sendable {
             )
             request.httpMethod = "PATCH"
             request.setValue("application/json", forHTTPHeaderField: "Accept")
-            _ = try await execute(request, expectedFailure: Self.clockAhead)
+            return Self.applied(try await execute(request, expectedFailure: Self.clockAhead))
         }
+    }
+
+    /// A reply that cannot be read counts as applied, as a 2xx did before replies named it.
+    private static func applied(_ reply: Data) -> Bool {
+        (try? decoder.decode(PushAPI.EditAnswer.self, from: reply))?.applied != false
     }
 
     func patchCourseOverride(

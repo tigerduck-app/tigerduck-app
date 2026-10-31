@@ -54,6 +54,10 @@ final class CloudSyncCoordinator {
     @ObservationIgnored private var cutoffs: [String: Date] = [:]
     @ObservationIgnored private var signOuts = 0
     @ObservationIgnored private var signOutsSettling = 0
+    /// An edit the backend keeps out for a newer value moves no revision, so a drain that sent one
+    /// calls this to start the full sync that brings that value here.
+    @ObservationIgnored var pullServerValues: @MainActor () -> Void = {}
+    @ObservationIgnored private var serverKeptNewer = false
 
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
     @ObservationIgnored var tickTimer: Timer?
@@ -229,6 +233,10 @@ final class CloudSyncCoordinator {
             guard let self else { throw CancellationError() }
             try await self.execute(op, signOutsBefore: signOutsBefore)
         }
+        // After the drain, which has dropped the sent ops, so the sync does not hold their fields.
+        let pulls = serverKeptNewer && signOuts == signOutsBefore
+        serverKeptNewer = false
+        if pulls { pullServerValues() }
     }
 
     func onRevisionChanged() async {
@@ -494,18 +502,24 @@ final class CloudSyncCoordinator {
         do {
             switch op {
             case .courseOverride(let courseId, let colorHex, let customName, let locale, let stamp):
-                _ = try await pushCoordinator.patchCourseOverride(
+                let response = try await pushCoordinator.patchCourseOverride(
                     moodleId: courseId,
                     colorHex: colorHex,
                     customName: customName,
                     locale: locale,
                     madeAt: stamp)
+                // The backend takes a name only with a locale.
+                let names = customName != nil && locale?.isEmpty == false
+                if response.keptNewer(than: (colorHex == nil ? [] : ["color_hex"]) + (names ? ["custom_name"] : [])) {
+                    serverKeptNewer = true
+                }
 
             case .assignmentOverride(let assignmentId, let localStatus, let stamp):
-                try await pushCoordinator.patchAssignmentOverride(
+                let applied = try await pushCoordinator.patchAssignmentOverride(
                     moodleAssignmentId: String(assignmentId),
                     localStatus: localStatus,
                     madeAt: stamp)
+                if !applied { serverKeptNewer = true }
 
             case .courseIgnore(let courseId, let moodleCourseId, let ignore, let stamp):
                 let response = try await pushCoordinator.patchCourseOverride(
@@ -516,6 +530,7 @@ final class CloudSyncCoordinator {
                 // A backend without the setting answers 200 and drops it, so only an answer that
                 // names it settles the op; anything else counts as a refusal.
                 guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
+                if response.keptNewer(than: ignore == nil ? [] : ["ignore_assignments"]) { serverKeptNewer = true }
 
             case .courseDelete(let courseKey, let stamp):
                 try await pushCoordinator.deleteCourse(courseKey: courseKey, madeAt: stamp)

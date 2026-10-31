@@ -141,27 +141,31 @@ extension AppState {
             _ = await previous?.value
             defer { AcademicCalendarStore.shared.endHolidayUpload() }
             guard let self, generation == HolidayUploadQueue.generation else { return }
-            await Self.uploadHolidayOverride(holidayID, from: .shared, via: self.pushCoordinator.registration)
+            if await Self.uploadHolidayOverride(holidayID, from: .shared, via: self.pushCoordinator.registration) {
+                Task { await self.syncOverridesFromBackend(followUpIfBusy: true) }
+            }
         }
     }
 
     /// Sends the holiday's setting with the time it was made, so a retry is not a newer edit, and
-    /// acknowledges it only when no edit came after it while it was out.
+    /// acknowledges it only when no edit came after it while it was out. Returns true when the
+    /// backend kept a newer setting, which moves no revision, so only a full sync brings it here.
     static func uploadHolidayOverride(
         _ holidayID: Int, from store: AcademicCalendarStore, via registration: PushRegistrationService
-    ) async {
+    ) async -> Bool {
         let sent = store.holidayEdit(holidayID)
         do {
-            try await registration.uploadHolidayOverride(
+            let applied = try await registration.uploadHolidayOverride(
                 holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt
             )
-            if store.holidayEdit(holidayID) == sent {
-                store.setHolidayAcknowledged(true, holidayID: holidayID)
-            }
+            guard store.holidayEdit(holidayID) == sent else { return false }
+            store.setHolidayAcknowledged(true, holidayID: holidayID)
+            return !applied
         } catch {
             AppLogger.sync.error(
                 "holiday override upload failed: \(error.localizedDescription, privacy: .private)"
             )
+            return false
         }
     }
 
