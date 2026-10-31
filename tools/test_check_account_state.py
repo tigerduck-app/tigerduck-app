@@ -7,9 +7,8 @@ from pathlib import Path
 import check_account_state as cas
 
 SOURCES = sorted({path for _, (_, clearers) in cas.inventory(cas.INVENTORY.read_text()).items() for path, _ in clearers}
-                 | {cas.FRESH_INSTALL_WIPE[0], "swift/TigerDuck/App/AppConstants.swift",
-                    "swift/TigerDuck/App/AppDefaults.swift", "swift/TigerDuck/Persistence/DataCache.swift",
-                    "swift/TigerDuck/Backend/Auth/AuthTokenManager.swift"})
+                 | {cas.FRESH_INSTALL_WIPE[0], *cas.KEYCHAIN_SOURCES, "swift/TigerDuck/App/AppDefaults.swift",
+                    *(p.relative_to(cas.ROOT).as_posix() for p in cas.swift_files(cas.ROOT, cas.PERSISTENCE))})
 
 
 class AccountStateTests(unittest.TestCase):
@@ -19,6 +18,10 @@ class AccountStateTests(unittest.TestCase):
         for path in SOURCES:
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(cas.ROOT / path, self.root / path)
+
+    def write(self, path: str, text: str) -> None:
+        (self.root / path).parent.mkdir(parents=True, exist_ok=True)
+        (self.root / path).write_text(text)
 
     def edit(self, path: str, old: str, new: str) -> None:
         source = (self.root / path).read_text()
@@ -37,6 +40,21 @@ class AccountStateTests(unittest.TestCase):
         self.edit("swift/TigerDuck/Persistence/DataCache.swift", '"assignments.json"', '"exam_seats.json"')
         self.assertIn("cache `exam_seats.json` has no row in docs/account-state.md", cas.problems(self.root))
 
+    def test_a_cache_file_of_another_persistence_store_without_a_row_fails(self) -> None:
+        self.write("swift/TigerDuck/Persistence/Courses/ExamSeatStore.swift",
+                   'struct ExamSeatStore {\n    let name = "exam_seats.json"\n}\n')
+        self.assertIn("cache `exam_seats.json` has no row in docs/account-state.md", cas.problems(self.root))
+
+    def test_a_defaults_key_declared_outside_app_defaults_without_a_row_fails(self) -> None:
+        self.write("swift/TigerDuck/Features/Exams/ExamDefaults.swift",
+                   'extension Defaults.Keys {\n    static let examSeatShown = Key<Bool>("examSeatShown", default: false)\n}\n')
+        self.assertIn("defaults `examSeatShown` has no row in docs/account-state.md", cas.problems(self.root))
+
+    def test_a_new_keychain_item_without_a_row_fails(self) -> None:
+        self.edit("swift/TigerDuck/Backend/Auth/AuthTokenManager.swift", "    static let departingSessionKey",
+                  '    static let deviceSecretKey = "v3_device_secret"\n    static let departingSessionKey')
+        self.assertIn("keychain `deviceSecretKey` has no row in docs/account-state.md", cas.problems(self.root))
+
     def test_an_account_key_the_sign_out_stops_clearing_fails(self) -> None:
         self.edit("swift/TigerDuck/App/AppState+Account.swift", "Defaults[.schoolDataSyncedAt] = nil\n", "")
         self.assertIn("defaults `schoolDataSyncedAt`: `forgetAccountOnDevice` in swift/TigerDuck/App/AppState+Account.swift"
@@ -54,8 +72,8 @@ class AccountStateTests(unittest.TestCase):
 
     def test_an_account_row_that_names_no_clearer_fails(self) -> None:
         text = cas.INVENTORY.read_text().replace(
-            "| defaults | `schoolDataSyncedAt` | account | `swift/TigerDuck/App/AppState+Account.swift` `forgetAccountOnDevice` |",
-            "| defaults | `schoolDataSyncedAt` | account | |")
+            "| defaults | `schoolDataSyncedAt` | school | `swift/TigerDuck/App/AppState+Account.swift` `forgetAccountOnDevice` |",
+            "| defaults | `schoolDataSyncedAt` | school | |")
         self.assertIn("defaults `schoolDataSyncedAt` belongs to an account but names nothing that clears it",
                       cas.problems(self.root, text))
 

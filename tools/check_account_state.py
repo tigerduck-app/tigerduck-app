@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Fail when stored state is added without saying whether a sign-out clears it.
 
-`docs/account-state.md` lists every Keychain key, `Defaults` key and `DataCache`
-file the app declares, with its scope. A row of the school account names the
-function that clears it, and that function's body must mention it; a Keychain
-key of an account must also be in the fresh-install wipe in `AppState.init`.
-A declaration with no row, or a row with nothing declared, is an error too.
+`docs/account-state.md` lists every Keychain key, `Defaults` key and cache file
+the app declares, with its scope. Declarations are read where the v4 layout puts
+them: `Defaults` keys in any `Defaults.Keys` extension of the app target, cache
+files in any source under `Persistence/`. A row of the school or library account
+names the function that clears it, and that function's body must mention it; a
+Keychain key of an account must also be in the fresh-install wipe in
+`AppState.init`. A declaration with no row, or a row with nothing declared, is an
+error too.
 
 Run manually:  python3 tools/check_account_state.py
 """
@@ -18,32 +21,42 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "docs" / "account-state.md"
+APP = "swift/TigerDuck"
+PERSISTENCE = APP + "/Persistence"
+KEYCHAIN_SOURCES = ("swift/TigerDuck/App/AppConstants.swift", "swift/TigerDuck/Backend/Auth/AuthTokenManager.swift")
 FRESH_INSTALL_WIPE = ("swift/TigerDuck/App/AppState.swift", "init")
-SCOPES = {"account", "library", "device"}
+SCOPES = {"school", "library", "device"}
 
 ROW_RE = re.compile(r"^\|\s*(keychain|defaults|cache)\s*\|\s*`([^`]+)`\s*\|\s*(\w+)\s*\|(.*)\|\s*$")
 CLEARER_RE = re.compile(r"`([^`]+\.swift)`\s+`(\w+)`")
 
 
+def swift_files(root: Path, folder: str) -> list[Path]:
+    return sorted((root / folder).rglob("*.swift"))
+
+
 def declared(root: Path) -> set[tuple[str, str]]:
     found: set[tuple[str, str]] = set()
-    constants = (root / "swift/TigerDuck/App/AppConstants.swift").read_text()
+    constants = (root / KEYCHAIN_SOURCES[0]).read_text()
     block = re.search(r"enum KeychainKeys \{(.*?)\n    \}", constants, re.S)
     for name in re.findall(r"static let (\w+) = \"", block.group(1) if block else ""):
         found.add(("keychain", name))
-    tokens = (root / "swift/TigerDuck/Backend/Auth/AuthTokenManager.swift").read_text()
+    tokens = (root / KEYCHAIN_SOURCES[1]).read_text()
     for name in re.findall(r"static let (\w+Key) = \"", tokens):
         found.add(("keychain", name))
-    defaults = (root / "swift/TigerDuck/App/AppDefaults.swift").read_text()
-    for name in re.findall(r"static let (\w+) = Key<", defaults):
-        found.add(("defaults", name))
-    cache = (root / "swift/TigerDuck/Persistence/DataCache.swift").read_text()
-    for name in re.findall(r"\"([a-z_]+\.json)\"", cache):
-        found.add(("cache", name))
-    for name in re.findall(r"hasPrefix\(\"([a-z_]+)\"\)", cache):
-        found.add(("cache", name + "*"))
+    for path in swift_files(root, APP):
+        for name in re.findall(r"static let (\w+) = Key<", path.read_text()):
+            found.add(("defaults", name))
+    for path in swift_files(root, PERSISTENCE):
+        found |= cache_files(path.read_text())
+    return found
+
+
+def cache_files(source: str) -> set[tuple[str, str]]:
+    found = {("cache", name) for name in re.findall(r"\"([a-z_]+\.json)\"", source)}
+    found |= {("cache", name + "*") for name in re.findall(r"hasPrefix\(\"([a-z_]+)\"\)", source)}
     previous = ""
-    for line in cache.splitlines():
+    for line in source.splitlines():
         directory = re.search(r"var (\w+Dir): URL", line)
         literal = re.search(r"appendingPathComponent\(\"(\w+)\", isDirectory: true\)", line)
         if directory:
