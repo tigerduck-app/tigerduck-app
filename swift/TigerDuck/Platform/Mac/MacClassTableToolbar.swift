@@ -41,7 +41,7 @@ struct MacClassTableToolbar: ToolbarContent {
                 .help(String(localized: "add_course_title"))
             }
         }
-        if viewModel.people.store.shownPerson == nil {
+        if viewModel.shownPerson == nil {
             ToolbarItem(placement: .automatic) {
                 Button(action: share) {
                     HStack(spacing: 4) {
