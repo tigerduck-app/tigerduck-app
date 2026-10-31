@@ -20,7 +20,7 @@ final class MoodleRefreshTimer {
     init(
         ttl: TimeInterval,
         now: @escaping () -> Date = { Date() },
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.ttl = ttl
         self.now = now

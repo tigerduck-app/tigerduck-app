@@ -167,7 +167,7 @@ enum LibraryService: AccountScoped {
     @MainActor @discardableResult
     static func signInIfCredentialed(
         signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData = requestToken(username:password:),
-        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) async -> Bool {
         guard !isTokenValid, storedUsername != nil, storedPassword != nil else { return false }
         guard storedPasswordPostIsDue(now: Date()) else {
@@ -188,7 +188,7 @@ enum LibraryService: AccountScoped {
     @MainActor
     static func ensureToken(
         signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData = requestToken(username:password:),
-        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) async throws -> String {
         if let token = storedToken, isTokenValid {
             return token

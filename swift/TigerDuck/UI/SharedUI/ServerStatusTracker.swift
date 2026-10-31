@@ -124,7 +124,7 @@ final class ServerFailureSimulator {
     @TaskLocal static var sharedForTesting: ServerFailureSimulator?
 
     var failures: [SimulatedServer: SimulatedFailure] = [:]
-    @ObservationIgnored var sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    @ObservationIgnored var sleep: (Duration) async throws -> Void = { try await AppClock.sleep(until: ContinuousClock.now + $0) }
 
     func failure(for server: SimulatedServer) -> SimulatedFailure {
         failures[server] ?? .none

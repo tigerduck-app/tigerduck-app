@@ -80,7 +80,7 @@ actor MoodleTokenService {
         try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask { try await work() }
             group.addTask {
-                try await Task.sleep(for: deadline)
+                try await AppClock.sleep(until: ContinuousClock.now + deadline)
                 throw MoodleWebserviceError.transientNetwork(underlying: URLError(.timedOut).localizedDescription)
             }
             defer { group.cancelAll() }

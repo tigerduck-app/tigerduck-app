@@ -165,7 +165,7 @@ struct SyncStatusDot: View {
         dimmed = false
         guard !showDetails, !isLoading else { return }
         idleTask = Task { @MainActor in
-            try? await Task.sleep(for: Self.idleDelay)
+            try? await AppClock.sleep(until: ContinuousClock.now + Self.idleDelay)
             guard !Task.isCancelled else { return }
             dimmed = true
         }
