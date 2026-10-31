@@ -493,23 +493,26 @@ final class CloudSyncCoordinator {
     private func send(_ op: ResolvedSyncOp) async throws {
         do {
             switch op {
-            case .courseOverride(let courseId, let colorHex, let customName, let locale):
+            case .courseOverride(let courseId, let colorHex, let customName, let locale, let stamp):
                 _ = try await pushCoordinator.patchCourseOverride(
                     moodleId: courseId,
                     colorHex: colorHex,
                     customName: customName,
-                    locale: locale)
+                    locale: locale,
+                    madeAt: stamp)
 
-            case .assignmentOverride(let assignmentId, let localStatus):
+            case .assignmentOverride(let assignmentId, let localStatus, let stamp):
                 try await pushCoordinator.patchAssignmentOverride(
                     moodleAssignmentId: String(assignmentId),
-                    localStatus: localStatus)
+                    localStatus: localStatus,
+                    madeAt: stamp)
 
-            case .courseIgnore(let courseId, let moodleCourseId, let ignore):
+            case .courseIgnore(let courseId, let moodleCourseId, let ignore, let stamp):
                 let response = try await pushCoordinator.patchCourseOverride(
                     moodleId: courseId,
                     ignoreAssignments: ignore,
-                    moodleCourseId: moodleCourseId)
+                    moodleCourseId: moodleCourseId,
+                    madeAt: stamp)
                 // A backend without the setting answers 200 and drops it, so only an answer that
                 // names it settles the op; anything else counts as a refusal.
                 guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }

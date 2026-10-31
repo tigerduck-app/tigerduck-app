@@ -47,6 +47,28 @@ later build. Only the iOS build syncs the document: every synced field lives on
   otherwise the merge keeps the document's list, which may hold a value the app does not offer
   or several, so a push for another setting never replaces another client's choice. A pull
   shows the list's smallest value when the app offers it.
+- A push sends only what this device changed. `notificationSettingsSyncedPreferences` keeps the
+  settings as the device last synced them: the fields a write that landed sent, or that a push
+  found the document already holding, merged into the copy as it stands when the reply arrives so
+  that a change made during the request survives, or what a reconcile settled on. A push writes a field when the device's value differs from that copy or when the
+  document lacks the field, and a section the document lacks goes whole; every other field stays
+  as the document holds it, on the first write and on the 409 retry, so two devices that change
+  different fields of one section both keep their change. The two offset lists count as one
+  field. A sign-in with no copy stored starts it from the device's values, so what was edited
+  while signed out gives way to the account's document and an edit made after the sign-in goes
+  up. An upgrade, once stored data reads back (`NotificationSettingsSyncedSeedMigration`), does
+  the same for a device that is signed in; a push it finds pending holds an edit made on the
+  earlier build, so that one push sends every field, as earlier builds did
+  (`notificationSettingsPushSendsEveryField`), and the copy is recorded once it lands. A push
+  that would change nothing in the document writes nothing, as a write moves the revision and
+  sends every other device to reconcile. Turning a device switch back on makes that section's
+  values the copy, so a push sends only the fields edited after it, which are newer than anything
+  on the server, and takes the section's other fields from the document; a reconcile then adopts
+  the section. A reconcile that waited for a pending push runs again once a push lands with
+  nothing left to send (`NotificationSettingsPushQueue`). Sign-out clears the copy and the mark,
+  and drops a reconcile still waiting.
+- A device on an earlier build still writes whole sections, so its push can revert a field
+  another device changed; that device adopts the reverted value at its next reconcile.
 
 ## Alternatives
 
@@ -63,5 +85,7 @@ later build. Only the iOS build syncs the document: every synced field lives on
 ## Consequences
 
 - New fields must be Optional, and a push must go through the merge.
-- `NotificationSettingsSyncTests` pins the merge, the preserved minute values, the hours mirror
-  and the class reminder offsets kept for another client.
+- A new synced field needs a property on `LocalPreferences` and a case in its `replacing`; a
+  copy stored by an earlier build then fails to decode and counts as no copy.
+- `NotificationSettingsSyncTests` pins the merge, the preserved minute values, the hours mirror,
+  the class reminder offsets kept for another client and the fields a push leaves alone.
