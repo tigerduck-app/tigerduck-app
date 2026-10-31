@@ -1,5 +1,8 @@
 import Foundation
 import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @MainActor
 final class ScheduleSyncService {
@@ -26,6 +29,7 @@ final class ScheduleSyncService {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Sync")
 
     private var inflight: Task<Void, Never>?
+    private var pendingRequest: Task<Void, Never>?
 
     static let horizon: TimeInterval = 48 * 3600
 
@@ -169,6 +173,27 @@ final class ScheduleSyncService {
 
     func awaitInflight() async {
         await inflight?.value
+    }
+
+    /// Sends the list `debounce` after the last request, unless the app is in the background or
+    /// signed out by then.
+    func request(after debounce: Duration, inputsBuilder: @escaping @MainActor () -> Inputs) {
+        pendingRequest?.cancel()
+        pendingRequest = Task { @MainActor [weak self] in
+            try? await AppClock.sleep(until: ContinuousClock.now + debounce)
+            guard !Task.isCancelled else { return }
+            #if os(iOS)
+            guard UIApplication.shared.applicationState != .background else { return }
+            #endif
+            guard await self?.apiClient.hasAuthSession() == true else { return }
+            let inputs = inputsBuilder()
+            self?.sync(inputs: inputs)
+        }
+    }
+
+    func cancelRequest() async {
+        pendingRequest?.cancel()
+        await pendingRequest?.value
     }
 
     /// A new session or device registration may reach a backend without this device's list, so

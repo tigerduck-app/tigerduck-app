@@ -38,6 +38,7 @@ final class PushCoordinator {
     private let apiClient: PushAPIClient
     let ledger: SendLedger
     let registration: PushRegistrationService
+    private let uploads: BackendUploads
     #if os(iOS)
     private let relay: PushTokenRelay
     #endif
@@ -47,12 +48,10 @@ final class PushCoordinator {
 
     private var run = RunState()
 
-    /// Whether the push stack was started, and stopped by a sign-out since, and the debounced
-    /// schedule sync waiting to run.
+    /// Whether the push stack was started, and stopped by a sign-out since.
     private struct RunState {
         var isStarted = false
         var stoppedBySignOut = false
-        var pendingSyncTask: Task<Void, Never>?
     }
     private let isProtectedDataAvailable: @MainActor () -> Bool
 
@@ -70,15 +69,10 @@ final class PushCoordinator {
         #else
         self.isProtectedDataAvailable = isProtectedDataAvailable ?? { true }
         #endif
-        let resolvedClient: PushAPIClient
-        if let apiClient {
-            resolvedClient = apiClient
-        } else if let atm = authTokenManager {
-            resolvedClient = PushAPIClient(backend: BackendClient(auth: atm.backendAuth))
-        } else {
-            resolvedClient = PushAPIClient()
-        }
+        let resolvedClient = apiClient
+            ?? authTokenManager.map { PushAPIClient(backend: BackendClient(auth: $0.backendAuth)) } ?? PushAPIClient()
         self.apiClient = resolvedClient
+        self.uploads = BackendUploads(client: resolvedClient, ledger: self.ledger)
         self.registration = PushRegistrationService(
             identity: identity,
             apiClient: resolvedClient,
@@ -136,27 +130,11 @@ final class PushCoordinator {
         }
     }
 
-    static let unchangedCredentialsInterval: TimeInterval = 3600
+    static let unchangedCredentialsInterval = BackendUploads.unchangedCredentialsInterval
 
-    /// Unchanged Moodle tokens go again after an hour, as the backend's copy may have expired.
     func updateCredentialsIfDue(moodleToken: String, moodlePrivateToken: String?) async throws {
-        let client = apiClient
-        let ledger = ledger
-        let fingerprint = SendLedger.fingerprint(of: [moodleToken, moodlePrivateToken ?? ""])
-        do {
-            _ = try await ledger.send(
-                SendLedger.Channel.credentials, fingerprint: fingerprint,
-                resend: .after(Self.unchangedCredentialsInterval), isCurrent: { true }
-            ) {
-                let response = try await client.updateCredentials(
-                    moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken
-                )
-                if !response.updated { throw CredentialsNotUpdatedError() }
-            }
-        } catch is CredentialsNotUpdatedError {}
+        try await uploads.updateCredentialsIfDue(moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken)
     }
-
-    private struct CredentialsNotUpdatedError: Error {}
 
     func fetchRevision() async throws -> Int {
         try await apiClient.fetchRevision()
@@ -171,34 +149,18 @@ final class PushCoordinator {
     }
 
     func patchAssignmentOverride(
-        moodleAssignmentId: String,
-        localStatus: String,
-        madeAt stamp: Date
+        moodleAssignmentId: String, localStatus: String, madeAt stamp: Date
     ) async throws -> PushAPI.AssignmentOverrideResponse {
-        try await apiClient.patchAssignmentOverride(
-            moodleAssignmentId: moodleAssignmentId,
-            localStatus: localStatus,
-            madeAt: stamp
-        )
+        try await apiClient.patchAssignmentOverride(moodleAssignmentId: moodleAssignmentId, localStatus: localStatus, madeAt: stamp)
     }
 
     func patchCourseOverride(
-        courseKey: String,
-        colorHex: String? = nil,
-        customName: String? = nil,
-        locale: String? = nil,
-        ignoreAssignments: Bool? = nil,
-        moodleCourseId: Int? = nil,
-        madeAt stamp: Date
+        courseKey: String, colorHex: String? = nil, customName: String? = nil, locale: String? = nil,
+        ignoreAssignments: Bool? = nil, moodleCourseId: Int? = nil, madeAt stamp: Date
     ) async throws -> PushAPI.CourseOverrideResponse {
         try await apiClient.patchCourseOverride(
-            courseKey: courseKey,
-            colorHex: colorHex,
-            customName: customName,
-            locale: locale,
-            ignoreAssignments: ignoreAssignments,
-            moodleCourseId: moodleCourseId,
-            madeAt: stamp
+            courseKey: courseKey, colorHex: colorHex, customName: customName, locale: locale,
+            ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, madeAt: stamp
         )
     }
 
@@ -206,72 +168,36 @@ final class PushCoordinator {
         try await apiClient.uploadCourses(request, addedAt: stamp)
     }
 
-    nonisolated static let unchangedUploadInterval: TimeInterval = 6 * 3600
+    nonisolated static let unchangedUploadInterval = BackendUploads.unchangedUploadInterval
 
-    /// Runs after each course upload the backend took, for the edits that waited for its courses.
-    var onCoursesUploaded: @MainActor () -> Void = {}
+    var onCoursesUploaded: @MainActor () -> Void {
+        get { uploads.onCoursesUploaded }
+        set { uploads.onCoursesUploaded = newValue }
+    }
 
-    /// An unchanged list goes again after six hours; an add or a resend goes whatever it holds.
     func uploadCoursesIfChanged(
-        _ request: PushAPI.CourseUploadRequest,
-        semester: String,
-        resend: Bool = false,
-        addedAt stamp: Date? = nil,
+        _ request: PushAPI.CourseUploadRequest, semester: String, resend: Bool = false, addedAt stamp: Date? = nil,
         isCurrent: @escaping @MainActor () -> Bool
     ) async throws -> Bool {
-        let client = apiClient
-        let always = resend || request.adds?.isEmpty == false
-        let sent = try await ledger.send(
-            SendLedger.Channel.courses(semester),
-            fingerprint: Self.fingerprint(of: request),
-            resend: always ? .always : .after(Self.unchangedUploadInterval),
-            pausesAfterRefusal: true,
-            isCurrent: isCurrent
-        ) {
-            try await client.uploadCourses(request, addedAt: stamp)
-        }
-        if sent { onCoursesUploaded() }
-        return sent
+        try await uploads.uploadCoursesIfChanged(
+            request, semester: semester, resend: resend, addedAt: stamp, isCurrent: isCurrent
+        )
     }
 
     func uploadAssignmentsIfChanged(
-        _ request: PushAPI.AssignmentUploadRequest,
-        isCurrent: @escaping @MainActor () -> Bool
+        _ request: PushAPI.AssignmentUploadRequest, isCurrent: @escaping @MainActor () -> Bool
     ) async throws -> Bool {
-        let client = apiClient
-        return try await ledger.send(
-            SendLedger.Channel.assignments, fingerprint: Self.fingerprint(of: request),
-            resend: .after(Self.unchangedUploadInterval), pausesAfterRefusal: true, isCurrent: isCurrent
-        ) {
-            try await client.uploadAssignments(request)
-        }
+        try await uploads.uploadAssignmentsIfChanged(request, isCurrent: isCurrent)
     }
 
     func forgetUploads(semester: String? = nil) {
-        if let semester {
-            ledger.forget(SendLedger.Channel.courses(semester))
-        } else {
-            ledger.forget(prefixes: [SendLedger.Channel.courses(""), SendLedger.Channel.assignments])
-        }
+        uploads.forgetUploads(semester: semester)
     }
 
-    var holdsUnsentCourseUploads: Bool {
-        ledger.holdsUnsent(prefix: SendLedger.Channel.courses(""))
-    }
+    var holdsUnsentCourseUploads: Bool { uploads.holdsUnsentCourseUploads }
 
-    /// The order of the courses and the adds leave the fingerprint alone: an add goes whatever the
-    /// ledger holds, and once it lands the backend holds the list it carried.
     nonisolated static func fingerprint(of request: PushAPI.CourseUploadRequest) -> String {
-        SendLedger.fingerprint(of: PushAPI.CourseUploadRequest(
-            courses: request.courses.sorted { $0.courseNo < $1.courseNo },
-            rosterTerms: request.rosterTerms?.sorted()
-        ))
-    }
-
-    nonisolated static func fingerprint(of request: PushAPI.AssignmentUploadRequest) -> String {
-        SendLedger.fingerprint(of: PushAPI.AssignmentUploadRequest(
-            assignments: request.assignments.sorted { $0.moodleAssignmentId < $1.moodleAssignmentId }
-        ))
+        BackendUploads.fingerprint(of: request)
     }
 
     func deleteAllCourses(semester: String? = nil, madeAt stamp: Date) async throws {
@@ -326,8 +252,7 @@ final class PushCoordinator {
         #if os(iOS)
         relay.stop()
         #endif
-        run.pendingSyncTask?.cancel()
-        await run.pendingSyncTask?.value
+        await scheduleSync.cancelRequest()
         await scheduleSync.awaitInflight()
         scheduleSync.forgetAcceptedList()
         return await registration.unregister()
@@ -345,17 +270,7 @@ final class PushCoordinator {
         debounceMs: Int = 400,
         inputsBuilder: @escaping @MainActor () -> ScheduleSyncService.Inputs
     ) {
-        run.pendingSyncTask?.cancel()
-        run.pendingSyncTask = Task { @MainActor [weak self] in
-            try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(debounceMs))
-            guard !Task.isCancelled else { return }
-            #if os(iOS)
-            guard UIApplication.shared.applicationState != .background else { return }
-            #endif
-            guard await self?.apiClient.hasAuthSession() == true else { return }
-            let inputs = inputsBuilder()
-            self?.scheduleSync.sync(inputs: inputs)
-        }
+        scheduleSync.request(after: .milliseconds(debounceMs), inputsBuilder: inputsBuilder)
     }
 
     func syncNow(inputsBuilder: @MainActor () -> ScheduleSyncService.Inputs) async {
@@ -365,33 +280,7 @@ final class PushCoordinator {
         await scheduleSync.awaitInflight()
     }
 
-    // MARK: - Build-time env sanity
-
-    /// Crashes Debug builds at launch when the resolved server URL does not
-    /// match the APNs environment baked into the binary (or each other).
-    /// Empty in Release builds: `assert` is stripped under `-O`, but working out
-    /// its conditions would still read the Keychain twice before the first frame.
-    /// Guards against the regression where someone flips `PushAPNsEnv` or
-    /// `AppConstants.productionPushServerURL` without flipping the other,
-    /// or seeds a stale UserDefaults override pointing the wrong way.
     nonisolated static func assertEnvConsistency() {
-        #if DEBUG
-        let resolved = PushServerConfig.resolveServerURL()
-        let host = resolved.host?.lowercased() ?? ""
-        let hostOK = DebugEndpointStore.currentOverride() != nil
-            || host == "localhost"
-            || host == "127.0.0.1"
-            || PushServerConfig.isPrivateIPv4(host)
-            || host == AppConstants.productionPushServerURL.host?.lowercased()
-        let expectedEnv = "development"
-        assert(
-            hostOK,
-            "Push env mismatch: \(expectedEnv) build resolved to \(resolved)"
-        )
-        assert(
-            PushAPNsEnv.resolvedForBuild == expectedEnv,
-            "Push env mismatch: build is \(expectedEnv) but PushAPNsEnv = \(PushAPNsEnv.resolvedForBuild)"
-        )
-        #endif
+        PushServerConfig.assertEnvConsistency()
     }
 }

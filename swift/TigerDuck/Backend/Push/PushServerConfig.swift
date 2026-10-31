@@ -159,6 +159,34 @@ nonisolated enum PushServerConfig {
             return nil
         }
     }
+
+    /// Crashes Debug builds at launch when the resolved server URL does not
+    /// match the APNs environment baked into the binary (or each other).
+    /// Empty in Release builds: `assert` is stripped under `-O`, but working out
+    /// its conditions would still read the Keychain twice before the first frame.
+    /// Guards against the regression where someone flips `PushAPNsEnv` or
+    /// `AppConstants.productionPushServerURL` without flipping the other,
+    /// or seeds a stale UserDefaults override pointing the wrong way.
+    static func assertEnvConsistency() {
+        #if DEBUG
+        let resolved = resolveServerURL()
+        let host = resolved.host?.lowercased() ?? ""
+        let hostOK = DebugEndpointStore.currentOverride() != nil
+            || host == "localhost"
+            || host == "127.0.0.1"
+            || isPrivateIPv4(host)
+            || host == AppConstants.productionPushServerURL.host?.lowercased()
+        let expectedEnv = "development"
+        assert(
+            hostOK,
+            "Push env mismatch: \(expectedEnv) build resolved to \(resolved)"
+        )
+        assert(
+            PushAPNsEnv.resolvedForBuild == expectedEnv,
+            "Push env mismatch: build is \(expectedEnv) but PushAPNsEnv = \(PushAPNsEnv.resolvedForBuild)"
+        )
+        #endif
+    }
 }
 
 private enum PushServerConfigError: Error {
