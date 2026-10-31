@@ -1,0 +1,18 @@
+import Foundation
+import os
+
+/// The holidays the user asked to be reminded on.
+@MainActor
+struct HolidayOverridesReconciler: CategoryReconciler {
+    let category = "holidays"
+    var calendar: AcademicCalendarStore = .shared
+
+    func reconcile(_ pass: FullSyncPass) -> Bool {
+        guard let rows = pass.json["holiday_overrides"] as? [[String: Any]] else { return false }
+        let optedIn = Set(rows.compactMap { row -> Int? in
+            guard row["notify"] as? Bool == true else { return nil }
+            return row["holiday_id"] as? Int
+        })
+        return calendar.applySyncedOverrides(optedIn, fetchedAt: pass.fetchedAt)
+    }
+}

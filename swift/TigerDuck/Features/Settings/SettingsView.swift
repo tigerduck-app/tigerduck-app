@@ -608,7 +608,7 @@ struct SettingsView: View {
         )
         Defaults.removeAll()
 
-        try? FileManager.default.removeItem(at: SyncOutbox.defaultDirectory())
+        try? FileManager.default.removeItem(at: OutboxFiles.defaultDirectory())
 
         appState.hasCompletedOnboarding = false
         Defaults[.hasCompletedOnboarding] = false
