@@ -53,7 +53,6 @@ SubscriptionRuleEditorView.swift
 
 # Features/Calendar — iOS calendar surfaces
 CalendarTabView.swift
-CalendarViewModel.swift
 DayEventListView.swift
 EventRowView.swift
 MonthCalendarView.swift
