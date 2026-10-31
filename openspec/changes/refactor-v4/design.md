@@ -214,6 +214,34 @@ That hold lives in `SyncTarget`, not in its callers, so an upload started outsid
 - Lost: today's unordered tasks. An upload computed before the pull leaves the backend's merge
   rules to undo a stale state.
 
+### D14. Races found on `dev`, and the home that removes each
+An audit of `dev` 6880ae2d traced these ordering races. Each one gets a test in the phase that
+builds its home. They share five causes, which the specs turn into rules: an edit sent without its
+own time, a document written section by section, an edit dropped after failures, two sends of one
+channel in flight, and a write computed from a snapshot taken before an `await`.
+
+| # | Race | Severity | Home | Phase |
+|---|---|---|---|---|
+| R1 | Course colour and name, assignment mark, ignore and holiday writes go without `hlc`, so a late send beats a newer edit from another device | High | outbox sends each op's stamp; `/v4` requires `hlc` | 4 |
+| R2 | A notification-settings push writes whole sections from local values, so a pending push or a re-enabled switch reverts another device's change | High | the settings document merges per field against the last synced base | 4 |
+| R3 | A course name edit that gets 404 five times is dropped | High | the outbox parks it and retries after the next course upload | 4 |
+| R4 | Two bulletin subscription saves in flight: the first reply wipes the second edit from the screen, and a failed second save loses it | High | one save in flight per channel; the newest local state survives every reply | 4, 6 |
+| R5 | The user-added course refresh writes its start-of-fetch list after its lookups, losing an add or reviving a delete | High | `CourseStore` applies fetched details to its current state | 3 |
+| R6 | The missing-classroom refresh writes its start-of-fetch course list over a newer roster | Minor | `CourseStore`, as R5 | 3 |
+| R7 | A course fetch saves names in the language and labels chosen when it started | Minor | a fetch whose display inputs changed is dropped | 3 |
+| R8 | Any class table edit drops courses another device added from the user-added file | Minor | `CourseStore` owns membership | 3 |
+| R9 | Recent course deletions outlive sign-out and hide the next account's course | Minor | the school `AccountSession` owns them | 2 |
+| R10 | A newer schedule list sent while the older one is still on the server can lose to it | Minor | one send in flight per channel, never cancelled | 4 |
+| R11 | Keeping the server's side of an assignment conflict applies the snapshot from when the alert opened | Minor | the reconciler re-reads before it applies | 4 |
+| R12 | A mail check in flight posts notifications after the user turned them off | Minor | the switch is read right before posting | 7 |
+| R13 | A mail list refresh restores a read flag or a removed row changed during the fetch | Minor | `EditToken` in the mailbox | 7 |
+| R14 | A Moodle feed refresh restores an unread badge cleared during the fetch | Minor | `EditToken` in the Moodle course store | 6 |
+| R15 | A cancelled bulletin prefetch sets the cursor after a refresh | Minor | a cancelled request's result is dropped | 6 |
+| R16 | An old mail session's sign-in failure marks the next account as failed | Minor | the mail `AccountSession` | 2 |
+
+- Lost: fixing them on `dev` first. Each fix would be written twice, once in code this refactor
+  replaces, and none loses data across accounts.
+
 ## Risks / Trade-offs
 
 - [No CI until the end] → Each phase runs the phone suite, the watch suite, the mac build and the

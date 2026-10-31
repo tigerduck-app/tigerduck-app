@@ -66,6 +66,10 @@ last task's check passes and a read-only review finds nothing High or above.
 - [ ] 7.2 Replace every remaining sleep-wait with `StateSignal` or `AppClock.sleep(until:)`. Check: no `Task.sleep` outside the clock and concurrency homes.
 - [ ] 7.3 Turn on every rule. Check: `check_architecture.py` passes with all rules on; every light check; the phone and watch suites; the mac build; the TigerDuckCore tests.
 
+## Race register
+
+- [ ] R.1 Every race in design D14 has a test in its phase that drives the interleaving and checks the outcome, named for the behavior and not for the register. Check: each row maps to a test in the phase review.
+
 ## 8. Pull request
 
 - [ ] 8.1 Merge `dev` into the branch and resolve. Check: every check above again.

@@ -87,3 +87,16 @@ so a launch before the first unlock after a restart never reads stored data as e
 #### Scenario: Silent push before the first unlock
 - **WHEN** a silent push launches the app before the device has been unlocked since a restart
 - **THEN** no store is built, no stored credential is deleted, and the work runs once the device is unlocked
+
+### Requirement: Fetched data is applied to the current state
+A fetch SHALL apply its result to a store's state at the time the result arrives, never write back
+a copy it read before an `await`. A result fetched with inputs that have since changed (the
+account, a switch, the display language) SHALL be dropped.
+
+#### Scenario: An add during a refresh
+- **WHEN** the user adds a course while the user-added course refresh is looking courses up
+- **THEN** the refresh updates the details of the courses it looked up, and the added course stays
+
+#### Scenario: A language change during a fetch
+- **WHEN** the user changes the app language while a course fetch runs
+- **THEN** the fetch's result is dropped and a fetch in the new language runs
