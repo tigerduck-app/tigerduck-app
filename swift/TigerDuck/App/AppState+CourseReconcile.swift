@@ -144,7 +144,7 @@ extension AppState {
         CourseStore.shared.saveUserAddedCourses(userAdded)
         Task {
             for semester in mergedSemesters {
-                _ = await AppServiceBridge.refreshUserAddedCourses(semester: semester, authService: authService)
+                _ = await CourseDetails.refreshUserAddedCourses(semester: semester, authService: authService)
             }
         }
         return true

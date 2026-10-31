@@ -25,7 +25,7 @@ struct AssignmentStatusRequestTests {
         let started = OSAllocatedUnfairLock<[Int: ContinuousClock.Instant]>(initialState: [:])
         let records = [1, 2, 3].map { Self.record($0, cutoff: nil) }
 
-        let answers = await AppServiceBridge.askStatuses(of: records, limit: 1) { id in
+        let answers = await AssignmentFetch.askStatuses(of: records, limit: 1) { id in
             started.withLock { $0[id] = .now }
             try await Task.sleep(for: .milliseconds(5))
             guard id != 3 else { throw URLError(.timedOut) }
@@ -49,7 +49,7 @@ struct AssignmentStatusRequestTests {
             Self.record(4, cutoff: nil),
         ]
         let closed = ["2": Self.askTime, "3": Self.askTime, "4": Self.askTime]
-        let asked = AppServiceBridge.recordsToAskAbout(records, confirmed: [:], closed: closed)
+        let asked = AssignmentRecords.recordsToAskAbout(records, confirmed: [:], closed: closed)
         #expect(asked.map(\.assignId) == [1, 3, 4])
     }
 
@@ -60,7 +60,7 @@ struct AssignmentStatusRequestTests {
             allowSubmissionsFromDate: nil, intro: "", noSubmissions: true
         )
         let records = [Self.record(1, cutoff: nil), Self.record(2, cutoff: nil, due: nil), noSubmissions]
-        #expect(AppServiceBridge.recordsToAskAbout(records, confirmed: ["1": Self.askTime], closed: [:]).isEmpty)
+        #expect(AssignmentRecords.recordsToAskAbout(records, confirmed: ["1": Self.askTime], closed: [:]).isEmpty)
     }
 
     @Test("only an unsubmitted answer asked for after the cutoff closes an assignment")
@@ -79,7 +79,7 @@ struct AssignmentStatusRequestTests {
             3: Self.status(3, submitted: false),
             4: Self.status(4, submitted: true),
         ]
-        let closed = AppServiceBridge.closedUnsubmitted(
+        let closed = AssignmentRecords.closedUnsubmitted(
             records: records, statuses: statuses, askedAt: askedAt, kept: [:]
         )
         #expect(closed == ["1": askedAt])
@@ -92,7 +92,7 @@ struct AssignmentStatusRequestTests {
         extended.extensionDueDate = askedAt + 86_400
         var lapsed = Self.status(2, submitted: false)
         lapsed.extensionDueDate = askedAt - 30
-        let closed = AppServiceBridge.closedUnsubmitted(
+        let closed = AssignmentRecords.closedUnsubmitted(
             records: [Self.record(1, cutoff: askedAt - 60), Self.record(2, cutoff: askedAt - 60)],
             statuses: [1: extended, 2: lapsed], askedAt: askedAt, kept: [:]
         )
@@ -107,7 +107,7 @@ struct AssignmentStatusRequestTests {
             Self.record(2, cutoff: earlier - 60),
             Self.record(3, cutoff: earlier + 60),
         ]
-        let closed = AppServiceBridge.closedUnsubmitted(
+        let closed = AssignmentRecords.closedUnsubmitted(
             records: records, statuses: [2: Self.status(2, submitted: true)], askedAt: Self.askTime,
             kept: ["1": earlier, "2": earlier, "3": earlier, "9": earlier]
         )
@@ -124,7 +124,7 @@ struct AssignmentStatusRequestTests {
     func concurrentMapIsBoundedAndOrdered() async {
         let tracker = Tracker()
         let items = Array(0..<10)
-        let doubled = await AppServiceBridge.concurrentMap(items, limit: 4) { @MainActor item in
+        let doubled = await concurrentMap(items, limit: 4) { @MainActor item in
             tracker.running += 1
             tracker.mostAtOnce = max(tracker.mostAtOnce, tracker.running)
             try? await Task.sleep(for: .milliseconds(10 * (10 - item)))
@@ -137,7 +137,7 @@ struct AssignmentStatusRequestTests {
 
     @Test("fewer items than the limit all run, and none gives none")
     func concurrentMapSmallInputs() async {
-        #expect(await AppServiceBridge.concurrentMap([1, 2], limit: 4) { $0 + 1 } == [2, 3])
-        #expect(await AppServiceBridge.concurrentMap([Int](), limit: 4) { $0 }.isEmpty)
+        #expect(await concurrentMap([1, 2], limit: 4) { $0 + 1 } == [2, 3])
+        #expect(await concurrentMap([Int](), limit: 4) { $0 }.isEmpty)
     }
 }

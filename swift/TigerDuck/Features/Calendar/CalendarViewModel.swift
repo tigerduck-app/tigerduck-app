@@ -92,8 +92,8 @@ final class CalendarViewModel {
     }
 
     private func fetchMoodleEvents(authService: AuthService) async -> [SDCalendarEvent] {
-        await AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
-            .map(AppServiceBridge.moodleCalendarEvent)
+        await AssignmentFetch.fetchAssignments(authService: authService, recheckSubmissions: true)
+            .map(AssignmentRecords.moodleCalendarEvent)
     }
 
     private func fetchSchoolEvents() async -> [SDCalendarEvent]? {

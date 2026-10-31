@@ -73,7 +73,7 @@ struct CourseIgnoredAssignmentsTests {
             assignId: 1, cmId: 1, courseId: 10, name: "HW1", dueDate: Self.now.addingTimeInterval(3600),
             cutoffDate: nil, allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
         )
-        let rows = AppServiceBridge.assignments(
+        let rows = AssignmentRecords.assignments(
             from: [record],
             moodleCoursesById: [10: MoodleEnrolledCourse(id: 10, fullname: "1151CS1", shortname: "",
                                                          idnumber: "1151CS1", startDate: nil, endDate: nil)],
@@ -156,7 +156,7 @@ struct CourseIgnoredAssignmentsTests {
                                  startDate: nil, endDate: nil)
         }
 
-        let rows = AppServiceBridge.assignments(
+        let rows = AssignmentRecords.assignments(
             from: [record(1, 10), record(2, 20)],
             moodleCoursesById: [10: course(10, "1151CS1"), 20: course(20, "1151EE2")],
             courseNoByMoodleId: [10: "CS1", 20: "EE2"],

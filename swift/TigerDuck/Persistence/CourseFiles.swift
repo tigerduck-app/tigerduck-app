@@ -159,7 +159,7 @@ final class CourseFiles: AccountScoped {
         guard !roster.isEmpty || isFinal else { return }
         var stored = loadSelectionDroppedNos()
         let previous = Set(stored[semester] ?? [])
-        let updated = AppServiceBridge.selectionDrops(
+        let updated = TermRoster.selectionDrops(
             previous: previous,
             localPortalNos: loadCourses(semester: semester).map(\.courseNo) + alsoListed,
             roster: roster,

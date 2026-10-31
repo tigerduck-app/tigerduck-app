@@ -6,7 +6,7 @@ import Testing
 struct ForegroundRefreshPolicyTests {
     private func isDue(synced: TimeInterval?, attempted: TimeInterval?) -> Bool {
         let now = Date()
-        return AppServiceBridge.isForegroundRefreshDue(
+        return AssignmentFetch.isForegroundRefreshDue(
             syncedAt: synced.map { now - $0 },
             lastAttempt: attempted.map { now - $0 },
             now: now

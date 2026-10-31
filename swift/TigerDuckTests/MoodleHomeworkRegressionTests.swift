@@ -174,7 +174,7 @@ struct MoodleHomeworkRegressionTests {
 
         #expect(course.courseNos == ["AS5140701", "CS5140701"])
         #expect(course.idnumbers == ["1151AS5140701", "1151CS5140701"])
-        #expect(AppServiceBridge.moodleCourseIdMap([course]) == [
+        #expect(AssignmentRecords.moodleCourseIdMap([course]) == [
             "1151AS5140701": 19739,
             "1151CS5140701": 19739,
         ])
@@ -220,7 +220,7 @@ struct MoodleHomeworkRegressionTests {
             assignId: 1, cmId: 1, courseId: 10, name: "HW1", dueDate: Date(timeIntervalSince1970: 1_790_000_000),
             cutoffDate: nil, allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
         )
-        let rows = AppServiceBridge.assignments(
+        let rows = AssignmentRecords.assignments(
             from: [record],
             moodleCoursesById: [10: MoodleEnrolledCourse(id: 10, fullname: "3N1010003 機器學習", shortname: "",
                                                          idnumber: "11513N1010003", startDate: nil, endDate: nil)],
@@ -242,7 +242,7 @@ struct MoodleHomeworkRegressionTests {
                 allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
             )
         }
-        let rows = AppServiceBridge.assignments(
+        let rows = AssignmentRecords.assignments(
             from: records,
             moodleCoursesById: [:],
             courseNoByMoodleId: [:],
@@ -313,17 +313,17 @@ struct MoodleHomeworkRegressionTests {
         )
 
         #expect(
-            AppServiceBridge.assignmentCourseNo(
+            AssignmentRecords.assignmentCourseNo(
                 for: coListed, localCourseNos: ["CS5140701", "CS3025301"]
             ) == "CS5140701"
         )
         #expect(
-            AppServiceBridge.assignmentCourseNo(
+            AssignmentRecords.assignmentCourseNo(
                 for: coListed, localCourseNos: ["AS5140701"]
             ) == "AS5140701"
         )
         #expect(
-            AppServiceBridge.assignmentCourseNo(for: coListed, localCourseNos: []) == "AS5140701"
+            AssignmentRecords.assignmentCourseNo(for: coListed, localCourseNos: []) == "AS5140701"
         )
     }
 
@@ -345,8 +345,8 @@ struct MoodleHomeworkRegressionTests {
             endDate: nil
         )
 
-        #expect(AppServiceBridge.moodleCourseIdMap([coListed, ownsTheAlias])["1151BB2222701"] == 200)
-        #expect(AppServiceBridge.moodleCourseIdMap([ownsTheAlias, coListed])["1151BB2222701"] == 200)
+        #expect(AssignmentRecords.moodleCourseIdMap([coListed, ownsTheAlias])["1151BB2222701"] == 200)
+        #expect(AssignmentRecords.moodleCourseIdMap([ownsTheAlias, coListed])["1151BB2222701"] == 200)
     }
 
     @Test func moodleEnrolledCourse_emptyIdnumberYieldsEmptyDerivedFields() {
@@ -379,7 +379,7 @@ struct MoodleHomeworkRegressionTests {
         #expect(summer.semester == "114H")
         #expect(summer.courseNo == "GD3115301")
         #expect(summer.idnumbers == ["114hGD3115301"])
-        #expect(AppServiceBridge.moodleCourseIdMap([summer]) == ["114HGD3115301": 3])
+        #expect(AssignmentRecords.moodleCourseIdMap([summer]) == ["114HGD3115301": 3])
         #expect(SDCourse.normalizedMoodleId("114hGD3115301") == "114HGD3115301")
         #expect(SDCourse.normalizedMoodleId("1151AS5140701") == "1151AS5140701")
         #expect(SDCourse.normalizedMoodleId("moodle:42") == "moodle:42")

@@ -14,12 +14,12 @@ the shared homes and the size budget.
   credentials, and keeps credentials through silent re-auth failures.
 - Feature view models are `@Observable` and show cached data first. App launch, an explicit
   refresh, or a return to the app once the school data is a minute old
-  (`AppServiceBridge.refreshAssignmentsIfDue`) does the network fetch.
-- Moodle assignments come from `AppServiceBridge.fetchAssignments`. It runs one round at a time
-  for every caller, rebuilds the calendar's Moodle rows and stamps `schoolDataSyncedAt`, which
-  the sync status popup shows. Only a pull, or Refresh on the Mac, passes
+  (`AssignmentFetch.refreshAssignmentsIfDue`) does the network fetch.
+- Moodle assignments come from `AssignmentFetch.fetchAssignments` in `School/Moodle/`. It runs
+  one round at a time for every caller, rebuilds the calendar's Moodle rows and stamps
+  `schoolDataSyncedAt`, which the sync status popup shows. Only a pull, or Refresh on the Mac, passes
   `recheckSubmissions: true`. A status the assignment page fetches goes in through
-  `AppServiceBridge.takeSubmissionStatus`, which waits out a running round, keeps the newest
+  `AssignmentFetch.takeSubmissionStatus`, which waits out a running round, keeps the newest
   answer and leaves `schoolDataSyncedAt` alone; any other write to the cached assignments goes
   through one of these two.
 - Course, assignment and colour changes reach screens and devices by observing their stores
@@ -86,7 +86,7 @@ responsibility; nested types are fine. `tools/check_architecture.py --report` li
 
 - Do not gate protected NTUST screens on cookie validity or on `isNTUSTLoggedIn` alone; silent
   re-auth is expected. Use `ntustProtectedAccessState(isEmpty:)`.
-- Do not write the previous user's data back after logout. Bridge and service code check their
+- Do not write the previous user's data back after logout. School and backend code check their
   account's `AccountSession` (`isCurrent`, or a scoped task) and cancellation before writing.
 - Do not call `AuthService.login` to re-authenticate silently: it harvests a new Moodle token
   and drops the course cache. The Moodle token renews itself on `.invalidToken`.

@@ -481,7 +481,7 @@ struct CourseDetailSheet: View {
     }
 
     private func refreshAssignments() async {
-        _ = await AppServiceBridge.fetchAssignments(authService: appState.authService, recheckSubmissions: true)
+        _ = await AssignmentFetch.fetchAssignments(authService: appState.authService, recheckSubmissions: true)
     }
 
     /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile

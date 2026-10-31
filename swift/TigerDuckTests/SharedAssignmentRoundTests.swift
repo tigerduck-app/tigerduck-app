@@ -37,7 +37,7 @@ struct SharedAssignmentRoundTests {
     ) -> Task<Void, Never> {
         Task {
             rounds.entered += 1
-            _ = await AppServiceBridge.sharedRound(signIn: .after(signOuts: signOuts), rechecks: rechecks, isCurrent: { true }, rounds: shared) {
+            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: signOuts), rechecks: rechecks, isCurrent: { true }, rounds: shared) {
                 await rounds.run(name)
             }
         }
@@ -93,7 +93,7 @@ struct SharedAssignmentRoundTests {
         let departing = "departing-" + UUID().uuidString
         let due = Date(timeIntervalSince1970: 1_800_000_000)
 
-        let shown = await AppServiceBridge.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
+        let shown = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
             signIn.isCurrent = false
             return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
         }
@@ -109,7 +109,7 @@ struct SharedAssignmentRoundTests {
         let due = Date(timeIntervalSince1970: 1_800_000_000)
         let pull = Task {
             rounds.entered += 1
-            _ = await AppServiceBridge.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
+            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
                 _ = await rounds.run("pull")
                 return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
             }
@@ -117,7 +117,7 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["pull"] }
         let joined = Task {
             rounds.entered += 1
-            return await AppServiceBridge.sharedRound(signIn: .after(signOuts: 1), rechecks: false, isCurrent: { signIn.isCurrent }, rounds: shared) { [] }
+            return await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: false, isCurrent: { signIn.isCurrent }, rounds: shared) { [] }
         }
         try await waitUntil { rounds.entered == 2 }
         signIn.isCurrent = false
@@ -135,7 +135,7 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["launch"] }
         let pull = Task {
             rounds.entered += 1
-            _ = await AppServiceBridge.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
+            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
                 await rounds.run("pull")
             }
         }
@@ -183,7 +183,7 @@ struct SharedAssignmentRoundTests {
     private func round(
         of id: Int, askedAt: ContinuousClock.Instant, in cache: TestCache, isCurrent: Bool = true
     ) -> Bool {
-        AppServiceBridge.persistRound(
+        AssignmentFetch.persistRound(
             [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
                           dueDate: Self.due)],
             records: [], closed: [:], answered: [id: askedAt], account: "B11399001", fetchedAt: Self.due,
@@ -210,7 +210,7 @@ struct SharedAssignmentRoundTests {
         let store = folder.cache.assignments
         let before = store.revision
 
-        #expect(await AppServiceBridge.takeSubmissionStatus(
+        #expect(await AssignmentFetch.takeSubmissionStatus(
             Self.handedIn(id), askedAt: now, assignments: store, rounds: shared, isCurrent: { true }
         ))
 
@@ -219,7 +219,7 @@ struct SharedAssignmentRoundTests {
         #expect(cached?.submittedAt == Self.submittedAt)
         let written = store.revision
         #expect(written != before)
-        #expect(await !AppServiceBridge.takeSubmissionStatus(
+        #expect(await !AssignmentFetch.takeSubmissionStatus(
             Self.handedIn(id), askedAt: now + .seconds(1), assignments: store, rounds: shared, isCurrent: { true }
         ))
         #expect(store.revision == written)
@@ -234,14 +234,14 @@ struct SharedAssignmentRoundTests {
         var status = MoodleSubmissionStatus(
             assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil, extensionDueDate: Self.due - 60
         )
-        #expect(await AppServiceBridge.takeSubmissionStatus(status, askedAt: now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }))
+        #expect(await AssignmentFetch.takeSubmissionStatus(status, askedAt: now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }))
         let early = folder.cache.assignments.loadAssignments().first { $0.assignmentId == String(id) }
         #expect(early?.dueDate == Self.due)
         #expect(early?.extensionDueDate == Self.due - 60)
 
         for (step, extensionDate) in [Self.due + 2 * 86_400, Self.due + 86_400, nil].enumerated() {
             status.extensionDueDate = extensionDate
-            #expect(await AppServiceBridge.takeSubmissionStatus(
+            #expect(await AssignmentFetch.takeSubmissionStatus(
                 status, askedAt: now + .seconds(step + 1), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
             ))
             let cached = folder.cache.assignments.loadAssignments().first { $0.assignmentId == String(id) }
@@ -260,7 +260,7 @@ struct SharedAssignmentRoundTests {
         let now = ContinuousClock.now
         let due = Date() - 2 * 86_400
         let closedAt = due + 86_400
-        AppServiceBridge.persistRound(
+        AssignmentFetch.persistRound(
             [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
                           dueDate: due, cutoffDate: due + 3600)],
             records: [], closed: [String(id): closedAt, "1": closedAt], answered: [id: now - .seconds(60)],
@@ -268,7 +268,7 @@ struct SharedAssignmentRoundTests {
             assignments: folder.cache.assignments, moodle: folder.cache.moodle, rounds: shared, isCurrent: { true }
         )
 
-        #expect(await AppServiceBridge.takeSubmissionStatus(
+        #expect(await AssignmentFetch.takeSubmissionStatus(
             MoodleSubmissionStatus(
                 assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil,
                 extensionDueDate: Date() + 86_400
@@ -288,7 +288,7 @@ struct SharedAssignmentRoundTests {
         round(of: id, askedAt: pageAskedAt - .seconds(60), in: cache)
         let rounds = Rounds()
         let pull = Task {
-            _ = await AppServiceBridge.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { true }, rounds: shared) {
+            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { true }, rounds: shared) {
                 _ = await rounds.run("pull")
                 round(of: id, askedAt: pageAskedAt - .seconds(5), in: cache)
                 return []
@@ -299,7 +299,7 @@ struct SharedAssignmentRoundTests {
         let asked = Flag()
         let page = Task {
             asked.isSet = true
-            return await AppServiceBridge.takeSubmissionStatus(
+            return await AssignmentFetch.takeSubmissionStatus(
                 Self.handedIn(id), askedAt: pageAskedAt, assignments: cache.assignments, rounds: shared, isCurrent: { true }
             )
         }
@@ -319,16 +319,16 @@ struct SharedAssignmentRoundTests {
         let now = ContinuousClock.now
         round(of: id, askedAt: now, in: folder.cache)
 
-        #expect(await !AppServiceBridge.takeSubmissionStatus(
+        #expect(await !AssignmentFetch.takeSubmissionStatus(
             Self.handedIn(id), askedAt: now - .seconds(1), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
         ))
         #expect(Self.isCompleted(id, in: folder.cache) == false)
 
-        #expect(await AppServiceBridge.takeSubmissionStatus(
+        #expect(await AssignmentFetch.takeSubmissionStatus(
             Self.handedIn(id), askedAt: now + .seconds(10), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
         ))
         let reverted = MoodleSubmissionStatus(assignId: id, submissionStatus: "draft", gradingStatus: nil, submittedAt: nil)
-        #expect(await !AppServiceBridge.takeSubmissionStatus(
+        #expect(await !AssignmentFetch.takeSubmissionStatus(
             reverted, askedAt: now + .seconds(5), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
         ))
         #expect(Self.isCompleted(id, in: folder.cache) == true)
@@ -342,7 +342,7 @@ struct SharedAssignmentRoundTests {
         round(of: id, askedAt: now - .seconds(60), in: folder.cache)
         #expect(!round(of: id, askedAt: now + .seconds(5), in: folder.cache, isCurrent: false))
 
-        #expect(await AppServiceBridge.takeSubmissionStatus(
+        #expect(await AssignmentFetch.takeSubmissionStatus(
             Self.handedIn(id), askedAt: now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
         ))
     }
@@ -361,7 +361,7 @@ struct SharedAssignmentRoundTests {
         let asked = Flag()
         let page = Task {
             asked.isSet = true
-            return await AppServiceBridge.takeSubmissionStatus(
+            return await AssignmentFetch.takeSubmissionStatus(
                 Self.handedIn(id), askedAt: .now, assignments: cache.assignments, rounds: shared, isCurrent: { signIn.isCurrent }
             )
         }
@@ -400,16 +400,16 @@ struct SharedAssignmentRoundTests {
             let saved = Defaults[.cloudSyncEnabled]
             let sent = Sent()
             Defaults[.cloudSyncEnabled] = true
-            AppServiceBridge.assignmentUploader = { sent.requests.append($0) }
+            AssignmentFetch.assignmentUploader = { sent.requests.append($0) }
             defer {
                 Defaults[.cloudSyncEnabled] = saved
-                AppServiceBridge.assignmentUploader = nil
+                AssignmentFetch.assignmentUploader = nil
             }
             let folder = Folder()
             let id = Self.newId()
             round(of: id, askedAt: .now - .seconds(60), in: folder.cache)
 
-            await AppServiceBridge.takeSubmissionStatus(
+            await AssignmentFetch.takeSubmissionStatus(
                 Self.handedIn(id), askedAt: .now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
             )
 

@@ -73,7 +73,7 @@ extension SignOutPlan {
                 app._lastKnownRevision = 0
                 app.syncTask?.cancel()
                 app.syncTask = nil
-                AppServiceBridge.cancelAssignmentRound()
+                AssignmentFetch.cancelAssignmentRound()
                 MoodleFileDownloads.shared.cancelAll()
                 app.cancelHolidayUploads()
                 #if os(iOS)

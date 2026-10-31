@@ -174,10 +174,10 @@ final class AppState {
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
 
-        AppServiceBridge.courseUploader = { [weak self] courses, semester, asRoster, resend in
+        CourseFetch.courseUploader = { [weak self] courses, semester, asRoster, resend in
             self?.uploadCourses(courses, semester: semester, asRoster: asRoster, resend: resend)
         }
-        AppServiceBridge.assignmentUploader = { [weak self] request in
+        AssignmentFetch.assignmentUploader = { [weak self] request in
             self?.uploadAssignments(request)
         }
         revisionPoller.poll = { [weak self] in await self?.pollRevision() ?? .unchanged }
@@ -372,7 +372,7 @@ final class AppState {
             syncTask = nil
             Defaults[.appLanguage] = appLanguage
             LanguageManager.apply(appLanguage)
-            AppServiceBridge.handleLanguageChange()
+            CourseFetch.handleLanguageChange()
             NotificationCenter.default.post(name: AppConstants.languageDidChange, object: nil)
         }
     }

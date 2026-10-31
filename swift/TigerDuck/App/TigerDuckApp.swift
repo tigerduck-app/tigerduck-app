@@ -180,7 +180,7 @@ struct TigerDuckApp: App {
             await appState.refreshMoodleCredentials()
         }
         if appState.hasCompletedOnboarding {
-            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
+            Task { await AssignmentFetch.refreshAssignmentsIfDue(authService: appState.authService) }
         }
         Task { await LibraryService.signInIfCredentialed() }
         appState.startRevisionPolling()
@@ -362,7 +362,7 @@ struct TigerDuckApp: App {
             await appState.refreshMoodleCredentials()
         }
         if appState.hasCompletedOnboarding {
-            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
+            Task { await AssignmentFetch.refreshAssignmentsIfDue(authService: appState.authService) }
         }
         appState.startRevisionPolling()
         appState.pushCoordinator.registerAgainIfGaveUp()

@@ -20,12 +20,12 @@ final class MoodleFiles: AccountScoped {
 
     // MARK: - Moodle course id map (idnumber to numeric id)
 
-    /// Saved by ``AppServiceBridge`` whenever it fetches the user's enrolled courses. Moodle Mobile's
-    /// deep-link router honors only `?id=N` redirects reliably (the web accepts `?idnumber=`, the
-    /// in-app handler does not), so deep links look the numeric id up here. Kept in the persistent
-    /// folder to survive cache sweeps of localized course data. Always overwrite the whole map with
-    /// the fresh snapshot: merging would keep entries for courses the user left or whose id was
-    /// reissued, and `SDCourse.moodleDeepLink` would point at a dead course.
+    /// Saved by ``CourseFetch`` and ``AssignmentFetch`` whenever they fetch the user's enrolled
+    /// courses. Moodle Mobile's deep-link router honors only `?id=N` redirects reliably (the web
+    /// accepts `?idnumber=`, the in-app handler does not), so deep links look the numeric id up
+    /// here. Kept in the persistent folder to survive cache sweeps of localized course data. Always
+    /// overwrite the whole map with the fresh snapshot: merging would keep entries for courses the
+    /// user left or whose id was reissued, and `SDCourse.moodleDeepLink` would point at a dead course.
     func saveMoodleCourseIdMap(_ map: [String: Int]) {
         folders.persistentFiles.save(map, to: "moodle_course_id_map.json")
     }

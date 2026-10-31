@@ -402,7 +402,7 @@ struct MacClassTableView: View {
     private func warmCachesIfNeeded() async {
         guard !hasWarmedCaches else { return }
         hasWarmedCaches = true
-        await AppServiceBridge.warmAllSemesterCaches(authService: appState.authService)
+        await CourseFetch.warmAllSemesterCaches(authService: appState.authService)
         await MainActor.run {
             cacheRevision &+= 1
             followNewestSemesterIfUnpicked()
@@ -422,7 +422,7 @@ struct MacClassTableView: View {
         let target = selectedSemester
         guard shownPerson == nil, CourseStore.shared.loadCourses(semester: target).isEmpty else { return }
         await MainActor.run { isLoadingSemester = true }
-        _ = await AppServiceBridge.fetchCourses(
+        _ = await CourseFetch.fetchCourses(
             authService: appState.authService,
             semester: target
         )

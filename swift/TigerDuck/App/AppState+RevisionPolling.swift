@@ -137,7 +137,7 @@ extension AppState {
             sessionManager.loadingState = .loading
 
             if recheckSubmissions { MoodleEnrolledCoursesService.dropSharedAnswer() }
-            _ = await AppServiceBridge.fetchAssignments(
+            _ = await AssignmentFetch.fetchAssignments(
                 authService: authService, recheckSubmissions: recheckSubmissions
             )
             await syncOverridesFromBackend(followUpIfBusy: true)
@@ -172,7 +172,7 @@ extension AppState {
         } else {
             await authService.ensureBackendSignedIn()
         }
-        _ = await AppServiceBridge.fetchCourses(authService: authService, semester: semester)
+        _ = await CourseFetch.fetchCourses(authService: authService, semester: semester)
         return true
     }
 }

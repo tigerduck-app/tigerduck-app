@@ -7,7 +7,7 @@ import Testing
 @MainActor
 struct CourseFetchRaceTests {
     private static let semester = "1151"
-    private static let zh = AppServiceBridge.CourseDisplayPreferences(
+    private static let zh = CourseDetails.CourseDisplayPreferences(
         language: "zh", courseAbbrEnabled: false, classroomAbbrEnabled: false, classroomMandarinDisplay: "original"
     )
 
@@ -45,7 +45,7 @@ struct CourseFetchRaceTests {
         let store = store
         store.saveUserAddedCourses([Self.course("AA1"), Self.course("BB2")])
 
-        let kept = await AppServiceBridge.refreshUserAddedCourses(
+        let kept = await CourseDetails.refreshUserAddedCourses(
             semester: Self.semester, authService: Self.auth(), courses: store
         ) { _, courseNo, _, _ in
             store.apply(.remove(courseNo: "BB2", semester: Self.semester))
@@ -66,7 +66,7 @@ struct CourseFetchRaceTests {
         store.saveCourses([Self.course("EN1"), Self.course("EN2")], semester: Self.semester)
         store.saveUserAddedCourses([Self.course("UA1"), Self.course("UA2")])
 
-        let applied = await AppServiceBridge.refreshCoursesMissingClassroom(
+        let applied = await CourseDetails.refreshCoursesMissingClassroom(
             semester: Self.semester, authService: Self.auth(), courses: store
         ) { _, courseNo, _, _ in
             store.saveCourses([Self.course("EN1"), Self.course("EN3")], semester: Self.semester)
@@ -88,10 +88,10 @@ struct CourseFetchRaceTests {
         let store = store
         store.saveUserAddedCourses([Self.course("AA1")])
 
-        let kept = await AppServiceBridge.refreshUserAddedCourses(
+        let kept = await CourseDetails.refreshUserAddedCourses(
             semester: Self.semester, authService: Self.auth(), courses: store
         ) { [display] _, courseNo, _, _ in
-            display.value = AppServiceBridge.CourseDisplayPreferences(
+            display.value = CourseDetails.CourseDisplayPreferences(
                 language: "en", courseAbbrEnabled: false, classroomAbbrEnabled: false,
                 classroomMandarinDisplay: "original"
             )

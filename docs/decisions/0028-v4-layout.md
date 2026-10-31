@@ -26,8 +26,8 @@ and the macOS build's source list was kept by hand in two copies.
     Mac's own screens; `Migrations/` one-time upgrade code; `Support/` the clock, concurrency,
     logging and security helpers and plain extensions; `Debug/`.
 
-  `Stores/` arrives with the stores; `Bridge/`, `Models/Domain/` and `Shared/` hold code the
-  later phases split into these folders and TigerDuckCore.
+  `Stores/` arrives with the stores; `Models/Domain/` and `Shared/` hold code the later phases
+  split into these folders and TigerDuckCore.
 
   Screens talk to stores and the account; stores reach `School/`, `Backend/` and
   `Persistence/`. `School/`, `Backend/`, `Mail/`, `Migrations/` and `Devices/LiveActivity/` have
