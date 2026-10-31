@@ -82,7 +82,7 @@ final class OutboxDrain {
         let syncsMarks = policy.syncsAssignmentMarks
         let syncsIgnores = policy.syncsCourseIgnores
         let syncsOverrides = policy.syncsCourseOverrides
-        await outbox.drain(holding: { op in
+        let isHeld: @Sendable (SyncOp) -> Bool = { op in
             switch op {
             case .assignmentOverride: return !syncsMarks()
             case .courseIgnore: return !syncsIgnores()
@@ -92,9 +92,12 @@ final class OutboxDrain {
                     || (customName != nil && !syncsOverrides("course_names"))
             case .courseDelete: return false
             }
-        }) { [weak self] op in
+        }
+        await outbox.drain(holding: isHeld) { [weak self] op in
             guard let self else { throw CancellationError() }
-            try await self.execute(op, signOutsBefore: signOutsBefore)
+            try await BackendClient.$holdsResend.withValue({ isHeld(op) }) {
+                try await self.execute(op, signOutsBefore: signOutsBefore)
+            }
         }
     }
 
@@ -108,12 +111,15 @@ final class OutboxDrain {
             guard signOuts.count == signOutsBefore, signOuts.settling == 0,
                   policy.syncsCourseOverrides("course_colors") else { return }
             do {
-                let reply = try await push.patchCourseOverride(
-                    courseKey: fill.courseKey, colorHex: fill.colorHex, madeAt: fill.stamp
-                )
+                let syncsOverrides = policy.syncsCourseOverrides
+                let reply = try await BackendClient.$holdsResend.withValue({ !syncsOverrides("course_colors") }) {
+                    try await push.patchCourseOverride(courseKey: fill.courseKey, colorHex: fill.colorHex, madeAt: fill.stamp)
+                }
                 guard signOuts.count == signOutsBefore, !reply.applied.contains("color_hex"),
                       edits.colorEdit(of: fill.identity) <= editsBefore else { continue }
                 sender.kept.colorKept(reply.colorHex, courseNo: fill.courseNo)
+            } catch is ResendHeldError {
+                return
             } catch {
                 logger.error("course colour fill failed: \(error.localizedDescription, privacy: .private)")
             }

@@ -167,6 +167,11 @@ actor SyncOutbox {
                 try await execute(entry.op)
             } catch {
                 guard generation == startGeneration else { return entries.isEmpty }
+                if error is ResendHeldError {
+                    kept.append(entry)
+                    index += 1
+                    continue
+                }
                 if OutboxErrorPolicy.keepsWithoutAttempt(error, for: entry.op) {
                     mergeAndStore(retainRemainder: index)
                     return false
