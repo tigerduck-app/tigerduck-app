@@ -8,7 +8,7 @@ final class MailIdleClose {
     private let delay: Duration
     private let sleep: @Sendable (Duration) async -> Void
     private var task: Task<Void, Never>?
-    private var generation = 0
+    private var armCount = 0
 
     init(delay: Duration, sleep: @escaping @Sendable (Duration) async -> Void) {
         self.delay = delay
@@ -17,13 +17,13 @@ final class MailIdleClose {
 
     func arm(_ fire: @escaping @MainActor () async -> Void) {
         task?.cancel()
-        generation += 1
-        let armed = generation
+        armCount += 1
+        let armed = armCount
         let delay = self.delay
         let sleep = self.sleep
         task = Task { [weak self] in
             await sleep(delay)
-            guard !Task.isCancelled, let self, armed == self.generation else { return }
+            guard !Task.isCancelled, let self, armed == self.armCount else { return }
             await fire()
         }
     }
@@ -31,7 +31,7 @@ final class MailIdleClose {
     func cancel() {
         task?.cancel()
         task = nil
-        generation += 1
+        armCount += 1
     }
 }
 
