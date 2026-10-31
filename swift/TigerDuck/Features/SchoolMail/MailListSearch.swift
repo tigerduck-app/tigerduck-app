@@ -9,13 +9,6 @@ import Observation
 final class MailListSearch {
     typealias Matches = (uidValidity: UInt32, uids: [UInt32])
 
-    /// Per folder, the matches not fetched yet, and those the server listed as deleted or no longer
-    /// had, which the catch-ups leave out rather than fetch again.
-    private struct Known {
-        var unfetched: [String: Matches] = [:]
-        var gone: [String: Set<UInt32>] = [:]
-    }
-
     /// The search under way moves `current`; `shown` is the one `results` shows.
     private struct Generations {
         var current = 0
@@ -27,7 +20,7 @@ final class MailListSearch {
     private(set) var usedLocalFallback = false
     /// The query of the search under way or shown; empty when there is none.
     @ObservationIgnored private var query = ""
-    @ObservationIgnored private var known = Known()
+    @ObservationIgnored private var known = MailSearchKnown()
     @ObservationIgnored private var generations = Generations()
     @ObservationIgnored private var indexLookup: Task<Matches?, Never>?
     @ObservationIgnored let catchUp: MailSearchCatchUp
@@ -68,7 +61,7 @@ final class MailListSearch {
                     try await client.summaries(folder: folder, uids: newest, expectedUIDValidity: validity)
                 }
                 guard list.isCurrent(selection, epoch), generation == generations.current else { return }
-                noteGone(newest, summaries, folder: folder)
+                known.noteGone(newest, summaries, folder: folder)
                 found += summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
                 unfetched[folder] = (validity, Array(matched.uids.dropFirst(newest.count)))
             } catch MailClientError.folderChanged {
@@ -108,7 +101,7 @@ final class MailListSearch {
         let page = list.mailbox[folder]
         guard let validity = page?.uidValidity ?? indexed?.uidValidity else { return nil }
         var matched = Set(indexed?.uidValidity == validity ? indexed?.uids ?? [] : [])
-        matched.formUnion((page?.summaries ?? []).filter { Self.matches($0, query) }.map(\.uid))
+        matched.formUnion((page?.summaries ?? []).filter { $0.matchesSearch(query) }.map(\.uid))
         return (validity, matched.sorted(by: >))
     }
 
@@ -158,12 +151,7 @@ final class MailListSearch {
                 self.known.gone[folder] = nil
             }
             let listed = Set((results ?? []).filter { $0.folder == folder }.map(\.uid))
-            let skipped = listed.union(known.gone[folder] ?? [])
-            let waiting = matched.uids.filter { !skipped.contains($0) }
-            let oldestListed = listed.min() ?? .max
-            let wanted = waiting.prefix { $0 > oldestListed }.count + max(0, MailConstants.pageSize - listed.count)
-            let batch = Array(waiting.prefix(min(wanted, MailConstants.pageSize)))
-            known.unfetched[folder] = (matched.uidValidity, waiting)
+            let batch = known.nextBatch(of: matched, folder: folder, listed: listed)
             guard !batch.isEmpty else { continue }
             guard await fetch(batch, folder: folder, uidValidity: matched.uidValidity,
                               selection: selection, epoch: epoch, generation: generation) else { return false }
@@ -187,7 +175,7 @@ final class MailListSearch {
             guard list.isCurrent(selection, epoch), generation == generations.current, let current = results else {
                 return false
             }
-            noteGone(batch, summaries, folder: folder)
+            known.noteGone(batch, summaries, folder: folder)
             // Only what this fetch asked for: a catch-up may have queued more meanwhile.
             known.unfetched[folder]?.uids.removeAll { batch.contains($0) }
             let shown = Set(current.map(\.id))
@@ -207,12 +195,6 @@ final class MailListSearch {
             list.status.serverStatus = .failed
             return false
         }
-    }
-
-    /// Records the `requested` mail the server answered as deleted or not at all.
-    private func noteGone(_ requested: [UInt32], _ summaries: [MailSummary], folder: String) {
-        let kept = Set(summaries.filter { !$0.isDeleted }.map(\.uid))
-        known.gone[folder, default: []].formUnion(requested.filter { !kept.contains($0) })
     }
 
     func loadMore() async {
@@ -264,11 +246,35 @@ final class MailListSearch {
     func remove(folder: String, uid: UInt32) {
         results?.removeAll { $0.folder == folder && $0.uid == uid }
     }
+}
 
-    private static func matches(_ summary: MailSummary, _ query: String) -> Bool {
-        [summary.subject, summary.fromName, summary.fromAddress].contains {
-            $0?.localizedCaseInsensitiveContains(query) == true
-        }
+/// Per folder, the matches not fetched yet, and those the server listed as deleted or no longer
+/// had, which the catch-ups leave out rather than fetch again.
+struct MailSearchKnown {
+    var unfetched: [String: MailListSearch.Matches] = [:]
+    var gone: [String: Set<UInt32>] = [:]
+
+    /// Records the `requested` mail the server answered as deleted or not at all.
+    mutating func noteGone(_ requested: [UInt32], _ summaries: [MailSummary], folder: String) {
+        let kept = Set(summaries.filter { !$0.isDeleted }.map(\.uid))
+        gone[folder, default: []].formUnion(requested.filter { !kept.contains($0) })
+    }
+
+    /// Keeps `folder`'s matches not listed or gone, and returns those to fetch now: the ones newer
+    /// than the oldest listed row, and older ones only to fill the folder's first page.
+    mutating func nextBatch(of matched: MailListSearch.Matches, folder: String, listed: Set<UInt32>) -> [UInt32] {
+        let skipped = listed.union(gone[folder] ?? [])
+        let waiting = matched.uids.filter { !skipped.contains($0) }
+        let oldestListed = listed.min() ?? .max
+        let wanted = waiting.prefix { $0 > oldestListed }.count + max(0, MailConstants.pageSize - listed.count)
+        unfetched[folder] = (matched.uidValidity, waiting)
+        return Array(waiting.prefix(min(wanted, MailConstants.pageSize)))
+    }
+}
+
+private extension MailSummary {
+    func matchesSearch(_ query: String) -> Bool {
+        [subject, fromName, fromAddress].contains { $0?.localizedCaseInsensitiveContains(query) == true }
     }
 }
 
