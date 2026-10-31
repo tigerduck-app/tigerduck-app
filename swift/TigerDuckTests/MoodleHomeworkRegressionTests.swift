@@ -42,7 +42,7 @@ struct MoodleHomeworkRegressionTests {
                     autologinURL: "https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php"
                 )
             },
-            signInGeneration: { 0 },
+            account: AccountSession(),
             sleep: { await ManualSleeper().sleep(for: $0) }
         )
     }

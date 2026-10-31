@@ -73,7 +73,7 @@ struct HomeView: View {
             )
             .moodleLinkOpening()
         }
-        .onChange(of: appState.authService.loginGeneration) {
+        .onChange(of: appState.authService.session.ticket) {
             viewModel.closeAssignment()
         }
         .onChange(of: appState.pendingDeepLink, initial: true) { _, link in

@@ -41,7 +41,7 @@ extension AppState {
 
     func syncChangesSinceLastRevision() async -> RevisionPollOutcome {
         let since = _lastKnownRevision
-        let generation = authService.loginGeneration
+        let ticket = authService.session.ticket
         guard since > 0, !fullSyncGate.isRunning else {
             await syncOverridesFromBackend(followUpIfBusy: true)
             return .changed
@@ -53,7 +53,7 @@ extension AppState {
             AppLogger.sync.info("[feed] read failed: \(error, privacy: .private)")
             page = nil
         }
-        guard mayAdvanceRevision(from: since, generation: generation), !fullSyncGate.isRunning else {
+        guard mayAdvanceRevision(from: since, ticket: ticket), !fullSyncGate.isRunning else {
             return .changed
         }
         let plan = ChangeFeedPlan(page, since: since)
@@ -63,39 +63,38 @@ extension AppState {
             await syncOverridesFromBackend()
         case .advance(let revision):
             await retryUnsentEdits()
-            advanceRevision(from: since, to: revision, generation: generation)
+            advanceRevision(from: since, to: revision, ticket: ticket)
         case .reconcileSettings(let revision):
             await retryUnsentEdits()
-            await reconcileSettings(thenAdvanceFrom: since, to: revision, generation: generation)
+            await reconcileSettings(thenAdvanceFrom: since, to: revision, ticket: ticket)
             if _lastKnownRevision == since { return .failed }
         }
         return .changed
     }
 
-    private func reconcileSettings(thenAdvanceFrom since: Int, to revision: Int, generation: Int) async {
+    private func reconcileSettings(thenAdvanceFrom since: Int, to revision: Int, ticket: AccountSession.Ticket) async {
         #if os(iOS)
         if !Defaults[.notificationSettingsPushPending] {
             await reconcileNotificationSettings(onSettled: { [weak self] in
-                self?.advanceRevision(from: since, to: revision, generation: generation)
+                self?.advanceRevision(from: since, to: revision, ticket: ticket)
             }).value
             return
         }
         #endif
-        advanceRevision(from: since, to: revision, generation: generation)
+        advanceRevision(from: since, to: revision, ticket: ticket)
     }
 
-    private func advanceRevision(from since: Int, to revision: Int, generation: Int) {
-        guard mayAdvanceRevision(from: since, generation: generation) else { return }
+    private func advanceRevision(from since: Int, to revision: Int, ticket: AccountSession.Ticket) {
+        guard mayAdvanceRevision(from: since, ticket: ticket) else { return }
         _lastKnownRevision = revision
         ServerStatusTracker.shared.noteSyncResult(true)
     }
 
-    private func mayAdvanceRevision(from since: Int, generation: Int) -> Bool {
+    private func mayAdvanceRevision(from since: Int, ticket: AccountSession.Ticket) -> Bool {
         Self.feedMayAdvanceRevision(
             readAfter: since,
             watermark: _lastKnownRevision,
-            startedIn: generation,
-            current: authService.loginGeneration,
+            signedOutSince: !authService.session.isCurrent(ticket),
             cloudSyncEnabled: Defaults[.cloudSyncEnabled]
         )
     }
@@ -103,13 +102,12 @@ extension AppState {
     nonisolated static func feedMayAdvanceRevision(
         readAfter since: Int,
         watermark: Int,
-        startedIn generation: Int,
-        current: Int,
+        signedOutSince: Bool,
         cloudSyncEnabled: Bool
     ) -> Bool {
         since == watermark
             && fullSyncMayWrite(
-                startedIn: generation, current: current, cloudSyncEnabled: cloudSyncEnabled, protectedDataAvailable: true
+                signedOutSince: signedOutSince, cloudSyncEnabled: cloudSyncEnabled, protectedDataAvailable: true
             )
     }
 

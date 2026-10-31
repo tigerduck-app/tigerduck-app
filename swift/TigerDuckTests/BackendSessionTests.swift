@@ -1679,10 +1679,10 @@ struct BackendSignInTests {
             moodleTokens: .standIn(harvests: harvests)
         )
         auth.authTokenManager = backend.manager
+        let departed = auth.session.ticket
+        auth.session.moveOn()
         await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
-            await auth.signInToServices(
-                studentId: "B11000000", password: "password", generation: auth.loginGeneration &- 1
-            )
+            await auth.signInToServices(studentId: "B11000000", password: "password", ticket: departed)
         }
 
         #expect(harvests.value == 0)
@@ -1705,7 +1705,7 @@ struct BackendSignInTests {
                 notificationCenter: NotificationCenter(),
                 moodleTokens: MoodleTokenService(
                     storedCredentials: { nil },
-                    // A token that outlives the sign-out, so only the generation stops the backend step.
+                    // A token that outlives the sign-out, so only the session stops the backend step.
                     tokens: .init(load: { "moodle-token" }, save: { _ in }, drop: {}),
                     harvest: { _, _ in
                         harvests.increment()
@@ -1722,7 +1722,7 @@ struct BackendSignInTests {
             auth.authTokenManager = backend.manager
 
             await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
-                await auth.signInToServices(studentId: "B11000000", password: "password", generation: auth.loginGeneration)
+                await auth.signInToServices(studentId: "B11000000", password: "password", ticket: auth.session.ticket)
             }
 
             #expect(harvests.value == 1)

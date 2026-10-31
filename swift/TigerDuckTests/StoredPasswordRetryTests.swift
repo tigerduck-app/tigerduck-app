@@ -112,7 +112,9 @@ struct StoredPasswordRetryTests {
         init(
             harvests: Harvests,
             moodleToken: String? = nil,
-            retry: ((_ studentId: String, _ password: String, _ generation: Int, _ mayPost: () -> Bool) async throws -> Bool)?
+            retry: ((
+                _ studentId: String, _ password: String, _ isCurrent: @escaping @MainActor () -> Bool, _ mayPost: () -> Bool
+            ) async throws -> Bool)?
                 = nil
         ) {
             self.harvests = harvests

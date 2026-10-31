@@ -104,7 +104,7 @@ final class DevMailServerSettings {
 
     var draft: MailServerOverrideSettings
 
-    private(set) var generation = 0
+    private(set) var revision = 0
 
     init(
         store: DevMailServerOverride = .shared,
@@ -150,7 +150,7 @@ final class DevMailServerSettings {
         store.save(settings)
         guard store.effectiveConfig != before else { return false }
         resetMailState()
-        generation += 1
+        revision += 1
         return true
     }
 }

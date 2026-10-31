@@ -336,16 +336,16 @@ struct ClassTableSwitchingTests {
             Self.show(nil, in: people, on: viewModel)
             #expect(viewModel.currentSemester == "1142")
             let fetched = [Self.course("GE1010009", "Fetched course", semester: "1142")]
-            var generation = 0
+            var signedOut = false
             switch change {
             case .none: break
-            case .signOut: generation = 1
+            case .signOut: signedOut = true
             case .switchToSomeoneElse: Self.show(people.hua.id, in: people, on: viewModel)
             case .otherTerm: viewModel.currentSemester = "1141"
             }
             let onScreen = viewModel.courses.map(\.courseNo)
 
-            viewModel.showFetched(fetched, assignments: [], of: "1142", startedUnder: generation, loginGeneration: 0)
+            viewModel.showFetched(fetched, assignments: [], of: "1142", signedOutSince: signedOut)
 
             #expect(viewModel.courses.map(\.courseNo) == (change == .none ? ["GE1010009"] : onScreen))
         }

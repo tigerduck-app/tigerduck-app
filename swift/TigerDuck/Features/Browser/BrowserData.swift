@@ -11,7 +11,7 @@ final class BrowserData {
 
     nonisolated static let storeID = UUID(uuidString: "6F1D5B0E-7A44-4C2B-9E3D-2B8C0A51D7F4")!
 
-    private(set) var generation = 0
+    private(set) var epoch = 0
     @ObservationIgnored private var current: WKWebsiteDataStore?
     @ObservationIgnored private var opens = 0
     @ObservationIgnored private let loadState: () -> BrowserDataState
@@ -41,16 +41,16 @@ final class BrowserData {
     /// Runs before a browser loads anything: what a reset could not remove goes first.
     func prepare() async {
         opens += 1
-        let generation = generation
+        let epoch = epoch
         if loadState() == .stale { await clear() }
-        if self.generation == generation { saveState(.used) }
+        if self.epoch == epoch { saveState(.used) }
     }
 
     /// Returns the removal, which tests wait for. Settings › Storage keeps each site's zoom and
     /// desktop choice, which a sign-in or a sign-out forgets with the account.
     @discardableResult
     func reset(keepingSiteChoices: Bool = false) -> Task<Void, Never>? {
-        generation += 1
+        epoch += 1
         current = nil
         try? FileManager.default.removeItem(at: BrowserPage.downloadsRoot)
         if !keepingSiteChoices { Defaults.reset(.browserZoom, .browserDesktopSites) }

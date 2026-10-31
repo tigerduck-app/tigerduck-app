@@ -60,7 +60,7 @@ struct SSOServiceLoginTests {
                     serviceURL: serviceURL,
                     studentId: "B00000000",
                     password: "unused",
-                    generation: NTUSTSessionManager.shared.generation,
+                    isCurrent: { true },
                     interactive: interactive,
                     now: { Self.now }
                 ))
@@ -304,7 +304,7 @@ struct SSOServiceLoginTests {
         await result {
             try await SSOLoginService.signInAgain(
                 session: session, serviceURL: service, studentId: "B00000000", password: "unused",
-                generation: NTUSTSessionManager.shared.generation, now: { Self.now }, mayPost: mayPost
+                isCurrent: { true }, now: { Self.now }, mayPost: mayPost
             )
         }
     }
@@ -367,9 +367,9 @@ struct SSOServiceLoginTests {
         let service = Self.serviceURL()
         let (session, _) = try Self.sessionSignedInToSSO()
         Self.enqueueLiveSessionThenSignIn(for: service, posts: 3)
-        let device = StoredPasswordRetryTests.Device(harvests: .init(refusing: 4)) { studentId, password, generation, mayPost in
+        let device = StoredPasswordRetryTests.Device(harvests: .init(refusing: 4)) { studentId, password, isCurrent, mayPost in
             try await SSOLoginService.signInAgain(
-                session: session, serviceURL: service, studentId: studentId, password: password, generation: generation,
+                session: session, serviceURL: service, studentId: studentId, password: password, isCurrent: isCurrent,
                 mayPost: mayPost
             )
         }
@@ -544,7 +544,7 @@ struct SSOServiceLoginTests {
             await Self.result {
                 try await SSOLoginService.ensureServiceLogin(
                     session: SSOServerStub.session(), serviceURL: service, studentId: "B00000000",
-                    password: "unused", generation: NTUSTSessionManager.shared.generation,
+                    password: "unused", isCurrent: { true },
                     logFailure: { log.errors.append($0) }
                 )
             }
@@ -812,7 +812,7 @@ struct SSOServiceLoginTests {
                 serviceURL: serviceURL,
                 studentId: "B00000000",
                 password: "unused",
-                generation: NTUSTSessionManager.shared.generation,
+                isCurrent: { true },
                 now: { Self.now }
             )
         }
@@ -906,7 +906,7 @@ struct SSOServiceLoginTests {
                         serviceURL: service,
                         studentId: "B00000000",
                         password: "typed",
-                        generation: NTUSTSessionManager.shared.generation,
+                        isCurrent: { true },
                         interactive: true
                     )
                 }

@@ -29,7 +29,7 @@ final class BrowserPage {
     fileprivate(set) var zoom = BrowserZoom.standard
     fileprivate(set) var isDesktopSite = false
     let store: WKWebsiteDataStore
-    let generation: Int
+    let epoch: Int
     let files = MoodleFileOpener()
     /// This browser's saved files, removed with it; `BrowserData.reset()` removes every browser's.
     nonisolated let downloads = BrowserPage.downloadsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -42,7 +42,7 @@ final class BrowserPage {
         let data = BrowserData.shared
         let store = data.store
         self.store = store
-        generation = data.generation
+        epoch = data.epoch
         signIn = BrowserSignIn(
             hasSession: { BrowserRouting.hasMoodleSession(await store.httpCookieStore.allCookies()) },
             signedInURL: { target in
@@ -196,7 +196,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         Task {
             await BrowserData.shared.prepare()
             // A sign-in or sign-out has come since this browser opened, and it is closing.
-            guard BrowserData.shared.generation == page.generation else { return }
+            guard BrowserData.shared.epoch == page.epoch else { return }
             // Until asked for its records, the store answers with no cookies, not those on disk.
             _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
             await BrowserPageScripts.install(in: configuration.userContentController)
@@ -353,7 +353,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         let expiry = Date.now.addingTimeInterval(Self.sessionKept)
         let lasting = await cookies.allCookies().compactMap { BrowserRouting.lastingSession($0, until: expiry) }
         // A sign-in or sign-out since has emptied this store for the departing account.
-        guard BrowserData.shared.generation == page.generation else { return }
+        guard BrowserData.shared.epoch == page.epoch else { return }
         for cookie in lasting { await cookies.setCookie(cookie) }
     }
 

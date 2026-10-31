@@ -37,7 +37,7 @@ final class CloudSyncCoordinator {
         -> PushAPI.CourseUploadRequest?
     @ObservationIgnored private let uploadsCourses: @MainActor () -> Bool
     @ObservationIgnored private let isProtectedDataAvailable: @MainActor () -> Bool
-    @ObservationIgnored private let loginGeneration: @MainActor () -> Int
+    @ObservationIgnored private let account: AccountSession
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
@@ -88,12 +88,12 @@ final class CloudSyncCoordinator {
             true
             #endif
         },
-        loginGeneration: @escaping @MainActor () -> Int = { 0 }
+        account: AccountSession = AccountSession()
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
         self.isProtectedDataAvailable = isProtectedDataAvailable
-        self.loginGeneration = loginGeneration
+        self.account = account
         self.syncsAssignmentMarks = syncsAssignmentMarks
         self.syncsCourseIgnores = syncsCourseIgnores
         self.syncsCourseOverrides = syncsCourseOverrides
@@ -519,12 +519,11 @@ final class CloudSyncCoordinator {
 
             case .courseAdd(let semester, let courseNo, let stamp):
                 guard isProtectedDataAvailable() else { throw CancellationError() }
-                let generation = loginGeneration()
+                let isCurrent = account.currentCheck()
                 guard var request = addedCourseUpload(semester, courseNo) else { return }
                 request.adds = request.forceKeys.map { PushAPI.CourseAdd(courseKey: $0, hlc: PushAPI.clock(of: stamp)) }
                 guard try await pushCoordinator.uploadCoursesIfChanged(
-                    request, semester: semester,
-                    isCurrent: { [uploadsCourses, loginGeneration] in uploadsCourses() && loginGeneration() == generation }
+                    request, semester: semester, isCurrent: { [uploadsCourses] in uploadsCourses() && isCurrent() }
                 ) else { return }
                 courseAddTimes[CourseTombstone.key(semester: semester, courseNo: courseNo)] = Date()
             }

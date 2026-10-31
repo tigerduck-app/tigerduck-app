@@ -109,13 +109,14 @@ struct CourseRefreshUploadTests {
     @Test("A roster request goes to the school once, then again only after an hour or a new sign-in")
     func rosterRequestRetriesAfterAnHour() {
         var log = RosterRequestLog()
+        let (first, second) = (AccountSession.Ticket.after(signOuts: 1), AccountSession.Ticket.after(signOuts: 2))
         let now = Date()
         let snapshot: [String: Any] = ["roster_requests": ["1151", "1151"]]
 
-        #expect(log.termsToAsk(in: [:], generation: 1, now: now).isEmpty)
-        #expect(log.termsToAsk(in: snapshot, generation: 1, now: now) == ["1151"])
-        #expect(log.termsToAsk(in: snapshot, generation: 1, now: now + 3599).isEmpty)
-        #expect(log.termsToAsk(in: snapshot, generation: 2, now: now + 3599) == ["1151"])
-        #expect(log.termsToAsk(in: snapshot, generation: 2, now: now + 3599 + 3600) == ["1151"])
+        #expect(log.termsToAsk(in: [:], signIn: first, now: now).isEmpty)
+        #expect(log.termsToAsk(in: snapshot, signIn: first, now: now) == ["1151"])
+        #expect(log.termsToAsk(in: snapshot, signIn: first, now: now + 3599).isEmpty)
+        #expect(log.termsToAsk(in: snapshot, signIn: second, now: now + 3599) == ["1151"])
+        #expect(log.termsToAsk(in: snapshot, signIn: second, now: now + 3599 + 3600) == ["1151"])
     }
 }

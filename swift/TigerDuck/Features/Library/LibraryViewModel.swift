@@ -130,13 +130,13 @@ final class LibraryViewModel {
             runShownCodesClock()
             isLoadingQR = qrCodeImage == nil
             errorMessage = nil
-            let generation = LibraryService.loginGeneration
+            let isCurrent = AccountSession.library.currentCheck()
             do {
                 let payload = try await fetchCode()
                 let image = await Task.detached(priority: .userInitiated) {
                     LibraryQRRenderer.image(from: payload)
                 }.value
-                guard LibraryService.loginGeneration == generation else { return }
+                guard isCurrent() else { return }
                 LibraryQRCache.shared.store(payload)
                 if let image { LibraryQRImageCache.shared.store(image, for: payload) }
                 qrPayload = payload
@@ -146,7 +146,7 @@ final class LibraryViewModel {
                 consecutiveErrors = 0
                 restartCountdown()
             } catch {
-                guard LibraryService.loginGeneration == generation else { return }
+                guard isCurrent() else { return }
                 errorMessage = error.localizedDescription
                 isLoadingQR = false
                 if !LibraryService.hasAccount {
@@ -205,13 +205,13 @@ final class LibraryViewModel {
                     isLoadingQR = false
                 } else {
                     isLoadingQR = qrCodeImage == nil
-                    let generation = LibraryService.loginGeneration
+                    let isCurrent = AccountSession.library.currentCheck()
                     Task { @MainActor in
                         let image = await Task.detached(priority: .userInitiated) {
                             LibraryQRRenderer.image(from: payload)
                         }.value
                         guard qrPayload == payload else { return }
-                        guard LibraryService.loginGeneration == generation else { return }
+                        guard isCurrent() else { return }
                         if let image { LibraryQRImageCache.shared.store(image, for: payload) }
                         qrCodeImage = image
                         isLoadingQR = false

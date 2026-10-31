@@ -59,7 +59,7 @@ final class AppState {
         // A purge left for the next launch keeps them from moving.
         if Defaults[.appHasBeenInstalled] { BareKeychainItemMoveMigration.runIfNeeded() }
 
-        let authService = AuthService()
+        let authService = AuthService(session: .school)
         self.authService = authService
 
         let identity = PushIdentity.loadOrCreate()
@@ -73,7 +73,7 @@ final class AppState {
             pushCoordinator: self.pushCoordinator,
             addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1) },
             uploadsCourses: { CourseUploadPolicy.uploadsCourses },
-            loginGeneration: { authService.loginGeneration }
+            account: authService.session
         )
         CloudSyncCoordinator.registerShared(self.cloudSyncCoordinator)
 

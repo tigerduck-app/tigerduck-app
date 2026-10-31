@@ -94,7 +94,7 @@ struct MailLoginCard: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .onAppear { seedFields() }
         #if DEBUG
-        .onChange(of: DevMailServerSettings.shared.generation) { _, _ in seedFields() }
+        .onChange(of: DevMailServerSettings.shared.revision) { _, _ in seedFields() }
         #endif
     }
 

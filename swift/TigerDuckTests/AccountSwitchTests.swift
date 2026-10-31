@@ -97,7 +97,7 @@ struct AccountSwitchTests {
 
             try await SecureStore.$sharedForTesting.withValue(keychain) {
                 #expect(await auth.login(studentId: Self.first, password: "first-password"))
-                let firstGeneration = auth.loginGeneration
+                let firstSignIn = auth.session.ticket
                 try Self.fill(cache)
                 Defaults[.schoolDataSyncedAt] = Date()
                 Defaults[.classTableSelectedSemester] = Self.semester
@@ -108,13 +108,13 @@ struct AccountSwitchTests {
                 SSOLoginService.storedPasswordRefusals = (1, Date())
                 #expect(!Self.files(under: root).isEmpty)
                 #if os(iOS)
-                let browserGeneration = BrowserData.shared.generation
+                let browserEpoch = BrowserData.shared.epoch
                 #endif
 
                 #expect(await auth.login(studentId: Self.second, password: "second-password"))
 
                 #expect(signedIn.withLock { $0 } == [Self.first, Self.second])
-                #expect(auth.loginGeneration != firstGeneration)
+                #expect(!auth.session.isCurrent(firstSignIn))
                 #expect(auth.storedStudentId == Self.second)
                 #expect(auth.storedPassword == "second-password")
                 #expect(moodleToken.withLock { $0 } == "token-\(Self.second)")
@@ -131,7 +131,7 @@ struct AccountSwitchTests {
                 #if os(iOS)
                 #expect((auth.accountNotifications as? DeliveredNotificationsStub)?.delivered.isEmpty == true)
                 // Dropped at the sign-out and again at the sign-in.
-                #expect(BrowserData.shared.generation >= browserGeneration + 2)
+                #expect(BrowserData.shared.epoch >= browserEpoch + 2)
                 #endif
             }
         }

@@ -86,7 +86,7 @@ final class CalendarViewModel {
 
     func refresh(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
-        let startGeneration = authService.loginGeneration
+        let ticket = authService.session.ticket
         guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
@@ -99,7 +99,7 @@ final class CalendarViewModel {
         let (moodle, school) = await (moodleEvents, schoolEvents)
 
         await MainActor.run {
-            guard authService.loginGeneration == startGeneration else {
+            guard authService.session.isCurrent(ticket) else {
                 manager.loadingState = .loaded
                 return
             }

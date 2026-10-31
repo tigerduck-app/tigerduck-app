@@ -30,14 +30,14 @@ final class ClassroomUsageService {
     static let shared = ClassroomUsageService(
         session: NTUSTSessionManager.shared.session,
         queryURL: queryURL,
-        sessionGeneration: { NTUSTSessionManager.shared.generation },
-        signIn: { url, credentials, generation in
+        account: .school,
+        signIn: { url, credentials, isCurrent in
             try await SSOLoginService.ensureServiceLogin(
                 session: NTUSTSessionManager.shared.session,
                 serviceURL: url,
                 studentId: credentials.studentId,
                 password: credentials.password,
-                generation: generation
+                isCurrent: isCurrent
             )
         }
     )
@@ -59,15 +59,17 @@ final class ClassroomUsageService {
     struct Credentials: Sendable {
         let studentId: String
         let password: String
-        let generation: Int
+        let signIn: AccountSession.Ticket
     }
 
-    typealias SignIn = @MainActor (_ serviceURL: URL, _ credentials: Credentials, _ generation: Int) async throws -> Bool
+    typealias SignIn = @MainActor (
+        _ serviceURL: URL, _ credentials: Credentials, _ isCurrent: @escaping @MainActor () -> Bool
+    ) async throws -> Bool
     typealias LogFailure = @MainActor (any Error) -> Void
 
     private let session: URLSession
     private let queryURL: URL
-    private let sessionGeneration: @MainActor () -> Int
+    private let account: AccountSession
     private let signIn: SignIn
     private let timeouts: (load: TimeInterval, post: TimeInterval)
     private let now: @MainActor () -> Date
@@ -75,7 +77,7 @@ final class ClassroomUsageService {
 
     private var kept: [Int: KeptUsage] = [:]
     private(set) var siteStatus = ServerStatus.unknown
-    private var stateGeneration: Int?
+    private var stateSignIn: AccountSession.Ticket?
     private var epoch = 0
     private var isFetching = false
     private var waiting: [CheckedContinuation<Void, Never>] = []
@@ -83,7 +85,7 @@ final class ClassroomUsageService {
     init(
         session: URLSession,
         queryURL: URL,
-        sessionGeneration: @escaping @MainActor () -> Int,
+        account: AccountSession,
         signIn: @escaping SignIn,
         timeouts: (load: TimeInterval, post: TimeInterval) = (60, 15),
         now: @escaping @MainActor () -> Date = { Date() },
@@ -91,7 +93,7 @@ final class ClassroomUsageService {
     ) {
         self.session = session
         self.queryURL = queryURL
-        self.sessionGeneration = sessionGeneration
+        self.account = account
         self.signIn = signIn
         self.timeouts = timeouts
         self.now = now
@@ -108,7 +110,7 @@ final class ClassroomUsageService {
     func usage(on day: Date, isToday: Bool, force: Bool, credentials: Credentials) async throws -> KeptUsage {
         let number = ClassroomUsageParser.dayNumber(of: day)
         adoptSession()
-        let ticket = Ticket(generation: credentials.generation, epoch: epoch)
+        let ticket = Ticket(signIn: credentials.signIn, epoch: epoch)
         try check(ticket)
         if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
         return try await oneAtATime {
@@ -136,16 +138,16 @@ final class ClassroomUsageService {
     }
 
     private struct Ticket {
-        let generation: Int
+        let signIn: AccountSession.Ticket
         let epoch: Int
     }
 
     private func adoptSession() {
-        let generation = sessionGeneration()
-        guard stateGeneration != generation else { return }
+        let signIn = account.ticket
+        guard stateSignIn != signIn else { return }
         kept = [:]
         siteStatus = .unknown
-        stateGeneration = generation
+        stateSignIn = signIn
     }
 
     private func noteFailure(_ error: any Error, for ticket: Ticket) {
@@ -154,7 +156,7 @@ final class ClassroomUsageService {
     }
 
     private func check(_ ticket: Ticket) throws {
-        guard ticket.generation == sessionGeneration(), ticket.epoch == epoch else { throw CancellationError() }
+        guard account.isCurrent(ticket.signIn), ticket.epoch == epoch else { throw CancellationError() }
     }
 
     private func freshUsage(_ day: Int, isToday: Bool) -> KeptUsage? {
@@ -217,7 +219,7 @@ final class ClassroomUsageService {
         var html = try await load(URLRequest(url: queryURL, timeoutInterval: timeouts.load))
         if html.map(ClassroomUsageParser.isQueryPage) != true {
             try check(ticket)
-            guard try await signIn(queryURL, credentials, ticket.generation) else {
+            guard try await signIn(queryURL, credentials, { [account] in account.isCurrent(ticket.signIn) }) else {
                 throw ClassroomUsageError.notSignedIn
             }
             html = try await load(URLRequest(url: queryURL, timeoutInterval: timeouts.load))

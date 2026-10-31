@@ -259,14 +259,14 @@ final class PushCoordinator {
             let now = self.clock()
             if !always, self.uploads.isHeldBack(key, fingerprint: fingerprint, now: now) {
                 // An unchanged resend in between cleared the failure, and this list is still unsent.
-                self.uploads.recordFailure(key, fingerprint: fingerprint, startedIn: self.uploads.generation(of: key))
+                self.uploads.recordFailure(key, fingerprint: fingerprint, startedIn: self.uploads.forgets(of: key))
                 return false
             }
             guard always || self.uploads.isDue(key, fingerprint: fingerprint, now: now) else {
                 self.uploads.forgetFailure(key)
                 return false
             }
-            let started = self.uploads.generation(of: key)
+            let started = self.uploads.forgets(of: key)
             do {
                 try await send()
             } catch {
@@ -471,7 +471,7 @@ nonisolated struct UploadLedger {
     private var forgetsOfKey: [String: Int] = [:]
     private var forgetsOfAll = 0
 
-    func generation(of key: String) -> (all: Int, key: Int) {
+    func forgets(of key: String) -> (all: Int, key: Int) {
         (forgetsOfAll, forgetsOfKey[key, default: 0])
     }
 
@@ -485,19 +485,19 @@ nonisolated struct UploadLedger {
     }
 
     mutating func record(_ key: String, fingerprint: Int, at date: Date, startedIn started: (all: Int, key: Int)) {
-        guard started == generation(of: key) else { return }
+        guard started == forgets(of: key) else { return }
         accepted[key] = (fingerprint, date)
         failed[key] = nil
         refused[key] = nil
     }
 
     mutating func recordRefusal(_ key: String, fingerprint: Int, at date: Date, startedIn started: (all: Int, key: Int)) {
-        guard started == generation(of: key) else { return }
+        guard started == forgets(of: key) else { return }
         refused[key] = (fingerprint, date)
     }
 
     mutating func recordFailure(_ key: String, fingerprint: Int, startedIn started: (all: Int, key: Int)) {
-        guard started == generation(of: key) else { return }
+        guard started == forgets(of: key) else { return }
         failed[key] = fingerprint
     }
 

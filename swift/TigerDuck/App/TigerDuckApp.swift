@@ -116,7 +116,7 @@ struct TigerDuckApp: App {
                 }
                 .onOpenURL { url in
                     if let text = ClassTableShareLink.codeText(url) {
-                        HeldShareLink.shared.arrived(text, loginGeneration: appState.authService.loginGeneration)
+                        HeldShareLink.shared.arrived(text, signIn: appState.authService.session.ticket)
                         appState.openFromWidget(.classTable)
                         return
                     }
@@ -269,7 +269,7 @@ struct TigerDuckApp: App {
                 }
                 .onOpenURL { url in
                     if let text = ClassTableShareLink.codeText(url) {
-                        HeldShareLink.shared.arrived(text, loginGeneration: appState.authService.loginGeneration)
+                        HeldShareLink.shared.arrived(text, signIn: appState.authService.session.ticket)
                         appState.openFromWidget(.classTable)
                         return
                     }

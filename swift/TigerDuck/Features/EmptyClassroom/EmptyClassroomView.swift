@@ -70,7 +70,7 @@ struct EmptyClassroomView: View {
             wasInBackground = false
             viewModel.returnToApp()
         }
-        .onChange(of: appState.authService.loginGeneration) { viewModel.accountChanged() }
+        .onChange(of: appState.authService.session.ticket) { viewModel.accountChanged() }
         .onChange(of: appState.authService.hasStoredCredentials) { viewModel.accountChanged() }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             viewModel.dataDidUpdate()

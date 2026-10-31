@@ -70,8 +70,8 @@ struct TigerDuckBrowserView: View {
             } message: { outside in
                 Text(outside.host(percentEncoded: false) ?? outside.absoluteString)
             }
-            .onChange(of: BrowserData.shared.generation, initial: true) { _, now in
-                if now != page.generation { dismiss() }
+            .onChange(of: BrowserData.shared.epoch, initial: true) { _, now in
+                if now != page.epoch { dismiss() }
             }
             .onChange(of: page.canUsePage) { _, usable in
                 if !usable && page.find.isActive { page.find.end() }

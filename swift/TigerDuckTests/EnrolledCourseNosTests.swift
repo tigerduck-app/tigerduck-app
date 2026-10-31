@@ -527,28 +527,21 @@ struct PastTermRebuildTests {
 
 @MainActor
 struct WarmTermsTests {
-    @MainActor
-    private final class Account {
-        var generation = 1
-    }
-
-    @Test("Shared answers that outlive a sign-out reach no term; the terms save under the generation they were fetched in")
+    @Test("Shared answers that outlive a sign-out reach no term; the terms save under the sign-in they were fetched in")
     func answersFromAnotherAccountReachNoTerm() async {
-        let account = Account()
-        let calls = OSAllocatedUnfairLock(initialState: [String: Int]())
-        let fetch: @Sendable (String, Int, [MoodleEnrolledCourse]?, ScoreReport?) async -> Void = { semester, generation, _, _ in
-            calls.withLock { $0[semester] = generation }
+        let account = AccountSession()
+        let calls = OSAllocatedUnfairLock(initialState: [String: AccountSession.Ticket]())
+        let fetch: @Sendable (String, AccountSession.Ticket, [MoodleEnrolledCourse]?, ScoreReport?) async -> Void = {
+            semester, ticket, _, _ in calls.withLock { $0[semester] = ticket }
         }
 
-        await AppServiceBridge.warmTerms(["1141", "1142"], generation: { account.generation }, shared: {
-            account.generation += 1
+        await AppServiceBridge.warmTerms(["1141", "1142"], account: account, shared: {
+            account.moveOn()
             return (nil, nil)
         }, fetch: fetch)
         #expect(calls.withLock { $0 }.isEmpty)
 
-        await AppServiceBridge.warmTerms(
-            ["1141", "1142"], generation: { account.generation }, shared: { (nil, nil) }, fetch: fetch
-        )
-        #expect(calls.withLock { $0 } == ["1141": 2, "1142": 2])
+        await AppServiceBridge.warmTerms(["1141", "1142"], account: account, shared: { (nil, nil) }, fetch: fetch)
+        #expect(calls.withLock { $0 } == ["1141": account.ticket, "1142": account.ticket])
     }
 }

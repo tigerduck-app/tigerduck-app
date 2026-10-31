@@ -144,7 +144,7 @@ private struct CopyLinkButton: View {
 }
 
 extension View {
-    func classTableShareSheet(model: Binding<ClassTableShareModel?>, loginGeneration: Int) -> some View {
+    func classTableShareSheet(model: Binding<ClassTableShareModel?>, signIn: AccountSession.Ticket) -> some View {
         sheet(item: model) { model in
             #if os(iOS)
             ClassTableShareSheet(model: model)
@@ -153,6 +153,6 @@ extension View {
             ClassTableShareSheet(model: model)
             #endif
         }
-        .onChange(of: loginGeneration) { model.wrappedValue = nil }
+        .onChange(of: signIn) { model.wrappedValue = nil }
     }
 }

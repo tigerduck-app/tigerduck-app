@@ -227,7 +227,7 @@ struct MacClassTableView: View {
         }
         .onChange(of: HeldShareLink.shared.link?.id, initial: true) { openHeldLink() }
         .onChange(of: HeldShareLink.mayOpen(in: appState)) { openHeldLink() }
-        .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
+        .classTableShareSheet(model: $shareModel, signIn: appState.authService.session.ticket)
         .sheet(isPresented: $showAddCourse) {
             AddCourseSheet(
                 semester: selectedSemester,
@@ -261,11 +261,9 @@ struct MacClassTableView: View {
             }
         }
         .sheet(item: $courseToRecolor) { course in
-            let authService = appState.authService
-            let generation = authService.loginGeneration
             CourseColorPickerSheet(
                 course: course,
-                isCurrent: { authService.loginGeneration == generation },
+                isCurrent: appState.authService.session.currentCheck(),
                 onSelect: { hex in
                     let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
                     cacheRevision &+= 1

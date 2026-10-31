@@ -6,22 +6,22 @@ import Testing
 struct FullSyncSignOutTests {
     @Test("A sync the sign-in and the sync switch both outlived may write")
     func syncThatOutlivedNothingMayWrite() {
-        #expect(AppState.fullSyncMayWrite(startedIn: 4, current: 4, cloudSyncEnabled: true, protectedDataAvailable: true))
+        #expect(AppState.fullSyncMayWrite(signedOutSince: false, cloudSyncEnabled: true, protectedDataAvailable: true))
     }
 
     @Test("A sign-out while the sync was in flight stops its writes, even after the next sign-in")
     func signOutDuringTheSyncStopsItsWrites() {
-        #expect(!AppState.fullSyncMayWrite(startedIn: 4, current: 5, cloudSyncEnabled: true, protectedDataAvailable: true))
+        #expect(!AppState.fullSyncMayWrite(signedOutSince: true, cloudSyncEnabled: true, protectedDataAvailable: true))
     }
 
     @Test("Turning Sync course information off while the sync was in flight stops its writes")
     func syncSwitchedOffDuringTheSyncStopsItsWrites() {
-        #expect(!AppState.fullSyncMayWrite(startedIn: 4, current: 4, cloudSyncEnabled: false, protectedDataAvailable: true))
+        #expect(!AppState.fullSyncMayWrite(signedOutSince: false, cloudSyncEnabled: false, protectedDataAvailable: true))
     }
 
     @Test("A sync that resumes behind the lock screen writes nothing over the caches it cannot read")
     func syncResumedBehindTheLockScreenStopsItsWrites() {
-        #expect(!AppState.fullSyncMayWrite(startedIn: 4, current: 4, cloudSyncEnabled: true, protectedDataAvailable: false))
+        #expect(!AppState.fullSyncMayWrite(signedOutSince: false, cloudSyncEnabled: true, protectedDataAvailable: false))
     }
 }
 
@@ -71,17 +71,18 @@ struct ReenableCheckSignOutTests {
     }
 }
 
+@MainActor
 struct ConflictCheckRetryTests {
     private static let start = Date(timeIntervalSince1970: 1_790_000_000)
 
     private static func isDue(
         _ retry: AppState.ConflictCheckRetry, after seconds: TimeInterval = 0,
         pending: Set<String> = ["assignments"], checking: Bool = false, awaitingAnswer: Bool = false,
-        generation: Int = 0
+        signIn: AccountSession.Ticket = .after(signOuts: 0)
     ) -> Bool {
         retry.isDue(
             pending: pending, checking: checking, awaitingAnswer: awaitingAnswer,
-            now: start.addingTimeInterval(seconds), generation: generation
+            now: start.addingTimeInterval(seconds), signIn: signIn
         )
     }
 
@@ -99,15 +100,15 @@ struct ConflictCheckRetryTests {
     func failuresBackOff() {
         var retry = AppState.ConflictCheckRetry()
 
-        retry.noteFailure(at: Self.start, generation: 0)
+        retry.noteFailure(at: Self.start, signIn: .after(signOuts: 0))
         #expect(!Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay - 1))
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay))
 
-        retry.noteFailure(at: Self.start, generation: 0)
+        retry.noteFailure(at: Self.start, signIn: .after(signOuts: 0))
         #expect(!Self.isDue(retry, after: 2 * AppState.ConflictCheckRetry.firstDelay - 1))
         #expect(Self.isDue(retry, after: 2 * AppState.ConflictCheckRetry.firstDelay))
 
-        for _ in 0..<20 { retry.noteFailure(at: Self.start, generation: 0) }
+        for _ in 0..<20 { retry.noteFailure(at: Self.start, signIn: .after(signOuts: 0)) }
         #expect(!Self.isDue(retry, after: AppState.ConflictCheckRetry.maxDelay - 1))
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.maxDelay))
     }
@@ -116,18 +117,18 @@ struct ConflictCheckRetryTests {
     func outcomesMoveWhatIsOwed() {
         var retry = AppState.ConflictCheckRetry()
 
-        retry.note(.clear(["assignments"]), at: Self.start, generation: 0)
+        retry.note(.clear(["assignments"]), at: Self.start, signIn: .after(signOuts: 0))
         #expect(!Self.isDue(retry, after: 3600))
-        retry.note(.resolvedMeanwhile, at: Self.start, generation: 0)
+        retry.note(.resolvedMeanwhile, at: Self.start, signIn: .after(signOuts: 0))
         #expect(!Self.isDue(retry, after: 3600))
 
-        retry.note(.dropped, at: Self.start, generation: 0)
+        retry.note(.dropped, at: Self.start, signIn: .after(signOuts: 0))
         #expect(!Self.isDue(retry, after: 1))
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay))
 
-        retry.note(.conflict(["assignments"]), at: Self.start, generation: 0)
+        retry.note(.conflict(["assignments"]), at: Self.start, signIn: .after(signOuts: 0))
         #expect(!Self.isDue(retry, after: 3600))
-        retry.noteFailure(at: Self.start, generation: 0)
+        retry.noteFailure(at: Self.start, signIn: .after(signOuts: 0))
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay))
     }
 
@@ -135,19 +136,19 @@ struct ConflictCheckRetryTests {
     func anAnswerOwesTheCategoriesMarkedDuringTheCheck() {
         var retry = AppState.ConflictCheckRetry()
 
-        retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
+        retry.note(.conflict(["courses"]), at: Self.start, signIn: .after(signOuts: 0))
         #expect(!Self.isDue(retry, pending: ["assignments", "courses"], awaitingAnswer: true))
 
-        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, generation: 0)
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, signIn: .after(signOuts: 0))
         #expect(Self.isDue(retry, pending: ["assignments"]))
     }
 
     @Test("An answer that leaves nothing pending owes no check")
     func anAnswerThatLeavesNothingOwesNothing() {
         var retry = AppState.ConflictCheckRetry()
-        retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
+        retry.note(.conflict(["courses"]), at: Self.start, signIn: .after(signOuts: 0))
 
-        retry.noteAnswered(leaving: [], awaitingAnswer: false, generation: 0)
+        retry.noteAnswered(leaving: [], awaitingAnswer: false, signIn: .after(signOuts: 0))
 
         #expect(!Self.isDue(retry, pending: ["assignments"]))
     }
@@ -155,10 +156,10 @@ struct ConflictCheckRetryTests {
     @Test("An answer that finds another dialog up owes no check of its own")
     func anAnswerWithAnotherDialogUpOwesNothing() {
         var retry = AppState.ConflictCheckRetry()
-        retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
-        retry.note(.conflict(["assignments"]), at: Self.start, generation: 0)
+        retry.note(.conflict(["courses"]), at: Self.start, signIn: .after(signOuts: 0))
+        retry.note(.conflict(["assignments"]), at: Self.start, signIn: .after(signOuts: 0))
 
-        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: true, generation: 0)
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: true, signIn: .after(signOuts: 0))
 
         #expect(!Self.isDue(retry, pending: ["assignments"]))
     }
@@ -166,22 +167,22 @@ struct ConflictCheckRetryTests {
     @Test("A check of the departing account that ends after the next account's verdict changes nothing")
     func anOlderAccountsLateResultIsDropped() {
         var retry = AppState.ConflictCheckRetry()
-        retry.note(.clear(["assignments"]), at: Self.start, generation: 5)
-        #expect(!Self.isDue(retry, generation: 5))
+        retry.note(.clear(["assignments"]), at: Self.start, signIn: .after(signOuts: 5))
+        #expect(!Self.isDue(retry, signIn: .after(signOuts: 5)))
 
-        retry.note(.dropped, at: Self.start, generation: 4)
-        retry.noteFailure(at: Self.start, generation: 4)
-        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, at: Self.start, generation: 4)
+        retry.note(.dropped, at: Self.start, signIn: .after(signOuts: 4))
+        retry.noteFailure(at: Self.start, signIn: .after(signOuts: 4))
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, at: Self.start, signIn: .after(signOuts: 4))
 
-        #expect(!Self.isDue(retry, generation: 5))
+        #expect(!Self.isDue(retry, signIn: .after(signOuts: 5)))
     }
 
     @Test("An answer whose save failed is checked again only after the wait a failed check gets")
     func aFailedSaveWaitsBeforeAskingAgain() {
         var retry = AppState.ConflictCheckRetry()
-        retry.note(.conflict(["courses"]), at: Self.start, generation: 0)
+        retry.note(.conflict(["courses"]), at: Self.start, signIn: .after(signOuts: 0))
 
-        retry.noteAnswered(leaving: ["courses"], awaitingAnswer: false, saveFailed: true, at: Self.start, generation: 0)
+        retry.noteAnswered(leaving: ["courses"], awaitingAnswer: false, saveFailed: true, at: Self.start, signIn: .after(signOuts: 0))
 
         #expect(!Self.isDue(retry, pending: ["courses"]))
         #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay, pending: ["courses"]))
@@ -190,14 +191,14 @@ struct ConflictCheckRetryTests {
     @Test("The next account starts as at launch, even after the departing account's check ends late")
     func aSignOutStartsTheRetriesOver() {
         var retry = AppState.ConflictCheckRetry()
-        for _ in 0..<5 { retry.noteFailure(at: Self.start, generation: 4) }
-        retry.note(.dropped, at: Self.start, generation: 4)
-        #expect(!Self.isDue(retry, generation: 4))
+        for _ in 0..<5 { retry.noteFailure(at: Self.start, signIn: .after(signOuts: 4)) }
+        retry.note(.dropped, at: Self.start, signIn: .after(signOuts: 4))
+        #expect(!Self.isDue(retry, signIn: .after(signOuts: 4)))
 
-        #expect(Self.isDue(retry, generation: 5))
-        retry.noteFailure(at: Self.start, generation: 5)
-        #expect(!Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay - 1, generation: 5))
-        #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay, generation: 5))
+        #expect(Self.isDue(retry, signIn: .after(signOuts: 5)))
+        retry.noteFailure(at: Self.start, signIn: .after(signOuts: 5))
+        #expect(!Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay - 1, signIn: .after(signOuts: 5)))
+        #expect(Self.isDue(retry, after: AppState.ConflictCheckRetry.firstDelay, signIn: .after(signOuts: 5)))
     }
 }
 

@@ -80,14 +80,9 @@ final class EmptyClassroomViewModel {
             guard let authService,
                   let studentId = authService.storedStudentId,
                   let password = authService.storedPassword else { return nil }
-            let generation = authService.loginGeneration
             return Reader(
-                credentials: .init(
-                    studentId: studentId,
-                    password: password,
-                    generation: NTUSTSessionManager.shared.generation
-                ),
-                isCurrent: { [weak authService] in authService?.loginGeneration == generation }
+                credentials: .init(studentId: studentId, password: password, signIn: AccountSession.school.ticket),
+                isCurrent: authService.session.currentCheck()
             )
         }
     }

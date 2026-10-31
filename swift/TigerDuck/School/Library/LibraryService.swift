@@ -53,8 +53,6 @@ enum LibraryService {
         KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryUsername)
     }
 
-    @MainActor private(set) static var loginGeneration: Int = 0
-
     static let accountDidChange = Notification.Name("TigerDuck.libraryAccountDidChange")
 
     static let signInDidChange = Notification.Name("TigerDuck.librarySignInDidChange")
@@ -63,7 +61,7 @@ enum LibraryService {
     static func saveCredentials(username: String, password: String) {
         let accountChanged = storedUsername != username
         if accountChanged {
-            loginGeneration &+= 1
+            AccountSession.library.moveOn()
         }
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
@@ -83,7 +81,7 @@ enum LibraryService {
 
     @MainActor
     static func clearCredentials() {
-        loginGeneration &+= 1
+        AccountSession.library.moveOn()
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
         storedPasswordRefusals = (0, nil)
@@ -146,9 +144,11 @@ enum LibraryService {
     ) async throws -> String {
         cancelStoredPasswordRetry()
         typedSignIns &+= 1
-        let generation = loginGeneration
+        let ticket = AccountSession.library.ticket
         let answer = try await request(username, password)
-        guard loginGeneration == generation, stillCurrent() else { throw LibraryServiceError.credentialsNotFound }
+        guard AccountSession.library.isCurrent(ticket), stillCurrent() else {
+            throw LibraryServiceError.credentialsNotFound
+        }
         saveCredentials(username: username, password: password)
         saveToken(answer.token, expirationMs: answer.expirationTimeStamp)
         return answer.token
@@ -275,10 +275,9 @@ enum LibraryService {
         retrySleep: @escaping @Sendable (Duration) async -> Void
     ) {
         cancelStoredPasswordRetry()
-        let generation = loginGeneration
-        storedPasswordRetry = Task {
+        storedPasswordRetry = AccountSession.library.task { ticket in
             await retrySleep(.seconds(wait))
-            guard !Task.isCancelled, loginGeneration == generation else { return }
+            guard !Task.isCancelled, AccountSession.library.isCurrent(ticket) else { return }
             guard storedPasswordPostIsDue(now: Date()) else {
                 storedPasswordRetry = nil
                 return armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
@@ -287,7 +286,7 @@ enum LibraryService {
             let signedIn = (try? await ensureToken(signIn: signIn, retrySleep: retrySleep)) != nil
             guard !Task.isCancelled else { return }
             storedPasswordRetry = nil
-            guard !signedIn, loginGeneration == generation, refusals > 0,
+            guard !signedIn, AccountSession.library.isCurrent(ticket), refusals > 0,
                   storedPasswordRefusals.count == refusals else { return }
             storedPasswordRetryMisses += 1
             startStoredPasswordRetry(
@@ -323,14 +322,14 @@ enum LibraryService {
             return try await pending.value
         }
 
-        let generation = loginGeneration
+        let ticket = AccountSession.library.ticket
         let typedSignInsBefore = typedSignIns
         let attempt = Task {
             let answer: LibraryLoginData
             do {
                 answer = try await signIn(username, password)
             } catch {
-                if loginGeneration == generation, storedPassword == password {
+                if AccountSession.library.isCurrent(ticket), storedPassword == password {
                     if case LibraryServiceError.loginFailed = error {
                         storedPasswordRefusals = (storedPasswordRefusals.count + 1, Date())
                         if typedSignIns == typedSignInsBefore {
@@ -346,7 +345,7 @@ enum LibraryService {
                 }
                 throw error
             }
-            guard loginGeneration == generation else { throw LibraryServiceError.credentialsNotFound }
+            guard AccountSession.library.isCurrent(ticket) else { throw LibraryServiceError.credentialsNotFound }
             saveToken(answer.token, expirationMs: answer.expirationTimeStamp)
             storedSignInFailedAt = nil
             if storedPasswordRefusals.count > 0, storedPassword == password {

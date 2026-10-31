@@ -31,7 +31,7 @@ final class ScoreViewModel {
 
     private struct RefreshOwner: Equatable {
         let studentId: String
-        let generation: Int
+        let signIn: AccountSession.Ticket
     }
 
     var rankingScope: RankingScope = .semester
@@ -94,7 +94,7 @@ final class ScoreViewModel {
     }
 
     func refresh(authService: AuthService, force: Bool = true) async {
-        let generation = authService.loginGeneration
+        let ticket = authService.session.ticket
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
             switchAccount(to: nil)
@@ -104,8 +104,8 @@ final class ScoreViewModel {
         let session = NTUSTSessionManager.shared.session
         await refresh(
             for: studentId,
-            generation: generation,
-            isCurrent: { [weak authService] in authService?.loginGeneration == generation },
+            ticket: ticket,
+            isCurrent: { [weak authService] in authService?.session.isCurrent(ticket) == true },
             isReachable: { await NetworkMonitor.shared.isReachable() },
             fetch: {
                 try await NTUSTScoreService.fetchScoreReport(
@@ -114,7 +114,7 @@ final class ScoreViewModel {
                     password: password,
                     forceRefresh: force,
                     persistGuard: { @Sendable [weak authService] in
-                        authService?.loginGeneration == generation
+                        authService?.session.isCurrent(ticket) == true
                     }
                 )
             }
@@ -123,7 +123,7 @@ final class ScoreViewModel {
 
     func refresh(
         for studentId: String,
-        generation: Int,
+        ticket: AccountSession.Ticket,
         isCurrent: () -> Bool,
         isReachable: () async -> Bool,
         fetch: () async throws -> (report: ScoreReport, cachedAt: Date),
@@ -131,7 +131,7 @@ final class ScoreViewModel {
         tracker: ServerStatusTracker? = nil
     ) async {
         switchAccount(to: studentId)
-        let owner = RefreshOwner(studentId: studentId, generation: generation)
+        let owner = RefreshOwner(studentId: studentId, signIn: ticket)
         guard inFlightRefresh != owner else { return }
         inFlightRefresh = owner
         defer { if inFlightRefresh == owner { inFlightRefresh = nil } }

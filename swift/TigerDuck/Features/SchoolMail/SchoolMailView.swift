@@ -34,7 +34,7 @@ struct SchoolMailView: View {
         }
         .sheet(isPresented: $showLoginSheet) { MailLoginSheet(isPresented: $showLoginSheet) }
         #if DEBUG
-        .onChange(of: DevMailServerSettings.shared.generation) { _, _ in
+        .onChange(of: DevMailServerSettings.shared.revision) { _, _ in
             viewModel.resetForServerChange()
         }
         #endif
