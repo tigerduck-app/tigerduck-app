@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import TigerDuckWatch_Watch_App
+import TigerDuckCore
 
 @MainActor
 struct NextClassDayCaptionTests {

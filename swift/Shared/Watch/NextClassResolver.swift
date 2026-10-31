@@ -9,93 +9,88 @@ public nonisolated enum NextClassResolver {
         public let nextDay: Day
     }
 
-    public nonisolated enum Day: Equatable, Sendable {
-        case today
-        case tomorrow
-        case later(weekday: Int)
-
-        public func headline(in language: WatchLanguage) -> String {
-            switch self {
-            case .today: return language.string("watch_next")
-            case .tomorrow: return language.string("widget_tomorrow")
-            case .later(let weekday): return Self.caption(of: weekday, in: language)
-            }
-        }
-
-        public func inlineCaption(_ time: String, in language: WatchLanguage) -> String {
-            switch self {
-            case .today:
-                return time
-            case .tomorrow:
-                return language.format("widget_tomorrow_time", time)
-            case .later(let weekday):
-                return "\(Self.caption(of: weekday, in: language)) \(time)"
-            }
-        }
-
-        private static func caption(of weekday: Int, in language: WatchLanguage) -> String {
-            switch weekday {
-            case 1: return language.string("weekday_mon_caption")
-            case 2: return language.string("weekday_tue_caption")
-            case 3: return language.string("weekday_wed_caption")
-            case 4: return language.string("weekday_thu_caption")
-            case 5: return language.string("weekday_fri_caption")
-            case 6: return language.string("weekday_sat_caption")
-            default: return language.string("weekday_sun_caption")
-            }
-        }
-    }
+    public typealias Day = ClassDay
 
     public static func resolve(courses: [WatchCourse], now: Date, quietDays: Set<String> = []) -> Result {
-        let today = todaysClasses(courses: courses, now: now, quietDays: quietDays)
-        let cal = TaipeiTime.calendar
-        let hh = cal.component(.hour, from: now)
-        let mm = cal.component(.minute, from: now)
-        let nowMin = hh * 60 + mm
-
-        let current = today.first { c in
-            let s = minutes(of: c.startHHmm)
-            let e = minutes(of: c.endHHmm)
-            return nowMin >= s && nowMin < e
-        }
-
-        let next = today.first { c in
-            c.id != current?.id && minutes(of: c.endHHmm) > nowMin
-        }
-
-        if current != nil || next != nil {
-            return Result(current: current, next: next, nextDay: .today)
-        }
-        return firstClassAhead(courses: courses, after: now, quietDays: quietDays)
+        let schedule = WatchSchedule(courses: courses, quietDays: quietDays)
+        let found = schedule.timeline.nowAndNext(at: now)
+        return Result(current: found.current.map(schedule.course), next: found.next.map(schedule.course), nextDay: found.day)
     }
 
     public static func todaysClasses(courses: [WatchCourse], now: Date, quietDays: Set<String>) -> [WatchCourse] {
-        let todayKey = TaipeiTime.dayKey(for: now)
-        guard !quietDays.contains(todayKey) else { return [] }
-        let raw = TaipeiTime.calendar.component(.weekday, from: now)
-        let isoWeekday = ((raw + 5) % 7) + 1
-        return courses
-            .filter { $0.weekday == isoWeekday && $0.skippedDates?.contains(todayKey) != true }
-            .flatMap { $0.on(todayKey) }
-            .sorted { minutes(of: $0.startHHmm) < minutes(of: $1.startHHmm) }
+        let schedule = WatchSchedule(courses: courses, quietDays: quietDays)
+        return schedule.timeline.classes(on: now).filter { !$0.isCancelled }.map(schedule.course)
     }
 
-    private static func firstClassAhead(courses: [WatchCourse], after now: Date, quietDays: Set<String>) -> Result {
-        for offset in 1...7 {
-            guard let day = TaipeiTime.calendar.date(byAdding: .day, value: offset, to: now),
-                  let first = todaysClasses(courses: courses, now: day, quietDays: quietDays).first
-            else { continue }
-            let nextDay: Day = offset == 1 ? .tomorrow : .later(weekday: first.weekday)
-            return Result(current: nil, next: first, nextDay: nextDay)
+    /// The starts and ends after `now` of the classes held today and on the next `days - 1` days.
+    public static func boundaries(courses: [WatchCourse], after now: Date, days: Int, quietDays: Set<String>) -> [Date] {
+        WatchSchedule(courses: courses, quietDays: quietDays).timeline.boundaries(after: now, days: days)
+    }
+}
+
+/// The phone's meetings as `ClassTimeline` meetings, each with the class it came from.
+private nonisolated struct WatchSchedule {
+    let timeline: ClassTimeline
+    private let sources: [(meeting: WatchCourse, changes: [(day: String, held: WatchCourse)])]
+
+    init(courses: [WatchCourse], quietDays: Set<String>) {
+        func minutes(_ hhmm: String) -> Int { ClassTimeline.minutes(of: hhmm) ?? 0 }
+        let sources = courses.map { course in
+            let changes = (course.changes ?? [:]).sorted { $0.key < $1.key }.flatMap { day, held in
+                held.map { (day: day, held: $0) }
+            }
+            return (meeting: course, changes: changes)
         }
-        return Result(current: nil, next: nil, nextDay: .today)
+        self.sources = sources
+        timeline = ClassTimeline(meetings: sources.map { course, changes in
+            ClassMeeting(
+                courseKey: course.courseNo, weekday: course.weekday, periods: [course.periodLabel],
+                start: minutes(course.startHHmm), end: minutes(course.endHHmm), room: course.classroom,
+                skippedDays: course.skippedDates ?? [],
+                changes: changes.map { day, held in
+                    ClassChange(
+                        day: day, periods: [held.periodLabel], start: minutes(held.startHHmm), end: minutes(held.endHHmm),
+                        room: held.classroom, isCancelled: held.dayChange?.cancelled == true
+                    )
+                }
+            )
+        }, quietDays: quietDays)
     }
 
-    private static func minutes(of hhmm: String) -> Int {
-        let parts = hhmm.split(separator: ":")
-        guard parts.count == 2,
-              let h = Int(parts[0]),
-              let m = Int(parts[1]) else { return 0 }
-        return h * 60 + m
+    func course(_ item: ScheduledClass) -> WatchCourse {
+        item.change.map { sources[item.meeting].changes[$0].held } ?? sources[item.meeting].meeting
+    }
+}
+
+nonisolated extension ClassDay {
+    public func headline(in language: WatchLanguage) -> String {
+        switch self {
+        case .today: return language.string("watch_next")
+        case .tomorrow: return language.string("widget_tomorrow")
+        case .later(let weekday): return Self.caption(of: weekday, in: language)
+        }
+    }
+
+    public func inlineCaption(_ time: String, in language: WatchLanguage) -> String {
+        switch self {
+        case .today:
+            return time
+        case .tomorrow:
+            return language.format("widget_tomorrow_time", time)
+        case .later(let weekday):
+            return "\(Self.caption(of: weekday, in: language)) \(time)"
+        }
+    }
+
+    private static func caption(of weekday: Int, in language: WatchLanguage) -> String {
+        switch weekday {
+        case 1: return language.string("weekday_mon_caption")
+        case 2: return language.string("weekday_tue_caption")
+        case 3: return language.string("weekday_wed_caption")
+        case 4: return language.string("weekday_thu_caption")
+        case 5: return language.string("weekday_fri_caption")
+        case 6: return language.string("weekday_sat_caption")
+        default: return language.string("weekday_sun_caption")
+        }
     }
 }

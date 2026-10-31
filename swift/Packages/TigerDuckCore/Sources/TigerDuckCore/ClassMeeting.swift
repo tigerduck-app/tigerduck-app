@@ -6,6 +6,13 @@ public protocol TimedClass {
     var end: Date { get }
 }
 
+extension TimedClass {
+    /// Begun at `time` and not yet over, or not past its end with `includingEnd`.
+    public func isOn(at time: Date, includingEnd: Bool = false) -> Bool {
+        start <= time && (includingEnd ? time <= end : time < end)
+    }
+}
+
 /// One meeting of the weekly timetable: a run of consecutive periods of a course on a weekday.
 public struct ClassMeeting: Hashable, Sendable {
     public var courseKey: String

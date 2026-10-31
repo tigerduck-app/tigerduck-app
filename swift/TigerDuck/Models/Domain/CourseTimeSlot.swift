@@ -1,7 +1,7 @@
 import Foundation
 import TigerDuckCore
 
-struct CourseTimeSlot: Identifiable, Equatable {
+struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
     static let defaultDayRadius: Int = 28
 
     static func == (lhs: CourseTimeSlot, rhs: CourseTimeSlot) -> Bool {
@@ -142,15 +142,9 @@ struct CourseTimeSlot: Identifiable, Equatable {
     private static func meetings(
         of course: SDCourse, weekday: Int? = nil, on date: Date, changes: CourseChanges
     ) -> [Meeting] {
-        let periods = (course.schedule[weekday ?? date.scheduleWeekday] ?? []).sortedByPeriodOrder()
-        var runs: [[String]] = []
-        for period in periods {
-            if let last = runs.last?.last, periodOrder(period) - 1 == periodOrder(last) {
-                runs[runs.count - 1].append(period)
-            } else {
-                runs.append([period])
-            }
-        }
+        let runs = ClassTimeline.runs(
+            of: course.schedule[weekday ?? date.scheduleWeekday] ?? [], order: AppConstants.Periods.chronologicalOrder
+        )
         let dayChanges = changes.changes(courseNo: course.courseNo, on: date)
         let dayKey = dayKeyFormatter.string(from: date)
         return runs.compactMap { run in
@@ -246,10 +240,6 @@ struct CourseTimeSlot: Identifiable, Equatable {
             if let own = running.first(where: { $0.id == id }) { return own.end <= now }
             return running.allSatisfy { $0.end <= now }
         }
-    }
-
-    private static func periodOrder(_ periodId: String) -> Int {
-        AppConstants.Periods.chronologicalOrder.firstIndex(of: periodId) ?? Int.max
     }
 
     static func buildMultiDaySlots(

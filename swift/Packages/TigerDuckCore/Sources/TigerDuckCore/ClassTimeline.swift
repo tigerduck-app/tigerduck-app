@@ -48,7 +48,7 @@ public struct ClassTimeline: Sendable {
     /// over. With neither, the first class of the next day that has one, up to `lookAheadDays` on.
     public func nowAndNext(at time: Date) -> (current: ScheduledClass?, next: ScheduledClass?, day: ClassDay) {
         let today = classes(on: time).filter { !$0.isCancelled }
-        let current = today.firstIndex { $0.start <= time && time < $0.end }
+        let current = today.firstIndex { $0.isOn(at: time) }
         let next = today.indices.first { $0 != current && today[$0].end > time }
         if current != nil || next != nil {
             return (current.map { today[$0] }, next.map { today[$0] }, .today)
@@ -74,7 +74,7 @@ public struct ClassTimeline: Sendable {
 extension ClassTimeline {
     /// The classes on at `time`: begun and not yet over, or not past their end with `includingEnd`.
     public static func running<C: TimedClass>(at time: Date, in classes: [C], includingEnd: Bool = false) -> [C] {
-        classes.filter { $0.start <= time && (includingEnd ? time <= $0.end : time < $0.end) }
+        classes.filter { $0.isOn(at: time, includingEnd: includingEnd) }
     }
 
     /// The class that starts soonest after `time`, the first listed of several that start together.

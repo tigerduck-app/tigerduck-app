@@ -37,8 +37,7 @@ struct OngoingCourseInfo: Identifiable {
 extension Array where Element == SDCourse {
     /// The classes running at `date` as the school changed them; a cancelled one is not running.
     func ongoingCourses(at date: Date, changes: CourseChanges = .cached) -> [OngoingCourseInfo] {
-        CourseTimeSlot.buildSlots(from: self, weekday: date.scheduleWeekday, on: date, changes: changes)
-            .filter { !$0.isCancelled && $0.start <= date && date < $0.end }
-            .map(OngoingCourseInfo.init(slot:))
+        let slots = CourseTimeSlot.buildSlots(from: self, weekday: date.scheduleWeekday, on: date, changes: changes)
+        return ClassTimeline.running(at: date, in: slots.filter { !$0.isCancelled }).map(OngoingCourseInfo.init(slot:))
     }
 }

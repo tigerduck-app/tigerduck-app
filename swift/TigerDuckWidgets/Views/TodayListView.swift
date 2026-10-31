@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 import WidgetKit
 
 struct TodayListView: View {
@@ -30,7 +31,7 @@ struct TodayListView: View {
 
     @ViewBuilder
     private var loggedInBody: some View {
-        let weekday = WidgetTimelineDerivation.weekdayFor(now)
+        let weekday = ClassTimeline.weekday(of: now)
         let isWeekend = weekday == 6 || weekday == 7
         let rows = WidgetTimelineDerivation.todayRows(snapshot: snapshot, at: now)
         let ongoing = ongoingBlocks(snapshot: snapshot, now: now)

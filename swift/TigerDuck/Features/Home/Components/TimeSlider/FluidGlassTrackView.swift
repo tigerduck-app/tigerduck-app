@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct FluidGlassTrackView: View {
     var viewModel: TimeSliderViewModel

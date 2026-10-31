@@ -149,15 +149,20 @@ final class WatchPayloadEncoderTests: XCTestCase {
         )
 
         let byLabel = Dictionary(uniqueKeysWithValues: snap.courses.map { ($0.periodLabel, $0) })
+        func held(_ label: String, on day: String) -> [WatchCourse] {
+            let parts = day.split(separator: "-").compactMap { Int($0) }
+            let noon = TaipeiTime.calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 12))!
+            return byLabel[label].map { NextClassResolver.todaysClasses(courses: [$0], now: noon, quietDays: []) } ?? []
+        }
         func shown(_ label: String, on day: String) -> [String] {
-            byLabel[label]?.on(day).map { "\($0.periodLabel) \($0.startHHmm)-\($0.endHHmm) \($0.classroom)" } ?? []
+            held(label, on: day).map { "\($0.periodLabel) \($0.startHHmm)-\($0.endHHmm) \($0.classroom)" }
         }
         XCTAssertEqual(shown("2-3", on: "2026-11-05"), ["2-3 09:10-11:10 TR-313"])
         XCTAssertEqual(shown("7", on: "2026-11-05"), [])
         XCTAssertEqual(shown("2-3", on: "2026-11-12"), ["2-3 09:10-11:10 TR-411"])
-        XCTAssertEqual(byLabel["2-3"]?.on("2026-11-12").first?.dayChange, WatchCourseChange(cancelled: false, room: "TR-411"))
+        XCTAssertEqual(held("2-3", on: "2026-11-12").first?.dayChange, WatchCourseChange(cancelled: false, room: "TR-411"))
         XCTAssertEqual(shown("2-3", on: "2026-11-19"), ["3 10:20-11:10 TR-313"])
         XCTAssertEqual(shown("2-3", on: "2026-11-26"), ["2 09:10-10:00 TR-313", "3 10:20-11:10 TR-411"])
-        XCTAssertEqual(byLabel["2-3"]?.on("2026-11-26").map(\.dayChange?.room), [nil, "TR-411"])
+        XCTAssertEqual(held("2-3", on: "2026-11-26").map(\.dayChange?.room), [nil, "TR-411"])
     }
 }
