@@ -277,10 +277,6 @@ final class AppState {
     var accentColorHex: Int = Defaults[.accentColorHex] {
         didSet {
             Defaults[.accentColorHex] = accentColorHex
-            NotificationCenter.default.post(name: AppConstants.accentColorDidChange, object: nil)
-            #if os(iOS)
-            scheduleLiveActivityRefresh()
-            #endif
         }
     }
 
