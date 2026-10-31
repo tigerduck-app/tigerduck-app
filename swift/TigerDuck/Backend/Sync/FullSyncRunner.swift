@@ -71,14 +71,6 @@ final class FullSyncRunner {
             ?? TigerDuckDateFormatters.withoutFractional.date(from: raw)
     }
 
-    nonisolated static func coursesReset(
-        server: Date?, lastSeen: Date?, takesCourses: Bool
-    ) -> (apply: Bool, remember: Date) {
-        guard let lastSeen else { return (false, server ?? .distantPast) }
-        guard let server else { return (false, lastSeen) }
-        return (takesCourses && server > lastSeen, server)
-    }
-
     static func recordFullSync(coursesReset: Date, taken: Set<String>) {
         Defaults[.lastSeenCoursesResetAt] = coursesReset
         Defaults[.categoriesSyncedOnce].formUnion(taken)
@@ -110,7 +102,7 @@ final class FullSyncRunner {
         deleting: Set<String>, reset: (apply: Bool, remember: Date), ticket: AccountSession.Ticket
     ) async -> Set<String>? {
         guard reset.apply else { return deleting }
-        guard let dropped = await Self.applyCourseReset(
+        guard let dropped = await CourseReset.apply(
             at: reset.remember, courses: .shared, on: app.cloudSyncCoordinator,
             mayWrite: { self.mayWrite(since: ticket) }
         ) else { return nil }
@@ -118,26 +110,6 @@ final class FullSyncRunner {
         app.localEdits.recentCourseDeletions = [:]
         AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: reset.remember), privacy: .public)), wiped local state")
         return deleting.subtracting(dropped)
-    }
-
-    /// Drops the course edits queued before a reset made elsewhere and wipes the hand-added and
-    /// hidden courses, but keeps those whose add or delete made after it still goes out, as the
-    /// add uploads its course from them. Returns the keys of the dropped deletes, or nil, with the
-    /// caches untouched, when `mayWrite` says no after the hops, as behind the lock screen, where
-    /// the protected course files read as empty.
-    static func applyCourseReset(
-        at resetAt: Date, courses: CourseStore, on coordinator: CloudSyncCoordinator, mayWrite: () -> Bool
-    ) async -> Set<String>? {
-        let dropped = await coordinator.dropCourseEdits(madeBeforeReset: resetAt)
-        let adding = await coordinator.courseAddKeys(unlandedAt: resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin))
-        let deleting = await coordinator.pendingCourseDeleteKeys()
-        guard mayWrite() else { return nil }
-        let added = adding.compactMap(CourseTombstone.parts(of:))
-        courses.saveUserAddedCourses(courses.loadUserAddedCourses().filter { course in
-            added.contains { $0.courseNo == course.courseNo && CourseStore.userAddedCourse(course, belongsTo: $0.semester) }
-        })
-        courses.saveDeletedCourseNos(courses.loadDeletedCourseNos().filter(deleting.contains))
-        return dropped
     }
 
     private func run() async -> FullSyncOutcome {
@@ -167,7 +139,7 @@ final class FullSyncRunner {
             app.conflicts.retryOwedConflictCheck()
             #if os(iOS)
             app.notificationSettings.reconcile(
-                snapshot: NotificationSettingsSync.documentSource(fromSnapshot: pass.json),
+                snapshot: NotificationSettingsReconcile.documentSource(fromSnapshot: pass.json),
                 linksBeforeSnapshot: settingsLinksBeforeFetch
             )
             #endif
@@ -220,7 +192,7 @@ final class FullSyncRunner {
         guard mayWrite(since: ticket) else { return nil }
         let before = SyncPolicy.current
         let takesCourses = before.switchedOn.contains("courses") && !before.pendingChecks.contains("courses")
-        let reset = Self.coursesReset(
+        let reset = CourseReset.decide(
             server: Self.backendDate(json["courses_reset_at"]), lastSeen: Defaults[.lastSeenCoursesResetAt],
             takesCourses: takesCourses
         )

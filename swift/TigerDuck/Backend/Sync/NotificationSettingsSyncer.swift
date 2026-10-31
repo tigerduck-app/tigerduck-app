@@ -72,7 +72,7 @@ final class NotificationSettingsSyncer {
                 authHeaderProvider: { await atm.authorizationHeader() }
             )
             do {
-                let outcome = try await NotificationSettingsSync.reconcile(
+                let outcome = try await NotificationSettingsReconcile.reconcile(
                     store: self.preferences,
                     client: client,
                     cloudSyncEnabled: Defaults[.cloudSyncEnabled],

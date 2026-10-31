@@ -105,14 +105,14 @@ struct CourseRosterReconciler: CategoryReconciler {
                 guard existing.schedule.isEmpty,
                       let row = rows.first(where: { $0["course_no"] as? String == existing.courseNo }),
                       !((row["schedule_json"] as? [String: [String]]) ?? [:]).isEmpty else { continue }
-                userAdded[index] = Self.scheduled(existing, fromServerRow: row)
+                userAdded[index] = CourseServerRows.scheduled(existing, fromServerRow: row)
                 mergedSemesters.insert(semester)
             }
             for row in rows {
                 guard let courseNo = row["course_no"] as? String, !knownNos.contains(courseNo),
                       Self.mergesListedCourse(courseNo, semester: semester, hidden: deletedNos, deleting: deleting)
                 else { continue }
-                userAdded.append(Self.course(fromServerRow: row, courseNo: courseNo,
+                userAdded.append(CourseServerRows.course(fromServerRow: row, courseNo: courseNo,
                                              semester: semester, name: localNames[courseNo]))
                 knownNos.insert(courseNo)
                 mergedSemesters.insert(semester)
@@ -154,9 +154,9 @@ struct CourseRosterReconciler: CategoryReconciler {
         selectionDropped: Set<String>, userAdded: [SDCourse], hidden: Set<String>, adding: Set<String>,
         resetLandedAt: Date? = nil, liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore, forgetAnswer: () -> Void
     ) -> TermRead {
-        let droppedOnServer = Self.droppedOnServer(termRows, liveAnswer: liveAnswer)
+        let droppedOnServer = CourseServerRows.droppedOnServer(termRows, liveAnswer: liveAnswer)
         courses.saveServerDroppedNos(droppedOnServer, semester: semester)
-        let rows = keptRows(
+        let rows = CourseServerRows.keptRows(
             termRows, semester: semester, dropped: selectionDropped, userAdded: userAdded, liveAnswer: liveAnswer
         )
         let serverNos = Set(rows.compactMap { $0["course_no"] as? String })
@@ -172,12 +172,12 @@ struct CourseRosterReconciler: CategoryReconciler {
             in: semester, listed: serverNos, tombstoned: Set(tombstoned),
             fetched: Set(localCourses.map(\.courseNo)),
             handAdded: Set(userAdded.filter { CourseStore.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo)),
-            droppedMerges: droppedMerges(userAdded, semester: semester, dropped: selectionDropped.union(droppedOnServer)),
+            droppedMerges: CourseServerRows.droppedMerges(userAdded, semester: semester, dropped: selectionDropped.union(droppedOnServer)),
             hidden: hidden, adding: adding
         )
         return TermRead(
             rows: rows, serverNos: serverNos, localCourses: localCourses, left: left, unlisted: unlisted,
-            serverHoldsNothing: serverNos.isEmpty && Self.droppedOnServer(termRows).isEmpty
+            serverHoldsNothing: serverNos.isEmpty && CourseServerRows.droppedOnServer(termRows).isEmpty
         )
     }
 
@@ -231,33 +231,6 @@ struct CourseRosterReconciler: CategoryReconciler {
         return (byTombstone.union(fetched.filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
     }
 
-    /// The term's courses merged from the server that were dropped. One added by hand here has no
-    /// Moodle ID; one added on another device keeps its `user_added` row in `keptRows`.
-    static func droppedMerges(_ userAdded: [SDCourse], semester: String, dropped: Set<String>) -> Set<String> {
-        Set(userAdded.filter {
-            $0.moodleIdNumber != nil && dropped.contains($0.courseNo) && CourseStore.userAddedCourse($0, belongsTo: semester)
-        }.map(\.courseNo))
-    }
-
-    /// The term's server rows, less those of courses course selection here dropped or a roster
-    /// dropped on the server. A course the user added by hand keeps its row, so a drop never takes
-    /// it out of the hand-added courses: one added here has no Moodle ID, which a row merged from the
-    /// server always has, and one added on another device is a `user_added` row.
-    static func keptRows(
-        _ rows: [[String: Any]], semester: String, dropped: Set<String>, userAdded: [SDCourse],
-        liveAnswer: CourseSelectionService.LiveAnswer? = nil
-    ) -> [[String: Any]] {
-        let addedHere = Set(userAdded.filter {
-            $0.moodleIdNumber == nil && CourseStore.userAddedCourse($0, belongsTo: semester)
-        }.map(\.courseNo))
-        let dropped = dropped.union(droppedOnServer(rows, liveAnswer: liveAnswer))
-        return rows.filter { row in
-            let courseNo = row["course_no"] as? String ?? ""
-            return isFiled(row, under: semester)
-                && (!dropped.contains(courseNo) || addedHere.contains(courseNo) || row["source"] as? String == "user_added")
-        }
-    }
-
     /// The term's courses on the server and here as turning sync back on compares them, read as the
     /// reconcile reads them: a course a roster dropped is on neither side unless it was added by
     /// hand here, as the next sync takes it out of the courses fetched here.
@@ -266,67 +239,8 @@ struct CourseRosterReconciler: CategoryReconciler {
         liveAnswer: CourseSelectionService.LiveAnswer?
     ) -> (server: Set<String>, local: Set<String>) {
         let termRows = rows.filter { $0["semester"] as? String == semester }
-        let kept = keptRows(termRows, semester: semester, dropped: [], userAdded: userAdded, liveAnswer: liveAnswer)
+        let kept = CourseServerRows.keptRows(termRows, semester: semester, dropped: [], userAdded: userAdded, liveAnswer: liveAnswer)
         let server = Set(kept.compactMap { $0["course_no"] as? String })
-        return (server, local.subtracting(droppedOnServer(termRows, liveAnswer: liveAnswer).subtracting(server)))
-    }
-
-    /// The courses a roster dropped on the server, less one course selection here listed live
-    /// after the drop: this device's roster puts it back. A row without `enrollment_status` counts
-    /// as enrolled, and an answer within the clock skew margin of the drop counts as older.
-    static func droppedOnServer(
-        _ rows: [[String: Any]], liveAnswer: CourseSelectionService.LiveAnswer? = nil
-    ) -> Set<String> {
-        Set(rows.compactMap { row in
-            guard row["enrollment_status"] as? String == "dropped", let courseNo = row["course_no"] as? String
-            else { return nil }
-            guard let liveAnswer, liveAnswer.courseNos.contains(courseNo), let droppedAt = FullSyncRunner.backendDate(row["updated_at"]),
-                  liveAnswer.at > droppedAt.addingTimeInterval(CloudSyncCoordinator.clockSkewMargin)
-            else { return courseNo }
-            return nil
-        })
-    }
-
-    static func isFiled(_ row: [String: Any], under semester: String) -> Bool {
-        guard semester.count == 4,
-              let moodleId = row["moodle_id"] as? String,
-              let prefix = AcademicTerm.codePrefix(ofMoodleId: moodleId) else { return true }
-        return prefix == semester.uppercased()
-    }
-
-    /// A hand-added course without class times, filled in from its server row. It keeps its own
-    /// Moodle ID: a course added here has none, which tells it apart from one merged from the server.
-    static func scheduled(_ existing: SDCourse, fromServerRow row: [String: Any]) -> SDCourse {
-        let filled = course(fromServerRow: row, courseNo: existing.courseNo,
-                            semester: existing.semester, name: existing.courseName,
-                            dimension: existing.dimension, allYear: existing.allYear,
-                            requireOption: existing.requireOption)
-        filled.moodleIdNumber = existing.moodleIdNumber
-        return filled
-    }
-
-    static func course(fromServerRow row: [String: Any], courseNo: String, semester: String, name: String?,
-                               dimension: String = "", allYear: String = "",
-                               requireOption: String = "") -> SDCourse {
-        var schedule: [Int: [String]] = [:]
-        for (key, periods) in (row["schedule_json"] as? [String: [String]]) ?? [:] {
-            if let weekday = Int(key) { schedule[weekday] = periods }
-        }
-        return SDCourse(
-            courseNo: courseNo,
-            courseName: name ?? row["course_name"] as? String ?? courseNo,
-            instructor: (row["instructors"] as? [String])?.joined(separator: ", ") ?? "",
-            credits: row["credits"] as? Double ?? 0,
-            classroom: row["classroom"] as? String ?? "",
-            enrolledCount: row["enrolled_count"] as? Int ?? 0,
-            maxCount: row["max_count"] as? Int ?? 0,
-            schedule: schedule,
-            moodleIdNumber: row["moodle_id"] as? String,
-            semester: semester,
-            classroomMap: row["classroom_map"] as? [String: String] ?? [:],
-            dimension: dimension,
-            allYear: allYear,
-            requireOption: requireOption
-        )
+        return (server, local.subtracting(CourseServerRows.droppedOnServer(termRows, liveAnswer: liveAnswer).subtracting(server)))
     }
 }

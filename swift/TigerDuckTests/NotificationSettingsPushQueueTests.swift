@@ -148,7 +148,7 @@ struct NotificationSettingsPushQueueTests {
 
             let task = NotificationSettingsPushQueue.enqueueReconcile { isCurrent in
                 ran.append("accountA")
-                _ = try? await NotificationSettingsSync.reconcile(
+                _ = try? await NotificationSettingsReconcile.reconcile(
                     store: store,
                     client: client,
                     cloudSyncEnabled: true,
@@ -191,7 +191,7 @@ struct NotificationSettingsPushQueueTests {
             let log = OutcomeLog()
 
             let task = NotificationSettingsPushQueue.enqueueReconcile { isCurrent in
-                log.outcome = try? await NotificationSettingsSync.reconcile(
+                log.outcome = try? await NotificationSettingsReconcile.reconcile(
                     store: store,
                     client: client,
                     cloudSyncEnabled: true,
@@ -341,7 +341,7 @@ struct NotificationSettingsPushQueueTests {
         store: LiveActivityPreferencesStore, client: SettingsDocumentClient, log: SwitchOnLog
     ) {
         NotificationSettingsPushQueue.enqueueReconcile { isCurrent in
-            let outcome = try? await NotificationSettingsSync.reconcile(
+            let outcome = try? await NotificationSettingsReconcile.reconcile(
                 store: store,
                 client: client,
                 cloudSyncEnabled: true,

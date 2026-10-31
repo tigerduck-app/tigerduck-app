@@ -288,7 +288,7 @@ struct CourseAddSyncTests {
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE5", stamp: early))
         let coordinator = Self.makeCoordinator(Backend(), cache: cache, outbox: outbox)
 
-        #expect(await FullSyncRunner.applyCourseReset(at: resetAt, courses: cache.courses, on: coordinator, mayWrite: { true }) == ["1151:PE5"])
+        #expect(await CourseReset.apply(at: resetAt, courses: cache.courses, on: coordinator, mayWrite: { true }) == ["1151:PE5"])
 
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
         #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
@@ -300,7 +300,7 @@ struct CourseAddSyncTests {
         let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:PE4"])
         let coordinator = Self.makeCoordinator(Backend(), cache: cache)
 
-        #expect(await FullSyncRunner.applyCourseReset(at: Date(), courses: cache.courses, on: coordinator, mayWrite: { false }) == nil)
+        #expect(await CourseReset.apply(at: Date(), courses: cache.courses, on: coordinator, mayWrite: { false }) == nil)
 
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
         #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])

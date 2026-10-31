@@ -52,7 +52,7 @@ struct NotificationSettingsReconcileTests {
         source: NotificationSettingsSync.DocumentSource = .read,
         recordSynced: (NotificationSettingsSync.LocalPreferences, Set<NotificationSettingsSync.OwnedSection>) -> Void = { _, _ in }
     ) async throws -> NotificationSettingsSync.ReconcileOutcome {
-        try await NotificationSettingsSync.reconcile(
+        try await NotificationSettingsReconcile.reconcile(
             store: store,
             client: client,
             cloudSyncEnabled: cloudSyncEnabled,
@@ -543,7 +543,7 @@ struct NotificationSettingsReconcileTests {
     @Test("a snapshot gives its notification document, none, or nothing to go on")
     func documentSourceFromTheSnapshot() throws {
         let entry: [String: Any] = ["namespace": "notification", "document": ["assignments": ["enabled": true]], "revision": 7]
-        guard case .snapshot(let copy?) = NotificationSettingsSync.documentSource(fromSnapshot: ["settings_documents": [entry]]) else {
+        guard case .snapshot(let copy?) = NotificationSettingsReconcile.documentSource(fromSnapshot: ["settings_documents": [entry]]) else {
             Issue.record("the snapshot's document was not used")
             return
         }
@@ -551,11 +551,11 @@ struct NotificationSettingsReconcileTests {
         let document = try #require(try JSONSerialization.jsonObject(with: copy.document) as? [String: Any])
         #expect((document["assignments"] as? [String: Any])?["enabled"] as? Bool == true)
 
-        guard case .snapshot(nil) = NotificationSettingsSync.documentSource(fromSnapshot: ["settings_documents": []]) else {
+        guard case .snapshot(nil) = NotificationSettingsReconcile.documentSource(fromSnapshot: ["settings_documents": []]) else {
             Issue.record("an account without the document should be seeded")
             return
         }
-        guard case .read = NotificationSettingsSync.documentSource(fromSnapshot: [:]) else {
+        guard case .read = NotificationSettingsReconcile.documentSource(fromSnapshot: [:]) else {
             Issue.record("an older backend's snapshot carries no documents, so the reconcile reads")
             return
         }
