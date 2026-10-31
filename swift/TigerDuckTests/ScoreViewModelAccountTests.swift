@@ -96,7 +96,7 @@ struct ScoreViewModelAccountTests {
             isCurrent: { signIn.isCurrent },
             isReachable: { await school.probe() },
             fetch: { await school.fetch(report(for: studentId)) },
-            indicator: indicator ?? Indicator()
+            reports: ScoreReports(indicator: indicator ?? Indicator())
         )
     }
 

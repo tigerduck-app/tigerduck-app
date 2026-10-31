@@ -38,6 +38,12 @@ final class ScoreViewModel {
 
     var collapsedTerms: Set<String> = []
 
+    @ObservationIgnored private let reports: ScoreReports
+
+    init(reports: ScoreReports = ScoreReports()) {
+        self.reports = reports
+    }
+
     private func apply(_ newReport: ScoreReport, cachedAt date: Date) {
         report = newReport
         cachedAt = date
@@ -67,7 +73,7 @@ final class ScoreViewModel {
     func showCachedReport(for studentId: String?) {
         switchAccount(to: studentId)
         guard let studentId, report == .empty,
-              let cached = NTUSTScoreService.cachedScoreReport(studentId: studentId) else { return }
+              let cached = reports.cached(studentId: studentId) else { return }
         apply(cached.report, cachedAt: cached.cachedAt)
     }
 
@@ -101,22 +107,15 @@ final class ScoreViewModel {
             errorMessage = String(localized: "common_not_signed_in")
             return
         }
-        let session = NTUSTSessionManager.shared.session
         await refresh(
             for: studentId,
             ticket: ticket,
             isCurrent: { [weak authService] in authService?.session.isCurrent(ticket) == true },
             isReachable: { await NetworkMonitor.shared.isReachable() },
-            fetch: {
-                try await NTUSTScoreService.fetchScoreReport(
-                    session: session,
-                    studentId: studentId,
-                    password: password,
-                    forceRefresh: force,
-                    persistGuard: { @Sendable [weak authService] in
-                        authService?.session.isCurrent(ticket) == true
-                    }
-                )
+            fetch: { [reports] in
+                try await reports.fetch(studentId: studentId, password: password, force: force) { @Sendable [weak authService] in
+                    authService?.session.isCurrent(ticket) == true
+                }
             }
         )
     }
@@ -127,9 +126,10 @@ final class ScoreViewModel {
         isCurrent: () -> Bool,
         isReachable: () async -> Bool,
         fetch: () async throws -> (report: ScoreReport, cachedAt: Date),
-        indicator manager: LoadingIndicator = NTUSTSessionManager.shared,
+        reports override: ScoreReports? = nil,
         tracker: ServerStatusTracker? = nil
     ) async {
+        let manager = (override ?? reports).indicator
         switchAccount(to: studentId)
         let owner = RefreshOwner(studentId: studentId, signIn: ticket)
         guard inFlightRefresh != owner else { return }

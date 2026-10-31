@@ -6,7 +6,7 @@ struct ScoreCourseDetailSheet: View {
 
     let course: CourseGrade
 
-    @State private var rosterCourse: SDCourse?
+    @State private var rosterCourse: CourseRoster?
 
     var body: some View {
         NavigationStack {
@@ -59,7 +59,7 @@ struct ScoreCourseDetailSheet: View {
     }
 
     @ViewBuilder
-    private func rosterSection(_ roster: SDCourse) -> some View {
+    private func rosterSection(_ roster: CourseRoster) -> some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
             if !roster.instructor.isEmpty {
                 InfoRow(label: String(localized: "course_detail_instructor_label"), value: roster.instructor)
@@ -70,7 +70,7 @@ struct ScoreCourseDetailSheet: View {
                     value: "\(roster.enrolledCount) / \(roster.maxCount)"
                 )
             }
-            let classroomText = SDCourse.dedup(roster.classroom)
+            let classroomText = roster.classroom
             if !classroomText.isEmpty {
                 InfoRow(label: String(localized: "course_detail_classroom_label"), value: classroomText)
             }
@@ -112,17 +112,7 @@ struct ScoreCourseDetailSheet: View {
 
     private func resolveRosterCourse() {
         guard rosterCourse == nil else { return }
-        let semesterMatches = CourseStore.shared.loadCourses(semester: course.term)
-        if let match = semesterMatches.first(where: { $0.courseNo == course.code }) {
-            rosterCourse = match
-            return
-        }
-        let userAdded = CourseStore.shared.loadUserAddedCourses()
-        if let match = userAdded.first(where: {
-            $0.courseNo == course.code && ($0.semester == course.term || $0.semester.isEmpty)
-        }) {
-            rosterCourse = match
-        }
+        rosterCourse = CourseRoster.find(courseNo: course.code, term: course.term)
     }
 
     /// Day-code mapping aligned with `CourseLookupService.parseNodeToSchedule`:
