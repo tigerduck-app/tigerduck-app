@@ -29,7 +29,11 @@ DebugServerFailureView.swift
 DebugSettingsView.swift
 DebugSettingsViewModel.swift
 DevMailConnectionProbe.swift
+DevMailNetworkProbe.swift
+DevMailProbeDraft.swift
+DevMailProbeErrors.swift
 DevMailServerOverride.swift
+DevMailServerSections.swift
 DevMailServerView.swift
 SettingsDeveloperSection.swift
 TigerSyncStatusView.swift
@@ -278,11 +282,14 @@ LiveActivityRefresher.swift
 # inside #if os(iOS): there is nothing to route to on macOS.
 DeepLink.swift
 
-# NotificationSettingsSync.swift and NotificationSettingsSyncer.swift — the
-# `notification` settings-document sync (assignment-due reminders, Live
-# Activity), a feature macOS does not have. Both read and write
+# NotificationSettingsSync.swift, NotificationSettingsSyncer.swift and the files
+# split from them — the `notification` settings-document sync (assignment-due
+# reminders, Live Activity), a feature macOS does not have. They read and write
 # `LiveActivityPreferencesStore` (excluded above under
 # Devices/LiveActivity/Preferences), which does not exist on a macOS build.
+NotificationSettingsLocalPreferences.swift
+NotificationSettingsPushQueue.swift
+NotificationSettingsReconcile.swift
 NotificationSettingsSync.swift
 NotificationSettingsSyncer.swift
 
