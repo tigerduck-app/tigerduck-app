@@ -147,8 +147,8 @@ edit happened while it ran.
 ### D9. Backend v4 and one place for each sync decision
 On the client:
 - `BackendClient` builds every `/v4` request, adds auth and maps errors.
-- `BackendClient` owns the single 401 refresh, with `RefreshTokenUseBudget` limiting refresh
-  attempts, since a third reuse revokes the device.
+- `BackendClient` owns the single 401 refresh, with `RefreshTokenUseBudget` keeping today's
+  limit of two sends per refresh token, after which the app signs in again.
 - `SyncPolicy` decides which categories this device sends and applies.
 - `SendLedger` records the last send per channel, using stable hashes.
 - `FullSyncRunner` orders one `CategoryReconciler` per category.
