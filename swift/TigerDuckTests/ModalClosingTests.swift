@@ -279,6 +279,27 @@ struct ModalClosingTests {
         #expect(told.closedAll == true)
     }
 
+    @Test("Before the view has seen its window, as on a cold launch, the sheet up in the foreground window is closed")
+    func unseenWindowFallsBackToTheForegroundOne() async throws {
+        let sheets = Sheets()
+        let window = try Self.show(sheets)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        sheets.course = true
+        try await waitUntil { root.presentedViewController.map { !$0.isBeingPresented } == true }
+
+        let host = HostWindow()
+        window.makeKey()
+        #expect(host.isPresenting)
+        let told = Told()
+        host.closePresentations { told.closedAll = $0 }
+
+        try await waitUntil(timeout: .seconds(10)) { told.closedAll != nil }
+        #expect(told.closedAll == true)
+        #expect(root.presentedViewController == nil)
+        #expect(!sheets.course)
+    }
+
     enum Link: String, CaseIterable {
         case bulletin, schoolMail
 

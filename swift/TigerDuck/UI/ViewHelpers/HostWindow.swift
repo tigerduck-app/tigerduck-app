@@ -22,19 +22,32 @@ extension UIViewController {
 final class HostWindow {
     weak var window: UIWindow?
 
-    var isPresenting: Bool { window?.rootViewController?.presentedViewController != nil }
+    /// Until the view first lands in its window, as on a cold launch, the foreground window's root,
+    /// so a sheet already up there is still seen.
+    private var root: UIViewController? { (window ?? Self.foreground)?.rootViewController }
+
+    var isPresenting: Bool { root?.presentedViewController != nil }
 
     func closePresentations(then: @escaping (_ closedAll: Bool) -> Void) {
-        guard let root = window?.rootViewController else { return then(true) }
+        guard let root else { return then(true) }
         root.closePresentations(then: then)
     }
 
     /// Returns once nothing is presented over the window's root, or the task is cancelled. It
     /// wakes when the shown view moves in or out of a window, not on a timer.
     func presentationsClosed() async {
-        while let shown = window?.rootViewController?.presentedViewController, !Task.isCancelled {
+        while let shown = root?.presentedViewController, !Task.isCancelled {
             await WindowChangeProbe.nextChange(of: shown.view)
         }
+    }
+
+    /// The key window of a foreground scene, else the first window of the first one.
+    static var foreground: UIWindow? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive || $0.activationState == .foregroundInactive }
+        let scene = scenes.first { $0.windows.contains(where: \.isKeyWindow) }
+            ?? scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first
     }
 }
 
