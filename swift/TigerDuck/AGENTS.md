@@ -35,7 +35,8 @@ the shared homes and the size budget.
   of data in `Persistence/` (`CourseFiles`, `AssignmentFiles`, `MoodleFiles`, ...), each in
   `CacheFolders`. Courses, assignments and colours are read and written through their stores in
   `Stores/`, so features, background sync and the device surfaces see the same data and each
-  change.
+  change. Typed settings use `Defaults` keys (`App/AppDefaults.swift`); a raw `UserDefaults` key
+  goes through `Persistence/AppUserDefaults.swift`.
 - Logging goes through `AppLogger`, whose `os.Logger`s write to the system log on the device and
   nowhere else. `captureError` and `breadcrumb` log their text as private, which a logging
   profile can reveal, so they still scrub tokens, passwords and URL query strings first; do not

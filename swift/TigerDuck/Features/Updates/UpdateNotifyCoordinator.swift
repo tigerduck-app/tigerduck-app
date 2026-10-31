@@ -132,17 +132,17 @@ final class UpdateNotifyCoordinator {
     private static let debugSimulateUpdateKey = "debug.simulateUpdateOnNextLaunch"
 
     static func armDebugSimulatedUpdate() {
-        UserDefaults.standard.set(true, forKey: debugSimulateUpdateKey)
+        AppUserDefaults.standard.set(true, forKey: debugSimulateUpdateKey)
     }
 
     static var isDebugSimulatedUpdateArmed: Bool {
-        UserDefaults.standard.bool(forKey: debugSimulateUpdateKey)
+        AppUserDefaults.standard.bool(forKey: debugSimulateUpdateKey)
     }
 
     private static func consumeDebugSimulateUpdateFlag() -> Bool {
-        let armed = UserDefaults.standard.bool(forKey: debugSimulateUpdateKey)
+        let armed = AppUserDefaults.standard.bool(forKey: debugSimulateUpdateKey)
         if armed {
-            UserDefaults.standard.removeObject(forKey: debugSimulateUpdateKey)
+            AppUserDefaults.standard.removeObject(forKey: debugSimulateUpdateKey)
         }
         return armed
     }

@@ -69,7 +69,7 @@ nonisolated enum LanguageManager {
 
     static func apply(_ appLanguage: String) {
         if appLanguage == system {
-            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            AppUserDefaults.standard.removeObject(forKey: "AppleLanguages")
         } else {
             let appleTag: String
             switch appLanguage {
@@ -77,7 +77,7 @@ nonisolated enum LanguageManager {
             case zhHans: appleTag = "zh-Hans-CN"
             default: appleTag = appLanguage
             }
-            UserDefaults.standard.set([appleTag], forKey: "AppleLanguages")
+            AppUserDefaults.standard.set([appleTag], forKey: "AppleLanguages")
         }
     }
 }

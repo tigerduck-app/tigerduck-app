@@ -110,7 +110,7 @@ nonisolated enum AppClock {
     #else
     static let appGroupSuiteName = "group.org.ntust.app.TigerDuck"
     private static func defaultsStore() -> UserDefaults {
-        UserDefaults(suiteName: appGroupSuiteName) ?? .standard
+        AppUserDefaults.suite(appGroupSuiteName) ?? .standard
     }
     #endif
 

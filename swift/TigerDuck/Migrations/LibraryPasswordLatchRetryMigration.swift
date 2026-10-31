@@ -5,7 +5,7 @@ enum LibraryPasswordLatchRetryMigration {
     private static let latchKey = "libraryStoredPasswordRejected"
 
     static func runIfNeeded() {
-        let defaults = UserDefaults.standard
+        let defaults = AppUserDefaults.standard
         guard !defaults.bool(forKey: doneKey) else { return }
         defer { defaults.set(true, forKey: doneKey) }
         guard defaults.bool(forKey: latchKey) else { return }

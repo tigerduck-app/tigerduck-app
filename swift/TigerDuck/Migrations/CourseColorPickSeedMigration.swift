@@ -7,12 +7,12 @@ enum CourseColorPickSeedMigration {
     private static let doneKey = "CourseColorPickSeedMigration.v1.done"
 
     static func runIfNeeded(files: CourseColorFiles = CourseColorStore.shared.files, center: NotificationCenter = .default) {
-        guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
+        guard !AppUserDefaults.standard.bool(forKey: doneKey) else { return }
         guard let colors = files.loadCourseColorMapIfReadable() else {
             return runAgainOnceReadable(files: files, center: center)
         }
         files.savePickedCourseColors(files.loadPickedCourseColors().union(colors.keys))
-        UserDefaults.standard.set(true, forKey: doneKey)
+        AppUserDefaults.standard.set(true, forKey: doneKey)
     }
 
     /// A locked phone keeps the map unreadable, and unlocking resumes this process rather than

@@ -10,19 +10,19 @@ enum MoodleDownloadProtectMigration {
         isProtectedDataAvailable: Bool,
         protect: @escaping @Sendable (URL) throws -> Void = MoodleDownloadProtectMigration.protect(_:)
     ) async {
-        guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
+        guard !AppUserDefaults.standard.bool(forKey: doneKey) else { return }
         let failures = await Task.detached(priority: .utility) { failureCount(in: root, protect: protect) }.value
         guard failures > 0 else {
-            UserDefaults.standard.set(true, forKey: doneKey)
+            AppUserDefaults.standard.set(true, forKey: doneKey)
             return
         }
         AppLogger.breadcrumb("moodle download protection failed for \(failures) files", category: "moodle")
         guard isProtectedDataAvailable else { return }
-        let failedLaunches = UserDefaults.standard.integer(forKey: failedLaunchesKey) + 1
-        UserDefaults.standard.set(failedLaunches, forKey: failedLaunchesKey)
+        let failedLaunches = AppUserDefaults.standard.integer(forKey: failedLaunchesKey) + 1
+        AppUserDefaults.standard.set(failedLaunches, forKey: failedLaunchesKey)
         if failedLaunches >= maxFailedLaunches {
             AppLogger.breadcrumb("moodle download protection gave up after \(failedLaunches) launches", category: "moodle")
-            UserDefaults.standard.set(true, forKey: doneKey)
+            AppUserDefaults.standard.set(true, forKey: doneKey)
         }
     }
 

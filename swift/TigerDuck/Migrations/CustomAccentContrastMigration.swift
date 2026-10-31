@@ -8,8 +8,8 @@ enum CustomAccentContrastMigration {
 
     @discardableResult
     static func runIfNeeded() -> Bool {
-        guard !UserDefaults.standard.bool(forKey: doneKey) else { return false }
-        defer { UserDefaults.standard.set(true, forKey: doneKey) }
+        guard !AppUserDefaults.standard.bool(forKey: doneKey) else { return false }
+        defer { AppUserDefaults.standard.set(true, forKey: doneKey) }
         let saved = Defaults[.accentColorHex] & 0xFFFFFF
         guard !AppState.themeColors.contains(where: { $0.hex == saved }) else { return false }
         let readable = AccentContrast.readable(saved)

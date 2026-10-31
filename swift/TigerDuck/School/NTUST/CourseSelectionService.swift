@@ -133,7 +133,7 @@ enum CourseSelectionService {
 
     nonisolated static func invalidateEnrolledCoursesCache(for studentId: String? = nil) {
         cacheLock.withLock {
-            let defaults = UserDefaults.standard
+            let defaults = AppUserDefaults.standard
             guard let studentId else {
                 defaults.removeObject(forKey: enrolledCoursesCacheKey)
                 return
@@ -169,7 +169,7 @@ enum CourseSelectionService {
     }
 
     nonisolated private static func readCacheDict() -> [String: CachedCourseNos] {
-        guard let data = UserDefaults.standard.data(forKey: enrolledCoursesCacheKey),
+        guard let data = AppUserDefaults.standard.data(forKey: enrolledCoursesCacheKey),
               let dict = try? JSONDecoder().decode([String: CachedCourseNos].self, from: data) else {
             return [:]
         }
@@ -177,7 +177,7 @@ enum CourseSelectionService {
     }
 
     nonisolated private static func writeCacheDict(_ dict: [String: CachedCourseNos]) {
-        let defaults = UserDefaults.standard
+        let defaults = AppUserDefaults.standard
         if dict.isEmpty {
             defaults.removeObject(forKey: enrolledCoursesCacheKey)
             return

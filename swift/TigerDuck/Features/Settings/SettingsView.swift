@@ -603,7 +603,7 @@ struct SettingsView: View {
         try? modelContext.delete(model: SDCalendarEvent.self)
         try? modelContext.save()
 
-        UserDefaults.standard.removePersistentDomain(
+        AppUserDefaults.standard.removePersistentDomain(
             forName: Bundle.main.bundleIdentifier!
         )
         Defaults.removeAll()

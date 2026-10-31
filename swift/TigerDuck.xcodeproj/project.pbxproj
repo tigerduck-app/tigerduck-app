@@ -171,6 +171,7 @@
 				Devices/LiveActivity/Models/LiveActivityScenarioKind.swift,
 				Devices/LiveActivity/Models/LiveActivitySnapshot.swift,
 				Devices/LiveActivity/Runtime/TigerDuckActivityAttributes.swift,
+				Persistence/AppUserDefaults.swift,
 				Support/Clock/AppClock.swift,
 				Support/Clock/ClockOverride.swift,
 			);
@@ -179,6 +180,7 @@
 		B21DC7402FB8901100AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatch Watch App" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Persistence/AppUserDefaults.swift,
 				Support/Clock/AppClock.swift,
 				Support/Clock/ClockOverride.swift,
 			);
@@ -203,6 +205,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Devices/Widgets/WidgetSnapshot.swift,
+				Persistence/AppUserDefaults.swift,
 				Shared/ClassTableLayout.swift,
 				Shared/CourseBlockRoom.swift,
 				Shared/CourseCardFontScale.swift,
@@ -250,6 +253,7 @@
 		C3D0F10A2FC0A00000AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatchWidgetExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Persistence/AppUserDefaults.swift,
 				Support/Clock/AppClock.swift,
 				Support/Clock/ClockOverride.swift,
 			);
@@ -1326,6 +1330,7 @@
 					AppState.swift,
 					AppStoreUpdateService.swift,
 					AppURLs.swift,
+					AppUserDefaults.swift,
 					AppVersion.swift,
 					"Array+Assignments.swift",
 					"Array+PeriodOrder.swift",
@@ -1665,6 +1670,7 @@
 					AppState.swift,
 					AppStoreUpdateService.swift,
 					AppURLs.swift,
+					AppUserDefaults.swift,
 					AppVersion.swift,
 					"Array+Assignments.swift",
 					"Array+PeriodOrder.swift",
