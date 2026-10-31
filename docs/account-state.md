@@ -86,6 +86,7 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | defaults | `hasCompletedOnboarding` | device |  |
 | defaults | `hasPickedClassReminderLead` | device |  |
 | defaults | `holidayNotifyOverrides` | account | `swift/TigerDuck/Services/API/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
+| defaults | `holidayOverrideEditTimes` | account | `swift/TigerDuck/Services/API/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
 | defaults | `holidayOverridesAwaitingUpload` | account | `swift/TigerDuck/Services/API/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
 | defaults | `homeAssignmentFilter` | device |  |
 | defaults | `homeSectionLayoutData` | device |  |

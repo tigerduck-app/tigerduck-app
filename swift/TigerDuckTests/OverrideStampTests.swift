@@ -1,10 +1,11 @@
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The backend settles a colour, a name, an ignore setting and a mark by the time each was made,
-/// and stamps one sent without it when it arrives, so a late send would beat a newer edit from
-/// another device. These check that every attempt carries the time of its edit.
+/// The backend settles a colour, a name, an ignore setting, a mark and a holiday setting by the
+/// time each was made, and stamps one sent without it when it arrives, so a late send would beat a
+/// newer edit from another device. These check that every attempt carries the time of its edit.
 @MainActor
 struct OverrideStampTests {
     enum Edit: String, Sendable, CaseIterable { case colour, name, ignore, mark }
@@ -76,6 +77,94 @@ struct OverrideStampTests {
             }
         }
         #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    @Test("A holiday setting whose send failed goes again after a relaunch with the time it was made")
+    func holidayRetryCarriesTheEditTime() async throws {
+        try await Self.withCleanHolidayDefaults { id, url, registration in
+            SettingsAPIStub.enqueue(.noReply, for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: url)
+            let store = AcademicCalendarStore()
+            store.setNotify(true, forHoliday: id)
+            store.setHolidayAcknowledged(false, holidayID: id)
+            let madeAt = try #require(store.holidayEdit(id).madeAt)
+
+            await AppState.uploadHolidayOverride(id, from: store, via: registration)
+            #expect(store.unacknowledgedHolidayIDs.contains(id))
+            let retriedAt = Date()
+            let relaunched = AcademicCalendarStore()
+            await AppState.uploadHolidayOverride(id, from: relaunched, via: registration)
+
+            let sent = SettingsAPIStub.requests(for: url)
+            #expect(sent.count == 2)
+            for request in sent {
+                let json = try Self.json(request)
+                #expect(json["notify"] as? Bool == true)
+                #expect((json["hlc"] as? NSNumber)?.int64Value == PushAPI.clock(of: madeAt))
+            }
+            #expect(PushAPI.clock(of: madeAt) < PushAPI.clock(of: retriedAt))
+            #expect(!relaunched.unacknowledgedHolidayIDs.contains(id))
+        }
+    }
+
+    @Test("A holiday setting refused as ahead of the server's clock goes again without its time")
+    func holidayAheadOfTheServerGoesUnstamped() async throws {
+        try await Self.withCleanHolidayDefaults { id, url, registration in
+            SettingsAPIStub.enqueue(Attempts.clockAhead, for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: url)
+            let store = AcademicCalendarStore()
+            store.setNotify(true, forHoliday: id)
+            store.setHolidayAcknowledged(false, holidayID: id)
+
+            await AppState.uploadHolidayOverride(id, from: store, via: registration)
+
+            let stamps = try SettingsAPIStub.requests(for: url).map { try (Self.json($0)["hlc"] as? NSNumber)?.int64Value }
+            let madeAt = try #require(store.holidayEdit(id).madeAt)
+            #expect(stamps == [PushAPI.clock(of: madeAt), nil])
+            #expect(!store.unacknowledgedHolidayIDs.contains(id))
+        }
+    }
+
+    @Test("A holiday setting changed and changed back while its send is out stays unacknowledged for the newer time")
+    func holidayEditDuringTheSendKeepsItUnacknowledged() async throws {
+        try await Self.withCleanHolidayDefaults { id, url, registration in
+            let gate = SettingsAPIStub.ReplyGate()
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8), gate: gate), for: url)
+            let store = AcademicCalendarStore()
+            store.setNotify(true, forHoliday: id)
+            store.setHolidayAcknowledged(false, holidayID: id)
+
+            let upload = Task { await AppState.uploadHolidayOverride(id, from: store, via: registration) }
+            try await waitUntil { !SettingsAPIStub.requests(for: url).isEmpty }
+            store.setNotify(false, forHoliday: id)
+            store.setNotify(true, forHoliday: id)
+            gate.open()
+            await upload.value
+
+            #expect(store.unacknowledgedHolidayIDs.contains(id))
+        }
+    }
+
+    private static func withCleanHolidayDefaults(
+        _ body: (_ id: Int, _ url: URL, _ registration: PushRegistrationService) async throws -> Void
+    ) async throws {
+        try await withExclusiveRealDefaults {
+            let saved = (
+                Defaults[.holidayNotifyOverrides], Defaults[.holidayOverridesAwaitingUpload],
+                Defaults[.holidayOverrideEditTimes]
+            )
+            defer {
+                Defaults[.holidayNotifyOverrides] = saved.0
+                Defaults[.holidayOverridesAwaitingUpload] = saved.1
+                Defaults[.holidayOverrideEditTimes] = saved.2
+            }
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let id = Int.random(in: 100_000...999_999)
+            try await body(
+                id, baseURL.appendingPathComponent("sync/holiday-overrides/\(id)"),
+                Self.pushCoordinator(baseURL).registration
+            )
+        }
     }
 
     private static func json(_ request: URLRequest) throws -> [String: Any] {

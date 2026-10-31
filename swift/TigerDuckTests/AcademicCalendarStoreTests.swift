@@ -72,12 +72,15 @@ struct AcademicCalendarStoreTests {
     private static func withCleanHolidayDefaults(_ body: () -> Void) {
         let savedOverrides = Defaults[.holidayNotifyOverrides]
         let savedAwaiting = Defaults[.holidayOverridesAwaitingUpload]
+        let savedTimes = Defaults[.holidayOverrideEditTimes]
         defer {
             Defaults[.holidayNotifyOverrides] = savedOverrides
             Defaults[.holidayOverridesAwaitingUpload] = savedAwaiting
+            Defaults[.holidayOverrideEditTimes] = savedTimes
         }
         Defaults[.holidayNotifyOverrides] = []
         Defaults[.holidayOverridesAwaitingUpload] = []
+        Defaults[.holidayOverrideEditTimes] = [:]
         body()
     }
 
@@ -161,6 +164,7 @@ struct AcademicCalendarStoreTests {
 
             #expect(Defaults[.holidayNotifyOverrides].isEmpty)
             #expect(store.unacknowledgedHolidayIDs.isEmpty)
+            #expect(store.holidayEdit(9).madeAt == nil)
             store.applySyncedOverrides([2], fetchedAt: Date.distantPast.addingTimeInterval(1))
             #expect(Set(Defaults[.holidayNotifyOverrides]) == [2])
         }

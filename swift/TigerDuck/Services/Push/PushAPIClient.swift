@@ -39,14 +39,16 @@ final class PushAPIClient: Sendable {
         try await delete(path: "/devices/\(safeDevice)", at: baseURL)
     }
 
-    func putHolidayOverride(holidayID: Int, notify: Bool) async throws {
-        var request = try await makePostRequest(
-            path: "/sync/holiday-overrides/\(holidayID)",
-            body: PushAPI.HolidayOverrideRequest(notify: notify)
-        )
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        _ = try await execute(request)
+    func putHolidayOverride(holidayID: Int, notify: Bool, madeAt stamp: Date?) async throws {
+        try await sending(stamp) { hlc in
+            var request = try await makePostRequest(
+                path: "/sync/holiday-overrides/\(holidayID)",
+                body: PushAPI.HolidayOverrideRequest(notify: notify, hlc: hlc)
+            )
+            request.httpMethod = "PUT"
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            _ = try await execute(request, expectedFailure: Self.clockAhead)
+        }
     }
 
     func hasAuthSession() async -> Bool {

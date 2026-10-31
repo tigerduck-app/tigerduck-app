@@ -42,6 +42,7 @@ enum PushAPI {
 
     struct HolidayOverrideRequest: Encodable, Sendable {
         let notify: Bool
+        let hlc: Int64?
     }
 
     nonisolated struct DevicePreferencesRequest: Codable, Sendable {
