@@ -2,6 +2,7 @@
 import SwiftUI
 import Defaults
 import UniformTypeIdentifiers
+import TigerDuckCore
 
 struct MacClassTableView: View {
     @Environment(AppState.self) var appState
@@ -576,8 +577,7 @@ struct MacClassTableView: View {
     }
 
     private func displayLabel(for code: String) -> String {
-        guard code.count >= 2 else { return code }
-        return String(code.dropLast()) + "-" + String(code.last!)
+        AcademicTerm.label(of: code)
     }
 
     var isViewingCurrentSemester: Bool {

@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 nonisolated extension AcademicCalendar {
 
@@ -20,9 +21,7 @@ nonisolated extension AcademicCalendar {
                 }
         }
         let boundaries = terms.flatMap { term -> [SDCalendarEvent] in
-            let label = term.code.count == 4
-                ? "\(term.code.prefix(3))-\(term.code.suffix(1))"
-                : term.code
+            let label = AcademicTerm.label(of: term.code)
             return [
                 SDCalendarEvent(
                     eventId: "term-start:\(term.code)",

@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 nonisolated enum MoodleWebserviceClient {
     static let webservicePath = "/webservice/rest/server.php"
@@ -132,7 +133,7 @@ struct MoodleEnrolledCourse: Sendable {
     }
 
     var semester: String {
-        SDCourse.semesterPrefix(ofMoodleId: idnumber) ?? ""
+        AcademicTerm.codePrefix(ofMoodleId: idnumber) ?? ""
     }
 
     fileprivate var rawSemesterPrefix: String {

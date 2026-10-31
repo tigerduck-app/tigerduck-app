@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TigerDuckCore
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -72,28 +73,7 @@ final class WidgetSnapshotWriter {
     }
 
     static func quietDayKeys(calendar: AcademicCalendar, optedIn: Set<Int>, now: Date) -> Set<String> {
-        var keys: Set<String> = []
-        let today = AcademicCalendar.startOfDay(now)
-        for offset in 0..<outsideTermHorizonDays {
-            guard let day = AcademicCalendar.calendar.date(byAdding: .day, value: offset, to: today),
-                  !calendar.isInSession(on: day)
-            else { continue }
-            keys.insert(WidgetTimelineDerivation.dateKey(for: day))
-        }
-        for holiday in calendar.holidays {
-            var day = AcademicCalendar.startOfDay(holiday.start)
-            let last = AcademicCalendar.startOfDay(holiday.end)
-            while day <= last {
-                if calendar.suppressesClasses(on: day, optedIn: optedIn) {
-                    keys.insert(WidgetTimelineDerivation.dateKey(for: day))
-                }
-                guard let next = AcademicCalendar.calendar.date(
-                    byAdding: .day, value: 1, to: day
-                ) else { break }
-                day = next
-            }
-        }
-        return keys
+        calendar.quietDays(optedIn: optedIn).quietDayKeys(from: now, days: outsideTermHorizonDays)
     }
 
     /// An unchanged snapshot is neither written nor reloaded: this runs on every return to the

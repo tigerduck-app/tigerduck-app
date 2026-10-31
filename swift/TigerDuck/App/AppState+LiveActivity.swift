@@ -6,6 +6,7 @@ import SwiftUI
 import SwiftData
 import Defaults
 import os
+import TigerDuckCore
 import UserNotifications
 
 extension AppState {
@@ -80,10 +81,7 @@ extension AppState {
         }
 
         let classPrep = liveActivityPreferences.classPreparingLeadTime
-        if let nextClassStart = timelineResolver
-            .timeline(for: courses, around: now)
-            .filter({ $0.start > now })
-            .min(by: { $0.start < $1.start })?.start {
+        if let nextClassStart = ClassTimeline.next(after: now, in: timelineResolver.timeline(for: courses, around: now))?.start {
             candidates.append(nextClassStart.addingTimeInterval(-classPrep))
             candidates.append(nextClassStart)
         }

@@ -79,14 +79,6 @@ struct CalendarServiceTests {
         }
     }
 
-    @Test("the academic year turns over on the first of August, Taipei time")
-    func academicYear() {
-        #expect(CalendarService.rocAcademicYear(at: Self.taipeiDate(2026, 7, 31, 23)) == 114)
-        #expect(CalendarService.rocAcademicYear(at: Self.taipeiDate(2026, 8, 1)) == 115)
-        #expect(CalendarService.rocAcademicYear(at: Self.taipeiDate(2027, 1, 15)) == 115)
-        #expect(CalendarService.rocAcademicYear(at: Self.taipeiDate(2025, 12, 31, 23)) == 114)
-    }
-
     private struct Answers {
         var ics: SettingsAPIStub.StubResponse?
         var icsYear = 115

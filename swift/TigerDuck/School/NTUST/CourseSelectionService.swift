@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TigerDuckCore
 
 enum CourseServiceError: LocalizedError {
     case notAuthenticated
@@ -190,37 +191,6 @@ enum CourseSelectionService {
     }
 
     nonisolated static func semesterCode(on day: Date, calendar: AcademicCalendar = .cached) -> String {
-        calendar.currentTerm(on: day)?.code ?? heuristicSemesterCode(on: day)
-    }
-
-    nonisolated static func heuristicSemesterCode(on day: Date) -> String {
-        let cal = AcademicCalendar.calendar
-        let year = cal.component(.year, from: day)
-        let month = cal.component(.month, from: day)
-        let rocYear = year - 1911
-
-        if month >= 2 && month <= 7 {
-            return "\(rocYear - 1)2"
-        } else {
-            let academicYear = month >= 8 ? rocYear : rocYear - 1
-            return "\(academicYear)1"
-        }
-    }
-
-    nonisolated static func previousSemesterCode(_ semester: String) -> String {
-        guard semester.count >= 2 else { return semester }
-
-        let yearPart = String(semester.dropLast())
-        let semesterPart = String(semester.suffix(1))
-
-        guard let year = Int(yearPart), let term = Int(semesterPart) else {
-            return semester
-        }
-
-        if term <= 1 {
-            return "\(year - 1)2"
-        }
-
-        return "\(year)1"
+        calendar.currentTerm(on: day)?.code ?? AcademicTerm.estimated(on: day).code
     }
 }

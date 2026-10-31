@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct StudentHeaderCard: View {
     @Environment(AppState.self) private var appState
@@ -32,9 +33,7 @@ struct StudentHeaderCard: View {
     }
 
     private func formatTerm(_ code: String) -> String {
-        guard code.count == 4 else { return code }
-        let year = String(code.prefix(3))
-        let semester = String(code.suffix(1))
+        guard case let (year, semester)? = AcademicTerm.displayParts(of: code) else { return code }
         let label = semester == "1"
             ? String(localized: "score_semester_first_short")
             : semester == "2"

@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct NowNextView: View {
     @EnvironmentObject private var store: ScheduleStore

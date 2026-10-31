@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 /// Server-driven semester list from the public `querycourse` catalogue. The month heuristic
 /// in `CourseSelectionService` lags when NTUST opens a term early. A walk-back from it then
@@ -60,11 +61,7 @@ enum SemesterCatalog {
     /// NTUST publishes theirs.
     nonisolated static func terms(from catalogue: [String], admissionYear: Int?) -> [String] {
         guard let admissionYear else { return Array(catalogue.prefix(pickerDepth)) }
-        return catalogue.filter { (academicYear(of: $0) ?? -1) >= admissionYear }
-    }
-
-    nonisolated static func academicYear(of code: String) -> Int? {
-        Int(code.dropLast().trimmingCharacters(in: .whitespaces))
+        return catalogue.filter { (AcademicTerm.year(of: $0) ?? -1) >= admissionYear }
     }
 
     nonisolated static func admissionYear(studentId: String?) -> Int? {
@@ -114,7 +111,7 @@ enum SemesterCatalog {
         var code = CourseSelectionService.currentSemesterCode()
         for _ in 0..<4 {
             semesters.append(code)
-            code = CourseSelectionService.previousSemesterCode(code)
+            code = AcademicTerm.previousRegularCode(code)
         }
         return semesters
     }

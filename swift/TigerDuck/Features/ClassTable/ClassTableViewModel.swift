@@ -1,5 +1,6 @@
 import Defaults
 import SwiftUI
+import TigerDuckCore
 
 @MainActor
 @Observable
@@ -77,8 +78,7 @@ final class ClassTableViewModel {
     }
 
     func displayLabel(for code: String) -> String {
-        guard code.count >= 2, let last = code.last else { return code }
-        return String(code.dropLast()) + "-" + String(last)
+        AcademicTerm.label(of: code)
     }
 
     private var hasWarmedCaches = false

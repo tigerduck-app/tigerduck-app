@@ -1,5 +1,6 @@
 import SwiftUI
 import Defaults
+import TigerDuckCore
 
 extension AppState {
 
@@ -37,7 +38,7 @@ extension AppState {
                     consecutiveEmpty = 0
                 }
                 if iter.changed { anyChanged = true }
-                code = CourseSelectionService.previousSemesterCode(code)
+                code = AcademicTerm.previousRegularCode(code)
             }
 
             if Task.isCancelled { return }

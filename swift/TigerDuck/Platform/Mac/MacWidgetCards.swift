@@ -70,7 +70,7 @@ private struct TodayScheduleWidgetCard: View {
     private func scheduleRow(_ slot: CourseTimeSlot) -> some View {
         let color = TigerDuckTheme.courseColor(for: slot.course.courseNo)
         let isPast = slot.end < now
-        let isLive = slot.start <= now && now < slot.end
+        let isLive = slot.isOn(at: now)
         let primary: Color = isLive ? .white : .primary
         let secondary: Color = isLive ? Color.white.opacity(0.85) : .secondary
         return HStack(spacing: 10) {
@@ -163,13 +163,12 @@ private struct NextClassWidgetCard: View {
     }
 
     private var nextOrCurrent: NextClassTarget? {
-        let liveSlots = slots.filter { $0.start <= now && now < $0.end }
+        let liveSlots = ClassTimeline.running(at: now, in: slots)
         if let targetStart = liveSlots.map(\.start).max() {
             let tiedLive = liveSlots.filter { $0.start == targetStart }
             return NextClassTarget(slots: tiedLive, kind: .live)
         }
-        guard let earliestNext = slots.filter({ $0.start > now }).min(by: { $0.start < $1.start })
-        else { return nil }
+        guard let earliestNext = ClassTimeline.next(after: now, in: slots) else { return nil }
         let tied = slots.filter { $0.start == earliestNext.start }
         return NextClassTarget(slots: tied, kind: .upcoming)
     }

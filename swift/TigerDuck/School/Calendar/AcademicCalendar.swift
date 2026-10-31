@@ -9,8 +9,7 @@ nonisolated struct SemesterTerm: Codable, Equatable, Sendable {
     let end: Date
 
     func contains(_ day: Date) -> Bool {
-        let d = AcademicCalendar.startOfDay(day)
-        return d >= start && d <= end
+        QuietDayCalendar.Span(start: start, end: end).contains(day)
     }
 }
 
@@ -22,8 +21,7 @@ nonisolated struct Holiday: Codable, Equatable, Sendable, Identifiable {
     let end: Date
 
     func contains(_ day: Date) -> Bool {
-        let d = AcademicCalendar.startOfDay(day)
-        return d >= start && d <= end
+        QuietDayCalendar.Span(start: start, end: end).contains(day)
     }
 
     func name(for locale: Locale = .current) -> String {
@@ -70,8 +68,16 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
             ?? terms.min(by: { $0.start < $1.start })
     }
 
+    func quietDays(optedIn: Set<Int>) -> QuietDayCalendar {
+        QuietDayCalendar(
+            terms: terms.map { QuietDayCalendar.Span(start: $0.start, end: $0.end) },
+            holidays: holidays.map { QuietDayCalendar.Holiday(id: $0.id, span: .init(start: $0.start, end: $0.end)) },
+            optedIn: optedIn
+        )
+    }
+
     func isInSession(on day: Date = Date()) -> Bool {
-        terms.isEmpty || terms.contains { $0.contains(day) }
+        quietDays(optedIn: []).isInSession(day)
     }
 
     func holidays(on day: Date) -> [Holiday] {
@@ -79,13 +85,11 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
     }
 
     func suppressesClasses(on day: Date, optedIn: Set<Int>) -> Bool {
-        let covering = holidays(on: day)
-        guard !covering.isEmpty else { return false }
-        return !covering.contains { optedIn.contains($0.id) }
+        quietDays(optedIn: optedIn).suppressesClasses(on: day)
     }
 
     func isClassDay(_ day: Date, optedIn: Set<Int>) -> Bool {
-        isInSession(on: day) && !suppressesClasses(on: day, optedIn: optedIn)
+        quietDays(optedIn: optedIn).isClassDay(day)
     }
 }
 

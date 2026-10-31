@@ -180,20 +180,8 @@ final class SDCourse: Identifiable {
         TigerDuckTheme.courseColor(for: courseNo)
     }
 
-    /// A regular term is four digits (`1151`). A summer term ends in a letter,
-    /// `114H` in NTUST's `api/semestersinfo` but `114h` in Moodle. Downstream
-    /// term checks compare with NTUST's spelling, so the prefix is upper-cased
-    static func semesterPrefix(ofMoodleId moodleId: String) -> String? {
-        guard moodleId.count > 4 else { return nil }
-        let prefix = moodleId.prefix(4)
-        guard prefix.dropLast().allSatisfy(\.isNumber),
-              let term = prefix.last,
-              term.isNumber || term.isLetter else { return nil }
-        return prefix.uppercased()
-    }
-
     static func courseNoFromMoodleId(_ moodleId: String) -> String {
-        guard semesterPrefix(ofMoodleId: moodleId) != nil else { return moodleId }
+        guard AcademicTerm.codePrefix(ofMoodleId: moodleId) != nil else { return moodleId }
         return String(moodleId.dropFirst(4))
     }
 
@@ -201,7 +189,7 @@ final class SDCourse: Identifiable {
     /// by one system is found under a key written by the other:
     /// `"114hGD3115301"` and `"114HGD3115301"` both become the latter. An id
     static func normalizedMoodleId(_ moodleId: String) -> String {
-        guard let prefix = semesterPrefix(ofMoodleId: moodleId) else { return moodleId }
+        guard let prefix = AcademicTerm.codePrefix(ofMoodleId: moodleId) else { return moodleId }
         return prefix + moodleId.dropFirst(4)
     }
 

@@ -82,10 +82,7 @@ extension Date {
         return formatter
     }
 
-    var weekdayIndex: Int {
-        let weekday = Self.scheduleCalendar.component(.weekday, from: self)
-        return (weekday + 5) % 7
-    }
+    var weekdayIndex: Int { ClassTimeline.weekday(of: self) - 1 }
 
     var scheduleWeekday: Int { weekdayIndex + 1 }
 

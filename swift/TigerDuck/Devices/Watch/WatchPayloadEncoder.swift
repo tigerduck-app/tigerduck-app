@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 enum WatchPayloadEncoder {
 
@@ -70,7 +71,7 @@ enum WatchPayloadEncoder {
                     dayChange: change.map { WatchCourseChange(cancelled: $0.cancelled, room: $0.room, start: $0.start, end: $0.end) }
                 )
             }
-            return contiguousRuns(periodIds.sortedByPeriodOrder(), by: order).compactMap { run -> WatchCourse? in
+            return ClassTimeline.runs(of: periodIds, order: order).compactMap { run -> WatchCourse? in
                 let classes = Dictionary(
                     grouping: changed.filter { !$0.periods.isEmpty && run.contains($0.periods[0]) }, by: \.day
                 ).mapValues { $0.compactMap { meeting($0.periods, change: $0) } }
@@ -78,24 +79,6 @@ enum WatchPayloadEncoder {
             }
         }
         .sorted { ($0.weekday, $0.startHHmm) < ($1.weekday, $1.startHHmm) }
-    }
-
-    private static func contiguousRuns(_ periods: [String], by order: [String]) -> [[String]] {
-        var runs: [[String]] = []
-        var current: [String] = []
-        var prevIndex = Int.min
-        for period in periods {
-            let idx = order.firstIndex(of: period) ?? Int.min
-            if !current.isEmpty, idx == prevIndex + 1 {
-                current.append(period)
-            } else {
-                if !current.isEmpty { runs.append(current) }
-                current = [period]
-            }
-            prevIndex = idx
-        }
-        if !current.isEmpty { runs.append(current) }
-        return runs
     }
 
     private static func resolveDisplayName(

@@ -42,6 +42,15 @@ class ArchitectureTests(unittest.TestCase):
         found = ca.taipei_findings([source("swift/TigerDuckWidgets/X.swift", text)])
         self.assertEqual([(f.path, f.rule) for f in found], [("swift/TigerDuckWidgets/X.swift", "taipei-zone")])
 
+    def test_the_roc_year_offset_outside_core_fails_in_every_target(self) -> None:
+        text = "// 1911 years before ROC 1\nlet year = parts.year - 1911\nlet port = 19110\n"
+        found = ca.core_findings([source(APP + "Features/X.swift", text),
+                                  source("swift/TigerDuckWidgets/X.swift", text),
+                                  source(ca.CORE_SOURCES + "TigerDuckCore/AcademicTerm.swift", text)])
+        self.assertEqual([(f.path, f.line, f.rule) for f in found],
+                         [(APP + "Features/X.swift", 2, "academic-term"), ("swift/TigerDuckWidgets/X.swift", 2, "academic-term")])
+        self.assertIn("AcademicTerm", found[0].message)
+
     def test_a_pattern_in_a_comment_or_a_string_is_not_code(self) -> None:
         text = '// Task.sleep would poll here\nlet s = "Task.sleep(for:)"\n/* UserDefaults.standard */\n'
         self.assertEqual(ca.pattern_findings([source(APP + "Features/X.swift", text)]), [])

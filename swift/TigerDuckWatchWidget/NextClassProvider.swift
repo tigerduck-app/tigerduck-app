@@ -39,13 +39,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
         if let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) {
             boundaries.insert(midnight)
         }
-        for dayOffset in 0...1 {
-            guard let anchor = cal.date(byAdding: .day, value: dayOffset, to: now) else { continue }
-            for c in NextClassResolver.todaysClasses(courses: courses, now: anchor, quietDays: quietDays) {
-                if let s = combine(hhmm: c.startHHmm, with: anchor), s > now { boundaries.insert(s) }
-                if let e = combine(hhmm: c.endHHmm, with: anchor), e > now { boundaries.insert(e) }
-            }
-        }
+        boundaries.formUnion(NextClassResolver.boundaries(courses: courses, after: now, days: 2, quietDays: quietDays))
         let entries = boundaries.sorted().map { boundary in
             entry(for: snapshot, at: boundary, date: AppClock.realTime(forApp: boundary))
         }

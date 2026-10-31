@@ -199,20 +199,7 @@ final class TimeSliderViewModel {
     }
 
     func courseState(at time: Date) -> CourseState {
-        let active = timeSlots.filter { time >= $0.start && time <= $0.end }
-        if !active.isEmpty {
-            return .inClass(active)
-        }
-        let previous = timeSlots.last { $0.end <= time }
-        let next = timeSlots.first { $0.start > time }
-
-        if previous == nil, let next {
-            return .beforeFirst(next: next)
-        }
-        if let previous, next == nil {
-            return .afterLast(previous: previous)
-        }
-        return .between(previous: previous, next: next)
+        ClassTimeline.state(at: time, in: timeSlots, includingEnd: true)
     }
 
     var currentCourseState: CourseState {

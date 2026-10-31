@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 struct LiveActivityScenarioResolver {
     let timelineResolver: CourseTimelineResolver
@@ -124,9 +125,7 @@ struct LiveActivityScenarioResolver {
     }
 
     static func nextNonSkippedSlot(in timeline: [CourseTimeSlot], after time: Date) -> CourseTimeSlot? {
-        timeline
-            .filter { !$0.isSkippedOrCancelled && $0.start > time }
-            .min { $0.start < $1.start }
+        ClassTimeline.next(after: time, in: timeline.filter { !$0.isSkippedOrCancelled })
     }
 
     static func earliestUrgentAssignment(
