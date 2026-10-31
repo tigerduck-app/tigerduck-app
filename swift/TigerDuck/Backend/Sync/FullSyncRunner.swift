@@ -103,7 +103,6 @@ final class FullSyncRunner {
         let (json, fetchedDeletes) = try await coordinator.courseDeletes(around: {
             try await app.pushCoordinator.fetchFullSync()
         })
-        var courseDeletes = fetchedDeletes
         guard app.fullSyncMayWrite(since: ticket) else { return nil }
         let marks = ServerMarks(json)
         let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
@@ -129,20 +128,19 @@ final class FullSyncRunner {
 
         let inFlight = await coordinator.pendingAssignmentOverrideIds().union(coordinator.pendingCourseIgnoreKeys())
         guard app.fullSyncMayWrite(since: ticket) else { return nil }
-        let policy = SyncPolicy.current
-        let takesCourses = policy.switchedOn.contains("courses") && !policy.pendingChecks.contains("courses")
+        let before = SyncPolicy.current
+        let takesCourses = before.switchedOn.contains("courses") && !before.pendingChecks.contains("courses")
         let reset = AppState.coursesReset(
             server: AppState.backendDate(json["courses_reset_at"]), lastSeen: Defaults[.lastSeenCoursesResetAt],
             takesCourses: takesCourses
         )
-        if takesCourses {
-            guard let settled = await app.settleQueuedCourseEdits(
-                deleting: courseDeletes, reset: reset, ticket: ticket
-            ) else { return nil }
-            courseDeletes = settled
-        }
-        let courseAdds = await coordinator.courseAddKeys(unlandedAt: fetchedAt)
-        guard app.fullSyncMayWrite(since: ticket) else { return nil }
+        guard let settled = await Self.settle(
+            fetchedDeletes, takingCourses: takesCourses,
+            settle: { await app.settleQueuedCourseEdits(deleting: $0, reset: reset, ticket: ticket) },
+            adds: { await coordinator.courseAddKeys(unlandedAt: fetchedAt) },
+            mayWrite: { app.fullSyncMayWrite(since: ticket) }, policy: { SyncPolicy.current }
+        ) else { return nil }
+        let policy = settled.policy
 
         let marksLeftFor = SyncPolicy.reasonToLeaveMarks(
             syncsMarks: syncsMarks && Defaults[.syncAssignments],
@@ -155,11 +153,29 @@ final class FullSyncRunner {
             courseOverrides: courseOverrides, serverIgnoredCourses: serverIgnoredCourses,
             localArchived: localArchived, localCompleted: localCompleted,
             protected: preFetchProtected.union(app.pendingOverrides).union(inFlight),
-            courseDeletes: courseDeletes, courseAdds: courseAdds,
+            courseDeletes: settled.deletes, courseAdds: settled.adds,
             heldCourseOverrides: coordinator.courseOverridesToHold(since: preFetchCourseOverrides),
             marksLeftFor: marksLeftFor, taken: policy.categoriesTaken(marksLeftFor: marksLeftFor),
             reset: reset, editGenerationAtFetch: editGenerationAtFetch
         )
+    }
+
+    /// Settles the queued course edits and reads the adds still on their way, then the policy, so
+    /// a switch turned off or a conflict check begun during those awaits holds for this pass. Nil
+    /// when the pass may no longer write.
+    static func settle(
+        _ deletes: Set<String>, takingCourses: Bool,
+        settle: (Set<String>) async -> Set<String>?, adds: () async -> Set<String>,
+        mayWrite: () -> Bool, policy: () -> SyncPolicy
+    ) async -> (deletes: Set<String>, adds: Set<String>, policy: SyncPolicy)? {
+        var deletes = deletes
+        if takingCourses {
+            guard let settled = await settle(deletes) else { return nil }
+            deletes = settled
+        }
+        let adds = await adds()
+        guard mayWrite() else { return nil }
+        return (deletes, adds, policy())
     }
 }
 

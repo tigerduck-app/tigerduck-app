@@ -9,6 +9,7 @@ struct SyncOrderTests {
         var value: Bool?
         var entered = 0
         var order: [Int] = []
+        var pendingChecks: Set<String> = []
     }
 
     @Test("What this device derives from school data waits for the sign-in's first pull, and goes once it is applied")
@@ -72,6 +73,29 @@ struct SyncOrderTests {
         for upload in uploads { await upload.value }
 
         #expect(released.order == Array(0..<20))
+    }
+
+    @Test("A full sync reads the switches and the pending checks after settling its course edits")
+    func passReadsThePolicyAfterSettling() async throws {
+        let state = Released()
+
+        let settled = try #require(await FullSyncRunner.settle(
+            ["1151|CS1"], takingCourses: true,
+            settle: { deletes in
+                state.pendingChecks.insert("assignments")
+                return deletes
+            },
+            adds: {
+                state.pendingChecks.insert("courses")
+                return ["1151|CS2"]
+            },
+            mayWrite: { true },
+            policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: ["assignments"], pendingChecks: state.pendingChecks) }
+        ))
+
+        #expect(settled.policy.pendingChecks == ["assignments", "courses"])
+        #expect(settled.deletes == ["1151|CS1"])
+        #expect(settled.adds == ["1151|CS2"])
     }
 
     @Test("A full sync applies marks, course ignores, colours and names, holidays and then the roster")
