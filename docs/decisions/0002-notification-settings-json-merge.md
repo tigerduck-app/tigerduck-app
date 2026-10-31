@@ -59,12 +59,13 @@ later build. Only the iOS build syncs the document: every synced field lives on
   (`NotificationSettingsSyncedSeedMigration`), takes the device's values as the copy; a push it
   finds pending holds an edit made on the earlier build, so that one push sends every field, as
   earlier builds did (`notificationSettingsPushSendsEveryField`), and the copy is recorded once it
-  lands. Turning a device switch back on makes that section's values the copy, so a push sends
-  only the fields edited after it, which are newer than anything on the server, and takes the
-  section's other fields from the document; a reconcile then adopts the section. A reconcile
-  that waited for a pending push runs again once a push lands with nothing left to send
-  (`NotificationSettingsPushQueue`). Sign-out clears the copy and the mark, and drops a
-  reconcile still waiting.
+  lands. A push that would change nothing in the document writes nothing, as a write moves the
+  revision and sends every other device to reconcile. Turning a device switch back on makes that
+  section's values the copy, so a push sends only the fields edited after it, which are newer
+  than anything on the server, and takes the section's other fields from the document; a
+  reconcile then adopts the section. A reconcile that waited for a pending push runs again once
+  a push lands with nothing left to send (`NotificationSettingsPushQueue`). Sign-out clears the
+  copy and the mark, and drops a reconcile still waiting.
 - A device on an earlier build still writes whole sections, so its push can revert a field
   another device changed; that device adopts the reverted value at its next reconcile.
 

@@ -407,6 +407,24 @@ struct NotificationSettingsSyncTests {
         #expect((sent["courses"] as? [String: Any])?["enabled"] as? Bool == true)
     }
 
+    @Test("a push that would change nothing in the document writes nothing, and counts as landed")
+    func emptyPushWritesNothing() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+        var document = try Self.local().documentUpdates(existing: [:])
+        document["future_section"] = ["x": 1]
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(documentObject: document, revision: 7)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 8)), for: url)
+
+        let written = try await NotificationSettingsSync.push(
+            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true
+        )
+
+        #expect(written)
+        #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
+    }
+
     @Test("push sends no request whatsoever when cloud sync is off, and reports that it did not write")
     func pushSendsNothingWhenSyncDisabled() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
