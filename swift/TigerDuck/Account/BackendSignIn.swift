@@ -14,7 +14,7 @@ final class BackendSignIn {
     /// https://github.com/tigerduck-app/tigerduck-backend/blob/main/server/config.py), and a
     /// campus network puts many students behind one IP, so the next automatic one waits ``pause``.
     @ObservationIgnored private var failedAt: Date?
-    @ObservationIgnored private unowned let auth: AuthService
+    @ObservationIgnored private weak var auth: AuthService?
 
     nonisolated static let pause: TimeInterval = 5 * 60
 
@@ -30,6 +30,7 @@ final class BackendSignIn {
 
     @discardableResult
     func signIn(studentId: String, harvesting: Bool = false) async -> Bool {
+        guard let auth else { return false }
         guard let authTokenManager = auth.authTokenManager else { return false }
         let session = auth.session
         let ticket = session.ticket
@@ -55,6 +56,7 @@ final class BackendSignIn {
     }
 
     func relogin(replacing refused: String?) async -> Bool {
+        guard let auth else { return false }
         guard let authTokenManager = auth.authTokenManager,
               Self.isDue(lastFailure: failedAt, now: Date()),
               let studentId = auth.storedStudentId else { return false }
@@ -107,6 +109,7 @@ final class BackendSignIn {
     }
 
     private func signInIfSignedOut() async {
+        guard let auth else { return }
         guard let atm = auth.authTokenManager, !(await atm.isLoggedIn),
               Self.isDue(lastFailure: failedAt, now: Date()),
               let studentId = auth.storedStudentId, auth.storedPassword != nil else { return }
@@ -119,11 +122,13 @@ final class BackendSignIn {
     }
 
     private func noteFailure(since ticket: AccountSession.Ticket) {
+        guard let auth else { return }
         guard auth.session.isCurrent(ticket) else { return }
         failedAt = Date()
     }
 
     private func moodleToken() async -> String? {
+        guard let auth else { return nil }
         do {
             let token = try await auth.deps.moodleTokens.refreshTokenIfNeeded()
             return token.isEmpty ? nil : token
@@ -141,13 +146,14 @@ final class BackendSignIn {
 final class StoredPasswordRetry {
     private(set) var task: Task<Void, Never>?
     private var misses = 0
-    private unowned let auth: AuthService
+    private weak var auth: AuthService?
 
     init(auth: AuthService) {
         self.auth = auth
     }
 
     func arm() {
+        guard let auth else { return }
         misses = 0
         let now = auth.deps.now
         guard let retryAt = SchoolPasswordPosts.storedPasswordRetryAt(now: now()) else {
@@ -170,17 +176,19 @@ final class StoredPasswordRetry {
     }
 
     private func start(after wait: TimeInterval) {
+        guard let auth else { return }
         task?.cancel()
         let sleep = auth.deps.retrySleep
         task = auth.session.task { [weak self] ticket in
             await sleep(.seconds(wait))
-            guard !Task.isCancelled, let self, self.auth.session.isCurrent(ticket) else { return }
+            guard !Task.isCancelled, let self, let auth = self.auth, auth.session.isCurrent(ticket) else { return }
             self.task = nil
             await self.retry()
         }
     }
 
     private func retry() async {
+        guard let auth else { return }
         let now = auth.deps.now
         guard let retryAt = SchoolPasswordPosts.storedPasswordRetryAt(now: now()) else { return }
         guard retryAt <= now() else {
@@ -193,7 +201,7 @@ final class StoredPasswordRetry {
     }
 
     private func run() async -> Bool {
-        let auth = self.auth
+        guard let auth else { return false }
         guard !auth.isLoggingIn, let studentId = auth.storedStudentId, let password = auth.storedPassword else { return false }
         let session = auth.session
         let ticket = session.ticket

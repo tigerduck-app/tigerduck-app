@@ -538,6 +538,28 @@ struct MailListViewModelTests {
         #expect(h.seen.noted.map(\.uidNext) == [5])
     }
 
+    @Test func aPollSuspendedWhenThePageDropsItsListFinishesAndThenLetsTheListGo() async throws {
+        let fake: FakeMailClient
+        let poll: Task<Void, Never>
+        weak var released: MailListViewModel?
+        do {
+            let h = Self.harness(inboxCount: 3)
+            await h.model.load()
+            await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 4)) }
+            await h.fake.holdNext("status")
+            let background = h.model.background!
+            poll = Task { await background.pollOnce() }
+            await h.fake.waitForArrival("status")
+            fake = h.fake
+            released = h.model
+        }
+        await fake.releaseStatus()
+        await poll.value
+
+        #expect(await fake.calls.filter { $0 == "page INBOX" }.count == 2)
+        try await waitUntil { released == nil }
+    }
+
     @Test func thePollReloadsForMailAlreadyReadElsewhere() async {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
