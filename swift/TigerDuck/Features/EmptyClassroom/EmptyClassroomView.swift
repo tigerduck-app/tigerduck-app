@@ -218,7 +218,7 @@ struct EmptyClassroomContent: View {
         RoomDaySheet(
             room: room,
             place: place(of: room, viewModel: viewModel),
-            day: EmptyClassroomViewModel.dateText(viewModel.selectedDay),
+            day: EmptyClassroomDayText.date(viewModel.selectedDay),
             period: viewModel.selectedPeriod,
             ended: viewModel.endedPeriods,
             nowPeriod: viewModel.currentPeriod,

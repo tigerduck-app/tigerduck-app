@@ -57,15 +57,17 @@ struct EmptyClassroomViewModelTests {
             let service = service
             newScreen = {
                 let model = EmptyClassroomViewModel(
-                    service: service,
-                    clock: { now.date },
-                    holidays: { day in holiday.map { $0.contains(day) ? [$0] : [] } ?? [] },
-                    isInSession: isInSession,
-                    isClassDay: { _ in true },
-                    courses: { classTable.courses },
-                    rawRoom: { $0 }
+                    calendar: EmptyClassroomCalendar(
+                        clock: { now.date },
+                        holidays: { day in holiday.map { $0.contains(day) ? [$0] : [] } ?? [] },
+                        isInSession: isInSession,
+                        isClassDay: { _ in true },
+                        courses: { classTable.courses },
+                        rawRoom: { $0 }
+                    ),
+                    loader: EmptyClassroomLoader(service: service)
                 )
-                model.reader = {
+                model.loader.reader = {
                     signIn.reads += 1
                     return .init(credentials: Self.credentials, isCurrent: { signIn.isCurrent })
                 }
@@ -632,10 +634,10 @@ struct EmptyClassroomViewModelTests {
     func dayLabels() {
         let harness = Harness(at: Self.time(14, 10, 5))
         let model = harness.model
-        #expect(model.dayLabel(Self.day(14)) == "\(String(localized: "calendar_today")) \(EmptyClassroomViewModel.dateText(Self.day(14)))")
-        #expect(model.dayLabel(Self.day(15)) == "\(String(localized: "widget_tomorrow")) \(EmptyClassroomViewModel.dateText(Self.day(15)))")
-        #expect(model.dayLabel(Self.day(16)) == EmptyClassroomViewModel.dateText(Self.day(16)))
+        #expect(model.dayLabel(Self.day(14)) == "\(String(localized: "calendar_today")) \(EmptyClassroomDayText.date(Self.day(14)))")
+        #expect(model.dayLabel(Self.day(15)) == "\(String(localized: "widget_tomorrow")) \(EmptyClassroomDayText.date(Self.day(15)))")
+        #expect(model.dayLabel(Self.day(16)) == EmptyClassroomDayText.date(Self.day(16)))
         #expect(model.days.count == 14)
-        #expect(EmptyClassroomViewModel.timeRange(of: 2) == "10:20–11:10")
+        #expect(EmptyClassroomDayText.timeRange(of: 2) == "10:20–11:10")
     }
 }

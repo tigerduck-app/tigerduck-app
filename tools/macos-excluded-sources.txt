@@ -78,12 +78,16 @@ MoodleAssignmentView+Status.swift
 # Features/CourseMoodle — the crop screen for a new profile picture, which only the phone changes
 MoodlePictureCropView.swift
 
-# Features/EmptyClassroom — the iOS finder screen and the ranking it shows; macOS hides
-# the feature (MacFeatureFiltering.swift) and keeps only its cour01 client
+# Features/EmptyClassroom and Stores/EmptyClassroom — the iOS finder screen, the ranking it
+# shows and what it reads; macOS hides the feature (MacFeatureFiltering.swift) and keeps only
+# its cour01 client
 AvailabilityBar.swift
 BuildingDirectory.swift
 BuildingSection.swift
 ClassroomStateViews.swift
+EmptyClassroomCalendar.swift
+EmptyClassroomDayText.swift
+EmptyClassroomLoader.swift
 EmptyClassroomSchedule.swift
 EmptyClassroomView.swift
 EmptyClassroomViewModel.swift

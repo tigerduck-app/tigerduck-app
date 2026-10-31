@@ -12,7 +12,7 @@ struct ClassroomTimeBar: View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             dayMenu
             Spacer(minLength: 0)
-            Text(EmptyClassroomViewModel.timeRange(of: period))
+            Text(EmptyClassroomDayText.timeRange(of: period))
                 .font(.subheadline.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(policy.secondaryTextColor)
@@ -111,7 +111,7 @@ struct PeriodChipRow: View {
     }
 
     private func accessibilityValue(_ index: Int) -> String {
-        let times = EmptyClassroomViewModel.timeRange(of: index)
+        let times = EmptyClassroomDayText.timeRange(of: index)
         guard index == current else { return times }
         return "\(times), \(String(localized: "home_time_slider_now"))"
     }
