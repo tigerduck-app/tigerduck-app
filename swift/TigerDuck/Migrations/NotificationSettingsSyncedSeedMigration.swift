@@ -15,8 +15,8 @@ enum NotificationSettingsSyncedSeedMigration {
         signedIn: @autoclosure () -> Bool,
         storedDataReadsBack: () -> Bool = { FirstUnlock.storedDataReadsBack() }
     ) {
-        guard !UserDefaults.standard.bool(forKey: doneKey), storedDataReadsBack() else { return }
-        defer { UserDefaults.standard.set(true, forKey: doneKey) }
+        guard !AppUserDefaults.standard.bool(forKey: doneKey), storedDataReadsBack() else { return }
+        defer { AppUserDefaults.standard.set(true, forKey: doneKey) }
         guard signedIn() else { return }
         if Defaults[.notificationSettingsPushPending] {
             Defaults[.notificationSettingsPushSendsEveryField] = true
