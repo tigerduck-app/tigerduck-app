@@ -30,14 +30,11 @@ final class CloudSyncCoordinator {
 
     @ObservationIgnored private let pushCoordinator: PushCoordinator
     @ObservationIgnored let outbox: SyncOutbox
+    @ObservationIgnored let sender: OutboxSender
     @ObservationIgnored private let syncsAssignmentMarks: @Sendable () -> Bool
     @ObservationIgnored private let syncsCourseIgnores: @Sendable () -> Bool
     @ObservationIgnored private let syncsCourseOverrides: @Sendable (_ category: String) -> Bool
-    @ObservationIgnored private let addedCourseUpload: @MainActor (_ semester: String, _ courseNo: String)
-        -> PushAPI.CourseUploadRequest?
-    @ObservationIgnored private let uploadsCourses: @MainActor () -> Bool
     @ObservationIgnored private let isProtectedDataAvailable: @MainActor () -> Bool
-    @ObservationIgnored private let account: AccountSession
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
@@ -62,21 +59,10 @@ final class CloudSyncCoordinator {
         pushCoordinator: PushCoordinator,
         outbox: SyncOutbox = SyncOutbox(),
         isEnabled: Bool = Defaults[.cloudSyncEnabled],
-        syncsAssignmentMarks: @escaping @Sendable () -> Bool = {
-            CloudSyncCoordinator.sendsAssignmentMarks(
-                assignments: Defaults[.syncAssignments],
-                pendingChecks: Defaults[.pendingConflictCategories]
-            )
-        },
-        syncsCourseIgnores: @escaping @Sendable () -> Bool = {
-            CloudSyncCoordinator.sendsCourseIgnores(
-                assignments: Defaults[.syncAssignments],
-                courses: Defaults[.syncCourses],
-                pendingChecks: Defaults[.pendingConflictCategories]
-            )
-        },
+        syncsAssignmentMarks: @escaping @Sendable () -> Bool = { SyncPolicy.current.sendsAssignmentMarks },
+        syncsCourseIgnores: @escaping @Sendable () -> Bool = { SyncPolicy.current.sendsCourseIgnores },
         syncsCourseOverrides: @escaping @Sendable (_ category: String) -> Bool = {
-            !Defaults[.pendingConflictCategories].contains($0)
+            SyncPolicy.current.sendsCourseOverride($0)
         },
         addedCourseUpload: @escaping @MainActor (_ semester: String, _ courseNo: String)
             -> PushAPI.CourseUploadRequest? = { _, _ in nil },
@@ -88,29 +74,25 @@ final class CloudSyncCoordinator {
             true
             #endif
         },
-        account: AccountSession = AccountSession()
+        account: AccountSession = AccountSession(),
+        courses: CourseStore = .shared,
+        kept: KeptValues? = nil
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
         self.isProtectedDataAvailable = isProtectedDataAvailable
-        self.account = account
         self.syncsAssignmentMarks = syncsAssignmentMarks
         self.syncsCourseIgnores = syncsCourseIgnores
         self.syncsCourseOverrides = syncsCourseOverrides
-        self.addedCourseUpload = addedCourseUpload
-        self.uploadsCourses = uploadsCourses
+        self.sender = OutboxSender(
+            push: pushCoordinator, addedCourseUpload: addedCourseUpload, uploadsCourses: uploadsCourses,
+            isProtectedDataAvailable: isProtectedDataAvailable, account: account, courses: courses, kept: kept ?? KeptValues()
+        )
 
         if isEnabled {
             state = .active
         }
-    }
-
-    nonisolated static func sendsAssignmentMarks(assignments: Bool, pendingChecks: Set<String>) -> Bool {
-        assignments && !pendingChecks.contains("assignments")
-    }
-
-    nonisolated static func sendsCourseIgnores(assignments: Bool, courses: Bool, pendingChecks: Set<String>) -> Bool {
-        assignments && courses && !pendingChecks.contains("assignments")
+        sender.onCourseAddLanded = { [weak self] key in self?.courseAddTimes[key] = Date() }
     }
 
     // MARK: - Following the preference
@@ -243,6 +225,27 @@ final class CloudSyncCoordinator {
     /// edit made in between is queued and goes once the coordinator is active.
     private var takesEdits: Bool {
         state != .disabled || Defaults[.cloudSyncEnabled]
+    }
+
+    /// Sends the colours a full sync found missing or moved, and takes the colour the backend kept
+    /// when another device's landed first, unless a colour edit was queued here since. One that
+    /// fails goes at the next full sync, which finds it missing again.
+    func sendColorFills(_ fills: [CourseColorFill]) async {
+        let signOutsBefore = signOuts
+        let editsBefore = courseOverrideEdits
+        for fill in fills {
+            guard signOuts == signOutsBefore, signOutsSettling == 0, syncsCourseOverrides("course_colors") else { return }
+            do {
+                let reply = try await pushCoordinator.patchCourseOverride(
+                    courseKey: fill.courseKey, colorHex: fill.colorHex, madeAt: fill.stamp
+                )
+                guard signOuts == signOutsBefore, !reply.applied.contains("color_hex"),
+                      lastColorEdit[fill.identity, default: 0] <= editsBefore else { continue }
+                sender.kept.colorKept(reply.colorHex, courseNo: fill.courseNo)
+            } catch {
+                logger.error("course colour fill failed: \(error.localizedDescription, privacy: .private)")
+            }
+        }
     }
 
     @discardableResult
@@ -477,64 +480,38 @@ final class CloudSyncCoordinator {
         await outbox.requeueParked()
     }
 
+    /// A course upload has landed, so the colour and name edits parked for want of the course go again.
+    func courseUploadLanded() {
+        Task {
+            await outbox.requeueParked()
+            await syncTick()
+        }
+    }
+
+    /// An edit of the same field queued after `op`, which a value the backend kept must not undo.
+    private func hasNewerEdit(than op: SyncOp) async -> Bool {
+        let key = op.dedupKey
+        let queued = await outbox.snapshot().map(\.op) + outbox.parkedSnapshot().map(\.op)
+            + courseOverridesEnqueuing.values
+        return queued.contains { $0.dedupKey == key && $0.stamp > op.stamp }
+    }
+
     private func execute(_ op: SyncOp, signOutsBefore: Int) async throws {
         guard signOuts == signOutsBefore, signOutsSettling == 0 else { throw CancellationError() }
         guard !SyncOutbox.isCutOff(op, by: cutoffs) else { return }
-        let request = Task { try await self.send(SyncOutbox.resolve(op)) }
+        let request = Task {
+            do {
+                try await self.sender.send(op, newerQueued: { await self.hasNewerEdit(than: $0) })
+            } catch let error where Self.isUnauthorized(error) {
+                throw SyncOutboxAuthError(statusCode: 401)
+            }
+        }
         sending = request
         defer { if sending == request { sending = nil } }
         try await withTaskCancellationHandler {
             try await request.value
         } onCancel: {
             request.cancel()
-        }
-    }
-
-    private func send(_ op: ResolvedSyncOp) async throws {
-        do {
-            switch op {
-            case .courseOverride(let courseId, let colorHex, let customName, let locale, let stamp):
-                _ = try await pushCoordinator.patchCourseOverride(
-                    moodleId: courseId,
-                    colorHex: colorHex,
-                    customName: customName,
-                    locale: locale,
-                    madeAt: stamp)
-
-            case .assignmentOverride(let assignmentId, let localStatus, let stamp):
-                try await pushCoordinator.patchAssignmentOverride(
-                    moodleAssignmentId: String(assignmentId),
-                    localStatus: localStatus,
-                    madeAt: stamp)
-
-            case .courseIgnore(let courseId, let moodleCourseId, let ignore, let stamp):
-                let response = try await pushCoordinator.patchCourseOverride(
-                    moodleId: courseId,
-                    ignoreAssignments: ignore,
-                    moodleCourseId: moodleCourseId,
-                    madeAt: stamp)
-                // A backend without the setting answers 200 and drops it, so only an answer that
-                // names it settles the op; anything else counts as a refusal.
-                guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
-
-            case .courseDelete(let courseKey, let stamp):
-                try await pushCoordinator.deleteCourse(courseKey: courseKey, madeAt: stamp)
-
-            case .courseAdd(let semester, let courseNo, let stamp):
-                guard isProtectedDataAvailable() else { throw CancellationError() }
-                let isCurrent = account.currentCheck()
-                guard var request = addedCourseUpload(semester, courseNo) else { return }
-                request.adds = request.forceKeys.map { PushAPI.CourseAdd(courseKey: $0, hlc: PushAPI.clock(of: stamp)) }
-                guard try await pushCoordinator.uploadCoursesIfChanged(
-                    request, semester: semester, isCurrent: { [uploadsCourses] in uploadsCourses() && isCurrent() }
-                ) else { return }
-                courseAddTimes[CourseTombstone.key(semester: semester, courseNo: courseNo)] = Date()
-            }
-        } catch {
-            if isUnauthorized(error) {
-                throw SyncOutboxAuthError(statusCode: 401)
-            }
-            throw error
         }
     }
 
@@ -589,11 +566,9 @@ final class CloudSyncCoordinator {
         }
     }
 
-    private func isUnauthorized(_ error: Error) -> Bool {
+    private static func isUnauthorized(_ error: Error) -> Bool {
         if case PushAPIError.httpStatus(401, _, _) = error { return true }
         if case PushAPIError.notSignedIn = error { return true }
         return false
     }
 }
-
-nonisolated struct CourseIgnoreNotStoredError: Error {}

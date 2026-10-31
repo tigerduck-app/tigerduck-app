@@ -23,11 +23,16 @@ extension AppState {
         guard NetworkMonitor.shared.isConnected else { return .offline }
         await authService.ensureBackendSignedIn()
         guard await authTokenManager.isLoggedIn else { return .unchanged }
+        let ticket = authService.session.ticket
         do {
             let serverRevision = try await pushCoordinator.fetchRevision()
             retryOwedConflictCheck()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self._lastKnownRevision)")
-            guard serverRevision > _lastKnownRevision else { return .unchanged }
+            guard serverRevision > _lastKnownRevision else {
+                // This launch applied the backend up to its revision, so nothing newer is there.
+                if _lastKnownRevision > 0 { syncTarget.notePull(ticket) }
+                return .unchanged
+            }
             let outcome = await syncChangesSinceLastRevision()
             await cloudSyncCoordinator.onRevisionChanged()
             return outcome
@@ -87,6 +92,7 @@ extension AppState {
     private func advanceRevision(from since: Int, to revision: Int, ticket: AccountSession.Ticket) {
         guard mayAdvanceRevision(from: since, ticket: ticket) else { return }
         _lastKnownRevision = revision
+        syncTarget.notePull(ticket)
         ServerStatusTracker.shared.noteSyncResult(true)
     }
 
@@ -175,7 +181,7 @@ nonisolated enum RevisionPollOutcome: Equatable, Sendable {
     case unchanged
     case changed
     case failed
-    /// `refused` is the access token the refused request sent.
+    /// `refused` is the access token the refused request sent, which the client could not replace.
     case unauthorized(refused: String?)
     case offline
 }
@@ -253,7 +259,6 @@ nonisolated struct RevisionPollSchedule: Sendable {
 @MainActor
 final class RevisionPoller {
     var poll: @MainActor () async -> RevisionPollOutcome = { .unchanged }
-    var relogin: @MainActor (_ refused: String?) async -> Bool = { _ in false }
 
     private let sleep: @Sendable (Duration) async -> Void
     private let now: () -> Date
@@ -262,7 +267,6 @@ final class RevisionPoller {
     private var isRunning = false
     private(set) var isPolling = false
     private(set) var isSuspended = false
-    private var reloginTried = false
     private var wait: Task<Void, Never>?
     private var nextPollAt: Date?
     private var lastPollAt: Date?
@@ -281,7 +285,6 @@ final class RevisionPoller {
     func start(pollNow: Bool) {
         isRunning = true
         isSuspended = false
-        reloginTried = false
         schedule.noteActivity(at: now())
         guard !isPolling else { return }
         let sinceLastPoll = lastPollAt.map { now().timeIntervalSince($0) } ?? .infinity
@@ -333,17 +336,10 @@ final class RevisionPoller {
             delay = schedule.currentInterval(at: now())
         case .failed:
             delay = schedule.delayAfterFailure(at: now(), jitter: jitter())
-        case .unauthorized(let refused):
-            guard !reloginTried else {
-                isSuspended = true
-                return
-            }
-            reloginTried = true
-            guard await relogin(refused) else {
-                isSuspended = true
-                return
-            }
-            delay = 0
+        case .unauthorized:
+            // `BackendClient` already refreshed or signed in again once; polling waits for a return.
+            isSuspended = true
+            return
         }
         guard isRunning, !isSuspended else { return }
         arm(after: delay)

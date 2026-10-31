@@ -55,7 +55,7 @@ struct CourseCatalogClientTests {
         let base = SettingsAPIStub.uniqueBaseURL()
         let url = try Self.catalogURL(base, language: "zh")
         SettingsAPIStub.enqueue(
-            .init(statusCode: 404, body: Data(#"{"detail":"course_catalog_not_found"}"#.utf8)), for: url
+            .init(statusCode: 404, body: Data(#"{"error":"course_catalog_not_found","message":"course_catalog_not_found"}"#.utf8)), for: url
         )
         await #expect(throws: CourseCatalogError.unavailable) {
             try await Self.client(base).fetch(semester: "1151", language: "zh", etag: nil)

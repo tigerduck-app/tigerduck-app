@@ -1,24 +1,26 @@
 import Foundation
 import os
 
+/// The bulletin feed and the device's subscription rules, through `BackendClient`.
 final class BulletinAPIClient: Sendable {
-    private let baseURLProvider: @Sendable () -> URL
-    private let session: URLSession
-    private let authHeaderProvider: @Sendable () async -> String?
-    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.API")
+    private let backend: BackendClient
 
-    init(
+    init(backend: BackendClient) {
+        self.backend = backend
+    }
+
+    convenience init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
         authHeaderProvider: @escaping @Sendable () async -> String? = { nil }
     ) {
-        self.baseURLProvider = baseURLProvider
-        self.session = session ?? Self.defaultSession()
-        self.authHeaderProvider = authHeaderProvider
+        self.init(backend: BackendClient(
+            baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: .header(authHeaderProvider)
+        ))
     }
 
     func getTaxonomy() async throws -> BulletinAPI.TaxonomyResponse {
-        try await get(path: "/bulletins/taxonomy", returning: BulletinAPI.TaxonomyResponse.self)
+        try await send(BackendRequest("GET", "bulletins", "taxonomy"), authenticated: false)
     }
 
     func listBulletins(
@@ -26,158 +28,55 @@ final class BulletinAPIClient: Sendable {
         cursor: Int? = nil,
         includeDeleted: Bool = false
     ) async throws -> BulletinAPI.BulletinListResponse {
-        var items: [URLQueryItem] = [
-            URLQueryItem(name: "limit", value: String(limit)),
-        ]
+        var request = BackendRequest("GET", "bulletins")
+        request.query = [URLQueryItem(name: "limit", value: String(limit))]
         if let cursor {
-            items.append(URLQueryItem(name: "cursor", value: String(cursor)))
+            request.query.append(URLQueryItem(name: "cursor", value: String(cursor)))
         }
         if includeDeleted {
-            items.append(URLQueryItem(name: "include_deleted", value: "true"))
+            request.query.append(URLQueryItem(name: "include_deleted", value: "true"))
         }
-        return try await get(
-            path: "/bulletins",
-            query: items,
-            returning: BulletinAPI.BulletinListResponse.self
-        )
+        return try await send(request, authenticated: false)
     }
 
     func getBulletin(id: Int) async throws -> BulletinAPI.BulletinDetail {
-        try await get(path: "/bulletins/\(id)", returning: BulletinAPI.BulletinDetail.self)
+        try await send(BackendRequest("GET", segments: ["bulletins", String(id)]), authenticated: false)
     }
 
     func getSubscriptions() async throws -> BulletinAPI.SubscriptionsResponse {
-        return try await get(
-            path: "/bulletin-subscriptions",
-            returning: BulletinAPI.SubscriptionsResponse.self
-        )
+        try await send(BackendRequest("GET", "bulletin-subscriptions"), authenticated: true)
     }
 
+    /// Replaces this device's rules: a rule keeps its row by its `client_id`.
     func putSubscriptions(
         rules: [BulletinAPI.SubscriptionRule]
     ) async throws -> BulletinAPI.SubscriptionsResponse {
-        let body = BulletinAPI.SubscriptionsPutRequest(rules: rules)
-        return try await put(
-            path: "/bulletin-subscriptions",
-            body: body,
-            returning: BulletinAPI.SubscriptionsResponse.self
-        )
-    }
-
-    private func get<Response: Decodable>(
-        path: String,
-        query: [URLQueryItem] = [],
-        returning _: Response.Type
-    ) async throws -> Response {
-        let baseURL = baseURLProvider()
-        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: query)
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        await applyAuth(to: &request)
-        let data = try await execute(request)
-        return try decode(data, path: path)
-    }
-
-    private func put<Request: Encodable, Response: Decodable>(
-        path: String,
-        body: Request,
-        returning _: Response.Type
-    ) async throws -> Response {
-        let baseURL = baseURLProvider()
-        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        await applyAuth(to: &request)
+        let request: BackendRequest
         do {
-            request.httpBody = try Self.encoder.encode(body)
-        } catch {
+            request = try BackendRequest("PUT", "bulletin-subscriptions")
+                .json(BulletinAPI.SubscriptionsPutRequest(rules: rules))
+        } catch PushAPIError.encodingFailed(let error) {
             throw BulletinAPIError.encodingFailed(error)
         }
-        let data = try await execute(request)
-        return try decode(data, path: path)
+        return try await send(request, authenticated: true)
     }
 
-    private func applyAuth(to request: inout URLRequest) async {
-        if let bearer = await authHeaderProvider(), !bearer.isEmpty {
-            request.setValue(bearer, forHTTPHeaderField: "Authorization")
-        }
-    }
-
-    private func execute(_ request: URLRequest) async throws -> Data {
-        let method = request.httpMethod ?? "GET"
-        let host = request.url?.host ?? "?"
-        let path = request.url?.path ?? "?"
-        logger.info("Bulletin.API → \(method, privacy: .public) \(host, privacy: .public)\(path, privacy: .public)")
-        let data: Data
-        let response: URLResponse
+    private func send<Response: Decodable>(
+        _ request: BackendRequest, authenticated: Bool
+    ) async throws -> Response {
+        var request = request
+        request.authenticated = authenticated
+        request.sendsWithoutSession = true
         do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            logger.error("Bulletin.API ✗ \(method, privacy: .public) \(host, privacy: .public)\(path, privacy: .public) — \(error.localizedDescription, privacy: .private)")
-            throw error
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw BulletinAPIError.invalidResponse
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
-            logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(path, privacy: .public): \(snippet, privacy: .private)")
-            APIVersionGate.shared.note(statusCode: http.statusCode)
-            throw BulletinAPIError.httpStatus(http.statusCode, body: snippet)
-        }
-        logger.info("Bulletin.API ← \(http.statusCode, privacy: .public) \(path, privacy: .public) (\(data.count, privacy: .public)B)")
-        return data
-    }
-
-    private func decode<Response: Decodable>(_ data: Data, path: String) throws -> Response {
-        do {
-            return try Self.decoder.decode(Response.self, from: data)
-        } catch {
-            logger.error("Bulletin.API decode failed path=\(path, privacy: .public) error=\(String(describing: error), privacy: .private)")
+            return try await backend.send(request, as: Response.self)
+        } catch PushAPIError.httpStatus(let code, let body, _) {
+            throw BulletinAPIError.httpStatus(code, body: body)
+        } catch PushAPIError.decodingFailed(let error) {
             throw BulletinAPIError.decodingFailed(error)
-        }
-    }
-
-    private static func resolveURL(baseURL: URL, path: String, query: [URLQueryItem]) throws -> URL {
-        let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let full = baseURL.appendingPathComponent(trimmed)
-        guard var components = URLComponents(url: full, resolvingAgainstBaseURL: false) else {
+        } catch PushAPIError.invalidResponse {
             throw BulletinAPIError.invalidResponse
         }
-        if !query.isEmpty {
-            components.queryItems = query
-        }
-        guard let url = components.url else {
-            throw BulletinAPIError.invalidResponse
-        }
-        return url
     }
-
-    private static func defaultSession() -> URLSession {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 30
-        config.waitsForConnectivity = false
-        config.httpAdditionalHeaders = [
-            "User-Agent": "TigerDuck-iOS/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")"
-        ]
-        return URLSession(configuration: config)
-    }
-
-    private static let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }()
-
-    private static let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601WithFractionalSecondsFallback
-        return decoder
-    }()
 }
 
 enum BulletinAPIError: Error, LocalizedError {

@@ -43,9 +43,9 @@ struct AddCourseSheet: View {
     }
 
     private var fetchCatalog: CourseSearchModel.FetchCatalog {
-        let client = CourseCatalogClient(authHeaderProvider: { [atm = appState.authTokenManager] in
-            await atm.authorizationHeader()
-        })
+        let client = CourseCatalogClient(backend: BackendClient(
+            session: BackendClient.catalogSession, auth: appState.authTokenManager.backendAuth
+        ))
         return { @MainActor in try await client.fetch(semester: $0, language: $1, etag: $2) }
     }
 

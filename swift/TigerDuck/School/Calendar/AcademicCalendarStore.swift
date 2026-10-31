@@ -70,30 +70,21 @@ final class AcademicCalendarStore: AccountScoped {
 
     private func performRefresh() async -> Bool {
         let generation = endpointGeneration
-        let url = PushServerConfig.resolveServerURL()
-            .appendingPathComponent("calendar")
-            .appendingPathComponent("semesters")
-        var request = URLRequest(url: url)
+        var request = BackendRequest("GET", "calendar", "semesters")
+        request.authenticated = false
         // The ETag is ours to send; URLCache would serve its copy for the feed's max-age and hide a change.
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.accepting = [304]
         let tag = Defaults[.academicCalendarETag]
         if !tag.isEmpty {
-            request.setValue(tag, forHTTPHeaderField: "If-None-Match")
+            request.headers["If-None-Match"] = tag
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else { return false }
-            ServerStatusTracker.shared.noteBackendReachable(
-                http.statusCode == 304 || (200..<300).contains(http.statusCode)
-            )
+            let response = try await BackendClient(session: .shared).send(request)
+            let (data, http) = (response.data, response.http)
+            ServerStatusTracker.shared.noteBackendReachable(true)
             if http.statusCode == 304 { return false }
-            guard (200..<300).contains(http.statusCode) else {
-                logger.error("academic calendar HTTP \(http.statusCode, privacy: .public)")
-                APIVersionGate.shared.note(statusCode: http.statusCode)
-                return false
-            }
             let dto = try JSONDecoder().decode(AcademicCalendarDTO.self, from: data)
             let parsed = AcademicCalendar(dto: dto)
             guard generation == endpointGeneration else {
@@ -159,6 +150,17 @@ final class AcademicCalendarStore: AccountScoped {
         Defaults[.holidayOverrideEditTimes] = Defaults[.holidayOverrideEditTimes].filter { !replaced.contains($0.key) }
         NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
         return true
+    }
+
+    /// The setting the backend kept over this device's, one another device made later; it counts
+    /// as synced, not as an edit here.
+    func applyKeptNotify(_ notify: Bool, forHoliday holidayID: Int) {
+        var ids = Set(Defaults[.holidayNotifyOverrides])
+        if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }
+        Defaults[.holidayOverrideEditTimes][String(holidayID)] = nil
+        guard ids != Set(Defaults[.holidayNotifyOverrides]) else { return }
+        Defaults[.holidayNotifyOverrides] = ids.sorted()
+        NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
     }
 
     func beginHolidayUpload() { pendingHolidayUploads += 1 }

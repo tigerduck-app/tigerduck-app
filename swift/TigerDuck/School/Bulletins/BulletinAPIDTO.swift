@@ -143,6 +143,7 @@ enum BulletinAPI {
 
         enum CodingKeys: String, CodingKey {
             case id
+            case clientId = "client_id"
             case name
             case orgs
             case tags

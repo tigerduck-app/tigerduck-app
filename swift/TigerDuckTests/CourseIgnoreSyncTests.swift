@@ -147,7 +147,7 @@ struct CourseIgnoreCoordinatorTests {
         }
 
         func answer(_ path: String, status: Int = 200) {
-            let body = #"{"id":1,"color_hex":null,"custom_names":{},"ignore_assignments":true,"updated_at":"2026-10-13T00:00:00+00:00"}"#
+            let body = #"{"id":1,"color_hex":null,"custom_names":{},"ignore_assignments":true,"updated_at":"2026-10-13T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"#
             SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(body.utf8)), for: url(path))
         }
 
@@ -157,7 +157,7 @@ struct CourseIgnoreCoordinatorTests {
         }
     }
 
-    private static let path = "sync/courses/1151CS1001301/override"
+    private static let path = "sync/courses/client:1151:CS1001301/override"
 
     private static func makeCoordinator(
         _ backend: Backend,
@@ -234,10 +234,14 @@ struct CourseIgnoreCoordinatorTests {
 
     @Test("A setting goes out only with both switches on and the re-enabled Assignments switch's check settled")
     func settingsGoOutWithBothSwitchesOnAndNoCheckPending() {
-        #expect(CloudSyncCoordinator.sendsCourseIgnores(assignments: true, courses: true, pendingChecks: ["courses"]))
-        #expect(!CloudSyncCoordinator.sendsCourseIgnores(assignments: true, courses: false, pendingChecks: []))
-        #expect(!CloudSyncCoordinator.sendsCourseIgnores(assignments: false, courses: true, pendingChecks: []))
-        #expect(!CloudSyncCoordinator.sendsCourseIgnores(assignments: true, courses: true, pendingChecks: ["assignments"]))
+        func sends(assignments: Bool, courses: Bool, pendingChecks: Set<String>) -> Bool {
+            let on = [assignments ? "assignments" : nil, courses ? "courses" : nil].compactMap { $0 }
+            return SyncPolicy(cloudSyncEnabled: true, switchedOn: Set(on), pendingChecks: pendingChecks).sendsCourseIgnores
+        }
+        #expect(sends(assignments: true, courses: true, pendingChecks: ["courses"]))
+        #expect(!sends(assignments: true, courses: false, pendingChecks: []))
+        #expect(!sends(assignments: false, courses: true, pendingChecks: []))
+        #expect(!sends(assignments: true, courses: true, pendingChecks: ["assignments"]))
     }
 
     @Test("An answer without the setting, from a backend that predates it, is a refusal and parks it after five")
@@ -262,7 +266,7 @@ struct CourseIgnoreCoordinatorTests {
         let backend = Backend()
         for _ in 0..<SyncOutbox.maxAttempts {
             backend.answer(Self.path, status: 404)
-            backend.answer("sync/courses/1151EE2005301/override", status: 404)
+            backend.answer("sync/courses/client:1151:EE2005301/override", status: 404)
         }
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",

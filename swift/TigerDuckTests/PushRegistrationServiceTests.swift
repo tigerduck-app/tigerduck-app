@@ -69,7 +69,7 @@ struct PushRegistrationServiceTests {
     private static func expectRefusedAttempt(_ baseURL: URL) {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: announceURL(baseURL))
         SettingsAPIStub.enqueue(
-            .init(statusCode: 401, body: Data(#"{"detail":"session_revoked"}"#.utf8)),
+            .init(statusCode: 401, body: Data(#"{"error":"session_revoked","message":"session_revoked"}"#.utf8)),
             for: registerURL(baseURL)
         )
     }
@@ -494,7 +494,7 @@ struct PushRegistrationServiceTests {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let service = Self.makeService(baseURL: baseURL)
             SettingsAPIStub.enqueue(
-                .init(statusCode: 500, body: Data(#"{"detail":"internal_error"}"#.utf8)),
+                .init(statusCode: 500, body: Data(#"{"error":"internal_error","message":"internal_error"}"#.utf8)),
                 for: Self.preferencesURL(baseURL)
             )
 

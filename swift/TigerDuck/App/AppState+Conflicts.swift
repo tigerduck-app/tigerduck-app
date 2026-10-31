@@ -19,29 +19,21 @@ extension AppState {
                 syncAssignmentOverride(moodleId: c.id, status: c.localStatus)
             }
         } else {
-            let serverArchived = pendingSyncServerArchived
-            let serverCompleted = pendingSyncServerCompleted
+            let coordinator = cloudSyncCoordinator
+            let push = pushCoordinator
+            let isCurrent = authService.session.currentCheck()
             Task { [weak self] in
-                guard let self else { return }
-                let inFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
-                let protectedOverrides = pendingOverrides.union(inFlight)
-                let safeArchived = Self.mergedMarks(
-                    server: serverArchived,
-                    local: AssignmentStore.shared.loadArchivedAssignmentIds(),
-                    protected: protectedOverrides
+                await AssignmentMarksReconciler.keepServerSide(
+                    read: { ServerMarks(try await push.fetchFullSync()) },
+                    protected: { [weak self] in
+                        await coordinator.pendingAssignmentOverrideIds().union(self?.pendingOverrides ?? [])
+                    },
+                    isCurrent: isCurrent,
+                    assignments: .shared
                 )
-                let safeCompleted = Self.mergedMarks(
-                    server: serverCompleted,
-                    local: AssignmentStore.shared.loadLocallyCompletedAssignmentIds(),
-                    protected: protectedOverrides
-                )
-                AssignmentStore.shared.replaceArchivedAssignmentIds(safeArchived)
-                AssignmentStore.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
             }
         }
         syncConflicts = []
-        pendingSyncServerArchived = []
-        pendingSyncServerCompleted = []
     }
 
     static func syncConflictAlertIsPresented(_ conflicts: Binding<[SyncConflictItem]>) -> Binding<Bool> {
@@ -85,42 +77,27 @@ extension AppState {
     static let reenableCategories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
 
     static func switchedOnCategories() -> Set<String> {
-        var categories: Set<String> = []
-        if Defaults[.syncCourses] { categories.insert("courses") }
-        if Defaults[.syncCourseColors] { categories.insert("course_colors") }
-        if Defaults[.syncCourseNames] { categories.insert("course_names") }
-        if Defaults[.syncAssignments] { categories.insert("assignments") }
-        return categories
+        SyncPolicy.current.switchedOn
     }
 
-    func checkPendingConflicts(retriesLeft: Int = 2) {
-        checkPendingConflicts(retriesLeft: retriesLeft, isRetry: false)
-    }
-
-    func checkPendingConflicts(retriesLeft: Int, isRetry: Bool) {
+    func checkPendingConflicts() {
         let pending = Self.categoriesToCheck(
             pending: Defaults[.pendingConflictCategories], answering: useLocalHold.held
         )
         let ticket = authService.session.ticket
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
-            if isRetry { endConflictCheck(checked: pending, startedIn: ticket) }
             return
         }
-        if !isRetry {
-            guard !isCheckingConflicts else {
-                AppLogger.sync.info("[reenable] checkPendingConflicts skipped — already in flight")
-                return
-            }
-            isCheckingConflicts = true
+        guard !isCheckingConflicts else {
+            AppLogger.sync.info("[reenable] checkPendingConflicts skipped — already in flight")
+            return
         }
+        isCheckingConflicts = true
         AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.sorted(), privacy: .public)")
         Task {
-            var handedOffToRetry = false
             defer {
-                if !handedOffToRetry {
-                    Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: ticket) }
-                }
+                Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: ticket) }
             }
             do {
                 let (json, courseDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
@@ -172,7 +149,7 @@ extension AppState {
                     let overrides = json["course_overrides"] as? [[String: Any]] ?? []
                     var moodleIdToNo: [String: String] = [:]
                     for c in coursesArray {
-                        guard let mId = c["moodle_id"] as? String ?? (c["moodle_id"] as? Int).map(String.init) else { continue }
+                        guard let mId = Self.overrideIdentity(c) else { continue }
                         if let courseNo = c["course_no"] as? String, !courseNo.isEmpty {
                             moodleIdToNo[mId] = courseNo
                         }
@@ -183,8 +160,8 @@ extension AppState {
                         let localColorMap = TigerDuckTheme.courseColorMap
                         var colorMismatches: [String] = []
                         for o in overrides {
-                            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
-                                  let courseNo = moodleIdToNo[mId],
+                            guard let mId = Self.overrideIdentity(o),
+                                  let courseNo = o["course_no"] as? String ?? moodleIdToNo[mId],
                                   let serverHex = o["color_hex"] as? String, !serverHex.isEmpty else { continue }
                             let localHex = localColorMap[courseNo].map { String(format: "#%06X", $0) }
                             if localHex != serverHex {
@@ -284,17 +261,6 @@ extension AppState {
             } catch {
                 conflictCheckRetry.noteFailure(at: Date(), signIn: ticket)
                 AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .private) — pending kept for retry")
-                if case PushAPIError.httpStatus(401, _, let sent) = error, retriesLeft > 0 {
-                    let reloginOk = await attemptBackendRelogin(replacing: sent?.value)
-                    if reloginOk {
-                        AppLogger.sync.info("[reenable] relogin succeeded, retrying conflict check")
-                        try? await Task.sleep(for: .milliseconds(500))
-                        handedOffToRetry = true
-                        await MainActor.run {
-                            self.checkPendingConflicts(retriesLeft: retriesLeft - 1, isRetry: true)
-                        }
-                    }
-                }
             }
         }
     }
@@ -306,8 +272,8 @@ extension AppState {
         var mismatches: [String] = []
         var serverNosWithNames = Set<String>()
         for o in overrides {
-            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
-                  let courseNo = courseNos[mId],
+            guard let mId = overrideIdentity(o),
+                  let courseNo = o["course_no"] as? String ?? courseNos[mId],
                   let serverNames = (o["custom_names"] as? [String: String])?.filter({ !$0.value.isEmpty }),
                   !serverNames.isEmpty else { continue }
             serverNosWithNames.insert(courseNo)
@@ -521,7 +487,7 @@ extension AppState {
     }
 
     private func sendLocalCourses(isCurrent: () -> Bool) async throws {
-        guard CourseUploadPolicy.uploadsCourses else { return }
+        guard SyncPolicy.current.uploadsCourses else { return }
         let terms = SemesterCatalog.availableSemesters().map { semester in
             (semester: semester,
              courses: CourseStore.shared.loadCourses(semester: semester)
@@ -541,16 +507,19 @@ extension AppState {
     private func queueLocalEdits(of conflict: ReenableConflict) -> [Task<Void, Never>] {
         var queued: [Task<Void, Never>?] = []
         if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
+            let terms = SemesterCatalog.availableSemesters().map { ($0, CourseStore.shared.loadCourses(semester: $0)) }
             let moodleIdByCourseNo = Dictionary(
-                SemesterCatalog.availableSemesters()
-                    .flatMap { CourseStore.shared.loadCourses(semester: $0) }
-                    .compactMap { c in c.moodleIdNumber.map { (c.courseNo, $0) } },
+                terms.flatMap(\.1).compactMap { c in c.moodleIdNumber.map { (c.courseNo, $0) } },
                 uniquingKeysWith: { first, _ in first })
             if conflict.categories.contains("course_colors") {
+                let identities = terms.flatMap { term in
+                    term.1.map { ($0.courseNo, Self.colorIdentity(of: $0, semester: term.0)) }
+                }
+                let identityByCourseNo = moodleIdByCourseNo.merging(identities, uniquingKeysWith: { first, _ in first })
                 let colorMap = TigerDuckTheme.courseColorMap
                 for (courseNo, hex) in colorMap {
-                    guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
-                    queued += syncCourseOverride(moodleCourseId: moodleId, colorHex: String(format: "#%06X", hex))
+                    guard let identity = identityByCourseNo[courseNo] else { continue }
+                    queued += syncCourseOverride(moodleCourseId: identity, colorHex: String(format: "#%06X", hex))
                 }
             }
             if conflict.categories.contains("course_names") {
@@ -657,22 +626,24 @@ extension AppState {
             guard !courses.isEmpty || !stubs.isEmpty else { continue }
             if !courses.isEmpty {
                 guard isCurrent() else { throw CancellationError() }
-                try await backend.deleteAllCourses(semester: semester)
+                try await backend.deleteAllCourses(semester: semester, madeAt: Date())
             }
             guard isCurrent() else { throw CancellationError() }
-            try await backend.uploadCourses(courseUploadRequest(courses + stubs, semester: semester, forceKeys: []))
+            try await backend.uploadCourses(courseUploadRequest(courses + stubs, semester: semester), addedAt: nil)
             for courseNo in hiddenNos.sorted() {
                 guard isCurrent() else { throw CancellationError() }
-                try await backend.deleteCourse(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo))
+                try await backend.deleteCourse(
+                    courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), madeAt: Date()
+                )
             }
         }
     }
 }
 
 protocol CourseSyncBackend {
-    func deleteAllCourses(semester: String?) async throws
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws
-    func deleteCourse(courseKey: String) async throws
+    func deleteAllCourses(semester: String?, madeAt: Date) async throws
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?) async throws
+    func deleteCourse(courseKey: String, madeAt: Date) async throws
 }
 
 extension PushCoordinator: CourseSyncBackend {}

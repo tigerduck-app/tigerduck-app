@@ -13,7 +13,7 @@ struct PushAPIRefusalTests {
             baseURLProvider: { baseURL }, session: URLSession(configuration: config), authHeaderProvider: { "Bearer B1" }
         )
         SettingsAPIStub.enqueue(
-            .init(statusCode: 401, body: Data(#"{"detail":"session_revoked"}"#.utf8)),
+            .init(statusCode: 401, body: Data(#"{"error":"session_revoked","message":"revoked"}"#.utf8)),
             for: baseURL.appendingPathComponent("sync/revision")
         )
 

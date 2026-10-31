@@ -107,16 +107,10 @@ final class NetworkMonitor {
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.timeoutInterval = captiveProbeTimeout
         request.setValue(captiveProbeUserAgent, forHTTPHeaderField: "User-Agent")
-
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = captiveProbeTimeout
-        config.urlCache = nil
-        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        let session = URLSession(configuration: config)
-        defer { session.invalidateAndCancel() }
+        request.httpShouldHandleCookies = false
 
         do {
-            let (data, response) = try await session.data(
+            let (data, response) = try await URLSession.shared.data(
                 for: request,
                 delegate: NoRedirectProbeDelegate(),
             )

@@ -26,18 +26,23 @@ final class BulletinSubscriptionsStore {
 
     private var apiClient: BulletinAPIClient
     private let usesInjectedClient: Bool
+    @ObservationIgnored private var saving: Task<Void, Never>?
+    @ObservationIgnored private var saveAsked = false
+    private let retryDelay: @Sendable (Duration) async -> Void
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Subs")
 
-    init(apiClient: BulletinAPIClient? = nil) {
+    init(
+        apiClient: BulletinAPIClient? = nil,
+        retryDelay: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) {
         self.apiClient = apiClient ?? BulletinAPIClient()
         self.usesInjectedClient = apiClient != nil
+        self.retryDelay = retryDelay
     }
 
     func configure(authTokenManager: AuthTokenManager) {
         guard !usesInjectedClient else { return }
-        apiClient = BulletinAPIClient(
-            authHeaderProvider: { await authTokenManager.authorizationHeader() }
-        )
+        apiClient = BulletinAPIClient(backend: BackendClient(auth: authTokenManager.backendAuth))
     }
 
     func load() async {
@@ -47,10 +52,13 @@ final class BulletinSubscriptionsStore {
             return
         }
         loadState = .loading
+        let before = pending
         do {
             let response = try await apiClient.getSubscriptions()
-            pending = response.items
-            isDirty = false
+            if pending == before {
+                pending = response.items
+                isDirty = false
+            }
             loadState = .loaded
             logger.info("subscriptions loaded count=\(response.items.count, privacy: .public)")
         } catch {
@@ -59,19 +67,42 @@ final class BulletinSubscriptionsStore {
         }
     }
 
+    /// One save goes out at a time. An edit made while one is out stays on screen and goes in the
+    /// next save, which starts once that reply is in; a reply replaces the rules only when no edit
+    /// came after what it saved.
     func save() async {
+        saveAsked = true
+        if let saving {
+            await saving.value
+            return
+        }
+        let task = Task { await self.saveWhileAsked() }
+        saving = task
+        await task.value
+        saving = nil
+    }
+
+    private func saveWhileAsked() async {
+        while saveAsked {
+            saveAsked = false
+            await saveOnce()
+        }
+    }
+
+    private func saveOnce() async {
         saveState = .saving
-        logger.info("subscription save starting ruleCount=\(self.pending.count, privacy: .public)")
-        let snapshotClientIds = pending.map(\.clientId)
+        let sent = pending
+        logger.info("subscription save starting ruleCount=\(sent.count, privacy: .public)")
         let maxAttempts = 4
         for attempt in 1...maxAttempts {
             do {
-                let response = try await apiClient.putSubscriptions(rules: pending)
-                var preserved = response.items
-                for (i, oldId) in snapshotClientIds.enumerated() where i < preserved.count {
-                    preserved[i].clientId = oldId
+                let response = try await apiClient.putSubscriptions(rules: sent)
+                guard pending == sent else {
+                    logger.info("subscription save landed under a newer edit; saving that next")
+                    saveAsked = true
+                    return
                 }
-                pending = preserved
+                pending = response.items
                 isDirty = false
                 saveState = .saved
                 logger.info("subscription save success serverCount=\(response.items.count, privacy: .public)")
@@ -82,16 +113,16 @@ final class BulletinSubscriptionsStore {
                 }
                 let delayMs = 250 * (1 << (attempt - 1))
                 logger.info("PUT subscriptions 404 (attempt \(attempt, privacy: .public)); retrying in \(delayMs, privacy: .public)ms")
-                try? await Task.sleep(for: .milliseconds(delayMs))
+                await retryDelay(.milliseconds(delayMs))
                 if Task.isCancelled { return }
             } catch {
                 logger.error("subscription save failed: \(error.localizedDescription, privacy: .private)")
-                saveState = .failed(error.localizedDescription)
+                if pending == sent { saveState = .failed(error.localizedDescription) }
                 return
             }
         }
         logger.error("subscription save gave up after \(maxAttempts, privacy: .public) 404 attempts")
-        saveState = .failed(String(localized: "bulletin_subscription_device_not_registered"))
+        if pending == sent { saveState = .failed(String(localized: "bulletin_subscription_device_not_registered")) }
     }
 
     func makeNewRule() -> BulletinAPI.SubscriptionRule {

@@ -3,7 +3,7 @@
 Apple clients for TigerDuck, an NTUST campus assistant: the iOS app with a native macOS build,
 the Apple Watch app, and widget and Live Activity extensions, all in `swift/`. `api-poc/` holds
 Python probes for NTUST and Moodle endpoints. The push and sync backend is the separate
-`tigerduck-app/tigerduck-backend` repository, reached at `https://api.tigerduck.app/v3/*`.
+`tigerduck-app/tigerduck-backend` repository, reached at `https://api.tigerduck.app/v4/*`.
 
 `swift/TigerDuck/`, `swift/TigerDuck/School/`, `swift/TigerDuck/Backend/`, `swift/TigerDuck/Mail/`,
 `swift/TigerDuck/Migrations/`, `swift/TigerDuck/Devices/LiveActivity/` and `api-poc/api/` have their

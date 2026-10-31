@@ -220,7 +220,9 @@ actor PushRegistrationService {
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .private)")
     }
 
-    func uploadHolidayOverride(holidayID: Int, notify: Bool, madeAt stamp: Date?) async throws {
+    func uploadHolidayOverride(
+        holidayID: Int, notify: Bool, madeAt stamp: Date
+    ) async throws -> PushAPI.HolidayOverrideResponse {
         try await apiClient.putHolidayOverride(holidayID: holidayID, notify: notify, madeAt: stamp)
     }
 
@@ -424,7 +426,7 @@ actor PushRegistrationService {
             try await apiClient.unregisterDevice(deviceId: identity.uuid, at: baseURL)
             logger.info("unregistered device on server")
             return true
-        } catch PushAPIError.httpStatus(404, _, _) {
+        } catch let error as PushAPIError where error.code == "device_not_found" {
             logger.info("device already unregistered on server")
             return true
         } catch {

@@ -20,7 +20,7 @@ struct KeepLocalCoursesTests {
         try await AppState.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
         #expect(server.rows == ["client:1151:CS1"])
 
-        try await server.uploadCourses(AppState.courseUploadRequest(roster, semester: "1151", forceKeys: []))
+        try await server.uploadCourses(AppState.courseUploadRequest(roster, semester: "1151"), addedAt: nil)
         #expect(server.rows == ["client:1151:CS1"])
     }
 
@@ -37,8 +37,8 @@ struct KeepLocalCoursesTests {
         try await AppState.keepLocalCourses([("1151", cached)], hiding: ["1151:CS2"], on: server)
 
         try await server.uploadCourses(AppState.courseUploadRequest(
-            cached + Self.roster("CS2"), semester: "1151", forceKeys: []
-        ))
+            cached + Self.roster("CS2"), semester: "1151"
+        ), addedAt: nil)
         #expect(server.rows == cachedKeys)
     }
 
@@ -49,8 +49,8 @@ struct KeepLocalCoursesTests {
         try await AppState.keepLocalCourses([("1151", Self.roster("CS1"))], hiding: ["CS2"], on: server)
 
         try await server.uploadCourses(AppState.courseUploadRequest(
-            Self.roster("CS1", "CS2"), semester: "1151", forceKeys: []
-        ))
+            Self.roster("CS1", "CS2"), semester: "1151"
+        ), addedAt: nil)
         #expect(server.rows == ["client:1151:CS1"])
     }
 
@@ -65,7 +65,7 @@ struct KeepLocalCoursesTests {
         }
         try await AppState.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
 
-        try await server.uploadCourses(AppState.courseUploadRequest(roster, semester: "1151", forceKeys: []))
+        try await server.uploadCourses(AppState.courseUploadRequest(roster, semester: "1151"), addedAt: nil)
         #expect(server.rows == ["client:1151:CS1"])
     }
 
@@ -112,7 +112,7 @@ private final class FakeCourseServer: CourseSyncBackend {
         self.tombstones = tombstones
     }
 
-    func deleteAllCourses(semester: String?) async throws {
+    func deleteAllCourses(semester: String?, madeAt: Date) async throws {
         guard let semester else {
             fullResets += 1
             rows = []
@@ -126,14 +126,14 @@ private final class FakeCourseServer: CourseSyncBackend {
         for key in removed { tombstones[key] = true }
     }
 
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws {
-        for key in request.forceKeys { tombstones[key] = nil }
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?) async throws {
+        for add in request.adds ?? [] { tombstones[add.courseKey] = nil }
         let keys = request.courses.map { "client:\($0.semester):\($0.courseNo)" }
         for key in keys where tombstones[key] == true { tombstones[key] = nil }
         rows.formUnion(keys.filter { tombstones[$0] == nil })
     }
 
-    func deleteCourse(courseKey: String) async throws {
+    func deleteCourse(courseKey: String, madeAt: Date) async throws {
         if failingDeletes > 0 {
             failingDeletes -= 1
             throw URLError(.networkConnectionLost)

@@ -47,7 +47,7 @@ which a school sign-out keeps. School Mail's keys live in `MailPreferences` and
 | Store | Name | Scope | Cleared in |
 |---|---|---|---|
 | keychain | `accessTokenKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `clearTokens` |
-| keychain | `departingSessionKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `storeDepartingSessions` |
+| keychain | `departingSessionKey` | school | `swift/TigerDuck/Backend/Auth/DepartingSessionList.swift` `store` |
 | keychain | `expiresAtKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `clearTokens` |
 | keychain | `libraryPassword` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `forgetAccount` |
 | keychain | `libraryToken` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `clearToken` |

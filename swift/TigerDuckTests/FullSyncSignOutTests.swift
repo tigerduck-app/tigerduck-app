@@ -275,17 +275,15 @@ struct ReenableMarkTests {
     }
 
     private static func recordSync(
-        pendingChecks: Set<String> = [], marksLeftFor reason: AppState.MarksLeftReason? = nil
+        pendingChecks: Set<String> = [], marksLeftFor reason: SyncPolicy.MarksLeftReason? = nil
     ) {
-        AppState.recordFullSync(coursesReset: .distantPast, taken: AppState.categoriesTaken(
-            switchedOn: AppState.switchedOnCategories(), pendingChecks: pendingChecks, marksLeftFor: reason
-        ))
+        AppState.recordFullSync(coursesReset: .distantPast, taken: SyncPolicy(cloudSyncEnabled: true, switchedOn: AppState.switchedOnCategories(), pendingChecks: pendingChecks).categoriesTaken(marksLeftFor: reason))
     }
 
     @Test("A full sync takes a category's data unless a pending check or an edit during the fetch holds it back")
     func takenCategoriesFollowTheSyncsSkips() {
-        let taken = { (pending: Set<String>, reason: AppState.MarksLeftReason?) in
-            AppState.categoriesTaken(switchedOn: Self.categories, pendingChecks: pending, marksLeftFor: reason)
+        let taken = { (pending: Set<String>, reason: SyncPolicy.MarksLeftReason?) in
+            SyncPolicy(cloudSyncEnabled: true, switchedOn: Self.categories, pendingChecks: pending).categoriesTaken(marksLeftFor: reason)
         }
         #expect(taken([], nil) == Self.categories)
         #expect(taken(["course_names"], nil) == ["courses", "assignments"])
@@ -295,7 +293,7 @@ struct ReenableMarkTests {
         #expect(taken(["assignments"], .conflictCheckPending) == Self.categories.subtracting(["assignments"]))
         #expect(taken([], .switchedOff) == Self.categories.subtracting(["assignments"]))
         #expect(taken([], .uploadedLocalMarks) == Self.categories)
-        #expect(AppState.categoriesTaken(switchedOn: ["courses"], pendingChecks: [], marksLeftFor: nil) == ["courses"])
+        #expect(SyncPolicy(cloudSyncEnabled: true, switchedOn: ["courses"], pendingChecks: []).categoriesTaken(marksLeftFor: nil) == ["courses"])
     }
 
     @Test("Use Local keeps every category it answers pending until it is done with it, and only a relaunch asks again")
@@ -307,14 +305,10 @@ struct ReenableMarkTests {
 
         #expect(pending == Self.categories)
         #expect(held == pending)
-        #expect(AppState.categoriesTaken(
-            switchedOn: Self.categories,
-            pendingChecks: pending,
-            marksLeftFor: AppState.reasonToLeaveMarks(
+        #expect(SyncPolicy(cloudSyncEnabled: true, switchedOn: Self.categories, pendingChecks: pending).categoriesTaken(marksLeftFor: SyncPolicy.reasonToLeaveMarks(
                 syncsMarks: true, conflictCheckPending: pending.contains("assignments"),
                 uploadedLocalMarks: false, editedDuringFetch: false
-            )
-        ).isEmpty)
+            )).isEmpty)
         #expect(AppState.categoriesToCheck(pending: pending, answering: hold.held).isEmpty)
         #expect(AppState.categoriesToCheck(pending: pending, answering: AppState.UseLocalHold().held) == pending)
 
@@ -408,7 +402,7 @@ struct ReenableMarkTests {
     func aSyncWithASwitchOffLeavesItsCategoryUnchecked(category: String) async {
         await Self.withSyncProgress {
             for entry in Self.switches where entry.category == category { Defaults[entry.key] = false }
-            Self.recordSync(marksLeftFor: AppState.reasonToLeaveMarks(
+            Self.recordSync(marksLeftFor: SyncPolicy.reasonToLeaveMarks(
                 syncsMarks: Defaults[.syncAssignments], conflictCheckPending: false,
                 uploadedLocalMarks: false, editedDuringFetch: false
             ))
@@ -438,7 +432,7 @@ struct ReenableMarkTests {
             for category in Self.categories { AppState.markForReenableCheck(category, signedIn: true) }
 
             #expect(Defaults[.pendingConflictCategories].isEmpty)
-            #expect(AppState.reasonToLeaveMarks(
+            #expect(SyncPolicy.reasonToLeaveMarks(
                 syncsMarks: true,
                 conflictCheckPending: Defaults[.pendingConflictCategories].contains("assignments"),
                 uploadedLocalMarks: false,

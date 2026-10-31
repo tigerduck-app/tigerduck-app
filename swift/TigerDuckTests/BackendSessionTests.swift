@@ -361,7 +361,7 @@ struct BackendTokenRefreshTests {
     @Test("a refresh the backend turned down takes its send off the count again")
     func aTurnedDownSendIsNotCounted() async throws {
         let backend = BackendFixture()
-        SettingsAPIStub.enqueue(.init(statusCode: 403, body: Data(#"{"detail":"x"}"#.utf8)), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 403, body: Data(#"{"error":"x","message":"x"}"#.utf8)), for: backend.refreshURL)
 
         #expect(await backend.manager.validAccessToken() == nil)
 
@@ -421,7 +421,7 @@ struct BackendTokenRefreshTests {
     func rateLimitedRefreshesUseNothing() async throws {
         let backend = BackendFixture()
         for _ in 0..<3 {
-            SettingsAPIStub.enqueue(.init(statusCode: 429, body: Data(#"{"detail":"x"}"#.utf8)), for: backend.refreshURL)
+            SettingsAPIStub.enqueue(.init(statusCode: 429, body: Data(#"{"error":"x","message":"x"}"#.utf8)), for: backend.refreshURL)
         }
         SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
 
@@ -529,7 +529,7 @@ struct BackendTokenRefreshTests {
             relogins.increment()
             return false
         }
-        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(#"{"detail":"x"}"#.utf8)), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(#"{"error":"x","message":"x"}"#.utf8)), for: backend.refreshURL)
 
         #expect(await backend.manager.validAccessToken() == nil)
 
@@ -547,7 +547,7 @@ struct BackendTokenRefreshTests {
             relogins.increment()
             return false
         }
-        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(#"{"detail":"x"}"#.utf8)), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(#"{"error":"x","message":"x"}"#.utf8)), for: backend.refreshURL)
 
         #expect(await backend.manager.validAccessToken() == nil)
 
@@ -567,7 +567,7 @@ struct BackendTokenRefreshTests {
                 moodlePrivateToken: nil, platform: "ios"
             )) != nil
         }
-        SettingsAPIStub.enqueue(.init(statusCode: 422, body: Data(#"{"detail":"x"}"#.utf8)), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 422, body: Data(#"{"error":"x","message":"x"}"#.utf8)), for: backend.refreshURL)
         SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
 
         #expect(await manager.validAccessToken() == "A9")
@@ -1362,7 +1362,7 @@ struct DepartingSessionTests {
     func aCleartextSessionIsRetriedOnlyWhileInUse() async throws {
         let backend = BackendFixture(
             accessTokenExpiry: Date.now.addingTimeInterval(600),
-            baseURL: URL(string: "http://settings-stub.invalid/\(UUID().uuidString)/v3")!
+            baseURL: URL(string: "http://settings-stub.invalid/\(UUID().uuidString)/v4")!
         )
         _ = await backend.manager.endSession()
         let unregistered = OSAllocatedUnfairLock(initialState: [URL]())
@@ -1652,11 +1652,15 @@ struct DepartingSessionTests {
     }
 
     @Test("the device's unregister lands when answered, or when the account has the device no more",
-          arguments: zip([204, 404, 401, 500], [true, true, false, false]))
-    func theUnregisterLandsOnlyWhenTheServerHasIt(status: Int, lands: Bool) async {
+          arguments: zip(
+            [(204, ""), (404, #"{"error":"device_not_found"}"#), (404, #"{"error":"not_found"}"#), (401, ""), (500, "")]
+                as [(status: Int, body: String)],
+            [true, true, false, false, false]
+          ))
+    func theUnregisterLandsOnlyWhenTheServerHasIt(reply: (status: Int, body: String), lands: Bool) async {
         let backend = BackendFixture()
         let registration = RegistrationFixture(manager: backend.manager)
-        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data()), for: registration.unregisterURL)
+        SettingsAPIStub.enqueue(.init(statusCode: reply.status, body: Data(reply.body.utf8)), for: registration.unregisterURL)
 
         let landed = await AuthTokenManager.$departing.withValue(.init(accessToken: "A1")) {
             await registration.service.unregisterDevice()
@@ -2262,11 +2266,11 @@ struct BackendFixture {
     }
 
     static var reuseDetected: SettingsAPIStub.StubResponse {
-        .init(statusCode: 401, body: Data(#"{"detail":"refresh_reuse_detected"}"#.utf8))
+        .init(statusCode: 401, body: Data(#"{"error":"refresh_reuse_detected","message":"refresh_reuse_detected"}"#.utf8))
     }
 
     static var sessionRevoked: SettingsAPIStub.StubResponse {
-        .init(statusCode: 401, body: Data(#"{"detail":"session_revoked"}"#.utf8))
+        .init(statusCode: 401, body: Data(#"{"error":"session_revoked","message":"session_revoked"}"#.utf8))
     }
 }
 

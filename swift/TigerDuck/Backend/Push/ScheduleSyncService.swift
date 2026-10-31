@@ -21,49 +21,46 @@ final class ScheduleSyncService {
 
     private let identity: PushIdentity
     private let apiClient: PushAPIClient
+    private let ledger: SendLedger
     private let horizonSeconds: TimeInterval
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Sync")
 
     private var inflight: Task<Void, Never>?
-    /// The list the server last took, as sent; nil while a send is out, after one failed and after
-    /// a sign-out, when the server's copy is not known.
-    private var accepted: Data?
-    /// Moved by each forget, so a send that started before one does not record its list after it.
-    private var acceptedGeneration = 0
 
     static let horizon: TimeInterval = 48 * 3600
 
     init(
         identity: PushIdentity,
         apiClient: PushAPIClient,
+        ledger: SendLedger? = nil,
         horizonHours: Double = ScheduleSyncService.horizon / 3600
     ) {
         self.identity = identity
         self.apiClient = apiClient
+        self.ledger = ledger ?? SendLedger()
         self.horizonSeconds = horizonHours * 3600
     }
 
-    func sync(inputs: Inputs, now: Date = AppClock.now(), unlessUnchanged: Bool = false) {
+    /// Sends the device's list unless the backend already holds it. A list waits for the one still
+    /// out, which it never cancels: a cancelled request may still reach the backend after it.
+    func sync(inputs: Inputs, now: Date = AppClock.now()) {
         let end = now.addingTimeInterval(horizonSeconds)
         let events = Self.buildEvents(inputs: inputs, now: now, horizonEnd: end)
         let request = PushAPI.ScheduleSyncRequest(events: events)
-        let sent = try? Self.listEncoder.encode(request)
-        if unlessUnchanged, let sent, sent == accepted {
-            logger.info("sync skipped, list unchanged")
-            return
-        }
-        logger.info("sync start events=\(events.count, privacy: .public)")
-
-        accepted = nil
-        let generation = acceptedGeneration
-        inflight?.cancel()
-        inflight = Task { [apiClient, logger] in
+        let fingerprint = SendLedger.fingerprint(of: request)
+        let previous = inflight
+        inflight = Task { [apiClient, ledger, logger] in
+            await previous?.value
             do {
-                let response = try await apiClient.syncSchedule(request)
-                logger.info(
-                    "sync ok pending=\(response.pending, privacy: .public) replaced=\(response.replaced, privacy: .public)"
-                )
-                if !Task.isCancelled, generation == self.acceptedGeneration { self.accepted = sent }
+                let sent = try await ledger.send(
+                    SendLedger.Channel.schedule, fingerprint: fingerprint, resend: .never, isCurrent: { true }
+                ) {
+                    let response = try await apiClient.syncSchedule(request)
+                    logger.info(
+                        "sync ok pending=\(response.pending, privacy: .public) replaced=\(response.replaced, privacy: .public)"
+                    )
+                }
+                if !sent { logger.info("sync skipped, list unchanged") }
             } catch {
                 logger.error("sync failed: \(error.localizedDescription, privacy: .private)")
             }
@@ -174,16 +171,11 @@ final class ScheduleSyncService {
         await inflight?.value
     }
 
+    /// A new session or device registration may reach a backend without this device's list, so
+    /// the next list goes even when unchanged.
     func forgetAcceptedList() {
-        accepted = nil
-        acceptedGeneration &+= 1
+        ledger.forget(SendLedger.Channel.schedule)
     }
-
-    private static let listEncoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-        return encoder
-    }()
 }
 
 #if os(iOS)

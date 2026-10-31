@@ -45,7 +45,7 @@ struct MarkPullGateTests {
     @Test("With the Assignments switch off, the server's marks are never applied",
           arguments: [false, true], [false, true])
     func switchOffLeavesMarks(conflictCheckPending: Bool, editedDuringFetch: Bool) {
-        let reason = AppState.reasonToLeaveMarks(
+        let reason = SyncPolicy.reasonToLeaveMarks(
             syncsMarks: false, conflictCheckPending: conflictCheckPending,
             uploadedLocalMarks: false, editedDuringFetch: editedDuringFetch
         )
@@ -54,7 +54,7 @@ struct MarkPullGateTests {
 
     @Test("With the switch on and nothing in the way, the server's marks are applied")
     func switchOnAppliesMarks() {
-        #expect(AppState.reasonToLeaveMarks(
+        #expect(SyncPolicy.reasonToLeaveMarks(
             syncsMarks: true, conflictCheckPending: false, uploadedLocalMarks: false, editedDuringFetch: false
         ) == nil)
     }

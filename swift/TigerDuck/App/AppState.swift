@@ -72,7 +72,7 @@ final class AppState {
         self.cloudSyncCoordinator = CloudSyncCoordinator(
             pushCoordinator: self.pushCoordinator,
             addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1) },
-            uploadsCourses: { CourseUploadPolicy.uploadsCourses },
+            uploadsCourses: { SyncPolicy.current.uploadsCourses },
             account: authService.session
         )
         CloudSyncCoordinator.registerShared(self.cloudSyncCoordinator)
@@ -134,6 +134,9 @@ final class AppState {
             await atm.setRefreshFailedHandler { [weak self, weak atm] in
                 await self?.attemptBackendRelogin(replacing: await atm?.storedAccessToken) ?? false
             }
+            await atm.setSignInAgainHandler { [weak self] refused in
+                await self?.attemptBackendRelogin(replacing: refused) ?? false
+            }
             await atm.setNoSessionHandler { [weak self] in
                 await self?.authService.ensureBackendSignedIn()
             }
@@ -178,7 +181,7 @@ final class AppState {
             self?.uploadAssignments(request)
         }
         revisionPoller.poll = { [weak self] in await self?.pollRevision() ?? .unchanged }
-        revisionPoller.relogin = { [weak self] in await self?.attemptBackendRelogin(replacing: $0) ?? false }
+        pushCoordinator.onCoursesUploaded = { [weak self] in self?.cloudSyncCoordinator.courseUploadLanded() }
 
         // Apply a stored in-app language override at launch so lookups use it. Skip
         // "system": apply() would remove AppleLanguages, wiping the per-app override
@@ -203,9 +206,6 @@ final class AppState {
 
     var syncConflicts: [SyncConflictItem] = []
 
-    var pendingSyncServerArchived: Set<String> = []
-    var pendingSyncServerCompleted: Set<String> = []
-
     var reenableConflict: ReenableConflict?
 
     private(set) var lastSyncSource: SyncSource = .none
@@ -217,7 +217,12 @@ final class AppState {
     var overrideEditGeneration = 0
 
     @ObservationIgnored
-    let fullSyncGate = FullSyncGate()
+    private(set) lazy var fullSyncRunner = FullSyncRunner(app: self)
+
+    var fullSyncGate: FullSyncGate { fullSyncRunner.gate }
+
+    @ObservationIgnored
+    private(set) lazy var syncTarget = SyncTarget(account: authService.session)
 
     var isCheckingConflicts = false
 

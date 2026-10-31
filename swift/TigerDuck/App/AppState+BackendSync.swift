@@ -7,257 +7,7 @@ extension AppState {
 
     @discardableResult
     func syncOverridesFromBackend(followUpIfBusy: Bool = false) async -> FullSyncOutcome {
-        guard Defaults[.cloudSyncEnabled] else { return .skipped }
-        #if os(iOS)
-        // A sync trigger can launch the app behind the lock screen, where the local marks,
-        // courses and colours cannot be opened and read as empty, and a sync would write the
-        // server's view over them. Revision polling syncs at the next return to the app.
-        guard UIApplication.shared.isProtectedDataAvailable else { return .skipped }
-        #endif
-        if fullSyncGate.isRunning {
-            AppLogger.sync.info("[syncOverrides] already in flight, follow-up: \(followUpIfBusy, privacy: .public)")
-        }
-        return await fullSyncGate.run(followUp: followUpIfBusy, mayFollow: { Defaults[.cloudSyncEnabled] }) {
-            await self.runFullSync(retried: false)
-        }
-    }
-
-    private func runFullSync(retried: Bool) async -> FullSyncOutcome {
-        let ticket = authService.session.ticket
-        await authService.ensureBackendSignedIn()
-        guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: ticket) else { return .skipped }
-        await retryUnsentEdits()
-        do {
-            #if DEBUG
-            try await ServerFailureSimulator.shared.check(.backend)
-            #endif
-            let preFetchInFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
-                .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
-            let preFetchProtected = preFetchInFlight.union(pendingOverrides)
-            let preFetchCourseOverrides = await cloudSyncCoordinator.pendingCourseOverrides()
-            let editGenerationAtFetch = overrideEditGeneration
-            let fetchedAt = Date()
-            #if os(iOS)
-            let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
-            #endif
-            let (json, fetchedDeletes) = try await cloudSyncCoordinator.courseDeletes(around: {
-                try await pushCoordinator.fetchFullSync()
-            })
-            var courseDeletes = fetchedDeletes
-            guard fullSyncMayWrite(since: ticket) else { return .skipped }
-            var changed = false
-            let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
-
-            var serverArchivedIds = Set<String>()
-            var serverCompletedIds = Set<String>()
-            for o in overridesArray {
-                guard let status = o["local_status"] as? String else { continue }
-                let moodleId: String?
-                if let mid = o["moodle_assignment_id"] as? Int {
-                    moodleId = String(mid)
-                } else if let assignPk = o["user_assignment_id"] as? Int,
-                          let assignments = json["assignments"] as? [[String: Any]] {
-                    moodleId = assignments.first(where: { ($0["id"] as? Int) == assignPk })
-                        .flatMap { $0["moodle_assignment_id"] as? Int }.map(String.init)
-                } else {
-                    moodleId = nil
-                }
-                guard let moodleId else { continue }
-                switch status {
-                case "archived", "ignored": serverArchivedIds.insert(moodleId)
-                case "locally_completed": serverCompletedIds.insert(moodleId)
-                default: break
-                }
-            }
-
-            let coursesArray = json["courses"] as? [[String: Any]] ?? []
-            let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
-            let serverIgnoredCourses = Self.serverIgnoredCourses(courseOverrides, syncsCourses: Defaults[.syncCourses])
-
-            let localArchivedIds = AssignmentStore.shared.loadArchivedAssignmentIds()
-            let localCompletedIds = AssignmentStore.shared.loadLocallyCompletedAssignmentIds()
-            let localIgnoredCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
-            let syncsMarks = Defaults[.syncAssignments]
-            let isMigrating = syncsMarks && Self.uploadsLocalMarksAsFirstSync(
-                syncedBefore: Defaults[.assignmentMarksSyncedOnce],
-                serverHasMarks: !serverArchivedIds.isEmpty || !serverCompletedIds.isEmpty
-                    || serverIgnoredCourses?.isEmpty == false,
-                localHasMarks: !localArchivedIds.isEmpty || !localCompletedIds.isEmpty || !localIgnoredCourses.isEmpty
-            )
-            if isMigrating {
-                for id in localArchivedIds { syncAssignmentOverride(moodleId: id, status: "archived") }
-                for id in localCompletedIds { syncAssignmentOverride(moodleId: id, status: "locally_completed") }
-                syncCourseIgnores(localIgnoredCourses)
-            }
-            if syncsMarks { Defaults[.assignmentMarksSyncedOnce] = true }
-
-            let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
-                .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
-            guard fullSyncMayWrite(since: ticket) else { return .skipped }
-            let takesCourses = Self.switchedOnCategories().contains("courses")
-                && !Defaults[.pendingConflictCategories].contains("courses")
-            let reset = Self.coursesReset(
-                server: Self.backendDate(json["courses_reset_at"]), lastSeen: Defaults[.lastSeenCoursesResetAt],
-                takesCourses: takesCourses
-            )
-            if takesCourses {
-                guard let settled = await settleQueuedCourseEdits(
-                    deleting: courseDeletes, reset: reset, ticket: ticket
-                ) else { return .skipped }
-                courseDeletes = settled
-                changed = reset.apply || changed
-            }
-            let courseAdds = await cloudSyncCoordinator.courseAddKeys(unlandedAt: fetchedAt)
-            guard fullSyncMayWrite(since: ticket) else { return .skipped }
-            let protectedOverrides = preFetchProtected
-                .union(pendingOverrides)
-                .union(inFlightOverrides)
-
-            let pendingConflicts = Defaults[.pendingConflictCategories]
-            let marksLeftFor = Self.reasonToLeaveMarks(
-                syncsMarks: syncsMarks && Defaults[.syncAssignments],
-                conflictCheckPending: pendingConflicts.contains("assignments"),
-                uploadedLocalMarks: isMigrating,
-                editedDuringFetch: overrideEditGeneration != editGenerationAtFetch
-            )
-            let taken = Self.categoriesTaken(
-                switchedOn: Self.switchedOnCategories(), pendingChecks: pendingConflicts, marksLeftFor: marksLeftFor
-            )
-            if let reason = marksLeftFor {
-                AppLogger.sync.info("[syncOverrides] skipping assignment overrides — \(reason.rawValue, privacy: .public)")
-            } else {
-                var conflicts: [(id: String, kind: String, label: String, local: String, server: String)] = []
-                let allIds = serverArchivedIds.union(serverCompletedIds).union(localArchivedIds).union(localCompletedIds)
-                let assignmentCache = AssignmentStore.shared.loadAssignments()
-                let assignmentsByMoodleId = Dictionary(assignmentCache.map { ($0.assignmentId, $0) }, uniquingKeysWith: { first, _ in first })
-                for id in allIds where !protectedOverrides.contains(id) {
-                    let serverStatus: String
-                    if serverArchivedIds.contains(id) { serverStatus = "ignored" }
-                    else if serverCompletedIds.contains(id) { serverStatus = "locally_completed" }
-                    else { serverStatus = "none" }
-                    let localStatus: String
-                    if localArchivedIds.contains(id) { localStatus = "ignored" }
-                    else if localCompletedIds.contains(id) { localStatus = "locally_completed" }
-                    else { localStatus = "none" }
-                    if serverStatus != localStatus && localStatus != "none" && serverStatus != "none" {
-                        let title = assignmentsByMoodleId[id]?.displayTitle ?? "ID \(id)"
-                        conflicts.append((id: id, kind: String(localized: "live_activity_status_assignment_short"), label: title, local: localStatus, server: serverStatus))
-                    }
-                }
-
-                let conflictIds = Set(conflicts.map(\.id))
-                let currentArchived = AssignmentStore.shared.loadArchivedAssignmentIds()
-                let currentCompleted = AssignmentStore.shared.loadLocallyCompletedAssignmentIds()
-                var safeArchived = Self.mergedMarks(
-                    server: serverArchivedIds.subtracting(conflictIds),
-                    local: currentArchived,
-                    protected: protectedOverrides
-                )
-                var safeCompleted = Self.mergedMarks(
-                    server: serverCompletedIds.subtracting(conflictIds),
-                    local: currentCompleted,
-                    protected: protectedOverrides
-                )
-                for c in conflicts {
-                    switch c.local {
-                    case "ignored", "archived": safeArchived.insert(c.id)
-                    case "locally_completed": safeCompleted.insert(c.id)
-                    default: break
-                    }
-                }
-                if safeArchived != currentArchived {
-                    AssignmentStore.shared.replaceArchivedAssignmentIds(safeArchived)
-                    changed = true
-                }
-                if safeCompleted != currentCompleted {
-                    AssignmentStore.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
-                    changed = true
-                }
-
-                AppLogger.sync.info("applied: \(safeArchived.count, privacy: .public) archived, \(safeCompleted.count, privacy: .public) completed, \(conflicts.count, privacy: .public) conflicts pending")
-
-                if !conflicts.isEmpty {
-                    syncConflicts = conflicts.map { SyncConflictItem(id: $0.id, kind: $0.kind, label: $0.label, localStatus: $0.local, serverStatus: $0.server) }
-                    pendingSyncServerArchived = serverArchivedIds
-                    pendingSyncServerCompleted = serverCompletedIds
-                }
-
-                if let serverIgnoredCourses, Defaults[.syncCourses] {
-                    changed = applyIgnoredCourses(
-                        serverIgnoredCourses, decided: Self.serverDecidedCourses(courseOverrides),
-                        coursesArray: coursesArray, protected: protectedOverrides, deleting: courseDeletes,
-                        fetchedAt: fetchedAt
-                    ) || changed
-                }
-            }
-
-            let takesColors = taken.contains("course_colors")
-            let takesNames = taken.contains("course_names")
-            if !takesColors && !takesNames {
-                AppLogger.sync.info("[syncOverrides] skipping course overrides — switched off or conflict check pending")
-            } else if !courseOverrides.isEmpty {
-                let held = cloudSyncCoordinator.courseOverridesToHold(since: preFetchCourseOverrides)
-                changed = applyCourseOverrides(
-                    courseOverrides, coursesArray: coursesArray, colors: takesColors, names: takesNames,
-                    holdingColors: held.colors, holdingNames: held.names
-                ) || changed
-            }
-
-            if let holidayRows = json["holiday_overrides"] as? [[String: Any]] {
-                let optedIn = Set(
-                    holidayRows.compactMap { row -> Int? in
-                        guard row["notify"] as? Bool == true else { return nil }
-                        return row["holiday_id"] as? Int
-                    }
-                )
-                changed = AcademicCalendarStore.shared.applySyncedOverrides(optedIn, fetchedAt: fetchedAt) || changed
-            }
-
-            let tombstoneArray = json["course_tombstones"] as? [[String: Any]] ?? []
-            Self.recordFullSync(coursesReset: reset.remember, taken: taken)
-
-            if taken.contains("courses") {
-                changed = reconcileCourses(
-                    serverRows: coursesArray, tombstones: tombstoneArray, deleting: courseDeletes,
-                    adding: courseAdds, fetchedAt: fetchedAt
-                ) || changed
-            } else if pendingConflicts.contains("courses") {
-                AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
-            }
-            AppServiceBridge.answerRosterRequests(in: json, authService: authService)
-
-            if overrideEditGeneration == editGenerationAtFetch,
-               let rev = json["current_revision"] as? Int {
-                _lastKnownRevision = rev
-            }
-
-            ServerStatusTracker.shared.noteSyncResult(true)
-            recordSyncSource(.backend)
-            retryOwedConflictCheck()
-            #if os(iOS)
-            reconcileNotificationSettings(
-                snapshot: NotificationSettingsSync.documentSource(fromSnapshot: json),
-                linksBeforeSnapshot: settingsLinksBeforeFetch
-            )
-            #endif
-            return .synced
-        } catch {
-            guard !Self.isCancellation(error), fullSyncMayWrite(since: ticket) else { return .skipped }
-            ServerStatusTracker.shared.noteSyncResult(false)
-            recordSyncSource(.local)
-            var outcome = FullSyncOutcome.failed
-            if case PushAPIError.httpStatus(401, _, let sent) = error, !retried {
-                let reloginOk = await attemptBackendRelogin(replacing: sent?.value)
-                if reloginOk {
-                    AppLogger.sync.info("auto-relogin succeeded, retrying sync")
-                    try? await Task.sleep(for: .milliseconds(500))
-                    guard fullSyncMayWrite(since: ticket) else { return .skipped }
-                    outcome = await runFullSync(retried: true)
-                }
-            }
-            AppLogger.sync.error("syncOverrides failed: \(error, privacy: .private)")
-            return outcome
-        }
+        await fullSyncRunner.sync(followUpIfBusy: followUpIfBusy)
     }
 
     /// Whether a full sync's error is its own cancellation, as at the time limit of a sync trigger
@@ -272,41 +22,6 @@ extension AppState {
         retryUnacknowledgedNotificationSettings()
         #endif
         await cloudSyncCoordinator.requeueParkedMarks()
-    }
-
-    nonisolated static func reasonToLeaveMarks(
-        syncsMarks: Bool,
-        conflictCheckPending: Bool,
-        uploadedLocalMarks: Bool,
-        editedDuringFetch: Bool
-    ) -> MarksLeftReason? {
-        if !syncsMarks { return .switchedOff }
-        if conflictCheckPending { return .conflictCheckPending }
-        if uploadedLocalMarks { return .uploadedLocalMarks }
-        if editedDuringFetch { return .editedDuringFetch }
-        return nil
-    }
-
-    nonisolated enum MarksLeftReason: String, Sendable {
-        case switchedOff = "Assignments sync is off"
-        case conflictCheckPending = "conflict check pending"
-        case uploadedLocalMarks = "local marks just uploaded"
-        case editedDuringFetch = "local edit during fetch"
-    }
-
-    nonisolated static func categoriesTaken(
-        switchedOn: Set<String>,
-        pendingChecks: Set<String>,
-        marksLeftFor reason: MarksLeftReason?
-    ) -> Set<String> {
-        let holdsCourseOverrides = pendingChecks.contains("course_colors") || pendingChecks.contains("course_names")
-        return switchedOn.filter { category in
-            switch category {
-            case "assignments": reason == nil || reason == .uploadedLocalMarks
-            case "course_colors", "course_names": !holdsCourseOverrides
-            default: !pendingChecks.contains(category)
-            }
-        }
     }
 
     nonisolated static func uploadsLocalMarksAsFirstSync(
@@ -476,7 +191,7 @@ extension AppState {
         }
     }
 
-    private func applyIgnoredCourses(
+    func applyIgnoredCourses(
         _ server: [ServerIgnoredCourse],
         decided: Set<String>,
         coursesArray: [[String: Any]],
@@ -567,13 +282,13 @@ extension AppState {
         )
     }
 
-    private func applyCourseOverrides(
+    func applyCourseOverrides(
         _ overrides: [[String: Any]], coursesArray: [[String: Any]], colors: Bool, names: Bool,
         holdingColors: Set<String>, holdingNames: Set<String>
     ) -> Bool {
         var moodleIdToNo: [String: String] = [:]
         for c in coursesArray {
-            guard let mId = c["moodle_id"] as? String ?? (c["moodle_id"] as? Int).map(String.init) else { continue }
+            guard let mId = Self.overrideIdentity(c) else { continue }
             if let courseNo = c["course_no"] as? String, !courseNo.isEmpty {
                 moodleIdToNo[mId] = courseNo
             } else if let name = c["course_name"] as? String, let bracketEnd = name.firstIndex(of: "】") {
@@ -606,8 +321,8 @@ extension AppState {
     ) -> [String: [String: String]] {
         var names = local
         for o in overrides {
-            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
-                  !held.contains(mId), let courseNo = courseNos[mId],
+            guard let mId = overrideIdentity(o), !held.contains(mId),
+                  let courseNo = o["course_no"] as? String ?? courseNos[mId],
                   let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty
             else { continue }
             var existing = names[courseNo] ?? [:]
@@ -629,8 +344,8 @@ extension AppState {
         holding held: Set<String>
     ) -> [(courseNo: String, hex: UInt32)] {
         let rows = overrides.compactMap { o -> (courseNo: String, hex: UInt32, at: Date)? in
-            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
-                  !held.contains(mId), let courseNo = courseNos[mId],
+            guard let mId = overrideIdentity(o), !held.contains(mId),
+                  let courseNo = o["course_no"] as? String ?? courseNos[mId],
                   let colorHex = o["color_hex"] as? String, !colorHex.isEmpty,
                   let hex = UInt32(colorHex.dropFirst(), radix: 16) else { return nil }
             let at = (o["color_hex_updated_at"] as? String).flatMap {
@@ -640,6 +355,17 @@ extension AppState {
             return (courseNo, hex, at)
         }
         return rows.sorted { ($0.at, $0.courseNo) < ($1.at, $1.courseNo) }.map { ($0.courseNo, $0.hex) }
+    }
+
+    /// How a snapshot's course or override row names its course, as this device's edits do: the
+    /// Moodle id number, or the term and the number when it has none.
+    nonisolated static func overrideIdentity(_ row: [String: Any]) -> String? {
+        if let moodleId = row["moodle_id"] as? String ?? (row["moodle_id"] as? Int).map(String.init), !moodleId.isEmpty {
+            return moodleId
+        }
+        guard let semester = row["semester"] as? String, let courseNo = row["course_no"] as? String,
+              !semester.isEmpty, !courseNo.isEmpty else { return nil }
+        return "\(semester)\(courseNo)"
     }
 
     /// `refused` is the access token the request that got the 401 sent.
@@ -741,9 +467,10 @@ extension AppState {
         }
         if let semester { resettingSemesters.insert(semester) }
         defer { if let semester { resettingSemesters.remove(semester) } }
+        let madeAt = Date()
         do {
             try await Self.resetCourses(semester: semester, on: cloudSyncCoordinator, onServer: { [pushCoordinator] in
-                try await pushCoordinator.deleteAllCourses(semester: semester)
+                try await pushCoordinator.deleteAllCourses(semester: semester, madeAt: madeAt)
                 AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
                 if let semester { CourseStore.shared.recordSemesterReset(semester) }
                 pushCoordinator.forgetUploads(semester: semester)
@@ -775,7 +502,7 @@ extension AppState {
             let addedAt = Date()
             Task { await cloudSyncCoordinator.discardCourseDeletes(courseKeys: Set(forceKeys), madeBefore: addedAt) }
         }
-        guard CourseUploadPolicy.uploadsCourses else { return }
+        guard SyncPolicy.current.uploadsCourses else { return }
         guard forceKeys.isEmpty else {
             let prefix = CourseTombstone.serverKey(semester: semester, courseNo: "")
             for key in forceKeys where key.hasPrefix(prefix) {
@@ -783,9 +510,7 @@ extension AppState {
             }
             return
         }
-        let request = Self.courseUploadRequest(
-            courses, semester: semester, forceKeys: forceKeys, rosterTerms: asRoster ? [semester] : nil
-        )
+        let request = Self.courseUploadRequest(courses, semester: semester, rosterTerms: asRoster ? [semester] : nil)
         let ticket = authService.session.ticket
         let coordinator = pushCoordinator
         Task { [weak self] in
@@ -800,19 +525,15 @@ extension AppState {
     /// The added course alone: sent with its stamp, the backend files every other course an upload
     /// lists as the school's roster.
     static func addedCourseUpload(
-        semester: String, courseNo: String, courses: CourseStore = .shared,
-        colors: [String: UInt32] = CourseUploadPolicy.uploadedCourseColors
+        semester: String, courseNo: String, courses: CourseStore = .shared
     ) -> PushAPI.CourseUploadRequest? {
         let shown = CanonicalCourseProvider(courses: courses).currentCourses(semester: semester)
         guard let course = shown.first(where: { $0.courseNo == courseNo }) else { return nil }
-        return courseUploadRequest(
-            [course], semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)],
-            colors: colors
-        )
+        return courseUploadRequest([course], semester: semester)
     }
 
     func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) {
-        guard Defaults[.cloudSyncEnabled] else { return }
+        guard SyncPolicy.current.cloudSyncEnabled else { return }
         let ticket = authService.session.ticket
         let coordinator = pushCoordinator
         Task { [weak self] in
@@ -822,36 +543,31 @@ extension AppState {
         }
     }
 
+    /// Sends what this device derived from school data once this sign-in's first pull has been
+    /// applied (`SyncTarget`).
     private func sendUpload(
         _ label: String,
         ticket: AccountSession.Ticket,
-        retried: Bool = false,
         _ send: (_ isCurrent: @escaping @MainActor () -> Bool) async throws -> Bool
     ) async {
         let isCurrent: @MainActor () -> Bool = { [weak self] in
             self?.authService.session.isCurrent(ticket) == true && Defaults[.cloudSyncEnabled]
         }
-        guard isCurrent() else { return }
+        guard isCurrent(), await syncTarget.waitForPull(ticket), isCurrent() else { return }
         do {
             let sent = try await send(isCurrent)
             AppLogger.sync.info("\(label, privacy: .public): \(sent ? "sent" : "skipped", privacy: .public)")
-        } catch PushAPIError.httpStatus(401, _, let sent) where !retried && isCurrent() {
-            guard await attemptBackendRelogin(replacing: sent?.value) else {
-                AppLogger.sync.error("\(label, privacy: .public) failed: 401, relogin failed")
-                return
-            }
-            await sendUpload(label, ticket: ticket, retried: true, send)
         } catch {
             AppLogger.sync.error("\(label, privacy: .public) failed: \(error, privacy: .private)")
         }
     }
 
+    /// The school's courses of `semester`. Their colours do not go here: `/v4` takes a colour
+    /// only through the course override.
     static func courseUploadRequest(
         _ courses: [SDCourse],
         semester: String,
-        forceKeys: [String],
-        rosterTerms: [String]? = nil,
-        colors: [String: UInt32] = CourseUploadPolicy.uploadedCourseColors
+        rosterTerms: [String]? = nil
     ) -> PushAPI.CourseUploadRequest {
         let entries = courses.map { c in
             PushAPI.CourseUploadEntry(
@@ -867,16 +583,7 @@ extension AppState {
                 classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
             )
         }
-        let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
-            guard let hex = colors[c.courseNo] else { return nil }
-            return PushAPI.CourseOverrideUploadEntry(
-                courseKey: CourseTombstone.serverKey(semester: semester, courseNo: c.courseNo),
-                colorHex: String(format: "#%06X", hex)
-            )
-        }
-        return PushAPI.CourseUploadRequest(
-            courses: entries, courseOverrides: overrides, forceKeys: forceKeys, rosterTerms: rosterTerms
-        )
+        return PushAPI.CourseUploadRequest(courses: entries, rosterTerms: rosterTerms)
     }
 }
 
@@ -939,28 +646,5 @@ final class FullSyncGate {
             following = [:]
             follow(mayFollow: mayFollow, body)
         }
-    }
-}
-
-enum CourseUploadPolicy {
-    static var uploadsCourses: Bool {
-        guard Defaults[.cloudSyncEnabled] else { return false }
-        #if os(macOS)
-        return Defaults[.syncCourses]
-        #else
-        return true
-        #endif
-    }
-
-    static var uploadsCourseColors: Bool {
-        #if os(macOS)
-        return uploadsCourses && Defaults[.syncCourseColors]
-        #else
-        return uploadsCourses
-        #endif
-    }
-
-    static var uploadedCourseColors: [String: UInt32] {
-        uploadsCourseColors ? TigerDuckTheme.courseColorMap : [:]
     }
 }

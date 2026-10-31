@@ -29,7 +29,7 @@ nonisolated struct CourseChange: Equatable, Sendable {
     }
 }
 
-/// The current term's course changes from `/v3/calendar/course-changes`, by course and class day.
+/// The current term's course changes from `/v4/calendar/course-changes`, by course and class day.
 nonisolated struct CourseChanges: Equatable, Sendable {
     private struct Key: Hashable {
         let courseNo: String
@@ -134,19 +134,17 @@ final class CourseChangeStore {
     /// Moves each time the stored feed changes, for the views and device surfaces that draw it.
     private(set) var revision = 0
 
-    private let session: URLSession
-    private let baseURL: () -> URL
+    private let backend: BackendClient
     private let hasCompletedOnboarding: () -> Bool
     private var refreshTask: Task<Bool, Never>?
     private var endpointGeneration = 0
 
     init(
         session: URLSession = .shared,
-        baseURL: @escaping () -> URL = PushServerConfig.resolveServerURL,
+        baseURL: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         hasCompletedOnboarding: @escaping () -> Bool = { Defaults[.hasCompletedOnboarding] }
     ) {
-        self.session = session
-        self.baseURL = baseURL
+        self.backend = BackendClient(baseURL: baseURL, session: session)
         self.hasCompletedOnboarding = hasCompletedOnboarding
     }
 
@@ -178,26 +176,21 @@ final class CourseChangeStore {
 
     private func performRefresh() async -> Bool {
         let generation = endpointGeneration
-        var request = URLRequest(
-            url: baseURL().appendingPathComponent("calendar").appendingPathComponent("course-changes")
-        )
+        var request = BackendRequest("GET", "calendar", "course-changes")
+        request.authenticated = false
         // The ETag is ours to send; URLCache would serve its copy for the feed's max-age and hide a change.
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.accepting = [304]
         let tag = Defaults[.courseChangesETag]
         // A stored feed this build cannot read is fetched again, not kept by a 304.
         if !tag.isEmpty, (try? CourseChanges(json: Defaults[.courseChangesCache])) != nil {
-            request.setValue(tag, forHTTPHeaderField: "If-None-Match")
+            request.headers["If-None-Match"] = tag
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode != 304 else { return false }
-            guard (200..<300).contains(http.statusCode) else {
-                AppLogger.network.error("course changes HTTP \(http.statusCode, privacy: .public)")
-                APIVersionGate.shared.note(statusCode: http.statusCode)
-                return false
-            }
+            let response = try await backend.send(request)
+            guard response.status != 304 else { return false }
+            let (data, http) = (response.data, response.http)
             let parsed = try CourseChanges(json: data)
             guard generation == endpointGeneration else { return false }
             let changed = parsed != CourseChanges.cached
@@ -205,6 +198,8 @@ final class CourseChangeStore {
             Defaults[.courseChangesETag] = http.value(forHTTPHeaderField: "ETag") ?? ""
             if changed { revision &+= 1 }
             return changed
+        } catch PushAPIError.httpStatus {
+            return false
         } catch {
             if !AppLogger.isCancellation(error) {
                 AppLogger.captureError(error, context: ["service": "courseChangesRefresh"])
