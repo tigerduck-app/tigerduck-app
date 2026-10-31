@@ -132,24 +132,9 @@ final class SDCourse: Identifiable {
         _cachedSchedule = schedule
     }
 
+    /// The rooms of the day's periods in period order, or the course's room when the map has none.
     func classroom(for weekday: Int) -> String {
-        let map = classroomMap
-        guard !map.isEmpty else { return Self.dedup(classroom) }
-
-        guard let periods = schedule[weekday] else { return Self.dedup(classroom) }
-
-        var seen = Set<String>()
-        var rooms: [String] = []
-        for period in periods.sortedByPeriodOrder() {
-            let key = "\(weekday)-\(period)"
-            if let raw = map[key] {
-                for part in Self.splitRoom(raw) where !seen.contains(part) {
-                    seen.insert(part)
-                    rooms.append(part)
-                }
-            }
-        }
-        return rooms.isEmpty ? Self.dedup(classroom) : rooms.joined(separator: ", ")
+        CourseRoomList.rooms(of: schedule[weekday], weekday: weekday, map: classroomMap, fallback: Self.dedup(classroom))
     }
 
     func classroom(weekday: Int, period: String) -> String {
@@ -233,82 +218,22 @@ extension Array where Element == SDCourse {
 }
 
 extension SDCourse {
-    private static let isoFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = TaipeiTime.timeZone
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-
     var skippedDates: [String] {
-        get {
-            guard let data = skippedDatesJSON.data(using: .utf8),
-                  let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
-            return arr
-        }
-        set {
-            if let data = try? JSONEncoder().encode(newValue),
-               let str = String(data: data, encoding: .utf8) {
-                skippedDatesJSON = str
-            }
-        }
+        get { CourseSkipDates.decode(skippedDatesJSON) }
+        set { CourseSkipDates.encode(newValue).map { skippedDatesJSON = $0 } }
     }
 
     func isSkipped(on date: Date) -> Bool {
-        let key = Self.isoFormatter.string(from: date)
-        return skippedDates.contains(key)
+        skippedDates.contains(CourseSkipDates.key(for: date))
     }
 
     func toggleSkip(on date: Date) {
-        let key = Self.isoFormatter.string(from: date)
-        var dates = skippedDates
-        if let index = dates.firstIndex(of: key) {
-            dates.remove(at: index)
-        } else {
-            dates.append(key)
-        }
-        skippedDates = dates
+        skippedDates = CourseSkipDates.toggling(CourseSkipDates.key(for: date), in: skippedDates)
         NotificationCenter.default.post(name: AppConstants.courseSkipStateDidChange, object: nil)
     }
-}
 
-extension SDCourse {
-    var moodleDeepLink: URL? {
-        guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
-              let numericId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber) else {
-            return nil
-        }
-
-        return AppConstants.moodleDeepLink(redirectingTo: "/course/view.php?id=\(numericId)")
-    }
-
-    /// HTTPS equivalent of ``moodleDeepLink``. No Moodle Mac app exists, so
-    /// the deep link's `moodlemobile://` scheme resolves to an unhandled-URL
-    /// error there; macOS callers open this directly in the default browser.
-    var moodleWebURL: URL? {
-        guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
-              let numericId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber) else {
-            return nil
-        }
-        let host = AppConstants.moodleBaseURL.host ?? "moodle2.ntust.edu.tw"
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = host
-        components.path = "/course/view.php"
-        components.queryItems = [URLQueryItem(name: "id", value: String(numericId))]
-        return components.url
-    }
-
-    var moodleOpenURL: URL? {
-        #if os(macOS)
-        switch Defaults[.macMoodleOpenTarget] {
-        case .app: return moodleDeepLink
-        case .browser: return moodleWebURL
-        }
-        #else
-        return moodleDeepLink
-        #endif
-    }
+    var moodleDeepLink: URL? { MoodleCourseLink.deepLink(idnumber: moodleIdNumber) }
+    /// HTTPS equivalent of ``moodleDeepLink``, which a Mac opens in the browser.
+    var moodleWebURL: URL? { MoodleCourseLink.webURL(idnumber: moodleIdNumber) }
+    var moodleOpenURL: URL? { MoodleCourseLink.openURL(idnumber: moodleIdNumber) }
 }
