@@ -73,7 +73,8 @@ yet in the tree arrives with its refactor phase; until then the rule stays where
 - A full sync's categories: one `CategoryReconciler` each, in `Backend/Sync/Reconcilers/`.
 - Freshness of a cached answer: `Persistence/FreshnessPolicy.swift`.
 - A school service bouncing to the portal: `School/NTUST/SchoolSessionRecovery.swift`.
-- Waiting for a state: `StateSignal`; for a time: `AppClock.sleep(until:)` in `Support/Clock/`.
+- Waiting for a state: `StateSignal` in `Support/Concurrency/`; for a time: `AppClock.sleep(until:)`
+  in `Support/Clock/`.
 - Deep links and sheets: `App/Routing/AppRouter.swift`.
 - What a launch, a return to the app and a sign-in run, and in which order:
   `App/SceneActivation.swift`.
