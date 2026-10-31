@@ -79,7 +79,9 @@ enum MailListLoader {
         var merged = list.mailbox.mergeFresh(fresh, folder: folder, since: token)
         list.rebuildRows()
         if merged.summaries.isEmpty, merged.messageCount > 0 {
-            merged = await walkBack(from: merged, folder: folder, since: token, list: list)
+            // A read flag or removal made during the walk-back's last fetch is not in its page yet.
+            merged = list.mailbox.applyingEdits(to: await walkBack(from: merged, folder: folder, since: token, list: list),
+                                                since: token)
         }
         guard list.isCurrent(selection, epoch) else { return false }
         await list.writer.save(merged)
