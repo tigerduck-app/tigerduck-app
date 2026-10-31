@@ -254,6 +254,31 @@ struct ModalClosingTests {
         try await waitUntil { keyRoot.presentedViewController == nil }
     }
 
+    @Test("A wait for the window's sheets ends once the last one has closed, and at once with none up")
+    func presentationsClosedWaitsForTheSheets() async throws {
+        let sheets = Sheets()
+        let host = HostWindow()
+        let window = try Self.show(sheets, host: host)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        try await waitUntil { host.window === window }
+        await host.presentationsClosed()
+
+        sheets.course = true
+        try await waitUntil { root.presentedViewController.map { !$0.isBeingPresented } == true }
+        let told = Told()
+        let waiting = Task {
+            await host.presentationsClosed()
+            told.closedAll = root.presentedViewController == nil
+        }
+        for _ in 0..<50 { await Task.yield() }
+        #expect(told.closedAll == nil)
+
+        sheets.course = false
+        await waiting.value
+        #expect(told.closedAll == true)
+    }
+
     enum Link: String, CaseIterable {
         case bulletin, schoolMail
 

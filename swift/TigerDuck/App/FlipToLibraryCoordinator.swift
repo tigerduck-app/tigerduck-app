@@ -5,24 +5,25 @@ import UIKit
 private struct FlipToLibraryModifier: ViewModifier {
     @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.hostWindow) private var hostWindow
     @State private var detector: FlipDetector?
 
     func body(content: Content) -> some View {
         content
             .onAppear {
                 reconcile()
-                Self.offerGesture(app: app, waitFirst: true)
+                Self.offerGesture(app: app, host: hostWindow, waitFirst: true)
             }
             .onChange(of: app.preferences.flipToLibraryEnabled) { _, _ in reconcile() }
             .onChange(of: app.library.isLoggedIn) { _, _ in
                 reconcile()
-                Self.offerGesture(app: app)
+                Self.offerGesture(app: app, host: hostWindow)
             }
             .onChange(of: app.updateNotifyCoordinator.activeNotifySheet == nil) { _, isClear in
-                if isClear { Self.offerGesture(app: app) }
+                if isClear { Self.offerGesture(app: app, host: hostWindow) }
             }
             .onChange(of: LibraryPagePresence.shared.isShown) { _, shown in
-                if !shown { Self.offerGesture(app: app) }
+                if !shown { Self.offerGesture(app: app, host: hostWindow) }
             }
             .onChange(of: scenePhase) { _, new in
                 // Tear down only on .background. .inactive comes with transient
@@ -31,7 +32,7 @@ private struct FlipToLibraryModifier: ViewModifier {
                 if new == .background || new == .active {
                     reconcile()
                 }
-                if new == .active { Self.offerGesture(app: app) }
+                if new == .active { Self.offerGesture(app: app, host: hostWindow) }
             }
             .onDisappear {
                 detector?.stop()
@@ -56,7 +57,8 @@ private struct FlipToLibraryModifier: ViewModifier {
                 // instead of reading the modifier's @Environment wrapper inside this
                 // long-lived escaping closure.
                 let app = self.app
-                detector = FlipDetector { handleFaceDown(app: app) }
+                let host = hostWindow
+                detector = FlipDetector { handleFaceDown(app: app, host: host) }
             }
             detector?.start()
         } else {
@@ -65,10 +67,10 @@ private struct FlipToLibraryModifier: ViewModifier {
         }
     }
 
-    private func handleFaceDown(app: AppEnvironment) {
+    private func handleFaceDown(app: AppEnvironment, host: HostWindow) {
         guard app.preferences.flipToLibraryEnabled, app.library.isLoggedIn else { return }
 
-        guard !Self.isAnyModalPresented() else { return }
+        guard !host.isPresenting else { return }
 
         app.router.openFromWidget(.library)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -76,7 +78,7 @@ private struct FlipToLibraryModifier: ViewModifier {
 
     /// signed in. A sheet already up, such as the sign-in's own, is waited out for a few seconds,
     /// since SwiftUI rejects the root-level prompt sheet over it; past that the next return asks.
-    private static func offerGesture(app: AppEnvironment, attemptsLeft: Int = 10, waitFirst: Bool = false) {
+    private static func offerGesture(app: AppEnvironment, host: HostWindow, attemptsLeft: Int = 10, waitFirst: Bool = false) {
         guard FlipDetector.isSupported,
               FlipToLibraryGate.offersGesture(
                   signedInToLibrary: app.library.isLoggedIn,
@@ -86,28 +88,18 @@ private struct FlipToLibraryModifier: ViewModifier {
               )
         else { return }
         let waits = FlipToLibraryGate.offerWaits(
-            sheetPresented: isAnyModalPresented(),
+            sheetPresented: host.isPresenting,
             notifySheetPending: app.updateNotifyCoordinator.activeNotifySheet != nil
         )
         guard !waitFirst, !waits else {
             guard attemptsLeft > 0 else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(500))
-                offerGesture(app: app, attemptsLeft: attemptsLeft - 1)
+                offerGesture(app: app, host: host, attemptsLeft: attemptsLeft - 1)
             }
             return
         }
         FlipToLibraryPromptPresenter.requestPrompt(app: app)
-    }
-
-    private static func isAnyModalPresented() -> Bool {
-        let scene = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }
-        guard let window = scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first,
-              let root = window.rootViewController
-        else { return false }
-        return root.presentedViewController != nil
     }
 }
 

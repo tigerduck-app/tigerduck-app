@@ -2,15 +2,6 @@
 import SwiftUI
 import UIKit
 
-extension UIApplication {
-    var foregroundRoot: UIViewController? {
-        let scenes = connectedScenes.compactMap { $0 as? UIWindowScene }
-        let scene = scenes.first { $0.activationState == .foregroundActive }
-            ?? scenes.first { $0.activationState == .foregroundInactive }
-        return (scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first)?.rootViewController
-    }
-}
-
 extension UIViewController {
     func closePresentations(then: @escaping (_ closedAll: Bool) -> Void) {
         var next = presentedViewController
@@ -31,9 +22,54 @@ extension UIViewController {
 final class HostWindow {
     weak var window: UIWindow?
 
+    var isPresenting: Bool { window?.rootViewController?.presentedViewController != nil }
+
     func closePresentations(then: @escaping (_ closedAll: Bool) -> Void) {
-        guard let root = window?.rootViewController ?? UIApplication.shared.foregroundRoot else { return then(true) }
+        guard let root = window?.rootViewController else { return then(true) }
         root.closePresentations(then: then)
+    }
+
+    /// Returns once nothing is presented over the window's root, or the task is cancelled. It
+    /// wakes when the shown view moves in or out of a window, not on a timer.
+    func presentationsClosed() async {
+        while let shown = window?.rootViewController?.presentedViewController, !Task.isCancelled {
+            await WindowChangeProbe.nextChange(of: shown.view)
+        }
+    }
+}
+
+/// Reports the next time the view it is added to moves in or out of a window.
+private final class WindowChangeProbe: UIView {
+    private var onChange: (() -> Void)?
+    private weak var addedIn: UIWindow?
+
+    static func nextChange(of view: UIView) async {
+        let probe = WindowChangeProbe(frame: .zero)
+        probe.isHidden = true
+        probe.isUserInteractionEnabled = false
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { done in
+                view.addSubview(probe)
+                probe.addedIn = probe.window
+                probe.onChange = { done.resume() }
+            }
+        } onCancel: {
+            Task { @MainActor in probe.fire() }
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window !== addedIn else { return }
+        fire()
+    }
+
+    private func fire() {
+        guard let onChange else { return }
+        self.onChange = nil
+        onChange()
+        // Not inside the window change UIKit is making.
+        Task { @MainActor in self.removeFromSuperview() }
     }
 }
 

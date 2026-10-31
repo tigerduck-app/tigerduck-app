@@ -37,7 +37,7 @@ WhatsNewSampleFlow.swift
 
 # UI/ViewHelpers — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
 UIApplication+Keyboard.swift
-UIApplication+Modals.swift
+HostWindow.swift
 UINavigationController+Swipeback.swift
 View+ScrollSafeGesture.swift
 

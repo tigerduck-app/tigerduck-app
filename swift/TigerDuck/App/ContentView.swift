@@ -49,9 +49,13 @@ private struct ClassTableImportHost: ViewModifier {
             .onChange(of: linkModel?.isFinished) { _, isFinished in
                 if isFinished == true { linkModel = nil }
             }
-            .task(id: HeldShareLink.mayOpen(in: app) ? HeldShareLink.shared.link?.id : nil) {
-                while !openHeldLink(), !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(500))
+            .task(id: HeldLinkWait(
+                link: HeldShareLink.mayOpen(in: app) ? HeldShareLink.shared.link?.id : nil,
+                notifySheetUp: app.updateNotifyCoordinator.activeNotifySheet != nil
+            )) {
+                // A change of the notify sheet starts this again; a sheet in a tab is waited out.
+                while !openHeldLink(), hostWindow.isPresenting, !Task.isCancelled {
+                    await hostWindow.presentationsClosed()
                 }
             }
             // Last, so the share sheet shown here can open the scanner too.
@@ -79,8 +83,7 @@ private struct ClassTableImportHost: ViewModifier {
             if let text = HeldShareLink.shared.take(in: app) { inPlace.linkOpened(text) }
             return true
         }
-        let othersUp = UIApplication.shared.foregroundRoot?.presentedViewController != nil
-            || app.updateNotifyCoordinator.activeNotifySheet != nil
+        let othersUp = hostWindow.isPresenting || app.updateNotifyCoordinator.activeNotifySheet != nil
         if othersUp, HeldShareLink.shared.link != nil, HeldShareLink.mayOpen(in: app) { return false }
         guard let text = HeldShareLink.shared.take(in: app) else { return true }
         let model = ClassTableImportModel.live(authService: app.authService)
@@ -88,6 +91,11 @@ private struct ClassTableImportHost: ViewModifier {
         model.linkOpened(text)
         return true
     }
+}
+
+private struct HeldLinkWait: Equatable {
+    let link: UUID?
+    let notifySheetUp: Bool
 }
 
 private struct ServerPushPopupHost: ViewModifier {
