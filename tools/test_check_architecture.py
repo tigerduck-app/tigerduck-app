@@ -1,5 +1,6 @@
 """Tests for tools/check_architecture.py: python3 -m unittest discover -s tools -p 'test_*.py'"""
 import unittest
+from unittest import mock
 
 import check_architecture as ca
 
@@ -25,7 +26,8 @@ class ArchitectureTests(unittest.TestCase):
     def test_only_rules_up_to_the_enforced_phase_fail(self) -> None:
         early = ca.Finding("a.swift", 1, "taipei-zone", "")
         late = ca.Finding("a.swift", 1, "task-sleep", "")
-        self.assertEqual(ca.enforced([early, late]), [early])
+        with mock.patch.object(ca, "ENFORCED_PHASE", 6):
+            self.assertEqual(ca.enforced([early, late]), [early])
 
     def test_the_taipei_zone_outside_core_fails_with_its_line(self) -> None:
         text = 'import Foundation\nlet zone = TimeZone(identifier: "Asia/Taipei")\n'
