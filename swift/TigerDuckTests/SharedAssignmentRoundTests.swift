@@ -37,7 +37,7 @@ struct SharedAssignmentRoundTests {
     ) -> Task<Void, Never> {
         Task {
             rounds.entered += 1
-            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: signOuts), rechecks: rechecks, isCurrent: { true }, rounds: shared) {
+            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: signOuts), rechecks: rechecks, isCurrent: { true }, rounds: shared) { _ in
                 await rounds.run(name)
             }
         }
@@ -93,7 +93,7 @@ struct SharedAssignmentRoundTests {
         let departing = "departing-" + UUID().uuidString
         let due = Date(timeIntervalSince1970: 1_800_000_000)
 
-        let shown = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
+        let shown = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) { _ in
             signIn.isCurrent = false
             return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
         }
@@ -109,7 +109,7 @@ struct SharedAssignmentRoundTests {
         let due = Date(timeIntervalSince1970: 1_800_000_000)
         let pull = Task {
             rounds.entered += 1
-            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
+            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) { _ in
                 _ = await rounds.run("pull")
                 return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
             }
@@ -117,7 +117,7 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["pull"] }
         let joined = Task {
             rounds.entered += 1
-            return await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: false, isCurrent: { signIn.isCurrent }, rounds: shared) { [] }
+            return await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: false, isCurrent: { signIn.isCurrent }, rounds: shared) { _ in [] }
         }
         try await waitUntil { rounds.entered == 2 }
         signIn.isCurrent = false
@@ -135,7 +135,7 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["launch"] }
         let pull = Task {
             rounds.entered += 1
-            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
+            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) { _ in
                 await rounds.run("pull")
             }
         }
@@ -156,6 +156,57 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["departing", "next"] }
         rounds.open()
         _ = await (departing.value, next.value)
+    }
+
+    @MainActor
+    private final class Pulls {
+        var asked: [String] = []
+        var applies: Bool?
+    }
+
+    @Test("a round whose starter's pull was cancelled applies after the pull of a refresh that joined it")
+    func aJoinersPullReleasesTheRound() async throws {
+        let rounds = Rounds()
+        let pulls = Pulls()
+        let cancelled = Task {
+            rounds.entered += 1
+            _ = await AssignmentFetch.sharedRound(
+                signIn: .after(signOuts: 1), rechecks: false, isCurrent: { true }, rounds: shared,
+                applyAfter: { pulls.asked.append("cancelled"); return false }
+            ) { pulled in
+                _ = await rounds.run("cancelled")
+                pulls.applies = await pulled()
+                return []
+            }
+        }
+        try await waitUntil { rounds.started == ["cancelled"] }
+        let joined = Task {
+            rounds.entered += 1
+            _ = await AssignmentFetch.sharedRound(
+                signIn: .after(signOuts: 1), rechecks: false, isCurrent: { true }, rounds: shared,
+                applyAfter: { pulls.asked.append("joined"); return true }
+            ) { _ in await rounds.run("joined") }
+        }
+        try await waitUntil { rounds.entered == 2 }
+        rounds.open()
+        _ = await (cancelled.value, joined.value)
+
+        #expect(rounds.started == ["cancelled"])
+        #expect(pulls.asked == ["cancelled", "joined"])
+        #expect(pulls.applies == true)
+    }
+
+    @Test("a round whose only pull was cancelled applies nothing")
+    func aCancelledPullAppliesNothing() async {
+        let pulls = Pulls()
+        _ = await AssignmentFetch.sharedRound(
+            signIn: .after(signOuts: 1), rechecks: false, isCurrent: { true }, rounds: shared,
+            applyAfter: { false }
+        ) { pulled in
+            pulls.applies = await pulled()
+            return []
+        }
+        #expect(pulls.applies == false)
     }
 
     @MainActor
@@ -288,7 +339,7 @@ struct SharedAssignmentRoundTests {
         round(of: id, askedAt: pageAskedAt - .seconds(60), in: cache)
         let rounds = Rounds()
         let pull = Task {
-            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { true }, rounds: shared) {
+            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { true }, rounds: shared) { _ in
                 _ = await rounds.run("pull")
                 round(of: id, askedAt: pageAskedAt - .seconds(5), in: cache)
                 return []

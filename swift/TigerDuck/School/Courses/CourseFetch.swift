@@ -17,7 +17,7 @@ enum CourseFetch {
         semester: String = CourseSelectionService.currentSemesterCode(),
         forceRefresh: Bool = false,
         resendingRoster: Bool = false,
-        applyAfter: @MainActor () async -> Void = {}
+        applyAfter: PullGate = { true }
     ) async -> [SDCourse] {
         await fetchCourses(
             authService: authService,
@@ -125,7 +125,7 @@ enum CourseFetch {
         semester: String,
         forceRefresh: Bool,
         resendingRoster: Bool = false,
-        applyAfter: @MainActor () async -> Void = {},
+        applyAfter: PullGate = { true },
         ticket: AccountSession.Ticket,
         moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
@@ -241,7 +241,7 @@ enum CourseFetch {
         }.compactMap { item in item.data.map { TermRoster.LookedUpCourse(course: $0.course(in: semester), answered: item.answered) } }
 
         // The roster and the courses are applied once the backend's courses have been.
-        await applyAfter()
+        guard await applyAfter() else { return CourseStore.shared.loadCourses(semester: semester) }
         if let roster = term.roster, !Task.isCancelled, authService.session.isCurrent(ticket) {
             CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster)
             if selectionIsLive {

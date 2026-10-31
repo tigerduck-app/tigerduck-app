@@ -99,7 +99,7 @@ final class SceneActivation {
     }
 
     private static func fetchSchoolData(
-        _ authService: AuthService, _ recheckSubmissions: Bool, applyAfter: @escaping @MainActor () async -> Void
+        _ authService: AuthService, _ recheckSubmissions: Bool, applyAfter: @escaping PullGate
     ) async {
         _ = await AssignmentFetch.fetchAssignments(
             authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: applyAfter
@@ -116,7 +116,7 @@ final class SceneActivation {
     }
 
     private static func fetchCurrentTerm(
-        _ authService: AuthService, applyAfter: @escaping @MainActor () async -> Void
+        _ authService: AuthService, applyAfter: @escaping PullGate
     ) async {
         guard let studentId = authService.storedStudentId else { return }
         let semester = CourseSelectionService.currentSemesterCode()
@@ -131,16 +131,18 @@ final class SceneActivation {
 
 /// One refresh in order: the pull and the school fetch start together, the fetch applies its
 /// result once the pull and the outbox send after it are done, and its uploads go after that
-/// (`SyncTarget` holds them until this sign-in's first pull).
+/// (`SyncTarget` holds them until this sign-in's first pull). A cancelled pull applies nothing.
 enum RefreshOrder {
     static func run(
         pull: @escaping @MainActor () async -> Void,
         pushOutbox: @escaping @MainActor () async -> Void,
-        fetchSchool: @MainActor (_ applyAfter: @escaping @MainActor () async -> Void) async -> Void
+        fetchSchool: @MainActor (_ applyAfter: @escaping PullGate) async -> Void
     ) async {
-        let pulled = Task { @MainActor in
+        let pulled = Task { @MainActor () -> Bool in
             await pull()
+            let completed = !Task.isCancelled
             await pushOutbox()
+            return completed
         }
         await withTaskCancellationHandler {
             await fetchSchool { await pulled.value }
