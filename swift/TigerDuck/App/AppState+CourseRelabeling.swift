@@ -11,14 +11,13 @@ extension AppState {
             let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
             let classroomMandarinDisplay = Defaults[.classroomMandarinDisplay]
 
-            var anyChanged = false
             var code = CourseSelectionService.currentSemesterCode()
             var consecutiveEmpty = 0
             for _ in 0..<AppConstants.cachedSemesterRelabelDepth {
                 if Task.isCancelled { return }
                 let semesterCode = code
                 let iter = await MainActor.run { () -> (changed: Bool, wasEmpty: Bool) in
-                    let courses = DataCache.shared.loadCourses(semester: semesterCode)
+                    let courses = CourseStore.shared.loadCourses(semester: semesterCode)
                     if courses.isEmpty { return (false, true) }
                     let changed = NameAbbrService.shared.relabelInPlace(
                         courses,
@@ -27,7 +26,7 @@ extension AppState {
                         classroomMandarinDisplay: classroomMandarinDisplay
                     )
                     if changed && !Task.isCancelled {
-                        DataCache.shared.saveCourses(courses, semester: semesterCode)
+                        CourseStore.shared.saveCourses(courses, semester: semesterCode)
                     }
                     return (changed, false)
                 }
@@ -37,14 +36,13 @@ extension AppState {
                 } else {
                     consecutiveEmpty = 0
                 }
-                if iter.changed { anyChanged = true }
                 code = AcademicTerm.previousRegularCode(code)
             }
 
             if Task.isCancelled { return }
-            let userChanged = await MainActor.run { () -> Bool in
-                let userAdded = DataCache.shared.loadUserAddedCourses()
-                guard !userAdded.isEmpty else { return false }
+            await MainActor.run {
+                let userAdded = CourseStore.shared.loadUserAddedCourses()
+                guard !userAdded.isEmpty else { return }
                 let changed = NameAbbrService.shared.relabelInPlace(
                     userAdded,
                     courseAbbrEnabled: courseAbbrEnabled,
@@ -52,17 +50,7 @@ extension AppState {
                     classroomMandarinDisplay: classroomMandarinDisplay
                 )
                 if changed && !Task.isCancelled {
-                    DataCache.shared.saveUserAddedCourses(userAdded)
-                }
-                return changed
-            }
-            if userChanged { anyChanged = true }
-
-            if anyChanged && !Task.isCancelled {
-                await MainActor.run {
-                    NotificationCenter.default.post(
-                        name: AppConstants.dataDidUpdate, object: nil
-                    )
+                    CourseStore.shared.saveUserAddedCourses(userAdded)
                 }
             }
         }

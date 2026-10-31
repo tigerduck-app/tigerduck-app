@@ -9,7 +9,8 @@ by name, so a store this process never built is cleared too.
 `tools/check_account_state.py` reads the table at the end, and the Architecture workflow runs it
 on every pull request. Every Keychain key in `AppConstants.KeychainKeys` and `AuthTokenManager`,
 every `Defaults` key declared in a `Defaults.Keys` extension of the app target and every file a
-source under `swift/TigerDuck/Persistence/` names needs a row. A row of the school account
+source under `swift/TigerDuck/Persistence/` names needs a row; each file store there deletes its own
+files in `forgetAccount(in:)`. A row of the school account
 (`school`) or the library account (`library`) names the function or property that clears it, and
 its body must mention it; a Keychain key of either is also deleted by the fresh-install wipe in
 `AppState.init`. `device` rows outlive any account: preferences, the device's own identity and
@@ -29,8 +30,8 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 | `AppState`'s conflicts, pending overrides and polling | `SignOutPlan.school(_:)` |
 | Courses deleted in the last two minutes, which a full sync keeps hidden | `AppState.recentCourseDeletions` holds them for one sign-in of the school `AccountSession` (`SignInScoped`) |
 | Uploads, outbox and pending document pushes | `PushCoordinator.forgetUploads()`, `CloudSyncCoordinator.settleForSignOut()` |
-| Feature view models (scores, class table, empty classroom, calendar, Moodle course pages) | they reload when the school `AccountSession`'s ticket changes and on `AppConstants.dataDidUpdate` |
-| Widgets and the Watch | they rebuild from the cleared caches on `AppConstants.dataDidUpdate` |
+| Feature view models (scores, class table, empty classroom, calendar, Moodle course pages) | they reload when the school `AccountSession`'s ticket changes and when `CourseStore` or `AssignmentStore` changes, which the sign-out notes |
+| Widgets and the Watch | `DeviceSurfaceSyncer` rebuilds them from the cleared caches when the stores and the sign-in state change |
 | Live Activities | `LiveActivityCoordinator.endAll()` in the sign-out calls |
 | The backend's device registration | the unregister in the sign-out calls, sent with the kept session until it lands |
 | SwiftData | holds nothing: the models are value types the caches persist |
@@ -138,24 +139,24 @@ which a school sign-out keeps. School Mail's keys live in `MailPreferences` and
 | defaults | `useEnglishClassroomAbbreviation` | device |  |
 | defaults | `useEnglishCourseAbbreviation` | device |  |
 | defaults | `visualPreset` | device |  |
-| cache | `archived_assignments.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `assignments.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `bulletin_details/` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `bulletin_summaries.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `calendar_events.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `closed_unsubmitted_assignments.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `course_color_map.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `course_custom_colors.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `course_custom_names.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `courses_*` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `deleted_courses.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `ignored_courses.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `locally_completed_assignments.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `moodleDir` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `moodleFilesDir` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `moodle_course_id_map.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `picked_course_colors.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `score_report_*` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `selection_dropped.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `server_dropped.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
-| cache | `user_added_courses.json` | school | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `archived_assignments.json` | school | `swift/TigerDuck/Persistence/AssignmentFiles.swift` `forgetAccount` |
+| cache | `assignments.json` | school | `swift/TigerDuck/Persistence/AssignmentFiles.swift` `forgetAccount` |
+| cache | `bulletin_details/` | school | `swift/TigerDuck/Persistence/BulletinFiles.swift` `forgetAccount` |
+| cache | `bulletin_summaries.json` | school | `swift/TigerDuck/Persistence/BulletinFiles.swift` `forgetAccount` |
+| cache | `calendar_events.json` | school | `swift/TigerDuck/Persistence/CalendarEventFiles.swift` `forgetAccount` |
+| cache | `closed_unsubmitted_assignments.json` | school | `swift/TigerDuck/Persistence/AssignmentFiles.swift` `forgetAccount` |
+| cache | `course_color_map.json` | school | `swift/TigerDuck/Persistence/CourseColorFiles.swift` `forgetAccount` |
+| cache | `course_custom_colors.json` | school | `swift/TigerDuck/Persistence/CourseColorFiles.swift` `forgetAccount` |
+| cache | `course_custom_names.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
+| cache | `courses_*` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
+| cache | `deleted_courses.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
+| cache | `ignored_courses.json` | school | `swift/TigerDuck/Persistence/AssignmentFiles.swift` `forgetAccount` |
+| cache | `locally_completed_assignments.json` | school | `swift/TigerDuck/Persistence/AssignmentFiles.swift` `forgetAccount` |
+| cache | `moodleDir` | school | `swift/TigerDuck/Persistence/MoodleFiles.swift` `forgetAccount` |
+| cache | `moodleFilesDir` | school | `swift/TigerDuck/Persistence/MoodleFiles.swift` `forgetAccount` |
+| cache | `moodle_course_id_map.json` | school | `swift/TigerDuck/Persistence/MoodleFiles.swift` `forgetAccount` |
+| cache | `picked_course_colors.json` | school | `swift/TigerDuck/Persistence/CourseColorFiles.swift` `forgetAccount` |
+| cache | `score_report_*` | school | `swift/TigerDuck/Persistence/ScoreReportFiles.swift` `forgetAccount` |
+| cache | `selection_dropped.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
+| cache | `server_dropped.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
+| cache | `user_added_courses.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |

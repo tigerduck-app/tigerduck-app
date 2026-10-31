@@ -65,14 +65,14 @@ struct MoodleMaterialsWeekPageTests {
         let start = calendar.date(byAdding: .day, value: -7 * 7, to: calendar.startOfDay(for: AppClock.now()))
         let course = MoodleCourseSummary(html: "", text: "", names: [], format: "weeks", startDate: start)
         let materials = materials(datedAsWeek: datedAsWeek)
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
         return MoodleCourseStore(
             courseId: 20119,
             termCourseIds: [20119],
-            context: MoodleCacheContext(account: "B11399001", cache: cache, isCurrent: { true }),
+            context: MoodleCacheContext(account: "B11399001", cache: cache.moodle, isCurrent: { true }),
             api: MoodleCourseAPI(
                 functions: { [MoodleCourseContentsService.contentsFunction, MoodleCourseSummaryService.coursesFunction] },
                 forums: { _ in [] },

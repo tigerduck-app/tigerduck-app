@@ -100,7 +100,7 @@ struct MoodleCourseMembersTests {
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleCourseMembersTests-\(UUID().uuidString)", isDirectory: true)
-        lazy var cache = DataCache(
+        lazy var cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -120,14 +120,14 @@ struct MoodleCourseMembersTests {
             courseId: courseId,
             termCourseIds: [courseId],
             context: MoodleCacheContext(
-                account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }, now: now
+                account: account, cache: folder.cache.moodle, isCurrent: { signedIn.withLock { $0 } }, now: now
             ),
             api: site.api(before: before)
         )
     }
 
     private func cached(_ folder: Folder, account: String = "B11399001") -> MoodleMemberList? {
-        folder.cache.loadMoodleData(MoodleMemberList.self, name: "courses/\(Self.courseId)/members", account: account)?.value
+        folder.cache.moodle.loadMoodleData(MoodleMemberList.self, name: "courses/\(Self.courseId)/members", account: account)?.value
     }
 
     @Test("the members a refresh brings show from the cache the next time, for that account only")
@@ -180,7 +180,7 @@ struct MoodleCourseMembersTests {
         await Self.store(folder, site: Site()).refreshMembers()
         #expect(cached(folder) != nil)
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
 
         #expect(cached(folder) == nil)
         #expect(Self.store(folder, site: Site()).sectionRows.isEmpty)
@@ -707,7 +707,7 @@ struct MoodleCourseMembersTests {
         let preview = try #require(await store.picturePreview(of: member))
         #expect(!pictures(folder).isEmpty)
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
 
         #expect(!FileManager.default.fileExists(atPath: folder.cache.moodleFilesDir.path))
         #expect(!FileManager.default.fileExists(atPath: preview.path))

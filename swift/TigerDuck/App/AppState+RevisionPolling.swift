@@ -145,16 +145,15 @@ extension AppState {
             guard !Task.isCancelled else { return }
 
             if let fetchedSchoolEvents {
-                var calendarCache = DataCache.shared.loadCalendarEvents()
+                var calendarCache = AssignmentStore.shared.loadCalendarEvents()
                 calendarCache.removeAll { $0.source == .school }
                 calendarCache.append(contentsOf: fetchedSchoolEvents)
-                DataCache.shared.saveCalendarEvents(calendarCache)
+                AssignmentStore.shared.saveCalendarEvents(calendarCache)
             }
 
             await MainActor.run {
                 guard !Task.isCancelled else { return }
                 sessionManager.loadingState = .loaded
-                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             }
         }
     }

@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import Observation
 import os
 
 nonisolated struct CourseChange: Equatable, Sendable {
@@ -126,8 +127,12 @@ private nonisolated extension CourseChange {
 }
 
 @MainActor
+@Observable
 final class CourseChangeStore {
     static let shared = CourseChangeStore()
+
+    /// Moves each time the stored feed changes, for the views and device surfaces that draw it.
+    private(set) var revision = 0
 
     private let session: URLSession
     private let baseURL: () -> URL
@@ -198,9 +203,7 @@ final class CourseChangeStore {
             let changed = parsed != CourseChanges.cached
             Defaults[.courseChangesCache] = data
             Defaults[.courseChangesETag] = http.value(forHTTPHeaderField: "ETag") ?? ""
-            if changed {
-                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            }
+            if changed { revision &+= 1 }
             return changed
         } catch {
             if !AppLogger.isCancellation(error) {

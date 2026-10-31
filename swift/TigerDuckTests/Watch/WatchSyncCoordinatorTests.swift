@@ -96,7 +96,7 @@ final class WatchSyncCoordinatorTests: XCTestCase {
     }
 
     /// iOS can launch the app in the background for a Watch message, with no scene and so no
-    /// `WatchSyncBridge`, so the coordinator answers from the source installed at launch.
+    /// scene-bound sync, so the coordinator answers from the source installed at launch.
     @MainActor
     func test_syncRequest_isAnsweredFromThePayloadSource() async throws {
         let session = StubSession()

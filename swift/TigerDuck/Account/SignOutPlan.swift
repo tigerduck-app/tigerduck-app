@@ -8,7 +8,7 @@ protocol AccountScoped {
 
 /// Where the account stores keep their data: the app's own, or a test's.
 struct AccountStorage {
-    var cache: DataCache = .shared
+    var folders: CacheFolders = .app
     #if os(iOS)
     var mailPreferences: any MailPreferences = DefaultsMailPreferences()
     var mailCredentials = MailCredentialStore()
@@ -45,8 +45,9 @@ struct SignOutPlan {
 extension SignOutPlan {
     static let schoolStores: [any AccountScoped.Type] = {
         var stores: [any AccountScoped.Type] = [
-            SchoolAccountKeys.self, DataCache.self, ImportedClassTableStore.self, BulletinsViewModel.self,
-            AcademicCalendarStore.self,
+            SchoolAccountKeys.self, CourseFiles.self, CourseColorFiles.self, AssignmentFiles.self,
+            CalendarEventFiles.self, BulletinFiles.self, ScoreReportFiles.self, MoodleFiles.self,
+            ImportedClassTableStore.self, BulletinsViewModel.self, AcademicCalendarStore.self,
         ]
         #if os(iOS)
         stores.append(BrowserData.self)
@@ -101,6 +102,8 @@ extension SignOutPlan {
                 LibraryService.schoolAccountDidSignOut()
                 ServerStatusTracker.shared.reset()
                 TigerDuckTheme.reload()
+                CourseStore.shared.noteChange()
+                AssignmentStore.shared.noteChange()
                 ImportedClassTableStore.shared.removeAll()
                 app.didSkipMacLogin = false
                 app.syncConflicts = []
@@ -112,7 +115,6 @@ extension SignOutPlan {
                 app.cancelNotificationSettingsPushes()
                 #endif
                 app.cloudSyncEnabled = false
-                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             }
         )
     }

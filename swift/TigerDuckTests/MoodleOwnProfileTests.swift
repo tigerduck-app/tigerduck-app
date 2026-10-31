@@ -59,11 +59,11 @@ struct MoodleOwnProfileTests {
     }
 
     private static func store(_ site: Site, root: URL) -> MoodleCourseStore {
-        let cache = DataCache(cacheDir: root.appendingPathComponent("cache", isDirectory: true),
+        let cache = TestCache(cacheDir: root.appendingPathComponent("cache", isDirectory: true),
                               persistentDir: root.appendingPathComponent("persistent", isDirectory: true))
         return MoodleCourseStore(
             courseId: 1, termCourseIds: [1],
-            context: MoodleCacheContext(account: "B11399001", cache: cache, isCurrent: { true }, now: { Date() }),
+            context: MoodleCacheContext(account: "B11399001", cache: cache.moodle, isCurrent: { true }, now: { Date() }),
             api: site.api
         )
     }

@@ -27,17 +27,16 @@ extension AppState {
                 let protectedOverrides = pendingOverrides.union(inFlight)
                 let safeArchived = Self.mergedMarks(
                     server: serverArchived,
-                    local: DataCache.shared.loadArchivedAssignmentIds(),
+                    local: AssignmentStore.shared.loadArchivedAssignmentIds(),
                     protected: protectedOverrides
                 )
                 let safeCompleted = Self.mergedMarks(
                     server: serverCompleted,
-                    local: DataCache.shared.loadLocallyCompletedAssignmentIds(),
+                    local: AssignmentStore.shared.loadLocallyCompletedAssignmentIds(),
                     protected: protectedOverrides
                 )
-                DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
-                DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
-                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+                AssignmentStore.shared.replaceArchivedAssignmentIds(safeArchived)
+                AssignmentStore.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
             }
         }
         syncConflicts = []
@@ -136,8 +135,8 @@ extension AppState {
                 )
 
                 if pending.contains("courses") {
-                    let deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
-                    let userAdded = DataCache.shared.loadUserAddedCourses()
+                    let deletedNos = Set(CourseStore.shared.loadDeletedCourseNos())
+                    let userAdded = CourseStore.shared.loadUserAddedCourses()
                     let studentId = authService.storedStudentId
                     let serverSemesters = coursesArray.compactMap { $0["semester"] as? String }.filter { !$0.isEmpty }
                     var localOnly = 0
@@ -145,8 +144,8 @@ extension AppState {
                     for semester in Set(serverSemesters).union(SemesterCatalog.availableSemesters()) {
                         let (serverNos, localNos) = Self.reenableCourseNos(
                             coursesArray, semester: semester,
-                            local: Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
-                                .union(DataCache.shared.loadUserAddedCourses(semester: semester).map(\.courseNo))
+                            local: Set(CourseStore.shared.loadCourses(semester: semester).map(\.courseNo))
+                                .union(CourseStore.shared.loadUserAddedCourses(semester: semester).map(\.courseNo))
                                 .filter { !CourseTombstone.isHidden($0, semester: semester, in: deletedNos) },
                             userAdded: userAdded,
                             liveAnswer: studentId.flatMap { CourseSelectionService.lastAnswer(studentId: $0, semester: semester) }
@@ -201,7 +200,7 @@ extension AppState {
 
                     if pending.contains("course_names") {
                         let nameMismatches = Self.courseNameMismatches(
-                            overrides, courseNos: moodleIdToNo, local: DataCache.shared.loadCourseCustomNames()
+                            overrides, courseNos: moodleIdToNo, local: CourseStore.shared.loadCourseCustomNames()
                         )
                         AppLogger.sync.info("[reenable] names: \(nameMismatches.isEmpty ? "MATCH" : "DIFFER (\(nameMismatches.count))", privacy: .public)")
                         if !nameMismatches.isEmpty {
@@ -235,8 +234,8 @@ extension AppState {
                         }
                     }
                     serverMarkedAssignments = serverArchivedIds.union(serverCompletedIds)
-                    let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
-                    let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
+                    let localArchivedIds = AssignmentStore.shared.loadArchivedAssignmentIds()
+                    let localCompletedIds = AssignmentStore.shared.loadLocallyCompletedAssignmentIds()
                     let archivedMatch = localArchivedIds == serverArchivedIds
                     let completedMatch = localCompletedIds == serverCompletedIds
                     let coursesDiffer = Self.ignoredCoursesDiffer(
@@ -246,7 +245,7 @@ extension AppState {
                                 listed: Self.listedCourseRows(coursesArray), seen: Defaults[.courseRowIdsSeen]
                             )),
                         listed: Self.listedCourses(coursesArray),
-                        local: DataCache.shared.loadIgnoredAssignmentCourses(),
+                        local: AssignmentStore.shared.loadIgnoredAssignmentCourses(),
                         snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String })
                     )
                     AppLogger.sync.info("[reenable] assignments: localArchived=\(localArchivedIds.count, privacy: .public) serverArchived=\(serverArchivedIds.count, privacy: .public) match=\(archivedMatch, privacy: .public) | localCompleted=\(localCompletedIds.count, privacy: .public) serverCompleted=\(serverCompletedIds.count, privacy: .public) match=\(completedMatch, privacy: .public) | ignoredCoursesDiffer=\(coursesDiffer, privacy: .public)")
@@ -525,17 +524,17 @@ extension AppState {
         guard CourseUploadPolicy.uploadsCourses else { return }
         let terms = SemesterCatalog.availableSemesters().map { semester in
             (semester: semester,
-             courses: DataCache.shared.loadCourses(semester: semester)
-                + DataCache.shared.loadUserAddedCourses(semester: semester))
+             courses: CourseStore.shared.loadCourses(semester: semester)
+                + CourseStore.shared.loadUserAddedCourses(semester: semester))
         }
         let latched = Set(terms.map(\.semester))
         resettingSemesters.formUnion(latched)
         defer {
             resettingSemesters.subtract(latched)
-            for semester in latched { DataCache.shared.recordSemesterReset(semester) }
+            for semester in latched { CourseStore.shared.recordSemesterReset(semester) }
         }
         try await Self.keepLocalCourses(
-            terms, hiding: Set(DataCache.shared.loadDeletedCourseNos()), on: pushCoordinator, isCurrent: isCurrent
+            terms, hiding: Set(CourseStore.shared.loadDeletedCourseNos()), on: pushCoordinator, isCurrent: isCurrent
         )
     }
 
@@ -544,7 +543,7 @@ extension AppState {
         if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
             let moodleIdByCourseNo = Dictionary(
                 SemesterCatalog.availableSemesters()
-                    .flatMap { DataCache.shared.loadCourses(semester: $0) }
+                    .flatMap { CourseStore.shared.loadCourses(semester: $0) }
                     .compactMap { c in c.moodleIdNumber.map { (c.courseNo, $0) } },
                 uniquingKeysWith: { first, _ in first })
             if conflict.categories.contains("course_colors") {
@@ -555,7 +554,7 @@ extension AppState {
                 }
             }
             if conflict.categories.contains("course_names") {
-                let customNames = DataCache.shared.loadCourseCustomNames()
+                let customNames = CourseStore.shared.loadCourseCustomNames()
                 for (courseNo, locales) in customNames {
                     guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
                     for (locale, name) in locales where !name.isEmpty {
@@ -565,8 +564,8 @@ extension AppState {
             }
         }
         if conflict.categories.contains("assignments") {
-            let archived = DataCache.shared.loadArchivedAssignmentIds()
-            let completed = DataCache.shared.loadLocallyCompletedAssignmentIds()
+            let archived = AssignmentStore.shared.loadArchivedAssignmentIds()
+            let completed = AssignmentStore.shared.loadLocallyCompletedAssignmentIds()
             for id in archived {
                 queued.append(syncAssignmentOverride(moodleId: id, status: "archived"))
             }
@@ -580,7 +579,7 @@ extension AppState {
                 queued.append(syncAssignmentOverride(moodleId: id, status: "none"))
             }
             if let serverIgnoredCourses = conflict.serverIgnoredCourses {
-                let ignoredCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+                let ignoredCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
                 queued += syncCourseIgnores(ignoredCourses)
                 for course in Self.courseIgnoresToClear(server: serverIgnoredCourses, local: ignoredCourses) {
                     queued.append(syncCourseIgnore(
@@ -625,19 +624,22 @@ extension AppState {
         }
     }
 
-    static func dropLocalCopies(for conflict: ReenableConflict, in cache: DataCache = .shared) {
+    static func dropLocalCopies(
+        for conflict: ReenableConflict, courses: CourseStore = .shared, assignments: AssignmentStore = .shared,
+        colors: CourseColorFiles = CourseColorStore.shared.files
+    ) {
         if conflict.categories.contains("course_colors") {
-            cache.saveCourseColorMap([:])
+            colors.saveCourseColorMap([:])
             TigerDuckTheme.reload()
         }
         if conflict.categories.contains("course_names") {
-            cache.saveCourseCustomNames([:])
+            courses.saveCourseCustomNames([:])
         }
         if conflict.categories.contains("assignments") {
-            cache.replaceArchivedAssignmentIds([])
-            cache.replaceLocallyCompletedAssignmentIds([])
+            assignments.replaceArchivedAssignmentIds([])
+            assignments.replaceLocallyCompletedAssignmentIds([])
             if conflict.serverIgnoredCourses != nil {
-                cache.replaceIgnoredAssignmentCourses([])
+                assignments.replaceIgnoredAssignmentCourses([])
             }
         }
     }

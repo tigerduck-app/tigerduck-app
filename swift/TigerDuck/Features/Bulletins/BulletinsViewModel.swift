@@ -43,7 +43,7 @@ final class BulletinsViewModel: AccountScoped {
 
     init(apiClient: BulletinAPIClient? = nil) {
         self.apiClient = apiClient ?? BulletinAPIClient()
-        let cached = DataCache.shared.loadBulletinSummaries()
+        let cached = BulletinFiles.shared.loadBulletinSummaries()
         if !cached.isEmpty {
             items = Self.sortedUnique(cached)
             filteredItems = items
@@ -72,8 +72,8 @@ final class BulletinsViewModel: AccountScoped {
 
     /// Another backend numbers its bulletins apart, so the old rows cannot be merged with its pages.
     static func endpointDidChange() {
-        DataCache.shared.saveBulletinSummaries([])
-        DataCache.shared.clearBulletinDetails()
+        BulletinFiles.shared.saveBulletinSummaries([])
+        BulletinFiles.shared.clearBulletinDetails()
         forgetListSession()
     }
 
@@ -151,7 +151,7 @@ final class BulletinsViewModel: AccountScoped {
             }
             return existing
         }
-        let cached = DataCache.shared.loadBulletinSummaries()
+        let cached = BulletinFiles.shared.loadBulletinSummaries()
         if let hit = cached.first(where: { $0.id == id }) {
             guard !hit.isDeleted else {
                 logger.info("summary(forId:) skipped cached deleted bulletin id=\(id, privacy: .public)")
@@ -297,7 +297,7 @@ final class BulletinsViewModel: AccountScoped {
     private func restartAfterSignOut() {
         prefetchTask?.cancel()
         prefetchTask = nil
-        items = Self.sortedUnique(DataCache.shared.loadBulletinSummaries())
+        items = Self.sortedUnique(BulletinFiles.shared.loadBulletinSummaries())
         nextCursor = nil
         hasMore = true
         loadState = .idle
@@ -316,7 +316,7 @@ final class BulletinsViewModel: AccountScoped {
     }
 
     private func persistSummaries() {
-        DataCache.shared.saveBulletinSummaries(items)
+        BulletinFiles.shared.saveBulletinSummaries(items)
         Self.listSession = ListSession(
             items: items, nextCursor: nextCursor, hasMore: hasMore, showDeleted: showDeleted
         )

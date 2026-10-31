@@ -6,12 +6,12 @@ import UIKit
 enum CourseColorPickSeedMigration {
     private static let doneKey = "CourseColorPickSeedMigration.v1.done"
 
-    static func runIfNeeded(cache: DataCache = .shared, center: NotificationCenter = .default) {
+    static func runIfNeeded(files: CourseColorFiles = CourseColorStore.shared.files, center: NotificationCenter = .default) {
         guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
-        guard let colors = cache.loadCourseColorMapIfReadable() else {
-            return runAgainOnceReadable(cache: cache, center: center)
+        guard let colors = files.loadCourseColorMapIfReadable() else {
+            return runAgainOnceReadable(files: files, center: center)
         }
-        cache.savePickedCourseColors(cache.loadPickedCourseColors().union(colors.keys))
+        files.savePickedCourseColors(files.loadPickedCourseColors().union(colors.keys))
         UserDefaults.standard.set(true, forKey: doneKey)
     }
 
@@ -19,7 +19,7 @@ enum CourseColorPickSeedMigration {
     /// launching again. Both notifications are watched, as a resumed process can miss the first.
     /// Like the seed at launch it counts every colour in the map as picked, so one assigned
     /// automatically before the unlock is counted too; a sign-out then only warns about it.
-    private static func runAgainOnceReadable(cache: DataCache, center: NotificationCenter) {
+    private static func runAgainOnceReadable(files: CourseColorFiles, center: NotificationCenter) {
         #if os(iOS)
         let retry = Retry()
         retry.observers = [
@@ -31,7 +31,7 @@ enum CourseColorPickSeedMigration {
                     guard !retry.observers.isEmpty else { return }
                     retry.observers.forEach(center.removeObserver)
                     retry.observers = []
-                    runIfNeeded(cache: cache, center: center)
+                    runIfNeeded(files: files, center: center)
                 }
             }
         }

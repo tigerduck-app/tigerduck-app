@@ -590,7 +590,7 @@ struct SettingsView: View {
         DevMailServerSettings.shared.resetToSchoolServer()
         #endif
 
-        DataCache.shared.clearEverything()
+        CacheFolders.app.removeEverything()
 
         SecureStore.removeAll(preserving: [DebugEndpointStore.keychainKey])
 

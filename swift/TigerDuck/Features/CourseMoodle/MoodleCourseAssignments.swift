@@ -37,7 +37,7 @@ final class MoodleCourseAssignments {
         let saved = Self.records(in: context)
         records = Dictionary(saved.map { (String($0.assignId), $0) }, uniquingKeysWith: { first, _ in first })
         let listed = Dictionary(
-            context.cache.loadAssignments().map { ($0.assignmentId, $0) }, uniquingKeysWith: { first, _ in first }
+            context.assignments.loadAssignments().map { ($0.assignmentId, $0) }, uniquingKeysWith: { first, _ in first }
         )
         list = saved.filter { $0.courseId == courseId }.map { Entry(record: $0, listed: listed[String($0.assignId)]) }
     }

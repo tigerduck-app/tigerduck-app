@@ -6,7 +6,7 @@ extension SDAssignment {
         if let course, course.courseNo == courseNo {
             raw = course.displayName
         } else {
-            let overrides = DataCache.shared.loadCourseCustomNamesFlat()
+            let overrides = CourseStore.shared.loadCourseCustomNamesFlat()
             raw = overrides[courseNo] ?? courseName
         }
         return raw.decodingHTMLEntities()

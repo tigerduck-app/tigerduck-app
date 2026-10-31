@@ -202,7 +202,7 @@ final class ImportedClassTableStore: AccountScoped {
 
     /// Deletes the file whether or not this process loaded it; `removeAll()` empties the store in memory.
     static func forgetAccount(in storage: AccountStorage) {
-        removeFile(at: storage.cache.persistentDir.appendingPathComponent(fileName))
+        removeFile(at: storage.folders.persistent.appendingPathComponent(fileName))
     }
 
     func removeAll() {
@@ -269,7 +269,7 @@ final class ImportedClassTableStore: AccountScoped {
             defer { try? manager.removeItem(at: staging) }
             var replacement = staging.appendingPathComponent(fileURL.lastPathComponent)
             let data = try JSONEncoder().encode(StoredFile(owner: owner, people: people.map { StoredPerson($0) }))
-            // Readable from the first unlock after a restart, unlike `DataCache`'s files: the store
+            // Readable from the first unlock after a restart, unlike the course files: the store
             // reads the file once, and a read refused while the phone is locked would leave it
             // empty for the rest of the run.
             try data.write(to: replacement, options: [.completeFileProtectionUntilFirstUserAuthentication])

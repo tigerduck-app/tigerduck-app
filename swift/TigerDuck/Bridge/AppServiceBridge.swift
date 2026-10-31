@@ -51,7 +51,7 @@ enum AppServiceBridge {
     static func warmAllSemesterCaches(authService: AuthService) async {
         await SemesterCatalog.refreshIfStale()
         let semesters = SemesterCatalog.availableSemesters().filter {
-            DataCache.shared.loadCourses(semester: $0).isEmpty
+            CourseStore.shared.loadCourses(semester: $0).isEmpty
         }
         await warmTerms(
             semesters,
@@ -147,14 +147,15 @@ enum AppServiceBridge {
         // marker, so its numbers belong to the term the catalogue reports open.
         // `currentSemesterCode()` lags: its month heuristic would misfile them for weeks.
         let servesSelectionSemester = semester == SemesterCatalog.selectionSemesterCode()
-        let display = CourseDisplayPreferences.current()
+        let display = CourseStore.shared.display()
         let courseApiLanguage = display.language
+        let editToken = CourseStore.shared.editToken
 
         guard !Task.isCancelled else { return [] }
 
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
-            return DataCache.shared.loadCourses(semester: semester)
+            return CourseStore.shared.loadCourses(semester: semester)
         }
 
         let session = NTUSTSessionManager.shared.session
@@ -193,10 +194,10 @@ enum AppServiceBridge {
 
         let selectionAnswered = courseSelectionNos?.isEmpty == false
         let report = selectionAnswered
-            ? DataCache.shared.loadScoreReport(studentId: studentId)?.report
+            ? ScoreReportFiles.shared.loadScoreReport(studentId: studentId)?.report
             : await transcript()
         let scoreCoursesForSemester = report.map { classRows(of: $0, term: semester) }
-        let cachedCourses = DataCache.shared.loadCourses(semester: semester)
+        let cachedCourses = CourseStore.shared.loadCourses(semester: semester)
         let rebuilds = rebuildsFromTranscript(report, term: semester, servedBySelection: servesSelectionSemester)
         let term: (courseNos: [String], roster: [String]?)? = rebuilds
             ? (uniqueCourseNos(scoreCoursesForSemester?.map(\.code) ?? []), nil)
@@ -207,17 +208,17 @@ enum AppServiceBridge {
             )
         guard let term else { return cachedCourses }
         if let roster = term.roster, !Task.isCancelled, authService.session.isCurrent(ticket) {
-            DataCache.shared.recordSelectionRoster(semester: semester, roster: roster)
+            CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster)
             if selectionIsLive {
-                let stillDropped = DataCache.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
-                DataCache.shared.saveServerDroppedNos(stillDropped, semester: semester)
+                let stillDropped = CourseStore.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
+                CourseStore.shared.saveServerDroppedNos(stillDropped, semester: semester)
             }
         }
 
         let moodleAll = await moodle()
         // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
         if let moodleAll, !Task.isCancelled, authService.session.isCurrent(ticket) {
-            DataCache.shared.saveMoodleCourseIdMap(moodleCourseIdMap(moodleAll))
+            MoodleFiles.shared.saveMoodleCourseIdMap(moodleCourseIdMap(moodleAll))
         }
 
         let moodleByNo = Dictionary(
@@ -262,27 +263,29 @@ enum AppServiceBridge {
             looked, unreadable: report.map { unreadableClassRows(of: $0, term: semester).map(\.code) } ?? [],
             cached: cachedCourses,
             others: Array(moodleByNo.keys) + (report?.courses.filter { $0.term == semester }.map(\.code) ?? []),
-            userAdded: DataCache.shared.loadUserAddedCourses().filter { DataCache.userAddedCourse($0, belongsTo: semester) }
+            userAdded: CourseStore.shared.loadUserAddedCourses().filter { CourseStore.userAddedCourse($0, belongsTo: semester) }
         )
         let drawn = pastTerm?.courses ?? drawnCourses(
             looked.map(\.course), fromSelection: term.roster != nil, cached: Set(cachedByNo.keys)
         )
 
         guard !Task.isCancelled, authService.session.isCurrent(ticket) else {
-            return DataCache.shared.loadCourses(semester: semester)
+            return CourseStore.shared.loadCourses(semester: semester)
         }
         guard let courses = savedCourses(
             drawn, pastTerm: pastTerm != nil, live: selectionIsLive && term.roster != nil,
-            dropped: DataCache.shared.loadServerDroppedNos(semester: semester)
+            dropped: CourseStore.shared.loadServerDroppedNos(semester: semester)
         ) else { return cachedCourses }
         if let pastTerm {
-            DataCache.shared.recordSelectionRoster(
+            CourseStore.shared.recordSelectionRoster(
                 semester: semester, roster: pastTerm.roster, alsoListed: pastTerm.dropping, isFinal: true
             )
         }
-        DataCache.shared.saveCourses(courses, semester: semester)
+        guard CourseStore.shared.saveFetchedCourses(courses, semester: semester, display: display, since: editToken) else {
+            return CourseStore.shared.loadCourses(semester: semester)
+        }
         uploadVisibleCourses(
-            courses, semester: semester, hidden: Set(DataCache.shared.loadDeletedCourseNos()),
+            courses, semester: semester, hidden: Set(CourseStore.shared.loadDeletedCourseNos()),
             roster: uploadedRoster(selection: term.roster, live: selectionIsLive, pastTerm: pastTerm?.roster),
             resendingRoster: resendingRoster, to: courseUploader
         )
@@ -297,7 +300,6 @@ enum AppServiceBridge {
             AppLogger.sync.info("[sync] roster requested for \(term, privacy: .public)")
             Task {
                 _ = await fetchCourses(authService: authService, semester: term, forceRefresh: true, resendingRoster: true)
-                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             }
         }
     }
@@ -502,7 +504,7 @@ enum AppServiceBridge {
         return previous.union(localPortalNos).subtracting(enrolled)
     }
 
-    struct CourseDisplayPreferences: Sendable {
+    struct CourseDisplayPreferences: Equatable, Sendable {
         let language: String
         let courseAbbrEnabled: Bool
         let classroomAbbrEnabled: Bool
@@ -626,16 +628,15 @@ enum AppServiceBridge {
     }
 
     static func refreshUserAddedCourses(
-        semester: String, authService: AuthService,
+        semester: String, authService: AuthService, courses: CourseStore = .shared,
         lookup: @escaping @MainActor @Sendable (_ semester: String, _ courseNo: String, _ language: String, _ fresh: Bool) async throws -> [CourseSearchResult] = {
             try await CourseLookupService.lookupCourse(semester: $0, courseNo: $1, language: $2, fresh: $3)
         }
     ) async -> [SDCourse] {
         let ticket = authService.session.ticket
-        let stored = DataCache.shared.loadUserAddedCourses()
-        let targets = stored.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
+        let targets = courses.loadUserAddedCourses(semester: semester)
         guard !targets.isEmpty else { return [] }
-        let display = CourseDisplayPreferences.current()
+        let display = courses.display()
         let seeds = targets.map { ($0.courseNo, $0.moodleIdNumber, $0.semester.isEmpty ? semester : $0.semester) }
 
         let lookups = await concurrentMap(seeds) { @MainActor seed -> (String, CourseData)? in
@@ -649,18 +650,8 @@ enum AppServiceBridge {
         }
         let refreshed = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
         guard authService.session.isCurrent(ticket) else { return [] }
-        // Lookups take seconds; an add, delete or sync merge meanwhile must survive the save.
-        let current = DataCache.shared.loadUserAddedCourses()
-        let inScope = { current.filter { DataCache.userAddedCourse($0, belongsTo: semester) } }
-        guard !refreshed.isEmpty else { return inScope() }
-
-        let updated = current.map { course -> SDCourse in
-            guard DataCache.userAddedCourse(course, belongsTo: semester),
-                  let data = refreshed[course.courseNo] else { return course }
-            return course.updated(with: data)
-        }
-        DataCache.shared.saveUserAddedCourses(updated)
-        return updated.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
+        courses.applyLookedUp(refreshed, semester: semester, enrolled: false, display: display)
+        return courses.loadUserAddedCourses(semester: semester)
     }
 
     static func refreshImportedCourses(semester: String, courseNos: [String], current: [SDCourse]) async -> [SDCourse]? {
@@ -707,20 +698,17 @@ enum AppServiceBridge {
     }
 
     static func refreshCoursesMissingClassroom(
-        semester: String, authService: AuthService,
+        semester: String, authService: AuthService, courses: CourseStore = .shared,
         lookup: @escaping @MainActor @Sendable (_ semester: String, _ courseNo: String, _ language: String, _ fresh: Bool) async throws -> [CourseSearchResult] = {
             try await CourseLookupService.lookupCourse(semester: $0, courseNo: $1, language: $2, fresh: $3)
         }
     ) async -> Bool {
         let ticket = authService.session.ticket
-        let enrolled = DataCache.shared.loadCourses(semester: semester)
-        let userAdded = DataCache.shared.loadUserAddedCourses()
-        let isUserAddedHere: (SDCourse) -> Bool = { DataCache.userAddedCourse($0, belongsTo: semester) }
-        let seeds = (enrolled + userAdded.filter(isUserAddedHere))
+        let seeds = (courses.loadCourses(semester: semester) + courses.loadUserAddedCourses(semester: semester))
             .filter { $0.classroom.isEmpty }
             .map { ($0.courseNo, $0.moodleIdNumber) }
         guard !seeds.isEmpty else { return false }
-        let display = CourseDisplayPreferences.current()
+        let display = courses.display()
 
         let lookups = await concurrentMap(seeds) { @MainActor seed -> (String, CourseData)? in
             let (courseNo, moodleId) = seed
@@ -733,24 +721,8 @@ enum AppServiceBridge {
             return data.classroom.isEmpty ? nil : (courseNo, data)
         }
         let found = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
-        guard authService.session.isCurrent(ticket), !found.isEmpty else { return false }
-
-        // Re-read both lists: a roster or user-added change saved during the lookups must survive.
-        let enrolledNow = DataCache.shared.loadCourses(semester: semester)
-        let userAddedNow = DataCache.shared.loadUserAddedCourses()
-        if enrolledNow.contains(where: { found[$0.courseNo] != nil }) {
-            DataCache.shared.saveCourses(
-                enrolledNow.map { course in found[course.courseNo].map(course.updated) ?? course },
-                semester: semester
-            )
-        }
-        if userAddedNow.contains(where: { isUserAddedHere($0) && found[$0.courseNo] != nil }) {
-            DataCache.shared.saveUserAddedCourses(userAddedNow.map { course in
-                guard isUserAddedHere(course), let data = found[course.courseNo] else { return course }
-                return course.updated(with: data)
-            })
-        }
-        return true
+        guard authService.session.isCurrent(ticket) else { return false }
+        return courses.applyLookedUp(found, semester: semester, enrolled: true, display: display)
     }
 
     nonisolated private static func fallbackCourseData(
@@ -847,27 +819,6 @@ enum AppServiceBridge {
         )
     }
 
-}
-
-private extension SDCourse {
-    func updated(with data: CourseData) -> SDCourse {
-        SDCourse(
-            courseNo: courseNo,
-            courseName: data.courseName,
-            instructor: data.instructor,
-            credits: data.credits,
-            classroom: data.classroom,
-            enrolledCount: data.enrolledCount,
-            maxCount: data.maxCount,
-            schedule: data.schedule,
-            moodleIdNumber: moodleIdNumber,
-            semester: semester,
-            classroomMap: data.classroomMap,
-            dimension: data.dimension,
-            allYear: data.allYear,
-            requireOption: data.requireOption
-        )
-    }
 }
 
 private extension CourseData {

@@ -22,9 +22,9 @@ final class TimeSliderViewModel {
     private let isQuietDay: (Date) -> Bool
     // `nonisolated(unsafe)` so `deinit` can remove them; `@ObservationIgnored`
     // keeps the macro from swapping the storage out from under the modifier.
-    // Same pattern as `ClassTableViewModel.dataObserver`.
     @ObservationIgnored
     private nonisolated(unsafe) var quietDayObservers: [Any] = []
+    @ObservationIgnored private var storeObservation: StoreObservation?
 
     var hasCourses: Bool { !timeSlots.isEmpty }
 
@@ -33,9 +33,11 @@ final class TimeSliderViewModel {
     init(isQuietDay: @escaping (Date) -> Bool = { _ in false }) {
         self.isQuietDay = isQuietDay
         hapticGenerator.prepare()
+        storeObservation = StoreObservation(read: { _ = AppDataRevision.current }) { [weak self] in
+            self?.reloadQuietDays()
+        }
         quietDayObservers = [
             AppConstants.holidayNotifyDidChange,
-            AppConstants.dataDidUpdate,
             AppConstants.courseSkipStateDidChange,
         ].map { name in
             NotificationCenter.default.addObserver(

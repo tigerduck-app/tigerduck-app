@@ -92,14 +92,6 @@ final class AppState {
         #endif
 
         #if os(iOS)
-        liveActivityObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.dataDidUpdate,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.scheduleLiveActivityRefresh()
-        }
-
         preferencesObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.liveActivityPreferencesDidChange,
             object: nil,
@@ -111,23 +103,6 @@ final class AppState {
             self?.scheduleNotificationSettingsPush()
         }
 
-        skipStateObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.courseSkipStateDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.scheduleLiveActivityRefresh()
-        }
-
-        #if DEBUG
-        clockObserver = NotificationCenter.default.addObserver(
-            forName: DebugClockController.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.scheduleLiveActivityRefresh()
-        }
-        #endif
         #endif
 
         runPendingMigrations()
@@ -145,7 +120,7 @@ final class AppState {
         liveActivityCoordinator.setAssignmentOutstandingProvider { id in
             LiveActivityScenarioResolver.isOutstanding(
                 assignmentId: id,
-                in: DataCache.shared.loadAssignments()
+                in: AssignmentStore.shared.loadAssignments()
             )
         }
         liveActivityCoordinator.setSkippedClassProvider { slotId in
@@ -219,20 +194,9 @@ final class AppState {
         #if os(iOS)
         pendingRefreshTask?.cancel()
         boundaryRefreshTask?.cancel()
-        if let observer = liveActivityObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
         if let observer = preferencesObserver {
             NotificationCenter.default.removeObserver(observer)
         }
-        if let observer = skipStateObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        #if DEBUG
-        if let observer = clockObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        #endif
         #endif
     }
 
@@ -287,12 +251,7 @@ final class AppState {
     let scenarioResolver = LiveActivityScenarioResolver()
     let timelineResolver = CourseTimelineResolver()
     let courseProvider = CanonicalCourseProvider()
-    private var liveActivityObserver: Any?
     private var preferencesObserver: Any?
-    private var skipStateObserver: Any?
-    #if DEBUG
-    private var clockObserver: Any?
-    #endif
     var pendingRefreshTask: Task<Void, Never>?
     var boundaryRefreshTask: Task<Void, Never>?
     #endif

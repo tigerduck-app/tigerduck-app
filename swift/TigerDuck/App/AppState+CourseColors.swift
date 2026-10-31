@@ -10,7 +10,6 @@ extension AppState {
     func reassignAllCourseColors() {
         let courses = CanonicalCourseProvider().currentCourses()
         TigerDuckTheme.reassignAll(courseNos: courses.map(\.courseNo))
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         guard Defaults[.cloudSyncEnabled] else { return }
         let colorMap = TigerDuckTheme.snapshot()
         for course in courses {
@@ -32,8 +31,8 @@ extension AppState {
         let moodleIds = colors.count > 1
             ? Self.moodleIdsByCourseNo(
                 picked: picked,
-                termCourses: SemesterCatalog.availableSemesters().flatMap { DataCache.shared.loadCourses(semester: $0) },
-                userAdded: DataCache.shared.loadUserAddedCourses()
+                termCourses: SemesterCatalog.availableSemesters().flatMap { CourseStore.shared.loadCourses(semester: $0) },
+                userAdded: CourseStore.shared.loadUserAddedCourses()
             )
             : Self.moodleIdsByCourseNo(picked: picked, termCourses: [], userAdded: [])
         for override in Self.courseColorOverrides(colors, moodleIds: moodleIds) {

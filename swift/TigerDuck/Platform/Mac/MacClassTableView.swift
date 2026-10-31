@@ -52,7 +52,7 @@ struct MacClassTableView: View {
 
     var ignoredAssignmentCourses: Set<String> {
         guard shownPerson == nil else { return [] }
-        return ignoredCoursesMemo.value(for: cacheRevision) { DataCache.shared.loadIgnoredAssignmentCourses() }
+        return ignoredCoursesMemo.value(for: cacheRevision) { AssignmentStore.shared.loadIgnoredAssignmentCourses() }
     }
 
     var shownPerson: ImportedPerson? { ImportedClassTableStore.shared.shownPerson }
@@ -92,11 +92,11 @@ struct MacClassTableView: View {
         if let shownPerson { return shownPerson.courses(in: semester) }
         return coursesMemo.value(for: CoursesKey(semester: semester, revision: cacheRevision)) {
             CanonicalCourseProvider.merge(
-                primary: DataCache.shared.loadCourses(semester: semester),
-                userAdded: DataCache.shared.loadUserAddedCourses(semester: semester),
+                primary: CourseStore.shared.loadCourses(semester: semester),
+                userAdded: CourseStore.shared.loadUserAddedCourses(semester: semester),
                 semester: semester,
-                deletedCourseNos: Set(DataCache.shared.loadDeletedCourseNos()),
-                customNames: DataCache.shared.loadCourseCustomNamesFlat()
+                deletedCourseNos: Set(CourseStore.shared.loadDeletedCourseNos()),
+                customNames: CourseStore.shared.loadCourseCustomNamesFlat()
             )
         }
     }
@@ -267,7 +267,6 @@ struct MacClassTableView: View {
                 onSelect: { hex in
                     let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
                     cacheRevision &+= 1
-                    NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
                     appState.syncColorPick(hex, for: course, changed: changed)
                 }
             )
@@ -340,7 +339,7 @@ struct MacClassTableView: View {
             isFollowingNewestSemester = true
             selectedSemester = semester
         }
-        .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
+        .onChange(of: AppDataRevision.current) {
             cacheRevision &+= 1
         }
         // Course detail uses a custom overlay (not `.sheet`) so the user can
@@ -369,7 +368,7 @@ struct MacClassTableView: View {
             CourseDetailSheet(
                 course: slot.course,
                 assignments: shownPerson == nil
-                    ? DataCache.shared.loadAssignments().unfinished(for: slot.course.courseNo)
+                    ? AssignmentStore.shared.loadAssignments().unfinished(for: slot.course.courseNo)
                     : [],
                 timeRange: block.flatMap(SDCourse.timeRange(periods:)) ?? slot.course.timeRange(for: slot.weekday),
                 weekday: slot.weekday,
@@ -421,7 +420,7 @@ struct MacClassTableView: View {
 
     private func ensureCurrentSemesterFetched() async {
         let target = selectedSemester
-        guard shownPerson == nil, DataCache.shared.loadCourses(semester: target).isEmpty else { return }
+        guard shownPerson == nil, CourseStore.shared.loadCourses(semester: target).isEmpty else { return }
         await MainActor.run { isLoadingSemester = true }
         _ = await AppServiceBridge.fetchCourses(
             authService: appState.authService,

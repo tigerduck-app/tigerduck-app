@@ -70,15 +70,15 @@ struct ScoreViewModelAccountTests {
 
     private static func withCachedReport(_ body: (String) -> Void) {
         let studentId = testStudentId()
-        DataCache.shared.saveScoreReport(report(for: studentId), studentId: studentId)
-        defer { DataCache.shared.invalidateScoreReport(studentId: studentId) }
+        ScoreReportFiles.shared.saveScoreReport(report(for: studentId), studentId: studentId)
+        defer { ScoreReportFiles.shared.invalidateScoreReport(studentId: studentId) }
         body(studentId)
     }
 
     private static func withCachedReport(_ body: (String) async throws -> Void) async rethrows {
         let studentId = testStudentId()
-        DataCache.shared.saveScoreReport(report(for: studentId), studentId: studentId)
-        defer { DataCache.shared.invalidateScoreReport(studentId: studentId) }
+        ScoreReportFiles.shared.saveScoreReport(report(for: studentId), studentId: studentId)
+        defer { ScoreReportFiles.shared.invalidateScoreReport(studentId: studentId) }
         try await body(studentId)
     }
 
@@ -120,7 +120,7 @@ struct ScoreViewModelAccountTests {
 
     @Test func theDayLongCacheAnswersWithTheTimeItWasRead() async throws {
         try await Self.withCachedReport { studentId in
-            let cached = try #require(DataCache.shared.loadScoreReport(studentId: studentId))
+            let cached = try #require(ScoreReportFiles.shared.loadScoreReport(studentId: studentId))
             let config = URLSessionConfiguration.ephemeral
             config.protocolClasses = [OfflineURLProtocol.self]
 

@@ -6,7 +6,7 @@ enum SemesterAttributionCacheMigration {
     static func runIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
         defer { UserDefaults.standard.set(true, forKey: doneKey) }
-        DataCache.shared.clearCourseCaches()
+        CourseStore.shared.clearCourseCaches()
         CourseSelectionService.invalidateEnrolledCoursesCache()
     }
 }

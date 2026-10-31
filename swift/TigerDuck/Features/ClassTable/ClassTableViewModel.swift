@@ -100,14 +100,12 @@ final class ClassTableViewModel {
     func refreshSelectedSemester(authService: AuthService) async {
         guard shownPerson == nil else { return }
         let target = currentSemester
-        let fresh = await AppServiceBridge.fetchCourses(
-            authService: authService,
-            semester: target
-        )
+        _ = await AppServiceBridge.fetchCourses(authService: authService, semester: target)
         await MainActor.run { [weak self] in
             guard let self, self.currentSemester == target else { return }
-            let userAdded = DataCache.shared.loadUserAddedCourses(semester: target)
-            let merged = self.buildCourseList(fresh, userAdded)
+            let merged = self.buildCourseList(
+                courseStore.loadCourses(semester: target), courseStore.loadUserAddedCourses(semester: target)
+            )
             if self.shownPerson == nil, Self.showsChange(merged, over: self.courses) {
                 self.courses = merged
             }
@@ -176,12 +174,10 @@ final class ClassTableViewModel {
     var tripleConflictError: TripleConflictError? = nil
 
     var hasLoaded = false
-    var isUpdatingFromNetwork = false
+    @ObservationIgnored private var storeObservation: StoreObservation?
     // `nonisolated(unsafe)` lets `deinit`, nonisolated even on a `@MainActor`
     // class, read these to remove the observers. Without `@ObservationIgnored`
     // the `@Observable` macro makes the storage computed and strips the modifier.
-    @ObservationIgnored
-    private nonisolated(unsafe) var dataObserver: Any?
     @ObservationIgnored
     private nonisolated(unsafe) var languageObserver: Any?
     @ObservationIgnored
@@ -197,34 +193,27 @@ final class ClassTableViewModel {
     var currentSemesterCourses: [SDCourse] = []
     private let courseProvider = CanonicalCourseProvider()
     private let isClassDay: (Date) -> Bool
+    @ObservationIgnored let courseStore: CourseStore
 
     init(
         isClassDay: @escaping (Date) -> Bool = { _ in true },
+        courses: CourseStore = .shared,
         importedTables: ImportedClassTableStore = .shared,
         lookUpImportedTerm: @escaping ImportedTermLookup = {
             await AppServiceBridge.refreshImportedCourses(semester: $0, courseNos: $1, current: $2)
         }
     ) {
         self.isClassDay = isClassDay
+        courseStore = courses
         self.importedTables = importedTables
         self.lookUpImportedTerm = lookUpImportedTerm
         displayedPerson = importedTables.shownPerson
-        deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
-        courseCustomNames = DataCache.shared.loadCourseCustomNames()
-        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+        deletedCourseNos = Set(courseStore.loadDeletedCourseNos())
+        courseCustomNames = courseStore.loadCourseCustomNames()
+        ignoredAssignmentCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
 
-        dataObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.dataDidUpdate,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // Delivered on the main queue, but the closure is `@Sendable`; hop to
-            // the main actor explicitly so touching `isUpdatingFromNetwork` and
-            // calling `reloadFromCache` is sound under strict concurrency.
-            Task { @MainActor [weak self] in
-                guard let self, !self.isUpdatingFromNetwork else { return }
-                self.reloadFromCache()
-            }
+        storeObservation = StoreObservation(read: { _ = AppDataRevision.current }) { [weak self] in
+            self?.reloadFromCache()
         }
 
         periodVisibilityTask = Task { [weak self] in
@@ -255,9 +244,6 @@ final class ClassTableViewModel {
 
     deinit {
         periodVisibilityTask?.cancel()
-        if let observer = dataObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
         if let observer = languageObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -291,16 +277,16 @@ final class ClassTableViewModel {
         }
         guard !followNewestSemesterIfUnpicked() else { return }
         ownSemesters = Self.semesterOptions(including: currentSemester)
-        deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
-        courseCustomNames = DataCache.shared.loadCourseCustomNames()
-        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+        deletedCourseNos = Set(courseStore.loadDeletedCourseNos())
+        courseCustomNames = courseStore.loadCourseCustomNames()
+        ignoredAssignmentCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
         TigerDuckTheme.reload()
         reloadCurrentSemesterCourses()
         courses = buildCourseList(
-            DataCache.shared.loadCourses(semester: currentSemester),
-            DataCache.shared.loadUserAddedCourses(semester: currentSemester)
+            courseStore.loadCourses(semester: currentSemester),
+            courseStore.loadUserAddedCourses(semester: currentSemester)
         )
-        assignments = DataCache.shared.loadAssignments()
+        assignments = AssignmentStore.shared.loadAssignments()
         courseChanges = .cached
     }
 

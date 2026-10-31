@@ -214,7 +214,7 @@ final class AssignmentStore {
 
     func visibleAssignments(filter: AssignmentFilter, now: Date) -> [SDAssignment] {
         _ = version
-        let all = DataCache.shared.loadAssignments()
+        let all = AssignmentStore.shared.loadAssignments()
         switch filter {
         case .incomplete:
             return all
@@ -230,22 +230,22 @@ final class AssignmentStore {
     }
 
     func archive(_ assignment: SDAssignment) {
-        DataCache.shared.addArchivedAssignmentId(assignment.assignmentId)
+        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, true))
         bump()
     }
 
     func unarchive(_ assignment: SDAssignment) {
-        DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
+        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, false))
         bump()
     }
 
     func markComplete(_ assignment: SDAssignment) {
-        DataCache.shared.addLocallyCompletedAssignmentId(assignment.assignmentId)
+        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, true))
         bump()
     }
 
     func undoComplete(_ assignment: SDAssignment) {
-        DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
+        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false))
         bump()
     }
 

@@ -32,7 +32,7 @@ enum NTUSTScoreService {
         persistGuard: (@Sendable () -> Bool)? = nil
     ) async throws -> (report: ScoreReport, cachedAt: Date) {
         if !forceRefresh,
-           let cached = DataCache.shared.loadScoreReport(studentId: studentId),
+           let cached = ScoreReportFiles.shared.loadScoreReport(studentId: studentId),
            Date().timeIntervalSince(cached.cachedAt) < scoreReportCacheTTL {
             return cached
         }
@@ -64,17 +64,17 @@ enum NTUSTScoreService {
         }
 
         if persistGuard?() ?? true {
-            DataCache.shared.saveScoreReport(report, studentId: studentId)
+            ScoreReportFiles.shared.saveScoreReport(report, studentId: studentId)
         }
         return (report, Date())
     }
 
     static func cachedScoreReport(studentId: String) -> (report: ScoreReport, cachedAt: Date)? {
-        DataCache.shared.loadScoreReport(studentId: studentId)
+        ScoreReportFiles.shared.loadScoreReport(studentId: studentId)
     }
 
     static func invalidateCache(studentId: String) {
-        DataCache.shared.invalidateScoreReport(studentId: studentId)
+        ScoreReportFiles.shared.invalidateScoreReport(studentId: studentId)
     }
 
     private static func fetchHTML(

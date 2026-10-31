@@ -49,10 +49,10 @@ struct MoodleAssignmentPageTests {
             termCourseIds: [20119],
             context: MoodleCacheContext(
                 account: "B11399001",
-                cache: DataCache(
+                cache: TestCache(
                     cacheDir: root.appendingPathComponent("cache", isDirectory: true),
                     persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
-                ),
+                ).moodle,
                 isCurrent: { true }
             ),
             api: MoodleCourseAPI(

@@ -26,7 +26,7 @@ with no rows for the term and a tombstone for every course it held.
 - A single-course delete of a hand-added course does not bind its author. From backend 3.3.6
   the server records the tombstone as `user_added`, leaves it out of the author's `/sync/full`,
   and releases it on the author's next upload without `force_keys` that lists the course.
-  The author removes the course without a local hide (`DataCache.deleteCourse`), so once
+  The author removes the course without a local hide (`CourseFiles.deleteCourse`), so once
   course selection lists it the class table shows it and the roster upload names it. Every
   other device stays bound until then. Only a course added by hand on this device, which has
   no Moodle ID, counts: one merged from another device's row carries a Moodle ID and is hidden,
@@ -34,7 +34,7 @@ with no rows for the term and a tombstone for every course it held.
 - A term with no server rows (a first sync, or another device mid-reset) is uploaded from what
   the tombstones leave visible, instead of being read as deleted elsewhere.
 - The resetting device keeps the term in `resettingSemesters` across the DELETE and the local
-  reset, and stamps the reset once the DELETE lands (`DataCache.recordSemesterReset`), so a
+  reset, and stamps the reset once the DELETE lands (`CourseFiles.recordSemesterReset`), so a
   snapshot fetched before then is never reconciled into the term.
 
 ## Alternatives

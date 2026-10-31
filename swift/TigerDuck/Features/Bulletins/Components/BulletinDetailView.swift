@@ -175,7 +175,7 @@ struct BulletinDetailView: View {
 
     private func loadDetail() async {
         guard detail == nil else { return }
-        if let cached = DataCache.shared.loadBulletinDetail(id: bulletin.id) {
+        if let cached = BulletinFiles.shared.loadBulletinDetail(id: bulletin.id) {
             detail = cached
         }
         let hadCached = detail != nil
@@ -185,7 +185,7 @@ struct BulletinDetailView: View {
         do {
             let fresh = try await Self.apiClient.getBulletin(id: bulletin.id)
             detail = fresh
-            DataCache.shared.saveBulletinDetail(fresh)
+            BulletinFiles.shared.saveBulletinDetail(fresh)
         } catch {
             logger.error("detail load failed id=\(bulletin.id, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
             if !hadCached {

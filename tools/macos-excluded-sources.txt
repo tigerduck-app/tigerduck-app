@@ -189,7 +189,7 @@ MainThreadWatchdog.swift
 # Devices/Watch — WatchConnectivity — a paired Apple Watch is an iOS-only relationship
 WatchLibraryCredentialBroadcaster.swift
 WatchPayloadEncoder.swift
-WatchSyncBridge.swift
+WatchPayloadSource.swift
 WatchSyncCoordinator.swift
 TLSPinWatchBroadcaster.swift
 

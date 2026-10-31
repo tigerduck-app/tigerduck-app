@@ -82,7 +82,8 @@ extension AppState {
     }
 
     private func heldSignOutData() -> SignOutData {
-        let cache = DataCache.shared
+        let cache = CourseStore.shared
+        let marks = AssignmentStore.shared
         let names = cache.loadCourseCustomNames()
         let userAdded = cache.loadUserAddedCourses()
         return SignOutData(
@@ -91,10 +92,10 @@ extension AppState {
             localOnlyCourseNames: Self.holdsLocalOnlyCourseNames(
                 names, courses: userAdded + SemesterCatalog.availableSemesters().flatMap { cache.loadCourses(semester: $0) }
             ),
-            courseColors: !cache.loadPickedCourseColors().isEmpty,
-            assignmentMarks: !cache.loadArchivedAssignmentIds().isEmpty
-                || !cache.loadLocallyCompletedAssignmentIds().isEmpty,
-            ignoredCourses: !cache.loadIgnoredAssignmentCourses().isEmpty,
+            courseColors: !CourseColorStore.shared.files.loadPickedCourseColors().isEmpty,
+            assignmentMarks: !marks.loadArchivedAssignmentIds().isEmpty
+                || !marks.loadLocallyCompletedAssignmentIds().isEmpty,
+            ignoredCourses: !marks.loadIgnoredAssignmentCourses().isEmpty,
             holidays: !AcademicCalendarStore.shared.optedInHolidayIDs.isEmpty
         )
     }

@@ -196,7 +196,7 @@ final class EmptyClassroomViewModel {
         refreshClasses()
     }
 
-    func dataDidUpdate() {
+    func storesDidChange() {
         reloadCourses()
         guard let off = dayOff(selectedDay) else { return }
         stopLoading()

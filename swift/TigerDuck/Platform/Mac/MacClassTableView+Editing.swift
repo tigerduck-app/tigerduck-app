@@ -7,7 +7,7 @@ extension MacClassTableView {
     @discardableResult
     func addUserCourse(_ course: SDCourse) -> Bool {
         guard shownPerson == nil else { return false }
-        let existing = DataCache.shared.loadUserAddedCourses()
+        let existing = CourseStore.shared.loadUserAddedCourses()
         let isInSelectedSemester: (SDCourse) -> Bool = {
             $0.semester == selectedSemester || $0.semester.isEmpty
         }
@@ -20,10 +20,7 @@ extension MacClassTableView {
             return false
         }
 
-        var deleted = Set(DataCache.shared.loadDeletedCourseNos())
-        if CourseTombstone.unhide(course.courseNo, semester: selectedSemester, from: &deleted) {
-            DataCache.shared.saveDeletedCourseNos(Array(deleted))
-        }
+        CourseStore.shared.apply(.unhide(courseNo: course.courseNo, semester: selectedSemester))
 
         NameAbbrService.shared.storeRawName(
             courseNo: course.courseNo, name: course.courseName
@@ -34,9 +31,8 @@ extension MacClassTableView {
             map: course.classroomMap
         )
 
-        DataCache.shared.saveUserAddedCourses(existing + [course])
+        CourseStore.shared.apply(.add(course, semester: selectedSemester))
         cacheRevision &+= 1
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         let forceKey = CourseTombstone.serverKey(semester: selectedSemester, courseNo: course.courseNo)
         appState.uploadCourses(courses, semester: selectedSemester, forceKeys: [forceKey])
         return true
@@ -64,14 +60,8 @@ extension MacClassTableView {
 
     func removeUserAddedCourse(courseNo: String) {
         guard shownPerson == nil else { return }
-        let existing = DataCache.shared.loadUserAddedCourses()
-        let updated = existing.filter { course in
-            !(course.courseNo == courseNo && (course.semester == selectedSemester || course.semester.isEmpty))
-        }
-        guard updated.count != existing.count else { return }
-        DataCache.shared.saveUserAddedCourses(updated)
+        guard CourseStore.shared.apply(.remove(courseNo: courseNo, semester: selectedSemester)) else { return }
         cacheRevision &+= 1
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         appState.deleteBackendCourse(courseNo: courseNo, semester: selectedSemester)
     }
 
@@ -89,12 +79,9 @@ extension MacClassTableView {
             return
         }
         let locale = LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
-        var names = DataCache.shared.loadCourseCustomNames()
-        names[course.courseNo, default: [:]][locale] = trimmed
-        DataCache.shared.saveCourseCustomNames(names)
+        CourseStore.shared.apply(.rename(courseNo: course.courseNo, name: trimmed, locale: locale))
         courseToRename = nil
         cacheRevision &+= 1
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         if let moodleId = course.moodleIdNumber {
             appState.syncCourseOverride(moodleCourseId: moodleId, customName: trimmed, locale: locale)
         }
@@ -103,15 +90,9 @@ extension MacClassTableView {
     func revertRename(_ course: SDCourse) {
         guard shownPerson == nil else { return }
         let locale = LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
-        var names = DataCache.shared.loadCourseCustomNames()
-        names[course.courseNo]?[locale] = nil
-        if names[course.courseNo]?.isEmpty == true {
-            names.removeValue(forKey: course.courseNo)
-        }
-        DataCache.shared.saveCourseCustomNames(names)
+        CourseStore.shared.apply(.rename(courseNo: course.courseNo, name: nil, locale: locale))
         courseToRename = nil
         cacheRevision &+= 1
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         if let moodleId = course.moodleIdNumber {
             appState.syncCourseOverride(moodleCourseId: moodleId, customName: "", locale: locale)
         }
@@ -119,9 +100,8 @@ extension MacClassTableView {
 
     func setIgnoresAssignments(_ ignore: Bool, for course: SDCourse) {
         guard shownPerson == nil, isViewingCurrentSemester else { return }
-        DataCache.shared.setAssignmentsIgnored(ignore, semester: selectedSemester, courseNo: course.courseNo)
+        AssignmentStore.shared.apply(.ignoreCourse(courseNo: course.courseNo, semester: selectedSemester, ignored: ignore))
         cacheRevision &+= 1
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         appState.syncCourseIgnore(
             semester: selectedSemester, courseNo: course.courseNo, moodleIdNumber: course.moodleIdNumber, ignore: ignore
         )
@@ -129,13 +109,12 @@ extension MacClassTableView {
 
     func deleteCourse(_ course: SDCourse) {
         guard shownPerson == nil else { return }
-        DataCache.shared.deleteCourse(course.courseNo, semester: selectedSemester)
+        CourseStore.shared.apply(.delete(courseNo: course.courseNo, semester: selectedSemester))
         if ignoredAssignmentCourses.contains(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo)) {
-            DataCache.shared.setAssignmentsIgnored(false, semester: selectedSemester, courseNo: course.courseNo)
+            AssignmentStore.shared.apply(.ignoreCourse(courseNo: course.courseNo, semester: selectedSemester, ignored: false))
         }
 
         cacheRevision &+= 1
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         appState.deleteBackendCourse(courseNo: course.courseNo, semester: selectedSemester)
         appState.uploadCourses(courses.filter { $0.courseNo != course.courseNo }, semester: selectedSemester)
     }

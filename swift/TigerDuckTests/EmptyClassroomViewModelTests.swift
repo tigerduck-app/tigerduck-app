@@ -157,11 +157,11 @@ struct EmptyClassroomViewModelTests {
         harness.model.appear()
         try await waitUntil { harness.model.usage != nil }
 
-        harness.model.dataDidUpdate()
+        harness.model.storesDidChange()
         #expect(harness.model.usage?.rooms.map(\.room) == ["IB-508"])
 
         term.isInSession = false
-        harness.model.dataDidUpdate()
+        harness.model.storesDidChange()
         #expect(harness.model.content == .noData)
     }
 

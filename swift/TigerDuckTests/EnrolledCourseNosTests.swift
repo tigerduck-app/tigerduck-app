@@ -210,15 +210,15 @@ struct SelectionDropsTests {
     }
 
     @MainActor
-    private static func makeCache(fetched: [String], userAdded: [SDCourse]) -> DataCache {
+    private static func makeCache(fetched: [String], userAdded: [SDCourse]) -> TestCache {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SelectionDropsTests-\(UUID().uuidString)", isDirectory: true)
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
-        cache.saveCourses(fetched.map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
-        cache.saveUserAddedCourses(userAdded)
+        cache.courses.saveCourses(fetched.map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
+        cache.courses.saveUserAddedCourses(userAdded)
         return cache
     }
 
@@ -236,19 +236,19 @@ struct SelectionDropsTests {
         let term = AppState.readTerm(
             "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: Self.addedAndMerged, hidden: [],
             adding: [], liveAnswer: offset.map { (courseNos: ["CS1001301", "MA1010003"], at: droppedAt + $0) },
-            cache: cache, forgetAnswer: { forgotten += 1 }
+            courses: cache.courses, forgetAnswer: { forgotten += 1 }
         )
 
         let keptLive = offset == 3600
         #expect(term.left == (keptLive ? [] : ["MA1010003"]))
-        #expect(cache.loadCourses(semester: "1151").map(\.courseNo) == (keptLive ? ["CS1001301", "MA1010003"] : ["CS1001301"]))
+        #expect(cache.courses.loadCourses(semester: "1151").map(\.courseNo) == (keptLive ? ["CS1001301", "MA1010003"] : ["CS1001301"]))
         #expect(term.serverNos.contains("MA1010003") == keptLive)
         #expect(forgotten == (offset == -3600 ? 1 : 0))
         #expect(term.unlisted.hide.isEmpty)
         #expect(term.unlisted.drop == ["EE2005301"])
-        #expect(cache.loadDeletedCourseNos().isEmpty)
+        #expect(cache.courses.loadDeletedCourseNos().isEmpty)
         let alsoDropped: Set<String> = ["GE1010001", "EE2005301", "PH1010004"]
-        #expect(cache.loadServerDroppedNos(semester: "1151") == alsoDropped.union(keptLive ? [] : ["MA1010003"]))
+        #expect(cache.courses.loadServerDroppedNos(semester: "1151") == alsoDropped.union(keptLive ? [] : ["MA1010003"]))
     }
 
     @Test("A course dropped on the server leaves the term's cached courses in every language")
@@ -257,20 +257,20 @@ struct SelectionDropsTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("ServerDropTests-\(UUID().uuidString)", isDirectory: true)
         let cacheDir = root.appendingPathComponent("cache", isDirectory: true)
-        let cache = DataCache(cacheDir: cacheDir, persistentDir: root.appendingPathComponent("persistent", isDirectory: true))
-        cache.saveCourses(["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
+        let cache = TestCache(cacheDir: cacheDir, persistentDir: root.appendingPathComponent("persistent", isDirectory: true))
+        cache.courses.saveCourses(["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
         let files = FileManager.default
         let current = try #require(try files.contentsOfDirectory(atPath: cacheDir.path).first { $0.hasPrefix("courses_1151_") })
         let other = cacheDir.appendingPathComponent("courses_1151_other.json")
         try files.copyItem(at: cacheDir.appendingPathComponent(current), to: other)
 
-        cache.removeCourses(["MA1010003"], semester: "1151")
-        let currentLeft = cache.loadCourses(semester: "1151").map(\.courseNo)
+        cache.courses.removeCourses(["MA1010003"], semester: "1151")
+        let currentLeft = cache.courses.loadCourses(semester: "1151").map(\.courseNo)
         try files.removeItem(at: cacheDir.appendingPathComponent(current))
         try files.moveItem(at: other, to: cacheDir.appendingPathComponent(current))
 
         #expect(currentLeft == ["CS1001301"])
-        #expect(cache.loadCourses(semester: "1151").map(\.courseNo) == ["CS1001301"])
+        #expect(cache.courses.loadCourses(semester: "1151").map(\.courseNo) == ["CS1001301"])
     }
 
     @Test("A course selection answer older than a drop is forgotten even when this language's cache lacks the course")
@@ -286,7 +286,7 @@ struct SelectionDropsTests {
         let term = AppState.readTerm(
             "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: [], hidden: [], adding: [],
             liveAnswer: (courseNos: ["CS1001301", "MA1010003"], at: droppedAt - 3600),
-            cache: Self.makeCache(fetched: ["CS1001301"], userAdded: []), forgetAnswer: { forgotten += 1 }
+            courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses, forgetAnswer: { forgotten += 1 }
         )
 
         #expect(term.left.isEmpty)
@@ -299,7 +299,7 @@ struct SelectionDropsTests {
         let read = { (rows: [[String: Any]]) in
             AppState.readTerm(
                 "1151", rows: rows, tombstones: [], selectionDropped: ["EE2005301"], userAdded: [], hidden: [], adding: [],
-                liveAnswer: nil, cache: Self.makeCache(fetched: ["CS1001301"], userAdded: []), forgetAnswer: {}
+                liveAnswer: nil, courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses, forgetAnswer: {}
             )
         }
         let dropped: [[String: Any]] = [["course_no": "MA1010003", "enrollment_status": "dropped"]]

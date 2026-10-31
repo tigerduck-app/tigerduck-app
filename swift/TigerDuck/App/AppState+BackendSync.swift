@@ -74,9 +74,9 @@ extension AppState {
             let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
             let serverIgnoredCourses = Self.serverIgnoredCourses(courseOverrides, syncsCourses: Defaults[.syncCourses])
 
-            let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
-            let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
-            let localIgnoredCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+            let localArchivedIds = AssignmentStore.shared.loadArchivedAssignmentIds()
+            let localCompletedIds = AssignmentStore.shared.loadLocallyCompletedAssignmentIds()
+            let localIgnoredCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
             let syncsMarks = Defaults[.syncAssignments]
             let isMigrating = syncsMarks && Self.uploadsLocalMarksAsFirstSync(
                 syncedBefore: Defaults[.assignmentMarksSyncedOnce],
@@ -128,7 +128,7 @@ extension AppState {
             } else {
                 var conflicts: [(id: String, kind: String, label: String, local: String, server: String)] = []
                 let allIds = serverArchivedIds.union(serverCompletedIds).union(localArchivedIds).union(localCompletedIds)
-                let assignmentCache = DataCache.shared.loadAssignments()
+                let assignmentCache = AssignmentStore.shared.loadAssignments()
                 let assignmentsByMoodleId = Dictionary(assignmentCache.map { ($0.assignmentId, $0) }, uniquingKeysWith: { first, _ in first })
                 for id in allIds where !protectedOverrides.contains(id) {
                     let serverStatus: String
@@ -146,8 +146,8 @@ extension AppState {
                 }
 
                 let conflictIds = Set(conflicts.map(\.id))
-                let currentArchived = DataCache.shared.loadArchivedAssignmentIds()
-                let currentCompleted = DataCache.shared.loadLocallyCompletedAssignmentIds()
+                let currentArchived = AssignmentStore.shared.loadArchivedAssignmentIds()
+                let currentCompleted = AssignmentStore.shared.loadLocallyCompletedAssignmentIds()
                 var safeArchived = Self.mergedMarks(
                     server: serverArchivedIds.subtracting(conflictIds),
                     local: currentArchived,
@@ -166,11 +166,11 @@ extension AppState {
                     }
                 }
                 if safeArchived != currentArchived {
-                    DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
+                    AssignmentStore.shared.replaceArchivedAssignmentIds(safeArchived)
                     changed = true
                 }
                 if safeCompleted != currentCompleted {
-                    DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
+                    AssignmentStore.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
                     changed = true
                 }
 
@@ -231,9 +231,6 @@ extension AppState {
                 _lastKnownRevision = rev
             }
 
-            if changed {
-                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            }
             ServerStatusTracker.shared.noteSyncResult(true)
             recordSyncSource(.backend)
             retryOwedConflictCheck()
@@ -490,9 +487,9 @@ extension AppState {
         let now = Date()
         let deleting = recentCourseDeletions.filter { now.timeIntervalSince($0.value) < Self.courseDeleteGraceInterval }
         let resetSemesters = resettingSemesters.union(
-            DataCache.shared.loadSemesterResetAt().filter { $0.value > fetchedAt }.keys
+            CourseStore.shared.loadSemesterResetAt().filter { $0.value > fetchedAt }.keys
         )
-        let current = DataCache.shared.loadIgnoredAssignmentCourses()
+        let current = AssignmentStore.shared.loadIgnoredAssignmentCourses()
         let listed = Self.listedCourses(coursesArray)
         let listedRows = Self.listedCourseRows(coursesArray)
         let recreated = Self.recreatedCourses(listed: listedRows, seen: Defaults[.courseRowIdsSeen])
@@ -503,7 +500,7 @@ extension AppState {
             resetSemesters: resetSemesters
         ))
         let missingIds = Self.moodleCourseIdsToSend(server, protected: protected) {
-            DataCache.shared.lookupMoodleCourseId(idnumber: $0)
+            MoodleFiles.shared.lookupMoodleCourseId(idnumber: $0)
         }
         for (course, moodleId, moodleCourseId) in missingIds {
             Task { [weak self] in
@@ -527,7 +524,7 @@ extension AppState {
             syncCourseIgnores(resend)
         }
         guard merged != current else { return false }
-        DataCache.shared.replaceIgnoredAssignmentCourses(merged)
+        AssignmentStore.shared.replaceIgnoredAssignmentCourses(merged)
         return true
     }
 
@@ -590,13 +587,13 @@ extension AppState {
         let colorsChanged = colors && TigerDuckTheme.applyColors(
             Self.serverCourseColors(overrides, courseNos: moodleIdToNo, holding: holdingColors)
         )
-        let namesBefore = DataCache.shared.loadCourseCustomNames()
+        let namesBefore = CourseStore.shared.loadCourseCustomNames()
         let customNames = names
             ? Self.courseNamesAfterPull(overrides, courseNos: moodleIdToNo, local: namesBefore, holding: holdingNames)
             : namesBefore
         let namesChanged = customNames != namesBefore
         if namesChanged {
-            DataCache.shared.saveCourseCustomNames(customNames)
+            CourseStore.shared.saveCourseCustomNames(customNames)
         }
         return colorsChanged || namesChanged
     }
@@ -676,7 +673,7 @@ extension AppState {
     func syncCourseIgnore(semester: String, courseNo: String, moodleIdNumber: String?, ignore: Bool) -> Task<Void, Never>? {
         guard Defaults[.cloudSyncEnabled] else { return nil }
         let moodleId = moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 } ?? "\(semester)\(courseNo)"
-        let moodleCourseId = DataCache.shared.lookupMoodleCourseId(idnumber: moodleId)
+        let moodleCourseId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: moodleId)
         let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
         overrideEditGeneration &+= 1
         pendingOverrides.insert(key)
@@ -696,8 +693,8 @@ extension AppState {
     func syncCourseIgnores(_ keys: Set<String>) -> [Task<Void, Never>?] {
         keys.sorted().map { key in
             guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { return nil }
-            let course = (DataCache.shared.loadCourses(semester: semester)
-                + DataCache.shared.loadUserAddedCourses(semester: semester)).first { $0.courseNo == courseNo }
+            let course = (CourseStore.shared.loadCourses(semester: semester)
+                + CourseStore.shared.loadUserAddedCourses(semester: semester)).first { $0.courseNo == courseNo }
             return syncCourseIgnore(semester: semester, courseNo: courseNo, moodleIdNumber: course?.moodleIdNumber, ignore: true)
         }
     }
@@ -748,7 +745,7 @@ extension AppState {
             try await Self.resetCourses(semester: semester, on: cloudSyncCoordinator, onServer: { [pushCoordinator] in
                 try await pushCoordinator.deleteAllCourses(semester: semester)
                 AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
-                if let semester { DataCache.shared.recordSemesterReset(semester) }
+                if let semester { CourseStore.shared.recordSemesterReset(semester) }
                 pushCoordinator.forgetUploads(semester: semester)
             }, thenLocally: resetLocally)
             return true
@@ -803,10 +800,10 @@ extension AppState {
     /// The added course alone: sent with its stamp, the backend files every other course an upload
     /// lists as the school's roster.
     static func addedCourseUpload(
-        semester: String, courseNo: String, cache: DataCache = .shared,
+        semester: String, courseNo: String, courses: CourseStore = .shared,
         colors: [String: UInt32] = CourseUploadPolicy.uploadedCourseColors
     ) -> PushAPI.CourseUploadRequest? {
-        let shown = CanonicalCourseProvider(cache: cache).currentCourses(semester: semester)
+        let shown = CanonicalCourseProvider(courses: courses).currentCourses(semester: semester)
         guard let course = shown.first(where: { $0.courseNo == courseNo }) else { return nil }
         return courseUploadRequest(
             [course], semester: semester, forceKeys: [CourseTombstone.serverKey(semester: semester, courseNo: courseNo)],

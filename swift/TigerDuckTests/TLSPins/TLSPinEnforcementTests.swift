@@ -222,13 +222,14 @@ struct TLSPinEnforcementTests {
 
     /// Sign-out clears the account's files and settings; acceptances are kept apart from both.
     @Test("Signing out keeps acceptances")
+    @MainActor
     func signOutKeepsAcceptances() throws {
         let defaults = F.defaults()
         F.engine(defaults: defaults, document: F.promptRootsDocument).accept(TLSPinMismatchQueueTests.mismatch())
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        DataCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
-            .clearUserScopedData()
+        TestCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
+            .forgetAccount()
         #expect(F.engine(defaults: defaults).acceptances.count == 1)
     }
 

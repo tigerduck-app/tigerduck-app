@@ -17,7 +17,8 @@ and the macOS build's source list was kept by hand in two copies.
 - Sources of the app target live in folders named for their responsibility:
   - `App/` the entry points and app-wide wiring; `Account/` the signed-in account and sign-out;
     `Stores/` the observable stores screens read and edit through;
-  - `Persistence/` storage: `DataCache`, the Keychain and the SwiftData models;
+  - `Persistence/` storage: one file store per kind of data (`CourseFiles`, `AssignmentFiles`,
+    ...), the Keychain and the SwiftData models;
   - `School/` NTUST, SSO, Moodle, the library and the school's pages; `Backend/` the TigerDuck
     backend's clients, tokens, sync and push; `Mail/` School Mail;
   - `Devices/` widgets, the Watch and Live Activities; `Features/<feature>/` views, view models

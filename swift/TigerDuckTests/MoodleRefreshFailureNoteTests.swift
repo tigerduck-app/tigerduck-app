@@ -38,10 +38,10 @@ struct MoodleRefreshFailureNoteTests {
     private static func feed(in root: URL, isCurrent: @escaping () -> Bool = { true }) -> MoodleFeed<[Int]> {
         MoodleFeed(cacheName: "notes", ttl: 60, context: MoodleCacheContext(
             account: "B11399001",
-            cache: DataCache(
+            cache: TestCache(
                 cacheDir: root.appendingPathComponent("cache", isDirectory: true),
                 persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
-            ),
+            ).moodle,
             isCurrent: isCurrent
         ))
     }

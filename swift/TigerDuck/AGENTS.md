@@ -22,16 +22,20 @@ the shared homes and the size budget.
   `AppServiceBridge.takeSubmissionStatus`, which waits out a running round, keeps the newest
   answer and leaves `schoolDataSyncedAt` alone; any other write to the cached assignments goes
   through one of these two.
-- Cross-feature updates go through the `NotificationCenter` names in `AppConstants`
-  (`dataDidUpdate`, `liveActivityPreferencesDidChange`, `languageDidChange`, ...). There is no
-  dependency-injection container or store framework.
+- Course, assignment and colour changes reach screens and devices by observing their stores
+  (`AppDataRevision`, `StoreObservation`); nothing posts a change of them. Other cross-feature
+  updates go through the `NotificationCenter` names in `AppConstants`
+  (`liveActivityPreferencesDidChange`, `languageDidChange`, ...). There is no
+  dependency-injection container.
 - Styling goes through `TigerDuckTheme`, `VisualPreset` and `VisualStylePolicy`.
 - Day and class-time math uses the Taipei calendar (`TaipeiTime` in TigerDuckCore), never
   `Calendar.current`. Schedule-sensitive code reads the time through `Support/Clock/AppClock`, so
   the debug clock override applies.
-- Persistence is split: SwiftData models in `Persistence/Models/` and JSON caches in
-  `Persistence/DataCache.swift`. Fetched results are written through `DataCache`, so features and
-  background sync read the same persisted data.
+- Persistence is split: SwiftData models in `Persistence/Models/` and one JSON file store per kind
+  of data in `Persistence/` (`CourseFiles`, `AssignmentFiles`, `MoodleFiles`, ...), each in
+  `CacheFolders`. Courses, assignments and colours are read and written through their stores in
+  `Stores/`, so features, background sync and the device surfaces see the same data and each
+  change.
 - Logging goes through `AppLogger`, whose `os.Logger`s write to the system log on the device and
   nowhere else. `captureError` and `breadcrumb` log their text as private, which a logging
   profile can reveal, so they still scrub tokens, passwords and URL query strings first; do not
@@ -115,6 +119,6 @@ responsibility; nested types are fine. `tools/check_architecture.py --report` li
 ## Gotchas
 
 - Sign-out is a privacy boundary: `SignOutPlan` clears every `AccountScoped` store of the
-  account, `DataCache.clearUserScopedData()` among them, before another login can use the app.
+  account, each file store of `Persistence/` among them, before another login can use the app.
 - `NetworkMonitor` is observable state; some refresh paths read it before fetching.
 - macOS sidebar pins are stored in `macConfiguredTabs`, apart from the iOS tab configuration.

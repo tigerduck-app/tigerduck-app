@@ -48,11 +48,11 @@ struct BulletinListSessionTests {
     }
 
     private static func wipeCached(_ ids: Set<Int>) {
-        DataCache.shared.saveBulletinSummaries(DataCache.shared.loadBulletinSummaries().filter { !ids.contains($0.id) })
+        BulletinFiles.shared.saveBulletinSummaries(BulletinFiles.shared.loadBulletinSummaries().filter { !ids.contains($0.id) })
     }
 
     private static var cachedIds: Set<Int> {
-        Set(DataCache.shared.loadBulletinSummaries().map(\.id))
+        Set(BulletinFiles.shared.loadBulletinSummaries().map(\.id))
     }
 
     @Test("a later visit asks for the first page and keeps the pages the first visit walked")
@@ -194,7 +194,7 @@ extension BulletinListSessionTests {
             await refresh.value
 
             #expect(Defaults[.bulletinsSyncedAt] == signedOut)
-            #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == stub.id })
+            #expect(!BulletinFiles.shared.loadBulletinSummaries().contains { $0.id == stub.id })
             #expect(model.loadState == .idle)
         }
     }
@@ -221,7 +221,7 @@ extension BulletinListSessionTests {
             await visit.value
 
             #expect(Defaults[.bulletinsSyncedAt] == signedOut)
-            #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == newest })
+            #expect(!BulletinFiles.shared.loadBulletinSummaries().contains { $0.id == newest })
         }
     }
 
@@ -244,7 +244,7 @@ extension BulletinListSessionTests {
             gate.open()
             await model.waitForPrefetch()
 
-            #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == older })
+            #expect(!BulletinFiles.shared.loadBulletinSummaries().contains { $0.id == older })
         }
     }
 
@@ -270,7 +270,7 @@ extension BulletinListSessionTests {
             gate.open()
             await scroll.value
 
-            #expect(!DataCache.shared.loadBulletinSummaries().contains { $0.id == older })
+            #expect(!BulletinFiles.shared.loadBulletinSummaries().contains { $0.id == older })
         }
     }
 
@@ -287,12 +287,12 @@ extension BulletinListSessionTests {
             #expect(Self.cachedIds.contains(old.id))
 
             let article = try JSONDecoder().decode(BulletinAPI.BulletinDetail.self, from: Self.detail(old.id))
-            DataCache.shared.saveBulletinDetail(article)
+            BulletinFiles.shared.saveBulletinDetail(article)
 
             BulletinsViewModel.endpointDidChange()
 
             #expect(!Self.cachedIds.contains(old.id))
-            #expect(DataCache.shared.loadBulletinDetail(id: old.id) == nil)
+            #expect(BulletinFiles.shared.loadBulletinDetail(id: old.id) == nil)
             new.serve(Self.page([new.id]))
             let visit = BulletinsViewModel(apiClient: new.client)
             await visit.loadIfNeeded()

@@ -162,7 +162,7 @@ struct SharedAssignmentRoundTests {
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SharedAssignmentRoundTests-\(UUID().uuidString)", isDirectory: true)
-        lazy var cache = DataCache(
+        lazy var cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -181,18 +181,19 @@ struct SharedAssignmentRoundTests {
 
     @discardableResult
     private func round(
-        of id: Int, askedAt: ContinuousClock.Instant, in cache: DataCache, isCurrent: Bool = true
+        of id: Int, askedAt: ContinuousClock.Instant, in cache: TestCache, isCurrent: Bool = true
     ) -> Bool {
         AppServiceBridge.persistRound(
             [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
                           dueDate: Self.due)],
-            records: [], closed: [:], answered: [id: askedAt], account: "B11399001", fetchedAt: Self.due, cache: cache,
+            records: [], closed: [:], answered: [id: askedAt], account: "B11399001", fetchedAt: Self.due,
+            assignments: cache.assignments, moodle: cache.moodle,
             rounds: shared, isCurrent: { isCurrent }
         )
     }
 
-    private static func isCompleted(_ id: Int, in cache: DataCache) -> Bool? {
-        cache.loadAssignments().first { $0.assignmentId == String(id) }?.isCompleted
+    private static func isCompleted(_ id: Int, in cache: TestCache) -> Bool? {
+        cache.assignments.loadAssignments().first { $0.assignmentId == String(id) }?.isCompleted
     }
 
     @MainActor
@@ -206,25 +207,22 @@ struct SharedAssignmentRoundTests {
         let id = Self.newId()
         let now = ContinuousClock.now
         round(of: id, askedAt: now - .seconds(60), in: folder.cache)
-        let center = NotificationCenter()
-        let heard = OSAllocatedUnfairLock(initialState: 0)
-        let observer = center.addObserver(forName: AppConstants.dataDidUpdate, object: nil, queue: nil) { _ in
-            heard.withLock { $0 += 1 }
-        }
-        defer { center.removeObserver(observer) }
+        let store = folder.cache.assignments
+        let before = store.revision
 
         #expect(await AppServiceBridge.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now, cache: folder.cache, rounds: shared, isCurrent: { true }, notifying: center
+            Self.handedIn(id), askedAt: now, assignments: store, rounds: shared, isCurrent: { true }
         ))
 
-        let cached = folder.cache.loadAssignments().first { $0.assignmentId == String(id) }
+        let cached = store.loadAssignments().first { $0.assignmentId == String(id) }
         #expect(cached?.isCompleted == true)
         #expect(cached?.submittedAt == Self.submittedAt)
-        #expect(heard.withLock { $0 } == 1)
+        let written = store.revision
+        #expect(written != before)
         #expect(await !AppServiceBridge.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now + .seconds(1), cache: folder.cache, rounds: shared, isCurrent: { true }, notifying: center
+            Self.handedIn(id), askedAt: now + .seconds(1), assignments: store, rounds: shared, isCurrent: { true }
         ))
-        #expect(heard.withLock { $0 } == 1)
+        #expect(store.revision == written)
     }
 
     @Test("an extension the page fetched sets the cached due date, longer, shorter or taken back, and one before it is kept without moving it")
@@ -236,21 +234,21 @@ struct SharedAssignmentRoundTests {
         var status = MoodleSubmissionStatus(
             assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil, extensionDueDate: Self.due - 60
         )
-        #expect(await AppServiceBridge.takeSubmissionStatus(status, askedAt: now, cache: folder.cache, rounds: shared, isCurrent: { true }))
-        let early = folder.cache.loadAssignments().first { $0.assignmentId == String(id) }
+        #expect(await AppServiceBridge.takeSubmissionStatus(status, askedAt: now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }))
+        let early = folder.cache.assignments.loadAssignments().first { $0.assignmentId == String(id) }
         #expect(early?.dueDate == Self.due)
         #expect(early?.extensionDueDate == Self.due - 60)
 
         for (step, extensionDate) in [Self.due + 2 * 86_400, Self.due + 86_400, nil].enumerated() {
             status.extensionDueDate = extensionDate
             #expect(await AppServiceBridge.takeSubmissionStatus(
-                status, askedAt: now + .seconds(step + 1), cache: folder.cache, rounds: shared, isCurrent: { true }
+                status, askedAt: now + .seconds(step + 1), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
             ))
-            let cached = folder.cache.loadAssignments().first { $0.assignmentId == String(id) }
+            let cached = folder.cache.assignments.loadAssignments().first { $0.assignmentId == String(id) }
             #expect(cached?.dueDate == extensionDate ?? Self.due)
             #expect(cached?.originalDueDate == Self.due)
             #expect(cached?.extensionDueDate == extensionDate)
-            let event = folder.cache.loadCalendarEvents().first { $0.eventId == "moodle-\(id)" }
+            let event = folder.cache.assignments.loadCalendarEvents().first { $0.eventId == "moodle-\(id)" }
             #expect(event?.date == extensionDate ?? Self.due)
         }
     }
@@ -266,7 +264,8 @@ struct SharedAssignmentRoundTests {
             [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
                           dueDate: due, cutoffDate: due + 3600)],
             records: [], closed: [String(id): closedAt, "1": closedAt], answered: [id: now - .seconds(60)],
-            account: "B11399001", fetchedAt: closedAt, cache: folder.cache, rounds: shared, isCurrent: { true }
+            account: "B11399001", fetchedAt: closedAt,
+            assignments: folder.cache.assignments, moodle: folder.cache.moodle, rounds: shared, isCurrent: { true }
         )
 
         #expect(await AppServiceBridge.takeSubmissionStatus(
@@ -274,10 +273,10 @@ struct SharedAssignmentRoundTests {
                 assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil,
                 extensionDueDate: Date() + 86_400
             ),
-            askedAt: now, cache: folder.cache, rounds: shared, isCurrent: { true }
+            askedAt: now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
         ))
 
-        #expect(folder.cache.loadClosedUnsubmittedAssignments() == ["1": closedAt])
+        #expect(folder.cache.assignments.loadClosedUnsubmittedAssignments() == ["1": closedAt])
     }
 
     @Test("a round running when the page's status comes is waited out, and its older answer does not replace it")
@@ -301,7 +300,7 @@ struct SharedAssignmentRoundTests {
         let page = Task {
             asked.isSet = true
             return await AppServiceBridge.takeSubmissionStatus(
-                Self.handedIn(id), askedAt: pageAskedAt, cache: cache, rounds: shared, isCurrent: { true }
+                Self.handedIn(id), askedAt: pageAskedAt, assignments: cache.assignments, rounds: shared, isCurrent: { true }
             )
         }
         try await waitUntil { asked.isSet }
@@ -321,16 +320,16 @@ struct SharedAssignmentRoundTests {
         round(of: id, askedAt: now, in: folder.cache)
 
         #expect(await !AppServiceBridge.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now - .seconds(1), cache: folder.cache, rounds: shared, isCurrent: { true }
+            Self.handedIn(id), askedAt: now - .seconds(1), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
         ))
         #expect(Self.isCompleted(id, in: folder.cache) == false)
 
         #expect(await AppServiceBridge.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now + .seconds(10), cache: folder.cache, rounds: shared, isCurrent: { true }
+            Self.handedIn(id), askedAt: now + .seconds(10), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
         ))
         let reverted = MoodleSubmissionStatus(assignId: id, submissionStatus: "draft", gradingStatus: nil, submittedAt: nil)
         #expect(await !AppServiceBridge.takeSubmissionStatus(
-            reverted, askedAt: now + .seconds(5), cache: folder.cache, rounds: shared, isCurrent: { true }
+            reverted, askedAt: now + .seconds(5), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
         ))
         #expect(Self.isCompleted(id, in: folder.cache) == true)
     }
@@ -344,7 +343,7 @@ struct SharedAssignmentRoundTests {
         #expect(!round(of: id, askedAt: now + .seconds(5), in: folder.cache, isCurrent: false))
 
         #expect(await AppServiceBridge.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now, cache: folder.cache, rounds: shared, isCurrent: { true }
+            Self.handedIn(id), askedAt: now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
         ))
     }
 
@@ -363,7 +362,7 @@ struct SharedAssignmentRoundTests {
         let page = Task {
             asked.isSet = true
             return await AppServiceBridge.takeSubmissionStatus(
-                Self.handedIn(id), askedAt: .now, cache: cache, rounds: shared, isCurrent: { signIn.isCurrent }
+                Self.handedIn(id), askedAt: .now, assignments: cache.assignments, rounds: shared, isCurrent: { signIn.isCurrent }
             )
         }
         try await waitUntil { asked.isSet }
@@ -382,7 +381,9 @@ struct SharedAssignmentRoundTests {
         round(of: id, askedAt: .now - .seconds(60), in: folder.cache)
 
         MoodleCourseAPI.live.submissionFetched(
-            Self.handedIn(id), .now, MoodleCacheContext(account: "B11399001", cache: folder.cache, isCurrent: { true })
+            Self.handedIn(id), .now, MoodleCacheContext(
+                account: "B11399001", cache: folder.cache.moodle, assignments: folder.cache.assignments, isCurrent: { true }
+            )
         )
 
         try await waitUntil(timeout: .seconds(10)) { Self.isCompleted(id, in: folder.cache) == true }
@@ -409,7 +410,7 @@ struct SharedAssignmentRoundTests {
             round(of: id, askedAt: .now - .seconds(60), in: folder.cache)
 
             await AppServiceBridge.takeSubmissionStatus(
-                Self.handedIn(id), askedAt: .now, cache: folder.cache, rounds: shared, isCurrent: { true }
+                Self.handedIn(id), askedAt: .now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
             )
 
             #expect(sent.requests.map { $0.assignments.map(\.moodleAssignmentId) } == [[id]])
