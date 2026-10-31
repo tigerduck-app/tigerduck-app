@@ -34,7 +34,7 @@ enum AccountSignOutCleanup {
             once.continuation = continuation
             SFSafariViewController.DataStore.default.clearWebsiteData { Task { @MainActor in once.resume() } }
             Task {
-                try? await Task.sleep(for: .seconds(5))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(5))
                 once.resume()
             }
         }

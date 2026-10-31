@@ -181,7 +181,7 @@ nonisolated enum DevMailNetworkProbe {
             let resumer = OneShotResumer(continuation)
             Task { resumer.resume(await work()) }
             Task {
-                try? await Task.sleep(for: timeout)
+                try? await AppClock.sleep(until: ContinuousClock.now + timeout)
                 resumer.resume(nil)
             }
         }

@@ -94,7 +94,7 @@ private struct FlipToLibraryModifier: ViewModifier {
         guard !waitFirst, !waits else {
             guard attemptsLeft > 0 else { return }
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(500))
+                try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(500))
                 offerGesture(app: app, host: host, attemptsLeft: attemptsLeft - 1)
             }
             return

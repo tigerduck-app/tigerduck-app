@@ -41,7 +41,7 @@ final class AuthService {
         endSchoolSession: @escaping @MainActor (_ departingStudentId: String?) -> Void
             = AccountSignOutCleanup.endSchoolSession(departing:),
         now: @escaping () -> Date = { Date() },
-        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.session = session
         deps = AuthServiceDependencies(

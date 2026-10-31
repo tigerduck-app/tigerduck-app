@@ -136,7 +136,7 @@ private final class MacDebugClockViewModel {
     func observeEffectiveNow() async {
         effectiveNow = AppClock.now()
         while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(1))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1))
             effectiveNow = AppClock.now()
         }
     }
