@@ -11,13 +11,13 @@ struct HomeQuickFeatureTests {
             let saved = Defaults[.homeSectionLayoutData]
             defer { Defaults[.homeSectionLayoutData] = saved }
             let viewModel = HomeViewModel()
-            viewModel.sections = []
-            viewModel.addQuickFeature(.announcements)
-            #expect(viewModel.sections.map(\.type) == [.quickWidgets])
-            #expect(viewModel.sections.first?.widgets.map(\.feature) == [.announcements])
-            viewModel.addQuickFeature(.gpa)
-            #expect(viewModel.sections.count == 1)
-            #expect(viewModel.sections.first?.widgets.map(\.feature) == [.announcements, .gpa])
+            viewModel.layout.sections = []
+            viewModel.layout.addQuickFeature(.announcements)
+            #expect(viewModel.layout.sections.map(\.type) == [.quickWidgets])
+            #expect(viewModel.layout.sections.first?.widgets.map(\.feature) == [.announcements])
+            viewModel.layout.addQuickFeature(.gpa)
+            #expect(viewModel.layout.sections.count == 1)
+            #expect(viewModel.layout.sections.first?.widgets.map(\.feature) == [.announcements, .gpa])
         }
     }
 }

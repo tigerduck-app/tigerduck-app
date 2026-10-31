@@ -95,7 +95,7 @@ struct TimeSliderViewModelTests {
         let term = SemesterTerm(code: "1151", start: weekAgo, end: today)
         let store = try calendarStore(holding: AcademicCalendar(revision: 1, terms: [term], holidays: []))
 
-        let viewModel = TimeSliderViewModel(calendarStore: store)
+        let viewModel = TimeSliderViewModel(isQuietDay: { !store.isClassDay($0) })
         viewModel.configure(courses: [course])
 
         let days = Set(viewModel.timeSlots.map { AcademicCalendar.startOfDay($0.date) })
@@ -313,7 +313,7 @@ struct TimeSliderViewModelTests {
         let today = calendar.startOfDay(for: AppClock.now())
         func at(_ hour: Int) -> Date { calendar.date(byAdding: .hour, value: hour, to: today)! }
 
-        let lanes = TimeSliderViewModel.lanes(for: [
+        let lanes = TimeSliderLayout.lanes(for: [
             makeMockSlot(courseNo: "A", start: at(9), end: at(10)),
             makeMockSlot(courseNo: "B", start: at(10), end: at(11)),
         ])

@@ -102,11 +102,21 @@ FluidGlassTrackView.swift
 TimeSliderMetrics.swift
 TimeSliderSection.swift
 TimeSliderViewModel.swift
+TimeSliderHaptics.swift
+TimeSliderLayout.swift
 TodayCourseCarousel.swift
 UpcomingAssignmentsView.swift
+UpcomingAssignmentRow.swift
 WidgetGridView.swift
 HomeView.swift
 HomeViewModel.swift
+HomeAssignmentList.swift
+HomeBrowsePage.swift
+HomeFeatureDestination.swift
+HomeLayout.swift
+HomeSectionView.swift
+HomeSheets.swift
+HomeTitleBar.swift
 
 # Features/Library — iOS library QR + brightness control (UIScreen)
 HDRQRCodeImage.swift
