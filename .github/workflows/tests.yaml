@@ -100,9 +100,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          # app-translation carries the .xcstrings the app target compiles.
-          # Without it the build fails on missing resources rather than on
-          # anything this workflow is meant to catch.
+          # Every Apple target's "Generate Localizations" phase runs app-translation's generator.
+          # Without the submodule the build fails there rather than on anything this workflow is
+          # meant to catch.
           submodules: true
           # Two commits on a pull request, the merge and its base, for the path check below.
           fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
@@ -424,7 +424,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          # app-translation carries the .xcstrings the app target compiles.
+          # app-translation's generator writes the localizations the build copies into each bundle.
           submodules: true
           fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
 
@@ -524,4 +524,23 @@ jobs:
       - name: Package tests
         if: steps.changes.outputs.run == 'true'
         working-directory: swift/Packages/SwiftMail
+        run: swift test
+
+  # TigerDuckCore's rules have no screen and no I/O, so its SwiftPM tests need no simulator. They
+  # are in no Xcode scheme, so only this job runs them.
+  core-package:
+    name: TigerDuckCore
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        # No submodules: this package does not read app-translation.
+        with:
+          fetch-depth: 1
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Package tests
+        working-directory: swift/Packages/TigerDuckCore
         run: swift test

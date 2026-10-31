@@ -1,6 +1,7 @@
 #if os(iOS)
 import MarkdownUI
 import SwiftUI
+import TigerDuckCore
 
 struct MoodleAssignmentView: View {
     let store: MoodleCourseStore
@@ -170,7 +171,7 @@ struct MoodleAssignmentView: View {
             Text(Self.monthText(due))
                 .font(TigerDuckTheme.Typography.caption.weight(.semibold))
                 .foregroundStyle(isOverdue ? Color.badgeRedText : accent)
-            Text(verbatim: String(AppConstants.taipeiCalendar.component(.day, from: due)))
+            Text(verbatim: String(TaipeiTime.calendar.component(.day, from: due)))
                 .font(.title.bold())
                 .monospacedDigit()
                 .foregroundStyle(Color.textPrimary)

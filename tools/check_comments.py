@@ -12,7 +12,7 @@ same-tokens REF
     but comments.
 
 Exit status: 0 when clean, 1 on findings, 2 on usage or git errors.
-`swift/Packages/` (vendored code) is never checked.
+`swift/Packages/SwiftMail/` (vendored code) is never checked.
 """
 import argparse
 import bisect
@@ -23,7 +23,7 @@ import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-EXCLUDED_PREFIX = 'swift/Packages/'
+EXCLUDED_PREFIX = 'swift/Packages/SwiftMail/'
 REGULAR_LIMIT = 3
 DOC_LIMIT = 8
 
@@ -38,7 +38,7 @@ OPENSPEC_PATH = re.compile(r'(?i)\bopenspec/')
 HUNK = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', re.M)
 STRING_OPEN = re.compile(r'(#*)("""|"|/)')
 WORD = re.compile(r'\S+')
-# An error's description can hold a response body (swift/TigerDuck/Services/AGENTS.md). A type
+# An error's description can hold a response body (swift/TigerDuck/AGENTS.md). A type
 # name and an error's code cannot, so `type(of:)`, `Type.self` and `.code` may stay public.
 PUBLIC_PRIVACY = re.compile(r',\s*privacy:\s*\.public\s*$')
 TYPE_ONLY = re.compile(r'\btype\(of:(?:[^()]|\([^()]*\))*\)|\b[A-Z]\w*(?:\.[A-Z]\w*)*\.self\b')

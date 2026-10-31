@@ -14,7 +14,7 @@ and `LiveActivityCoordinator` keeps or ends whatever ActivityKit is running.
 ## Decision
 
 - `effectiveLiveActivityEnabled(isLiveActivityEnabled:cloudSyncEnabled:)` in
-  `swift/TigerDuck/LiveActivity/Preferences/LiveActivityPreferencesStore.swift` is the one place
+  `swift/TigerDuck/Devices/LiveActivity/Preferences/LiveActivityPreferencesStore.swift` is the one place
   the combined answer is computed. Every reader calls it, and while it is false:
   - `LiveActivityScenarioResolver.resolve` returns nil, so the app starts nothing.
   - `ScheduleSyncService.Inputs.liveActivityAvailable` makes the upload an empty list, which

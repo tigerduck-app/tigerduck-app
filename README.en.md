@@ -137,7 +137,7 @@ open swift/TigerDuck.xcodeproj
 # Select a simulator or device from the top center, then press ⌘R to run
 ```
 
-> 💡 Name abbreviations (`name-abbr/`) and localization strings (`app-translation/generated/apple/`) are wired into the Xcode synchronized group via symlinks. **Always** initialize submodules before opening Xcode, otherwise the build will fail to locate resource files.
+> 💡 Name abbreviations (`name-abbr/`) are wired into the Xcode synchronized group via symlinks, and every build generates the localization strings with `app-translation/`'s generator (it needs `python3`). **Always** initialize submodules before opening Xcode, otherwise the build fails.
 
 ### Push Backend
 The production FastAPI service (APNs Push-to-Start, schedule sync, bulletin scraping, LLM classification, and cloud sync) lives in its own repository: [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend). The iOS app talks to it over the `https://api.tigerduck.app/v3/*` HTTP contract, so you do **not** need to run it locally to develop the iOS client.
@@ -167,8 +167,14 @@ cp api/.env.template api/.env
 tigerduck-app/
 ├── swift/                              # iOS App + companion targets (Xcode 26+ / iOS 18+ / watchOS 11+)
 │   ├── TigerDuck/                      # Main iOS app sources
-│   │   ├── App/                        # Global state (AppState), language manager, push delegate
+│   │   ├── App/                        # Entry point, global state (AppState), language manager, push delegate
+│   │   ├── Account/                    # NTUST sign-in coordination (AuthService)
 │   │   ├── Bridge/                     # Fetch orchestration between services and SwiftData
+│   │   ├── School/                     # NTUST, SSO, Moodle, library, calendar and bulletin clients
+│   │   ├── Backend/                    # TigerDuck backend: tokens, cloud sync, push, course catalog
+│   │   ├── Mail/                       # School Mail IMAP / SMTP
+│   │   ├── Persistence/                # Caches, Keychain, SwiftData models
+│   │   ├── Devices/                    # Widgets, Watch sync, Live Activity (in-app logic)
 │   │   ├── Features/                   # Screen-level feature modules
 │   │   │   ├── Home/                   # Home (Time Slider, assignments, widgets)
 │   │   │   ├── ClassTable/             # Class table
@@ -181,25 +187,11 @@ tigerduck-app/
 │   │   │   ├── Settings/               # Settings (language, abbreviations, theme, source)
 │   │   │   ├── Onboarding/             # First-run onboarding flow
 │   │   │   └── Updates/                # Update prompt + What's New
-│   │   ├── LiveActivity/               # Live Activity / Dynamic Island (in-app logic)
-│   │   │   ├── Models/  Preferences/  Providers/
-│   │   │   ├── Resolvers/  Runtime/
-│   │   ├── Models/
-│   │   │   ├── Domain/                 # Business logic models
-│   │   │   └── SwiftData/              # Local persistence models
+│   │   ├── Models/Domain/              # Business logic models
 │   │   ├── Platform/Mac/               # macOS-only surfaces (sidebar, Mac page layouts, push delegate)
-│   │   ├── Services/
-│   │   │   ├── API/                    # NTUST / Moodle / calendar / library / bulletin clients
-│   │   │   ├── Auth/                   # NTUST SSO authentication, backend tokens
-│   │   │   ├── Core/                   # Cache, HTML parsing, name abbreviations
-│   │   │   ├── Mail/                   # School Mail IMAP / SMTP
-│   │   │   ├── Push/                   # APNs / push registration, schedule sync
-│   │   │   ├── CloudSync/  Sync/       # Cloud sync and settings sync
-│   │   │   ├── Watch/                  # WatchConnectivity to the Watch app
-│   │   │   ├── Logging/                # Structured logging
-│   │   │   └── Migrations/             # One-shot migrations
-│   │   ├── SharedUI/                   # Reusable cross-feature views
-│   │   └── Theme/                      # Tokens, palette, visual presets
+│   │   ├── Migrations/                 # One-shot migrations
+│   │   ├── Support/                    # Clock, concurrency, logging, TLS pin document, extensions
+│   │   └── UI/                         # Shared views, theme, palette, view helpers
 │   ├── TigerDuckLiveActivity/          # Live Activity / Dynamic Island widget extension
 │   ├── TigerDuckWidgets/               # iOS / macOS Home, Lock Screen and accessory widgets
 │   ├── TigerDuckWatch Watch App/       # Apple Watch app (Now & Next / Today / detail / Library QR)
@@ -230,7 +222,7 @@ Before submitting, please make sure to:
 - macOS 15 / 26 (/ 27 if possible)
 3. Name your branch using `feature/your-feature` or `fix/your-fix`
 4. Target the `dev` branch when opening a PR, and keep fixing the code until Greptile's confidence score reaches 5/5; a review stuck at 3 or 4 for an unexpected reason is handled case by case
-5. For translation strings, open a separate PR against the `app-translation/` submodule — do **not** edit the symlinked `*.lproj` files inside `swift/`
+5. For translation strings, open a separate PR against the `app-translation/` submodule; the build generates the `*.lproj` bundles from it, so `swift/` holds none
 6. Write code comments in English and keep them short: say why, not what the code does or how it changed. The full rules are in the Comments section of [AGENTS.md](AGENTS.md); CI checks language, length and citations
 7. Plan work that spans sessions, changes the architecture or needs both maintainers to agree as an [OpenSpec](https://github.com/Fission-AI/OpenSpec) change in `openspec/changes/`, committed with the work; see the Planning section of [AGENTS.md](AGENTS.md)
 

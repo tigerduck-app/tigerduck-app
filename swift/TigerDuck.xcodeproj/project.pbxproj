@@ -23,6 +23,11 @@
 		C3D0F1012FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C3D0F1062FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C3D0F1022FC0A00000AE2430 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC002F90EBFA00D3B5A1 /* WidgetKit.framework */; };
 		C3D0F1032FC0A00000AE2430 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
+		DC0DE00330AA000100000001 /* TigerDuckCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC0DE00230AA000100000001 /* TigerDuckCore */; };
+		DC0DE00330AA000100000002 /* TigerDuckCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC0DE00230AA000100000002 /* TigerDuckCore */; };
+		DC0DE00330AA000100000003 /* TigerDuckCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC0DE00230AA000100000003 /* TigerDuckCore */; };
+		DC0DE00330AA000100000004 /* TigerDuckCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC0DE00230AA000100000004 /* TigerDuckCore */; };
+		DC0DE00330AA000100000005 /* TigerDuckCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC0DE00230AA000100000005 /* TigerDuckCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -142,12 +147,14 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				AGENTS.md,
+				Backend/AGENTS.md,
+				Devices/LiveActivity/AGENTS.md,
 				Features/Browser/DarkReader/LICENSE,
 				Features/Browser/DarkReader/VENDORED.md,
 				Info.plist,
-				LiveActivity/AGENTS.md,
-				Services/AGENTS.md,
-				Services/Migrations/AGENTS.md,
+				Mail/AGENTS.md,
+				Migrations/AGENTS.md,
+				School/AGENTS.md,
 			);
 			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
 		};
@@ -161,19 +168,19 @@
 		42B9BC852F90EC9D00D3B5A1 /* Exceptions for "TigerDuck" folder in "TigerDuckLiveActivityExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Clock/AppClock.swift,
-				Clock/ClockOverride.swift,
-				LiveActivity/Models/LiveActivityScenarioKind.swift,
-				LiveActivity/Models/LiveActivitySnapshot.swift,
-				LiveActivity/Runtime/TigerDuckActivityAttributes.swift,
+				Devices/LiveActivity/Models/LiveActivityScenarioKind.swift,
+				Devices/LiveActivity/Models/LiveActivitySnapshot.swift,
+				Devices/LiveActivity/Runtime/TigerDuckActivityAttributes.swift,
+				Support/Clock/AppClock.swift,
+				Support/Clock/ClockOverride.swift,
 			);
 			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;
 		};
 		B21DC7402FB8901100AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatch Watch App" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Clock/AppClock.swift,
-				Clock/ClockOverride.swift,
+				Support/Clock/AppClock.swift,
+				Support/Clock/ClockOverride.swift,
 			);
 			target = B21DC6912FB887D900AE2430 /* TigerDuckWatch Watch App */;
 		};
@@ -195,19 +202,18 @@
 		B244D7902FB87B590040D6FA /* Exceptions for "TigerDuck" folder in "TigerDuckWidgetsExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Clock/AppClock.swift,
-				Clock/ClockOverride.swift,
+				Devices/Widgets/WidgetSnapshot.swift,
 				Shared/ClassTableLayout.swift,
 				Shared/CourseBlockRoom.swift,
 				Shared/CourseCardFontScale.swift,
-				Widgets/WidgetSnapshot.swift,
+				Support/Clock/AppClock.swift,
+				Support/Clock/ClockOverride.swift,
 			);
 			target = B244D74E2FB87B580040D6FA /* TigerDuckWidgetsExtension */;
 		};
 		B244D7912FB87B590040D6FA /* Exceptions for "TigerDuckWidgets" folder in "TigerDuck" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Logic/WidgetTaipei.swift,
 				Logic/WidgetTimelineDerivation.swift,
 				Snapshot/WidgetSnapshotStore.swift,
 			);
@@ -223,7 +229,6 @@
 		C3D0F1082FC0A00000AE2430 /* Exceptions for "Shared" folder in "TigerDuckWatchWidgetExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				TaipeiCalendar.swift,
 				Theme/VisualPreset.swift,
 				Watch/NextClassResolver.swift,
 				Watch/WatchCourse.swift,
@@ -245,8 +250,8 @@
 		C3D0F10A2FC0A00000AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatchWidgetExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Clock/AppClock.swift,
-				Clock/ClockOverride.swift,
+				Support/Clock/AppClock.swift,
+				Support/Clock/ClockOverride.swift,
 			);
 			target = C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */;
 		};
@@ -349,6 +354,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC0DE00330AA000100000001 /* TigerDuckCore in Frameworks */,
 				60A0A00430AA000100000001 /* Defaults in Frameworks */,
 				60A0A00530AA000100000001 /* MarkdownUI in Frameworks */,
 				60A0A00230AA000100000001 /* SwiftSoup in Frameworks */,
@@ -375,6 +381,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC0DE00330AA000100000004 /* TigerDuckCore in Frameworks */,
 				42B9BC032F90EBFA00D3B5A1 /* SwiftUI.framework in Frameworks */,
 				42B9BC012F90EBFA00D3B5A1 /* WidgetKit.framework in Frameworks */,
 			);
@@ -384,6 +391,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC0DE00330AA000100000002 /* TigerDuckCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -405,6 +413,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC0DE00330AA000100000003 /* TigerDuckCore in Frameworks */,
 				B244D7512FB87B580040D6FA /* SwiftUI.framework in Frameworks */,
 				B244D7502FB87B580040D6FA /* WidgetKit.framework in Frameworks */,
 			);
@@ -414,6 +423,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC0DE00330AA000100000005 /* TigerDuckCore in Frameworks */,
 				C3D0F1032FC0A00000AE2430 /* SwiftUI.framework in Frameworks */,
 				C3D0F1022FC0A00000AE2430 /* WidgetKit.framework in Frameworks */,
 			);
@@ -474,9 +484,9 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 424C46792F6E763E009D1DDA /* Build configuration list for PBXNativeTarget "TigerDuck" */;
 			buildPhases = (
-				9F3D7A0001000000000001 /* Sync Localizations */,
 				424C46522F6E763C009D1DDA /* Sources */,
 				424C46532F6E763C009D1DDA /* Frameworks */,
+				DC0DE00430AA000100000001 /* Generate Localizations */,
 				424C46542F6E763C009D1DDA /* Resources */,
 				42B9BC192F90EBFB00D3B5A1 /* Embed Foundation Extensions */,
 				B21DC6B32FB887DA00AE2430 /* Embed Watch Content */,
@@ -499,6 +509,7 @@
 				60A0A20430AA000100000001 /* Defaults */,
 				60A0A20530AA000100000001 /* MarkdownUI */,
 				286A28B6C50C02BAA1C53862 /* SwiftMail */,
+				DC0DE00230AA000100000001 /* TigerDuckCore */,
 			);
 			productName = TigerDuck;
 			productReference = 424C46562F6E763C009D1DDA /* TigerDuck.app */;
@@ -556,6 +567,7 @@
 			buildPhases = (
 				42B9BBFA2F90EBFA00D3B5A1 /* Sources */,
 				42B9BBFB2F90EBFA00D3B5A1 /* Frameworks */,
+				DC0DE00430AA000100000004 /* Generate Localizations */,
 				42B9BBFC2F90EBFA00D3B5A1 /* Resources */,
 			);
 			buildRules = (
@@ -567,6 +579,7 @@
 			);
 			name = TigerDuckLiveActivityExtension;
 			packageProductDependencies = (
+				DC0DE00230AA000100000004 /* TigerDuckCore */,
 			);
 			productName = TigerDuckLiveActivityExtension;
 			productReference = 42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */;
@@ -578,6 +591,7 @@
 			buildPhases = (
 				B21DC68E2FB887D900AE2430 /* Sources */,
 				B21DC68F2FB887D900AE2430 /* Frameworks */,
+				DC0DE00430AA000100000002 /* Generate Localizations */,
 				B21DC6902FB887D900AE2430 /* Resources */,
 				C3D0F1052FC0A00000AE2430 /* Embed Foundation Extensions */,
 			);
@@ -592,6 +606,7 @@
 			);
 			name = "TigerDuckWatch Watch App";
 			packageProductDependencies = (
+				DC0DE00230AA000100000002 /* TigerDuckCore */,
 			);
 			productName = "TigerDuckWatch Watch App";
 			productReference = B21DC6922FB887D900AE2430 /* TigerDuckWatch Watch App.app */;
@@ -649,6 +664,7 @@
 			buildPhases = (
 				B244D74B2FB87B580040D6FA /* Sources */,
 				B244D74C2FB87B580040D6FA /* Frameworks */,
+				DC0DE00430AA000100000003 /* Generate Localizations */,
 				B244D74D2FB87B580040D6FA /* Resources */,
 			);
 			buildRules = (
@@ -660,6 +676,7 @@
 			);
 			name = TigerDuckWidgetsExtension;
 			packageProductDependencies = (
+				DC0DE00230AA000100000003 /* TigerDuckCore */,
 			);
 			productName = TigerDuckWidgetsExtension;
 			productReference = B244D74F2FB87B580040D6FA /* TigerDuckWidgetsExtension.appex */;
@@ -671,6 +688,7 @@
 			buildPhases = (
 				C3D0F10E2FC0A00000AE2430 /* Sources */,
 				C3D0F10D2FC0A00000AE2430 /* Frameworks */,
+				DC0DE00430AA000100000005 /* Generate Localizations */,
 				C3D0F10F2FC0A00000AE2430 /* Resources */,
 			);
 			buildRules = (
@@ -682,6 +700,7 @@
 			);
 			name = TigerDuckWatchWidgetExtension;
 			packageProductDependencies = (
+				DC0DE00230AA000100000005 /* TigerDuckCore */,
 			);
 			productName = TigerDuckWatchWidgetExtension;
 			productReference = C3D0F1062FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex */;
@@ -811,6 +830,7 @@
 				60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */,
 				60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 				E8CC3E13C4358E9783C31871 /* XCLocalSwiftPackageReference "Packages/SwiftMail" */,
+				DC0DE00130AA000100000001 /* XCLocalSwiftPackageReference "Packages/TigerDuckCore" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 424C46572F6E763C009D1DDA /* Products */;
@@ -898,24 +918,120 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		9F3D7A0001000000000001 /* Sync Localizations */ = {
+		DC0DE00430AA000100000001 /* Generate Localizations */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
 			);
-			name = "Sync Localizations";
+			name = "Generate Localizations";
 			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nPYTHON=\"$(command -v python3 || command -v python)\"\nif [ -z \"$PYTHON\" ]; then\n  echo \"warning: python3 not found on PATH; skipping localization sync\"\n  exit 0\nfi\n\"$PYTHON\" \"${SRCROOT}/../tools/localization/sync_localizations.py\"\n";
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
+		};
+		DC0DE00430AA000100000002 /* Generate Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
+			);
+			name = "Generate Localizations";
+			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
+		};
+		DC0DE00430AA000100000003 /* Generate Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
+			);
+			name = "Generate Localizations";
+			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
+		};
+		DC0DE00430AA000100000004 /* Generate Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
+			);
+			name = "Generate Localizations";
+			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
+		};
+		DC0DE00430AA000100000005 /* Generate Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
+			);
+			name = "Generate Localizations";
+			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1095,6 +1211,7 @@
 				SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				USE_RECURSIVE_SCRIPT_INPUTS_IN_SCRIPT_PHASES = YES;
 			};
 			name = Debug;
 		};
@@ -1154,6 +1271,7 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
 				SWIFT_COMPILATION_MODE = wholemodule;
+				USE_RECURSIVE_SCRIPT_INPUTS_IN_SCRIPT_PHASES = YES;
 			};
 			name = Release;
 		};
@@ -1177,266 +1295,265 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INCLUDED_SOURCE_FILE_NAMES = "";
 				"INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
-					TigerDuckApp.swift,
+					AcademicCalendar.swift,
+					AcademicCalendarEvents.swift,
+					AcademicCalendarStore.swift,
+					AccentContrast.swift,
+					AddCourseSheet.swift,
+					"Animation+Spring.swift",
+					APIVersionGate.swift,
+					AppAppearance.swift,
+					AppClock.swift,
+					AppClockState.swift,
 					AppConstants.swift,
 					AppDefaults.swift,
-					AppState.swift,
-					"AppState+Conflicts.swift",
-					"AppState+Account.swift",
-					"AppState+CourseColors.swift",
-					"AppState+PushServer.swift",
-					"AppState+BackendSync.swift",
-					"AppState+CourseReconcile.swift",
-					"AppState+RevisionPolling.swift",
-					"AppState+Lifecycle.swift",
-					"AppState+SyncPresentation.swift",
-					"AppState+SettingsDerived.swift",
-					"AppState+CourseRelabeling.swift",
-					CourseCardFontScale.swift,
-					BrowserPreference.swift,
-					MoodleOpenTarget.swift,
-					LanguageManager.swift,
-					WidgetURLRouter.swift,
 					AppFeature.swift,
-					Services/Mail/Core/SchoolMailAvailability.swift,
+					AppLogger.swift,
+					"AppServiceBridge+Assignments.swift",
+					AppServiceBridge.swift,
+					"AppState+Account.swift",
+					"AppState+BackendSync.swift",
+					"AppState+Conflicts.swift",
+					"AppState+CourseColors.swift",
+					"AppState+CourseReconcile.swift",
+					"AppState+CourseRelabeling.swift",
+					"AppState+Lifecycle.swift",
+					"AppState+PushServer.swift",
+					"AppState+RevisionPolling.swift",
+					"AppState+SettingsDerived.swift",
+					"AppState+SyncPresentation.swift",
+					AppState.swift,
+					AppStoreUpdateService.swift,
+					AppURLs.swift,
+					AppVersion.swift,
+					"Array+Assignments.swift",
+					"Array+PeriodOrder.swift",
 					AssignmentFilter.swift,
 					AssignmentStatus.swift,
+					AsyncSerialLock.swift,
+					AuthService.swift,
+					AuthTokenManager.swift,
+					BadgeOverlay.swift,
+					BareKeychainItemMoveMigration.swift,
+					BrowserPreference.swift,
+					BulletinAPIClient.swift,
+					BulletinAPIDTO.swift,
+					BulletinBodyRenderer.swift,
+					BulletinReadStateStore.swift,
+					BulletinsViewModel.swift,
+					BulletinTaxonomyStore.swift,
+					CalendarService.swift,
+					CanonicalCourseProvider.swift,
+					ClassroomUsageParser.swift,
+					ClassroomUsageService.swift,
+					ClassTableImportConfirmView.swift,
+					ClassTableImportModel.swift,
+					ClassTableLayout.swift,
+					"ClassTableShareCode+Packed.swift",
+					"ClassTableShareCode+TAT.swift",
+					ClassTableShareCode.swift,
+					ClassTableShareLink.swift,
+					ClassTableShareModel.swift,
+					ClassTableShareSheet.swift,
+					ClassTableSwitcher.swift,
+					ClockOverride.swift,
+					CloudSyncCoordinator.swift,
+					CloudSyncPreference.swift,
+					"Collection+Safe.swift",
+					"Color+Extensions.swift",
+					CourseBlockRoom.swift,
+					CourseCardFontScale.swift,
+					CourseCatalogClient.swift,
+					CourseChanges.swift,
+					CourseColorPickerSheet.swift,
+					CourseColorPickSeedMigration.swift,
+					CourseDetailSheet.swift,
+					CourseLookupService.swift,
+					CourseRoomHint.swift,
+					CourseSearch.swift,
+					CourseSearchFilterView.swift,
+					CourseSearchModel.swift,
+					CourseSelectionService.swift,
 					CourseState.swift,
-					SourceRepository.swift,
-					LicenseCatalog.swift,
-					HomeSection.swift,
-					TimetablePeriod.swift,
-					WidgetItem.swift,
+					CourseSyllabusBreakdown.swift,
+					CourseSyllabusView.swift,
+					CourseTimelineResolver.swift,
 					CourseTimeSlot.swift,
+					CourseTombstone.swift,
+					CredentialPost.swift,
+					CreditFormat.swift,
+					CurrentClassCard.swift,
+					CustomAccentContrastMigration.swift,
+					CustomAccentPicker.swift,
+					"Data+Hex.swift",
+					DataCache.swift,
+					"Date+Formatting.swift",
+					DebugClockController.swift,
+					DebugClockStore.swift,
+					DebugEndpointStore.swift,
+					DebugEndpointView.swift,
+					DepartingSessionListMigration.swift,
+					EndpointHealthCheck.swift,
+					EqualHeightCards.swift,
+					FlowLayout.swift,
+					GPATrendChart.swift,
+					HomeSection.swift,
+					HTMLParser.swift,
+					ImportedClassTableStore.swift,
+					"JSONDecoder+ISO8601.swift",
+					KeychainManager.swift,
+					LanguageManager.swift,
+					LibraryAPI.swift,
+					LibraryPasswordLatchRetryMigration.swift,
+					LibraryQRCache.swift,
+					LibraryService.swift,
+					LicenseCatalog.swift,
+					LiveActivityScenarioKind.swift,
+					LiveActivityScenarioResolver.swift,
+					LiveActivitySnapshot.swift,
+					LoadingButtonLabel.swift,
+					MacAboutSettingsView.swift,
+					MacAccountSettingsView.swift,
+					MacAppearanceSettingsView.swift,
+					MacAssignmentsList.swift,
+					MacBulletinsView.swift,
+					MacCalendarView.swift,
+					"MacClassTableView+Editing.swift",
+					"MacClassTableView+Grid.swift",
+					MacClassTableView.swift,
+					MacContentLayout.swift,
+					MacDeveloperSettingsView.swift,
+					MacFeatureFiltering.swift,
+					MacGeneralSettingsView.swift,
+					MacHomeView.swift,
+					MacLicensesView.swift,
+					MacLoginView.swift,
+					MacMoreView.swift,
+					MacOtherSettingsView.swift,
+					MacPushAppDelegate.swift,
+					MacRootView.swift,
+					MacScoreView.swift,
+					MacSettingsScene.swift,
+					MacSidebarSettingsView.swift,
+					MacTigerSyncSettingsView.swift,
+					MacUpdateCheck.swift,
+					MacWidgetCards.swift,
+					MinuteTicker.swift,
+					MoodleAnnouncementsView.swift,
+					MoodleAnnouncementView.swift,
+					MoodleAPIModels.swift,
+					MoodleAssignmentService.swift,
+					MoodleAssignmentsView.swift,
+					MoodleAutologinService.swift,
+					MoodleCourseAPI.swift,
+					MoodleCourseAssignments.swift,
+					MoodleCourseContentsService.swift,
+					MoodleCourseMembersService.swift,
+					MoodleCourseSection.swift,
+					MoodleCourseStore.swift,
+					MoodleCourseSummaryService.swift,
+					MoodleCurrentWeek.swift,
+					MoodleDiscussionCard.swift,
+					MoodleDiscussionPages.swift,
+					MoodleDiscussionsView.swift,
+					MoodleDiscussionView.swift,
+					MoodleEnrolledCoursesService.swift,
+					MoodleFileDownloads.swift,
+					MoodleFileOpener.swift,
+					MoodleFileRow.swift,
+					MoodleFilesCacheSection.swift,
+					MoodleFileTransfer.swift,
+					MoodleForumService.swift,
+					MoodleForumsView.swift,
+					MoodleGradeService.swift,
+					MoodleGradesView.swift,
+					MoodleHTMLText.swift,
+					MoodleMaterialsView.swift,
+					MoodleMembersView.swift,
+					MoodleMemberView.swift,
+					MoodleOpenTarget.swift,
+					MoodleProfilePictureService.swift,
+					MoodleRefreshSchedule.swift,
+					MoodleScreenChrome.swift,
+					MoodleSiteInfoService.swift,
+					MoodleTokenService.swift,
+					MoodleWebserviceError.swift,
+					NameAbbrService.swift,
+					NetworkMonitor.swift,
+					NotificationDelegate.swift,
+					NTUSTAPIModels.swift,
+					NTUSTGradePoints.swift,
+					NTUSTProtectedAccessState.swift,
+					NTUSTScoreModels.swift,
+					NTUSTScoreParser.swift,
+					NTUSTScoreService.swift,
+					NTUSTSessionManager.swift,
+					OngoingCourseInfo.swift,
+					"OpenURLAction+Fallback.swift",
+					PushAPIClient.swift,
+					PushAPIDTO.swift,
+					PushCoordinator.swift,
+					PushIdentity.swift,
+					PushRegistrationService.swift,
+					PushServerConfig.swift,
+					PushTokenRelay.swift,
+					ScheduleSyncService.swift,
+					SchoolMailAvailability.swift,
+					ScoreViewModel.swift,
+					ScreenCaptureProtected.swift,
 					SDAnnouncement.swift,
+					"SDAssignment+DisplayName.swift",
 					SDAssignment.swift,
 					SDCalendarEvent.swift,
 					SDCourse.swift,
-					AuthService.swift,
-					AuthTokenManager.swift,
-					KeychainManager.swift,
 					SecureStore.swift,
-					DataCache.swift,
-					AsyncSerialLock.swift,
-					HTMLParser.swift,
-					NameAbbrService.swift,
-					NetworkMonitor.swift,
-					TLSPinningDelegate.swift,
+					SemesterAttributionCacheMigration.swift,
+					SemesterCatalog.swift,
+					ServerStatusTracker.swift,
+					SourceRepository.swift,
+					SSOLoginService.swift,
+					StoredPasswordLatchRetryMigration.swift,
+					"String+HTMLEntities.swift",
+					SyncedAccountSeedMigration.swift,
+					SyncOutbox.swift,
+					SyncStatusDot.swift,
+					TigerDuckApp.swift,
+					TigerDuckTheme.swift,
+					TimetablePeriod.swift,
+					TimezoneObserver.swift,
 					TLSCertificateSummary.swift,
 					TLSPinDocument.swift,
 					TLSPinDocumentFetcher.swift,
 					TLSPinEngine.swift,
 					TLSPinMismatchQueue.swift,
-					TLSPinTable.swift,
-					TLSSPKI.swift,
-					ScreenCaptureProtected.swift,
-					AppLogger.swift,
-					SemesterAttributionCacheMigration.swift,
-					SyncedAccountSeedMigration.swift,
-					CourseColorPickSeedMigration.swift,
-					CustomAccentContrastMigration.swift,
-					StoredPasswordLatchRetryMigration.swift,
-					DepartingSessionListMigration.swift,
-					BareKeychainItemMoveMigration.swift,
-					LibraryPasswordLatchRetryMigration.swift,
-					PushServerConfig.swift,
-					PushCoordinator.swift,
-					PushRegistrationService.swift,
-					PushIdentity.swift,
-					PushAPIClient.swift,
-					PushAPIDTO.swift,
-					PushTokenRelay.swift,
-					ScheduleSyncService.swift,
-					CloudSyncCoordinator.swift,
-					CloudSyncPreference.swift,
-					SyncOutbox.swift,
-					NotificationDelegate.swift,
-					AppURLs.swift,
-					LiveActivity/Models/LiveActivitySnapshot.swift,
-					LiveActivity/Models/LiveActivityScenarioKind.swift,
-					LiveActivity/Resolvers/LiveActivityScenarioResolver.swift,
-					LiveActivity/Resolvers/CourseTimelineResolver.swift,
-					BulletinAPIClient.swift,
-					BulletinAPIDTO.swift,
-					CourseCatalogClient.swift,
-					AcademicCalendar.swift,
-					AcademicCalendarStore.swift,
-					CourseChanges.swift,
-					AcademicCalendarEvents.swift,
-					APIVersionGate.swift,
-					UpdateRequiredAlert.swift,
-					CalendarService.swift,
-					LibraryAPI.swift,
-					LibraryService.swift,
-					LibraryQRCache.swift,
-					MoodleAPIModels.swift,
-					MoodleAssignmentService.swift,
-					MoodleAutologinService.swift,
-					MoodleForumService.swift,
-					MoodleCourseContentsService.swift,
-					MoodleFileTransfer.swift,
-					MoodleGradeService.swift,
-					MoodleHTMLText.swift,
-					MoodleCourseAPI.swift,
-					MoodleCourseStore.swift,
-					MoodleCourseAssignments.swift,
-					MoodleRefreshSchedule.swift,
-					MoodleScreenChrome.swift,
-					MoodleDiscussionCard.swift,
-					MoodleCourseSection.swift,
-					MoodleAnnouncementsView.swift,
-					MoodleAssignmentsView.swift,
-					MoodleAnnouncementView.swift,
-					MoodleGradesView.swift,
-					MoodleFileRow.swift,
-					MoodleMembersView.swift,
-					MoodleMemberView.swift,
-					MoodleCourseMembersService.swift,
-					MoodleProfilePictureService.swift,
-					FlowLayout.swift,
-					MoodleFileDownloads.swift,
-					MoodleFileOpener.swift,
-					MoodleMaterialsView.swift,
-					MoodleCurrentWeek.swift,
-					MoodleFilesCacheSection.swift,
-					MoodleDiscussionPages.swift,
-					MoodleDiscussionsView.swift,
-					MoodleForumsView.swift,
-					MoodleDiscussionView.swift,
-					MoodleEnrolledCoursesService.swift,
-					MoodleCourseSummaryService.swift,
-					MoodleSiteInfoService.swift,
-					MoodleTokenService.swift,
-					MoodleWebserviceError.swift,
-					ClassroomUsageParser.swift,
-					ClassroomUsageService.swift,
-					CourseLookupService.swift,
-					CourseSelectionService.swift,
-					SemesterCatalog.swift,
-					NTUSTAPIModels.swift,
-					NTUSTScoreModels.swift,
-					NTUSTGradePoints.swift,
-					NTUSTScoreParser.swift,
-					NTUSTScoreService.swift,
-					NTUSTSessionManager.swift,
-					CredentialPost.swift,
-					SSOLoginService.swift,
-					"Animation+Spring.swift",
-					AppAppearance.swift,
-					"Color+Extensions.swift",
-					AccentContrast.swift,
-					TigerDuckTheme.swift,
-					"View+CardStyle.swift",
-					"View+GlassEffect.swift",
-					"View+SurfaceStyle.swift",
-					VisualStylePolicy.swift,
-					AppServiceBridge.swift,
-					"AppServiceBridge+Assignments.swift",
-					AppClock.swift,
-					AppClockState.swift,
-					ClockOverride.swift,
-					TimezoneObserver.swift,
-					VisualPreset.swift,
-					"Array+Assignments.swift",
-					"Array+PeriodOrder.swift",
-					"Collection+Safe.swift",
-					"Data+Hex.swift",
-					"Date+Formatting.swift",
-					"JSONDecoder+ISO8601.swift",
-					"OpenURLAction+Fallback.swift",
-					"SDAssignment+DisplayName.swift",
-					"String+HTMLEntities.swift",
-					NTUSTProtectedAccessState.swift,
+					TLSPinningDelegate.swift,
 					TLSPinPromptHost.swift,
 					TLSPinPromptSheet.swift,
-					MacRootView.swift,
-					MacLoginView.swift,
-					MacHomeView.swift,
-					MacMoreView.swift,
-					MacFeatureFiltering.swift,
-					MacBulletinsView.swift,
-					BulletinsViewModel.swift,
-					BulletinReadStateStore.swift,
-					BulletinBodyRenderer.swift,
-					BulletinTaxonomyStore.swift,
-					MacCalendarView.swift,
-					MacScoreView.swift,
-					GPATrendChart.swift,
-					MacUpdateCheck.swift,
+					TLSPinTable.swift,
+					TLSSPKI.swift,
 					UpdateNotifyCoordinator.swift,
-					WhatsNewModels.swift,
-					WhatsNewRepository.swift,
-					WhatsNewPage.swift,
+					UpdateRequiredAlert.swift,
+					"View+CardStyle.swift",
+					"View+GlassEffect.swift",
+					"View+PlatformCompat.swift",
+					"View+SurfaceStyle.swift",
+					ViewMemo.swift,
+					VisualPreset.swift,
+					VisualStylePolicy.swift,
 					WhatsNewCatalog.swift,
 					WhatsNewFlow.swift,
+					WhatsNewModels.swift,
+					WhatsNewPage.swift,
+					WhatsNewRepository.swift,
 					WhatsNewText.swift,
-					AppStoreUpdateService.swift,
-					AppVersion.swift,
-					ScoreViewModel.swift,
-					MacClassTableView.swift,
-					"MacClassTableView+Grid.swift",
-					"MacClassTableView+Editing.swift",
-					MacPushAppDelegate.swift,
-					MacSettingsScene.swift,
-					MacGeneralSettingsView.swift,
-					MacAppearanceSettingsView.swift,
-					CustomAccentPicker.swift,
-					MacSidebarSettingsView.swift,
-					MacAccountSettingsView.swift,
-					MacTigerSyncSettingsView.swift,
-					MacDeveloperSettingsView.swift,
-					MacAboutSettingsView.swift,
-					MacLicensesView.swift,
-					MacOtherSettingsView.swift,
-					MacContentLayout.swift,
-					MacAssignmentsList.swift,
-					MacWidgetCards.swift,
-					DebugClockController.swift,
-					DebugClockStore.swift,
-					DebugEndpointStore.swift,
-					DebugEndpointView.swift,
-					EndpointHealthCheck.swift,
+					WidgetItem.swift,
+					WidgetReloadCoordinator.swift,
 					WidgetSnapshot.swift,
 					WidgetSnapshotBuilder.swift,
 					WidgetSnapshotStore.swift,
-					WidgetTimelineDerivation.swift,
-					WidgetTaipei.swift,
 					WidgetSnapshotWriter.swift,
-					WidgetReloadCoordinator.swift,
-					CanonicalCourseProvider.swift,
-					AddCourseSheet.swift,
-					CourseSearch.swift,
-					CourseSearchFilterView.swift,
-					CourseSearchModel.swift,
-					CourseColorPickerSheet.swift,
-					CourseDetailSheet.swift,
-					CourseSyllabusBreakdown.swift,
-					CourseSyllabusView.swift,
-					ClassTableLayout.swift,
-					CourseBlockRoom.swift,
-					CourseRoomHint.swift,
-					ViewMemo.swift,
-					CreditFormat.swift,
-					"View+PlatformCompat.swift",
-					LoadingButtonLabel.swift,
-					OngoingCourseInfo.swift,
-					CurrentClassCard.swift,
-					MinuteTicker.swift,
-					EqualHeightCards.swift,
-					BadgeOverlay.swift,
-					ServerStatusTracker.swift,
-					SyncStatusDot.swift,
-					CourseTombstone.swift,
-					ClassTableShareCode.swift,
-					"ClassTableShareCode+TAT.swift",
-					"ClassTableShareCode+Packed.swift",
-					ClassTableShareLink.swift,
-					ImportedClassTableStore.swift,
-					ClassTableShareModel.swift,
-					ClassTableShareSheet.swift,
-					ClassTableSwitcher.swift,
-					ClassTableImportModel.swift,
-					ClassTableImportConfirmView.swift,
+					WidgetTimelineDerivation.swift,
+					WidgetURLRouter.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1498,266 +1615,265 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INCLUDED_SOURCE_FILE_NAMES = "";
 				"INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
-					TigerDuckApp.swift,
+					AcademicCalendar.swift,
+					AcademicCalendarEvents.swift,
+					AcademicCalendarStore.swift,
+					AccentContrast.swift,
+					AddCourseSheet.swift,
+					"Animation+Spring.swift",
+					APIVersionGate.swift,
+					AppAppearance.swift,
+					AppClock.swift,
+					AppClockState.swift,
 					AppConstants.swift,
 					AppDefaults.swift,
-					AppState.swift,
-					"AppState+Conflicts.swift",
-					"AppState+Account.swift",
-					"AppState+CourseColors.swift",
-					"AppState+PushServer.swift",
-					"AppState+BackendSync.swift",
-					"AppState+CourseReconcile.swift",
-					"AppState+RevisionPolling.swift",
-					"AppState+Lifecycle.swift",
-					"AppState+SyncPresentation.swift",
-					"AppState+SettingsDerived.swift",
-					"AppState+CourseRelabeling.swift",
-					CourseCardFontScale.swift,
-					BrowserPreference.swift,
-					MoodleOpenTarget.swift,
-					LanguageManager.swift,
-					WidgetURLRouter.swift,
 					AppFeature.swift,
-					Services/Mail/Core/SchoolMailAvailability.swift,
+					AppLogger.swift,
+					"AppServiceBridge+Assignments.swift",
+					AppServiceBridge.swift,
+					"AppState+Account.swift",
+					"AppState+BackendSync.swift",
+					"AppState+Conflicts.swift",
+					"AppState+CourseColors.swift",
+					"AppState+CourseReconcile.swift",
+					"AppState+CourseRelabeling.swift",
+					"AppState+Lifecycle.swift",
+					"AppState+PushServer.swift",
+					"AppState+RevisionPolling.swift",
+					"AppState+SettingsDerived.swift",
+					"AppState+SyncPresentation.swift",
+					AppState.swift,
+					AppStoreUpdateService.swift,
+					AppURLs.swift,
+					AppVersion.swift,
+					"Array+Assignments.swift",
+					"Array+PeriodOrder.swift",
 					AssignmentFilter.swift,
 					AssignmentStatus.swift,
+					AsyncSerialLock.swift,
+					AuthService.swift,
+					AuthTokenManager.swift,
+					BadgeOverlay.swift,
+					BareKeychainItemMoveMigration.swift,
+					BrowserPreference.swift,
+					BulletinAPIClient.swift,
+					BulletinAPIDTO.swift,
+					BulletinBodyRenderer.swift,
+					BulletinReadStateStore.swift,
+					BulletinsViewModel.swift,
+					BulletinTaxonomyStore.swift,
+					CalendarService.swift,
+					CanonicalCourseProvider.swift,
+					ClassroomUsageParser.swift,
+					ClassroomUsageService.swift,
+					ClassTableImportConfirmView.swift,
+					ClassTableImportModel.swift,
+					ClassTableLayout.swift,
+					"ClassTableShareCode+Packed.swift",
+					"ClassTableShareCode+TAT.swift",
+					ClassTableShareCode.swift,
+					ClassTableShareLink.swift,
+					ClassTableShareModel.swift,
+					ClassTableShareSheet.swift,
+					ClassTableSwitcher.swift,
+					ClockOverride.swift,
+					CloudSyncCoordinator.swift,
+					CloudSyncPreference.swift,
+					"Collection+Safe.swift",
+					"Color+Extensions.swift",
+					CourseBlockRoom.swift,
+					CourseCardFontScale.swift,
+					CourseCatalogClient.swift,
+					CourseChanges.swift,
+					CourseColorPickerSheet.swift,
+					CourseColorPickSeedMigration.swift,
+					CourseDetailSheet.swift,
+					CourseLookupService.swift,
+					CourseRoomHint.swift,
+					CourseSearch.swift,
+					CourseSearchFilterView.swift,
+					CourseSearchModel.swift,
+					CourseSelectionService.swift,
 					CourseState.swift,
-					SourceRepository.swift,
-					LicenseCatalog.swift,
-					HomeSection.swift,
-					TimetablePeriod.swift,
-					WidgetItem.swift,
+					CourseSyllabusBreakdown.swift,
+					CourseSyllabusView.swift,
+					CourseTimelineResolver.swift,
 					CourseTimeSlot.swift,
+					CourseTombstone.swift,
+					CredentialPost.swift,
+					CreditFormat.swift,
+					CurrentClassCard.swift,
+					CustomAccentContrastMigration.swift,
+					CustomAccentPicker.swift,
+					"Data+Hex.swift",
+					DataCache.swift,
+					"Date+Formatting.swift",
+					DebugClockController.swift,
+					DebugClockStore.swift,
+					DebugEndpointStore.swift,
+					DebugEndpointView.swift,
+					DepartingSessionListMigration.swift,
+					EndpointHealthCheck.swift,
+					EqualHeightCards.swift,
+					FlowLayout.swift,
+					GPATrendChart.swift,
+					HomeSection.swift,
+					HTMLParser.swift,
+					ImportedClassTableStore.swift,
+					"JSONDecoder+ISO8601.swift",
+					KeychainManager.swift,
+					LanguageManager.swift,
+					LibraryAPI.swift,
+					LibraryPasswordLatchRetryMigration.swift,
+					LibraryQRCache.swift,
+					LibraryService.swift,
+					LicenseCatalog.swift,
+					LiveActivityScenarioKind.swift,
+					LiveActivityScenarioResolver.swift,
+					LiveActivitySnapshot.swift,
+					LoadingButtonLabel.swift,
+					MacAboutSettingsView.swift,
+					MacAccountSettingsView.swift,
+					MacAppearanceSettingsView.swift,
+					MacAssignmentsList.swift,
+					MacBulletinsView.swift,
+					MacCalendarView.swift,
+					"MacClassTableView+Editing.swift",
+					"MacClassTableView+Grid.swift",
+					MacClassTableView.swift,
+					MacContentLayout.swift,
+					MacDeveloperSettingsView.swift,
+					MacFeatureFiltering.swift,
+					MacGeneralSettingsView.swift,
+					MacHomeView.swift,
+					MacLicensesView.swift,
+					MacLoginView.swift,
+					MacMoreView.swift,
+					MacOtherSettingsView.swift,
+					MacPushAppDelegate.swift,
+					MacRootView.swift,
+					MacScoreView.swift,
+					MacSettingsScene.swift,
+					MacSidebarSettingsView.swift,
+					MacTigerSyncSettingsView.swift,
+					MacUpdateCheck.swift,
+					MacWidgetCards.swift,
+					MinuteTicker.swift,
+					MoodleAnnouncementsView.swift,
+					MoodleAnnouncementView.swift,
+					MoodleAPIModels.swift,
+					MoodleAssignmentService.swift,
+					MoodleAssignmentsView.swift,
+					MoodleAutologinService.swift,
+					MoodleCourseAPI.swift,
+					MoodleCourseAssignments.swift,
+					MoodleCourseContentsService.swift,
+					MoodleCourseMembersService.swift,
+					MoodleCourseSection.swift,
+					MoodleCourseStore.swift,
+					MoodleCourseSummaryService.swift,
+					MoodleCurrentWeek.swift,
+					MoodleDiscussionCard.swift,
+					MoodleDiscussionPages.swift,
+					MoodleDiscussionsView.swift,
+					MoodleDiscussionView.swift,
+					MoodleEnrolledCoursesService.swift,
+					MoodleFileDownloads.swift,
+					MoodleFileOpener.swift,
+					MoodleFileRow.swift,
+					MoodleFilesCacheSection.swift,
+					MoodleFileTransfer.swift,
+					MoodleForumService.swift,
+					MoodleForumsView.swift,
+					MoodleGradeService.swift,
+					MoodleGradesView.swift,
+					MoodleHTMLText.swift,
+					MoodleMaterialsView.swift,
+					MoodleMembersView.swift,
+					MoodleMemberView.swift,
+					MoodleOpenTarget.swift,
+					MoodleProfilePictureService.swift,
+					MoodleRefreshSchedule.swift,
+					MoodleScreenChrome.swift,
+					MoodleSiteInfoService.swift,
+					MoodleTokenService.swift,
+					MoodleWebserviceError.swift,
+					NameAbbrService.swift,
+					NetworkMonitor.swift,
+					NotificationDelegate.swift,
+					NTUSTAPIModels.swift,
+					NTUSTGradePoints.swift,
+					NTUSTProtectedAccessState.swift,
+					NTUSTScoreModels.swift,
+					NTUSTScoreParser.swift,
+					NTUSTScoreService.swift,
+					NTUSTSessionManager.swift,
+					OngoingCourseInfo.swift,
+					"OpenURLAction+Fallback.swift",
+					PushAPIClient.swift,
+					PushAPIDTO.swift,
+					PushCoordinator.swift,
+					PushIdentity.swift,
+					PushRegistrationService.swift,
+					PushServerConfig.swift,
+					PushTokenRelay.swift,
+					ScheduleSyncService.swift,
+					SchoolMailAvailability.swift,
+					ScoreViewModel.swift,
+					ScreenCaptureProtected.swift,
 					SDAnnouncement.swift,
+					"SDAssignment+DisplayName.swift",
 					SDAssignment.swift,
 					SDCalendarEvent.swift,
 					SDCourse.swift,
-					AuthService.swift,
-					AuthTokenManager.swift,
-					KeychainManager.swift,
 					SecureStore.swift,
-					DataCache.swift,
-					AsyncSerialLock.swift,
-					HTMLParser.swift,
-					NameAbbrService.swift,
-					NetworkMonitor.swift,
-					TLSPinningDelegate.swift,
+					SemesterAttributionCacheMigration.swift,
+					SemesterCatalog.swift,
+					ServerStatusTracker.swift,
+					SourceRepository.swift,
+					SSOLoginService.swift,
+					StoredPasswordLatchRetryMigration.swift,
+					"String+HTMLEntities.swift",
+					SyncedAccountSeedMigration.swift,
+					SyncOutbox.swift,
+					SyncStatusDot.swift,
+					TigerDuckApp.swift,
+					TigerDuckTheme.swift,
+					TimetablePeriod.swift,
+					TimezoneObserver.swift,
 					TLSCertificateSummary.swift,
 					TLSPinDocument.swift,
 					TLSPinDocumentFetcher.swift,
 					TLSPinEngine.swift,
 					TLSPinMismatchQueue.swift,
-					TLSPinTable.swift,
-					TLSSPKI.swift,
-					ScreenCaptureProtected.swift,
-					AppLogger.swift,
-					SemesterAttributionCacheMigration.swift,
-					SyncedAccountSeedMigration.swift,
-					CourseColorPickSeedMigration.swift,
-					CustomAccentContrastMigration.swift,
-					StoredPasswordLatchRetryMigration.swift,
-					DepartingSessionListMigration.swift,
-					BareKeychainItemMoveMigration.swift,
-					LibraryPasswordLatchRetryMigration.swift,
-					PushServerConfig.swift,
-					PushCoordinator.swift,
-					PushRegistrationService.swift,
-					PushIdentity.swift,
-					PushAPIClient.swift,
-					PushAPIDTO.swift,
-					PushTokenRelay.swift,
-					ScheduleSyncService.swift,
-					CloudSyncCoordinator.swift,
-					CloudSyncPreference.swift,
-					SyncOutbox.swift,
-					NotificationDelegate.swift,
-					AppURLs.swift,
-					LiveActivity/Models/LiveActivitySnapshot.swift,
-					LiveActivity/Models/LiveActivityScenarioKind.swift,
-					LiveActivity/Resolvers/LiveActivityScenarioResolver.swift,
-					LiveActivity/Resolvers/CourseTimelineResolver.swift,
-					BulletinAPIClient.swift,
-					BulletinAPIDTO.swift,
-					CourseCatalogClient.swift,
-					AcademicCalendar.swift,
-					AcademicCalendarStore.swift,
-					CourseChanges.swift,
-					AcademicCalendarEvents.swift,
-					APIVersionGate.swift,
-					UpdateRequiredAlert.swift,
-					CalendarService.swift,
-					LibraryAPI.swift,
-					LibraryService.swift,
-					LibraryQRCache.swift,
-					MoodleAPIModels.swift,
-					MoodleAssignmentService.swift,
-					MoodleAutologinService.swift,
-					MoodleForumService.swift,
-					MoodleCourseContentsService.swift,
-					MoodleFileTransfer.swift,
-					MoodleGradeService.swift,
-					MoodleHTMLText.swift,
-					MoodleCourseAPI.swift,
-					MoodleCourseStore.swift,
-					MoodleCourseAssignments.swift,
-					MoodleRefreshSchedule.swift,
-					MoodleScreenChrome.swift,
-					MoodleDiscussionCard.swift,
-					MoodleCourseSection.swift,
-					MoodleAnnouncementsView.swift,
-					MoodleAssignmentsView.swift,
-					MoodleAnnouncementView.swift,
-					MoodleGradesView.swift,
-					MoodleFileRow.swift,
-					MoodleMembersView.swift,
-					MoodleMemberView.swift,
-					MoodleCourseMembersService.swift,
-					MoodleProfilePictureService.swift,
-					FlowLayout.swift,
-					MoodleFileDownloads.swift,
-					MoodleFileOpener.swift,
-					MoodleMaterialsView.swift,
-					MoodleCurrentWeek.swift,
-					MoodleFilesCacheSection.swift,
-					MoodleDiscussionPages.swift,
-					MoodleDiscussionsView.swift,
-					MoodleForumsView.swift,
-					MoodleDiscussionView.swift,
-					MoodleEnrolledCoursesService.swift,
-					MoodleCourseSummaryService.swift,
-					MoodleSiteInfoService.swift,
-					MoodleTokenService.swift,
-					MoodleWebserviceError.swift,
-					ClassroomUsageParser.swift,
-					ClassroomUsageService.swift,
-					CourseLookupService.swift,
-					CourseSelectionService.swift,
-					SemesterCatalog.swift,
-					NTUSTAPIModels.swift,
-					NTUSTScoreModels.swift,
-					NTUSTGradePoints.swift,
-					NTUSTScoreParser.swift,
-					NTUSTScoreService.swift,
-					NTUSTSessionManager.swift,
-					CredentialPost.swift,
-					SSOLoginService.swift,
-					"Animation+Spring.swift",
-					AppAppearance.swift,
-					"Color+Extensions.swift",
-					AccentContrast.swift,
-					TigerDuckTheme.swift,
-					"View+CardStyle.swift",
-					"View+GlassEffect.swift",
-					"View+SurfaceStyle.swift",
-					VisualStylePolicy.swift,
-					AppServiceBridge.swift,
-					"AppServiceBridge+Assignments.swift",
-					AppClock.swift,
-					AppClockState.swift,
-					ClockOverride.swift,
-					TimezoneObserver.swift,
-					VisualPreset.swift,
-					"Array+Assignments.swift",
-					"Array+PeriodOrder.swift",
-					"Collection+Safe.swift",
-					"Data+Hex.swift",
-					"Date+Formatting.swift",
-					"JSONDecoder+ISO8601.swift",
-					"OpenURLAction+Fallback.swift",
-					"SDAssignment+DisplayName.swift",
-					"String+HTMLEntities.swift",
-					NTUSTProtectedAccessState.swift,
+					TLSPinningDelegate.swift,
 					TLSPinPromptHost.swift,
 					TLSPinPromptSheet.swift,
-					MacRootView.swift,
-					MacLoginView.swift,
-					MacHomeView.swift,
-					MacMoreView.swift,
-					MacFeatureFiltering.swift,
-					MacBulletinsView.swift,
-					BulletinsViewModel.swift,
-					BulletinReadStateStore.swift,
-					BulletinBodyRenderer.swift,
-					BulletinTaxonomyStore.swift,
-					MacCalendarView.swift,
-					MacScoreView.swift,
-					GPATrendChart.swift,
-					MacUpdateCheck.swift,
+					TLSPinTable.swift,
+					TLSSPKI.swift,
 					UpdateNotifyCoordinator.swift,
-					WhatsNewModels.swift,
-					WhatsNewRepository.swift,
-					WhatsNewPage.swift,
+					UpdateRequiredAlert.swift,
+					"View+CardStyle.swift",
+					"View+GlassEffect.swift",
+					"View+PlatformCompat.swift",
+					"View+SurfaceStyle.swift",
+					ViewMemo.swift,
+					VisualPreset.swift,
+					VisualStylePolicy.swift,
 					WhatsNewCatalog.swift,
 					WhatsNewFlow.swift,
+					WhatsNewModels.swift,
+					WhatsNewPage.swift,
+					WhatsNewRepository.swift,
 					WhatsNewText.swift,
-					AppStoreUpdateService.swift,
-					AppVersion.swift,
-					ScoreViewModel.swift,
-					MacClassTableView.swift,
-					"MacClassTableView+Grid.swift",
-					"MacClassTableView+Editing.swift",
-					MacPushAppDelegate.swift,
-					MacSettingsScene.swift,
-					MacGeneralSettingsView.swift,
-					MacAppearanceSettingsView.swift,
-					CustomAccentPicker.swift,
-					MacSidebarSettingsView.swift,
-					MacAccountSettingsView.swift,
-					MacTigerSyncSettingsView.swift,
-					MacDeveloperSettingsView.swift,
-					MacAboutSettingsView.swift,
-					MacLicensesView.swift,
-					MacOtherSettingsView.swift,
-					MacContentLayout.swift,
-					MacAssignmentsList.swift,
-					MacWidgetCards.swift,
-					DebugClockController.swift,
-					DebugClockStore.swift,
-					DebugEndpointStore.swift,
-					DebugEndpointView.swift,
-					EndpointHealthCheck.swift,
+					WidgetItem.swift,
+					WidgetReloadCoordinator.swift,
 					WidgetSnapshot.swift,
 					WidgetSnapshotBuilder.swift,
 					WidgetSnapshotStore.swift,
-					WidgetTimelineDerivation.swift,
-					WidgetTaipei.swift,
 					WidgetSnapshotWriter.swift,
-					WidgetReloadCoordinator.swift,
-					CanonicalCourseProvider.swift,
-					AddCourseSheet.swift,
-					CourseSearch.swift,
-					CourseSearchFilterView.swift,
-					CourseSearchModel.swift,
-					CourseColorPickerSheet.swift,
-					CourseDetailSheet.swift,
-					CourseSyllabusBreakdown.swift,
-					CourseSyllabusView.swift,
-					ClassTableLayout.swift,
-					CourseBlockRoom.swift,
-					CourseRoomHint.swift,
-					ViewMemo.swift,
-					CreditFormat.swift,
-					"View+PlatformCompat.swift",
-					LoadingButtonLabel.swift,
-					OngoingCourseInfo.swift,
-					CurrentClassCard.swift,
-					MinuteTicker.swift,
-					EqualHeightCards.swift,
-					BadgeOverlay.swift,
-					ServerStatusTracker.swift,
-					SyncStatusDot.swift,
-					CourseTombstone.swift,
-					ClassTableShareCode.swift,
-					"ClassTableShareCode+TAT.swift",
-					"ClassTableShareCode+Packed.swift",
-					ClassTableShareLink.swift,
-					ImportedClassTableStore.swift,
-					ClassTableShareModel.swift,
-					ClassTableShareSheet.swift,
-					ClassTableSwitcher.swift,
-					ClassTableImportModel.swift,
-					ClassTableImportConfirmView.swift,
+					WidgetTimelineDerivation.swift,
+					WidgetURLRouter.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -2426,6 +2542,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/SwiftMail;
 		};
+		DC0DE00130AA000100000001 /* XCLocalSwiftPackageReference "Packages/TigerDuckCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/TigerDuckCore;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -2487,6 +2607,26 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
+		};
+		DC0DE00230AA000100000001 /* TigerDuckCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TigerDuckCore;
+		};
+		DC0DE00230AA000100000002 /* TigerDuckCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TigerDuckCore;
+		};
+		DC0DE00230AA000100000003 /* TigerDuckCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TigerDuckCore;
+		};
+		DC0DE00230AA000100000004 /* TigerDuckCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TigerDuckCore;
+		};
+		DC0DE00230AA000100000005 /* TigerDuckCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TigerDuckCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

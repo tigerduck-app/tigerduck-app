@@ -1,6 +1,7 @@
 import Defaults
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -91,7 +92,7 @@ struct EmptyClassroomViewModelTests {
     }
 
     private static func time(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
-        AppConstants.taipeiCalendar.date(
+        TaipeiTime.calendar.date(
             from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute)
         ) ?? .distantPast
     }

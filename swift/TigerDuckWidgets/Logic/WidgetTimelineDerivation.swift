@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 enum WidgetDerivedState: nonisolated Equatable, Sendable {
     case signInRequired
@@ -118,7 +119,7 @@ enum WidgetTimelineDerivation {
             ))
         }
 
-        let calendar = WidgetTaipei.calendar
+        let calendar = TaipeiTime.calendar
         for offset in 1...7 {
             let target = ((weekday - 1 + offset) % 7) + 1
             let targetDate = calendar.date(byAdding: .day, value: offset, to: date) ?? date
@@ -200,18 +201,18 @@ enum WidgetTimelineDerivation {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = WidgetTaipei.timeZone
+        f.timeZone = TaipeiTime.timeZone
         f.dateFormat = "yyyy-MM-dd"
         return f
     }()
 
     static func weekdayFor(_ date: Date) -> Int {
-        let raw = WidgetTaipei.calendar.component(.weekday, from: date)
+        let raw = TaipeiTime.calendar.component(.weekday, from: date)
         return raw == 1 ? 7 : raw - 1
     }
 
     static func minuteOfDayFor(_ date: Date) -> Int {
-        let cal = WidgetTaipei.calendar
+        let cal = TaipeiTime.calendar
         let h = cal.component(.hour, from: date)
         let m = cal.component(.minute, from: date)
         return h * 60 + m
@@ -264,7 +265,7 @@ extension WidgetTimelineDerivation {
     /// The first Taipei midnight after `date`, when a widget with nothing to show asks again.
     /// A single entry with `.atEnd` would make WidgetKit reload it at once, over and over; the
     /// app reloads every timeline itself when it writes a snapshot.
-    static func nextMidnight(after date: Date, calendar: Calendar = WidgetTaipei.calendar) -> Date {
+    static func nextMidnight(after date: Date, calendar: Calendar = TaipeiTime.calendar) -> Date {
         let startOfDay = calendar.startOfDay(for: date)
         return calendar.date(byAdding: .day, value: 1, to: startOfDay)
             ?? startOfDay.addingTimeInterval(86_400)
@@ -273,7 +274,7 @@ extension WidgetTimelineDerivation {
     static func entryDates(
         snapshot: WidgetSnapshot,
         after now: Date,
-        calendar: Calendar = WidgetTaipei.calendar
+        calendar: Calendar = TaipeiTime.calendar
     ) -> [Date] {
         var result: Set<Date> = [now]
         let weekday = weekdayFor(now)

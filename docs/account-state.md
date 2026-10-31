@@ -39,20 +39,20 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 
 | Store | Name | Scope | Cleared in |
 |---|---|---|---|
-| keychain | `accessTokenKey` | account | `swift/TigerDuck/Services/Auth/AuthTokenManager.swift` `clearTokens` |
-| keychain | `departingSessionKey` | account | `swift/TigerDuck/Services/Auth/AuthTokenManager.swift` `storeDepartingSessions` |
-| keychain | `expiresAtKey` | account | `swift/TigerDuck/Services/Auth/AuthTokenManager.swift` `clearTokens` |
-| keychain | `libraryPassword` | library | `swift/TigerDuck/Services/API/Library/LibraryService.swift` `clearCredentials` |
-| keychain | `libraryToken` | library | `swift/TigerDuck/Services/API/Library/LibraryService.swift` `clearToken` |
-| keychain | `libraryTokenExpiry` | library | `swift/TigerDuck/Services/API/Library/LibraryService.swift` `clearToken` |
-| keychain | `libraryUsername` | library | `swift/TigerDuck/Services/API/Library/LibraryService.swift` `clearCredentials` |
-| keychain | `moodlePrivateToken` | account | `swift/TigerDuck/Services/API/Moodle/MoodleTokenService.swift` `drop` |
-| keychain | `moodleToken` | account | `swift/TigerDuck/Services/API/Moodle/MoodleTokenService.swift` `drop` |
-| keychain | `password` | account | `swift/TigerDuck/Services/Auth/AuthService.swift` `logout` |
+| keychain | `accessTokenKey` | account | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `clearTokens` |
+| keychain | `departingSessionKey` | account | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `storeDepartingSessions` |
+| keychain | `expiresAtKey` | account | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `clearTokens` |
+| keychain | `libraryPassword` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `clearCredentials` |
+| keychain | `libraryToken` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `clearToken` |
+| keychain | `libraryTokenExpiry` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `clearToken` |
+| keychain | `libraryUsername` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `clearCredentials` |
+| keychain | `moodlePrivateToken` | account | `swift/TigerDuck/School/Moodle/MoodleTokenService.swift` `drop` |
+| keychain | `moodleToken` | account | `swift/TigerDuck/School/Moodle/MoodleTokenService.swift` `drop` |
+| keychain | `password` | account | `swift/TigerDuck/Account/AuthService.swift` `logout` |
 | keychain | `pushDeviceId` | device |  |
-| keychain | `refreshTokenKey` | account | `swift/TigerDuck/Services/Auth/AuthTokenManager.swift` `clearTokens` |
-| keychain | `refreshTokenUsesKey` | account | `swift/TigerDuck/Services/Auth/AuthTokenManager.swift` `clearTokens` |
-| keychain | `studentId` | account | `swift/TigerDuck/Services/Auth/AuthService.swift` `logout` |
+| keychain | `refreshTokenKey` | account | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `clearTokens` |
+| keychain | `refreshTokenUsesKey` | account | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `clearTokens` |
+| keychain | `studentId` | account | `swift/TigerDuck/Account/AuthService.swift` `logout` |
 | defaults | `academicCalendarCache` | device |  |
 | defaults | `academicCalendarETag` | device |  |
 | defaults | `accentColorHex` | device |  |
@@ -85,8 +85,8 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | defaults | `flipToLibraryEnabled` | device |  |
 | defaults | `hasCompletedOnboarding` | device |  |
 | defaults | `hasPickedClassReminderLead` | device |  |
-| defaults | `holidayNotifyOverrides` | account | `swift/TigerDuck/Services/API/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
-| defaults | `holidayOverridesAwaitingUpload` | account | `swift/TigerDuck/Services/API/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
+| defaults | `holidayNotifyOverrides` | account | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
+| defaults | `holidayOverridesAwaitingUpload` | account | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
 | defaults | `homeAssignmentFilter` | device |  |
 | defaults | `homeSectionLayoutData` | device |  |
 | defaults | `invertSliderDirection` | device |  |
@@ -99,14 +99,14 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | defaults | `lastSeenCoursesResetAt` | account | `swift/TigerDuck/App/AppState+Account.swift` `forgetSyncProgress` |
 | defaults | `lastShownWhatsNewVersion` | device |  |
 | defaults | `lastUpdateCheckAt` | device |  |
-| defaults | `libraryStoredPasswordRefusals` | library | `swift/TigerDuck/Services/API/Library/LibraryService.swift` `storedPasswordRefusals` |
-| defaults | `libraryStoredPasswordRefusedAt` | library | `swift/TigerDuck/Services/API/Library/LibraryService.swift` `storedPasswordRefusals` |
+| defaults | `libraryStoredPasswordRefusals` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `storedPasswordRefusals` |
+| defaults | `libraryStoredPasswordRefusedAt` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `storedPasswordRefusals` |
 | defaults | `macConfiguredTabsData` | device |  |
 | defaults | `macMoodleOpenTarget` | device |  |
 | defaults | `notificationSettingsPushPending` | account | `swift/TigerDuck/App/AppState+NotificationSettings.swift` `cancelNotificationSettingsPushes` |
-| defaults | `ntustCredentialsPresent` | account | `swift/TigerDuck/Services/Auth/AuthService.swift` `markCredentialsChanged` |
-| defaults | `ntustStoredPasswordRefusals` | account | `swift/TigerDuck/Services/API/NTUST/SSOLoginService.swift` `storedPasswordRefusals` |
-| defaults | `ntustStoredPasswordRefusedAt` | account | `swift/TigerDuck/Services/API/NTUST/SSOLoginService.swift` `storedPasswordRefusals` |
+| defaults | `ntustCredentialsPresent` | account | `swift/TigerDuck/Account/AuthService.swift` `markCredentialsChanged` |
+| defaults | `ntustStoredPasswordRefusals` | account | `swift/TigerDuck/School/NTUST/SSOLoginService.swift` `storedPasswordRefusals` |
+| defaults | `ntustStoredPasswordRefusedAt` | account | `swift/TigerDuck/School/NTUST/SSOLoginService.swift` `storedPasswordRefusals` |
 | defaults | `outlineRequiredCourses` | device |  |
 | defaults | `pendingConflictCategories` | account | `swift/TigerDuck/App/AppState+Account.swift` `forgetSyncProgress` |
 | defaults | `pinTodayCoursesOnClassTable` | device |  |
@@ -121,7 +121,7 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | defaults | `showInClassScenario` | device |  |
 | defaults | `shownServerPopupIds` | device |  |
 | defaults | `skippedUpdateVersion` | device |  |
-| defaults | `ssoLoginTimestamp` | account | `swift/TigerDuck/Services/API/NTUST/NTUSTSessionManager.swift` `invalidateSession` |
+| defaults | `ssoLoginTimestamp` | account | `swift/TigerDuck/School/NTUST/NTUSTSessionManager.swift` `invalidateSession` |
 | defaults | `syncAssignmentReminders` | device |  |
 | defaults | `syncAssignments` | device |  |
 | defaults | `syncCourseColors` | device |  |
@@ -132,24 +132,24 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | defaults | `useEnglishClassroomAbbreviation` | device |  |
 | defaults | `useEnglishCourseAbbreviation` | device |  |
 | defaults | `visualPreset` | device |  |
-| cache | `archived_assignments.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `assignments.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `bulletin_details/` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `bulletin_summaries.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `calendar_events.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `closed_unsubmitted_assignments.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `course_color_map.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `course_custom_colors.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `course_custom_names.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `courses_*` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `deleted_courses.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `ignored_courses.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `locally_completed_assignments.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `moodleDir` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `moodleFilesDir` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `moodle_course_id_map.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `picked_course_colors.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `score_report_*` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `selection_dropped.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `server_dropped.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
-| cache | `user_added_courses.json` | account | `swift/TigerDuck/Services/Core/DataCache.swift` `clearUserScopedData` |
+| cache | `archived_assignments.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `assignments.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `bulletin_details/` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `bulletin_summaries.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `calendar_events.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `closed_unsubmitted_assignments.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `course_color_map.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `course_custom_colors.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `course_custom_names.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `courses_*` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `deleted_courses.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `ignored_courses.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `locally_completed_assignments.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `moodleDir` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `moodleFilesDir` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `moodle_course_id_map.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `picked_course_colors.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `score_report_*` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `selection_dropped.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `server_dropped.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |
+| cache | `user_added_courses.json` | account | `swift/TigerDuck/Persistence/DataCache.swift` `clearUserScopedData` |

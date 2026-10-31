@@ -1,11 +1,12 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
 struct CalendarServiceTests {
     private static func taipeiDate(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 0) -> Date {
-        AppConstants.taipeiCalendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+        TaipeiTime.calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
     }
 
     private static let ics = """

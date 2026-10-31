@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 private let carouselEdgeInset = TigerDuckTheme.Spacing.lg
 
@@ -27,7 +28,7 @@ struct TodayCourseCarousel: View {
     private static let periodTimeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         return f
     }()
 
@@ -149,7 +150,7 @@ struct TodayCourseCarousel: View {
     private func courseProgress(_ course: SDCourse) -> Double? {
         guard let periods = course.schedule[today]?.sortedByPeriodOrder() else { return nil }
         let now = AppClock.now()
-        let cal = AppConstants.taipeiCalendar
+        let cal = TaipeiTime.calendar
         let formatter = Self.periodTimeFormatter
 
         guard let firstPeriod = periods.first,

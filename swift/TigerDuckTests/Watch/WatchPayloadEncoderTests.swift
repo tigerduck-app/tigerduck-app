@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -130,7 +131,7 @@ final class WatchPayloadEncoderTests: XCTestCase {
             Date(timeIntervalSince1970: 1_767_196_799),
         ]
         for day in days {
-            XCTAssertEqual(SharedTaipei.dayKey(for: day), WidgetTimelineDerivation.dateKey(for: day))
+            XCTAssertEqual(TaipeiTime.dayKey(for: day), WidgetTimelineDerivation.dateKey(for: day))
         }
     }
 

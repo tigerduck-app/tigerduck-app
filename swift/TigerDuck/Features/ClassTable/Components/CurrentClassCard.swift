@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct CurrentClassCard: View {
     static let defaultWidth: CGFloat = 200
@@ -63,7 +64,7 @@ struct CurrentClassCard: View {
         let span = info.endMinute - info.startMinute
         guard span > 0 else { return 0 }
         let now = AppClock.now()
-        let comps = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: now)
+        let comps = TaipeiTime.calendar.dateComponents([.hour, .minute], from: now)
         let minute = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
         return min(max(Double(minute - info.startMinute) / Double(span), 0), 1)
     }

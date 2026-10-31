@@ -3,6 +3,7 @@ import Foundation
 import SwiftUI
 import Testing
 import UIKit
+import TigerDuckCore
 @testable import TigerDuck
 
 struct MailMuteRulesTests {
@@ -17,7 +18,7 @@ struct MailMuteRulesTests {
 
     /// A Taipei time, the zone quiet hours use. 2026-10-23 is a Friday.
     private static func at(day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
-        AppConstants.taipeiCalendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
+        TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
     }
 
     private static func rule(_ field: MailMuteRule.Field, _ op: MailMuteRule.Operator, _ value: String) -> MailMuteRule {

@@ -16,7 +16,7 @@ ignore cancellation.
 
 ## Decision
 
-- `LiveMailClient` (`swift/TigerDuck/Services/Mail/Transport/LiveMailClient.swift`) holds one IMAP
+- `LiveMailClient` (`swift/TigerDuck/Mail/Transport/LiveMailClient.swift`) holds one IMAP
   connection for its lifetime; SMTP connects per send, and both verify TLS through
   `MailTLSVerifier` (docs/decisions/0025-remote-tls-pins.md). Host, port and transport come from
   `MailServerConfig` once, at `init`, so no configuration change moves a live connection; the

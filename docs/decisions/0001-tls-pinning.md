@@ -29,7 +29,7 @@ The Android app pins the same hosts in `app/src/main/res/xml/network_security_co
 - Each pin set has its own expiration date, six months after the leaf it pins expires. The
   intermediate pins carry the set through that leaf's renewal, and a build that is never
   updated stops pinning within months if the chain moves to an intermediate it does not pin.
-- `swift/TigerDuck/Services/Mail/Transport/MailTLSVerifier.swift` applies the same rules to
+- `swift/TigerDuck/Mail/Transport/MailTLSVerifier.swift` applies the same rules to
   IMAP and SMTP: the system chain and the hostname must pass, then some certificate's SPKI must
   be in the host's pin set. Its custom verification callback replaces all of BoringSSL's
   checks, hostname included, so its own chain and hostname evaluation is the connection's only

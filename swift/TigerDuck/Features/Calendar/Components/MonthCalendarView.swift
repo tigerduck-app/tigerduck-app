@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct MonthCalendarView: View {
     @Bindable var viewModel: CalendarViewModel
@@ -16,7 +17,7 @@ struct MonthCalendarView: View {
 
     private var monthTitle: String {
         var style = Date.FormatStyle.dateTime.year().month(.wide)
-        style.timeZone = AppConstants.taipeiTimeZone
+        style.timeZone = TaipeiTime.timeZone
         return viewModel.displayedMonth.formatted(style)
     }
 
@@ -89,15 +90,15 @@ private struct DayCellView: View {
         date.formatted(Date.FormatStyle(
             date: .complete,
             time: .omitted,
-            calendar: AppConstants.taipeiCalendar,
-            timeZone: AppConstants.taipeiTimeZone
+            calendar: TaipeiTime.calendar,
+            timeZone: TaipeiTime.timeZone
         ))
     }
 
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 2) {
-                Text("\(AppConstants.taipeiCalendar.component(.day, from: date))")
+                Text("\(TaipeiTime.calendar.component(.day, from: date))")
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(isSelected ? AnyShapeStyle(.white) : isToday ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textPrimary))
                     .lineLimit(1)

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -82,7 +83,7 @@ struct ClassroomUsageServiceTests {
     }
 
     private static func day(_ month: Int, _ day: Int) -> Date {
-        AppConstants.taipeiCalendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: 9)) ?? .distantPast
+        TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: 9)) ?? .distantPast
     }
 
     @Test("the site's last answer is kept for every screen until a new school session")

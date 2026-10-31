@@ -31,13 +31,13 @@ def declared(root: Path) -> set[tuple[str, str]]:
     block = re.search(r"enum KeychainKeys \{(.*?)\n    \}", constants, re.S)
     for name in re.findall(r"static let (\w+) = \"", block.group(1) if block else ""):
         found.add(("keychain", name))
-    tokens = (root / "swift/TigerDuck/Services/Auth/AuthTokenManager.swift").read_text()
+    tokens = (root / "swift/TigerDuck/Backend/Auth/AuthTokenManager.swift").read_text()
     for name in re.findall(r"static let (\w+Key) = \"", tokens):
         found.add(("keychain", name))
     defaults = (root / "swift/TigerDuck/App/AppDefaults.swift").read_text()
     for name in re.findall(r"static let (\w+) = Key<", defaults):
         found.add(("defaults", name))
-    cache = (root / "swift/TigerDuck/Services/Core/DataCache.swift").read_text()
+    cache = (root / "swift/TigerDuck/Persistence/DataCache.swift").read_text()
     for name in re.findall(r"\"([a-z_]+\.json)\"", cache):
         found.add(("cache", name))
     for name in re.findall(r"hasPrefix\(\"([a-z_]+)\"\)", cache):

@@ -1,5 +1,6 @@
 import MarkdownUI
 import SwiftUI
+import TigerDuckCore
 
 struct MoodleDiscussionView: View {
     let store: MoodleCourseStore
@@ -290,7 +291,7 @@ private struct MoodlePostCard: View {
 
     private var headerAccessibilityText: String {
         var style = Date.FormatStyle(date: .long, time: .shortened)
-        style.timeZone = AppConstants.taipeiTimeZone
+        style.timeZone = TaipeiTime.timeZone
         var parts: [String] = []
         if let authorName { parts.append(authorName) }
         if isUnread { parts.append(String(localized: "bulletin_unread_dot_label")) }

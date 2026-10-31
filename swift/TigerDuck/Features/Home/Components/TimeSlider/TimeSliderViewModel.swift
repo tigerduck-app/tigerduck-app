@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import TigerDuckCore
 
 @Observable
 final class TimeSliderViewModel {
@@ -108,7 +109,7 @@ final class TimeSliderViewModel {
                 let next = intervals[i + 1]
                 let gapMin = next.start.timeIntervalSince(slot.end) / 60
 
-                let calendar = AppConstants.taipeiCalendar
+                let calendar = TaipeiTime.calendar
                 let crossesDay = !calendar.isDate(slot.date, inSameDayAs: next.date)
 
                 if crossesDay {
@@ -188,7 +189,7 @@ final class TimeSliderViewModel {
     }
 
     private func checkTimelineRebuildNeeded() {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let daysSinceCenter = abs(calendar.dateComponents(
             [.day], from: timelineCenterDate, to: selectedTime
         ).day ?? 0)

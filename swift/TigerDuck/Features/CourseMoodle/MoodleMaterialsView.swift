@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct MoodleMaterialsView: View {
     let store: MoodleCourseStore
@@ -61,7 +62,7 @@ struct MoodleMaterialsView: View {
         let course = store.summary.value
         return MoodleCurrentWeek.sectionId(
             in: sections, format: course?.format, startDate: course?.startDate,
-            now: AppClock.now(), calendar: AppConstants.taipeiCalendar
+            now: AppClock.now(), calendar: TaipeiTime.calendar
         )
     }
 

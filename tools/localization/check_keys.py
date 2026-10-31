@@ -10,14 +10,17 @@ Run it locally with no arguments; it exits nonzero and lists `file:line` for
 every offending reference.
 """
 
+import json
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SWIFT_DIR = ROOT / "swift"
-# Every locale carries an identical key set, so one reference file is enough.
-REFERENCE = ROOT / "app-translation" / "generated" / "apple" / "en.lproj" / "Localizable.strings"
+# Every locale carries an identical key set, so the canonical source is enough. The Apple build
+# gets its `shared` and `apple` groups.
+REFERENCE = ROOT / "app-translation" / "source" / "en.json"
+APPLE_GROUPS = ("shared", "apple")
 BASELINE = Path(__file__).with_name("known-missing-keys.txt")
 
 PATTERNS = [
@@ -41,14 +44,8 @@ def translated_keys() -> set[str]:
             f"error: {REFERENCE.relative_to(ROOT)} not found — run "
             "`git submodule update --init --recursive` first."
         )
-    return {
-        m.group(1)
-        for m in (
-            re.match(r'^"([^"]+)"\s*=', line)
-            for line in REFERENCE.read_text(encoding="utf-8").splitlines()
-        )
-        if m
-    }
+    source = json.loads(REFERENCE.read_text(encoding="utf-8"))
+    return {key for group in APPLE_GROUPS for key in source.get(group, {})}
 
 
 def referenced_keys() -> dict[str, list[str]]:

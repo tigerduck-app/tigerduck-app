@@ -1,5 +1,6 @@
 #if os(macOS)
 import SwiftUI
+import TigerDuckCore
 
 struct MacCalendarView: View {
     @Environment(AppState.self) private var appState
@@ -29,7 +30,7 @@ struct MacCalendarView: View {
 
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] {
         eventsMemo.value(for: cacheRevision) {
-            let cal = AppConstants.taipeiCalendar
+            let cal = TaipeiTime.calendar
             return Dictionary(grouping: allEvents) { event in
                 cal.dateComponents([.year, .month, .day], from: event.date)
             }
@@ -46,7 +47,7 @@ struct MacCalendarView: View {
 
     private var monthTitle: String {
         var style = Date.FormatStyle.dateTime.year().month(.wide)
-        style.timeZone = AppConstants.taipeiTimeZone
+        style.timeZone = TaipeiTime.timeZone
         return displayedMonth.formatted(style)
     }
 
@@ -97,7 +98,7 @@ struct MacCalendarView: View {
         HStack {
             Button {
                 withAnimation(.smooth(duration: 0.2)) {
-                    displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
+                    displayedMonth = TaipeiTime.calendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
                 }
             } label: {
                 Image(systemName: "chevron.left")
@@ -115,7 +116,7 @@ struct MacCalendarView: View {
 
             Button {
                 withAnimation(.smooth(duration: 0.2)) {
-                    displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
+                    displayedMonth = TaipeiTime.calendar.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
                 }
             } label: {
                 Image(systemName: "chevron.right")
@@ -229,7 +230,7 @@ struct MacCalendarView: View {
     }
 
     private func events(on date: Date) -> [SDCalendarEvent] {
-        let key = AppConstants.taipeiCalendar.dateComponents([.year, .month, .day], from: date)
+        let key = TaipeiTime.calendar.dateComponents([.year, .month, .day], from: date)
         return eventsByDay[key] ?? []
     }
 
@@ -254,7 +255,7 @@ struct MacCalendarView: View {
     }
 
     private static func buildCalendarDays(for month: Date) -> [Date?] {
-        let cal = AppConstants.taipeiCalendar
+        let cal = TaipeiTime.calendar
         let start = month.startOfMonth
         let daysInMonth = month.daysInMonth
         let firstWeekday = month.firstWeekdayOfMonth
@@ -282,15 +283,15 @@ private struct DayCell: View {
         date.formatted(Date.FormatStyle(
             date: .complete,
             time: .omitted,
-            calendar: AppConstants.taipeiCalendar,
-            timeZone: AppConstants.taipeiTimeZone
+            calendar: TaipeiTime.calendar,
+            timeZone: TaipeiTime.timeZone
         ))
     }
 
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 4) {
-                Text("\(AppConstants.taipeiCalendar.component(.day, from: date))")
+                Text("\(TaipeiTime.calendar.component(.day, from: date))")
                     .font(.callout.weight(isToday || isSelected ? .semibold : .regular))
                     .foregroundStyle(textColor)
                     .frame(width: 28, height: 28)

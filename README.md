@@ -137,7 +137,7 @@ open swift/TigerDuck.xcodeproj
 # 開啟後，中間上方選擇模擬器或實體裝置，按 `⌘R` 執行
 ```
 
-> 💡 名稱簡稱（`name-abbr/`）與多語系字串（`app-translation/generated/apple/`）皆透過 symlink 綁進 Xcode synchronized group，clone 後**務必**先抓子模組再開 Xcode，否則 build 會找不到資源檔。
+> 💡 名稱簡稱（`name-abbr/`）透過 symlink 綁進 Xcode synchronized group，多語系字串則在每次 build 時由 `app-translation/` 的產生器產生（需要 `python3`）。clone 後**務必**先抓子模組再開 Xcode，否則 build 會失敗。
 
 ### 推播後端
 正式環境的 FastAPI 推播服務（APNs Push-to-Start、排程同步、公告抓取與 LLM 分類、雲端同步）已獨立成 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend) 專案；iOS App 透過 `https://api.tigerduck.app/v3/*` HTTP 契約溝通，本地端開發 iOS 時不需要把它跑起來。
@@ -167,8 +167,14 @@ cp api/.env.template api/.env
 tigerduck-app/
 ├── swift/                              # iOS App + 周邊 target（Xcode 26+ / iOS 18+ / watchOS 11+）
 │   ├── TigerDuck/                      # 主 iOS App 來源
-│   │   ├── App/                        # 全域狀態（AppState）、語言管理、推播代理
+│   │   ├── App/                        # 進入點、全域狀態（AppState）、語言管理、推播代理
+│   │   ├── Account/                    # NTUST 登入協調（AuthService）
 │   │   ├── Bridge/                     # 服務與 SwiftData 之間的抓取協調層
+│   │   ├── School/                     # 校務系統、SSO、Moodle、圖書館、行事曆、公告
+│   │   ├── Backend/                    # TigerDuck 後端：token、雲端同步、推播、課程目錄
+│   │   ├── Mail/                       # 校園信箱 IMAP / SMTP
+│   │   ├── Persistence/                # 快取、Keychain、SwiftData 模型
+│   │   ├── Devices/                    # Widget、Watch 同步、即時動態（App 內邏輯）
 │   │   ├── Features/                   # 各分頁功能模組
 │   │   │   ├── Home/                   # 首頁（時光機、作業、小工具）
 │   │   │   ├── ClassTable/             # 課表
@@ -181,25 +187,11 @@ tigerduck-app/
 │   │   │   ├── Settings/               # 設定（語言、簡稱、主題、來源碼）
 │   │   │   ├── Onboarding/             # 初次使用引導
 │   │   │   └── Updates/                # 更新提示與「新功能」介紹
-│   │   ├── LiveActivity/               # 即時動態 / 動態島（App 內邏輯）
-│   │   │   ├── Models/  Preferences/  Providers/
-│   │   │   ├── Resolvers/  Runtime/
-│   │   ├── Models/
-│   │   │   ├── Domain/                 # 業務邏輯模型
-│   │   │   └── SwiftData/              # 本地持久化模型
+│   │   ├── Models/Domain/              # 業務邏輯模型
 │   │   ├── Platform/Mac/               # macOS 專屬版面（側邊欄、各頁 Mac 版、推播代理）
-│   │   ├── Services/
-│   │   │   ├── API/                    # 校務系統 / Moodle / 行事曆 / 圖書館 / 公告 API
-│   │   │   ├── Auth/                   # NTUST SSO 認證、後端 token
-│   │   │   ├── Core/                   # 快取、HTML 解析、名稱簡稱
-│   │   │   ├── Mail/                   # 校園信箱 IMAP / SMTP
-│   │   │   ├── Push/                   # APNs / Push 註冊、課表同步
-│   │   │   ├── CloudSync/  Sync/       # 雲端同步與設定同步
-│   │   │   ├── Watch/                  # 與 Watch App 的 WatchConnectivity 同步
-│   │   │   ├── Logging/                # 結構化日誌
-│   │   │   └── Migrations/             # 一次性遷移
-│   │   ├── SharedUI/                   # 共用 UI 元件
-│   │   └── Theme/                      # 主題、配色、視覺預設
+│   │   ├── Migrations/                 # 一次性遷移
+│   │   ├── Support/                    # 時鐘、並行、日誌、TLS pin 文件、通用 extension
+│   │   └── UI/                         # 共用 UI 元件、主題、配色、畫面 helper
 │   ├── TigerDuckLiveActivity/          # Live Activity / 動態島 Widget Extension
 │   ├── TigerDuckWidgets/               # iOS / macOS 主畫面、鎖定畫面與 Accessory Widget
 │   ├── TigerDuckWatch Watch App/       # Apple Watch App（Now & Next / Today / 課程詳情 / 圖書證 QR）
@@ -230,7 +222,7 @@ tigerduck-app/
 - macOS 15 / 26 (/ 27 如果可以的話)
 3. 以 `feature/your-feature` 或 `fix/your-fix` 命名分支
 4. 發布 PR 時，目標分支為 `dev`，並修正程式碼直到 Greptile 審查的自信度到達 5/5；若意外卡在 3 或 4，則酌情處理
-5. 翻譯字串請改 `app-translation/` 子模組（透過獨立 PR），不要直接改 `swift/.../*.lproj` 內的 symlink
+5. 翻譯字串請改 `app-translation/` 子模組（透過獨立 PR）；`*.lproj` 在建置時由它產生，不在 `swift/` 裡
 6. 程式碼註解一律使用英文並保持精簡，只寫「為什麼」，不寫程式在做什麼或修改經過；完整規則見 [AGENTS.md](AGENTS.md) 的 Comments 段落，CI 會檢查語言、長度與引用來源
 7. 跨多次工作階段、影響架構，或需要兩位維護者共同同意的工作，請在 `openspec/changes/` 以 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 規劃，並與實作一起 commit；詳見 [AGENTS.md](AGENTS.md) 的 Planning 段落
 

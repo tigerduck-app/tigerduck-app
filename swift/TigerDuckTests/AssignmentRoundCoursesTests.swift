@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -7,7 +8,7 @@ struct AssignmentRoundCoursesTests {
     private static func course(_ id: Int, _ idnumber: String, startedIn year: Int, _ month: Int) -> MoodleEnrolledCourse {
         MoodleEnrolledCourse(
             id: id, fullname: "\(idnumber) Course", shortname: "", idnumber: idnumber,
-            startDate: AppConstants.taipeiCalendar.date(from: DateComponents(year: year, month: month, day: 1)),
+            startDate: TaipeiTime.calendar.date(from: DateComponents(year: year, month: month, day: 1)),
             endDate: nil
         )
     }

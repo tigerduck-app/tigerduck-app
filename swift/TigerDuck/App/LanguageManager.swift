@@ -43,10 +43,8 @@ nonisolated enum LanguageManager {
         return chineseLanguageCodes.contains(code) ? "zh" : "en"
     }
 
-    /// `tools/localization/sync_localizations.py` surfaces each generated lproj as
-    /// a top-level symlink under the synchronized group, so Xcode copies them to
-    /// the bundle root (`<App>.app/<lang>.lproj`), not into a `Localization/`
-    /// subfolder. We enumerate the resource URL directly.
+    /// `tools/localization/build_apple_lproj.sh` copies each generated lproj to the bundle's
+    /// resources folder (`<App>.app/<lang>.lproj`), so the resource URL lists them directly.
     static func supportedLocaleTags() -> [String] {
         guard let resourceURL = Bundle.main.resourceURL else { return [] }
         let urls = (try? FileManager.default.contentsOfDirectory(

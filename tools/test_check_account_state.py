@@ -8,8 +8,8 @@ import check_account_state as cas
 
 SOURCES = sorted({path for _, (_, clearers) in cas.inventory(cas.INVENTORY.read_text()).items() for path, _ in clearers}
                  | {cas.FRESH_INSTALL_WIPE[0], "swift/TigerDuck/App/AppConstants.swift",
-                    "swift/TigerDuck/App/AppDefaults.swift", "swift/TigerDuck/Services/Core/DataCache.swift",
-                    "swift/TigerDuck/Services/Auth/AuthTokenManager.swift"})
+                    "swift/TigerDuck/App/AppDefaults.swift", "swift/TigerDuck/Persistence/DataCache.swift",
+                    "swift/TigerDuck/Backend/Auth/AuthTokenManager.swift"})
 
 
 class AccountStateTests(unittest.TestCase):
@@ -34,7 +34,7 @@ class AccountStateTests(unittest.TestCase):
         self.assertIn("defaults `lastViewedCourse` has no row in docs/account-state.md", cas.problems(self.root))
 
     def test_a_new_cache_file_without_a_row_fails(self) -> None:
-        self.edit("swift/TigerDuck/Services/Core/DataCache.swift", '"assignments.json"', '"exam_seats.json"')
+        self.edit("swift/TigerDuck/Persistence/DataCache.swift", '"assignments.json"', '"exam_seats.json"')
         self.assertIn("cache `exam_seats.json` has no row in docs/account-state.md", cas.problems(self.root))
 
     def test_an_account_key_the_sign_out_stops_clearing_fails(self) -> None:
@@ -43,8 +43,8 @@ class AccountStateTests(unittest.TestCase):
                       " does not clear it", cas.problems(self.root))
 
     def test_a_cache_file_the_sign_out_stops_clearing_fails(self) -> None:
-        self.edit("swift/TigerDuck/Services/Core/DataCache.swift", '("ignored_courses.json", persistentDir),\n', "")
-        self.assertIn("cache `ignored_courses.json`: `clearUserScopedData` in swift/TigerDuck/Services/Core/DataCache.swift"
+        self.edit("swift/TigerDuck/Persistence/DataCache.swift", '("ignored_courses.json", persistentDir),\n', "")
+        self.assertIn("cache `ignored_courses.json`: `clearUserScopedData` in swift/TigerDuck/Persistence/DataCache.swift"
                       " does not clear it", cas.problems(self.root))
 
     def test_an_account_keychain_key_the_fresh_install_keeps_fails(self) -> None:

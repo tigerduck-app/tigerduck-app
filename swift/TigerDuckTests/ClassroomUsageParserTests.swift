@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 enum ClassroomPageFixtures {
@@ -254,7 +255,7 @@ struct ClassroomUsageParserTests {
     @Test("a date's number counts days from 2000-01-01 by its Taipei calendar date")
     func dayNumber() {
         func number(_ year: Int, _ month: Int, _ day: Int, hour: Int = 12) -> Int {
-            let date = AppConstants.taipeiCalendar.date(
+            let date = TaipeiTime.calendar.date(
                 from: DateComponents(year: year, month: month, day: day, hour: hour)
             )
             return ClassroomUsageParser.dayNumber(of: date ?? .distantPast)
