@@ -53,26 +53,30 @@ struct SyncOrderTests {
         #expect(!target.hasPulled(after))
     }
 
-    @Test("Uploads held for the first pull go out in the order they came")
+    @Test("Uploads held for the first pull go out in the order they came, and one that comes as they go follows them")
     func heldUploadsGoInTheirOrder() async throws {
         let account = AccountSession()
         let target = SyncTarget(account: account)
         let ticket = account.ticket
         let released = Released()
-
-        var uploads: [Task<Void, Never>] = []
-        for index in 0..<20 {
-            uploads.append(Task {
+        func held(_ index: Int) -> Task<Void, Never> {
+            Task {
                 released.entered += 1
                 _ = await target.waitForPull(ticket)
                 released.order.append(index)
-            })
+            }
+        }
+
+        var uploads: [Task<Void, Never>] = []
+        for index in 0..<20 {
+            uploads.append(held(index))
             try await waitUntil { released.entered == index + 1 }
         }
         target.notePull(ticket)
+        uploads.append(held(20))
         for upload in uploads { await upload.value }
 
-        #expect(released.order == Array(0..<20))
+        #expect(released.order == Array(0...20))
     }
 
     @Test("A full sync reads the switches and the pending checks after settling its course edits")
