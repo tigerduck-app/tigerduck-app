@@ -27,6 +27,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 | Imported class tables of the account (`imported_class_tables.json`) | `ImportedClassTableStore.forgetAccount(in:)` deletes the file by name, and `removeAll()` empties the store in memory, both in `SignOutPlan.school(_:)` |
 | Moodle file downloads in flight | `MoodleFileDownloads.cancelAll()`, in the first step of `SignOutPlan.school(_:)` |
 | `AppState`'s conflicts, pending overrides and polling | `SignOutPlan.school(_:)` |
+| Courses deleted in the last two minutes, which a full sync keeps hidden | `AppState.recentCourseDeletions` holds them for one sign-in of the school `AccountSession` (`SignInScoped`) |
 | Uploads, outbox and pending document pushes | `PushCoordinator.forgetUploads()`, `CloudSyncCoordinator.settleForSignOut()` |
 | Feature view models (scores, class table, empty classroom, calendar, Moodle course pages) | they reload when the school `AccountSession`'s ticket changes and on `AppConstants.dataDidUpdate` |
 | Widgets and the Watch | they rebuild from the cleared caches on `AppConstants.dataDidUpdate` |

@@ -58,6 +58,25 @@ final class AccountSession {
     }
 }
 
+/// A value of one sign-in, which reads as `empty` once its session has moved on.
+struct SignInScoped<Value> {
+    private let empty: Value
+    private var held: (signIn: AccountSession.Ticket, value: Value)?
+
+    init(empty: Value) {
+        self.empty = empty
+    }
+
+    func value(in session: AccountSession) -> Value {
+        guard let held, session.isCurrent(held.signIn) else { return empty }
+        return held.value
+    }
+
+    mutating func set(_ value: Value, in session: AccountSession) {
+        held = (session.ticket, value)
+    }
+}
+
 /// The sign-ins of an actor that keeps its own count, as `AuthTokenManager` and
 /// `MoodleTokenService` do: their sign-outs run on the actor, after the session's.
 nonisolated struct SignInCount: Sendable {

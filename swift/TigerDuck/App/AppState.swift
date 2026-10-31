@@ -258,7 +258,11 @@ final class AppState {
 
     var conflictCheckRetry = ConflictCheckRetry()
 
-    var recentCourseDeletions: [String: Date] = [:]
+    private var courseDeletions = SignInScoped<[String: Date]>(empty: [:])
+    var recentCourseDeletions: [String: Date] {
+        get { courseDeletions.value(in: authService.session) }
+        set { courseDeletions.set(newValue, in: authService.session) }
+    }
     static let courseDeleteGraceInterval: TimeInterval = 120
 
     var resettingSemesters: Set<String> = []

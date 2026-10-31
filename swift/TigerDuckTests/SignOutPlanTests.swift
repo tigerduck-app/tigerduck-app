@@ -46,6 +46,21 @@ struct SignOutPlanTests {
         #expect(calls != nil)
         #expect(!session.isCurrent(signIn))
     }
+
+    @Test("a course deletion made before a sign-out hides nothing of the next sign-in, which keeps its own")
+    func courseDeletionsEndWithTheSignIn() {
+        let session = AccountSession()
+        let deletedAt = Date()
+        var deletions = SignInScoped<[String: Date]>(empty: [:])
+        deletions.set(["CS1001": deletedAt], in: session)
+        #expect(deletions.value(in: session) == ["CS1001": deletedAt])
+
+        SignOutPlan(session: session, stores: []).run()
+
+        #expect(deletions.value(in: session).isEmpty)
+        deletions.set(["CS1002": deletedAt], in: session)
+        #expect(deletions.value(in: session) == ["CS1002": deletedAt])
+    }
 }
 
 @MainActor
