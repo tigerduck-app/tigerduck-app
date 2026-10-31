@@ -103,7 +103,7 @@ extension AppState {
     }
 
     /// A device switch turned back on takes the server's section: no push writes the section
-    /// until a reconcile has adopted it, so an edit made against its stale values stays here.
+    /// until a reconcile has adopted it, so an edit made against its stale values never goes up.
     func adoptNotificationSettingsSection(_ section: NotificationSettingsSync.OwnedSection) {
         NotificationSettingsSync.holdForServer(section)
         reconcileNotificationSettings()
