@@ -4,35 +4,43 @@ import Testing
 @testable import TigerDuck
 
 /// The backend settles a colour, a name, an ignore setting, a mark and a holiday setting by the
-/// time each was made, and stamps one sent without it when it arrives, so a late send would beat a
-/// newer edit from another device. These check that every attempt carries the time of its edit.
+/// time each was made, so a late send must not beat a newer edit from another device. These check
+/// that every attempt carries the time of its edit, or the server's clock when it is behind.
 @MainActor
 struct OverrideStampTests {
     enum Edit: String, Sendable, CaseIterable { case colour, name, ignore, mark }
 
     enum Attempts: String, Sendable, CaseIterable {
-        case lands, lostReplyThenLands, refusedAsAheadThenLandsUnstamped
+        case lands, lostReplyThenLands, refusedAsAheadThenLandsRestamped
 
-        /// Each reply with whether the request it answers carries the edit's time.
-        func replies(_ body: Data) -> [(SettingsAPIStub.StubResponse, stamped: Bool)] {
+        /// Each reply with the stamp the request it answers carries.
+        func replies(_ body: Data) -> [(SettingsAPIStub.StubResponse, hlc: Int64)] {
             let landed = SettingsAPIStub.StubResponse(statusCode: 200, body: body)
             switch self {
-            case .lands: return [(landed, true)]
-            case .lostReplyThenLands: return [(.noReply, true), (landed, true)]
-            case .refusedAsAheadThenLandsUnstamped: return [(Self.clockAhead, true), (landed, false)]
+            case .lands: return [(landed, OverrideStampTests.hlc)]
+            case .lostReplyThenLands: return [(.noReply, OverrideStampTests.hlc), (landed, OverrideStampTests.hlc)]
+            case .refusedAsAheadThenLandsRestamped:
+                return [(Self.clockAhead, OverrideStampTests.hlc), (landed, Self.serverClock)]
             }
         }
 
+        static let serverClock: Int64 = 1_789_999_000_000_000
         static let clockAhead = SettingsAPIStub.StubResponse(
-            statusCode: 409, body: Data(#"{"detail":"clock_ahead"}"#.utf8)
+            statusCode: 409, body: Data(#"{"error":"clock_ahead","message":"ahead"}"#.utf8),
+            headerFields: ["X-TigerSync-Clock": String(serverClock)]
         )
     }
 
     private static let madeAt = Date(timeIntervalSince1970: 1_790_000_000.5)
-    private static let hlc: Int64 = 1_790_000_000_500_000
+    fileprivate static let hlc: Int64 = 1_790_000_000_500_000
     private static let courseReply = Data(
-        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{"zh":"Algorithms"},"ignore_assignments":true,"updated_at":"2026-10-13T00:00:00+00:00"}"##.utf8
+        ##"{"color_hex":"#FF6B6B","custom_names":{"zh":"Algorithms"},"ignore_assignments":true,"applied":["color_hex","custom_name","ignore_assignments"]}"##.utf8
     )
+    private static let markReply = Data(#"{"local_status":"ignored","local_status_hlc":1,"applied":true}"#.utf8)
+
+    private static func holidayReply(_ id: Int) -> Data {
+        Data(#"{"holiday_id":\#(id),"notify":true,"hlc":1,"applied":true}"#.utf8)
+    }
 
     private static func op(_ edit: Edit) -> SyncOp {
         switch edit {
@@ -54,9 +62,9 @@ struct OverrideStampTests {
     func queuedEditCarriesItsOwnTime(_ edit: Edit, _ attempts: Attempts) async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = baseURL.appendingPathComponent(
-            edit == .mark ? "sync/assignments/42/override" : "sync/courses/1151CS1001301/override"
+            edit == .mark ? "sync/assignments/42/override" : "sync/courses/client:1151:CS1001301/override"
         )
-        let replies = attempts.replies(edit == .mark ? Data("{}".utf8) : Self.courseReply)
+        let replies = attempts.replies(edit == .mark ? Self.markReply : Self.courseReply)
         for (reply, _) in replies { SettingsAPIStub.enqueue(reply, for: url) }
         let coordinator = Self.makeCoordinator(baseURL)
 
@@ -66,9 +74,9 @@ struct OverrideStampTests {
 
         let sent = SettingsAPIStub.requests(for: url)
         #expect(sent.count == replies.count)
-        for (request, (_, stamped)) in zip(sent, replies) {
+        for (request, (_, hlc)) in zip(sent, replies) {
             let json = try Self.json(request)
-            #expect((json["hlc"] as? NSNumber)?.int64Value == (stamped ? Self.hlc : nil))
+            #expect((json["hlc"] as? NSNumber)?.int64Value == hlc)
             switch edit {
             case .colour: #expect(json["color_hex"] as? String == "#FF6B6B")
             case .name: #expect(json["custom_name"] as? String == "Algorithms")
@@ -83,7 +91,7 @@ struct OverrideStampTests {
     func holidayRetryCarriesTheEditTime() async throws {
         try await Self.withCleanHolidayDefaults { id, url, registration in
             SettingsAPIStub.enqueue(.noReply, for: url)
-            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id)), for: url)
             let store = AcademicCalendarStore()
             store.setNotify(true, forHoliday: id)
             store.setHolidayAcknowledged(false, holidayID: id)
@@ -107,11 +115,11 @@ struct OverrideStampTests {
         }
     }
 
-    @Test("A holiday setting refused as ahead of the server's clock goes again without its time")
-    func holidayAheadOfTheServerGoesUnstamped() async throws {
+    @Test("A holiday setting refused as ahead of the server's clock goes again stamped from that clock")
+    func holidayAheadOfTheServerGoesRestamped() async throws {
         try await Self.withCleanHolidayDefaults { id, url, registration in
             SettingsAPIStub.enqueue(Attempts.clockAhead, for: url)
-            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id)), for: url)
             let store = AcademicCalendarStore()
             store.setNotify(true, forHoliday: id)
             store.setHolidayAcknowledged(false, holidayID: id)
@@ -120,7 +128,7 @@ struct OverrideStampTests {
 
             let stamps = try SettingsAPIStub.requests(for: url).map { try (Self.json($0)["hlc"] as? NSNumber)?.int64Value }
             let madeAt = try #require(store.holidayEdit(id).madeAt)
-            #expect(stamps == [PushAPI.clock(of: madeAt), nil])
+            #expect(stamps == [PushAPI.clock(of: madeAt), Attempts.serverClock])
             #expect(!store.unacknowledgedHolidayIDs.contains(id))
         }
     }
@@ -129,7 +137,7 @@ struct OverrideStampTests {
     func holidayEditDuringTheSendKeepsItUnacknowledged() async throws {
         try await Self.withCleanHolidayDefaults { id, url, registration in
             let gate = SettingsAPIStub.ReplyGate()
-            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8), gate: gate), for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id), gate: gate), for: url)
             let store = AcademicCalendarStore()
             store.setNotify(true, forHoliday: id)
             store.setHolidayAcknowledged(false, holidayID: id)

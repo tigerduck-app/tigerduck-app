@@ -55,7 +55,7 @@ struct CourseAddSyncTests {
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
             addedCourseUpload: {
                 whileReading()
-                return AppState.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses, colors: [:])
+                return AppState.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses)
             },
             uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
             account: account
@@ -105,7 +105,10 @@ struct CourseAddSyncTests {
         let upload = try #require(backend.uploads.last)
         let body = try #require(SettingsAPIStub.bodyData(from: upload))
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
-        #expect(json["force_keys"] as? [String] == ["client:1151:GE1010001"])
+        #expect(json["force_keys"] == nil)
+        let adds = json["adds"] as? [[String: Any]]
+        #expect(adds?.compactMap { $0["course_key"] as? String } == ["client:1151:GE1010001"])
+        #expect(adds?.first?["hlc"] as? Int64 != nil)
         let sent = (json["courses"] as? [[String: Any]])?.compactMap { $0["course_no"] as? String }
         #expect(sent == ["GE1010001"])
         #expect(await coordinator.courseAddKeys(unlandedAt: fetchedAt) == ["1151:GE1010001"])
@@ -289,7 +292,7 @@ struct CourseAddSyncTests {
 
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
         #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
-        #expect(AppState.addedCourseUpload(semester: "1151", courseNo: "GE1010001", courses: cache.courses, colors: [:]) != nil)
+        #expect(AppState.addedCourseUpload(semester: "1151", courseNo: "GE1010001", courses: cache.courses) != nil)
     }
 
     @Test("A reset made elsewhere leaves the hand-added and hidden courses alone when the sync may no longer write, as behind the lock screen")
@@ -408,7 +411,7 @@ struct CourseAddSyncTests {
 
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
 
-        let sameList = AppState.courseUploadRequest([Self.art()], semester: "1151", forceKeys: [], colors: [:])
+        let sameList = AppState.courseUploadRequest([Self.art()], semester: "1151")
         #expect(try await !push.uploadCoursesIfChanged(sameList, semester: "1151", isCurrent: { true }))
         #expect(backend.uploads.count == 1)
     }

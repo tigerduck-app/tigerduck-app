@@ -1,7 +1,7 @@
 import Foundation
 
 /// Codable mirror of the `notification` settings document, the `document`
-/// payload of `GET/PUT /v3/settings/notification`. `nonisolated` because the
+/// payload of `GET/PUT /v4/settings/notification`. `nonisolated` because the
 /// target defaults to `@MainActor`, and main-actor conformances used off it, as
 /// in the `SettingsDocumentClient` actor, warn in Swift 5 and fail in Swift 6.
 ///

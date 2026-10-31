@@ -3,19 +3,20 @@ import os
 
 ///
 actor SettingsDocumentClient {
-    private let baseURLProvider: @Sendable () -> URL
-    private let session: URLSession
-    private let authHeaderProvider: @Sendable () async -> String?
-    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Settings.API")
+    private let backend: BackendClient
+
+    init(backend: BackendClient) {
+        self.backend = backend
+    }
 
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
         authHeaderProvider: @escaping @Sendable () async -> String? = { nil }
     ) {
-        self.baseURLProvider = baseURLProvider
-        self.session = session ?? Self.defaultSession()
-        self.authHeaderProvider = authHeaderProvider
+        backend = BackendClient(
+            baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: .header(authHeaderProvider)
+        )
     }
 
     // MARK: - Public surface
@@ -27,19 +28,18 @@ actor SettingsDocumentClient {
     /// normal state for a fresh account, not an error the caller needs to
     /// handle specially.
     func read(namespace: String) async throws -> (document: Data, revision: Int)? {
-        var request = URLRequest(url: documentURL(for: namespace))
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        await applyAuth(to: &request)
-
-        let (data, statusCode) = try await perform(request)
-        if statusCode == 404 {
+        var request = BackendRequest("GET", segments: ["settings", namespace])
+        request.sendsWithoutSession = true
+        request.accepting = [404]
+        let response = try await backend.send(request)
+        if response.status == 404 {
+            // A backend without the route answers `not_found`, which says nothing of the document.
+            guard BackendClient.errorCode(in: response.data) != "not_found" else {
+                throw PushAPIError.httpStatus(404, body: String(decoding: response.data.prefix(512), as: UTF8.self))
+            }
             return nil
         }
-        guard (200..<300).contains(statusCode) else {
-            throw httpStatusError(statusCode, data: data, context: "GET \(namespace)")
-        }
-        return try Self.parseDocumentEnvelope(data)
+        return try Self.parseDocumentEnvelope(response.data)
     }
 
     /// PUT `document` to `namespace`.
@@ -74,29 +74,19 @@ actor SettingsDocumentClient {
             throw PushAPIError.encodingFailed(error)
         }
 
-        var request = URLRequest(url: documentURL(for: namespace))
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = body
-        await applyAuth(to: &request)
-
-        let (data, statusCode) = try await perform(request)
-        if statusCode == 409 {
-            return try Self.parseConflict(data)
+        var request = BackendRequest("PUT", segments: ["settings", namespace])
+        request.sendsWithoutSession = true
+        request.body = body
+        request.accepting = [409]
+        let response = try await backend.send(request)
+        if response.status == 409 {
+            return try Self.parseConflict(response.data)
         }
-        guard (200..<300).contains(statusCode) else {
-            throw httpStatusError(statusCode, data: data, context: "PUT \(namespace)")
-        }
-        let json = try Self.jsonDictionary(data, context: "PUT response body is not a JSON object")
+        let json = try Self.jsonDictionary(response.data, context: "PUT response body is not a JSON object")
         guard let revision = json["revision"] as? Int else {
             throw Self.malformed("Missing 'revision' in response")
         }
         return .written(revision: revision)
-    }
-
-    private func documentURL(for namespace: String) -> URL {
-        baseURLProvider().appendingPathComponent("settings/\(Self.percentEncoded(namespace))")
     }
 
     private static func jsonDictionary(_ data: Data, context: @autoclosure () -> String) throws -> [String: Any] {
@@ -148,46 +138,6 @@ actor SettingsDocumentClient {
             throw Self.malformed("Missing 'server.document' or 'server.revision' in 409 body")
         }
         return .conflict(document: try documentData(documentObject), revision: revision)
-    }
-
-    private func applyAuth(to request: inout URLRequest) async {
-        guard let header = await authHeaderProvider(), !header.isEmpty else { return }
-        request.setValue(header, forHTTPHeaderField: "Authorization")
-    }
-
-    private func perform(_ request: URLRequest) async throws -> (data: Data, statusCode: Int) {
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw PushAPIError.invalidResponse
-        }
-        await APIVersionGate.shared.note(statusCode: http.statusCode)
-        return (data, http.statusCode)
-    }
-
-    private func httpStatusError(_ statusCode: Int, data: Data, context: String) -> PushAPIError {
-        let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
-        logger.error("Settings.API \(statusCode, privacy: .public) \(context, privacy: .public): \(snippet, privacy: .private)")
-        return .httpStatus(statusCode, body: snippet)
-    }
-
-    private static func defaultSession() -> URLSession {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 30
-        config.waitsForConnectivity = false
-        config.httpAdditionalHeaders = [
-            "User-Agent": "TigerDuck-iOS/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")"
-        ]
-        return URLSession(configuration: config)
-    }
-
-    private static func percentEncoded(_ value: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
-        guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
-            assertionFailure("percentEncoded failed for value of length \(value.count)")
-            return ""
-        }
-        return encoded
     }
 }
 

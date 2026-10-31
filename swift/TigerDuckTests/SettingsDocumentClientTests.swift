@@ -67,7 +67,7 @@ struct SettingsDocumentClientTests {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"detail":"not found"}"#.utf8)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"error":"settings_document_not_found","message":"not found"}"#.utf8)), for: url)
 
         let result = try await client.read(namespace: "notification")
 
@@ -261,7 +261,7 @@ struct SettingsDocumentClientTests {
         let goneBase = SettingsAPIStub.uniqueBaseURL()
         let goneURL = Self.documentURL(goneBase)
         let gone = SettingsAPIStub.makeClient(baseURL: goneBase)
-        SettingsAPIStub.enqueue(.init(statusCode: 410, body: Data(#"{"detail":"gone"}"#.utf8)), for: goneURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 410, body: Data(#"{"error":"api_retired","message":"gone","current_api":"/v5"}"#.utf8)), for: goneURL)
         await #expect(throws: PushAPIError.self) {
             _ = try await gone.read(namespace: "notification")
         }

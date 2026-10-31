@@ -144,18 +144,19 @@ extension AppState {
     }
 
     /// Sends the holiday's setting with the time it was made, so a retry is not a newer edit, and
-    /// acknowledges it only when no edit came after it while it was out.
+    /// acknowledges it only when no edit came after it while it was out. A setting another device
+    /// made later, which the backend kept, replaces it here.
     static func uploadHolidayOverride(
         _ holidayID: Int, from store: AcademicCalendarStore, via registration: PushRegistrationService
     ) async {
         let sent = store.holidayEdit(holidayID)
         do {
-            try await registration.uploadHolidayOverride(
-                holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt
+            let reply = try await registration.uploadHolidayOverride(
+                holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? Date()
             )
-            if store.holidayEdit(holidayID) == sent {
-                store.setHolidayAcknowledged(true, holidayID: holidayID)
-            }
+            guard store.holidayEdit(holidayID) == sent else { return }
+            if !reply.applied { store.applyKeptNotify(reply.notify, forHoliday: holidayID) }
+            store.setHolidayAcknowledged(true, holidayID: holidayID)
         } catch {
             AppLogger.sync.error(
                 "holiday override upload failed: \(error.localizedDescription, privacy: .private)"

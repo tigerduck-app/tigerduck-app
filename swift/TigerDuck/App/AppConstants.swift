@@ -52,7 +52,7 @@ nonisolated enum AppConstants {
         static let pushDeviceId = "push_device_id"
     }
 
-    static let productionPushServerURL = URL.knownGood("https://api.tigerduck.app/v3")
+    static let productionPushServerURL = URL.knownGood("https://api.tigerduck.app/v4")
 
     static let cachedSemesterRelabelDepth = 4
 

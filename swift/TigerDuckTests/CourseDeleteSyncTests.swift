@@ -47,7 +47,7 @@ struct CourseDeleteSyncTests {
     }
 
     private static let colourReply = Data(
-        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##.utf8
+        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"##.utf8
     )
 
     @Test("Deleting a course drops its own settings still queued, and queues its delete and sends it")
@@ -71,12 +71,12 @@ struct CourseDeleteSyncTests {
     func deleteQueuedDuringADrainGoesAfterIt() async throws {
         let backend = Backend()
         let gate = SettingsAPIStub.ReplyGate()
-        backend.answer("sync/courses/1151EE2005301/override", .init(statusCode: 200, body: Self.colourReply, gate: gate))
+        backend.answer("sync/courses/client:1151:EE2005301/override", .init(statusCode: 200, body: Self.colourReply, gate: gate))
         backend.answer(Self.path)
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseColorOverride(moodleId: "1151EE2005301", semester: "1151", colorHex: "#FF6B6B")?.value
         let drain = Task { await coordinator.syncTick() }
-        try await waitUntil { !backend.requests("sync/courses/1151EE2005301/override").isEmpty }
+        try await waitUntil { !backend.requests("sync/courses/client:1151:EE2005301/override").isEmpty }
 
         await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
         gate.open()
@@ -160,7 +160,7 @@ struct CourseDeleteSyncTests {
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "CS1001301", stamp: Date()))
 
         for _ in 0...SyncOutbox.maxAttempts {
-            await outbox.drain { _ in throw PushAPIError.httpStatus(409, body: #"{"detail":"something_else"}"#) }
+            await outbox.drain { _ in throw PushAPIError.httpStatus(409, body: #"{"error":"something_else","message":"something_else"}"#) }
         }
 
         #expect(await outbox.snapshot().map(\.attempts) == [0])

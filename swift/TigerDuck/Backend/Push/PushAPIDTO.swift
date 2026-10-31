@@ -40,9 +40,15 @@ enum PushAPI {
         let push_token_id: Int?
     }
 
-    struct HolidayOverrideRequest: Encodable, Sendable {
+    nonisolated struct HolidayOverrideRequest: Encodable, Sendable {
         let notify: Bool
-        let hlc: Int64?
+        let hlc: Int64
+    }
+
+    /// `applied` is false when the backend kept a value stamped later than the one sent.
+    nonisolated struct HolidayOverrideResponse: Decodable, Sendable {
+        let notify: Bool
+        let applied: Bool
     }
 
     nonisolated struct DevicePreferencesRequest: Codable, Sendable {
@@ -160,9 +166,9 @@ enum PushAPI {
         let updated: Bool
     }
 
-    struct AssignmentOverrideRequest: Encodable, Sendable {
+    nonisolated struct AssignmentOverrideRequest: Encodable, Sendable {
         let localStatus: String
-        let hlc: Int64?
+        let hlc: Int64
 
         enum CodingKeys: String, CodingKey {
             case localStatus = "local_status"
@@ -170,13 +176,24 @@ enum PushAPI {
         }
     }
 
-    struct CourseOverrideRequest: Encodable, Sendable {
+    /// Every reply, a clear's too. `applied` is false when the backend kept a mark stamped later.
+    nonisolated struct AssignmentOverrideResponse: Decodable, Sendable {
+        let localStatus: String
+        let applied: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case localStatus = "local_status"
+            case applied
+        }
+    }
+
+    nonisolated struct CourseOverrideRequest: Encodable, Sendable {
         let colorHex: String?
         let customName: String?
         let locale: String?
         var ignoreAssignments: Bool? = nil
         var moodleCourseId: Int? = nil
-        var hlc: Int64? = nil
+        var hlc: Int64
 
         enum CodingKeys: String, CodingKey {
             case colorHex = "color_hex"
@@ -188,23 +205,32 @@ enum PushAPI {
         }
     }
 
-    struct CourseOverrideResponse: Decodable, Sendable {
-        let id: Int
+    /// The course's values as the backend holds them after the write. `applied` names the fields
+    /// sent that took (`color_hex`, `custom_name`, `ignore_assignments`); one left out kept a
+    /// value stamped later.
+    nonisolated struct CourseOverrideResponse: Decodable, Sendable {
         let colorHex: String?
         let customNames: [String: String]
         let ignoreAssignments: Bool?
-        let updatedAt: String
+        let applied: [String]
 
         enum CodingKeys: String, CodingKey {
-            case id
             case colorHex = "color_hex"
             case customNames = "custom_names"
             case ignoreAssignments = "ignore_assignments"
-            case updatedAt = "updated_at"
+            case applied
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
+            customNames = try c.decodeIfPresent([String: String].self, forKey: .customNames) ?? [:]
+            ignoreAssignments = try c.decodeIfPresent(Bool.self, forKey: .ignoreAssignments)
+            applied = try c.decodeIfPresent([String].self, forKey: .applied) ?? []
         }
     }
 
-    struct CourseUploadEntry: Encodable, Sendable {
+    nonisolated struct CourseUploadEntry: Encodable, Sendable {
         let semester: String
         let courseNo: String
         let courseName: String
@@ -230,22 +256,11 @@ enum PushAPI {
         }
     }
 
-    struct CourseOverrideUploadEntry: Encodable, Sendable {
-        let courseKey: String
-        let colorHex: String?
-
-        enum CodingKeys: String, CodingKey {
-            case courseKey = "course_key"
-            case colorHex = "color_hex"
-        }
-    }
-
-    struct CourseUploadRequest: Encodable, Sendable {
+    /// Course colours do not travel here: `/v4` takes them only through the course override.
+    nonisolated struct CourseUploadRequest: Encodable, Sendable {
         let courses: [CourseUploadEntry]
-        var courseOverrides: [CourseOverrideUploadEntry] = []
-        var forceKeys: [String] = []
-        /// Sent with `X-TigerSync-Protocol: 2`, under which the backend reads them in place of
-        /// `forceKeys` and files the rest of `courses` as the school's roster.
+        /// The courses added by hand; the backend files the rest of `courses` as the school's
+        /// roster.
         var adds: [CourseAdd]?
         /// The terms whose listed courses are the school's whole roster; the backend drops the
         /// school courses of those terms that the upload leaves out.
@@ -253,8 +268,6 @@ enum PushAPI {
 
         enum CodingKeys: String, CodingKey {
             case courses
-            case courseOverrides = "course_overrides"
-            case forceKeys = "force_keys"
             case adds
             case rosterTerms = "roster_terms"
         }
@@ -262,7 +275,7 @@ enum PushAPI {
 
     /// An add the backend applies only when `hlc` is later than the course's last add, hide and
     /// reset.
-    struct CourseAdd: Encodable, Sendable {
+    nonisolated struct CourseAdd: Encodable, Sendable {
         let courseKey: String
         let hlc: Int64
 
@@ -277,7 +290,7 @@ enum PushAPI {
         Int64((date.timeIntervalSince1970 * 1_000_000).rounded(.down))
     }
 
-    struct AssignmentUploadEntry: Encodable, Sendable {
+    nonisolated struct AssignmentUploadEntry: Encodable, Sendable {
         let moodleAssignmentId: Int
         let courseNo: String
         let courseName: String
@@ -299,7 +312,7 @@ enum PushAPI {
         }
     }
 
-    struct AssignmentUploadRequest: Encodable, Sendable {
+    nonisolated struct AssignmentUploadRequest: Encodable, Sendable {
         let assignments: [AssignmentUploadEntry]
     }
 
