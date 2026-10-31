@@ -35,7 +35,7 @@ final class MailListBackground {
         pollTask = Task { [weak self] in
             if pollFirst { await self?.pollOnce() }
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(MailConstants.pagePollInterval))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(MailConstants.pagePollInterval))
                 guard !Task.isCancelled, let self else { return }
                 await self.pollOnce()
                 // A pass Low Data Mode paused, or one waiting out a failure, picks up here.

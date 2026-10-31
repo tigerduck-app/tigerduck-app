@@ -183,7 +183,7 @@ final class CustomColorPickDebouncer {
         apply: @escaping (UInt32) -> Void,
         appliedHex: @escaping () -> UInt32,
         isCurrent: @escaping () -> Bool,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.apply = apply
         self.appliedHex = appliedHex

@@ -151,9 +151,7 @@ final class ClassTableEditor {
                 self.dialogs.showResetFailedAlert = true
                 return
             }
-            while table.loader.isRefreshing {
-                try? await Task.sleep(for: .milliseconds(100))
-            }
+            await table.loader.refreshing.wait(until: { !$0 })
             table.loader.triggerRefresh(authService: authService, semester: semester)
         }
     }

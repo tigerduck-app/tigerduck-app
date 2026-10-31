@@ -30,7 +30,7 @@ final class MailComposeViewModel {
         events: MailboxEvents? = nil,
         prefs: (any MailPreferences)? = nil,
         cache: MailCache? = nil,
-        sleep: @escaping (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        sleep: @escaping (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
         now: @escaping () -> Date = { Date() }
     ) {
         self.context = context

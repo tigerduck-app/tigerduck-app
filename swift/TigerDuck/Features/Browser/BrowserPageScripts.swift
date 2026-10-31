@@ -165,7 +165,7 @@ enum BrowserPageScripts {
         let (answers, continuation) = AsyncStream<T?>.makeStream()
         Task { continuation.yield(await work()) }
         let timer = Task {
-            do { try await Task.sleep(for: deadline) } catch { return }
+            do { try await AppClock.sleep(until: ContinuousClock.now + deadline) } catch { return }
             continuation.yield(nil)
         }
         defer {

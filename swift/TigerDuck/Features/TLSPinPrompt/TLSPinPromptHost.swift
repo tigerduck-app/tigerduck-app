@@ -38,7 +38,7 @@ private struct TLSPinPromptHost: ViewModifier {
     final class Presentation {
         var prompt: TLSPinMismatch?
         @ObservationIgnored var requestedAt: ContinuousClock.Instant?
-        @ObservationIgnored var isOnScreen = false
+        let onScreen = StateSignal(false)
         @ObservationIgnored var isGone = false
     }
 
@@ -46,6 +46,7 @@ private struct TLSPinPromptHost: ViewModifier {
         let prompt: String?
         let holder: UUID?
         let phase: ScenePhase
+        let notifySheetUp: Bool
     }
 
     /// SwiftUI does not present over another presentation, and may or may not try again later.
@@ -63,10 +64,10 @@ private struct TLSPinPromptHost: ViewModifier {
                     onContinue: { reply(prompt, continues: true) }
                 )
                 .id(prompt.id)
-                .onAppear { presentation.isOnScreen = true }
-                .onDisappear { presentation.isOnScreen = false }
+                .onAppear { presentation.onScreen.value = true }
+                .onDisappear { presentation.onScreen.value = false }
             }
-            .task(id: Turn(prompt: queue.prompt?.id, holder: owner.holder, phase: scenePhase)) {
+            .task(id: Turn(prompt: queue.prompt?.id, holder: owner.holder, phase: scenePhase, notifySheetUp: notifySheetUp)) {
                 await takeTurn()
             }
             .onAppear { presentation.isGone = false }
@@ -98,8 +99,8 @@ private struct TLSPinPromptHost: ViewModifier {
         }
     }
 
-    /// A change of prompt, holder or scene phase cancels a run at any point, so its progress lives
-    /// in `presentation` and `owner`.
+    /// A change of prompt, holder, scene phase or notify sheet cancels a run at any point, so its
+    /// progress lives in `presentation` and `owner`.
     private func takeTurn() async {
         while !Task.isCancelled {
             guard let prompt = queue.prompt else {
@@ -123,7 +124,13 @@ private struct TLSPinPromptHost: ViewModifier {
                 await show(prompt)
                 return
             }
-            try? await Task.sleep(for: .milliseconds(500))
+            // What else holds the turn back is in `Turn`, whose change starts a new run.
+            #if os(iOS)
+            guard window.isPresenting else { return }
+            await window.presentationsClosed()
+            #else
+            return
+            #endif
         }
     }
 
@@ -133,12 +140,10 @@ private struct TLSPinPromptHost: ViewModifier {
             presentation.requestedAt = .now
         }
         guard let requestedAt = presentation.requestedAt else { return }
-        while !presentation.isOnScreen, ContinuousClock.now < requestedAt + Self.presentTimeout {
-            try? await Task.sleep(for: .milliseconds(100))
-            if Task.isCancelled { return }
-        }
+        let shown = await presentation.onScreen.wait(until: { $0 }, deadline: requestedAt + Self.presentTimeout)
+        if !shown, Task.isCancelled { return }
         presentation.requestedAt = nil
-        if !presentation.isOnScreen {
+        if !presentation.onScreen.value {
             presentation.prompt = nil
             owner.holder = nil
         }
@@ -148,8 +153,15 @@ private struct TLSPinPromptHost: ViewModifier {
     /// to show, one of the two would not present.
     private var isShowingOtherPresentation: Bool {
         #if os(iOS)
-        window.isPresenting
-            || app?.updateNotifyCoordinator.activeNotifySheet != nil
+        window.isPresenting || notifySheetUp
+        #else
+        false
+        #endif
+    }
+
+    private var notifySheetUp: Bool {
+        #if os(iOS)
+        app?.updateNotifyCoordinator.activeNotifySheet != nil
         #else
         false
         #endif

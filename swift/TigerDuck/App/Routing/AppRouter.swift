@@ -84,7 +84,7 @@ final class AppRouter {
         }
         pendingServerPopup = nil
         serverPopupSwap = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
+            try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(50))
             guard !Task.isCancelled, let self else { return }
             pendingServerPopup = payload
             serverPopupSwap = nil

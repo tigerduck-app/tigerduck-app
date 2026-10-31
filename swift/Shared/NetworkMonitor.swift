@@ -38,9 +38,9 @@ final class NetworkMonitor {
 
     private var probeEpoch: UInt64 = 0
 
-    private var hasReceivedPathUpdate = false
+    @ObservationIgnored private lazy var pathUpdated = StateSignal(false)
 
-    private static let firstPathUpdateTimeout: TimeInterval = 0.5
+    private static let firstPathUpdateTimeout: Duration = .milliseconds(500)
 
     nonisolated private init() {
         monitor.pathUpdateHandler = { [weak self] path in
@@ -52,7 +52,7 @@ final class NetworkMonitor {
                 self.cachedProbeResult = nil
                 self.inFlightProbe?.task.cancel()
                 self.inFlightProbe = nil
-                self.hasReceivedPathUpdate = true
+                self.pathUpdated.value = true
                 if self.isConnected != satisfied {
                     self.isConnected = satisfied
                 }
@@ -65,9 +65,7 @@ final class NetworkMonitor {
     }
 
     func isReachable() async -> Bool {
-        if !hasReceivedPathUpdate {
-            await waitForFirstPathUpdate()
-        }
+        await pathUpdated.wait(until: { $0 }, deadline: ContinuousClock.now + Self.firstPathUpdateTimeout)
         guard isConnected else { return false }
 
         if let cached = cachedProbeResult,
@@ -93,13 +91,6 @@ final class NetworkMonitor {
             return await isReachable()
         }
         return result
-    }
-
-    private func waitForFirstPathUpdate() async {
-        let deadline = Date().addingTimeInterval(Self.firstPathUpdateTimeout)
-        while !hasReceivedPathUpdate, Date() < deadline {
-            try? await Task.sleep(nanoseconds: 25_000_000)
-        }
     }
 
     private static func runProbe(logger: Logger?) async -> Bool {

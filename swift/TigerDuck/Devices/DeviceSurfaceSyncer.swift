@@ -46,7 +46,7 @@ final class DeviceSurfaceSyncer {
         surfaces: Surfaces,
         fingerprint: @escaping (Nudges) -> Fingerprint,
         center: NotificationCenter = .default,
-        sleep: @escaping (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.surfaces = surfaces
         self.fingerprint = fingerprint

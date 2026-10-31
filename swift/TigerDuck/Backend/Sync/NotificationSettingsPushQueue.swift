@@ -21,7 +21,7 @@ enum NotificationSettingsPushQueue {
 
     static func debounce(
         _ work: @escaping @MainActor () -> Void,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         pendingDebounce?.cancel()
         pendingDebounce = Task { @MainActor in

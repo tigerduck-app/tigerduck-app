@@ -101,7 +101,7 @@ final class RevisionPoller {
     private var lastPollAt: Date?
 
     init(
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
         now: @escaping () -> Date = { Date() },
         jitter: @escaping () -> Double = { Double.random(in: 0...1) }
     ) {

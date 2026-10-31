@@ -157,7 +157,7 @@ struct TigerDuckBrowserView: View {
     private func showCopied() {
         copied = true
         Task {
-            try? await Task.sleep(for: .seconds(1.4))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.4))
             copied = false
         }
     }

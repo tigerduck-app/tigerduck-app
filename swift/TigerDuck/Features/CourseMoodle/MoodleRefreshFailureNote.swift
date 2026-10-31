@@ -5,7 +5,7 @@ extension View {
     func moodleRefreshFailureNote<Value>(
         _ feed: MoodleFeed<Value>,
         hasContent: Bool,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) -> some View {
         modifier(MoodleRefreshFailureNote(
             failureCount: feed.failureCount, failure: feed.failure, hasContent: hasContent, sleep: sleep

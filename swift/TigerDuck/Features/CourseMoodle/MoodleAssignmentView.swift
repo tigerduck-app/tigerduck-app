@@ -8,7 +8,7 @@ struct MoodleAssignmentView: View {
     let courseName: String
     let policy: VisualStylePolicy
     let accent: Color
-    var noteSleep: @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    var noteSleep: @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
 
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase

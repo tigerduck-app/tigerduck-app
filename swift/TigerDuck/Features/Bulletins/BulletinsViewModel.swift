@@ -176,7 +176,7 @@ final class BulletinsViewModel: AccountScoped {
                 refilter()
                 persistSummaries()
                 consecutiveFailures = 0
-                try? await Task.sleep(for: .milliseconds(200))
+                try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(200))
             } catch {
                 consecutiveFailures += 1
                 Self.logger.error("prefetch page failed: \(error.localizedDescription, privacy: .private) attempt=\(consecutiveFailures, privacy: .public)")
@@ -184,7 +184,7 @@ final class BulletinsViewModel: AccountScoped {
                     Self.logger.info("prefetch backing off after repeated failures")
                     return
                 }
-                try? await Task.sleep(for: .seconds(2))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(2))
             }
         }
     }

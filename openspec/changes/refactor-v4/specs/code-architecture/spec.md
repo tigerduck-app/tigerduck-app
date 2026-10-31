@@ -30,8 +30,8 @@ Live Activity extension. A target SHALL NOT keep its own copy of such a rule.
 
 ### Requirement: Types stay within a size budget
 A type's own body, extensions in other files counted and nested types not, SHALL stay under 250
-lines; a SwiftUI view under 200. A class or actor SHALL hold at most 10 stored instance properties.
-A Swift file SHALL stay under 400 lines. An extension in another file SHALL add only a protocol
+lines; a SwiftUI view under 200. A class or actor SHALL hold at most 10 stored instance properties;
+a SwiftData `@Model` class is exempt, as its stored properties are the stored schema. A Swift file SHALL stay under 400 lines. An extension in another file SHALL add only a protocol
 conformance.
 
 #### Scenario: A type grows past the budget

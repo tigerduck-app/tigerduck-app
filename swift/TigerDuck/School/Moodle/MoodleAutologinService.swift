@@ -27,7 +27,7 @@ final class MoodleAutologinService {
         keySource: @escaping @Sendable () async throws -> Key?,
         now: @escaping () -> Date = { Date() },
         account: AccountSession = .school,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.keySource = keySource
         self.now = now

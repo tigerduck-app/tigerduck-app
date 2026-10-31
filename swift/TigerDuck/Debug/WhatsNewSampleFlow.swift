@@ -79,7 +79,7 @@ enum WhatsNewSampleFlow {
                 ),
                 confirm: WhatsNewText(en: "Turn On Notifications", zhHant: "開啟通知"),
                 decline: WhatsNewText(en: "Not Now", zhHant: "暫時不要"),
-                request: { _ in try? await Task.sleep(for: .seconds(1)) }
+                request: { _ in try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1)) }
             ),
             .custom(id: "custom", showsNextButton: false) { context in
                 SampleCustomPage(language: context.language, advance: context.advance)
@@ -151,12 +151,12 @@ private struct SampleInboxDemo: View {
         .task {
             while !Task.isCancelled {
                 for row in 1...senders.count {
-                    try? await Task.sleep(for: .milliseconds(450))
+                    try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(450))
                     withAnimation(.snappy) { visibleRows = row }
                 }
-                try? await Task.sleep(for: .seconds(2))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(2))
                 withAnimation(.easeOut(duration: 0.3)) { visibleRows = 0 }
-                try? await Task.sleep(for: .milliseconds(400))
+                try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(400))
             }
         }
     }

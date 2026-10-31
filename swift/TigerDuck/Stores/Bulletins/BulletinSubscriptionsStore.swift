@@ -33,7 +33,7 @@ final class BulletinSubscriptionsStore {
 
     init(
         apiClient: BulletinAPIClient? = nil,
-        retryDelay: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        retryDelay: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.apiClient = apiClient ?? BulletinAPIClient()
         self.usesInjectedClient = apiClient != nil

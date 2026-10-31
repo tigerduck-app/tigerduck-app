@@ -53,7 +53,7 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
             page.removeFromSuperview()
         }
         let deadline = Task {
-            try? await Task.sleep(for: Self.deadline)
+            try? await AppClock.sleep(until: ContinuousClock.now + Self.deadline)
             finish?(false)
         }
         defer { deadline.cancel() }

@@ -347,7 +347,7 @@ final class PushCoordinator {
     ) {
         run.pendingSyncTask?.cancel()
         run.pendingSyncTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(debounceMs))
+            try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(debounceMs))
             guard !Task.isCancelled else { return }
             #if os(iOS)
             guard UIApplication.shared.applicationState != .background else { return }

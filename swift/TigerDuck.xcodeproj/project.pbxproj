@@ -183,6 +183,7 @@
 				Persistence/AppUserDefaults.swift,
 				Support/Clock/AppClock.swift,
 				Support/Clock/ClockOverride.swift,
+				Support/Concurrency/StateSignal.swift,
 			);
 			target = B21DC6912FB887D900AE2430 /* TigerDuckWatch Watch App */;
 		};
@@ -1674,6 +1675,7 @@
 					SourceRepository.swift,
 					SSOForms.swift,
 					SSOLoginService.swift,
+					StateSignal.swift,
 					StoredPasswordBackoff.swift,
 					StoredPasswordLatchRetryMigration.swift,
 					StoreObservation.swift,
@@ -2163,6 +2165,7 @@
 					SourceRepository.swift,
 					SSOForms.swift,
 					SSOLoginService.swift,
+					StateSignal.swift,
 					StoredPasswordBackoff.swift,
 					StoredPasswordLatchRetryMigration.swift,
 					StoreObservation.swift,

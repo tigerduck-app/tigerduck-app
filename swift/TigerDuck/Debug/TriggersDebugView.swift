@@ -106,7 +106,7 @@ final class TriggersDebugArming {
             return
         }
         flipTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(3))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(3))
             if !Task.isCancelled {
                 FlipToLibraryPromptPresenter.requestPrompt(app: app)
             }
