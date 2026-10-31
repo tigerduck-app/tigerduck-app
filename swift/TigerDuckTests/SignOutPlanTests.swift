@@ -51,15 +51,15 @@ struct SignOutPlanTests {
     func courseDeletionsEndWithTheSignIn() {
         let session = AccountSession()
         let deletedAt = Date()
-        var deletions = SignInScoped<[String: Date]>(empty: [:])
-        deletions.set(["CS1001": deletedAt], in: session)
-        #expect(deletions.value(in: session) == ["CS1001": deletedAt])
+        let edits = LocalEdits(account: session)
+        edits.recentCourseDeletions = ["CS1001": deletedAt]
+        #expect(edits.recentCourseDeletions == ["CS1001": deletedAt])
 
         SignOutPlan(session: session, stores: []).run()
 
-        #expect(deletions.value(in: session).isEmpty)
-        deletions.set(["CS1002": deletedAt], in: session)
-        #expect(deletions.value(in: session) == ["CS1002": deletedAt])
+        #expect(edits.recentCourseDeletions.isEmpty)
+        edits.recentCourseDeletions = ["CS1002": deletedAt]
+        #expect(edits.recentCourseDeletions == ["CS1002": deletedAt])
     }
 }
 
