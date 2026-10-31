@@ -112,12 +112,12 @@ struct ScoreCourseDetailSheet: View {
 
     private func resolveRosterCourse() {
         guard rosterCourse == nil else { return }
-        let semesterMatches = DataCache.shared.loadCourses(semester: course.term)
+        let semesterMatches = CourseStore.shared.loadCourses(semester: course.term)
         if let match = semesterMatches.first(where: { $0.courseNo == course.code }) {
             rosterCourse = match
             return
         }
-        let userAdded = DataCache.shared.loadUserAddedCourses()
+        let userAdded = CourseStore.shared.loadUserAddedCourses()
         if let match = userAdded.first(where: {
             $0.courseNo == course.code && ($0.semester == course.term || $0.semester.isEmpty)
         }) {

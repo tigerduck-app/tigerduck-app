@@ -37,7 +37,7 @@ class AccountStateTests(unittest.TestCase):
         self.assertIn("defaults `lastViewedCourse` has no row in docs/account-state.md", cas.problems(self.root))
 
     def test_a_new_cache_file_without_a_row_fails(self) -> None:
-        self.edit("swift/TigerDuck/Persistence/DataCache.swift", '"assignments.json"', '"exam_seats.json"')
+        self.edit("swift/TigerDuck/Persistence/AssignmentFiles.swift", '"assignments.json"', '"exam_seats.json"')
         self.assertIn("cache `exam_seats.json` has no row in docs/account-state.md", cas.problems(self.root))
 
     def test_a_cache_file_of_another_persistence_store_without_a_row_fails(self) -> None:
@@ -70,8 +70,9 @@ class AccountStateTests(unittest.TestCase):
         self.assertEqual(cas.problems(self.root), [])
 
     def test_a_cache_file_the_sign_out_stops_clearing_fails(self) -> None:
-        self.edit("swift/TigerDuck/Persistence/DataCache.swift", '("ignored_courses.json", persistentDir),\n', "")
-        self.assertIn("cache `ignored_courses.json`: `clearUserScopedData` in swift/TigerDuck/Persistence/DataCache.swift"
+        self.edit("swift/TigerDuck/Persistence/AssignmentFiles.swift",
+                  '        storage.folders.persistentFiles.remove("ignored_courses.json")\n', "")
+        self.assertIn("cache `ignored_courses.json`: `forgetAccount` in swift/TigerDuck/Persistence/AssignmentFiles.swift"
                       " does not clear it", cas.problems(self.root))
 
     def test_an_account_keychain_key_the_fresh_install_keeps_fails(self) -> None:

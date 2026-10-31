@@ -104,7 +104,7 @@ struct MoodleCourseStoreTests {
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleCourseStoreTests-\(UUID().uuidString)", isDirectory: true)
-        lazy var cache = DataCache(
+        lazy var cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -129,7 +129,7 @@ struct MoodleCourseStoreTests {
             termCourseIds: [20103, courseId],
             courseCodes: courseCodes,
             context: MoodleCacheContext(
-                account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }, now: now
+                account: account, cache: folder.cache.moodle, isCurrent: { signedIn.withLock { $0 } }, now: now
             ),
             api: site.api(
                 beforeForums: beforeForums, beforePage: beforePage, beforeGrades: beforeGrades, beforeSummary: beforeSummary
@@ -184,7 +184,7 @@ struct MoodleCourseStoreTests {
 
         #expect(store.forums.value == nil)
         #expect(store.forums.status == .unknown)
-        #expect(folder.cache.loadMoodleData(MoodleTermForums.self, name: "forums", account: "B11399001") == nil)
+        #expect(folder.cache.moodle.loadMoodleData(MoodleTermForums.self, name: "forums", account: "B11399001") == nil)
     }
 
     @Test("signing out deletes every account's Moodle data")
@@ -192,11 +192,11 @@ struct MoodleCourseStoreTests {
         let folder = Folder()
         let store = Self.store(folder, site: Site())
         await store.refreshForums()
-        #expect(folder.cache.loadMoodleData(MoodleTermForums.self, name: "forums", account: "B11399001") != nil)
+        #expect(folder.cache.moodle.loadMoodleData(MoodleTermForums.self, name: "forums", account: "B11399001") != nil)
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
 
-        #expect(folder.cache.loadMoodleData(MoodleTermForums.self, name: "forums", account: "B11399001") == nil)
+        #expect(folder.cache.moodle.loadMoodleData(MoodleTermForums.self, name: "forums", account: "B11399001") == nil)
         #expect(Self.store(folder, site: Site()).sectionRows.isEmpty)
     }
 
@@ -548,7 +548,7 @@ struct MoodleCourseStoreTests {
         #expect(again.grades.status == .ok)
         #expect(Self.store(folder, site: Site(), account: "B11399002").grades.value == nil)
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
 
         #expect(Self.store(folder, site: Site()).grades.value == nil)
     }
@@ -571,7 +571,7 @@ struct MoodleCourseStoreTests {
         await refresh.value
 
         #expect(store.grades.value == nil)
-        #expect(folder.cache.loadMoodleData(
+        #expect(folder.cache.moodle.loadMoodleData(
             MoodleCourseGrades.self, name: "courses/\(Self.courseId)/grades", account: "B11399001"
         ) == nil)
     }
@@ -720,7 +720,7 @@ struct MoodleCourseStoreTests {
     )
 
     private static func summaryOnDisk(_ folder: Folder) -> MoodleCourseSummary? {
-        folder.cache.loadMoodleData(MoodleCourseSummary.self, name: "courses/\(courseId)/summary", account: "B11399001")?.value
+        folder.cache.moodle.loadMoodleData(MoodleCourseSummary.self, name: "courses/\(courseId)/summary", account: "B11399001")?.value
     }
 
     @Test("the summary takes one call for the course, and comes from that account's cache the next time")
@@ -811,7 +811,7 @@ struct MoodleCourseStoreTests {
         await Self.store(folder, site: Site()).refreshSummary()
         #expect(Self.summaryOnDisk(folder) == Self.summary)
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
         #expect(Self.summaryOnDisk(folder) == nil)
         #expect(Self.store(folder, site: Site()).shownSummary == nil)
 

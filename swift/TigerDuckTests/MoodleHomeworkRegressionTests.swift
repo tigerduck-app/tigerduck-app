@@ -126,7 +126,7 @@ struct MoodleHomeworkRegressionTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleHomeworkRegressionTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -136,11 +136,11 @@ struct MoodleHomeworkRegressionTests {
         let courseA = SDCourse(courseNo: "AAA001", courseName: "Course A", semester: semA)
         let courseB = SDCourse(courseNo: "BBB002", courseName: "Course B", semester: semB)
 
-        cache.saveCourses([courseA], semester: semA)
-        cache.saveCourses([courseB], semester: semB)
+        cache.courses.saveCourses([courseA], semester: semA)
+        cache.courses.saveCourses([courseB], semester: semB)
 
-        let loadedA = cache.loadCourses(semester: semA)
-        let loadedB = cache.loadCourses(semester: semB)
+        let loadedA = cache.courses.loadCourses(semester: semA)
+        let loadedB = cache.courses.loadCourses(semester: semB)
 
         #expect(loadedA.map(\.courseNo) == ["AAA001"])
         #expect(loadedB.map(\.courseNo) == ["BBB002"])

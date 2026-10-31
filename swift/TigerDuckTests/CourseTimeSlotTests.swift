@@ -40,7 +40,7 @@ struct CourseTimeSlotTests {
             on: Self.tuesday,
             isClassDay: { _ in true }
         )
-        #expect(slots.map(\.course.courseNo) == ["CS102"])
+        #expect(slots.map(\.courseKey) == ["CS102"])
     }
 
     @Test func aSlotIdTellsWhetherItsClassIsSkipped() {

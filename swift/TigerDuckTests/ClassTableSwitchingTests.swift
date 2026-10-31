@@ -267,8 +267,8 @@ struct ClassTableSwitchingTests {
             viewModel.showRenameAlert = true
             viewModel.courseToRecolor = own
             viewModel.showAddCourse = true
-            let customNames = DataCache.shared.loadCourseCustomNames()
-            let userAdded = DataCache.shared.loadUserAddedCourses().map(\.courseNo)
+            let customNames = CourseStore.shared.loadCourseCustomNames()
+            let userAdded = CourseStore.shared.loadUserAddedCourses().map(\.courseNo)
 
             Self.show(people.ming.id, in: people, on: viewModel)
             #expect(!viewModel.showRenameAlert)
@@ -279,8 +279,8 @@ struct ClassTableSwitchingTests {
             viewModel.confirmRename()
             viewModel.revertRename(own)
             viewModel.removeUserAddedCourse(courseNo: "CS1010001")
-            #expect(DataCache.shared.loadCourseCustomNames() == customNames)
-            #expect(DataCache.shared.loadUserAddedCourses().map(\.courseNo) == userAdded)
+            #expect(CourseStore.shared.loadCourseCustomNames() == customNames)
+            #expect(CourseStore.shared.loadUserAddedCourses().map(\.courseNo) == userAdded)
         }
     }
 
@@ -295,7 +295,7 @@ struct ClassTableSwitchingTests {
         viewModel.courseToRecolor = own
         viewModel.showAddCourse = true
         viewModel.showResetConfirm = true
-        let customNames = DataCache.shared.loadCourseCustomNames()
+        let customNames = CourseStore.shared.loadCourseCustomNames()
 
         viewModel.closeOwnEdits()
         #expect(!viewModel.showRenameAlert)
@@ -306,7 +306,7 @@ struct ClassTableSwitchingTests {
         viewModel.confirmRename()
         viewModel.revertRename(own)
         #expect(own.customName == "Own name")
-        #expect(DataCache.shared.loadCourseCustomNames() == customNames)
+        #expect(CourseStore.shared.loadCourseCustomNames() == customNames)
     }
 
     @Test("the user's deleted courses and custom names stay off someone else's same course numbers")
@@ -344,8 +344,11 @@ struct ClassTableSwitchingTests {
             case .otherTerm: viewModel.currentSemester = "1141"
             }
             let onScreen = viewModel.courses.map(\.courseNo)
+            let saved = CourseStore.shared.loadCourses(semester: "1142")
+            defer { CourseStore.shared.saveCourses(saved, semester: "1142") }
+            if !signedOut { CourseStore.shared.saveCourses(fetched, semester: "1142") }
 
-            viewModel.showFetched(fetched, assignments: [], of: "1142", signedOutSince: signedOut)
+            viewModel.showFetched(signedOutSince: signedOut)
 
             #expect(viewModel.courses.map(\.courseNo) == (change == .none ? ["GE1010009"] : onScreen))
         }

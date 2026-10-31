@@ -79,7 +79,7 @@ struct HomeView: View {
         .onChange(of: appState.pendingDeepLink, initial: true) { _, link in
             guard case .assignment(let id) = link else { return }
             appState.pendingDeepLink = nil
-            guard let assignment = DataCache.shared.loadAssignments().first(where: { $0.assignmentId == id }) else { return }
+            guard let assignment = AssignmentStore.shared.loadAssignments().first(where: { $0.assignmentId == id }) else { return }
             hostWindow.closePresentations { closedAll in openAssignment(assignment, closingSheet: closedAll) }
         }
         .sheet(item: $viewModel.selectedCourse, onDismiss: viewModel.courseSheetDismissed) { course in
@@ -374,7 +374,7 @@ private struct HomeSectionView: View {
                     courses: viewModel.allCourses,
                     onSelectCourse: { slot in
                         viewModel.selectedCourseSlot = slot
-                        viewModel.selectedCourse = slot.course
+                        viewModel.selectedCourse = slot.course(in: viewModel.allCourses)
                     }
                 )
             case .upcomingAssignments:

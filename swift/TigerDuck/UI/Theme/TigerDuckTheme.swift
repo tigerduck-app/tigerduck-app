@@ -77,14 +77,14 @@ enum TigerDuckTheme {
         String(format: "#%06X", assignedHex(for: courseNo))
     }
 
-    private static let state = ColorState.shared()
+    private static var store: CourseColorStore { .shared }
 
     static var courseColorMap: [String: UInt32] {
-        state.snapshot()
+        store.state.snapshot()
     }
 
     static func ensureAssignments(courseNos: [String]) {
-        state.ensureAssignments(courseNos: courseNos, palette: coursePaletteHexes)
+        store.ensureAssignments(courseNos: courseNos, palette: coursePaletteHexes)
     }
 
     static func courseColor(for courseNo: String) -> Color {
@@ -92,7 +92,7 @@ enum TigerDuckTheme {
     }
 
     static func assignedHex(for courseNo: String) -> UInt32 {
-        state.hex(for: courseNo, palette: coursePaletteHexes)
+        store.hex(for: courseNo, palette: coursePaletteHexes)
     }
 
     static func paletteIndex(for courseNo: String) -> Int? {
@@ -102,12 +102,12 @@ enum TigerDuckTheme {
 
     @discardableResult
     static func setColor(hex: UInt32, for courseNo: String) -> [String: UInt32] {
-        state.setColor(hex: hex & 0xFFFFFF, for: courseNo, palette: coursePaletteHexes)
+        store.apply(.pick(hex & 0xFFFFFF, courseNo: courseNo), palette: coursePaletteHexes)
     }
 
     @discardableResult
     static func applyColors(_ colors: [(courseNo: String, hex: UInt32)]) -> Bool {
-        state.applyColors(colors, palette: coursePaletteHexes)
+        store.applyColors(colors, palette: coursePaletteHexes)
     }
 
     nonisolated static func assigning(
@@ -120,15 +120,15 @@ enum TigerDuckTheme {
     }
 
     static func snapshot() -> [String: UInt32] {
-        state.snapshot()
+        store.state.snapshot()
     }
 
     static func reload() {
-        state.reload()
+        store.reload()
     }
 
     static func reassignAll(courseNos: [String]) {
-        state.reassignAll(courseNos: courseNos, palette: coursePaletteHexes)
+        store.apply(.reassignAll(courseNos: courseNos), palette: coursePaletteHexes)
     }
 }
 
@@ -149,21 +149,14 @@ final class ColorState: @unchecked Sendable {
     nonisolated static let unreadableReadLimit = 3
     nonisolated static let unreadableReadSpacing: TimeInterval = 10
 
-    private static let hashMigrationKey = "color_hash_v2_migrated"
-
-    static func shared() -> ColorState {
-        if !UserDefaults.standard.bool(forKey: hashMigrationKey) {
-            DataCache.shared.saveCourseColorMap([:])
-            UserDefaults.standard.set(true, forKey: hashMigrationKey)
-        }
-        return ColorState()
-    }
+    /// How many times the map was saved, which `CourseColorStore` turns into its revision.
+    nonisolated(unsafe) private(set) var saves = 0
 
     init(
-        load: @escaping @Sendable () -> [String: UInt32]? = { DataCache.shared.loadCourseColorMapIfReadable() },
-        save: @escaping @Sendable ([String: UInt32]) -> Void = { DataCache.shared.saveCourseColorMap($0) },
-        notePick: @escaping @Sendable (String) -> Void = { DataCache.shared.notePickedCourseColor($0) },
-        forgetPicks: @escaping @Sendable () -> Void = { DataCache.shared.savePickedCourseColors([]) },
+        load: @escaping @Sendable () -> [String: UInt32]?,
+        save: @escaping @Sendable ([String: UInt32]) -> Void,
+        notePick: @escaping @Sendable (String) -> Void,
+        forgetPicks: @escaping @Sendable () -> Void,
         protectedDataAvailable: @escaping @Sendable () -> Bool = ColorState.isProtectedDataAvailable,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -321,8 +314,10 @@ final class ColorState: @unchecked Sendable {
     private func persist() {
         guard let snapshot = lock.withLock({ map }) else { return }
         save(snapshot)
-        lock.withLock { unreadableReads = 0 }
-        NotificationCenter.default.post(name: AppConstants.courseColorMapDidChange, object: nil)
+        lock.withLock {
+            unreadableReads = 0
+            saves &+= 1
+        }
     }
 
     private nonisolated static func pickUnusedHex(seed: String, used: Set<UInt32>, palette: [UInt32]) -> UInt32 {

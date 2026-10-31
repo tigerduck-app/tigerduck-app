@@ -69,8 +69,8 @@ struct TimeSliderViewModelTests {
         let viewModel = TimeSliderViewModel()
         viewModel.configure(courses: [skipped, kept])
 
-        #expect(viewModel.timeSlots.filter(onToday).map(\.course.courseNo) == ["TEST200"])
-        #expect(viewModel.timeSlots.contains { $0.course.courseNo == "TEST100" && !onToday($0) })
+        #expect(viewModel.timeSlots.filter(onToday).map(\.courseKey) == ["TEST200"])
+        #expect(viewModel.timeSlots.contains { $0.courseKey == "TEST100" && !onToday($0) })
     }
 
     @Test func skipToggle_rebuildsTheTimeline() async throws {
@@ -156,7 +156,7 @@ struct TimeSliderViewModelTests {
         let during = calendar.date(byAdding: .hour, value: 11, to: today)!
         let state = vm.courseState(at: during)
         if case .inClass(let slots) = state {
-            #expect(slots.map(\.course.courseNo) == ["MATH101"])
+            #expect(slots.map(\.courseKey) == ["MATH101"])
         } else {
             Issue.record("Expected .inClass, got \(state)")
         }
@@ -183,7 +183,7 @@ struct TimeSliderViewModelTests {
             Issue.record("Expected .inClass, got \(vm.courseState(at: during))")
             return
         }
-        #expect(slots.map(\.course.courseNo) == ["MATH101", "PHYS101"])
+        #expect(slots.map(\.courseKey) == ["MATH101", "PHYS101"])
     }
 
     @Test func timelineResolver_inClass_ordersOverlapsAsGiven() {
@@ -206,8 +206,8 @@ struct TimeSliderViewModelTests {
             Issue.record("Expected .inClass, got \(state)")
             return
         }
-        #expect(slots.map(\.course.courseNo) == ["MATH101", "PHYS101"])
-        #expect(slots.first?.course.courseNo == "MATH101")
+        #expect(slots.map(\.courseKey) == ["MATH101", "PHYS101"])
+        #expect(slots.first?.courseKey == "MATH101")
     }
 
     @Test func courseState_beforeFirst() {
@@ -224,7 +224,7 @@ struct TimeSliderViewModelTests {
         let before = calendar.date(byAdding: .hour, value: 9, to: today)!
         let state = vm.courseState(at: before)
         if case .beforeFirst(let next) = state {
-            #expect(next.course.courseNo == "MATH101")
+            #expect(next.courseKey == "MATH101")
         } else {
             Issue.record("Expected .beforeFirst, got \(state)")
         }
@@ -249,8 +249,8 @@ struct TimeSliderViewModelTests {
         let gap = calendar.date(byAdding: .hour, value: 11, to: today)!
         let state = vm.courseState(at: gap)
         if case .between(let prev, let next) = state {
-            #expect(prev?.course.courseNo == "MATH101")
-            #expect(next?.course.courseNo == "PHYS201")
+            #expect(prev?.courseKey == "MATH101")
+            #expect(next?.courseKey == "PHYS201")
         } else {
             Issue.record("Expected .between, got \(state)")
         }

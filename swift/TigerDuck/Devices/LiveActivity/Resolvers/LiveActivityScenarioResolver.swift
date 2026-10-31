@@ -63,10 +63,10 @@ struct LiveActivityScenarioResolver {
     static func inClassSnapshot(slot: CourseTimeSlot, now: Date, accentHex: Int) -> LiveActivitySnapshot {
         LiveActivitySnapshot(
             scenario: .inClass,
-            title: slot.course.displayName,
+            title: slot.title,
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
             locationText: slot.room,
-            instructor: nonEmpty(slot.course.instructor),
+            instructor: nonEmpty(slot.instructor),
             countdownTarget: slot.end,
             progressStart: slot.start < slot.end ? slot.start : nil,
             accentHex: accentHex,
@@ -80,10 +80,10 @@ struct LiveActivityScenarioResolver {
     static func classPreparingSnapshot(slot: CourseTimeSlot, accentHex: Int) -> LiveActivitySnapshot {
         LiveActivitySnapshot(
             scenario: .classPreparing,
-            title: slot.course.displayName,
+            title: slot.title,
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
             locationText: slot.room,
-            instructor: nonEmpty(slot.course.instructor),
+            instructor: nonEmpty(slot.instructor),
             countdownTarget: slot.start,
             progressStart: nil,
             accentHex: accentHex,

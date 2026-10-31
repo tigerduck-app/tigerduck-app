@@ -6,9 +6,10 @@ extension ClassTableViewModel {
     @discardableResult
     func addCourse(_ course: SDCourse) -> Bool {
         guard shownPerson == nil else { return false }
+        let store = courseStore
         if courses.contains(where: { $0.courseNo == course.courseNo }) {
-            if CourseTombstone.unhide(course.courseNo, semester: currentSemester, from: &deletedCourseNos) {
-                DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+            if store.apply(.unhide(courseNo: course.courseNo, semester: currentSemester)) {
+                deletedCourseNos = Set(store.loadDeletedCourseNos())
                 onCourseAdded?(courses, currentSemester, course.courseNo)
             }
             return false
@@ -19,10 +20,10 @@ extension ClassTableViewModel {
             return false
         }
 
-        if CourseTombstone.unhide(course.courseNo, semester: currentSemester, from: &deletedCourseNos) {
-            DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+        if store.apply(.unhide(courseNo: course.courseNo, semester: currentSemester)) {
+            deletedCourseNos = Set(store.loadDeletedCourseNos())
             if let idnumber = course.moodleIdNumber,
-               let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
+               let numericId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber) {
                 onSyncCourseOverride?(String(numericId), nil, nil, nil)
             }
         }
@@ -46,29 +47,13 @@ extension ClassTableViewModel {
         course.customName = courseCustomNames[course.courseNo]?[currentLocale]
 
         courses.append(course)
-        persistUserAddedCourses()
-        broadcastLocalChange()
+        store.apply(.add(course, semester: currentSemester))
         if onCourseAdded != nil {
             onCourseAdded?(courses, currentSemester, course.courseNo)
         } else {
             onCoursesChanged?(courses, currentSemester)
         }
         return true
-    }
-
-    private func persistUserAddedCourses() {
-        guard shownPerson == nil else { return }
-        let mine = courses.filter { $0.moodleIdNumber == nil }
-        for course in mine where course.semester.isEmpty {
-            course.semester = currentSemester
-        }
-        let survivingNos = Set(mine.map(\.courseNo))
-        let others = DataCache.shared.loadUserAddedCourses().filter { stored in
-            if stored.semester == currentSemester { return false }
-            if stored.semester.isEmpty { return !survivingNos.contains(stored.courseNo) }
-            return true
-        }
-        DataCache.shared.saveUserAddedCourses(others + mine)
     }
 
     func applyCustomizations(_ courses: inout [SDCourse]) {
@@ -84,14 +69,12 @@ extension ClassTableViewModel {
         guard shownPerson == nil else { return }
         let courseNo = course.courseNo
         courses.removeAll { $0.courseNo == courseNo }
-        DataCache.shared.deleteCourse(courseNo, semester: currentSemester)
-        deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
+        courseStore.apply(.delete(courseNo: courseNo, semester: currentSemester))
+        deletedCourseNos = Set(courseStore.loadDeletedCourseNos())
         if ignoresAssignments(of: courseNo) {
-            DataCache.shared.setAssignmentsIgnored(false, semester: currentSemester, courseNo: courseNo)
-            ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+            AssignmentStore.shared.apply(.ignoreCourse(courseNo: courseNo, semester: currentSemester, ignored: false))
+            ignoredAssignmentCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
         }
-        persistUserAddedCourses()
-        broadcastLocalChange()
         onCourseDeleted?(courseNo, currentSemester)
         onCoursesChanged?(courses, currentSemester)
     }
@@ -124,17 +107,8 @@ extension ClassTableViewModel {
     }
 
     private func resetLocalCourses(semester: String) {
-        deletedCourseNos.subtract(CourseTombstone.entries(resetting: semester, in: deletedCourseNos))
-        DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
-        DataCache.shared.saveUserAddedCourses(
-            DataCache.shared.loadUserAddedCourses().filter { !DataCache.userAddedCourse($0, belongsTo: semester) }
-        )
-        for courseNo in DataCache.shared.loadCourses(semester: semester).map(\.courseNo) {
-            courseCustomNames.removeValue(forKey: courseNo)
-        }
-        DataCache.shared.saveCourseCustomNames(courseCustomNames)
-        DataCache.shared.clearIgnoredAssignmentCourses(semester: semester)
-        DataCache.shared.clearCourses(semester: semester)
+        courseStore.apply(.resetTerm(semester))
+        AssignmentStore.shared.clearIgnoredAssignmentCourses(semester: semester)
         reloadFromCache()
     }
 
@@ -144,8 +118,7 @@ extension ClassTableViewModel {
               course.moodleIdNumber == nil
         else { return }
         courses.removeAll { $0.courseNo == courseNo }
-        persistUserAddedCourses()
-        broadcastLocalChange()
+        courseStore.apply(.remove(courseNo: courseNo, semester: currentSemester))
         onCourseDeleted?(courseNo, currentSemester)
     }
 
@@ -165,12 +138,10 @@ extension ClassTableViewModel {
         }
         let locale = currentLocale
         courseCustomNames[course.courseNo, default: [:]][locale] = trimmed
-        DataCache.shared.saveCourseCustomNames(courseCustomNames)
+        courseStore.apply(.rename(courseNo: course.courseNo, name: trimmed, locale: locale))
         course.customName = trimmed
         rebuildLookup()
-        persistUserAddedCourses()
         courseToRename = nil
-        broadcastLocalChange()
         syncNameOverride(course: course, customName: trimmed, locale: locale)
     }
 
@@ -181,12 +152,10 @@ extension ClassTableViewModel {
         if courseCustomNames[course.courseNo]?.isEmpty == true {
             courseCustomNames.removeValue(forKey: course.courseNo)
         }
-        DataCache.shared.saveCourseCustomNames(courseCustomNames)
+        courseStore.apply(.rename(courseNo: course.courseNo, name: nil, locale: locale))
         course.customName = nil
         rebuildLookup()
-        persistUserAddedCourses()
         courseToRename = nil
-        broadcastLocalChange()
         syncNameOverride(course: course, customName: "", locale: locale)
     }
 
@@ -198,17 +167,15 @@ extension ClassTableViewModel {
     func setIgnoresAssignments(_ ignore: Bool, for course: SDCourse) {
         guard offersIgnoreAssignments else { return }
         let semester = currentSemester
-        DataCache.shared.setAssignmentsIgnored(ignore, semester: semester, courseNo: course.courseNo)
-        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
-        assignments = DataCache.shared.loadAssignments()
-        broadcastLocalChange()
+        AssignmentStore.shared.apply(.ignoreCourse(courseNo: course.courseNo, semester: semester, ignored: ignore))
+        ignoredAssignmentCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
+        assignments = AssignmentStore.shared.loadAssignments()
         onSyncCourseIgnore?(course, semester, ignore)
     }
 
     func setColor(hex: UInt32, for course: SDCourse) {
         guard shownPerson == nil else { return }
         let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
-        broadcastLocalChange()
         onSyncColorPick?(hex, course, changed)
     }
 

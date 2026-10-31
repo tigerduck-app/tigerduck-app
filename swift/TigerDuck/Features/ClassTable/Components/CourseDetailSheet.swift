@@ -84,7 +84,7 @@ struct CourseDetailSheet: View {
         .onChange(of: appState.authService.session.ticket) {
             routes.wrappedValue = []
         }
-        .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
+        .onChange(of: AppDataRevision.current) {
             if let moodle { moodle.assignments.reload() } else { moodleAttempt += 1 }
         }
         #if os(iOS)
@@ -161,10 +161,10 @@ struct CourseDetailSheet: View {
 
     private func makeMoodleStore() -> MoodleCourseStore? {
         guard showsMoodle, let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
-              let courseId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber),
+              let courseId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber),
               let context = MoodleCacheContext.signedIn(appState.authService) else { return nil }
         let term = AcademicTerm.codePrefix(ofMoodleId: idnumber)
-        let idMap = DataCache.shared.loadMoodleCourseIdMap()
+        let idMap = MoodleFiles.shared.loadMoodleCourseIdMap()
         let termCourseIds = idMap
             .filter { term != nil && AcademicTerm.codePrefix(ofMoodleId: $0.key) == term }
             .map(\.value)
@@ -482,7 +482,6 @@ struct CourseDetailSheet: View {
 
     private func refreshAssignments() async {
         _ = await AppServiceBridge.fetchAssignments(authService: appState.authService, recheckSubmissions: true)
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
 
     /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile

@@ -68,7 +68,7 @@ private struct TodayScheduleWidgetCard: View {
     }
 
     private func scheduleRow(_ slot: CourseTimeSlot) -> some View {
-        let color = TigerDuckTheme.courseColor(for: slot.course.courseNo)
+        let color = TigerDuckTheme.courseColor(for: slot.courseKey)
         let isPast = slot.end < now
         let isLive = slot.isOn(at: now)
         let primary: Color = isLive ? .white : .primary
@@ -81,7 +81,7 @@ private struct TodayScheduleWidgetCard: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(secondary)
                 .frame(width: 48, alignment: .leading)
-            Text(slot.course.displayName)
+            Text(slot.title)
                 .font(.callout)
                 .foregroundStyle(primary)
                 .lineLimit(1)
@@ -113,7 +113,7 @@ private struct NextClassWidgetCard: View {
         widgetCard(title: String(localized: "widget_next_class"), systemImage: "arrow.right.circle") {
             if let target = nextOrCurrent {
                 let primary = target.slots[0]
-                let color = TigerDuckTheme.courseColor(for: primary.course.courseNo)
+                let color = TigerDuckTheme.courseColor(for: primary.courseKey)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("\(primary.start.timeString) - \(primary.end.timeString)")
@@ -131,14 +131,14 @@ private struct NextClassWidgetCard: View {
                     }
                     if target.slots.count >= 2 {
                         VStack(alignment: .leading, spacing: 2) {
-                            ForEach(target.slots, id: \.course.courseNo) { slot in
-                                Text(slot.course.displayName)
+                            ForEach(target.slots, id: \.courseKey) { slot in
+                                Text(slot.title)
                                     .font(.title3.bold())
                                     .lineLimit(1)
                             }
                         }
                     } else {
-                        Text(primary.course.displayName)
+                        Text(primary.title)
                             .font(.title3.bold())
                             .lineLimit(2)
                         let classroom = primary.room

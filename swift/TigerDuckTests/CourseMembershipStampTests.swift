@@ -109,12 +109,12 @@ struct CourseMembershipStampTests {
     private static func makeCoordinator(_ baseURL: URL) -> CloudSyncCoordinator {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("CourseMembershipStampTests-\(UUID().uuidString)", isDirectory: true)
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
-        cache.saveCourses([SDCourse(courseNo: "CS1001301", courseName: "Programming", semester: "1151")], semester: "1151")
-        cache.saveUserAddedCourses([SDCourse(courseNo: "GE1010001", courseName: "Art", semester: "1151")])
+        cache.courses.saveCourses([SDCourse(courseNo: "CS1001301", courseName: "Programming", semester: "1151")], semester: "1151")
+        cache.courses.saveUserAddedCourses([SDCourse(courseNo: "GE1010001", courseName: "Art", semester: "1151")])
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
@@ -126,7 +126,7 @@ struct CourseMembershipStampTests {
             pushCoordinator: PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client),
             outbox: SyncOutbox(directory: root.appendingPathComponent("outbox", isDirectory: true)), isEnabled: true,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
-            addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache, colors: [:]) },
+            addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses, colors: [:]) },
             uploadsCourses: { true }, isProtectedDataAvailable: { true }
         )
     }

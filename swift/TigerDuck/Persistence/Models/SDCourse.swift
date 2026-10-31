@@ -277,7 +277,7 @@ extension SDCourse {
 extension SDCourse {
     var moodleDeepLink: URL? {
         guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
-              let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else {
+              let numericId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber) else {
             return nil
         }
 
@@ -289,7 +289,7 @@ extension SDCourse {
     /// error there; macOS callers open this directly in the default browser.
     var moodleWebURL: URL? {
         guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
-              let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else {
+              let numericId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber) else {
             return nil
         }
         let host = AppConstants.moodleBaseURL.host ?? "moodle2.ntust.edu.tw"

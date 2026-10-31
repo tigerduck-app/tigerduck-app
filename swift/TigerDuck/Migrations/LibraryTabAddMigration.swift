@@ -7,10 +7,10 @@ enum LibraryTabAddMigration {
 
     @discardableResult
     static func runIfNeeded() -> Bool {
-        guard !UserDefaults.standard.bool(forKey: doneKey) else { return false }
-        defer { UserDefaults.standard.set(true, forKey: doneKey) }
-        let hadLibraryOn = UserDefaults.standard.bool(forKey: libraryOptInKey)
-        UserDefaults.standard.removeObject(forKey: libraryOptInKey)
+        guard !AppUserDefaults.standard.bool(forKey: doneKey) else { return false }
+        defer { AppUserDefaults.standard.set(true, forKey: doneKey) }
+        let hadLibraryOn = AppUserDefaults.standard.bool(forKey: libraryOptInKey)
+        AppUserDefaults.standard.removeObject(forKey: libraryOptInKey)
         guard !hadLibraryOn,
               let stored = AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]),
               let tabs = tabsAddingLibrary(to: stored),

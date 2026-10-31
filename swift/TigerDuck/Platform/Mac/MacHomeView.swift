@@ -12,7 +12,7 @@ struct MacHomeView: View {
             content
                 .macReadableContent(maxWidth: MacContentWidth.standard)
         }
-        .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
+        .onChange(of: AppDataRevision.current) {
             cacheRevision &+= 1
         }
         .alert(

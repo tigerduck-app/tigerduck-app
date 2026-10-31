@@ -46,7 +46,7 @@ extension AppServiceBridge {
             if round.rechecks || !rechecks { return answer(round, isCurrent: isCurrent) }
             waitedFor = round
         }
-        guard isCurrent() else { return DataCache.shared.loadAssignments() }
+        guard isCurrent() else { return AssignmentStore.shared.loadAssignments() }
         let round = AssignmentRound(signIn: signIn, rechecks: rechecks)
         round.task = Task { round.assignments = await run() }
         rounds.running = round
@@ -56,7 +56,7 @@ extension AppServiceBridge {
     }
 
     private static func answer(_ round: AssignmentRound, isCurrent: @MainActor () -> Bool) -> [SDAssignment] {
-        isCurrent() ? round.assignments : DataCache.shared.loadAssignments()
+        isCurrent() ? round.assignments : AssignmentStore.shared.loadAssignments()
     }
 
     static let foregroundRefreshInterval: TimeInterval = 60
@@ -85,7 +85,6 @@ extension AppServiceBridge {
         let starts = manager.loadingStarts
         _ = await fetchAssignments(authService: authService)
         if showsProgress, manager.loadingStarts == starts { manager.loadingState = .loaded }
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
 
     static func cancelAssignmentRound() {
@@ -106,7 +105,7 @@ extension AppServiceBridge {
         let ticket = authService.session.ticket
         guard let account = authService.storedStudentId,
               authService.storedPassword != nil else {
-            return DataCache.shared.loadAssignments()
+            return AssignmentStore.shared.loadAssignments()
         }
 
         do {
@@ -114,17 +113,17 @@ extension AppServiceBridge {
             try await ServerFailureSimulator.shared.check(.moodle)
             #endif
             let currentSemester = CourseSelectionService.currentSemesterCode()
-            let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
+            let currentCourses = CourseStore.shared.loadCourses(semester: currentSemester)
 
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
             let moodleIdMapForAssignments = moodleCourseIdMap(moodleEnrolled)
             if !Task.isCancelled,
                authService.session.isCurrent(ticket) {
-                DataCache.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
+                MoodleFiles.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
             }
 
             let localCourseNos = Set(currentCourses.map(\.courseNo)).union(
-                DataCache.shared.loadUserAddedCourses(semester: currentSemester).map(\.courseNo)
+                CourseStore.shared.loadUserAddedCourses(semester: currentSemester).map(\.courseNo)
             )
             var currentCourseNos = Set(currentCourses.map(\.courseNo))
             for mc in moodleEnrolled where mc.semester == currentSemester && !mc.courseNo.isEmpty {
@@ -144,7 +143,7 @@ extension AppServiceBridge {
                 if !moodleEnrolled.isEmpty, authService.session.isCurrent(ticket) {
                     Defaults[.schoolDataSyncedAt] = Date()
                 }
-                return DataCache.shared.loadAssignments()
+                return AssignmentStore.shared.loadAssignments()
             }
 
             let records = try await MoodleAssignmentService.fetchAssignments(
@@ -159,9 +158,9 @@ extension AppServiceBridge {
                 }
             )
 
-            let cachedAssignments = DataCache.shared.loadAssignments()
+            let cachedAssignments = AssignmentStore.shared.loadAssignments()
             let confirmed = recheckSubmissions ? [:] : confirmedSubmissions(in: cachedAssignments)
-            let closed = DataCache.shared.loadClosedUnsubmittedAssignments()
+            let closed = AssignmentStore.shared.loadClosedUnsubmittedAssignments()
             let recordsToAsk = recordsToAskAbout(
                 records, confirmed: confirmed, closed: recheckSubmissions ? [:] : closed
             )
@@ -181,7 +180,7 @@ extension AppServiceBridge {
                     cachedAssignments.compactMap { a in a.extensionDueDate.map { (a.assignmentId, $0) } },
                     uniquingKeysWith: { first, _ in first }
                 ),
-                marks: DataCache.shared.assignmentMarks(semester: currentSemester)
+                marks: AssignmentStore.shared.assignmentMarks(semester: currentSemester)
             )
 
             let assignmentsToPersist: [SDAssignment]
@@ -202,7 +201,8 @@ extension AppServiceBridge {
                 answered: answers.mapValues(\.askedAt),
                 account: account,
                 fetchedAt: askedAt,
-                cache: .shared,
+                assignments: .shared,
+                moodle: .shared,
                 isCurrent: { authService.session.isCurrent(ticket) }
             )
             if persisted {
@@ -219,7 +219,7 @@ extension AppServiceBridge {
                 record(.failed, for: .moodle, note: note, round: ticket, authService: authService)
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
-            return DataCache.shared.loadAssignments()
+            return AssignmentStore.shared.loadAssignments()
         }
     }
 
@@ -230,20 +230,21 @@ extension AppServiceBridge {
         answered: [Int: ContinuousClock.Instant],
         account: String,
         fetchedAt: Date,
-        cache: DataCache,
+        assignments store: AssignmentStore,
+        moodle: MoodleFiles,
         rounds: AssignmentRounds = .shared,
         isCurrent: () -> Bool
     ) -> Bool {
         guard !Task.isCancelled, isCurrent() else { return false }
-        cache.saveAssignments(assignments)
-        cache.saveMoodleData(records, fetchedAt: fetchedAt, name: MoodleAssignmentRecord.cacheName, account: account)
-        cache.replaceClosedUnsubmittedAssignments(closed)
-        saveMoodleCalendarEvents(of: assignments, in: cache)
+        store.saveAssignments(assignments)
+        moodle.saveMoodleData(records, fetchedAt: fetchedAt, name: MoodleAssignmentRecord.cacheName, account: account)
+        store.replaceClosedUnsubmittedAssignments(closed)
+        saveMoodleCalendarEvents(of: assignments, in: store)
         for (id, askedAt) in answered { rounds.statusAskedAt[String(id)] = askedAt }
         return true
     }
 
-    private static func saveMoodleCalendarEvents(of assignments: [SDAssignment], in cache: DataCache) {
+    private static func saveMoodleCalendarEvents(of assignments: [SDAssignment], in cache: AssignmentStore) {
         var calendarEvents = cache.loadCalendarEvents()
         calendarEvents.removeAll { $0.source == .moodle }
         calendarEvents.append(contentsOf: assignments.map(moodleCalendarEvent))
@@ -271,10 +272,9 @@ extension AppServiceBridge {
     static func takeSubmissionStatus(
         _ status: MoodleSubmissionStatus,
         askedAt: ContinuousClock.Instant,
-        cache: DataCache,
+        assignments cache: AssignmentStore,
         rounds: AssignmentRounds = .shared,
-        isCurrent: () -> Bool,
-        notifying center: NotificationCenter = .default
+        isCurrent: () -> Bool
     ) async -> Bool {
         var waitedFor: AssignmentRound?
         while let round = rounds.running, round !== waitedFor {
@@ -301,7 +301,6 @@ extension AppServiceBridge {
             if closed.removeValue(forKey: id) != nil { cache.replaceClosedUnsubmittedAssignments(closed) }
         }
         uploadForReminders(assignments)
-        center.post(name: AppConstants.dataDidUpdate, object: nil)
         return true
     }
 

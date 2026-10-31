@@ -42,11 +42,11 @@ final class ClassroomUsageService {
         }
     )
 
-    static let todayLifetime: TimeInterval = 15 * 60
-    static let laterLifetime: TimeInterval = 3 * 60 * 60
+    static let todayFreshness = FreshnessPolicy(lifetime: 15 * 60)
+    static let laterFreshness = FreshnessPolicy(lifetime: 3 * 60 * 60)
     /// Past this a kept day is too old to stand in for the day, so a failed reload shows the
     /// failure rather than it (https://github.com/tigerduck-app/tigerduck-app/issues/477).
-    static let staleLimit: TimeInterval = 12 * 60 * 60
+    static let keptLimit = FreshnessPolicy(lifetime: 12 * 60 * 60)
     private static let campus = "HQ"
     private static let maxPages = 20
     private static let maxMonthSteps = 3
@@ -103,7 +103,7 @@ final class ClassroomUsageService {
     func keptUsage(on day: Date) -> KeptUsage? {
         adoptSession()
         guard let entry = kept[ClassroomUsageParser.dayNumber(of: day)],
-              now().timeIntervalSince(entry.fetchedAt) < Self.staleLimit else { return nil }
+              Self.keptLimit.isFresh(storedAt: entry.fetchedAt, now: now()) else { return nil }
         return entry
     }
 
@@ -161,8 +161,8 @@ final class ClassroomUsageService {
 
     private func freshUsage(_ day: Int, isToday: Bool) -> KeptUsage? {
         guard let entry = kept[day] else { return nil }
-        let lifetime = isToday ? Self.todayLifetime : Self.laterLifetime
-        return now().timeIntervalSince(entry.fetchedAt) < lifetime ? entry : nil
+        let freshness = isToday ? Self.todayFreshness : Self.laterFreshness
+        return freshness.isFresh(storedAt: entry.fetchedAt, now: now()) ? entry : nil
     }
 
     private func fetch(_ day: Int, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {

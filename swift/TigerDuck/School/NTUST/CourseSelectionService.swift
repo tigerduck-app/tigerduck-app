@@ -120,7 +120,7 @@ enum CourseSelectionService {
             && loadEnrolledCoursesCache(studentId: studentId, semester: semester) == nil
     }
 
-    nonisolated static let enrolledCoursesCacheTTL: TimeInterval = 86_400
+    nonisolated static let enrolledCoursesFreshness = FreshnessPolicy(lifetime: 86_400)
 
     nonisolated private static let enrolledCoursesCacheKey = "enrolledCourseNosCache"
 
@@ -133,7 +133,7 @@ enum CourseSelectionService {
 
     nonisolated static func invalidateEnrolledCoursesCache(for studentId: String? = nil) {
         cacheLock.withLock {
-            let defaults = UserDefaults.standard
+            let defaults = AppUserDefaults.standard
             guard let studentId else {
                 defaults.removeObject(forKey: enrolledCoursesCacheKey)
                 return
@@ -153,8 +153,9 @@ enum CourseSelectionService {
         cacheLock.withLock {
             let dict = readCacheDict()
             guard let entry = dict["\(studentId):\(semester)"] else { return nil }
-            if Date().timeIntervalSince1970 - entry.cachedAt > enrolledCoursesCacheTTL { return nil }
-            return (entry.courseNos, Date(timeIntervalSince1970: entry.cachedAt))
+            let cachedAt = Date(timeIntervalSince1970: entry.cachedAt)
+            guard enrolledCoursesFreshness.isFresh(storedAt: cachedAt) else { return nil }
+            return (entry.courseNos, cachedAt)
         }
     }
 
@@ -168,7 +169,7 @@ enum CourseSelectionService {
     }
 
     nonisolated private static func readCacheDict() -> [String: CachedCourseNos] {
-        guard let data = UserDefaults.standard.data(forKey: enrolledCoursesCacheKey),
+        guard let data = AppUserDefaults.standard.data(forKey: enrolledCoursesCacheKey),
               let dict = try? JSONDecoder().decode([String: CachedCourseNos].self, from: data) else {
             return [:]
         }
@@ -176,7 +177,7 @@ enum CourseSelectionService {
     }
 
     nonisolated private static func writeCacheDict(_ dict: [String: CachedCourseNos]) {
-        let defaults = UserDefaults.standard
+        let defaults = AppUserDefaults.standard
         if dict.isEmpty {
             defaults.removeObject(forKey: enrolledCoursesCacheKey)
             return

@@ -13,7 +13,6 @@ extension URL {
 nonisolated enum AppConstants {
     static let appName = "TigerDuck"
 
-    static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
     ///
     static let liveActivityPreferencesRemoteOriginKey = "TigerDuck.liveActivityPreferencesRemoteOrigin"
@@ -21,8 +20,6 @@ nonisolated enum AppConstants {
     static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")
     static let courseSkipStateDidChange = Notification.Name("TigerDuck.courseSkipStateDidChange")
     static let holidayNotifyDidChange = Notification.Name("TigerDuck.holidayNotifyDidChange")
-    static let courseColorMapDidChange = Notification.Name("TigerDuck.courseColorMapDidChange")
-    static let accentColorDidChange = Notification.Name("TigerDuck.accentColorDidChange")
     static let tlsPinAcceptanceDidChange = Notification.Name("TigerDuck.tlsPinAcceptanceDidChange")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 

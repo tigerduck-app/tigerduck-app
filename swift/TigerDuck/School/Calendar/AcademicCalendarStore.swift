@@ -1,8 +1,10 @@
 import Defaults
 import Foundation
+import Observation
 import os
 
 @MainActor
+@Observable
 final class AcademicCalendarStore: AccountScoped {
     static let shared = AcademicCalendarStore()
 
@@ -99,15 +101,10 @@ final class AcademicCalendarStore: AccountScoped {
                 return false
             }
             let changed = parsed != calendar
-            calendar = parsed
+            if changed { calendar = parsed }
             Defaults[.academicCalendarETag] = http.value(forHTTPHeaderField: "ETag") ?? ""
             if let encoded = try? JSONEncoder().encode(parsed) {
                 Defaults[.academicCalendarCache] = encoded
-            }
-            if changed {
-                NotificationCenter.default.post(
-                    name: AppConstants.dataDidUpdate, object: nil
-                )
             }
             return changed
         } catch {
@@ -160,6 +157,7 @@ final class AcademicCalendarStore: AccountScoped {
         Defaults[.holidayNotifyOverrides] = merged.sorted()
         let replaced = Set(merged.symmetricDifference(local).map(String.init))
         Defaults[.holidayOverrideEditTimes] = Defaults[.holidayOverrideEditTimes].filter { !replaced.contains($0.key) }
+        NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
         return true
     }
 

@@ -92,7 +92,7 @@ struct MoodleMaterialsTests {
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleMaterialsTests-\(UUID().uuidString)", isDirectory: true)
-        lazy var cache = DataCache(
+        lazy var cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -112,7 +112,7 @@ struct MoodleMaterialsTests {
         MoodleCourseStore(
             courseId: courseId,
             termCourseIds: [courseId],
-            context: MoodleCacheContext(account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }),
+            context: MoodleCacheContext(account: account, cache: folder.cache.moodle, isCurrent: { signedIn.withLock { $0 } }),
             api: site.api(beforeMaterials: beforeMaterials, beforeDownload: beforeDownload),
             downloads: folder.downloads
         )
@@ -204,7 +204,7 @@ struct MoodleMaterialsTests {
         await store.refreshMaterials()
 
         #expect(store.materials.value == nil)
-        #expect(folder.cache.loadMoodleData(MoodleCourseMaterials.self, name: "courses/20119/materials", account: "B11399001") == nil)
+        #expect(folder.cache.moodle.loadMoodleData(MoodleCourseMaterials.self, name: "courses/20119/materials", account: "B11399001") == nil)
     }
 
     @Test("signing out deletes the cached materials and every downloaded file")
@@ -215,10 +215,10 @@ struct MoodleMaterialsTests {
         let copy = try #require(await store.download(Self.syllabusRef.file, in: Self.syllabusRef.owner))
         #expect(FileManager.default.fileExists(atPath: copy.path))
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
 
         #expect(!FileManager.default.fileExists(atPath: folder.cache.moodleFilesDir.path))
-        #expect(folder.cache.loadMoodleData(MoodleCourseMaterials.self, name: "courses/20119/materials", account: "B11399001") == nil)
+        #expect(folder.cache.moodle.loadMoodleData(MoodleCourseMaterials.self, name: "courses/20119/materials", account: "B11399001") == nil)
         #expect(store.downloadState(of: Self.syllabusRef.file, in: Self.syllabusRef.owner) == .notDownloaded)
     }
 

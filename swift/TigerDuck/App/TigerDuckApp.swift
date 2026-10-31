@@ -30,6 +30,7 @@ struct TigerDuckApp: App {
         let appState: AppState
         let watchSync: WatchSyncCoordinator
         let widgetSnapshotWriter: WidgetSnapshotWriter
+        let deviceSurfaces: DeviceSurfaceSyncer
     }
 
     @State private var launch: AfterFirstUnlock<Built>
@@ -74,7 +75,18 @@ struct TigerDuckApp: App {
             SchoolMailBootstrap.install()
             let widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
             watchSync.setPayloadSource { WatchSyncCoordinator.Payload(appState: appState) }
-            return Built(appState: appState, watchSync: watchSync, widgetSnapshotWriter: widgetSnapshotWriter)
+            let deviceSurfaces = DeviceSurfaceSyncer(
+                surfaces: .init(
+                    widgets: { widgetSnapshotWriter.regenerate(forceReload: $0) },
+                    watch: { watchSync.pushCurrentState() },
+                    liveActivity: { appState.scheduleLiveActivityRefresh(after: .zero) }
+                ),
+                fingerprint: { DeviceSurfaceSyncer.fingerprint(of: appState, nudges: $0) }
+            )
+            return Built(
+                appState: appState, watchSync: watchSync, widgetSnapshotWriter: widgetSnapshotWriter,
+                deviceSurfaces: deviceSurfaces
+            )
         }
     }
 
@@ -87,10 +99,10 @@ struct TigerDuckApp: App {
                 .tlsPinPrompt()
                 .tint(AccentPreview.shared.tint(saved: appState.accentColor))
                 .appAppearance()
-                .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
                 .environment(appState)
                 .onAppear {
                     watchSyncCoordinator.activate()
+                    watchSyncCoordinator.pushCurrentState()
                     appState.bindPushDelegate(pushAppDelegate)
                     if let nd = pushAppDelegate.notificationDelegate {
                         let state = appState
@@ -194,7 +206,7 @@ struct TigerDuckApp: App {
         case "assignment_reminder":
             if let assignment = AppState.remindedAssignment(
                 from: info,
-                in: DataCache.shared.loadAssignments()
+                in: AssignmentStore.shared.loadAssignments()
             ) {
                 appState.pendingDeepLink = .assignment(assignment.assignmentId)
             }
@@ -238,6 +250,7 @@ struct TigerDuckApp: App {
     @State private var appState = AppState()
     @State private var rootLanguageId = UUID()
     @State private var widgetSnapshotWriter: WidgetSnapshotWriter?
+    @State private var deviceSurfaces: DeviceSurfaceSyncer?
     @State private var sceneRefreshTask: Task<Void, Never>?
     @NSApplicationDelegateAdaptor(MacPushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
@@ -261,8 +274,13 @@ struct TigerDuckApp: App {
                     appState.startCloudSyncIfEnabled()
                     appState.updateNotifyCoordinator.checkInBackground()
                     if widgetSnapshotWriter == nil {
-                        widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
-                        widgetSnapshotWriter?.regenerate()
+                        let writer = WidgetSnapshotWriter(appState: appState)
+                        widgetSnapshotWriter = writer
+                        writer.regenerate()
+                        deviceSurfaces = DeviceSurfaceSyncer(
+                            surfaces: .init(widgets: { writer.regenerate(forceReload: $0) }),
+                            fingerprint: { [appState] in DeviceSurfaceSyncer.fingerprint(of: appState, nudges: $0) }
+                        )
                     }
                     TLSPinMismatchQueue.shared.isForeground = true
                     fetchPinDocumentIfDue()

@@ -23,7 +23,7 @@ extension AppState {
     func refreshLiveActivity() async {
         let now = AppClock.now()
         let courses = courseProvider.currentCourses()
-        let assignments = DataCache.shared.loadAssignments()
+        let assignments = AssignmentStore.shared.loadAssignments()
         let snapshot = scenarioResolver.resolve(
             courses: courses,
             assignments: assignments,
@@ -113,10 +113,10 @@ extension AppState {
         }
     }
 
-    func scheduleLiveActivityRefresh() {
+    func scheduleLiveActivityRefresh(after delay: Duration = .milliseconds(250)) {
         pendingRefreshTask?.cancel()
         pendingRefreshTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(250))
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             await refreshLiveActivity()
             requestPushScheduleSync()

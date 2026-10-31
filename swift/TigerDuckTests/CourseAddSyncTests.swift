@@ -20,15 +20,15 @@ struct CourseAddSyncTests {
             .appendingPathComponent("CourseAddSyncTests-\(UUID().uuidString)", isDirectory: true)
     }
 
-    private static func makeCache(userAdded: [SDCourse], portal: [SDCourse] = [], hidden: [String] = []) -> DataCache {
+    private static func makeCache(userAdded: [SDCourse], portal: [SDCourse] = [], hidden: [String] = []) -> TestCache {
         let root = freshDirectory()
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
-        cache.saveCourses(portal, semester: "1151")
-        cache.saveUserAddedCourses(userAdded)
-        cache.saveDeletedCourseNos(hidden)
+        cache.courses.saveCourses(portal, semester: "1151")
+        cache.courses.saveUserAddedCourses(userAdded)
+        cache.courses.saveDeletedCourseNos(hidden)
         return cache
     }
 
@@ -44,7 +44,7 @@ struct CourseAddSyncTests {
     }
 
     private static func makeCoordinator(
-        _ backend: Backend, cache: DataCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory()),
+        _ backend: Backend, cache: TestCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory()),
         push: PushCoordinator? = nil, uploadsCourses: @escaping @MainActor () -> Bool = { true },
         isProtectedDataAvailable: @escaping @MainActor () -> Bool = { true },
         account: AccountSession = AccountSession(),
@@ -55,7 +55,7 @@ struct CourseAddSyncTests {
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
             addedCourseUpload: {
                 whileReading()
-                return AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache, colors: [:])
+                return AppState.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses, colors: [:])
             },
             uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
             account: account
@@ -285,11 +285,11 @@ struct CourseAddSyncTests {
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE5", stamp: early))
         let coordinator = Self.makeCoordinator(Backend(), cache: cache, outbox: outbox)
 
-        #expect(await AppState.applyCourseReset(at: resetAt, cache: cache, on: coordinator, mayWrite: { true }) == ["1151:PE5"])
+        #expect(await AppState.applyCourseReset(at: resetAt, courses: cache.courses, on: coordinator, mayWrite: { true }) == ["1151:PE5"])
 
-        #expect(cache.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
-        #expect(cache.loadDeletedCourseNos() == ["1151:PE4"])
-        #expect(AppState.addedCourseUpload(semester: "1151", courseNo: "GE1010001", cache: cache, colors: [:]) != nil)
+        #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
+        #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
+        #expect(AppState.addedCourseUpload(semester: "1151", courseNo: "GE1010001", courses: cache.courses, colors: [:]) != nil)
     }
 
     @Test("A reset made elsewhere leaves the hand-added and hidden courses alone when the sync may no longer write, as behind the lock screen")
@@ -297,10 +297,10 @@ struct CourseAddSyncTests {
         let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:PE4"])
         let coordinator = Self.makeCoordinator(Backend(), cache: cache)
 
-        #expect(await AppState.applyCourseReset(at: Date(), cache: cache, on: coordinator, mayWrite: { false }) == nil)
+        #expect(await AppState.applyCourseReset(at: Date(), courses: cache.courses, on: coordinator, mayWrite: { false }) == nil)
 
-        #expect(cache.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
-        #expect(cache.loadDeletedCourseNos() == ["1151:PE4"])
+        #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
+        #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
     }
 
     @Test("An add the server keeps refusing is parked, so a full sync still keeps its course and tries it again")

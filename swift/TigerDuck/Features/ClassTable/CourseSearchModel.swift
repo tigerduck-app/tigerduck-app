@@ -19,7 +19,7 @@ final class CourseSearchModel {
     /// changed, or Enter retries a failed search.
     private(set) var revision = 0
 
-    @ObservationIgnored private let cache: DataCache
+    @ObservationIgnored private let cache: CourseCatalogFiles
     @ObservationIgnored private var catalogs: [String: CourseCatalog] = [:]
     @ObservationIgnored private var storedETags: [String: String] = [:]
     @ObservationIgnored private var storedRead: Task<Void, Never>?
@@ -27,7 +27,7 @@ final class CourseSearchModel {
     @ObservationIgnored private var catalogFailure: (any Error)?
     @ObservationIgnored private var lacksLanguage = false
 
-    init(cache: DataCache = .shared) {
+    init(catalog cache: CourseCatalogFiles = CourseCatalogFiles()) {
         self.cache = cache
     }
 

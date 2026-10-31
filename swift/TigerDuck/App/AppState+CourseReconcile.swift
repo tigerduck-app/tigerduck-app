@@ -13,7 +13,7 @@ extension AppState {
     ) async -> Set<String>? {
         guard reset.apply else { return deleting }
         guard let dropped = await Self.applyCourseReset(
-            at: reset.remember, cache: .shared, on: cloudSyncCoordinator,
+            at: reset.remember, courses: .shared, on: cloudSyncCoordinator,
             mayWrite: { self.fullSyncMayWrite(since: ticket) }
         ) else { return nil }
         Defaults[.lastSeenCoursesResetAt] = reset.remember
@@ -28,17 +28,17 @@ extension AppState {
     /// caches untouched, when `mayWrite` says no after the hops, as behind the lock screen, where
     /// the protected course files read as empty.
     static func applyCourseReset(
-        at resetAt: Date, cache: DataCache, on coordinator: CloudSyncCoordinator, mayWrite: () -> Bool
+        at resetAt: Date, courses: CourseStore, on coordinator: CloudSyncCoordinator, mayWrite: () -> Bool
     ) async -> Set<String>? {
         let dropped = await coordinator.dropCourseEdits(madeBeforeReset: resetAt)
         let adding = await coordinator.courseAddKeys(unlandedAt: resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin))
         let deleting = await coordinator.pendingCourseDeleteKeys()
         guard mayWrite() else { return nil }
         let added = adding.compactMap(CourseTombstone.parts(of:))
-        cache.saveUserAddedCourses(cache.loadUserAddedCourses().filter { course in
-            added.contains { $0.courseNo == course.courseNo && DataCache.userAddedCourse(course, belongsTo: $0.semester) }
+        courses.saveUserAddedCourses(courses.loadUserAddedCourses().filter { course in
+            added.contains { $0.courseNo == course.courseNo && CourseStore.userAddedCourse(course, belongsTo: $0.semester) }
         })
-        cache.saveDeletedCourseNos(cache.loadDeletedCourseNos().filter(deleting.contains))
+        courses.saveDeletedCourseNos(courses.loadDeletedCourseNos().filter(deleting.contains))
         return dropped
     }
 
@@ -55,11 +55,11 @@ extension AppState {
             .union(tombstonesBySemester.keys)
             .union(SemesterCatalog.availableSemesters())
 
-        let selectionDropped = DataCache.shared.loadSelectionDroppedNos()
+        let selectionDropped = CourseStore.shared.loadSelectionDroppedNos()
         let studentId = authService.storedStudentId
         var coursesLeft = false
-        var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
-        var userAdded = DataCache.shared.loadUserAddedCourses()
+        var deletedNos = Set(CourseStore.shared.loadDeletedCourseNos())
+        var userAdded = CourseStore.shared.loadUserAddedCourses()
         var deletedChanged = false
         var mergedSemesters = Set<String>()
         let graceNow = Date()
@@ -67,8 +67,8 @@ extension AppState {
             graceNow.timeIntervalSince($0.value) < Self.courseDeleteGraceInterval
         }
         let deleting = Set(recentCourseDeletions.keys).union(queuedDeletes)
-        let resetAt = DataCache.shared.loadSemesterResetAt()
-        DataCache.shared.clearSemesterResets(outlivedBy: fetchedAt)
+        let resetAt = CourseStore.shared.loadSemesterResetAt()
+        CourseStore.shared.clearSemesterResets(outlivedBy: fetchedAt)
 
         for semester in semesters.sorted() {
             if resettingSemesters.contains(semester) { continue }
@@ -78,7 +78,7 @@ extension AppState {
                 selectionDropped: Set(selectionDropped[semester] ?? []), userAdded: userAdded, hidden: deletedNos,
                 adding: adding,
                 liveAnswer: studentId.flatMap { CourseSelectionService.lastAnswer(studentId: $0, semester: semester) },
-                cache: .shared,
+                courses: .shared,
                 forgetAnswer: { if let studentId { CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId) } }
             )
             let (rows, serverNos, localCourses, unlisted) = (term.rows, term.serverNos, term.localCourses, term.unlisted)
@@ -97,7 +97,7 @@ extension AppState {
 
             for courseNo in unlisted.hide { hide(courseNo) }
             let manualBefore = userAdded.count
-            userAdded.removeAll { DataCache.userAddedCourse($0, belongsTo: semester) && unlisted.drop.contains($0.courseNo) }
+            userAdded.removeAll { CourseStore.userAddedCourse($0, belongsTo: semester) && unlisted.drop.contains($0.courseNo) }
 
             guard !term.serverHoldsNothing else {
                 let uploadable = localCourses.filter { !isHidden($0.courseNo) }
@@ -117,7 +117,7 @@ extension AppState {
 
             let localNames = Dictionary(localCourses.map { ($0.courseNo, $0.courseName) }, uniquingKeysWith: { first, _ in first })
             var knownNos = Set(localCourses.map(\.courseNo))
-            for (index, existing) in userAdded.enumerated() where DataCache.userAddedCourse(existing, belongsTo: semester) {
+            for (index, existing) in userAdded.enumerated() where CourseStore.userAddedCourse(existing, belongsTo: semester) {
                 knownNos.insert(existing.courseNo)
                 guard existing.schedule.isEmpty,
                       let row = rows.first(where: { $0["course_no"] as? String == existing.courseNo }),
@@ -138,15 +138,14 @@ extension AppState {
         }
 
         if deletedChanged {
-            DataCache.shared.saveDeletedCourseNos(Array(deletedNos))
+            CourseStore.shared.saveDeletedCourseNos(Array(deletedNos))
         }
         guard !mergedSemesters.isEmpty else { return deletedChanged || coursesLeft }
-        DataCache.shared.saveUserAddedCourses(userAdded)
+        CourseStore.shared.saveUserAddedCourses(userAdded)
         Task {
             for semester in mergedSemesters {
                 _ = await AppServiceBridge.refreshUserAddedCourses(semester: semester, authService: authService)
             }
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
         return true
     }
@@ -163,25 +162,25 @@ extension AppState {
     }
 
     /// Reads one term of the snapshot against this device's courses. A course a roster dropped on
-    /// the server leaves the fetched courses in `cache` with no hide, so a later roster from here
+    /// the server leaves the fetched courses in `courses` with no hide, so a later roster from here
     /// can bring it back, and stays out of fetches without a roster until one does; a course
     /// selection answer cached before the drop that lists one is forgotten, or the next fetch
     /// would draw it again.
     static func readTerm(
         _ semester: String, rows termRows: [[String: Any]], tombstones: [[String: Any]],
         selectionDropped: Set<String>, userAdded: [SDCourse], hidden: Set<String>, adding: Set<String>,
-        liveAnswer: CourseSelectionService.LiveAnswer?, cache: DataCache, forgetAnswer: () -> Void
+        liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore, forgetAnswer: () -> Void
     ) -> TermRead {
         let droppedOnServer = Self.droppedOnServer(termRows, liveAnswer: liveAnswer)
-        cache.saveServerDroppedNos(droppedOnServer, semester: semester)
+        courses.saveServerDroppedNos(droppedOnServer, semester: semester)
         let rows = keptRows(
             termRows, semester: semester, dropped: selectionDropped, userAdded: userAdded, liveAnswer: liveAnswer
         )
         let serverNos = Set(rows.compactMap { $0["course_no"] as? String })
-        let fetched = cache.loadCourses(semester: semester)
+        let fetched = courses.loadCourses(semester: semester)
         let localCourses = fetched.filter { !droppedOnServer.contains($0.courseNo) }
         let left = Set(fetched.map(\.courseNo)).subtracting(localCourses.map(\.courseNo))
-        cache.removeCourses(droppedOnServer, semester: semester)
+        courses.removeCourses(droppedOnServer, semester: semester)
         if liveAnswer?.courseNos.contains(where: droppedOnServer.contains) == true { forgetAnswer() }
         let tombstoned = tombstones.compactMap { tombstone -> String? in
             let ownReset = (tombstone["deleted_by_reset"] as? Bool ?? false)
@@ -191,7 +190,7 @@ extension AppState {
         let unlisted = unlistedCourses(
             in: semester, listed: serverNos, tombstoned: Set(tombstoned),
             fetched: Set(localCourses.map(\.courseNo)),
-            handAdded: Set(userAdded.filter { DataCache.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo)),
+            handAdded: Set(userAdded.filter { CourseStore.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo)),
             droppedMerges: droppedMerges(userAdded, semester: semester, dropped: selectionDropped.union(droppedOnServer)),
             hidden: hidden, adding: adding
         )
@@ -245,7 +244,7 @@ extension AppState {
     /// Moodle ID; one added on another device keeps its `user_added` row in `keptRows`.
     static func droppedMerges(_ userAdded: [SDCourse], semester: String, dropped: Set<String>) -> Set<String> {
         Set(userAdded.filter {
-            $0.moodleIdNumber != nil && dropped.contains($0.courseNo) && DataCache.userAddedCourse($0, belongsTo: semester)
+            $0.moodleIdNumber != nil && dropped.contains($0.courseNo) && CourseStore.userAddedCourse($0, belongsTo: semester)
         }.map(\.courseNo))
     }
 
@@ -258,7 +257,7 @@ extension AppState {
         liveAnswer: CourseSelectionService.LiveAnswer? = nil
     ) -> [[String: Any]] {
         let addedHere = Set(userAdded.filter {
-            $0.moodleIdNumber == nil && DataCache.userAddedCourse($0, belongsTo: semester)
+            $0.moodleIdNumber == nil && CourseStore.userAddedCourse($0, belongsTo: semester)
         }.map(\.courseNo))
         let dropped = dropped.union(droppedOnServer(rows, liveAnswer: liveAnswer))
         return rows.filter { row in

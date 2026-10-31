@@ -56,13 +56,13 @@ final class NTUSTSessionManager {
     let cookieStorage: HTTPCookieStorage = HTTPCookieStorage
         .sharedCookieStorage(forGroupContainerIdentifier: "group.org.ntust.app.TigerDuck")
 
-    private static let cookieTTL: TimeInterval = 3600
+    private static let cookieFreshness = FreshnessPolicy(lifetime: 3600)
 
     var cookiesValid: Bool {
         guard let timestamp = Defaults[.ssoLoginTimestamp] else {
             return false
         }
-        return Date().timeIntervalSince1970 - timestamp < Self.cookieTTL
+        return Self.cookieFreshness.isFresh(storedAt: Date(timeIntervalSince1970: timestamp))
     }
 
     /// Server-side probe (~30ms warm): GET `ssoam2.ntust.edu.tw/` and look for a

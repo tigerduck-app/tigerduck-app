@@ -5,11 +5,12 @@ import UniformTypeIdentifiers
 
 struct MoodleCacheContext {
     let account: String
-    let cache: DataCache
+    let cache: MoodleFiles
+    var assignments: AssignmentStore = .shared
     let isCurrent: () -> Bool
     var now: () -> Date = { Date() }
 
-    static func signedIn(_ authService: AuthService, cache: DataCache = .shared) -> MoodleCacheContext? {
+    static func signedIn(_ authService: AuthService, cache: MoodleFiles = .shared) -> MoodleCacheContext? {
         guard let account = authService.storedStudentId else { return nil }
         return MoodleCacheContext(account: account, cache: cache, isCurrent: authService.session.currentCheck())
     }

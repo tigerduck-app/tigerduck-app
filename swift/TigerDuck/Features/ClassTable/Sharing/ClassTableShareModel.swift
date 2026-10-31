@@ -114,11 +114,11 @@ final class ClassTableShareModel: Identifiable {
 }
 
 extension ClassTableShareModel {
-    static func terms(in semesters: [String], cache: DataCache = .shared, shownTerm: Term? = nil) -> [Term] {
+    static func terms(in semesters: [String], courses cache: CourseStore = .shared, shownTerm: Term? = nil) -> [Term] {
         let hidden = Set(cache.loadDeletedCourseNos())
         return semesters.compactMap { semester in
             let courses = courses(
-                in: semester, hidden: hidden, cache: cache,
+                in: semester, hidden: hidden, courses: cache,
                 shownTerm: shownTerm?.semester == semester ? shownTerm : nil
             )
             return courses.isEmpty ? nil : Term(semester: semester, courses: courses)
@@ -129,13 +129,13 @@ extension ClassTableShareModel {
         studentId: String?,
         shownTerm: Term,
         semesters: [String],
-        cache: DataCache = .shared
+        courses cache: CourseStore = .shared
     ) -> Bool {
         guard let studentId, ClassTableShareCode.isUpperAlphanumerics(studentId.uppercased()[...]) else { return false }
         let hidden = Set(cache.loadDeletedCourseNos())
         return semesters.contains { semester in
             !courses(
-                in: semester, hidden: hidden, cache: cache,
+                in: semester, hidden: hidden, courses: cache,
                 shownTerm: shownTerm.semester == semester ? shownTerm : nil
             ).isEmpty
         }
@@ -155,7 +155,7 @@ extension ClassTableShareModel {
         studentId: String?,
         shownTerm: Term,
         semesters: [String],
-        cache: DataCache = .shared,
+        courses cache: CourseStore = .shared,
         memo: AvailabilityMemo
     ) -> Bool {
         let key = Availability(
@@ -163,12 +163,12 @@ extension ClassTableShareModel {
             semesters: semesters, cacheRevision: cache.revision
         )
         return memo.value(for: key) {
-            canShare(studentId: studentId, shownTerm: shownTerm, semesters: semesters, cache: cache)
+            canShare(studentId: studentId, shownTerm: shownTerm, semesters: semesters, courses: cache)
         }
     }
 
     private static func courses(
-        in semester: String, hidden: Set<String>, cache: DataCache, shownTerm: Term?
+        in semester: String, hidden: Set<String>, courses cache: CourseStore, shownTerm: Term?
     ) -> [SDCourse] {
         guard ClassTableShareCode.isSemester(semester.uppercased()[...]) else { return [] }
         if let shownTerm {

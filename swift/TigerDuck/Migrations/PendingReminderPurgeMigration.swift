@@ -9,8 +9,8 @@ enum PendingReminderPurgeMigration {
     static func runIfNeeded(
         center: PendingReminderPurgeCenter = UNUserNotificationCenter.current()
     ) async {
-        guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
-        defer { UserDefaults.standard.set(true, forKey: doneKey) }
+        guard !AppUserDefaults.standard.bool(forKey: doneKey) else { return }
+        defer { AppUserDefaults.standard.set(true, forKey: doneKey) }
         await purgeLegacyReminders(center: center)
     }
 

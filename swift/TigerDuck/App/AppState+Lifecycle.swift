@@ -37,7 +37,7 @@ extension AppState {
                 self.reconcileNotificationSettings(onSettled: onSettled)
             }
             await MoodleDownloadProtectMigration.runIfNeeded(
-                root: DataCache.shared.moodleFilesDir,
+                root: MoodleFiles.shared.moodleFilesDir,
                 isProtectedDataAvailable: UIApplication.shared.isProtectedDataAvailable
             )
             #endif

@@ -123,7 +123,7 @@ struct MoodleCourseForumsTests {
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleCourseForumsTests-\(UUID().uuidString)", isDirectory: true)
-        lazy var cache = DataCache(
+        lazy var cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -143,7 +143,7 @@ struct MoodleCourseForumsTests {
             courseId: courseId,
             termCourseIds: [20103, courseId],
             context: MoodleCacheContext(
-                account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }, now: now
+                account: account, cache: folder.cache.moodle, isCurrent: { signedIn.withLock { $0 } }, now: now
             ),
             api: api ?? site.api
         )
@@ -383,10 +383,10 @@ struct MoodleCourseForumsTests {
         #expect(again.discussions(of: Self.qanda).list?.discussions.map(\.id) == [801])
         #expect(again.discussions(of: Self.project).list?.discussions.map(\.id) == [811])
         #expect(again.thread(of: Self.discussion(801)).value?.posts.map(\.id) == [1801, 1802])
-        #expect(folder.cache.loadMoodleData(
+        #expect(folder.cache.moodle.loadMoodleData(
             MoodleDiscussionList.self, name: "courses/\(Self.courseId)/forums/502", account: "B11399001"
         ) != nil)
-        #expect(folder.cache.loadMoodleData(
+        #expect(folder.cache.moodle.loadMoodleData(
             MoodleDiscussionThread.self, name: "courses/\(Self.courseId)/discussions/801", account: "B11399001"
         ) != nil)
 
@@ -406,7 +406,7 @@ struct MoodleCourseForumsTests {
         await store.discussions(of: Self.qanda).refresh()
         await store.refreshThread(of: Self.discussion(801))
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
         let afterSignOut = Self.store(folder, site: Site())
         #expect(afterSignOut.discussions(of: Self.qanda).list == nil)
         #expect(afterSignOut.thread(of: Self.discussion(801)).value == nil)
@@ -416,7 +416,7 @@ struct MoodleCourseForumsTests {
         signedIn.withLock { $0 = false }
         await late.refreshThread(of: Self.discussion(801))
         #expect(late.thread(of: Self.discussion(801)).value == nil)
-        #expect(folder.cache.loadMoodleData(
+        #expect(folder.cache.moodle.loadMoodleData(
             MoodleDiscussionThread.self, name: "courses/\(Self.courseId)/discussions/801", account: "B11399001"
         ) == nil)
     }

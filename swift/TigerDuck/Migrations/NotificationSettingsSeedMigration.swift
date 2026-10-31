@@ -6,9 +6,9 @@ enum NotificationSettingsSeedMigration {
     static func runIfNeeded(
         reconcile: (_ onSettled: @escaping @MainActor () -> Void) -> Void
     ) {
-        guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
+        guard !AppUserDefaults.standard.bool(forKey: doneKey) else { return }
         reconcile {
-            UserDefaults.standard.set(true, forKey: doneKey)
+            AppUserDefaults.standard.set(true, forKey: doneKey)
         }
     }
 }

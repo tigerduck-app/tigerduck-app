@@ -61,7 +61,7 @@ extension AppState {
         return ScheduleSyncService.Inputs(
             now: AppClock.now(),
             courses: { self.courseProvider.currentCourses(semester: $0) },
-            assignments: DataCache.shared.loadAssignments(),
+            assignments: AssignmentStore.shared.loadAssignments(),
             preferences: liveActivityPreferences,
             cloudSyncEnabled: cloudSyncEnabled,
             accentHex: accentColorHex,

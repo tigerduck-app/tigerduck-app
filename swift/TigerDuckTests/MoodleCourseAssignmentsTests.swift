@@ -45,8 +45,8 @@ struct MoodleCourseAssignmentsTests {
     )
 
     private static func round(_ records: [MoodleAssignmentRecord], in folder: Folder, account: String = account) {
-        folder.cache.saveMoodleData(records, fetchedAt: Date(), name: MoodleAssignmentRecord.cacheName, account: account)
-        folder.cache.saveAssignments(records.filter { $0.dueDate != nil && !$0.noSubmissions }.map { assignment($0.assignId) })
+        folder.cache.moodle.saveMoodleData(records, fetchedAt: Date(), name: MoodleAssignmentRecord.cacheName, account: account)
+        folder.cache.assignments.saveAssignments(records.filter { $0.dueDate != nil && !$0.noSubmissions }.map { assignment($0.assignId) })
     }
 
     private final class Site: @unchecked Sendable {
@@ -119,7 +119,7 @@ struct MoodleCourseAssignmentsTests {
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleCourseAssignmentsTests-\(UUID().uuidString)", isDirectory: true)
-        lazy var cache = DataCache(
+        lazy var cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -132,7 +132,8 @@ struct MoodleCourseAssignmentsTests {
         account: String = account,
         signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true)
     ) -> MoodleCacheContext {
-        MoodleCacheContext(account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } })
+        MoodleCacheContext(
+            account: account, cache: folder.cache.moodle, assignments: folder.cache.assignments, isCurrent: { signedIn.withLock { $0 } })
     }
 
     private static func store(
@@ -150,7 +151,7 @@ struct MoodleCourseAssignmentsTests {
     }
 
     private func cachedSubmission(_ folder: Folder, of id: Int) -> MoodleAssignmentSubmission? {
-        folder.cache.loadMoodleData(
+        folder.cache.moodle.loadMoodleData(
             MoodleAssignmentSubmission.self, name: "courses/\(Self.courseId)/assignments/\(id)", account: Self.account
         )?.value
     }
@@ -437,7 +438,7 @@ struct MoodleCourseAssignmentsTests {
         #expect(!MoodleCourseAssignments.records(in: Self.context(folder)).isEmpty)
         #expect(cachedSubmission(folder, of: 701) != nil)
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
 
         #expect(MoodleCourseAssignments.records(in: Self.context(folder)).isEmpty)
         #expect(cachedSubmission(folder, of: 701) == nil)

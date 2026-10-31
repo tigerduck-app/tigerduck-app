@@ -36,7 +36,7 @@ struct CourseRequireOptionTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("CourseRequireOptionTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -44,9 +44,9 @@ struct CourseRequireOptionTests {
                                 requireOption: "R")
         let unknown = SDCourse(courseNo: "GE1001", courseName: "通識課", semester: "1151")
 
-        cache.saveUserAddedCourses([required, unknown])
+        cache.courses.saveUserAddedCourses([required, unknown])
 
-        let loaded = cache.loadUserAddedCourses()
+        let loaded = cache.courses.loadUserAddedCourses()
         #expect(loaded.first { $0.courseNo == "CS1003301" }?.requireOption == "R")
         #expect(loaded.first { $0.courseNo == "GE1001" }?.requireOption == "")
     }

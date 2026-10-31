@@ -12,16 +12,15 @@ final class WidgetSnapshotWriter {
     private let isLoggedIn: @MainActor () -> Bool
     private let accentColorHex: @MainActor () -> Int
     private let courseProvider: CanonicalCourseProvider
-    private let cache: DataCache
+    private let courses: CourseStore
     private let isProtectedDataAvailable: @MainActor () -> Bool
     private var owesForcedReload = false
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "WidgetWriter")
 
-    private var observers: [NSObjectProtocol] = []
 
     convenience init(
         appState: AppState,
-        cache: DataCache? = nil,
+        courses: CourseStore? = nil,
         store: WidgetSnapshotStore? = nil,
         coordinator: WidgetReloadCoordinator? = nil,
         courseProvider: CanonicalCourseProvider? = nil
@@ -29,7 +28,7 @@ final class WidgetSnapshotWriter {
         self.init(
             isLoggedIn: { appState.authService.hasStoredCredentials },
             accentColorHex: { appState.accentColorHex },
-            cache: cache,
+            courses: courses,
             store: store,
             coordinator: coordinator,
             courseProvider: courseProvider
@@ -39,7 +38,7 @@ final class WidgetSnapshotWriter {
     init(
         isLoggedIn: @escaping @MainActor () -> Bool,
         accentColorHex: @escaping @MainActor () -> Int,
-        cache: DataCache? = nil,
+        courses: CourseStore? = nil,
         store: WidgetSnapshotStore? = nil,
         coordinator: WidgetReloadCoordinator? = nil,
         courseProvider: CanonicalCourseProvider? = nil,
@@ -52,17 +51,10 @@ final class WidgetSnapshotWriter {
         #endif
         self.isLoggedIn = isLoggedIn
         self.accentColorHex = accentColorHex
-        self.cache = cache ?? .shared
+        self.courses = courses ?? .shared
         self.store = store ?? WidgetSnapshotStore()
         self.coordinator = coordinator ?? WidgetReloadCoordinator()
         self.courseProvider = courseProvider ?? CanonicalCourseProvider()
-        attachObservers()
-    }
-
-    deinit {
-        for token in observers {
-            NotificationCenter.default.removeObserver(token)
-        }
     }
 
     private static let outsideTermHorizonDays = 366 + 7
@@ -86,8 +78,8 @@ final class WidgetSnapshotWriter {
         let forceReload = forceReload || owesForcedReload
         owesForcedReload = false
         let courses = courseProvider.currentCourses()
-        let customNames = cache.loadCourseCustomNamesFlat()
-        let colorMap = cache.loadCourseColorMap()
+        let customNames = self.courses.loadCourseCustomNamesFlat()
+        let colorMap = CourseColorStore.shared.files.loadCourseColorMap()
         let snapshot = WidgetSnapshotBuilder.build(
             .init(
                 courses: courses,
@@ -118,29 +110,5 @@ final class WidgetSnapshotWriter {
         var candidate = snapshot
         candidate.generatedAt = other.generatedAt
         return candidate == other
-    }
-
-    private func attachObservers() {
-        let center = NotificationCenter.default
-        var names: [(name: Notification.Name, forceReload: Bool)] = [
-            (AppConstants.dataDidUpdate, false),
-            (AppConstants.languageDidChange, true),
-            (AppConstants.courseSkipStateDidChange, false),
-            (AppConstants.holidayNotifyDidChange, false),
-            (AppConstants.courseColorMapDidChange, false),
-            (AppConstants.accentColorDidChange, false),
-            (NSLocale.currentLocaleDidChangeNotification, true),
-        ]
-        #if DEBUG
-        names.append((DebugClockController.didChangeNotification, false))
-        #endif
-        for (name, forceReload) in names {
-            let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.regenerate(forceReload: forceReload)
-                }
-            }
-            observers.append(token)
-        }
     }
 }

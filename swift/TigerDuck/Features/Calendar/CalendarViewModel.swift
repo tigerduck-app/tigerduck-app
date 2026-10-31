@@ -14,11 +14,7 @@ final class CalendarViewModel {
     private(set) var calendarDays: [Date?] = CalendarViewModel.buildCalendarDays(for: .now)
 
     private var hasLoaded = false
-    // `nonisolated(unsafe)` lets `deinit`, nonisolated under Swift 6, read this to
-    // remove the observer. `@ObservationIgnored` is required: without it `@Observable`
-    // makes this a computed accessor, and the modifier has no effect (a warning).
-    @ObservationIgnored
-    private nonisolated(unsafe) var dataObserver: Any? = nil
+    @ObservationIgnored private var storeObservation: StoreObservation?
 
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] = [:]
 
@@ -51,25 +47,10 @@ final class CalendarViewModel {
         guard !hasLoaded else { return }
         hasLoaded = true
 
-        setEvents(DataCache.shared.loadCalendarEvents())
+        setEvents(AssignmentStore.shared.loadCalendarEvents())
 
-        dataObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.dataDidUpdate,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // Delivered on the main queue, but the closure crosses into this
-            // @MainActor class, so hop explicitly to make calling `setEvents` sound
-            // under Swift 6 strict concurrency.
-            Task { @MainActor [weak self] in
-                self?.setEvents(DataCache.shared.loadCalendarEvents())
-            }
-        }
-    }
-
-    deinit {
-        if let observer = dataObserver {
-            NotificationCenter.default.removeObserver(observer)
+        storeObservation = StoreObservation(read: { _ = AppDataRevision.current }) { [weak self] in
+            self?.setEvents(AssignmentStore.shared.loadCalendarEvents())
         }
     }
 
@@ -104,8 +85,8 @@ final class CalendarViewModel {
                 return
             }
             let updated = moodle + (school ?? events.filter { $0.source == .school })
+            AssignmentStore.shared.saveCalendarEvents(updated)
             setEvents(updated)
-            DataCache.shared.saveCalendarEvents(updated)
             manager.loadingState = .loaded
         }
     }

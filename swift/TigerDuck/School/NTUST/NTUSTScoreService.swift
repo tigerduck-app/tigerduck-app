@@ -22,7 +22,7 @@ enum NTUSTScoreService {
         "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/StuScoreQuery/DisplayAll"
     )
 
-    static let scoreReportCacheTTL: TimeInterval = 86_400
+    static let scoreReportFreshness = FreshnessPolicy(lifetime: 86_400)
 
     static func fetchScoreReport(
         session: URLSession,
@@ -32,8 +32,8 @@ enum NTUSTScoreService {
         persistGuard: (@Sendable () -> Bool)? = nil
     ) async throws -> (report: ScoreReport, cachedAt: Date) {
         if !forceRefresh,
-           let cached = DataCache.shared.loadScoreReport(studentId: studentId),
-           Date().timeIntervalSince(cached.cachedAt) < scoreReportCacheTTL {
+           let cached = ScoreReportFiles.shared.loadScoreReport(studentId: studentId),
+           scoreReportFreshness.isFresh(storedAt: cached.cachedAt) {
             return cached
         }
 
@@ -64,17 +64,17 @@ enum NTUSTScoreService {
         }
 
         if persistGuard?() ?? true {
-            DataCache.shared.saveScoreReport(report, studentId: studentId)
+            ScoreReportFiles.shared.saveScoreReport(report, studentId: studentId)
         }
         return (report, Date())
     }
 
     static func cachedScoreReport(studentId: String) -> (report: ScoreReport, cachedAt: Date)? {
-        DataCache.shared.loadScoreReport(studentId: studentId)
+        ScoreReportFiles.shared.loadScoreReport(studentId: studentId)
     }
 
     static func invalidateCache(studentId: String) {
-        DataCache.shared.invalidateScoreReport(studentId: studentId)
+        ScoreReportFiles.shared.invalidateScoreReport(studentId: studentId)
     }
 
     private static func fetchHTML(

@@ -11,7 +11,7 @@ struct TriggersDebugView: View {
         Form {
             Section {
                 Button("Trigger What's New on next open") {
-                    UserDefaults.standard.removeObject(
+                    AppUserDefaults.standard.removeObject(
                         forKey: AppConstants.UserDefaultsKeys.lastShownWhatsNewVersion
                     )
                     statusMessage = "Cleared lastShownWhatsNewVersion. Cold-launch or scene-active fires the sheet."

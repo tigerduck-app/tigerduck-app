@@ -1,7 +1,7 @@
 import Foundation
 
 enum MoodleEnrolledCoursesService {
-    static let answerLifetime: TimeInterval = 60
+    static let answerFreshness = FreshnessPolicy(lifetime: 60)
 
     private static var answer: (token: String?, startedAt: Date, task: Task<[MoodleEnrolledCourse], Error>)?
 
@@ -14,7 +14,7 @@ enum MoodleEnrolledCoursesService {
         now: Date,
         fetch: @escaping () async throws -> [MoodleEnrolledCourse]
     ) async throws -> [MoodleEnrolledCourse] {
-        if let answer, answer.token == token, now.timeIntervalSince(answer.startedAt) < answerLifetime {
+        if let answer, answer.token == token, answerFreshness.isFresh(storedAt: answer.startedAt, now: now) {
             return try await answer.task.value
         }
         let task = Task { try await fetch() }

@@ -28,7 +28,7 @@ nonisolated enum MoodleFileOwner: Hashable, Sendable {
 final class MoodleFileDownloads {
     typealias Fetch = @Sendable (_ file: MoodleFile, _ progress: @escaping @Sendable (Double) -> Void) async throws -> URL
 
-    static let shared = MoodleFileDownloads(root: DataCache.shared.moodleFilesDir)
+    static let shared = MoodleFileDownloads(root: MoodleFiles.shared.moodleFilesDir)
 
     nonisolated let root: URL
     private var progress: [URL: Double] = [:]

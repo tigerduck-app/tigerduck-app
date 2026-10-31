@@ -27,32 +27,20 @@ final class HomeViewModel {
     var allAssignmentsCache: [SDAssignment] = []
 
     private var hasLoaded = false
-    private var isUpdatingFromNetwork = false
-    private var dataObserver: Any?
+    @ObservationIgnored private var storeObservation: StoreObservation?
 
     private var isRefreshing = false
     private let courseProvider = CanonicalCourseProvider()
 
     init() {
-        dataObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.dataDidUpdate,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard self?.isUpdatingFromNetwork != true else { return }
+        storeObservation = StoreObservation(read: { _ = AppDataRevision.current }) { [weak self] in
             self?.reloadFromCache()
-        }
-    }
-
-    deinit {
-        if let observer = dataObserver {
-            NotificationCenter.default.removeObserver(observer)
         }
     }
 
     private func reloadFromCache() {
         let courses = courseProvider.currentCourses()
-        let assignments = DataCache.shared.loadAssignments()
+        let assignments = AssignmentStore.shared.loadAssignments()
         TigerDuckTheme.ensureAssignments(courseNos: courses.map(\.courseNo))
         allCourses = courses
         todayCourses = courses.coursesForToday()
@@ -138,22 +126,10 @@ final class HomeViewModel {
         await MainActor.run { manager.loadingState = .loading }
 
         MoodleEnrolledCoursesService.dropSharedAnswer()
-        let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
-        let allCourses = courseProvider.currentCourses()
-        let todayFiltered = allCourses.coursesForToday()
-        let semesterFiltered = filterToCurrentSemester(fetchedAssignments, courses: allCourses)
-
-        await MainActor.run {
-            isUpdatingFromNetwork = true
-            TigerDuckTheme.ensureAssignments(courseNos: allCourses.map(\.courseNo))
-            self.allCourses = allCourses
-            todayCourses = todayFiltered
-            allAssignmentsCache = semesterFiltered
-            recomputeUpcomingAssignments()
-            manager.loadingState = .loaded
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            isUpdatingFromNetwork = false
-        }
+        _ = await AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
+        // Read back from the store, so a mark made while the round ran stays.
+        reloadFromCache()
+        manager.loadingState = .loaded
     }
 
     private func defaultSections() -> [HomeSection] {
@@ -187,54 +163,44 @@ final class HomeViewModel {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
         withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isArchived = true
-            DataCache.shared.addArchivedAssignmentId(assignment.assignmentId)
+            AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, true))
             if allAssignmentsCache[idx].isLocallyCompleted {
                 allAssignmentsCache[idx].isLocallyCompleted = false
-                DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
+                AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false))
             }
             recomputeUpcomingAssignments()
         }
-        broadcastAssignmentChange()
     }
 
     func unarchiveAssignment(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
         withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isArchived = false
-            DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
+            AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, false))
             recomputeUpcomingAssignments()
         }
-        broadcastAssignmentChange()
     }
 
     func markAssignmentAsLocallyCompleted(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
         withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isLocallyCompleted = true
-            DataCache.shared.addLocallyCompletedAssignmentId(assignment.assignmentId)
+            AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, true))
             if allAssignmentsCache[idx].isArchived {
                 allAssignmentsCache[idx].isArchived = false
-                DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
+                AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, false))
             }
             recomputeUpcomingAssignments()
         }
-        broadcastAssignmentChange()
     }
 
     func undoLocallyCompleted(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
         withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isLocallyCompleted = false
-            DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
+            AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false))
             recomputeUpcomingAssignments()
         }
-        broadcastAssignmentChange()
-    }
-
-    private func broadcastAssignmentChange() {
-        isUpdatingFromNetwork = true
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        isUpdatingFromNetwork = false
     }
 
     func show(_ page: MoodleAssignmentPage, closingSheet: Bool = true) {

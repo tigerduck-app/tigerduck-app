@@ -52,11 +52,11 @@ struct FluidGlassTrackView: View {
                             topTrailingRadius: top
                         )
                         segment
-                            .fill(slot.course.color.opacity(slot.isCancelled ? 0.06 : segOpacity))
+                            .fill(slot.color.opacity(slot.isCancelled ? 0.06 : segOpacity))
                             .overlay {
                                 if slot.isCancelled {
                                     segment.strokeBorder(
-                                        slot.course.color.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                                        slot.color.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2])
                                     )
                                 }
                             }
@@ -149,7 +149,7 @@ struct FluidGlassTrackView: View {
             return Color.textPrimary
         }
         if case .inClass(let slots) = viewModel.currentCourseState, let slot = slots.first(where: { !$0.isCancelled }) {
-            return slot.course.color
+            return slot.color
         }
         return Color.textPrimary
     }

@@ -137,20 +137,20 @@ struct CourseColorMapLockedTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("CourseColorMapLockedTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let cache = DataCache(
-            cacheDir: root.appendingPathComponent("cache", isDirectory: true),
-            persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
-        )
-        #expect(cache.loadCourseColorMapIfReadable() == [:])
+        let colors = CourseColorFiles(folders: CacheFolders(
+            cache: root.appendingPathComponent("cache", isDirectory: true),
+            persistent: root.appendingPathComponent("persistent", isDirectory: true)
+        ))
+        #expect(colors.loadCourseColorMapIfReadable() == [:])
 
-        cache.saveCourseColorMap(["CS1010001": 0x123456])
-        #expect(cache.loadCourseColorMapIfReadable() == ["CS1010001": 0x123456])
+        colors.saveCourseColorMap(["CS1010001": 0x123456])
+        #expect(colors.loadCourseColorMapIfReadable() == ["CS1010001": 0x123456])
 
         // Mode 000 stands in for the lock screen: the file is there and does not open.
         let file = root.appendingPathComponent("persistent/course_color_map.json")
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path) }
-        #expect(cache.loadCourseColorMapIfReadable() == nil)
+        #expect(colors.loadCourseColorMapIfReadable() == nil)
     }
 
     @Test func aMapThatDoesNotDecodeFallsBackToTheEarlierColours() throws {
@@ -158,10 +158,12 @@ struct CourseColorMapLockedTests {
             .appendingPathComponent("CourseColorMapLockedTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let persistent = root.appendingPathComponent("persistent", isDirectory: true)
-        let cache = DataCache(cacheDir: root.appendingPathComponent("cache", isDirectory: true), persistentDir: persistent)
+        let colors = CourseColorFiles(folders: CacheFolders(
+            cache: root.appendingPathComponent("cache", isDirectory: true), persistent: persistent
+        ))
         try Data("not json".utf8).write(to: persistent.appendingPathComponent("course_color_map.json"))
         try Data(#"{"CS1010001":1}"#.utf8).write(to: persistent.appendingPathComponent("course_custom_colors.json"))
 
-        #expect(cache.loadCourseColorMapIfReadable() == ["CS1010001": 0x4ECDC4])
+        #expect(colors.loadCourseColorMapIfReadable() == ["CS1010001": 0x4ECDC4])
     }
 }

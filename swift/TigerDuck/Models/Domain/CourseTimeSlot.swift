@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import TigerDuckCore
 
 struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
@@ -9,7 +10,12 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
     }
 
     let id: String
-    let course: SDCourse
+    /// The course's number; the course itself is read from the store or the list the slot came
+    /// from, so a slot never holds an edited course's old copy.
+    let courseKey: String
+    /// The course's name and teacher as the slot was built.
+    let title: String
+    let instructor: String
     let start: Date
     let end: Date
     let date: Date
@@ -19,14 +25,51 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
     /// The timetable's time, kept only when a change moved it.
     var originalStart: Date?
     var originalEnd: Date?
+    /// Whether the user skips the course on `date`.
+    let isSkipped: Bool
+    private let roomMap: [String: String]
+    private let fallbackRoom: String
 
+    init(
+        id: String, course: SDCourse, start: Date, end: Date, date: Date, periods: [String] = [],
+        changes: [CourseChange] = [], originalStart: Date? = nil, originalEnd: Date? = nil
+    ) {
+        self.id = id
+        courseKey = course.courseNo
+        title = course.displayName
+        instructor = course.instructor
+        self.start = start
+        self.end = end
+        self.date = date
+        self.periods = periods
+        self.changes = changes
+        self.originalStart = originalStart
+        self.originalEnd = originalEnd
+        isSkipped = course.isSkipped(on: date)
+        roomMap = course.classroomMap
+        fallbackRoom = SDCourse.dedup(course.classroom)
+    }
+
+    var color: Color { TigerDuckTheme.courseColor(for: courseKey) }
     var isCancelled: Bool { changes.contains { $0.kind == .cancelled } }
     var notes: [CourseChange] { changes.filter { $0.kind == .note } }
     var room: String {
-        changes.first { $0.kind == .room }?.room
-            ?? course.classroom(weekday: date.scheduleWeekday, periods: periods)
+        changes.first { $0.kind == .room }?.room ?? timetableRoom(of: periods)
     }
-    var isSkippedOrCancelled: Bool { isCancelled || course.isSkipped(on: date) }
+    var isSkippedOrCancelled: Bool { isCancelled || isSkipped }
+
+    /// The timetable's room of some of its periods.
+    func timetableRoom(of periods: [String]) -> String {
+        CourseBlockRoom.room(weekday: date.scheduleWeekday, periods: periods, map: roomMap, fallback: fallbackRoom)
+    }
+
+    func timetableRoom(period: String) -> String {
+        roomMap["\(date.scheduleWeekday)-\(period)"] ?? ""
+    }
+
+    func course(in courses: [SDCourse]) -> SDCourse? {
+        courses.first { $0.courseNo == courseKey }
+    }
     var hasChangedRoom: Bool { changes.contains { $0.kind == .room } }
     var hasChangedTime: Bool { originalStart != nil || originalEnd != nil }
 

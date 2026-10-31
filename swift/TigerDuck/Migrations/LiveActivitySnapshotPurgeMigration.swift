@@ -6,11 +6,11 @@ enum LiveActivitySnapshotPurgeMigration {
     private static let doneKey = "LiveActivitySnapshotPurgeMigration.v1.done"
 
     static func runIfNeeded(
-        appGroup: UserDefaults? = UserDefaults(suiteName: "group.org.ntust.app.TigerDuck")
+        appGroup: UserDefaults? = AppUserDefaults.suite("group.org.ntust.app.TigerDuck")
     ) {
-        guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
+        guard !AppUserDefaults.standard.bool(forKey: doneKey) else { return }
         appGroup?.removeObject(forKey: legacySnapshotKey)
-        UserDefaults.standard.removeObject(forKey: legacySnapshotKey)
-        UserDefaults.standard.set(true, forKey: doneKey)
+        AppUserDefaults.standard.removeObject(forKey: legacySnapshotKey)
+        AppUserDefaults.standard.set(true, forKey: doneKey)
     }
 }

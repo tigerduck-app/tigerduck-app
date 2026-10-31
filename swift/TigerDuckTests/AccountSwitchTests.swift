@@ -62,7 +62,7 @@ struct AccountSwitchTests {
     @MainActor
     private struct Device {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let cache: DataCache
+        let cache: TestCache
         let keychain = MemoryKeychain.locked()
         #if os(iOS)
         let mailPrefs = InMemoryMailPreferences()
@@ -71,7 +71,7 @@ struct AccountSwitchTests {
         #endif
 
         init() {
-            cache = DataCache(
+            cache = TestCache(
                 cacheDir: root.appendingPathComponent("cache", isDirectory: true),
                 persistentDir: root.appendingPathComponent("data", isDirectory: true)
             )
@@ -80,10 +80,10 @@ struct AccountSwitchTests {
         var storage: AccountStorage {
             #if os(iOS)
             AccountStorage(
-                cache: cache, mailPreferences: mailPrefs, mailCredentials: MailCredentialStore(storage: mailSecrets)
+                folders: cache.folders, mailPreferences: mailPrefs, mailCredentials: MailCredentialStore(storage: mailSecrets)
             )
             #else
-            AccountStorage(cache: cache)
+            AccountStorage(folders: cache.folders)
             #endif
         }
 
@@ -105,24 +105,24 @@ struct AccountSwitchTests {
 
         /// The school account's stores, the imported class tables among them without loading the store.
         func fillSchool() throws {
-            cache.saveCourses([], semester: semester)
-            cache.saveUserAddedCourses([])
-            cache.saveDeletedCourseNos(["CS1001"])
-            cache.saveSelectionDroppedNos([semester: ["CS1002"]])
-            cache.recordSelectionRoster(semester: semester, roster: ["CS1003"])
-            cache.saveCourseCustomNames([semester: ["CS1001": "Mine"]])
-            cache.saveCourseColorMap(["CS1001": 0xFF0000])
-            cache.savePickedCourseColors(["CS1001"])
-            cache.saveAssignments([])
-            cache.addArchivedAssignmentId("1")
-            cache.addLocallyCompletedAssignmentId("2")
-            cache.setAssignmentsIgnored(true, semester: semester, courseNo: "CS1001")
-            cache.saveCalendarEvents([
+            cache.courses.saveCourses([], semester: semester)
+            cache.courses.saveUserAddedCourses([])
+            cache.courses.saveDeletedCourseNos(["CS1001"])
+            cache.courses.saveSelectionDroppedNos([semester: ["CS1002"]])
+            cache.courses.recordSelectionRoster(semester: semester, roster: ["CS1003"])
+            cache.courses.saveCourseCustomNames([semester: ["CS1001": "Mine"]])
+            cache.colors.saveCourseColorMap(["CS1001": 0xFF0000])
+            cache.colors.savePickedCourseColors(["CS1001"])
+            cache.assignments.saveAssignments([])
+            cache.assignments.apply(.setArchived(id: "1", true))
+            cache.assignments.apply(.setCompleted(id: "2", true))
+            cache.assignments.apply(.ignoreCourse(courseNo: "CS1001", semester: semester, ignored: true))
+            cache.assignments.saveCalendarEvents([
                 SDCalendarEvent(eventId: "moodle-1", title: "Quiz", date: Date(), source: .moodle),
             ])
-            cache.saveBulletinSummaries([])
-            cache.saveMoodleCourseIdMap(["1141CS1001": 7])
-            cache.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: first)
+            cache.bulletins.saveBulletinSummaries([])
+            cache.moodle.saveMoodleCourseIdMap(["1141CS1001": 7])
+            cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: first)
             try FileManager.default.createDirectory(at: cache.moodleFilesDir, withIntermediateDirectories: true)
             try Data("pdf".utf8).write(to: cache.moodleFilesDir.appendingPathComponent("slides.pdf"))
             try Data("{}".utf8).write(to: cache.persistentDir.appendingPathComponent("imported_class_tables.json"))
@@ -145,7 +145,7 @@ struct AccountSwitchTests {
         }
 
         func schoolIsEmpty() -> Bool {
-            var empty = files.isEmpty && cache.loadDeletedCourseNos().isEmpty && cache.loadMoodleCourseIdMap().isEmpty
+            var empty = files.isEmpty && cache.courses.loadDeletedCourseNos().isEmpty && cache.moodle.loadMoodleCourseIdMap().isEmpty
                 && Defaults[.schoolDataSyncedAt] == nil && Defaults[.classTableSelectedSemester] == nil
                 && Defaults[.emptyClassroomBuilding] == nil && Defaults[.categoriesSyncedOnce].isEmpty
                 && Defaults[.courseRowIdsSeen].isEmpty && Defaults[.pendingConflictCategories].isEmpty
@@ -160,7 +160,7 @@ struct AccountSwitchTests {
 
         func schoolIsKept() -> Bool {
             files.contains("imported_class_tables.json") && files.contains("slides.pdf")
-                && cache.loadDeletedCourseNos() == ["CS1001"] && Defaults[.classTableSelectedSemester] == semester
+                && cache.courses.loadDeletedCourseNos() == ["CS1001"] && Defaults[.classTableSelectedSemester] == semester
                 && Defaults[.holidayNotifyOverrides] == [12] && Defaults[.bulletinsSyncedAt] != nil
                 && SSOLoginService.storedPasswordRefusals.count == 1
         }

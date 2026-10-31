@@ -1,10 +1,10 @@
 import Foundation
 
 struct CanonicalCourseProvider {
-    private let cache: DataCache
+    private let cache: CourseStore
 
-    init(cache: DataCache = .shared) {
-        self.cache = cache
+    init(courses: CourseStore = .shared) {
+        cache = courses
     }
 
     func currentCourses(semester: String = CourseSelectionService.currentSemesterCode()) -> [SDCourse] {

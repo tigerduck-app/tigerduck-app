@@ -10,34 +10,8 @@ struct WidgetSnapshotWriterTests {
     }
 
     @MainActor
-    private final class Accent {
-        var hex = 0x007AFF
-    }
-
-    @MainActor
     private final class Screen {
         var isUnlocked = true
-    }
-
-    @Test func anAccentChangeRewritesTheSnapshot() async throws {
-        let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
-        defer { UserDefaults().removePersistentDomain(forName: suite) }
-        let store = WidgetSnapshotStore(appGroupIdentifier: suite)
-        let accent = Accent()
-        let writer = WidgetSnapshotWriter(
-            isLoggedIn: { true },
-            accentColorHex: { accent.hex },
-            store: store,
-            coordinator: WidgetReloadCoordinator(reloader: NoReload())
-        )
-        writer.regenerate()
-        #expect(store.readSnapshot()?.accentColorHex == 0x007AFF)
-
-        accent.hex = 0xFF2D55
-        NotificationCenter.default.post(name: AppConstants.accentColorDidChange, object: nil)
-
-        try await waitUntil { store.readSnapshot()?.accentColorHex == 0xFF2D55 }
-        withExtendedLifetime(writer) {}
     }
 
     @Test func anUnchangedSnapshotIsNeitherRewrittenNorReloaded() throws {
@@ -62,28 +36,6 @@ struct WidgetSnapshotWriterTests {
         withExtendedLifetime(writer) {}
     }
 
-    @Test func aLocaleChangeReloadsAnUnchangedSnapshot() async throws {
-        let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
-        defer { UserDefaults().removePersistentDomain(forName: suite) }
-        let store = WidgetSnapshotStore(appGroupIdentifier: suite)
-        let coordinator = WidgetReloadCoordinator(reloader: NoReload())
-        let writer = WidgetSnapshotWriter(
-            isLoggedIn: { true },
-            accentColorHex: { 0x007AFF },
-            store: store,
-            coordinator: coordinator
-        )
-        writer.regenerate()
-        let reload = try #require(coordinator.pendingTask)
-
-        NotificationCenter.default.post(name: NSLocale.currentLocaleDidChangeNotification, object: nil)
-
-        try await waitUntil { coordinator.pendingTask != reload }
-        withExtendedLifetime(writer) {}
-    }
-
-    /// A sync trigger's handler calls this right before it answers the push, after which iOS may
-    /// suspend the app before the debounce ends (https://github.com/tigerduck-app/tigerduck-app/issues/664).
     @Test func aReloadNowSendsTheChangedSnapshotsReloadWithoutTheDebounce() async throws {
         let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }

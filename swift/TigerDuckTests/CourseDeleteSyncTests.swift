@@ -299,16 +299,15 @@ struct CourseDeleteSyncTests {
 
     @Test("Adding back a hidden course the class table still shows sends it with its key forced")
     func addingBackAStillShownHiddenCourseUploadsIt() {
-        let savedHidden = DataCache.shared.loadDeletedCourseNos()
-        defer { DataCache.shared.saveDeletedCourseNos(savedHidden) }
         let folder = Self.freshDirectory()
         defer { try? FileManager.default.removeItem(at: folder) }
-        let viewModel = ClassTableViewModel(importedTables: ImportedClassTableStore(
+        let courses = CourseStore(folders: CacheFolders(root: folder))
+        let viewModel = ClassTableViewModel(courses: courses, importedTables: ImportedClassTableStore(
             fileURL: folder.appendingPathComponent("imported_class_tables.json"), signedInStudentId: { "B11300000" }
         ))
         let course = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: viewModel.currentSemester)
         viewModel.courses = [course]
-        viewModel.deletedCourseNos = [CourseTombstone.key(semester: viewModel.currentSemester, courseNo: "GE1010001")]
+        courses.saveDeletedCourseNos([CourseTombstone.key(semester: viewModel.currentSemester, courseNo: "GE1010001")])
         var added: [String] = []
         viewModel.onCourseAdded = { _, _, courseNo in added.append(courseNo) }
 

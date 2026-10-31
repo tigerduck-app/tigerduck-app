@@ -3,18 +3,14 @@ import SwiftUI
 
 extension ClassTableViewModel {
 
-    func broadcastLocalChange() {
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-    }
-
     func load(authService: AuthService) {
         guard !hasLoaded else { return }
         hasLoaded = true
 
-        let cachedAssignments = DataCache.shared.loadAssignments()
+        let cachedAssignments = AssignmentStore.shared.loadAssignments()
         let merged = buildCourseList(
-            DataCache.shared.loadCourses(semester: currentSemester),
-            DataCache.shared.loadUserAddedCourses(semester: currentSemester)
+            courseStore.loadCourses(semester: currentSemester),
+            courseStore.loadUserAddedCourses(semester: currentSemester)
         )
         reloadCurrentSemesterCourses()
         assignments = cachedAssignments
@@ -31,11 +27,9 @@ extension ClassTableViewModel {
 
     func refreshMissingClassrooms(authService: AuthService) {
         let semester = currentSemester
-        Task { [weak self] in
-            guard await NetworkMonitor.shared.isReachable(),
-                  await AppServiceBridge.refreshCoursesMissingClassroom(semester: semester, authService: authService)
-            else { return }
-            self?.broadcastLocalChange()
+        Task {
+            guard await NetworkMonitor.shared.isReachable() else { return }
+            await AppServiceBridge.refreshCoursesMissingClassroom(semester: semester, authService: authService)
         }
     }
 
@@ -55,16 +49,9 @@ extension ClassTableViewModel {
             await self.fetchData(authService: authService, semester: semester)
             let latestSemester = CourseSelectionService.currentSemesterCode()
             if latestSemester != self.currentSemester {
-                let latestCourses = await AppServiceBridge.fetchCourses(
-                    authService: authService,
-                    semester: latestSemester
-                )
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    let userAdded = DataCache.shared.loadUserAddedCourses(semester: latestSemester)
-                    self.currentSemesterCourses = self.buildCourseList(latestCourses, userAdded)
-                    self.refreshCourseColors()
-                }
+                _ = await AppServiceBridge.fetchCourses(authService: authService, semester: latestSemester)
+                self.reloadCurrentSemesterCourses()
+                self.refreshCourseColors()
             }
             await MainActor.run { [weak self] in
                 self?.isRefreshing = false
@@ -93,36 +80,15 @@ extension ClassTableViewModel {
             semester: targetSemester, authService: authService
         )
 
-        let fetchedCourses = await coursesTask
-        let fetchedAssignments = await assignmentsTask
-        let userAdded = await userAddedTask
-
-        await MainActor.run {
-            showFetched(
-                buildCourseList(fetchedCourses, userAdded), assignments: fetchedAssignments, of: targetSemester,
-                signedOutSince: !authService.session.isCurrent(ticket)
-            )
-        }
+        _ = await (coursesTask, assignmentsTask, userAddedTask)
+        showFetched(signedOutSince: !authService.session.isCurrent(ticket))
     }
 
-    func showFetched(
-        _ fetched: [SDCourse], assignments fetchedAssignments: [SDAssignment], of targetSemester: String,
-        signedOutSince: Bool
-    ) {
-        let manager = NTUSTSessionManager.shared
-        guard !signedOutSince else {
-            manager.loadingState = .loaded
-            return
-        }
-        isUpdatingFromNetwork = true
-        if shownPerson == nil, currentSemester == targetSemester { courses = fetched }
-        if targetSemester == CourseSelectionService.currentSemesterCode() {
-            currentSemesterCourses = fetched
-            refreshCourseColors()
-        }
-        assignments = fetchedAssignments
-        manager.loadingState = .loaded
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        isUpdatingFromNetwork = false
+    /// Shows what a fetch saved, read back from the stores, so an edit or another device's change
+    /// that landed while it ran stays on screen.
+    func showFetched(signedOutSince: Bool) {
+        NTUSTSessionManager.shared.loadingState = .loaded
+        guard !signedOutSince else { return }
+        reloadFromCache()
     }
 }

@@ -23,7 +23,7 @@ struct MacCalendarView: View {
     private let cellHeight: CGFloat = 64
 
     private var allEvents: [SDCalendarEvent] {
-        let cached = DataCache.shared.loadCalendarEvents()
+        let cached = AssignmentStore.shared.loadCalendarEvents()
             .filter { $0.source != .holiday && $0.source != .semester }
         return cached + AcademicCalendarStore.shared.calendar.calendarEvents()
     }
@@ -72,7 +72,7 @@ struct MacCalendarView: View {
                 .help(String(localized: "desktop_action_jump_to_today"))
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
+        .onChange(of: AppDataRevision.current) {
             cacheRevision &+= 1
         }
     }

@@ -24,7 +24,7 @@ enum SemesterCatalog {
     private nonisolated static let selectionKey = "semesterCatalog.selectionSemester"
     private static let refreshedAtKey = "semesterCatalog.refreshedAt"
 
-    private static let refreshTTL: TimeInterval = 3600
+    private static let freshness = FreshnessPolicy(lifetime: 3600)
 
     private nonisolated static let pickerDepth = 6
 
@@ -45,7 +45,7 @@ enum SemesterCatalog {
     }
 
     nonisolated static func availableSemesters() -> [String] {
-        let cached = UserDefaults.standard.stringArray(forKey: listKey) ?? []
+        let cached = AppUserDefaults.standard.stringArray(forKey: listKey) ?? []
         guard !cached.isEmpty else { return heuristicSemesters() }
         let studentId = KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId)
         return terms(from: cached, admissionYear: admissionYear(studentId: studentId))
@@ -76,19 +76,19 @@ enum SemesterCatalog {
     }
 
     nonisolated static func selectionSemesterCode() -> String {
-        UserDefaults.standard.string(forKey: selectionKey)
+        AppUserDefaults.standard.string(forKey: selectionKey)
             ?? CourseSelectionService.currentSemesterCode()
     }
 
     static func refreshIfStale() async {
-        let last = UserDefaults.standard.double(forKey: refreshedAtKey)
-        guard Date().timeIntervalSince1970 - last > refreshTTL else { return }
+        let last = AppUserDefaults.standard.double(forKey: refreshedAtKey)
+        guard !freshness.isFresh(storedAt: Date(timeIntervalSince1970: last)) else { return }
         await refresh()
     }
 
     static func refresh() async {
         guard let list = try? await fetch(), !list.isEmpty else { return }
-        let defaults = UserDefaults.standard
+        let defaults = AppUserDefaults.standard
         defaults.set(list.map(\.Semester), forKey: listKey)
         defaults.set(Date().timeIntervalSince1970, forKey: refreshedAtKey)
         // Exactly one entry carries LoginEnable. If NTUST ever ships zero,
