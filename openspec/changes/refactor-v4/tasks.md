@@ -50,8 +50,9 @@ last task's check passes and a read-only review finds nothing High or above.
 
 - [ ] 5.1 Add `AppEnvironment`, built only inside the `AfterFirstUnlock` closure, and `AppPreferences`. Check: the launch-before-first-unlock tests; the phone suite.
 - [ ] 5.2 Add `AppRouter` and `SceneActivation`, replacing window walking and deep-link polling. Check: the deep link and sheet tests; the mac build.
-- [ ] 5.3 Split `AppServiceBridge` into `School/Courses/` and `School/Moodle/`. Remove `AppState` and move its 37 test references. Check: no `AppState` left; the phone suite.
-- [ ] 5.4 Turn on phase-5 rules. Check: `check_architecture.py` passes at `ENFORCED_PHASE = 5`.
+- [ ] 5.3 Make `SceneActivation` run launch, foreground and sign-in refreshes as one ordered refresh: pull, school fetch, push. Check: tests that a school fetch finishing first uploads only after the pull, that an unsent local edit survives a pull of an older value, and that a failed pull holds the school uploads.
+- [ ] 5.4 Split `AppServiceBridge` into `School/Courses/` and `School/Moodle/`. Remove `AppState` and move its 37 test references. Check: no `AppState` left; the phone suite.
+- [ ] 5.5 Turn on phase-5 rules. Check: `check_architecture.py` passes at `ENFORCED_PHASE = 5`.
 
 ## 6. Features
 

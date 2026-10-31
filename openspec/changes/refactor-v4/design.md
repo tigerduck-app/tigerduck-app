@@ -193,6 +193,27 @@ Apple's behaviour stay, on the type that handles them.
 target, which the Xcode build needs anyway.
 - Lost: editing the arrays by hand for each of the hundreds of files the splits create.
 
+### D13. A refresh pulls before it uploads
+Today each foreground step starts its own task, and a course upload goes out as soon as a school
+fetch returns, whether or not this launch has read the backend. On launch, on return to the
+foreground and after a sign-in, `SceneActivation` runs one ordered refresh:
+1. Pull: ask the revision and, when this device is behind, apply the change feed or a full sync.
+   Values merge per field by `hlc`, so an edit this device has not sent yet is kept.
+2. Fetch school data. The fetch starts together with step 1; its result is applied after step 1.
+3. Push: the outbox, then what step 2 changed, measured against the merged state by `SendLedger`.
+
+Course membership follows the newest school roster, whichever device fetched it. The user's own
+edits follow the last writer by `hlc`. A local edit is sent at once and never waits for a pull.
+When the pull fails, school data still shows and its uploads wait for the next successful pull, so
+a device sends nothing derived from school data before its first pull after a sign-in.
+That hold lives in `SyncTarget`, not in its callers, so an upload started outside
+`SceneActivation` waits too.
+- Lost: finishing the pull before starting the school fetch. It adds the backend round trip to
+  every launch for the same result.
+- Lost: the backend copy replacing local state. That drops edits made offline.
+- Lost: today's unordered tasks. An upload computed before the pull leaves the backend's merge
+  rules to undo a stale state.
+
 ## Risks / Trade-offs
 
 - [No CI until the end] → Each phase runs the phone suite, the watch suite, the mac build and the
