@@ -317,6 +317,40 @@ struct CourseDeleteSyncTests {
         #expect(viewModel.editor.deletedCourseNos.isEmpty)
     }
 
+    @Test("A term reset still resets the term here when the class table closes while the backend delete runs")
+    func resetOutlivesTheClassTable() async throws {
+        let folder = Self.freshDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let courses = CourseStore(folders: CacheFolders(root: folder))
+        var viewModel: ClassTableViewModel? = ClassTableViewModel(courses: courses, importedTables: ImportedClassTableStore(
+            fileURL: folder.appendingPathComponent("imported_class_tables.json"), signedInStudentId: { "B11300000" }
+        ))
+        let editor = try #require(viewModel?.editor)
+        let semester = try #require(viewModel?.currentSemester)
+        let added = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: semester)
+        courses.apply(.add(added, semester: semester))
+        let backend = ResetBackend()
+        editor.sync.resetBackendCourses = { _, resetLocally in
+            await backend.delete()
+            resetLocally()
+            return false
+        }
+        weak var released = viewModel
+
+        editor.resetCourses(authService: AuthService(
+            keychainHasCredentials: { false }, notificationCenter: NotificationCenter(), schoolSignIn: { _, _ in false }
+        ))
+        try await waitUntil { backend.entered }
+        viewModel = nil
+        backend.finish()
+        try await waitUntil { released == nil }
+
+        #expect(courses.loadUserAddedCourses(semester: semester).isEmpty)
+        #expect(editor.dialogs.showResetFailedAlert)
+        editor.startRecolor(added)
+        #expect(editor.dialogs.courseToRecolor == nil)
+    }
+
     @Test("The courses re-enable check counts a course whose delete is queued as gone from the server")
     func queuedDeleteIsNoServerOnlyCourse() {
         let counts = { (deleting: Set<String>) in
@@ -358,6 +392,23 @@ struct CourseDeleteSyncTests {
         )
 
         #expect(left == ["1151:CS1", "1151:EE2"])
+    }
+}
+
+/// A backend term delete that waits until the test lets it finish.
+@MainActor
+private final class ResetBackend {
+    private(set) var entered = false
+    private var waiting: CheckedContinuation<Void, Never>?
+
+    func delete() async {
+        entered = true
+        await withCheckedContinuation { waiting = $0 }
+    }
+
+    func finish() {
+        waiting?.resume()
+        waiting = nil
     }
 }
 

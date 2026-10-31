@@ -15,9 +15,6 @@ final class ClassTableLoader {
     @ObservationIgnored
     private nonisolated(unsafe) var languageObserver: Any?
 
-    // The view model owns the loader, so it outlives every call into it.
-    private var table: ClassTableViewModel { owner! }
-
     init() {
         languageObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.languageDidChange,
@@ -35,9 +32,8 @@ final class ClassTableLoader {
     }
 
     func load() {
-        guard !hasLoaded else { return }
+        guard !hasLoaded, let table = owner else { return }
         hasLoaded = true
-        let table = table
 
         let cachedAssignments = AssignmentStore.shared.loadAssignments()
         let merged = table.buildCourseList(
@@ -57,15 +53,14 @@ final class ClassTableLoader {
         guard !hasWarmedCaches else { return }
         hasWarmedCaches = true
         await SchoolRefresh.allTerms(authService: authService)
-        let table = table
+        guard let table = owner else { return }
         table.followNewestSemesterIfUnpicked()
         table.refreshSemesterOptions()
         table.today.reload()
     }
 
     func refreshSelectedSemester(authService: AuthService) async {
-        guard table.shownPerson == nil else { return }
-        let target = table.currentSemester
+        guard let target = owner?.currentSemester, owner?.shownPerson == nil else { return }
         await SchoolRefresh.courses(target, authService: authService)
         guard let table = owner, table.currentSemester == target else { return }
         let merged = table.buildCourseList(
@@ -115,39 +110,41 @@ final class ClassTableLoader {
     }
 
     func refreshMissingClassrooms(authService: AuthService) {
-        let semester = table.currentSemester
+        guard let semester = owner?.currentSemester else { return }
         Task {
             guard await NetworkMonitor.shared.isReachable() else { return }
             await SchoolRefresh.coursesMissingClassroom(semester, authService: authService)
         }
     }
 
+    /// The task keeps the view model alive to the end, so leaving the class table mid-refresh
+    /// still ends the loading state and refreshes the current term.
     func triggerRefresh(authService: AuthService, semester: String? = nil) {
-        guard !isRefreshing else { return }
+        guard !isRefreshing, let table = owner else { return }
         isRefreshing = true
-        Task { [weak self] in
-            guard let self else { return }
+        Task {
             guard await NetworkMonitor.shared.isReachable() else {
                 SchoolRefresh.showOffline()
                 self.isRefreshing = false
                 return
             }
-            await self.fetchData(authService: authService, semester: semester)
+            await self.fetchData(table, authService: authService, semester: semester)
             let latestSemester = SchoolTerms.current
-            if latestSemester != self.table.currentSemester {
+            if latestSemester != table.currentSemester {
                 await SchoolRefresh.courses(latestSemester, authService: authService)
-                self.table.today.reload()
-                self.table.refreshCourseColors()
+                table.today.reload()
+                table.refreshCourseColors()
             }
             self.isRefreshing = false
         }
     }
 
     func refresh(authService: AuthService) async {
-        await fetchData(authService: authService)
+        guard let table = owner else { return }
+        await fetchData(table, authService: authService)
     }
 
-    private func fetchData(authService: AuthService, semester: String? = nil) async {
+    private func fetchData(_ table: ClassTableViewModel, authService: AuthService, semester: String? = nil) async {
         let targetSemester = semester ?? table.currentSemester
         let ticket = authService.session.ticket
         guard await SchoolRefresh.begin() else { return }
@@ -166,6 +163,6 @@ final class ClassTableLoader {
     func showFetched(signedOutSince: Bool) {
         SchoolRefresh.end()
         guard !signedOutSince else { return }
-        table.reloadFromCache()
+        owner?.reloadFromCache()
     }
 }
