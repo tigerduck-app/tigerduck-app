@@ -66,6 +66,7 @@ final class BulletinAPIClient: Sendable {
     ) async throws -> Response {
         var request = request
         request.authenticated = authenticated
+        request.sendsWithoutSession = true
         do {
             return try await backend.send(request, as: Response.self)
         } catch PushAPIError.httpStatus(let code, let body, _) {
