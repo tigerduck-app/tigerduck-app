@@ -1,21 +1,5 @@
 import Foundation
 
-nonisolated struct MoodleGradeItem: Codable, Sendable, Hashable, Identifiable {
-    let id: Int
-    let name: String
-    let type: String
-    let module: String?
-    let cmid: Int?
-    let grade: String?
-    let maxGrade: Double?
-    let isHidden: Bool
-    let feedback: String
-
-    var isCourseTotal: Bool { type == "course" }
-    var isCategoryTotal: Bool { type == "category" }
-    var isShown: Bool { grade != nil && !isHidden }
-}
-
 nonisolated enum MoodleGradeService {
     static let gradeItemsFunction = "gradereport_user_get_grade_items"
 

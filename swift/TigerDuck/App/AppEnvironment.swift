@@ -46,6 +46,8 @@ final class AppEnvironment {
 
     var signOutCheck: SignOutCheck { SignOutCheck(app: self) }
 
+    var versionGate: APIVersionGate { .shared }
+
     init() {
         let isFreshInstall = FreshInstallKeychainPurge.runIfFreshInstall()
         // After the purge, which deletes a reinstall's bare items, and before AuthService reads them.

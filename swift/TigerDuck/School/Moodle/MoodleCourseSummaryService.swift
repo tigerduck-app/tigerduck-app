@@ -1,26 +1,5 @@
 import Foundation
 
-nonisolated struct MoodleCourseSummary: Codable, Sendable, Equatable {
-    let html: String
-    let text: String
-    let names: [String]
-    /// The course format, such as `weeks` or `topics`, and its start date, which find the current week.
-    var format: String? = nil
-    var startDate: Date? = nil
-
-    static let empty = MoodleCourseSummary(html: "", text: "", names: [])
-
-    func isWorthShowing(besides codes: [String]) -> Bool {
-        guard text.contains(where: \.isLetter) else { return false }
-        let summary = Self.comparable(text)
-        return !(names + codes).contains { Self.comparable($0) == summary }
-    }
-
-    private static func comparable(_ text: String) -> String {
-        text.filter { !$0.isWhitespace }.lowercased()
-    }
-}
-
 nonisolated enum MoodleCourseSummaryService {
     static let coursesFunction = "core_course_get_courses_by_field"
 

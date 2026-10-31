@@ -24,7 +24,7 @@ struct ServerStatusSourcesTests {
             isCurrent: { true },
             isReachable: { true },
             fetch: fetch,
-            indicator: Indicator(),
+            reports: ScoreReports(indicator: Indicator()),
             tracker: tracker
         )
     }

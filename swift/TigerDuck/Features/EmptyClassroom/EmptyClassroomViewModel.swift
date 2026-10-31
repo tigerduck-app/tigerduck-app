@@ -18,9 +18,11 @@ final class EmptyClassroomViewModel {
         case failed(offline: Bool)
     }
 
-    struct Reader {
-        let credentials: ClassroomUsageService.Credentials
-        let isCurrent: @MainActor () -> Bool
+    /// Whether the screen has been opened, and whether it is on screen now.
+    private enum Presence {
+        case unopened
+        case shown
+        case away
     }
 
     private(set) var selectedDay: Date {
@@ -30,68 +32,30 @@ final class EmptyClassroomViewModel {
     private(set) var content = Content.loading {
         didSet { if openRoomName != nil, openRoom == nil { openRoomName = nil } }
     }
-    private(set) var siteStatus = ServerStatus.unknown
     private(set) var syncedAt: Date?
-    private(set) var isReading = false
     private(set) var classes: [ClassStop] = []
     private(set) var pickedBuilding: String?
     private(set) var openRoomName: String?
 
-    @ObservationIgnored var reader: @MainActor () -> Reader? = { nil }
+    @ObservationIgnored let calendar: EmptyClassroomCalendar
+    @ObservationIgnored let loader: EmptyClassroomLoader
+    @ObservationIgnored private var presence = Presence.unopened
 
-    @ObservationIgnored private let service: ClassroomUsageService
-    @ObservationIgnored private let clock: () -> Date
-    @ObservationIgnored private let holidays: @MainActor (Date) -> [Holiday]
-    @ObservationIgnored private let isInSession: @MainActor (Date) -> Bool
-    @ObservationIgnored private let isClassDay: @MainActor (Date) -> Bool
-    @ObservationIgnored private let loadCourses: @MainActor () -> [SDCourse]
-    @ObservationIgnored private let rawRoom: @MainActor (String) -> String
-    @ObservationIgnored private var courses: [SDCourse] = []
-    @ObservationIgnored private var hasOpened = false
-    @ObservationIgnored private var isOnScreen = false
-    @ObservationIgnored private var loadTask: Task<Void, Never>?
-    @ObservationIgnored private var running: (day: Date, id: Int)?
-    @ObservationIgnored private var loads = 0
-    private let minuteTicker: MinuteTicker
-
-    init(
-        service: ClassroomUsageService? = nil,
-        clock: @escaping () -> Date = { AppClock.now() },
-        holidays: (@MainActor (Date) -> [Holiday])? = nil,
-        isInSession: (@MainActor (Date) -> Bool)? = nil,
-        isClassDay: (@MainActor (Date) -> Bool)? = nil,
-        courses: (@MainActor () -> [SDCourse])? = nil,
-        rawRoom: (@MainActor (String) -> String)? = nil
-    ) {
-        self.service = service ?? .shared
-        self.clock = clock
-        self.holidays = holidays ?? { AcademicCalendarStore.shared.calendar.holidays(on: $0) }
-        self.isInSession = isInSession ?? { AcademicCalendarStore.shared.calendar.isInSession(on: $0) }
-        self.isClassDay = isClassDay ?? { AcademicCalendarStore.shared.isClassDay($0) }
-        loadCourses = courses ?? { CanonicalCourseProvider().currentCourses() }
-        self.rawRoom = rawRoom ?? { NameAbbrService.shared.rawClassroom($0) }
-        minuteTicker = MinuteTicker(now: clock)
-        selectedDay = TaipeiTime.calendar.startOfDay(for: clock())
+    init(calendar: EmptyClassroomCalendar? = nil, loader: EmptyClassroomLoader? = nil) {
+        let calendar = calendar ?? EmptyClassroomCalendar()
+        self.calendar = calendar
+        self.loader = loader ?? EmptyClassroomLoader()
+        selectedDay = TaipeiTime.calendar.startOfDay(for: calendar.instant)
         pickedBuilding = Defaults[.emptyClassroomBuilding]
     }
 
     func connect(_ authService: AuthService) {
-        reader = { [weak authService] in
-            guard let authService,
-                  let studentId = authService.storedStudentId,
-                  let password = authService.storedPassword else { return nil }
-            return Reader(
-                credentials: .init(studentId: studentId, password: password, signIn: AccountSession.school.ticket),
-                isCurrent: authService.session.currentCheck()
-            )
-        }
+        loader.connect(authService)
     }
 
-    var now: Date {
-        _ = minuteTicker.tick
-        return clock()
-    }
-
+    var siteStatus: ServerStatus { loader.siteStatus }
+    var isReading: Bool { loader.isReading }
+    var now: Date { calendar.now }
     var today: Date { TaipeiTime.calendar.startOfDay(for: now) }
 
     var days: [Date] {
@@ -116,15 +80,9 @@ final class EmptyClassroomViewModel {
     var nextTeachingDay: Date? {
         guard let last = days.last else { return nil }
         let remaining = TaipeiTime.calendar.dateComponents([.day], from: selectedDay, to: last).day ?? 0
-        return EmptyClassroomSchedule.nextTeachingDay(after: selectedDay, horizon: remaining, isTeachingDay: isTeachingDay)
-    }
-
-    private func dayOff(_ day: Date) -> EmptyClassroomSchedule.DayOff? {
-        EmptyClassroomSchedule.dayOff(day, holidays: holidays, isInSession: isInSession)
-    }
-
-    private func isTeachingDay(_ day: Date) -> Bool {
-        dayOff(day) == nil
+        return EmptyClassroomSchedule.nextTeachingDay(
+            after: selectedDay, horizon: remaining, isTeachingDay: calendar.isTeachingDay
+        )
     }
 
     var usage: CampusUsage? {
@@ -157,14 +115,14 @@ final class EmptyClassroomViewModel {
     }
 
     func appear() {
-        isOnScreen = true
+        let hasOpened = presence != .unopened
+        presence = .shown
         if !hasOpened || selectedDay < today || selectedPeriod < endedPeriods {
             let opening = EmptyClassroomSchedule.opening(
-                at: now, horizon: Self.dayCount - 1, isTeachingDay: isTeachingDay
+                at: now, horizon: Self.dayCount - 1, isTeachingDay: calendar.isTeachingDay
             )
             selectedDay = opening.day
             selectedPeriod = opening.period
-            hasOpened = true
         }
         reloadCourses()
         load(force: false)
@@ -173,33 +131,33 @@ final class EmptyClassroomViewModel {
     /// iOS sends no `onAppear` when the app comes back to the foreground, while today's rooms
     /// have aged and the day shown may have passed, so the screen on view reads again.
     func returnToApp() {
-        guard isOnScreen else { return }
+        guard presence == .shown else { return }
         appear()
     }
 
     func disappear() {
-        isOnScreen = false
+        if presence == .shown { presence = .away }
     }
 
     func accountChanged() {
-        stopLoading()
+        loader.stop()
         show(.loading)
-        siteStatus = service.siteStatus
+        loader.noteSiteStatus()
         pickedBuilding = Defaults[.emptyClassroomBuilding]
         reloadCourses()
-        guard isOnScreen else { return }
+        guard presence == .shown else { return }
         load(force: false)
     }
 
     func reloadCourses() {
-        courses = loadCourses()
+        calendar.reloadCourses()
         refreshClasses()
     }
 
     func storesDidChange() {
         reloadCourses()
-        guard let off = dayOff(selectedDay) else { return }
-        stopLoading()
+        guard let off = calendar.dayOff(selectedDay) else { return }
+        loader.stop()
         show(Self.content(for: off))
     }
 
@@ -231,7 +189,7 @@ final class EmptyClassroomViewModel {
 
     func refresh() async {
         load(force: true)
-        await loadTask?.value
+        await loader.wait()
     }
 
     func retry() {
@@ -240,15 +198,7 @@ final class EmptyClassroomViewModel {
     }
 
     private func refreshClasses() {
-        let slots = CourseTimeSlot.meetingSlots(from: courses, on: selectedDay, isClassDay: isClassDay)
-        classes = ClassStop.stops(from: slots, rawRoom: rawRoom)
-    }
-
-    private func stopLoading() {
-        loadTask?.cancel()
-        loadTask = nil
-        running = nil
-        isReading = false
+        classes = ClassStop.stops(from: calendar.classSlots(on: selectedDay), rawRoom: calendar.rawRoom)
     }
 
     private func show(_ content: Content, readAt: Date? = nil) {
@@ -258,50 +208,34 @@ final class EmptyClassroomViewModel {
 
     private func load(force: Bool) {
         let day = selectedDay
-        if !force, running?.day == day { return }
-        stopLoading()
-        if let off = dayOff(day) {
+        if !force, loader.isReading(day) { return }
+        loader.stop()
+        if let off = calendar.dayOff(day) {
             show(Self.content(for: off))
             return
         }
-        guard let reader = reader() else { return }
-        let kept = service.keptUsage(on: day)
-        siteStatus = service.siteStatus
+        guard let reader = loader.reader() else { return }
+        let kept = loader.kept(on: day)
+        loader.noteSiteStatus()
         if let kept {
-            show(Self.content(for: kept.usage), readAt: kept.fetchedAt)
+            show(Self.content(for: kept.usage), readAt: kept.readAt)
         } else {
             show(.loading)
         }
         let isToday = TaipeiTime.calendar.isDate(day, inSameDayAs: now)
-        loads &+= 1
-        let id = loads
-        running = (day, id)
-        isReading = true
-        loadTask = Task { [weak self, service] in
-            let outcome: Result<ClassroomUsageService.KeptUsage, any Error>
-            do {
-                outcome = .success(try await service.usage(
-                    on: day, isToday: isToday, force: force, credentials: reader.credentials
-                ))
-            } catch {
-                outcome = .failure(error)
-            }
+        loader.read(day, isToday: isToday, force: force, by: reader, isWanted: { [weak self] in
+            self?.selectedDay == day
+        }, finish: { [weak self] outcome in
             guard let self else { return }
-            if running?.id == id {
-                running = nil
-                isReading = false
-            }
-            siteStatus = service.siteStatus
-            guard !Task.isCancelled, selectedDay == day, reader.isCurrent() else { return }
             switch outcome {
             case .success(let read):
-                show(Self.content(for: read.usage), readAt: read.fetchedAt)
+                show(Self.content(for: read.usage), readAt: read.readAt)
             case .failure(let error):
                 guard !(error is CancellationError) else { return }
                 guard content == .loading else { return }
                 content = .failed(offline: Self.isOffline(error))
             }
-        }
+        })
     }
 
     private static func content(for usage: CampusUsage) -> Content {
@@ -324,31 +258,6 @@ final class EmptyClassroomViewModel {
     }
 
     func dayLabel(_ day: Date) -> String {
-        let calendar = TaipeiTime.calendar
-        let date = Self.dateText(day)
-        if calendar.isDate(day, inSameDayAs: today) {
-            return "\(String(localized: "calendar_today")) \(date)"
-        }
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: today),
-           calendar.isDate(day, inSameDayAs: tomorrow) {
-            return "\(String(localized: "widget_tomorrow")) \(date)"
-        }
-        return date
-    }
-
-    static func dateText(_ day: Date) -> String {
-        var symbols = Calendar(identifier: .gregorian)
-        symbols.locale = .autoupdatingCurrent
-        let narrow = symbols.veryShortWeekdaySymbols
-        var style = Date.FormatStyle.dateTime.month(.defaultDigits).day()
-            .weekday(Set(narrow).count == narrow.count ? .narrow : .abbreviated)
-        style.timeZone = TaipeiTime.timeZone
-        style.calendar = Calendar(identifier: .gregorian)
-        return day.formatted(style)
-    }
-
-    static func timeRange(of period: Int) -> String {
-        guard let range = EmptyClassroomSchedule.timeRange(of: period) else { return "" }
-        return "\(range.start)–\(range.end)"
+        EmptyClassroomDayText.label(day, today: today)
     }
 }

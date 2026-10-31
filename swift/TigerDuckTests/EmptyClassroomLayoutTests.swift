@@ -35,8 +35,10 @@ struct EmptyClassroomLayoutTests {
             signIn: { _, _, _ in true }
         )
         return EmptyClassroomViewModel(
-            service: service, holidays: { _ in [] }, isInSession: { _ in true }, isClassDay: { _ in true },
-            courses: { [] }, rawRoom: { $0 }
+            calendar: EmptyClassroomCalendar(
+                holidays: { _ in [] }, isInSession: { _ in true }, isClassDay: { _ in true }, courses: { [] }, rawRoom: { $0 }
+            ),
+            loader: EmptyClassroomLoader(service: service)
         )
     }
 

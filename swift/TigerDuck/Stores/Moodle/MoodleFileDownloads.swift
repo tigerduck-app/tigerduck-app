@@ -164,7 +164,7 @@ final class MoodleFileDownloads {
             return nil
         } catch {
             guard !Task.isCancelled, isCurrent() else { return nil }
-            failures[location] = MoodleFirstLoadView.message(for: error)
+            failures[location] = MoodleFailure.message(for: error)
             AppLogger.breadcrumb("moodle file download failed: \(error)", category: "moodle")
             return nil
         }

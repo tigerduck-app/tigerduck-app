@@ -154,6 +154,11 @@ final class EditSender {
         coursesNowOn
     }
 
+    /// Whether the course colours sync once the courses switch is `coursesNowOn`.
+    func syncsCourseColors(coursesNowOn: Bool) -> Bool {
+        Self.courseColorsAfterCoursesChange(coursesNowOn: coursesNowOn)
+    }
+
     func reassignAllCourseColors() {
         let semester = CourseSelectionService.currentSemesterCode()
         let courses = CanonicalCourseProvider().currentCourses(semester: semester)

@@ -1,0 +1,187 @@
+import Defaults
+import Foundation
+import Observation
+import os
+
+/// The bulletin list the backend serves page by page, the copy kept on disk, and the pages a
+/// visit walked, kept for the next one. A sign-out moves `listEpoch` on; work that began before
+/// it drops what it fetched.
+@MainActor
+@Observable
+final class BulletinFeed {
+    typealias Summary = BulletinAPI.BulletinSummary
+    typealias Page = BulletinAPI.BulletinListResponse
+
+    private(set) var items: [Summary] = []
+    private(set) var nextCursor: Int?
+    private(set) var hasMore = true
+    @ObservationIgnored private let fetchPage: (_ cursor: Int?, _ includeDeleted: Bool) async throws -> Page
+    @ObservationIgnored private let fetchDetail: (_ id: Int) async throws -> BulletinAPI.BulletinDetail
+    @ObservationIgnored private var itemsEpoch = BulletinFeed.listEpoch
+    private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.VM")
+
+    convenience init(apiClient: BulletinAPIClient? = nil) {
+        let apiClient = apiClient ?? BulletinAPIClient()
+        self.init(
+            page: { try await apiClient.listBulletins(limit: 30, cursor: $0, includeDeleted: $1) },
+            detail: { try await apiClient.getBulletin(id: $0) }
+        )
+    }
+
+    init(
+        page: @escaping (_ cursor: Int?, _ includeDeleted: Bool) async throws -> Page,
+        detail: @escaping (_ id: Int) async throws -> BulletinAPI.BulletinDetail
+    ) {
+        fetchPage = page
+        fetchDetail = detail
+        let cached = BulletinFiles.shared.loadBulletinSummaries()
+        if !cached.isEmpty { items = Self.sortedUnique(cached) }
+    }
+
+    private struct ListSession {
+        let items: [Summary]
+        let nextCursor: Int?
+        let hasMore: Bool
+        let showDeleted: Bool
+    }
+
+    private static var listSession: ListSession?
+    private(set) static var listEpoch = 0
+
+    static func forgetListSession() {
+        listSession = nil
+        listEpoch &+= 1
+        Defaults[.bulletinsSyncedAt] = nil
+    }
+
+    /// Another backend numbers its bulletins apart, so the old rows cannot be merged with its pages.
+    static func endpointDidChange() {
+        BulletinFiles.shared.saveBulletinSummaries([])
+        BulletinFiles.shared.clearBulletinDetails()
+        forgetListSession()
+    }
+
+    func page(after cursor: Int?, includeDeleted: Bool) async throws -> Page {
+        try await fetchPage(cursor, includeDeleted)
+    }
+
+    /// Takes up the pages an earlier visit walked, when it listed the same rows.
+    func resumeSession(showDeleted: Bool) -> Bool {
+        guard let session = Self.listSession, session.showDeleted == showDeleted else { return false }
+        items = Self.merge(existing: items, incoming: session.items)
+        nextCursor = session.nextCursor
+        hasMore = session.hasMore
+        return true
+    }
+
+    /// Adds `page`'s rows; `movesCursor` false keeps the walk where it is.
+    func add(_ page: Page, movesCursor: Bool = true) {
+        items = Self.merge(existing: items, incoming: page.items)
+        guard movesCursor else { return }
+        nextCursor = page.nextCursor
+        hasMore = page.nextCursor != nil
+    }
+
+    func add(_ summary: Summary) {
+        items = Self.merge(existing: items, incoming: [summary])
+    }
+
+    func restartWalk() { nextCursor = nil }
+
+    func endWalk() { hasMore = false }
+
+    /// The row for `id` from the list, the copy on disk or, `fetched`, the backend; nil for a
+    /// deleted bulletin.
+    func summary(forId id: Int) async throws -> (summary: Summary, fetched: Bool)? {
+        if let existing = items.first(where: { $0.id == id }) {
+            guard !existing.isDeleted else {
+                Self.logger.info("summary(forId:) skipped in-memory deleted bulletin id=\(id, privacy: .public)")
+                return nil
+            }
+            return (existing, false)
+        }
+        if let hit = cachedSummary(id: id) {
+            guard !hit.isDeleted else {
+                Self.logger.info("summary(forId:) skipped cached deleted bulletin id=\(id, privacy: .public)")
+                return nil
+            }
+            return (hit, false)
+        }
+        let detail: BulletinAPI.BulletinDetail
+        do {
+            detail = try await fetchDetail(id)
+        } catch {
+            Self.logger.error("summary(forId:) fetch failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
+            throw error
+        }
+        guard !detail.isDeleted else {
+            Self.logger.info("summary(forId:) skipped deleted bulletin id=\(id, privacy: .public)")
+            return nil
+        }
+        return (Summary(
+            id: detail.id,
+            externalId: detail.externalId,
+            title: detail.title,
+            titleClean: detail.titleClean,
+            canonicalOrg: detail.canonicalOrg,
+            contentTags: detail.contentTags,
+            importance: detail.importance,
+            summary: detail.summary,
+            sourceUrl: detail.sourceUrl,
+            postedAt: detail.postedAt,
+            isDeleted: detail.isDeleted
+        ), true)
+    }
+
+    private func cachedSummary(id: Int) -> Summary? {
+        BulletinFiles.shared.loadBulletinSummaries().first { $0.id == id }
+    }
+
+    func persist(showDeleted: Bool) {
+        BulletinFiles.shared.saveBulletinSummaries(items)
+        Self.listSession = ListSession(items: items, nextCursor: nextCursor, hasMore: hasMore, showDeleted: showDeleted)
+    }
+
+    var isFromBeforeSignOut: Bool { itemsEpoch != Self.listEpoch }
+
+    /// Drops the departing account's list for the copy on disk, which the sign-out has emptied.
+    func restartAfterSignOut() {
+        items = Self.sortedUnique(BulletinFiles.shared.loadBulletinSummaries())
+        nextCursor = nil
+        hasMore = true
+        itemsEpoch = Self.listEpoch
+    }
+
+    private static func merge(existing: [Summary], incoming: [Summary]) -> [Summary] {
+        var byId: [Int: Summary] = [:]
+        for row in existing { byId[row.id] = row }
+        for row in incoming { byId[row.id] = row }
+        return sortedUnique(Array(byId.values))
+    }
+
+    private static func sortedUnique(_ rows: [Summary]) -> [Summary] {
+        let distantPast = Date.distantPast
+        return rows.sorted { lhs, rhs in
+            let ld = lhs.postedAt ?? distantPast
+            let rd = rhs.postedAt ?? distantPast
+            if ld != rd { return ld > rd }
+            return lhs.id > rhs.id
+        }
+    }
+}
+
+/// One bulletin's full text, as kept on disk and as the backend serves it.
+enum BulletinDetails {
+    private static let apiClient = BulletinAPIClient()
+
+    static func cached(id: Int) -> BulletinAPI.BulletinDetail? {
+        BulletinFiles.shared.loadBulletinDetail(id: id)
+    }
+
+    /// Fetches the bulletin and keeps the copy.
+    static func fetch(id: Int) async throws -> BulletinAPI.BulletinDetail {
+        let fresh = try await apiClient.getBulletin(id: id)
+        BulletinFiles.shared.saveBulletinDetail(fresh)
+        return fresh
+    }
+}

@@ -445,6 +445,11 @@ final class SyncConflicts {
         )
     }
 
+    /// Whether the re-enable alert shows; closing it unanswered drops the conflict.
+    var reenableAlertIsPresented: Binding<Bool> {
+        Self.reenableAlertIsPresented(Bindable(self).reenableConflict)
+    }
+
     func resolveReenableConflict(keepLocal: Bool) {
         guard let conflict = reenableConflict else { return }
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")

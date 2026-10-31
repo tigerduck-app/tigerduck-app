@@ -31,6 +31,7 @@ DebugSettingsViewModel.swift
 DevMailConnectionProbe.swift
 DevMailServerOverride.swift
 DevMailServerView.swift
+SettingsDeveloperSection.swift
 TigerSyncStatusView.swift
 TriggersDebugView.swift
 WhatsNewSampleFlow.swift
@@ -41,13 +42,17 @@ HostWindow.swift
 UINavigationController+Swipeback.swift
 View+ScrollSafeGesture.swift
 
-# Features/Bulletins — iOS bulletin surfaces
+# Features/Bulletins and Stores/Bulletins — iOS bulletin surfaces
 BulletinNotificationSettingsView.swift
 BulletinSubscriptionsStore.swift
 BulletinsView.swift
 BulletinCardView.swift
 BulletinDetailView.swift
 BulletinFilterBar.swift
+BulletinPushSection.swift
+BulletinRows.swift
+BulletinRulesSections.swift
+BulletinsToolbar.swift
 BulletinTaxonomyPickerView.swift
 SubscriptionRuleEditorView.swift
 
@@ -78,18 +83,26 @@ TimetableNowLine.swift
 TimetableSoloCell.swift
 
 # Features/CourseMoodle — the assignment page; the Mac opens an assignment on Moodle instead
+MoodleAssignmentDetails.swift
+MoodleAssignmentGradeSection.swift
+MoodleAssignmentParts.swift
+MoodleAssignmentSubmissionSection.swift
+MoodleAssignmentSummaryCard.swift
 MoodleAssignmentView.swift
-MoodleAssignmentView+Status.swift
 
 # Features/CourseMoodle — the crop screen for a new profile picture, which only the phone changes
 MoodlePictureCropView.swift
 
-# Features/EmptyClassroom — the iOS finder screen and the ranking it shows; macOS hides
-# the feature (MacFeatureFiltering.swift) and keeps only its cour01 client
+# Features/EmptyClassroom and Stores/EmptyClassroom — the iOS finder screen, the ranking it
+# shows and what it reads; macOS hides the feature (MacFeatureFiltering.swift) and keeps only
+# its cour01 client
 AvailabilityBar.swift
 BuildingDirectory.swift
 BuildingSection.swift
 ClassroomStateViews.swift
+EmptyClassroomCalendar.swift
+EmptyClassroomDayText.swift
+EmptyClassroomLoader.swift
 EmptyClassroomSchedule.swift
 EmptyClassroomView.swift
 EmptyClassroomViewModel.swift
@@ -128,6 +141,8 @@ HomeTitleBar.swift
 # Features/Library — iOS library QR + brightness control (UIScreen)
 HDRQRCodeImage.swift
 LibraryBrightnessCoordinator.swift
+LibraryLoginForm.swift
+LibraryPageLifecycle.swift
 LibraryQRCodeView.swift
 LibraryQRImageCache.swift
 LibraryQRRenderer.swift
@@ -141,8 +156,13 @@ MoreView.swift
 MoreViewModel.swift
 
 # Features/Onboarding — iOS onboarding flow; macOS enters through MacLoginView
+OnboardingCloudSyncPage.swift
+OnboardingLoginPage.swift
+OnboardingNotificationsPage.swift
 OnboardingPageView.swift
+OnboardingPrivacyPage.swift
 OnboardingView.swift
+PagingScrollLock.swift
 
 # Features/Score — iOS score surfaces
 CreditSummaryBento.swift
@@ -172,6 +192,10 @@ StorageSettingsView.swift  # School Mail and the TigerDuck browser are iOS only;
 StorageUsage.swift
 SyncContentSettingsView.swift
 TabEditorView.swift
+SettingsAboutSection.swift
+SettingsAccountSection.swift
+SettingsDisplaySections.swift
+SettingsSheets.swift
 SettingsView.swift
 
 # Features/Updates — the iPhone's update and What's New sheets; the Mac answers
@@ -415,12 +439,15 @@ MailMover.swift
 MailTLSVerifier.swift
 
 # Features/Browser — the TigerDuck browser is iOS only; the Mac opens links in its default browser
+BrowserBar.swift
 BrowserCertificate.swift
 BrowserChromeCollapse.swift
 BrowserData.swift
 BrowserFind.swift
 BrowserFindBar.swift
+BrowserFindScript.swift
 BrowserMenu.swift
+BrowserNavigator.swift
 BrowserPage.swift
 BrowserPageScripts.swift
 BrowserRouting.swift

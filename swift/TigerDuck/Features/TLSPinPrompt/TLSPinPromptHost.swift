@@ -148,7 +148,7 @@ private struct TLSPinPromptHost: ViewModifier {
     /// to show, one of the two would not present.
     private var isShowingOtherPresentation: Bool {
         #if os(iOS)
-        window.window?.rootViewController?.presentedViewController != nil
+        window.isPresenting
             || app?.updateNotifyCoordinator.activeNotifySheet != nil
         #else
         false

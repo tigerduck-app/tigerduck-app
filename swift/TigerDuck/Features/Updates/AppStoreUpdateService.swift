@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 
 enum AppStoreUpdateService {
@@ -77,5 +78,90 @@ enum AppStoreUpdateService {
         let version: String
         let trackId: Int
         let releaseNotes: String?
+    }
+}
+
+/// The App Store lookup the update check makes: one at a time, shared by every caller that asks
+/// while it runs.
+@MainActor
+final class AppStoreLookup {
+    typealias ErrorReporter = @Sendable (any Error, [String: String]) -> Void
+
+    enum Result: Equatable {
+        case found(AppStoreUpdateService.Lookup)
+        case noRecord
+        case failed
+    }
+
+    private let bundleId: String
+    private let session: URLSession
+    private let reportError: ErrorReporter
+    private var inFlight: Task<Result, Never>?
+
+    nonisolated init(bundleId: String, session: URLSession, reportError: @escaping ErrorReporter) {
+        self.bundleId = bundleId
+        self.session = session
+        self.reportError = reportError
+    }
+
+    func latest() async -> Result {
+        if let existing = inFlight {
+            return await existing.value
+        }
+        let task = Task<Result, Never> { [bundleId, session, reportError] in
+            do {
+                // Pin the storefront so users abroad / on a VPN don't
+                // get an IP-inferred storefront that returns no record
+                // and silently masks an available update.
+                let outcome = try await AppStoreUpdateService.fetchLatest(
+                    bundleId: bundleId,
+                    session: session,
+                    country: AppConstants.appStoreLookupStorefront
+                )
+                switch outcome {
+                case .found(let lookup): return .found(lookup)
+                case .noRecord: return .noRecord
+                }
+            } catch {
+                reportError(error, ["phase": "AppStoreUpdateService.fetchLatest"])
+                return .failed
+            }
+        }
+        inFlight = task
+        let result = await task.value
+        inFlight = nil
+        return result
+    }
+
+    /// The store page of whatever the lookup finds, unreported when it fails.
+    func anyStoreLink() async -> URL? {
+        guard case .found(let lookup)? = try? await AppStoreUpdateService.fetchLatest(
+            bundleId: bundleId, session: session, country: AppConstants.appStoreLookupStorefront
+        ) else { return nil }
+        return Self.storeLink(trackId: lookup.trackId)
+    }
+
+    func reportUnparseableVersion(_ version: String) {
+        guard Defaults[.lastReportedUnparseableStoreVersion] != version else { return }
+        Defaults[.lastReportedUnparseableStoreVersion] = version
+        reportError(
+            AppStoreUpdateService.LookupError.unparseableVersion,
+            [
+                "phase": "UpdateNotifyCoordinator.performCheck",
+                "storeVersion": version,
+            ]
+        )
+    }
+
+    nonisolated static func storeLink(trackId: Int) -> URL {
+        var components = URLComponents()
+        #if os(macOS)
+        components.scheme = "macappstore"
+        #else
+        components.scheme = "https"
+        #endif
+        components.host = "apps.apple.com"
+        components.path = "/app/id\(trackId)"
+        return components.url ?? URL(string: "https://apps.apple.com/app/id\(trackId)")!
     }
 }
