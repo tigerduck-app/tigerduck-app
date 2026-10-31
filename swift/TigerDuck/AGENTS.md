@@ -82,8 +82,9 @@ yet in the tree arrives with its refactor phase; until then the rule stays where
 ## Size
 
 A type stays under 250 lines, extensions in other files included, and a view under 200; a class
-or actor holds at most 10 stored properties, and a file stays under 400 lines. Split by
-responsibility; nested types are fine. `tools/check_architecture.py --report` lists what is over.
+or actor holds at most 10 stored properties, except a SwiftData `@Model` class, whose stored
+properties are its schema, and a file stays under 400 lines. Split by responsibility; nested
+types are fine. `tools/check_architecture.py --report` lists what is over.
 
 ## Anti-patterns
 

@@ -119,6 +119,8 @@ PROP = re.compile(
     r"private\(set\)|fileprivate\(set\)|internal\(set\)|public\(set\))\s+)*)"
     r"(?P<kw>let|var)\s+(?P<name>[A-Za-z_]\w*)\s*(?::\s*(?P<type>[^={]+?))?\s*(?P<tail>[={].*)?$")
 
+ATTRIBUTES = re.compile(r"^(?:@[\w.]+(?:\([^)]*\))?\s*)+$")
+
 
 def strip_code(text: str) -> str:
     """Blanks comments and string contents, keeping line breaks and the braces of code."""
@@ -201,6 +203,8 @@ class Decl:
     parent: "Decl | None" = None
     children: list["Decl"] = field(default_factory=list)
     stored: int = 0
+    # A SwiftData `@Model` class: its stored properties are the stored schema, not state to group.
+    model: bool = False
 
     @property
     def own_lines(self) -> int:
@@ -215,9 +219,14 @@ def declarations(path: str, code: str) -> list[Decl]:
         offsets.append(offsets[-1] + len(line) + 1)
     found: list[Decl] = []
     stack: list[tuple[Decl, int]] = []
+    attributes = ""
     for no, text, before in logical_lines(code):
         while stack and (before < stack[-1][1] or no > stack[-1][0].end):
             stack.pop()
+        if ATTRIBUTES.match(text):
+            attributes += " " + text
+            continue
+        mods, attributes = attributes, ""
         m = DECL.match(text)
         if m:
             pos = code.find("{", offsets[no - 1])
@@ -231,7 +240,8 @@ def declarations(path: str, code: str) -> list[Decl]:
             name = m.group("name")
             key = name if m.group("kind") == "extension" or parent is None else f"{parent.key}.{name}"
             inherits = [x.strip() for x in re.split(r",(?![^<]*>)", m.group("inherits") or "") if x.strip()]
-            decl = Decl(key, m.group("kind"), path, no, code.count("\n", 0, i) + 1, inherits, parent)
+            decl = Decl(key, m.group("kind"), path, no, code.count("\n", 0, i) + 1, inherits, parent,
+                        model=bool(re.search(r"@Model\b", mods + " " + m.group("mods"))))
             if parent:
                 parent.children.append(decl)
             found.append(decl)
@@ -367,7 +377,7 @@ def size_findings(sources: list[Source]) -> list[Finding]:
             found.append(Finding(main.path, main.start, "type-size",
                                  f"{what} `{key}` is {lines} lines with its extensions, over {limit}; split it by "
                                  "responsibility (swift/TigerDuck/AGENTS.md, Size)"))
-        if main.kind in ("class", "actor") and main.stored > STORED_PROPERTIES:
+        if main.kind in ("class", "actor") and main.stored > STORED_PROPERTIES and not main.model:
             found.append(Finding(main.path, main.start, "stored-properties",
                                  f"{main.kind} `{key}` holds {main.stored} stored properties, over "
                                  f"{STORED_PROPERTIES}; move a group into a type of its own"))
