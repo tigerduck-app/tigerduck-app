@@ -12,7 +12,8 @@ final class MailListBackground {
     private var warmTask: Task<Void, Never>?
     private var warmDone = false
     private let warmDelay: @Sendable () async -> Void
-    private unowned let list: MailListViewModel
+    /// Weak: the poll and warm tasks outlive the list once the page closes or the account signs out.
+    private weak var list: MailListViewModel?
 
     init(
         list: MailListViewModel, indexer: MailIndexer, noteSeenByPage: @escaping (MailboxStatusInfo) async -> Void,
@@ -25,6 +26,7 @@ final class MailListBackground {
     }
 
     func startPolling(pollFirst: Bool) {
+        guard let list else { return }
         isPaused = false
         list.search.resumeCatchUp()
         if !warmDone, warmTask == nil { startWarmIfLoaded() }
@@ -47,7 +49,7 @@ final class MailListBackground {
         stopPoll()
         cancelWarm()
         indexer.stop()
-        list.search.catchUp.pause()
+        list?.search.catchUp.pause()
     }
 
     func stopPoll() {
@@ -71,6 +73,7 @@ final class MailListBackground {
     var isIndexBusy: Bool { !indexer.isComplete || isDownloading }
 
     func pollOnce() async {
+        guard let list else { return }
         guard list.showsInbox, !list.search.isShowingResults else { return }
         let selection = list.selection
         let epoch = list.loads.accountEpoch
@@ -121,6 +124,7 @@ final class MailListBackground {
     }
 
     private func prefetchArrivedBodies(after previousNewest: UInt32) async {
+        guard let list else { return }
         let epoch = list.loads.accountEpoch
         let inbox = MailConstants.inbox
         guard list.loadState == .loaded, list.serverStatus == .ok, let page = list.mailbox[inbox] else { return }
@@ -152,6 +156,7 @@ final class MailListBackground {
     /// Mail2000 caps connections. It writes only the cache, never shortens a cache the user paged
     /// further into, and stops at a lost connection: NTUST counts failed logins towards a lockout.
     private func startWarm() {
+        guard let list else { return }
         warmTask?.cancel()
         warmDone = false
         var covered = Set(list.targets)
@@ -169,15 +174,15 @@ final class MailListBackground {
             // refresh that follows a paint straight away is for the warm not to have started yet.
             await delay()
             for folder in queue {
-                guard !Task.isCancelled, let self, self.list.loads.accountEpoch == epoch else { return }
+                guard !Task.isCancelled, let self, let list = self.list, list.loads.accountEpoch == epoch else { return }
                 do {
-                    var page = try await self.list.session.use { client in
+                    var page = try await list.session.use { client in
                         try await client.page(folder: folder, olderThanSequence: nil, pageSize: MailConstants.warmPageSize)
                     }
                     page.fetchedAt = Date()
-                    guard !Task.isCancelled, self.list.loads.accountEpoch == epoch else { return }
-                    if self.list.targets.contains(folder) { continue }
-                    await self.list.writer.chain { [page] wipeCount in
+                    guard !Task.isCancelled, list.loads.accountEpoch == epoch else { return }
+                    if list.targets.contains(folder) { continue }
+                    await list.writer.chain { [page] wipeCount in
                         if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page, wipeCount: wipeCount) }
                     }.value
                 } catch let error as MailClientError where MailErrorClass(error).endsTheRun {
@@ -193,12 +198,14 @@ final class MailListBackground {
     }
 
     func startWarmIfLoaded() {
+        guard let list else { return }
         guard !isPaused, list.loadState == .loaded, list.serverStatus == .ok else { return }
         startWarm()
     }
 
     /// Inbox and Sent first: most searches look there.
     func startIndexIfLoaded(for request: MailIndexer.Request? = nil) {
+        guard let list else { return }
         guard !isPaused, list.loadState == .loaded, list.serverStatus == .ok, !list.folderRoles.isEmpty else { return }
         let roles = MailFolderRole.allCases.compactMap { list.folderRoles[$0] }
         indexer.startIfDue(folders: roles + list.otherFolders.filter { !roles.contains($0) }, for: request)
