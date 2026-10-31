@@ -133,21 +133,21 @@ struct MailServerConfigTests {
 
     @Test func theSchoolConfigurationKeepsTheOriginalDomainRule() {
         let school = MailServerConfig.school
-        #expect(MailWarnings.isSchoolDomain("ntust.edu.tw", config: school))
-        #expect(MailWarnings.isSchoolDomain("mail.ntust.edu.tw", config: school))
-        #expect(MailWarnings.isSchoolDomain("MAIL.NTUST.EDU.TW.", config: school))
-        #expect(!MailWarnings.isSchoolDomain("gmail.com", config: school))
-        #expect(!MailWarnings.isSchoolDomain("notntust.edu.tw", config: school))
-        #expect(!MailWarnings.isSchoolDomain("", config: school))
-        #expect(MailWarnings.schoolMailDomain == "mail.ntust.edu.tw")
+        #expect(MailSchoolDomain.isSchoolDomain("ntust.edu.tw", config: school))
+        #expect(MailSchoolDomain.isSchoolDomain("mail.ntust.edu.tw", config: school))
+        #expect(MailSchoolDomain.isSchoolDomain("MAIL.NTUST.EDU.TW.", config: school))
+        #expect(!MailSchoolDomain.isSchoolDomain("gmail.com", config: school))
+        #expect(!MailSchoolDomain.isSchoolDomain("notntust.edu.tw", config: school))
+        #expect(!MailSchoolDomain.isSchoolDomain("", config: school))
+        #expect(MailSchoolDomain.schoolMailDomain == "mail.ntust.edu.tw")
     }
 
     @Test func anOverriddenDomainIsWhatCountsAsInside() {
         let config = MailServerConfig.resolve(override: Self.settings(domain: "example.com"))
-        #expect(MailWarnings.isSchoolDomain("example.com", config: config))
-        #expect(MailWarnings.isSchoolDomain("mail.example.com", config: config))
-        #expect(!MailWarnings.isSchoolDomain("ntust.edu.tw", config: config))
-        #expect(!MailWarnings.isSchoolDomain("example.com.evil.test", config: config))
+        #expect(MailSchoolDomain.isSchoolDomain("example.com", config: config))
+        #expect(MailSchoolDomain.isSchoolDomain("mail.example.com", config: config))
+        #expect(!MailSchoolDomain.isSchoolDomain("ntust.edu.tw", config: config))
+        #expect(!MailSchoolDomain.isSchoolDomain("example.com.evil.test", config: config))
     }
 
     @Test func theExternalSenderBannerFollowsTheEffectiveDomain() {
@@ -167,10 +167,10 @@ struct MailServerConfigTests {
 
     @Test func theMistypedRecipientRuleFollowsTheEffectiveDomain() {
         let config = MailServerConfig.resolve(override: Self.settings(domain: "example.com"))
-        #expect(MailWarnings.isMistypedSchoolMailDomain("exarnple.com", config: config))
-        #expect(!MailWarnings.isMistypedSchoolMailDomain("example.com", config: config))
-        #expect(!MailWarnings.isMistypedSchoolMailDomain("exarnple.com", config: .school))
-        #expect(MailWarnings.isMistypedSchoolMailDomain("mail.ntust.edu.wt", config: .school))
+        #expect(MailSchoolDomain.isMistypedSchoolMailDomain("exarnple.com", config: config))
+        #expect(!MailSchoolDomain.isMistypedSchoolMailDomain("example.com", config: config))
+        #expect(!MailSchoolDomain.isMistypedSchoolMailDomain("exarnple.com", config: .school))
+        #expect(MailSchoolDomain.isMistypedSchoolMailDomain("mail.ntust.edu.wt", config: .school))
 
         let bounce = MailWarningInput(
             fromAddress: "", fromName: "Mail Deliver System", subject: "Returned mail",
@@ -294,7 +294,7 @@ struct MailServerConfigTests {
         let suite = UserDefaults(suiteName: "dev-mail-server-\(UUID().uuidString)")!
         let store = DevMailServerOverride(defaults: suite)
         store.save(Self.settings())
-        DefaultsMailPreferences(defaults: suite).reset()
+        MailSettingsStore(defaults: suite).reset()
         #expect(DevMailServerOverride(defaults: suite).effectiveConfig.isOverridden)
     }
 }

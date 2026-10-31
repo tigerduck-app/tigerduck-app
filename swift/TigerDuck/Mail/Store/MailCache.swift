@@ -3,37 +3,28 @@ import Foundation
 import os
 
 nonisolated final class MailCache: @unchecked Sendable {
-    static let formatVersion = 1
-    private static let sharedPreferences = DefaultsMailPreferences()
     static let shared = MailCache(
         directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SchoolMail", isDirectory: true),
-        account: { MailCache.sharedPreferences.studentID }
+        account: { MailSettingsStore.shared.studentID }
     )
 
-    private struct Envelope<Payload: Codable>: Codable {
-        var version: Int
-        var payload: Payload
-        var account: String?
-    }
-
-    private let directory: URL
+    private let files: MailCacheFiles
     private let bodyLimitBytes: Int
     private var maxEntryBytes: Int { bodyLimitBytes / 2 }
-    private let account: @Sendable () -> String?
     private let lock = NSLock()
     private let wipes: OSAllocatedUnfairLock<Int>
-    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Cache")
     let searchIndex: MailSearchIndex
+
+    private var directory: URL { files.directory }
 
     init(
         directory: URL,
         bodyLimitBytes: Int = MailConstants.bodyCacheLimitBytes,
         account: @escaping @Sendable () -> String? = { nil }
     ) {
-        self.directory = directory
+        files = MailCacheFiles(directory: directory, account: account)
         self.bodyLimitBytes = bodyLimitBytes
-        self.account = account
         let wipes = OSAllocatedUnfairLock(initialState: 0)
         self.wipes = wipes
         searchIndex = MailSearchIndex(
@@ -124,7 +115,7 @@ nonisolated final class MailCache: @unchecked Sendable {
         let cutoff = Date().addingTimeInterval(-MailConstants.openedAttachmentLifetime)
         lock.withLock { removeEntries(in: attachments, modifiedBefore: cutoff) }
         let folder = attachments.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try createDirectory(folder)
+        try files.createDirectory(folder)
         return folder.appendingPathComponent(Self.safeAttachmentName(filename))
     }
 
@@ -135,7 +126,7 @@ nonisolated final class MailCache: @unchecked Sendable {
         let url = try temporaryFileURL(filename: filename)
         return try lock.withLock {
             guard isCurrent(wipeCount) else { return nil }
-            try createDirectory(url.deletingLastPathComponent())
+            try files.createDirectory(url.deletingLastPathComponent())
             try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return url
         }
@@ -184,58 +175,22 @@ nonisolated final class MailCache: @unchecked Sendable {
     }
 
     private func read<T: Codable>(_ type: T.Type, at url: URL) -> T? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        guard let envelope = try? JSONDecoder().decode(Envelope<T>.self, from: data),
-              envelope.version == Self.formatVersion,
-              envelope.account == account() else {
-            try? FileManager.default.removeItem(at: url)
-            return nil
-        }
-        return envelope.payload
+        files.read(type, at: url)
     }
 
     private func write<T: Codable>(_ value: T, to url: URL) {
-        guard let data = encoded(value) else { return }
-        persist(data, to: url)
+        guard let data = files.encoded(value) else { return }
+        files.persist(data, to: url)
     }
 
     private func writeBounded<T: Codable>(_ value: T, to url: URL) {
-        guard let data = encoded(value) else { return }
+        guard let data = files.encoded(value) else { return }
         guard data.count <= maxEntryBytes else {
-            logger.notice("Mail cache entry larger than half the body budget, not cached")
+            files.noteEntryTooLarge()
             return
         }
-        persist(data, to: url)
+        files.persist(data, to: url)
         pruneBodies()
-    }
-
-    private func encoded<T: Codable>(_ value: T) -> Data? {
-        let envelope = Envelope(version: Self.formatVersion, payload: value, account: account())
-        guard let data = try? JSONEncoder().encode(envelope) else {
-            logger.error("Mail cache encode failed, dropping write")
-            return nil
-        }
-        return data
-    }
-
-    private func persist(_ data: Data, to url: URL) {
-        do {
-            try createDirectory(url.deletingLastPathComponent())
-            try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        } catch {
-            logger.error("Mail cache write failed, dropping write: \(String(describing: type(of: error)), privacy: .public)")
-        }
-    }
-
-    private func createDirectory(_ url: URL) throws {
-        try FileManager.default.createDirectory(
-            at: url, withIntermediateDirectories: true,
-            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
-        )
-        var root = directory
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        try? root.setResourceValues(values)
     }
 
     private func bodyFiles() -> [(url: URL, size: Int, date: Date)] {

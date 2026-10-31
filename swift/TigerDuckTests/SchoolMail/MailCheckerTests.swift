@@ -429,6 +429,19 @@ struct MailCheckerTests {
         #expect(h.prefs.diagnostics.isEmpty)
     }
 
+    @Test func aCheckInFlightPostsNothingOnceMailNotificationsAreTurnedOff() async {
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 5)], marker: 3)
+        await h.fake.update { $0.holdStatus = true }
+        let check = Task { await h.checker.check(trigger: .backgroundTask) }
+        await h.fake.waitForArrival("status")
+        h.prefs.notificationsEnabled = false
+        await h.fake.releaseStatus()
+
+        #expect(await check.value == .skippedDisabled)
+        #expect(h.center.requests.isEmpty)
+        #expect(h.prefs.inboxNextUID == 3)
+    }
+
     @Test func aCheckDoesNotAdvanceTheMarkerOfAnAccountThatSignedInMidRun() async {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
@@ -607,12 +620,12 @@ struct MailCheckerTests {
 
     @Test(arguments: [MailClientError.unreachable, .certificateRejected, .authenticationFailed, .serverBusy])
     func connectionErrorsEndThePrefetch(error: MailClientError) {
-        #expect(MailChecker.endsPrefetch(error))
+        #expect(MailErrorClass(error).endsTheRun)
     }
 
     @Test(arguments: [MailClientError.protocolError("x"), .folderChanged, .searchUnsupported])
     func messageErrorsDoNotEndThePrefetch(error: MailClientError) {
-        #expect(!MailChecker.endsPrefetch(error))
+        #expect(!MailErrorClass(error).endsTheRun)
     }
 
     @Test(arguments: [MailCheckTrigger.page, .foreground, .backgroundTask])

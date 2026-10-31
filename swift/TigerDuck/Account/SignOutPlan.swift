@@ -10,7 +10,7 @@ protocol AccountScoped {
 struct AccountStorage {
     var folders: CacheFolders = .app
     #if os(iOS)
-    var mailPreferences: any MailPreferences = DefaultsMailPreferences()
+    var mailPreferences: any MailPreferences = MailSettingsStore.shared
     var mailCredentials = MailCredentialStore()
     #endif
 }
@@ -58,7 +58,7 @@ extension SignOutPlan {
     static let libraryStores: [any AccountScoped.Type] = [LibraryService.self]
 
     #if os(iOS)
-    static let mailStores: [any AccountScoped.Type] = [MailCredentialStore.self, DefaultsMailPreferences.self]
+    static let mailStores: [any AccountScoped.Type] = [MailCredentialStore.self, MailSettingsStore.self]
     #endif
 
     /// NTUST, Moodle and the TigerDuck backend, with what `AppEnvironment` keeps of them.

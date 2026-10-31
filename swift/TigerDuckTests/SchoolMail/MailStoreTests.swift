@@ -4,10 +4,10 @@ import Testing
 @testable import TigerDuck
 
 struct MailStoreTests {
-    private static func isolatedPreferences() -> (prefs: DefaultsMailPreferences, cleanup: () -> Void) {
+    private static func isolatedPreferences() -> (prefs: MailSettingsStore, cleanup: () -> Void) {
         let suiteName = "MailStoreTests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
-        return (DefaultsMailPreferences(defaults: suite), { suite.removePersistentDomain(forName: suiteName) })
+        return (MailSettingsStore(defaults: suite), { suite.removePersistentDomain(forName: suiteName) })
     }
 
     @Test func credentialsRoundTripAndClear() throws {
@@ -109,8 +109,8 @@ struct MailStoreTests {
         let suiteName = "MailStoreTests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
         defer { suite.removePersistentDomain(forName: suiteName) }
-        let prefsA = DefaultsMailPreferences(defaults: suite)
-        let prefsB = DefaultsMailPreferences(defaults: suite)
+        let prefsA = MailSettingsStore(defaults: suite)
+        let prefsB = MailSettingsStore(defaults: suite)
         let folderCount = 200
         DispatchQueue.concurrentPerform(iterations: folderCount) { index in
             let prefs = index.isMultiple(of: 2) ? prefsA : prefsB

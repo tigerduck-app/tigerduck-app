@@ -67,7 +67,7 @@ struct LiveMailClientParsingTests {
         let data = try SchoolMailFixtures.rawEML("bounce-no-domain")
         let returnPath = MailRawHeaders.value(named: "return-path", in: data)
         #expect(returnPath == "<>")
-        #expect(MailWarnings.isBounce(returnPath: returnPath))
+        #expect(MailSchoolDomain.isBounce(returnPath: returnPath))
     }
 
     /// `Return-Path` comes off the full header section the detail fetch already asks for, and
@@ -82,8 +82,8 @@ struct LiveMailClientParsingTests {
                 HeaderField(name: "Return-Path", value: "<attacker@evil.example>"),
             ]
         )
-        #expect(LiveMailClient.returnPath(from: info) == "<>")
-        #expect(LiveMailClient.returnPath(from: MessageInfo(sequenceNumber: SequenceNumber(1))) == nil)
+        #expect(MailIMAPMessages.returnPath(from: info) == "<>")
+        #expect(MailIMAPMessages.returnPath(from: MessageInfo(sequenceNumber: SequenceNumber(1))) == nil)
     }
 
     @Test func theDetailFetchReadsReplyToFromTheHeaderSection() {
@@ -91,10 +91,10 @@ struct LiveMailClientParsingTests {
             sequenceNumber: SequenceNumber(1),
             additionalHeaderFields: [HeaderField(name: "Reply-To", value: "=?UTF-8?B?5pWZ5YuZ6JmV?= <office@mail.ntust.edu.tw>")]
         )
-        #expect(LiveMailClient.replyTo(from: info) == "教務處 <office@mail.ntust.edu.tw>")
+        #expect(MailIMAPMessages.replyTo(from: info) == "教務處 <office@mail.ntust.edu.tw>")
         let without = MessageInfo(sequenceNumber: SequenceNumber(1), additionalHeaderFields: [HeaderField(name: "Received", value: "x")])
-        #expect(LiveMailClient.replyTo(from: without) == "")
-        #expect(LiveMailClient.replyTo(from: MessageInfo(sequenceNumber: SequenceNumber(1))) == nil)
+        #expect(MailIMAPMessages.replyTo(from: without) == "")
+        #expect(MailIMAPMessages.replyTo(from: MessageInfo(sequenceNumber: SequenceNumber(1))) == nil)
     }
 
     @Test func decodesTheMail2000Shape() throws {

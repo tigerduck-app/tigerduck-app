@@ -136,7 +136,7 @@ nonisolated enum MailMessageBuilder {
     /// is attacker-controlled free text. RFC 5322 makes `msg-id` ASCII and Mail2000 announces
     /// neither SMTPUTF8 nor 8BITMIME, so this is the one way raw 8-bit data could reach the 7-bit
     /// wire. Everything else is RFC 2047-encoded (subject, display name), quoted-printable (body)
-    /// or validated ASCII (recipients, in `MailComposeViewModel.parseRecipients`). A non-ASCII
+    /// or validated ASCII (recipients, in `MailRecipients.parse`). A non-ASCII
     /// value is dropped whole, not stripped: a mangled `msg-id` identifies no message on any
     /// server yet still claims to thread. Losing the threading reference is the lesser failure.
     private static func threadingToken(_ raw: String) -> String? {

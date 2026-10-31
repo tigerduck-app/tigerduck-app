@@ -13,6 +13,26 @@ nonisolated struct MailOriginal: Sendable {
     var replyTo: [MailAddress]? = nil
 }
 
+extension MailOriginal {
+    /// The mail a reply or forward quotes, with `bodyText` as the screen shows it.
+    init(detail: MailMessageDetail, bodyText: String) {
+        let summary = detail.summary
+        let address = summary.fromAddress?.mailNonEmpty
+        let name = summary.fromName?.mailNonEmpty
+        self.init(
+            from: address != nil || name != nil ? MailAddress(name: name, address: address ?? "") : nil,
+            to: (summary.to ?? []).flatMap(MailAddress.parseList),
+            cc: (summary.cc ?? []).flatMap(MailAddress.parseList),
+            subject: summary.subject ?? "",
+            date: summary.date,
+            messageID: detail.messageID,
+            references: detail.references ?? [],
+            bodyText: bodyText,
+            replyTo: detail.replyTo.map(MailAddress.parseList)
+        )
+    }
+}
+
 nonisolated enum MailReplyComposer {
     /// RFC 5322 specials: a display name containing any of these must be quoted so the
     /// formatted address round-trips through `MailAddress.parseList`. Matches Android's

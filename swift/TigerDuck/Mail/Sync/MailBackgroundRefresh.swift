@@ -55,11 +55,11 @@ nonisolated enum MailBackgroundRefresh {
     /// a restart or in a process that started then, the preferences read as signed out and a check
     /// would schedule no next one, so it only schedules it
     /// (https://github.com/tigerduck-app/tigerduck-app/issues/691). `prefs` is
-    /// `DefaultsMailPreferences()`, not `MailAccountManager.shared`, which is @MainActor: this
+    /// `MailSettingsStore.shared`, not `MailAccountManager.shared`, which is @MainActor: this
     /// callback isn't guaranteed to run on the main actor.
     static func refresh(
         storedDataReadsBack: () -> Bool = { FirstUnlock.storedDataReadsBack() },
-        prefs: any MailPreferences = DefaultsMailPreferences(),
+        prefs: any MailPreferences = MailSettingsStore.shared,
         notificationsDenied: () async -> Bool = { await MailNotificationPermission.isDenied() },
         schedule: () -> Void = { MailBackgroundRefresh.schedule() },
         check: () async -> MailCheckOutcome = { await MailChecker.shared.check(trigger: .backgroundTask) }
@@ -104,7 +104,7 @@ nonisolated enum MailForegroundCheck {
         return now.timeIntervalSince(lastCheck) >= throttle
     }
 
-    static func runIfDue(prefs: any MailPreferences = DefaultsMailPreferences(), now: Date = Date()) async {
+    static func runIfDue(prefs: any MailPreferences = MailSettingsStore.shared, now: Date = Date()) async {
         guard SchoolMailAvailability.isEnabled, isDue(lastCheck: prefs.lastCheckAt, now: now) else { return }
         _ = await MailChecker.shared.check(trigger: .foreground)
     }
