@@ -4,7 +4,7 @@ import os
 /// Course colours and names, each while its switch is on and no edit of it is queued here.
 @MainActor
 struct CourseOverridesReconciler: CategoryReconciler {
-    let category = "course_overrides"
+    static let category = "course_overrides"
     unowned let app: AppState
 
     func reconcile(_ pass: FullSyncPass) -> Bool {

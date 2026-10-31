@@ -4,7 +4,7 @@ import os
 /// The courses themselves: the newest school roster with the user's own adds and hides.
 @MainActor
 struct CourseRosterReconciler: CategoryReconciler {
-    let category = "courses"
+    static let category = "courses"
     unowned let app: AppState
 
     func reconcile(_ pass: FullSyncPass) -> Bool {

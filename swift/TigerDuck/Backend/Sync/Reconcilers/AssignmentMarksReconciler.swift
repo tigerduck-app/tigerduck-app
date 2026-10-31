@@ -5,9 +5,13 @@ import os
 /// here is kept, and one the two sides disagree on is asked about.
 @MainActor
 struct AssignmentMarksReconciler: CategoryReconciler {
-    let category = "assignments"
+    static let category = "assignments"
     unowned let app: AppState
     var assignments: AssignmentStore = .shared
+
+    init(app: AppState) {
+        self.app = app
+    }
 
     func reconcile(_ pass: FullSyncPass) -> Bool {
         if let reason = pass.marksLeftFor {

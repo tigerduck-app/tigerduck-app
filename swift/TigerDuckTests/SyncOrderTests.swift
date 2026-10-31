@@ -100,8 +100,9 @@ struct SyncOrderTests {
 
     @Test("A full sync applies marks, course ignores, colours and names, holidays and then the roster")
     func categoryOrder() {
-        #expect(FullSyncRunner.order == ["assignments", "course_ignores", "course_overrides", "holidays", "courses"])
-        #expect(HolidayOverridesReconciler().category == FullSyncRunner.order[3])
+        #expect(FullSyncRunner.reconcilers.map { $0.category } == [
+            "assignments", "course_ignores", "course_overrides", "holidays", "courses",
+        ])
     }
 
     /// The files as the 3.x app wrote them, one edit of each kind, with dates in seconds since 2001.

@@ -17,19 +17,13 @@ final class FullSyncRunner {
         self.app = app
     }
 
-    nonisolated static let order = ["assignments", "course_ignores", "course_overrides", "holidays", "courses"]
-
-    func reconcilers() -> [CategoryReconciler] {
-        let reconcilers: [CategoryReconciler] = [
-            AssignmentMarksReconciler(app: app),
-            CourseIgnoresReconciler(app: app),
-            CourseOverridesReconciler(app: app),
-            HolidayOverridesReconciler(),
-            CourseRosterReconciler(app: app),
-        ]
-        assert(reconcilers.map(\.category) == Self.order)
-        return reconcilers
-    }
+    static let reconcilers: [any CategoryReconciler.Type] = [
+        AssignmentMarksReconciler.self,
+        CourseIgnoresReconciler.self,
+        CourseOverridesReconciler.self,
+        HolidayOverridesReconciler.self,
+        CourseRosterReconciler.self,
+    ]
 
     @discardableResult
     func sync(followUpIfBusy: Bool = false) async -> FullSyncOutcome {
@@ -62,8 +56,8 @@ final class FullSyncRunner {
             #endif
             guard let pass = try await read(ticket: ticket) else { return .skipped }
             var changed = pass.reset.apply
-            for reconciler in reconcilers() {
-                changed = reconciler.reconcile(pass) || changed
+            for reconciler in Self.reconcilers {
+                changed = reconciler.init(app: app).reconcile(pass) || changed
             }
             AppState.recordFullSync(coursesReset: pass.reset.remember, taken: pass.taken)
             if app.overrideEditGeneration == pass.editGenerationAtFetch,
@@ -243,6 +237,7 @@ struct FullSyncPass {
 /// Applies one category of a full sync's snapshot; true when it changed what this device holds.
 @MainActor
 protocol CategoryReconciler {
-    var category: String { get }
+    static var category: String { get }
+    init(app: AppState)
     func reconcile(_ pass: FullSyncPass) -> Bool
 }

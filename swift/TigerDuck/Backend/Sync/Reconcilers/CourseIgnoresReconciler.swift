@@ -5,7 +5,7 @@ import os
 /// The courses whose assignments the user hides, against the snapshot's.
 @MainActor
 struct CourseIgnoresReconciler: CategoryReconciler {
-    let category = "course_ignores"
+    static let category = "course_ignores"
     unowned let app: AppState
 
     func reconcile(_ pass: FullSyncPass) -> Bool {
