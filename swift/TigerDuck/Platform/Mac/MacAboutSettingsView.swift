@@ -119,7 +119,7 @@ struct MacAboutSettingsView: View {
                                 .background(.tint, in: RoundedRectangle(cornerRadius: 4))
                         }
                     }
-                    Text(LocalizedStringKey(repo.descriptionKey))
+                    Text(repo.descriptionKey)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

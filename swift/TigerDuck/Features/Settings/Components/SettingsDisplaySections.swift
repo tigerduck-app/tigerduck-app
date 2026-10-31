@@ -40,7 +40,7 @@ struct SettingsDisplaySections: View {
                                 }
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(Text(String(localized: String.LocalizationValue(theme.nameKey))))
+                        .accessibilityLabel(Text(theme.nameKey))
                         .accessibilityAddTraits(AccentPreview.shared.shownHex(saved: app.preferences.accentColorHex) == theme.hex ? .isSelected : [])
                     }
                     CustomAccentPicker(app: app, size: 28)

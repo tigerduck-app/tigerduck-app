@@ -56,8 +56,13 @@ struct SyncRaceTests {
         )
     }
 
-    private static let colourEdit = SyncOp.courseOverride(
+    private nonisolated static let colourEdit = SyncOp.courseOverride(
         semester: "1151", moodleId: "1151CS1", customName: nil, colorHex: "#4ECDC4", locale: nil,
+        stamp: Date(timeIntervalSince1970: 1_790_000_000)
+    )
+
+    private nonisolated static let nameEdit = SyncOp.courseOverride(
+        semester: "1151", moodleId: "1151CS1", customName: "Algorithms", colorHex: nil, locale: "zh",
         stamp: Date(timeIntervalSince1970: 1_790_000_000)
     )
 
@@ -67,8 +72,6 @@ struct SyncRaceTests {
             for: baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
         )
     }
-
-    // MARK: - R1
 
     @Test("A colour the backend kept over an older edit from here is applied by the colour store, which moves the course that held it")
     func keptColourGoesThroughTheColourStore() async throws {
@@ -122,17 +125,20 @@ struct SyncRaceTests {
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["42"])
     }
 
-    // MARK: - R3
-
-    @Test("A colour for a course the backend does not hold yet waits parked, and goes once a course upload lands")
-    func colourBeforeItsCourseWaitsForTheUpload() async throws {
+    @Test(
+        "A colour or name for a course the backend does not hold yet waits parked, and goes once a course upload lands",
+        arguments: [colourEdit, nameEdit]
+    )
+    func courseEditBeforeItsCourseWaitsForTheUpload(_ edit: SyncOp) async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
         SettingsAPIStub.enqueue(
             .init(statusCode: 404, body: Data(#"{"error":"course_not_found","message":"no course"}"#.utf8)), for: url
         )
         SettingsAPIStub.enqueue(
-            .init(statusCode: 200, body: Data(##"{"color_hex":"#4ECDC4","applied":["color_hex"]}"##.utf8)), for: url
+            .init(statusCode: 200, body: Data(
+                ##"{"color_hex":"#4ECDC4","custom_names":{"zh":"Algorithms"},"applied":["color_hex","custom_name"]}"##.utf8
+            )), for: url
         )
         let cache = Self.cache()
         let coordinator = CloudSyncCoordinator(
@@ -144,7 +150,7 @@ struct SyncRaceTests {
                              courses: cache.courses, assignments: cache.assignments)
         )
 
-        await coordinator.outbox.enqueue(Self.colourEdit)
+        await coordinator.outbox.enqueue(edit)
         await coordinator.syncTick()
         #expect(SettingsAPIStub.requests(for: url).count == 1)
         #expect(await coordinator.outbox.pendingCount() == 0)
@@ -276,10 +282,11 @@ struct SyncRaceTests {
         #expect(next["CS2"]?.colorHex == String(format: "#%06X", moved))
     }
 
-    // MARK: - R4
-
-    @Test("A rule edited while the save before it is out stays on screen and goes in the next save")
-    func editDuringASaveIsSavedNext() async throws {
+    @Test(
+        "A rule edited while the save before it is out stays on screen and goes in the next save, landed or failed",
+        arguments: [200, 500]
+    )
+    func editDuringASaveIsSavedNext(secondStatus: Int) async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = baseURL.appendingPathComponent("bulletin-subscriptions")
         let first = SettingsAPIStub.ReplyGate()
@@ -290,7 +297,7 @@ struct SyncRaceTests {
             Data(#"{"items":[{"id":\#(id),"client_id":"\#(rule.clientId.uuidString)","name":"\#(rule.name ?? "")","orgs":[],"tags":[],"mode":"AND","enabled":true}]}"#.utf8)
         }
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: reply(rule, id: 1), gate: first), for: url)
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: reply(edited, id: 1)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: secondStatus, body: reply(edited, id: 1)), for: url)
         let store = BulletinSubscriptionsStore(
             apiClient: BulletinAPIClient(baseURLProvider: { baseURL }, session: Self.stubSession(), authHeaderProvider: { "Bearer test" }),
             retryDelay: { _ in }
@@ -320,10 +327,12 @@ struct SyncRaceTests {
         #expect(names == ["A", "B"])
         #expect(store.pending.map(\.name) == ["B"])
         #expect(store.pending.map(\.clientId) == [rule.clientId])
-        #expect(store.saveState == .saved)
+        if case .failed = store.saveState {
+            #expect(secondStatus != 200)
+        } else {
+            #expect(store.saveState == .saved && secondStatus == 200)
+        }
     }
-
-    // MARK: - R10
 
     private static func inputs(dueIn hours: Double, id: String) -> ScheduleSyncService.Inputs {
         let due = SDAssignment(
@@ -364,8 +373,6 @@ struct SyncRaceTests {
         #expect(sent.first?.contains(olderID) == true)
         #expect(sent.last?.contains(newerID) == true)
     }
-
-    // MARK: - R11
 
     @Test("Keeping the server's side of a conflict reads the server again, and a sign-out meanwhile writes nothing")
     func keepingTheServerSideReadsItAgain() async {

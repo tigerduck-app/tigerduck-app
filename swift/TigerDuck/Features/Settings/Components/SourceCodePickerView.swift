@@ -38,7 +38,7 @@ struct SourceCodePickerView: View {
                                 .background(.tint, in: RoundedRectangle(cornerRadius: 4))
                         }
                     }
-                    Text(LocalizedStringKey(entry.descriptionKey))
+                    Text(entry.descriptionKey)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

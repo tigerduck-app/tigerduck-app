@@ -62,7 +62,7 @@ final class AppPreferences {
         set { toggles.visualPreset = newValue }
     }
 
-    static let themeColors: [(nameKey: String, hex: Int)] = [
+    static let themeColors: [(nameKey: LocalizedStringResource, hex: Int)] = [
         ("color_name_blue", 0x007AFF),
         ("color_name_purple", 0xAF52DE),
         ("color_name_pink", 0xFF2D55),

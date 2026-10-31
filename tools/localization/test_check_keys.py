@@ -89,40 +89,106 @@ fieldLabel("field_label_key")
 '''
         self.assertEqual(set(keys_in(src)), {"row_key", "field_label_key"})
 
-    def test_helper_with_string_key_parameter_used_to_localize(self):
+    def test_helper_with_resource_parameter(self):
         src = '''
 struct L {
-    func string(_ key: String) -> String { bundle.localizedString(forKey: key, value: nil, table: nil) }
-    func format(_ key: String, _ args: CVarArg...) -> String { String(format: string(key)) }
+    func string(_ key: LocalizedStringResource) -> String { "" }
+    func format(_ key: LocalizedStringResource, _ args: CVarArg...) -> String { "" }
 }
+func swatch(hex: Int, nameKey: LocalizedStringResource) {}
 language.string("string_key")
 language.format("format_key", 1)
+swatch(hex: 1, nameKey: "swatch_key")
 '''
-        self.assertEqual(set(keys_in(src)), {"string_key", "format_key"})
+        self.assertEqual(set(keys_in(src)), {"string_key", "format_key", "swatch_key"})
 
-    def test_string_key_parameter_that_is_not_localized_is_ignored(self):
-        src = 'func delete(key: String) { store.remove(key) }\ndelete(key: "push_user_id")\n'
-        self.assertEqual(keys_in(src), {})
-
-    def test_key_argument_label_from_stored_property_and_parameter(self):
+    def test_key_argument_label_from_stored_property(self):
         src = '''
 struct Row { let titleKey: String.LocalizationValue }
-struct Repo { let descriptionKey: String }
-func show(_ r: Repo) -> some View { Text(LocalizedStringKey(r.descriptionKey)) }
+struct Repo { let descriptionKey: LocalizedStringResource }
 Row(titleKey: "title_prop_key")
 Repo(descriptionKey: "description_prop_key")
 '''
         self.assertEqual(set(keys_in(src)), {"title_prop_key", "description_prop_key"})
 
-    def test_table_of_keys(self):
+    def test_key_held_in_a_plain_string_is_not_read(self):
         src = '''
-static let colors: [(nameKey: String, hex: Int)] = [
+struct Repo { let descriptionKey: String }
+func show(_ r: Repo) -> some View { Text(LocalizedStringKey(r.descriptionKey)) }
+func string(_ key: String) -> String { bundle.localizedString(forKey: key, value: nil, table: nil) }
+func weekdayKey(_ day: Int) -> String { day == 1 ? "string_mon" : "string_tue" }
+static let colors: [(nameKey: String, hex: Int)] = [("string_color", 0x007AFF)]
+Repo(descriptionKey: "string_description")
+string("string_helper")
+'''
+        self.assertEqual(keys_in(src), {})
+
+    def test_function_returns(self):
+        src = '''
+private func weekdayKey(_ weekday: Int) -> LocalizedStringResource {
+    switch weekday {
+    case 1: return "return_mon"
+    case 2: "case_tue"
+    default:
+        "case_sun"
+    }
+}
+func title(_ on: Bool) throws -> LocalizedStringResource { on ? "ternary_on" : "ternary_off" }
+func label(_ on: Bool) -> LocalizedStringResource {
+    if on { "if_on" } else { "if_off" }
+}
+func caption() -> LocalizedStringResource {
+    guard ready else { return "guard_key" }
+    return "plain_return"
+}
+'''
+        self.assertEqual(
+            set(keys_in(src)),
+            {"return_mon", "case_tue", "case_sun", "ternary_on", "ternary_off", "if_on", "if_off",
+             "guard_key", "plain_return"},
+        )
+
+    def test_computed_property_returns_and_their_lines(self):
+        src = 'enum E {\n    var title: LocalizedStringResource {\n        switch self {\n        case .a: "prop_a"\n        case .b: return "prop_b"\n        }\n    }\n}\n'
+        self.assertEqual(keys_in(src), {"prop_a": [4], "prop_b": [5]})
+
+    def test_other_literals_in_a_returning_body_are_not_read(self):
+        src = '''
+func key(_ code: String) -> LocalizedStringResource {
+    switch code {
+    case "pattern_one", "pattern_two": return "matched_key"
+    default: break
+    }
+    let local = "local_value"
+    if code == "compared_value" { return "branch_key" }
+    log("logged_value")
+    return code + "_suffix"
+}
+'''
+        self.assertEqual(set(keys_in(src)), {"matched_key", "branch_key"})
+
+    def test_localized_string_key_returns_read_snake_case_only(self):
+        src = 'var title: LocalizedStringKey { flag ? "lsk_title" : "Hello %@" }\n'
+        self.assertEqual(set(keys_in(src)), {"lsk_title"})
+
+    def test_tables_of_resources(self):
+        src = '''
+static let colors: [(nameKey: LocalizedStringResource, hex: Int)] = [
     ("color_one", 0x007AFF),
     ("color_two", 0xAF52DE),
 ]
-func name(_ c: (nameKey: String, hex: Int)) -> String { String(localized: String.LocalizationValue(c.nameKey)) }
+private static let captionKeys: [LocalizedStringResource] = [
+    "caption_mon", "caption_tue",
+]
+let byDay: [Int: LocalizedStringResource] = [1: "day_one", 2: "day_two"]
+let empty: LocalizedStringResource = isEmpty ? "scalar_empty" : "scalar_full"
+let ids: [String: Int] = ["not_a_key": 1]
 '''
-        self.assertEqual(set(keys_in(src)), {"color_one", "color_two"})
+        self.assertEqual(
+            set(keys_in(src)),
+            {"color_one", "color_two", "caption_mon", "caption_tue", "day_one", "day_two",
+             "scalar_empty", "scalar_full"},
+        )
 
     def test_key_built_at_run_time_is_invisible(self):
         self.assertEqual(keys_in('let a = String(localized: String.LocalizationValue(prefix + "_x"))\n'), {})

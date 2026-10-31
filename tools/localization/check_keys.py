@@ -9,19 +9,26 @@ shipped that way. This check turns the drift into a build failure.
 Run it locally with no arguments; it exits nonzero and lists `file:line` for
 every offending reference. Test targets are skipped.
 
-What it reads: string literals in the key argument of String(localized:),
-LocalizedStringKey(, NSLocalizedString(, String.LocalizationValue( and
-LocalizedStringResource( (a ternary included); snake_case literals in SwiftUI
-LocalizedStringKey positions (Text, Label, Button, .navigationTitle, ...); and
-literals passed to helpers found from their declarations (a parameter or stored
-property typed LocalizedStringKey, LocalizedStringResource or
-String.LocalizationValue, or a String named key or ending in Key), including
-tuple tables such as [(nameKey: String, hex: Int)].
+What it reads:
+- literals in the key argument of String(localized:), LocalizedStringKey(,
+  NSLocalizedString(, String.LocalizationValue( and LocalizedStringResource(;
+- snake_case literals in SwiftUI LocalizedStringKey positions (Text, Label,
+  Button, .navigationTitle, ...);
+- literals passed to a parameter, or to the memberwise label of a stored
+  property, typed LocalizedStringResource, String.LocalizationValue or
+  LocalizedStringKey (the key types);
+- literals a function or computed property of a key type returns: after
+  `return`, as a switch case's or an if branch's value, or as the whole body;
+- literals in the initial value of a property of a key type, of an array or
+  dictionary of one, or of an array of tuples with a field of one, such as
+  [(nameKey: LocalizedStringResource, hex: Int)].
+A literal counts when it is the whole argument or value, or a whole branch of
+a ternary.
 
 What it cannot see:
 - a key built at run time (concatenation, interpolation, String(format:));
-- a key returned by a function or switch and passed on (weekdayKey(_:));
-- a key held in a variable, property or dictionary and not declared as above;
+- a key held in a plain String; hold it as a LocalizedStringResource instead;
+- an array or dictionary of keys that a function or computed property returns;
 - a helper that takes a key in a closure or generic parameter;
 - a SwiftUI view or modifier missing from SWIFTUI_KEY_CALLS;
 - display text that happens to be snake_case in a SwiftUI position.
@@ -196,38 +203,50 @@ def label_of(text: str, a: int, b: int) -> tuple[str | None, int]:
 
 
 def key_type(type_text: str) -> str | None:
-    t = re.sub(r"@\w+|\s", "", type_text).rstrip("?")
+    t = re.sub(r"@\w+|\s", "", type_text).rstrip("?!")
     if t in LSK_TYPES:
         return "lsk"
     return "value" if t in VALUE_TYPES else None
 
 
-def is_key_name(name: str) -> bool:
-    return name == "key" or (name.endswith("Key") and not name.startswith("for"))
+def top_level(text: str, a: int, b: int, char: str) -> int:
+    """Index of the first `char` in text[a:b] outside brackets, or -1."""
+    depth = 0
+    for i in range(a, b):
+        c = text[i]
+        if c == char and depth == 0:
+            return i
+        depth += (c in "([{") - (c in ")]}")
+    return -1
+
+
+def type_shape(type_text: str):
+    """How a declared type holds keys: a kind of key_type, ("array" | "dict", shape) or
+    ("tuple", [shape or None per field]); None when it holds no key."""
+    t = re.sub(r"@\w+|\s", "", type_text).rstrip("?!")
+    kind = key_type(t)
+    if kind or not t or t[0] not in "[(" or close_of(t, 0) != len(t) - 1:
+        return kind
+    if t[0] == "[":
+        colon = top_level(t, 1, len(t) - 1, ":")
+        form, inner = ("dict", t[colon + 1 : -1]) if colon > 0 else ("array", t[1:-1])
+        shape = type_shape(inner)
+        return (form, shape) if shape else None
+    fields = [type_shape(t[label_of(t, a, b)[1] : b]) for a, b in split_args(t, 1, len(t) - 1)]
+    return ("tuple", fields) if any(fields) else None
 
 
 class Helpers:
-    """Key-taking parameters and properties found from declarations."""
+    """Parameters and stored properties of a key type, found from declarations."""
 
     def __init__(self) -> None:
         self.labels: dict[str, str] = {}  # label -> kind, matched in any call
         self.positional: dict[str, dict[int, str]] = {}  # function -> index -> kind
-        self.scoped: dict[str, dict[str, str]] = {}  # function -> label -> kind (String keys)
-        self.tuples: list[tuple[str, int, str]] = []  # (name, index, field) of tuple tables
-        self.string_props: set[str] = set()  # String properties named like a key
-        self.localized_members: set[str] = set()  # `.name` seen as a localizing call's key
+        self.scoped: dict[str, dict[str, str]] = {}  # function -> label -> kind
 
     def learn(self, text: str) -> None:
-        self.localized_members.update(
-            re.findall(
-                r"(?:LocalizedStringKey|LocalizationValue|LocalizedStringResource|NSLocalizedString"
-                r"|localized:)\s*\(?[^()\n]*?\.(\w+)\s*\)",
-                text,
-            )
-        )
         self._functions(text)
         self._properties(text)
-        self._tuple_tables(text)
 
     def _functions(self, text: str) -> None:
         for m in re.finditer(rf"\b(?:func\s+({IDENT})|(init))\s*(?:<[^>(]*>)?\s*\(", text):
@@ -235,64 +254,45 @@ class Helpers:
             end = close_of(text, m.end() - 1)
             if end < 0:
                 continue
-            body = re.compile(r"\s*(?:->[^{]*)?\{").match(text, end + 1)
-            body_end = close_of(text, body.end() - 1) if body else -1
-            body_text = text[body.end() : body_end] if body and body_end > 0 else ""
             for index, (a, b) in enumerate(split_args(text, m.end(), end)):
-                self._param(name, index, text[a:b], body_text)
+                self._param(name, index, text[a:b])
 
-    def _param(self, func: str, index: int, param: str, body: str) -> None:
+    def _param(self, func: str, index: int, param: str) -> None:
         head, _, tail = param.partition(":")
         names = head.split()
-        if not names or not tail.strip():
+        kind = key_type(tail.split("=")[0])
+        if not names or not kind:
             return
-        external, internal = names[0], names[-1]
-        type_text = tail.split("=")[0]
-        kind = key_type(type_text)
-        if kind:
-            if external == "_":
-                self.positional.setdefault(func, {})[index] = kind
-            elif func == "init":
-                self.labels[external] = kind
-            else:
-                self.scoped.setdefault(func, {})[external] = kind
-        elif (
-            re.sub(r"\s", "", type_text) == "String"
-            and is_key_name(internal)
-            and re.search(rf"(?:[Ll]ocaliz\w*|\bstring)\s*\([^)]*\b{internal}\b", body)
-        ):
-            if external == "_":
-                self.positional.setdefault(func, {})[index] = "str"
-            elif is_key_name(external):
-                self.scoped.setdefault(func, {})[external] = "str"
+        external = names[0]
+        if external == "_":
+            self.positional.setdefault(func, {})[index] = kind
+        elif func == "init":
+            self.labels[external] = kind
+        else:
+            self.scoped.setdefault(func, {})[external] = kind
 
     def _properties(self, text: str) -> None:
         for m in re.finditer(rf"\b(?:let|var)\s+({IDENT})\s*:\s*([\w.?]+)", text):
             kind = key_type(m.group(2))
             if kind:
                 self.labels[m.group(1)] = kind
-            elif m.group(2) == "String" and is_key_name(m.group(1)):
-                self.string_props.add(m.group(1))
-
-    def finish(self) -> None:
-        """Keep String names that some localizing call reads as a member."""
-        for name in self.string_props & self.localized_members:
-            self.labels.setdefault(name, "str")
-        self.tuples = [t for t in self.tuples if t[2] in self.localized_members]
-
-    def _tuple_tables(self, text: str) -> None:
-        for m in re.finditer(rf"\b(?:let|var)\s+({IDENT})\s*:\s*\[\(([^)]*)\)\]", text):
-            fields = [f.split(":")[0].strip() for f in m.group(2).split(",")]
-            for index, field in enumerate(fields):
-                if is_key_name(field):
-                    self.tuples.append((m.group(1), index, field))
 
 
 def accepts(kind: str, value: str) -> bool:
     """Whether a literal counts as a key for this kind of position."""
-    if kind == "key":
+    if kind in ("key", "value"):
         return bool(KEY_CHARS.fullmatch(value))
-    return bool(SNAKE_CASE.fullmatch(value))  # lsk, str and SwiftUI positions
+    return bool(SNAKE_CASE.fullmatch(value))  # lsk and SwiftUI positions
+
+
+# What may come right before a literal that a body returns: `return`, a block's `{`, a case
+# label's or a ternary's `:`, a ternary's `?`, or a `;`. What follows it is the first character
+# after spaces on its line.
+BEFORE_RESULT = re.compile(r"(?:\breturn|[{?:;])\s*\Z")
+AFTER_RESULT = re.compile(r"[ \t]*(.?)", re.S)
+OPENING = re.compile(r"\s*([\[(])")
+DECLARATION = re.compile(rf"\b(?:(?:let|var)\s+{IDENT}\s*:|func\s+{IDENT}\s*(?:<[^>(]*>)?\s*\()")
+RETURN_ARROW = re.compile(r"[\s\w()]*?->")
 
 
 class FileScan:
@@ -301,41 +301,113 @@ class FileScan:
         self.src = src
         self.text, self.lits = mask(src)
         self.lit_at = {s: (e, v, i) for s, e, v, i in self.lits}
-        self.nested = self._nested_starts()
         self.line_starts = [0] + [m.end() for m in re.finditer("\n", src)]
-
-    def _nested_starts(self) -> set[int]:
-        """Literals that sit inside an interpolation of another literal."""
-        inside: set[int] = set()
-        for s, e, _, interpolated in self.lits:
-            if interpolated:
-                inside.update(t for t, *_ in self.lits if s < t < e)
-        return inside
 
     def line(self, offset: int) -> int:
         return bisect.bisect_right(self.line_starts, offset)
 
-    def arg_literals(self, a: int, b: int) -> list[tuple[int, str]]:
-        """Plain literals of an argument: outside nested calls, after a top-level `?`."""
-        text, found, stack, begin, i = self.text, [], [], a, a
+    def _literals(self, a: int, b: int, counts, opens: str = "([{"):
+        """Plain literals of text[a:b] outside the brackets in `opens` that `counts(start, end)`
+        accepts."""
+        closes = opens.translate(str.maketrans("([{", ")]}"))
+        found, depth, i = [], 0, a
         while i < b:
-            c = text[i]
             if i in self.lit_at:
                 end, value, interpolated = self.lit_at[i]
-                if not stack and i >= begin and not interpolated:
+                if not depth and not interpolated and counts(i, end):
                     found.append((i, value))
                 i = end
                 continue
-            if c == "?" and not stack and begin == a and text[i - 1].isspace():
-                begin = i
-            elif c in "([{":
-                prev = text[a:i].rstrip()[-1:]
-                call = c != "(" or (bool(prev) and (prev.isalnum() or prev in "_>])?!"))
-                stack.append(call)
-            elif c in ")]}" and stack:
-                stack.pop()
+            depth += (self.text[i] in opens) - (self.text[i] in closes)
             i += 1
         return found
+
+    def arg_literals(self, a: int, b: int) -> list[tuple[int, str]]:
+        """Literals that are a whole argument, or a whole branch of a top-level ternary in it."""
+
+        def alone(start: int, end: int) -> bool:
+            before = self.text[a:start].rstrip()[-1:]
+            after = self.text[end:b].lstrip()[:1]
+            return before in ("", "?", ":") and after in ("", ":")
+
+        return self._literals(a, b, alone)
+
+    def result_literals(self, a: int, b: int) -> list[tuple[int, str]]:
+        """Literals the body text[a:b] returns, braces of nested blocks included."""
+
+        def result(start: int, end: int) -> bool:
+            after = AFTER_RESULT.match(self.text, end, b + 1).group(1)
+            return bool(BEFORE_RESULT.search(self.text, a - 1, start)) and after in ("", "\n", "}", ":", ";")
+
+        return self._literals(a, b, result, "([")
+
+    def _type_end(self, i: int) -> int:
+        """End of the type that starts at i: the `=`, `{`, newline or separator after it."""
+        depth = 0
+        while i < len(self.text):
+            c = self.text[i]
+            if depth == 0 and c in "={\n,;)}":
+                return i
+            depth += (c in "([") - (c in ")]")
+            i += 1
+        return i
+
+    def _expression_end(self, i: int) -> int:
+        """End of the expression that starts after the whitespace at i."""
+        while i < len(self.text) and self.text[i].isspace():
+            i += 1
+        depth = 0
+        while i < len(self.text):
+            c = self.text[i]
+            if depth == 0 and c in "\n;,)]}":
+                return i
+            depth += (c in "([{") - (c in ")]}")
+            i += 1
+        return i
+
+    def value_literals(self, shape, a: int, b: int):
+        """(start, value, kind) of the keys an expression of this shape holds."""
+        if isinstance(shape, str):
+            yield from ((pos, value, shape) for pos, value in self.arg_literals(a, b))
+            return
+        form, inner = shape
+        m = OPENING.match(self.text, a, b)
+        if not m or m.group(1) != ("(" if form == "tuple" else "["):
+            return
+        close = close_of(self.text, m.start(1))
+        if not a < close < b:
+            return
+        for index, (x, y) in enumerate(split_args(self.text, m.end(), close)):
+            if form == "array":
+                yield from self.value_literals(inner, x, y)
+            elif form == "dict":
+                colon = top_level(self.text, x, y, ":")
+                if colon >= 0:
+                    yield from self.value_literals(inner, colon + 1, y)
+            elif index < len(inner) and inner[index]:
+                yield from self.value_literals(inner[index], label_of(self.text, x, y)[1], y)
+
+    def holder_literals(self):
+        """(start, value, kind) of the keys that declarations of a key type return or start with."""
+        text = self.text
+        for m in DECLARATION.finditer(text):
+            start = m.end()
+            if text[start - 1] == "(":
+                close = close_of(text, start - 1)
+                arrow = RETURN_ARROW.match(text, close + 1) if close > 0 else None
+                if not arrow:
+                    continue
+                start = arrow.end()
+            end = self._type_end(start)
+            shape = type_shape(text[start:end])
+            if not shape or end >= len(text):
+                continue
+            if text[end] == "{" and isinstance(shape, str):
+                body_end = close_of(text, end)
+                if body_end > 0:
+                    yield from ((pos, value, shape) for pos, value in self.result_literals(end + 1, body_end))
+            elif text[end] == "=":
+                yield from self.value_literals(shape, end + 1, self._expression_end(end + 1))
 
     def calls(self):
         """Yield (full name, args span list) for every call in the file."""
@@ -344,19 +416,6 @@ class FileScan:
             end = close_of(self.text, m.end() - 1)
             if end > 0:
                 yield re.sub(r"\s", "", m.group(1)), split_args(self.text, m.end(), end)
-
-    def tuple_rows(self, name: str, index: int):
-        """Literals at one position of every row of `name = [(...), ...]`."""
-        for m in re.finditer(rf"\b{re.escape(name)}\b[^=\n]*=\s*\[", self.text):
-            end = close_of(self.text, m.end() - 1)
-            if end < 0:
-                continue
-            for a, b in split_args(self.text, m.end(), end):
-                if self.text[a:b].lstrip().startswith("("):
-                    row = self.text.index("(", a)
-                    args = split_args(self.text, row + 1, close_of(self.text, row))
-                    if index < len(args):
-                        yield args[index]
 
     def references(self, helpers: Helpers):
         """Yield (key, line) for every localization key literal in the file."""
@@ -380,17 +439,14 @@ class FileScan:
                 elif label in SWIFTUI_KEY_LABELS.get(short, ()):
                     yield from read(start, b, "lsk")
                 elif label and label in helpers.labels:
-                    kind = helpers.labels[label]
-                    yield from read(start, b, "key" if kind == "value" else kind)
+                    yield from read(start, b, helpers.labels[label])
                 elif label and label in helpers.scoped.get(short, {}):
-                    kind = helpers.scoped[short][label]
-                    yield from read(start, b, "key" if kind == "value" else kind)
+                    yield from read(start, b, helpers.scoped[short][label])
                 elif label is None and index in helpers.positional.get(short, {}):
-                    kind = helpers.positional[short][index]
-                    yield from read(start, b, "key" if kind == "value" else kind)
-        for name, index, _ in helpers.tuples:
-            for a, b in self.tuple_rows(name, index):
-                yield from read(a, b, "str")
+                    yield from read(start, b, helpers.positional[short][index])
+        for pos, value, kind in self.holder_literals():
+            if accepts(kind, value):
+                yield value, self.line(pos)
 
 
 def shipping_swift_files() -> list[Path]:
@@ -407,7 +463,6 @@ def referenced_keys(files: list[Path] | None = None) -> dict[str, list[str]]:
     helpers = Helpers()
     for scan in scans:
         helpers.learn(scan.text)
-    helpers.finish()
     found: dict[str, list[str]] = {}
     for scan in scans:
         rel = scan.path.relative_to(ROOT)

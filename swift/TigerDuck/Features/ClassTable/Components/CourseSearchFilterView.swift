@@ -256,7 +256,7 @@ private struct PeriodGridContent: View {
     @ScaledMetric(relativeTo: .caption) private var maxCellHeight: CGFloat = 38
 
     private static let periods = AppConstants.Periods.chronologicalOrder
-    private static let captionKeys: [String.LocalizationValue] = [
+    private static let captionKeys: [LocalizedStringResource] = [
         "weekday_mon_caption", "weekday_tue_caption", "weekday_wed_caption",
         "weekday_thu_caption", "weekday_fri_caption", "weekday_sat_caption",
     ]
