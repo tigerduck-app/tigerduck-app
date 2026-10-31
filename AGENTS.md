@@ -73,8 +73,10 @@ two at once compete for the same build folder.
 
 ## Anti-patterns
 
-- Do not edit the `*.lproj` files under `swift/`; they are symlinks into the `app-translation`
-  submodule, which takes its own pull requests.
+- Do not add `*.lproj` folders or `.strings` files under `swift/`. Every Apple target's
+  "Generate Localizations" phase (`tools/localization/build_apple_lproj.sh`) builds them from
+  `app-translation/source/`, which takes its own pull requests. After a locale is added or
+  removed there, regenerate `tools/localization/apple-lproj.xcfilelist` with the script's `--list`.
 - Do not treat `api-poc/api/runtime/` (for example `bulletin_pages/`) as source; it is
   gitignored scraper output.
 - Do not look for a web backend here; it lives in `tigerduck-backend`.

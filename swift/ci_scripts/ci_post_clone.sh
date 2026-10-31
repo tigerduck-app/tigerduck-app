@@ -2,29 +2,23 @@
 #
 # Xcode Cloud post-clone hook.
 #
-# The fix below repairs an input that a Cloud checkout cannot have on its own.
-# A missing input does not fail the build (the app just ships broken), so this
-# script also verifies its own work and exits nonzero if the fix did not take.
+# A Cloud checkout has no submodules, and the build needs app-translation: every Apple target's
+# "Generate Localizations" phase runs its generator with python3. Checking both here fails the
+# run before the build starts instead of partway through it.
 
 set -e
 
 REPO="${CI_PRIMARY_REPOSITORY_PATH:?CI_PRIMARY_REPOSITORY_PATH is not set}"
-APP_DIR="$REPO/swift/TigerDuck"
+GENERATOR="$REPO/app-translation/tools/localization/generate_localizations.py"
 
-# Localizations.
-#
-# Every `<lang>.lproj` under the Apple targets is a tracked symlink into
-# `app-translation/generated/apple/`. With the submodule uncheckedout those links
-# dangle, Xcode copies nothing, and the app ships with raw string keys on
-# screen. The build itself still succeeds.
 git -C "$REPO" submodule update --init --recursive
 
-resolved=0
-for lproj in "$APP_DIR"/*.lproj; do
-    [ -e "$lproj/Localizable.strings" ] && resolved=$((resolved + 1))
-done
-if [ "$resolved" -lt 60 ]; then
-    echo "error: only $resolved .lproj symlinks resolve; the app-translation submodule is not populated"
+if [ ! -f "$GENERATOR" ]; then
+    echo "error: $GENERATOR is missing; the app-translation submodule is not populated"
     exit 1
 fi
-echo "localizations: $resolved locales resolved"
+if ! command -v python3 > /dev/null 2>&1; then
+    echo "error: python3 is not on PATH; the localizations cannot be generated"
+    exit 1
+fi
+python3 -B "$GENERATOR" --validate-only

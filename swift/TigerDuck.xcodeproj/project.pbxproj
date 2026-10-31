@@ -484,9 +484,9 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 424C46792F6E763E009D1DDA /* Build configuration list for PBXNativeTarget "TigerDuck" */;
 			buildPhases = (
-				9F3D7A0001000000000001 /* Sync Localizations */,
 				424C46522F6E763C009D1DDA /* Sources */,
 				424C46532F6E763C009D1DDA /* Frameworks */,
+				DC0DE00430AA000100000001 /* Generate Localizations */,
 				424C46542F6E763C009D1DDA /* Resources */,
 				42B9BC192F90EBFB00D3B5A1 /* Embed Foundation Extensions */,
 				B21DC6B32FB887DA00AE2430 /* Embed Watch Content */,
@@ -567,6 +567,7 @@
 			buildPhases = (
 				42B9BBFA2F90EBFA00D3B5A1 /* Sources */,
 				42B9BBFB2F90EBFA00D3B5A1 /* Frameworks */,
+				DC0DE00430AA000100000004 /* Generate Localizations */,
 				42B9BBFC2F90EBFA00D3B5A1 /* Resources */,
 			);
 			buildRules = (
@@ -590,6 +591,7 @@
 			buildPhases = (
 				B21DC68E2FB887D900AE2430 /* Sources */,
 				B21DC68F2FB887D900AE2430 /* Frameworks */,
+				DC0DE00430AA000100000002 /* Generate Localizations */,
 				B21DC6902FB887D900AE2430 /* Resources */,
 				C3D0F1052FC0A00000AE2430 /* Embed Foundation Extensions */,
 			);
@@ -662,6 +664,7 @@
 			buildPhases = (
 				B244D74B2FB87B580040D6FA /* Sources */,
 				B244D74C2FB87B580040D6FA /* Frameworks */,
+				DC0DE00430AA000100000003 /* Generate Localizations */,
 				B244D74D2FB87B580040D6FA /* Resources */,
 			);
 			buildRules = (
@@ -685,6 +688,7 @@
 			buildPhases = (
 				C3D0F10E2FC0A00000AE2430 /* Sources */,
 				C3D0F10D2FC0A00000AE2430 /* Frameworks */,
+				DC0DE00430AA000100000005 /* Generate Localizations */,
 				C3D0F10F2FC0A00000AE2430 /* Resources */,
 			);
 			buildRules = (
@@ -914,24 +918,120 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		9F3D7A0001000000000001 /* Sync Localizations */ = {
+		DC0DE00430AA000100000001 /* Generate Localizations */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
 			);
-			name = "Sync Localizations";
+			name = "Generate Localizations";
 			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nPYTHON=\"$(command -v python3 || command -v python)\"\nif [ -z \"$PYTHON\" ]; then\n  echo \"warning: python3 not found on PATH; skipping localization sync\"\n  exit 0\nfi\n\"$PYTHON\" \"${SRCROOT}/../tools/localization/sync_localizations.py\"\n";
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
+		};
+		DC0DE00430AA000100000002 /* Generate Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
+			);
+			name = "Generate Localizations";
+			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
+		};
+		DC0DE00430AA000100000003 /* Generate Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
+			);
+			name = "Generate Localizations";
+			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
+		};
+		DC0DE00430AA000100000004 /* Generate Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
+			);
+			name = "Generate Localizations";
+			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
+		};
+		DC0DE00430AA000100000005 /* Generate Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
+			);
+			name = "Generate Localizations";
+			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1111,6 +1211,7 @@
 				SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				USE_RECURSIVE_SCRIPT_INPUTS_IN_SCRIPT_PHASES = YES;
 			};
 			name = Debug;
 		};
@@ -1170,6 +1271,7 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
 				SWIFT_COMPILATION_MODE = wholemodule;
+				USE_RECURSIVE_SCRIPT_INPUTS_IN_SCRIPT_PHASES = YES;
 			};
 			name = Release;
 		};
