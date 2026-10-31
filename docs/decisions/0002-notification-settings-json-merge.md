@@ -53,11 +53,12 @@ later build. Only the iOS build syncs the document: every synced field lives on
   document lacks the field, and a section the document lacks goes whole; every other field stays
   as the document holds it, on the first write and on the 409 retry, so two devices that change
   different fields of one section both keep their change. The two offset lists count as one
-  field. With no copy stored, after a sign-out or an upgrade, no field counts as changed: an
-  unsent edit cannot be told from a value another device changed since, and that newer value
-  wins over the edit. Turning a device switch back on makes that section's values the copy, so a
-  push leaves the section as the document holds it, and a reconcile adopts it. Sign-out clears
-  the copy.
+  field. With no copy stored, after a sign-out or when an upgrade found a push pending, no field
+  counts as changed: an unsent edit cannot be told from a value another device changed since,
+  and that newer value wins over the edit. An upgrade with nothing pending takes the device's
+  values as the copy (`NotificationSettingsSyncedSeedMigration`). Turning a device switch back on
+  makes that section's values the copy, so a push leaves the section as the document holds it,
+  and a reconcile adopts it. Sign-out clears the copy.
 
 ## Alternatives
 

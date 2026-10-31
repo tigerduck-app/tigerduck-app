@@ -22,6 +22,7 @@ extension AppState {
             configuredTabs = AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]) ?? AppFeature.defaultTabs
         }
         LiveActivitySnapshotPurgeMigration.runIfNeeded()
+        NotificationSettingsSyncedSeedMigration.runIfNeeded(current: .init(from: liveActivityPreferences))
         if FlipToLibraryDefaultOffMigration.runIfNeeded() {
             flipToLibraryEnabled = Defaults[.flipToLibraryEnabled]
         }
