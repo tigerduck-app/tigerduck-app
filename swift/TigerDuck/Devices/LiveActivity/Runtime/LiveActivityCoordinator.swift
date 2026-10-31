@@ -417,7 +417,7 @@ final class LiveActivityCoordinator {
         let realTarget = AppClock.realTime(forApp: target)
         let delay = max(0, realTarget.timeIntervalSinceNow) + 1
         automaticEndTasks[activityId] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(delay))
             guard !Task.isCancelled else { return }
             await self?.endIfStillExpired(activityId: activityId, target: target)
         }

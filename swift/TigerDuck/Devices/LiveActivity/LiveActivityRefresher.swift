@@ -123,7 +123,7 @@ final class LiveActivityRefresher {
         let delay = realBoundary.timeIntervalSinceNow + AppConstants.scenarioBoundarySlackSeconds
         guard delay > 0 else { return }
         boundaryRefreshTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(delay))
             guard !Task.isCancelled else { return }
             await self?.refresh()
         }
@@ -177,7 +177,7 @@ final class LiveActivityRefresher {
     func scheduleRefresh(after delay: Duration = .milliseconds(250)) {
         pendingRefreshTask?.cancel()
         pendingRefreshTask = Task { @MainActor in
-            try? await Task.sleep(for: delay)
+            try? await AppClock.sleep(until: ContinuousClock.now + delay)
             guard !Task.isCancelled else { return }
             await refresh()
             app.pushSchedule.requestSync()

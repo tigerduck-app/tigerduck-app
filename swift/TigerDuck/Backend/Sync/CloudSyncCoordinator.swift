@@ -560,7 +560,7 @@ final class CloudSyncCoordinator {
     func scheduleTick(after seconds: TimeInterval = 0) {
         Task { [weak self] in
             if seconds > 0 {
-                try? await Task.sleep(for: .seconds(seconds))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(seconds))
             }
             await self?.syncTick()
         }

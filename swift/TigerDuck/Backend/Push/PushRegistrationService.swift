@@ -132,8 +132,8 @@ actor PushRegistrationService {
         // an actor init evaluates default arguments in a nonisolated context.
         // Callers pass it from their own main-actor context.
         deviceClass: String,
-        debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
-        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.identity = identity
         self.apiClient = apiClient
@@ -702,7 +702,7 @@ actor PushRegistrationService {
         )
         activityRegistrationRetryTasks[activityId]?.cancel()
         activityRegistrationRetryTasks[activityId] = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(delay))
             if Task.isCancelled { return }
             await self?.retryActivityRegistration(registration)
         }
