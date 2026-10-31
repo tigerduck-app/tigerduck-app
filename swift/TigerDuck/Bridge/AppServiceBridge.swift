@@ -624,7 +624,12 @@ enum AppServiceBridge {
         return data
     }
 
-    static func refreshUserAddedCourses(semester: String, authService: AuthService) async -> [SDCourse] {
+    static func refreshUserAddedCourses(
+        semester: String, authService: AuthService,
+        lookup: @escaping @MainActor @Sendable (_ semester: String, _ courseNo: String, _ language: String, _ fresh: Bool) async throws -> [CourseSearchResult] = {
+            try await CourseLookupService.lookupCourse(semester: $0, courseNo: $1, language: $2, fresh: $3)
+        }
+    ) async -> [SDCourse] {
         let startGeneration = authService.loginGeneration
         let stored = DataCache.shared.loadUserAddedCourses()
         let targets = stored.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
@@ -634,10 +639,8 @@ enum AppServiceBridge {
 
         let lookups = await concurrentMap(seeds) { @MainActor seed -> (String, CourseData)? in
             let (courseNo, moodleId, rowSemester) = seed
-            guard let results = try? await CourseLookupService.lookupCourse(
-                semester: rowSemester, courseNo: courseNo, language: display.language,
-                fresh: true
-            ), !results.isEmpty else { return nil }
+            guard let results = try? await lookup(rowSemester, courseNo, display.language, true),
+                  !results.isEmpty else { return nil }
             return (courseNo, enrichedCourseData(
                 from: results, semester: rowSemester,
                 fallbackMoodleIdNumber: moodleId, display: display
@@ -645,9 +648,12 @@ enum AppServiceBridge {
         }
         let refreshed = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
         guard authService.loginGeneration == startGeneration else { return [] }
-        guard !refreshed.isEmpty else { return targets }
+        // Lookups take seconds; an add, delete or sync merge meanwhile must survive the save.
+        let current = DataCache.shared.loadUserAddedCourses()
+        let inScope = { current.filter { DataCache.userAddedCourse($0, belongsTo: semester) } }
+        guard !refreshed.isEmpty else { return inScope() }
 
-        let updated = stored.map { course -> SDCourse in
+        let updated = current.map { course -> SDCourse in
             guard DataCache.userAddedCourse(course, belongsTo: semester),
                   let data = refreshed[course.courseNo] else { return course }
             return course.updated(with: data)
@@ -699,7 +705,12 @@ enum AppServiceBridge {
         return answers.compactMap { $0.data?.course(in: semester) }
     }
 
-    static func refreshCoursesMissingClassroom(semester: String, authService: AuthService) async -> Bool {
+    static func refreshCoursesMissingClassroom(
+        semester: String, authService: AuthService,
+        lookup: @escaping @MainActor @Sendable (_ semester: String, _ courseNo: String, _ language: String, _ fresh: Bool) async throws -> [CourseSearchResult] = {
+            try await CourseLookupService.lookupCourse(semester: $0, courseNo: $1, language: $2, fresh: $3)
+        }
+    ) async -> Bool {
         let startGeneration = authService.loginGeneration
         let enrolled = DataCache.shared.loadCourses(semester: semester)
         let userAdded = DataCache.shared.loadUserAddedCourses()
@@ -712,9 +723,8 @@ enum AppServiceBridge {
 
         let lookups = await concurrentMap(seeds) { @MainActor seed -> (String, CourseData)? in
             let (courseNo, moodleId) = seed
-            guard let results = try? await CourseLookupService.lookupCourse(
-                semester: semester, courseNo: courseNo, language: display.language
-            ), !results.isEmpty else { return nil }
+            guard let results = try? await lookup(semester, courseNo, display.language, false),
+                  !results.isEmpty else { return nil }
             let data = enrichedCourseData(
                 from: results, semester: semester,
                 fallbackMoodleIdNumber: moodleId, display: display
@@ -724,14 +734,17 @@ enum AppServiceBridge {
         let found = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
         guard authService.loginGeneration == startGeneration, !found.isEmpty else { return false }
 
-        if enrolled.contains(where: { found[$0.courseNo] != nil }) {
+        // Re-read both lists: a roster or user-added change saved during the lookups must survive.
+        let enrolledNow = DataCache.shared.loadCourses(semester: semester)
+        let userAddedNow = DataCache.shared.loadUserAddedCourses()
+        if enrolledNow.contains(where: { found[$0.courseNo] != nil }) {
             DataCache.shared.saveCourses(
-                enrolled.map { course in found[course.courseNo].map(course.updated) ?? course },
+                enrolledNow.map { course in found[course.courseNo].map(course.updated) ?? course },
                 semester: semester
             )
         }
-        if userAdded.contains(where: { isUserAddedHere($0) && found[$0.courseNo] != nil }) {
-            DataCache.shared.saveUserAddedCourses(userAdded.map { course in
+        if userAddedNow.contains(where: { isUserAddedHere($0) && found[$0.courseNo] != nil }) {
+            DataCache.shared.saveUserAddedCourses(userAddedNow.map { course in
                 guard isUserAddedHere(course), let data = found[course.courseNo] else { return course }
                 return course.updated(with: data)
             })
