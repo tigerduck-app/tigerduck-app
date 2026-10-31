@@ -41,6 +41,12 @@ final class HostWindow {
         }
     }
 
+    /// Whether this is the window in front; true while either window is unknown, as on a cold launch.
+    var isForeground: Bool {
+        guard let window, let foreground = Self.foreground else { return true }
+        return window === foreground
+    }
+
     /// The key window of a foreground scene, else the first window of the first one.
     static var foreground: UIWindow? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }

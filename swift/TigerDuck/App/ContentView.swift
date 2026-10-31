@@ -32,6 +32,7 @@ private struct ClassTableImportHost: ViewModifier {
     @State private var shareAfterScanner: ClassTableShareModel?
     /// The sheets shown here sit outside MainTabView's window reader.
     @State private var hostWindow = HostWindow()
+    @State private var keyWindowChanges = 0
 
     func body(content: Content) -> some View {
         content
@@ -51,12 +52,17 @@ private struct ClassTableImportHost: ViewModifier {
             }
             .task(id: HeldLinkWait(
                 link: HeldShareLink.mayOpen(in: app) ? HeldShareLink.shared.link?.id : nil,
-                notifySheetUp: app.updateNotifyCoordinator.activeNotifySheet != nil
+                notifySheetUp: app.updateNotifyCoordinator.activeNotifySheet != nil,
+                keyWindowChanges: keyWindowChanges
             )) {
-                // A change of the notify sheet starts this again; a sheet in a tab is waited out.
+                // A change of the notify sheet or the key window starts this again; a sheet in a tab
+                // is waited out.
                 while !openHeldLink(), hostWindow.isPresenting, !Task.isCancelled {
                     await hostWindow.presentationsClosed()
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIWindow.didBecomeKeyNotification)) { _ in
+                keyWindowChanges += 1
             }
             // Last, so the share sheet shown here can open the scanner too.
             .environment(\.requestClassTableImport) {
@@ -69,7 +75,8 @@ private struct ClassTableImportHost: ViewModifier {
     }
 
     /// False while the link waits: the import's sheet would close a sheet or alert open in a tab,
-    /// and would race a What's New or update sheet about to show.
+    /// and would race a What's New or update sheet about to show. Only the window in front takes
+    /// it, so it never opens in another iPad window while this one has a sheet up.
     private func openHeldLink() -> Bool {
         // A link replaces what an open scanner, or an earlier link's import, shows, inside it.
         let inPlace: ClassTableImportModel? = if let importModel, !importModel.isFinished {
@@ -83,8 +90,9 @@ private struct ClassTableImportHost: ViewModifier {
             if let text = HeldShareLink.shared.take(in: app) { inPlace.linkOpened(text) }
             return true
         }
-        let othersUp = hostWindow.isPresenting || app.updateNotifyCoordinator.activeNotifySheet != nil
-        if othersUp, HeldShareLink.shared.link != nil, HeldShareLink.mayOpen(in: app) { return false }
+        let waits = !hostWindow.isForeground || hostWindow.isPresenting
+            || app.updateNotifyCoordinator.activeNotifySheet != nil
+        if waits, HeldShareLink.shared.link != nil, HeldShareLink.mayOpen(in: app) { return false }
         guard let text = HeldShareLink.shared.take(in: app) else { return true }
         let model = ClassTableImportModel.live(authService: app.authService)
         linkModel = model
@@ -96,6 +104,7 @@ private struct ClassTableImportHost: ViewModifier {
 private struct HeldLinkWait: Equatable {
     let link: UUID?
     let notifySheetUp: Bool
+    let keyWindowChanges: Int
 }
 
 private struct ServerPushPopupHost: ViewModifier {
