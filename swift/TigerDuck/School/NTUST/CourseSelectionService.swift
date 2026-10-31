@@ -120,7 +120,7 @@ enum CourseSelectionService {
             && loadEnrolledCoursesCache(studentId: studentId, semester: semester) == nil
     }
 
-    nonisolated static let enrolledCoursesCacheTTL: TimeInterval = 86_400
+    nonisolated static let enrolledCoursesFreshness = FreshnessPolicy(lifetime: 86_400)
 
     nonisolated private static let enrolledCoursesCacheKey = "enrolledCourseNosCache"
 
@@ -153,8 +153,9 @@ enum CourseSelectionService {
         cacheLock.withLock {
             let dict = readCacheDict()
             guard let entry = dict["\(studentId):\(semester)"] else { return nil }
-            if Date().timeIntervalSince1970 - entry.cachedAt > enrolledCoursesCacheTTL { return nil }
-            return (entry.courseNos, Date(timeIntervalSince1970: entry.cachedAt))
+            let cachedAt = Date(timeIntervalSince1970: entry.cachedAt)
+            guard enrolledCoursesFreshness.isFresh(storedAt: cachedAt) else { return nil }
+            return (entry.courseNos, cachedAt)
         }
     }
 

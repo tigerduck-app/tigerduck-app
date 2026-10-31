@@ -16,7 +16,7 @@ enum CourseLookupService {
         )
     }()
 
-    static let lookupLifetime: TimeInterval = 30 * 60
+    static let lookupFreshness = FreshnessPolicy(lifetime: 30 * 60)
 
     struct LookupKey: Hashable {
         let semester: String
@@ -24,7 +24,7 @@ enum CourseLookupService {
         let language: String
     }
 
-    private static var lookups: [LookupKey: (at: Date, results: [CourseSearchResult])] = [:]
+    private static var lookups: [LookupKey: CachedValue<[CourseSearchResult]>] = [:]
 
     static func lookupCourse(
         semester: String,
@@ -44,11 +44,11 @@ enum CourseLookupService {
         fresh: Bool,
         search: () async throws -> [CourseSearchResult]
     ) async throws -> [CourseSearchResult] {
-        if !fresh, let kept = lookups[key], now.timeIntervalSince(kept.at) < lookupLifetime {
-            return kept.results
+        if !fresh, let kept = lookups[key]?.fresh(under: lookupFreshness, now: now) {
+            return kept
         }
         let results = try await search()
-        lookups[key] = (now, results)
+        lookups[key] = CachedValue(value: results, storedAt: now)
         return results
     }
 

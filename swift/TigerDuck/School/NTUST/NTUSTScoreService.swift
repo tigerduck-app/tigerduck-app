@@ -22,7 +22,7 @@ enum NTUSTScoreService {
         "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/StuScoreQuery/DisplayAll"
     )
 
-    static let scoreReportCacheTTL: TimeInterval = 86_400
+    static let scoreReportFreshness = FreshnessPolicy(lifetime: 86_400)
 
     static func fetchScoreReport(
         session: URLSession,
@@ -33,7 +33,7 @@ enum NTUSTScoreService {
     ) async throws -> (report: ScoreReport, cachedAt: Date) {
         if !forceRefresh,
            let cached = ScoreReportFiles.shared.loadScoreReport(studentId: studentId),
-           Date().timeIntervalSince(cached.cachedAt) < scoreReportCacheTTL {
+           scoreReportFreshness.isFresh(storedAt: cached.cachedAt) {
             return cached
         }
 

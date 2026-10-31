@@ -24,7 +24,7 @@ enum SemesterCatalog {
     private nonisolated static let selectionKey = "semesterCatalog.selectionSemester"
     private static let refreshedAtKey = "semesterCatalog.refreshedAt"
 
-    private static let refreshTTL: TimeInterval = 3600
+    private static let freshness = FreshnessPolicy(lifetime: 3600)
 
     private nonisolated static let pickerDepth = 6
 
@@ -82,7 +82,7 @@ enum SemesterCatalog {
 
     static func refreshIfStale() async {
         let last = UserDefaults.standard.double(forKey: refreshedAtKey)
-        guard Date().timeIntervalSince1970 - last > refreshTTL else { return }
+        guard !freshness.isFresh(storedAt: Date(timeIntervalSince1970: last)) else { return }
         await refresh()
     }
 
