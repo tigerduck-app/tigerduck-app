@@ -21,8 +21,8 @@ extension AppState {
                 base: NotificationSettingsSync.synced ?? local,
                 client: client,
                 cloudSyncEnabled: Defaults[.cloudSyncEnabled],
-                syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
-                syncLiveActivityEnabled: Defaults[.syncLiveActivity],
+                syncAssignmentRemindersEnabled: NotificationSettingsSync.pushes(.assignments),
+                syncLiveActivityEnabled: NotificationSettingsSync.pushes(.liveActivity),
                 isCurrent: isCurrent
             )
             guard written, isCurrent() else { return }
@@ -68,7 +68,8 @@ extension AppState {
                     recordSynced: { NotificationSettingsSync.synced = $0 }
                 )
                 switch outcome {
-                case .settled:
+                case .settled(let adopted, let seeded):
+                    if isCurrent() { NotificationSettingsSync.releaseHeld(adopted.union(seeded)) }
                     onSettled?()
                 case .deferredToPendingPush:
                     self.retryUnacknowledgedNotificationSettings()
@@ -102,12 +103,10 @@ extension AppState {
         enqueueNotificationSettingsPush()
     }
 
-    /// A device switch turned back on takes the server's section: its values here become the
-    /// synced copy, so no push sends them, and a reconcile adopts the section.
+    /// A device switch turned back on takes the server's section: no push writes the section
+    /// until a reconcile has adopted it, so an edit made against its stale values stays here.
     func adoptNotificationSettingsSection(_ section: NotificationSettingsSync.OwnedSection) {
-        if let synced = NotificationSettingsSync.synced {
-            NotificationSettingsSync.synced = synced.replacing(section, from: .init(from: liveActivityPreferences))
-        }
+        NotificationSettingsSync.holdForServer(section)
         reconcileNotificationSettings()
     }
 
@@ -115,6 +114,7 @@ extension AppState {
         NotificationSettingsPushQueue.cancelAll()
         Defaults[.notificationSettingsPushPending] = false
         Defaults[.notificationSettingsSyncedPreferences] = nil
+        Defaults[.notificationSettingsSectionsToAdopt] = []
     }
     #endif
 }
@@ -251,26 +251,6 @@ nonisolated enum NotificationSettingsSync {
             )
         }
 
-        func replacing(_ section: OwnedSection, from other: LocalPreferences) -> LocalPreferences {
-            var copy = self
-            switch section {
-            case .assignments:
-                copy.isAssignmentReminderEnabled = other.isAssignmentReminderEnabled
-                copy.assignmentReminderOffsets = other.assignmentReminderOffsets
-            case .liveActivity:
-                copy.showClassPreparingScenario = other.showClassPreparingScenario
-                copy.showInClassScenario = other.showInClassScenario
-                copy.showAssignmentScenario = other.showAssignmentScenario
-                copy.classPreparingLeadTime = other.classPreparingLeadTime
-                copy.assignmentLiveActivityLeadTime = other.assignmentLiveActivityLeadTime
-            case .courses:
-                copy.isClassReminderEnabled = other.isClassReminderEnabled
-                copy.classReminderLeadMinutes = other.classReminderLeadMinutes
-                copy.hasPickedClassReminderLead = other.hasPickedClassReminderLead
-            }
-            return copy
-        }
-
         var reminderOffsetsMinutes: [Int] {
             assignmentReminderOffsets
                 .map { Int(($0.timeInterval / 60).rounded()) }
@@ -351,6 +331,28 @@ nonisolated enum NotificationSettingsSync {
         set {
             Defaults[.notificationSettingsSyncedPreferences] = newValue.flatMap { try? JSONEncoder().encode($0) }
         }
+    }
+
+    /// Whether a push writes `section`: its device switch is on, and a switch turned back on has
+    /// had the server's section adopted since.
+    @MainActor
+    static func pushes(_ section: OwnedSection) -> Bool {
+        let isOn = switch section {
+        case .assignments: Defaults[.syncAssignmentReminders]
+        case .liveActivity: Defaults[.syncLiveActivity]
+        case .courses: true
+        }
+        return isOn && !Defaults[.notificationSettingsSectionsToAdopt].contains(section.rawValue)
+    }
+
+    @MainActor
+    static func holdForServer(_ section: OwnedSection) {
+        Defaults[.notificationSettingsSectionsToAdopt].insert(section.rawValue)
+    }
+
+    @MainActor
+    static func releaseHeld(_ sections: Set<OwnedSection>) {
+        Defaults[.notificationSettingsSectionsToAdopt].subtract(sections.map(\.rawValue))
     }
 
     static func merging(_ updates: [String: Any], into existing: [String: Any]) -> [String: Any] {
