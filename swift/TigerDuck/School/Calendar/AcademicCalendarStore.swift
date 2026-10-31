@@ -3,7 +3,7 @@ import Foundation
 import os
 
 @MainActor
-final class AcademicCalendarStore {
+final class AcademicCalendarStore: AccountScoped {
     static let shared = AcademicCalendarStore()
 
     private let logger = Logger(
@@ -24,6 +24,10 @@ final class AcademicCalendarStore {
 
     var unacknowledgedHolidayIDs: Set<Int> {
         Set(Defaults[.holidayOverridesAwaitingUpload])
+    }
+
+    static func forgetAccount(in storage: AccountStorage) {
+        shared.forgetHolidayOverrides()
     }
 
     func forgetHolidayOverrides() {

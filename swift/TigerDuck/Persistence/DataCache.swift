@@ -9,11 +9,11 @@ import Foundation
 /// `SDCalendarEvent`) whose accessors are themselves MainActor-isolated.
 /// Callers running off MainActor (e.g. `Task.detached`) must hop via
 /// `await MainActor.run { … }` before touching the cache.
-final class DataCache {
+final class DataCache: AccountScoped {
     static let shared = DataCache()
 
     private let cacheDir: URL
-    private let persistentDir: URL
+    let persistentDir: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private(set) var revision = 0
@@ -523,6 +523,10 @@ final class DataCache {
 
     private func scoreReportFilename(_ studentId: String) -> String {
         "score_report_\(studentId).json"
+    }
+
+    static func forgetAccount(in storage: AccountStorage) {
+        storage.cache.clearUserScopedData()
     }
 
     func clearUserScopedData() {

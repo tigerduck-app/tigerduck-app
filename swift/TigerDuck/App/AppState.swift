@@ -186,7 +186,8 @@ final class AppState {
             #endif
         }
         authService.signOutStoredAccount = { [weak self] in
-            await self?.logoutNTUST().value
+            guard let self else { return }
+            await SignOutPlan.school(self).run()?.value
         }
         authService.forgetPages = { await AuthService.forgetSchoolPages() }
 

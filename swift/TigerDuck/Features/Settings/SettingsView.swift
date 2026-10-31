@@ -342,7 +342,7 @@ struct SettingsView: View {
         }
         .alert(String(localized: "action_sign_out"), isPresented: $confirmsSignOut) {
             Button(String(localized: "action_sign_out"), role: .destructive) {
-                appState.logoutNTUST()
+                SignOutPlan.school(appState).run()
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
@@ -502,7 +502,7 @@ struct SettingsView: View {
                     ImportedClassTableStore.shared.requestSignOut(
                         unsyncedData: unsynced,
                         confirm: { signOutLines = $0; confirmsSignOut = true },
-                        signOut: { appState.logoutNTUST() }
+                        signOut: { SignOutPlan.school(appState).run() }
                     )
                 }
             }
@@ -583,7 +583,7 @@ struct SettingsView: View {
 
     #if DEBUG
     private func eraseEverything() {
-        appState.logoutNTUST()
+        SignOutPlan.school(appState).run()
         appState.logoutLibrary()
         #if os(iOS)
         MailAccountManager.shared.logout()

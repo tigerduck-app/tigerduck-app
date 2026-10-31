@@ -5,10 +5,13 @@ import Foundation
 /// library's last refusal of it: each refusal counts toward the account's lockout. A sign-in the
 /// user types is never held back. Each account keeps its count and time under its own keys.
 nonisolated struct StoredPasswordBackoff: Sendable {
-    static let ntust = StoredPasswordBackoff(count: .ntustStoredPasswordRefusals, last: .ntustStoredPasswordRefusedAt)
-    static let library = StoredPasswordBackoff(
-        count: .libraryStoredPasswordRefusals, last: .libraryStoredPasswordRefusedAt
-    )
+    static var ntust: StoredPasswordBackoff {
+        StoredPasswordBackoff(count: .ntustStoredPasswordRefusals, last: .ntustStoredPasswordRefusedAt)
+    }
+
+    static var library: StoredPasswordBackoff {
+        StoredPasswordBackoff(count: .libraryStoredPasswordRefusals, last: .libraryStoredPasswordRefusedAt)
+    }
 
     static let quickRetries: [TimeInterval] = [10, 60, 5 * 60]
     static let retryInterval: TimeInterval = 6 * 60 * 60

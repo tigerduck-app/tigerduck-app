@@ -56,9 +56,18 @@ class AccountStateTests(unittest.TestCase):
         self.assertIn("keychain `deviceSecretKey` has no row in docs/account-state.md", cas.problems(self.root))
 
     def test_an_account_key_the_sign_out_stops_clearing_fails(self) -> None:
-        self.edit("swift/TigerDuck/App/AppState+Account.swift", "Defaults[.schoolDataSyncedAt] = nil\n", "")
-        self.assertIn("defaults `schoolDataSyncedAt`: `forgetAccountOnDevice` in swift/TigerDuck/App/AppState+Account.swift"
+        self.edit("swift/TigerDuck/Account/SchoolAccountKeys.swift", "Defaults[.schoolDataSyncedAt] = nil\n", "")
+        self.assertIn("defaults `schoolDataSyncedAt`: `forgetAccount` in swift/TigerDuck/Account/SchoolAccountKeys.swift"
                       " does not clear it", cas.problems(self.root))
+
+    def test_an_account_scoped_store_no_sign_out_lists_fails(self) -> None:
+        self.write("swift/TigerDuck/Features/Exams/ExamSeatStore.swift",
+                   "final class ExamSeatStore: AccountScoped {\n"
+                   "    static func forgetAccount(in storage: AccountStorage) {}\n}\n")
+        self.assertIn("`ExamSeatStore` is AccountScoped but no list in swift/TigerDuck/Account/SignOutPlan.swift names it",
+                      cas.problems(self.root))
+        self.edit("swift/TigerDuck/Account/SignOutPlan.swift", "LibraryService.self]", "LibraryService.self, ExamSeatStore.self]")
+        self.assertEqual(cas.problems(self.root), [])
 
     def test_a_cache_file_the_sign_out_stops_clearing_fails(self) -> None:
         self.edit("swift/TigerDuck/Persistence/DataCache.swift", '("ignored_courses.json", persistentDir),\n', "")
@@ -72,7 +81,7 @@ class AccountStateTests(unittest.TestCase):
 
     def test_an_account_row_that_names_no_clearer_fails(self) -> None:
         text = cas.INVENTORY.read_text().replace(
-            "| defaults | `schoolDataSyncedAt` | school | `swift/TigerDuck/App/AppState+Account.swift` `forgetAccountOnDevice` |",
+            "| defaults | `schoolDataSyncedAt` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |",
             "| defaults | `schoolDataSyncedAt` | school | |")
         self.assertIn("defaults `schoolDataSyncedAt` belongs to an account but names nothing that clears it",
                       cas.problems(self.root, text))

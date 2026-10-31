@@ -81,8 +81,8 @@ responsibility; nested types are fine. `tools/check_architecture.py --report` li
 
 - Do not gate protected NTUST screens on cookie validity or on `isNTUSTLoggedIn` alone; silent
   re-auth is expected. Use `ntustProtectedAccessState(isEmpty:)`.
-- Do not write the previous user's data back after logout. Bridge and service code check the
-  login generation and cancellation before writing.
+- Do not write the previous user's data back after logout. Bridge and service code check their
+  account's `AccountSession` (`isCurrent`, or a scoped task) and cancellation before writing.
 - Do not call `AuthService.login` to re-authenticate silently: it harvests a new Moodle token
   and drops the course cache. The Moodle token renews itself on `.invalidToken`.
 - Do not store secrets in `UserDefaults`; credentials live in the Keychain.
@@ -114,7 +114,7 @@ responsibility; nested types are fine. `tools/check_architecture.py --report` li
 
 ## Gotchas
 
-- `DataCache.clearUserScopedData()` is a privacy boundary: logout purges the previous user's
-  data before another login can use the app.
+- Sign-out is a privacy boundary: `SignOutPlan` clears every `AccountScoped` store of the
+  account, `DataCache.clearUserScopedData()` among them, before another login can use the app.
 - `NetworkMonitor` is observable state; some refresh paths read it before fetching.
 - macOS sidebar pins are stored in `macConfiguredTabs`, apart from the iOS tab configuration.

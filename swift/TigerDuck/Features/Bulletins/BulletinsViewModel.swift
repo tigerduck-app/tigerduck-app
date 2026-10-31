@@ -5,7 +5,7 @@ import os
 
 @MainActor
 @Observable
-final class BulletinsViewModel {
+final class BulletinsViewModel: AccountScoped {
     enum LoadState: Sendable, Equatable {
         case idle
         case loading
@@ -59,6 +59,10 @@ final class BulletinsViewModel {
 
     private static var listSession: ListSession?
     private static var listEpoch = 0
+
+    static func forgetAccount(in storage: AccountStorage) {
+        forgetListSession()
+    }
 
     static func forgetListSession() {
         listSession = nil

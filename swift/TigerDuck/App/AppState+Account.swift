@@ -51,69 +51,6 @@ extension AppState {
         _libraryRevision += 1
     }
 
-    @discardableResult
-    func logoutNTUST() -> Task<Void, Never> {
-        stopRevisionPolling()
-        _lastKnownRevision = 0
-        syncTask?.cancel()
-        syncTask = nil
-        AppServiceBridge.cancelAssignmentRound()
-        #if os(iOS)
-        pendingRefreshTask?.cancel()
-        pendingRefreshTask = nil
-        boundaryRefreshTask?.cancel()
-        boundaryRefreshTask = nil
-        #endif
-
-        // The order and what each step clears: docs/decisions/0026-one-sign-out-path.md.
-        authService.logout()
-        // Before any await: an API endpoint change stores the new endpoint once this returns.
-        let backend = authTokenManager.beginSignOut()
-        let endingSession = Task { await authTokenManager.endSession(on: backend) }
-        Self.forgetAccountOnDevice()
-        didSkipMacLogin = false
-        syncConflicts = []
-        pendingSyncServerArchived = []
-        pendingSyncServerCompleted = []
-        reenableConflict = nil
-        pushCoordinator.forgetUploads()
-        cancelHolidayUploads()
-        #if os(iOS)
-        cancelNotificationSettingsPushes()
-        #endif
-        cloudSyncEnabled = false
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        return authService.startSignOutCalls { [self] in
-            await cloudSyncCoordinator.settleForSignOut()
-            await authTokenManager.unregisterDeparting(as: await endingSession.value) {
-                await pushCoordinator.disable()
-            }
-            #if os(iOS)
-            await liveActivityCoordinator.endAll()
-            #endif
-        }
-    }
-
-    /// What the device keeps of the school account outside `AppState`, which a sign-out clears
-    /// after the account generation has moved. docs/account-state.md lists each store.
-    static func forgetAccountOnDevice(cache: DataCache = .shared) {
-        LibraryService.schoolAccountDidSignOut()
-        ServerStatusTracker.shared.reset()
-        Defaults[.schoolDataSyncedAt] = nil
-        Defaults[.classTableSelectedSemester] = nil
-        Defaults[.emptyClassroomBuilding] = nil
-        MoodleFileDownloads.shared.cancelAll()
-        cache.clearUserScopedData()
-        TigerDuckTheme.reload()
-        ImportedClassTableStore.shared.removeAll()
-        BulletinsViewModel.forgetListSession()
-        forgetSyncProgress()
-        AcademicCalendarStore.shared.forgetHolidayOverrides()
-        #if os(iOS)
-        BrowserData.shared.reset()
-        #endif
-    }
-
     nonisolated static func retriesDepartingUnregister(onboarded: Bool, signedIn: Bool, keptOn: [URL], backend: URL) -> Bool {
         onboarded && keptOn.contains { AuthTokenManager.retriesKeptSession(on: $0, signedIn: signedIn, backend: backend) }
     }

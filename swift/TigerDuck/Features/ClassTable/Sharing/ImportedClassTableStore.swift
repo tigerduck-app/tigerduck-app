@@ -27,12 +27,13 @@ struct ImportedPerson: Identifiable {
 }
 
 @Observable
-final class ImportedClassTableStore {
+final class ImportedClassTableStore: AccountScoped {
     static let shared = ImportedClassTableStore(
         fileURL: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("TigerDuckData", isDirectory: true)
-            .appendingPathComponent("imported_class_tables.json")
+            .appendingPathComponent(fileName)
     )
+    private static let fileName = "imported_class_tables.json"
 
     private(set) var people: [ImportedPerson] = []
 
@@ -199,16 +200,25 @@ final class ImportedClassTableStore {
         if lines.isEmpty { signOut() } else { confirm(lines) }
     }
 
+    /// Deletes the file whether or not this process loaded it; `removeAll()` empties the store in memory.
+    static func forgetAccount(in storage: AccountStorage) {
+        removeFile(at: storage.cache.persistentDir.appendingPathComponent(fileName))
+    }
+
     func removeAll() {
         people = []
         shownPersonID = nil
         previousShownID = nil
         owner = nil
         mayWrite = true
+        Self.removeFile(at: fileURL)
+    }
+
+    private static func removeFile(at url: URL) {
         do {
-            try FileManager.default.removeItem(at: fileURL)
+            try FileManager.default.removeItem(at: url)
         } catch {
-            if !Self.isMissingFile(error) {
+            if !isMissingFile(error) {
                 AppLogger.captureError(error, context: ["phase": "importedClassTables.remove"])
             }
         }

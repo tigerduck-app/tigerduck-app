@@ -199,19 +199,20 @@ final class MailAccountManager {
         onAuthFailed?()
     }
 
+    /// School Mail's sign-out, which keeps the school and library accounts. A sign-in waits for
+    /// the cache wipe it starts.
     func logout() {
-        session.moveOn()
-        credentials.clear()
-        prefs.reset()
-        startCacheWipe()
-        studentID = nil
-        loginError = nil
-        authFailed = false
-        displayName = nil
-        notificationsEnabled = prefs.notificationsEnabled
-        muteSettings = prefs.muteSettings
-        signOutEvents.post(name: Self.didSignOut, object: nil)
-        onSignedOut?()
+        SignOutPlan(session: session, stores: SignOutPlan.mailStores, clearRest: { [self] in
+            startCacheWipe()
+            studentID = nil
+            loginError = nil
+            authFailed = false
+            displayName = nil
+            notificationsEnabled = prefs.notificationsEnabled
+            muteSettings = prefs.muteSettings
+            signOutEvents.post(name: Self.didSignOut, object: nil)
+            onSignedOut?()
+        }).run(in: AccountStorage(mailPreferences: prefs, mailCredentials: credentials))
     }
 
     private func startCacheWipe() {

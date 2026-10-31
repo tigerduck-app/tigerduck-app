@@ -6,7 +6,7 @@ import WebKit
 /// remove it; a browser open across that closes, since it still shows the departing account.
 @MainActor
 @Observable
-final class BrowserData {
+final class BrowserData: AccountScoped {
     static let shared = BrowserData()
 
     nonisolated static let storeID = UUID(uuidString: "6F1D5B0E-7A44-4C2B-9E3D-2B8C0A51D7F4")!
@@ -44,6 +44,10 @@ final class BrowserData {
         let epoch = epoch
         if loadState() == .stale { await clear() }
         if self.epoch == epoch { saveState(.used) }
+    }
+
+    static func forgetAccount(in storage: AccountStorage) {
+        shared.reset()
     }
 
     /// Returns the removal, which tests wait for. Settings › Storage keeps each site's zoom and

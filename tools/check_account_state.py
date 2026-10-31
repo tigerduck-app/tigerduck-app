@@ -8,7 +8,8 @@ files in any source under `Persistence/`. A row of the school or library account
 names the function that clears it, and that function's body must mention it; a
 Keychain key of an account must also be in the fresh-install wipe in
 `AppState.init`. A declaration with no row, or a row with nothing declared, is an
-error too.
+error too, and so is an `AccountScoped` store that no account's list in
+`Account/SignOutPlan.swift` names.
 
 Run manually:  python3 tools/check_account_state.py
 """
@@ -25,6 +26,7 @@ APP = "swift/TigerDuck"
 PERSISTENCE = APP + "/Persistence"
 KEYCHAIN_SOURCES = ("swift/TigerDuck/App/AppConstants.swift", "swift/TigerDuck/Backend/Auth/AuthTokenManager.swift")
 FRESH_INSTALL_WIPE = ("swift/TigerDuck/App/AppState.swift", "init")
+SIGN_OUT_PLAN = APP + "/Account/SignOutPlan.swift"
 SCOPES = {"school", "library", "device"}
 
 ROW_RE = re.compile(r"^\|\s*(keychain|defaults|cache)\s*\|\s*`([^`]+)`\s*\|\s*(\w+)\s*\|(.*)\|\s*$")
@@ -89,6 +91,17 @@ def function_body(source: str, name: str) -> str | None:
     return None
 
 
+def unlisted_stores(root: Path) -> list[str]:
+    """`AccountScoped` types that no account's sign-out clears."""
+    scoped = set()
+    for path in swift_files(root, APP):
+        scoped |= set(re.findall(r"\b(?:extension|class|struct|enum|actor)\s+(\w+)\s*:[^{]*\bAccountScoped\b",
+                                 path.read_text()))
+    plan = root / SIGN_OUT_PLAN
+    listed = set(re.findall(r"\b(\w+)\.self\b", plan.read_text())) if plan.exists() else set()
+    return sorted(scoped - listed)
+
+
 def mentions(body: str, store: str, name: str) -> bool:
     if store == "cache" and not name.endswith("Dir"):
         return f'"{name.rstrip("*/")}' in body
@@ -101,6 +114,7 @@ def problems(root: Path = ROOT, text: str | None = None) -> list[str]:
     found = declared(root)
     errors = [f"{store} `{name}` has no row in docs/account-state.md" for store, name in sorted(found - rows.keys())]
     errors += [f"{store} `{name}` is listed but no longer declared" for store, name in sorted(rows.keys() - found)]
+    errors += [f"`{name}` is AccountScoped but no list in {SIGN_OUT_PLAN} names it" for name in unlisted_stores(root)]
     for (store, name), (scope, clearers) in sorted(rows.items()):
         if scope not in SCOPES:
             errors.append(f"{store} `{name}` has unknown scope {scope}")

@@ -17,7 +17,7 @@ enum LibraryServiceError: LocalizedError {
     }
 }
 
-enum LibraryService {
+enum LibraryService: AccountScoped {
     private static let baseURL = "https://api.lib.ntust.edu.tw/v1"
 
     private static let session: URLSession = {
@@ -79,20 +79,29 @@ enum LibraryService {
         #endif
     }
 
+    /// The library account's sign-out, which keeps the school account and School Mail.
     @MainActor
     static func clearCredentials() {
-        AccountSession.library.moveOn()
+        SignOutPlan(
+            session: AccountSession.library,
+            stores: SignOutPlan.libraryStores,
+            stopWork: { cancelStoredPasswordRetry() },
+            clearRest: {
+                LibraryQRCache.shared.clear()
+                #if os(iOS)
+                LibraryQRImageCache.shared.clear()
+                WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
+                #endif
+                NotificationCenter.default.post(name: accountDidChange, object: nil)
+            }
+        ).run()
+    }
+
+    static func forgetAccount(in storage: AccountStorage) {
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
-        storedPasswordRefusals = (0, nil)
-        cancelStoredPasswordRetry()
+        StoredPasswordBackoff.library.forget()
         clearToken()
-        LibraryQRCache.shared.clear()
-        #if os(iOS)
-        LibraryQRImageCache.shared.clear()
-        WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
-        #endif
-        NotificationCenter.default.post(name: accountDidChange, object: nil)
     }
 
     private static var storedPassword: String? {

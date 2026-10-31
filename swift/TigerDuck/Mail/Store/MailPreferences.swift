@@ -168,4 +168,11 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
         )
     }
 }
+
+extension DefaultsMailPreferences: AccountScoped {
+    /// Resets the preferences School Mail was given, these or a test's.
+    @MainActor static func forgetAccount(in storage: AccountStorage) {
+        storage.mailPreferences.reset()
+    }
+}
 #endif

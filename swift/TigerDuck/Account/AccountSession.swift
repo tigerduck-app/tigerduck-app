@@ -8,7 +8,7 @@ import Observation
 /// (docs/decisions/0026-one-sign-out-path.md).
 @Observable
 final class AccountSession {
-    /// A sign-in of the account: two tickets are equal while no sign-out came between them.
+    /// A sign-in of the account: two tickets are equal while the session did not move on between them.
     nonisolated struct Ticket: Hashable, Comparable, Sendable {
         fileprivate let count: Int
 

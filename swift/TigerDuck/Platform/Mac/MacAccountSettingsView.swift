@@ -23,7 +23,7 @@ struct MacAccountSettingsView: View {
                             ImportedClassTableStore.shared.requestSignOut(
                                 unsyncedData: unsynced,
                                 confirm: { signOutLines = $0; confirmsSignOut = true },
-                                signOut: { appState.logoutNTUST() }
+                                signOut: { SignOutPlan.school(appState).run() }
                             )
                         }
                     } label: {
@@ -44,7 +44,7 @@ struct MacAccountSettingsView: View {
         .padding(20)
         .alert(String(localized: "action_sign_out"), isPresented: $confirmsSignOut) {
             Button(String(localized: "action_sign_out"), role: .destructive) {
-                appState.logoutNTUST()
+                SignOutPlan.school(appState).run()
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
