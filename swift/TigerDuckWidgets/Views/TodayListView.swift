@@ -57,7 +57,7 @@ struct TodayListView: View {
     }
 
     private func header(weekday: Int) -> some View {
-        let dayName = String(localized: String.LocalizationValue(weekdayKey(weekday)))
+        let dayName = String(localized: weekdayKey(weekday))
         let title = String.localizedStringWithFormat(
             String(localized: "widget_today_weekday_title"), dayName
         )
@@ -128,7 +128,7 @@ struct TodayListView: View {
         .background(rowFill, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 
-    private func weekdayKey(_ weekday: Int) -> String {
+    private func weekdayKey(_ weekday: Int) -> LocalizedStringResource {
         switch weekday {
         case 1: return "weekday_mon_short"
         case 2: return "weekday_tue_short"

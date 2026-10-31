@@ -50,7 +50,7 @@ struct MacAppearanceSettingsView: View {
         }
     }
 
-    private func accentSwatch(hex: Int, nameKey: String) -> some View {
+    private func accentSwatch(hex: Int, nameKey: LocalizedStringResource) -> some View {
         let color = Color(hex: UInt(bitPattern: Int(hex)))
         let isSelected = AccentPreview.shared.shownHex(saved: app.preferences.accentColorHex) == hex
         return Button {
@@ -74,7 +74,7 @@ struct MacAppearanceSettingsView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(String(localized: String.LocalizationValue(nameKey))))
+        .accessibilityLabel(Text(nameKey))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

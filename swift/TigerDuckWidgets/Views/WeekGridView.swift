@@ -77,7 +77,7 @@ struct WeekGridView: View {
             Color.clear.frame(width: periodWidth, height: headerHeight)
             ForEach(weekdays, id: \.self) { weekday in
                 VStack(spacing: 1) {
-                    Text(String(localized: String.LocalizationValue(weekdayKey(weekday))))
+                    Text(weekdayKey(weekday))
                         .font(.system(size: 7 * fontScale, weight: .bold))
                         .foregroundStyle(palette.onSurfaceVariant)
                     Rectangle()
@@ -287,7 +287,7 @@ struct WeekGridView: View {
             }
     }
 
-    private func weekdayKey(_ weekday: Int) -> String {
+    private func weekdayKey(_ weekday: Int) -> LocalizedStringResource {
         switch weekday {
         case 1: return "weekday_mon_short"
         case 2: return "weekday_tue_short"
