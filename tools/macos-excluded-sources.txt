@@ -116,6 +116,8 @@ HomeViewModel.swift
 # Features/Library — iOS library QR + brightness control (UIScreen)
 HDRQRCodeImage.swift
 LibraryBrightnessCoordinator.swift
+LibraryLoginForm.swift
+LibraryPageLifecycle.swift
 LibraryQRCodeView.swift
 LibraryQRImageCache.swift
 LibraryQRRenderer.swift
