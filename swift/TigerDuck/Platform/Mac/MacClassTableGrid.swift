@@ -1,14 +1,26 @@
 #if os(macOS)
 import SwiftUI
+import TigerDuckCore
 
-extension MacClassTableView {
+/// The Mac class table's glass grid: a column per weekday and a row per period, courses spanning
+/// their periods and conflicting ones side by side.
+struct MacClassTableGrid: View {
+    let viewModel: ClassTableViewModel
 
-    var glassGridCard: some View {
+    @Environment(AppEnvironment.self) private var app
+
+    private let cellHeight: CGFloat = 56
+    private let rowSpacing: CGFloat = 4
+    private let periodLabelWidth: CGFloat = 56
+
+    private var periods: [String] { viewModel.grid.activePeriods.map(\.id) }
+
+    var body: some View {
         VStack(spacing: rowSpacing) {
             headerRow
             HStack(alignment: .top, spacing: rowSpacing) {
                 periodLabelColumn
-                ForEach(weekdays, id: \.self) { weekday in
+                ForEach(viewModel.grid.activeWeekdays, id: \.self) { weekday in
                     weekdayColumn(weekday)
                         .frame(maxWidth: .infinity)
                 }
@@ -29,7 +41,7 @@ extension MacClassTableView {
     private var headerRow: some View {
         HStack(spacing: rowSpacing) {
             Color.clear.frame(width: periodLabelWidth, height: 22)
-            ForEach(weekdays, id: \.self) { weekday in
+            ForEach(viewModel.grid.activeWeekdays, id: \.self) { weekday in
                 Text(weekdayLabel(weekday))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -49,7 +61,7 @@ extension MacClassTableView {
 
     private var periodLabelColumn: some View {
         VStack(spacing: rowSpacing) {
-            ForEach(visiblePeriods, id: \.self) { period in
+            ForEach(periods, id: \.self) { period in
                 periodLabel(period)
                     .frame(height: cellHeight)
             }
@@ -79,32 +91,27 @@ extension MacClassTableView {
 
     @ViewBuilder
     private func weekdayColumn(_ weekday: Int) -> some View {
-        let periods = visiblePeriods
+        let periods = self.periods
         VStack(spacing: rowSpacing) {
             ForEach(periods.indices, id: \.self) { index in
-                let role = ClassTableLayout.cellRole(
-                    courses: courses,
-                    periodIds: periods,
-                    weekday: weekday,
-                    periodIndex: index,
-                    keyOf: { $0.courseNo },
-                    scheduleOf: { $0.schedule }
-                )
+                let role = viewModel.grid.cellRole(weekday: weekday, periodIndex: index)
                 cellView(role: role, weekday: weekday, periods: periods, index: index)
             }
         }
     }
 
     @ViewBuilder
-    private func cellView(role: ClassTableCellRole<SDCourse>, weekday: Int, periods: [String], index: Int) -> some View {
+    private func cellView(role: ClassTableGrid.CellRole, weekday: Int, periods: [String], index: Int) -> some View {
         let periodId = periods[index]
         switch role {
         case .empty:
             emptyCell.frame(height: cellHeight)
         case let .solo(course, spanCount):
-            courseCell(course, roomHint: roomHint(course, weekday: weekday, periodId: periodId))
+            MacClassTableCourseCell(
+                viewModel: viewModel, course: course, roomHint: roomHint(course, weekday: weekday, periodId: periodId)
+            )
                 .frame(height: blockHeight(spanCount))
-                .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday, periodId: periodId) }
+                .onTapGesture { viewModel.selectCourse(course, weekday: weekday, periodId: periodId) }
         case let .conflictStart(a, spanA, offsetA, b, spanB, offsetB, combinedSpan):
             HStack(spacing: rowSpacing) {
                 conflictColumn(
@@ -140,7 +147,7 @@ extension MacClassTableView {
         }
     }
 
-    private func roomHint(_ course: SDCourse, weekday: Int, periodId: String) -> String? {
+    private func roomHint(_ course: CourseStore.Course, weekday: Int, periodId: String) -> String? {
         guard app.preferences.showClassroomInClassTable else { return nil }
         return CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
     }
@@ -151,17 +158,18 @@ extension MacClassTableView {
 
     @ViewBuilder
     private func conflictColumn(
-        course: SDCourse, span: Int, offset: Int, combinedSpan: Int, weekday: Int, periodId: String
+        course: CourseStore.Course, span: Int, offset: Int, combinedSpan: Int, weekday: Int, periodId: String
     ) -> some View {
         let bottom = max(combinedSpan - offset - span, 0)
+        let ignored = viewModel.editor.ignoresAssignments(of: course.courseNo)
         VStack(spacing: rowSpacing) {
             if offset > 0 {
                 Color.clear.frame(height: blockHeight(offset))
             }
-            courseCell(course)
+            MacClassTableCourseCell(viewModel: viewModel, course: course)
                 .frame(height: blockHeight(span))
-                .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday, periodId: periodId) }
-                .accessibilityLabel(Text(spokenName(course)))
+                .onTapGesture { viewModel.selectCourse(course, weekday: weekday, periodId: periodId) }
+                .accessibilityLabel(Text(MacClassTableCourseCell.spokenName(course, ignoresAssignments: ignored)))
             if bottom > 0 {
                 Color.clear.frame(height: blockHeight(bottom))
             }
@@ -175,94 +183,6 @@ extension MacClassTableView {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
             )
-    }
-
-    private static let ignoredMarkSize: CGFloat = 11
-
-    private func ignoresAssignments(_ course: SDCourse) -> Bool {
-        ignoredAssignmentCourses.contains(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo))
-    }
-
-    private func spokenName(_ course: SDCourse) -> String {
-        guard ignoresAssignments(course) else { return course.displayName }
-        return course.displayName + ", " + String(localized: "a11y_class_table_cell_assignments_ignored")
-    }
-
-    private func courseCell(_ course: SDCourse, roomHint: String? = nil) -> some View {
-        let color = TigerDuckTheme.courseColor(for: course.courseNo)
-        let ignored = ignoresAssignments(course)
-        return VStack(alignment: .leading, spacing: 3) {
-            Text(course.displayName)
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(3)
-                .multilineTextAlignment(.leading)
-            if !course.instructor.isEmpty {
-                Text(course.instructor)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if let roomHint {
-                Text(roomHint)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .padding(.trailing, ignored ? Self.ignoredMarkSize + 6 : 0)
-            }
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(color.opacity(0.4))
-            }
-        )
-        .overlay {
-            let edge = RoundedRectangle(cornerRadius: 8, style: .continuous)
-            if outlineRequiredCourses, course.isRequired {
-                edge.strokeBorder(color, lineWidth: 1)
-            } else {
-                edge.stroke(color.opacity(0.6), lineWidth: 0.5)
-            }
-        }
-        .ignoredAssignmentsBadge(show: ignored, iconSize: Self.ignoredMarkSize, padding: 8)
-        .contentShape(Rectangle())
-        .courseEditMenu(isEditable: shownPerson == nil) {
-            if isViewingCurrentSemester {
-                Button {
-                    startRename(course)
-                } label: {
-                    Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
-                }
-            }
-            Button {
-                courseToRecolor = course
-            } label: {
-                Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
-            }
-            if isViewingCurrentSemester {
-                Button {
-                    setIgnoresAssignments(!ignored, for: course)
-                } label: {
-                    if ignored {
-                        Label(String(localized: "class_table_ignore_assignments_undo"), systemImage: "arrow.uturn.backward")
-                    } else {
-                        Label(String(localized: "class_table_ignore_assignments"), systemImage: "archivebox")
-                    }
-                }
-                Divider()
-                Button(role: .destructive) {
-                    deleteCourse(course)
-                } label: {
-                    Label(String(localized: "class_table_delete"), systemImage: "trash")
-                }
-            }
-        }
     }
 }
 #endif

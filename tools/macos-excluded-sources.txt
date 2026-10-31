@@ -59,16 +59,6 @@ MonthCalendarView.swift
 
 # Features/ClassTable — UIKit-dependent timetable interactions; macOS uses Platform/Mac/MacClassTableView
 ClassTableView.swift
-ClassTableViewModel.swift
-ClassTableEditor.swift
-ClassTableGrid.swift
-ClassTableLoader.swift
-ClassTableSelection.swift
-ClassTableSync.swift
-ClassTableToday.swift
-ShownPersonModel.swift
-ClassTableCourseEditDialogs.swift
-ClassTablePersonDialogs.swift
 ClassTableEditDialogs.swift
 ClassTableHeaderMenu.swift
 ClassTableSemesterBar.swift
