@@ -104,6 +104,7 @@ Mail's keys live in `MailPreferences` and `MailCredentialStore`, and its sign-ou
 | defaults | `macConfiguredTabsData` | device |  |
 | defaults | `macMoodleOpenTarget` | device |  |
 | defaults | `notificationSettingsPushPending` | account | `swift/TigerDuck/App/AppState+NotificationSettings.swift` `cancelNotificationSettingsPushes` |
+| defaults | `notificationSettingsSyncedPreferences` | account | `swift/TigerDuck/App/AppState+NotificationSettings.swift` `cancelNotificationSettingsPushes` |
 | defaults | `ntustCredentialsPresent` | account | `swift/TigerDuck/Services/Auth/AuthService.swift` `markCredentialsChanged` |
 | defaults | `ntustStoredPasswordRefusals` | account | `swift/TigerDuck/Services/API/NTUST/SSOLoginService.swift` `storedPasswordRefusals` |
 | defaults | `ntustStoredPasswordRefusedAt` | account | `swift/TigerDuck/Services/API/NTUST/SSOLoginService.swift` `storedPasswordRefusals` |

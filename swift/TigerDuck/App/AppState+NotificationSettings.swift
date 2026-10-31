@@ -17,13 +17,17 @@ extension AppState {
         do {
             let written = try await NotificationSettingsSync.push(
                 local: local,
+                // No copy stored: no field counts as changed, so the push cannot revert a newer one.
+                base: NotificationSettingsSync.synced ?? local,
                 client: client,
                 cloudSyncEnabled: Defaults[.cloudSyncEnabled],
                 syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
                 syncLiveActivityEnabled: Defaults[.syncLiveActivity],
                 isCurrent: isCurrent
             )
-            if isCurrent(), NotificationSettingsSync.canClearPendingMarker(
+            guard written, isCurrent() else { return }
+            NotificationSettingsSync.synced = local
+            if NotificationSettingsSync.canClearPendingMarker(
                 written: written,
                 sent: local,
                 current: .init(from: liveActivityPreferences)
@@ -60,7 +64,8 @@ extension AppState {
                     syncLiveActivityEnabled: Defaults[.syncLiveActivity],
                     isPushPending: { Defaults[.notificationSettingsPushPending] },
                     isCurrent: isCurrent,
-                    source: NotificationSettingsPushQueue.source(snapshot, linksBeforeSnapshot: linksBeforeSnapshot)
+                    source: NotificationSettingsPushQueue.source(snapshot, linksBeforeSnapshot: linksBeforeSnapshot),
+                    recordSynced: { NotificationSettingsSync.synced = $0 }
                 )
                 switch outcome {
                 case .settled:
@@ -100,6 +105,7 @@ extension AppState {
     func cancelNotificationSettingsPushes() {
         NotificationSettingsPushQueue.cancelAll()
         Defaults[.notificationSettingsPushPending] = false
+        Defaults[.notificationSettingsSyncedPreferences] = nil
     }
     #endif
 }
@@ -184,7 +190,7 @@ nonisolated enum NotificationSettingsSync {
         case sectionEncodingFailed
     }
 
-    struct LocalPreferences: Equatable, Sendable {
+    struct LocalPreferences: Equatable, Sendable, Codable {
         var isAssignmentReminderEnabled: Bool
         var assignmentReminderOffsets: Set<AssignmentReminderOffset>
         var showClassPreparingScenario: Bool
@@ -277,6 +283,7 @@ nonisolated enum NotificationSettingsSync {
 
         func documentUpdates(
             existing: [String: Any],
+            since synced: LocalPreferences? = nil,
             includeAssignments: Bool = true,
             includeLiveActivity: Bool = true,
             includeCourses: Bool = true
@@ -295,7 +302,25 @@ nonisolated enum NotificationSettingsSync {
                     coursesSection(preservingOffsetsIn: existing)
                 )
             }
-            return updates
+            guard let synced else { return updates }
+            let before = try synced.documentUpdates(
+                existing: existing,
+                includeAssignments: includeAssignments,
+                includeLiveActivity: includeLiveActivity,
+                includeCourses: includeCourses
+            )
+            return NotificationSettingsSync.changes(in: updates, since: before, over: existing)
+        }
+    }
+
+    @MainActor
+    static var synced: LocalPreferences? {
+        get {
+            Defaults[.notificationSettingsSyncedPreferences]
+                .flatMap { try? JSONDecoder().decode(LocalPreferences.self, from: $0) }
+        }
+        set {
+            Defaults[.notificationSettingsSyncedPreferences] = newValue.flatMap { try? JSONEncoder().encode($0) }
         }
     }
 
@@ -310,6 +335,31 @@ nonisolated enum NotificationSettingsSync {
             }
         }
         return merged
+    }
+
+    /// The fields of `updates` that differ from `synced` or that `existing` lacks, so a push keeps
+    /// every other field as the server holds it. A section `existing` lacks goes whole, and the
+    /// two offset lists, one mirroring the other, count as one field.
+    private static func changes(
+        in updates: [String: Any],
+        since synced: [String: Any],
+        over existing: [String: Any]
+    ) -> [String: Any] {
+        let offsets: Set = ["reminder_offsets_minutes", "reminder_offsets_hours"]
+        return updates.reduce(into: [:]) { changed, entry in
+            guard let fields = entry.value as? [String: Any],
+                  let server = existing[entry.key] as? [String: Any]
+            else {
+                changed[entry.key] = entry.value
+                return
+            }
+            let before = synced[entry.key] as? [String: Any] ?? [:]
+            changed[entry.key] = fields.filter { key, _ in
+                let field: Set = offsets.contains(key) ? offsets : [key]
+                return field.allSatisfy { server[$0] == nil }
+                    || field.contains { (fields[$0] as? NSObject) != (before[$0] as? NSObject) }
+            }
+        }
     }
 
     static func foreignMinutes(in existing: [String: Any]) -> [Int] {
@@ -333,10 +383,14 @@ nonisolated enum NotificationSettingsSync {
         return object
     }
 
+    /// Writes the fields `local` changed since `base` over the server's document; see
+    /// docs/decisions/0002-notification-settings-json-merge.md. Reports whether the write landed
+    /// while the account that started it is still signed in.
     @MainActor
     @discardableResult
     static func push(
         local: LocalPreferences,
+        base: LocalPreferences,
         client: SettingsDocumentClient,
         cloudSyncEnabled: Bool,
         syncAssignmentRemindersEnabled: Bool = true,
@@ -358,6 +412,7 @@ nonisolated enum NotificationSettingsSync {
             guard isCurrent() else { return false }
             let updates = try local.documentUpdates(
                 existing: existing,
+                since: base,
                 includeAssignments: syncAssignmentRemindersEnabled,
                 includeLiveActivity: syncLiveActivityEnabled
             )
@@ -367,7 +422,7 @@ nonisolated enum NotificationSettingsSync {
 
             switch result {
             case .written:
-                return true
+                return isCurrent()
             case .conflict(let serverDocument, let serverRevision):
                 attempt += 1
                 guard attempt <= 1 else {
@@ -440,7 +495,8 @@ nonisolated enum NotificationSettingsSync {
         syncLiveActivityEnabled: Bool,
         isPushPending: () -> Bool,
         isCurrent: () -> Bool = { true },
-        source: DocumentSource = .read
+        source: DocumentSource = .read,
+        recordSynced: (LocalPreferences) -> Void = { _ in }
     ) async throws -> ReconcileOutcome {
         var synced: Set<OwnedSection> = [.courses]
         if syncAssignmentRemindersEnabled { synced.insert(.assignments) }
@@ -474,6 +530,7 @@ nonisolated enum NotificationSettingsSync {
 
             let missing = synced.subtracting(present)
             guard !missing.isEmpty else {
+                recordSynced(expected)
                 return .settled(adopted: adopted, seeded: [])
             }
             let updates = try expected.documentUpdates(
@@ -488,6 +545,7 @@ nonisolated enum NotificationSettingsSync {
             )
             switch try await client.write(namespace: namespace, document: body, baseRevision: baseRevision) {
             case .written:
+                if isCurrent() { recordSynced(expected) }
                 return .settled(adopted: adopted, seeded: missing)
             case .conflict(let serverDocument, let serverRevision):
                 attempt += 1

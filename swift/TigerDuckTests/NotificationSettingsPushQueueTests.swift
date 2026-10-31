@@ -234,6 +234,7 @@ struct NotificationSettingsPushQueueTests {
             let task = NotificationSettingsPushQueue.enqueuePush { isCurrent in
                 log.wrote = try? await NotificationSettingsSync.push(
                     local: .init(from: store),
+                    base: .init(from: store),
                     client: client,
                     cloudSyncEnabled: true,
                     isCurrent: isCurrent
@@ -245,6 +246,44 @@ struct NotificationSettingsPushQueueTests {
 
             #expect(log.wrote == false)
             #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
+        }
+    }
+
+    @Test("a logout while a push's write is out: the push reports nothing written, so no synced copy is kept")
+    func logoutDuringAPushWriteReportsNothingWritten() async throws {
+        Self.resetQueue()
+        defer { Self.resetQueue() }
+
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = NotificationSettingsFixtures.documentURL(baseURL)
+        try await NotificationSettingsFixtures.withStore { store in
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.found(["courses": ["enabled": true]], revision: 1), for: url)
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 2), for: url)
+            let requestsSent = RanLog()
+            let client = SettingsAPIStub.makeClient(baseURL: baseURL, authHeaderProvider: {
+                await MainActor.run {
+                    requestsSent.append("request")
+                    if requestsSent.values.count == 2 { NotificationSettingsPushQueue.cancelAll() }
+                }
+                return nil
+            })
+            let log = WriteLog()
+
+            let task = NotificationSettingsPushQueue.enqueuePush { isCurrent in
+                log.wrote = try? await NotificationSettingsSync.push(
+                    local: .init(from: store),
+                    base: .init(from: store),
+                    client: client,
+                    cloudSyncEnabled: true,
+                    isCurrent: isCurrent
+                )
+            }
+            let behind = NotificationSettingsPushQueue.enqueue {}
+            await task.value
+            await behind.value
+
+            #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
+            #expect(log.wrote == false)
         }
     }
 

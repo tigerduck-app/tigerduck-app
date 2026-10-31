@@ -154,6 +154,9 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.notificationSettingsPushPending,
         default: false
     )
+    /// The notification settings as this device last synced them; a push sends only the fields
+    /// that differ. See docs/decisions/0002-notification-settings-json-merge.md.
+    static let notificationSettingsSyncedPreferences = Key<Data?>("notificationSettingsSyncedPreferences")
     /// The Keychain returns nil when the item is absent and when it cannot be read right now;
     /// `SecureStore` cannot tell which, since Valet throws for both and `try?` flattens it.
     /// So nil is not evidence of being signed out; treating it so sends a signed-in user to

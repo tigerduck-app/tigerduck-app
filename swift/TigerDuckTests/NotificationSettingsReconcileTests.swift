@@ -49,7 +49,8 @@ struct NotificationSettingsReconcileTests {
         syncAssignments: Bool = true,
         syncLiveActivity: Bool = true,
         isPushPending: () -> Bool = { false },
-        source: NotificationSettingsSync.DocumentSource = .read
+        source: NotificationSettingsSync.DocumentSource = .read,
+        recordSynced: (NotificationSettingsSync.LocalPreferences) -> Void = { _ in }
     ) async throws -> NotificationSettingsSync.ReconcileOutcome {
         try await NotificationSettingsSync.reconcile(
             store: store,
@@ -58,7 +59,8 @@ struct NotificationSettingsReconcileTests {
             syncAssignmentRemindersEnabled: syncAssignments,
             syncLiveActivityEnabled: syncLiveActivity,
             isPushPending: isPushPending,
-            source: source
+            source: source,
+            recordSynced: recordSynced
         )
     }
 
@@ -470,6 +472,36 @@ struct NotificationSettingsReconcileTests {
             let requests = SettingsAPIStub.requests(for: url)
             try #require(requests.map(\.httpMethod) == ["PUT"])
             #expect(try Fixtures.sentEnvelope(requests[0])["base_revision"] is NSNull)
+        }
+    }
+
+    @Test("a settled reconcile keeps what it settled as the synced copy, not an edit made during its write")
+    func settledReconcileRecordsWhatItSettled() async throws {
+        try await Fixtures.withStore { store in
+            Self.setDeviceValues(store)
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = Fixtures.documentURL(baseURL)
+            SettingsAPIStub.enqueue(
+                try Fixtures.found(["assignments": Self.serverAssignments(), "courses": Self.serverCourses()], revision: 3),
+                for: url
+            )
+            SettingsAPIStub.enqueue(try Fixtures.written(revision: 4), for: url)
+            let client = SettingsAPIStub.makeClient(baseURL: baseURL, authHeaderProvider: {
+                await MainActor.run {
+                    if SettingsAPIStub.requests(for: url).count == 1 { store.classPreparingLeadTime = 600 }
+                }
+                return nil
+            })
+            var recorded: NotificationSettingsSync.LocalPreferences?
+
+            let outcome = try await Self.reconcile(store, client: client, recordSynced: { recorded = $0 })
+
+            #expect(outcome == .settled(adopted: [.assignments, .courses], seeded: [.liveActivity]))
+            #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
+            #expect(store.classPreparingLeadTime == 600)
+            #expect(recorded?.classPreparingLeadTime == 1800)
+            #expect(recorded?.isAssignmentReminderEnabled == true)
+            #expect(recorded?.classReminderLeadMinutes == 5)
         }
     }
 
