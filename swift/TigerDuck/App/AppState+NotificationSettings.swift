@@ -70,7 +70,7 @@ extension AppState {
                     isPushPending: { Defaults[.notificationSettingsPushPending] },
                     isCurrent: isCurrent,
                     source: NotificationSettingsPushQueue.source(snapshot, linksBeforeSnapshot: linksBeforeSnapshot),
-                    recordSynced: { NotificationSettingsSync.synced = $0 }
+                    recordSynced: { NotificationSettingsSync.recordSynced($0, sections: $1) }
                 )
                 switch outcome {
                 case .settled:
@@ -433,6 +433,13 @@ nonisolated enum NotificationSettingsSync {
         Defaults[.notificationSettingsPushSendsEveryField] = false
     }
 
+    /// Takes into the copy only the sections a reconcile synced, so a section turned on while its
+    /// write was out keeps the copy `sectionTurnedOn` gave it.
+    @MainActor
+    static func recordSynced(_ settled: LocalPreferences, sections: Set<OwnedSection>) {
+        synced = sections.reduce(synced ?? settled) { $0.replacing($1, from: settled) }
+    }
+
     static func merging(_ updates: [String: Any], into existing: [String: Any]) -> [String: Any] {
         var merged = existing
         for (key, value) in updates {
@@ -613,7 +620,7 @@ nonisolated enum NotificationSettingsSync {
         isPushPending: () -> Bool,
         isCurrent: () -> Bool = { true },
         source: DocumentSource = .read,
-        recordSynced: (LocalPreferences) -> Void = { _ in }
+        recordSynced: (LocalPreferences, Set<OwnedSection>) -> Void = { _, _ in }
     ) async throws -> ReconcileOutcome {
         var synced: Set<OwnedSection> = [.courses]
         if syncAssignmentRemindersEnabled { synced.insert(.assignments) }
@@ -647,7 +654,7 @@ nonisolated enum NotificationSettingsSync {
 
             let missing = synced.subtracting(present)
             guard !missing.isEmpty else {
-                recordSynced(expected)
+                recordSynced(expected, synced)
                 return .settled(adopted: adopted, seeded: [])
             }
             let updates = try expected.documentUpdates(
@@ -662,7 +669,7 @@ nonisolated enum NotificationSettingsSync {
             )
             switch try await client.write(namespace: namespace, document: body, baseRevision: baseRevision) {
             case .written:
-                if isCurrent() { recordSynced(expected) }
+                if isCurrent() { recordSynced(expected, synced) }
                 return .settled(adopted: adopted, seeded: missing)
             case .conflict(let serverDocument, let serverRevision):
                 attempt += 1

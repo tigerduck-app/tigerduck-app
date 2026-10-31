@@ -50,7 +50,7 @@ struct NotificationSettingsReconcileTests {
         syncLiveActivity: Bool = true,
         isPushPending: () -> Bool = { false },
         source: NotificationSettingsSync.DocumentSource = .read,
-        recordSynced: (NotificationSettingsSync.LocalPreferences) -> Void = { _ in }
+        recordSynced: (NotificationSettingsSync.LocalPreferences, Set<NotificationSettingsSync.OwnedSection>) -> Void = { _, _ in }
     ) async throws -> NotificationSettingsSync.ReconcileOutcome {
         try await NotificationSettingsSync.reconcile(
             store: store,
@@ -494,7 +494,7 @@ struct NotificationSettingsReconcileTests {
             })
             var recorded: NotificationSettingsSync.LocalPreferences?
 
-            let outcome = try await Self.reconcile(store, client: client, recordSynced: { recorded = $0 })
+            let outcome = try await Self.reconcile(store, client: client, recordSynced: { copy, _ in recorded = copy })
 
             #expect(outcome == .settled(adopted: [.assignments, .courses], seeded: [.liveActivity]))
             #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
@@ -502,6 +502,41 @@ struct NotificationSettingsReconcileTests {
             #expect(recorded?.classPreparingLeadTime == 1800)
             #expect(recorded?.isAssignmentReminderEnabled == true)
             #expect(recorded?.classReminderLeadMinutes == 5)
+        }
+    }
+
+    @Test("a reconcile records only the sections it synced, so a section turned on during its write keeps its new copy")
+    func reconcileRecordsOnlyItsSections() async throws {
+        try await Fixtures.withStore { store in
+            let savedCopy = Defaults[.notificationSettingsSyncedPreferences]
+            defer { Defaults[.notificationSettingsSyncedPreferences] = savedCopy }
+            Self.setDeviceValues(store)
+            NotificationSettingsSync.synced = .init(from: store)
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = Fixtures.documentURL(baseURL)
+            SettingsAPIStub.enqueue(try Fixtures.found(["assignments": Self.serverAssignments()], revision: 3), for: url)
+            SettingsAPIStub.enqueue(try Fixtures.written(revision: 4), for: url)
+            let client = SettingsAPIStub.makeClient(baseURL: baseURL, authHeaderProvider: {
+                await MainActor.run {
+                    if SettingsAPIStub.requests(for: url).count == 1 {
+                        store.classPreparingLeadTime = 600
+                        NotificationSettingsSync.sectionTurnedOn(.liveActivity, local: .init(from: store))
+                    }
+                }
+                return nil
+            })
+
+            let outcome = try await Self.reconcile(
+                store,
+                client: client,
+                syncLiveActivity: false,
+                recordSynced: { NotificationSettingsSync.recordSynced($0, sections: $1) }
+            )
+
+            #expect(outcome == .settled(adopted: [.assignments], seeded: [.courses]))
+            #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
+            #expect(NotificationSettingsSync.synced?.classPreparingLeadTime == 600)
+            #expect(NotificationSettingsSync.synced?.isAssignmentReminderEnabled == true)
         }
     }
 
