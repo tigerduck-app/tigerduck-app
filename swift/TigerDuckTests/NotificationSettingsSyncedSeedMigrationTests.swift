@@ -234,6 +234,46 @@ struct NotificationSettingsSyncedSeedMigrationTests {
         }
     }
 
+    @Test("a push with nothing to write records the fields it changed, so a later change back goes up")
+    func noWritePushRecordsTheFieldsItChanged() async throws {
+        try await Self.withCleanState {
+            NotificationSettingsSync.synced = Self.preferences(showInClass: false)
+            let turnedOn = Self.preferences(showInClass: true)
+            let server = try turnedOn.documentUpdates(existing: [:])
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = NotificationSettingsFixtures.documentURL(baseURL)
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.found(server, revision: 1), for: url)
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.found(server, revision: 1), for: url)
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 2), for: url)
+            let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+            var sent: [String: Any] = [:]
+
+            let landed = try await NotificationSettingsSync.push(
+                local: turnedOn,
+                base: NotificationSettingsSync.pushBase(local: turnedOn),
+                client: client,
+                cloudSyncEnabled: true,
+                recordSent: { sent = $0 }
+            )
+            #expect(landed)
+            NotificationSettingsSync.recordPushed(turnedOn, fields: sent)
+            #expect(NotificationSettingsSync.synced?.showInClassScenario == true)
+
+            let turnedOff = Self.preferences(showInClass: false)
+            try await NotificationSettingsSync.push(
+                local: turnedOff,
+                base: NotificationSettingsSync.pushBase(local: turnedOff),
+                client: client,
+                cloudSyncEnabled: true
+            )
+
+            let requests = SettingsAPIStub.requests(for: url)
+            try #require(requests.map(\.httpMethod) == ["GET", "GET", "PUT"])
+            let written = try NotificationSettingsFixtures.sentDocument(requests[2])
+            #expect((written["live_activity"] as? [String: Any])?["show_in_class"] as? Bool == false)
+        }
+    }
+
     @Test("before stored data reads back the migration stores nothing and stays owed")
     func waitsUntilStoredDataReadsBack() async {
         await Self.withCleanState {

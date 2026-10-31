@@ -527,8 +527,12 @@ nonisolated enum NotificationSettingsSync {
                 includeLiveActivity: syncLiveActivityEnabled
             )
             let merged = merging(updates, into: existing)
-            // A write that changes nothing still moves the revision, which sends every device to reconcile.
-            if NSDictionary(dictionary: merged).isEqual(to: existing) { return isCurrent() }
+            // A write that changes nothing still moves the revision, which sends every device to
+            // reconcile. The server already holds the changed fields, so they count as sent.
+            if NSDictionary(dictionary: merged).isEqual(to: existing) {
+                recordSent(updates)
+                return isCurrent()
+            }
             let body = try JSONSerialization.data(withJSONObject: merged, options: [.sortedKeys])
             let result = try await client.write(namespace: namespace, document: body, baseRevision: baseRevision)
 

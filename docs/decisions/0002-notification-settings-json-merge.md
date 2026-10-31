@@ -48,9 +48,9 @@ later build. Only the iOS build syncs the document: every synced field lives on
   or several, so a push for another setting never replaces another client's choice. A pull
   shows the list's smallest value when the app offers it.
 - A push sends only what this device changed. `notificationSettingsSyncedPreferences` keeps the
-  settings as the device last synced them: the fields a write that landed sent, merged into the
-  copy as it stands when the reply arrives so that a change made during the request survives, or
-  what a reconcile settled on. A push writes a field when the device's value differs from that copy or when the
+  settings as the device last synced them: the fields a write that landed sent, or that a push
+  found the document already holding, merged into the copy as it stands when the reply arrives so
+  that a change made during the request survives, or what a reconcile settled on. A push writes a field when the device's value differs from that copy or when the
   document lacks the field, and a section the document lacks goes whole; every other field stays
   as the document holds it, on the first write and on the 409 retry, so two devices that change
   different fields of one section both keep their change. The two offset lists count as one
