@@ -1,0 +1,25 @@
+name: Architecture
+
+# tools/check_architecture.py fails a shared rule written again outside its home, for the rules
+# of the refactor phases already done; tools/check_account_state.py fails stored state added
+# without saying whether a sign-out clears it.
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          # No submodules: both checks read only Swift sources, docs and project.pbxproj.
+          # No `ref:` override, matching macos-sources.yaml: the merged result is what ships.
+
+      - name: Check shared rules stay in their homes
+        run: python3 tools/check_architecture.py
+
+      - name: Check every stored key and file has a sign-out scope
+        run: python3 tools/check_account_state.py

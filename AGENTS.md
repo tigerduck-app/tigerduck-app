@@ -41,6 +41,8 @@ xcodebuild test -project swift/TigerDuck.xcodeproj -scheme 'TigerDuckWatch Watch
 xcodebuild build -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=macOS'
 (cd swift/Packages/SwiftMail && swift test)
 (cd swift/Packages/TigerDuckCore && swift test)
+python3 tools/check_architecture.py   # --report also lists the rules of later phases
+python3 tools/check_account_state.py
 python3 tools/check_macos_sources.py
 python3 tools/check_privacy_manifests.py
 python3 tools/localization/check_keys.py
