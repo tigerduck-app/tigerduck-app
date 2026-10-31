@@ -276,11 +276,7 @@ actor MoodleTokenService {
         password: String
     ) async throws -> TokenTriple {
         let config = harvestConfiguration()
-        let session = URLSession(
-            configuration: config,
-            delegate: TLSPinningDelegate.shared,
-            delegateQueue: nil,
-        )
+        let session = SchoolSessions.pinned(config)
         defer { session.invalidateAndCancel() }
 
         // Step 1: GET launch.php; URLSession follows the 303s to the SSO login. The passport is

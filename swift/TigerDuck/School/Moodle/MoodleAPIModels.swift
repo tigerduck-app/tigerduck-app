@@ -15,11 +15,7 @@ nonisolated enum MoodleWebserviceClient {
             "User-Agent": userAgent,
             "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         ]
-        return URLSession(
-            configuration: config,
-            delegate: TLSPinningDelegate.shared,
-            delegateQueue: nil,
-        )
+        return SchoolSessions.pinned(config)
     }()
 
     struct TokenSource: Sendable {

@@ -31,7 +31,7 @@ nonisolated final class SettingsAPIStub: URLProtocol {
     nonisolated(unsafe) private static var arrivals: [URLRequest] = []
 
     static func uniqueBaseURL() -> URL {
-        URL(string: "https://settings-stub.invalid/\(UUID().uuidString)/v3")!
+        URL(string: "https://settings-stub.invalid/\(UUID().uuidString)/v4")!
     }
 
     static func makeClient(

@@ -16,13 +16,7 @@ nonisolated final class TLSPinDocumentFetcher: @unchecked Sendable {
         #endif
     })
 
-    /// A pinned handshake waits on the refetch, so a server that trickles bytes must not hold it.
-    static let session: URLSession = {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 10
-        config.timeoutIntervalForResource = 15
-        return URLSession(configuration: config)
-    }()
+    static var session: URLSession { BackendClient.pinDocumentSession }
 
     private let engine: TLSPinEngine
     private let send: Send

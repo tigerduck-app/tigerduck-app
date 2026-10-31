@@ -2,7 +2,7 @@ import Foundation
 
 /// The Python backend emits `datetime.isoformat()` which may include
 /// fractional seconds depending on the source timestamp. Keeping this
-extension JSONDecoder.DateDecodingStrategy {
+nonisolated extension JSONDecoder.DateDecodingStrategy {
     static var iso8601WithFractionalSecondsFallback: Self {
         .custom { decoder in
             let container = try decoder.singleValueContainer()
@@ -21,7 +21,7 @@ extension JSONDecoder.DateDecodingStrategy {
     }
 }
 
-enum TigerDuckDateFormatters {
+nonisolated enum TigerDuckDateFormatters {
     static let withFractional: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

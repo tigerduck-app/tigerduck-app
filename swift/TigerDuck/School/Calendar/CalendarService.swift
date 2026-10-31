@@ -20,11 +20,7 @@ enum CalendarService {
         config.httpAdditionalHeaders = [
             "User-Agent": NTUSTSessionManager.browserUserAgent
         ]
-        return URLSession(
-            configuration: config,
-            delegate: TLSPinningDelegate.shared,
-            delegateQueue: nil,
-        )
+        return SchoolSessions.pinned(config)
     }()
 
     static func fetchCalendarURLs(session: URLSession, pageURL: URL) async throws -> [Int: URL] {
