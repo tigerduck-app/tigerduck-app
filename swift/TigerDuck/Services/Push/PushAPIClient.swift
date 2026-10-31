@@ -39,8 +39,10 @@ final class PushAPIClient: Sendable {
         try await delete(path: "/devices/\(safeDevice)", at: baseURL)
     }
 
-    /// Returns false when the backend kept a newer setting than the one sent.
-    func putHolidayOverride(holidayID: Int, notify: Bool, madeAt stamp: Date?) async throws -> Bool {
+    /// Returns the setting the backend kept, with its time, when that was newer than the one sent.
+    func putHolidayOverride(
+        holidayID: Int, notify: Bool, madeAt stamp: Date?
+    ) async throws -> (notify: Bool, madeAt: Date)? {
         try await sending(stamp) { hlc in
             var request = try await makePostRequest(
                 path: "/sync/holiday-overrides/\(holidayID)",
@@ -48,7 +50,11 @@ final class PushAPIClient: Sendable {
             )
             request.httpMethod = "PUT"
             request.setValue("application/json", forHTTPHeaderField: "Accept")
-            return Self.applied(try await execute(request, expectedFailure: Self.clockAhead))
+            let reply = try await execute(request, expectedFailure: Self.clockAhead)
+            guard let answer = try? Self.decoder.decode(PushAPI.HolidayOverrideAnswer.self, from: reply),
+                  answer.applied == false, let kept = answer.notify, let hlc = answer.hlc
+            else { return nil }
+            return (kept, PushAPI.date(ofClock: hlc))
         }
     }
 
@@ -120,13 +126,13 @@ final class PushAPIClient: Sendable {
 
     // MARK: - Override sync
 
-    /// Returns false when the backend kept a newer mark than the one sent. Only `applied` is read
-    /// from the reply, which for a cleared mark (`"none"`) holds no override row.
+    /// Returns the mark the backend kept when that was newer than the one sent. The reply to a
+    /// cleared mark (`"none"`) holds no override row, so only `applied` and the mark are read.
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String,
         madeAt stamp: Date
-    ) async throws -> Bool {
+    ) async throws -> String? {
         try await sending(stamp) { hlc in
             var request = try await makePostRequest(
                 path: "/sync/assignments/\(moodleAssignmentId)/override",
@@ -134,13 +140,10 @@ final class PushAPIClient: Sendable {
             )
             request.httpMethod = "PATCH"
             request.setValue("application/json", forHTTPHeaderField: "Accept")
-            return Self.applied(try await execute(request, expectedFailure: Self.clockAhead))
+            let reply = try await execute(request, expectedFailure: Self.clockAhead)
+            let answer = try? Self.decoder.decode(PushAPI.AssignmentOverrideAnswer.self, from: reply)
+            return answer?.applied == false ? answer?.localStatus : nil
         }
-    }
-
-    /// A reply that cannot be read counts as applied, as a 2xx did before replies named it.
-    private static func applied(_ reply: Data) -> Bool {
-        (try? decoder.decode(PushAPI.EditAnswer.self, from: reply))?.applied != false
     }
 
     func patchCourseOverride(

@@ -32,6 +32,14 @@ final class AcademicCalendarStore {
         (optedInHolidayIDs.contains(holidayID), Defaults[.holidayOverrideEditTimes][String(holidayID)])
     }
 
+    /// Takes the setting the backend kept over one sent from here, with the time it was made.
+    func adoptKeptSetting(_ notify: Bool, madeAt: Date, forHoliday holidayID: Int) {
+        var ids = optedInHolidayIDs
+        if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }
+        Defaults[.holidayNotifyOverrides] = ids.sorted()
+        Defaults[.holidayOverrideEditTimes][String(holidayID)] = madeAt
+    }
+
     func forgetHolidayOverrides() {
         Defaults[.holidayNotifyOverrides] = []
         Defaults[.holidayOverridesAwaitingUpload] = []

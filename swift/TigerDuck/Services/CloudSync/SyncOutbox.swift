@@ -176,6 +176,12 @@ actor SyncOutbox {
         persist()
     }
 
+    /// Whether an edit of the same field made after `stamp` is queued or parked.
+    func holdsEdit(_ dedupKey: String, madeAfter stamp: Date) -> Bool {
+        loadIfNeeded()
+        return (entries + parked).contains { $0.op.dedupKey == dedupKey && $0.op.stamp > stamp }
+    }
+
     func pendingCount() -> Int {
         loadIfNeeded()
         return entries.count
