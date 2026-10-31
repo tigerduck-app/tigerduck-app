@@ -461,6 +461,10 @@ struct PastTermRebuildTests {
 
         let ended = Self.report([("114H", "PE1001301", .graded), ("1151", "GE1001301", .graded)])
         #expect(rebuilds(ended, "114H", false))
+
+        let padded = Self.report([("98 2", "CS1001301", .graded), ("99 1", "MA1001301", .graded)])
+        #expect(rebuilds(padded, "98 2", false))
+        #expect(!rebuilds(padded, "99 1", false))
     }
 
     @Test("A row the course query cannot read keeps its cached copy; rows the rule leaves out and courses off the transcript are dropped")
