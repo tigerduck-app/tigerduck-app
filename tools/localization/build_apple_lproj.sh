@@ -36,7 +36,7 @@ fi
 
 python3 -B "$GENERATOR" --platform apple --output-dir "$work" > /dev/null
 locales=$(cd "$work" && ls -d -- *.lproj | sed 's/\.lproj$//')
-count=$(printf '%s\n' "$locales" | grep -c .)
+count=$(printf '%s\n' "$locales" | grep -c . || true)
 [ "$count" -ge "$MIN_LOCALES" ] || fail "the generator wrote $count locales, fewer than $MIN_LOCALES"
 
 outputs() {

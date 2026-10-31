@@ -32,6 +32,8 @@ CORE = "swift/Packages/TigerDuckCore/"
 CORE_SOURCES = CORE + "Sources/"
 # App-target files that belong to an extension's folder; they read the App Group's defaults.
 EXTENSION_FOLDERS = ("swift/TigerDuckWidgets/", "swift/TigerDuckLiveActivity/", "swift/TigerDuckWatchWidget/")
+# Sources of the other shipping targets; only the Taipei rule applies to them.
+OTHER_TARGET_FOLDERS = EXTENSION_FOLDERS + ("swift/TigerDuckWatch Watch App/", "swift/Shared/")
 
 ENFORCED_PHASE = 0
 
@@ -268,13 +270,21 @@ def line_of(text: str, index: int) -> int:
     return text.count("\n", 0, index) + 1
 
 
+def taipei_findings(sources: list[Source]) -> list[Finding]:
+    return [Finding(src.path, line_of(src.text, m.start()), "taipei-zone",
+                    '"Asia/Taipei" outside TigerDuckCore; use `TaipeiTime` in TigerDuckCore')
+            for src in sources if not src.path.startswith(CORE) for m in TAIPEI.finditer(src.text)]
+
+
+def other_target_paths(root: Path, known: list[str]) -> list[str]:
+    listed = subprocess.run(["git", "-C", str(root), "ls-files", *(f"{d}*.swift" for d in OTHER_TARGET_FOLDERS)],
+                            capture_output=True, text=True, check=True).stdout.split("\n")
+    return sorted({p for p in listed if p} - set(known))
+
+
 def pattern_findings(sources: list[Source]) -> list[Finding]:
-    found = []
+    found = taipei_findings(sources)
     for src in sources:
-        for m in TAIPEI.finditer(src.text):
-            if not src.path.startswith(CORE):
-                found.append(Finding(src.path, line_of(src.text, m.start()), "taipei-zone",
-                                     '"Asia/Taipei" outside TigerDuckCore; use `TaipeiTime` in TigerDuckCore'))
         for rule, pattern, allowed, message in PATTERNS:
             if allowed and src.path.startswith(allowed):
                 continue
@@ -385,8 +395,9 @@ def layering_findings(sources: list[Source]) -> list[Finding]:
 def findings(root: Path = ROOT) -> list[Finding]:
     paths = scope_paths(root)
     sources = load(root, paths)
+    others = load(root, other_target_paths(root, paths))
     workflow = (root / WORKFLOW.relative_to(ROOT)).read_text(encoding="utf-8")
-    return (pattern_findings(sources) + base_name_findings(paths) + on_screen_findings(workflow, test_code(root))
+    return (pattern_findings(sources) + taipei_findings(others) + base_name_findings(paths) + on_screen_findings(workflow, test_code(root))
             + size_findings(sources) + layering_findings(sources))
 
 

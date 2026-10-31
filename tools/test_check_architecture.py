@@ -34,6 +34,14 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual([(f.path, f.line, f.rule) for f in found], [(APP + "School/X.swift", 2, "taipei-zone")])
         self.assertIn("TaipeiTime", found[0].message)
 
+    def test_the_taipei_rule_covers_the_other_targets(self) -> None:
+        listed = ca.other_target_paths(ca.ROOT, [])
+        self.assertTrue(any(p.startswith("swift/TigerDuckWidgets/") for p in listed))
+        self.assertTrue(any(p.startswith("swift/TigerDuckWatch Watch App/") for p in listed))
+        text = 'let zone = TimeZone(identifier: "Asia/Taipei")\n'
+        found = ca.taipei_findings([source("swift/TigerDuckWidgets/X.swift", text)])
+        self.assertEqual([(f.path, f.rule) for f in found], [("swift/TigerDuckWidgets/X.swift", "taipei-zone")])
+
     def test_a_pattern_in_a_comment_or_a_string_is_not_code(self) -> None:
         text = '// Task.sleep would poll here\nlet s = "Task.sleep(for:)"\n/* UserDefaults.standard */\n'
         self.assertEqual(ca.pattern_findings([source(APP + "Features/X.swift", text)]), [])
