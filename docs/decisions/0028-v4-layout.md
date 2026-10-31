@@ -54,6 +54,7 @@ and the macOS build's source list was kept by hand in two copies.
   | 2 | a login generation compared outside `Account/` |
   | 3 | `dataDidUpdate` or `isUpdatingFromNetwork`; `UserDefaults` outside `Persistence/` |
   | 4 | a `URLSession` created outside `School/NTUST/`, `Backend/Client/` and `Mail/Transport/` |
+  | 5 | none of its own; the phase adds `AppEnvironment`, `AppRouter` and `SceneActivation` |
   | 6 | the size budget; `Features/` using a type declared in `School/`, `Backend/` or `Persistence/` |
   | 7 | `Task.sleep` outside `Support/Clock/` and `Support/Concurrency/` |
 
