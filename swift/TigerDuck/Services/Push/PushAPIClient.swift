@@ -39,14 +39,16 @@ final class PushAPIClient: Sendable {
         try await delete(path: "/devices/\(safeDevice)", at: baseURL)
     }
 
-    func putHolidayOverride(holidayID: Int, notify: Bool) async throws {
-        var request = try await makePostRequest(
-            path: "/sync/holiday-overrides/\(holidayID)",
-            body: PushAPI.HolidayOverrideRequest(notify: notify)
-        )
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        _ = try await execute(request)
+    func putHolidayOverride(holidayID: Int, notify: Bool, madeAt stamp: Date?) async throws {
+        try await sending(stamp) { hlc in
+            var request = try await makePostRequest(
+                path: "/sync/holiday-overrides/\(holidayID)",
+                body: PushAPI.HolidayOverrideRequest(notify: notify, hlc: hlc)
+            )
+            request.httpMethod = "PUT"
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            _ = try await execute(request, expectedFailure: Self.clockAhead)
+        }
     }
 
     func hasAuthSession() async -> Bool {
@@ -121,15 +123,18 @@ final class PushAPIClient: Sendable {
     /// `{"deleted": true}` rather than the override row, and no caller needs either.
     func patchAssignmentOverride(
         moodleAssignmentId: String,
-        localStatus: String
+        localStatus: String,
+        madeAt stamp: Date
     ) async throws {
-        var request = try await makePostRequest(
-            path: "/sync/assignments/\(moodleAssignmentId)/override",
-            body: PushAPI.AssignmentOverrideRequest(localStatus: localStatus)
-        )
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        _ = try await execute(request)
+        try await sending(stamp) { hlc in
+            var request = try await makePostRequest(
+                path: "/sync/assignments/\(moodleAssignmentId)/override",
+                body: PushAPI.AssignmentOverrideRequest(localStatus: localStatus, hlc: hlc)
+            )
+            request.httpMethod = "PATCH"
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            _ = try await execute(request, expectedFailure: Self.clockAhead)
+        }
     }
 
     func patchCourseOverride(
@@ -138,20 +143,38 @@ final class PushAPIClient: Sendable {
         customName: String? = nil,
         locale: String? = nil,
         ignoreAssignments: Bool? = nil,
-        moodleCourseId: Int? = nil
+        moodleCourseId: Int? = nil,
+        madeAt stamp: Date
     ) async throws -> PushAPI.CourseOverrideResponse {
-        let body = PushAPI.CourseOverrideRequest(
-            colorHex: colorHex,
-            customName: customName,
-            locale: locale,
-            ignoreAssignments: ignoreAssignments,
-            moodleCourseId: moodleCourseId
-        )
-        return try await patch(
-            path: "/sync/courses/\(moodleId)/override",
-            body: body,
-            returning: PushAPI.CourseOverrideResponse.self
-        )
+        try await sending(stamp) { hlc in
+            let body = PushAPI.CourseOverrideRequest(
+                colorHex: colorHex,
+                customName: customName,
+                locale: locale,
+                ignoreAssignments: ignoreAssignments,
+                moodleCourseId: moodleCourseId,
+                hlc: hlc
+            )
+            return try await patch(
+                path: "/sync/courses/\(moodleId)/override",
+                body: body,
+                returning: PushAPI.CourseOverrideResponse.self,
+                expectedFailure: Self.clockAhead
+            )
+        }
+    }
+
+    /// Sends an edit with its time as `hlc`, which the backend settles it by. One the backend
+    /// refuses as stamped ahead of its clock goes again without it and counts from when it arrives.
+    private func sending<Response>(
+        _ stamp: Date?, _ send: (_ hlc: Int64?) async throws -> Response
+    ) async throws -> Response {
+        guard let stamp else { return try await send(nil) }
+        do {
+            return try await send(PushAPI.clock(of: stamp))
+        } catch PushAPIError.clockAhead {
+            return try await send(nil)
+        }
     }
 
     /// An upload with `adds` goes under protocol 2; one the backend refuses as stamped ahead of its
@@ -298,12 +321,13 @@ final class PushAPIClient: Sendable {
     private func patch<Request: Encodable, Response: Decodable>(
         path: String,
         body: Request,
-        returning: Response.Type
+        returning: Response.Type,
+        expectedFailure: (_ statusCode: Int, _ body: Data) -> PushAPIError? = { _, _ in nil }
     ) async throws -> Response {
         var request = try await makePostRequest(path: path, body: body)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let data = try await execute(request)
+        let data = try await execute(request, expectedFailure: expectedFailure)
         do {
             return try Self.decoder.decode(Response.self, from: data)
         } catch {

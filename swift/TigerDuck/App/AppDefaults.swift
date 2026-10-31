@@ -185,6 +185,8 @@ nonisolated extension Defaults.Keys {
     static let courseChangesCache = Key<Data>("courseChangesCache", default: Data())
     static let courseChangesETag = Key<String>("courseChangesETag", default: "")
     static let holidayNotifyOverrides = Key<[Int]>("holidayNotifyOverrides", default: [])
+    /// When each holiday's setting last changed here, keyed by holiday id; its upload sends it.
+    static let holidayOverrideEditTimes = Key<[String: Date]>("holidayOverrideEditTimes", default: [:])
     static let holidayOverridesAwaitingUpload = Key<[Int]>(
         "holidayOverridesAwaitingUpload", default: []
     )

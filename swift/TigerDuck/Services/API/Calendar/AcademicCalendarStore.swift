@@ -26,9 +26,16 @@ final class AcademicCalendarStore {
         Set(Defaults[.holidayOverridesAwaitingUpload])
     }
 
+    /// The holiday's setting here and when it was made, which has no time for a setting made
+    /// before the time was kept.
+    func holidayEdit(_ holidayID: Int) -> (notify: Bool, madeAt: Date?) {
+        (optedInHolidayIDs.contains(holidayID), Defaults[.holidayOverrideEditTimes][String(holidayID)])
+    }
+
     func forgetHolidayOverrides() {
         Defaults[.holidayNotifyOverrides] = []
         Defaults[.holidayOverridesAwaitingUpload] = []
+        Defaults[.holidayOverrideEditTimes] = [:]
         lastHolidayEditAt = .distantPast
     }
 
@@ -116,6 +123,7 @@ final class AcademicCalendarStore {
         guard ids != before else { return false }
         Defaults[.holidayNotifyOverrides] = Array(ids).sorted()
         lastHolidayEditAt = Date()
+        Defaults[.holidayOverrideEditTimes][String(holidayID)] = lastHolidayEditAt
         return true
     }
 
@@ -146,6 +154,8 @@ final class AcademicCalendarStore {
         }
         guard merged != local else { return false }
         Defaults[.holidayNotifyOverrides] = merged.sorted()
+        let replaced = Set(merged.symmetricDifference(local).map(String.init))
+        Defaults[.holidayOverrideEditTimes] = Defaults[.holidayOverrideEditTimes].filter { !replaced.contains($0.key) }
         return true
     }
 

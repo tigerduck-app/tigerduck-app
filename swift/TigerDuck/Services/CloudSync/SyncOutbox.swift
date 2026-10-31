@@ -118,9 +118,9 @@ nonisolated enum SyncOp: Codable, Sendable {
 }
 
 nonisolated enum ResolvedSyncOp: Sendable {
-    case courseOverride(courseId: String, colorHex: String?, customName: String?, locale: String?)
-    case assignmentOverride(assignmentId: Int, localStatus: String)
-    case courseIgnore(courseId: String, moodleCourseId: Int?, ignore: Bool?)
+    case courseOverride(courseId: String, colorHex: String?, customName: String?, locale: String?, stamp: Date)
+    case assignmentOverride(assignmentId: Int, localStatus: String, stamp: Date)
+    case courseIgnore(courseId: String, moodleCourseId: Int?, ignore: Bool?, stamp: Date)
     case courseDelete(courseKey: String, stamp: Date)
     case courseAdd(semester: String, courseNo: String, stamp: Date)
 }
@@ -368,17 +368,18 @@ actor SyncOutbox {
 
     nonisolated static func resolve(_ op: SyncOp) -> ResolvedSyncOp {
         switch op {
-        case .courseOverride(_, let moodleId, let customName, let colorHex, let locale, _):
+        case .courseOverride(_, let moodleId, let customName, let colorHex, let locale, let stamp):
             let resolvedLocale = customName != nil
                 ? (locale ?? Locale.current.language.languageCode?.identifier)
                 : nil
-            return .courseOverride(courseId: moodleId, colorHex: colorHex, customName: customName, locale: resolvedLocale)
+            return .courseOverride(
+                courseId: moodleId, colorHex: colorHex, customName: customName, locale: resolvedLocale, stamp: stamp)
 
-        case .assignmentOverride(_, let moodleAssignmentId, let localStatus, _):
-            return .assignmentOverride(assignmentId: moodleAssignmentId, localStatus: localStatus)
+        case .assignmentOverride(_, let moodleAssignmentId, let localStatus, let stamp):
+            return .assignmentOverride(assignmentId: moodleAssignmentId, localStatus: localStatus, stamp: stamp)
 
-        case .courseIgnore(_, _, let moodleId, let moodleCourseId, let ignore, _):
-            return .courseIgnore(courseId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore)
+        case .courseIgnore(_, _, let moodleId, let moodleCourseId, let ignore, let stamp):
+            return .courseIgnore(courseId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore, stamp: stamp)
 
         case .courseDelete(let semester, let courseNo, let stamp):
             return .courseDelete(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), stamp: stamp)
