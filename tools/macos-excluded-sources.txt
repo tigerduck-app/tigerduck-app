@@ -266,6 +266,11 @@ AppState+NotificationSettings.swift
 NotificationSettingsSeedMigration.swift
 PendingReminderPurgeMigration.swift
 
+# NotificationSettingsSyncedSeedMigration.swift: stores the copy of the notification settings a
+# push compares with, which only the iOS settings-document sync keeps. Called from the
+# `#if os(iOS)` block in `runPendingMigrations()`.
+NotificationSettingsSyncedSeedMigration.swift
+
 # LiveActivitySnapshotPurgeMigration.swift: deletes the snapshot the removed, iOS-only
 # SharedSnapshotStore kept in the App Group defaults. Called from the `#if os(iOS)` block
 # in `runPendingMigrations()`; a Mac never wrote it.
