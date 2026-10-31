@@ -59,18 +59,12 @@ enum CalendarService {
         return result
     }
 
-    nonisolated static func rocAcademicYear(at date: Date) -> Int {
-        let calendar = TaipeiTime.calendar
-        let year = calendar.component(.year, from: date) - 1911
-        return calendar.component(.month, from: date) >= 8 ? year : year - 1
-    }
-
     static func fetchAndParseICS() async -> [SDCalendarEvent]? {
         await fetchAndParseICS(session: browserSession, pageURL: calendarPageURL, now: AppClock.now())
     }
 
     static func fetchAndParseICS(session: URLSession, pageURL: URL, now: Date) async -> [SDCalendarEvent]? {
-        let rocYear = rocAcademicYear(at: now)
+        let rocYear = AcademicTerm.academicYear(at: now)
         do {
             let urls = try await fetchCalendarURLs(session: session, pageURL: pageURL)
             guard let icsURL = urls[rocYear] else { return nil }

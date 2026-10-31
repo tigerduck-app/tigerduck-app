@@ -1,5 +1,6 @@
 import Defaults
 import SwiftUI
+import TigerDuckCore
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -162,10 +163,10 @@ struct CourseDetailSheet: View {
         guard showsMoodle, let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
               let courseId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber),
               let context = MoodleCacheContext.signedIn(appState.authService) else { return nil }
-        let term = SDCourse.semesterPrefix(ofMoodleId: idnumber)
+        let term = AcademicTerm.codePrefix(ofMoodleId: idnumber)
         let idMap = DataCache.shared.loadMoodleCourseIdMap()
         let termCourseIds = idMap
-            .filter { term != nil && SDCourse.semesterPrefix(ofMoodleId: $0.key) == term }
+            .filter { term != nil && AcademicTerm.codePrefix(ofMoodleId: $0.key) == term }
             .map(\.value)
         return MoodleCourseStore(
             courseId: courseId,

@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import TigerDuckCore
 
 struct GPATrendChart: View {
     let points: [GPATrendPoint]
@@ -278,9 +279,7 @@ struct GPATrendChart: View {
     }
 
     private func displayTerm(_ code: String) -> String {
-        guard code.count == 4 else { return code }
-        let year = String(code.prefix(3))
-        let sem = String(code.suffix(1))
+        guard case let (year, sem)? = AcademicTerm.displayParts(of: code) else { return code }
         let label = sem == "1"
             ? String(localized: "score_semester_first_short")
             : sem == "2"

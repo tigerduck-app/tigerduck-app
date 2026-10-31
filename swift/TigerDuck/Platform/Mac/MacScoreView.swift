@@ -1,5 +1,6 @@
 #if os(macOS)
 import SwiftUI
+import TigerDuckCore
 
 struct MacScoreView: View {
     @Environment(AppState.self) private var appState
@@ -222,9 +223,7 @@ struct MacScoreView: View {
     }
 
     private func displayTerm(_ raw: String) -> String {
-        guard raw.count == 4 else { return raw }
-        let year = String(raw.prefix(3))
-        let sem = String(raw.suffix(1))
+        guard case let (year, sem)? = AcademicTerm.displayParts(of: raw) else { return raw }
         return String(format: String(localized: "desktop_score_term_value"), year, sem)
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import zlib
+import TigerDuckCore
 
 /// Our share code's packed layout, version 1: the student ID, share time, terms and course codes
 /// packed into bits and written in Base36 after `prefix`, so a code stays short, in QR
@@ -25,12 +26,6 @@ nonisolated extension ClassTableShareCode {
     ).split(separator: " ").map(String.init)
     /// Two letters, then `3` and two letters, then `3` and one letter.
     private static let headValueCount = 676 * 2 + 26
-
-    private static let taipei: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 8 * 3600) ?? .gmt
-        return calendar
-    }()
 
     // MARK: Encoding
 
@@ -79,7 +74,7 @@ nonisolated extension ClassTableShareCode {
     }
 
     private static func writeTerms(_ order: [String], sharedAt: Date, into w: inout BitWriter) {
-        let distance = academicYear(sharedAt) - year(order[0])
+        let distance = AcademicTerm.academicYear(at: sharedAt) - year(order[0])
         let isRegular = order.allSatisfy { termKinds.contains(kind($0)) } && distance >= -1
         w.put(isRegular ? 0 : 1, 1)
         w.gamma(order.count)
@@ -221,7 +216,7 @@ nonisolated extension ClassTableShareCode {
             let distance = [1: 0, 2: -1, 3: 1][distanceCode] ?? distanceCode - 2
             let kind = try r.get(2)
             guard kind < termKinds.count else { throw ClassTableShareCodeError.malformed }
-            var slot = (academicYear(sharedAt) - distance) * 3 + kind
+            var slot = (AcademicTerm.academicYear(at: sharedAt) - distance) * 3 + kind
             var slots = [slot]
             for _ in 1..<count {
                 slot -= try r.gamma()
@@ -238,7 +233,7 @@ nonisolated extension ClassTableShareCode {
         }
         let order = keys.map { padded($0.year, 3) + String(UnicodeScalar(base36Digits[$0.kind])) }
         guard zip(keys, keys.dropFirst()).allSatisfy({ $0 > $1 }),
-              !(order.allSatisfy { termKinds.contains(kind($0)) } && academicYear(sharedAt) - keys[0].year >= -1)
+              !(order.allSatisfy { termKinds.contains(kind($0)) } && AcademicTerm.academicYear(at: sharedAt) - keys[0].year >= -1)
         else { throw ClassTableShareCodeError.malformed }
         return order
     }
@@ -424,12 +419,6 @@ nonisolated extension ClassTableShareCode {
 
     private static func slot(_ semester: String) -> Int {
         year(semester) * 3 + (termKinds.firstIndex(of: kind(semester)) ?? 0)
-    }
-
-    /// The ROC academic year in Taipei, which starts in August.
-    private static func academicYear(_ date: Date) -> Int {
-        let parts = taipei.dateComponents([.year, .month], from: date)
-        return (parts.year ?? 0) - 1911 - ((parts.month ?? 0) < 8 ? 1 : 0)
     }
 
     private static func headValue(_ head: String) -> Int {

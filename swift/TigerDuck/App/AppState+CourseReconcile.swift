@@ -1,6 +1,7 @@
 import Foundation
 import Defaults
 import os
+import TigerDuckCore
 
 extension AppState {
 
@@ -299,7 +300,7 @@ extension AppState {
     static func isFiled(_ row: [String: Any], under semester: String) -> Bool {
         guard semester.count == 4,
               let moodleId = row["moodle_id"] as? String,
-              let prefix = SDCourse.semesterPrefix(ofMoodleId: moodleId) else { return true }
+              let prefix = AcademicTerm.codePrefix(ofMoodleId: moodleId) else { return true }
         return prefix == semester.uppercased()
     }
 

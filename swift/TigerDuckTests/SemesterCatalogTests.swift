@@ -57,15 +57,6 @@ struct SemesterCatalogTests {
             == ["1151", "114H", "1142", "1141", "113H", "1132", "1131", "112H", "1001", "99 H", "99 2", "99 1"])
     }
 
-    @Test("Academic year is everything before the term character, whitespace tolerant")
-    func parsesAcademicYear() {
-        #expect(SemesterCatalog.academicYear(of: "1151") == 115)
-        #expect(SemesterCatalog.academicYear(of: "114H") == 114)
-        #expect(SemesterCatalog.academicYear(of: "99 1") == 99)
-        #expect(SemesterCatalog.academicYear(of: "") == nil)
-        #expect(SemesterCatalog.academicYear(of: "H") == nil)
-    }
-
     @Test("Unknown student id keeps the fixed depth")
     func fixedDepthWithoutId() {
         let catalogue = ["1151", "114H", "1142", "1141", "113H", "1132", "1131", "112H"]

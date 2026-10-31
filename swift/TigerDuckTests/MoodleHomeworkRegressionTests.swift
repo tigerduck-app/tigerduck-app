@@ -386,14 +386,9 @@ struct MoodleHomeworkRegressionTests {
         #expect(SDCourse.courseNoFromMoodleId("114hGD3115301") == "GD3115301")
     }
 
-    @Test func semesterPrefix_acceptsTermCodesAndRejectsEverythingElse() {
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "1151AS5140701") == "1151")
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "114hGD3115301") == "114H")
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "114HGD3115301") == "114H")
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "moodle:42") == nil)
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "1151") == nil)
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "") == nil)
+    @Test func courseNoFromMoodleId_keepsAnIdWithoutATermPrefix() {
         #expect(SDCourse.courseNoFromMoodleId("moodle:42") == "moodle:42")
+        #expect(SDCourse.courseNoFromMoodleId("1151") == "1151")
     }
 
     @Test func moodleSubmissionStatus_isSubmittedReflectsServerStatus() {

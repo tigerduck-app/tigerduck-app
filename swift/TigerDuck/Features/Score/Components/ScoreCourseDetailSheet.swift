@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct ScoreCourseDetailSheet: View {
     @Environment(AppState.self) private var appState
@@ -149,9 +150,7 @@ struct ScoreCourseDetailSheet: View {
     }
 
     private var displayTerm: String {
-        guard course.term.count == 4 else { return course.term }
-        let year = String(course.term.prefix(3))
-        let sem = String(course.term.suffix(1))
+        guard case let (year, sem)? = AcademicTerm.displayParts(of: course.term) else { return course.term }
         let label = sem == "1"
             ? String(localized: "score_semester_first")
             : sem == "2"

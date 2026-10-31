@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Vision
+import TigerDuckCore
 
 @Observable
 final class ClassTableImportModel: Identifiable {
@@ -308,7 +309,7 @@ final class ClassTableImportModel: Identifiable {
     }
 
     nonisolated static func semesterLabel(_ semester: String) -> String {
-        String(semester.dropLast()) + "-" + String(semester.suffix(1))
+        AcademicTerm.label(of: semester)
     }
 
     private enum Reading: Equatable {
