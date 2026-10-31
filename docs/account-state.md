@@ -92,6 +92,7 @@ which a school sign-out keeps. School Mail's keys live in `MailPreferences` and
 | defaults | `hasCompletedOnboarding` | device |  |
 | defaults | `hasPickedClassReminderLead` | device |  |
 | defaults | `holidayNotifyOverrides` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
+| defaults | `holidayOverrideEditTimes` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
 | defaults | `holidayOverridesAwaitingUpload` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
 | defaults | `homeAssignmentFilter` | device |  |
 | defaults | `homeSectionLayoutData` | device |  |
@@ -110,6 +111,8 @@ which a school sign-out keeps. School Mail's keys live in `MailPreferences` and
 | defaults | `macConfiguredTabsData` | device |  |
 | defaults | `macMoodleOpenTarget` | device |  |
 | defaults | `notificationSettingsPushPending` | school | `swift/TigerDuck/App/AppState+NotificationSettings.swift` `cancelNotificationSettingsPushes` |
+| defaults | `notificationSettingsPushSendsEveryField` | school | `swift/TigerDuck/App/AppState+NotificationSettings.swift` `cancelNotificationSettingsPushes` |
+| defaults | `notificationSettingsSyncedPreferences` | school | `swift/TigerDuck/App/AppState+NotificationSettings.swift` `cancelNotificationSettingsPushes` |
 | defaults | `ntustCredentialsPresent` | school | `swift/TigerDuck/Account/AuthService.swift` `markCredentialsChanged` |
 | defaults | `ntustStoredPasswordRefusals` | school | `swift/TigerDuck/Account/StoredPasswordBackoff.swift` `ntust` |
 | defaults | `ntustStoredPasswordRefusedAt` | school | `swift/TigerDuck/Account/StoredPasswordBackoff.swift` `ntust` |

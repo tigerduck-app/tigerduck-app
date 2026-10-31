@@ -171,11 +171,13 @@ final class PushCoordinator {
 
     func patchAssignmentOverride(
         moodleAssignmentId: String,
-        localStatus: String
+        localStatus: String,
+        madeAt stamp: Date
     ) async throws {
         try await apiClient.patchAssignmentOverride(
             moodleAssignmentId: moodleAssignmentId,
-            localStatus: localStatus
+            localStatus: localStatus,
+            madeAt: stamp
         )
     }
 
@@ -185,7 +187,8 @@ final class PushCoordinator {
         customName: String? = nil,
         locale: String? = nil,
         ignoreAssignments: Bool? = nil,
-        moodleCourseId: Int? = nil
+        moodleCourseId: Int? = nil,
+        madeAt stamp: Date
     ) async throws -> PushAPI.CourseOverrideResponse {
         try await apiClient.patchCourseOverride(
             moodleId: moodleId,
@@ -193,7 +196,8 @@ final class PushCoordinator {
             customName: customName,
             locale: locale,
             ignoreAssignments: ignoreAssignments,
-            moodleCourseId: moodleCourseId
+            moodleCourseId: moodleCourseId,
+            madeAt: stamp
         )
     }
 

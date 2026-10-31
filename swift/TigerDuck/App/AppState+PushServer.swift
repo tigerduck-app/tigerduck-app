@@ -139,19 +139,27 @@ extension AppState {
             _ = await previous?.value
             defer { AcademicCalendarStore.shared.endHolidayUpload() }
             guard let self, self.authService.session.isCurrent(ticket) else { return }
-            let sent = AcademicCalendarStore.shared.optedInHolidayIDs.contains(holidayID)
-            do {
-                try await self.pushCoordinator.registration.uploadHolidayOverride(
-                    holidayID: holidayID, notify: sent
-                )
-                if AcademicCalendarStore.shared.optedInHolidayIDs.contains(holidayID) == sent {
-                    AcademicCalendarStore.shared.setHolidayAcknowledged(true, holidayID: holidayID)
-                }
-            } catch {
-                AppLogger.sync.error(
-                    "holiday override upload failed: \(error.localizedDescription, privacy: .private)"
-                )
+            await Self.uploadHolidayOverride(holidayID, from: .shared, via: self.pushCoordinator.registration)
+        }
+    }
+
+    /// Sends the holiday's setting with the time it was made, so a retry is not a newer edit, and
+    /// acknowledges it only when no edit came after it while it was out.
+    static func uploadHolidayOverride(
+        _ holidayID: Int, from store: AcademicCalendarStore, via registration: PushRegistrationService
+    ) async {
+        let sent = store.holidayEdit(holidayID)
+        do {
+            try await registration.uploadHolidayOverride(
+                holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt
+            )
+            if store.holidayEdit(holidayID) == sent {
+                store.setHolidayAcknowledged(true, holidayID: holidayID)
             }
+        } catch {
+            AppLogger.sync.error(
+                "holiday override upload failed: \(error.localizedDescription, privacy: .private)"
+            )
         }
     }
 

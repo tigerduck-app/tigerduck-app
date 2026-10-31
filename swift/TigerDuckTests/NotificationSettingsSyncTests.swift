@@ -163,6 +163,7 @@ struct NotificationSettingsSyncTests {
 
         try await NotificationSettingsSync.push(
             local: Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 30, hasPickedClassReminderLead: true),
+            base: Self.local(),
             client: client,
             cloudSyncEnabled: true
         )
@@ -211,6 +212,7 @@ struct NotificationSettingsSyncTests {
                 classReminderLeadMinutes: 15,
                 hasPickedClassReminderLead: true
             ),
+            base: Self.local(isAssignmentReminderEnabled: false, assignmentReminderOffsets: [.hr1], showInClassScenario: false),
             client: client,
             cloudSyncEnabled: true
         )
@@ -245,7 +247,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 1)), for: url)
 
-        try await NotificationSettingsSync.push(local: Self.local(), client: client, cloudSyncEnabled: true)
+        try await NotificationSettingsSync.push(local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true)
 
         let requests = SettingsAPIStub.requests(for: url)
         let sent = try Self.sentEnvelope(from: requests[1])
@@ -286,7 +288,7 @@ struct NotificationSettingsSyncTests {
         )
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 6)), for: url)
 
-        try await NotificationSettingsSync.push(local: Self.local(), client: client, cloudSyncEnabled: true)
+        try await NotificationSettingsSync.push(local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true)
 
         let requests = SettingsAPIStub.requests(for: url)
         #expect(requests.map(\.httpMethod) == ["GET", "PUT", "PUT"])
@@ -315,11 +317,135 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 409, body: try Self.conflictEnvelope(document: doc, revision: 3)), for: url)
 
         await #expect(throws: NotificationSettingsSync.SyncError.self) {
-            try await NotificationSettingsSync.push(local: Self.local(), client: client, cloudSyncEnabled: true)
+            try await NotificationSettingsSync.push(local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true)
         }
 
         let requests = SettingsAPIStub.requests(for: url)
         #expect(requests.map(\.httpMethod) == ["GET", "PUT", "PUT"])
+    }
+
+    @Test("two devices that change different fields of one section both keep their change")
+    func twoDevicesKeepTheirOwnFields() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+        let synced = Self.local()
+        let original = try synced.documentUpdates(existing: [:])
+
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(documentObject: original, revision: 1)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 2)), for: url)
+        try await NotificationSettingsSync.push(
+            local: Self.local(showInClassScenario: true), base: synced, client: client, cloudSyncEnabled: true
+        )
+        let afterFirst = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
+
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(documentObject: afterFirst, revision: 2)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 3)), for: url)
+        try await NotificationSettingsSync.push(
+            local: Self.local(assignmentLiveActivityLeadTime: 5400), base: synced, client: client, cloudSyncEnabled: true
+        )
+
+        let requests = SettingsAPIStub.requests(for: url)
+        #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET", "PUT"])
+        let liveActivity = try #require(try Self.sentDocumentObject(from: requests[3])["live_activity"] as? [String: Any])
+        #expect(liveActivity["show_in_class"] as? Bool == true)
+        #expect(liveActivity["assignment_lead_seconds"] as? Int == 5400)
+    }
+
+    @Test("the conflict retry keeps the field the winning device changed, and sends this device's")
+    func conflictRetryKeepsTheOtherDevicesField() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+        let synced = Self.local()
+        let original = try synced.documentUpdates(existing: [:])
+        let winner = try Self.local(isAssignmentReminderEnabled: false, showInClassScenario: true)
+            .documentUpdates(existing: [:])
+
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(documentObject: original, revision: 1)), for: url)
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 409, body: try JSONSerialization.data(withJSONObject: ["server": ["document": winner, "revision": 2]])),
+            for: url
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 3)), for: url)
+
+        try await NotificationSettingsSync.push(
+            local: Self.local(assignmentLiveActivityLeadTime: 5400), base: synced, client: client, cloudSyncEnabled: true
+        )
+
+        let requests = SettingsAPIStub.requests(for: url)
+        #expect(requests.map(\.httpMethod) == ["GET", "PUT", "PUT"])
+        let retry = try Self.sentDocumentObject(from: requests[2])
+        let liveActivity = try #require(retry["live_activity"] as? [String: Any])
+        #expect(liveActivity["show_in_class"] as? Bool == true)
+        #expect(liveActivity["assignment_lead_seconds"] as? Int == 5400)
+        #expect((retry["assignments"] as? [String: Any])?["enabled"] as? Bool == false)
+    }
+
+    @Test("a push with nothing changed since the synced copy writes only what the document lacks")
+    func unchangedPushWritesOnlyWhatTheDocumentLacks() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+        let existing: [String: Any] = [
+            "assignments": ["enabled": false, "reminder_offsets_hours": [1]],
+            "live_activity": ["show_in_class": true],
+        ]
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(documentObject: existing, revision: 4)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 5)), for: url)
+
+        try await NotificationSettingsSync.push(local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true)
+
+        let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
+        let assignments = try #require(sent["assignments"] as? [String: Any])
+        #expect(assignments["enabled"] as? Bool == false)
+        #expect(assignments["reminder_offsets_hours"] as? [Int] == [1])
+        #expect(assignments["reminder_offsets_minutes"] == nil)
+        let liveActivity = try #require(sent["live_activity"] as? [String: Any])
+        #expect(liveActivity["show_in_class"] as? Bool == true)
+        #expect(liveActivity["assignment_lead_seconds"] as? Int == 7200)
+        #expect((sent["courses"] as? [String: Any])?["enabled"] as? Bool == true)
+    }
+
+    @Test("a push that would change nothing in the document writes nothing, and counts as landed")
+    func emptyPushWritesNothing() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+        var document = try Self.local().documentUpdates(existing: [:])
+        document["future_section"] = ["x": 1]
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(documentObject: document, revision: 7)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 8)), for: url)
+
+        let written = try await NotificationSettingsSync.push(
+            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true
+        )
+
+        #expect(written)
+        #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
+    }
+
+    @Test("taking the fields a push sent copies each of them, and only them, from the values sent")
+    func takingCopiesOnlyTheSentFields() throws {
+        let copy = Self.local()
+        let sentValues = Self.local(
+            isAssignmentReminderEnabled: false,
+            assignmentReminderOffsets: [.hr1],
+            showClassPreparingScenario: false,
+            showInClassScenario: true,
+            showAssignmentScenario: false,
+            classPreparingLeadTime: 900,
+            assignmentLiveActivityLeadTime: 600,
+            isClassReminderEnabled: false,
+            classReminderLeadMinutes: 30,
+            hasPickedClassReminderLead: true
+        )
+
+        #expect(copy.taking([:], from: sentValues) == copy)
+        #expect(copy.taking(try sentValues.documentUpdates(existing: [:]), from: sentValues) == sentValues)
+        let one = copy.taking(["live_activity": ["show_in_class": true]], from: sentValues)
+        #expect(one.showInClassScenario == true)
+        #expect(one.classPreparingLeadTime == copy.classPreparingLeadTime)
     }
 
     @Test("push sends no request whatsoever when cloud sync is off, and reports that it did not write")
@@ -329,7 +455,7 @@ struct NotificationSettingsSyncTests {
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
 
         let written = try await NotificationSettingsSync.push(
-            local: Self.local(), client: client, cloudSyncEnabled: false
+            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: false
         )
 
         #expect(written == false)
@@ -345,7 +471,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 1)), for: url)
 
         let written = try await NotificationSettingsSync.push(
-            local: Self.local(), client: client, cloudSyncEnabled: true
+            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true
         )
 
         #expect(written)
@@ -367,6 +493,7 @@ struct NotificationSettingsSyncTests {
 
         let written = try await NotificationSettingsSync.push(
             local: Self.local(isAssignmentReminderEnabled: true, showInClassScenario: true),
+            base: Self.local(),
             client: client,
             cloudSyncEnabled: true,
             syncAssignmentRemindersEnabled: false,
@@ -400,6 +527,7 @@ struct NotificationSettingsSyncTests {
 
         let written = try await NotificationSettingsSync.push(
             local: Self.local(isAssignmentReminderEnabled: true),
+            base: Self.local(isAssignmentReminderEnabled: false),
             client: client,
             cloudSyncEnabled: true,
             syncAssignmentRemindersEnabled: true,
@@ -435,6 +563,7 @@ struct NotificationSettingsSyncTests {
 
         let written = try await NotificationSettingsSync.push(
             local: Self.local(isAssignmentReminderEnabled: true, showInClassScenario: false, isClassReminderEnabled: false),
+            base: Self.local(),
             client: client,
             cloudSyncEnabled: true,
             syncAssignmentRemindersEnabled: false,
@@ -460,11 +589,11 @@ struct NotificationSettingsSyncTests {
         #expect(!NotificationSettingsSync.canClearPendingMarker(written: true, sent: sent, current: editedWhileInFlight))
     }
 
-    @Test("a device switch turning back on needs an extra push; turning it off does not")
-    func shouldPushOnDeviceSwitchChangeOnlyFiresOnTheOffToOnTransition() {
-        #expect(NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: false, new: true))
+    @Test("a device switch turning back on adopts the server's section; turning it off does not")
+    func shouldAdoptOnDeviceSwitchChangeOnlyFiresOnTheOffToOnTransition() {
+        #expect(NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: false, new: true))
 
-        #expect(!NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: true, new: false))
+        #expect(!NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: true, new: false))
     }
 
     @Test("a document with no assignments and no courses still pushes")
@@ -481,7 +610,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 4)), for: url)
 
         let written = try await NotificationSettingsSync.push(
-            local: Self.local(), client: client, cloudSyncEnabled: true
+            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true
         )
 
         #expect(written)
@@ -505,7 +634,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 9)), for: url)
 
         let written = try await NotificationSettingsSync.push(
-            local: Self.local(), client: client, cloudSyncEnabled: true
+            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true
         )
 
         #expect(written)
@@ -538,6 +667,7 @@ struct NotificationSettingsSyncTests {
 
         try await NotificationSettingsSync.push(
             local: Self.local(assignmentReminderOffsets: [.hr24, .hr2]),
+            base: Self.local(assignmentReminderOffsets: [.hr24]),
             client: client,
             cloudSyncEnabled: true
         )
@@ -588,6 +718,7 @@ struct NotificationSettingsSyncTests {
 
         try await NotificationSettingsSync.push(
             local: Self.local(assignmentReminderOffsets: [.hr24]),
+            base: Self.local(),
             client: client,
             cloudSyncEnabled: true
         )
@@ -629,6 +760,7 @@ struct NotificationSettingsSyncTests {
 
         try await NotificationSettingsSync.push(
             local: Self.local(assignmentReminderOffsets: [.hr24]),
+            base: Self.local(),
             client: client,
             cloudSyncEnabled: true
         )
@@ -652,6 +784,7 @@ struct NotificationSettingsSyncTests {
 
         try await NotificationSettingsSync.push(
             local: Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 10),
+            base: Self.local(),
             client: client,
             cloudSyncEnabled: true
         )

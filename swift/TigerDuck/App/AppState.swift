@@ -182,6 +182,7 @@ final class AppState {
             self.pushCoordinator.refreshRegistrationAfterAuth()
             self.requestPushScheduleSync()
             #if os(iOS)
+            NotificationSettingsSync.accountSignedIn(local: .init(from: self.liveActivityPreferences))
             self.reconcileNotificationSettings()
             #endif
         }

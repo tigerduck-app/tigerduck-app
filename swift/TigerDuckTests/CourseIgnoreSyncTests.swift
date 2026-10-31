@@ -193,7 +193,7 @@ struct CourseIgnoreCoordinatorTests {
         let body = try #require(backend.bodies(Self.path).first)
         #expect(body["ignore_assignments"] as? Bool == true)
         #expect(body["moodle_course_id"] as? Int == 4242)
-        #expect(Set(body.keys) == ["ignore_assignments", "moodle_course_id"])
+        #expect(Set(body.keys) == ["ignore_assignments", "moodle_course_id", "hlc"])
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
@@ -208,7 +208,7 @@ struct CourseIgnoreCoordinatorTests {
         await coordinator.syncTick()
 
         let body = try #require(backend.bodies(Self.path).first)
-        #expect(Set(body.keys) == ["moodle_course_id"])
+        #expect(Set(body.keys) == ["moodle_course_id", "hlc"])
     }
 
     @Test("With the Courses switch off the setting waits, though the marks go, until both switches are on")
