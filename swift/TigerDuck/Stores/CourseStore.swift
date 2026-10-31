@@ -37,6 +37,9 @@ final class CourseStore {
     static let shared = CourseStore()
 
     typealias Display = CourseDetails.CourseDisplayPreferences
+    /// The course and hidden-course key types the store hands to screens.
+    typealias Course = SDCourse
+    typealias Tombstone = CourseTombstone
 
     @ObservationIgnored let files: CourseFiles
     /// The language and labels course names are fetched in now.

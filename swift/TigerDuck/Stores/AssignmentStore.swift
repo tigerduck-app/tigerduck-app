@@ -16,6 +16,11 @@ enum AssignmentEdit {
 final class AssignmentStore {
     static let shared = AssignmentStore()
 
+    /// The assignment and calendar types the store hands to screens.
+    typealias Assignment = SDAssignment
+    typealias CalendarEvent = SDCalendarEvent
+    typealias CalendarEventSource = EventSource
+
     @ObservationIgnored let files: AssignmentFiles
     @ObservationIgnored let events: CalendarEventFiles
     private(set) var revision = 0
