@@ -58,7 +58,8 @@ last task's check passes and a read-only review finds nothing High or above.
 
 - [ ] 6.1 Split the class table, home and calendar view models and views, and give the Mac views the shared view models and `ClassTableEditor`. Check: their tests; the mac build.
 - [ ] 6.2 Split the Moodle course store and views, the library view model (a state enum instead of flags and timers), bulletins, empty classrooms, score, settings, onboarding, browser and updates. Check: their tests.
-- [ ] 6.3 Turn on the size budget and layer rules. Check: `check_architecture.py` passes at `ENFORCED_PHASE = 6`; the phone and watch suites; the mac build.
+- [ ] 6.3 Make every function or table that hands out a localization key return or hold a `LocalizedStringResource`, and teach `tools/localization/check_keys.py` to read the literals in those returns. Check: its tests; the script lists no shape that holds a key as a plain `String`.
+- [ ] 6.4 Turn on the size budget and layer rules. Check: `check_architecture.py` passes at `ENFORCED_PHASE = 6`; the phone and watch suites; the mac build.
 
 ## 7. School Mail and waiting
 
