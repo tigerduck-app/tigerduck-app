@@ -1,14 +1,12 @@
-# Sources the TigerDuck app target deliberately does NOT compile for macOS.
+# Sources the TigerDuck app target does not compile for macOS.
 #
-# Checked by tools/check_macos_sources.py. This is not the mechanism that
-# excludes them — project.pbxproj does that, by listing everything macOS *does*
-# get in INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]. This file records that each
-# absence was a decision rather than an oversight, so a newly added file that
-# is in neither list fails CI instead of silently vanishing from the Mac build.
+# The INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*] arrays in project.pbxproj (Debug
+# and Release) are every app-target Swift file minus this list. After editing
+# it, or adding, moving or deleting an app-target Swift file, run
+#   python3 tools/check_macos_sources.py --write
+# to regenerate them; CI fails while they differ.
 #
-# Adding a file here means: macOS genuinely must not compile it. If macOS needs
-# it, add it to BOTH INCLUDED_SOURCE_FILE_NAMES arrays in project.pbxproj
-# (Debug and Release) instead.
+# A file goes here only when macOS must not compile it.
 #
 # One filename per line; comments after '#'. Grouped by origin, and the group
 # headings are the justification — keep new entries under a heading that

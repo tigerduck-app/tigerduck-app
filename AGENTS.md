@@ -74,9 +74,11 @@ two at once compete for the same build folder.
 - Do not treat `api-poc/api/runtime/` (for example `bulletin_pages/`) as source; it is
   gitignored scraper output.
 - Do not look for a web backend here; it lives in `tigerduck-backend`.
-- Do not add a Swift file to the app target without assigning it a platform: add it to both
-  `INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]` arrays in `project.pbxproj` (Debug and Release) or
-  list it in `tools/macos-excluded-sources.txt`. `tools/check_macos_sources.py` fails otherwise.
+- Do not edit the `INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]` arrays in `project.pbxproj` by hand.
+  After adding, moving or deleting an app-target Swift file, list it in
+  `tools/macos-excluded-sources.txt` if macOS must not compile it, then run
+  `python3 tools/check_macos_sources.py --write`. The check fails when the arrays differ from the
+  sources minus that list, and when two app-target Swift files share a base name.
 
 ## Comments
 

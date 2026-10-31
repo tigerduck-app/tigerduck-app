@@ -68,8 +68,8 @@ before working in those directories.
 - Do not put a plain `.onTapGesture` on content in a ScrollView or lazy grid, or a plain tap or
   long-press over all of it; since iOS 18 the former fires only on a second tap and the latter
   eats each child's first tap. Use the helpers in `UI/ViewHelpers/View+ScrollSafeGesture.swift`.
-- Do not add a file without assigning it a platform for the macOS build (see the root
-  AGENTS.md).
+- Do not edit the macOS source arrays in `project.pbxproj` by hand or give two Swift files one
+  base name (see the root AGENTS.md).
 
 ## Tests
 
