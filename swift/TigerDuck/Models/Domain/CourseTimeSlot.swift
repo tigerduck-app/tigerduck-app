@@ -150,10 +150,10 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
         let courseNo = parts.dropLast(2).joined(separator: "_")
         let period = String(parts[parts.count - 1])
         return courses.filter { $0.courseNo == courseNo }.contains { course in
-            guard let meeting = meetings(of: course, on: day, changes: changes).first(where: { $0.periods.contains(period) })
+            guard let meeting = CourseMeeting.meetings(of: course, on: day, changes: changes).first(where: { $0.periods.contains(period) })
             else { return false }
             let pieces = meeting.fragments()
-            let running = (pieces.isEmpty ? [merged([meeting])].compactMap { $0 } : pieces).filter { !$0.isCancelled }
+            let running = (pieces.isEmpty ? [CourseMeeting.merged([meeting])].compactMap { $0 } : pieces).filter { !$0.isCancelled }
             if let own = running.first(where: { $0.id == id }) { return own.end <= now }
             return running.allSatisfy { $0.end <= now }
         }
