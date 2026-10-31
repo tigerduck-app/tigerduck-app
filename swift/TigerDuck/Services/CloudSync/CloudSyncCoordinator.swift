@@ -50,13 +50,10 @@ final class CloudSyncCoordinator {
     @ObservationIgnored private var lastNameEdit: [String: Int] = [:]
     @ObservationIgnored private var courseAddsEnqueuing: [UUID: String] = [:]
     @ObservationIgnored private var courseAddTimes: [String: Date] = [:]
-    @ObservationIgnored private var sending: Task<[KeptValue], Error>?
+    @ObservationIgnored private var sending: Task<Void, Error>?
     @ObservationIgnored private var cutoffs: [String: Date] = [:]
     @ObservationIgnored private var signOuts = 0
     @ObservationIgnored private var signOutsSettling = 0
-    /// Writes into this device's stores a value the backend kept over an edit sent from here. That
-    /// moves no revision, so nothing else would bring the value here.
-    @ObservationIgnored var adoptKeptValue: @MainActor (KeptValue) -> Void = { _ in }
 
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
     @ObservationIgnored var tickTimer: Timer?
@@ -483,40 +480,32 @@ final class CloudSyncCoordinator {
     private func execute(_ op: SyncOp, signOutsBefore: Int) async throws {
         guard signOuts == signOutsBefore, signOutsSettling == 0 else { throw CancellationError() }
         guard !SyncOutbox.isCutOff(op, by: cutoffs) else { return }
-        let request = Task { try await self.send(SyncOutbox.resolve(op), of: op) }
+        let request = Task { try await self.send(SyncOutbox.resolve(op)) }
         sending = request
         defer { if sending == request { sending = nil } }
-        let kept = try await withTaskCancellationHandler {
+        try await withTaskCancellationHandler {
             try await request.value
         } onCancel: {
             request.cancel()
         }
-        // A newer edit of the field made here since goes next, and outranks the value kept.
-        guard !kept.isEmpty, await !outbox.holdsEdit(op.dedupKey, madeAfter: op.stamp),
-              !courseOverridesEnqueuing.values.contains(where: { $0.dedupKey == op.dedupKey }),
-              signOuts == signOutsBefore, signOutsSettling == 0
-        else { return }
-        for value in kept { adoptKeptValue(value) }
     }
 
-    private func send(_ op: ResolvedSyncOp, of queued: SyncOp) async throws -> [KeptValue] {
+    private func send(_ op: ResolvedSyncOp) async throws {
         do {
             switch op {
             case .courseOverride(let courseId, let colorHex, let customName, let locale, let stamp):
-                let response = try await pushCoordinator.patchCourseOverride(
+                _ = try await pushCoordinator.patchCourseOverride(
                     moodleId: courseId,
                     colorHex: colorHex,
                     customName: customName,
                     locale: locale,
                     madeAt: stamp)
-                return Self.keptValues(response, over: queued, locale: locale)
 
             case .assignmentOverride(let assignmentId, let localStatus, let stamp):
-                let kept = try await pushCoordinator.patchAssignmentOverride(
+                try await pushCoordinator.patchAssignmentOverride(
                     moodleAssignmentId: String(assignmentId),
                     localStatus: localStatus,
                     madeAt: stamp)
-                return kept.map { [.mark(assignmentId: String(assignmentId), status: $0)] } ?? []
 
             case .courseIgnore(let courseId, let moodleCourseId, let ignore, let stamp):
                 let response = try await pushCoordinator.patchCourseOverride(
@@ -527,55 +516,26 @@ final class CloudSyncCoordinator {
                 // A backend without the setting answers 200 and drops it, so only an answer that
                 // names it settles the op; anything else counts as a refusal.
                 guard response.ignoreAssignments != nil else { throw CourseIgnoreNotStoredError() }
-                return Self.keptValues(response, over: queued, locale: nil)
 
             case .courseDelete(let courseKey, let stamp):
                 try await pushCoordinator.deleteCourse(courseKey: courseKey, madeAt: stamp)
-                return []
 
             case .courseAdd(let semester, let courseNo, let stamp):
                 guard isProtectedDataAvailable() else { throw CancellationError() }
                 let generation = loginGeneration()
-                guard var request = addedCourseUpload(semester, courseNo) else { return [] }
+                guard var request = addedCourseUpload(semester, courseNo) else { return }
                 request.adds = request.forceKeys.map { PushAPI.CourseAdd(courseKey: $0, hlc: PushAPI.clock(of: stamp)) }
                 guard try await pushCoordinator.uploadCoursesIfChanged(
                     request, semester: semester,
                     isCurrent: { [uploadsCourses, loginGeneration] in uploadsCourses() && loginGeneration() == generation }
-                ) else { return [] }
+                ) else { return }
                 courseAddTimes[CourseTombstone.key(semester: semester, courseNo: courseNo)] = Date()
-                return []
             }
         } catch {
             if isUnauthorized(error) {
                 throw SyncOutboxAuthError(statusCode: 401)
             }
             throw error
-        }
-    }
-
-    /// The values the backend kept over the fields of `op` its reply leaves out of `applied`.
-    nonisolated static func keptValues(
-        _ response: PushAPI.CourseOverrideResponse, over op: SyncOp, locale: String?
-    ) -> [KeptValue] {
-        guard let applied = response.applied else { return [] }
-        switch op {
-        case .courseOverride(let semester, let moodleId, let customName, let colorHex, _, _):
-            var kept: [KeptValue] = []
-            if colorHex != nil, !applied.contains("color_hex"),
-               let hex = response.colorHex.flatMap({ UInt32($0.dropFirst(), radix: 16) }) {
-                kept.append(.courseColor(semester: semester, moodleId: moodleId, hex: hex))
-            }
-            // The backend takes a name only with a locale.
-            if customName != nil, let locale, !locale.isEmpty, !applied.contains("custom_name") {
-                let name = response.customNames[locale] ?? ""
-                kept.append(.courseName(semester: semester, moodleId: moodleId, locale: locale, name: name))
-            }
-            return kept
-        case .courseIgnore(let semester, let courseNo, _, _, .some, _):
-            guard !applied.contains("ignore_assignments"), let ignore = response.ignoreAssignments else { return [] }
-            return [.courseIgnore(semester: semester, courseNo: courseNo, ignore: ignore)]
-        case .courseIgnore, .assignmentOverride, .courseDelete, .courseAdd:
-            return []
         }
     }
 
@@ -638,12 +598,3 @@ final class CloudSyncCoordinator {
 }
 
 nonisolated struct CourseIgnoreNotStoredError: Error {}
-
-/// A value the backend kept over an edit sent from here, its time being later. An empty name
-/// means none in that locale.
-nonisolated enum KeptValue: Equatable, Sendable {
-    case courseColor(semester: String, moodleId: String, hex: UInt32)
-    case courseName(semester: String, moodleId: String, locale: String, name: String)
-    case courseIgnore(semester: String, courseNo: String, ignore: Bool)
-    case mark(assignmentId: String, status: String)
-}

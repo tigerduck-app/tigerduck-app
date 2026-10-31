@@ -141,36 +141,27 @@ extension AppState {
             _ = await previous?.value
             defer { AcademicCalendarStore.shared.endHolidayUpload() }
             guard let self, generation == HolidayUploadQueue.generation else { return }
-            guard await Self.uploadHolidayOverride(holidayID, from: .shared, via: self.pushCoordinator.registration)
-            else { return }
-            #if os(iOS)
-            self.scheduleLiveActivityRefresh()
-            #endif
-            NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
+            await Self.uploadHolidayOverride(holidayID, from: .shared, via: self.pushCoordinator.registration)
         }
     }
 
     /// Sends the holiday's setting with the time it was made, so a retry is not a newer edit, and
-    /// acknowledges it only when no edit came after it while it was out. Returns true when it took
-    /// in a newer setting the backend kept instead, which moves no revision for a pull to bring.
+    /// acknowledges it only when no edit came after it while it was out.
     static func uploadHolidayOverride(
         _ holidayID: Int, from store: AcademicCalendarStore, via registration: PushRegistrationService
-    ) async -> Bool {
+    ) async {
         let sent = store.holidayEdit(holidayID)
         do {
-            let kept = try await registration.uploadHolidayOverride(
+            try await registration.uploadHolidayOverride(
                 holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt
             )
-            guard store.holidayEdit(holidayID) == sent else { return false }
-            store.setHolidayAcknowledged(true, holidayID: holidayID)
-            guard let kept else { return false }
-            store.adoptKeptSetting(kept.notify, madeAt: kept.madeAt, forHoliday: holidayID)
-            return true
+            if store.holidayEdit(holidayID) == sent {
+                store.setHolidayAcknowledged(true, holidayID: holidayID)
+            }
         } catch {
             AppLogger.sync.error(
                 "holiday override upload failed: \(error.localizedDescription, privacy: .private)"
             )
-            return false
         }
     }
 

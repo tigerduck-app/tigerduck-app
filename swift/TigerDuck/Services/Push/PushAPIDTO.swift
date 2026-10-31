@@ -45,25 +45,6 @@ enum PushAPI {
         let hlc: Int64?
     }
 
-    /// `applied` is false when the backend kept a newer setting, which `notify` and `hlc` then
-    /// hold; a backend before TigerSync stamps leaves all three out.
-    struct HolidayOverrideAnswer: Decodable, Sendable {
-        let applied: Bool?
-        let notify: Bool?
-        let hlc: Int64?
-    }
-
-    /// `applied` is false when the backend kept a newer mark, which `localStatus` then holds.
-    struct AssignmentOverrideAnswer: Decodable, Sendable {
-        let applied: Bool?
-        let localStatus: String?
-
-        enum CodingKeys: String, CodingKey {
-            case applied
-            case localStatus = "local_status"
-        }
-    }
-
     nonisolated struct DevicePreferencesRequest: Codable, Sendable {
         var serverPushEnabled: Bool?
         var syncCourses: Bool?
@@ -213,9 +194,6 @@ enum PushAPI {
         let customNames: [String: String]
         let ignoreAssignments: Bool?
         let updatedAt: String
-        /// The fields sent that the backend took, the rest losing to newer values; a backend
-        /// before TigerSync stamps leaves it out.
-        let applied: [String]?
 
         enum CodingKeys: String, CodingKey {
             case id
@@ -223,7 +201,6 @@ enum PushAPI {
             case customNames = "custom_names"
             case ignoreAssignments = "ignore_assignments"
             case updatedAt = "updated_at"
-            case applied
         }
     }
 
@@ -298,10 +275,6 @@ enum PushAPI {
     /// The backend's TigerSync clock value for a time: whole microseconds since the Unix epoch.
     nonisolated static func clock(of date: Date) -> Int64 {
         Int64((date.timeIntervalSince1970 * 1_000_000).rounded(.down))
-    }
-
-    nonisolated static func date(ofClock clock: Int64) -> Date {
-        Date(timeIntervalSince1970: Double(clock) / 1_000_000)
     }
 
     struct AssignmentUploadEntry: Encodable, Sendable {

@@ -193,7 +193,6 @@ final class AppState {
         cloudSyncPreference.onChange { [weak self] enabled in
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
-        cloudSyncCoordinator.adoptKeptValue = { [weak self] in self?.adoptKeptValue($0) }
 
         AppServiceBridge.courseUploader = { [weak self] courses, semester, asRoster, resend in
             self?.uploadCourses(courses, semester: semester, asRoster: asRoster, resend: resend)
