@@ -91,6 +91,15 @@ struct NotificationSettingsSyncedSeedMigrationTests {
         }
     }
 
+    @MainActor
+    private final class ReadLog {
+        private(set) var reads = 0
+        func record(_ value: NotificationSettingsSync.LocalPreferences) -> NotificationSettingsSync.LocalPreferences {
+            reads += 1
+            return value
+        }
+    }
+
     @Test("a sign-in with no synced copy takes the device's values as the copy: an edit made while signed out gives way, one made after goes up")
     func signInStartsTheCopy() async throws {
         try await Self.withCleanState {
@@ -152,6 +161,20 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             #expect(NotificationSettingsSync.synced == nil)
             #expect(!Defaults[.notificationSettingsPushSendsEveryField])
             #expect(UserDefaults.standard.bool(forKey: doneKey))
+        }
+    }
+
+    @Test("the migration reads the device's values only once stored data reads back")
+    func readsTheValuesOnlyAfterTheGate() async {
+        await Self.withCleanState {
+            Defaults[.notificationSettingsPushPending] = false
+            let log = ReadLog()
+
+            NotificationSettingsSyncedSeedMigration.runIfNeeded(
+                current: log.record(Self.preferences(showInClass: true)), signedIn: true, storedDataReadsBack: { false }
+            )
+
+            #expect(log.reads == 0)
         }
     }
 
