@@ -36,7 +36,7 @@ final class ClassTableImportModel: Identifiable {
         let value: String
     }
 
-    typealias CourseLookup = (_ semester: String, _ courseNos: [String]) async throws -> [SDCourse]
+    typealias CourseLookup = (_ semester: String, _ courseNos: [String]) async throws -> [CourseStore.Course]
 
     var prompt: Prompt?
     private(set) var pending: Pending?
@@ -70,7 +70,7 @@ final class ClassTableImportModel: Identifiable {
             store: .shared,
             signedInStudentId: { authService.storedStudentId },
             isCurrent: authService.session.currentCheck(),
-            lookup: { try await CourseDetails.importedCourses(semester: $0, courseNos: $1) }
+            lookup: { try await SchoolRefresh.importedCourses(semester: $0, courseNos: $1) }
         )
     }
 
@@ -249,9 +249,9 @@ final class ClassTableImportModel: Identifiable {
         }
     }
 
-    private func courses(for code: ClassTableShareCode) async -> [String: [SDCourse]]? {
+    private func courses(for code: ClassTableShareCode) async -> [String: [CourseStore.Course]]? {
         do {
-            var courses: [String: [SDCourse]] = [:]
+            var courses: [String: [CourseStore.Course]] = [:]
             for term in code.terms {
                 courses[term.semester] = try await lookup(term.semester, term.courseNos)
             }

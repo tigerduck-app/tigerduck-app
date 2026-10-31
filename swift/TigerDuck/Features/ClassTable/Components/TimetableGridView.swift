@@ -6,7 +6,7 @@ import UIKit
 #endif
 
 func spokenCourse(
-    _ course: SDCourse, room: String? = nil, changes: [String] = [], hasAssignment: Bool, ignoresAssignments: Bool
+    _ course: CourseStore.Course, room: String? = nil, changes: [String] = [], hasAssignment: Bool, ignoresAssignments: Bool
 ) -> String {
     var parts = [course.displayName]
     if let room { parts.append(room) }
@@ -17,7 +17,7 @@ func spokenCourse(
 }
 
 @ViewBuilder
-private func ignoreAssignmentsButton(_ course: SDCourse, viewModel: ClassTableViewModel) -> some View {
+private func ignoreAssignmentsButton(_ course: CourseStore.Course, viewModel: ClassTableViewModel) -> some View {
     if viewModel.offersIgnoreAssignments {
         let ignored = viewModel.ignoresAssignments(of: course.courseNo)
         Button {
@@ -255,7 +255,7 @@ struct TimetableGridView: View {
     private func contentKey(
         of role: ClassTableViewModel.CellRole, weekday: Int, periodId: String, meeting: CourseTimeSlot?
     ) -> String {
-        func shown(_ course: SDCourse) -> String { "\(course.courseNo)|\(course.displayName)" }
+        func shown(_ course: CourseStore.Course) -> String { "\(course.courseNo)|\(course.displayName)" }
         switch role {
         case .empty:
             return "empty"
@@ -482,7 +482,7 @@ struct TimetableGridView: View {
 
     @ViewBuilder
     private func courseFace(
-        _ course: SDCourse, spanCount: Int, showsRoomHint: Bool, showsMark: Bool,
+        _ course: CourseStore.Course, spanCount: Int, showsRoomHint: Bool, showsMark: Bool,
         isCancelled: Bool = false, showsTimeLine: Bool = false
     ) -> some View {
         if drawsPeriodTiles {
@@ -512,7 +512,7 @@ struct TimetableGridView: View {
     }
 
     private func courseTile(
-        _ course: SDCourse, cornerRadius: CGFloat, lineLimit: Int, leavesBottomLine: Bool,
+        _ course: CourseStore.Course, cornerRadius: CGFloat, lineLimit: Int, leavesBottomLine: Bool,
         leavesTopLine: Bool = false, isCancelled: Bool = false
     ) -> some View {
         RoundedRectangle(cornerRadius: cornerRadius)
@@ -538,7 +538,7 @@ struct TimetableGridView: View {
     }
 
     private func conflictCluster(
-        segments: [ClassTableConflictSegment<SDCourse>],
+        segments: [ClassTableConflictSegment<CourseStore.Course>],
         combinedSpan: Int,
         laneCount: Int,
         weekday: Int,
@@ -568,7 +568,7 @@ private struct ConflictClusterView: View {
     let viewModel: ClassTableViewModel
     let showsAssignmentBadges: Bool
     let differentiateWithoutColorOverride: Bool?
-    let segments: [ClassTableConflictSegment<SDCourse>]
+    let segments: [ClassTableConflictSegment<CourseStore.Course>]
     let combinedSpan: Int
     let laneCount: Int
     let cellHeight: CGFloat
@@ -589,10 +589,10 @@ private struct ConflictClusterView: View {
         courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(app.preferences.courseCardFontScale))
     }
 
-    private var courseA: SDCourse { segments[0].course }
+    private var courseA: CourseStore.Course { segments[0].course }
     private var spanA: Int { segments[0].span }
     private var offsetA: Int { segments[0].offset }
-    private var courseB: SDCourse { segments[1].course }
+    private var courseB: CourseStore.Course { segments[1].course }
     private var spanB: Int { segments[1].span }
     private var offsetB: Int { segments[1].offset }
 
@@ -726,7 +726,7 @@ private struct ConflictClusterView: View {
         }
     }
 
-    private func laneMember(_ segment: ClassTableConflictSegment<SDCourse>, geometry: ConflictLaneGeometry) -> some View {
+    private func laneMember(_ segment: ClassTableConflictSegment<CourseStore.Course>, geometry: ConflictLaneGeometry) -> some View {
         let course = segment.course
         let runs = ClassTableLayout.laneRuns(of: segment, among: segments, laneCount: laneCount).map(geometry.rect)
         let shape = ConflictLaneShape(runs: runs, cornerRadius: TigerDuckTheme.CornerRadius.sm)
@@ -839,20 +839,20 @@ private struct ConflictClusterView: View {
         #endif
     }
 
-    private func showsBadge(for course: SDCourse) -> Bool {
+    private func showsBadge(for course: CourseStore.Course) -> Bool {
         showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
     }
 
-    private func showsIgnoredMark(for course: SDCourse) -> Bool {
+    private func showsIgnoredMark(for course: CourseStore.Course) -> Bool {
         showsAssignmentBadges && viewModel.ignoresAssignments(of: course.courseNo)
     }
 
-    private func isOutlined(_ course: SDCourse) -> Bool {
+    private func isOutlined(_ course: CourseStore.Course) -> Bool {
         outlineRequiredCourses && course.isRequired
     }
 
     private func courseRegion(
-        course: SDCourse,
+        course: CourseStore.Course,
         shape: ConflictLShape,
         labelAlignment: Alignment,
         barFraction: CGFloat

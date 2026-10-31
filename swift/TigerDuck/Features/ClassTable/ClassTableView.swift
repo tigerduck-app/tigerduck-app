@@ -8,7 +8,7 @@ struct ClassTableView: View {
     @Environment(\.requestClassTableImport) private var requestImport
     @Environment(\.isUpdatingImportedClassTable) private var isUpdatingImport
     @State private var viewModel = ClassTableViewModel(
-        isClassDay: { AcademicCalendarStore.shared.isClassDay($0) }
+        isClassDay: { SchoolCalendar.isClassDay($0) }
     )
     @State private var exportedFile: ExportedFile?
     @State private var showExportFailed = false
@@ -40,7 +40,7 @@ struct ClassTableView: View {
                     }
                     viewModel.onCoursesChanged = { app.uploads.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = {
-                        app.edits.addCourses([CourseTombstone.serverKey(semester: $1, courseNo: $2)], semester: $1)
+                        app.edits.addCourses([CourseStore.Tombstone.serverKey(semester: $1, courseNo: $2)], semester: $1)
                     }
                     viewModel.onCourseDeleted = { app.edits.deleteBackendCourse(courseNo: $0, semester: $1) }
                     viewModel.onResetBackendCourses = { await app.edits.deleteBackendCourses(semester: $0, thenLocally: $1) }
@@ -61,7 +61,7 @@ struct ClassTableView: View {
                     }
                     viewModel.onCoursesChanged = { app.uploads.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = {
-                        app.edits.addCourses([CourseTombstone.serverKey(semester: $1, courseNo: $2)], semester: $1)
+                        app.edits.addCourses([CourseStore.Tombstone.serverKey(semester: $1, courseNo: $2)], semester: $1)
                     }
                     viewModel.onCourseDeleted = { app.edits.deleteBackendCourse(courseNo: $0, semester: $1) }
                     viewModel.onResetBackendCourses = { await app.edits.deleteBackendCourses(semester: $0, thenLocally: $1) }
@@ -129,7 +129,7 @@ struct ClassTableView: View {
                     return
                 }
                 viewModel.triggerRefresh(authService: app.authService)
-                Task { await CourseChangeStore.shared.refresh() }
+                Task { await SchoolRefresh.courseChanges() }
                 if Defaults[.cloudSyncEnabled] {
                     Task { await app.fullSync.sync() }
                 }

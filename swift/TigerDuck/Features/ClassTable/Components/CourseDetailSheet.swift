@@ -12,8 +12,8 @@ struct CourseDetailSheet: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    let course: SDCourse
-    let assignments: [SDAssignment]
+    let course: CourseStore.Course
+    let assignments: [AssignmentStore.Assignment]
     var timeRange: String? = nil
     var weekday: Int? = nil
     var periods: [String]? = nil
@@ -24,12 +24,12 @@ struct CourseDetailSheet: View {
     var slot: CourseTimeSlot? = nil
     var moodlePath: Binding<[MoodleCourseRoute]>? = nil
     var showsMoodle = true
-    private let changes = CourseChanges.cached
+    private let changes = SchoolCalendar.changes
 
     @State private var ownMoodlePath: [MoodleCourseRoute] = []
     @State private var moodle: MoodleCourseStore?
     @State private var moodleAttempt = 0
-    @State private var syllabus: CourseSyllabus?
+    @State private var syllabus: CourseLookup.Syllabus?
     #if os(iOS)
     @State private var detent: PresentationDetent = .medium
     #endif
@@ -149,9 +149,9 @@ struct CourseDetailSheet: View {
 
     /// Nil for a course without a term or course number, such as one the student added by hand,
     /// and when the fetch fails or the syllabus has nothing to show.
-    private func loadSyllabus() async -> CourseSyllabus? {
+    private func loadSyllabus() async -> CourseLookup.Syllabus? {
         guard !course.semester.isEmpty, !course.courseNo.isEmpty else { return nil }
-        let syllabus = try? await CourseLookupService.syllabus(
+        let syllabus = try? await CourseLookup.syllabus(
             semester: course.semester,
             courseNo: course.courseNo,
             language: LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
@@ -161,10 +161,10 @@ struct CourseDetailSheet: View {
 
     private func makeMoodleStore() -> MoodleCourseStore? {
         guard showsMoodle, let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
-              let courseId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber),
+              let courseId = CourseLookup.moodleCourseId(idnumber: idnumber),
               let context = MoodleCacheContext.signedIn(app.authService) else { return nil }
         let term = AcademicTerm.codePrefix(ofMoodleId: idnumber)
-        let idMap = MoodleFiles.shared.loadMoodleCourseIdMap()
+        let idMap = CourseLookup.moodleCourseIds()
         let termCourseIds = idMap
             .filter { term != nil && AcademicTerm.codePrefix(ofMoodleId: $0.key) == term }
             .map(\.value)
@@ -180,7 +180,7 @@ struct CourseDetailSheet: View {
 
     static func moodleCourseCodes(idnumber: String, courseNo: String, courseId: Int, idMap: [String: Int]) -> [String] {
         let idnumbers = [idnumber] + idMap.filter { $0.value == courseId }.map(\.key)
-        return idnumbers + idnumbers.map(SDCourse.courseNoFromMoodleId) + [courseNo]
+        return idnumbers + idnumbers.map(CourseStore.Course.courseNoFromMoodleId) + [courseNo]
     }
 
     private var headerSection: some View {
@@ -247,7 +247,7 @@ struct CourseDetailSheet: View {
     }
 
     static func shownMeeting(
-        of course: SDCourse, slot: CourseTimeSlot?, periods: [String]?, on date: Date?, changes: CourseChanges
+        of course: CourseStore.Course, slot: CourseTimeSlot?, periods: [String]?, on date: Date?, changes: SchoolCalendar.Changes
     ) -> CourseTimeSlot? {
         let meeting = slot ?? date.flatMap { date in
             (periods ?? course.schedule[date.scheduleWeekday])
@@ -266,8 +266,8 @@ struct CourseDetailSheet: View {
         return resolved.isEmpty ? "—" : resolved
     }
 
-    static func classroom(of course: SDCourse, weekday: Int?, periods: [String]?) -> String {
-        guard let weekday else { return SDCourse.dedup(course.classroom) }
+    static func classroom(of course: CourseStore.Course, weekday: Int?, periods: [String]?) -> String {
+        guard let weekday else { return CourseStore.Course.dedup(course.classroom) }
         guard let periods, !periods.isEmpty else { return course.classroom(for: weekday) }
         return course.classroom(weekday: weekday, periods: periods)
     }
@@ -393,7 +393,7 @@ struct CourseDetailSheet: View {
         var parts: [String] = []
         for meeting in meetings {
             if let shown, meeting.periods.contains(where: shown.periods.contains),
-               AcademicCalendar.startOfDay(meeting.date) == AcademicCalendar.startOfDay(shown.date) {
+               TaipeiTime.calendar.startOfDay(for: meeting.date) == TaipeiTime.calendar.startOfDay(for: shown.date) {
                 // The cards show the tapped class; a room its meeting's other classes move to does not.
                 parts += meeting.changes
                     .filter { $0.kind == .room && !shown.periods.contains(where: $0.covers) }
@@ -460,7 +460,7 @@ struct CourseDetailSheet: View {
     private static let assignmentAccessory = "chevron.right"
     #endif
 
-    private func openListed(_ assignment: SDAssignment) {
+    private func openListed(_ assignment: AssignmentStore.Assignment) {
         #if os(iOS)
         if let entry = moodle?.assignments.entry(for: assignment) {
             routes.wrappedValue.append(.assignment(entry))
@@ -481,7 +481,7 @@ struct CourseDetailSheet: View {
     }
 
     private func refreshAssignments() async {
-        _ = await AssignmentFetch.fetchAssignments(authService: app.authService, recheckSubmissions: true)
+        await SchoolRefresh.assignments(authService: app.authService)
     }
 
     /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile

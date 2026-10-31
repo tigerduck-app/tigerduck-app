@@ -5,11 +5,11 @@ import TigerDuckCore
 @MainActor
 @Observable
 final class ClassTableViewModel {
-    var courses: [SDCourse] = [] {
+    var courses: [CourseStore.Course] = [] {
         didSet { rebuildLookup() }
     }
-    var assignments: [SDAssignment] = []
-    var selectedCourse: SDCourse? = nil
+    var assignments: [AssignmentStore.Assignment] = []
+    var selectedCourse: CourseStore.Course? = nil
 
     var selectedWeekday: Int? = nil
     var selectedPeriodId: String? = nil
@@ -17,7 +17,7 @@ final class ClassTableViewModel {
     var selectedDate: Date? = nil
     /// The running class the Current class card opened, which can be one piece of its meeting.
     var selectedSlot: CourseTimeSlot? = nil
-    var courseChanges: CourseChanges = .cached
+    var courseChanges: SchoolCalendar.Changes = .cached
 
     var currentSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
@@ -53,15 +53,15 @@ final class ClassTableViewModel {
     @ObservationIgnored let importedTables: ImportedClassTableStore
 
     typealias ImportedTermLookup = @MainActor (
-        _ semester: String, _ courseNos: [String], _ current: [SDCourse]
-    ) async -> [SDCourse]?
+        _ semester: String, _ courseNos: [String], _ current: [CourseStore.Course]
+    ) async -> [CourseStore.Course]?
 
     @ObservationIgnored private let lookUpImportedTerm: ImportedTermLookup
 
     /// Keeps the persisted selection selectable even after it ages out of the
     /// catalogue window — a `Picker` whose tag matches no option renders blank.
     static func semesterOptions(including selected: String) -> [String] {
-        let options = SemesterCatalog.availableSemesters()
+        let options = SchoolTerms.available()
         return options.contains(selected) ? options : options + [selected]
     }
 
@@ -69,7 +69,7 @@ final class ClassTableViewModel {
     private func followNewestSemesterIfUnpicked() -> Bool {
         guard shownPerson == nil,
               Defaults[.classTableSelectedSemester] == nil,
-              let newest = SemesterCatalog.availableSemesters().first,
+              let newest = SchoolTerms.available().first,
               newest != currentSemester else { return false }
         isFollowingNewestSemester = true
         currentSemester = newest
@@ -109,15 +109,15 @@ final class ClassTableViewModel {
             if self.shownPerson == nil, Self.showsChange(merged, over: self.courses) {
                 self.courses = merged
             }
-            if target == CourseSelectionService.currentSemesterCode() {
+            if target == SchoolTerms.current {
                 self.currentSemesterCourses = merged
                 self.refreshCourseColors()
             }
         }
     }
 
-    static func showsChange(_ fresh: [SDCourse], over shown: [SDCourse]) -> Bool {
-        func drawn(_ courses: [SDCourse]) -> [DrawnCourse] {
+    static func showsChange(_ fresh: [CourseStore.Course], over shown: [CourseStore.Course]) -> Bool {
+        func drawn(_ courses: [CourseStore.Course]) -> [DrawnCourse] {
             courses.sorted { $0.courseNo < $1.courseNo }.map(DrawnCourse.init)
         }
         return drawn(fresh) != drawn(shown)
@@ -132,7 +132,7 @@ final class ClassTableViewModel {
         let moodleIdNumber: String?
         let dimension, allYear, requireOption: String
 
-        init(_ course: SDCourse) {
+        init(_ course: CourseStore.Course) {
             courseNo = course.courseNo
             name = course.courseName
             customName = course.customName ?? ""
@@ -153,11 +153,11 @@ final class ClassTableViewModel {
     var showAddCourse = false
     var showResetConfirm = false
     var showResetFailedAlert = false
-    var courseToRename: SDCourse? = nil
+    var courseToRename: CourseStore.Course? = nil
     var renameText: String = ""
     var showRenameAlert = false
 
-    var courseToRecolor: SDCourse? = nil
+    var courseToRecolor: CourseStore.Course? = nil
 
     var deletedCourseNos: Set<String> = []
     var courseCustomNames: [String: [String: String]] = [:]
@@ -167,7 +167,7 @@ final class ClassTableViewModel {
         LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
     }
 
-    private var courseLookup: [Int: [String: [SDCourse]]] = [:]
+    private var courseLookup: [Int: [String: [CourseStore.Course]]] = [:]
 
     var conflictPickerTarget: ConflictPickerTarget? = nil
 
@@ -190,7 +190,7 @@ final class ClassTableViewModel {
 
     var isRefreshing = false
     var resettingSemesters: Set<String> = []
-    var currentSemesterCourses: [SDCourse] = []
+    var currentSemesterCourses: [CourseStore.Course] = []
     private let courseProvider = CanonicalCourseProvider()
     private let isClassDay: (Date) -> Bool
     @ObservationIgnored let courseStore: CourseStore
@@ -252,7 +252,7 @@ final class ClassTableViewModel {
         }
     }
 
-    func mergeWithUserAdded(_ primary: [SDCourse], _ userAdded: [SDCourse]) -> [SDCourse] {
+    func mergeWithUserAdded(_ primary: [CourseStore.Course], _ userAdded: [CourseStore.Course]) -> [CourseStore.Course] {
         var merged = primary
         for course in userAdded {
             if !merged.contains(where: { $0.courseNo == course.courseNo }) {
@@ -262,7 +262,7 @@ final class ClassTableViewModel {
         return merged
     }
 
-    func buildCourseList(_ primary: [SDCourse], _ userAdded: [SDCourse]) -> [SDCourse] {
+    func buildCourseList(_ primary: [CourseStore.Course], _ userAdded: [CourseStore.Course]) -> [CourseStore.Course] {
         var merged = mergeWithUserAdded(primary, userAdded)
         applyCustomizations(&merged)
         return merged
@@ -304,7 +304,7 @@ final class ClassTableViewModel {
         displayedPerson = importedTables.shownPerson
         if shownPerson != nil { closeOwnEdits() }
         let semester = shownPerson?.semester(keeping: currentSemester)
-            ?? SemesterCatalog.selectedSemester(storedPick: Defaults[.classTableSelectedSemester])
+            ?? SchoolTerms.selected(storedPick: Defaults[.classTableSelectedSemester])
         guard semester != currentSemester else {
             reloadFromCache()
             return
@@ -367,7 +367,7 @@ final class ClassTableViewModel {
     }
 
     func rebuildLookup() {
-        var lookup: [Int: [String: [SDCourse]]] = [:]
+        var lookup: [Int: [String: [CourseStore.Course]]] = [:]
         for course in courses {
             for (weekday, periods) in course.schedule {
                 for period in periods {
@@ -407,12 +407,12 @@ final class ClassTableViewModel {
     }
 
     var selectedCourseTimeRange: String? {
-        if let periods = selectedCoursePeriods { return SDCourse.timeRange(periods: periods) }
+        if let periods = selectedCoursePeriods { return CourseStore.Course.timeRange(periods: periods) }
         guard let course = selectedCourse, let weekday = selectedWeekday else { return nil }
         return course.timeRange(for: weekday)
     }
 
-    var todayCourses: [SDCourse] {
+    var todayCourses: [CourseStore.Course] {
         guard shownPerson == nil else { return [] }
         _ = AppClockState.shared.version
         _ = minuteTicker.tick
@@ -455,11 +455,11 @@ final class ClassTableViewModel {
         return order.filter { periodIds.contains($0) }.compactMap { TimetablePeriod.byId[$0] }
     }
 
-    func course(for weekday: Int, period: String) -> SDCourse? {
+    func course(for weekday: Int, period: String) -> CourseStore.Course? {
         courseLookup[weekday]?[period]?.first
     }
 
-    func courses(for weekday: Int, period: String) -> [SDCourse] {
+    func courses(for weekday: Int, period: String) -> [CourseStore.Course] {
         courseLookup[weekday]?[period] ?? []
     }
 
@@ -467,24 +467,24 @@ final class ClassTableViewModel {
         shownPerson == nil && assignments.hasUnfinished(for: courseNo)
     }
 
-    func assignmentsFor(courseNo: String) -> [SDAssignment] {
+    func assignmentsFor(courseNo: String) -> [AssignmentStore.Assignment] {
         shownPerson == nil ? assignments.unfinished(for: courseNo) : []
     }
 
     func ignoresAssignments(of courseNo: String) -> Bool {
         shownPerson == nil
-            && ignoredAssignmentCourses.contains(CourseTombstone.key(semester: currentSemester, courseNo: courseNo))
+            && ignoredAssignmentCourses.contains(CourseStore.Tombstone.key(semester: currentSemester, courseNo: courseNo))
     }
 
     var offersIgnoreAssignments: Bool {
-        shownPerson == nil && currentSemester == CourseSelectionService.currentSemesterCode()
+        shownPerson == nil && currentSemester == SchoolTerms.current
     }
 
-    var onSyncCourseIgnore: ((_ course: SDCourse, _ semester: String, _ ignore: Bool) -> Void)?
+    var onSyncCourseIgnore: ((_ course: CourseStore.Course, _ semester: String, _ ignore: Bool) -> Void)?
     var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
-    var onSyncColorPick: ((_ hex: UInt32, _ course: SDCourse, _ changed: [String: UInt32]) -> Void)?
-    var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
-    var onCourseAdded: ((_ courses: [SDCourse], _ semester: String, _ addedCourseNo: String) -> Void)?
+    var onSyncColorPick: ((_ hex: UInt32, _ course: CourseStore.Course, _ changed: [String: UInt32]) -> Void)?
+    var onCoursesChanged: ((_ courses: [CourseStore.Course], _ semester: String) -> Void)?
+    var onCourseAdded: ((_ courses: [CourseStore.Course], _ semester: String, _ addedCourseNo: String) -> Void)?
     var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?
     var onResetBackendCourses: ((_ semester: String, _ resetLocally: @MainActor () -> Void) async -> Bool)?
 }

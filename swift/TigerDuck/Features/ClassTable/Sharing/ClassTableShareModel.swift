@@ -7,7 +7,7 @@ import Observation
 final class ClassTableShareModel: Identifiable {
     struct Term {
         let semester: String
-        let courses: [SDCourse]
+        let courses: [CourseStore.Course]
     }
 
     enum Selection: Hashable {
@@ -169,11 +169,11 @@ extension ClassTableShareModel {
 
     private static func courses(
         in semester: String, hidden: Set<String>, courses cache: CourseStore, shownTerm: Term?
-    ) -> [SDCourse] {
+    ) -> [CourseStore.Course] {
         guard ClassTableShareCode.isSemester(semester.uppercased()[...]) else { return [] }
         if let shownTerm {
             return shownTerm.courses.filter {
-                carriesCode($0) && !CourseTombstone.isHidden($0.courseNo, semester: semester, in: hidden)
+                carriesCode($0) && !CourseStore.Tombstone.isHidden($0.courseNo, semester: semester, in: hidden)
             }
         }
         return CanonicalCourseProvider.merge(
@@ -185,8 +185,8 @@ extension ClassTableShareModel {
         ).filter(carriesCode)
     }
 
-    private static func carriesCode(_ course: SDCourse) -> Bool {
-        CourseSelectionService.isCourseNo(course.courseNo.uppercased()[...])
+    private static func carriesCode(_ course: CourseStore.Course) -> Bool {
+        SchoolTerms.isCourseNo(course.courseNo.uppercased()[...])
     }
 }
 

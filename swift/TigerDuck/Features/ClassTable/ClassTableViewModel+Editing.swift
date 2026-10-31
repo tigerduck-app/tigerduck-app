@@ -4,7 +4,7 @@ import SwiftUI
 extension ClassTableViewModel {
 
     @discardableResult
-    func addCourse(_ course: SDCourse) -> Bool {
+    func addCourse(_ course: CourseStore.Course) -> Bool {
         guard shownPerson == nil else { return false }
         let store = courseStore
         if courses.contains(where: { $0.courseNo == course.courseNo }) {
@@ -23,7 +23,7 @@ extension ClassTableViewModel {
         if store.apply(.unhide(courseNo: course.courseNo, semester: currentSemester)) {
             deletedCourseNos = Set(store.loadDeletedCourseNos())
             if let idnumber = course.moodleIdNumber,
-               let numericId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber) {
+               let numericId = CourseLookup.moodleCourseId(idnumber: idnumber) {
                 onSyncCourseOverride?(String(numericId), nil, nil, nil)
             }
         }
@@ -56,16 +56,16 @@ extension ClassTableViewModel {
         return true
     }
 
-    func applyCustomizations(_ courses: inout [SDCourse]) {
+    func applyCustomizations(_ courses: inout [CourseStore.Course]) {
         let semester = currentSemester
-        courses.removeAll { CourseTombstone.isHidden($0.courseNo, semester: semester, in: deletedCourseNos) }
+        courses.removeAll { CourseStore.Tombstone.isHidden($0.courseNo, semester: semester, in: deletedCourseNos) }
         let locale = currentLocale
         for course in courses {
             course.customName = courseCustomNames[course.courseNo]?[locale]
         }
     }
 
-    func deleteCourse(_ course: SDCourse) {
+    func deleteCourse(_ course: CourseStore.Course) {
         guard shownPerson == nil else { return }
         let courseNo = course.courseNo
         courses.removeAll { $0.courseNo == courseNo }
@@ -122,7 +122,7 @@ extension ClassTableViewModel {
         onCourseDeleted?(courseNo, currentSemester)
     }
 
-    func startRename(_ course: SDCourse) {
+    func startRename(_ course: CourseStore.Course) {
         guard shownPerson == nil else { return }
         courseToRename = course
         renameText = course.displayName
@@ -145,7 +145,7 @@ extension ClassTableViewModel {
         syncNameOverride(course: course, customName: trimmed, locale: locale)
     }
 
-    func revertRename(_ course: SDCourse) {
+    func revertRename(_ course: CourseStore.Course) {
         guard shownPerson == nil, courseToRename === course else { return }
         let locale = currentLocale
         courseCustomNames[course.courseNo]?[locale] = nil
@@ -159,12 +159,12 @@ extension ClassTableViewModel {
         syncNameOverride(course: course, customName: "", locale: locale)
     }
 
-    func startRecolor(_ course: SDCourse) {
+    func startRecolor(_ course: CourseStore.Course) {
         guard shownPerson == nil else { return }
         courseToRecolor = course
     }
 
-    func setIgnoresAssignments(_ ignore: Bool, for course: SDCourse) {
+    func setIgnoresAssignments(_ ignore: Bool, for course: CourseStore.Course) {
         guard offersIgnoreAssignments else { return }
         let semester = currentSemester
         AssignmentStore.shared.apply(.ignoreCourse(courseNo: course.courseNo, semester: semester, ignored: ignore))
@@ -173,13 +173,13 @@ extension ClassTableViewModel {
         onSyncCourseIgnore?(course, semester, ignore)
     }
 
-    func setColor(hex: UInt32, for course: SDCourse) {
+    func setColor(hex: UInt32, for course: CourseStore.Course) {
         guard shownPerson == nil else { return }
         let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
         onSyncColorPick?(hex, course, changed)
     }
 
-    private func syncNameOverride(course: SDCourse, customName: String, locale: String) {
+    private func syncNameOverride(course: CourseStore.Course, customName: String, locale: String) {
         guard let moodleId = course.moodleIdNumber else { return }
         onSyncCourseOverride?(moodleId, nil, customName, locale)
     }

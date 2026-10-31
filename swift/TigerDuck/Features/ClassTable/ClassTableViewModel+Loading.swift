@@ -47,7 +47,7 @@ extension ClassTableViewModel {
                 return
             }
             await self.fetchData(authService: authService, semester: semester)
-            let latestSemester = CourseSelectionService.currentSemesterCode()
+            let latestSemester = SchoolTerms.current
             if latestSemester != self.currentSemester {
                 _ = await CourseFetch.fetchCourses(authService: authService, semester: latestSemester)
                 self.reloadCurrentSemesterCourses()

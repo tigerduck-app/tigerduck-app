@@ -6,8 +6,8 @@ struct AddCourseSheet: View {
     @Environment(AppEnvironment.self) private var app
 
     let semester: String
-    let tableCourses: [SDCourse]
-    let onAdd: (SDCourse) -> Bool
+    let tableCourses: [CourseStore.Course]
+    let onAdd: (CourseStore.Course) -> Bool
     var onRemove: ((String) -> Void)? = nil
 
     @State private var model = CourseSearchModel()
@@ -402,9 +402,9 @@ struct AddCourseSheet: View {
 
         for result in rows {
             let key = result.CourseNo
-            let partial = CourseLookupService.parseNodeToSchedule(result.Node)
+            let partial = CourseLookup.schedule(of: result.Node)
             var rowSeen = Set<String>()
-            let rowRoomParts = SDCourse.splitRoom(result.ClassRoomNo ?? "")
+            let rowRoomParts = CourseStore.Course.splitRoom(result.ClassRoomNo ?? "")
                 .filter { rowSeen.insert($0).inserted }
             let rowRoom = rowRoomParts.joined(separator: ", ")
 
@@ -486,7 +486,7 @@ struct AddCourseSheet: View {
     }
 
     private func add(_ group: GroupedCourse, name: String, instructor: String) {
-        let course = SDCourse(
+        let course = CourseStore.Course(
             courseNo: group.courseNo,
             courseName: name,
             instructor: instructor,

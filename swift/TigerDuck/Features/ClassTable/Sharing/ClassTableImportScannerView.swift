@@ -177,7 +177,7 @@ struct ClassTableImportScannerView: View {
     /// nothing to share or a student ID no code can hold.
     private static func ownTerms(studentId: String?) -> [ClassTableShareModel.Term] {
         guard let studentId, ClassTableShareCode.isUpperAlphanumerics(studentId.uppercased()[...]) else { return [] }
-        let semester = SemesterCatalog.selectedSemester(storedPick: Defaults[.classTableSelectedSemester])
+        let semester = SchoolTerms.selected(storedPick: Defaults[.classTableSelectedSemester])
         return ClassTableShareModel.terms(in: ClassTableViewModel.semesterOptions(including: semester))
     }
 

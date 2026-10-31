@@ -384,7 +384,7 @@ nonisolated extension ClassTableShareCode {
     }
 
     /// The head is the first that fits of `3` and two letters, two letters, or `3` and one letter
-    /// (NTU and NTNU courses, such as `3N1004701`), as in `CourseSelectionService.isCourseNo`.
+    /// (NTU and NTNU courses, such as `3N1004701`), as in `SchoolTerms.isCourseNo`.
     private static func split(_ courseNo: String) -> (head: String, tail: String)? {
         guard let m = courseNo.wholeMatch(of: /(3[A-Z]{2}|[A-Z]{2}|3[A-Z])([A-Z0-9]{6,7})/) else { return nil }
         return (String(m.1), String(m.2))

@@ -87,7 +87,7 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         var semesters = Set<String>()
         let kept = terms.compactMap { term -> Term? in
             let semester = term.semester.uppercased()
-            let courseNos = Set(term.courseNos.map { $0.uppercased() }.filter { CourseSelectionService.isCourseNo($0[...]) })
+            let courseNos = Set(term.courseNos.map { $0.uppercased() }.filter { SchoolTerms.isCourseNo($0[...]) })
                 .sorted()
             guard isSemester(semester[...]), !courseNos.isEmpty, semesters.insert(semester).inserted else {
                 return nil
@@ -106,7 +106,7 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         guard !items.contains(where: \.isEmpty), Set(items).count == items.count else {
             throw ClassTableShareCodeError.malformed
         }
-        if let bad = items.first(where: { !CourseSelectionService.isCourseNo($0) }) {
+        if let bad = items.first(where: { !SchoolTerms.isCourseNo($0) }) {
             throw ClassTableShareCodeError.invalidCourseCode(String(bad))
         }
         return items.map(String.init)

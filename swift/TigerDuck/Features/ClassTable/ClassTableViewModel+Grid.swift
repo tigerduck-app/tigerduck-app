@@ -4,7 +4,7 @@ import TigerDuckCore
 
 extension ClassTableViewModel {
 
-    typealias CellRole = ClassTableCellRole<SDCourse>
+    typealias CellRole = ClassTableCellRole<CourseStore.Course>
 
     func cellRole(weekday: Int, periodIndex: Int) -> CellRole {
         let key = CellRoleKey(weekday: weekday, periodIndex: periodIndex)
@@ -23,7 +23,7 @@ extension ClassTableViewModel {
 
     struct ConflictPickerTarget: Identifiable {
         let id = UUID()
-        let courses: [SDCourse]
+        let courses: [CourseStore.Course]
         let weekday: Int
         let periodId: String
     }
@@ -33,11 +33,11 @@ extension ClassTableViewModel {
         let weekday: Int
         let periodId: String
         let newCourseName: String
-        let existingA: SDCourse
-        let existingB: SDCourse
+        let existingA: CourseStore.Course
+        let existingB: CourseStore.Course
     }
 
-    func wouldCauseTripleConflict(_ candidate: SDCourse) -> TripleConflictError? {
+    func wouldCauseTripleConflict(_ candidate: CourseStore.Course) -> TripleConflictError? {
         for (weekday, periodIds) in candidate.schedule {
             for pid in periodIds {
                 let existing = courses(for: weekday, period: pid)
@@ -55,7 +55,7 @@ extension ClassTableViewModel {
         return nil
     }
 
-    func presentConflictPicker(courseA: SDCourse, courseB: SDCourse, weekday: Int, periodId: String) {
+    func presentConflictPicker(courseA: CourseStore.Course, courseB: CourseStore.Course, weekday: Int, periodId: String) {
         conflictPickerTarget = ConflictPickerTarget(
             courses: [courseA, courseB],
             weekday: weekday,
@@ -63,7 +63,7 @@ extension ClassTableViewModel {
         )
     }
 
-    func pickFromConflict(_ course: SDCourse) {
+    func pickFromConflict(_ course: CourseStore.Course) {
         guard let target = conflictPickerTarget else { return }
         let weekday = target.weekday
         let periodId = target.periodId
@@ -71,7 +71,7 @@ extension ClassTableViewModel {
         selectCourse(course, weekday: weekday, periodId: periodId)
     }
 
-    func selectCourse(_ course: SDCourse, weekday: Int, periodId: String) {
+    func selectCourse(_ course: CourseStore.Course, weekday: Int, periodId: String) {
         selectedWeekday = weekday
         selectedPeriodId = periodId
         selectedCoursePeriods = course.block(weekday: weekday, at: periodId, in: activePeriods.map(\.id))
@@ -92,7 +92,7 @@ extension ClassTableViewModel {
     /// The table shows the current term as a week from today once the changes feed has answered;
     /// other terms, and every term before then, stay a plain timetable.
     var showsThisWeek: Bool {
-        !courseChanges.term.isEmpty && currentSemester == CourseSelectionService.currentSemesterCode()
+        !courseChanges.term.isEmpty && currentSemester == SchoolTerms.current
     }
 
     /// The date a weekday column shows. The week runs from today, so on a Wednesday the Monday
@@ -104,7 +104,7 @@ extension ClassTableViewModel {
         return calendar.date(byAdding: .day, value: ahead, to: start) ?? start
     }
 
-    func changedMeeting(of course: SDCourse, weekday: Int, at periodId: String, today: Date) -> CourseTimeSlot? {
+    func changedMeeting(of course: CourseStore.Course, weekday: Int, at periodId: String, today: Date) -> CourseTimeSlot? {
         guard showsThisWeek else { return nil }
         let date = Self.columnDate(weekday: weekday, today: today)
         guard !courseChanges.changes(courseNo: course.courseNo, on: date).isEmpty,
