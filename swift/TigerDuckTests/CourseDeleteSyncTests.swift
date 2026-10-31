@@ -192,7 +192,7 @@ struct CourseDeleteSyncTests {
         let coordinator = Self.makeCoordinator(Backend())
         var hidden: Set<String> = []
 
-        try await AppState.resetCourses(semester: "1151", on: coordinator, onServer: {
+        try await EditSender.resetCourses(semester: "1151", on: coordinator, onServer: {
             hidden.insert("1151:CS1")
             await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: Date())
         }, thenLocally: { hidden.removeAll() })
@@ -272,20 +272,20 @@ struct CourseDeleteSyncTests {
     func listedCourseStaysHiddenWhileItsDeleteMayBeOnItsWay() {
         var hidden: Set<String> = ["1151:CS1", "1151:EE2", "1151:GE3", "PE4", "1142:MA5"]
 
-        let changed = AppState.unhideListedCourses(
+        let changed = CourseRosterReconciler.unhideListedCourses(
             ["CS1", "EE2", "GE3", "PE4", "MA5", "PH6"], semester: "1151", deleting: ["1151:EE2", "GE3", "1142:CS1"],
             in: &hidden
         )
 
         #expect(changed)
         #expect(hidden == ["1151:EE2", "1151:GE3", "1142:MA5"])
-        #expect(!AppState.unhideListedCourses(["EE2"], semester: "1151", deleting: ["1151:EE2"], in: &hidden))
+        #expect(!CourseRosterReconciler.unhideListedCourses(["EE2"], semester: "1151", deleting: ["1151:EE2"], in: &hidden))
     }
 
     @Test("A full sync takes in a course only the server lists only once no delete of it from here may be on its way")
     func listedCourseIsMergedOnlyOnceNoDeleteIsOnItsWay() {
         let merges = { (courseNo: String) in
-            AppState.mergesListedCourse(
+            CourseRosterReconciler.mergesListedCourse(
                 courseNo, semester: "1151", hidden: ["1151:GE3"], deleting: ["1151:CS1", "EE2", "1142:MA5"]
             )
         }
@@ -320,15 +320,15 @@ struct CourseDeleteSyncTests {
     @Test("The courses re-enable check counts a course whose delete is queued as gone from the server")
     func queuedDeleteIsNoServerOnlyCourse() {
         let counts = { (deleting: Set<String>) in
-            AppState.coursesOnOneSide(server: ["CS1", "EE2"], local: ["CS1", "GE3"], semester: "1151", deleting: deleting)
+            SyncConflicts.coursesOnOneSide(server: ["CS1", "EE2"], local: ["CS1", "GE3"], semester: "1151", deleting: deleting)
                 .map { [$0.localOnly, $0.serverOnly] }
         }
 
         #expect(counts([]) == [1, 1])
         #expect(counts(["1151:EE2"]) == [1, 0])
         #expect(counts(["1142:EE2"]) == [1, 1])
-        #expect(AppState.coursesOnOneSide(server: ["EE2"], local: ["CS1"], semester: "1151", deleting: ["1151:EE2"]) == nil)
-        #expect(AppState.coursesOnOneSide(server: ["EE2"], local: [], semester: "1151", deleting: []) == nil)
+        #expect(SyncConflicts.coursesOnOneSide(server: ["EE2"], local: ["CS1"], semester: "1151", deleting: ["1151:EE2"]) == nil)
+        #expect(SyncConflicts.coursesOnOneSide(server: ["EE2"], local: [], semester: "1151", deleting: []) == nil)
     }
 
     @Test("The courses re-enable check reads a course a roster dropped as gone from both sides, unless added by hand here")
@@ -341,19 +341,19 @@ struct CourseDeleteSyncTests {
         ]
         let addedHere = [SDCourse(courseNo: "GE3", courseName: "GE3", semester: "1151")]
 
-        let compared = AppState.reenableCourseNos(
+        let compared = CourseRosterReconciler.reenableCourseNos(
             rows, semester: "1151", local: ["CS1", "EE2", "GE3"], userAdded: addedHere, liveAnswer: nil
         )
 
         #expect(compared.server == ["CS1", "GE3"])
         #expect(compared.local == ["CS1", "GE3"])
-        #expect(AppState.coursesOnOneSide(server: compared.server, local: compared.local, semester: "1151", deleting: [])
+        #expect(SyncConflicts.coursesOnOneSide(server: compared.server, local: compared.local, semester: "1151", deleting: [])
             .map { [$0.localOnly, $0.serverOnly] } == [0, 0])
     }
 
     @Test("A course whose delete is queued keeps this device's setting through a pull, in its own term only")
     func queuedDeleteKeepsTheLocalSetting() {
-        let left = AppState.courseKeysPullLeaves(
+        let left = CourseIgnoresReconciler.courseKeysPullLeaves(
             ["1151:CS1", "1142:CS1", "1151:EE2"], deleting: ["1151:CS1", "EE2"], resetSemesters: []
         )
 

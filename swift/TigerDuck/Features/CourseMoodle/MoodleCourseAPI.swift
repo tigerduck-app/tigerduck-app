@@ -113,7 +113,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
         },
         submissionFetched: { status, askedAt, context in
             Task {
-                await AppServiceBridge.takeSubmissionStatus(
+                await AssignmentFetch.takeSubmissionStatus(
                     status, askedAt: askedAt, assignments: context.assignments, isCurrent: context.isCurrent
                 )
             }

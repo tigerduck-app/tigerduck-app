@@ -2,7 +2,7 @@ import SwiftUI
 import TigerDuckCore
 
 struct ScoreCourseDetailSheet: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     let course: CourseGrade
 
@@ -54,7 +54,7 @@ struct ScoreCourseDetailSheet: View {
                 .foregroundStyle(gradeColor)
         }
         .padding(TigerDuckTheme.Spacing.md)
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
@@ -92,7 +92,7 @@ struct ScoreCourseDetailSheet: View {
             Spacer()
         }
         .padding(TigerDuckTheme.Spacing.md)
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
@@ -105,7 +105,7 @@ struct ScoreCourseDetailSheet: View {
                 .foregroundStyle(Color.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(TigerDuckTheme.Spacing.md)
-                .presetCard(policy: appState.visualStylePolicy)
+                .presetCard(policy: app.preferences.visualStylePolicy)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
     }

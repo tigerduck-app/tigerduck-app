@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ClassReminderSettingsView: View {
     @Bindable var store: LiveActivityPreferencesStore
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
         Form {
@@ -25,8 +25,8 @@ struct ClassReminderSettingsView: View {
         }
         .navigationTitle(String(localized: "settings_class_reminder"))
         .task {
-            appState.reconcileNotificationSettings()
-            await appState.requestNotificationAuthorization()
+            app.notificationSettings.reconcile()
+            await app.liveActivity.requestNotificationAuthorization()
         }
     }
 }

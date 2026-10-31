@@ -1,12 +1,12 @@
 import SwiftUI
 
 struct OtherSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var showReassignColorsConfirm = false
     @State private var storageBytes: Int?
 
     var body: some View {
-        @Bindable var appState = appState
+        @Bindable var preferences = app.preferences
         List {
             Section {
                 NavigationLink {
@@ -20,7 +20,7 @@ struct OtherSettingsView: View {
                         // de/fr/es/it "1,20×". `String(format:)` would
                         // be POSIX-only and break the non-period locales.
                         Text(CourseCardFontScale
-                            .normalize(appState.courseCardFontScale)
+                            .normalize(app.preferences.courseCardFontScale)
                             .formatted(.number.precision(.fractionLength(2))) + "×")
                             .font(.body.monospacedDigit())
                             .foregroundStyle(.secondary)
@@ -31,7 +31,7 @@ struct OtherSettingsView: View {
                 Text(String(localized: "settings_font_size_summary"))
             }
             Section {
-                Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
+                Toggle(String(localized: "settings_invert_slider_direction"), isOn: $preferences.invertSliderDirection)
             }
             Section {
                 NavigationLink(String(localized: "settings_api_endpoint")) {
@@ -65,7 +65,7 @@ struct OtherSettingsView: View {
             isPresented: $showReassignColorsConfirm
         ) {
             Button(String(localized: "action_confirm"), role: .destructive) {
-                appState.reassignAllCourseColors()
+                app.edits.reassignAllCourseColors()
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {

@@ -3,7 +3,7 @@ import SwiftUI
 import UserNotifications
 
 struct TigerSyncStatusView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var snapshot: PushDiagnostic?
     @State private var refreshTimer: Timer?
 
@@ -56,7 +56,7 @@ struct TigerSyncStatusView: View {
     }
 
     private func refreshSnapshot() async {
-        snapshot = await appState.pushCoordinator.currentSnapshot()
+        snapshot = await app.pushCoordinator.currentSnapshot()
     }
 
     private func notificationStatusText(_ status: UNAuthorizationStatus) -> String {

@@ -37,7 +37,7 @@ WhatsNewSampleFlow.swift
 
 # UI/ViewHelpers — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
 UIApplication+Keyboard.swift
-UIApplication+Modals.swift
+HostWindow.swift
 UINavigationController+Swipeback.swift
 View+ScrollSafeGesture.swift
 
@@ -228,32 +228,27 @@ WatchWireFormat.swift
 # Shared/Sensors — CoreMotion face-down detection, iOS hardware only
 FlipDetector.swift
 
-# App — AppState extensions that are entirely iOS-only
-# ActivityKit has no macOS counterpart; the whole file body sits inside
-# #if os(iOS), so compiling it on the Mac would only produce an empty
-# extension. Listed here rather than allowlisted so that adding a
-# cross-platform member to it is a decision someone has to make.
-AppState+LiveActivity.swift
+# LiveActivityRefresher.swift — when to refresh the Live Activity. ActivityKit has
+# no macOS counterpart, and the whole file sits inside #if os(iOS); listed here
+# so that adding a cross-platform member to it is a decision someone has to make.
+LiveActivityRefresher.swift
 
-# AppState+PushRouting.swift — custom-push tap routing (DeepLink,
-# ServerPopupPayload, popup shown/seen bookkeeping). The paired stored
-# properties (pendingDeepLink, pendingServerPopup) are iOS-gated on
-# AppState itself, and this file's whole body sits inside #if os(iOS)
-# for the same reason: there is nothing to route to on macOS.
-AppState+PushRouting.swift
+# DeepLink.swift — custom-push tap targets (DeepLink, ServerPopupPayload). The
+# router's matching properties are iOS-gated, and this file's whole body sits
+# inside #if os(iOS): there is nothing to route to on macOS.
+DeepLink.swift
 
-# AppState+NotificationSettings.swift — the `notification` settings-document
-# sync (assignment-due reminders, Live Activity). Its `#if os(iOS)`-gated
-# `AppState` methods serve a feature macOS does not have; the un-gated
-# `NotificationSettingsPushQueue` / `NotificationSettingsSync` below them in
-# the same file read and write `LiveActivityPreferencesStore` (excluded
-# above under Devices/LiveActivity/Preferences), which does not exist on a macOS
-# build — so this file cannot compile there as it stands.
-AppState+NotificationSettings.swift
+# NotificationSettingsSync.swift and NotificationSettingsSyncer.swift — the
+# `notification` settings-document sync (assignment-due reminders, Live
+# Activity), a feature macOS does not have. Both read and write
+# `LiveActivityPreferencesStore` (excluded above under
+# Devices/LiveActivity/Preferences), which does not exist on a macOS build.
+NotificationSettingsSync.swift
+NotificationSettingsSyncer.swift
 
 # Migrations — one-shot migrations behind the notification-settings
 # cloud sync (spec §4.6), both called only from the `#if os(iOS)` block in
-# `AppState+Lifecycle.swift`'s `runPendingMigrations()`: one seeds
+# `AppEnvironment.runPendingMigrations()`: one seeds
 # `assignments` + `live_activity` from `LiveActivityPreferencesStore`
 # (iOS-only); the other purges local notification requests scheduled by the
 # deleted, iOS-only `AssignmentReminderScheduler` — macOS never scheduled
@@ -307,7 +302,7 @@ MoodleDownloadProtectMigration.swift
 # Both sections `NotificationSettingsDocument` carries (`assignments`,
 # `live_activity`) describe local reminder scheduling and Live Activity
 # state, neither of which macOS has; `SettingsDocumentClient` has no caller
-# outside `AppState+NotificationSettings.swift`, itself excluded above.
+# outside `NotificationSettingsSyncer.swift`, itself excluded above.
 NotificationSettingsDocument.swift
 SettingsDocumentClient.swift
 

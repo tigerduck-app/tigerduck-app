@@ -7,7 +7,7 @@ struct MoodleDiscussionsView: View {
     var showsFooter = false
     let open: (MoodleDiscussion) -> Void
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -21,7 +21,7 @@ struct MoodleDiscussionsView: View {
                         MoodleDiscussionCard(
                             discussion: discussion,
                             date: discussion[keyPath: pages.date],
-                            policy: appState.visualStylePolicy,
+                            policy: app.preferences.visualStylePolicy,
                             showsFooter: showsFooter
                         )
                     }

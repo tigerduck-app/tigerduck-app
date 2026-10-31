@@ -5,7 +5,7 @@ protocol WhatsNewBottomBarState: AnyObject {
     var configuredTabs: [AppFeature] { get set }
 }
 
-extension AppState: WhatsNewBottomBarState {}
+extension AppPreferences: WhatsNewBottomBarState {}
 
 extension WhatsNewPage {
     static let schoolMail = WhatsNewPage.feature(
@@ -19,7 +19,7 @@ extension WhatsNewPage {
             en: "Since version 2.2.0, you can read, search and send your NTUST mail right in TigerDuck.",
             zhHant: "從 2.2.0 版開始，可以直接在 TigerDuck 收發、搜尋臺科大信件。"
         ),
-        isApplicable: { offersMailPages(configuredTabs: $0.configuredTabs) }
+        isApplicable: { offersMailPages(configuredTabs: $0.preferences.configuredTabs) }
     )
 
     static let mailInBottomBar = WhatsNewPage.optIn(
@@ -35,8 +35,8 @@ extension WhatsNewPage {
         ),
         confirm: WhatsNewText(en: "Apply Recommended Arrangement", zhHant: "套用建議排列"),
         decline: WhatsNewText(en: "Keep Mine", zhHant: "保留目前設定"),
-        isApplicable: { asksAboutMail($0) },
-        apply: { applyMailRecommendation(to: $0) }
+        isApplicable: { asksAboutMail($0.preferences) },
+        apply: { applyMailRecommendation(to: $0.preferences) }
     )
 
     static func asksAboutMail(_ state: some WhatsNewBottomBarState) -> Bool {

@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 import TigerDuckCore
 
 struct MacClassTableView: View {
-    @Environment(AppState.self) var appState
+    @Environment(AppEnvironment.self) var app
 
     /// Read through `@Default` rather than `Defaults[...]` so toggling the
     /// setting redraws the grid — a raw read registers no SwiftUI dependency.
@@ -170,7 +170,7 @@ struct MacClassTableView: View {
                     }
                     .help(String(localized: "class_table_share"))
                     .disabled(!ClassTableShareModel.canShare(
-                        studentId: appState.authService.storedStudentId,
+                        studentId: app.authService.storedStudentId,
                         shownTerm: .init(semester: selectedSemester, courses: courses),
                         semesters: availableSemesters,
                         memo: shareAvailability
@@ -206,7 +206,7 @@ struct MacClassTableView: View {
         }
         .environment(\.requestClassTableImport, requestImport)
         .fileImporter(isPresented: $showImportPicker, allowedContentTypes: [.image]) { result in
-            let model = ClassTableImportModel.live(authService: appState.authService)
+            let model = ClassTableImportModel.live(authService: app.authService)
             importModel = model
             switch result {
             case .success(let url):
@@ -226,8 +226,8 @@ struct MacClassTableView: View {
             if isFinished == true { importModel = nil }
         }
         .onChange(of: HeldShareLink.shared.link?.id, initial: true) { openHeldLink() }
-        .onChange(of: HeldShareLink.mayOpen(in: appState)) { openHeldLink() }
-        .classTableShareSheet(model: $shareModel, signIn: appState.authService.session.ticket)
+        .onChange(of: HeldShareLink.mayOpen(in: app)) { openHeldLink() }
+        .classTableShareSheet(model: $shareModel, signIn: app.authService.session.ticket)
         .sheet(isPresented: $showAddCourse) {
             AddCourseSheet(
                 semester: selectedSemester,
@@ -263,11 +263,11 @@ struct MacClassTableView: View {
         .sheet(item: $courseToRecolor) { course in
             CourseColorPickerSheet(
                 course: course,
-                isCurrent: appState.authService.session.currentCheck(),
+                isCurrent: app.authService.session.currentCheck(),
                 onSelect: { hex in
                     let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
                     cacheRevision &+= 1
-                    appState.syncColorPick(hex, for: course, changed: changed)
+                    app.edits.syncColorPick(hex, for: course, changed: changed)
                 }
             )
             .frame(minWidth: 360, minHeight: 480)
@@ -402,7 +402,7 @@ struct MacClassTableView: View {
     private func warmCachesIfNeeded() async {
         guard !hasWarmedCaches else { return }
         hasWarmedCaches = true
-        await AppServiceBridge.warmAllSemesterCaches(authService: appState.authService)
+        await CourseFetch.warmAllSemesterCaches(authService: app.authService)
         await MainActor.run {
             cacheRevision &+= 1
             followNewestSemesterIfUnpicked()
@@ -422,8 +422,8 @@ struct MacClassTableView: View {
         let target = selectedSemester
         guard shownPerson == nil, CourseStore.shared.loadCourses(semester: target).isEmpty else { return }
         await MainActor.run { isLoadingSemester = true }
-        _ = await AppServiceBridge.fetchCourses(
-            authService: appState.authService,
+        _ = await CourseFetch.fetchCourses(
+            authService: app.authService,
             semester: target
         )
         await MainActor.run {
@@ -457,7 +457,7 @@ struct MacClassTableView: View {
     private var switcher: some View {
         let store = ImportedClassTableStore.shared
         if store.hasImportedClassTables {
-            let userName = ClassTableSwitcherEntry.userName(studentId: appState.authService.storedStudentId)
+            let userName = ClassTableSwitcherEntry.userName(studentId: app.authService.storedStudentId)
             let name = shownPerson?.nickname ?? userName
             Menu {
                 ClassTableSwitcherMenuItems(store: store, userName: userName)
@@ -501,12 +501,12 @@ struct MacClassTableView: View {
     /// In the shown import's model, which closes an alert it shows before the link's own: a new
     /// model's alert would replace it in one update, and the old job's buttons would stay.
     private func openHeldLink() {
-        guard let text = HeldShareLink.shared.take(in: appState) else { return }
+        guard let text = HeldShareLink.shared.take(in: app) else { return }
         if let importModel, !importModel.isFinished {
             importModel.linkOpened(text)
             return
         }
-        let model = ClassTableImportModel.live(authService: appState.authService)
+        let model = ClassTableImportModel.live(authService: app.authService)
         importModel = model
         model.linkOpened(text)
     }
@@ -557,7 +557,7 @@ struct MacClassTableView: View {
     }
 
     private func openShareSheet() {
-        guard let studentId = appState.authService.storedStudentId else { return }
+        guard let studentId = app.authService.storedStudentId else { return }
         let terms = ClassTableShareModel.terms(
             in: availableSemesters, shownTerm: .init(semester: selectedSemester, courses: courses)
         )

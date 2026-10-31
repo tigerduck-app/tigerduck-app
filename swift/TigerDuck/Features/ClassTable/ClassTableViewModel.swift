@@ -86,7 +86,7 @@ final class ClassTableViewModel {
     func warmCachesIfNeeded(authService: AuthService) async {
         guard !hasWarmedCaches else { return }
         hasWarmedCaches = true
-        await AppServiceBridge.warmAllSemesterCaches(authService: authService)
+        await CourseFetch.warmAllSemesterCaches(authService: authService)
         await MainActor.run { [weak self] in
             guard let self else { return }
             self.followNewestSemesterIfUnpicked()
@@ -100,7 +100,7 @@ final class ClassTableViewModel {
     func refreshSelectedSemester(authService: AuthService) async {
         guard shownPerson == nil else { return }
         let target = currentSemester
-        _ = await AppServiceBridge.fetchCourses(authService: authService, semester: target)
+        _ = await CourseFetch.fetchCourses(authService: authService, semester: target)
         await MainActor.run { [weak self] in
             guard let self, self.currentSemester == target else { return }
             let merged = self.buildCourseList(
@@ -200,7 +200,7 @@ final class ClassTableViewModel {
         courses: CourseStore = .shared,
         importedTables: ImportedClassTableStore = .shared,
         lookUpImportedTerm: @escaping ImportedTermLookup = {
-            await AppServiceBridge.refreshImportedCourses(semester: $0, courseNos: $1, current: $2)
+            await CourseDetails.refreshImportedCourses(semester: $0, courseNos: $1, current: $2)
         }
     ) {
         self.isClassDay = isClassDay
@@ -238,7 +238,7 @@ final class ClassTableViewModel {
             object: nil,
             queue: .main
         ) { _ in
-            AppServiceBridge.handleLanguageChange()
+            CourseFetch.handleLanguageChange()
         }
     }
 

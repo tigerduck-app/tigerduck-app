@@ -8,9 +8,9 @@ enum SyncedAccountSeedMigration {
         guard !AppUserDefaults.standard.bool(forKey: doneKey) else { return }
         defer { AppUserDefaults.standard.set(true, forKey: doneKey) }
         guard signedIn else {
-            AppState.forgetSyncProgress()
+            SignOutCheck.forgetSyncProgress()
             return
         }
-        Defaults[.categoriesSyncedOnce].formUnion(AppState.reenableCategories)
+        Defaults[.categoriesSyncedOnce].formUnion(SyncConflicts.reenableCategories)
     }
 }

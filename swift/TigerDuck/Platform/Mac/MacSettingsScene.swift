@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct MacSettingsScene: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
         TabView {
@@ -26,7 +26,7 @@ struct MacSettingsScene: View {
                 .tabItem { Label(String(localized: "settings_section_about"), systemImage: "info.circle") }
         }
         .frame(width: 580, height: 480)
-        .tint(AccentPreview.shared.tint(saved: appState.accentColor))
+        .tint(AccentPreview.shared.tint(saved: app.preferences.accentColor))
     }
 }
 #endif

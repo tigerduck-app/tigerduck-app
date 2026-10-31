@@ -12,7 +12,7 @@ enum LibraryTabAddMigration {
         let hadLibraryOn = AppUserDefaults.standard.bool(forKey: libraryOptInKey)
         AppUserDefaults.standard.removeObject(forKey: libraryOptInKey)
         guard !hadLibraryOn,
-              let stored = AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]),
+              let stored = AppPreferences.decodeConfiguredTabs(Defaults[.configuredTabsData]),
               let tabs = tabsAddingLibrary(to: stored),
               let data = try? JSONEncoder().encode(tabs.map(\.rawValue)) else { return false }
         Defaults[.configuredTabsData] = data

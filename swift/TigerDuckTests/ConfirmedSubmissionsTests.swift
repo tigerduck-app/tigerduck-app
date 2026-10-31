@@ -18,7 +18,7 @@ struct ConfirmedSubmissionsTests {
             SDAssignment(assignmentId: "4", courseNo: "CS1", courseName: "", title: "", dueDate: due,
                          isLocallyCompleted: true),
         ]
-        #expect(AppServiceBridge.confirmedSubmissions(in: cached) == ["1": submitted])
+        #expect(AssignmentRecords.confirmedSubmissions(in: cached) == ["1": submitted])
     }
 
     @Test("a failed status keeps the cached submission, an answered one replaces it")
@@ -32,7 +32,7 @@ struct ConfirmedSubmissionsTests {
         let fresh = ["1", "2"].map {
             SDAssignment(assignmentId: $0, courseNo: "CS1", courseName: "", title: "", dueDate: due)
         }
-        let merged = AppServiceBridge.preserveCompletionState(
+        let merged = AssignmentRecords.preserveCompletionState(
             freshAssignments: fresh, cachedAssignments: cached, answeredIds: ["2"]
         )
         #expect(merged.map(\.isCompleted) == [true, false])

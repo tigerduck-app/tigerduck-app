@@ -61,26 +61,22 @@ extension SignOutPlan {
     static let mailStores: [any AccountScoped.Type] = [MailCredentialStore.self, DefaultsMailPreferences.self]
     #endif
 
-    /// NTUST, Moodle and the TigerDuck backend, with what `AppState` keeps of them.
-    static func school(_ app: AppState) -> SignOutPlan {
+    /// NTUST, Moodle and the TigerDuck backend, with what `AppEnvironment` keeps of them.
+    static func school(_ app: AppEnvironment) -> SignOutPlan {
         let auth = app.authService
         let tokens = app.authTokenManager
         return SignOutPlan(
             session: auth.session,
             stores: schoolStores,
             stopWork: {
-                app.stopRevisionPolling()
-                app._lastKnownRevision = 0
-                app.syncTask?.cancel()
-                app.syncTask = nil
-                AppServiceBridge.cancelAssignmentRound()
+                app.feed.stopPolling()
+                app.feed.lastKnownRevision = 0
+                app.activation.cancelRefresh()
+                AssignmentFetch.cancelAssignmentRound()
                 MoodleFileDownloads.shared.cancelAll()
-                app.cancelHolidayUploads()
+                app.holidays.cancelUploads()
                 #if os(iOS)
-                app.pendingRefreshTask?.cancel()
-                app.pendingRefreshTask = nil
-                app.boundaryRefreshTask?.cancel()
-                app.boundaryRefreshTask = nil
+                app.liveActivity.cancelRefreshes()
                 #endif
             },
             endSession: {
@@ -93,7 +89,7 @@ extension SignOutPlan {
                         await app.cloudSyncCoordinator.settleForSignOut()
                         await tokens.unregisterDeparting(as: await ending.value) { await app.pushCoordinator.disable() }
                         #if os(iOS)
-                        await app.liveActivityCoordinator.endAll()
+                        await app.liveActivity.coordinator.endAll()
                         #endif
                     }
                 }
@@ -106,12 +102,12 @@ extension SignOutPlan {
                 AssignmentStore.shared.noteChange()
                 ImportedClassTableStore.shared.removeAll()
                 app.didSkipMacLogin = false
-                app.syncConflicts = []
+                app.conflicts.syncConflicts = []
                 app.syncTarget.signedOut()
-                app.reenableConflict = nil
+                app.conflicts.reenableConflict = nil
                 app.pushCoordinator.forgetUploads()
                 #if os(iOS)
-                app.cancelNotificationSettingsPushes()
+                app.notificationSettings.cancelPushes()
                 #endif
                 app.cloudSyncEnabled = false
             }

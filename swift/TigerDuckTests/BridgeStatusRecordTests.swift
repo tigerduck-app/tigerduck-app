@@ -15,7 +15,7 @@ struct BridgeStatusRecordTests {
         let departed = auth.session.ticket
         auth.session.moveOn()
 
-        AppServiceBridge.record(.failed, for: .moodle, round: departed, authService: auth, tracker: tracker)
+        CourseFetch.record(.failed, for: .moodle, round: departed, authService: auth, tracker: tracker)
 
         #expect(tracker.status(for: .moodle) == .unknown)
     }
@@ -50,7 +50,7 @@ struct BridgeStatusRecordTests {
 
             await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
                 await ServerFailureSimulator.$sharedForTesting.withValue(simulator) {
-                    _ = await AppServiceBridge.fetchAssignments(authService: auth)
+                    _ = await AssignmentFetch.fetchAssignments(authService: auth)
                 }
             }
 
@@ -63,7 +63,7 @@ struct BridgeStatusRecordTests {
         let auth = Self.signedOutAuth()
         let tracker = ServerStatusTracker()
 
-        AppServiceBridge.record(.failed, for: .courseSelection, round: auth.session.ticket, authService: auth, tracker: tracker)
+        CourseFetch.record(.failed, for: .courseSelection, round: auth.session.ticket, authService: auth, tracker: tracker)
 
         #expect(tracker.status(for: .courseSelection) == .failed)
     }

@@ -11,7 +11,7 @@ enum CustomAccentContrastMigration {
         guard !AppUserDefaults.standard.bool(forKey: doneKey) else { return false }
         defer { AppUserDefaults.standard.set(true, forKey: doneKey) }
         let saved = Defaults[.accentColorHex] & 0xFFFFFF
-        guard !AppState.themeColors.contains(where: { $0.hex == saved }) else { return false }
+        guard !AppPreferences.themeColors.contains(where: { $0.hex == saved }) else { return false }
         let readable = AccentContrast.readable(saved)
         guard readable != saved else { return false }
         Defaults[.accentColorHex] = readable

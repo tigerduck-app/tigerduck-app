@@ -29,7 +29,7 @@ extension ClassTableViewModel {
         let semester = currentSemester
         Task {
             guard await NetworkMonitor.shared.isReachable() else { return }
-            await AppServiceBridge.refreshCoursesMissingClassroom(semester: semester, authService: authService)
+            await CourseDetails.refreshCoursesMissingClassroom(semester: semester, authService: authService)
         }
     }
 
@@ -49,7 +49,7 @@ extension ClassTableViewModel {
             await self.fetchData(authService: authService, semester: semester)
             let latestSemester = CourseSelectionService.currentSemesterCode()
             if latestSemester != self.currentSemester {
-                _ = await AppServiceBridge.fetchCourses(authService: authService, semester: latestSemester)
+                _ = await CourseFetch.fetchCourses(authService: authService, semester: latestSemester)
                 self.reloadCurrentSemesterCourses()
                 self.refreshCourseColors()
             }
@@ -70,13 +70,13 @@ extension ClassTableViewModel {
         await MainActor.run { manager.loadingState = .loading }
 
         MoodleEnrolledCoursesService.dropSharedAnswer()
-        async let coursesTask = AppServiceBridge.fetchCourses(
+        async let coursesTask = CourseFetch.fetchCourses(
             authService: authService,
             semester: targetSemester,
             forceRefresh: true,
         )
-        async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
-        async let userAddedTask = AppServiceBridge.refreshUserAddedCourses(
+        async let assignmentsTask = AssignmentFetch.fetchAssignments(authService: authService, recheckSubmissions: true)
+        async let userAddedTask = CourseDetails.refreshUserAddedCourses(
             semester: targetSemester, authService: authService
         )
 

@@ -237,7 +237,7 @@ struct AccountSwitchTests {
         return auth
     }
 
-    /// The school plan without what `AppState` adds, which these tests do not build.
+    /// The school plan without what `AppEnvironment` adds, which these tests do not build.
     private static func schoolSignOut(_ auth: AuthService) -> SignOutPlan {
         SignOutPlan(session: auth.session, stores: SignOutPlan.schoolStores, endSession: {
             auth.logout()

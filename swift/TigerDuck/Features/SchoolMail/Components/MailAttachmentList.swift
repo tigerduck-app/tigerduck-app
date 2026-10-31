@@ -13,7 +13,7 @@ struct MailAttachmentList: View {
     let onOpen: (MailBodyPart) -> Void
     let onShare: (MailBodyPart) -> Void
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
@@ -48,7 +48,7 @@ struct MailAttachmentList: View {
                 }
                 .buttonStyle(.borderless)
                 .cardPadding()
-                .presetCard(policy: appState.visualStylePolicy)
+                .presetCard(policy: app.preferences.visualStylePolicy)
             }
         }
     }

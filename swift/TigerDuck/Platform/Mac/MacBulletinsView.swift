@@ -5,7 +5,7 @@ import MarkdownUI
 import os
 
 struct MacBulletinsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var viewModel = BulletinsViewModel()
     @Default(.bulletinsSyncedAt) private var bulletinsSyncedAt
     @State private var readStore = BulletinReadStateStore()

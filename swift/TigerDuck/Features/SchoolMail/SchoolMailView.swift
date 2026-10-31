@@ -5,7 +5,7 @@ import SwiftUI
 struct SchoolMailView: View {
     var embedded: Bool = false
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = MailListViewModel()
     @State private var showLoginSheet = false
@@ -189,9 +189,9 @@ struct SchoolMailView: View {
                 .contentShape(.circle)
             if #available(iOS 26, *) {
                 glyph.foregroundStyle(.white)
-                    .glassEffect(.regular.tint(appState.accentColor).interactive(), in: .circle)
+                    .glassEffect(.regular.tint(app.preferences.accentColor).interactive(), in: .circle)
             } else {
-                glyph.foregroundStyle(appState.accentColor)
+                glyph.foregroundStyle(app.preferences.accentColor)
                     .background(.regularMaterial, in: Circle())
                     .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
             }
@@ -304,7 +304,7 @@ struct SchoolMailView: View {
             isOnScreen = true
             drainDeepLink()
         }
-        .onChange(of: appState.pendingDeepLink) { _, _ in drainDeepLink() }
+        .onChange(of: app.router.pendingDeepLink) { _, _ in drainDeepLink() }
         .sheet(item: $compose, onDismiss: { Task { await viewModel.refresh() } }) { context in
             MailComposeView(context: context, session: viewModel.session, folderRoles: viewModel.folderRoles,
                             onFolderRolesChanged: { roles in viewModel.adoptFolderRoles(roles) },
@@ -391,7 +391,7 @@ struct SchoolMailView: View {
                 )
                 .labelStyle(.iconOnly)
             }
-            .tint(appState.accentColor)
+            .tint(app.preferences.accentColor)
         }
         .task { await viewModel.loadMoreIfNeeded(after: row) }
     }
@@ -405,8 +405,8 @@ struct SchoolMailView: View {
     }
 
     private func drainDeepLink() {
-        guard case .schoolMail(let folder, let uid, let uidValidity) = appState.pendingDeepLink, account.isLoggedIn else { return }
-        appState.pendingDeepLink = nil
+        guard case .schoolMail(let folder, let uid, let uidValidity) = app.router.pendingDeepLink, account.isLoggedIn else { return }
+        app.router.pendingDeepLink = nil
         Task {
             await viewModel.select(.real(folder))
             if let uid { route = MailMessageRoute(folder: folder, uid: uid, uidValidity: uidValidity) }

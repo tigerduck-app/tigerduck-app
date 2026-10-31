@@ -34,7 +34,7 @@ extension MacClassTableView {
         CourseStore.shared.apply(.add(course, semester: selectedSemester))
         cacheRevision &+= 1
         let forceKey = CourseTombstone.serverKey(semester: selectedSemester, courseNo: course.courseNo)
-        appState.uploadCourses(courses, semester: selectedSemester, forceKeys: [forceKey])
+        app.edits.addCourses([forceKey], semester: selectedSemester)
         return true
     }
 
@@ -62,7 +62,7 @@ extension MacClassTableView {
         guard shownPerson == nil else { return }
         guard CourseStore.shared.apply(.remove(courseNo: courseNo, semester: selectedSemester)) else { return }
         cacheRevision &+= 1
-        appState.deleteBackendCourse(courseNo: courseNo, semester: selectedSemester)
+        app.edits.deleteBackendCourse(courseNo: courseNo, semester: selectedSemester)
     }
 
     func startRename(_ course: SDCourse) {
@@ -83,7 +83,7 @@ extension MacClassTableView {
         courseToRename = nil
         cacheRevision &+= 1
         if let moodleId = course.moodleIdNumber {
-            appState.syncCourseOverride(moodleCourseId: moodleId, customName: trimmed, locale: locale)
+            app.edits.syncCourseOverride(moodleCourseId: moodleId, customName: trimmed, locale: locale)
         }
     }
 
@@ -94,7 +94,7 @@ extension MacClassTableView {
         courseToRename = nil
         cacheRevision &+= 1
         if let moodleId = course.moodleIdNumber {
-            appState.syncCourseOverride(moodleCourseId: moodleId, customName: "", locale: locale)
+            app.edits.syncCourseOverride(moodleCourseId: moodleId, customName: "", locale: locale)
         }
     }
 
@@ -102,7 +102,7 @@ extension MacClassTableView {
         guard shownPerson == nil, isViewingCurrentSemester else { return }
         AssignmentStore.shared.apply(.ignoreCourse(courseNo: course.courseNo, semester: selectedSemester, ignored: ignore))
         cacheRevision &+= 1
-        appState.syncCourseIgnore(
+        app.edits.syncCourseIgnore(
             semester: selectedSemester, courseNo: course.courseNo, moodleIdNumber: course.moodleIdNumber, ignore: ignore
         )
     }
@@ -115,8 +115,8 @@ extension MacClassTableView {
         }
 
         cacheRevision &+= 1
-        appState.deleteBackendCourse(courseNo: course.courseNo, semester: selectedSemester)
-        appState.uploadCourses(courses.filter { $0.courseNo != course.courseNo }, semester: selectedSemester)
+        app.edits.deleteBackendCourse(courseNo: course.courseNo, semester: selectedSemester)
+        app.uploads.uploadCourses(courses.filter { $0.courseNo != course.courseNo }, semester: selectedSemester)
     }
 }
 #endif

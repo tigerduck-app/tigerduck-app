@@ -16,7 +16,7 @@ struct CourseRefreshUploadTests {
         _ courseNos: [String], roster: [String]?, hidden: Set<String> = [], resendingRoster: Bool = false
     ) -> [Upload] {
         var uploads: [Upload] = []
-        AppServiceBridge.uploadVisibleCourses(
+        CourseFetch.uploadVisibleCourses(
             courseNos.map { SDCourse(courseNo: $0, courseName: $0) }, semester: "1151", hidden: hidden,
             roster: roster, resendingRoster: resendingRoster
         ) { courses, _, asRoster, resend in
@@ -29,7 +29,7 @@ struct CourseRefreshUploadTests {
     func hiddenCoursesStayOutOfTheUpload() {
         var uploads: [(courses: [String], semester: String)] = []
 
-        AppServiceBridge.uploadVisibleCourses(
+        CourseFetch.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"]
         ) { courses, semester, _, _ in uploads.append((courses.map(\.courseNo), semester)) }
 
@@ -41,7 +41,7 @@ struct CourseRefreshUploadTests {
     func aTermHiddenWholeUploadsNothing() {
         var uploads = 0
 
-        AppServiceBridge.uploadVisibleCourses(
+        CourseFetch.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"], roster: ["CS1", "CS2", "CS3"]
         ) { _, _, _, _ in uploads += 1 }
 
@@ -51,10 +51,10 @@ struct CourseRefreshUploadTests {
     @Test("Course selection's answer goes up as its term's roster only when this fetch got it from the school",
           arguments: [true, false])
     func selectionAnswerIsARosterWhenLive(live: Bool) throws {
-        let term = try #require(AppServiceBridge.termCourseNos(
+        let term = try #require(TermRoster.termCourseNos(
             selection: ["CS1", "CS2"], transcript: ["CS3"], cached: ["CS4"]
         ))
-        let roster = AppServiceBridge.uploadedRoster(selection: term.roster, live: live, pastTerm: nil)
+        let roster = TermRoster.uploadedRoster(selection: term.roster, live: live, pastTerm: nil)
 
         #expect(Self.uploads(term.courseNos, roster: roster) == [Upload(courses: ["CS1", "CS2"], asRoster: live)])
     }
@@ -62,7 +62,7 @@ struct CourseRefreshUploadTests {
     @Test("A running term's transcript and the cache, or what an empty or failed answer falls back to, are no roster",
           arguments: [nil, [String]()])
     func fallbackIsNoRoster(selection: [String]?) throws {
-        let term = try #require(AppServiceBridge.termCourseNos(
+        let term = try #require(TermRoster.termCourseNos(
             selection: selection, transcript: ["CS1"], cached: ["CS2"]
         ))
 
@@ -74,16 +74,16 @@ struct CourseRefreshUploadTests {
         let course = { (courseNo: String) in
             SDCourse(courseNo: courseNo, courseName: courseNo, schedule: [2: ["3", "4"]], semester: "1141")
         }
-        let answered = AppServiceBridge.rebuiltPastTerm(
+        let answered = TermRoster.rebuiltPastTerm(
             [.init(course: course("CS1"), answered: true)], unreadable: [], cached: [], others: [], userAdded: []
         )
-        let waiting = AppServiceBridge.rebuiltPastTerm(
+        let waiting = TermRoster.rebuiltPastTerm(
             [.init(course: course("CS1"), answered: true), .init(course: course("CS2"), answered: false)],
             unreadable: [], cached: [], others: [], userAdded: []
         )
 
         let roster = { (pastTerm: [String]) in
-            AppServiceBridge.uploadedRoster(selection: nil, live: false, pastTerm: pastTerm)
+            TermRoster.uploadedRoster(selection: nil, live: false, pastTerm: pastTerm)
         }
 
         #expect(Self.uploads(answered.courses.map(\.courseNo), roster: roster(answered.roster)).map(\.asRoster) == [true])

@@ -7,7 +7,7 @@ struct HolidayOverridesReconciler: CategoryReconciler {
     static let category = "holidays"
     var calendar: AcademicCalendarStore = .shared
 
-    init(app _: AppState) {}
+    init(app _: AppEnvironment) {}
 
     func reconcile(_ pass: FullSyncPass) -> Bool {
         guard let rows = pass.json["holiday_overrides"] as? [[String: Any]] else { return false }

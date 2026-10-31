@@ -28,7 +28,7 @@ struct CourseColorPickTests {
 
     @Test("A pick sends the picked course and every course it moved, skipping one with no Moodle id")
     func pickSendsEveryChangedCourse() {
-        let overrides = AppState.courseColorOverrides(
+        let overrides = EditSender.courseColorOverrides(
             ["CS1": Self.teal, "CS2": Self.red, "MANUAL": 0x123456],
             moodleIds: ["CS1": "1151CS1", "CS2": "1151CS2"]
         )
@@ -46,7 +46,7 @@ struct CourseColorPickTests {
         ]
         let courseNos = ["1151CS1": "CS1", "1151CS2": "CS2", "1151CS3": "CS3", "1151CS4": "CS4"]
 
-        let ordered = AppState.serverCourseColors(rows, courseNos: courseNos, holding: [])
+        let ordered = CourseOverridesReconciler.serverCourseColors(rows, courseNos: courseNos, holding: [])
         #expect(ordered.map(\.courseNo) == ["CS3", "CS1", "CS2"])
 
         let apply = { (start: [String: UInt32]) in
@@ -85,7 +85,7 @@ struct CourseColorPickTests {
         let merged = SDCourse(courseNo: "CS3", courseName: "CS3", moodleIdNumber: "1151CS3", semester: "1151")
         let manual = SDCourse(courseNo: "CS4", courseName: "CS4", semester: "1142")
 
-        let ids = AppState.courseIdentities(
+        let ids = EditSender.courseIdentities(
             picked: picked, termCourses: [("1151", [enrolled, unlinked])], userAdded: [merged, manual]
         )
 

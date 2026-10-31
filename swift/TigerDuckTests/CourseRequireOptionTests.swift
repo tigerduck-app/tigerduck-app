@@ -16,13 +16,13 @@ struct CourseRequireOptionTests {
     }
 
     @Test func theLookupCarriesTheFirstValueAnyRowHas() async {
-        let row = await AppServiceBridge.refreshedCourseData(
+        let row = await CourseDetails.refreshedCourseData(
             courseNo: "CS1003301",
             semester: "1151",
             cached: nil,
             moodle: nil,
             grade: nil,
-            display: AppServiceBridge.CourseDisplayPreferences(
+            display: CourseDetails.CourseDisplayPreferences(
                 language: "zh", courseAbbrEnabled: false, classroomAbbrEnabled: false,
                 classroomMandarinDisplay: "original"
             )

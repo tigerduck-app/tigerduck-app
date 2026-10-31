@@ -1,68 +1,24 @@
-import SwiftUI
-import SwiftData
 import Defaults
-import os
+import Foundation
 
-extension AppState {
-
-    var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
-
-    func ntustProtectedAccessState(isEmpty: Bool) -> NTUSTProtectedAccessState {
-        if !authService.hasStoredCredentials { return .loginRequired }
-        return isEmpty ? .empty : .content
-    }
-
-    var ntustReauthErrorMessage: String? { authService.reauthErrorMessage }
-
-    func clearNTUSTReauthError() {
-        authService.clearReauthError()
-    }
-
-    func presentNTUSTLogin() {
-        guard !isShowingNTUSTLoginSheet else { return }
-        isShowingNTUSTLoginSheet = true
-    }
-
-    func dismissNTUSTLogin() {
-        isShowingNTUSTLoginSheet = false
-    }
-
-    func openFromWidget(_ destination: WidgetDestination) {
-        pendingWidgetDestination = destination
-    }
-
-    func clearPendingWidgetDestination() {
-        pendingWidgetDestination = nil
-    }
-
-    var isLibraryLoggedIn: Bool {
-        _ = _libraryRevision
-        return LibraryService.hasAccount
-    }
-
-    var libraryUsername: String? {
-        _ = _libraryRevision
-        return LibraryService.storedUsername
-    }
-
-    @MainActor
-    func logoutLibrary() {
-        LibraryService.clearCredentials()
-        _libraryRevision += 1
-    }
+/// What a sign-out would leave behind or lose: data only this device holds, or edits not sent yet,
+/// which the sign-out confirmation names.
+@MainActor
+struct SignOutCheck {
+    let app: AppEnvironment
 
     nonisolated static func retriesDepartingUnregister(onboarded: Bool, signedIn: Bool, keptOn: [URL], backend: URL) -> Bool {
         onboarded && keptOn.contains { AuthTokenManager.retriesKeptSession(on: $0, signedIn: signedIn, backend: backend) }
     }
 
-    func signOutDeletesUnsyncedData() async -> Bool {
-        let unsent = await cloudSyncCoordinator.holdsUnsentEdits() || pushCoordinator.holdsUnsentCourseUploads
-            || !pendingOverrides.isEmpty
+    func deletesUnsyncedData() async -> Bool {
+        let unsent = await app.cloudSyncCoordinator.holdsUnsentEdits() || app.pushCoordinator.holdsUnsentCourseUploads
+            || !app.localEdits.pendingOverrides.isEmpty
             || !AcademicCalendarStore.shared.unacknowledgedHolidayIDs.isEmpty
         return Self.signOutDeletesUnsyncedData(
             heldSignOutData(),
-            cloudSyncEnabled: cloudSyncEnabled,
-            switchedOn: Self.switchedOnCategories(),
+            cloudSyncEnabled: app.cloudSyncEnabled,
+            switchedOn: SyncConflicts.switchedOnCategories(),
             synced: Defaults[.categoriesSyncedOnce],
             pendingChecks: Defaults[.pendingConflictCategories],
             unsent: unsent
@@ -71,11 +27,11 @@ extension AppState {
 
     /// Whether TigerSync's backend holds data of the account, which a sign-in at another endpoint
     /// does not bring back.
-    func signOutLeavesSyncedData() -> Bool {
+    func leavesSyncedData() -> Bool {
         Self.signOutLeavesSyncedData(
             heldSignOutData(),
-            cloudSyncEnabled: cloudSyncEnabled,
-            switchedOn: Self.switchedOnCategories(),
+            cloudSyncEnabled: app.cloudSyncEnabled,
+            switchedOn: SyncConflicts.switchedOnCategories(),
             synced: Defaults[.categoriesSyncedOnce],
             pendingChecks: Defaults[.pendingConflictCategories]
         )
@@ -160,9 +116,5 @@ extension AppState {
         Defaults[.lastSeenCoursesResetAt] = nil
         Defaults[.categoriesSyncedOnce] = []
         Defaults[.courseRowIdsSeen] = [:]
-    }
-
-    func notifyLibraryStateChanged() {
-        _libraryRevision += 1
     }
 }

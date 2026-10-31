@@ -1,10 +1,13 @@
-import SwiftUI
 import Defaults
+import Foundation
 import TigerDuckCore
 
-extension AppState {
+/// Renames the cached courses when the course and classroom label settings change.
+@MainActor
+final class CourseRelabeler {
+    private var relabelTask: Task<Void, Never>?
 
-    func relabelAllCachedCourses() {
+    func relabelAll() {
         relabelTask?.cancel()
         relabelTask = Task.detached(priority: .userInitiated) {
             let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
@@ -55,5 +58,4 @@ extension AppState {
             }
         }
     }
-
 }

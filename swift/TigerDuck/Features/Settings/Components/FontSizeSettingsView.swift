@@ -4,7 +4,7 @@ import UIKit
 #endif
 
 struct FontSizeSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     #if os(iOS)
     /// Matches the `TimeSliderViewModel` pattern — keep one generator
     /// alive for the lifetime of the view so `prepare()` actually warms
@@ -15,10 +15,10 @@ struct FontSizeSettingsView: View {
     @State private var lastHapticScale: Double?
 
     var body: some View {
-        @Bindable var appState = appState
+        @Bindable var preferences = app.preferences
         List {
             Section {
-                ClassCardPreview(scale: appState.courseCardFontScale)
+                ClassCardPreview(scale: app.preferences.courseCardFontScale)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
             } header: {
@@ -34,7 +34,7 @@ struct FontSizeSettingsView: View {
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                         Slider(
-                            value: $appState.courseCardFontScale,
+                            value: $preferences.courseCardFontScale,
                             in: CourseCardFontScale.minimum...CourseCardFontScale.maximum,
                             step: CourseCardFontScale.step
                         )
@@ -44,7 +44,7 @@ struct FontSizeSettingsView: View {
                     }
                     HStack {
                         Spacer()
-                        Text(scaleLabel(appState.courseCardFontScale))
+                        Text(scaleLabel(app.preferences.courseCardFontScale))
                             .font(.callout.monospacedDigit())
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -52,7 +52,7 @@ struct FontSizeSettingsView: View {
                 }
                 .padding(.vertical, 4)
                 #if os(iOS)
-                .onChange(of: appState.courseCardFontScale) { _, newValue in
+                .onChange(of: app.preferences.courseCardFontScale) { _, newValue in
                     let snapped = CourseCardFontScale.normalize(newValue)
                     defer { lastHapticScale = snapped }
                     guard let last = lastHapticScale, snapped != last else { return }
@@ -65,19 +65,19 @@ struct FontSizeSettingsView: View {
                 .onAppear {
                     hapticGenerator.prepare()
                     if lastHapticScale == nil {
-                        lastHapticScale = CourseCardFontScale.normalize(appState.courseCardFontScale)
+                        lastHapticScale = CourseCardFontScale.normalize(app.preferences.courseCardFontScale)
                     }
                 }
                 #endif
 
                 Button {
-                    appState.courseCardFontScale = CourseCardFontScale.default
+                    app.preferences.courseCardFontScale = CourseCardFontScale.default
                 } label: {
                     Text(String(localized: "settings_font_size_reset_button"))
                         .foregroundStyle(.primary)
                 }
                 .disabled(
-                    CourseCardFontScale.normalize(appState.courseCardFontScale)
+                    CourseCardFontScale.normalize(app.preferences.courseCardFontScale)
                         == CourseCardFontScale.default
                 )
             } header: {

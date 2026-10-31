@@ -4,7 +4,7 @@ import SwiftUI
 struct HomeView: View {
     var embedded = false
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openURL) private var openURL
     @Environment(\.hostWindow) private var hostWindow
@@ -26,10 +26,10 @@ struct HomeView: View {
     var body: some View {
         if embedded {
             content
-                .onAppear { viewModel.load(authService: appState.authService) }
+                .onAppear { viewModel.load(authService: app.authService) }
         } else {
             NavigationStack { content }
-                .onAppear { viewModel.load(authService: appState.authService) }
+                .onAppear { viewModel.load(authService: app.authService) }
         }
     }
 
@@ -56,12 +56,12 @@ struct HomeView: View {
         .notImplementedAlert(isPresented: $showNotImplementedAlert)
         .alert(
             String(localized: "sync_conflict_title"),
-            isPresented: AppState.syncConflictAlertIsPresented(Bindable(appState).syncConflicts)
+            isPresented: SyncConflicts.syncConflictAlertIsPresented(Bindable(app.conflicts).syncConflicts)
         ) {
-            Button(String(localized: "sync_conflict_use_server")) { appState.resolveSyncConflicts(keepLocal: false) }
-            Button(String(localized: "sync_conflict_use_local")) { appState.resolveSyncConflicts(keepLocal: true) }
+            Button(String(localized: "sync_conflict_use_server")) { app.conflicts.resolveSyncConflicts(keepLocal: false) }
+            Button(String(localized: "sync_conflict_use_local")) { app.conflicts.resolveSyncConflicts(keepLocal: true) }
         } message: {
-            Text(appState.syncConflictAlertMessage)
+            Text(app.conflicts.syncConflictAlertMessage)
         }
         .navigationDestination(item: $selectedFeature) { feature in
             homeDestination(for: feature)
@@ -69,16 +69,16 @@ struct HomeView: View {
         .navigationDestination(item: $viewModel.shownAssignment) { page in
             MoodleAssignmentView(
                 store: page.store, entry: page.entry, courseName: page.courseName,
-                policy: appState.visualStylePolicy, accent: appState.accentColor
+                policy: app.preferences.visualStylePolicy, accent: app.preferences.accentColor
             )
             .moodleLinkOpening()
         }
-        .onChange(of: appState.authService.session.ticket) {
+        .onChange(of: app.authService.session.ticket) {
             viewModel.closeAssignment()
         }
-        .onChange(of: appState.pendingDeepLink, initial: true) { _, link in
+        .onChange(of: app.router.pendingDeepLink, initial: true) { _, link in
             guard case .assignment(let id) = link else { return }
-            appState.pendingDeepLink = nil
+            app.router.pendingDeepLink = nil
             guard let assignment = AssignmentStore.shared.loadAssignments().first(where: { $0.assignmentId == id }) else { return }
             hostWindow.closePresentations { closedAll in openAssignment(assignment, closingSheet: closedAll) }
         }
@@ -130,7 +130,7 @@ struct HomeView: View {
             titleBar()
                 .homeListRow(top: TigerDuckTheme.Spacing.md)
 
-            if let reauthError = appState.ntustReauthErrorMessage {
+            if let reauthError = app.authService.reauthErrorMessage {
                 reauthBanner(reauthError)
                     .homeListRow(top: TigerDuckTheme.Spacing.lg)
             }
@@ -158,10 +158,10 @@ struct HomeView: View {
             // Fire-and-forget so the UIRefreshControl spinner dismisses on release.
             // `triggerRefresh` coalesces repeated pulls into one in-flight fetch, and
             // the top-right SyncStatusDot shows its status.
-            viewModel.triggerRefresh(authService: appState.authService)
+            viewModel.triggerRefresh(authService: app.authService)
             Task { await CourseChangeStore.shared.refresh() }
             if Defaults[.cloudSyncEnabled] {
-                Task { await appState.syncOverridesFromBackend() }
+                Task { await app.fullSync.sync() }
             }
         }
     }
@@ -186,10 +186,10 @@ struct HomeView: View {
         NTUSTReauthErrorBanner(
             message: message,
             onRetry: {
-                appState.clearNTUSTReauthError()
-                appState.presentNTUSTLogin()
+                app.authService.clearReauthError()
+                app.router.presentNTUSTLogin()
             },
-            onDismiss: { appState.clearNTUSTReauthError() }
+            onDismiss: { app.authService.clearReauthError() }
         )
     }
 
@@ -219,7 +219,7 @@ struct HomeView: View {
         HomeSectionView(
             section: section,
             viewModel: viewModel,
-            appState: appState,
+            app: app,
             asListRows: asListRows,
             scrollAnchor: scrollAnchor,
             onFeatureTap: { feature in
@@ -247,7 +247,7 @@ struct HomeView: View {
     }
 
     private func openAssignment(_ assignment: SDAssignment, closingSheet: Bool = true) {
-        if let context = MoodleCacheContext.signedIn(appState.authService),
+        if let context = MoodleCacheContext.signedIn(app.authService),
            let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context),
            let entry = store.assignments.entry(for: assignment) {
             viewModel.show(
@@ -264,7 +264,7 @@ struct HomeView: View {
 private struct HomeSectionView: View {
     let section: HomeSection
     let viewModel: HomeViewModel
-    let appState: AppState
+    let app: AppEnvironment
     var asListRows = false
     let scrollAnchor: HomeScrollAnchor
     var onFeatureTap: ((AppFeature) -> Void)? = nil
@@ -281,7 +281,7 @@ private struct HomeSectionView: View {
     }
 
     private var assignmentAccess: NTUSTProtectedAccessState {
-        appState.ntustProtectedAccessState(isEmpty: viewModel.upcomingAssignments.isEmpty)
+        NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: viewModel.upcomingAssignments.isEmpty)
     }
 
     @ViewBuilder
@@ -291,7 +291,7 @@ private struct HomeSectionView: View {
                 layout: .section,
                 title: String(localized: "common_not_signed_in"),
                 message: String(localized: "home_assignments_sign_in_required_message"),
-                onPrimary: { appState.presentNTUSTLogin() }
+                onPrimary: { app.router.presentNTUSTLogin() }
             )
         } else {
             EmptyStateView(
@@ -307,25 +307,25 @@ private struct HomeSectionView: View {
             assignments: viewModel.upcomingAssignments,
             courses: viewModel.allCourses,
             filter: viewModel.assignmentFilter,
-            showAbsoluteTime: appState.showAbsoluteAssignmentTime,
+            showAbsoluteTime: app.preferences.showAbsoluteAssignmentTime,
             asListRows: asListRows,
             scrollAnchor: scrollAnchor,
             scrollSectionID: section.id,
             onArchive: {
                 viewModel.archiveAssignment($0)
-                appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "archived")
+                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "archived")
             },
             onMarkComplete: {
                 viewModel.markAssignmentAsLocallyCompleted($0)
-                appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "locally_completed")
+                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "locally_completed")
             },
             onUnarchive: {
                 viewModel.unarchiveAssignment($0)
-                appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
+                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
             },
             onUndoComplete: {
                 viewModel.undoLocallyCompleted($0)
-                appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
+                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
             },
             onOpen: onOpenAssignment
         )

@@ -129,7 +129,7 @@ struct CourseMembershipStampTests {
             pushCoordinator: PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client),
             outbox: SyncOutbox(directory: root.appendingPathComponent("outbox", isDirectory: true)), isEnabled: true,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
-            addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses) },
+            addedCourseUpload: { SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses) },
             uploadsCourses: { true }, isProtectedDataAvailable: { true }
         )
     }

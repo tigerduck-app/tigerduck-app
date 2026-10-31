@@ -17,10 +17,10 @@ struct KeepLocalCoursesTests {
         )
         let roster = Self.roster("CS1", "CS2")
 
-        try await AppState.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
+        try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
         #expect(server.rows == ["client:1151:CS1"])
 
-        try await server.uploadCourses(AppState.courseUploadRequest(roster, semester: "1151"), addedAt: nil)
+        try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(roster, semester: "1151"), addedAt: nil)
         #expect(server.rows == ["client:1151:CS1"])
     }
 
@@ -34,9 +34,9 @@ struct KeepLocalCoursesTests {
             tombstones: deletedOnServer ? ["client:1151:CS2": false] : [:]
         )
 
-        try await AppState.keepLocalCourses([("1151", cached)], hiding: ["1151:CS2"], on: server)
+        try await SyncConflicts.keepLocalCourses([("1151", cached)], hiding: ["1151:CS2"], on: server)
 
-        try await server.uploadCourses(AppState.courseUploadRequest(
+        try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(
             cached + Self.roster("CS2"), semester: "1151"
         ), addedAt: nil)
         #expect(server.rows == cachedKeys)
@@ -46,9 +46,9 @@ struct KeepLocalCoursesTests {
     func uncachedLegacyHiddenCourseStaysDeleted() async throws {
         let server = FakeCourseServer(rows: ["client:1151:CS1"], tombstones: ["client:1151:CS2": false])
 
-        try await AppState.keepLocalCourses([("1151", Self.roster("CS1"))], hiding: ["CS2"], on: server)
+        try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"))], hiding: ["CS2"], on: server)
 
-        try await server.uploadCourses(AppState.courseUploadRequest(
+        try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(
             Self.roster("CS1", "CS2"), semester: "1151"
         ), addedAt: nil)
         #expect(server.rows == ["client:1151:CS1"])
@@ -61,11 +61,11 @@ struct KeepLocalCoursesTests {
         server.failingDeletes = 1
 
         await #expect(throws: URLError.self) {
-            try await AppState.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
+            try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
         }
-        try await AppState.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
+        try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
 
-        try await server.uploadCourses(AppState.courseUploadRequest(roster, semester: "1151"), addedAt: nil)
+        try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(roster, semester: "1151"), addedAt: nil)
         #expect(server.rows == ["client:1151:CS1"])
     }
 
@@ -73,7 +73,7 @@ struct KeepLocalCoursesTests {
     func resetsTermByTerm() async throws {
         let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1142:CS9"])
 
-        try await AppState.keepLocalCourses(
+        try await SyncConflicts.keepLocalCourses(
             [("1151", Self.roster("CS1")), ("1142", [])], hiding: [], on: server
         )
 
@@ -87,7 +87,7 @@ struct KeepLocalCoursesTests {
         var checks = 0
 
         await #expect(throws: CancellationError.self) {
-            try await AppState.keepLocalCourses(
+            try await SyncConflicts.keepLocalCourses(
                 [("1151", Self.roster("CS1")), ("1142", Self.roster("CS9"))], hiding: [], on: server,
                 isCurrent: {
                     checks += 1

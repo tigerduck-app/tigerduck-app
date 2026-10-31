@@ -3,7 +3,7 @@ import Defaults
 
 struct AddCourseSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     let semester: String
     let tableCourses: [SDCourse]
@@ -44,7 +44,7 @@ struct AddCourseSheet: View {
 
     private var fetchCatalog: CourseSearchModel.FetchCatalog {
         let client = CourseCatalogClient(backend: BackendClient(
-            session: BackendClient.catalogSession, auth: appState.authTokenManager.backendAuth
+            session: BackendClient.catalogSession, auth: app.authTokenManager.backendAuth
         ))
         return { @MainActor in try await client.fetch(semester: $0, language: $1, etag: $2) }
     }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MoreView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var viewModel = MoreViewModel()
     @State private var showNotImplementedAlert = false
     @State private var navigationPath = NavigationPath()
@@ -65,12 +65,12 @@ struct MoreView: View {
                 MoreFeatureDestination { moreDestination(for: feature) }
             }
         }
-        .onChange(of: appState.pendingMoreDeepLink, initial: true) { _, new in
+        .onChange(of: app.router.pendingMoreDeepLink, initial: true) { _, new in
             guard let new else { return }
             var path = NavigationPath()
             path.append(new)
             navigationPath = path
-            appState.pendingMoreDeepLink = nil
+            app.router.pendingMoreDeepLink = nil
         }
     }
 

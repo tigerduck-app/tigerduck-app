@@ -4,17 +4,17 @@ import UIKit
 #endif
 
 struct LibrarySettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
-        @Bindable var appState = appState
+        @Bindable var preferences = app.preferences
         List {
             Section {
                 Toggle(
                     String(localized: "settings_flip_to_library_title"),
-                    isOn: Self.flipSwitch($appState.flipToLibraryEnabled, signedIn: appState.isLibraryLoggedIn)
+                    isOn: Self.flipSwitch($preferences.flipToLibraryEnabled, signedIn: app.library.isLoggedIn)
                 )
-                .disabled(!appState.isLibraryLoggedIn)
+                .disabled(!app.library.isLoggedIn)
             } footer: {
                 Text(String(localized: "settings_flip_to_library_summary"))
             }

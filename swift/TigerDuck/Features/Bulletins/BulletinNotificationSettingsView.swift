@@ -5,7 +5,7 @@ import UserNotifications
 struct BulletinNotificationSettingsView: View {
     let taxonomy: BulletinTaxonomyStore
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var store = BulletinSubscriptionsStore()
     @State private var authStatus: UNAuthorizationStatus = .notDetermined
     @State private var isAskingPermission: Bool = false
@@ -33,7 +33,7 @@ struct BulletinNotificationSettingsView: View {
         .navigationTitle(String(localized: "bulletin_notifications_title"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            store.configure(authTokenManager: appState.authTokenManager)
+            store.configure(authTokenManager: app.authTokenManager)
             await taxonomy.loadIfNeeded()
             await refreshAuthStatus()
             if pushEnabled, !didInitialLoad {
@@ -281,7 +281,7 @@ struct BulletinNotificationSettingsView: View {
         await refreshAuthStatus()
         guard granted || authStatus == .provisional else { return }
         do {
-            try await appState.updateBulletinPushEnabled(true)
+            try await app.pushSchedule.updateBulletinPushEnabled(true)
             pushUpdateFailed = false
         } catch {
             pushUpdateFailed = true
@@ -297,7 +297,7 @@ struct BulletinNotificationSettingsView: View {
         isDisablingPush = true
         defer { isDisablingPush = false }
         do {
-            try await appState.updateBulletinPushEnabled(false)
+            try await app.pushSchedule.updateBulletinPushEnabled(false)
             pushUpdateFailed = false
         } catch {
             pushUpdateFailed = true
@@ -321,7 +321,7 @@ struct BulletinNotificationSettingsView: View {
     /// on-state branch's status row and Settings button are unreachable from here, so this section
     /// carries both. An unknown future status errs toward the route, matching
     /// `NotificationPermissionSettingsView.notificationPermissionStatus(for:)`, which maps it to
-    /// `.notGranted`. `static` over a plain value so a test needs no view or `AppState`.
+    /// `.notGranted`. `static` over a plain value so a test needs no view or `AppEnvironment`.
     static func requiresSystemSettingsRoute(for status: UNAuthorizationStatus) -> Bool {
         switch status {
         case .denied: return true

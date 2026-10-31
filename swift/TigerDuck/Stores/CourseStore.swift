@@ -36,7 +36,7 @@ enum CourseEdit {
 final class CourseStore {
     static let shared = CourseStore()
 
-    typealias Display = AppServiceBridge.CourseDisplayPreferences
+    typealias Display = CourseDetails.CourseDisplayPreferences
 
     @ObservationIgnored let files: CourseFiles
     /// The language and labels course names are fetched in now.

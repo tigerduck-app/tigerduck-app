@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NTUSTLoginSheetHost: ViewModifier {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var signIn: Task<Void, Never>?
     @State private var isSigningIn = false
     @State private var confirmsSwitch = false
@@ -9,21 +9,21 @@ struct NTUSTLoginSheetHost: ViewModifier {
     @State private var switchAccount: () -> Void = {}
 
     func body(content: Content) -> some View {
-        @Bindable var appState = appState
+        @Bindable var router = app.router
 
-        content.sheet(isPresented: $appState.isShowingNTUSTLoginSheet) {
+        content.sheet(isPresented: $router.isShowingNTUSTLoginSheet) {
             LoginSheet(
                 title: String(localized: "settings_account_ntust_system"),
                 subtitle: String(localized: "onboarding_sign_in_subtitle"),
                 usernamePlaceholder: String(localized: "sign_in_student_id"),
                 passwordPlaceholder: String(localized: "sign_in_password"),
-                initialUsername: appState.authService.storedStudentId ?? "",
-                isLoggingIn: appState.authService.isLoggingIn,
-                loginError: appState.authService.loginError,
+                initialUsername: app.authService.storedStudentId ?? "",
+                isLoggingIn: app.authService.isLoggingIn,
+                loginError: app.authService.loginError,
                 onLogin: requestSignIn,
                 onDismiss: {
                     signIn?.cancel()
-                    appState.dismissNTUSTLogin()
+                    app.router.dismissNTUSTLogin()
                 }
             )
             .alert(String(localized: "sign_in_change_account_title"), isPresented: $confirmsSwitch) {
@@ -42,9 +42,9 @@ struct NTUSTLoginSheetHost: ViewModifier {
         signIn = Task {
             defer { isSigningIn = false }
             guard AuthService.replacesStoredAccount(
-                stored: appState.authService.storedStudentId, signingInAs: studentId
+                stored: app.authService.storedStudentId, signingInAs: studentId
             ) else { return await logIn(studentId, password) }
-            let unsynced = await appState.signOutDeletesUnsyncedData()
+            let unsynced = await app.signOutCheck.deletesUnsyncedData()
             guard !Task.isCancelled else { return }
             ImportedClassTableStore.shared.requestSignOut(
                 unsyncedData: unsynced,
@@ -55,11 +55,11 @@ struct NTUSTLoginSheetHost: ViewModifier {
     }
 
     private func logIn(_ studentId: String, _ password: String) async {
-        _ = await appState.authService.login(studentId: studentId, password: password)
-        if appState.isNTUSTLoggedIn {
-            appState.dismissNTUSTLogin()
-            appState.notifyLibraryStateChanged()
-            appState.backgroundSync()
+        _ = await app.authService.login(studentId: studentId, password: password)
+        if app.authService.isNTUSTAuthenticated {
+            app.router.dismissNTUSTLogin()
+            app.library.noteChange()
+            app.activation.refresh()
         }
     }
 }

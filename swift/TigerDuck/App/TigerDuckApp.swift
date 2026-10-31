@@ -27,19 +27,18 @@ private struct UnitTestHostApp: App {
 
 struct TigerDuckApp: App {
     struct Built {
-        let appState: AppState
+        let app: AppEnvironment
         let watchSync: WatchSyncCoordinator
         let widgetSnapshotWriter: WidgetSnapshotWriter
         let deviceSurfaces: DeviceSurfaceSyncer
     }
 
     @State private var launch: AfterFirstUnlock<Built>
-    @State private var sceneRefreshTask: Task<Void, Never>?
     @State private var rootLanguageId = UUID()
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    private var appState: AppState { launch.value.appState }
+    private var app: AppEnvironment { launch.value.app }
     private var watchSyncCoordinator: WatchSyncCoordinator { launch.value.watchSync }
     private var widgetSnapshotWriter: WidgetSnapshotWriter { launch.value.widgetSnapshotWriter }
 
@@ -51,12 +50,12 @@ struct TigerDuckApp: App {
         _launch = State(initialValue: launch)
         PushAppDelegate.launchWork = { delegate in
             launch.whenBuilt { built in
-                if built.appState.hasCompletedOnboarding {
-                    built.appState.bindPushDelegate(delegate)
+                if built.app.hasCompletedOnboarding {
+                    built.app.pushSchedule.bindPushDelegate(delegate)
                 }
                 built.watchSync.activate()
                 delegate.beforeAnsweringSyncTrigger = { built.widgetSnapshotWriter.regenerateAndReloadNow() }
-                delegate.sendBeforeAnsweringSyncTrigger = { await built.appState.sendPushScheduleAfterSyncTrigger($0) }
+                delegate.sendBeforeAnsweringSyncTrigger = { await built.app.pushSchedule.sendAfterSyncTrigger($0) }
             }
         }
     }
@@ -65,7 +64,7 @@ struct TigerDuckApp: App {
         hasUnlocked: Bool, center: NotificationCenter, endProcess: @escaping () -> Void = { exit(0) }
     ) -> AfterFirstUnlock<Built> {
         AfterFirstUnlock(hasUnlocked: hasUnlocked, endProcess: endProcess, center: center) {
-            let appState = AppState()
+            let app = AppEnvironment()
             let watchSync = WatchSyncCoordinator()
             #if DEBUG
             MainThreadWatchdog.start()
@@ -73,18 +72,18 @@ struct TigerDuckApp: App {
             #endif
             PushCoordinator.assertEnvConsistency()
             SchoolMailBootstrap.install()
-            let widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
-            watchSync.setPayloadSource { WatchSyncCoordinator.Payload(appState: appState) }
+            let widgetSnapshotWriter = WidgetSnapshotWriter(app: app)
+            watchSync.setPayloadSource { WatchSyncCoordinator.Payload(app: app) }
             let deviceSurfaces = DeviceSurfaceSyncer(
                 surfaces: .init(
                     widgets: { widgetSnapshotWriter.regenerate(forceReload: $0) },
                     watch: { watchSync.pushCurrentState() },
-                    liveActivity: { appState.scheduleLiveActivityRefresh(after: .zero) }
+                    liveActivity: { app.liveActivity.scheduleRefresh(after: .zero) }
                 ),
-                fingerprint: { DeviceSurfaceSyncer.fingerprint(of: appState, nudges: $0) }
+                fingerprint: { DeviceSurfaceSyncer.fingerprint(of: app, nudges: $0) }
             )
             return Built(
-                appState: appState, watchSync: watchSync, widgetSnapshotWriter: widgetSnapshotWriter,
+                app: app, watchSync: watchSync, widgetSnapshotWriter: widgetSnapshotWriter,
                 deviceSurfaces: deviceSurfaces
             )
         }
@@ -97,47 +96,31 @@ struct TigerDuckApp: App {
                 .updateRequiredAlert()
                 .linkRouting()
                 .tlsPinPrompt()
-                .tint(AccentPreview.shared.tint(saved: appState.accentColor))
+                .tint(AccentPreview.shared.tint(saved: app.preferences.accentColor))
                 .appAppearance()
-                .environment(appState)
+                .environment(app)
                 .onAppear {
                     watchSyncCoordinator.activate()
                     watchSyncCoordinator.pushCurrentState()
-                    appState.bindPushDelegate(pushAppDelegate)
+                    app.pushSchedule.bindPushDelegate(pushAppDelegate)
                     if let nd = pushAppDelegate.notificationDelegate {
-                        let state = appState
-                        nd.routeTap = { [weak state] response in
+                        let router = app.router
+                        nd.routeTap = { [weak router] response in
                             Task { @MainActor in
-                                Self.routeServerPushTap(
-                                    response: response,
-                                    appState: state
-                                )
+                                router?.openNotification(response.notification.request.content.userInfo) {
+                                    AssignmentStore.shared.loadAssignments()
+                                }
                             }
                         }
                     }
-                    appState.backgroundSync()
-                    appState.startCloudSyncIfEnabled()
-                    Task { await LibraryService.signInIfCredentialed() }
+                    app.activation.sceneAppeared()
                     Task { widgetSnapshotWriter.regenerate() }
-                    // `.onChange(of: scenePhase)` does not fire for the initial `.active`
-                    // value, so the first background check starts here; later foreground
-                    appState.updateNotifyCoordinator.checkInBackground()
                     UNUserNotificationCenter.current().setBadgeCount(0)
                     TLSPinMismatchQueue.shared.isForeground = true
                     fetchPinDocumentIfDue()
                 }
                 .onOpenURL { url in
-                    if let text = ClassTableShareLink.codeText(url) {
-                        HeldShareLink.shared.arrived(text, signIn: appState.authService.session.ticket)
-                        appState.openFromWidget(.classTable)
-                        return
-                    }
-                    if let id = WidgetURLRouter.assignmentId(from: url) {
-                        appState.pendingDeepLink = .assignment(id)
-                        return
-                    }
-                    guard let destination = WidgetURLRouter.route(url) else { return }
-                    appState.openFromWidget(destination)
+                    app.router.open(url, signIn: app.authService.session.ticket)
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
@@ -155,7 +138,7 @@ struct TigerDuckApp: App {
                         sceneDidBecomeActive()
                     } else if newPhase == .background {
                         SchoolMailBootstrap.sceneDidEnterBackground()
-                        appState.stopRevisionPolling()
+                        app.activation.enteredBackground()
                     }
                 }
         }
@@ -167,79 +150,13 @@ struct TigerDuckApp: App {
         UNUserNotificationCenter.current().setBadgeCount(0)
         Task {
             if await AcademicCalendarStore.shared.refresh() {
-                await appState.refreshLiveActivity()
+                await app.liveActivity.refresh()
                 widgetSnapshotWriter.regenerate()
             }
         }
-        Task { await CourseChangeStore.shared.refresh() }
-        sceneRefreshTask?.cancel()
-        sceneRefreshTask = Task {
-            await appState.refreshLiveActivity()
-            guard !Task.isCancelled else { return }
-            appState.requestPushScheduleSync()
-            await appState.refreshMoodleCredentials()
-        }
-        if appState.hasCompletedOnboarding {
-            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
-        }
-        Task { await LibraryService.signInIfCredentialed() }
-        appState.startRevisionPolling()
-        appState.pushCoordinator.registerAgainIfGaveUp()
+        app.activation.becameActive()
         widgetSnapshotWriter.regenerate()
-        appState.updateNotifyCoordinator.checkInBackground()
         fetchPinDocumentIfDue()
-    }
-
-    @MainActor
-    private static func routeServerPushTap(
-        response: UNNotificationResponse,
-        appState: AppState?
-    ) {
-        guard let appState else { return }
-        let info = response.notification.request.content.userInfo
-        let kind = info["kind"] as? String
-        switch kind {
-        case "custom_push_bulletin", "bulletin":
-            if let link = AppState.bulletinDeepLink(from: info) {
-                appState.pendingDeepLink = link
-            }
-        case "assignment_reminder":
-            if let assignment = AppState.remindedAssignment(
-                from: info,
-                in: AssignmentStore.shared.loadAssignments()
-            ) {
-                appState.pendingDeepLink = .assignment(assignment.assignmentId)
-            }
-        case "custom_push_popup":
-            guard let nid = info["notification_id"] as? String,
-                  let title = info["title"] as? String,
-                  let body = info["body"] as? String else { return }
-            guard !appState.isServerPopupShown(nid) else { return }
-            let payload = AppState.ServerPopupPayload(
-                id: nid,
-                title: title,
-                body: body
-            )
-            // A popup arriving over a shown alert clears it and presents a tick later, so
-            // `.alert(_:isPresented:presenting:)` sees `isPresented` go false → true. Cancel
-            appState.pendingServerPopupSwapTask?.cancel()
-            appState.pendingServerPopupSwapTask = nil
-            if appState.pendingServerPopup != nil {
-                appState.pendingServerPopup = nil
-                appState.pendingServerPopupSwapTask = Task { @MainActor [weak appState] in
-                    try? await Task.sleep(for: .milliseconds(50))
-                    guard !Task.isCancelled, let appState else { return }
-                    appState.pendingServerPopup = payload
-                    appState.pendingServerPopupSwapTask = nil
-                }
-            } else {
-                appState.pendingServerPopup = payload
-            }
-        case MailConstants.notificationKind:
-            appState.pendingDeepLink = AppState.schoolMailDeepLink(from: info)
-        default:
-            break
-        }
     }
 }
 
@@ -247,11 +164,10 @@ struct TigerDuckApp: App {
 
 @main
 struct TigerDuckApp: App {
-    @State private var appState = AppState()
+    @State private var app = AppEnvironment()
     @State private var rootLanguageId = UUID()
     @State private var widgetSnapshotWriter: WidgetSnapshotWriter?
     @State private var deviceSurfaces: DeviceSurfaceSyncer?
-    @State private var sceneRefreshTask: Task<Void, Never>?
     @NSApplicationDelegateAdaptor(MacPushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
@@ -266,33 +182,25 @@ struct TigerDuckApp: App {
                 .id(rootLanguageId)
                 .updateRequiredAlert()
                 .macUpdatePrompt()
-                .environment(appState)
+                .environment(app)
                 .appAppearance()
                 .onAppear {
-                    appState.bindPushDelegate(pushAppDelegate)
-                    appState.backgroundSync()
-                    appState.startCloudSyncIfEnabled()
-                    appState.updateNotifyCoordinator.checkInBackground()
+                    app.pushSchedule.bindPushDelegate(pushAppDelegate)
+                    app.activation.sceneAppeared()
                     if widgetSnapshotWriter == nil {
-                        let writer = WidgetSnapshotWriter(appState: appState)
+                        let writer = WidgetSnapshotWriter(app: app)
                         widgetSnapshotWriter = writer
                         writer.regenerate()
                         deviceSurfaces = DeviceSurfaceSyncer(
                             surfaces: .init(widgets: { writer.regenerate(forceReload: $0) }),
-                            fingerprint: { [appState] in DeviceSurfaceSyncer.fingerprint(of: appState, nudges: $0) }
+                            fingerprint: { [app] in DeviceSurfaceSyncer.fingerprint(of: app, nudges: $0) }
                         )
                     }
                     TLSPinMismatchQueue.shared.isForeground = true
                     fetchPinDocumentIfDue()
                 }
                 .onOpenURL { url in
-                    if let text = ClassTableShareLink.codeText(url) {
-                        HeldShareLink.shared.arrived(text, signIn: appState.authService.session.ticket)
-                        appState.openFromWidget(.classTable)
-                        return
-                    }
-                    guard let destination = WidgetURLRouter.route(url) else { return }
-                    appState.openFromWidget(destination)
+                    app.router.open(url, signIn: app.authService.session.ticket)
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
@@ -309,7 +217,7 @@ struct TigerDuckApp: App {
                     if newPhase == .active {
                         sceneDidBecomeActive()
                     } else if newPhase == .background {
-                        appState.stopRevisionPolling()
+                        app.activation.enteredBackground()
                     }
                 }
         }
@@ -318,13 +226,13 @@ struct TigerDuckApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
-                MacCheckForUpdatesCommand(coordinator: appState.updateNotifyCoordinator)
+                MacCheckForUpdatesCommand(coordinator: app.updateNotifyCoordinator)
             }
         }
 
         Settings {
             MacSettingsScene()
-                .environment(appState)
+                .environment(app)
                 .appAppearance()
         }
 
@@ -334,11 +242,11 @@ struct TigerDuckApp: App {
                 // resolves once. The title follows through the navigationTitle inside; the
                 // Window menu name is the scene's own and stays until relaunch.
                 .id(rootLanguageId)
-                .environment(appState)
+                .environment(app)
                 // Environments do not cross scene boundaries, so this window gets neither
                 // MacSettingsScene's tint nor the main window's; without this its links
                 // would use the system accent instead of the chosen one.
-                .tint(AccentPreview.shared.tint(saved: appState.accentColor))
+                .tint(AccentPreview.shared.tint(saved: app.preferences.accentColor))
                 .appAppearance()
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
@@ -355,19 +263,8 @@ struct TigerDuckApp: App {
                 widgetSnapshotWriter?.regenerate()
             }
         }
-        Task { await CourseChangeStore.shared.refresh() }
-        sceneRefreshTask?.cancel()
-        sceneRefreshTask = Task {
-            appState.requestPushScheduleSync()
-            await appState.refreshMoodleCredentials()
-        }
-        if appState.hasCompletedOnboarding {
-            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
-        }
-        appState.startRevisionPolling()
-        appState.pushCoordinator.registerAgainIfGaveUp()
+        app.activation.becameActive()
         widgetSnapshotWriter?.regenerate()
-        appState.updateNotifyCoordinator.checkInBackground()
         fetchPinDocumentIfDue()
     }
 }
@@ -377,7 +274,7 @@ struct TigerDuckApp: App {
 extension TigerDuckApp {
     /// The pin document is on the TigerDuck backend, which launch code reaches only after onboarding.
     private func fetchPinDocumentIfDue() {
-        guard appState.hasCompletedOnboarding else { return }
+        guard app.hasCompletedOnboarding else { return }
         Task { await TLSPinDocumentFetcher.shared.fetchIfDue() }
     }
 

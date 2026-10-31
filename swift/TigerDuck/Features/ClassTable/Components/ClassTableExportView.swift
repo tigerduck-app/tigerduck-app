@@ -50,20 +50,20 @@ enum ClassTableExporter {
     /// explicitly.
     static func render(
         viewModel: ClassTableViewModel,
-        appState: AppState,
+        app: AppEnvironment,
         colorScheme: ColorScheme,
         dynamicTypeSize: DynamicTypeSize,
         layoutDirection: LayoutDirection,
         legibilityWeight: LegibilityWeight?,
         differentiateWithoutColor: Bool
     ) async -> URL? {
-        let owner = viewModel.shownPerson?.nickname ?? appState.authService.storedStudentId
+        let owner = viewModel.shownPerson?.nickname ?? app.authService.storedStudentId
         let content = ClassTableExportView(
             viewModel: viewModel,
             owner: owner,
             differentiateWithoutColor: differentiateWithoutColor
         )
-            .environment(appState)
+            .environment(app)
             .environment(\.colorScheme, colorScheme)
             .environment(\.dynamicTypeSize, dynamicTypeSize)
             // A right-to-left language mirrors the page's grid; the empty

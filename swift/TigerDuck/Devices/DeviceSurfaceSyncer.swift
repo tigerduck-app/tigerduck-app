@@ -114,13 +114,13 @@ final class DeviceSurfaceSyncer {
 }
 
 extension DeviceSurfaceSyncer {
-    static func fingerprint(of appState: AppState, nudges: Nudges) -> Fingerprint {
+    static func fingerprint(of app: AppEnvironment, nudges: Nudges) -> Fingerprint {
         Fingerprint(
             data: .current,
-            language: appState.appLanguage,
-            accentHex: appState.accentColorHex,
-            visualPreset: appState.visualPreset.rawValue,
-            signedIn: appState.authService.hasStoredCredentials,
+            language: app.preferences.appLanguage,
+            accentHex: app.preferences.accentColorHex,
+            visualPreset: app.preferences.visualPreset.rawValue,
+            signedIn: app.authService.hasStoredCredentials,
             nudges: nudges
         )
     }

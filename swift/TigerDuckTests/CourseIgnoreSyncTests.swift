@@ -340,27 +340,27 @@ struct CourseIgnorePullTests {
 
     @Test("A backend without the setting is read as having none to apply")
     func oldBackendIsSkipped() {
-        #expect(AppState.serverIgnoredCourses([Self.row("CS1"), Self.row("EE2", ignored: nil)], syncsCourses: true) == nil)
+        #expect(CourseIgnoresReconciler.serverIgnoredCourses([Self.row("CS1"), Self.row("EE2", ignored: nil)], syncsCourses: true) == nil)
     }
 
     @Test("With the Courses switch off a pull and the re-enable check take no course settings")
     func coursesSwitchOffTakesNone() {
-        #expect(AppState.serverIgnoredCourses([Self.row("CS1")], syncsCourses: false) == nil)
+        #expect(CourseIgnoresReconciler.serverIgnoredCourses([Self.row("CS1")], syncsCourses: false) == nil)
     }
 
     @Test("The server's ignored courses are keyed by term and course number")
     func serverRowsAreKeyed() throws {
-        let courses = try #require(AppState.serverIgnoredCourses([
+        let courses = try #require(CourseIgnoresReconciler.serverIgnoredCourses([
             Self.row("CS1", moodleCourseId: 4242), Self.row("EE2", ignored: false), Self.row("GE3", semester: ""),
         ], syncsCourses: true))
-        #expect(courses == [AppState.ServerIgnoredCourse(
+        #expect(courses == [CourseIgnoresReconciler.ServerIgnoredCourse(
             semester: "1151", courseNo: "CS1", moodleId: "1151CS1", moodleCourseId: 4242
         )])
     }
 
     @Test("A term the snapshot has courses in takes the server's setting")
     func coveredTermsFollowTheServer() {
-        let merged = AppState.mergedIgnoredCourses(
+        let merged = CourseIgnoresReconciler.mergedIgnoredCourses(
             server: ["1151:CS1"], local: ["1151:EE2"], protected: [], snapshotSemesters: ["1151"]
         )
         #expect(merged == ["1151:CS1"])
@@ -368,7 +368,7 @@ struct CourseIgnorePullTests {
 
     @Test("A setting not on the server yet keeps this device's, set or cleared")
     func pendingSettingsKeepTheLocalOne() {
-        let merged = AppState.mergedIgnoredCourses(
+        let merged = CourseIgnoresReconciler.mergedIgnoredCourses(
             server: ["1151:CS1"], local: ["1151:EE2"], protected: ["1151:CS1", "1151:EE2"],
             snapshotSemesters: ["1151"]
         )
@@ -377,7 +377,7 @@ struct CourseIgnorePullTests {
 
     @Test("A term the snapshot has no courses in is left as it is here")
     func uncoveredTermsAreLeftAlone() {
-        let merged = AppState.mergedIgnoredCourses(
+        let merged = CourseIgnoresReconciler.mergedIgnoredCourses(
             server: [], local: ["1142:CS1", "1151:EE2"], protected: [], snapshotSemesters: ["1151"]
         )
         #expect(merged == ["1142:CS1"])
@@ -386,7 +386,7 @@ struct CourseIgnorePullTests {
     @Test("The re-enabled switch's check finds a difference only where a pull would apply one")
     func reenableCheckComparesCoveredTerms() {
         let differ = { (server: Set<String>?, decided: Set<String>, local: Set<String>) in
-            AppState.ignoredCoursesDiffer(
+            CourseIgnoresReconciler.ignoredCoursesDiffer(
                 server: server, decided: decided, listed: ["1151:CS1"], local: local, snapshotSemesters: ["1151"]
             )
         }
@@ -399,7 +399,7 @@ struct CourseIgnorePullTests {
 
     @Test("A course's setting counts as set on the server once a device has sent it, either way")
     func decidedCoursesAreTheOnesSent() {
-        let decided = AppState.serverDecidedCourses([
+        let decided = CourseIgnoresReconciler.serverDecidedCourses([
             Self.row("CS1", setAt: "2026-10-13T00:00:00+00:00"),
             Self.row("EE2", ignored: false, setAt: "2026-10-13T00:00:00+00:00"),
             Self.row("GE3", ignored: false),
@@ -410,7 +410,7 @@ struct CourseIgnorePullTests {
 
     @Test("The snapshot's courses are keyed by term and course number, its own Moodle rows left out")
     func listedCoursesAreKeyed() {
-        let listed = AppState.listedCourses([
+        let listed = CourseIgnoresReconciler.listedCourses([
             ["semester": "1151", "course_no": "CS1"], ["semester": "", "course_no": "EE2"], ["semester": "1142"],
         ])
         #expect(listed == ["1151:CS1"])
@@ -418,7 +418,7 @@ struct CourseIgnorePullTests {
 
     @Test("The snapshot's course rows are keyed by term and course number with their ids, its own Moodle rows left out")
     func listedCourseRowsAreKeyed() {
-        let rows = AppState.listedCourseRows([
+        let rows = CourseIgnoresReconciler.listedCourseRows([
             ["id": 7, "semester": "1151", "course_no": "CS1"], ["id": 8, "semester": "", "course_no": "EE2"],
             ["semester": "1151", "course_no": "GE3"],
         ])
@@ -429,24 +429,24 @@ struct CourseIgnorePullTests {
     func recreatedCoursesAreTheNewRowsBesideSurvivors() {
         let seen = ["1151:CS1": 1, "1151:EE2": 2, "1142:GE3": 3]
 
-        #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 2, "1142:GE3": 3], seen: seen) == ["1151:CS1"])
-        #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 10, "1142:GE3": 3], seen: seen).isEmpty)
-        #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 10, "1142:GE3": 11], seen: seen).isEmpty)
-        #expect(AppState.recreatedCourses(listed: ["1151:CS1": 1, "1151:PE4": 12], seen: seen).isEmpty)
-        #expect(AppState.recreatedCourses(listed: ["1151:CS1": 9], seen: [:]).isEmpty)
+        #expect(CourseIgnoresReconciler.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 2, "1142:GE3": 3], seen: seen) == ["1151:CS1"])
+        #expect(CourseIgnoresReconciler.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 10, "1142:GE3": 3], seen: seen).isEmpty)
+        #expect(CourseIgnoresReconciler.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 10, "1142:GE3": 11], seen: seen).isEmpty)
+        #expect(CourseIgnoresReconciler.recreatedCourses(listed: ["1151:CS1": 1, "1151:PE4": 12], seen: seen).isEmpty)
+        #expect(CourseIgnoresReconciler.recreatedCourses(listed: ["1151:CS1": 9], seen: [:]).isEmpty)
     }
 
     @Test("A course another device deleted and added back drops this device's old setting instead of sending it")
     func reAddedCoursesTakeTheServersSetting() {
-        let recreated = AppState.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 2], seen: ["1151:CS1": 1, "1151:EE2": 2])
-        let pull = AppState.ignoredCoursesAfterPull(
+        let recreated = CourseIgnoresReconciler.recreatedCourses(listed: ["1151:CS1": 9, "1151:EE2": 2], seen: ["1151:CS1": 1, "1151:EE2": 2])
+        let pull = CourseIgnoresReconciler.ignoredCoursesAfterPull(
             server: [], decided: recreated, listed: ["1151:CS1", "1151:EE2"],
             local: ["1151:CS1", "1151:EE2"], protected: [], snapshotSemesters: ["1151"]
         )
 
         #expect(pull.ignored == ["1151:EE2"])
         #expect(pull.resend == ["1151:EE2"])
-        #expect(AppState.ignoredCoursesDiffer(
+        #expect(CourseIgnoresReconciler.ignoredCoursesDiffer(
             server: [], decided: recreated, listed: ["1151:CS1", "1151:EE2"], local: ["1151:CS1", "1151:EE2"],
             snapshotSemesters: ["1151"]
         ))
@@ -456,8 +456,8 @@ struct CourseIgnorePullTests {
     func keepLocalsTermResetKeepsTheIgnores() {
         let seen = ["1142:GE3": 3, "1151:CS1": 1, "1151:EE2": 2]
         let listed = ["1142:GE3": 3, "1151:CS1": 9, "1151:EE2": 10]
-        let pull = AppState.ignoredCoursesAfterPull(
-            server: [], decided: AppState.recreatedCourses(listed: listed, seen: seen), listed: Set(listed.keys),
+        let pull = CourseIgnoresReconciler.ignoredCoursesAfterPull(
+            server: [], decided: CourseIgnoresReconciler.recreatedCourses(listed: listed, seen: seen), listed: Set(listed.keys),
             local: ["1151:CS1"], protected: [], snapshotSemesters: ["1142", "1151"]
         )
 
@@ -469,9 +469,9 @@ struct CourseIgnorePullTests {
     func classTableResetLeavesNothingThere() {
         let seen = ["1142:GE3": 3, "1151:CS1": 1, "1151:EE2": 2]
         let listed = ["1142:GE3": 3, "1151:CS1": 9, "1151:EE2": 10]
-        let pull = AppState.ignoredCoursesAfterPull(
+        let pull = CourseIgnoresReconciler.ignoredCoursesAfterPull(
             server: ["1142:GE3"],
-            decided: AppState.recreatedCourses(listed: listed, seen: seen).union(["1142:GE3"]),
+            decided: CourseIgnoresReconciler.recreatedCourses(listed: listed, seen: seen).union(["1142:GE3"]),
             listed: Set(listed.keys), local: ["1142:GE3"], protected: [], snapshotSemesters: ["1142", "1151"]
         )
 
@@ -481,7 +481,7 @@ struct CourseIgnorePullTests {
 
     @Test("A setting the server lost with its course rows stays and goes up again; one it holds does not")
     func lostSettingsStayAndGoUpAgain() {
-        let pull = AppState.ignoredCoursesAfterPull(
+        let pull = CourseIgnoresReconciler.ignoredCoursesAfterPull(
             server: [], decided: ["1151:EE2"], listed: ["1151:CS1", "1151:EE2", "1151:PE4"],
             local: ["1151:CS1", "1151:EE2", "1151:GE3", "1151:PE4"], protected: ["1151:PE4"],
             snapshotSemesters: ["1151"]
@@ -492,12 +492,12 @@ struct CourseIgnorePullTests {
 
     @Test("A course being deleted here and a term reset since the snapshot keep this device's setting")
     func deletingCoursesAndResetTermsKeepTheLocalSetting() {
-        let left = AppState.courseKeysPullLeaves(
+        let left = CourseIgnoresReconciler.courseKeysPullLeaves(
             ["1151:CS1", "1151:EE2", "1142:GE3", "1142:PE4"], deleting: ["CS1"], resetSemesters: ["1142"]
         )
         #expect(left == ["1151:CS1", "1142:GE3", "1142:PE4"])
 
-        let pull = AppState.ignoredCoursesAfterPull(
+        let pull = CourseIgnoresReconciler.ignoredCoursesAfterPull(
             server: ["1151:CS1", "1151:EE2", "1142:GE3"], decided: ["1151:CS1", "1151:EE2", "1142:GE3"],
             listed: ["1151:CS1", "1151:EE2", "1142:GE3", "1142:PE4"], local: ["1142:PE4"],
             protected: left, snapshotSemesters: ["1151", "1142"]
@@ -508,11 +508,11 @@ struct CourseIgnorePullTests {
 
     @Test("The numeric id goes up for an ignored course the server has none for, once this device knows it")
     func missingNumericIdsAreSent() throws {
-        let courses = try #require(AppState.serverIgnoredCourses([
+        let courses = try #require(CourseIgnoresReconciler.serverIgnoredCourses([
             Self.row("CS1"), Self.row("EE2", moodleCourseId: 77), Self.row("GE3"), Self.row("PE4"),
         ], syncsCourses: true))
 
-        let toSend = AppState.moodleCourseIdsToSend(courses, protected: ["1151:PE4"]) { moodleId in
+        let toSend = CourseIgnoresReconciler.moodleCourseIdsToSend(courses, protected: ["1151:PE4"]) { moodleId in
             ["1151CS1": 4242, "1151EE2": 77, "1151PE4": 9].first { $0.key == moodleId }?.value
         }
 
@@ -522,9 +522,9 @@ struct CourseIgnorePullTests {
 
     @Test("Keep Local stops ignoring on the server what this device does not ignore")
     func keepLocalClearsServerOnlySettings() throws {
-        let server = try #require(AppState.serverIgnoredCourses([Self.row("CS1"), Self.row("EE2")], syncsCourses: true))
+        let server = try #require(CourseIgnoresReconciler.serverIgnoredCourses([Self.row("CS1"), Self.row("EE2")], syncsCourses: true))
 
-        let cleared = AppState.courseIgnoresToClear(server: server, local: ["1151:CS1", "1142:GE3"])
+        let cleared = CourseIgnoresReconciler.courseIgnoresToClear(server: server, local: ["1151:CS1", "1142:GE3"])
 
         #expect(cleared.map(\.key) == ["1151:EE2"])
     }

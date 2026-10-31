@@ -21,8 +21,8 @@ struct UseServerLocalCopiesTests {
         cache.assignments.replaceArchivedAssignmentIds(["7"])
         cache.assignments.replaceIgnoredAssignmentCourses(["1151:EE2"])
 
-        AppState.dropLocalCopies(
-            for: AppState.ReenableConflict(
+        SyncConflicts.dropLocalCopies(
+            for: SyncConflicts.ReenableConflict(
                 categories: ["courses", "course_names", "assignments"], description: "",
                 serverIgnoredCourses: [], serverMarkedAssignments: []
             ),
@@ -41,8 +41,8 @@ struct UseServerLocalCopiesTests {
         cache.colors.saveCourseColorMap(["CS1": 0x123456])
         cache.colors.notePickedCourseColor("CS1")
 
-        AppState.dropLocalCopies(
-            for: AppState.ReenableConflict(
+        SyncConflicts.dropLocalCopies(
+            for: SyncConflicts.ReenableConflict(
                 categories: ["course_colors"], description: "",
                 serverIgnoredCourses: nil, serverMarkedAssignments: []
             ),

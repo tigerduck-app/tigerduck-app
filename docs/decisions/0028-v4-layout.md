@@ -26,8 +26,8 @@ and the macOS build's source list was kept by hand in two copies.
     Mac's own screens; `Migrations/` one-time upgrade code; `Support/` the clock, concurrency,
     logging and security helpers and plain extensions; `Debug/`.
 
-  `Stores/` arrives with the stores; `Bridge/`, `Models/Domain/` and `Shared/` hold code the
-  later phases split into these folders and TigerDuckCore.
+  `Stores/` arrives with the stores; `Models/Domain/` and `Shared/` hold code the later phases
+  split into these folders and TigerDuckCore.
 
   Screens talk to stores and the account; stores reach `School/`, `Backend/` and
   `Persistence/`. `School/`, `Backend/`, `Mail/`, `Migrations/` and `Devices/LiveActivity/` have
@@ -54,6 +54,7 @@ and the macOS build's source list was kept by hand in two copies.
   | 2 | a login generation compared outside `Account/` |
   | 3 | `dataDidUpdate` or `isUpdatingFromNetwork`; `UserDefaults` outside `Persistence/` |
   | 4 | a `URLSession` created outside `School/NTUST/`, `Backend/Client/` and `Mail/Transport/` |
+  | 5 | none of its own; the phase adds `AppEnvironment`, `AppRouter` and `SceneActivation` |
   | 6 | the size budget; `Features/` using a type declared in `School/`, `Backend/` or `Persistence/` |
   | 7 | `Task.sleep` outside `Support/Clock/` and `Support/Concurrency/` |
 

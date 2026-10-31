@@ -1,11 +1,11 @@
 import SwiftUI
 
 struct ContentView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
         Group {
-            if appState.hasCompletedOnboarding {
+            if app.hasCompletedOnboarding {
                 MainTabView()
             } else {
                 OnboardingView()
@@ -21,7 +21,7 @@ struct ContentView: View {
 
 #if os(iOS)
 private struct ClassTableImportHost: ViewModifier {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var importModel: ClassTableImportModel?
     /// A link's import, apart from the scanner's, so opening a link never starts the camera or asks
     /// for its permission.
@@ -32,6 +32,7 @@ private struct ClassTableImportHost: ViewModifier {
     @State private var shareAfterScanner: ClassTableShareModel?
     /// The sheets shown here sit outside MainTabView's window reader.
     @State private var hostWindow = HostWindow()
+    @State private var keyWindowChanges = 0
 
     func body(content: Content) -> some View {
         content
@@ -39,7 +40,7 @@ private struct ClassTableImportHost: ViewModifier {
                 shareModel = shareAfterScanner
                 shareAfterScanner = nil
             }) { ClassTableImportScannerView(model: $0, onShare: { shareAfterScanner = $0 }) }
-            .classTableShareSheet(model: $shareModel, signIn: appState.authService.session.ticket)
+            .classTableShareSheet(model: $shareModel, signIn: app.authService.session.ticket)
             .classTableImportPrompts(linkModel, onConfirmScreen: false)
             .sheet(item: Binding(get: { linkModel?.pending }, set: { if $0 == nil { linkModel?.cancel() } })) { pending in
                 if let linkModel {
@@ -49,15 +50,24 @@ private struct ClassTableImportHost: ViewModifier {
             .onChange(of: linkModel?.isFinished) { _, isFinished in
                 if isFinished == true { linkModel = nil }
             }
-            .task(id: HeldShareLink.mayOpen(in: appState) ? HeldShareLink.shared.link?.id : nil) {
-                while !openHeldLink(), !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(500))
+            .task(id: HeldLinkWait(
+                link: HeldShareLink.mayOpen(in: app) ? HeldShareLink.shared.link?.id : nil,
+                notifySheetUp: app.updateNotifyCoordinator.activeNotifySheet != nil,
+                keyWindowChanges: keyWindowChanges
+            )) {
+                // A change of the notify sheet or the key window starts this again; a sheet in a tab
+                // is waited out.
+                while !openHeldLink(), hostWindow.isPresenting, !Task.isCancelled {
+                    await hostWindow.presentationsClosed()
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIWindow.didBecomeKeyNotification)) { _ in
+                keyWindowChanges += 1
             }
             // Last, so the share sheet shown here can open the scanner too.
             .environment(\.requestClassTableImport) {
                 guard importModel == nil else { return }
-                importModel = .live(authService: appState.authService)
+                importModel = .live(authService: app.authService)
             }
             .environment(\.isUpdatingImportedClassTable, linkModel?.isUpdating == true)
             .readsHostWindow(into: hostWindow)
@@ -65,7 +75,8 @@ private struct ClassTableImportHost: ViewModifier {
     }
 
     /// False while the link waits: the import's sheet would close a sheet or alert open in a tab,
-    /// and would race a What's New or update sheet about to show.
+    /// and would race a What's New or update sheet about to show. Only the window in front takes
+    /// it, so it never opens in another iPad window while this one has a sheet up.
     private func openHeldLink() -> Bool {
         // A link replaces what an open scanner, or an earlier link's import, shows, inside it.
         let inPlace: ClassTableImportModel? = if let importModel, !importModel.isFinished {
@@ -76,25 +87,31 @@ private struct ClassTableImportHost: ViewModifier {
             nil
         }
         if let inPlace {
-            if let text = HeldShareLink.shared.take(in: appState) { inPlace.linkOpened(text) }
+            if let text = HeldShareLink.shared.take(in: app) { inPlace.linkOpened(text) }
             return true
         }
-        let othersUp = UIApplication.shared.foregroundRoot?.presentedViewController != nil
-            || appState.updateNotifyCoordinator.activeNotifySheet != nil
-        if othersUp, HeldShareLink.shared.link != nil, HeldShareLink.mayOpen(in: appState) { return false }
-        guard let text = HeldShareLink.shared.take(in: appState) else { return true }
-        let model = ClassTableImportModel.live(authService: appState.authService)
+        let waits = !hostWindow.isForeground || hostWindow.isPresenting
+            || app.updateNotifyCoordinator.activeNotifySheet != nil
+        if waits, HeldShareLink.shared.link != nil, HeldShareLink.mayOpen(in: app) { return false }
+        guard let text = HeldShareLink.shared.take(in: app) else { return true }
+        let model = ClassTableImportModel.live(authService: app.authService)
         linkModel = model
         model.linkOpened(text)
         return true
     }
 }
 
+private struct HeldLinkWait: Equatable {
+    let link: UUID?
+    let notifySheetUp: Bool
+    let keyWindowChanges: Int
+}
+
 private struct ServerPushPopupHost: ViewModifier {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     func body(content: Content) -> some View {
-        @Bindable var bindable = appState
+        @Bindable var bindable = app.router
         content
             .alert(
                 bindable.pendingServerPopup?.title ?? "",
@@ -107,7 +124,7 @@ private struct ServerPushPopupHost: ViewModifier {
                 presenting: bindable.pendingServerPopup
             ) { popup in
                 Button(String(localized: "action_got_it"), role: .cancel) {
-                    appState.markServerPopupShown(popup.id)
+                    bindable.markServerPopupShown(popup.id)
                 }
             } message: { popup in
                 Text(popup.body)
@@ -123,13 +140,13 @@ private extension View {
 #endif
 
 struct MainTabView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppFeature = .home
     @State private var showTimezoneAlert: Bool = false
     @State private var hostWindow = HostWindow()
 
-    private var visibleTabs: [AppFeature] { appState.configuredTabs }
+    private var visibleTabs: [AppFeature] { app.preferences.configuredTabs }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -148,7 +165,7 @@ struct MainTabView: View {
                 tabTitle: visibleTabs.contains(.classTable) ? AppFeature.classTable.tabBarDisplayName : nil,
                 isShowingClassTable: selectedTab == .classTable,
                 store: .shared,
-                userName: ClassTableSwitcherEntry.userName(studentId: appState.authService.storedStudentId),
+                userName: ClassTableSwitcherEntry.userName(studentId: app.authService.storedStudentId),
                 showClassTable: { selectedTab = .classTable }
             )
         )
@@ -168,15 +185,15 @@ struct MainTabView: View {
             // foreground returns go through the scene-phase observer below.
             evaluateTimezoneAlert()
             #if os(iOS)
-            appState.updateNotifyCoordinator.evaluateWhatsNewOnLaunch(in: appState)
-            appState.updateNotifyCoordinator.checkInBackground()
+            app.updateNotifyCoordinator.evaluateWhatsNewOnLaunch(in: app)
+            app.updateNotifyCoordinator.checkInBackground()
             #endif
         }
-        .onChange(of: appState.pendingWidgetDestination) { _, _ in
+        .onChange(of: app.router.pendingWidgetDestination) { _, _ in
             drainPendingWidgetDestination()
         }
         #if os(iOS)
-        .onChange(of: appState.pendingDeepLink, initial: true) { _, new in
+        .onChange(of: app.router.pendingDeepLink, initial: true) { _, new in
             Self.route(new, in: hostWindow, open: open)
         }
         #endif
@@ -207,7 +224,7 @@ struct MainTabView: View {
 
     #if os(iOS)
     /// An assignment link opens Home at once, as the page it pushes closes the sheets itself.
-    static func route(_ link: AppState.DeepLink?, in host: HostWindow, open: @escaping (AppFeature) -> Void) {
+    static func route(_ link: DeepLink?, in host: HostWindow, open: @escaping (AppFeature) -> Void) {
         switch link {
         case .bulletin: host.closePresentations { _ in open(.announcements) }
         case .schoolMail where SchoolMailAvailability.isEnabled: host.closePresentations { _ in open(.schoolMail) }
@@ -221,12 +238,12 @@ struct MainTabView: View {
         let route = AppFeature.tabRoute(to: feature, visibleTabs: visibleTabs)
         selectedTab = route.tab
         if let page = route.moreDeepLink {
-            appState.pendingMoreDeepLink = page
+            app.router.pendingMoreDeepLink = page
         }
     }
 
     private func drainPendingWidgetDestination() {
-        guard let destination = appState.pendingWidgetDestination else { return }
+        guard let destination = app.router.pendingWidgetDestination else { return }
         switch destination {
         case .library:
             open(.library)
@@ -234,7 +251,7 @@ struct MainTabView: View {
             ImportedClassTableStore.shared.show(nil)
             open(.classTable)
         }
-        appState.clearPendingWidgetDestination()
+        app.router.clearPendingWidgetDestination()
     }
 
     @ViewBuilder

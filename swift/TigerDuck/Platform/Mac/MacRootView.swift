@@ -2,18 +2,18 @@
 import SwiftUI
 
 struct MacRootView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
         Group {
-            if appState.authService.hasStoredCredentials || appState.didSkipMacLogin {
+            if app.authService.hasStoredCredentials || app.didSkipMacLogin {
                 MacContentView()
             } else {
                 MacLoginView()
             }
         }
         .tlsPinPrompt()
-        .tint(AccentPreview.shared.tint(saved: appState.accentColor))
+        .tint(AccentPreview.shared.tint(saved: app.preferences.accentColor))
     }
 }
 
@@ -23,7 +23,7 @@ enum MacSidebarItem: Hashable {
 }
 
 struct MacContentView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var selection: MacSidebarItem = .more
 
     var body: some View {
@@ -42,31 +42,31 @@ struct MacContentView: View {
         .onChange(of: pinnedFeatures) { _, _ in
             seedSelectionIfNeeded()
         }
-        .onChange(of: appState.pendingWidgetDestination) { _, _ in
+        .onChange(of: app.router.pendingWidgetDestination) { _, _ in
             drainPendingWidgetDestination()
         }
     }
 
     private func drainPendingWidgetDestination() {
-        guard let destination = appState.pendingWidgetDestination else { return }
+        guard let destination = app.router.pendingWidgetDestination else { return }
         switch destination {
         case .classTable:
             ImportedClassTableStore.shared.show(nil)
             let route = AppFeature.tabRoute(to: .classTable, visibleTabs: pinnedFeatures)
             selection = route.moreDeepLink == nil ? .feature(.classTable) : .more
-            appState.pendingMoreDeepLink = route.moreDeepLink
+            app.router.pendingMoreDeepLink = route.moreDeepLink
         case .library:
             selection = .more
         }
-        appState.clearPendingWidgetDestination()
+        app.router.clearPendingWidgetDestination()
     }
 
     private var isUsingMacFallbackTabs: Bool {
-        appState.macConfiguredTabs == AppFeature.macDefaultTabs
+        app.preferences.macConfiguredTabs == AppFeature.macDefaultTabs
     }
 
     private var sourceConfiguredTabs: [AppFeature] {
-        appState.macConfiguredTabs
+        app.preferences.macConfiguredTabs
     }
 
     @ViewBuilder
@@ -193,12 +193,12 @@ struct MacRefreshShortcutClaimKey: PreferenceKey {
 struct MacGlobalRefreshButton: View {
     var takesShortcut = true
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
         ZStack {
             Button {
-                appState.backgroundSync(recheckSubmissions: true)
+                app.activation.refresh(recheckSubmissions: true)
             } label: {
                 Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
             }
@@ -216,7 +216,7 @@ struct MacGlobalRefreshButton: View {
     }
 
     private var isSyncing: Bool {
-        appState.sessionManager.loadingState == .loading
+        NTUSTSessionManager.shared.loadingState == .loading
     }
 }
 

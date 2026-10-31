@@ -76,8 +76,9 @@ class AccountStateTests(unittest.TestCase):
                       " does not clear it", cas.problems(self.root))
 
     def test_an_account_keychain_key_the_fresh_install_keeps_fails(self) -> None:
-        self.edit("swift/TigerDuck/App/AppState.swift", "AuthTokenManager.refreshTokenUsesKey,\n", "")
-        self.assertIn("keychain `refreshTokenUsesKey`: `init` in swift/TigerDuck/App/AppState.swift does not clear it",
+        self.edit("swift/TigerDuck/Account/FreshInstallKeychainPurge.swift", "AuthTokenManager.refreshTokenUsesKey,\n", "")
+        self.assertIn("keychain `refreshTokenUsesKey`: `keys` in swift/TigerDuck/Account/FreshInstallKeychainPurge.swift"
+                      " does not clear it",
                       cas.problems(self.root))
 
     def test_an_account_row_that_names_no_clearer_fails(self) -> None:

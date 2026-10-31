@@ -4,7 +4,7 @@ import TigerDuckCore
 struct TimeSliderSection: View {
     let courses: [SDCourse]
     var onSelectCourse: ((CourseTimeSlot) -> Void)? = nil
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var viewModel = TimeSliderViewModel(calendarStore: .shared)
 
     var body: some View {
@@ -24,13 +24,13 @@ struct TimeSliderSection: View {
 
     @ViewBuilder
     private var contentArea: some View {
-        switch appState.ntustProtectedAccessState(isEmpty: !viewModel.hasCourses) {
+        switch NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: !viewModel.hasCourses) {
         case .loginRequired:
             LoginRequiredView(
                 layout: .section,
                 title: String(localized: "common_not_signed_in"),
                 message: String(localized: "home_time_slider_sign_in_required_message"),
-                onPrimary: { appState.presentNTUSTLogin() }
+                onPrimary: { app.router.presentNTUSTLogin() }
             )
         case .content:
             sliderContent
@@ -64,7 +64,7 @@ struct TimeSliderSection: View {
     }
 
     private var sliderContent: some View {
-        let policy = appState.visualStylePolicy
+        let policy = app.preferences.visualStylePolicy
         return TimelineView(.everyMinute) { context in
             VStack(spacing: 12) {
                 CourseTimeCard(
@@ -78,7 +78,7 @@ struct TimeSliderSection: View {
                         .accessibilityHidden(true)
                     FluidGlassTrackView(
                         viewModel: viewModel,
-                        invertDirection: appState.invertSliderDirection,
+                        invertDirection: app.preferences.invertSliderDirection,
                         policy: policy
                     )
                 }

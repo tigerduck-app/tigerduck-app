@@ -2,7 +2,7 @@ import Observation
 import SwiftUI
 
 struct DebugEndpointView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var viewModel = DebugEndpointViewModel()
     #if os(iOS)
     @FocusState private var fieldFocused: Bool
@@ -49,7 +49,7 @@ struct DebugEndpointView: View {
                         #if os(iOS)
                         fieldFocused = false
                         #endif
-                        Task { await viewModel.save { await EndpointChangeSignOut(appState: appState).notes() } }
+                        Task { await viewModel.save { await EndpointChangeSignOut(app: app).notes() } }
                     } label: {
                         if viewModel.isChecking {
                             HStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -68,7 +68,7 @@ struct DebugEndpointView: View {
                         #if os(iOS)
                         fieldFocused = false
                         #endif
-                        Task { await viewModel.resetToDefault { await EndpointChangeSignOut(appState: appState).notes() } }
+                        Task { await viewModel.resetToDefault { await EndpointChangeSignOut(app: app).notes() } }
                     }
                     .disabled(viewModel.isChecking || viewModel.storedOverride == nil)
                 }
@@ -230,7 +230,7 @@ final class DebugEndpointViewModel {
 
 @MainActor
 struct EndpointChangeSignOut {
-    let appState: AppState
+    let app: AppEnvironment
 
     nonisolated static func endsSchoolAccount(hasCredentials: Bool, studentId: String?, backendSignedIn: Bool) -> Bool {
         hasCredentials || studentId != nil || backendSignedIn
@@ -239,8 +239,8 @@ struct EndpointChangeSignOut {
     func notes() async -> [String] {
         guard await endsSchoolAccount() else { return [] }
         var notes: [String] = []
-        if await appState.signOutDeletesUnsyncedData() { notes.append(String(localized: "settings_sign_out_unsynced_data")) }
-        if appState.signOutLeavesSyncedData() { notes.append(String(localized: "settings_api_endpoint_synced_data_stays")) }
+        if await app.signOutCheck.deletesUnsyncedData() { notes.append(String(localized: "settings_sign_out_unsynced_data")) }
+        if app.signOutCheck.leavesSyncedData() { notes.append(String(localized: "settings_api_endpoint_synced_data_stays")) }
         if ImportedClassTableStore.shared.hasImportedClassTables {
             notes.append(String(localized: "settings_sign_out_imported_tables"))
         }
@@ -250,8 +250,8 @@ struct EndpointChangeSignOut {
     /// Does not wait for the sign-out's backend calls: each goes to the backend its session was
     /// issued by, whatever endpoint is stored meanwhile.
     func run() async {
-        if await endsSchoolAccount() { SignOutPlan.school(appState).run() }
-        if appState.isLibraryLoggedIn { appState.logoutLibrary() }
+        if await endsSchoolAccount() { SignOutPlan.school(app).run() }
+        if app.library.isLoggedIn { app.library.logout() }
         #if os(iOS)
         if MailAccountManager.shared.isLoggedIn { MailAccountManager.shared.logout() }
         #endif
@@ -259,9 +259,9 @@ struct EndpointChangeSignOut {
 
     private func endsSchoolAccount() async -> Bool {
         Self.endsSchoolAccount(
-            hasCredentials: appState.authService.hasStoredCredentials,
-            studentId: appState.authService.storedStudentId,
-            backendSignedIn: await appState.authTokenManager.isLoggedIn
+            hasCredentials: app.authService.hasStoredCredentials,
+            studentId: app.authService.storedStudentId,
+            backendSignedIn: await app.authTokenManager.isLoggedIn
         )
     }
 }
@@ -274,7 +274,7 @@ extension View {
 
 private struct EndpointChangeAlert: ViewModifier {
     let viewModel: DebugEndpointViewModel
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     func body(content: Content) -> some View {
         content.alert(
@@ -286,7 +286,7 @@ private struct EndpointChangeAlert: ViewModifier {
             presenting: viewModel.pendingChange
         ) { change in
             Button(String(localized: "settings_api_endpoint_change_alert_confirm"), role: .destructive) {
-                Task { await viewModel.confirm(change) { await EndpointChangeSignOut(appState: appState).run() } }
+                Task { await viewModel.confirm(change) { await EndpointChangeSignOut(app: app).run() } }
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: { change in

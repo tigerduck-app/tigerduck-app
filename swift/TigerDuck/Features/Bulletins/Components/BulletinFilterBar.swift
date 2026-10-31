@@ -6,10 +6,10 @@ struct BulletinFilterBar: View {
     let selected: Set<String>
     let onToggle: (String) -> Void
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
-        let policy = appState.visualStylePolicy
+        let policy = app.preferences.visualStylePolicy
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
             Text(title)
                 .font(TigerDuckTheme.Typography.caption)

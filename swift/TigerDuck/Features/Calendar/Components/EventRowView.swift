@@ -5,7 +5,7 @@ struct EventRowView: View {
     let event: SDCalendarEvent
 
     #if os(iOS)
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     #endif
 
     #if os(iOS)
@@ -42,7 +42,7 @@ struct EventRowView: View {
                     "",
                     isOn: Binding(
                         get: { holidayOverrides.contains(holidayID) },
-                        set: { appState.setHolidayNotify($0, holidayID: holidayID) }
+                        set: { app.holidays.setHolidayNotify($0, holidayID: holidayID) }
                     )
                 )
                 .labelsHidden()

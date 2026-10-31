@@ -40,13 +40,13 @@ struct MailLoginSheet: View {
     }
 
     @Binding var isPresented: Bool
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     private let account = MailAccountManager.shared
 
     var body: some View {
         let prefill = Self.initialFields(
-            storedID: appState.authService.storedStudentId,
-            storedPassword: appState.authService.storedPassword,
+            storedID: app.authService.storedStudentId,
+            storedPassword: app.authService.storedPassword,
             lastRejected: account.lastRejectedPassword
         )
         return LoginSheet(

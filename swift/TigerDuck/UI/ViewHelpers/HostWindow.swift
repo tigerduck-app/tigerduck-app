@@ -1,0 +1,148 @@
+#if canImport(UIKit)
+import SwiftUI
+import UIKit
+
+extension UIViewController {
+    func closePresentations(then: @escaping (_ closedAll: Bool) -> Void) {
+        var next = presentedViewController
+        while let shown = next {
+            guard !(shown is UIAlertController), !shown.isModalInPresentation,
+                  shown.viewIfLoaded?.holdsReminderKeep != true
+            else { return then(false) }
+            next = shown.presentedViewController
+        }
+        guard presentedViewController != nil else { return then(true) }
+        dismiss(animated: true) { then(true) }
+    }
+}
+
+/// The window a tab view is shown in. A link closes the sheets of the window that opens its page, as
+/// with two iPad windows the first foreground one may be the other
+/// (https://github.com/tigerduck-app/tigerduck-app/issues/676).
+final class HostWindow {
+    weak var window: UIWindow?
+
+    /// Until the view first lands in its window, as on a cold launch, the foreground window's root,
+    /// so a sheet already up there is still seen.
+    private var root: UIViewController? { (window ?? Self.foreground)?.rootViewController }
+
+    var isPresenting: Bool { root?.presentedViewController != nil }
+
+    func closePresentations(then: @escaping (_ closedAll: Bool) -> Void) {
+        guard let root else { return then(true) }
+        root.closePresentations(then: then)
+    }
+
+    /// Returns once nothing is presented over the window's root, or the task is cancelled. It
+    /// wakes when the shown view moves in or out of a window, not on a timer.
+    func presentationsClosed() async {
+        while let shown = root?.presentedViewController, !Task.isCancelled {
+            await WindowChangeProbe.nextChange(of: shown.view)
+        }
+    }
+
+    /// Whether this is the window in front; true while either window is unknown, as on a cold launch.
+    var isForeground: Bool {
+        guard let window, let foreground = Self.foreground else { return true }
+        return window === foreground
+    }
+
+    /// The key window of a foreground scene, else the first window of the first one.
+    static var foreground: UIWindow? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive || $0.activationState == .foregroundInactive }
+        let scene = scenes.first { $0.windows.contains(where: \.isKeyWindow) }
+            ?? scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first
+    }
+}
+
+/// Reports the next time the view it is added to moves in or out of a window.
+private final class WindowChangeProbe: UIView {
+    private var onChange: (() -> Void)?
+    private weak var addedIn: UIWindow?
+
+    static func nextChange(of view: UIView) async {
+        let probe = WindowChangeProbe(frame: .zero)
+        probe.isHidden = true
+        probe.isUserInteractionEnabled = false
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { done in
+                view.addSubview(probe)
+                probe.addedIn = probe.window
+                probe.onChange = { done.resume() }
+            }
+        } onCancel: {
+            Task { @MainActor in probe.fire() }
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window !== addedIn else { return }
+        fire()
+    }
+
+    private func fire() {
+        guard let onChange else { return }
+        self.onChange = nil
+        onChange()
+        // Not inside the window change UIKit is making.
+        Task { @MainActor in self.removeFromSuperview() }
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var hostWindow = HostWindow()
+}
+
+extension View {
+    func readsHostWindow(into host: HostWindow) -> some View {
+        background(HostWindowReader(host: host))
+    }
+
+    func keptOverReminders(_ kept: Bool = true) -> some View {
+        background { if kept { ReminderKeep() } }
+    }
+}
+
+private struct ReminderKeep: UIViewRepresentable {
+    final class Mark: UIView {}
+
+    func makeUIView(context: Context) -> Mark {
+        let mark = Mark()
+        mark.isUserInteractionEnabled = false
+        return mark
+    }
+    func updateUIView(_ view: Mark, context: Context) {}
+}
+
+private struct HostWindowReader: UIViewRepresentable {
+    let host: HostWindow
+
+    final class Probe: UIView {
+        let host: HostWindow
+
+        init(host: HostWindow) {
+            self.host = host
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used; this view is created programmatically") }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            host.window = window
+        }
+    }
+
+    func makeUIView(context: Context) -> Probe { Probe(host: host) }
+    func updateUIView(_ view: Probe, context: Context) {}
+}
+
+private extension UIView {
+    var holdsReminderKeep: Bool { self is ReminderKeep.Mark || subviews.contains { $0.holdsReminderKeep } }
+}
+#endif

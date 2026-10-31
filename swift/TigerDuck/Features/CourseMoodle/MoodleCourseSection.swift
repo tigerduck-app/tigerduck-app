@@ -158,12 +158,12 @@ struct MoodleCourseSummaryView: View {
 private struct MoodleCourseSummaryBody: View {
     let html: String
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openMoodleLink) private var openMoodleLink
 
     var body: some View {
         Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: html)))
-            .markdownTheme(.bulletin(accent: appState.accentColor))
+            .markdownTheme(.bulletin(accent: app.preferences.accentColor))
             .environment(\.openURL, OpenURLAction { url in
                 openMoodleLink(url)
                 return .handled

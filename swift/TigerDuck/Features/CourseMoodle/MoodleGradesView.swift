@@ -4,7 +4,7 @@ import SwiftUI
 struct MoodleGradesView: View {
     let store: MoodleCourseStore
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
     @State private var expanded: Set<Int> = []
 
@@ -16,7 +16,7 @@ struct MoodleGradesView: View {
                 if total != nil || !items.isEmpty {
                     VStack(spacing: TigerDuckTheme.Spacing.lg) {
                         if let total {
-                            MoodleGradeTotalCard(total: total, policy: appState.visualStylePolicy)
+                            MoodleGradeTotalCard(total: total, policy: app.preferences.visualStylePolicy)
                         }
                         if !items.isEmpty {
                             itemsCard(items)
@@ -65,12 +65,12 @@ struct MoodleGradesView: View {
                 row(item)
             }
         }
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
     }
 
     @ViewBuilder
     private func row(_ item: MoodleGradeItem) -> some View {
-        let content = MoodleGradeRow(item: item, accent: appState.accentColor, isExpanded: isExpanded(item.id))
+        let content = MoodleGradeRow(item: item, accent: app.preferences.accentColor, isExpanded: isExpanded(item.id))
         if let page = item.activityPage {
             content.contextMenu {
                 Button {

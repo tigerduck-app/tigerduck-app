@@ -70,7 +70,7 @@ final class ClassTableImportModel: Identifiable {
             store: .shared,
             signedInStudentId: { authService.storedStudentId },
             isCurrent: authService.session.currentCheck(),
-            lookup: { try await AppServiceBridge.importedCourses(semester: $0, courseNos: $1) }
+            lookup: { try await CourseDetails.importedCourses(semester: $0, courseNos: $1) }
         )
     }
 

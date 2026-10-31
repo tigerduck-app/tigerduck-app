@@ -3,8 +3,8 @@ import Foundation
 import Observation
 
 /// The Sync course information preference. Its only copy is `Defaults[.cloudSyncEnabled]`;
-/// `AppState.cloudSyncEnabled` forwards here. Onboarding, the `@Default` switch in TigerSync
-/// settings, the Mac toggles (through `AppState`) and sign-out all write it, and a change's
+/// `AppEnvironment.cloudSyncEnabled` forwards here. Onboarding, the `@Default` switch in TigerSync
+/// settings, the Mac toggles (through `AppEnvironment`) and sign-out all write it, and a change's
 /// effects (Live Activity, the push schedule, `CloudSyncCoordinator`) must follow whichever
 /// wrote it. So `isEnabled` reads it every time, and each change in this process reaches the
 /// handler once. `Defaults.observe` is KVO and calls back inside the write, so effects start

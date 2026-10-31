@@ -2,7 +2,7 @@ import SwiftUI
 import TigerDuckCore
 
 struct SemesterSection: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     let term: String
     let courses: [CourseGrade]
@@ -29,7 +29,7 @@ struct SemesterSection: View {
                 }
             }
         }
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 

@@ -7,7 +7,7 @@ struct MoodleDiscussionView: View {
     let discussion: MoodleDiscussion
     let forum: MoodleForum
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var unreadAtOpening: Set<Int>?
     @State private var isOpening = false
     @State private var files = MoodleFileOpener()
@@ -21,7 +21,7 @@ struct MoodleDiscussionView: View {
                     MoodlePostCard(
                         entry: entry,
                         isUnread: unreadAtOpening?.contains(entry.post.id) ?? entry.post.isUnread,
-                        policy: appState.visualStylePolicy,
+                        policy: app.preferences.visualStylePolicy,
                         store: store,
                         discussion: discussion,
                         files: files
@@ -168,7 +168,7 @@ private struct MoodlePostCard: View {
     let files: MoodleFileOpener
     var now: Date = AppClock.now()
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
     @Environment(\.openMoodleLink) private var openMoodleLink
 
@@ -279,7 +279,7 @@ private struct MoodlePostCard: View {
                 .foregroundStyle(Color.textSecondary)
         } else {
             Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: post.message)))
-                .markdownTheme(.bulletin(accent: appState.accentColor))
+                .markdownTheme(.bulletin(accent: app.preferences.accentColor))
                 .environment(\.openURL, OpenURLAction { url in
                     files.forgetPendingOpen()
                     openMoodleLink(url)

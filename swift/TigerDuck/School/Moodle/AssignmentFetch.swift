@@ -1,15 +1,31 @@
 import Defaults
 import Foundation
 
+/// Returns once a fetch may apply what it got: true after the pull it waits on completed, false
+/// when that pull was cancelled.
+typealias PullGate = @MainActor () async -> Bool
+
 private final class AssignmentRound {
     let signIn: AccountSession.Ticket
     let rechecks: Bool
     var task: Task<Void, Never>?
     var assignments: [SDAssignment] = []
+    /// The gates of the callers sharing the round, in the order they came.
+    var gates: [PullGate] = []
 
     init(signIn: AccountSession.Ticket, rechecks: Bool) {
         self.signIn = signIn
         self.rechecks = rechecks
+    }
+
+    /// A caller's cancelled pull hands the wait on to the next caller's.
+    func pulled() async -> Bool {
+        var next = 0
+        while next < gates.count {
+            if await gates[next]() { return true }
+            next += 1
+        }
+        return false
     }
 }
 
@@ -20,35 +36,50 @@ final class AssignmentRounds {
     fileprivate var statusAskedAt: [String: ContinuousClock.Instant] = [:]
 }
 
-extension AppServiceBridge {
+/// Moodle assignment rounds: one at a time for every caller, saved and uploaded for reminders.
+enum AssignmentFetch {
 
-    static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
+    static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
+
+    /// The round applies what it fetched once `applyAfter` passes, as after a refresh's pull.
+    static func fetchAssignments(
+        authService: AuthService, recheckSubmissions: Bool = false,
+        applyAfter: @escaping PullGate = { true }
+    ) async -> [SDAssignment] {
         let ticket = authService.session.ticket
         return await sharedRound(
             signIn: ticket,
             rechecks: recheckSubmissions,
-            isCurrent: { authService.session.isCurrent(ticket) }
-        ) {
-            await runAssignmentRound(authService: authService, recheckSubmissions: recheckSubmissions)
+            isCurrent: { authService.session.isCurrent(ticket) },
+            applyAfter: applyAfter
+        ) { pulled in
+            await runAssignmentRound(
+                authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: pulled
+            )
         }
     }
 
+    /// `run` gets the gate of every caller that shares the round, so a caller that joins can
+    /// release a round whose starter's pull was cancelled.
     static func sharedRound(
         signIn: AccountSession.Ticket,
         rechecks: Bool,
         isCurrent: @MainActor () -> Bool,
         rounds: AssignmentRounds = .shared,
-        run: @escaping @MainActor () async -> [SDAssignment]
+        applyAfter: @escaping PullGate = { true },
+        run: @escaping @MainActor (_ pulled: @escaping PullGate) async -> [SDAssignment]
     ) async -> [SDAssignment] {
         var waitedFor: AssignmentRound?
         while let round = rounds.running, round.signIn == signIn, round !== waitedFor {
+            round.gates.append(applyAfter)
             await round.task?.value
             if round.rechecks || !rechecks { return answer(round, isCurrent: isCurrent) }
             waitedFor = round
         }
         guard isCurrent() else { return AssignmentStore.shared.loadAssignments() }
         let round = AssignmentRound(signIn: signIn, rechecks: rechecks)
-        round.task = Task { round.assignments = await run() }
+        round.gates = [applyAfter]
+        round.task = Task { round.assignments = await run { await round.pulled() } }
         rounds.running = round
         await round.task?.value
         if rounds.running === round { rounds.running = nil }
@@ -71,7 +102,9 @@ extension AppServiceBridge {
         }
     }
 
-    static func refreshAssignmentsIfDue(authService: AuthService) async {
+    static func refreshAssignmentsIfDue(
+        authService: AuthService, applyAfter: @escaping PullGate = { true }
+    ) async {
         let now = Date()
         guard authService.storedStudentId != nil,
               isForegroundRefreshDue(
@@ -83,7 +116,7 @@ extension AppServiceBridge {
         let showsProgress = manager.loadingState == .idle || manager.loadingState == .loaded
         if showsProgress { manager.loadingState = .loading }
         let starts = manager.loadingStarts
-        _ = await fetchAssignments(authService: authService)
+        _ = await fetchAssignments(authService: authService, applyAfter: applyAfter)
         if showsProgress, manager.loadingStarts == starts { manager.loadingState = .loaded }
     }
 
@@ -92,16 +125,9 @@ extension AppServiceBridge {
         AssignmentRounds.shared.running = nil
     }
 
-    static func moodleCalendarEvent(_ assignment: SDAssignment) -> SDCalendarEvent {
-        SDCalendarEvent(
-            eventId: "moodle-\(assignment.assignmentId)",
-            title: assignment.displayTitle,
-            date: assignment.dueDate,
-            source: .moodle
-        )
-    }
-
-    private static func runAssignmentRound(authService: AuthService, recheckSubmissions: Bool) async -> [SDAssignment] {
+    private static func runAssignmentRound(
+        authService: AuthService, recheckSubmissions: Bool, applyAfter: PullGate
+    ) async -> [SDAssignment] {
         let ticket = authService.session.ticket
         guard let account = authService.storedStudentId,
               authService.storedPassword != nil else {
@@ -116,7 +142,7 @@ extension AppServiceBridge {
             let currentCourses = CourseStore.shared.loadCourses(semester: currentSemester)
 
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
-            let moodleIdMapForAssignments = moodleCourseIdMap(moodleEnrolled)
+            let moodleIdMapForAssignments = AssignmentRecords.moodleCourseIdMap(moodleEnrolled)
             if !Task.isCancelled,
                authService.session.isCurrent(ticket) {
                 MoodleFiles.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
@@ -133,7 +159,7 @@ extension AppServiceBridge {
             if currentCourseNos.isEmpty {
                 relevantCourses = moodleEnrolled.filter { $0.semester == currentSemester }
             } else {
-                relevantCourses = coursesForTerm(
+                relevantCourses = AssignmentRecords.coursesForTerm(
                     moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) },
                     semester: currentSemester
                 )
@@ -154,14 +180,14 @@ extension AppServiceBridge {
             )
             let courseNoByMoodleId = Dictionary(
                 uniqueKeysWithValues: relevantCourses.map {
-                    ($0.id, assignmentCourseNo(for: $0, localCourseNos: localCourseNos))
+                    ($0.id, AssignmentRecords.assignmentCourseNo(for: $0, localCourseNos: localCourseNos))
                 }
             )
 
             let cachedAssignments = AssignmentStore.shared.loadAssignments()
-            let confirmed = recheckSubmissions ? [:] : confirmedSubmissions(in: cachedAssignments)
+            let confirmed = recheckSubmissions ? [:] : AssignmentRecords.confirmedSubmissions(in: cachedAssignments)
             let closed = AssignmentStore.shared.loadClosedUnsubmittedAssignments()
-            let recordsToAsk = recordsToAskAbout(
+            let recordsToAsk = AssignmentRecords.recordsToAskAbout(
                 records, confirmed: confirmed, closed: recheckSubmissions ? [:] : closed
             )
             let askedAt = Date()
@@ -169,8 +195,10 @@ extension AppServiceBridge {
                 try await MoodleAssignmentService.fetchSubmissionStatus(assignId: $0)
             }
             let statuses = answers.mapValues(\.status)
+            // The marks below, and what is saved, are read once the backend's have been applied.
+            guard await applyAfter() else { return AssignmentStore.shared.loadAssignments() }
 
-            let freshAssignments = assignments(
+            let freshAssignments = AssignmentRecords.assignments(
                 from: records,
                 moodleCoursesById: moodleCoursesById,
                 courseNoByMoodleId: courseNoByMoodleId,
@@ -185,7 +213,7 @@ extension AppServiceBridge {
 
             let assignmentsToPersist: [SDAssignment]
             if statuses.count < recordsToAsk.count {
-                assignmentsToPersist = preserveCompletionState(
+                assignmentsToPersist = AssignmentRecords.preserveCompletionState(
                     freshAssignments: freshAssignments,
                     cachedAssignments: cachedAssignments,
                     answeredIds: Set(statuses.keys.map(String.init))
@@ -197,7 +225,7 @@ extension AppServiceBridge {
             let persisted = persistRound(
                 assignmentsToPersist,
                 records: records,
-                closed: closedUnsubmitted(records: records, statuses: statuses, askedAt: askedAt, kept: closed),
+                closed: AssignmentRecords.closedUnsubmitted(records: records, statuses: statuses, askedAt: askedAt, kept: closed),
                 answered: answers.mapValues(\.askedAt),
                 account: account,
                 fetchedAt: askedAt,
@@ -211,12 +239,12 @@ extension AppServiceBridge {
                 }
                 uploadForReminders(assignmentsToPersist)
             }
-            await MainActor.run { record(.ok, for: .moodle, round: ticket, authService: authService) }
+            await MainActor.run { CourseFetch.record(.ok, for: .moodle, round: ticket, authService: authService) }
             return assignmentsToPersist
         } catch {
             await MainActor.run {
                 let note = (error as? MoodleWebserviceError) == .siteMaintenance ? error.localizedDescription : nil
-                record(.failed, for: .moodle, note: note, round: ticket, authService: authService)
+                CourseFetch.record(.failed, for: .moodle, note: note, round: ticket, authService: authService)
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return AssignmentStore.shared.loadAssignments()
@@ -247,7 +275,7 @@ extension AppServiceBridge {
     private static func saveMoodleCalendarEvents(of assignments: [SDAssignment], in cache: AssignmentStore) {
         var calendarEvents = cache.loadCalendarEvents()
         calendarEvents.removeAll { $0.source == .moodle }
-        calendarEvents.append(contentsOf: assignments.map(moodleCalendarEvent))
+        calendarEvents.append(contentsOf: assignments.map(AssignmentRecords.moodleCalendarEvent))
         cache.saveCalendarEvents(calendarEvents)
     }
 
@@ -324,134 +352,5 @@ extension AppServiceBridge {
         }
         upload(PushAPI.AssignmentUploadRequest(assignments: entries))
         #endif
-    }
-
-    static func assignments(
-        from records: [MoodleAssignmentRecord],
-        moodleCoursesById: [Int: MoodleEnrolledCourse],
-        courseNoByMoodleId: [Int: String],
-        statuses: [Int: MoodleSubmissionStatus],
-        confirmed: [String: Date],
-        extensions: [String: Date] = [:],
-        marks: AssignmentMarks
-    ) -> [SDAssignment] {
-        records.compactMap { record in
-            let status = statuses[record.assignId]
-            let assignmentId = String(record.assignId)
-            let extensionDate = status == nil ? extensions[assignmentId] : status?.extensionDueDate
-            guard let dueDate = record.dueDate else { return nil }
-            guard !record.noSubmissions else { return nil }
-
-            let moodleCourse = moodleCoursesById[record.courseId]
-            let confirmedAt = confirmed[assignmentId]
-            return marks.apply(to: SDAssignment(
-                assignmentId: assignmentId,
-                courseNo: moodleCourse.flatMap { courseNoByMoodleId[$0.id] } ?? "",
-                courseName: moodleCourse.map { courseName(from: $0.fullname) } ?? "",
-                title: record.name,
-                dueDate: dueDate,
-                isCompleted: status?.isSubmitted ?? (confirmedAt != nil),
-                moodleUrl: "\(AppConstants.moodleBaseURL.absoluteString)/mod/assign/view.php?id=\(record.cmId)",
-                cutoffDate: record.cutoffDate,
-                submittedAt: status?.submittedAt ?? confirmedAt,
-                extensionDueDate: extensionDate,
-                semester: marks.semester
-            ))
-        }
-    }
-
-    static func recordsToAskAbout(
-        _ records: [MoodleAssignmentRecord],
-        confirmed: [String: Date],
-        closed: [String: Date]
-    ) -> [MoodleAssignmentRecord] {
-        records.filter { record in
-            let id = String(record.assignId)
-            return record.dueDate != nil && !record.noSubmissions && confirmed[id] == nil
-                && !isClosed(record, askedAt: closed[id])
-        }
-    }
-
-    /// id. It takes no submission after the cutoff, so a round need not ask again until a teacher
-    /// moves the cutoff past that answer. `askedAt` precedes the round's requests, and one left
-    static func closedUnsubmitted(
-        records: [MoodleAssignmentRecord],
-        statuses: [Int: MoodleSubmissionStatus],
-        askedAt: Date,
-        kept: [String: Date]
-    ) -> [String: Date] {
-        var closed: [String: Date] = [:]
-        for record in records {
-            let id = String(record.assignId)
-            if let status = statuses[record.assignId] {
-                // An extension takes this student's submission past the cutoff.
-                if !status.isSubmitted, isClosed(record, askedAt: askedAt),
-                   (status.extensionDueDate ?? .distantPast) < askedAt { closed[id] = askedAt }
-            } else if let keptAt = kept[id], isClosed(record, askedAt: keptAt) {
-                closed[id] = keptAt
-            }
-        }
-        return closed
-    }
-
-    private static func isClosed(_ record: MoodleAssignmentRecord, askedAt: Date?) -> Bool {
-        guard let askedAt, let cutoff = record.cutoffDate else { return false }
-        return cutoff < askedAt
-    }
-
-    /// One Moodle course per course number. Moodle keeps past enrolments, so a retaken course
-    /// has one for each term it was taken in; this term's wins, else the one that started last.
-    static func coursesForTerm(_ courses: [MoodleEnrolledCourse], semester: String) -> [MoodleEnrolledCourse] {
-        let byCourseNo = Dictionary(grouping: courses, by: \.courseNo)
-        return courses.filter { course in
-            guard let siblings = byCourseNo[course.courseNo], siblings.count > 1 else { return true }
-            if siblings.contains(where: { $0.semester == semester }) { return course.semester == semester }
-            let latest = siblings.max { ($0.startDate ?? .distantPast, $0.id) < ($1.startDate ?? .distantPast, $1.id) }
-            return course.id == latest?.id
-        }
-    }
-
-    /// Submissions Moodle has confirmed, with their time, by assignment id. Moodle keeps a
-    /// submission once it has a time, short of a teacher reverting it to a draft.
-    static func confirmedSubmissions(in cached: [SDAssignment]) -> [String: Date] {
-        Dictionary(
-            cached.compactMap { assignment in
-                guard assignment.isCompleted, let submittedAt = assignment.submittedAt else { return nil }
-                return (assignment.assignmentId, submittedAt)
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
-    }
-
-    static func preserveCompletionState(
-        freshAssignments: [SDAssignment],
-        cachedAssignments: [SDAssignment],
-        answeredIds: Set<String>
-    ) -> [SDAssignment] {
-        let previousById = Dictionary(
-            uniqueKeysWithValues: cachedAssignments.map { ($0.assignmentId, $0) }
-        )
-
-        for assignment in freshAssignments where !answeredIds.contains(assignment.assignmentId) {
-            guard let previous = previousById[assignment.assignmentId],
-                  previous.isCompleted else { continue }
-            assignment.isCompleted = true
-            if assignment.submittedAt == nil {
-                assignment.submittedAt = previous.submittedAt
-            }
-        }
-
-        return freshAssignments
-    }
-
-    private static func courseName(from fullname: String) -> String {
-        let parts = fullname.components(separatedBy: " ")
-        guard parts.count >= 2 else { return fullname }
-
-        if let index = parts.firstIndex(where: { CourseSelectionService.isCourseNo($0[...]) }), index + 1 < parts.count {
-            return parts[(index + 1)...].joined(separator: " ")
-        }
-
-        return fullname
     }
 }

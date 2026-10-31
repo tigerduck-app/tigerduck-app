@@ -126,7 +126,7 @@ final class HomeViewModel {
         await MainActor.run { manager.loadingState = .loading }
 
         MoodleEnrolledCoursesService.dropSharedAnswer()
-        _ = await AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
+        _ = await AssignmentFetch.fetchAssignments(authService: authService, recheckSubmissions: true)
         // Read back from the store, so a mark made while the round ran stays.
         reloadFromCache()
         manager.loadingState = .loaded

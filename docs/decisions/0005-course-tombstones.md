@@ -11,18 +11,20 @@ deletion records (`course_tombstones`). The server keys every row a device uploa
 `DELETE /sync/courses/{key}` matches that exact `course_key` and writes a tombstone; the
 Moodle idnumber, which `PATCH /sync/courses/{id}/override` takes, deletes nothing. An upload
 only upserts, and its `force_keys` re-assert the keys they name past any tombstone. A
-semester reset (`AppState.deleteBackendCourses(semester:thenLocally:)`) leaves the server
+semester reset (`EditSender.deleteBackendCourses(semester:thenLocally:)`) leaves the server
 with no rows for the term and a tombstone for every course it held.
 
 ## Decision
 
-- `AppState.reconcileCourses` (`swift/TigerDuck/App/AppState+CourseReconcile.swift`) applies a
-  term's tombstones before anything reads the term's emptiness.
+- `CourseRosterReconciler.reconcileCourses`
+  (`swift/TigerDuck/Backend/Sync/Reconcilers/CourseRosterReconciler.swift`) applies a term's
+  tombstones before anything reads the term's emptiness.
 - A reset tombstone does not bind the device that wrote it, by the backend's rule: the next
   roster upload lifts the reset tombstones of the keys it names. `/v4` names no device on a
   tombstone, so the reconcile skips one of kind `reset` whose `hlc`, the reset's stamp, is at or
-  before the moment this device's own reset of the term landed (`AppState.isOwnReset`), and
-  keeps that moment while the snapshot still shows such a tombstone.
+  before the moment this device's own reset of the term landed
+  (`CourseRosterReconciler.isOwnReset`), and keeps that moment while the snapshot still shows
+  such a tombstone.
 - A single-course delete of a course the school lists for the term binds its author like every
   other device: the author hides it locally, and its roster uploads leave it out.
 - A single-course delete of a hand-added course does not bind its author. From backend 3.3.6
@@ -55,8 +57,8 @@ with no rows for the term and a tombstone for every course it held.
 
 - The tombstone pass must stay ahead of the empty-term branch in `reconcileCourses`.
 - Code that builds a course key uses `CourseTombstone.serverKey(semester:courseNo:)`, which
-  gives "client:{semester}:{course_no}", as the course upload (`AppState.courseUploadRequest`),
-  the outbox's course deletes, Use Local's deletes (`AppState.keepLocalCourses`) and the hand-add
+  gives "client:{semester}:{course_no}", as the course upload (`SchoolDataUploader.courseUploadRequest`),
+  the outbox's course deletes, Use Local's deletes (`SyncConflicts.keepLocalCourses`) and the hand-add
   paths' forced keys (`ClassTableView`, `MacClassTableView+Editing`) do; adding a course back
   drops its queued delete by that key (`CloudSyncCoordinator.discardCourseDeletes`).
 - A course deleted here is deleted on the server through the outbox, which retries until the
