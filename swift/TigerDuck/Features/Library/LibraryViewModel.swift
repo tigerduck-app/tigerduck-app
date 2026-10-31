@@ -110,14 +110,15 @@ final class LibraryViewModel {
         startQRRefreshCycle()
     }
 
-    func loginAndStart() {
+    func loginAndStart(signIn: (@MainActor @Sendable (String, String) async throws -> Void)? = nil) {
         let trimmedUsername = libUsername.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedUsername.isEmpty, !libPassword.isEmpty, !isLoggingIn else { return }
         access = .signingIn
+        let signIn = signIn ?? { try await LibraryAccount.signIn(username: $0, password: $1) }
         Task { @MainActor in
             errorMessage = nil
             do {
-                try await LibraryAccount.signIn(username: trimmedUsername.uppercased(), password: libPassword)
+                try await signIn(trimmedUsername.uppercased(), libPassword)
                 libPassword = ""
                 access = .signedIn(username: LibraryAccount.username)
                 startQRRefreshCycle()
@@ -239,7 +240,8 @@ final class LibraryViewModel {
         stopTimers()
         code = ShownCode()
         cycle.noteSuccess()
-        access = .stored
+        // A typed sign-in in flight settles the state when it ends; a second one must not start before.
+        if access != .signingIn { access = .stored }
         libUsername = LibraryAccount.suggestedUsername
         libPassword = ""
     }

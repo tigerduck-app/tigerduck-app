@@ -5,6 +5,12 @@ import UIKit
 
 @MainActor
 struct LibraryViewModelAccountTests {
+    @MainActor
+    private final class SignInCalls {
+        var count = 0
+        var isOpen = false
+    }
+
     @Test func anAccountChangeTakesTheCodeOffTheScreenAtOnce() {
         let model = LibraryViewModel()
         model.qrCodeImage = UIImage()
@@ -43,6 +49,34 @@ struct LibraryViewModelAccountTests {
             LibraryService.schoolAccountDidSignOut()
 
             #expect(model.libUsername.isEmpty)
+        }
+    }
+
+    @Test func anAccountChangeDuringATypedSignInRefusesASecondSignIn() async throws {
+        let calls = SignInCalls()
+        let signIn: @MainActor @Sendable (String, String) async throws -> Void = { _, _ in
+            calls.count += 1
+            try await waitUntil { calls.isOpen }
+            throw LibraryServiceError.loginFailed("wrong password")
+        }
+        try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
+            let model = LibraryViewModel()
+            model.load()
+            model.libUsername = "B1LIBTYPED"
+            model.libPassword = "typed"
+            model.loginAndStart(signIn: signIn)
+            try await waitUntil { calls.count == 1 }
+
+            NotificationCenter.default.post(name: LibraryAccount.didChange, object: nil)
+            #expect(model.isLoggingIn)
+            model.libPassword = "typed again"
+            model.loginAndStart(signIn: signIn)
+            calls.isOpen = true
+            try await waitUntil { !model.isLoggingIn }
+
+            #expect(calls.count == 1)
+            #expect(model.access == .signedOut)
+            #expect(model.errorMessage != nil)
         }
     }
 
