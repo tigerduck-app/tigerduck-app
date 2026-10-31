@@ -222,7 +222,7 @@ channel in flight, and a write computed from a snapshot taken before an `await`.
 
 | # | Race | Severity | Home | Phase |
 |---|---|---|---|---|
-| R1 | Course colour and name, assignment mark, ignore and holiday writes go without `hlc`, so a late send beats a newer edit from another device | High | outbox sends each op's stamp; `/v4` requires `hlc` | 4 |
+| R1 | Course colour and name, assignment mark, ignore and holiday writes go without `hlc`, so a late send beats a newer edit from another device | High | outbox sends each op's stamp; `/v4` requires `hlc`; a reply that keeps a newer value is applied by the store that owns the field, which checks the sync switches, a newer queued edit and colour uniqueness | 4 |
 | R2 | A notification-settings push writes whole sections from local values, so a pending push or a re-enabled switch reverts another device's change | High | the settings document merges per field against the last synced base | 4 |
 | R3 | A course name edit that gets 404 five times is dropped | High | the outbox parks it and retries after the next course upload | 4 |
 | R4 | Two bulletin subscription saves in flight: the first reply wipes the second edit from the screen, and a failed second save loses it | High | one save in flight per channel; the newest local state survives every reply | 4, 6 |
