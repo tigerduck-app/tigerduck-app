@@ -286,8 +286,11 @@ def accepts(kind: str, value: str) -> bool:
 
 
 # What may come right before a literal that a body returns: `return`, a block's `{`, a case
-# label's or a ternary's `:`, a ternary's `?`, or a `;`.
-RESULT_AFTER = re.compile(r"(?:\breturn|[{?:;])\s*\Z")
+# label's or a ternary's `:`, a ternary's `?`, or a `;`. What follows it is the first character
+# after spaces on its line.
+BEFORE_RESULT = re.compile(r"(?:\breturn|[{?:;])\s*\Z")
+AFTER_RESULT = re.compile(r"[ \t]*(.?)", re.S)
+OPENING = re.compile(r"\s*([\[(])")
 DECLARATION = re.compile(rf"\b(?:(?:let|var)\s+{IDENT}\s*:|func\s+{IDENT}\s*(?:<[^>(]*>)?\s*\()")
 RETURN_ARROW = re.compile(r"[\s\w()]*?->")
 
@@ -333,8 +336,8 @@ class FileScan:
         """Literals the body text[a:b] returns, braces of nested blocks included."""
 
         def result(start: int, end: int) -> bool:
-            after = re.compile(r"[ \t]*(.?)", re.S).match(self.text, end, b + 1).group(1)
-            return bool(RESULT_AFTER.search(self.text, a - 1, start)) and after in ("", "\n", "}", ":", ";")
+            after = AFTER_RESULT.match(self.text, end, b + 1).group(1)
+            return bool(BEFORE_RESULT.search(self.text, a - 1, start)) and after in ("", "\n", "}", ":", ";")
 
         return self._literals(a, b, result, "([")
 
@@ -368,7 +371,7 @@ class FileScan:
             yield from ((pos, value, shape) for pos, value in self.arg_literals(a, b))
             return
         form, inner = shape
-        m = re.compile(r"\s*([\[(])").match(self.text, a, b)
+        m = OPENING.match(self.text, a, b)
         if not m or m.group(1) != ("(" if form == "tuple" else "["):
             return
         close = close_of(self.text, m.start(1))
