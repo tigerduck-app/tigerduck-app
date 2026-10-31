@@ -23,7 +23,7 @@ FlipToLibraryCoordinator.swift
 NTUSTLoginSheetHost.swift
 PushAppDelegate.swift
 
-# ContentView.swift — iOS-only
+# App/ContentView.swift — iOS-only
 ContentView.swift
 
 # Debug — iOS-only debug surfaces
@@ -37,7 +37,7 @@ TigerSyncStatusView.swift
 TriggersDebugView.swift
 WhatsNewSampleFlow.swift
 
-# Extensions — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
+# UI/ViewHelpers — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
 UIApplication+Keyboard.swift
 UIApplication+Modals.swift
 UINavigationController+Swipeback.swift
@@ -172,23 +172,23 @@ WhatsNewCoursePages.swift
 WhatsNewSummaryView.swift
 WhatsNewTabBarMock.swift
 
-# LiveActivity/Models — ActivityKit — iOS only
+# Devices/LiveActivity/Models — ActivityKit — iOS only
 AssignmentReminderOffset.swift
 
-# LiveActivity/Preferences — ActivityKit — iOS only
+# Devices/LiveActivity/Preferences — ActivityKit — iOS only
 LiveActivityPreferencesStore.swift
 
-# LiveActivity/Runtime — ActivityKit — iOS only
+# Devices/LiveActivity/Runtime — ActivityKit — iOS only
 LiveActivityCoordinator.swift
 TigerDuckActivityAttributes.swift
 
-# LiveActivity/Scheduling — ActivityKit — iOS only
+# Devices/LiveActivity/Scheduling — ActivityKit — iOS only
 
-# Services/Logging — DEBUG-only scaffolding for the iOS Library freeze. Its one
+# Support/Logging — DEBUG-only scaffolding for the iOS Library freeze. Its one
 # caller is TigerDuckApp's init, and that whole struct sits inside #if os(iOS).
 MainThreadWatchdog.swift
 
-# Services/Watch — WatchConnectivity — a paired Apple Watch is an iOS-only relationship
+# Devices/Watch — WatchConnectivity — a paired Apple Watch is an iOS-only relationship
 WatchLibraryCredentialBroadcaster.swift
 WatchPayloadEncoder.swift
 WatchSyncBridge.swift
@@ -201,7 +201,7 @@ FirstTriggerPrompt.swift
 # Shared/Components — iOS-only shared UI and helpers
 PasswordField.swift
 
-# SharedUI — iOS-only shared components
+# UI/SharedUI — iOS-only shared components
 EmptyStateView.swift
 GlassTextButtonModifier.swift
 HeaderMenuButton.swift
@@ -252,11 +252,11 @@ AppState+PushRouting.swift
 # `AppState` methods serve a feature macOS does not have; the un-gated
 # `NotificationSettingsPushQueue` / `NotificationSettingsSync` below them in
 # the same file read and write `LiveActivityPreferencesStore` (excluded
-# above under LiveActivity/Preferences), which does not exist on a macOS
+# above under Devices/LiveActivity/Preferences), which does not exist on a macOS
 # build — so this file cannot compile there as it stands.
 AppState+NotificationSettings.swift
 
-# Services/Migrations — one-shot migrations behind the notification-settings
+# Migrations — one-shot migrations behind the notification-settings
 # cloud sync (spec §4.6), both called only from the `#if os(iOS)` block in
 # `AppState+Lifecycle.swift`'s `runPendingMigrations()`: one seeds
 # `assignments` + `live_activity` from `LiveActivityPreferencesStore`
@@ -303,7 +303,7 @@ FlipToLibraryDefaultOffMigration.swift
 # class, which `MoodleFileDownloads` sets only there.
 MoodleDownloadProtectMigration.swift
 
-# Services/Sync — the `notification` settings-document model and its client.
+# Backend/Sync — the `notification` settings-document model and its client.
 # Both sections `NotificationSettingsDocument` carries (`assignments`,
 # `live_activity`) describe local reminder scheduling and Live Activity
 # state, neither of which macOS has; `SettingsDocumentClient` has no caller
@@ -343,17 +343,17 @@ MailSourceTextView.swift
 MailWarningBanner.swift
 MailWebViewFactory.swift
 
-# Services/Mail/Account — School Mail's credential/session management;
+# Mail/Account — School Mail's credential/session management;
 # iOS-only, see Features/SchoolMail above
 MailAccountManager.swift
 
-# Services/Mail/Compose — School Mail's outgoing-message building; iOS-only,
+# Mail/Compose — School Mail's outgoing-message building; iOS-only,
 # see Features/SchoolMail above
 MailMessageBuilder.swift
 MailReplyComposer.swift
 MailSentCopy.swift
 
-# Services/Mail/Core — School Mail's client protocol, constants and models;
+# Mail/Core — School Mail's client protocol, constants and models;
 # iOS-only, see Features/SchoolMail above
 MailClient.swift
 MailConstants.swift
@@ -362,11 +362,11 @@ MailFolderSelection.swift
 MailModels.swift
 MailServerConfig.swift
 
-# Services/Mail/Demo — the School Mail demo/preview client; iOS-only, see
+# Mail/Demo — the School Mail demo/preview client; iOS-only, see
 # Features/SchoolMail above
 DemoMailClient.swift
 
-# Services/Mail/Rules — School Mail's IMAP/MIME parsing and sanitization
+# Mail/Rules — School Mail's IMAP/MIME parsing and sanitization
 # rules; iOS-only, see Features/SchoolMail above
 MailCSSFilter.swift
 MailCharset.swift
@@ -379,25 +379,25 @@ MailTextLinkifier.swift
 MailWarnings.swift
 ModifiedUTF7.swift
 
-# Services/Mail — School Mail's startup wiring; iOS-only, see
+# Mail — School Mail's startup wiring; iOS-only, see
 # Features/SchoolMail above
 SchoolMailBootstrap.swift
 
-# Services/Mail/Store — School Mail's local cache, credential and preference
+# Mail/Store — School Mail's local cache, credential and preference
 # storage; iOS-only, see Features/SchoolMail above
 MailCache.swift
 MailCredentialStore.swift
 MailPreferences.swift
 MailSearchIndex.swift
 
-# Services/Mail/Sync — School Mail's background refresh, new-mail
+# Mail/Sync — School Mail's background refresh, new-mail
 # notification and search index download; iOS-only, see Features/SchoolMail above
 MailBackgroundRefresh.swift
 MailChecker.swift
 MailIndexer.swift
 MailNotifier.swift
 
-# Services/Mail/Transport — School Mail's IMAP/SMTP transport; iOS-only, see
+# Mail/Transport — School Mail's IMAP/SMTP transport; iOS-only, see
 # Features/SchoolMail above
 LiveMailClient.swift
 MailMover.swift

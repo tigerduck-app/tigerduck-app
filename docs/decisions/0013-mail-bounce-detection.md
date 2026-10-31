@@ -16,7 +16,7 @@ anyone may send `MAIL FROM:<>`.
 
 ## Decision
 
-- `MailWarnings.isBounce(returnPath:)` in `swift/TigerDuck/Services/Mail/Rules/MailWarnings.swift`
+- `MailWarnings.isBounce(returnPath:)` in `swift/TigerDuck/Mail/Rules/MailWarnings.swift`
   treats `Return-Path: <>` as a bounce. `LiveMailClient.returnPath(from:)` reads the first
   `Return-Path`, the one the final delivery server prepends, not a copy the sender wrote lower down.
 - `MailWarnings.evaluate` exempts a bounce from `external` only when the sender has no domain at

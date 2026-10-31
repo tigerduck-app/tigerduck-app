@@ -1,6 +1,6 @@
 # TigerDuck 第三方庫導入遷移計畫
 
-> 現況（2026-10-10，依 `Package.resolved`）：Valet、SwiftSoup、Defaults 已導入，Sentry 導入後已於 2026-10-12 移除（#294）；Alamofire、Siren、WhatsNewKit、Pulse、Nuke 未導入，版本更新提醒與新功能介紹改由 App 自行實作（`Services/API/AppStoreUpdateService.swift`、`Features/Updates/`）。「附帶發現：架構債」中，SwiftData 與 DataCache 雙寫仍存在；Moodle 已改用 OIDC token，sesskey 重認證一項不再適用；`AppLogger` 只把錯誤寫進裝置上的系統日誌，寫入前遮蔽 token、密碼與網址的查詢字串。以下為 2026-04-18 的原始計畫，文中路徑以當時為準。
+> 現況（2026-10-10，依 `Package.resolved`）：Valet、SwiftSoup、Defaults 已導入，Sentry 導入後已於 2026-10-12 移除（#294）；Alamofire、Siren、WhatsNewKit、Pulse、Nuke 未導入，版本更新提醒與新功能介紹改由 App 自行實作（`Features/Updates/AppStoreUpdateService.swift`、`Features/Updates/`）。「附帶發現：架構債」中，SwiftData 與 DataCache 雙寫仍存在；Moodle 已改用 OIDC token，sesskey 重認證一項不再適用；`AppLogger` 只把錯誤寫進裝置上的系統日誌，寫入前遮蔽 token、密碼與網址的查詢字串。以下為 2026-04-18 的原始計畫，文中路徑以當時為準。
 
 > 版本：2026-04-18
 > 目標：將目前全手刻的核心元件逐步替換為業界成熟庫，以降低維護負擔、減少邊界案例 bug、提升可觀測性。
@@ -62,7 +62,7 @@
 
 ### 現況
 
-**檔案**：`swift/TigerDuck/Services/Auth/KeychainManager.swift`
+**檔案**：`swift/TigerDuck/Persistence/Keychain/KeychainManager.swift`
 
 目前是 `enum KeychainManager` 提供五個靜態函數：
 
@@ -78,7 +78,7 @@
 4. 沒有命名空間，多個 app / extension 共用同一個 key 會衝突
 
 **呼叫方**：
-- `Services/Auth/AuthService.swift`
+- `Account/AuthService.swift`
   - `storedStudentId` / `storedPassword` (computed)
   - `login(studentId:password:)`
   - `logout()`
@@ -91,7 +91,7 @@
 
 ### 建議實作
 
-新檔：`swift/TigerDuck/Services/Auth/SecureStore.swift`
+新檔：`swift/TigerDuck/Persistence/Keychain/SecureStore.swift`
 
 ```swift
 import Valet
@@ -156,7 +156,7 @@ enum KeychainManager {
 
 ### 現況
 
-**主檔案**：`swift/TigerDuck/Services/Network/HTMLParser.swift`
+**主檔案**：`swift/TigerDuck/School/HTMLParser.swift`
 
 目前是 `enum HTMLParser`，提供：
 
@@ -181,7 +181,7 @@ enum KeychainManager {
 
 ### 建議實作
 
-替換檔：`swift/TigerDuck/Services/Network/HTMLParser.swift`
+替換檔：`swift/TigerDuck/School/HTMLParser.swift`
 
 ```swift
 import SwiftSoup
@@ -373,7 +373,7 @@ final class NTUSTAuthInterceptor: RequestInterceptor {
 
 ## ④ Crash / Error 監控 → Sentry
 
-> 2026-10-12 已移除（#294）：發布版本從未設定 DSN，Sentry 沒有收到過任何事件。錯誤現在只寫進裝置上的系統日誌（`Services/Logging/AppLogger.swift`）。以下保留原始計畫。
+> 2026-10-12 已移除（#294）：發布版本從未設定 DSN，Sentry 沒有收到過任何事件。錯誤現在只寫進裝置上的系統日誌（`Support/Logging/AppLogger.swift`）。以下保留原始計畫。
 
 - **分支**：`feature/lib-sentry`
 - **庫**：[Sentry Cocoa SDK](https://github.com/getsentry/sentry-cocoa)
@@ -384,9 +384,9 @@ final class NTUSTAuthInterceptor: RequestInterceptor {
 **幾乎沒有任何錯誤監控**。
 
 已有的 `os.Logger` 使用僅在：
-- `LiveActivity/Scheduling/AssignmentReminderScheduler.swift`
-- `LiveActivity/Runtime/SharedSnapshotStore.swift`
-- `LiveActivity/Runtime/LiveActivityCoordinator.swift`
+- `Devices/LiveActivity/Scheduling/AssignmentReminderScheduler.swift`
+- `Devices/LiveActivity/Runtime/SharedSnapshotStore.swift`
+- `Devices/LiveActivity/Runtime/LiveActivityCoordinator.swift`
 
 **完全沒有**：
 - Crash 回報
@@ -397,7 +397,7 @@ final class NTUSTAuthInterceptor: RequestInterceptor {
 ### 建議實作
 
 1. 註冊 Sentry 帳號，建立 iOS 專案，拿 DSN
-2. `TigerDuckApp.swift` init 時啟動：
+2. `App/TigerDuckApp.swift` init 時啟動：
 
 ```swift
 import Sentry
@@ -421,7 +421,7 @@ struct TigerDuckApp: App {
 }
 ```
 
-3. 建立 `Services/Logging/AppLogger.swift`：
+3. 建立 `Support/Logging/AppLogger.swift`：
 
 ```swift
 import Sentry
@@ -504,7 +504,7 @@ options.beforeSend = { event in
 
 ### 建議實作
 
-`TigerDuckApp.swift`：
+`App/TigerDuckApp.swift`：
 
 ```swift
 import Siren
@@ -622,7 +622,7 @@ struct TigerDuckWhatsNewProvider: WhatsNewCollectionProvider {
 已知點（有更多待掃）：
 - `Services/Network/NTUSTSessionManager.swift` → `timestampKey = "ssoLoginTimestamp"`，用 `Double`
 - `App/AppState.swift` — 各種使用者偏好（browserPreference 等）
-- `LiveActivity/Preferences/LiveActivityPreferencesStore.swift`
+- `Devices/LiveActivity/Preferences/LiveActivityPreferencesStore.swift`
 
 **問題**：
 1. Key 是 stringly-typed，typo 不會編譯錯
@@ -774,12 +774,12 @@ struct HTMLContentView: View {
 | 元件 | 檔案 | 理由 |
 |------|------|------|
 | Network 狀態監測 | `Services/Network/NetworkMonitor.swift` | NWPathMonitor 20 行夠乾淨，無 lib 可超越 |
-| In-App Browser | `SharedUI/InAppBrowserView.swift` | `SFSafariViewController` 是 Apple 官方方案 |
-| 載入骨架 | `SharedUI/LoadingShimmer.swift` | 28 行 SwiftUI，換 lib 是過度設計 |
+| In-App Browser | `UI/SharedUI/InAppBrowserView.swift` | `SFSafariViewController` 是 Apple 官方方案 |
+| 載入骨架 | `UI/SharedUI/LoadingShimmer.swift` | 28 行 SwiftUI，換 lib 是過度設計 |
 | 月曆 | `Features/Calendar/Components/MonthCalendarView.swift` | 你的 UI 需求跟 stock 日曆 lib 差很遠，手刻控制度更高 |
 | Onboarding | `Features/Onboarding/OnboardingView.swift` | TabView `.page` 夠用，`PaperOnboarding` 等 lib 太過重 |
 | QR Code 顯示 | `Features/Library/Components/LibraryQRCodeView.swift` | 圖由 server 回傳，不需要生成 lib |
-| SwiftData Models | `Models/SwiftData/SDxxx.swift` | SwiftData 是 Apple 官方，已經是「第三方庫」了 |
+| SwiftData Models | `Persistence/Models/SDxxx.swift` | SwiftData 是 Apple 官方，已經是「第三方庫」了 |
 
 ---
 
@@ -790,7 +790,7 @@ struct HTMLContentView: View {
 ### 🔴 雙寫：SwiftData vs DataCache
 
 **現況**：
-- `Models/SwiftData/SDCourse.swift`、`SDAssignment.swift`、`SDCalendarEvent.swift`、`SDAnnouncement.swift` 看起來是 SwiftData `@Model`
+- `Persistence/Models/SDCourse.swift`、`SDAssignment.swift`、`SDCalendarEvent.swift`、`SDAnnouncement.swift` 看起來是 SwiftData `@Model`
 - 同時 `Services/Network/DataCache.swift` 又用 `CachedCourse`、`CachedAssignment`、`CachedCalendarEvent` DTO 把資料寫成 JSON 檔案到 cachesDirectory / applicationSupportDirectory
 
 **問題**：

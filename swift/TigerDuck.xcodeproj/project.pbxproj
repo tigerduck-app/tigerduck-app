@@ -142,12 +142,14 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				AGENTS.md,
+				Backend/AGENTS.md,
+				Devices/LiveActivity/AGENTS.md,
 				Features/Browser/DarkReader/LICENSE,
 				Features/Browser/DarkReader/VENDORED.md,
 				Info.plist,
-				LiveActivity/AGENTS.md,
-				Services/AGENTS.md,
-				Services/Migrations/AGENTS.md,
+				Mail/AGENTS.md,
+				Migrations/AGENTS.md,
+				School/AGENTS.md,
 			);
 			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
 		};
@@ -161,19 +163,19 @@
 		42B9BC852F90EC9D00D3B5A1 /* Exceptions for "TigerDuck" folder in "TigerDuckLiveActivityExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Clock/AppClock.swift,
-				Clock/ClockOverride.swift,
-				LiveActivity/Models/LiveActivityScenarioKind.swift,
-				LiveActivity/Models/LiveActivitySnapshot.swift,
-				LiveActivity/Runtime/TigerDuckActivityAttributes.swift,
+				Devices/LiveActivity/Models/LiveActivityScenarioKind.swift,
+				Devices/LiveActivity/Models/LiveActivitySnapshot.swift,
+				Devices/LiveActivity/Runtime/TigerDuckActivityAttributes.swift,
+				Support/Clock/AppClock.swift,
+				Support/Clock/ClockOverride.swift,
 			);
 			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;
 		};
 		B21DC7402FB8901100AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatch Watch App" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Clock/AppClock.swift,
-				Clock/ClockOverride.swift,
+				Support/Clock/AppClock.swift,
+				Support/Clock/ClockOverride.swift,
 			);
 			target = B21DC6912FB887D900AE2430 /* TigerDuckWatch Watch App */;
 		};
@@ -195,12 +197,12 @@
 		B244D7902FB87B590040D6FA /* Exceptions for "TigerDuck" folder in "TigerDuckWidgetsExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Clock/AppClock.swift,
-				Clock/ClockOverride.swift,
+				Devices/Widgets/WidgetSnapshot.swift,
 				Shared/ClassTableLayout.swift,
 				Shared/CourseBlockRoom.swift,
 				Shared/CourseCardFontScale.swift,
-				Widgets/WidgetSnapshot.swift,
+				Support/Clock/AppClock.swift,
+				Support/Clock/ClockOverride.swift,
 			);
 			target = B244D74E2FB87B580040D6FA /* TigerDuckWidgetsExtension */;
 		};
@@ -245,8 +247,8 @@
 		C3D0F10A2FC0A00000AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatchWidgetExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Clock/AppClock.swift,
-				Clock/ClockOverride.swift,
+				Support/Clock/AppClock.swift,
+				Support/Clock/ClockOverride.swift,
 			);
 			target = C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */;
 		};
@@ -1198,7 +1200,7 @@
 					LanguageManager.swift,
 					WidgetURLRouter.swift,
 					AppFeature.swift,
-					Services/Mail/Core/SchoolMailAvailability.swift,
+					Mail/Core/SchoolMailAvailability.swift,
 					AssignmentFilter.swift,
 					AssignmentStatus.swift,
 					CourseState.swift,
@@ -1252,10 +1254,10 @@
 					SyncOutbox.swift,
 					NotificationDelegate.swift,
 					AppURLs.swift,
-					LiveActivity/Models/LiveActivitySnapshot.swift,
-					LiveActivity/Models/LiveActivityScenarioKind.swift,
-					LiveActivity/Resolvers/LiveActivityScenarioResolver.swift,
-					LiveActivity/Resolvers/CourseTimelineResolver.swift,
+					Devices/LiveActivity/Models/LiveActivitySnapshot.swift,
+					Devices/LiveActivity/Models/LiveActivityScenarioKind.swift,
+					Devices/LiveActivity/Resolvers/LiveActivityScenarioResolver.swift,
+					Devices/LiveActivity/Resolvers/CourseTimelineResolver.swift,
 					BulletinAPIClient.swift,
 					BulletinAPIDTO.swift,
 					CourseCatalogClient.swift,
@@ -1519,7 +1521,7 @@
 					LanguageManager.swift,
 					WidgetURLRouter.swift,
 					AppFeature.swift,
-					Services/Mail/Core/SchoolMailAvailability.swift,
+					Mail/Core/SchoolMailAvailability.swift,
 					AssignmentFilter.swift,
 					AssignmentStatus.swift,
 					CourseState.swift,
@@ -1573,10 +1575,10 @@
 					SyncOutbox.swift,
 					NotificationDelegate.swift,
 					AppURLs.swift,
-					LiveActivity/Models/LiveActivitySnapshot.swift,
-					LiveActivity/Models/LiveActivityScenarioKind.swift,
-					LiveActivity/Resolvers/LiveActivityScenarioResolver.swift,
-					LiveActivity/Resolvers/CourseTimelineResolver.swift,
+					Devices/LiveActivity/Models/LiveActivitySnapshot.swift,
+					Devices/LiveActivity/Models/LiveActivityScenarioKind.swift,
+					Devices/LiveActivity/Resolvers/LiveActivityScenarioResolver.swift,
+					Devices/LiveActivity/Resolvers/CourseTimelineResolver.swift,
 					BulletinAPIClient.swift,
 					BulletinAPIDTO.swift,
 					CourseCatalogClient.swift,

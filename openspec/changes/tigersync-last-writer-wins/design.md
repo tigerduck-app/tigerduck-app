@@ -19,11 +19,11 @@ See proposal.md for why. What shapes the approach:
 - The released apps send no edit time, and the backend must keep serving them while iOS and
   then Android ship.
 - iOS already timestamps every outbox entry (`SyncOp.stamp` in
-  `swift/TigerDuck/Services/CloudSync/SyncOutbox.swift`) but drops the stamp in `resolve`.
+  `swift/TigerDuck/Backend/Sync/SyncOutbox.swift`) but drops the stamp in `resolve`.
   Android keeps in-flight ids in memory only (`HomeSyncState.pendingOverrides` in
   `ui/screen/home/HomeBackendSync.kt`).
 - The device keeps marks, ignores, hides and hand-adds as plain sets
-  (`swift/TigerDuck/Services/Core/DataCache.swift`), with no time per entry.
+  (`swift/TigerDuck/Persistence/DataCache.swift`), with no time per entry.
 
 ## Goals / Non-Goals
 
@@ -102,7 +102,7 @@ Lost:
 
 iOS keeps the last issued and last seen values, and the last `X-TigerSync-Clock` heard with the
 device time it arrived (for D1's cap), in `Defaults` keys behind a small
-`SyncClock` in `Services/CloudSync/`. Stamping happens on a user edit, so the phone is unlocked.
+`SyncClock` in `Backend/Sync/`. Stamping happens on a user edit, so the phone is unlocked.
 `PushAPIClient.execute` raises the last seen value from `X-TigerSync-Clock` only while protected
 data is readable, as `syncOverridesFromBackend` already checks, so a background launch before
 first unlock cannot write over the stored values. The outbox keeps `SyncOp.stamp` as a `Date`
@@ -340,7 +340,7 @@ Not recommended:
   needs no prompt and no state.
 
 `pendingConflictCategories` and the other orphaned keys (`courseRowIdsSeen`, `semesterResetAt`)
-stay as harmless leftovers, as `Services/Migrations/AGENTS.md` allows.
+stay as harmless leftovers, as `Migrations/AGENTS.md` allows.
 
 ### D16. Revision polling and push triggers
 

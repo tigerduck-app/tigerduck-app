@@ -167,8 +167,14 @@ cp api/.env.template api/.env
 tigerduck-app/
 ├── swift/                              # iOS App + companion targets (Xcode 26+ / iOS 18+ / watchOS 11+)
 │   ├── TigerDuck/                      # Main iOS app sources
-│   │   ├── App/                        # Global state (AppState), language manager, push delegate
+│   │   ├── App/                        # Entry point, global state (AppState), language manager, push delegate
+│   │   ├── Account/                    # NTUST sign-in coordination (AuthService)
 │   │   ├── Bridge/                     # Fetch orchestration between services and SwiftData
+│   │   ├── School/                     # NTUST, SSO, Moodle, library, calendar and bulletin clients
+│   │   ├── Backend/                    # TigerDuck backend: tokens, cloud sync, push, course catalog
+│   │   ├── Mail/                       # School Mail IMAP / SMTP
+│   │   ├── Persistence/                # Caches, Keychain, SwiftData models
+│   │   ├── Devices/                    # Widgets, Watch sync, Live Activity (in-app logic)
 │   │   ├── Features/                   # Screen-level feature modules
 │   │   │   ├── Home/                   # Home (Time Slider, assignments, widgets)
 │   │   │   ├── ClassTable/             # Class table
@@ -181,25 +187,11 @@ tigerduck-app/
 │   │   │   ├── Settings/               # Settings (language, abbreviations, theme, source)
 │   │   │   ├── Onboarding/             # First-run onboarding flow
 │   │   │   └── Updates/                # Update prompt + What's New
-│   │   ├── LiveActivity/               # Live Activity / Dynamic Island (in-app logic)
-│   │   │   ├── Models/  Preferences/  Providers/
-│   │   │   ├── Resolvers/  Runtime/
-│   │   ├── Models/
-│   │   │   ├── Domain/                 # Business logic models
-│   │   │   └── SwiftData/              # Local persistence models
+│   │   ├── Models/Domain/              # Business logic models
 │   │   ├── Platform/Mac/               # macOS-only surfaces (sidebar, Mac page layouts, push delegate)
-│   │   ├── Services/
-│   │   │   ├── API/                    # NTUST / Moodle / calendar / library / bulletin clients
-│   │   │   ├── Auth/                   # NTUST SSO authentication, backend tokens
-│   │   │   ├── Core/                   # Cache, HTML parsing, name abbreviations
-│   │   │   ├── Mail/                   # School Mail IMAP / SMTP
-│   │   │   ├── Push/                   # APNs / push registration, schedule sync
-│   │   │   ├── CloudSync/  Sync/       # Cloud sync and settings sync
-│   │   │   ├── Watch/                  # WatchConnectivity to the Watch app
-│   │   │   ├── Logging/                # Structured logging
-│   │   │   └── Migrations/             # One-shot migrations
-│   │   ├── SharedUI/                   # Reusable cross-feature views
-│   │   └── Theme/                      # Tokens, palette, visual presets
+│   │   ├── Migrations/                 # One-shot migrations
+│   │   ├── Support/                    # Clock, concurrency, logging, TLS pin document, extensions
+│   │   └── UI/                         # Shared views, theme, palette, view helpers
 │   ├── TigerDuckLiveActivity/          # Live Activity / Dynamic Island widget extension
 │   ├── TigerDuckWidgets/               # iOS / macOS Home, Lock Screen and accessory widgets
 │   ├── TigerDuckWatch Watch App/       # Apple Watch app (Now & Next / Today / detail / Library QR)

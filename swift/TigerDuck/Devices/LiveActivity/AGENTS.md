@@ -1,6 +1,6 @@
 # Live Activity
 
-Rules for `swift/TigerDuck/LiveActivity/`, the app side of the Dynamic Island and lock-screen
+Rules for `swift/TigerDuck/Devices/LiveActivity/`, the app side of the Dynamic Island and lock-screen
 activities: scenario resolution from courses and assignments, preferences and the ActivityKit
 lifecycle. The extension UI is in `swift/TigerDuckLiveActivity/`. The backend sends assignment
 reminders; nothing here schedules them.

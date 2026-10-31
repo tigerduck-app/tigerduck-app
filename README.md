@@ -167,8 +167,14 @@ cp api/.env.template api/.env
 tigerduck-app/
 ├── swift/                              # iOS App + 周邊 target（Xcode 26+ / iOS 18+ / watchOS 11+）
 │   ├── TigerDuck/                      # 主 iOS App 來源
-│   │   ├── App/                        # 全域狀態（AppState）、語言管理、推播代理
+│   │   ├── App/                        # 進入點、全域狀態（AppState）、語言管理、推播代理
+│   │   ├── Account/                    # NTUST 登入協調（AuthService）
 │   │   ├── Bridge/                     # 服務與 SwiftData 之間的抓取協調層
+│   │   ├── School/                     # 校務系統、SSO、Moodle、圖書館、行事曆、公告
+│   │   ├── Backend/                    # TigerDuck 後端：token、雲端同步、推播、課程目錄
+│   │   ├── Mail/                       # 校園信箱 IMAP / SMTP
+│   │   ├── Persistence/                # 快取、Keychain、SwiftData 模型
+│   │   ├── Devices/                    # Widget、Watch 同步、即時動態（App 內邏輯）
 │   │   ├── Features/                   # 各分頁功能模組
 │   │   │   ├── Home/                   # 首頁（時光機、作業、小工具）
 │   │   │   ├── ClassTable/             # 課表
@@ -181,25 +187,11 @@ tigerduck-app/
 │   │   │   ├── Settings/               # 設定（語言、簡稱、主題、來源碼）
 │   │   │   ├── Onboarding/             # 初次使用引導
 │   │   │   └── Updates/                # 更新提示與「新功能」介紹
-│   │   ├── LiveActivity/               # 即時動態 / 動態島（App 內邏輯）
-│   │   │   ├── Models/  Preferences/  Providers/
-│   │   │   ├── Resolvers/  Runtime/
-│   │   ├── Models/
-│   │   │   ├── Domain/                 # 業務邏輯模型
-│   │   │   └── SwiftData/              # 本地持久化模型
+│   │   ├── Models/Domain/              # 業務邏輯模型
 │   │   ├── Platform/Mac/               # macOS 專屬版面（側邊欄、各頁 Mac 版、推播代理）
-│   │   ├── Services/
-│   │   │   ├── API/                    # 校務系統 / Moodle / 行事曆 / 圖書館 / 公告 API
-│   │   │   ├── Auth/                   # NTUST SSO 認證、後端 token
-│   │   │   ├── Core/                   # 快取、HTML 解析、名稱簡稱
-│   │   │   ├── Mail/                   # 校園信箱 IMAP / SMTP
-│   │   │   ├── Push/                   # APNs / Push 註冊、課表同步
-│   │   │   ├── CloudSync/  Sync/       # 雲端同步與設定同步
-│   │   │   ├── Watch/                  # 與 Watch App 的 WatchConnectivity 同步
-│   │   │   ├── Logging/                # 結構化日誌
-│   │   │   └── Migrations/             # 一次性遷移
-│   │   ├── SharedUI/                   # 共用 UI 元件
-│   │   └── Theme/                      # 主題、配色、視覺預設
+│   │   ├── Migrations/                 # 一次性遷移
+│   │   ├── Support/                    # 時鐘、並行、日誌、TLS pin 文件、通用 extension
+│   │   └── UI/                         # 共用 UI 元件、主題、配色、畫面 helper
 │   ├── TigerDuckLiveActivity/          # Live Activity / 動態島 Widget Extension
 │   ├── TigerDuckWidgets/               # iOS / macOS 主畫面、鎖定畫面與 Accessory Widget
 │   ├── TigerDuckWatch Watch App/       # Apple Watch App（Now & Next / Today / 課程詳情 / 圖書證 QR）

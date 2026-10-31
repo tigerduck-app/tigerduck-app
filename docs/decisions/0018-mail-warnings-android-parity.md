@@ -5,7 +5,7 @@ Status: accepted
 ## Context
 
 School Mail's warning rules exist on iOS (`MailWarnings` and `MailTextCleaner` in
-`swift/TigerDuck/Services/Mail/Rules/`) and on Android (`MailWarnings` in `mail/warning/` and
+`swift/TigerDuck/Mail/Rules/`) and on Android (`MailWarnings` in `mail/warning/` and
 `TextCleaning` in `mail/mime/`, under `app/src/main/java/org/ntust/app/tigerduck/` in
 `tigerduck-app/tigerduck-app-android`). The shared `warnings.json` fixture, in
 `swift/TigerDuckTests/SchoolMail/Fixtures/` and in Android's `app/src/test/resources/mail/`, keeps

@@ -12,7 +12,7 @@ against the school SSO at ssoam2.ntust.edu.tw. Its local-password token endpoint
 
 ## Decision
 
-`MoodleTokenService` (`swift/TigerDuck/Services/API/Moodle/MoodleTokenService.swift`) runs the
+`MoodleTokenService` (`swift/TigerDuck/School/Moodle/MoodleTokenService.swift`) runs the
 Moodle Mobile App's SSO launch flow:
 
 1. GET `moodle2/admin/tool/mobile/launch.php` with `service=moodle_mobile_app`, a `passport` and

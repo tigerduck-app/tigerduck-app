@@ -124,7 +124,7 @@ extension MoodleFile {
     nonisolated var opensInShareSheet: Bool { Self.opensInShareSheet(mimeType: mimeType, name: name) }
 
     /// Quick Look renders HTML and SVG in the app with scripts on, which the mail screen keeps
-    /// them from too (`swift/TigerDuck/Services/Mail/Rules/MailWarnings.swift`).
+    /// them from too (`swift/TigerDuck/Mail/Rules/MailWarnings.swift`).
     nonisolated static func opensInShareSheet(mimeType: String?, name: String) -> Bool {
         let type = mimeType?.split(separator: ";").first.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
         if type == "text/html" || type == "image/svg+xml" { return true }

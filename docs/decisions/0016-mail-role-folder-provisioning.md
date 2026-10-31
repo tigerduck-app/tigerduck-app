@@ -13,7 +13,7 @@ it, so picking one to file into is a guess.
 
 ## Decision
 
-`MailFolderProvisioner.ensure` (`swift/TigerDuck/Services/Mail/Core/MailFolderProvisioner.swift`)
+`MailFolderProvisioner.ensure` (`swift/TigerDuck/Mail/Core/MailFolderProvisioner.swift`)
 creates a missing role folder when an operation needs it and re-resolves roles from a fresh `LIST`.
 
 - Only `.sent`, `.drafts` and `.trash` are created: `.junk` is where the server's spam classifier

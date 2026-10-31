@@ -5,9 +5,9 @@ the Apple Watch app, and widget and Live Activity extensions, all in `swift/`. `
 Python probes for NTUST and Moodle endpoints. The push and sync backend is the separate
 `tigerduck-app/tigerduck-backend` repository, reached at `https://api.tigerduck.app/v3/*`.
 
-`swift/TigerDuck/`, `swift/TigerDuck/Services/`, `swift/TigerDuck/Services/Migrations/`,
-`swift/TigerDuck/LiveActivity/` and `api-poc/api/` have their own AGENTS.md. Read it before
-editing files in that directory.
+`swift/TigerDuck/`, `swift/TigerDuck/School/`, `swift/TigerDuck/Backend/`, `swift/TigerDuck/Mail/`,
+`swift/TigerDuck/Migrations/`, `swift/TigerDuck/Devices/LiveActivity/` and `api-poc/api/` have their
+own AGENTS.md. Read it before editing files in that directory.
 
 ## Agent files
 
@@ -53,7 +53,7 @@ two at once compete for the same build folder.
 
 ## Conventions
 
-- One-time upgrade compatibility code goes only in `swift/TigerDuck/Services/Migrations/`.
+- One-time upgrade compatibility code goes only in `swift/TigerDuck/Migrations/`.
 - Label issues and pull requests as `docs/issue-triage.md` says: an issue gets a type, a pull
   request a kind label.
 - `api-poc/` uses `uv` (`api-poc/pyproject.toml`, `uv.lock`) and reads credentials from
@@ -128,9 +128,10 @@ applies the rest. Before pushing, run `python3 tools/check_comments.py check --b
   `origin/main...origin/dev`, repeated until no finding of High severity or above is left; the
   `release-bump` skill has the steps.
 - The Watch complication target, `TigerDuckWatchWidgetExtension`, compiles only the files from
-  `swift/Shared/`, the Watch app and `Clock/` that its membership exceptions in `project.pbxproj`
-  list, so a file they come to need joins that list. The Watch app also compiles the
-  complication's entry, provider and views, for `TigerDuckWatch Watch AppTests`.
+  `swift/Shared/`, the Watch app and `swift/TigerDuck/Support/Clock/` that its membership
+  exceptions in `project.pbxproj` list, so a file they come to need joins that list. The Watch
+  app also compiles the complication's entry, provider and views, for
+  `TigerDuckWatch Watch AppTests`.
 - `swift/Packages/SwiftMail/` is vendored; read its `VENDORED.md` before changing it.
 - Xcode Cloud runs `swift/ci_scripts/ci_post_clone.sh` after cloning; it fetches the submodules.
 - Dependabot updates the Swift packages, GitHub Actions and `api-poc`'s Python packages
