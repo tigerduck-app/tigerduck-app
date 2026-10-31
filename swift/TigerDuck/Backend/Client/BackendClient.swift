@@ -80,6 +80,9 @@ nonisolated struct BackendAuth: Sendable {
     static let none = BackendAuth.header { nil }
 }
 
+/// A `clock_ahead` resend the caller's hold stopped; the edit waits for its next send.
+nonisolated struct ResendHeldError: Error {}
+
 /// Builds every request to the TigerDuck backend's `/v4`, adds the bearer token, maps the error
 /// envelope `{"error", "message", ...}` and owns the one refresh after a 401
 /// (https://github.com/tigerduck-app/tigerduck-backend/blob/dev/docs/api-v4.md).
@@ -117,14 +120,19 @@ nonisolated final class BackendClient: Sendable {
         try await send(request).decoded(type)
     }
 
+    /// Asked before a `clock_ahead` resend: a conflict check owed since the first send went out,
+    /// as for a switch turned off and on meanwhile, holds the edit until the user answers it.
+    @TaskLocal static var holdsResend: (@Sendable () -> Bool)?
+
     /// Sends an edit stamped with its own time. A 409 `clock_ahead` is answered once by stamping
-    /// it again from the backend's clock, which that reply carries.
+    /// it again from the backend's clock, which that reply carries, unless `holdsResend` holds it.
     func sendStamped(
         at stamp: Date, _ make: @Sendable (_ hlc: Int64) throws -> BackendRequest
     ) async throws -> BackendResponse {
         do {
             return try await send(make(PushAPI.clock(of: stamp)))
         } catch PushAPIError.clockAhead(let serverClock?) {
+            if Self.holdsResend?() == true { throw ResendHeldError() }
             return try await send(make(serverClock))
         }
     }

@@ -1,0 +1,108 @@
+import Defaults
+import Foundation
+import os
+
+/// The device preference PATCHes. Each waits for the one before it of its kind, so the last
+/// choice is the one that lands.
+nonisolated extension PushDeviceRequests {
+    func sendServerPushOptOut(_ optOut: Bool, deviceToken: String?, after predecessor: Task<Void, Error>?) async throws {
+        _ = try? await predecessor?.value
+        let uuid = identity.uuid
+        do {
+            try await apiClient.registerAnonymousDevice(
+                PushAPI.AnonymousDeviceRequest(
+                    device_id: uuid,
+                    platform: "apple",
+                    device_class: deviceClass,
+                    push_token: deviceToken,
+                    bundle_id: bundleId,
+                    server_push_enabled: !optOut
+                )
+            )
+            if await apiClient.hasAuthSession() {
+                _ = try await apiClient.updateDevicePreferences(
+                    deviceId: uuid, serverPushEnabled: !optOut
+                )
+            }
+            await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
+            logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
+        } catch {
+            logger.error("server push opt-out did not propagate: \(error.localizedDescription, privacy: .private)")
+            throw error
+        }
+    }
+
+    func sendBulletinPushEnabled(_ enabled: Bool, after predecessor: Task<Void, Error>?) async throws {
+        _ = try? await predecessor?.value
+        do {
+            let response = try await apiClient.updateDevicePreferences(
+                deviceId: identity.uuid, bulletinPushEnabled: enabled
+            )
+            // A backend without the column ignores the key and answers 200,
+            // so compare the echo. `DevicePreferencesResponse` stays tolerant
+            // of a missing field for other PATCHes; here missing means failed.
+            guard response.bulletinPushEnabled == enabled else {
+                throw PushAPIError.invalidResponse
+            }
+            await MainActor.run { Defaults[.bulletinPushEnabled] = enabled }
+            logger.info("bulletin push enabled=\(enabled, privacy: .public) propagated")
+        } catch {
+            logger.error("bulletin push enabled=\(enabled, privacy: .public) did not propagate: \(error.localizedDescription, privacy: .private)")
+            throw error
+        }
+    }
+
+    func sendCloudSyncEnabled(_ enabled: Bool) async {
+        do {
+            _ = try await apiClient.updateDevicePreferences(
+                deviceId: identity.uuid,
+                cloudSyncEnabled: enabled
+            )
+            logger.info("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH succeeded")
+        } catch {
+            logger.error("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH failed: \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    func sendSyncPreferences(after predecessor: Task<Void, Never>?) async {
+        await predecessor?.value
+        let sent = SyncPreferences.current
+        Defaults[.syncPreferencesPushPending] = true
+        do {
+            _ = try await apiClient.updateDevicePreferences(
+                deviceId: identity.uuid,
+                syncCourses: sent.courses,
+                syncCourseColors: sent.courseColors,
+                syncCourseNames: sent.courseNames,
+                syncAssignments: sent.assignments,
+                syncAssignmentReminders: sent.assignmentReminders,
+                syncLiveActivity: sent.liveActivity
+            )
+            if SyncPreferences.current == sent {
+                Defaults[.syncPreferencesPushPending] = false
+            }
+        } catch {
+            logger.error("[sync] preferences PATCH failed: \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    private nonisolated struct SyncPreferences: Equatable, Sendable {
+        let courses: Bool
+        let courseColors: Bool
+        let courseNames: Bool
+        let assignments: Bool
+        let assignmentReminders: Bool
+        let liveActivity: Bool
+
+        static var current: SyncPreferences {
+            SyncPreferences(
+                courses: Defaults[.syncCourses],
+                courseColors: Defaults[.syncCourseColors],
+                courseNames: Defaults[.syncCourseNames],
+                assignments: Defaults[.syncAssignments],
+                assignmentReminders: Defaults[.syncAssignmentReminders],
+                liveActivity: Defaults[.syncLiveActivity]
+            )
+        }
+    }
+}

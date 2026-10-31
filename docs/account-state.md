@@ -46,9 +46,9 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 
 | Store | Name | Scope | Cleared in |
 |---|---|---|---|
-| keychain | `accessTokenKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `clearTokens` |
+| keychain | `accessTokenKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenPair.swift` `clear` |
 | keychain | `departingSessionKey` | school | `swift/TigerDuck/Backend/Auth/DepartingSessionList.swift` `store` |
-| keychain | `expiresAtKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `clearTokens` |
+| keychain | `expiresAtKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenPair.swift` `clear` |
 | keychain | `libraryPassword` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `forgetAccount` |
 | keychain | `libraryToken` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `clearToken` |
 | keychain | `libraryTokenExpiry` | library | `swift/TigerDuck/School/Library/LibraryService.swift` `clearToken` |
@@ -57,8 +57,8 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | keychain | `moodleToken` | school | `swift/TigerDuck/School/Moodle/MoodleTokenService.swift` `drop` |
 | keychain | `password` | school | `swift/TigerDuck/Account/AuthService.swift` `logout` |
 | keychain | `pushDeviceId` | device |  |
-| keychain | `refreshTokenKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `clearTokens` |
-| keychain | `refreshTokenUsesKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenManager.swift` `clearTokens` |
+| keychain | `refreshTokenKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenPair.swift` `clear` |
+| keychain | `refreshTokenUsesKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenPair.swift` `clear` |
 | keychain | `studentId` | school | `swift/TigerDuck/Account/AuthService.swift` `logout` |
 | defaults | `academicCalendarCache` | device |  |
 | defaults | `academicCalendarETag` | device |  |

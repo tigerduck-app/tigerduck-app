@@ -11,7 +11,8 @@ push registration, the course catalog and `APIVersionGate`.
   status code's body elsewhere. Cloud sync reaches the backend through `PushCoordinator`.
 - Every write the backend settles by time sends the edit's own `hlc`
   (`BackendClient.sendStamped`); a 409 `clock_ahead` is answered by stamping it again from the
-  server's clock, never by sending it unstamped.
+  server's clock, never by sending it unstamped, and an outbox edit held by then
+  (`BackendClient.holdsResend`) waits in the outbox instead.
 - An upload goes through `Sync/SendLedger.swift`: one send in flight per channel, never
   cancelled by a newer one, and an unchanged body skipped by its fingerprint.
 - Add Course searches the term's catalog from the backend (`CourseCatalog/`) on the device and

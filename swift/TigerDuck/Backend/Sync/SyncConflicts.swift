@@ -8,15 +8,16 @@ import SwiftUI
 @MainActor
 @Observable
 final class SyncConflicts {
-    var syncConflicts: [SyncConflictItem] = []
     var reenableConflict: ReenableConflict?
     @ObservationIgnored private unowned let app: AppEnvironment
+    @ObservationIgnored let marks: MarkConflicts
     @ObservationIgnored private var isCheckingConflicts = false
     @ObservationIgnored private(set) var conflictCheckRetry = ConflictCheckRetry()
     @ObservationIgnored private var useLocalHold = UseLocalHold()
 
     init(app: AppEnvironment) {
         self.app = app
+        marks = MarkConflicts(app: app)
     }
 
     struct SyncConflictItem: Identifiable {
@@ -38,49 +39,21 @@ final class SyncConflicts {
         }
     }
 
-    var syncConflictAlertMessage: String {
-        let lines = syncConflicts.map { item in
-            "• " + String(format: String(localized: "sync_conflict_item_header"), item.kind, item.label)
-                + "\n  " + String(format: String(localized: "sync_conflict_item_detail"), item.localLabel, item.serverLabel)
-        }
-        return ([String(localized: "sync_conflict_message")] + lines).joined(separator: "\n")
+    var syncConflicts: [SyncConflictItem] {
+        get { marks.items }
+        set { marks.items = newValue }
     }
+
+    var syncConflictAlertMessage: String { marks.alertMessage }
 
     func resolveSyncConflicts(keepLocal: Bool) {
-        if keepLocal {
-            for c in syncConflicts {
-                app.edits.syncAssignmentOverride(moodleId: c.id, status: c.localStatus)
-            }
-        } else {
-            let coordinator = app.cloudSyncCoordinator
-            let push = app.pushCoordinator
-            let isCurrent = app.authService.session.currentCheck()
-            Task { [weak self] in
-                await AssignmentMarksReconciler.keepServerSide(
-                    read: { ServerMarks(try await push.fetchFullSync()) },
-                    protected: { [weak self] in
-                        await coordinator.pendingAssignmentOverrideIds().union(self?.app.localEdits.pendingOverrides ?? [])
-                    },
-                    isCurrent: isCurrent,
-                    assignments: .shared
-                )
-            }
-        }
-        syncConflicts = []
+        marks.resolve(keepLocal: keepLocal)
     }
 
-    /// Whether the conflict alert shows; closing it unanswered leaves the marks as they are.
-    var alertIsPresented: Binding<Bool> { Self.syncConflictAlertIsPresented(Bindable(self).syncConflicts) }
+    var alertIsPresented: Binding<Bool> { marks.alertIsPresented }
 
     static func syncConflictAlertIsPresented(_ conflicts: Binding<[SyncConflictItem]>) -> Binding<Bool> {
-        Binding(
-            get: { !conflicts.wrappedValue.isEmpty },
-            set: { isPresented in
-                guard !isPresented, !conflicts.wrappedValue.isEmpty else { return }
-                AppLogger.sync.info("[syncConflicts] alert closed unanswered, marks left as they are")
-                conflicts.wrappedValue = []
-            }
-        )
+        MarkConflicts.alertIsPresented(conflicts)
     }
 
     struct ReenableConflict {
@@ -139,142 +112,17 @@ final class SyncConflicts {
                 let (json, courseDeletes) = try await app.cloudSyncCoordinator.courseDeletes(around: {
                     try await app.pushCoordinator.fetchFullSync()
                 })
-                var diffs: [String] = []
-                var serverMarkedAssignments = Set<String>()
-
-                let coursesArray = json["courses"] as? [[String: Any]] ?? []
-                let serverIgnoredCourses = CourseIgnoresReconciler.serverIgnoredCourses(
-                    json["course_overrides"] as? [[String: Any]] ?? [], syncsCourses: Defaults[.syncCourses]
+                let found = ReenableDifferences.find(
+                    in: json, checking: pending, courseDeletes: courseDeletes,
+                    studentId: { app.authService.storedStudentId }
                 )
-
-                if pending.contains("courses") {
-                    let deletedNos = Set(CourseStore.shared.loadDeletedCourseNos())
-                    let userAdded = CourseStore.shared.loadUserAddedCourses()
-                    let studentId = app.authService.storedStudentId
-                    let serverSemesters = coursesArray.compactMap { $0["semester"] as? String }.filter { !$0.isEmpty }
-                    var localOnly = 0
-                    var serverOnly = 0
-                    for semester in Set(serverSemesters).union(SemesterCatalog.availableSemesters()) {
-                        let (serverNos, localNos) = CourseRosterReconciler.reenableCourseNos(
-                            coursesArray, semester: semester,
-                            local: Set(CourseStore.shared.loadCourses(semester: semester).map(\.courseNo))
-                                .union(CourseStore.shared.loadUserAddedCourses(semester: semester).map(\.courseNo))
-                                .filter { !CourseTombstone.isHidden($0, semester: semester, in: deletedNos) },
-                            userAdded: userAdded,
-                            liveAnswer: studentId.flatMap { CourseSelectionService.lastAnswer(studentId: $0, semester: semester) }
-                        )
-                        guard let counts = Self.coursesOnOneSide(
-                            server: serverNos, local: localNos, semester: semester, deleting: courseDeletes
-                        ) else { continue }
-                        localOnly += counts.localOnly
-                        serverOnly += counts.serverOnly
-                        AppLogger.sync.info("[reenable] courses \(semester, privacy: .public): local=\(localNos.sorted(), privacy: .private) server=\(serverNos.sorted(), privacy: .private)")
-                    }
-                    if localOnly > 0 && serverOnly > 0 {
-                        diffs.append(String(format: String(localized: "sync_conflict_reenable_courses"), String(localOnly), String(serverOnly)))
-                    } else if localOnly > 0 {
-                        diffs.append(String(format: String(localized: "sync_conflict_reenable_courses_local_only"), String(localOnly)))
-                    } else if serverOnly > 0 {
-                        diffs.append(String(format: String(localized: "sync_conflict_reenable_courses_server_only"), String(serverOnly)))
-                    } else {
-                        AppLogger.sync.info("[reenable] courses MATCH — no conflict")
-                    }
-                }
-
-                if pending.contains("course_colors") || pending.contains("course_names") {
-                    let overrides = json["course_overrides"] as? [[String: Any]] ?? []
-                    var moodleIdToNo: [String: String] = [:]
-                    for c in coursesArray {
-                        guard let mId = CourseOverridesReconciler.overrideIdentity(c) else { continue }
-                        if let courseNo = c["course_no"] as? String, !courseNo.isEmpty {
-                            moodleIdToNo[mId] = courseNo
-                        }
-                    }
-                    AppLogger.sync.info("[reenable] overrides=\(overrides.count, privacy: .public) moodleIdMap=\(moodleIdToNo.count, privacy: .public)")
-
-                    if pending.contains("course_colors") {
-                        let localColorMap = TigerDuckTheme.courseColorMap
-                        var colorMismatches: [String] = []
-                        for o in overrides {
-                            guard let mId = CourseOverridesReconciler.overrideIdentity(o),
-                                  let courseNo = o["course_no"] as? String ?? moodleIdToNo[mId],
-                                  let serverHex = o["color_hex"] as? String, !serverHex.isEmpty else { continue }
-                            let localHex = localColorMap[courseNo].map { String(format: "#%06X", $0) }
-                            if localHex != serverHex {
-                                colorMismatches.append("\(courseNo): local=\(localHex ?? "nil") server=\(serverHex)")
-                            }
-                        }
-                        AppLogger.sync.info("[reenable] colors: \(colorMismatches.isEmpty ? "MATCH" : "DIFFER (\(colorMismatches.count))", privacy: .public)")
-                        if !colorMismatches.isEmpty {
-                            for m in colorMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .private)") }
-                            diffs.append(String(localized: "sync_conflict_reenable_colors_differ"))
-                        }
-                    }
-
-                    if pending.contains("course_names") {
-                        let nameMismatches = Self.courseNameMismatches(
-                            overrides, courseNos: moodleIdToNo, local: CourseStore.shared.loadCourseCustomNames()
-                        )
-                        AppLogger.sync.info("[reenable] names: \(nameMismatches.isEmpty ? "MATCH" : "DIFFER (\(nameMismatches.count))", privacy: .public)")
-                        if !nameMismatches.isEmpty {
-                            for m in nameMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .private)") }
-                            diffs.append(String(localized: "sync_conflict_reenable_names_differ"))
-                        }
-                    }
-                }
-
-                if pending.contains("assignments") {
-                    let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
-                    var serverArchivedIds = Set<String>()
-                    var serverCompletedIds = Set<String>()
-                    for o in overridesArray {
-                        guard let status = o["local_status"] as? String else { continue }
-                        let moodleId: String?
-                        if let mid = o["moodle_assignment_id"] as? Int {
-                            moodleId = String(mid)
-                        } else if let assignPk = o["user_assignment_id"] as? Int,
-                                  let assignments = json["assignments"] as? [[String: Any]] {
-                            moodleId = assignments.first(where: { ($0["id"] as? Int) == assignPk })
-                                .flatMap { $0["moodle_assignment_id"] as? Int }.map(String.init)
-                        } else {
-                            moodleId = nil
-                        }
-                        guard let moodleId else { continue }
-                        switch status {
-                        case "archived", "ignored": serverArchivedIds.insert(moodleId)
-                        case "locally_completed": serverCompletedIds.insert(moodleId)
-                        default: break
-                        }
-                    }
-                    serverMarkedAssignments = serverArchivedIds.union(serverCompletedIds)
-                    let localArchivedIds = AssignmentStore.shared.loadArchivedAssignmentIds()
-                    let localCompletedIds = AssignmentStore.shared.loadLocallyCompletedAssignmentIds()
-                    let archivedMatch = localArchivedIds == serverArchivedIds
-                    let completedMatch = localCompletedIds == serverCompletedIds
-                    let coursesDiffer = CourseIgnoresReconciler.ignoredCoursesDiffer(
-                        server: serverIgnoredCourses.map { Set($0.map(\.key)) },
-                        decided: CourseIgnoresReconciler.serverDecidedCourses(json["course_overrides"] as? [[String: Any]] ?? [])
-                            .union(CourseIgnoresReconciler.recreatedCourses(
-                                listed: CourseIgnoresReconciler.listedCourseRows(coursesArray), seen: Defaults[.courseRowIdsSeen]
-                            )),
-                        listed: CourseIgnoresReconciler.listedCourses(coursesArray),
-                        local: AssignmentStore.shared.loadIgnoredAssignmentCourses(),
-                        snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String })
-                    )
-                    AppLogger.sync.info("[reenable] assignments: localArchived=\(localArchivedIds.count, privacy: .public) serverArchived=\(serverArchivedIds.count, privacy: .public) match=\(archivedMatch, privacy: .public) | localCompleted=\(localCompletedIds.count, privacy: .public) serverCompleted=\(serverCompletedIds.count, privacy: .public) match=\(completedMatch, privacy: .public) | ignoredCoursesDiffer=\(coursesDiffer, privacy: .public)")
-                    if !archivedMatch || !completedMatch || coursesDiffer {
-                        diffs.append(String(localized: "sync_conflict_reenable_assignments_differ"))
-                    }
-                }
-
-                AppLogger.sync.info("[reenable] result: \(diffs.count, privacy: .public) diffs → \(diffs.isEmpty ? "no conflict" : "SHOW POPUP", privacy: .public)")
                 await MainActor.run {
                     let outcome = Self.conflictCheckOutcome(
                         mayWrite: app.fullSync.mayWrite(since: ticket), checked: pending,
                         stillPending: Self.categoriesToCheck(
                             pending: Defaults[.pendingConflictCategories], answering: useLocalHold.held
                         ),
-                        foundDifference: !diffs.isEmpty
+                        foundDifference: !found.lines.isEmpty
                     )
                     conflictCheckRetry.note(outcome, at: Date(), signIn: ticket)
                     switch outcome {
@@ -285,9 +133,9 @@ final class SyncConflicts {
                     case .conflict(let checked):
                         reenableConflict = ReenableConflict(
                             categories: Array(checked),
-                            description: diffs.joined(separator: "\n"),
-                            serverIgnoredCourses: serverIgnoredCourses,
-                            serverMarkedAssignments: serverMarkedAssignments
+                            description: found.lines.joined(separator: "\n"),
+                            serverIgnoredCourses: found.serverIgnoredCourses,
+                            serverMarkedAssignments: found.serverMarkedAssignments
                         )
                     case .clear(let checked):
                         Defaults[.pendingConflictCategories].subtract(checked)
@@ -301,34 +149,16 @@ final class SyncConflicts {
         }
     }
 
-    /// A server name of `""` is a cleared one, as `courseNamesAfterPull` reads it.
     nonisolated static func courseNameMismatches(
         _ overrides: [[String: Any]], courseNos: [String: String], local: [String: [String: String]]
     ) -> [String] {
-        var mismatches: [String] = []
-        var serverNosWithNames = Set<String>()
-        for o in overrides {
-            guard let mId = CourseOverridesReconciler.overrideIdentity(o),
-                  let courseNo = o["course_no"] as? String ?? courseNos[mId],
-                  let serverNames = (o["custom_names"] as? [String: String])?.filter({ !$0.value.isEmpty }),
-                  !serverNames.isEmpty else { continue }
-            serverNosWithNames.insert(courseNo)
-            if (local[courseNo] ?? [:]) != serverNames {
-                mismatches.append("\(courseNo): local=\(local[courseNo] ?? [:]) server=\(serverNames)")
-            }
-        }
-        for (courseNo, locales) in local where !locales.isEmpty && !serverNosWithNames.contains(courseNo) {
-            mismatches.append("\(courseNo): local=\(locales) server=default")
-        }
-        return mismatches
+        ReenableDifferences.courseNameMismatches(overrides, courseNos: courseNos, local: local)
     }
 
     nonisolated static func coursesOnOneSide(
         server: Set<String>, local: Set<String>, semester: String, deleting: Set<String>
     ) -> (localOnly: Int, serverOnly: Int)? {
-        let server = server.filter { !CourseTombstone.isHidden($0, semester: semester, in: deleting) }
-        guard !server.isEmpty, !local.isEmpty else { return nil }
-        return (local.subtracting(server).count, server.subtracting(local).count)
+        ReenableDifferences.coursesOnOneSide(server: server, local: local, semester: semester, deleting: deleting)
     }
 
     private func endConflictCheck(checked pending: Set<String>, startedIn ticket: AccountSession.Ticket) {
@@ -465,9 +295,13 @@ final class SyncConflicts {
             },
             end: { self.useLocalHold.end($0) },
             dropQueuedEdits: { await self.app.cloudSyncCoordinator.discardEdits(of: $0, courseIgnores: $1) },
-            sendCourses: { try await self.sendLocalCourses(isCurrent: isCurrent) },
+            sendCourses: {
+                try await ReenableAnswer.sendLocalCourses(
+                    localEdits: self.app.localEdits, push: self.app.pushCoordinator, isCurrent: isCurrent
+                )
+            },
             markCoursesForCheck: { self.markCategoryReenabled("courses") },
-            queueEdits: { self.queueLocalEdits(of: conflict) },
+            queueEdits: { ReenableAnswer.queueLocalEdits(of: conflict, edits: self.app.edits) },
             dropLocalCopies: { Self.dropLocalCopies(for: conflict) },
             syncFromServer: { await self.app.fullSync.sync(followUpIfBusy: $0) },
             noteAnswered: { saveFailed in
@@ -481,125 +315,12 @@ final class SyncConflicts {
         Task { await Self.answerReenableConflict(conflict, keepLocal: keepLocal, effects: effects) }
     }
 
-    struct ReenableAnswerEffects {
-        let isCurrent: () -> Bool
-        let take: (_ categories: [String], _ keepLocal: Bool) -> Set<String>
-        let release: (_ held: Set<String>) -> Void
-        let end: (_ held: Set<String>) -> Void
-        let dropQueuedEdits: (_ categories: Set<String>, _ courseIgnores: Bool) async -> Void
-        let sendCourses: () async throws -> Void
-        let markCoursesForCheck: () -> Void
-        let queueEdits: () -> [Task<Void, Never>]
-        let dropLocalCopies: () -> Void
-        let syncFromServer: (_ followUpIfBusy: Bool) async -> Void
-        let noteAnswered: (_ saveFailed: Bool) -> Void
-    }
+    typealias ReenableAnswerEffects = ReenableAnswer.Effects
 
     static func answerReenableConflict(
         _ conflict: ReenableConflict, keepLocal: Bool, effects: ReenableAnswerEffects
     ) async {
-        if !keepLocal {
-            await effects.dropQueuedEdits(Set(conflict.categories), conflict.serverIgnoredCourses != nil)
-        }
-        guard effects.isCurrent() else { return }
-        let held = effects.take(conflict.categories, keepLocal)
-        var coursesSaveFailed = false
-        if keepLocal {
-            defer { effects.end(held) }
-            if conflict.categories.contains("courses") {
-                do {
-                    try await effects.sendCourses()
-                } catch {
-                    AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .private)")
-                    if effects.isCurrent() { effects.markCoursesForCheck() }
-                    coursesSaveFailed = true
-                }
-            }
-            guard effects.isCurrent() else { return }
-            for task in effects.queueEdits() { await task.value }
-            guard effects.isCurrent() else { return }
-            effects.release(held)
-        } else {
-            effects.dropLocalCopies()
-            await effects.syncFromServer(true)
-        }
-        guard effects.isCurrent() else { return }
-        effects.noteAnswered(coursesSaveFailed)
-    }
-
-    private func sendLocalCourses(isCurrent: () -> Bool) async throws {
-        guard SyncPolicy.current.uploadsCourses else { return }
-        let terms = SemesterCatalog.availableSemesters().map { semester in
-            (semester: semester,
-             courses: CourseStore.shared.loadCourses(semester: semester)
-                + CourseStore.shared.loadUserAddedCourses(semester: semester))
-        }
-        let latched = Set(terms.map(\.semester))
-        app.localEdits.resettingSemesters.formUnion(latched)
-        defer {
-            app.localEdits.resettingSemesters.subtract(latched)
-            for semester in latched { CourseStore.shared.recordSemesterReset(semester) }
-        }
-        try await Self.keepLocalCourses(
-            terms, hiding: Set(CourseStore.shared.loadDeletedCourseNos()), on: app.pushCoordinator, isCurrent: isCurrent
-        )
-    }
-
-    private func queueLocalEdits(of conflict: ReenableConflict) -> [Task<Void, Never>] {
-        var queued: [Task<Void, Never>?] = []
-        if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
-            let terms = SemesterCatalog.availableSemesters().map { ($0, CourseStore.shared.loadCourses(semester: $0)) }
-            let moodleIdByCourseNo = Dictionary(
-                terms.flatMap(\.1).compactMap { c in c.moodleIdNumber.map { (c.courseNo, $0) } },
-                uniquingKeysWith: { first, _ in first })
-            if conflict.categories.contains("course_colors") {
-                let identities = terms.flatMap { term in
-                    term.1.map { ($0.courseNo, EditSender.colorIdentity(of: $0, semester: term.0)) }
-                }
-                let identityByCourseNo = moodleIdByCourseNo.merging(identities, uniquingKeysWith: { first, _ in first })
-                let colorMap = TigerDuckTheme.courseColorMap
-                for (courseNo, hex) in colorMap {
-                    guard let identity = identityByCourseNo[courseNo] else { continue }
-                    queued += app.edits.syncCourseOverride(moodleCourseId: identity, colorHex: String(format: "#%06X", hex))
-                }
-            }
-            if conflict.categories.contains("course_names") {
-                let customNames = CourseStore.shared.loadCourseCustomNames()
-                for (courseNo, locales) in customNames {
-                    guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
-                    for (locale, name) in locales where !name.isEmpty {
-                        queued += app.edits.syncCourseOverride(moodleCourseId: moodleId, customName: name, locale: locale)
-                    }
-                }
-            }
-        }
-        if conflict.categories.contains("assignments") {
-            let archived = AssignmentStore.shared.loadArchivedAssignmentIds()
-            let completed = AssignmentStore.shared.loadLocallyCompletedAssignmentIds()
-            for id in archived {
-                queued.append(app.edits.syncAssignmentOverride(moodleId: id, status: "archived"))
-            }
-            for id in completed {
-                queued.append(app.edits.syncAssignmentOverride(moodleId: id, status: "locally_completed"))
-            }
-            let cleared = AssignmentMarksReconciler.assignmentMarksToClear(
-                server: conflict.serverMarkedAssignments, local: archived.union(completed)
-            )
-            for id in cleared {
-                queued.append(app.edits.syncAssignmentOverride(moodleId: id, status: "none"))
-            }
-            if let serverIgnoredCourses = conflict.serverIgnoredCourses {
-                let ignoredCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
-                queued += app.edits.syncCourseIgnores(ignoredCourses)
-                for course in CourseIgnoresReconciler.courseIgnoresToClear(server: serverIgnoredCourses, local: ignoredCourses) {
-                    queued.append(app.edits.syncCourseIgnore(
-                        semester: course.semester, courseNo: course.courseNo,
-                        moodleIdNumber: course.moodleId, ignore: false
-                    ))
-                }
-            }
-        }
-        return queued.compactMap { $0 }
+        await ReenableAnswer.answer(conflict, keepLocal: keepLocal, effects: effects)
     }
 
     nonisolated static func categoriesToCheck(pending: Set<String>, answering: Set<String>) -> Set<String> {
@@ -638,46 +359,14 @@ final class SyncConflicts {
         for conflict: ReenableConflict, courses: CourseStore = .shared, assignments: AssignmentStore = .shared,
         colors: CourseColorFiles = CourseColorStore.shared.files
     ) {
-        if conflict.categories.contains("course_colors") {
-            colors.saveCourseColorMap([:])
-            TigerDuckTheme.reload()
-        }
-        if conflict.categories.contains("course_names") {
-            courses.saveCourseCustomNames([:])
-        }
-        if conflict.categories.contains("assignments") {
-            assignments.replaceArchivedAssignmentIds([])
-            assignments.replaceLocallyCompletedAssignmentIds([])
-            if conflict.serverIgnoredCourses != nil {
-                assignments.replaceIgnoredAssignmentCourses([])
-            }
-        }
+        ReenableAnswer.dropLocalCopies(for: conflict, courses: courses, assignments: assignments, colors: colors)
     }
 
     static func keepLocalCourses(
-        _ terms: [(semester: String, courses: [SDCourse])],
-        hiding deletedNos: Set<String>,
-        on backend: some CourseSyncBackend,
-        isCurrent: () -> Bool = { true }
+        _ terms: [(semester: String, courses: [SDCourse])], hiding deletedNos: Set<String>,
+        on backend: some CourseSyncBackend, isCurrent: () -> Bool = { true }
     ) async throws {
-        for (semester, courses) in terms {
-            let hiddenNos = CourseTombstone.courseNos(hiddenIn: semester, in: deletedNos)
-            let stubs = hiddenNos.subtracting(courses.map(\.courseNo)).sorted()
-                .map { SDCourse(courseNo: $0, courseName: $0) }
-            guard !courses.isEmpty || !stubs.isEmpty else { continue }
-            if !courses.isEmpty {
-                guard isCurrent() else { throw CancellationError() }
-                try await backend.deleteAllCourses(semester: semester, madeAt: Date())
-            }
-            guard isCurrent() else { throw CancellationError() }
-            try await backend.uploadCourses(SchoolDataUploader.courseUploadRequest(courses + stubs, semester: semester), addedAt: nil)
-            for courseNo in hiddenNos.sorted() {
-                guard isCurrent() else { throw CancellationError() }
-                try await backend.deleteCourse(
-                    courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), madeAt: Date()
-                )
-            }
-        }
+        try await ReenableAnswer.keepLocalCourses(terms, hiding: deletedNos, on: backend, isCurrent: isCurrent)
     }
 }
 

@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -85,6 +86,30 @@ struct OverrideStampTests {
             }
         }
         #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    @Test("A clock_ahead resend waits for a hold that started during the first send", arguments: Edit.allCases)
+    func aheadResendWaitsForAHoldStartedDuringTheSend(_ edit: Edit) async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent(
+            edit == .mark ? "sync/assignments/42/override" : "sync/courses/client:1151:CS1001301/override"
+        )
+        let gate = SettingsAPIStub.ReplyGate()
+        var refused = Attempts.clockAhead
+        refused.gate = gate
+        SettingsAPIStub.enqueue(refused, for: url)
+        let held = OSAllocatedUnfairLock(initialState: false)
+        let coordinator = Self.makeCoordinator(baseURL, held: { held.withLock { $0 } })
+        await coordinator.outbox.enqueue(Self.op(edit))
+
+        let tick = Task { await coordinator.syncTick() }
+        try await waitUntil { !SettingsAPIStub.requests(for: url).isEmpty }
+        held.withLock { $0 = true }
+        gate.open()
+        await tick.value
+
+        #expect(SettingsAPIStub.requests(for: url).count == 1)
+        #expect(await coordinator.outbox.snapshot().map(\.attempts) == [0])
     }
 
     @Test("A holiday setting whose send failed goes again after a relaunch with the time it was made")
@@ -191,12 +216,15 @@ struct OverrideStampTests {
         return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
     }
 
-    private static func makeCoordinator(_ baseURL: URL) -> CloudSyncCoordinator {
+    /// `held` stands for a conflict check owed on every category, as a switch turned off and on.
+    private static func makeCoordinator(
+        _ baseURL: URL, held: @escaping @Sendable () -> Bool = { false }
+    ) -> CloudSyncCoordinator {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OverrideStampTests-\(UUID().uuidString)", isDirectory: true)
         return CloudSyncCoordinator(
             pushCoordinator: pushCoordinator(baseURL), outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true }
+            syncsAssignmentMarks: { !held() }, syncsCourseIgnores: { !held() }, syncsCourseOverrides: { _ in !held() }
         )
     }
 }
