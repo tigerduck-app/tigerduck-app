@@ -30,9 +30,9 @@ leaves on the device.
      reply brings.
   3. It clears every store the account owns: first the plan's static list of `AccountScoped`
      types, each deleting its files and keys by name, so a store this process never built is
-     cleared too; then what the stores do not hold, such as `AppState`'s lists. The school plan
-     posts `AppConstants.dataDidUpdate`, so feature view models, widgets and the Watch rebuild
-     from the empty caches.
+     cleared too; then what the stores do not hold, such as `AppState`'s lists. The cleared stores
+     move their revisions, so feature view models and `DeviceSurfaceSyncer` (widgets, the Watch,
+     Live Activities) rebuild from the empty caches.
   4. It starts the calls that need the departing session. For the school account
      `AuthService.startSignOutCalls` forgets the school's pages, settles cloud sync, unregisters
      the device with the session it kept, ends Live Activities and removes the account's
