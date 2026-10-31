@@ -6,7 +6,7 @@ import Foundation
 @Observable
 final class ClassTableLoader {
     @ObservationIgnored weak var owner: ClassTableViewModel?
-    var isRefreshing = false
+    let refreshing = StateSignal(false)
     private var hasLoaded = false
     private var hasWarmedCaches = false
     // `nonisolated(unsafe)` lets `deinit`, nonisolated even on a `@MainActor`
@@ -120,12 +120,12 @@ final class ClassTableLoader {
     /// The task keeps the view model alive to the end, so leaving the class table mid-refresh
     /// still ends the loading state and refreshes the current term.
     func triggerRefresh(authService: AuthService, semester: String? = nil) {
-        guard !isRefreshing, let table = owner else { return }
-        isRefreshing = true
+        guard !refreshing.value, let table = owner else { return }
+        refreshing.value = true
         Task {
             guard await NetworkMonitor.shared.isReachable() else {
                 SchoolRefresh.showOffline()
-                self.isRefreshing = false
+                self.refreshing.value = false
                 return
             }
             await self.fetchData(table, authService: authService, semester: semester)
@@ -135,7 +135,7 @@ final class ClassTableLoader {
                 table.today.reload()
                 table.refreshCourseColors()
             }
-            self.isRefreshing = false
+            self.refreshing.value = false
         }
     }
 
