@@ -163,13 +163,13 @@ struct SelectionDropsTests {
             SDCourse(courseNo: "EE2005301", courseName: "Merged", moodleIdNumber: "1151EE2005301", semester: "1151"),
         ]
 
-        let kept = AppState.keptRows(
+        let kept = CourseRosterReconciler.keptRows(
             rows, semester: "1151", dropped: ["GE1010001", "EE2005301", "PE1001301"], userAdded: userAdded
         )
         let listed = Set(kept.compactMap { $0["course_no"] as? String })
 
         #expect(listed == ["CS1001301", "GE1010001", "PE1001301"])
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: listed, tombstoned: [], fetched: ["CS1001301"],
             handAdded: ["GE1010001", "EE2005301"], droppedMerges: [], hidden: [], adding: []
         )
@@ -197,10 +197,10 @@ struct SelectionDropsTests {
     @Test("A row a roster dropped is not merged and takes its merged copy along; a hand-add here stays")
     @MainActor
     func serverDropLeavesLikeASelectionDrop() {
-        let listed = Set(AppState.keptRows(
+        let listed = Set(CourseRosterReconciler.keptRows(
             Self.rowsAfterARoster, semester: "1151", dropped: [], userAdded: Self.addedAndMerged
         ).compactMap { $0["course_no"] as? String })
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: listed, tombstoned: [], fetched: ["CS1001301"],
             handAdded: ["GE1010001", "EE2005301"], droppedMerges: [], hidden: [], adding: []
         )
@@ -233,7 +233,7 @@ struct SelectionDropsTests {
         let cache = Self.makeCache(fetched: ["CS1001301", "MA1010003"], userAdded: Self.addedAndMerged)
         var forgotten = 0
 
-        let term = AppState.readTerm(
+        let term = CourseRosterReconciler.readTerm(
             "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: Self.addedAndMerged, hidden: [],
             adding: [], liveAnswer: offset.map { (courseNos: ["CS1001301", "MA1010003"], at: droppedAt + $0) },
             courses: cache.courses, forgetAnswer: { forgotten += 1 }
@@ -283,7 +283,7 @@ struct SelectionDropsTests {
         ]]
         var forgotten = 0
 
-        let term = AppState.readTerm(
+        let term = CourseRosterReconciler.readTerm(
             "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: [], hidden: [], adding: [],
             liveAnswer: (courseNos: ["CS1001301", "MA1010003"], at: droppedAt - 3600),
             courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses, forgetAnswer: { forgotten += 1 }
@@ -297,7 +297,7 @@ struct SelectionDropsTests {
     @MainActor
     func termOfDroppedRowsIsNotEmpty() {
         let read = { (rows: [[String: Any]]) in
-            AppState.readTerm(
+            CourseRosterReconciler.readTerm(
                 "1151", rows: rows, tombstones: [], selectionDropped: ["EE2005301"], userAdded: [], hidden: [], adding: [],
                 liveAnswer: nil, courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses, forgetAnswer: {}
             )
@@ -314,11 +314,11 @@ struct SelectionDropsTests {
     func serverDropEmptyingATermTakesMergedCopies() {
         let rows = Self.rowsAfterARoster.filter { $0["course_no"] as? String != "GE1010001" }
             .map { $0.merging(["enrollment_status": "dropped"]) { _, dropped in dropped } }
-        let droppedOnServer = AppState.droppedOnServer(rows)
-        let kept = AppState.keptRows(rows, semester: "1151", dropped: [], userAdded: Self.addedAndMerged)
-        let unlisted = AppState.unlistedCourses(
+        let droppedOnServer = CourseRosterReconciler.droppedOnServer(rows)
+        let kept = CourseRosterReconciler.keptRows(rows, semester: "1151", dropped: [], userAdded: Self.addedAndMerged)
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: [], tombstoned: [], fetched: [], handAdded: ["GE1010001", "EE2005301"],
-            droppedMerges: AppState.droppedMerges(Self.addedAndMerged, semester: "1151", dropped: droppedOnServer),
+            droppedMerges: CourseRosterReconciler.droppedMerges(Self.addedAndMerged, semester: "1151", dropped: droppedOnServer),
             hidden: [], adding: []
         )
 
@@ -400,9 +400,9 @@ struct PastTermRebuildTests {
             ["course_no": "PE1001301", "source": "user_added"],
             ["course_no": "EC9999301", "source": "ntust_portal"],
         ]
-        let listed = Set(AppState.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
+        let listed = Set(CourseRosterReconciler.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
             .compactMap { $0["course_no"] as? String })
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1141", listed: listed, tombstoned: [], fetched: Set(rebuilt.courses.map(\.courseNo)),
             handAdded: Set(userAdded.map(\.courseNo)), droppedMerges: [], hidden: [], adding: []
         )
@@ -417,11 +417,11 @@ struct PastTermRebuildTests {
         let dropped: Set<String> = ["GE1010001", "EC9999301"]
         let rows: [[String: Any]] = [["course_no": "EC9999301", "source": "ntust_portal"]]
 
-        let listed = Set(AppState.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
+        let listed = Set(CourseRosterReconciler.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
             .compactMap { $0["course_no"] as? String })
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1141", listed: listed, tombstoned: [], fetched: [], handAdded: Set(userAdded.map(\.courseNo)),
-            droppedMerges: AppState.droppedMerges(userAdded, semester: "1141", dropped: dropped),
+            droppedMerges: CourseRosterReconciler.droppedMerges(userAdded, semester: "1141", dropped: dropped),
             hidden: [], adding: []
         )
 
@@ -518,7 +518,7 @@ struct PastTermRebuildTests {
             "course_no": "GE1010001", "moodle_id": "1141GE1010001", "schedule_json": ["2": ["3", "4"]],
         ]
 
-        let filled = AppState.scheduled(added, fromServerRow: row)
+        let filled = CourseRosterReconciler.scheduled(added, fromServerRow: row)
 
         #expect(filled.schedule == [2: ["3", "4"]])
         #expect(filled.moodleIdNumber == nil)

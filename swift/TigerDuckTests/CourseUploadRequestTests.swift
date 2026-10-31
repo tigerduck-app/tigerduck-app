@@ -11,7 +11,7 @@ struct CourseUploadRequestTests {
 
     @Test("A course upload names its courses and terms and carries no colour or force key, which /v4 refuses")
     func noColoursOrForceKeys() throws {
-        let request = AppState.courseUploadRequest(Self.courses, semester: "1151", rosterTerms: ["1151"])
+        let request = SchoolDataUploader.courseUploadRequest(Self.courses, semester: "1151", rosterTerms: ["1151"])
         let body = try JSONSerialization.jsonObject(with: BackendClient.encoder.encode(request)) as? [String: Any]
 
         #expect(Set(body?.keys ?? [:].keys) == ["courses", "roster_terms"])

@@ -167,9 +167,8 @@ cp api/.env.template api/.env
 tigerduck-app/
 ├── swift/                              # iOS App + companion targets (Xcode 26+ / iOS 18+ / watchOS 11+)
 │   ├── TigerDuck/                      # Main iOS app sources
-│   │   ├── App/                        # Entry point, global state (AppState), language manager, push delegate
+│   │   ├── App/                        # Entry point, AppEnvironment, routing, language manager, push delegate
 │   │   ├── Account/                    # NTUST sign-in coordination (AuthService)
-│   │   ├── Bridge/                     # Fetch orchestration between services and SwiftData
 │   │   ├── School/                     # NTUST, SSO, Moodle, library, calendar and bulletin clients
 │   │   ├── Backend/                    # TigerDuck backend: tokens, cloud sync, push, course catalog
 │   │   ├── Mail/                       # School Mail IMAP / SMTP

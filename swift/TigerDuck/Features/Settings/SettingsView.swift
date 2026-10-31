@@ -4,14 +4,14 @@ import SwiftData
 import UserNotifications
 
 struct SettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     /// Observed, not read through `Defaults[...]`: a bare subscript is a
     /// plain read that SwiftUI never subscribes to, so this screen kept
     /// rendering "On" after the switch inside `CloudSyncSettingsView` had
     /// already turned it off -- popping back does not re-evaluate a parent
     /// body on its own.
     ///
-    /// The preference is the flag's only copy -- `appState.cloudSyncEnabled`
+    /// The preference is the flag's only copy -- `app.cloudSyncEnabled`
     /// reads it too, through `CloudSyncPreference` -- so either would do.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
@@ -51,7 +51,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        @Bindable var appState = appState
+        @Bindable var preferences = app.preferences
         List {
             Section(String(localized: "settings_section_account")) {
                 ntustAccountRow
@@ -70,18 +70,18 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(String(localized: "settings_accent_color"))
                     HStack(spacing: 12) {
-                        ForEach(AppState.themeColors, id: \.hex) { theme in
+                        ForEach(AppPreferences.themeColors, id: \.hex) { theme in
                             Button {
                                 withAnimation(reduceMotion ? nil : .smoothSpring) {
                                     AccentPreview.shared.clear()
-                                    appState.accentColorHex = theme.hex
+                                    app.preferences.accentColorHex = theme.hex
                                 }
                             } label: {
                                 Circle()
                                     .fill(Color(hex: UInt(theme.hex)))
                                     .frame(width: 28, height: 28)
                                     .overlay {
-                                        if AccentPreview.shared.shownHex(saved: appState.accentColorHex) == theme.hex {
+                                        if AccentPreview.shared.shownHex(saved: app.preferences.accentColorHex) == theme.hex {
                                             Image(systemName: "checkmark")
                                                 .font(.caption.bold())
                                                 .foregroundStyle(.white)
@@ -90,15 +90,15 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(Text(String(localized: String.LocalizationValue(theme.nameKey))))
-                            .accessibilityAddTraits(AccentPreview.shared.shownHex(saved: appState.accentColorHex) == theme.hex ? .isSelected : [])
+                            .accessibilityAddTraits(AccentPreview.shared.shownHex(saved: app.preferences.accentColorHex) == theme.hex ? .isSelected : [])
                         }
-                        CustomAccentPicker(appState: appState, size: 28)
+                        CustomAccentPicker(app: app, size: 28)
                     }
                 }
             }
 
             Section(String(localized: "settings_section_display")) {
-                Picker(String(localized: "settings_visual_preset_label"), selection: $appState.visualPreset) {
+                Picker(String(localized: "settings_visual_preset_label"), selection: $preferences.visualPreset) {
                     ForEach(VisualPreset.allCases) { preset in
                         Text(preset.displayName).tag(preset)
                     }
@@ -108,40 +108,40 @@ struct SettingsView: View {
                         Text(appearance.title).tag(appearance)
                     }
                 }
-                Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $appState.showAbsoluteAssignmentTime)
+                Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $preferences.showAbsoluteAssignmentTime)
                 Toggle(
                     String(localized: "settings_pin_today_courses_on_class_table"),
                     isOn: $pinTodayCoursesOnClassTable
                 )
                 Toggle(
                     String(localized: "settings_show_classroom_on_class_table"),
-                    isOn: $appState.showClassroomInClassTable
+                    isOn: $preferences.showClassroomInClassTable
                 )
                 Toggle(String(localized: "settings_outline_required_courses"), isOn: $outlineRequiredCourses)
-                Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $appState.alwaysShowAllPeriods)
+                Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $preferences.alwaysShowAllPeriods)
             }
 
             Section(String(localized: "browser_address_bar")) {
                 BrowserAddressBarPicker(selection: $browserAddressBar)
             }
 
-            if LanguageManager.isCurrentLanguageNonChinese(appLanguage: appState.appLanguage) {
+            if LanguageManager.isCurrentLanguageNonChinese(appLanguage: app.preferences.appLanguage) {
                 Section(String(localized: "settings_section_abbreviation")) {
                     Toggle(
                         String(localized: "settings_use_english_course_abbreviation"),
-                        isOn: $appState.useEnglishCourseAbbreviation
+                        isOn: $preferences.useEnglishCourseAbbreviation
                     )
                     Toggle(
                         String(localized: "settings_use_english_classroom_abbreviation"),
-                        isOn: $appState.useEnglishClassroomAbbreviation
+                        isOn: $preferences.useEnglishClassroomAbbreviation
                     )
-                    if appState.useEnglishClassroomAbbreviation {
+                    if app.preferences.useEnglishClassroomAbbreviation {
                         // The Form default, `.menu`, sizes the row for one line, so a long
                         // localized label wraps to two lines and is clipped at the bottom.
                         // `.navigationLink` renders a real NavigationLink whose row fits the label.
                         Picker(
                             String(localized: "settings_classroom_mandarin_display"),
-                            selection: $appState.classroomMandarinDisplay
+                            selection: $preferences.classroomMandarinDisplay
                         ) {
                             Text(String(localized: "settings_classroom_mandarin_display_original"))
                                 .tag("original")
@@ -198,15 +198,15 @@ struct SettingsView: View {
 
                 Group {
                     NavigationLink(String(localized: "settings_class_reminder")) {
-                        ClassReminderSettingsView(store: appState.liveActivityPreferences)
+                        ClassReminderSettingsView(store: app.liveActivity.preferences)
                     }
                     .disabled(!cloudSyncEnabled)
                     NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
-                        AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
+                        AssignmentReminderSettingsView(store: app.liveActivity.preferences)
                     }
                     .disabled(!cloudSyncEnabled)
                     NavigationLink(String(localized: "live_activity_settings_nav_title")) {
-                        LiveActivitySettingsView(store: appState.liveActivityPreferences)
+                        LiveActivitySettingsView(store: app.liveActivity.preferences)
                     }
                     .disabled(!cloudSyncEnabled)
                 }
@@ -342,7 +342,7 @@ struct SettingsView: View {
         }
         .alert(String(localized: "action_sign_out"), isPresented: $confirmsSignOut) {
             Button(String(localized: "action_sign_out"), role: .destructive) {
-                SignOutPlan.school(appState).run()
+                SignOutPlan.school(app).run()
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
@@ -354,7 +354,7 @@ struct SettingsView: View {
                 subtitle: String(localized: "settings_library_account_subtitle"),
                 usernamePlaceholder: String(localized: "sign_in_student_id"),
                 passwordPlaceholder: String(localized: "sign_in_password"),
-                initialUsername: appState.authService.storedStudentId ?? "",
+                initialUsername: app.authService.storedStudentId ?? "",
                 isLoggingIn: libIsLoggingIn,
                 loginError: libLoginError,
                 onLogin: { username, password in
@@ -366,7 +366,7 @@ struct SettingsView: View {
                                 username: username,
                                 password: password
                             )
-                            appState.notifyLibraryStateChanged()
+                            app.library.noteChange()
                             showLibraryLogin = false
                         } catch {
                             libLoginError = error.localizedDescription
@@ -389,7 +389,7 @@ struct SettingsView: View {
             isPresented: $showManualUpdateCheckResultAlert,
             actions: {
                 Button(String(localized: "action_got_it"), role: .cancel) {
-                    appState.updateNotifyCoordinator.lastManualCheckResult = nil
+                    app.updateNotifyCoordinator.lastManualCheckResult = nil
                 }
             },
             message: {
@@ -407,7 +407,7 @@ struct SettingsView: View {
 
     #if os(iOS)
     private var manualCheckResultAlertTitle: String {
-        switch appState.updateNotifyCoordinator.lastManualCheckResult {
+        switch app.updateNotifyCoordinator.lastManualCheckResult {
         case .upToDate: return String(localized: "update_up_to_date_title")
         case .failed: return String(localized: "update_check_failed_title")
         case .offered, nil: return ""
@@ -415,7 +415,7 @@ struct SettingsView: View {
     }
 
     private var manualCheckResultAlertMessage: String {
-        switch appState.updateNotifyCoordinator.lastManualCheckResult {
+        switch app.updateNotifyCoordinator.lastManualCheckResult {
         case .upToDate:
             return String(format: NSLocalizedString(
                 "update_up_to_date_message",
@@ -434,8 +434,8 @@ struct SettingsView: View {
     private var checkForUpdatesRow: some View {
         Button {
             Task {
-                await appState.updateNotifyCoordinator.checkManually()
-                let result = appState.updateNotifyCoordinator.lastManualCheckResult
+                await app.updateNotifyCoordinator.checkManually()
+                let result = app.updateNotifyCoordinator.lastManualCheckResult
                 if case .offered = result { return }
                 if result != nil { showManualUpdateCheckResultAlert = true }
             }
@@ -444,13 +444,13 @@ struct SettingsView: View {
                 Text(String(localized: "settings_check_for_updates"))
                     .foregroundStyle(.primary)
                 Spacer()
-                if appState.updateNotifyCoordinator.isCheckingForUpdate {
+                if app.updateNotifyCoordinator.isCheckingForUpdate {
                     ProgressView()
                         .controlSize(.small)
                 }
             }
         }
-        .disabled(appState.updateNotifyCoordinator.isCheckingForUpdate)
+        .disabled(app.updateNotifyCoordinator.isCheckingForUpdate)
     }
 
     /// "Check Server Status" row. It sits under Check for Updates because that row asks
@@ -472,9 +472,9 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var whatsNewRow: some View {
-        if appState.updateNotifyCoordinator.hasWhatsNewContent(in: appState) {
+        if app.updateNotifyCoordinator.hasWhatsNewContent(in: app) {
             Button {
-                manualWhatsNewItem = appState.updateNotifyCoordinator.latestWhatsNew(in: appState)
+                manualWhatsNewItem = app.updateNotifyCoordinator.latestWhatsNew(in: app)
             } label: {
                 HStack {
                     Text(String(localized: "settings_whats_new"))
@@ -492,17 +492,17 @@ struct SettingsView: View {
     private var ntustAccountRow: some View {
         accountRow(
             title: String(localized: "settings_account_ntust_system"),
-            isLoggedIn: appState.authService.hasStoredCredentials,
-            detail: appState.authService.storedStudentId,
-            onLogin: { appState.presentNTUSTLogin() },
+            isLoggedIn: app.authService.hasStoredCredentials,
+            detail: app.authService.storedStudentId,
+            onLogin: { app.router.presentNTUSTLogin() },
             onLogout: {
                 Task {
-                    let unsynced = await appState.signOutDeletesUnsyncedData()
-                    guard appState.authService.hasStoredCredentials else { return }
+                    let unsynced = await app.signOutCheck.deletesUnsyncedData()
+                    guard app.authService.hasStoredCredentials else { return }
                     ImportedClassTableStore.shared.requestSignOut(
                         unsyncedData: unsynced,
                         confirm: { signOutLines = $0; confirmsSignOut = true },
-                        signOut: { SignOutPlan.school(appState).run() }
+                        signOut: { SignOutPlan.school(app).run() }
                     )
                 }
             }
@@ -512,10 +512,10 @@ struct SettingsView: View {
     private var libraryAccountRow: some View {
         accountRow(
             title: String(localized: "settings_account_library_system"),
-            isLoggedIn: appState.isLibraryLoggedIn,
-            detail: appState.libraryUsername,
+            isLoggedIn: app.library.isLoggedIn,
+            detail: app.library.username,
             onLogin: { showLibraryLogin = true },
-            onLogout: { appState.logoutLibrary() }
+            onLogout: { app.library.logout() }
         )
     }
 
@@ -583,8 +583,8 @@ struct SettingsView: View {
 
     #if DEBUG
     private func eraseEverything() {
-        SignOutPlan.school(appState).run()
-        appState.logoutLibrary()
+        SignOutPlan.school(app).run()
+        app.library.logout()
         #if os(iOS)
         MailAccountManager.shared.logout()
         DevMailServerSettings.shared.resetToSchoolServer()
@@ -610,7 +610,7 @@ struct SettingsView: View {
 
         try? FileManager.default.removeItem(at: OutboxFiles.defaultDirectory())
 
-        appState.hasCompletedOnboarding = false
+        app.hasCompletedOnboarding = false
         Defaults[.hasCompletedOnboarding] = false
     }
     #endif

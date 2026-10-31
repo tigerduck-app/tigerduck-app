@@ -8,7 +8,7 @@ struct MoodleMemberView: View {
     let store: MoodleCourseStore
     let member: MoodleMember
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
     @State private var picturePreview: URL?
     @State private var isOpeningPicture = false
@@ -45,7 +45,7 @@ struct MoodleMemberView: View {
                 MoodleMemberProfile(
                     member: shown,
                     picture: shown.pictureURL.flatMap { store.pictures[$0] },
-                    policy: appState.visualStylePolicy,
+                    policy: app.preferences.visualStylePolicy,
                     writeTo: writeTo,
                     isOpeningPicture: isOpeningPicture,
                     openPicture: openPicture,

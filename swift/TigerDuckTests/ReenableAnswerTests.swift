@@ -5,9 +5,9 @@ import Testing
 @MainActor
 struct ReenableAnswerTests {
     private static func conflict(
-        _ categories: [String], serverIgnoredCourses: [AppState.ServerIgnoredCourse]? = nil
-    ) -> AppState.ReenableConflict {
-        AppState.ReenableConflict(
+        _ categories: [String], serverIgnoredCourses: [CourseIgnoresReconciler.ServerIgnoredCourse]? = nil
+    ) -> SyncConflicts.ReenableConflict {
+        SyncConflicts.ReenableConflict(
             categories: categories, description: "", serverIgnoredCourses: serverIgnoredCourses,
             serverMarkedAssignments: []
         )
@@ -25,14 +25,14 @@ struct ReenableAnswerTests {
             }
         }
 
-        await AppState.answerReenableConflict(
+        await SyncConflicts.answerReenableConflict(
             Self.conflict(["course_colors", "assignments"]), keepLocal: true, effects: app.effects
         )
 
         #expect(Set(app.events.prefix(2)) == ["queued colour", "queued mark"])
         #expect(app.events.dropFirst(2) == ["release", "end", "answered"])
         #expect(app.pending.isEmpty)
-        #expect(app.hold == AppState.UseLocalHold())
+        #expect(app.hold == SyncConflicts.UseLocalHold())
     }
 
     @Test("Use Local for courses keeps them pending until its course requests are done")
@@ -40,7 +40,7 @@ struct ReenableAnswerTests {
         let app = AnswerProbe(pending: ["courses"])
         app.sendCourses = { app.events.append("courses sent, pending: \(app.pending.sorted())") }
 
-        await AppState.answerReenableConflict(Self.conflict(["courses"]), keepLocal: true, effects: app.effects)
+        await SyncConflicts.answerReenableConflict(Self.conflict(["courses"]), keepLocal: true, effects: app.effects)
 
         #expect(app.events == [#"courses sent, pending: ["courses"]"#, "release", "end", "answered"])
         #expect(app.pending.isEmpty)
@@ -51,13 +51,13 @@ struct ReenableAnswerTests {
         let app = AnswerProbe(pending: ["courses", "course_names"])
         app.sendCourses = { throw URLError(.notConnectedToInternet) }
 
-        await AppState.answerReenableConflict(
+        await SyncConflicts.answerReenableConflict(
             Self.conflict(["courses", "course_names"]), keepLocal: true, effects: app.effects
         )
 
         #expect(app.events == ["marked courses", "release", "end", "answered after a failed save"])
         #expect(app.pending == ["courses"])
-        #expect(app.hold == AppState.UseLocalHold())
+        #expect(app.hold == SyncConflicts.UseLocalHold())
     }
 
     @Test("A sign-out while Use Local queues its edits ends the hold and lets go of nothing of the next account's")
@@ -65,11 +65,11 @@ struct ReenableAnswerTests {
         let app = AnswerProbe(pending: ["course_colors"])
         app.queueEdits = { [Task { app.signOut(nextAccountPending: ["course_colors"]) }] }
 
-        await AppState.answerReenableConflict(Self.conflict(["course_colors"]), keepLocal: true, effects: app.effects)
+        await SyncConflicts.answerReenableConflict(Self.conflict(["course_colors"]), keepLocal: true, effects: app.effects)
 
         #expect(app.events == ["end"])
         #expect(app.pending == ["course_colors"])
-        #expect(app.hold == AppState.UseLocalHold())
+        #expect(app.hold == SyncConflicts.UseLocalHold())
     }
 
     @Test("A sign-out during the course requests queues nothing, marks nothing and lets go of nothing")
@@ -84,13 +84,13 @@ struct ReenableAnswerTests {
             return []
         }
 
-        await AppState.answerReenableConflict(
+        await SyncConflicts.answerReenableConflict(
             Self.conflict(["courses", "assignments"]), keepLocal: true, effects: app.effects
         )
 
         #expect(app.events == ["end"])
         #expect(app.pending == ["assignments"])
-        #expect(app.hold == AppState.UseLocalHold())
+        #expect(app.hold == SyncConflicts.UseLocalHold())
     }
 
     @Test("Use Server drops the queued edits of what it answers before it takes them off the pending list and the server's data")
@@ -100,7 +100,7 @@ struct ReenableAnswerTests {
             app.events.append("dropped \(categories.sorted()) courseIgnores: \(courseIgnores) pending: \(app.pending.sorted())")
         }
 
-        await AppState.answerReenableConflict(
+        await SyncConflicts.answerReenableConflict(
             Self.conflict(["course_colors", "assignments"], serverIgnoredCourses: []), keepLocal: false,
             effects: app.effects
         )
@@ -117,7 +117,7 @@ struct ReenableAnswerTests {
         let app = AnswerProbe(pending: ["assignments"])
         app.dropQueuedEdits = { _, courseIgnores in app.events.append("courseIgnores: \(courseIgnores)") }
 
-        await AppState.answerReenableConflict(Self.conflict(["assignments"]), keepLocal: false, effects: app.effects)
+        await SyncConflicts.answerReenableConflict(Self.conflict(["assignments"]), keepLocal: false, effects: app.effects)
 
         #expect(app.events.first == "courseIgnores: false")
     }
@@ -127,7 +127,7 @@ struct ReenableAnswerTests {
         let app = AnswerProbe(pending: ["course_names"])
         app.dropQueuedEdits = { _, _ in app.signOut(nextAccountPending: ["course_names"]) }
 
-        await AppState.answerReenableConflict(Self.conflict(["course_names"]), keepLocal: false, effects: app.effects)
+        await SyncConflicts.answerReenableConflict(Self.conflict(["course_names"]), keepLocal: false, effects: app.effects)
 
         #expect(app.events.isEmpty)
         #expect(app.pending == ["course_names"])
@@ -138,7 +138,7 @@ struct ReenableAnswerTests {
         let app = AnswerProbe(pending: ["course_names"])
         app.syncFromServer = { app.signOut(nextAccountPending: []) }
 
-        await AppState.answerReenableConflict(Self.conflict(["course_names"]), keepLocal: false, effects: app.effects)
+        await SyncConflicts.answerReenableConflict(Self.conflict(["course_names"]), keepLocal: false, effects: app.effects)
 
         #expect(app.events == ["local copies dropped", "server sync, after one running: true"])
     }
@@ -147,7 +147,7 @@ struct ReenableAnswerTests {
 @MainActor
 private final class AnswerProbe {
     var pending: Set<String>
-    var hold = AppState.UseLocalHold()
+    var hold = SyncConflicts.UseLocalHold()
     var events: [String] = []
     var sendCourses: () async throws -> Void = {}
     var queueEdits: () -> [Task<Void, Never>] = { [] }
@@ -164,8 +164,8 @@ private final class AnswerProbe {
         pending = nextAccountPending
     }
 
-    var effects: AppState.ReenableAnswerEffects {
-        AppState.ReenableAnswerEffects(
+    var effects: SyncConflicts.ReenableAnswerEffects {
+        SyncConflicts.ReenableAnswerEffects(
             isCurrent: { self.signedIn },
             take: { self.hold.take($0, keepLocal: $1, from: &self.pending) },
             release: {

@@ -3,7 +3,7 @@ import SwiftUI
 import TigerDuckCore
 
 struct MacScoreView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var viewModel = ScoreViewModel()
 
     var body: some View {
@@ -40,7 +40,7 @@ struct MacScoreView: View {
                 HStack(spacing: 8) {
                     SyncStatusDot(servers: ServerKind.transcriptSources, lastSynced: .at(viewModel.cachedAt))
                     Button {
-                        Task { await viewModel.refresh(authService: appState.authService, force: true) }
+                        Task { await viewModel.refresh(authService: app.authService, force: true) }
                     } label: {
                         if viewModel.isRefreshing {
                             ProgressView().controlSize(.small)
@@ -55,10 +55,10 @@ struct MacScoreView: View {
             }
         }
         .task {
-            viewModel.load(authService: appState.authService)
+            viewModel.load(authService: app.authService)
         }
-        .onChange(of: appState.authService.session.ticket) {
-            viewModel.load(authService: appState.authService)
+        .onChange(of: app.authService.session.ticket) {
+            viewModel.load(authService: app.authService)
         }
     }
 

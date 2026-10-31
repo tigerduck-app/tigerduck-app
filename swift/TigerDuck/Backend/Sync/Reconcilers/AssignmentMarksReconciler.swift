@@ -6,7 +6,7 @@ import os
 @MainActor
 struct AssignmentMarksReconciler: CategoryReconciler {
     let category = "assignments"
-    unowned let app: AppState
+    unowned let resolver: SyncConflicts
     var assignments: AssignmentStore = .shared
 
     func reconcile(_ pass: FullSyncPass) -> Bool {
@@ -21,10 +21,10 @@ struct AssignmentMarksReconciler: CategoryReconciler {
         let conflictIds = Set(conflicts.map(\.id))
         let currentArchived = assignments.loadArchivedAssignmentIds()
         let currentCompleted = assignments.loadLocallyCompletedAssignmentIds()
-        var safeArchived = AppState.mergedMarks(
+        var safeArchived = Self.mergedMarks(
             server: pass.marks.archived.subtracting(conflictIds), local: currentArchived, protected: pass.protected
         )
-        var safeCompleted = AppState.mergedMarks(
+        var safeCompleted = Self.mergedMarks(
             server: pass.marks.completed.subtracting(conflictIds), local: currentCompleted, protected: pass.protected
         )
         for conflict in conflicts {
@@ -45,7 +45,7 @@ struct AssignmentMarksReconciler: CategoryReconciler {
         }
         AppLogger.sync.info("applied: \(safeArchived.count, privacy: .public) archived, \(safeCompleted.count, privacy: .public) completed, \(conflicts.count, privacy: .public) conflicts pending")
         if !conflicts.isEmpty {
-            app.syncConflicts = conflicts
+            resolver.syncConflicts = conflicts
         }
         return changed
     }
@@ -61,16 +61,16 @@ struct AssignmentMarksReconciler: CategoryReconciler {
     static func conflicts(
         server: ServerMarks, localArchived: Set<String>, localCompleted: Set<String>,
         protected: Set<String>, titles: [String: String]
-    ) -> [AppState.SyncConflictItem] {
+    ) -> [SyncConflicts.SyncConflictItem] {
         let ids = server.archived.union(server.completed).union(localArchived).union(localCompleted)
-        return ids.sorted().compactMap { id -> AppState.SyncConflictItem? in
+        return ids.sorted().compactMap { id -> SyncConflicts.SyncConflictItem? in
             guard !protected.contains(id) else { return nil }
             let serverStatus = server.archived.contains(id) ? "ignored"
                 : server.completed.contains(id) ? "locally_completed" : "none"
             let localStatus = localArchived.contains(id) ? "ignored"
                 : localCompleted.contains(id) ? "locally_completed" : "none"
             guard serverStatus != localStatus, localStatus != "none", serverStatus != "none" else { return nil }
-            return AppState.SyncConflictItem(
+            return SyncConflicts.SyncConflictItem(
                 id: id, kind: String(localized: "live_activity_status_assignment_short"),
                 label: titles[id] ?? "ID \(id)", localStatus: localStatus, serverStatus: serverStatus
             )
@@ -92,11 +92,23 @@ struct AssignmentMarksReconciler: CategoryReconciler {
         }
         let protected = await protected()
         guard isCurrent() else { return }
-        assignments.replaceArchivedAssignmentIds(AppState.mergedMarks(
+        assignments.replaceArchivedAssignmentIds(Self.mergedMarks(
             server: server.archived, local: assignments.loadArchivedAssignmentIds(), protected: protected
         ))
-        assignments.replaceLocallyCompletedAssignmentIds(AppState.mergedMarks(
+        assignments.replaceLocallyCompletedAssignmentIds(Self.mergedMarks(
             server: server.completed, local: assignments.loadLocallyCompletedAssignmentIds(), protected: protected
         ))
+    }
+
+    nonisolated static func mergedMarks(
+        server: Set<String>,
+        local: Set<String>,
+        protected: Set<String>
+    ) -> Set<String> {
+        server.subtracting(protected).union(local.intersection(protected))
+    }
+
+    nonisolated static func assignmentMarksToClear(server: Set<String>, local: Set<String>) -> Set<String> {
+        server.subtracting(local)
     }
 }

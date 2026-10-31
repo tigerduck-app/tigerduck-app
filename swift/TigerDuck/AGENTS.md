@@ -7,9 +7,10 @@ the shared homes and the size budget.
 
 ## Conventions
 
-- Add no new responsibilities to `AppState`; feature state lives in the feature's view model or
-  service. Features read auth and protected-access state from `AppState` instead of keeping
-  their own copy.
+- `App/AppEnvironment.swift` is the composition root: it builds the account, the backend sync
+  and `AppPreferences` once per process. Feature state lives in the feature's view model or
+  service. Features read auth and protected-access state from `app.authService` instead of
+  keeping their own copy.
 - `Account/AuthService.swift` coordinates auth. It tells cookie-valid auth apart from stored
   credentials, and keeps credentials through silent re-auth failures.
 - Feature view models are `@Observable` and show cached data first. App launch, an explicit
@@ -74,6 +75,8 @@ yet in the tree arrives with its refactor phase; until then the rule stays where
 - A school service bouncing to the portal: `School/NTUST/SchoolSessionRecovery.swift`.
 - Waiting for a state: `StateSignal`; for a time: `AppClock.sleep(until:)` in `Support/Clock/`.
 - Deep links and sheets: `App/Routing/AppRouter.swift`.
+- What a launch, a return to the app and a sign-in run, and in which order:
+  `App/SceneActivation.swift`.
 - Widget, Watch and Live Activity refresh: `Devices/DeviceSurfaceSyncer.swift`.
 
 ## Size
@@ -84,17 +87,17 @@ responsibility; nested types are fine. `tools/check_architecture.py --report` li
 
 ## Anti-patterns
 
-- Do not gate protected NTUST screens on cookie validity or on `isNTUSTLoggedIn` alone; silent
-  re-auth is expected. Use `ntustProtectedAccessState(isEmpty:)`.
+- Do not gate protected NTUST screens on cookie validity or on `isNTUSTAuthenticated` alone; silent
+  re-auth is expected. Use `NTUSTProtectedAccessState(signedIn:isEmpty:)`.
 - Do not write the previous user's data back after logout. School and backend code check their
   account's `AccountSession` (`isCurrent`, or a scoped task) and cancellation before writing.
 - Do not call `AuthService.login` to re-authenticate silently: it harvests a new Moodle token
   and drops the course cache. The Moodle token renews itself on `.invalidToken`.
 - Do not store secrets in `UserDefaults`; credentials live in the Keychain.
 - Do not contact the TigerDuck backend from launch code before onboarding completes; a fresh
-  install runs `AppState.init` before the user has seen a screen. Check `hasCompletedOnboarding`
-  as `AppState.init` does before `pushCoordinator.enable()` and as `backgroundSync()` does;
-  `completeOnboarding()` starts both.
+  install builds `AppEnvironment` before the user has seen a screen. Check `hasCompletedOnboarding`
+  as `AppEnvironment.init` does before `pushCoordinator.enable()` and as
+  `SceneActivation.refresh()` does; `completeOnboarding()` starts both.
 - Do not read `UserDefaults`, the Keychain or the app's files in `TigerDuckApp.init` outside
   the closure `TigerDuckApp.makeLaunch` hands `AfterFirstUnlock`: a background launch before the
   first unlock after a restart reads them as empty, and that closure runs only once they can be

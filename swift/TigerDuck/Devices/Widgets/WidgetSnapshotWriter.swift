@@ -19,15 +19,15 @@ final class WidgetSnapshotWriter {
 
 
     convenience init(
-        appState: AppState,
+        app: AppEnvironment,
         courses: CourseStore? = nil,
         store: WidgetSnapshotStore? = nil,
         coordinator: WidgetReloadCoordinator? = nil,
         courseProvider: CanonicalCourseProvider? = nil
     ) {
         self.init(
-            isLoggedIn: { appState.authService.hasStoredCredentials },
-            accentColorHex: { appState.accentColorHex },
+            isLoggedIn: { app.authService.hasStoredCredentials },
+            accentColorHex: { app.preferences.accentColorHex },
             courses: courses,
             store: store,
             coordinator: coordinator,

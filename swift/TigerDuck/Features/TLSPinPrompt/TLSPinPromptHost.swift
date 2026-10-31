@@ -27,7 +27,7 @@ private struct TLSPinPromptHost: ViewModifier {
     @State private var presentation = Presentation()
     @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
-    @Environment(AppState.self) private var appState: AppState?
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @State private var window = HostWindow()
     #endif
 
@@ -149,7 +149,7 @@ private struct TLSPinPromptHost: ViewModifier {
     private var isShowingOtherPresentation: Bool {
         #if os(iOS)
         window.window?.rootViewController?.presentedViewController != nil
-            || appState?.updateNotifyCoordinator.activeNotifySheet != nil
+            || app?.updateNotifyCoordinator.activeNotifySheet != nil
         #else
         false
         #endif

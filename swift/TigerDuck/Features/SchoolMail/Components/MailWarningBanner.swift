@@ -7,7 +7,7 @@ struct MailWarningBanner: View {
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
         HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.sm) {
@@ -26,7 +26,7 @@ struct MailWarningBanner: View {
             Spacer(minLength: 0)
         }
         .cardPadding()
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
     }
 }
 

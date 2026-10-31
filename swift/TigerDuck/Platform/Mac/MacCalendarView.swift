@@ -3,7 +3,7 @@ import SwiftUI
 import TigerDuckCore
 
 struct MacCalendarView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     @State private var selectedDate: Date = Date()
     @State private var displayedMonth: Date = Date()

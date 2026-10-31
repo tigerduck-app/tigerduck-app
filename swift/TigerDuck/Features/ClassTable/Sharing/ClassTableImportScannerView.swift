@@ -11,7 +11,7 @@ struct ClassTableImportScannerView: View {
     @Bindable var model: ClassTableImportModel
     /// Takes the user's share sheet, for the presenter to show once this screen has closed.
     let onShare: (ClassTableShareModel) -> Void
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -55,7 +55,7 @@ struct ClassTableImportScannerView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                if let studentId = appState.authService.storedStudentId, !ownTerms.isEmpty {
+                if let studentId = app.authService.storedStudentId, !ownTerms.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
                             model.cancel()
@@ -93,7 +93,7 @@ struct ClassTableImportScannerView: View {
             }
         }
         .task { camera = await Self.cameraState() }
-        .onAppear { ownTerms = Self.ownTerms(studentId: appState.authService.storedStudentId) }
+        .onAppear { ownTerms = Self.ownTerms(studentId: app.authService.storedStudentId) }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, camera == .denied else { return }
             Task { camera = await Self.cameraState() }

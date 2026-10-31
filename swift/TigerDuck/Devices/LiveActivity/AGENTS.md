@@ -7,8 +7,8 @@ reminders; nothing here schedules them.
 
 ## Conventions
 
-- `AppState` decides when to enter this subsystem; the rules for scenarios and scheduling live
-  here.
+- `LiveActivityRefresher` and `SceneActivation` decide when to enter this subsystem; the rules
+  for scenarios and scheduling live here.
 - Preference changes broadcast `AppConstants.liveActivityPreferencesDidChange`, and the refresh
   they trigger is debounced.
 - Courses come from `CanonicalCourseProvider`, so Home, Class Table and Live Activity agree.

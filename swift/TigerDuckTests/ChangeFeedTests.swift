@@ -68,19 +68,19 @@ struct ChangeFeedPlanTests {
 struct ChangeFeedWatermarkTests {
     @Test("A read that nothing overtook may move the watermark")
     func readNothingOvertookMayAdvance() {
-        #expect(AppState.feedMayAdvanceRevision(
+        #expect(ChangeFeedPull.feedMayAdvanceRevision(
             readAfter: 10, watermark: 10, signedOutSince: false, cloudSyncEnabled: true))
     }
 
     @Test("A sign-out, a full sync that set its own watermark, or sync switched off keeps it")
     func overtakenReadKeepsTheWatermark() {
-        #expect(!AppState.feedMayAdvanceRevision(
+        #expect(!ChangeFeedPull.feedMayAdvanceRevision(
             readAfter: 10, watermark: 0, signedOutSince: true, cloudSyncEnabled: true))
-        #expect(!AppState.feedMayAdvanceRevision(
+        #expect(!ChangeFeedPull.feedMayAdvanceRevision(
             readAfter: 10, watermark: 10, signedOutSince: true, cloudSyncEnabled: true))
-        #expect(!AppState.feedMayAdvanceRevision(
+        #expect(!ChangeFeedPull.feedMayAdvanceRevision(
             readAfter: 10, watermark: 13, signedOutSince: false, cloudSyncEnabled: true))
-        #expect(!AppState.feedMayAdvanceRevision(
+        #expect(!ChangeFeedPull.feedMayAdvanceRevision(
             readAfter: 10, watermark: 10, signedOutSince: false, cloudSyncEnabled: false))
     }
 }

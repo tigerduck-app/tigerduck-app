@@ -257,7 +257,7 @@ struct ModalClosingTests {
     enum Link: String, CaseIterable {
         case bulletin, schoolMail
 
-        var deepLink: AppState.DeepLink {
+        var deepLink: DeepLink {
             switch self {
             case .bulletin: .bulletin(4821)
             case .schoolMail: .schoolMail(folder: "INBOX", uid: 7)

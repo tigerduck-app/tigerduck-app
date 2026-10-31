@@ -20,7 +20,7 @@ struct CloudSyncPreferenceTests {
         var raised = false
     }
 
-    @Test("a write that bypasses AppState is seen: the reading follows it and the change is reported")
+    @Test("a write that bypasses AppEnvironment is seen: the reading follows it and the change is reported")
     func writeThatBypassesAppStateIsSeen() {
         Self.withIsolatedKey { key in
             let preference = CloudSyncPreference(key: key)
@@ -49,7 +49,7 @@ struct CloudSyncPreferenceTests {
         }
     }
 
-    @Test("a write that bypasses AppState still tells the screens reading it to refresh")
+    @Test("a write that bypasses AppEnvironment still tells the screens reading it to refresh")
     func writeThatBypassesAppStateInvalidatesReaders() {
         Self.withIsolatedKey { key in
             let preference = CloudSyncPreference(key: key)

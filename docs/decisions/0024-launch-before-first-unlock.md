@@ -14,8 +14,9 @@ that lived on into the user's next open showed onboarding
 
 ## Decision
 
-- `TigerDuckApp` builds everything that reads stored data (`AppState`, the Watch sync, the widget
-  writer, the School Mail bootstrap and the Debug checks) through `AfterFirstUnlock` in
+- `TigerDuckApp` builds everything that reads stored data (`AppEnvironment` with every store and
+  session it holds, the Watch sync, the widget writer, the School Mail bootstrap and the Debug
+  checks) through `AfterFirstUnlock` in
   `swift/TigerDuck/App/AfterFirstUnlock.swift`. A launch after the first unlock builds in
   `TigerDuckApp.init`, as before. A launch before it builds nothing, then builds once at
   `protectedDataDidBecomeAvailableNotification`, at `didBecomeActiveNotification`, or when a scene
@@ -41,8 +42,8 @@ that lived on into the user's next open showed onboarding
   does not exist yet during `TigerDuckApp.init` either: SwiftUI builds the app first.
 - Reading a file instead of writing one: before the first unlock a closed file and a missing one
   look alike.
-- Guarding each purge, migration and write in `AppState.init`: a process that lived on would
-  still show the settings it read as empty, onboarding among them.
+- Guarding each purge, migration and write in `AppEnvironment.init` (then `AppState.init`): a
+  process that lived on would still show the settings it read as empty, onboarding among them.
 - Building from the empty copy at the late build: its purge would delete the credentials then.
 
 ## Consequences

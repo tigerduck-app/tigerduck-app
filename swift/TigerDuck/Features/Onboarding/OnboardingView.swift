@@ -3,7 +3,7 @@ import SwiftUI
 import UserNotifications
 
 struct OnboardingView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var currentPage = 0
     @State private var studentId = ""
@@ -305,7 +305,7 @@ struct OnboardingView: View {
     }
 
     private var loginPage: some View {
-        let isSignedIn = appState.authService.hasStoredCredentials
+        let isSignedIn = app.authService.hasStoredCredentials
 
         return OnboardingPageView(
             icon: "person.badge.key.fill",
@@ -353,7 +353,7 @@ struct OnboardingView: View {
                     }
                     .frame(maxWidth: 320)
 
-                    if let error = appState.authService.loginError {
+                    if let error = app.authService.loginError {
                         Text(error)
                             .font(.caption)
                             .foregroundStyle(.red)
@@ -390,7 +390,7 @@ struct OnboardingView: View {
                         submitLogin()
                     } label: {
                         LoadingButtonLabel(
-                            isLoading: appState.authService.isLoggingIn,
+                            isLoading: app.authService.isLoggingIn,
                             tint: .white
                         ) {
                             Text(String(localized: "onboarding_sign_in_button"))
@@ -399,7 +399,7 @@ struct OnboardingView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled(studentId.isEmpty || password.isEmpty || appState.authService.isLoggingIn)
+                    .disabled(studentId.isEmpty || password.isEmpty || app.authService.isLoggingIn)
                 }
             }
         )
@@ -422,9 +422,9 @@ struct OnboardingView: View {
         focusedField = nil
         let trimmedId = studentId.trimmingCharacters(in: .whitespaces)
         let trimmedPwd = password.trimmingCharacters(in: .whitespaces)
-        guard !trimmedId.isEmpty, !trimmedPwd.isEmpty, !appState.authService.isLoggingIn else { return }
+        guard !trimmedId.isEmpty, !trimmedPwd.isEmpty, !app.authService.isLoggingIn else { return }
         Task {
-            let success = await appState.authService.login(
+            let success = await app.authService.login(
                 studentId: trimmedId, password: trimmedPwd
             )
             if success { withAnimation(reduceMotion ? nil : .default) { currentPage = Page.notifications.rawValue } }
@@ -511,7 +511,7 @@ struct OnboardingView: View {
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await refreshNotificationStatus()
         guard granted else { return }
-        appState.enablePushServer()
+        app.pushSchedule.enablePushServer()
     }
 
     private func refreshNotificationStatus() async {
@@ -527,11 +527,11 @@ struct OnboardingView: View {
             accentColor: .onboardingAccent
         ) {
             Button(String(localized: "onboarding_start_button")) {
-                appState.completeOnboarding()
+                app.completeOnboarding()
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(appState.authService.isLoggingIn)
+            .disabled(app.authService.isLoggingIn)
         }
     }
 }

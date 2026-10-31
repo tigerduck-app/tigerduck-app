@@ -167,9 +167,8 @@ cp api/.env.template api/.env
 tigerduck-app/
 ├── swift/                              # iOS App + 周邊 target（Xcode 26+ / iOS 18+ / watchOS 11+）
 │   ├── TigerDuck/                      # 主 iOS App 來源
-│   │   ├── App/                        # 進入點、全域狀態（AppState）、語言管理、推播代理
+│   │   ├── App/                        # 進入點、AppEnvironment、路由、語言管理、推播代理
 │   │   ├── Account/                    # NTUST 登入協調（AuthService）
-│   │   ├── Bridge/                     # 服務與 SwiftData 之間的抓取協調層
 │   │   ├── School/                     # 校務系統、SSO、Moodle、圖書館、行事曆、公告
 │   │   ├── Backend/                    # TigerDuck 後端：token、雲端同步、推播、課程目錄
 │   │   ├── Mail/                       # 校園信箱 IMAP / SMTP

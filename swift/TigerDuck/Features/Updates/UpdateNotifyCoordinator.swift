@@ -6,8 +6,8 @@ import UIKit
 import AppKit
 #endif
 
-/// Owns the App Store "newer build?" check and the sheet flags it feeds. A child of ``AppState``
-/// so views observe `pendingUpdate` and `pendingWhatsNew` through `@Environment(AppState.self)`.
+/// Owns the App Store "newer build?" check and the sheet flags it feeds. A child of ``AppEnvironment``
+/// so views observe `pendingUpdate` and `pendingWhatsNew` through `@Environment(AppEnvironment.self)`.
 ///
 /// On the Mac the lookup answers with the universal purchase's one record and no Mac version.
 /// The Mac ships the same marketing version from the same target, so that version stands in,
@@ -64,11 +64,11 @@ final class UpdateNotifyCoordinator {
         self.reportError = reportError
     }
 
-    func hasWhatsNewContent(in appState: AppState) -> Bool {
-        latestWhatsNew(in: appState) != nil
+    func hasWhatsNewContent(in app: AppEnvironment) -> Bool {
+        latestWhatsNew(in: app) != nil
     }
 
-    func latestWhatsNew(in appState: AppState) -> WhatsNewPresentation? {
+    func latestWhatsNew(in app: AppEnvironment) -> WhatsNewPresentation? {
         let languageTag = WhatsNewLanguage.currentLanguageTag
         let current = AppVersion.current
         return WhatsNewFlowBuilder.replay(
@@ -77,11 +77,11 @@ final class UpdateNotifyCoordinator {
             releases: WhatsNewCatalog.releases,
             latestSummary: repository.latestEntry(languageTag: languageTag, upTo: current),
             summaryFor: { repository.entry(forVersion: $0, languageTag: languageTag) },
-            isApplicable: { $0.isApplicable(appState) }
+            isApplicable: { $0.isApplicable(app) }
         )
     }
 
-    func evaluateWhatsNewOnLaunch(in appState: AppState) {
+    func evaluateWhatsNewOnLaunch(in app: AppEnvironment) {
         let lastShown = Defaults[.lastShownWhatsNewVersion].flatMap(AppVersion.init)
         let current = AppVersion.current
         if let lastShown, !(lastShown < current) { return }
@@ -96,7 +96,7 @@ final class UpdateNotifyCoordinator {
             language: WhatsNewLanguage(languageTag: languageTag),
             releases: WhatsNewCatalog.releases,
             summary: repository.entry(forVersion: version, languageTag: languageTag),
-            isApplicable: { $0.isApplicable(appState) }
+            isApplicable: { $0.isApplicable(app) }
         )
     }
 

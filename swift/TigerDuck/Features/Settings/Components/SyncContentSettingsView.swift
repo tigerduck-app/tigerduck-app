@@ -2,7 +2,7 @@ import Defaults
 import SwiftUI
 
 struct SyncContentSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Default(.syncAssignments) private var syncAssignments
     @Default(.syncAssignmentReminders) private var syncAssignmentReminders
@@ -18,19 +18,19 @@ struct SyncContentSettingsView: View {
                     Toggle(String(localized: "cloud_sync_assignments"), isOn: $syncAssignments)
                         .onChange(of: syncAssignments) { old, new in
                             if new && !old {
-                                appState.markCategoryReenabled("assignments")
-                                appState.checkPendingConflicts()
+                                app.conflicts.markCategoryReenabled("assignments")
+                                app.conflicts.checkPendingConflicts()
                             }
-                            appState.pushSyncPreferences()
+                            app.pushSchedule.pushSyncPreferences()
                         }
                 }
 
                 Toggle(String(localized: "sync_content_assignment_reminders"), isOn: $syncAssignmentReminders)
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncAssignmentReminders) { old, new in
-                        appState.pushSyncPreferences()
+                        app.pushSchedule.pushSyncPreferences()
                         if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) {
-                            appState.adoptNotificationSettingsSection(.assignments)
+                            app.notificationSettings.adoptSection(.assignments)
                         }
                     }
             }
@@ -39,9 +39,9 @@ struct SyncContentSettingsView: View {
                 Toggle(String(localized: "sync_content_live_activity"), isOn: $syncLiveActivity)
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncLiveActivity) { old, new in
-                        appState.pushSyncPreferences()
+                        app.pushSchedule.pushSyncPreferences()
                         if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) {
-                            appState.adoptNotificationSettingsSection(.liveActivity)
+                            app.notificationSettings.adoptSection(.liveActivity)
                         }
                     }
             }
@@ -51,30 +51,30 @@ struct SyncContentSettingsView: View {
                     Toggle(String(localized: "sync_content_class_table_all"), isOn: $syncCourses)
                         .onChange(of: syncCourses) { old, new in
                             if new && !old {
-                                appState.markCategoryReenabled("courses")
-                                appState.checkPendingConflicts()
+                                app.conflicts.markCategoryReenabled("courses")
+                                app.conflicts.checkPendingConflicts()
                             }
-                            syncCourseColors = AppState.courseColorsAfterCoursesChange(coursesNowOn: new)
-                            appState.pushSyncPreferences()
+                            syncCourseColors = EditSender.courseColorsAfterCoursesChange(coursesNowOn: new)
+                            app.pushSchedule.pushSyncPreferences()
                         }
 
                     Toggle(String(localized: "cloud_sync_course_colours"), isOn: $syncCourseColors)
                         .disabled(!syncCourses)
                         .onChange(of: syncCourseColors) { old, new in
                             if new && !old {
-                                appState.markCategoryReenabled("course_colors")
-                                appState.checkPendingConflicts()
+                                app.conflicts.markCategoryReenabled("course_colors")
+                                app.conflicts.checkPendingConflicts()
                             }
-                            appState.pushSyncPreferences()
+                            app.pushSchedule.pushSyncPreferences()
                         }
 
                     Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $syncCourseNames)
                         .onChange(of: syncCourseNames) { old, new in
                             if new && !old {
-                                appState.markCategoryReenabled("course_names")
-                                appState.checkPendingConflicts()
+                                app.conflicts.markCategoryReenabled("course_names")
+                                app.conflicts.checkPendingConflicts()
                             }
-                            appState.pushSyncPreferences()
+                            app.pushSchedule.pushSyncPreferences()
                         }
                 }
             }

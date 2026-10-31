@@ -4,7 +4,7 @@ import SwiftUI
 struct ClassTableView: View {
     var embedded = false
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.requestClassTableImport) private var requestImport
     @Environment(\.isUpdatingImportedClassTable) private var isUpdatingImport
     @State private var viewModel = ClassTableViewModel(
@@ -31,44 +31,44 @@ struct ClassTableView: View {
         if embedded {
             content
                 .onAppear {
-                    viewModel.load(authService: appState.authService)
-                    viewModel.refreshMissingClassrooms(authService: appState.authService)
-                    viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
-                    viewModel.onSyncColorPick = { appState.syncColorPick($0, for: $1, changed: $2) }
+                    viewModel.load(authService: app.authService)
+                    viewModel.refreshMissingClassrooms(authService: app.authService)
+                    viewModel.onSyncCourseOverride = { app.edits.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
+                    viewModel.onSyncColorPick = { app.edits.syncColorPick($0, for: $1, changed: $2) }
                     viewModel.onSyncCourseIgnore = {
-                        appState.syncCourseIgnore(semester: $1, courseNo: $0.courseNo, moodleIdNumber: $0.moodleIdNumber, ignore: $2)
+                        app.edits.syncCourseIgnore(semester: $1, courseNo: $0.courseNo, moodleIdNumber: $0.moodleIdNumber, ignore: $2)
                     }
-                    viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
+                    viewModel.onCoursesChanged = { app.uploads.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = {
-                        appState.uploadCourses($0, semester: $1, forceKeys: [CourseTombstone.serverKey(semester: $1, courseNo: $2)])
+                        app.edits.addCourses([CourseTombstone.serverKey(semester: $1, courseNo: $2)], semester: $1)
                     }
-                    viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
-                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0, thenLocally: $1) }
-                    Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
+                    viewModel.onCourseDeleted = { app.edits.deleteBackendCourse(courseNo: $0, semester: $1) }
+                    viewModel.onResetBackendCourses = { await app.edits.deleteBackendCourses(semester: $0, thenLocally: $1) }
+                    Task { await viewModel.warmCachesIfNeeded(authService: app.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in
-                    Task { await viewModel.refreshSelectedSemester(authService: appState.authService) }
+                    Task { await viewModel.refreshSelectedSemester(authService: app.authService) }
                 }
         } else {
             NavigationStack { content }
                 .onAppear {
-                    viewModel.load(authService: appState.authService)
-                    viewModel.refreshMissingClassrooms(authService: appState.authService)
-                    viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
-                    viewModel.onSyncColorPick = { appState.syncColorPick($0, for: $1, changed: $2) }
+                    viewModel.load(authService: app.authService)
+                    viewModel.refreshMissingClassrooms(authService: app.authService)
+                    viewModel.onSyncCourseOverride = { app.edits.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
+                    viewModel.onSyncColorPick = { app.edits.syncColorPick($0, for: $1, changed: $2) }
                     viewModel.onSyncCourseIgnore = {
-                        appState.syncCourseIgnore(semester: $1, courseNo: $0.courseNo, moodleIdNumber: $0.moodleIdNumber, ignore: $2)
+                        app.edits.syncCourseIgnore(semester: $1, courseNo: $0.courseNo, moodleIdNumber: $0.moodleIdNumber, ignore: $2)
                     }
-                    viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
+                    viewModel.onCoursesChanged = { app.uploads.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = {
-                        appState.uploadCourses($0, semester: $1, forceKeys: [CourseTombstone.serverKey(semester: $1, courseNo: $2)])
+                        app.edits.addCourses([CourseTombstone.serverKey(semester: $1, courseNo: $2)], semester: $1)
                     }
-                    viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
-                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0, thenLocally: $1) }
-                    Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
+                    viewModel.onCourseDeleted = { app.edits.deleteBackendCourse(courseNo: $0, semester: $1) }
+                    viewModel.onResetBackendCourses = { await app.edits.deleteBackendCourses(semester: $0, thenLocally: $1) }
+                    Task { await viewModel.warmCachesIfNeeded(authService: app.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in
-                    Task { await viewModel.refreshSelectedSemester(authService: appState.authService) }
+                    Task { await viewModel.refreshSelectedSemester(authService: app.authService) }
                 }
         }
     }
@@ -78,14 +78,14 @@ struct ClassTableView: View {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     titleBar
 
-                    if let reauthError = appState.ntustReauthErrorMessage {
+                    if let reauthError = app.authService.reauthErrorMessage {
                         NTUSTReauthErrorBanner(
                             message: reauthError,
                             onRetry: {
-                                appState.clearNTUSTReauthError()
-                                appState.presentNTUSTLogin()
+                                app.authService.clearReauthError()
+                                app.router.presentNTUSTLogin()
                             },
-                            onDismiss: { appState.clearNTUSTReauthError() }
+                            onDismiss: { app.authService.clearReauthError() }
                         )
                     }
 
@@ -95,7 +95,7 @@ struct ClassTableView: View {
                             layout: .page,
                             title: String(localized: "common_not_signed_in"),
                             message: String(localized: "class_table_sign_in_required_message"),
-                            onPrimary: { appState.presentNTUSTLogin() }
+                            onPrimary: { app.router.presentNTUSTLogin() }
                         )
                     case .empty:
                         VStack(spacing: TigerDuckTheme.Spacing.lg) {
@@ -128,10 +128,10 @@ struct ClassTableView: View {
                     await viewModel.refreshShownPerson()
                     return
                 }
-                viewModel.triggerRefresh(authService: appState.authService)
+                viewModel.triggerRefresh(authService: app.authService)
                 Task { await CourseChangeStore.shared.refresh() }
                 if Defaults[.cloudSyncEnabled] {
-                    Task { await appState.syncOverridesFromBackend() }
+                    Task { await app.fullSync.sync() }
                 }
             }
             .background(Color.backgroundPrimary)
@@ -140,7 +140,7 @@ struct ClassTableView: View {
                 tableSwitches += 1
                 viewModel.showShownTable()
             }
-            .onChange(of: appState.authService.session.ticket) { _, _ in
+            .onChange(of: app.authService.session.ticket) { _, _ in
                 viewModel.closeOwnEdits()
             }
             .sheet(item: $viewModel.selectedCourse) { course in
@@ -217,7 +217,7 @@ struct ClassTableView: View {
                 isPresented: $viewModel.showResetConfirm
             ) {
                 Button(String(localized: "action_confirm"), role: .destructive) {
-                    viewModel.resetCourses(authService: appState.authService)
+                    viewModel.resetCourses(authService: app.authService)
                 }
                 Button(String(localized: "action_cancel"), role: .cancel) {}
             } message: {
@@ -237,7 +237,7 @@ struct ClassTableView: View {
             .sheet(item: $viewModel.courseToRecolor) { course in
                 CourseColorPickerSheet(
                     course: course,
-                    isCurrent: appState.authService.session.currentCheck(),
+                    isCurrent: app.authService.session.currentCheck(),
                     onSelect: { viewModel.setColor(hex: $0, for: course) }
                 )
                 .presentationDetents([.medium, .large])
@@ -285,12 +285,12 @@ struct ClassTableView: View {
             .alert(String(localized: "bulletin_save_failed_title"), isPresented: $viewModel.showsSaveFailed) {
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             }
-            .classTableShareSheet(model: $shareModel, signIn: appState.authService.session.ticket)
+            .classTableShareSheet(model: $shareModel, signIn: app.authService.session.ticket)
     }
 
     private var pageAccessState: NTUSTProtectedAccessState {
         if viewModel.shownPerson != nil { return viewModel.courses.isEmpty ? .empty : .content }
-        return appState.ntustProtectedAccessState(isEmpty: viewModel.courses.isEmpty)
+        return NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: viewModel.courses.isEmpty)
     }
 
     private var titleBar: some View {
@@ -340,7 +340,7 @@ struct ClassTableView: View {
                 Label(String(localized: "class_table_share"), systemImage: "qrcode")
             }
             .disabled(isExporting || !ClassTableShareModel.canShare(
-                studentId: appState.authService.storedStudentId,
+                studentId: app.authService.storedStudentId,
                 shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses),
                 semesters: viewModel.availableSemesters,
                 memo: shareAvailability
@@ -404,7 +404,7 @@ struct ClassTableView: View {
         Task {
             let url = await ClassTableExporter.render(
                 viewModel: viewModel,
-                appState: appState,
+                app: app,
                 colorScheme: colorScheme,
                 dynamicTypeSize: dynamicTypeSize,
                 layoutDirection: layoutDirection,
@@ -421,7 +421,7 @@ struct ClassTableView: View {
     }
 
     private func openShareSheet() {
-        guard let studentId = appState.authService.storedStudentId else { return }
+        guard let studentId = app.authService.storedStudentId else { return }
         let terms = ClassTableShareModel.terms(
             in: viewModel.availableSemesters,
             shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses)
@@ -501,7 +501,7 @@ struct ClassTableView: View {
             Menu {
                 ClassTableSwitcherMenuItems(
                     store: viewModel.importedTables,
-                    userName: ClassTableSwitcherEntry.userName(studentId: appState.authService.storedStudentId)
+                    userName: ClassTableSwitcherEntry.userName(studentId: app.authService.storedStudentId)
                 )
             } label: {
                 HStack(spacing: TigerDuckTheme.Spacing.xs) {
@@ -528,7 +528,7 @@ struct ClassTableView: View {
 
     private var creditsLabel: String {
         let credits = String(format: String(localized: "class_table_total_credits_value"), viewModel.totalCredits.creditsText)
-        let owner = viewModel.shownPerson?.nickname ?? appState.authService.storedStudentId
+        let owner = viewModel.shownPerson?.nickname ?? app.authService.storedStudentId
         guard let owner, !owner.isEmpty else { return credits }
         return "\(owner) · \(credits)"
     }

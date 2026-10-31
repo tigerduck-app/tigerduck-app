@@ -8,7 +8,7 @@ import AppKit
 #endif
 
 struct CourseDetailSheet: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -49,7 +49,7 @@ struct CourseDetailSheet: View {
                         assignmentsSection
                     }
                     if let moodle {
-                        MoodleCourseSection(store: moodle, policy: appState.visualStylePolicy)
+                        MoodleCourseSection(store: moodle, policy: app.preferences.visualStylePolicy)
                     }
                 }
                 .padding(.top, TigerDuckTheme.Spacing.xl)
@@ -63,7 +63,7 @@ struct CourseDetailSheet: View {
             #endif
             .navigationDestination(for: MoodleCourseRoute.self) { route in
                 if case .syllabus(let syllabus) = route {
-                    CourseSyllabusView(syllabus: syllabus, policy: appState.visualStylePolicy)
+                    CourseSyllabusView(syllabus: syllabus, policy: app.preferences.visualStylePolicy)
                         .moodleLinkOpening()
                 } else if let moodle {
                     moodleDestination(route, store: moodle)
@@ -72,7 +72,7 @@ struct CourseDetailSheet: View {
             }
         }
         .task(id: MoodleStoreKey(
-            courseNo: course.courseNo, attempt: moodleAttempt, signIn: appState.authService.session.ticket
+            courseNo: course.courseNo, attempt: moodleAttempt, signIn: app.authService.session.ticket
         )) {
             moodle = makeMoodleStore()
         }
@@ -81,7 +81,7 @@ struct CourseDetailSheet: View {
             let loaded = await loadSyllabus()
             if !Task.isCancelled { syllabus = loaded }
         }
-        .onChange(of: appState.authService.session.ticket) {
+        .onChange(of: app.authService.session.ticket) {
             routes.wrappedValue = []
         }
         .onChange(of: AppDataRevision.current) {
@@ -116,11 +116,11 @@ struct CourseDetailSheet: View {
         case .announcement(let discussion):
             MoodleAnnouncementView(store: store, discussion: discussion) { routes.wrappedValue.append($0) }
         case .materials:
-            MoodleMaterialsView(store: store, policy: appState.visualStylePolicy)
+            MoodleMaterialsView(store: store, policy: app.preferences.visualStylePolicy)
         case .grades:
             MoodleGradesView(store: store)
         case .members:
-            MoodleMembersView(store: store, policy: appState.visualStylePolicy) { routes.wrappedValue.append($0) }
+            MoodleMembersView(store: store, policy: app.preferences.visualStylePolicy) { routes.wrappedValue.append($0) }
         case .member(let member):
             MoodleMemberView(store: store, member: member)
         case .forums:
@@ -131,13 +131,13 @@ struct CourseDetailSheet: View {
             MoodleDiscussionView(store: store, discussion: discussion, forum: forum)
         case .assignments:
             MoodleAssignmentsView(
-                store: store, policy: appState.visualStylePolicy, refresh: refreshAssignments, open: openAssignment
+                store: store, policy: app.preferences.visualStylePolicy, refresh: refreshAssignments, open: openAssignment
             )
         case .assignment(let entry):
             #if os(iOS)
             MoodleAssignmentView(
                 store: store, entry: entry, courseName: course.displayName,
-                policy: appState.visualStylePolicy, accent: appState.accentColor
+                policy: app.preferences.visualStylePolicy, accent: app.preferences.accentColor
             )
             #else
             EmptyView()
@@ -162,7 +162,7 @@ struct CourseDetailSheet: View {
     private func makeMoodleStore() -> MoodleCourseStore? {
         guard showsMoodle, let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
               let courseId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber),
-              let context = MoodleCacheContext.signedIn(appState.authService) else { return nil }
+              let context = MoodleCacheContext.signedIn(app.authService) else { return nil }
         let term = AcademicTerm.codePrefix(ofMoodleId: idnumber)
         let idMap = MoodleFiles.shared.loadMoodleCourseIdMap()
         let termCourseIds = idMap
@@ -230,13 +230,13 @@ struct CourseDetailSheet: View {
                 label: String(localized: "course_detail_classroom_label"),
                 value: meeting?.hasChangedRoom == true ? meeting?.room ?? classroomValue : classroomValue,
                 isChanged: meeting?.hasChangedRoom == true,
-                policy: appState.visualStylePolicy
+                policy: app.preferences.visualStylePolicy
             )
             EmphasisCard(
                 label: String(localized: "course_detail_time_label"),
                 value: meeting.flatMap(Self.changedTime) ?? timeValue,
                 isChanged: meeting.flatMap(Self.changedTime) != nil,
-                policy: appState.visualStylePolicy
+                policy: app.preferences.visualStylePolicy
             )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -481,7 +481,7 @@ struct CourseDetailSheet: View {
     }
 
     private func refreshAssignments() async {
-        _ = await AssignmentFetch.fetchAssignments(authService: appState.authService, recheckSubmissions: true)
+        _ = await AssignmentFetch.fetchAssignments(authService: app.authService, recheckSubmissions: true)
     }
 
     /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile

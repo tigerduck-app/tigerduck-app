@@ -58,7 +58,7 @@ struct TimetableGridView: View {
     var showsThisWeek = true
     var switchCount = 0
     var onSwitch: ((_ before: TimetableRowTops, _ after: TimetableRowTops) -> Void)? = nil
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
     private let rowSpacing: CGFloat = 3
@@ -71,7 +71,7 @@ struct TimetableGridView: View {
     @ScaledMetric(relativeTo: .caption2) private var periodTimeSize: CGFloat = 9
     @ScaledMetric(relativeTo: .caption2) private var periodLabelSize: CGFloat = 12
 
-    private var policy: VisualStylePolicy { appState.visualStylePolicy }
+    private var policy: VisualStylePolicy { app.preferences.visualStylePolicy }
     private var drawsPeriodTiles: Bool { policy.classTableGridStyle == .periodTiles }
 
     private var cellHeight: CGFloat { max(52, scaledCellHeight) }
@@ -84,7 +84,7 @@ struct TimetableGridView: View {
 
     ///
     private var courseNameSize: CGFloat {
-        courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(appState.courseCardFontScale))
+        courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(app.preferences.courseCardFontScale))
     }
 
     private var roomHintSize: CGFloat { courseNameSize * 0.85 }
@@ -262,7 +262,7 @@ struct TimetableGridView: View {
         case .skip:
             return "skip"
         case .solo(let course, let spanCount):
-            let room = appState.showClassroomInClassTable
+            let room = app.preferences.showClassroomInClassTable
                 ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId) ?? ""
                 : ""
             let change = meeting.map { "\($0.isCancelled)|\($0.room)|\($0.start)|\($0.end)|\($0.notes.count)" } ?? ""
@@ -289,10 +289,10 @@ struct TimetableGridView: View {
             let hasBadge = showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
             let ignoresAssignments = showsAssignmentBadges && viewModel.ignoresAssignments(of: course.courseNo)
             let totalHeight = CGFloat(spanCount) * cellHeight + CGFloat(spanCount - 1) * rowSpacing
-            let roomHint = appState.showClassroomInClassTable
+            let roomHint = app.preferences.showClassroomInClassTable
                 ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
                 : nil
-            let bottomLine = BlockLine(meeting: meeting, roomHint: roomHint, showsRooms: appState.showClassroomInClassTable)
+            let bottomLine = BlockLine(meeting: meeting, roomHint: roomHint, showsRooms: app.preferences.showClassroomInClassTable)
             let changedTime = meeting.flatMap(Self.changedTimeText)
             let markColor = policy.classTableCourseSecondaryTextColor.opacity(0.5)
 
@@ -578,15 +578,15 @@ private struct ConflictClusterView: View {
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var environmentDiffWithoutColor
     private var diffWithoutColor: Bool { differentiateWithoutColorOverride ?? environmentDiffWithoutColor }
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
 
-    private var policy: VisualStylePolicy { appState.visualStylePolicy }
+    private var policy: VisualStylePolicy { app.preferences.visualStylePolicy }
 
     private var courseNameSize: CGFloat {
-        courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(appState.courseCardFontScale))
+        courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(app.preferences.courseCardFontScale))
     }
 
     private var courseA: SDCourse { segments[0].course }

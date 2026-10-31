@@ -30,7 +30,7 @@ struct CustomAccentContrastMigrationTests {
         }
     }
 
-    @Test(arguments: AppState.themeColors.map(\.hex) + [0x5856D6])
+    @Test(arguments: AppPreferences.themeColors.map(\.hex) + [0x5856D6])
     func aPresetOrAReadableCustomAccentStays(hex: Int) async {
         await Self.withSavedAccent(hex) {
             #expect(!CustomAccentContrastMigration.runIfNeeded())

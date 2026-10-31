@@ -18,7 +18,7 @@ struct UpcomingAssignmentsView: View {
     var onUndoComplete: ((SDAssignment) -> Void)? = nil
     var onOpen: (SDAssignment) -> Void = { _ in }
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var ticker = MinuteTicker(interval: 60)
 
@@ -29,7 +29,7 @@ struct UpcomingAssignmentsView: View {
     var body: some View {
         let _ = ticker.tick
         let now = AppClock.now()
-        let policy = appState.visualStylePolicy
+        let policy = app.preferences.visualStylePolicy
         let rows = filter == .all
             ? assignments.partitionedByDueDate(now: now)
             : assignments

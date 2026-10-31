@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct MacAccountSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var showSignIn = false
     @State private var confirmsSignOut = false
     @State private var signOutLines: [String] = []
@@ -10,7 +10,7 @@ struct MacAccountSettingsView: View {
     var body: some View {
         Form {
             Section(String(localized: "desktop_settings_section_ntust")) {
-                if appState.authService.hasStoredCredentials {
+                if app.authService.hasStoredCredentials {
                     HStack {
                         Image(systemName: "checkmark.seal.fill")
                             .foregroundStyle(.green)
@@ -18,12 +18,12 @@ struct MacAccountSettingsView: View {
                     }
                     Button(role: .destructive) {
                         Task {
-                            let unsynced = await appState.signOutDeletesUnsyncedData()
-                            guard appState.authService.hasStoredCredentials else { return }
+                            let unsynced = await app.signOutCheck.deletesUnsyncedData()
+                            guard app.authService.hasStoredCredentials else { return }
                             ImportedClassTableStore.shared.requestSignOut(
                                 unsyncedData: unsynced,
                                 confirm: { signOutLines = $0; confirmsSignOut = true },
-                                signOut: { SignOutPlan.school(appState).run() }
+                                signOut: { SignOutPlan.school(app).run() }
                             )
                         }
                     } label: {
@@ -44,7 +44,7 @@ struct MacAccountSettingsView: View {
         .padding(20)
         .alert(String(localized: "action_sign_out"), isPresented: $confirmsSignOut) {
             Button(String(localized: "action_sign_out"), role: .destructive) {
-                SignOutPlan.school(appState).run()
+                SignOutPlan.school(app).run()
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
@@ -54,7 +54,7 @@ struct MacAccountSettingsView: View {
         .sheet(isPresented: $showSignIn) {
             MacLoginView(showsSkipButton: false)
                 .frame(minWidth: 460, idealWidth: 520, minHeight: 520, idealHeight: 560)
-                .onChange(of: appState.authService.hasStoredCredentials) { _, signedIn in
+                .onChange(of: app.authService.hasStoredCredentials) { _, signedIn in
                     if signedIn { showSignIn = false }
                 }
         }

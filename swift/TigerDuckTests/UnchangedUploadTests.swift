@@ -89,7 +89,7 @@ struct UnchangedUploadTests {
         let backend = Backend()
         backend.answer(times: 2)
         let coordinator = backend.makeCoordinator()
-        let roster = AppState.courseUploadRequest(
+        let roster = SchoolDataUploader.courseUploadRequest(
             [SDCourse(courseNo: "CS1", courseName: "CS1")], semester: "1151", rosterTerms: ["1151"]
         )
 

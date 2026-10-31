@@ -5,7 +5,7 @@ import AppKit
 struct MacAssignmentsList: View {
     var courses: [SDCourse] = []
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     private var courseByNo: [String: SDCourse] {
         Dictionary(courses.map { ($0.courseNo, $0) }, uniquingKeysWith: { first, _ in first })
@@ -119,13 +119,13 @@ struct MacAssignmentsList: View {
         case .pending, .overdueAcceptable, .overdueRejected:
             Button {
                 MacAssignmentListModel.shared.markComplete(assignment)
-                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "locally_completed")
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "locally_completed")
             } label: {
                 Label(String(localized: "desktop_assignment_mark_complete"), systemImage: "checkmark.circle.fill")
             }
             Button {
                 MacAssignmentListModel.shared.archive(assignment)
-                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "archived")
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "archived")
             } label: {
                 Label(String(localized: "assignment_ignore"), systemImage: "archivebox.fill")
             }
@@ -133,7 +133,7 @@ struct MacAssignmentsList: View {
         case .locallyCompleted:
             Button {
                 MacAssignmentListModel.shared.undoComplete(assignment)
-                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
             } label: {
                 Label(String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward")
             }
@@ -141,7 +141,7 @@ struct MacAssignmentsList: View {
         case .archived:
             Button {
                 MacAssignmentListModel.shared.unarchive(assignment)
-                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
             } label: {
                 Label(String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward")
             }
@@ -158,7 +158,7 @@ struct MacAssignmentsList: View {
     }
 
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
-        if appState.showAbsoluteAssignmentTime || assignment.dueDate < now {
+        if app.preferences.showAbsoluteAssignmentTime || assignment.dueDate < now {
             return assignment.dueDate.absoluteTimeString
         }
         return assignment.dueDate.relativeTimeString(from: now)

@@ -4,7 +4,7 @@ import SwiftUI
 struct MailLoginCard: View {
     private enum Field: Hashable { case studentID, password }
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
     @State private var studentID = ""
     @State private var password = ""
@@ -99,7 +99,7 @@ struct MailLoginCard: View {
     }
 
     private func seedFields() {
-        let auth = appState.authService
+        let auth = app.authService
         let fields = MailCredentialPrefill.fields(
             storedID: auth.storedStudentId,
             storedPassword: auth.storedPassword,

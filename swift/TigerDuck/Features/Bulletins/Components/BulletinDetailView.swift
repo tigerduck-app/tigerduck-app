@@ -14,7 +14,7 @@ struct BulletinDetailView: View {
     let taxonomy: BulletinTaxonomyStore
     var readState: BulletinReadStateStore? = nil
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
     @State private var detail: BulletinAPI.BulletinDetail?
     @State private var loadError: String?
@@ -170,7 +170,7 @@ struct BulletinDetailView: View {
     }
 
     private var bulletinMarkdownTheme: Theme {
-        .bulletin(accent: appState.accentColor)
+        .bulletin(accent: app.preferences.accentColor)
     }
 
     private func loadDetail() async {

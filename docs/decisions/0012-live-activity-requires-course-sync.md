@@ -5,7 +5,7 @@ Status: accepted
 ## Context
 
 Live Activity has its own switch, `isLiveActivityEnabled` on `LiveActivityPreferencesStore`.
-Course sync ("Sync course information", `cloudSyncEnabled`) lives on `AppState`, and its
+Course sync ("Sync course information", `cloudSyncEnabled`) lives on `AppEnvironment`, and its
 footer, `sync_courses_footer_platform_note`, tells users that turning it off also disables
 Live Activity and assignment due reminders. An activity can start on the device from the
 resolved scenario or on the server by push-to-start from the schedule this device uploads,
@@ -19,10 +19,10 @@ and `LiveActivityCoordinator` keeps or ends whatever ActivityKit is running.
   - `LiveActivityScenarioResolver.resolve` returns nil, so the app starts nothing.
   - `ScheduleSyncService.Inputs.liveActivityAvailable` makes the upload an empty list, which
     cancels the push-to-start jobs this device queued before.
-  - `LiveActivityCoordinator` asks `AppState.isLiveActivityAvailable` on every prune and
+  - `LiveActivityCoordinator` asks `LiveActivityRefresher.isAvailable` on every prune and
     activity-observer pass and ends every activity, as
     docs/decisions/0010-live-activity-end-policy.md describes.
-- Both inputs are parameters, since `AppState` owns `cloudSyncEnabled`, and a free function
+- Both inputs are parameters, since `AppEnvironment` owns `cloudSyncEnabled`, and a free function
   over explicit inputs lets a plain unit test call it without constructing anything, the same
   shape as Android's `effectiveCloudSyncEnabled`.
 - It reads both inputs and writes neither: suppressing Live Activity while sync is off never
@@ -37,7 +37,7 @@ and `LiveActivityCoordinator` keeps or ends whatever ActivityKit is running.
 ## Consequences
 
 - New code that starts, keeps or schedules a Live Activity asks `effectiveLiveActivityEnabled`,
-  directly or through `AppState.isLiveActivityAvailable`.
+  directly or through `LiveActivityRefresher.isAvailable`.
 - Settings disables the Live Activity row while course sync is off.
 - `LiveActivitySyncGateTests` pins the function and the resolver, `ScheduleSyncServiceTests` the
   schedule upload, and `LiveActivityCoordinatorTests` the end rule while Live Activity is

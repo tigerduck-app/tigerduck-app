@@ -486,7 +486,7 @@ struct CloudSyncCoordinatorTests {
             Defaults[.pendingConflictCategories] = ["assignments", "courses"]
             Defaults[.assignmentMarksSyncedOnce] = true
 
-            AppState.forgetSyncProgress()
+            SignOutCheck.forgetSyncProgress()
 
             #expect(Defaults[.pendingConflictCategories].isEmpty)
             #expect(!Defaults[.assignmentMarksSyncedOnce])
@@ -579,11 +579,11 @@ struct CloudSyncCoordinatorTests {
             Defaults[.syncAssignments] = true
             Defaults[.pendingConflictCategories] = ["assignments", "course_colors"]
             let shown = ShownReenableConflict()
-            shown.conflict = AppState.ReenableConflict(
+            shown.conflict = SyncConflicts.ReenableConflict(
                 categories: ["assignments", "course_colors"], description: "",
                 serverIgnoredCourses: nil, serverMarkedAssignments: ["42"]
             )
-            let isPresented = AppState.reenableAlertIsPresented(
+            let isPresented = SyncConflicts.reenableAlertIsPresented(
                 Binding(get: { shown.conflict }, set: { shown.conflict = $0 })
             )
             let backend = Backend()
@@ -614,5 +614,5 @@ struct CloudSyncCoordinatorTests {
 
 @MainActor
 private final class ShownReenableConflict {
-    var conflict: AppState.ReenableConflict?
+    var conflict: SyncConflicts.ReenableConflict?
 }

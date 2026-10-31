@@ -29,6 +29,6 @@ enum DefaultTabsPinMigration {
     }
 
     static func keepsPreviousDefault(storedTabs: Data?, isExistingInstall: Bool) -> Bool {
-        isExistingInstall && AppState.decodeConfiguredTabs(storedTabs) == nil
+        isExistingInstall && AppPreferences.decodeConfiguredTabs(storedTabs) == nil
     }
 }

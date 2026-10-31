@@ -211,7 +211,7 @@ struct ScheduleSendNowTests {
           arguments: [FullSyncOutcome.synced, .skipped, .failed],
           [UIApplication.State.background, .inactive, .active])
     func theHandlerSendsOnlyAfterASyncInTheBackground(outcome: FullSyncOutcome, state: UIApplication.State) {
-        #expect(AppState.sendsScheduleAfterSyncTrigger(outcome: outcome, applicationState: state)
+        #expect(PushScheduleSync.sendsScheduleAfterSyncTrigger(outcome: outcome, applicationState: state)
             == (outcome == .synced && state == .background))
     }
 }

@@ -4,7 +4,7 @@ struct MoodleForumsView: View {
     let store: MoodleCourseStore
     let open: (MoodleCourseRoute) -> Void
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
         ScrollView {
@@ -53,7 +53,7 @@ struct MoodleForumsView: View {
                 .moodleRowHover()
             }
         }
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
     }
 }
 

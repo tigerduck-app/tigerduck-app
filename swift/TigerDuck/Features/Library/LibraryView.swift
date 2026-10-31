@@ -6,7 +6,7 @@ import PassKit
 struct LibraryView: View {
     var embedded = false
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -49,7 +49,7 @@ struct LibraryView: View {
         }
         .background(Color.backgroundPrimary)
         .onAppear {
-            viewModel.onLibraryStateChanged = { appState.notifyLibraryStateChanged() }
+            viewModel.onLibraryStateChanged = { app.library.noteChange() }
             viewModel.load()
             viewModel.onAppear()
             if viewModel.isLoggedIn {

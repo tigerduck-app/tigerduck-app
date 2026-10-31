@@ -45,12 +45,12 @@ final class HeldShareLink {
 
     /// Imports are filed under the signed-in account, which also tells the user's own code apart,
     /// and until onboarding ends there is no class table to open them over.
-    static func mayOpen(in appState: AppState) -> Bool {
-        appState.hasCompletedOnboarding && appState.authService.hasStoredCredentials
+    static func mayOpen(in app: AppEnvironment) -> Bool {
+        app.hasCompletedOnboarding && app.authService.hasStoredCredentials
     }
 
-    func take(in appState: AppState) -> String? {
-        take(mayOpen: Self.mayOpen(in: appState), signIn: appState.authService.session.ticket)
+    func take(in app: AppEnvironment) -> String? {
+        take(mayOpen: Self.mayOpen(in: app), signIn: app.authService.session.ticket)
     }
 
     /// The held link's text, taken, once it may open; nil while it may not, and for one that

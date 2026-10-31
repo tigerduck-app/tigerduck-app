@@ -6,7 +6,7 @@ struct MoodleAnnouncementView: View {
     let discussion: MoodleDiscussion
     let open: (MoodleCourseRoute) -> Void
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
     @Environment(\.openMoodleLink) private var openMoodleLink
     @State private var didOpen = false
@@ -23,7 +23,7 @@ struct MoodleAnnouncementView: View {
                     .accessibilityHeading(.h1)
                 Divider().background(Color.textSecondary)
                 Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: discussion.message)))
-                    .markdownTheme(.bulletin(accent: appState.accentColor))
+                    .markdownTheme(.bulletin(accent: app.preferences.accentColor))
                     .environment(\.openURL, OpenURLAction { url in
                         files.forgetPendingOpen()
                         openMoodleLink(url)
@@ -114,7 +114,7 @@ struct MoodleAnnouncementView: View {
                     )
                 }
             }
-            .presetCard(policy: appState.visualStylePolicy)
+            .presetCard(policy: app.preferences.visualStylePolicy)
         }
         .padding(.top, TigerDuckTheme.Spacing.sm)
     }

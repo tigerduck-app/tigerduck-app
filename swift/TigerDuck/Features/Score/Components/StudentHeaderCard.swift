@@ -2,7 +2,7 @@ import SwiftUI
 import TigerDuckCore
 
 struct StudentHeaderCard: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     let student: String
     let currentTerm: String
@@ -28,7 +28,7 @@ struct StudentHeaderCard: View {
             Spacer()
         }
         .padding(TigerDuckTheme.Spacing.md)
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 

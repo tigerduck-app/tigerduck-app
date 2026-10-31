@@ -3,7 +3,7 @@ import SwiftUI
 struct EmptyClassroomView: View {
     var embedded = false
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = EmptyClassroomViewModel()
     @State private var wasInBackground = false
@@ -17,18 +17,18 @@ struct EmptyClassroomView: View {
     }
 
     private var content: some View {
-        let access = appState.ntustProtectedAccessState(isEmpty: false)
+        let access = NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: false)
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 EmptyClassroomTitleBar(viewModel: viewModel, showsStatus: access != .loginRequired)
-                if let reauthError = appState.ntustReauthErrorMessage {
+                if let reauthError = app.authService.reauthErrorMessage {
                     NTUSTReauthErrorBanner(
                         message: reauthError,
                         onRetry: {
-                            appState.clearNTUSTReauthError()
-                            appState.presentNTUSTLogin()
+                            app.authService.clearReauthError()
+                            app.router.presentNTUSTLogin()
                         },
-                        onDismiss: { appState.clearNTUSTReauthError() }
+                        onDismiss: { app.authService.clearReauthError() }
                     )
                 }
                 switch access {
@@ -37,12 +37,12 @@ struct EmptyClassroomView: View {
                         layout: .page,
                         title: String(localized: "common_not_signed_in"),
                         message: String(localized: "common_sign_in_required_feature"),
-                        onPrimary: { appState.presentNTUSTLogin() }
+                        onPrimary: { app.router.presentNTUSTLogin() }
                     )
                 case .content, .empty:
                     EmptyClassroomContent(
                         viewModel: viewModel,
-                        policy: appState.visualStylePolicy,
+                        policy: app.preferences.visualStylePolicy,
                         onRoom: { viewModel.open(room: $0) }
                     )
                 }
@@ -54,11 +54,11 @@ struct EmptyClassroomView: View {
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .refreshable { await viewModel.refresh() }
         .sheet(item: openRoom) { room in
-            EmptyClassroomContent.sheet(for: room, viewModel: viewModel, policy: appState.visualStylePolicy)
+            EmptyClassroomContent.sheet(for: room, viewModel: viewModel, policy: app.preferences.visualStylePolicy)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         }
         .onAppear {
-            viewModel.connect(appState.authService)
+            viewModel.connect(app.authService)
             viewModel.appear()
         }
         .onDisappear { viewModel.disappear() }
@@ -70,8 +70,8 @@ struct EmptyClassroomView: View {
             wasInBackground = false
             viewModel.returnToApp()
         }
-        .onChange(of: appState.authService.session.ticket) { viewModel.accountChanged() }
-        .onChange(of: appState.authService.hasStoredCredentials) { viewModel.accountChanged() }
+        .onChange(of: app.authService.session.ticket) { viewModel.accountChanged() }
+        .onChange(of: app.authService.hasStoredCredentials) { viewModel.accountChanged() }
         .onChange(of: AppDataRevision.current) {
             viewModel.storesDidChange()
         }

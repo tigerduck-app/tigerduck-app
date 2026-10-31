@@ -141,7 +141,7 @@ extension MacClassTableView {
     }
 
     private func roomHint(_ course: SDCourse, weekday: Int, periodId: String) -> String? {
-        guard appState.showClassroomInClassTable else { return nil }
+        guard app.preferences.showClassroomInClassTable else { return nil }
         return CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
     }
 

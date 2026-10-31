@@ -6,8 +6,8 @@ the app declares, with its scope. Declarations are read where the v4 layout puts
 them: `Defaults` keys in any `Defaults.Keys` extension of the app target, cache
 files in any source under `Persistence/`. A row of the school or library account
 names the function that clears it, and that function's body must mention it; a
-Keychain key of an account must also be in the fresh-install wipe in
-`AppState.init`. A declaration with no row, or a row with nothing declared, is an
+Keychain key of an account must also be in the fresh-install wipe,
+`FreshInstallKeychainPurge.keys`. A declaration with no row, or a row with nothing declared, is an
 error too, and so is an `AccountScoped` store that no account's list in
 `Account/SignOutPlan.swift` names.
 
@@ -25,7 +25,7 @@ INVENTORY = ROOT / "docs" / "account-state.md"
 APP = "swift/TigerDuck"
 PERSISTENCE = APP + "/Persistence"
 KEYCHAIN_SOURCES = ("swift/TigerDuck/App/AppConstants.swift", "swift/TigerDuck/Backend/Auth/AuthTokenManager.swift")
-FRESH_INSTALL_WIPE = ("swift/TigerDuck/App/AppState.swift", "init")
+FRESH_INSTALL_WIPE = ("swift/TigerDuck/Account/FreshInstallKeychainPurge.swift", "keys")
 SIGN_OUT_PLAN = APP + "/Account/SignOutPlan.swift"
 SCOPES = {"school", "library", "device"}
 

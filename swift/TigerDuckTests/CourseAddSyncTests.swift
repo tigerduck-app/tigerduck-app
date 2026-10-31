@@ -55,7 +55,7 @@ struct CourseAddSyncTests {
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
             addedCourseUpload: {
                 whileReading()
-                return AppState.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses)
+                return SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses)
             },
             uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
             account: account
@@ -91,7 +91,7 @@ struct CourseAddSyncTests {
         #expect(backend.uploads.count == 1)
         #expect(await coordinator.holdsUnsentEdits())
         let adding = await coordinator.courseAddKeys(unlandedAt: fetchedAt)
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: ["CS1001301"], tombstoned: ["GE1010001"], fetched: ["CS1001301"],
             handAdded: ["GE1010001"], droppedMerges: [], hidden: [], adding: adding
         )
@@ -288,11 +288,11 @@ struct CourseAddSyncTests {
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE5", stamp: early))
         let coordinator = Self.makeCoordinator(Backend(), cache: cache, outbox: outbox)
 
-        #expect(await AppState.applyCourseReset(at: resetAt, courses: cache.courses, on: coordinator, mayWrite: { true }) == ["1151:PE5"])
+        #expect(await FullSyncRunner.applyCourseReset(at: resetAt, courses: cache.courses, on: coordinator, mayWrite: { true }) == ["1151:PE5"])
 
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
         #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
-        #expect(AppState.addedCourseUpload(semester: "1151", courseNo: "GE1010001", courses: cache.courses) != nil)
+        #expect(SchoolDataUploader.addedCourseUpload(semester: "1151", courseNo: "GE1010001", courses: cache.courses) != nil)
     }
 
     @Test("A reset made elsewhere leaves the hand-added and hidden courses alone when the sync may no longer write, as behind the lock screen")
@@ -300,7 +300,7 @@ struct CourseAddSyncTests {
         let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:PE4"])
         let coordinator = Self.makeCoordinator(Backend(), cache: cache)
 
-        #expect(await AppState.applyCourseReset(at: Date(), courses: cache.courses, on: coordinator, mayWrite: { false }) == nil)
+        #expect(await FullSyncRunner.applyCourseReset(at: Date(), courses: cache.courses, on: coordinator, mayWrite: { false }) == nil)
 
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
         #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
@@ -345,7 +345,7 @@ struct CourseAddSyncTests {
             ? ["1151:GE1010001", "1151:EE2005301", "1151:MA1010003"]
             : ["1142:GE1010001", "1142:EE2005301", "1142:MA1010003"]
 
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: ["CS1001301"], tombstoned: ["GE1010001"], fetched: ["CS1001301", "EE2005301"],
             handAdded: ["MA1010003"], droppedMerges: [], hidden: [], adding: Set(keys)
         )
@@ -356,7 +356,7 @@ struct CourseAddSyncTests {
 
     @Test("An empty term's snapshot hides only by tombstone, and a course hidden already is not hidden again")
     func emptyTermHidesOnlyByTombstone() {
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: [], tombstoned: ["GE1010001", "PE1010002"], fetched: ["CS1001301"],
             handAdded: ["MA1010003"], droppedMerges: [], hidden: ["1151:PE1010002"], adding: []
         )
@@ -411,7 +411,7 @@ struct CourseAddSyncTests {
 
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
 
-        let sameList = AppState.courseUploadRequest([Self.art()], semester: "1151")
+        let sameList = SchoolDataUploader.courseUploadRequest([Self.art()], semester: "1151")
         #expect(try await !push.uploadCoursesIfChanged(sameList, semester: "1151", isCurrent: { true }))
         #expect(backend.uploads.count == 1)
     }

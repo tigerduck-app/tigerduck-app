@@ -3,7 +3,7 @@ import SwiftUI
 import Defaults
 
 struct MacTigerSyncSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Default(.syncCourses) private var syncCourses
     @Default(.syncCourseColors) private var syncCourseColors
     @Default(.syncCourseNames) private var syncCourseNames
@@ -16,7 +16,8 @@ struct MacTigerSyncSettingsView: View {
     private static let childIndent: CGFloat = 16
 
     var body: some View {
-        @Bindable var state = appState
+        @Bindable var state = app
+        @Bindable var conflicts = app.conflicts
         Form {
             Section {
                 Toggle(String(localized: "sync_essential_toggle"), isOn: .constant(true))
@@ -29,11 +30,11 @@ struct MacTigerSyncSettingsView: View {
                 Toggle(String(localized: "sync_courses_toggle"), isOn: $state.cloudSyncEnabled)
                     .onChange(of: state.cloudSyncEnabled) { old, newValue in
                         if newValue && !old {
-                            if syncCourses { appState.markCategoryReenabled("courses") }
-                            if syncCourseColors { appState.markCategoryReenabled("course_colors") }
-                            if syncCourseNames { appState.markCategoryReenabled("course_names") }
-                            if syncAssignments { appState.markCategoryReenabled("assignments") }
-                            appState.checkPendingConflicts()
+                            if syncCourses { app.conflicts.markCategoryReenabled("courses") }
+                            if syncCourseColors { app.conflicts.markCategoryReenabled("course_colors") }
+                            if syncCourseNames { app.conflicts.markCategoryReenabled("course_names") }
+                            if syncAssignments { app.conflicts.markCategoryReenabled("assignments") }
+                            app.conflicts.checkPendingConflicts()
                         }
                     }
             } footer: {
@@ -115,27 +116,27 @@ struct MacTigerSyncSettingsView: View {
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
                 Task { @MainActor in await refreshSnapshot() }
             }
-            appState.checkPendingConflicts()
+            app.conflicts.checkPendingConflicts()
         }
         .onDisappear {
             refreshTimer?.invalidate()
             refreshTimer = nil
-            appState.checkPendingConflicts()
+            app.conflicts.checkPendingConflicts()
         }
         .alert(
             String(localized: "sync_conflict_title"),
-            isPresented: AppState.reenableAlertIsPresented($state.reenableConflict)
+            isPresented: SyncConflicts.reenableAlertIsPresented($conflicts.reenableConflict)
         ) {
             Button(String(localized: "sync_conflict_use_server")) {
-                appState.resolveReenableConflict(keepLocal: false)
+                app.conflicts.resolveReenableConflict(keepLocal: false)
             }
             Button(String(localized: "sync_conflict_use_local")) {
-                appState.resolveReenableConflict(keepLocal: true)
+                app.conflicts.resolveReenableConflict(keepLocal: true)
             }
         } message: {
             Text(String(localized: "sync_conflict_reenable_message"))
             + Text("\n")
-            + Text(appState.reenableConflict?.description ?? "")
+            + Text(app.conflicts.reenableConflict?.description ?? "")
         }
         .sheet(isPresented: $showSignIn) {
             MacLoginView(showsSkipButton: false, onSignedIn: { showSignIn = false })
@@ -144,9 +145,9 @@ struct MacTigerSyncSettingsView: View {
     }
 
     private func refreshSnapshot() async {
-        let current = await appState.pushCoordinator.currentSnapshot()
-        asksToSignInAgain = await appState.authService.asksToSignInAgain(
-            syncEnabled: appState.cloudSyncEnabled, after: current.registration
+        let current = await app.pushCoordinator.currentSnapshot()
+        asksToSignInAgain = await app.authService.asksToSignInAgain(
+            syncEnabled: app.cloudSyncEnabled, after: current.registration
         )
         snapshot = current
     }
@@ -166,24 +167,24 @@ struct MacTigerSyncSettingsView: View {
     }
 
     private func setCourses(_ on: Bool) {
-        if on && !syncCourses { appState.markCategoryReenabled("courses") }
+        if on && !syncCourses { app.conflicts.markCategoryReenabled("courses") }
         syncCourses = on
-        setCourseColors(AppState.courseColorsAfterCoursesChange(coursesNowOn: on))
+        setCourseColors(EditSender.courseColorsAfterCoursesChange(coursesNowOn: on))
     }
 
     private func setCourseColors(_ on: Bool) {
-        if on && !syncCourseColors { appState.markCategoryReenabled("course_colors") }
+        if on && !syncCourseColors { app.conflicts.markCategoryReenabled("course_colors") }
         syncCourseColors = on
     }
 
     private func setCourseNames(_ on: Bool) {
-        if on && !syncCourseNames { appState.markCategoryReenabled("course_names") }
+        if on && !syncCourseNames { app.conflicts.markCategoryReenabled("course_names") }
         syncCourseNames = on
     }
 
     private func commit() {
-        appState.pushSyncPreferences()
-        appState.checkPendingConflicts()
+        app.pushSchedule.pushSyncPreferences()
+        app.conflicts.checkPendingConflicts()
     }
 
     @ViewBuilder

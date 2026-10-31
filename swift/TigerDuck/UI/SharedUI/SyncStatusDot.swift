@@ -42,7 +42,7 @@ struct SyncStatusDot: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
-    @Environment(AppState.self) private var appState: AppState?
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     /// Observed rather than read through `Defaults[...]`. `isMinimal` feeds
     /// `sources`, which the body reads, and a bare subscript is a read
     /// SwiftUI never subscribes to -- so switching sync off left the row on
@@ -75,7 +75,7 @@ struct SyncStatusDot: View {
         }
     }
 
-    private var isSignedIn: Bool { appState?.authService.hasStoredCredentials ?? false }
+    private var isSignedIn: Bool { app?.authService.hasStoredCredentials ?? false }
 
     private func isMinimal(_ server: ServerKind) -> Bool {
         server == .backend && !cloudSyncEnabled

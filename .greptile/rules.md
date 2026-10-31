@@ -71,7 +71,7 @@ setting instead. Adding the slider on Mac would also force a second
 source of truth for what is currently a one-platform preference.
 
 **How to apply:** If you see `MacClassTableView` rendering course names
-without reading `AppState.courseCardFontScale`, or `MacSettingsScene`
+without reading `AppPreferences.courseCardFontScale`, or `MacSettingsScene`
 lacking a slider for it, skip the comment. The same applies to any
 future Mac-native widget extension. The doc comment on
 `CourseCardFontScale` (in `swift/TigerDuck/Shared/CourseCardFontScale.swift`)

@@ -6,6 +6,6 @@ enum SchoolAccountKeys: AccountScoped {
         Defaults[.schoolDataSyncedAt] = nil
         Defaults[.classTableSelectedSemester] = nil
         Defaults[.emptyClassroomBuilding] = nil
-        AppState.forgetSyncProgress()
+        SignOutCheck.forgetSyncProgress()
     }
 }

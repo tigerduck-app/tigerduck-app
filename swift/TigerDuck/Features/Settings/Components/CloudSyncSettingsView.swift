@@ -2,7 +2,7 @@ import Defaults
 import SwiftUI
 
 struct CloudSyncSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Default(.cloudSyncEnabled) private var syncEnabled
     @Default(.syncCourses) private var syncCourses
     @Default(.syncCourseColors) private var syncCourseColors
@@ -28,11 +28,11 @@ struct CloudSyncSettingsView: View {
                 Toggle(String(localized: "sync_courses_toggle"), isOn: $syncEnabled)
                     .onChange(of: syncEnabled) { old, newValue in
                         if newValue && !old {
-                            if syncCourses { appState.markCategoryReenabled("courses") }
-                            if syncCourseColors { appState.markCategoryReenabled("course_colors") }
-                            if syncCourseNames { appState.markCategoryReenabled("course_names") }
-                            if syncAssignments { appState.markCategoryReenabled("assignments") }
-                            appState.checkPendingConflicts()
+                            if syncCourses { app.conflicts.markCategoryReenabled("courses") }
+                            if syncCourseColors { app.conflicts.markCategoryReenabled("course_colors") }
+                            if syncCourseNames { app.conflicts.markCategoryReenabled("course_names") }
+                            if syncAssignments { app.conflicts.markCategoryReenabled("assignments") }
+                            app.conflicts.checkPendingConflicts()
                         }
                     }
             } footer: {
@@ -92,11 +92,11 @@ struct CloudSyncSettingsView: View {
         .navigationTitle(String(localized: "cloud_sync_title"))
         .task { await refreshStatusSnapshot() }
         .onAppear {
-            appState.checkPendingConflicts()
+            app.conflicts.checkPendingConflicts()
             startStatusRefreshTimer()
         }
         .onDisappear {
-            appState.checkPendingConflicts()
+            app.conflicts.checkPendingConflicts()
             stopStatusRefreshTimer()
         }
         .reenableConflictAlert()
@@ -109,7 +109,7 @@ struct CloudSyncSettingsView: View {
                 serverPushOptOutTask?.cancel()
                 serverPushOptOutTask = Task {
                     do {
-                        try await appState.updateServerPushOptOut(!isOn)
+                        try await app.pushSchedule.updateServerPushOptOut(!isOn)
                         guard !Task.isCancelled else { return }
                         serverPushOptOutFailed = false
                     } catch {
@@ -143,7 +143,7 @@ struct CloudSyncSettingsView: View {
             Text(String(localized: "common_auto_sign_in_failed"))
             Spacer()
             Button(String(localized: "action_sign_in_again")) {
-                appState.presentNTUSTLogin()
+                app.router.presentNTUSTLogin()
             }
             .font(.callout.weight(.semibold))
             .buttonStyle(.borderedProminent)
@@ -152,8 +152,8 @@ struct CloudSyncSettingsView: View {
     }
 
     private func refreshStatusSnapshot() async {
-        let snapshot = await appState.pushCoordinator.currentSnapshot()
-        asksToSignInAgain = await appState.authService.asksToSignInAgain(
+        let snapshot = await app.pushCoordinator.currentSnapshot()
+        asksToSignInAgain = await app.authService.asksToSignInAgain(
             syncEnabled: syncEnabled, after: snapshot.registration
         )
         statusSnapshot = snapshot
@@ -189,23 +189,23 @@ struct TigerSyncLinksSection: View {
 }
 
 struct ReenableConflictAlert: ViewModifier {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     func body(content: Content) -> some View {
         content.alert(
             String(localized: "sync_conflict_title"),
-            isPresented: AppState.reenableAlertIsPresented(Bindable(appState).reenableConflict)
+            isPresented: SyncConflicts.reenableAlertIsPresented(Bindable(app.conflicts).reenableConflict)
         ) {
             Button(String(localized: "sync_conflict_use_server")) {
-                appState.resolveReenableConflict(keepLocal: false)
+                app.conflicts.resolveReenableConflict(keepLocal: false)
             }
             Button(String(localized: "sync_conflict_use_local")) {
-                appState.resolveReenableConflict(keepLocal: true)
+                app.conflicts.resolveReenableConflict(keepLocal: true)
             }
         } message: {
             Text(String(localized: "sync_conflict_reenable_message"))
             + Text("\n")
-            + Text(appState.reenableConflict?.description ?? "")
+            + Text(app.conflicts.reenableConflict?.description ?? "")
         }
     }
 }

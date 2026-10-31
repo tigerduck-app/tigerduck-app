@@ -4,7 +4,7 @@ import SwiftUI
 struct BulletinsView: View {
     var embedded: Bool = false
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = BulletinsViewModel()
     @Default(.bulletinsSyncedAt) private var bulletinsSyncedAt
@@ -51,7 +51,7 @@ struct BulletinsView: View {
         }
         #if os(iOS)
         .onAppear { drainPendingBulletinDeepLink() }
-        .onChange(of: appState.pendingDeepLink) { _, _ in
+        .onChange(of: app.router.pendingDeepLink) { _, _ in
             drainPendingBulletinDeepLink()
         }
         .onChange(of: viewModel.loadState) { _, newState in
@@ -64,7 +64,7 @@ struct BulletinsView: View {
 
     #if os(iOS)
     private func drainPendingBulletinDeepLink() {
-        guard case .bulletin(let id) = appState.pendingDeepLink else { return }
+        guard case .bulletin(let id) = app.router.pendingDeepLink else { return }
         guard !inflightDeepLinkIds.contains(id) else { return }
         inflightDeepLinkIds.insert(id)
         Task {
@@ -75,9 +75,9 @@ struct BulletinsView: View {
             } catch {
                 return
             }
-            if case .bulletin(let pendingId) = appState.pendingDeepLink,
+            if case .bulletin(let pendingId) = app.router.pendingDeepLink,
                pendingId == id {
-                appState.pendingDeepLink = nil
+                app.router.pendingDeepLink = nil
             }
             if let summary {
                 detailingBulletin = summary
@@ -152,7 +152,7 @@ struct BulletinsView: View {
                     : String(localized: "bulletin_show_unread_only_action"))
             }
             // The backend stores bulletin subscriptions only for a signed-in account.
-            if appState.authService.hasStoredCredentials {
+            if app.authService.hasStoredCredentials {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showNotificationSettings = true
@@ -268,7 +268,7 @@ struct BulletinsView: View {
                         )
                         .labelStyle(.iconOnly)
                     }
-                    .tint(appState.accentColor)
+                    .tint(app.preferences.accentColor)
                 }
                 .task {
                     await viewModel.loadMoreIfNeeded(triggeredBy: bulletin)
