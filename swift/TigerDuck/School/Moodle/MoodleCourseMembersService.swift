@@ -1,29 +1,5 @@
 import Foundation
 
-nonisolated struct MoodleMember: Codable, Sendable, Hashable, Identifiable {
-    let id: Int
-    let fullName: String
-    let idNumber: String?
-    let email: String?
-    let groups: [String]
-    let roles: [Role]
-    let pictureURL: URL?
-    let description: String
-    let interests: [String]
-    let fields: [Field]
-
-    nonisolated struct Role: Codable, Sendable, Hashable {
-        let shortName: String
-        let name: String
-        let sortOrder: Int
-    }
-
-    nonisolated struct Field: Codable, Sendable, Hashable {
-        let name: String
-        let value: String
-    }
-}
-
 nonisolated enum MoodleCourseMembersService {
     static let membersFunction = "core_enrol_get_enrolled_users"
     static let hiddenCode = "nopermissions"

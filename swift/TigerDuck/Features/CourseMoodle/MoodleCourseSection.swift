@@ -162,7 +162,7 @@ private struct MoodleCourseSummaryBody: View {
     @Environment(\.openMoodleLink) private var openMoodleLink
 
     var body: some View {
-        Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: html)))
+        Markdown(BulletinBodyRenderer.normalize(MoodleText.markdown(fromHTML: html)))
             .markdownTheme(.bulletin(accent: app.preferences.accentColor))
             .environment(\.openURL, OpenURLAction { url in
                 openMoodleLink(url)

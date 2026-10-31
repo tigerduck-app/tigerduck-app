@@ -316,7 +316,7 @@ extension MoodlePage {
     /// does not have, and the same file under the site's own path takes the signed-in session.
     static func browserURL(_ url: URL) -> URL {
         let prefix = "/webservice/pluginfile.php/"
-        guard MoodleAutologinService.isMoodlePage(url),
+        guard SchoolWeb.isMoodlePage(url),
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.percentEncodedPath.hasPrefix(prefix) else { return url }
         components.percentEncodedPath = "/pluginfile.php/" + components.percentEncodedPath.dropFirst(prefix.count)

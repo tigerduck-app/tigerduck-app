@@ -2,7 +2,37 @@
 import SwiftUI
 import TigerDuckCore
 
-extension MoodleAssignmentView {
+/// What the assignment page shows, worked out from the record, the submission and Home's row.
+enum MoodleAssignmentDetails {
+    private static let markdownCache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 300
+        return cache
+    }()
+
+    /// The page draws again at each download-progress tick, so each piece of HTML, up to 150
+    /// comments of it, is converted once and then read back by its text.
+    static func markdown(
+        ofHTML html: String,
+        convert: (String) -> String = { BulletinBodyRenderer.normalize(MoodleText.markdown(fromHTML: $0)) }
+    ) -> String {
+        if let cached = markdownCache.object(forKey: html as NSString) { return cached as String }
+        let converted = convert(html)
+        markdownCache.setObject(converted as NSString, forKey: html as NSString)
+        return converted
+    }
+
+    /// The fetched submission says whether the student has an extension, else Home's row does.
+    static func due(of entry: MoodleCourseAssignments.Entry, submission: MoodleAssignmentSubmission?) -> Date? {
+        guard let submission else { return entry.dueDate }
+        return entry.record.dueDate(extendedTo: submission.extensionDueDate)
+    }
+
+    static func submittedAt(of listed: AssignmentStore.Assignment?, submission: MoodleAssignmentSubmission?) -> Date? {
+        guard let submission else { return listed?.isCompleted == true ? listed?.submittedAt : nil }
+        return submission.submittedAt
+    }
+
     enum Badge: Equatable {
         case notSubmitted
         case submitted
@@ -78,7 +108,7 @@ extension MoodleAssignmentView {
     }
 
     static func isSubmitted(
-        record: MoodleAssignmentRecord, listed: SDAssignment?, submission: MoodleAssignmentSubmission?
+        record: MoodleAssignmentRecord, listed: AssignmentStore.Assignment?, submission: MoodleAssignmentSubmission?
     ) -> Bool? {
         guard !record.noSubmissions else { return nil }
         return submission?.isSubmitted ?? listed?.isCompleted

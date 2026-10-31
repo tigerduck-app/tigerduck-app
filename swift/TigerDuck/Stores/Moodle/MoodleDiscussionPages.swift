@@ -96,11 +96,11 @@ final class MoodleDiscussionPages {
     func markRead(_ discussionId: Int) {
         let unread = list?.discussions.first { $0.id == discussionId }?.unreadCount ?? 0
         guard unread > 0 else { return }
-        feed.update { list in
+        feed.edit { list in
             guard let index = list.discussions.firstIndex(where: { $0.id == discussionId }) else { return }
             list.discussions[index].unreadCount = 0
         }
-        forums.update { term in
+        forums.edit { term in
             guard let index = term.forums.firstIndex(where: { $0.id == forumId }) else { return }
             term.forums[index].unreadPostCount = max(0, term.forums[index].unreadPostCount - unread)
         }

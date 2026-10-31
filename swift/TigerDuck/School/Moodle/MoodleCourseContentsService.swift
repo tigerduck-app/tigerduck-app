@@ -1,42 +1,5 @@
 import Foundation
 
-nonisolated struct MoodleCourseMaterials: Codable, Sendable, Equatable {
-    var sections: [MoodleMaterialSection]
-
-    var count: Int {
-        sections.reduce(0) { total, section in section.materials.reduce(total) { $0 + $1.count } }
-    }
-}
-
-nonisolated struct MoodleMaterialSection: Codable, Sendable, Hashable, Identifiable {
-    let id: Int
-    let name: String
-    let materials: [MoodleMaterial]
-    /// Moodle's section number, 0 for the general section; optional so materials cached without it still load.
-    var number: Int? = nil
-}
-
-nonisolated struct MoodleMaterial: Codable, Sendable, Hashable, Identifiable {
-    enum Content: Codable, Sendable, Hashable {
-        case file(MoodleFile)
-        case folder([MoodleFile])
-        case link(URL)
-    }
-
-    let id: Int
-    let instance: Int
-    let module: String
-    let name: String
-    let content: Content
-
-    var count: Int {
-        switch content {
-        case .file, .link: 1
-        case .folder(let files): files.count
-        }
-    }
-}
-
 nonisolated enum MoodleCourseContentsService {
     static let contentsFunction = "core_course_get_contents"
 

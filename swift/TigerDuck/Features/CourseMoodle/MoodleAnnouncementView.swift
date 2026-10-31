@@ -22,7 +22,7 @@ struct MoodleAnnouncementView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityHeading(.h1)
                 Divider().background(Color.textSecondary)
-                Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: discussion.message)))
+                Markdown(BulletinBodyRenderer.normalize(MoodleText.markdown(fromHTML: discussion.message)))
                     .markdownTheme(.bulletin(accent: app.preferences.accentColor))
                     .environment(\.openURL, OpenURLAction { url in
                         files.forgetPendingOpen()

@@ -780,3 +780,73 @@ struct MoodleCourseForumsTests {
         #expect(!MoodleDiscussionCard.accessibilityText(discussion: replied, date: date, showsFooter: false).contains("Tiger Duck"))
     }
 }
+
+extension MoodleCourseForumsTests {
+    @Test("a Moodle feed refresh does not restore an unread badge cleared during the fetch")
+    func readDuringARefreshStaysRead() async throws {
+        let folder = Folder()
+        let site = Site()
+        let unread = Self.discussion(801, unread: 2)
+        site.set(pages: [[unread]])
+        let held = HeldForumsCall(holding: 2)
+        var api = site.api
+        let forums = api.forums
+        api.forums = { courseIds in
+            await held.pass()
+            return try await forums(courseIds)
+        }
+        let store = Self.store(folder, site: site, api: api)
+        await store.refreshForums()
+        await store.discussions(of: Self.qanda).refresh()
+        #expect(Self.row(store)?.hasUnread == true)
+
+        let refresh = Task { await store.refreshForums() }
+        try await waitUntil { held.isHolding }
+        await store.open(unread, in: Self.qanda).value
+        held.release()
+        await refresh.value
+
+        #expect(Self.row(store)?.hasUnread == false)
+    }
+}
+
+/// Holds one call of the site until the test lets it go; the site answers as it stands then,
+/// which still has the post unread.
+private final class HeldForumsCall: @unchecked Sendable {
+    private let lock = NSLock()
+    private let held: Int
+    private var calls = 0
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var isReleased = false
+
+    init(holding call: Int) {
+        held = call
+    }
+
+    var isHolding: Bool { lock.withLock { waiting != nil } }
+
+    func pass() async {
+        let holds = lock.withLock {
+            calls += 1
+            return calls == held
+        }
+        guard holds else { return }
+        await withCheckedContinuation { continuation in
+            let goes = lock.withLock {
+                if isReleased { return true }
+                waiting = continuation
+                return false
+            }
+            if goes { continuation.resume() }
+        }
+    }
+
+    func release() {
+        let continuation = lock.withLock {
+            isReleased = true
+            defer { waiting = nil }
+            return waiting
+        }
+        continuation?.resume()
+    }
+}
