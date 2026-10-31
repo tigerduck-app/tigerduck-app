@@ -306,7 +306,7 @@ struct MailFolderProvisionerTests {
             sleep: { _ in }
         )
         let reported = Reported()
-        model.onFolderRolesChanged = { reported.record($0) }
+        model.events.observe { if case let .folderRoles(roles) = $0 { reported.record(roles) } }
         return ComposeHarness(model: model, fake: fake, reportedRoles: reported)
     }
 
@@ -331,7 +331,7 @@ struct MailFolderProvisionerTests {
             cache: cache, prefs: prefs, notifier: MailNotifier(center: RecordingNotificationCenter())
         )
         let reported = Reported()
-        model.onFolderRolesChanged = { reported.record($0) }
+        model.events.observe { if case let .folderRoles(roles) = $0 { reported.record(roles) } }
         return MessageHarness(model: model, fake: fake, reportedRoles: reported)
     }
 }

@@ -72,6 +72,24 @@ struct MailListViewModelTests {
         #expect(h.model.rows.last?.uid == 1)
     }
 
+    @Test func aRefreshKeepsAReadFlagAndARemovalMadeWhileItsPageWasInFlight() async {
+        let h = Self.harness(inboxCount: 6, includeSent: false)
+        await h.model.load()
+        #expect(h.model.rows.first { $0.uid == 3 }?.summary.isSeen == false)
+        await h.fake.holdNext("page")
+        let refresh = Task { await h.model.load() }
+        await h.fake.waitForArrival("page")
+        h.model.markSeenLocally(folder: "INBOX", uid: 3)
+        h.model.removeLocally(folder: "INBOX", uid: 5)
+        await h.fake.release("page")
+        await refresh.value
+        await h.model.waitForCacheWrites()
+
+        #expect(h.model.rows.first { $0.uid == 3 }?.summary.isSeen == true)
+        #expect(!h.model.rows.contains { $0.uid == 5 })
+        #expect(h.cache.loadPage(folder: "INBOX")?.summaries.contains { $0.uid == 5 } == false)
+    }
+
     @Test func unreadOnlyFiltersTheList() async {
         let h = Self.harness(inboxCount: 4)
         await h.model.load()
@@ -1379,11 +1397,11 @@ struct MailListViewModelTests {
                            summaries: (0..<count).map { SchoolMailTestDoubles.summary(uid: UInt32($0 + 1)) },
                            oldestLoadedSequence: nil)
         }
-        #expect(MailListViewModel.warmShouldWrite(page(20), over: nil))
-        #expect(MailListViewModel.warmShouldWrite(page(20), over: page(10)))
-        #expect(MailListViewModel.warmShouldWrite(page(20), over: page(20)))
-        #expect(!MailListViewModel.warmShouldWrite(page(20), over: page(50)))
-        #expect(MailListViewModel.warmShouldWrite(page(20), over: page(50, validity: 2)))
+        #expect(MailListBackground.warmShouldWrite(page(20), over: nil))
+        #expect(MailListBackground.warmShouldWrite(page(20), over: page(10)))
+        #expect(MailListBackground.warmShouldWrite(page(20), over: page(20)))
+        #expect(!MailListBackground.warmShouldWrite(page(20), over: page(50)))
+        #expect(MailListBackground.warmShouldWrite(page(20), over: page(50, validity: 2)))
     }
 
     @Test func aFolderSwitchWarmsWhatTheUserLeft() async {

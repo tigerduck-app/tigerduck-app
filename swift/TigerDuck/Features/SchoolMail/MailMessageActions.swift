@@ -1,0 +1,126 @@
+#if os(iOS)
+import Foundation
+
+/// The message screen's actions that reach past the mail on screen: moving or deleting it, and
+/// fetching its source or an attachment, each kept in the cache under the mail's UIDVALIDITY.
+@MainActor
+enum MailMessageActions {
+    static func move(model: MailMessageViewModel, to target: String) async -> Bool {
+        let route = model.route
+        return await performMove(model: model) { client, owned in
+            try await MailMover.move(uids: [route.uid], from: route.folder, to: target, client: client, previouslyFlagged: owned)
+        }
+    }
+
+    static func prepareDelete(model: MailMessageViewModel) async -> Bool {
+        guard model.folderRoles[.trash] == nil, !model.isMoving else { return model.deleteIsPermanent }
+        model.activity.isMoving = true
+        defer { model.activity.isMoving = false }
+        let known = model.folderRoles
+        let ensured = try? await model.session.use { client in
+            await MailFolderProvisioner.ensure(.trash, in: known, client: client)
+        }
+        if let ensured = ensured ?? nil { model.adoptFolderRoles(ensured.roles) }
+        return model.deleteIsPermanent
+    }
+
+    static func delete(model: MailMessageViewModel) async -> Bool {
+        if !model.deleteIsPermanent, let trash = model.folderRoles[.trash] {
+            return await move(model: model, to: trash)
+        }
+        let route = model.route
+        return await performMove(model: model) { client, owned in
+            try await MailMover.deletePermanently(uids: [route.uid], in: route.folder, client: client, previouslyFlagged: owned)
+        }
+    }
+
+    private static func performMove(
+        model: MailMessageViewModel, _ operation: @escaping (any MailClient, OwnedDeleted) async throws -> MailMoveResult
+    ) async -> Bool {
+        guard !model.isMoving else { return false }
+        let folder = model.route.folder
+        guard let uidValidity = model.pageUIDValidity else {
+            model.activity.actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
+            return false
+        }
+        model.activity.isMoving = true
+        defer { model.activity.isMoving = false }
+        let uid = model.route.uid
+        let prefs = model.stores.prefs
+        let wasAlreadyDeleted = model.detail?.summary.isDeleted ?? false
+        let owned = prefs.ownedDeleted(folder: folder, uidValidity: uidValidity)
+        do {
+            let result = try await model.session.use { client in try await operation(client, owned) }
+            prefs.setOwnedDeleted(result.stillPending)
+            model.events.post(.removed(folder: folder, uid: uid))
+            return true
+        } catch {
+            if MailMover.shouldProbeAfterFailure(error) {
+                let recovered = try? await model.session.use { client in
+                    await MailMover.recoverAfterFailure(after: error, uid: uid, previouslyFlagged: owned,
+                                                        client: client, wasAlreadyDeleted: wasAlreadyDeleted)
+                }
+                if let claim = recovered ?? nil { prefs.setOwnedDeleted(claim) }
+            }
+            model.activity.actionError = MailAccountManager.LoginError(error).message
+            if (error as? MailClientError) == .folderChanged { model.events.post(.folderChanged(folder)) }
+            return false
+        }
+    }
+
+    /// `BODY.PEEK[]`, which never marks the mail read. Cached like the body, so a visit does not
+    /// download the whole source again; without a cached page there is no UIDVALIDITY to key it
+    /// by, so it is fetched but not kept. `MailSourceTextView` lays out only what is on screen.
+    static func loadSource(model: MailMessageViewModel) async {
+        model.activity.sourceLoadFailed = false
+        let cache = model.stores.cache
+        let prefs = model.stores.prefs
+        let folder = model.route.folder
+        let uid = model.route.uid
+        let validity = model.pageUIDValidity
+        let account = prefs.studentID
+        let wipeCount = cache.wipeCount
+        if let validity,
+           let cached = await Task.detached(operation: { cache.loadSource(folder: folder, uidValidity: validity, uid: uid) }).value {
+            model.activity.source = cached
+            return
+        }
+        do {
+            let data = try await model.session.use { client in
+                try await client.rawSource(folder: folder, uid: uid, expectedUIDValidity: validity)
+            }
+            let text = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
+            model.activity.source = text
+            if let validity, prefs.studentID == account {
+                await Task.detached { cache.saveSource(text, folder: folder, uidValidity: validity, uid: uid, wipeCount: wipeCount) }.value
+            }
+        } catch {
+            model.activity.actionError = MailAccountManager.LoginError(error).message
+            model.activity.sourceLoadFailed = true
+        }
+    }
+
+    static func prepareAttachment(_ part: MailBodyPart, model: MailMessageViewModel) async -> URL? {
+        guard !model.downloading.contains(part.section) else { return nil }
+        model.activity.downloading.insert(part.section)
+        defer { model.activity.downloading.remove(part.section) }
+        let folder = model.route.folder
+        let uid = model.route.uid
+        let validity = model.pageUIDValidity
+        let cache = model.stores.cache
+        let wipeCount = cache.wipeCount
+        do {
+            let data = try await model.session.use { client in
+                try await client.attachment(folder: folder, uid: uid, part: part, expectedUIDValidity: validity)
+            }
+            let filename = MailAttachmentRisk.displayFilename(part.filename ?? "attachment")
+            return try await Task.detached {
+                try cache.saveAttachment(data, filename: filename, wipeCount: wipeCount)
+            }.value
+        } catch {
+            model.activity.actionError = MailAccountManager.LoginError(error).message
+            return nil
+        }
+    }
+}
+#endif

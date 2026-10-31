@@ -487,7 +487,7 @@ struct MailComposeViewModelTests {
     @Test func readBoundedFailsOnAThrownMidReadErrorRatherThanTruncating() {
         struct ReadFailure: Error {}
         var calls = 0
-        let result = MailComposeView.readBounded { _ in
+        let result = MailComposeFiles.readBounded { _ in
             calls += 1
             if calls == 1 { return Data("first chunk, then the read breaks".utf8) }
             throw ReadFailure()
@@ -498,7 +498,7 @@ struct MailComposeViewModelTests {
     @Test func readBoundedReturnsEverythingReadThroughACleanEOF() {
         let chunks: [Data?] = [Data("hello ".utf8), Data("world".utf8), nil]
         var index = 0
-        let result = MailComposeView.readBounded { _ in
+        let result = MailComposeFiles.readBounded { _ in
             defer { index += 1 }
             return index < chunks.count ? chunks[index] : nil
         }
@@ -508,7 +508,7 @@ struct MailComposeViewModelTests {
     @Test func readBoundedRejectsOnceThePastLimitChunkArrivesEvenWithoutAThrow() {
         let oversized = Data(count: MailConstants.maxEncodedMessageBytes + 1)
         var served = false
-        let result = MailComposeView.readBounded { _ in
+        let result = MailComposeFiles.readBounded { _ in
             defer { served = true }
             return served ? nil : oversized
         }
@@ -636,7 +636,7 @@ struct MailComposeViewModelTests {
     @discardableResult
     static func sendCollectingNotice(_ model: MailComposeViewModel, to: String = "a@mail.ntust.edu.tw") async -> String? {
         var notice: String?
-        model.onSentCopyNotice = { notice = $0 }
+        model.events.observe { if case let .sentCopyNotice(text) = $0 { notice = text } }
         await model.prepare()
         model.to = to
         await model.send()
@@ -671,7 +671,7 @@ struct MailComposeViewModelTests {
         #expect(model.sentCopy == .unknown)
         #expect(await !fake.calls.contains { $0.hasPrefix("append") })
         #expect(await fake.folders[Self.sent]?.count == 1)
-        #expect(notice == MailComposeViewModel.notice(for: .unknown))
+        #expect(notice == MailComposeSending.notice(for: .unknown))
     }
 
     @Test func aFailedAppendStillReportsTheSendAsSuccessful() async {
@@ -723,16 +723,16 @@ struct MailComposeViewModelTests {
         #expect(model.error == nil)
         #expect(model.sentCopy == .notAttempted)
         #expect(await fake.sent.count == 1)
-        #expect(notice == MailComposeViewModel.notice(for: .notAttempted))
+        #expect(notice == MailComposeSending.notice(for: .notAttempted))
     }
 
     @Test func onlyAnUnkeptCopyIsWorthANotice() {
-        #expect(MailComposeViewModel.notice(for: .filed) == nil)
-        #expect(MailComposeViewModel.notice(for: .serverFiledItself) == nil)
+        #expect(MailComposeSending.notice(for: .filed) == nil)
+        #expect(MailComposeSending.notice(for: .serverFiledItself) == nil)
         let notices = [
-            MailComposeViewModel.notice(for: .notAttempted),
-            MailComposeViewModel.notice(for: .failed(.unreachable)),
-            MailComposeViewModel.notice(for: .unknown),
+            MailComposeSending.notice(for: .notAttempted),
+            MailComposeSending.notice(for: .failed(.unreachable)),
+            MailComposeSending.notice(for: .unknown),
         ]
         #expect(notices.allSatisfy { $0?.isEmpty == false })
         #expect(Set(notices.compactMap { $0 }).count == 3)

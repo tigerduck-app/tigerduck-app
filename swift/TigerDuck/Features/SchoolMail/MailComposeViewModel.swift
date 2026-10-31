@@ -2,20 +2,6 @@
 import Foundation
 import Observation
 
-nonisolated enum MailComposeMode: Equatable, Sendable {
-    case new, reply, replyAll, forward, draft
-}
-
-nonisolated struct MailComposeContext: Identifiable, Sendable {
-    let id = UUID()
-    var mode: MailComposeMode
-    var folder: String?
-    var uid: UInt32?
-    var original: MailOriginal?
-    var attachments: [MailBodyPart] = []
-    var to: [MailAddress] = []
-}
-
 @MainActor
 @Observable
 final class MailComposeViewModel {
@@ -26,50 +12,22 @@ final class MailComposeViewModel {
         var data: Data
     }
 
-    var to = "" { didSet { markEdited(&editedTo) } }
-    var cc = "" { didSet { markEdited(&editedCc) } }
-    var bcc = ""
-    var subject = "" { didSet { markEdited(&editedSubject) } }
-    var body = "" { didSet { markEdited(&editedBody) } }
-    var showCcBcc = false
-    private(set) var attachments: [Attachment] = []
-    private(set) var isSending = false
-    private(set) var isLoading = false
-    private(set) var error: String? {
-        didSet { errorNeedsAcknowledging = error != nil }
-    }
-    private(set) var errorNeedsAcknowledging = false
-    private(set) var loadError: String?
-    private(set) var invalidRecipients: [String] = []
-    private(set) var didFinish = false
-    private(set) var sentCopy: SentCopy?
-
+    private(set) var draft = MailComposeDraft()
+    private(set) var status = MailComposeStatus()
+    @ObservationIgnored private var tracking = MailComposeTracking()
+    @ObservationIgnored let events: MailboxEvents
     @ObservationIgnored private let context: MailComposeContext
     @ObservationIgnored private let session: MailPageSession
     @ObservationIgnored private let sender: MailAddress
     @ObservationIgnored private var folderRoles: [MailFolderRole: String]
-    @ObservationIgnored var onFolderRolesChanged: (([MailFolderRole: String]) -> Void)?
-    @ObservationIgnored var onSentCopyNotice: ((String) -> Void)?
-    @ObservationIgnored private let prefs: any MailPreferences
-    @ObservationIgnored private let cache: MailCache
-    @ObservationIgnored private let sleep: (Duration) async -> Void
-    @ObservationIgnored private let now: () -> Date
-    @ObservationIgnored private var baseline = ""
-    @ObservationIgnored private var prepareStarted = false
-    @ObservationIgnored private var sourceLoaded = false
-    @ObservationIgnored private var draftPageUIDValidity: UInt32?
-    @ObservationIgnored private var draftWasAlreadyDeleted = false
-    @ObservationIgnored private var suppressEditTracking = false
-    @ObservationIgnored private var editedTo = false
-    @ObservationIgnored private var editedCc = false
-    @ObservationIgnored private var editedSubject = false
-    @ObservationIgnored private var editedBody = false
+    @ObservationIgnored private let services: MailComposeServices
 
     init(
         context: MailComposeContext,
         session: MailPageSession,
         sender: MailAddress,
         folderRoles: [MailFolderRole: String],
+        events: MailboxEvents? = nil,
         prefs: (any MailPreferences)? = nil,
         cache: MailCache? = nil,
         sleep: @escaping (Duration) async -> Void = { try? await Task.sleep(for: $0) },
@@ -79,17 +37,44 @@ final class MailComposeViewModel {
         self.session = session
         self.sender = sender
         self.folderRoles = folderRoles
-        self.prefs = prefs ?? MailAccountManager.shared.prefs
-        self.cache = cache ?? MailAccountManager.shared.cache
-        self.sleep = sleep
-        self.now = now
+        self.events = events ?? MailboxEvents()
+        services = MailComposeServices(prefs: prefs ?? MailAccountManager.shared.prefs,
+                                       cache: cache ?? MailAccountManager.shared.cache, sleep: sleep, now: now)
     }
 
-    var hasChanges: Bool { snapshot() != baseline }
+    var to: String {
+        get { draft.to }
+        set { draft.to = newValue; tracking.edited.insert(.to) }
+    }
+    var cc: String {
+        get { draft.cc }
+        set { draft.cc = newValue; tracking.edited.insert(.cc) }
+    }
+    var bcc: String { get { draft.bcc } set { draft.bcc = newValue } }
+    var subject: String {
+        get { draft.subject }
+        set { draft.subject = newValue; tracking.edited.insert(.subject) }
+    }
+    var body: String {
+        get { draft.body }
+        set { draft.body = newValue; tracking.edited.insert(.body) }
+    }
+    var showCcBcc: Bool { get { draft.showCcBcc } set { draft.showCcBcc = newValue } }
+    var attachments: [Attachment] { draft.attachments }
+    var isSending: Bool { status.isSending }
+    var isLoading: Bool { status.isLoading }
+    var error: String? { status.error }
+    var errorNeedsAcknowledging: Bool { status.errorNeedsAcknowledging }
+    var loadError: String? { status.loadError }
+    var invalidRecipients: [String] { status.invalidRecipients }
+    var didFinish: Bool { status.didFinish }
+    var sentCopy: SentCopy? { status.sentCopy }
+
+    var hasChanges: Bool { draft.snapshot != tracking.baseline }
 
     func prepare() async {
-        guard !prepareStarted else { return }
-        prepareStarted = true
+        guard !tracking.prepareStarted else { return }
+        tracking.prepareStarted = true
         await runPrepare()
     }
 
@@ -98,184 +83,78 @@ final class MailComposeViewModel {
         await runPrepare()
     }
 
+    /// A prefill fills only the fields the user has not typed into while it loaded.
     private func runPrepare() async {
-        let mode = context.mode
-        applyMailtoPrefillIfNeeded(Self.format(context.to))
-        guard mode != .new else {
-            baseline = snapshot()
+        if !tracking.edited.contains(.to) { draft.to = MailRecipients.format(context.to) }
+        guard context.mode != .new else {
+            tracking.baseline = draft.snapshot
             return
         }
-        isLoading = true
-        loadError = nil
-        defer { isLoading = false }
-        let folder = context.folder
-        let uid = context.uid
-        let forwardParts = context.attachments
+        status.isLoading = true
+        status.loadError = nil
+        defer { status.isLoading = false }
         do {
-            if mode == .draft {
-                guard let folder, let uid else {
-                    loadError = String(localized: "school_mail_error_generic")
-                    baseline = snapshot()
-                    return
-                }
-                draftPageUIDValidity = await cachedPageUIDValidity(of: folder)
-                let pin = draftPageUIDValidity
-                let (draft, downloaded) = try await session.use { client -> (MailMessageDetail, [Attachment]) in
-                    let draft = try await client.detail(folder: folder, uid: uid, expectedUIDValidity: pin)
-                    var files: [Attachment] = []
-                    for part in draft.attachments {
-                        let data = try await client.attachment(folder: folder, uid: uid, part: part, expectedUIDValidity: pin)
-                        files.append(Attachment(filename: part.filename ?? "attachment", mimeType: part.contentType, data: data))
-                    }
-                    return (draft, files)
-                }
-                applyPrefill(
-                    to: (draft.summary.to ?? []).joined(separator: ", "),
-                    cc: (draft.summary.cc ?? []).joined(separator: ", "),
-                    subject: draft.summary.subject ?? "",
-                    body: draft.textBody ?? "",
-                    showCcBcc: !(draft.summary.cc ?? []).isEmpty,
-                    newAttachments: downloaded
-                )
-                draftWasAlreadyDeleted = draft.summary.isDeleted
-                sourceLoaded = true
-                return
-            }
-
-            guard let original = context.original else {
-                baseline = snapshot()
-                return
-            }
-            let dateText = original.date.map(MailDateFormatter.detailString(for:)) ?? ""
-            switch mode {
-            case .reply, .replyAll:
-                var replyTo = original.replyTo
-                if replyTo == nil, let folder, let uid {
-                    let pin = await cachedPageUIDValidity(of: folder)
-                    let raw = try? await session.use { client in
-                        try await client.rawSource(folder: folder, uid: uid, expectedUIDValidity: pin)
-                    }
-                    replyTo = raw.map { MailRawHeaders.value(named: "Reply-To", in: $0).map(MailAddress.parseList) ?? [] }
-                }
-                let recipients = MailReplyComposer.replyRecipients(to: original, replyTo: replyTo ?? [],
-                                                                   me: sender.address, replyAll: mode == .replyAll)
-                applyPrefill(
-                    to: Self.format(recipients.to),
-                    cc: Self.format(recipients.cc),
-                    subject: MailReplyComposer.replySubject(original.subject),
-                    body: MailReplyComposer.quotedBody(of: original, dateText: dateText),
-                    showCcBcc: !recipients.cc.isEmpty,
-                    newAttachments: []
-                )
-                sourceLoaded = true
-            case .forward:
-                var pin: UInt32?
-                if let folder { pin = await cachedPageUIDValidity(of: folder) }
-                let downloaded: [Attachment] = try await session.use { client in
-                    guard let folder, let uid else { return [] }
-                    var files: [Attachment] = []
-                    for part in forwardParts {
-                        let data = try await client.attachment(folder: folder, uid: uid, part: part, expectedUIDValidity: pin)
-                        files.append(Attachment(filename: part.filename ?? "attachment", mimeType: part.contentType, data: data))
-                    }
-                    return files
-                }
-                applyPrefill(
-                    to: nil, cc: nil,
-                    subject: MailReplyComposer.forwardSubject(original.subject),
-                    body: MailReplyComposer.forwardBody(of: original, dateText: dateText),
-                    showCcBcc: false,
-                    newAttachments: downloaded
-                )
-                sourceLoaded = true
-            case .new, .draft:
-                break
+            switch try await MailComposePrefill.fetch(context, sender: sender, session: session, cache: services.cache) {
+            case .prefill(let prefill):
+                apply(prefill)
+            case .missingDraft:
+                status.loadError = String(localized: "school_mail_error_generic")
+                tracking.baseline = draft.snapshot
+            case .nothing:
+                tracking.baseline = draft.snapshot
             }
         } catch {
-            loadError = MailAccountManager.LoginError(error).message
-            baseline = Self.snapshotString(to: "", cc: "", bcc: "", subject: "", body: "", attachmentIDs: [])
+            status.loadError = MailAccountManager.LoginError(error).message
+            tracking.baseline = MailComposeDraft().snapshot
         }
     }
 
-    private func cachedPageUIDValidity(of folder: String) async -> UInt32? {
-        let cache = self.cache
-        return await Task.detached { cache.loadPage(folder: folder)?.uidValidity }.value
-    }
-
-    private func applyMailtoPrefillIfNeeded(_ formatted: String) {
-        guard !editedTo else { return }
-        suppressEditTracking = true
-        to = formatted
-        suppressEditTracking = false
-    }
-
-    private func applyPrefill(to: String?, cc: String?, subject: String, body: String, showCcBcc: Bool, newAttachments: [Attachment]) {
-        suppressEditTracking = true
-        if let to, !editedTo { self.to = to }
-        if let cc, !editedCc { self.cc = cc }
-        if !editedSubject { self.subject = subject }
-        if !editedBody { self.body = body }
-        self.showCcBcc = self.showCcBcc || showCcBcc
-        suppressEditTracking = false
+    private func apply(_ prefill: MailComposePrefill) {
+        let edited = tracking.edited
+        if let to = prefill.to, !edited.contains(.to) { draft.to = to }
+        if let cc = prefill.cc, !edited.contains(.cc) { draft.cc = cc }
+        if !edited.contains(.subject) { draft.subject = prefill.subject }
+        if !edited.contains(.body) { draft.body = prefill.body }
+        draft.showCcBcc = draft.showCcBcc || prefill.showCcBcc
         let existingIDs = Set(attachments.map(\.id))
-        attachments += newAttachments.filter { !existingIDs.contains($0.id) }
-        baseline = Self.snapshotString(to: to ?? "", cc: cc ?? "", bcc: "", subject: subject, body: body,
-                                       attachmentIDs: newAttachments.map(\.id))
-    }
-
-    private func markEdited(_ flag: inout Bool) {
-        guard !suppressEditTracking else { return }
-        flag = true
+        draft.attachments += prefill.attachments.filter { !existingIDs.contains($0.id) }
+        tracking.baseline = MailComposeDraft.snapshot(
+            to: prefill.to ?? "", cc: prefill.cc ?? "", bcc: "", subject: prefill.subject, body: prefill.body,
+            attachmentIDs: prefill.attachments.map(\.id))
+        if let draft = prefill.draft {
+            tracking.draftPageUIDValidity = draft.pageUIDValidity
+            tracking.draftWasAlreadyDeleted = draft.wasAlreadyDeleted
+        }
+        tracking.sourceLoaded = true
     }
 
     func addAttachment(filename: String, mimeType: String, data: Data) {
         guard !isSending else { return }
-        attachments.append(Attachment(filename: filename, mimeType: mimeType, data: data))
-        error = nil
+        draft.attachments.append(Attachment(filename: filename, mimeType: mimeType, data: data))
+        status.error = nil
     }
 
     func removeAttachment(_ id: Attachment.ID) {
         guard !isSending else { return }
-        attachments.removeAll { $0.id == id }
+        draft.attachments.removeAll { $0.id == id }
     }
 
-    func attachmentReadFailed() {
-        error = String(localized: "school_mail_too_large")
+    func attachmentReadFailed() { status.error = String(localized: "school_mail_too_large") }
+    func acknowledgeError() { status.errorNeedsAcknowledging = false }
+
+    /// A password the server rejected is never sent again: repeated failures lock the school
+    /// account and its Wi-Fi, and SMTP `AUTH LOGIN` and the Drafts APPEND each log in afresh.
+    private func checkAccount(_ message: String) -> Bool {
+        guard services.prefs.authFailed else { return true }
+        status.error = message
+        return false
     }
 
-    func acknowledgeError() {
-        errorNeedsAcknowledging = false
-    }
-
-    private func validate() -> (to: [MailAddress], cc: [MailAddress], bcc: [MailAddress])? {
-        // A password the server rejected is never sent again: repeated failures lock the school
-        // account and its Wi-Fi. SMTP `AUTH LOGIN` runs outside `MailAccountManager.openSession()`,
-        // and a failed send keeps the sheet open, so each Send tap would be another login attempt.
-        guard !prefs.authFailed else {
-            error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError.credentials.message
-            return nil
-        }
-        error = nil
-        invalidRecipients = []
-        let (toList, toInvalid) = Self.parseRecipients(to)
-        let (ccList, ccInvalid) = Self.parseRecipients(cc)
-        let (bccList, bccInvalid) = Self.parseRecipients(bcc)
-        let invalid = toInvalid + ccInvalid + bccInvalid
-        guard invalid.isEmpty else {
-            invalidRecipients = invalid
-            error = String(format: String(localized: "school_mail_invalid_recipients"), invalid.joined(separator: ", "))
-            return nil
-        }
-        guard !(toList + ccList + bccList).isEmpty else {
-            error = String(localized: "school_mail_no_recipient")
-            return nil
-        }
-        let attachmentBytes = attachments.map(\.data.count)
-        guard MailMessageBuilder.estimateEncodedSize(body: body, attachmentByteCounts: attachmentBytes) <= MailConstants.maxEncodedMessageBytes else {
-            error = String(localized: "school_mail_too_large")
-            return nil
-        }
-        return (toList, ccList, bccList)
+    private func validate() -> MailRecipients.Parsed? {
+        let credentials = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError.credentials.message
+        guard checkAccount(credentials), let recipients = status.takeRecipients(of: draft, requireOne: true),
+              status.fitsSizeLimit(draft) else { return nil }
+        return recipients
     }
 
     func confirmationIsWarranted() -> Bool {
@@ -284,248 +163,91 @@ final class MailComposeViewModel {
     }
 
     func send() async {
-        guard !isSending else { return }
-        guard let (toList, ccList, bccList) = validate() else { return }
-
+        guard !isSending, let recipients = validate() else { return }
         let isReply = context.mode == .reply || context.mode == .replyAll
         let threading = isReply ? context.original.map(MailReplyComposer.threadingHeaders(for:)) : nil
-        let mail = outgoing(to: toList, cc: ccList, bcc: bccList, threading: threading)
-
+        let mail = outgoing(recipients, threading: threading)
         let messageID = MailMessageBuilder.makeMessageID()
-        let sendDate = now()
-        let senderAddress = sender.address
-        let knownRoles = folderRoles
-        let replyFolder = (sourceLoaded && isReply) ? context.folder : nil
-        let replyUID = (sourceLoaded && isReply) ? context.uid : nil
-        let draftFolder = (sourceLoaded && context.mode == .draft) ? context.folder : nil
-        let draftUID = (sourceLoaded && context.mode == .draft) ? context.uid : nil
-        let pageUIDValidity = draftPageUIDValidity
-        let draftWasDeleted = draftWasAlreadyDeleted
-        let sleepFn = sleep
-        let prefsRef = prefs
-
-        isSending = true
-        defer { isSending = false }
-        let message = await Task.detached { MailMessageBuilder.build(mail, messageID: messageID, date: sendDate) }.value
-        guard message.count <= MailConstants.maxEncodedMessageBytes else {
-            error = String(localized: "school_mail_too_large")
-            return
+        var replaced: (folder: String, draft: MailComposeSending.ReplacedDraft)?
+        if tracking.sourceLoaded, context.mode == .draft, let message = context.message {
+            replaced = (message.folder, replacedDraft(message.uid))
         }
-        let recipients = mail.envelopeRecipients
+        guard let message = await build(mail, messageID: messageID) else { return }
+        defer { status.isSending = false }
         do {
-            let filing = try await session.use { client -> SentCopyFiler.Filing in
-                try await client.send(message, from: senderAddress, to: recipients)
-                if let replyFolder, let replyUID {
-                    try? await client.setFlag(.answered, on: true, folder: replyFolder, uids: [replyUID],
-                                              expectedUIDValidity: nil)
-                }
-                let filing = await SentCopyFiler.file(message, messageID: messageID, in: knownRoles, client: client,
-                                                      dedupeDelay: MailConstants.sentCopyDedupeDelay, sleep: sleepFn)
-                if let draftFolder, let draftUID {
-                    await Self.removeDraft(uid: draftUID, folder: draftFolder, client: client, prefs: prefsRef,
-                                           pageUIDValidity: pageUIDValidity, wasAlreadyDeleted: draftWasDeleted)
-                }
-                return filing
-            }
+            let filing = try await MailComposeSending.send(MailComposeSending.Send(
+                message: message, messageID: messageID, from: sender.address, recipients: mail.envelopeRecipients,
+                roles: folderRoles, answered: tracking.sourceLoaded && isReply ? context.message : nil, replaced: replaced
+            ), session: session, services: services)
             if let refreshedRoles = filing.roles { adoptFolderRoles(refreshedRoles) }
             if filing.rejectedPassword { session.reportAuthenticationRejection() }
-            sentCopy = filing.outcome
-            if let notice = Self.notice(for: filing.outcome) { onSentCopyNotice?(notice) }
-            didFinish = true
+            status.sentCopy = filing.outcome
+            if let notice = MailComposeSending.notice(for: filing.outcome) { events.post(.sentCopyNotice(notice)) }
+            status.didFinish = true
         } catch MailClientError.sendUnconfirmed {
-            self.error = String(localized: "school_mail_send_unconfirmed")
+            status.error = String(localized: "school_mail_send_unconfirmed")
         } catch {
-            self.error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError(error).message
-        }
-    }
-
-    static func notice(for outcome: SentCopy) -> String? {
-        switch outcome {
-        case .filed, .serverFiledItself:
-            nil
-        case .notAttempted:
-            String(localized: "school_mail_sent_copy_no_folder")
-        case .failed(let error):
-            String(localized: "school_mail_sent_copy_failed") + "\n" + MailAccountManager.LoginError(error).message
-        case .unknown:
-            String(localized: "school_mail_sent_copy_unknown")
+            status.error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError(error).message
         }
     }
 
     @discardableResult
     func saveDraft() async -> Bool {
-        guard !isSending else { return false }
-        // Saving a draft is an IMAP APPEND, which needs the saved password, and a password the
-        // server rejected is never sent again: repeated failures lock the account and its Wi-Fi.
-        guard !prefs.authFailed else {
-            error = MailAccountManager.LoginError.credentials.message
-            return false
-        }
-        error = nil
-        invalidRecipients = []
-        let (toList, toInvalid) = Self.parseRecipients(to)
-        let (ccList, ccInvalid) = Self.parseRecipients(cc)
-        let (bccList, bccInvalid) = Self.parseRecipients(bcc)
-        let invalid = toInvalid + ccInvalid + bccInvalid
-        guard invalid.isEmpty else {
-            invalidRecipients = invalid
-            error = String(format: String(localized: "school_mail_invalid_recipients"), invalid.joined(separator: ", "))
-            return false
-        }
-        let mail = outgoing(to: toList, cc: ccList, bcc: bccList, threading: nil)
-        let savedBaseline = snapshot()
-        let attachmentBytes = attachments.map(\.data.count)
-        guard MailMessageBuilder.estimateEncodedSize(body: body, attachmentByteCounts: attachmentBytes) <= MailConstants.maxEncodedMessageBytes else {
-            error = String(localized: "school_mail_too_large")
-            return false
-        }
-
-        let messageID = MailMessageBuilder.makeMessageID()
-        let saveDate = now()
-        let knownRoles = folderRoles
-        let draftUID = (sourceLoaded && context.mode == .draft && context.folder == knownRoles[.drafts]) ? context.uid : nil
-        let pageUIDValidity = draftPageUIDValidity
-        let draftWasDeleted = draftWasAlreadyDeleted
-        let prefsRef = prefs
-
-        isSending = true
-        defer { isSending = false }
-        let message = await Task.detached { MailMessageBuilder.build(mail, messageID: messageID, date: saveDate) }.value
-        guard message.count <= MailConstants.maxEncodedMessageBytes else {
-            error = String(localized: "school_mail_too_large")
-            return false
-        }
+        guard !isSending, checkAccount(MailAccountManager.LoginError.credentials.message),
+              let recipients = status.takeRecipients(of: draft, requireOne: false) else { return false }
+        let mail = outgoing(recipients, threading: nil)
+        let savedBaseline = draft.snapshot
+        guard status.fitsSizeLimit(draft) else { return false }
+        let replacesDraft = tracking.sourceLoaded && context.mode == .draft && context.folder == folderRoles[.drafts]
+        let replaced = replacesDraft ? context.uid.map(replacedDraft) : nil
+        guard let message = await build(mail, messageID: MailMessageBuilder.makeMessageID()) else { return false }
+        defer { status.isSending = false }
         do {
-            let refreshedRoles = try await session.use { client -> [MailFolderRole: String] in
-                guard let drafts = await MailFolderProvisioner.ensure(.drafts, in: knownRoles, client: client) else {
-                    throw MailFolderUnavailable(role: .drafts)
-                }
-                try await client.append(message, to: drafts.name, flags: [.draft, .seen])
-                if let draftUID {
-                    await Self.removeDraft(uid: draftUID, folder: drafts.name, client: client, prefs: prefsRef,
-                                           pageUIDValidity: pageUIDValidity, wasAlreadyDeleted: draftWasDeleted)
-                }
-                return drafts.roles
-            }
+            let refreshedRoles = try await MailComposeSending.saveDraft(message, roles: folderRoles, replacing: replaced,
+                                                                        session: session, prefs: services.prefs)
             adoptFolderRoles(refreshedRoles)
-            baseline = savedBaseline
+            tracking.baseline = savedBaseline
             return true
         } catch is MailFolderUnavailable {
-            error = String(localized: "school_mail_error_generic")
+            status.error = String(localized: "school_mail_error_generic")
             return false
         } catch {
-            self.error = MailAccountManager.LoginError(error).message
+            status.error = MailAccountManager.LoginError(error).message
             return false
         }
+    }
+
+    /// Marks the sheet as sending and builds the message off the main actor; nil, with sending
+    /// ended, when it comes out over the size limit.
+    private func build(_ mail: OutgoingMail, messageID: String) async -> Data? {
+        let date = services.now()
+        status.isSending = true
+        let message = await Task.detached { MailMessageBuilder.build(mail, messageID: messageID, date: date) }.value
+        guard message.count <= MailConstants.maxEncodedMessageBytes else {
+            status.error = String(localized: "school_mail_too_large")
+            status.isSending = false
+            return nil
+        }
+        return message
+    }
+
+    private func replacedDraft(_ uid: UInt32) -> MailComposeSending.ReplacedDraft {
+        MailComposeSending.ReplacedDraft(uid: uid, pageUIDValidity: tracking.draftPageUIDValidity,
+                                         wasAlreadyDeleted: tracking.draftWasAlreadyDeleted)
     }
 
     private func adoptFolderRoles(_ roles: [MailFolderRole: String]) {
         guard roles != folderRoles else { return }
         folderRoles = roles
-        onFolderRolesChanged?(roles)
+        events.post(.folderRoles(roles))
     }
 
-    private func outgoing(to: [MailAddress], cc: [MailAddress], bcc: [MailAddress],
-                          threading: (inReplyTo: String?, references: [String])?) -> OutgoingMail {
+    private func outgoing(_ recipients: MailRecipients.Parsed, threading: (inReplyTo: String?, references: [String])?) -> OutgoingMail {
         OutgoingMail(
-            from: sender, to: to, cc: cc, bcc: bcc, subject: subject, body: body,
+            from: sender, to: recipients.to, cc: recipients.cc, bcc: recipients.bcc, subject: subject, body: body,
             inReplyTo: threading?.inReplyTo, references: threading?.references ?? [],
             attachments: attachments.map { OutgoingAttachment(filename: $0.filename, mimeType: $0.mimeType, data: $0.data) }
         )
-    }
-
-    private static func removeDraft(uid: UInt32, folder: String, client: any MailClient, prefs: any MailPreferences,
-                                    pageUIDValidity: UInt32?, wasAlreadyDeleted: Bool) async {
-        guard let pageUIDValidity else { return }
-        let owned = prefs.ownedDeleted(folder: folder, uidValidity: pageUIDValidity)
-        do {
-            let result = try await MailMover.deletePermanently(uids: [uid], in: folder, client: client, previouslyFlagged: owned)
-            prefs.setOwnedDeleted(result.stillPending)
-        } catch {
-            // The STORE may already have landed; an unclaimed `\Deleted` UID blocks every later
-            // EXPUNGE in Drafts for good, so the same recovery the message screen runs applies
-            // here.
-            guard let claim = await MailMover.recoverAfterFailure(after: error, uid: uid, previouslyFlagged: owned,
-                                                                  client: client, wasAlreadyDeleted: wasAlreadyDeleted) else {
-                return
-            }
-            prefs.setOwnedDeleted(claim)
-        }
-    }
-
-    private func snapshot() -> String {
-        Self.snapshotString(to: to, cc: cc, bcc: bcc, subject: subject, body: body, attachmentIDs: attachments.map(\.id))
-    }
-
-    private static func snapshotString(to: String, cc: String, bcc: String, subject: String, body: String, attachmentIDs: [Attachment.ID]) -> String {
-        [to, cc, bcc, subject, body, attachmentIDs.map(\.uuidString).joined()].joined(separator: "\u{1F}")
-    }
-
-    private static func format(_ addresses: [MailAddress]) -> String {
-        addresses.map { address in
-            guard let name = address.name?.mailNonEmpty else { return address.address }
-            let needsQuotes = name.contains(",") || name.contains(";")
-            return needsQuotes ? "\"\(name)\" <\(address.address)>" : "\(name) <\(address.address)>"
-        }.joined(separator: ", ")
-    }
-
-    /// Splits on top-level commas and semicolons, mirroring `MailAddress.parseList`'s quote- and
-    /// angle-bracket-aware algorithm. It is duplicated because that call silently drops a token it
-    /// can't parse, and compose needs the raw token back to report it. A token's original text is
-    /// kept as invalid when it doesn't parse to a plausible address, or its local part or domain
-    /// carries a non-ASCII character. The school SMTP server has no SMTPUTF8, so such a token is
-    /// rejected only here, in compose validation, never in the shared address parser incoming mail
-    /// uses to show a "From".
-    private static func parseRecipients(_ raw: String) -> (addresses: [MailAddress], invalid: [String]) {
-        var addresses: [MailAddress] = []
-        var invalid: [String] = []
-        for token in splitTopLevel(raw) {
-            let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            if let address = sendableAddress(trimmed) {
-                addresses.append(address)
-            } else {
-                invalid.append(trimmed)
-            }
-        }
-        return (addresses, invalid)
-    }
-
-    nonisolated static func sendableAddress(_ token: String) -> MailAddress? {
-        guard let address = MailAddress.parseList(token).first,
-              address.address.unicodeScalars.allSatisfy(\.isASCII) else { return nil }
-        return address
-    }
-
-    private static func splitTopLevel(_ raw: String) -> [String] {
-        var pieces: [String] = []
-        var current = ""
-        var inQuotes = false
-        var inAngle = false
-        var escaped = false
-        for character in raw {
-            if escaped {
-                current.append(character)
-                escaped = false
-                continue
-            }
-            if character == "\\", inQuotes {
-                current.append(character)
-                escaped = true
-                continue
-            }
-            if character == "\"" { inQuotes.toggle() }
-            if character == "<", !inQuotes { inAngle = true }
-            if character == ">", !inQuotes { inAngle = false }
-            if (character == "," || character == ";") && !inQuotes && !inAngle {
-                pieces.append(current)
-                current = ""
-            } else {
-                current.append(character)
-            }
-        }
-        pieces.append(current)
-        return pieces
     }
 }
 #endif

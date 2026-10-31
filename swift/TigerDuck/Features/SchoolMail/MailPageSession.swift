@@ -1,26 +1,20 @@
 #if os(iOS)
 import Foundation
 
-///
+/// The mail page's one connection, opened on first use, shared by every command the page runs,
+/// and closed once it sits idle after the page lets it go.
 @MainActor
 final class MailPageSession {
     private let open: () async throws -> any MailClient
-    private let idleClose: Duration
     private var client: (any MailClient)?
     private var opening: Task<any MailClient, Error>?
-    private var closeTask: Task<Void, Never>?
-    private var closeGeneration = 0
+    private let idleClose: MailIdleClose
     private var inFlight = 0
     private var isReleased = false
     private var pendingDrop = false
-
     private let onAuthFailure: @MainActor () -> Void
-
-    private let sleep: @Sendable (Duration) async -> Void
-
     private var signOutEpoch = 0
-    nonisolated(unsafe) private var signOutObserver: (any NSObjectProtocol)?
-    private let signOutEvents: NotificationCenter
+    private var signOutListener: MailSignOutListener?
 
     init(
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
@@ -29,18 +23,10 @@ final class MailPageSession {
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
         signOutEvents: NotificationCenter = .default
     ) {
-        self.idleClose = idleClose
+        self.idleClose = MailIdleClose(delay: idleClose, sleep: sleep)
         self.open = open
         self.onAuthFailure = onAuthFailure
-        self.sleep = sleep
-        self.signOutEvents = signOutEvents
-        signOutObserver = signOutEvents.addObserver(forName: MailAccountManager.didSignOut, object: nil, queue: nil) { [weak self] _ in
-            MainActor.assumeIsolated { self?.invalidateForSignOut() }
-        }
-    }
-
-    deinit {
-        if let signOutObserver { signOutEvents.removeObserver(signOutObserver) }
+        signOutListener = MailSignOutListener(center: signOutEvents) { [weak self] in self?.invalidateForSignOut() }
     }
 
     func use<T>(_ body: (any MailClient) async throws -> T) async throws -> T {
@@ -59,7 +45,7 @@ final class MailPageSession {
             await endUse()
             return result
         } catch {
-            if Self.dropsConnection(error) { pendingDrop = true }
+            if MailErrorClass(error)?.closesConnection == true { pendingDrop = true }
             reportIfAuthenticationRejected(error)
             await endUse()
             throw error
@@ -83,7 +69,7 @@ final class MailPageSession {
     /// `.authenticationFailed` is caught and turned into an outcome. NTUST locks the account (and
     /// its Wi-Fi) after repeated failures, so that caller reports here, reaching the same choke
     /// point a thrown error would. Nothing else in `use(_:)`'s error path is skipped: an
-    /// authentication failure never drops the connection either way (`dropsConnection`).
+    /// authentication failure never drops the connection either way (`MailErrorClass`).
     func reportAuthenticationRejection() {
         onAuthFailure()
     }
@@ -94,9 +80,7 @@ final class MailPageSession {
     }
 
     func close() async {
-        closeTask?.cancel()
-        closeTask = nil
-        closeGeneration += 1
+        idleClose.cancel()
         isReleased = false
         pendingDrop = false
         let current = client
@@ -106,9 +90,7 @@ final class MailPageSession {
 
     func invalidateForSignOut() {
         signOutEpoch += 1
-        closeTask?.cancel()
-        closeTask = nil
-        closeGeneration += 1
+        idleClose.cancel()
         isReleased = false
         pendingDrop = false
         opening = nil
@@ -148,37 +130,17 @@ final class MailPageSession {
     }
 
     private func cancelClose() {
-        closeTask?.cancel()
-        closeTask = nil
-        closeGeneration += 1
+        idleClose.cancel()
         isReleased = false
     }
 
     private func armClose() {
-        closeTask?.cancel()
-        closeGeneration += 1
-        let generation = closeGeneration
-        let delay = idleClose
-        let sleep = self.sleep
-        closeTask = Task { [weak self] in
-            await sleep(delay)
-            guard !Task.isCancelled else { return }
-            await self?.fireClose(generation: generation)
-        }
+        idleClose.arm { [weak self] in await self?.fireClose() }
     }
 
-    private func fireClose(generation: Int) async {
-        guard generation == closeGeneration, inFlight == 0 else { return }
+    private func fireClose() async {
+        guard inFlight == 0 else { return }
         await close()
-    }
-
-    private static func dropsConnection(_ error: any Error) -> Bool {
-        guard let mailError = error as? MailClientError else { return false }
-        switch mailError {
-        case .unreachable, .certificateRejected: return true
-        case .authenticationFailed, .serverBusy, .searchUnsupported, .folderChanged, .sendUnconfirmed,
-             .protocolError: return false
-        }
     }
 }
 #endif

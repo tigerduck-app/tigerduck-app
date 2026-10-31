@@ -53,31 +53,31 @@ struct MailWarningsTests {
 
     @Test(arguments: fixture.links)
     func linkIssues(_ testCase: LinkCase) {
-        #expect(MailWarnings.linkIssues(text: testCase.text, href: testCase.href).map(\.fixtureCode) == testCase.expect)
+        #expect(MailLinkCheck.linkIssues(text: testCase.text, href: testCase.href).map(\.fixtureCode) == testCase.expect)
     }
 
     @Test
     func linkIssuesHomographShownHostMismatchesRealHost() {
         let homograph = "n\u{0442}u\u{0455}\u{0442}.\u{0435}du.\u{0442}w"
-        let issues = MailWarnings.linkIssues(text: homograph, href: "https://ntust.edu.tw/")
+        let issues = MailLinkCheck.linkIssues(text: homograph, href: "https://ntust.edu.tw/")
         #expect(issues == [.mismatch(shownHost: "xn--nu-rmcb8g.xn--du-mlc.xn--w-8tb", realHost: "ntust.edu.tw")])
     }
 
     @Test
     func linkIssuesPlainASCIIShownHostStillMatches() {
-        let issues = MailWarnings.linkIssues(text: "ntust.edu.tw", href: "https://ntust.edu.tw/")
+        let issues = MailLinkCheck.linkIssues(text: "ntust.edu.tw", href: "https://ntust.edu.tw/")
         #expect(issues.isEmpty)
     }
 
     @Test
     func linkIssuesNonASCIIHostConvertsToExactPunycode() {
-        let issues = MailWarnings.linkIssues(text: "x", href: "https://nt\u{00FA}st.edu.tw/")
+        let issues = MailLinkCheck.linkIssues(text: "x", href: "https://nt\u{00FA}st.edu.tw/")
         #expect(issues == [.punycode(host: "xn--ntst-rra.edu.tw")])
     }
 
     @Test
     func linkIssuesIPv6HostKeepsItsBrackets() {
-        let issues = MailWarnings.linkIssues(text: "ntust.edu.tw", href: "https://[::1]:8080/")
+        let issues = MailLinkCheck.linkIssues(text: "ntust.edu.tw", href: "https://[::1]:8080/")
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "[::1]")])
     }
 
@@ -87,21 +87,21 @@ struct MailWarningsTests {
     @Test
     func linkIssuesCombiningMarkAfterSlashCannotHideTheRealHost() {
         let href = "https://evil.example/\u{034F}@ntust.edu.tw/login"
-        let issues = MailWarnings.linkIssues(text: "ntust.edu.tw", href: href)
+        let issues = MailLinkCheck.linkIssues(text: "ntust.edu.tw", href: href)
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
 
     @Test
     func linkIssuesCombiningMarkCannotHideAPunycodeHost() {
         let href = "https://xn--ntst-0ra.edu.tw/\u{034F}@ntust.edu.tw"
-        let issues = MailWarnings.linkIssues(text: "xn--ntst-0ra.edu.tw", href: href)
+        let issues = MailLinkCheck.linkIssues(text: "xn--ntst-0ra.edu.tw", href: href)
         #expect(issues == [.punycode(host: "xn--ntst-0ra.edu.tw")])
     }
 
     @Test
     func linkIssuesCombiningMarkCannotHideTheInsecureFlag() {
         let href = "http://\u{034F}evil.example/"
-        let issues = MailWarnings.linkIssues(text: "evil.example", href: href)
+        let issues = MailLinkCheck.linkIssues(text: "evil.example", href: href)
         #expect(issues == [.insecure])
     }
 
@@ -112,7 +112,7 @@ struct MailWarningsTests {
     func linkIssuesVerticalTabInTextStillAllowsAMismatch() {
         let href = "https://evil.example/"
         let text = "ntust.edu.tw/\u{000B}login"
-        let issues = MailWarnings.linkIssues(text: text, href: href)
+        let issues = MailLinkCheck.linkIssues(text: text, href: href)
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
 
@@ -122,13 +122,13 @@ struct MailWarningsTests {
     /// middle of a host, which is where an attacker would put it anyway.
     @Test
     func linkIssuesInvisibleCharacterInsideTheShownHostStillMismatches() {
-        let issues = MailWarnings.linkIssues(text: "ntust.e\u{200B}du.tw", href: "https://evil.example/login")
+        let issues = MailLinkCheck.linkIssues(text: "ntust.e\u{200B}du.tw", href: "https://evil.example/login")
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
 
     @Test
     func linkIssuesInvisibleCharacterInMailtoLinkTextStillMismatches() {
-        let issues = MailWarnings.linkIssues(
+        let issues = MailLinkCheck.linkIssues(
             text: "admin@mail.ntust.e\u{200B}du.tw",
             href: "mailto:phish@evil.example"
         )
@@ -191,18 +191,18 @@ struct MailWarningsTests {
             attachments: []
         )
         #expect(MailWarnings.evaluate(input).isEmpty)
-        #expect(MailWarnings.domain(ofAddress: "") == "")
-        #expect(!MailWarnings.isSchoolDomain(""))
+        #expect(MailSchoolDomain.domain(ofAddress: "") == "")
+        #expect(!MailSchoolDomain.isSchoolDomain(""))
     }
 
     @Test
     func onlyANullReversePathMarksABounce() {
-        #expect(MailWarnings.isBounce(returnPath: "<>"))
-        #expect(MailWarnings.isBounce(returnPath: "  <> "), "folding whitespace is not part of the value")
-        #expect(!MailWarnings.isBounce(returnPath: nil))
-        #expect(!MailWarnings.isBounce(returnPath: ""))
-        #expect(!MailWarnings.isBounce(returnPath: "<postmaster@mail.ntust.edu.tw>"))
-        #expect(!MailWarnings.isBounce(returnPath: "Mail Deliver System"))
+        #expect(MailSchoolDomain.isBounce(returnPath: "<>"))
+        #expect(MailSchoolDomain.isBounce(returnPath: "  <> "), "folding whitespace is not part of the value")
+        #expect(!MailSchoolDomain.isBounce(returnPath: nil))
+        #expect(!MailSchoolDomain.isBounce(returnPath: ""))
+        #expect(!MailSchoolDomain.isBounce(returnPath: "<postmaster@mail.ntust.edu.tw>"))
+        #expect(!MailSchoolDomain.isBounce(returnPath: "Mail Deliver System"))
     }
 
     @Test
@@ -221,7 +221,7 @@ struct MailWarningsTests {
             returnPath: "<>"
         )
         #expect(MailWarnings.evaluate(input) == [.mistypedRecipient])
-        #expect(MailMessageView.text(for: .mistypedRecipient) == String(localized: "school_mail_bounce_warning"))
+        #expect(MailMessageBanners.text(for: .mistypedRecipient) == String(localized: "school_mail_bounce_warning"))
     }
 
     @Test
@@ -250,14 +250,14 @@ struct MailWarningsTests {
 
     @Test
     func aNearMissOfTheSchoolMailDomainIsATypoAndAnExactOrUnrelatedOneIsNot() {
-        #expect(MailWarnings.isMistypedSchoolMailDomain("mail.ntust.edj.tw"), "edj for edu")
-        #expect(MailWarnings.isMistypedSchoolMailDomain("mail.ntsut.edu.tw"), "a transposition is two edits")
-        #expect(MailWarnings.isMistypedSchoolMailDomain("MAIL.NTUST.EDU.TW2"))
-        #expect(!MailWarnings.isMistypedSchoolMailDomain("mail.ntust.edu.tw"), "not a typo of itself")
-        #expect(!MailWarnings.isMistypedSchoolMailDomain("ntust.edu.tw"), "nor is another real school domain")
-        #expect(!MailWarnings.isMistypedSchoolMailDomain("gmail.com"))
-        #expect(!MailWarnings.isMistypedSchoolMailDomain("mail.ntust.edu.tw.evil.example"))
-        #expect(!MailWarnings.isMistypedSchoolMailDomain(""))
+        #expect(MailSchoolDomain.isMistypedSchoolMailDomain("mail.ntust.edj.tw"), "edj for edu")
+        #expect(MailSchoolDomain.isMistypedSchoolMailDomain("mail.ntsut.edu.tw"), "a transposition is two edits")
+        #expect(MailSchoolDomain.isMistypedSchoolMailDomain("MAIL.NTUST.EDU.TW2"))
+        #expect(!MailSchoolDomain.isMistypedSchoolMailDomain("mail.ntust.edu.tw"), "not a typo of itself")
+        #expect(!MailSchoolDomain.isMistypedSchoolMailDomain("ntust.edu.tw"), "nor is another real school domain")
+        #expect(!MailSchoolDomain.isMistypedSchoolMailDomain("gmail.com"))
+        #expect(!MailSchoolDomain.isMistypedSchoolMailDomain("mail.ntust.edu.tw.evil.example"))
+        #expect(!MailSchoolDomain.isMistypedSchoolMailDomain(""))
     }
 
     @Test
@@ -287,7 +287,7 @@ struct MailWarningsTests {
             attachments: []
         )
         #expect(MailWarnings.evaluate(input) == [.displayNameMismatch(address: "")])
-        #expect(MailMessageView.text(for: .displayNameMismatch(address: ""))
+        #expect(MailMessageBanners.text(for: .displayNameMismatch(address: ""))
             == String(localized: "school_mail_warning_display_name"))
     }
 
@@ -312,14 +312,14 @@ struct MailWarningsTests {
     ])
     func attachmentRiskSurvivesAnInvisibleCharacterInTheExtension(filename: String) {
         #expect(
-            MailWarnings.attachmentRisk(filename: filename, contentType: "application/octet-stream", subjectAndBody: "")
+            MailAttachmentRisk.attachmentRisk(filename: filename, contentType: "application/octet-stream", subjectAndBody: "")
                 == .dangerousExtension
         )
     }
 
     @Test(arguments: ["report.ht\u{200B}ml", "diagram.sv\u{0001}g", "page.xhtm\u{2060}l"])
     func neverRenderedInAppSurvivesAnInvisibleCharacterInTheExtension(filename: String) {
-        #expect(MailWarnings.neverRenderedInApp(filename: filename))
+        #expect(MailAttachmentRisk.neverRenderedInApp(filename: filename))
     }
 
     @Test(arguments: ["您的密\u{200B}碼即將到期", "Please re-enter your pass\u{200B}word"])
@@ -341,19 +341,19 @@ struct MailWarningsTests {
 
     @Test(arguments: invisibleMarks)
     func linkMismatchSurvivesAnInvisibleMarkInsideTheShownHost(mark: String) {
-        let issues = MailWarnings.linkIssues(text: "ntust.e\(mark)du.tw", href: "https://evil.example/login")
+        let issues = MailLinkCheck.linkIssues(text: "ntust.e\(mark)du.tw", href: "https://evil.example/login")
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
 
     @Test(arguments: invisibleMarks)
     func neverRenderedInAppSurvivesAnInvisibleMarkInTheExtension(mark: String) {
-        #expect(MailWarnings.neverRenderedInApp(filename: "report.ht\(mark)ml"))
+        #expect(MailAttachmentRisk.neverRenderedInApp(filename: "report.ht\(mark)ml"))
     }
 
     @Test(arguments: invisibleMarks)
     func attachmentRiskSurvivesAnInvisibleMarkInTheExtension(mark: String) {
         #expect(
-            MailWarnings.attachmentRisk(filename: "payload.ex\(mark)e", contentType: nil, subjectAndBody: "")
+            MailAttachmentRisk.attachmentRisk(filename: "payload.ex\(mark)e", contentType: nil, subjectAndBody: "")
                 == .dangerousExtension
         )
     }
@@ -372,26 +372,26 @@ struct MailWarningsTests {
     }
 
     @Test func aVisibleCombiningMarkIsNotTreatedAsInvisible() {
-        #expect(MailWarnings.attachmentRisk(filename: "payload.ex\u{0301}e", contentType: nil, subjectAndBody: "") == nil)
-        #expect(!MailWarnings.neverRenderedInApp(filename: "report.ht\u{0301}ml"))
+        #expect(MailAttachmentRisk.attachmentRisk(filename: "payload.ex\u{0301}e", contentType: nil, subjectAndBody: "") == nil)
+        #expect(!MailAttachmentRisk.neverRenderedInApp(filename: "report.ht\u{0301}ml"))
     }
 
     @Test(arguments: ["ntust.\nedu.tw", "ntust\n.edu.tw", "ntust.\u{00A0}edu.tw", "ntust.  edu.tw"])
     func aHostSplitAcrossALineBreakIsStillComparedAsOneHost(rawText: String) {
         let asTheSanitizerHandsItOn = MailTextCleaner.clean(rawText)
-        let issues = MailWarnings.linkIssues(text: asTheSanitizerHandsItOn, href: "https://evil.example/login")
+        let issues = MailLinkCheck.linkIssues(text: asTheSanitizerHandsItOn, href: "https://evil.example/login")
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
 
     @Test(arguments: ["按這裡 看公告", "Reset your password here", "請見 ntust.edu.tw 公告", "點我 立即 驗證"])
     func ordinaryWordsAroundALinkAreStillNotAHost(text: String) {
-        #expect(MailWarnings.linkIssues(text: text, href: "https://evil.example/login").isEmpty)
+        #expect(MailLinkCheck.linkIssues(text: text, href: "https://evil.example/login").isEmpty)
     }
 
     @Test
     func encryptedArchiveHintSurvivesAnInvisibleCharacterInTheKeyword() {
         #expect(
-            MailWarnings.attachmentRisk(filename: "data.zip", contentType: "application/zip", subjectAndBody: "檔案的解\u{200B}壓縮方式請見附件")
+            MailAttachmentRisk.attachmentRisk(filename: "data.zip", contentType: "application/zip", subjectAndBody: "檔案的解\u{200B}壓縮方式請見附件")
                 == .encryptedArchive
         )
     }
