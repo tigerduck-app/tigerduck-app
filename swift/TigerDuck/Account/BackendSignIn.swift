@@ -150,7 +150,7 @@ final class StoredPasswordRetry {
     func arm() {
         misses = 0
         let now = auth.deps.now
-        guard let retryAt = SSOLoginService.storedPasswordRetryAt(now: now()) else {
+        guard let retryAt = SchoolPasswordPosts.storedPasswordRetryAt(now: now()) else {
             cancel()
             return
         }
@@ -163,7 +163,7 @@ final class StoredPasswordRetry {
     }
 
     private func armAfterAMiss() {
-        let refusals = SSOLoginService.storedPasswordRefusals.count
+        let refusals = SchoolPasswordPosts.storedPasswordRefusals.count
         guard refusals > 0 else { return }
         misses += 1
         start(after: StoredPasswordBackoff.retryDelay(afterRefusals: refusals + misses))
@@ -182,13 +182,13 @@ final class StoredPasswordRetry {
 
     private func retry() async {
         let now = auth.deps.now
-        guard let retryAt = SSOLoginService.storedPasswordRetryAt(now: now()) else { return }
+        guard let retryAt = SchoolPasswordPosts.storedPasswordRetryAt(now: now()) else { return }
         guard retryAt <= now() else {
             arm()
             return
         }
-        let refusals = SSOLoginService.storedPasswordRefusals.count
-        guard await !run(), SSOLoginService.storedPasswordRefusals.count == refusals else { return }
+        let refusals = SchoolPasswordPosts.storedPasswordRefusals.count
+        guard await !run(), SchoolPasswordPosts.storedPasswordRefusals.count == refusals else { return }
         armAfterAMiss()
     }
 
@@ -206,7 +206,7 @@ final class StoredPasswordRetry {
         guard (try? await auth.deps.moodleTokens.refreshTokenIfNeeded()) != nil, session.isCurrent(ticket) else { return false }
         // Not at the school's yes: a refused Moodle token sign-in after it would count from one
         // again, and the password would go out every ten seconds. The backend takes no password.
-        SSOLoginService.forgetStoredPasswordRefusals()
+        SchoolPasswordPosts.forgetStoredPasswordRefusals()
         await auth.backend.signInAgain()
         return true
     }

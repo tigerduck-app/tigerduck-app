@@ -1696,10 +1696,10 @@ struct BackendSignInTests {
     @Test("a sign-out during the Moodle step keeps the backend sign-in from going out")
     func aSignOutDuringTheMoodleStepStopsTheBackendSignIn() async throws {
         try await withExclusiveRealDefaults {
-            let saved = (Defaults[.ntustCredentialsPresent], SSOLoginService.storedPasswordRefusals)
+            let saved = (Defaults[.ntustCredentialsPresent], SchoolPasswordPosts.storedPasswordRefusals)
             defer {
                 Defaults[.ntustCredentialsPresent] = saved.0
-                SSOLoginService.storedPasswordRefusals = saved.1
+                SchoolPasswordPosts.storedPasswordRefusals = saved.1
             }
             let backend = BackendFixture(signedIn: false)
             let signingIn = SheetSignIn()
@@ -2408,9 +2408,9 @@ private func withNoSyncPreferencesPending<T>(_ body: () async throws -> T) async
 
 private func withNoPasswordRefusals<T>(_ body: () async throws -> T) async rethrows -> T {
     try await withExclusiveRealDefaults {
-        let saved = SSOLoginService.storedPasswordRefusals
-        SSOLoginService.forgetStoredPasswordRefusals()
-        defer { SSOLoginService.storedPasswordRefusals = saved }
+        let saved = SchoolPasswordPosts.storedPasswordRefusals
+        SchoolPasswordPosts.forgetStoredPasswordRefusals()
+        defer { SchoolPasswordPosts.storedPasswordRefusals = saved }
         return try await body()
     }
 }

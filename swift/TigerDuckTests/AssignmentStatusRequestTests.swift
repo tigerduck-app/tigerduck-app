@@ -25,7 +25,7 @@ struct AssignmentStatusRequestTests {
         let started = OSAllocatedUnfairLock<[Int: ContinuousClock.Instant]>(initialState: [:])
         let records = [1, 2, 3].map { Self.record($0, cutoff: nil) }
 
-        let answers = await AssignmentFetch.askStatuses(of: records, limit: 1) { id in
+        let answers = await AssignmentAnswers.askStatuses(of: records, limit: 1) { id in
             started.withLock { $0[id] = .now }
             try await Task.sleep(for: .milliseconds(5))
             guard id != 3 else { throw URLError(.timedOut) }

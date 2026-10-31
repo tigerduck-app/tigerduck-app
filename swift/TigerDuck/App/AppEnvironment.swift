@@ -131,10 +131,10 @@ final class AppEnvironment {
         preferences.onLanguageChange = { [weak self] in self?.activation.cancelRefresh() }
         preferences.onCourseLabelsChange = { [weak self] in self?.relabeler.relabelAll() }
 
-        CourseFetch.courseUploader = { [weak self] courses, semester, asRoster, resend in
+        CourseUpload.courseUploader = { [weak self] courses, semester, asRoster, resend in
             self?.uploads.uploadCourses(courses, semester: semester, asRoster: asRoster, resend: resend)
         }
-        AssignmentFetch.assignmentUploader = { [weak self] request in
+        AssignmentAnswers.assignmentUploader = { [weak self] request in
             self?.uploads.uploadAssignments(request)
         }
         poller.poll = { [weak self] in await self?.feed.pollRevision() ?? .unchanged }

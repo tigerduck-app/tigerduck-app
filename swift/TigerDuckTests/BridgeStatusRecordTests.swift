@@ -24,11 +24,11 @@ struct BridgeStatusRecordTests {
     @Test("a Moodle round a sign-out overtook leaves the shared status as it was")
     func aMoodleRoundASignOutOvertookRecordsNothing() async {
         await withExclusiveRealDefaults {
-            let saved = (Defaults[.ntustCredentialsPresent], SSOLoginService.storedPasswordRefusals)
+            let saved = (Defaults[.ntustCredentialsPresent], SchoolPasswordPosts.storedPasswordRefusals)
             let savedStatus = ServerStatusTracker.shared.status(for: .moodle)
             defer {
                 Defaults[.ntustCredentialsPresent] = saved.0
-                SSOLoginService.storedPasswordRefusals = saved.1
+                SchoolPasswordPosts.storedPasswordRefusals = saved.1
                 ServerStatusTracker.shared.set(savedStatus, for: .moodle)
             }
             let auth = AuthService(

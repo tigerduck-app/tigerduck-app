@@ -150,7 +150,7 @@ enum AuthServiceObservers {
         })
         #endif
         credentialObservers.append(center.addObserver(
-            forName: SSOLoginService.storedPasswordPostWaits, object: nil, queue: .main
+            forName: SchoolPasswordPosts.storedPasswordPostWaits, object: nil, queue: .main
         ) { [weak auth] _ in
             MainActor.assumeIsolated { auth?.passwordRetry.arm() }
         })

@@ -106,10 +106,10 @@ struct StoredPasswordRetryTests {
             posts += 1
             switch answers.isEmpty ? .takes : answers.removeFirst() {
             case .takes:
-                if forgetting { SSOLoginService.forgetStoredPasswordRefusals() }
+                if forgetting { SchoolPasswordPosts.forgetStoredPasswordRefusals() }
                 return true
             case .refuses:
-                SSOLoginService.noteStoredPasswordRefused(at: now)
+                SchoolPasswordPosts.noteStoredPasswordRefused(at: now)
                 throw SSOLoginError.loginFailed(reason: "帳號或密碼錯誤")
             case .isOffline:
                 throw URLError(.notConnectedToInternet)
@@ -193,7 +193,7 @@ struct StoredPasswordRetryTests {
         }
 
         func handOnTheWait() {
-            center.post(name: SSOLoginService.storedPasswordPostWaits, object: nil)
+            center.post(name: SchoolPasswordPosts.storedPasswordPostWaits, object: nil)
         }
 
         func armTheTry() async throws -> Task<Void, Never> {
@@ -218,11 +218,11 @@ struct StoredPasswordRetryTests {
     static func signedIn(refusals count: Int, last: Date?, _ body: (MemoryKeychain) async throws -> Void) async throws {
         try await withExclusiveRealDefaults {
             let saved = (
-                SSOLoginService.storedPasswordRefusals, Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent]
+                SchoolPasswordPosts.storedPasswordRefusals, Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent]
             )
-            SSOLoginService.storedPasswordRefusals = (count, last)
+            SchoolPasswordPosts.storedPasswordRefusals = (count, last)
             defer {
-                (SSOLoginService.storedPasswordRefusals, Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent])
+                (SchoolPasswordPosts.storedPasswordRefusals, Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent])
                     = saved
             }
             let keychain = MemoryKeychain.signedIn(withMoodleToken: false)
@@ -237,7 +237,7 @@ struct StoredPasswordRetryTests {
 
         try await Self.signedIn(refusals: 0, last: nil) { _ in
             await device.auth.ensureBackendSignedIn()
-            #expect(SSOLoginService.storedPasswordRefusals.count == 1)
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 1)
             device.handOnTheWait()
             try await device.sleeper.waitUntilArmed()
             #expect(await device.sleeper.requestedDurations == [.seconds(10)])
@@ -245,7 +245,7 @@ struct StoredPasswordRetryTests {
             device.advance(by: 10)
             await device.sleeper.fire()
             try await waitUntil { device.isSignedInToTheBackend }
-            #expect(SSOLoginService.storedPasswordRefusals.count == 0)
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 0)
         }
 
         #expect(device.harvests.count == 2)
@@ -263,7 +263,7 @@ struct StoredPasswordRetryTests {
             device.advance(by: 10)
             await device.sleeper.fire()
             await firstTry.value
-            #expect(SSOLoginService.storedPasswordRefusals.count == 2)
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 2)
 
             device.handOnTheWait()
             try await device.sleeper.waitUntilArmed(atLeast: 2)
@@ -286,7 +286,7 @@ struct StoredPasswordRetryTests {
             device.advance(by: 10)
             await device.sleeper.fire()
             try await waitUntil { device.isSignedInToTheBackend }
-            #expect(SSOLoginService.storedPasswordRefusals.count == 0)
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 0)
         }
 
         #expect(device.school.posts == 1)
@@ -306,7 +306,7 @@ struct StoredPasswordRetryTests {
             device.advance(by: 10)
             await device.sleeper.fire()
             try await waitUntil { device.isSignedInToTheBackend }
-            #expect(SSOLoginService.storedPasswordRefusals.count == 0)
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 0)
         }
 
         #expect(device.school.posts == 1)
@@ -347,7 +347,7 @@ struct StoredPasswordRetryTests {
             await device.sleeper.fire()
             await waiting.value
 
-            #expect(SSOLoginService.storedPasswordRefusals.count == 2)
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 2)
             #expect(!device.auth.isLoggingIn)
             #expect(device.auth.loginError == nil)
             #expect(device.auth.reauthErrorMessage == nil)
@@ -397,7 +397,7 @@ struct StoredPasswordRetryTests {
             await first.value
             try await device.sleeper.waitUntilArmed(atLeast: 2)
             #expect(await device.sleeper.requestedDurations == [.seconds(10), .seconds(60)])
-            #expect(SSOLoginService.storedPasswordRefusals.count == 1)
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 1)
 
             device.advance(by: 60)
             await device.sleeper.fire()
@@ -428,7 +428,7 @@ struct StoredPasswordRetryTests {
             device.advance(by: 10)
             await device.sleeper.fire()
             await waiting.value
-            #expect(SSOLoginService.storedPasswordRefusals.count == 0)
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 0)
         }
 
         #expect(device.harvests.count == (step == .tokenHarvest ? 1 : 0))
@@ -467,7 +467,7 @@ struct StoredPasswordRetryTests {
                 StoredPasswordLatchRetryMigration.runIfNeeded()
                 device.returnToTheApp()
                 try await waitUntil { device.isSignedInToTheBackend }
-                #expect(SSOLoginService.storedPasswordRefusals.count == 0)
+                #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 0)
             }
         }
 
@@ -488,16 +488,16 @@ struct StoredPasswordRetryTests {
         try await Self.signedIn(refusals: 0, last: nil) { _ in
             let heard = Announcements()
             let observer = NotificationCenter.default.addObserver(
-                forName: SSOLoginService.storedPasswordPostWaits, object: nil, queue: .main
+                forName: SchoolPasswordPosts.storedPasswordPostWaits, object: nil, queue: .main
             ) { note in
-                guard let at = note.userInfo?[SSOLoginService.storedPasswordRetryAtKey] as? Date else { return }
+                guard let at = note.userInfo?[SchoolPasswordPosts.storedPasswordRetryAtKey] as? Date else { return }
                 MainActor.assumeIsolated { heard.retryTimes.append(at) }
             }
             defer { NotificationCenter.default.removeObserver(observer) }
 
-            SSOLoginService.noteStoredPasswordRefused(at: refused)
+            SchoolPasswordPosts.noteStoredPasswordRefused(at: refused)
             try await waitUntil { heard.retryTimes.contains(retryAt) }
-            #expect(SSOLoginService.storedPasswordPostMustWait(now: refused.addingTimeInterval(1)))
+            #expect(SchoolPasswordPosts.storedPasswordPostMustWait(now: refused.addingTimeInterval(1)))
             try await waitUntil { heard.retryTimes.filter { $0 == retryAt }.count == 2 }
         }
     }
@@ -510,9 +510,9 @@ struct StoredPasswordRetryTests {
             let waiting = try await device.armTheTry()
 
             device.auth.logout()
-            #expect(SSOLoginService.storedPasswordRefusals.count == 0)
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 0)
             keychain.unlock(withMoodleToken: false)
-            SSOLoginService.storedPasswordRefusals = (1, Self.start)
+            SchoolPasswordPosts.storedPasswordRefusals = (1, Self.start)
             device.advance(by: 10)
             await device.sleeper.fire()
             await waiting.value
@@ -550,7 +550,7 @@ struct StoredPasswordRetryTests {
         try await Self.signedIn(refusals: 1, last: Self.start) { _ in
             let waiting = try await device.armTheTry()
 
-            SSOLoginService.forgetStoredPasswordRefusals()
+            SchoolPasswordPosts.forgetStoredPasswordRefusals()
             device.advance(by: 10)
             await device.sleeper.fire()
             await waiting.value

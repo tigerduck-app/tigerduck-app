@@ -14,7 +14,7 @@ struct SchoolNetworkGuardTests {
         let configurations = [
             URLSessionConfiguration.default,
             URLSessionConfiguration.ephemeral,
-            MoodleTokenService.harvestConfiguration(),
+            MoodleTokenHarvest.harvestConfiguration(),
             NTUSTSessionManager.shared.session.configuration,
             MoodleWebserviceClient.session.configuration,
             SemesterCatalog.session.configuration,

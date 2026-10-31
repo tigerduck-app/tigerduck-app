@@ -234,7 +234,7 @@ struct SharedAssignmentRoundTests {
     private func round(
         of id: Int, askedAt: ContinuousClock.Instant, in cache: TestCache, isCurrent: Bool = true
     ) -> Bool {
-        AssignmentFetch.persistRound(
+        AssignmentAnswers.persistRound(
             [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
                           dueDate: Self.due)],
             records: [], closed: [:], answered: [id: askedAt], account: "B11399001", fetchedAt: Self.due,
@@ -311,7 +311,7 @@ struct SharedAssignmentRoundTests {
         let now = ContinuousClock.now
         let due = Date() - 2 * 86_400
         let closedAt = due + 86_400
-        AssignmentFetch.persistRound(
+        AssignmentAnswers.persistRound(
             [SDAssignment(assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2",
                           dueDate: due, cutoffDate: due + 3600)],
             records: [], closed: [String(id): closedAt, "1": closedAt], answered: [id: now - .seconds(60)],
@@ -451,10 +451,10 @@ struct SharedAssignmentRoundTests {
             let saved = Defaults[.cloudSyncEnabled]
             let sent = Sent()
             Defaults[.cloudSyncEnabled] = true
-            AssignmentFetch.assignmentUploader = { sent.requests.append($0) }
+            AssignmentAnswers.assignmentUploader = { sent.requests.append($0) }
             defer {
                 Defaults[.cloudSyncEnabled] = saved
-                AssignmentFetch.assignmentUploader = nil
+                AssignmentAnswers.assignmentUploader = nil
             }
             let folder = Folder()
             let id = Self.newId()

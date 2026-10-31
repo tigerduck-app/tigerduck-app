@@ -9,7 +9,7 @@ struct CourseRosterReconciler: CategoryReconciler {
     unowned let app: AppEnvironment
 
     func reconcile(_ pass: FullSyncPass) -> Bool {
-        defer { CourseFetch.answerRosterRequests(in: pass.json, authService: app.authService) }
+        defer { CourseUpload.answerRosterRequests(in: pass.json, authService: app.authService) }
         guard pass.taken.contains("courses") else {
             if pass.policy.pendingChecks.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")

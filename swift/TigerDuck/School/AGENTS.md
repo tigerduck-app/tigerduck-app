@@ -11,7 +11,7 @@ school's pages and their parsers, and the TLS pins of the school's hosts.
 - Sign in lazily. Only a fetch that needs a service's page logs in, and `ensureAuthenticated`
   renews the SSO session alone. SSO logins queue through `SSOLoginService.oneAtATime`, and
   automatic posts of the stored password, an SSO sign-in's or a Moodle token renewal's, through
-  `SSOLoginService.postingStoredPassword`; a sign-in the user typed does not wait for it.
+  `SchoolPasswordPosts.postingStoredPassword`; a sign-in the user typed does not wait for it.
 - School answers are shared: `MoodleEnrolledCoursesService` keeps one per wstoken for a minute,
   `MoodleSiteInfoService` keys the user id by token, and `CourseLookupService` keeps lookups for
   30 minutes. A pull skips them.

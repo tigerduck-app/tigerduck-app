@@ -137,7 +137,7 @@ struct AccountSwitchTests {
             Defaults[.holidayNotifyOverrides] = [12]
             Defaults[.holidayOverridesAwaitingUpload] = [12]
             Defaults[.bulletinsSyncedAt] = Date()
-            SSOLoginService.storedPasswordRefusals = (1, Date())
+            SchoolPasswordPosts.storedPasswordRefusals = (1, Date())
             #if os(iOS)
             Defaults[.browserZoom] = ["moodle2.ntust.edu.tw": 120]
             Defaults[.browserDesktopSites] = ["moodle2.ntust.edu.tw"]
@@ -151,7 +151,7 @@ struct AccountSwitchTests {
                 && Defaults[.courseRowIdsSeen].isEmpty && Defaults[.pendingConflictCategories].isEmpty
                 && !Defaults[.assignmentMarksSyncedOnce] && Defaults[.lastSeenCoursesResetAt] == nil
                 && Defaults[.holidayNotifyOverrides].isEmpty && Defaults[.holidayOverridesAwaitingUpload].isEmpty
-                && Defaults[.bulletinsSyncedAt] == nil && SSOLoginService.storedPasswordRefusals.count == 0
+                && Defaults[.bulletinsSyncedAt] == nil && SchoolPasswordPosts.storedPasswordRefusals.count == 0
             #if os(iOS)
             empty = empty && Defaults[.browserZoom].isEmpty && Defaults[.browserDesktopSites].isEmpty
             #endif
@@ -162,7 +162,7 @@ struct AccountSwitchTests {
             files.contains("imported_class_tables.json") && files.contains("slides.pdf")
                 && cache.courses.loadDeletedCourseNos() == ["CS1001"] && Defaults[.classTableSelectedSemester] == semester
                 && Defaults[.holidayNotifyOverrides] == [12] && Defaults[.bulletinsSyncedAt] != nil
-                && SSOLoginService.storedPasswordRefusals.count == 1
+                && SchoolPasswordPosts.storedPasswordRefusals.count == 1
         }
 
         func fillLibrary() {

@@ -231,7 +231,7 @@ final class AuthService {
         status.isReauthenticating = false
         session.moveOn()
         backend.reset()
-        SSOLoginService.forgetStoredPasswordRefusals()
+        SchoolPasswordPosts.forgetStoredPasswordRefusals()
         passwordRetry.cancel()
         markCredentialsChanged()
         #if os(iOS)

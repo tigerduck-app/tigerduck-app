@@ -91,7 +91,7 @@ struct ClassroomUsagePages {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue(queryURL.absoluteString, forHTTPHeaderField: "Referer")
-        request.httpBody = Data(SSOLoginService.formBody(fields).utf8)
+        request.httpBody = Data(SSOForms.formBody(fields).utf8)
 
         guard let html = try await load(request), ClassroomUsageParser.isQueryPage(html) else {
             throw ClassroomUsageError.unreadable
