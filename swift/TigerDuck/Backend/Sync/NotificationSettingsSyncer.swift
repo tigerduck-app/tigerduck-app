@@ -127,6 +127,11 @@ final class NotificationSettingsSyncer {
         reconcile()
     }
 
+    /// Adopts the server's `section` when its device switch goes from `old` to a turned-on `new`.
+    func deviceSwitchChanged(_ section: NotificationSettingsSync.OwnedSection, old: Bool, new: Bool) {
+        if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) { adoptSection(section) }
+    }
+
     func cancelPushes() {
         NotificationSettingsPushQueue.cancelAll()
         Defaults[.notificationSettingsPushPending] = false

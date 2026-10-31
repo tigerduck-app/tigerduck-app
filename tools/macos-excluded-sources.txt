@@ -31,6 +31,7 @@ DebugSettingsViewModel.swift
 DevMailConnectionProbe.swift
 DevMailServerOverride.swift
 DevMailServerView.swift
+SettingsDeveloperSection.swift
 TigerSyncStatusView.swift
 TriggersDebugView.swift
 WhatsNewSampleFlow.swift
@@ -162,6 +163,10 @@ StorageSettingsView.swift  # School Mail and the TigerDuck browser are iOS only;
 StorageUsage.swift
 SyncContentSettingsView.swift
 TabEditorView.swift
+SettingsAboutSection.swift
+SettingsAccountSection.swift
+SettingsDisplaySections.swift
+SettingsSheets.swift
 SettingsView.swift
 
 # Features/Updates — the iPhone's update and What's New sheets; the Mac answers
