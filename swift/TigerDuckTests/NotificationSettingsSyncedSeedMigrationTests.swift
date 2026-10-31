@@ -47,8 +47,12 @@ struct NotificationSettingsSyncedSeedMigrationTests {
         await Self.withCleanState {
             Defaults[.notificationSettingsPushPending] = false
 
-            NotificationSettingsSyncedSeedMigration.runIfNeeded(current: Self.preferences(showInClass: true))
-            NotificationSettingsSyncedSeedMigration.runIfNeeded(current: Self.preferences(showInClass: false))
+            NotificationSettingsSyncedSeedMigration.runIfNeeded(
+                current: Self.preferences(showInClass: true), storedDataReadsBack: { true }
+            )
+            NotificationSettingsSyncedSeedMigration.runIfNeeded(
+                current: Self.preferences(showInClass: false), storedDataReadsBack: { true }
+            )
 
             #expect(NotificationSettingsSync.synced == Self.preferences(showInClass: true))
             #expect(UserDefaults.standard.bool(forKey: doneKey))
@@ -61,7 +65,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             Defaults[.notificationSettingsPushPending] = true
             let local = Self.preferences(showInClass: true)
 
-            NotificationSettingsSyncedSeedMigration.runIfNeeded(current: local)
+            NotificationSettingsSyncedSeedMigration.runIfNeeded(current: local, storedDataReadsBack: { true })
 
             #expect(UserDefaults.standard.bool(forKey: doneKey))
             let base = NotificationSettingsSync.pushBase(local: local)
@@ -93,6 +97,27 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             let local = Self.preferences(showInClass: true)
 
             #expect(NotificationSettingsSync.pushBase(local: local) == local)
+        }
+    }
+
+    @Test("before stored data reads back the migration stores nothing and stays owed")
+    func waitsUntilStoredDataReadsBack() async {
+        await Self.withCleanState {
+            Defaults[.notificationSettingsPushPending] = false
+
+            NotificationSettingsSyncedSeedMigration.runIfNeeded(
+                current: Self.preferences(showInClass: true), storedDataReadsBack: { false }
+            )
+
+            #expect(NotificationSettingsSync.synced == nil)
+            #expect(!UserDefaults.standard.bool(forKey: doneKey))
+
+            NotificationSettingsSyncedSeedMigration.runIfNeeded(
+                current: Self.preferences(showInClass: true), storedDataReadsBack: { true }
+            )
+
+            #expect(NotificationSettingsSync.synced == Self.preferences(showInClass: true))
+            #expect(UserDefaults.standard.bool(forKey: doneKey))
         }
     }
 }

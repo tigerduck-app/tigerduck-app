@@ -55,8 +55,8 @@ later build. Only the iOS build syncs the document: every synced field lives on
   different fields of one section both keep their change. The two offset lists count as one
   field. With no copy stored, as after a sign-out, no field counts as changed: an unsent edit
   cannot be told from a value another device changed since, so a push after a sign-in leaves the
-  account's values alone. An upgrade
-  (`NotificationSettingsSyncedSeedMigration`) takes the device's values as the copy; a push it
+  account's values alone. An upgrade, once stored data reads back
+  (`NotificationSettingsSyncedSeedMigration`), takes the device's values as the copy; a push it
   finds pending holds an edit made on the earlier build, so that one push sends every field, as
   earlier builds did (`notificationSettingsPushSendsEveryField`), and the copy is recorded once it
   lands. Turning a device switch back on holds that section out of every push
