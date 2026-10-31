@@ -94,7 +94,7 @@ extension SSOServiceLoginTests {
         let (outcome, refusals) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
             let outcome = await Self.result { try await renewal.refreshTokenIfNeeded() }
             if case .failure = outcome { _ = try? await renewal.refreshTokenIfNeeded() }
-            return (outcome, SSOLoginService.storedPasswordRefusals.count)
+            return (outcome, SchoolPasswordPosts.storedPasswordRefusals.count)
         }
         return (outcome, refusals, await log.calls)
     }
@@ -254,7 +254,7 @@ extension SSOServiceLoginTests {
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: login)
         await #expect(throws: (any Error).self) {
-            try await LibraryService.requestToken(username: "B00000000", password: "unused", session: SSOServerStub.session())
+            try await LibraryRequests.requestToken(username: "B00000000", password: "unused", session: SSOServerStub.session())
         }
         #expect(requests(to: login).map(\.method) == ["POST"])
         #expect(requests(to: elsewhere).isEmpty)
@@ -285,7 +285,7 @@ extension SSOServiceLoginTests {
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: generate)
         await #expect(throws: (any Error).self) {
-            try await LibraryService.requestQRCode(token: "library-token", session: SSOServerStub.session())
+            try await LibraryRequests.requestQRCode(token: "library-token", session: SSOServerStub.session())
         }
         #expect(requests(to: generate).map(\.method) == ["POST"])
         #expect(requests(to: elsewhere).isEmpty)

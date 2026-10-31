@@ -16,21 +16,21 @@ anyone may send `MAIL FROM:<>`.
 
 ## Decision
 
-- `MailWarnings.isBounce(returnPath:)` in `swift/TigerDuck/Mail/Rules/MailWarnings.swift`
-  treats `Return-Path: <>` as a bounce. `LiveMailClient.returnPath(from:)` reads the first
+- `MailSchoolDomain.isBounce(returnPath:)` in `swift/TigerDuck/Mail/Rules/MailSchoolDomain.swift`
+  treats `Return-Path: <>` as a bounce. `MailIMAPMessages.returnPath(from:)` reads the first
   `Return-Path`, the one the final delivery server prepends, not a copy the sender wrote lower down.
 - `MailWarnings.evaluate` exempts a bounce from `external` only when the sender has no domain at
   all, so a bounce whose `From` names an outside domain stays external. The same marker gates
   `MailWarning.mistypedRecipient`.
-- The opened message reads the header at no cost: `LiveMailClient.detailOptions` already fetches the
+- The opened message reads the header at no cost: `MailIMAPFetch.detailOptions` already fetches the
   whole header section (`BODY.PEEK[HEADER]`), and the value rides in the cached
   `MailMessageDetail.returnPath` into `MailWarningInput.returnPath`.
 - The folder list does not read it. Its fetch, `LiveMailClient.summaryOptions`, takes ENVELOPE but
   no header section, and ENVELOPE has no `Return-Path`. Asking for that one field,
   `BODY.PEEK[HEADER.FIELDS (...)]`, is the request Mail2000 echoes back with the field name
-  double-quoted, which NIOIMAP cannot decode (see `LiveMailClient.detailOptions`), and a full
+  double-quoted, which NIOIMAP cannot decode (see `MailIMAPFetch.detailOptions`), and a full
   header for all 50 rows of every page is a real download for a badge that is already right:
-  `LiveMailClient.summary(from:)` keeps no address for a sender without a domain, so
+  `MailIMAPMessages.summary(from:)` keeps no address for a sender without a domain, so
   `MailSummary.isExternal` is false. The list decides on that weaker signal.
 
 ## Consequences

@@ -35,55 +35,66 @@ final class MailAccountManager {
     static let didSignOut = Notification.Name("SchoolMail.didSignOut")
 
     private(set) var studentID: String?
-    private(set) var isLoggingIn = false
-    private(set) var loginError: LoginError?
+    private var signInStatus = MailLoginStatus()
+    private var auth: MailAuthFailure
+    private var settings: MailAccountSettings
+    /// The sign-in form does not fill this password in again.
+    @ObservationIgnored private(set) var lastRejectedPassword: String?
+    @ObservationIgnored var listeners: MailAccountListeners
+    @ObservationIgnored let prefs: any MailPreferences
+    @ObservationIgnored private let signIn: MailSignInParts
+    @ObservationIgnored let cacheWipe: MailCacheWipe
+    @ObservationIgnored let session: AccountSession
+
+    var isLoggingIn: Bool { signInStatus.isLoggingIn }
+    var loginError: LoginError? { signInStatus.error }
+
     private(set) var authFailed: Bool {
-        didSet { if authFailed != oldValue { authBannerDismissed = false } }
+        get { auth.isFailed }
+        set { if newValue != auth.isFailed { auth = MailAuthFailure(isFailed: newValue) } }
     }
-    var authBannerDismissed = false
+    var authBannerDismissed: Bool {
+        get { auth.bannerDismissed }
+        set { auth.bannerDismissed = newValue }
+    }
     var showsAuthFailedBanner: Bool { authFailed && !authBannerDismissed }
 
-    @ObservationIgnored private(set) var lastRejectedPassword: String?
-
     var displayName: String? {
-        didSet { prefs.displayName = displayName?.mailNonEmpty }
+        get { settings.displayName }
+        set {
+            settings.displayName = newValue
+            prefs.displayName = newValue?.mailNonEmpty
+        }
     }
 
     var notificationsEnabled: Bool {
-        didSet {
-            guard notificationsEnabled != oldValue else { return }
-            prefs.notificationsEnabled = notificationsEnabled
+        get { settings.notificationsEnabled }
+        set {
+            let changed = newValue != settings.notificationsEnabled
+            settings.notificationsEnabled = newValue
+            guard changed else { return }
+            prefs.notificationsEnabled = newValue
             guard isLoggedIn else { return }
-            if notificationsEnabled { onNotificationsEnabled?() } else { onNotificationsDisabled?() }
+            if newValue { listeners.notificationsEnabled?() } else { listeners.notificationsDisabled?() }
         }
     }
 
     var muteSettings: MailMuteSettings {
-        didSet { prefs.muteSettings = muteSettings }
+        get { settings.muteSettings }
+        set {
+            settings.muteSettings = newValue
+            prefs.muteSettings = newValue
+        }
     }
 
     var isLoggedIn: Bool { studentID != nil }
     var address: String? { studentID.map(MailConstants.address(forStudentID:)) }
     var isDemo: Bool { prefs.demoActive }
-
-    @ObservationIgnored var onSignedIn: (() -> Void)?
-    @ObservationIgnored var onSignedOut: (() -> Void)?
-    @ObservationIgnored var onAuthFailed: (() -> Void)?
-    @ObservationIgnored var onNotificationsEnabled: (() -> Void)?
-    @ObservationIgnored var onNotificationsDisabled: (() -> Void)?
-
-    @ObservationIgnored let prefs: any MailPreferences
-    @ObservationIgnored let cache: MailCache
-    @ObservationIgnored private let credentials: MailCredentialStore
-    @ObservationIgnored private let isDemoLogin: (String, String) -> Bool
-    @ObservationIgnored private let makeClient: (Bool) -> any MailClient
-    @ObservationIgnored private let clearCache: @Sendable () async -> Void
-    @ObservationIgnored private(set) var pendingCacheClear: Task<Void, Never>?
-    @ObservationIgnored let session: AccountSession
-    @ObservationIgnored private let signOutEvents: NotificationCenter
+    var cache: MailCache { cacheWipe.cache }
+    var pendingCacheClear: Task<Void, Never>? { cacheWipe.pending }
 
     init(
-        prefs: any MailPreferences = DefaultsMailPreferences(),
+        prefs: any MailPreferences = MailSettingsStore.shared,
         credentials: MailCredentialStore = MailCredentialStore(),
         cache: MailCache = .shared,
         isDemoLogin: @escaping (String, String) -> Bool = { MailDemoFixture.shared?.matches(studentID: $0, password: $1) ?? false },
@@ -94,45 +105,41 @@ final class MailAccountManager {
     ) {
         self.session = session
         self.prefs = prefs
-        self.signOutEvents = signOutEvents
-        self.credentials = credentials
-        self.cache = cache
-        self.isDemoLogin = isDemoLogin
-        self.makeClient = makeClient
-        self.clearCache = clearCache ?? { cache.clearAll() }
+        listeners = MailAccountListeners(signOutEvents: signOutEvents)
+        signIn = MailSignInParts(credentials: credentials, isDemoLogin: isDemoLogin, makeClient: makeClient)
+        cacheWipe = MailCacheWipe(cache: cache, clear: clearCache)
         studentID = prefs.studentID
-        authFailed = prefs.authFailed
-        displayName = prefs.displayName
-        notificationsEnabled = prefs.notificationsEnabled
-        muteSettings = prefs.muteSettings
+        auth = MailAuthFailure(isFailed: prefs.authFailed)
+        settings = MailAccountSettings(displayName: prefs.displayName, notificationsEnabled: prefs.notificationsEnabled,
+                                       muteSettings: prefs.muteSettings)
     }
 
     func login(studentID rawID: String, password: String) async {
         let id = Self.normalizedUsername(rawID)
         guard !id.isEmpty, !password.isEmpty, !isLoggingIn else { return }
-        isLoggingIn = true
-        loginError = nil
-        defer { isLoggingIn = false }
+        signInStatus.isLoggingIn = true
+        signInStatus.error = nil
+        defer { signInStatus.isLoggingIn = false }
         var ticket = session.ticket
 
-        await pendingCacheClear?.value
+        await cacheWipe.pending?.value
         guard session.isCurrent(ticket) else { return }
-        pendingCacheClear = nil
+        cacheWipe.forgetFinished()
 
-        let demo = isDemoLogin(id, password)
-        let client = makeClient(demo)
+        let demo = signIn.isDemoLogin(id, password)
+        let client = signIn.makeClient(demo)
         do {
             try await client.login(studentID: id, password: password)
             guard session.isCurrent(ticket) else {
                 await client.logout()
                 return
             }
-            try credentials.savePassword(password)
+            try signIn.credentials.savePassword(password)
         } catch {
             await client.logout()
             let failure = LoginError(error)
             if failure == .credentials { lastRejectedPassword = password }
-            loginError = failure
+            signInStatus.error = failure
             return
         }
         // A session opened with the password this replaced must not mark this sign-in failed.
@@ -153,7 +160,7 @@ final class MailAccountManager {
         guard session.isCurrent(ticket) else { return }
         authFailed = false
         studentID = id
-        onSignedIn?()
+        listeners.signedIn?()
     }
 
     /// The username as it goes to `LOGIN`: trimmed, and upper-cased — Mail2000 wants
@@ -169,16 +176,16 @@ final class MailAccountManager {
     }
 
     func clearLoginError() {
-        loginError = nil
+        signInStatus.error = nil
     }
 
     func openSession() async throws -> any MailClient {
         guard !authFailed else { throw MailClientError.authenticationFailed }
-        guard let id = prefs.studentID, let password = credentials.password() else {
+        guard let id = prefs.studentID, let password = signIn.credentials.password() else {
             throw MailClientError.protocolError("credentials unavailable")
         }
         let ticket = session.ticket
-        let client = makeClient(prefs.demoActive)
+        let client = signIn.makeClient(prefs.demoActive)
         do {
             try await client.login(studentID: id, password: password)
             return client
@@ -196,45 +203,33 @@ final class MailAccountManager {
         guard !authFailed else { return }
         prefs.authFailed = true
         authFailed = true
-        onAuthFailed?()
+        listeners.authFailed?()
     }
 
     /// School Mail's sign-out, which keeps the school and library accounts. A sign-in waits for
     /// the cache wipe it starts.
     func logout() {
         SignOutPlan(session: session, stores: SignOutPlan.mailStores, clearRest: { [self] in
-            startCacheWipe()
+            cacheWipe.start(prefs: prefs)
             studentID = nil
-            loginError = nil
+            signInStatus.error = nil
             authFailed = false
             displayName = nil
             notificationsEnabled = prefs.notificationsEnabled
             muteSettings = prefs.muteSettings
-            signOutEvents.post(name: Self.didSignOut, object: nil)
-            onSignedOut?()
-        }).run(in: AccountStorage(mailPreferences: prefs, mailCredentials: credentials))
-    }
-
-    private func startCacheWipe() {
-        let performClear = clearCache
-        let prefs = self.prefs
-        prefs.cacheWipePending = true
-        pendingCacheClear = Task.detached {
-            await performClear()
-            prefs.cacheWipePending = false
-        }
+            listeners.signOutEvents.post(name: Self.didSignOut, object: nil)
+            listeners.signedOut?()
+        }).run(in: AccountStorage(mailPreferences: prefs, mailCredentials: signIn.credentials))
     }
 
     func resumeInterruptedCacheWipe() {
-        guard prefs.cacheWipePending, pendingCacheClear == nil else { return }
-        startCacheWipe()
+        cacheWipe.resumeIfInterrupted(prefs: prefs)
     }
 
     private func establishBaseline(client: any MailClient, ticket: AccountSession.Ticket) async {
         guard let status = try? await client.status(folder: MailConstants.inbox) else { return }
         guard session.isCurrent(ticket) else { return }
-        prefs.inboxUIDValidity = status.uidValidity
-        prefs.inboxNextUID = status.uidNext
+        MailInboxCursor(prefs: prefs).reset(to: status)
     }
 
     private func discoverDisplayName(client: any MailClient, address: String) async -> String? {

@@ -4,9 +4,9 @@ Status: accepted
 
 ## Context
 
-School Mail's warning rules exist on iOS (`MailWarnings` and `MailTextCleaner` in
-`swift/TigerDuck/Mail/Rules/`) and on Android (`MailWarnings` in `mail/warning/` and
-`TextCleaning` in `mail/mime/`, under `app/src/main/java/org/ntust/app/tigerduck/` in
+School Mail's warning rules exist on iOS (`MailWarnings`, the link, domain and attachment rules
+beside it, and `MailTextCleaner`, in `swift/TigerDuck/Mail/Rules/`) and on Android (`MailWarnings`
+in `mail/warning/` and `TextCleaning` in `mail/mime/`, under `app/src/main/java/org/ntust/app/tigerduck/` in
 `tigerduck-app/tigerduck-app-android`). The shared `warnings.json` fixture, in
 `swift/TigerDuckTests/SchoolMail/Fixtures/` and in Android's `app/src/test/resources/mail/`, keeps
 the two agreeing. Most iOS patterns and steps name the Android constant or function they mirror,
@@ -18,7 +18,7 @@ and `URLComponents` against `java.net.IDN`.
 
 A difference from Android is accepted only when it never widens what counts as a school link: it
 never hides an outside link or suppresses a real mismatch. Where iOS is stricter, Android has the
-gap to close; iOS never matches it by weakening. Accepted in `MailWarnings` link handling:
+gap to close; iOS never matches it by weakening. Accepted in `MailLinkCheck` link handling:
 
 - The trim after `sanitizeHref`, `.trimmingCharacters(in: .whitespacesAndNewlines)`, removes more
   Unicode whitespace than WHATWG's trim of C0 controls and space, which `sanitizeHref`'s leading
@@ -34,7 +34,7 @@ Where iOS is stricter, each site keeps a note:
 
 - `MailTextCleaner.visibleText` removes all `Cf`, `Cc` and `Default_Ignorable_Code_Point`
   characters; Android's `MailWarnings.INVISIBLE` covers only `Cf`, `Cc` and U+200B.
-- `MailWarnings.scannedFilename` removes invisible characters before the extension checks; Android's
+- `MailAttachmentRisk.scannedFilename` removes invisible characters before the extension checks; Android's
   `MailWarnings.cleanFileName` keeps format characters other than bidi controls, so
   `payload.ex<U+200B>e` is still open there.
 - `MailTextCleaner.clean` trims with Foundation's set, which also removes U+0085 and U+200B that

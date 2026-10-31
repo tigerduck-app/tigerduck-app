@@ -33,13 +33,11 @@ final class AssignmentRounds {
     static let shared = AssignmentRounds()
 
     fileprivate var running: AssignmentRound?
-    fileprivate var statusAskedAt: [String: ContinuousClock.Instant] = [:]
+    var statusAskedAt: [String: ContinuousClock.Instant] = [:]
 }
 
 /// Moodle assignment rounds: one at a time for every caller, saved and uploaded for reminders.
 enum AssignmentFetch {
-
-    static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
 
     /// The round applies what it fetched once `applyAfter` passes, as after a refresh's pull.
     static func fetchAssignments(
@@ -191,7 +189,7 @@ enum AssignmentFetch {
                 records, confirmed: confirmed, closed: recheckSubmissions ? [:] : closed
             )
             let askedAt = Date()
-            let answers = await askStatuses(of: recordsToAsk) {
+            let answers = await AssignmentAnswers.askStatuses(of: recordsToAsk) {
                 try await MoodleAssignmentService.fetchSubmissionStatus(assignId: $0)
             }
             let statuses = answers.mapValues(\.status)
@@ -222,7 +220,7 @@ enum AssignmentFetch {
                 assignmentsToPersist = freshAssignments
             }
 
-            let persisted = persistRound(
+            let persisted = AssignmentAnswers.persistRound(
                 assignmentsToPersist,
                 records: records,
                 closed: AssignmentRecords.closedUnsubmitted(records: records, statuses: statuses, askedAt: askedAt, kept: closed),
@@ -237,7 +235,7 @@ enum AssignmentFetch {
                 if statuses.count == recordsToAsk.count {
                     Defaults[.schoolDataSyncedAt] = Date()
                 }
-                uploadForReminders(assignmentsToPersist)
+                AssignmentAnswers.uploadForReminders(assignmentsToPersist)
             }
             await MainActor.run { CourseFetch.record(.ok, for: .moodle, round: ticket, authService: authService) }
             return assignmentsToPersist
@@ -249,51 +247,6 @@ enum AssignmentFetch {
             }
             return AssignmentStore.shared.loadAssignments()
         }
-    }
-
-    static func persistRound(
-        _ assignments: [SDAssignment],
-        records: [MoodleAssignmentRecord],
-        closed: [String: Date],
-        answered: [Int: ContinuousClock.Instant],
-        account: String,
-        fetchedAt: Date,
-        assignments store: AssignmentStore,
-        moodle: MoodleFiles,
-        rounds: AssignmentRounds = .shared,
-        isCurrent: () -> Bool
-    ) -> Bool {
-        guard !Task.isCancelled, isCurrent() else { return false }
-        store.saveAssignments(assignments)
-        moodle.saveMoodleData(records, fetchedAt: fetchedAt, name: MoodleAssignmentRecord.cacheName, account: account)
-        store.replaceClosedUnsubmittedAssignments(closed)
-        saveMoodleCalendarEvents(of: assignments, in: store)
-        for (id, askedAt) in answered { rounds.statusAskedAt[String(id)] = askedAt }
-        return true
-    }
-
-    private static func saveMoodleCalendarEvents(of assignments: [SDAssignment], in cache: AssignmentStore) {
-        var calendarEvents = cache.loadCalendarEvents()
-        calendarEvents.removeAll { $0.source == .moodle }
-        calendarEvents.append(contentsOf: assignments.map(AssignmentRecords.moodleCalendarEvent))
-        cache.saveCalendarEvents(calendarEvents)
-    }
-
-    static func askStatuses(
-        of records: [MoodleAssignmentRecord],
-        limit: Int = maxConcurrentRequests,
-        fetch: @escaping @Sendable (_ assignId: Int) async throws -> MoodleSubmissionStatus
-    ) async -> [Int: (status: MoodleSubmissionStatus, askedAt: ContinuousClock.Instant)] {
-        typealias Answer = (Int, MoodleSubmissionStatus, ContinuousClock.Instant)
-        let answers = await concurrentMap(records, limit: limit) { record -> Answer? in
-            let askedAt = ContinuousClock.now
-            guard let status = try? await fetch(record.assignId) else { return nil }
-            return (record.assignId, status, askedAt)
-        }
-        return Dictionary(
-            answers.compactMap { $0.map { ($0.0, (status: $0.1, askedAt: $0.2)) } },
-            uniquingKeysWith: { first, _ in first }
-        )
     }
 
     @discardableResult
@@ -322,35 +275,13 @@ enum AssignmentFetch {
         assignment.isCompleted = status.isSubmitted
         assignment.submittedAt = status.submittedAt
         cache.saveAssignments(assignments)
-        if assignment.dueDate != dueBefore { saveMoodleCalendarEvents(of: assignments, in: cache) }
+        if assignment.dueDate != dueBefore { AssignmentAnswers.saveMoodleCalendarEvents(of: assignments, in: cache) }
         // An extension ahead takes submissions past the cutoff, so rounds ask about it again.
         if let extended = status.extensionDueDate, extended > Date() {
             var closed = cache.loadClosedUnsubmittedAssignments()
             if closed.removeValue(forKey: id) != nil { cache.replaceClosedUnsubmittedAssignments(closed) }
         }
-        uploadForReminders(assignments)
+        AssignmentAnswers.uploadForReminders(assignments)
         return true
-    }
-
-    private static func uploadForReminders(_ assignments: [SDAssignment]) {
-        #if os(iOS)
-        guard let upload = assignmentUploader, Defaults[.cloudSyncEnabled] else { return }
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime]
-        let entries = assignments.compactMap { a -> PushAPI.AssignmentUploadEntry? in
-            guard let id = Int(a.assignmentId) else { return nil }
-            return PushAPI.AssignmentUploadEntry(
-                moodleAssignmentId: id,
-                courseNo: a.courseNo,
-                courseName: a.courseName,
-                title: a.title,
-                dueAt: iso.string(from: a.dueDate),
-                moodleUrl: a.moodleUrl,
-                isSubmitted: a.isCompleted,
-                grade: nil
-            )
-        }
-        upload(PushAPI.AssignmentUploadRequest(assignments: entries))
-        #endif
     }
 }

@@ -41,9 +41,9 @@ struct MailRecipientTokensTests {
     }
 
     @Test func aBubbleIsMarkedByTheSameRuleTheSendUses() {
-        #expect(MailComposeViewModel.sendableAddress("a@x.com") != nil)
-        #expect(MailComposeViewModel.sendableAddress("not an address") == nil)
-        #expect(MailComposeViewModel.sendableAddress("王@例子.台灣") == nil)
+        #expect(MailRecipients.sendableAddress("a@x.com") != nil)
+        #expect(MailRecipients.sendableAddress("not an address") == nil)
+        #expect(MailRecipients.sendableAddress("王@例子.台灣") == nil)
     }
 
     @Test func aReadRecipientShowsAsText() {

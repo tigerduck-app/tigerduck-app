@@ -45,9 +45,15 @@ final class PushCoordinator {
 
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Coord")
 
-    private var isStarted = false
-    private var stoppedBySignOut = false
-    private var pendingSyncTask: Task<Void, Never>?
+    private var run = RunState()
+
+    /// Whether the push stack was started, and stopped by a sign-out since, and the debounced
+    /// schedule sync waiting to run.
+    private struct RunState {
+        var isStarted = false
+        var stoppedBySignOut = false
+        var pendingSyncTask: Task<Void, Never>?
+    }
     private let isProtectedDataAvailable: @MainActor () -> Bool
 
     init(
@@ -101,9 +107,9 @@ final class PushCoordinator {
     }
 
     func enable(requestPermission: Bool = false) {
-        let firstStart = !isStarted
+        let firstStart = !run.isStarted
         if firstStart {
-            isStarted = true
+            run.isStarted = true
             #if os(iOS)
             relay.start()
             #endif
@@ -280,8 +286,8 @@ final class PushCoordinator {
     /// so the next list goes up even when unchanged.
     func refreshRegistrationAfterAuth() {
         scheduleSync.forgetAcceptedList()
-        if stoppedBySignOut {
-            stoppedBySignOut = false
+        if run.stoppedBySignOut {
+            run.stoppedBySignOut = false
             enable()
         }
         Task { await registration.registerAgain() }
@@ -300,7 +306,7 @@ final class PushCoordinator {
         #endif
         let notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         return PushDiagnostic(
-            isStarted: isStarted,
+            isStarted: run.isStarted,
             liveActivitiesEnabled: liveActivitiesEnabled,
             notificationAuthStatus: notificationStatus,
             registration: reg,
@@ -311,17 +317,17 @@ final class PushCoordinator {
 
     @discardableResult
     func disable() async -> Bool {
-        guard isStarted else { return false }
-        isStarted = false
-        stoppedBySignOut = true
+        guard run.isStarted else { return false }
+        run.isStarted = false
+        run.stoppedBySignOut = true
         ledger.forget(SendLedger.Channel.credentials)
         logger.info("disabling push stack")
 
         #if os(iOS)
         relay.stop()
         #endif
-        pendingSyncTask?.cancel()
-        await pendingSyncTask?.value
+        run.pendingSyncTask?.cancel()
+        await run.pendingSyncTask?.value
         await scheduleSync.awaitInflight()
         scheduleSync.forgetAcceptedList()
         return await registration.unregister()
@@ -339,8 +345,8 @@ final class PushCoordinator {
         debounceMs: Int = 400,
         inputsBuilder: @escaping @MainActor () -> ScheduleSyncService.Inputs
     ) {
-        pendingSyncTask?.cancel()
-        pendingSyncTask = Task { @MainActor [weak self] in
+        run.pendingSyncTask?.cancel()
+        run.pendingSyncTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(debounceMs))
             guard !Task.isCancelled else { return }
             #if os(iOS)
@@ -353,7 +359,7 @@ final class PushCoordinator {
     }
 
     func syncNow(inputsBuilder: @MainActor () -> ScheduleSyncService.Inputs) async {
-        guard await apiClient.hasAuthSession(), isStarted else { return }
+        guard await apiClient.hasAuthSession(), run.isStarted else { return }
         guard isProtectedDataAvailable() else { return }
         scheduleSync.sync(inputs: inputsBuilder())
         await scheduleSync.awaitInflight()

@@ -805,7 +805,7 @@ struct NotificationSettingsSyncTests {
 
     @Test("reminder_offsets_minutes is authoritative and complete, sub-hour offsets included")
     func resolveOffsetsPrefersMinutes() {
-        let resolved = NotificationSettingsSync.resolveOffsets(
+        let resolved = NotificationSettingsReconcile.resolveOffsets(
             documentMinutes: [1440, 120, 30, 5],
             documentHours: [24, 2],
             currentLocal: [.hr48, .min15]
@@ -815,7 +815,7 @@ struct NotificationSettingsSyncTests {
 
     @Test("an empty reminder_offsets_minutes really does mean the user turned everything off")
     func resolveOffsetsHonoursEmptyMinutes() {
-        let resolved = NotificationSettingsSync.resolveOffsets(
+        let resolved = NotificationSettingsReconcile.resolveOffsets(
             documentMinutes: [],
             documentHours: nil,
             currentLocal: [.hr24, .min30]
@@ -825,7 +825,7 @@ struct NotificationSettingsSyncTests {
 
     @Test("a minutes value this build has no case for is skipped, not fatal")
     func resolveOffsetsSkipsUnknownMinutes() {
-        let resolved = NotificationSettingsSync.resolveOffsets(
+        let resolved = NotificationSettingsReconcile.resolveOffsets(
             documentMinutes: [1440, 7],
             documentHours: nil,
             currentLocal: []
@@ -835,7 +835,7 @@ struct NotificationSettingsSyncTests {
 
     @Test("with only reminder_offsets_hours, the device's sub-hour offsets are kept, not deleted")
     func resolveOffsetsKeepsLocalSubHourWhenOnlyHoursArePresent() {
-        let resolved = NotificationSettingsSync.resolveOffsets(
+        let resolved = NotificationSettingsReconcile.resolveOffsets(
             documentMinutes: nil,
             documentHours: [48, 24, 8, 2, 1],
             currentLocal: LiveActivityPreferencesStore.defaultOffsets
@@ -846,7 +846,7 @@ struct NotificationSettingsSyncTests {
 
     @Test("with only reminder_offsets_hours, the whole-hour offsets still come from the document")
     func resolveOffsetsTakesHoursFromDocument() {
-        let resolved = NotificationSettingsSync.resolveOffsets(
+        let resolved = NotificationSettingsReconcile.resolveOffsets(
             documentMinutes: nil,
             documentHours: [16],
             currentLocal: [.hr48, .hr1, .min30]
@@ -856,7 +856,7 @@ struct NotificationSettingsSyncTests {
 
     @Test("an hours value large enough to overflow on ×60 is skipped, not trapped")
     func resolveOffsetsToleratesOverflowingHours() {
-        let resolved = NotificationSettingsSync.resolveOffsets(
+        let resolved = NotificationSettingsReconcile.resolveOffsets(
             documentMinutes: nil,
             documentHours: [Int.max, 24],
             currentLocal: [.min30]
@@ -867,7 +867,7 @@ struct NotificationSettingsSyncTests {
     @Test("a document with no offset fields at all changes nothing")
     func resolveOffsetsLeavesLocalAloneWhenDocumentIsSilent() {
         let current: Set<AssignmentReminderOffset> = [.hr24, .min10]
-        let resolved = NotificationSettingsSync.resolveOffsets(
+        let resolved = NotificationSettingsReconcile.resolveOffsets(
             documentMinutes: nil,
             documentHours: nil,
             currentLocal: current
@@ -886,7 +886,7 @@ struct NotificationSettingsSyncTests {
             ("no list: nothing changes", nil, 15, true),
         ]
         for row in rows {
-            let resolved = NotificationSettingsSync.resolveClassReminderLead(
+            let resolved = NotificationSettingsReconcile.resolveClassReminderLead(
                 documentMinutes: row.minutes, currentMinutes: 15, currentPicked: true
             )
             #expect(resolved.minutes == row.lead, row.name)
@@ -906,7 +906,7 @@ struct NotificationSettingsSyncTests {
             NotificationSettingsDocument.self,
             from: Data(#"{"assignments":\#(shape.section)}"#.utf8)
         )
-        return NotificationSettingsSync.resolveOffsets(
+        return NotificationSettingsReconcile.resolveOffsets(
             documentMinutes: document.assignments?.reminderOffsetsMinutes,
             documentHours: document.assignments?.reminderOffsetsHours,
             currentLocal: shape.currentLocal
@@ -1004,7 +1004,7 @@ struct NotificationSettingsSyncTests {
     func offsetsSurviveARoundTrip() {
         let original = LiveActivityPreferencesStore.defaultOffsets
         let section = Self.local(assignmentReminderOffsets: original).assignmentsSection(preservingForeignMinutesFrom: [:])
-        let resolved = NotificationSettingsSync.resolveOffsets(
+        let resolved = NotificationSettingsReconcile.resolveOffsets(
             documentMinutes: section.reminderOffsetsMinutes,
             documentHours: section.reminderOffsetsHours,
             currentLocal: []
@@ -1052,7 +1052,7 @@ struct NotificationSettingsApplyTests {
                 assignments: .init(enabled: true, reminderOffsetsHours: [48, 24, 8, 2, 1])
             )
 
-            NotificationSettingsSync.apply(document, to: store)
+            NotificationSettingsReconcile.apply(document, to: store)
 
             #expect(store.assignmentReminderOffsets.contains(.min30))
             #expect(store.assignmentReminderOffsets == LiveActivityPreferencesStore.defaultOffsets)
@@ -1072,7 +1072,7 @@ struct NotificationSettingsApplyTests {
                 )
             )
 
-            NotificationSettingsSync.apply(document, to: store)
+            NotificationSettingsReconcile.apply(document, to: store)
 
             #expect(store.assignmentReminderOffsets == [.hr48, .hr24, .hr8, .hr2, .hr1])
             #expect(store.assignmentReminderOffsets.contains(.min30) == false)
@@ -1089,7 +1089,7 @@ struct NotificationSettingsApplyTests {
                 liveActivity: .init(showInClass: false)
             )
 
-            NotificationSettingsSync.apply(document, to: store)
+            NotificationSettingsReconcile.apply(document, to: store)
 
             #expect(store.isAssignmentReminderEnabled)
             #expect(store.assignmentReminderOffsets == [.hr24, .min15])
@@ -1109,7 +1109,7 @@ struct NotificationSettingsApplyTests {
                 liveActivity: .init(showAssignment: false)
             )
 
-            NotificationSettingsSync.apply(document, to: store)
+            NotificationSettingsReconcile.apply(document, to: store)
 
             #expect(store.showAssignmentScenario == false)
             #expect(store.showClassPreparingScenario)
@@ -1125,7 +1125,7 @@ struct NotificationSettingsApplyTests {
             store.classReminderLeadMinutes = 10
 
             let document = NotificationSettingsDocument(courses: .init(enabled: false, reminderOffsetsMinutes: [30]))
-            NotificationSettingsSync.apply(document, to: store)
+            NotificationSettingsReconcile.apply(document, to: store)
 
             #expect(store.isClassReminderEnabled == false)
             #expect(store.classReminderLeadMinutes == 30)
@@ -1145,7 +1145,7 @@ struct NotificationSettingsApplyTests {
             #expect(store.hasPickedClassReminderLead)
             let existing: [String: Any] = ["courses": ["reminder_offsets_minutes": [45]]]
 
-            NotificationSettingsSync.apply(NotificationSettingsDocument(courses: .init(reminderOffsetsMinutes: [45])), to: store)
+            NotificationSettingsReconcile.apply(NotificationSettingsDocument(courses: .init(reminderOffsetsMinutes: [45])), to: store)
 
             #expect(store.classReminderLeadMinutes == 15)
             #expect(!store.hasPickedClassReminderLead)
@@ -1186,7 +1186,7 @@ struct NotificationSettingsApplyTests {
                 )
             )
 
-            #expect(Self.recordedOrigins { NotificationSettingsSync.apply(document, to: store) } == [true])
+            #expect(Self.recordedOrigins { NotificationSettingsReconcile.apply(document, to: store) } == [true])
         }
     }
 
@@ -1225,7 +1225,7 @@ struct NotificationSettingsApplyTests {
             let document = NotificationSettingsDocument(
                 liveActivity: .init(showInClass: !store.showInClassScenario)
             )
-            #expect(Self.recordedPushDecisions { NotificationSettingsSync.apply(document, to: store) } == [false])
+            #expect(Self.recordedPushDecisions { NotificationSettingsReconcile.apply(document, to: store) } == [false])
         }
     }
 
@@ -1256,7 +1256,7 @@ struct NotificationSettingsApplyTests {
             )
 
             let origins = Self.recordedOrigins {
-                NotificationSettingsSync.apply(document, to: store)
+                NotificationSettingsReconcile.apply(document, to: store)
             }
 
             #expect(origins.isEmpty)

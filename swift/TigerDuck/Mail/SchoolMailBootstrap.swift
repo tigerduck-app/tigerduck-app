@@ -20,23 +20,23 @@ enum SchoolMailBootstrap {
         SchoolMailCharsetHook.install()
         Task { _ = await MailNotificationPermission.isDenied() }
         account.resumeInterruptedCacheWipe()
-        account.onSignedIn = {
+        account.listeners.signedIn = {
             MailBackgroundRefresh.schedule()
             Task { await MailNotificationPermission.requestIfNeeded() }
         }
-        account.onSignedOut = {
+        account.listeners.signedOut = {
             MailBackgroundRefresh.cancel()
             Task { await notifier.removeAll() }
         }
-        account.onAuthFailed = {
+        account.listeners.authFailed = {
             MailBackgroundRefresh.cancel()
             Task { await notifier.notifyAuthFailure() }
         }
-        account.onNotificationsEnabled = {
+        account.listeners.notificationsEnabled = {
             MailBackgroundRefresh.schedule()
             Task { await MailNotificationPermission.requestIfNeeded() }
         }
-        account.onNotificationsDisabled = {
+        account.listeners.notificationsDisabled = {
             MailBackgroundRefresh.cancel()
             Task { await notifier.removeAll() }
         }

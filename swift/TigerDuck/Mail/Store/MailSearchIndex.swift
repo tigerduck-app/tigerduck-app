@@ -10,7 +10,6 @@ import SQLite3
 /// The index belongs to the account `MailCache` names: another account's next `prepare` empties
 /// it, and every write is refused once the cache was wiped after the `wipeCount` it was given.
 nonisolated final class MailSearchIndex: @unchecked Sendable {
-    static let maxTextLength = 32_000
     private static let schemaVersion: Int64 = 1
 
     private let url: URL
@@ -28,18 +27,6 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
 
     deinit {
         sqlite3_close_v2(db)
-    }
-
-    /// What a search of a mail reads: its sender, subject and body text, with runs of white space
-    /// as one space, so a phrase broken across lines still matches.
-    static func text(of summary: MailSummary, body: String?) -> String {
-        let parts = [summary.fromName, summary.fromAddress, summary.subject, body].compactMap { $0 }
-        return String(MailTextCleaner.clean(parts.joined(separator: " ")).prefix(maxTextLength))
-    }
-
-    /// Both sides of a match fold the same way, in any script.
-    static func folded(_ text: String) -> String {
-        text.precomposedStringWithCanonicalMapping.lowercased()
     }
 
     /// Opens `folder` at `uidValidity` for the account signed in now, emptying it when the account
@@ -77,7 +64,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
             return transactionLocked { () -> Bool? in
                 for (uid, text) in texts {
                     guard execute("INSERT OR REPLACE INTO mail (folder, uid, text) VALUES (?, ?, ?)",
-                                  [.text(folder), .int(Int64(uid)), .text(Self.folded(text))]) else { return nil }
+                                  [.text(folder), .int(Int64(uid)), .text(MailSearchText.folded(text))]) else { return nil }
                 }
                 return true
             } ?? false
@@ -90,7 +77,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
     func search(
         folder: String, query: String, shouldStop: @escaping @Sendable () -> Bool = { Task.isCancelled }
     ) -> (uidValidity: UInt32, uids: [UInt32])? {
-        let needle = Self.folded(MailTextCleaner.clean(query))
+        let needle = MailSearchText.folded(MailTextCleaner.clean(query))
         return withFile {
             guard !needle.isEmpty, openLocked(), ownerLocked() == currentOwner,
                   let validity = validityLocked(folder) else { return nil }
@@ -183,7 +170,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
             at: directory, withIntermediateDirectories: true,
             attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
         )
-        excludeFromBackup(directory)
+        MailCacheFiles.excludeFromBackup(directory)
         var handle: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FILEPROTECTION_COMPLETEUNTILFIRSTUSERAUTHENTICATION
         let opened = sqlite3_open_v2(url.path, &handle, flags, nil)
@@ -199,16 +186,8 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
             db = nil
             return code == SQLITE_OK ? SQLITE_ERROR : code
         }
-        excludeFromBackup(url)
+        MailCacheFiles.excludeFromBackup(url)
         return SQLITE_OK
-    }
-
-    /// As `MailCache` does for its directory, which the index can create first, as after a wipe.
-    private func excludeFromBackup(_ url: URL) {
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        var url = url
-        try? url.setResourceValues(values)
     }
 
     /// Only a copy of the server's mail: another layout starts over and downloads it again.

@@ -16,7 +16,7 @@ struct CourseRefreshUploadTests {
         _ courseNos: [String], roster: [String]?, hidden: Set<String> = [], resendingRoster: Bool = false
     ) -> [Upload] {
         var uploads: [Upload] = []
-        CourseFetch.uploadVisibleCourses(
+        CourseUpload.uploadVisibleCourses(
             courseNos.map { SDCourse(courseNo: $0, courseName: $0) }, semester: "1151", hidden: hidden,
             roster: roster, resendingRoster: resendingRoster
         ) { courses, _, asRoster, resend in
@@ -29,7 +29,7 @@ struct CourseRefreshUploadTests {
     func hiddenCoursesStayOutOfTheUpload() {
         var uploads: [(courses: [String], semester: String)] = []
 
-        CourseFetch.uploadVisibleCourses(
+        CourseUpload.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"]
         ) { courses, semester, _, _ in uploads.append((courses.map(\.courseNo), semester)) }
 
@@ -41,7 +41,7 @@ struct CourseRefreshUploadTests {
     func aTermHiddenWholeUploadsNothing() {
         var uploads = 0
 
-        CourseFetch.uploadVisibleCourses(
+        CourseUpload.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"], roster: ["CS1", "CS2", "CS3"]
         ) { _, _, _, _ in uploads += 1 }
 

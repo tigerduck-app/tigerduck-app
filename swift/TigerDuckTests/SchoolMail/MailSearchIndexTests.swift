@@ -25,7 +25,7 @@ struct MailSearchIndexTests {
         summary.subject = subject
         summary.fromName = name
         summary.fromAddress = from
-        return MailSearchIndex.text(of: summary, body: body)
+        return MailSearchText.text(of: summary, body: body)
     }
 
     @discardableResult
@@ -241,8 +241,8 @@ struct MailSearchIndexTests {
     }
 
     @Test func theTextOfAMailIsCappedInLength() {
-        let text = Self.text(subject: "長信", body: String(repeating: "字", count: MailSearchIndex.maxTextLength * 2))
-        #expect(text.count == MailSearchIndex.maxTextLength)
+        let text = Self.text(subject: "長信", body: String(repeating: "字", count: MailSearchText.maxTextLength * 2))
+        #expect(text.count == MailSearchText.maxTextLength)
     }
 }
 #endif

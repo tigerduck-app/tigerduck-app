@@ -32,20 +32,34 @@ final class WatchSyncCoordinator: NSObject {
         var changes: CourseChanges = .empty
     }
 
+    /// The push waiting out its debounce, and the snapshot still owed to the watch.
+    private struct Pending {
+        var payload: Payload?
+        var force = false
+        var snapshot: WatchSnapshot?
+        var lastDelivered: WatchSnapshot?
+    }
+
+    /// What waits for protected data to come back after a locked-device attempt.
+    private struct Owed {
+        var credentials = false
+        var statePush = false
+    }
+
+    private struct Dependencies {
+        let sleep: @Sendable (Duration) async -> Void
+        let republishCredentials: @MainActor () -> Void
+        let isProtectedDataAvailable: @MainActor () -> Bool
+    }
+
     private let session: WatchSessionPushing
     private(set) var debounceTask: Task<Void, Never>?
-    private var pendingPayload: Payload?
-    private var pendingForce = false
-    private var pendingSnapshot: WatchSnapshot?
-    private var lastDelivered: WatchSnapshot?
+    private var pending = Pending()
     private var payloadSource: (@MainActor () -> Payload)?
     private var isActivated = false
     private let debounceInterval: Duration = .milliseconds(500)
-    private let sleep: @Sendable (Duration) async -> Void
-    private let republishCredentials: @MainActor () -> Void
-    private let isProtectedDataAvailable: @MainActor () -> Bool
-    private var owesCredentials = false
-    private var owesStatePush = false
+    private let deps: Dependencies
+    private var owed = Owed()
     private let notificationCenter: NotificationCenter
     private var observers: [NSObjectProtocol] = []
 
@@ -57,13 +71,14 @@ final class WatchSyncCoordinator: NSObject {
         notificationCenter: NotificationCenter = .default
     ) {
         self.session = session
-        self.sleep = sleep
-        self.republishCredentials = republishCredentials ?? {
-            WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed()
-            TLSPinWatchBroadcaster.shared.broadcast()
-        }
-        self.isProtectedDataAvailable = isProtectedDataAvailable
-            ?? { UIApplication.shared.isProtectedDataAvailable }
+        deps = Dependencies(
+            sleep: sleep,
+            republishCredentials: republishCredentials ?? {
+                WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed()
+                TLSPinWatchBroadcaster.shared.broadcast()
+            },
+            isProtectedDataAvailable: isProtectedDataAvailable ?? { UIApplication.shared.isProtectedDataAvailable }
+        )
         self.notificationCenter = notificationCenter
         super.init()
         observers = [
@@ -95,8 +110,8 @@ final class WatchSyncCoordinator: NSObject {
 
     func pushCurrentState(force: Bool = false) {
         guard let payloadSource else { return }
-        guard isProtectedDataAvailable() else {
-            owesStatePush = true
+        guard deps.isProtectedDataAvailable() else {
+            owed.statePush = true
             return
         }
         scheduleDebouncedPush(payloadSource(), force: force)
@@ -104,19 +119,19 @@ final class WatchSyncCoordinator: NSObject {
 
     func answerSyncRequest() {
         pushCurrentState(force: true)
-        owesCredentials = true
+        owed.credentials = true
         sendOwed()
     }
 
     private func sendOwed() {
-        guard isProtectedDataAvailable() else { return }
-        if owesStatePush {
-            owesStatePush = false
+        guard deps.isProtectedDataAvailable() else { return }
+        if owed.statePush {
+            owed.statePush = false
             pushCurrentState(force: true)
         }
-        if owesCredentials {
-            owesCredentials = false
-            republishCredentials()
+        if owed.credentials {
+            owed.credentials = false
+            deps.republishCredentials()
         }
     }
 
@@ -138,7 +153,7 @@ final class WatchSyncCoordinator: NSObject {
                 visualPreset: visualPreset, quietDays: quietDays, changes: changes
             )
         }
-        if !force, pendingSnapshot == nil, let last = lastDelivered, snapshot(last.syncedAt) == last {
+        if !force, pending.snapshot == nil, let last = pending.lastDelivered, snapshot(last.syncedAt) == last {
             return
         }
         deliver(snapshot(Date()))
@@ -146,42 +161,42 @@ final class WatchSyncCoordinator: NSObject {
 
     /// Attempt to deliver `snapshot` to the watch. If the watch isn't reachable
     /// yet (session not activated, no paired watch, or app not installed), the
-    /// snapshot is held in `pendingSnapshot` and flushed by the next activation
+    /// snapshot is held in `pending.snapshot` and flushed by the next activation
     /// completion or `sessionWatchStateDidChange` callback. Delivery errors
     /// also keep the snapshot pending so a later state change can retry.
     private func deliver(_ snapshot: WatchSnapshot) {
         guard session.isPaired, session.isWatchAppInstalled else {
-            pendingSnapshot = snapshot
+            pending.snapshot = snapshot
             return
         }
         do {
             let dict = try WatchPayloadCodec.encode(snapshot)
             try session.updateApplicationContext(dict)
-            pendingSnapshot = nil
-            lastDelivered = snapshot
+            pending.snapshot = nil
+            pending.lastDelivered = snapshot
         } catch {
             AppLogger.network.error("watch context push failed: \(error.localizedDescription)")
-            pendingSnapshot = snapshot
+            pending.snapshot = snapshot
         }
     }
 
     private func flushPendingIfReady() {
-        guard let snapshot = pendingSnapshot else { return }
+        guard let snapshot = pending.snapshot else { return }
         deliver(snapshot)
     }
 
     func scheduleDebouncedPush(_ payload: Payload, force: Bool = false) {
-        pendingPayload = payload
-        pendingForce = pendingForce || force
+        pending.payload = payload
+        pending.force = pending.force || force
         debounceTask?.cancel()
-        let sleep = self.sleep
+        let sleep = deps.sleep
         let interval = debounceInterval
         debounceTask = Task { [weak self] in
             await sleep(interval)
-            guard !Task.isCancelled, let self, let p = self.pendingPayload else { return }
-            let force = self.pendingForce
-            self.pendingPayload = nil
-            self.pendingForce = false
+            guard !Task.isCancelled, let self, let p = self.pending.payload else { return }
+            let force = self.pending.force
+            self.pending.payload = nil
+            self.pending.force = false
             self.push(courses: p.courses, customNames: p.customNames, accentHex: p.accentHex,
                       loggedIn: p.loggedIn, languageTag: p.languageTag,
                       visualPreset: p.visualPreset, quietDays: p.quietDays, changes: p.changes, force: force)

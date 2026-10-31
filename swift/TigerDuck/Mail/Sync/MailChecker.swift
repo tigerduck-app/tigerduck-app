@@ -85,7 +85,7 @@ nonisolated enum MailCheckOutcome: Equatable, Sendable {
 
 actor MailChecker {
     static let shared = MailChecker(
-        prefs: DefaultsMailPreferences(),
+        prefs: MailSettingsStore.shared,
         notifier: MailNotifier(center: SystemMailNotificationCenter()),
         openSession: { try await MailAccountManager.shared.openSession() },
         onAuthFailure: { await MailAccountManager.shared.handleAuthFailure() },
@@ -146,12 +146,7 @@ actor MailChecker {
 
     func noteSeenByPage(_ status: MailboxStatusInfo) {
         guard prefs.studentID != nil else { return }
-        if prefs.inboxUIDValidity != status.uidValidity || prefs.inboxNextUID == nil {
-            prefs.inboxUIDValidity = status.uidValidity
-            prefs.inboxNextUID = status.uidNext
-        } else if let marker = prefs.inboxNextUID, status.uidNext > marker {
-            prefs.inboxNextUID = status.uidNext
-        }
+        MailInboxCursor(prefs: prefs).noteSeen(status)
     }
 
     private func run(for account: String) async -> MailCheckOutcome? {
@@ -194,11 +189,11 @@ actor MailChecker {
     }
 
     private func checkInbox(for account: String, client: any MailClient) async throws -> InboxCheck? {
+        let cursor = MailInboxCursor(prefs: prefs)
         let status = try await client.status(folder: MailConstants.inbox)
         guard stillSignedIn(as: account) else { return nil }
-        guard prefs.inboxUIDValidity == status.uidValidity, let marker = prefs.inboxNextUID else {
-            prefs.inboxUIDValidity = status.uidValidity
-            prefs.inboxNextUID = status.uidNext
+        guard let marker = cursor.marker(for: status) else {
+            cursor.reset(to: status)
             return InboxCheck(outcome: .baselineReset, uidValidity: status.uidValidity)
         }
         guard status.uidNext > marker else { return InboxCheck(outcome: .noNewMail, uidValidity: status.uidValidity) }
@@ -210,24 +205,20 @@ actor MailChecker {
         let checkedAt = now()
         // A muted mail is passed over like a notified one, also when a failure below it holds the
         // marker and the settings change before the retry.
-        let passedOver = prefs.inboxMutedUIDs.flatMap { $0.uidValidity == status.uidValidity ? $0.uids : nil } ?? []
+        let passedOver = cursor.passedOver(uidValidity: status.uidValidity)
         let unread = fetched.filter { !$0.isSeen && !$0.isDeleted }.sorted { $0.uid < $1.uid }
         let muted = Set(unread.filter {
             passedOver.contains($0.uid) || mute.mutes($0, arrivedAt: $0.arrivedAt ?? checkedAt)
         }.map(\.uid))
         let fresh = unread.filter { !muted.contains($0.uid) }
         guard stillSignedIn(as: account) else { return nil }
+        guard prefs.notificationsEnabled else { return InboxCheck(outcome: .skippedDisabled, uidValidity: status.uidValidity) }
         let unnotified = await notifier.notify(fresh, uidValidity: status.uidValidity)
-        if !stillSignedIn(as: account) { await notifier.removeAll() }
+        if !stillSignedIn(as: account) || !prefs.notificationsEnabled { await notifier.removeAll() }
         let ceiling = fetched.map(\.uid).max().map { $0 + 1 } ?? status.uidNext
         guard stillSignedIn(as: account) else { return nil }
         let advanced = unnotified.min().map { min($0, ceiling) } ?? ceiling
-        if prefs.inboxUIDValidity == status.uidValidity {
-            let next = max(advanced, prefs.inboxNextUID ?? 0)
-            prefs.inboxNextUID = next
-            let held = passedOver.union(muted).filter { $0 >= next }
-            prefs.inboxMutedUIDs = held.isEmpty ? nil : MailMutedUIDs(uidValidity: status.uidValidity, uids: held)
-        }
+        cursor.advance(to: advanced, uidValidity: status.uidValidity, passedOver: passedOver.union(muted))
         return InboxCheck(
             outcome: fresh.isEmpty ? .noNewMail : .newMail(fresh.count),
             uidValidity: status.uidValidity,
@@ -246,18 +237,11 @@ actor MailChecker {
                                                      inlineImages: false)
                 guard !Task.isCancelled, stillSignedIn(as: account) else { return }
                 cache.saveDetail(detail, folder: MailConstants.inbox, uidValidity: uidValidity, wipeCount: wipeCount)
-            } catch let error as MailClientError where Self.endsPrefetch(error) {
+            } catch let error as MailClientError where MailErrorClass(error).endsTheRun {
                 return
             } catch {
                 continue
             }
-        }
-    }
-
-    nonisolated static func endsPrefetch(_ error: MailClientError) -> Bool {
-        switch error {
-        case .unreachable, .certificateRejected, .authenticationFailed, .serverBusy: true
-        case .searchUnsupported, .folderChanged, .sendUnconfirmed, .protocolError: false
         }
     }
 

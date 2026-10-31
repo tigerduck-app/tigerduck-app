@@ -139,12 +139,17 @@ final class ColorState: @unchecked Sendable {
     private nonisolated(unsafe) var unreadableReads = 0
     private nonisolated(unsafe) var lastCountedRead: Date?
     private let lock = OSAllocatedUnfairLock()
-    private let load: @Sendable () -> [String: UInt32]?
-    private let save: @Sendable ([String: UInt32]) -> Void
-    private let notePick: @Sendable (String) -> Void
-    private let forgetPicks: @Sendable () -> Void
-    private let protectedDataAvailable: @Sendable () -> Bool
-    private let now: @Sendable () -> Date
+    private let io: IO
+
+    /// Where the map is kept and what is told of a pick, and the clock and lock state reads go by.
+    private nonisolated struct IO {
+        let load: @Sendable () -> [String: UInt32]?
+        let save: @Sendable ([String: UInt32]) -> Void
+        let notePick: @Sendable (String) -> Void
+        let forgetPicks: @Sendable () -> Void
+        let protectedDataAvailable: @Sendable () -> Bool
+        let now: @Sendable () -> Date
+    }
 
     nonisolated static let unreadableReadLimit = 3
     nonisolated static let unreadableReadSpacing: TimeInterval = 10
@@ -160,12 +165,8 @@ final class ColorState: @unchecked Sendable {
         protectedDataAvailable: @escaping @Sendable () -> Bool = ColorState.isProtectedDataAvailable,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
-        self.load = load
-        self.save = save
-        self.notePick = notePick
-        self.forgetPicks = forgetPicks
-        self.protectedDataAvailable = protectedDataAvailable
-        self.now = now
+        io = IO(load: load, save: save, notePick: notePick, forgetPicks: forgetPicks,
+                protectedDataAvailable: protectedDataAvailable, now: now)
         self.map = read()
     }
 
@@ -186,12 +187,12 @@ final class ColorState: @unchecked Sendable {
     }
 
     private nonisolated func read() -> [String: UInt32]? {
-        if let stored = load() {
+        if let stored = io.load() {
             unreadableReads = 0
             return stored
         }
-        guard protectedDataAvailable() else { return nil }
-        let now = now()
+        guard io.protectedDataAvailable() else { return nil }
+        let now = io.now()
         if lastCountedRead.map({ now.timeIntervalSince($0) >= Self.unreadableReadSpacing }) ?? true {
             lastCountedRead = now
             unreadableReads += 1
@@ -246,7 +247,7 @@ final class ColorState: @unchecked Sendable {
         }
         if !changed.isEmpty {
             persist()
-            notePick(courseNo)
+            io.notePick(courseNo)
         }
         return changed
     }
@@ -308,12 +309,12 @@ final class ColorState: @unchecked Sendable {
         }
         guard reassigned else { return }
         persist()
-        forgetPicks()
+        io.forgetPicks()
     }
 
     private func persist() {
         guard let snapshot = lock.withLock({ map }) else { return }
-        save(snapshot)
+        io.save(snapshot)
         lock.withLock {
             unreadableReads = 0
             saves &+= 1

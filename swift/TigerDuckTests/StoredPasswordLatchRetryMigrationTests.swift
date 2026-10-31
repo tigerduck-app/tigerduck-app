@@ -11,16 +11,16 @@ struct StoredPasswordLatchRetryMigrationTests {
     static func withLatch(_ latched: Bool, _ body: () async throws -> Void) async rethrows {
         let defaults = UserDefaults.standard
         let saved = [doneKey, latchKey].map { ($0, defaults.object(forKey: $0)) }
-        let savedRefusals = SSOLoginService.storedPasswordRefusals
+        let savedRefusals = SchoolPasswordPosts.storedPasswordRefusals
         defer {
             for (key, value) in saved {
                 if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
             }
-            SSOLoginService.storedPasswordRefusals = savedRefusals
+            SchoolPasswordPosts.storedPasswordRefusals = savedRefusals
         }
         defaults.removeObject(forKey: doneKey)
         if latched { defaults.set(true, forKey: latchKey) } else { defaults.removeObject(forKey: latchKey) }
-        SSOLoginService.forgetStoredPasswordRefusals()
+        SchoolPasswordPosts.forgetStoredPasswordRefusals()
         try await body()
     }
 
@@ -30,10 +30,10 @@ struct StoredPasswordLatchRetryMigrationTests {
                 StoredPasswordLatchRetryMigration.runIfNeeded()
                 let now = Date()
 
-                #expect(!SSOLoginService.storedPasswordPostMustWait(now: now))
+                #expect(!SchoolPasswordPosts.storedPasswordPostMustWait(now: now))
                 #expect(UserDefaults.standard.object(forKey: Self.latchKey) == nil)
-                SSOLoginService.noteStoredPasswordRefused(at: now)
-                #expect(SSOLoginService.storedPasswordRetryAt(now: now)
+                SchoolPasswordPosts.noteStoredPasswordRefused(at: now)
+                #expect(SchoolPasswordPosts.storedPasswordRetryAt(now: now)
                     == now.addingTimeInterval(StoredPasswordBackoff.retryInterval))
             }
         }
@@ -44,8 +44,8 @@ struct StoredPasswordLatchRetryMigrationTests {
             await Self.withLatch(false) {
                 StoredPasswordLatchRetryMigration.runIfNeeded()
 
-                #expect(SSOLoginService.storedPasswordRefusals.count == 0)
-                #expect(SSOLoginService.storedPasswordRetryAt(now: Date()) == nil)
+                #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 0)
+                #expect(SchoolPasswordPosts.storedPasswordRetryAt(now: Date()) == nil)
             }
         }
     }
@@ -57,7 +57,7 @@ struct StoredPasswordLatchRetryMigrationTests {
                 UserDefaults.standard.set(true, forKey: Self.latchKey)
                 StoredPasswordLatchRetryMigration.runIfNeeded()
 
-                #expect(SSOLoginService.storedPasswordRefusals.count == 0)
+                #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 0)
             }
         }
     }

@@ -62,10 +62,7 @@ struct SyncStatusDot: View {
     static let idleOpacity = 0.5
 
     static func summary(loadingState: LoadingState, statuses: [ServerStatus]) -> ServerStatus {
-        if case .error = loadingState { return .failed }
-        if statuses.contains(.failed) { return .failed }
-        if statuses.contains(.ok) { return .ok }
-        return .unknown
+        SyncStatusText.summary(loadingState: loadingState, statuses: statuses)
     }
 
     private var isLoading: Bool {
@@ -87,7 +84,7 @@ struct SyncStatusDot: View {
             servers.map { server in
                 let status = tracker.status(for: server)
                 return Source(
-                    id: server.id, icon: server.icon, name: Self.serverName(server),
+                    id: server.id, icon: server.icon, name: SyncStatusText.serverName(server),
                     status: status,
                     text: isMinimal(server) && status == .ok
                         ? String(localized: "sync_status_minimal")
@@ -179,10 +176,10 @@ struct SyncStatusDot: View {
         if differentiateWithoutColor, let glyph = Self.glyph(summary) {
             Image(systemName: glyph)
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(Self.color(summary))
+                .foregroundStyle(SyncStatusText.color(summary))
         } else {
             Circle()
-                .fill(Self.color(summary))
+                .fill(SyncStatusText.color(summary))
                 .frame(width: 10, height: 10)
         }
     }
@@ -190,11 +187,11 @@ struct SyncStatusDot: View {
     @ViewBuilder
     private var ring: some View {
         if reduceMotion {
-            ProgressView().controlSize(.mini).tint(Self.color(summary))
+            ProgressView().controlSize(.mini).tint(SyncStatusText.color(summary))
         } else {
             Circle()
                 .trim(from: 0.2, to: 1)
-                .stroke(Self.color(summary), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .stroke(SyncStatusText.color(summary), style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .frame(width: 12, height: 12)
                 .rotationEffect(.degrees(spinning ? 360 : 0))
                 .animation(.linear(duration: 0.6).repeatForever(autoreverses: false), value: spinning)
@@ -204,42 +201,8 @@ struct SyncStatusDot: View {
     }
 
     private var details: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if isLoading {
-                row(color: .clear, icon: "arrow.triangle.2.circlepath",
-                    name: String(localized: "sync_status_syncing"), text: nil)
-            }
-            ForEach(sources) { source in
-                row(color: Self.color(source.status), icon: source.icon, name: source.name, text: source.text)
-            }
-            if lastSynced != .hidden {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    row(color: .clear, icon: "clock", name: String(localized: "sync_status_last_updated"),
-                        text: Self.ageText(lastSyncedDate, now: context.date))
-                }
-            }
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-        }
-        .font(.subheadline)
-        .padding(12)
-    }
-
-    private func row(color: Color, icon: String, name: String, text: String?) -> some View {
-        HStack(spacing: 8) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Image(systemName: icon)
-                .frame(width: 20)
-                .foregroundStyle(.secondary)
-            Text(name)
-            if let text {
-                Spacer(minLength: 12)
-                Text(text).foregroundStyle(.secondary)
-            }
-        }
+        SyncStatusDetails(isLoading: isLoading, sources: sources, showsLastSynced: lastSynced != .hidden,
+                          lastSyncedDate: lastSyncedDate, errorMessage: errorMessage)
     }
 
     private var lastSyncedDate: Date? {
@@ -250,51 +213,7 @@ struct SyncStatusDot: View {
         }
     }
 
-    static func ageText(_ syncedAt: Date?, now: Date) -> String {
-        guard let syncedAt else { return String(localized: "sync_status_never_updated") }
-        let seconds = max(0, now.timeIntervalSince(syncedAt))
-        switch seconds {
-        case ..<60:
-            return String(localized: "sync_status_just_now")
-        case ..<3600:
-            return String(format: String(localized: "sync_status_minutes_ago_short"), Int(seconds / 60))
-        case ..<86_400:
-            return String(format: String(localized: "sync_status_hours_ago_short"), Int(seconds / 3600))
-        default:
-            return String(format: String(localized: "sync_status_days_ago_short"), Int(seconds / 86_400))
-        }
-    }
-
-    private static func color(_ status: ServerStatus) -> Color {
-        switch status {
-        case .unknown: .gray
-        case .ok: .green
-        case .failed: .red
-        }
-    }
-
-    static func glyph(_ status: ServerStatus) -> String? {
-        switch status {
-        case .unknown: nil
-        case .ok: "checkmark.circle.fill"
-        case .failed: "exclamationmark.circle.fill"
-        }
-    }
-
-    private static func serverName(_ server: ServerKind) -> String {
-        switch server {
-        case .moodle: String(localized: "calendar_source_moodle")
-        case .courseSelection: String(localized: "feature_course_selection")
-        case .scoreSystem: String(localized: "sync_status_score_system")
-        case .backend: String(localized: "cloud_sync_title")
-        }
-    }
-
-    static func statusText(_ status: ServerStatus) -> String {
-        switch status {
-        case .ok: String(localized: "sync_status_ok")
-        case .failed: String(localized: "sync_status_failed")
-        case .unknown: String(localized: "bulletin_push_status_unknown")
-        }
-    }
+    static func ageText(_ syncedAt: Date?, now: Date) -> String { SyncStatusText.ageText(syncedAt, now: now) }
+    static func glyph(_ status: ServerStatus) -> String? { SyncStatusText.glyph(status) }
+    static func statusText(_ status: ServerStatus) -> String { SyncStatusText.statusText(status) }
 }

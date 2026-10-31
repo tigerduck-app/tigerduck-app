@@ -18,33 +18,6 @@ enum LibraryServiceError: LocalizedError {
 }
 
 enum LibraryService: AccountScoped {
-    private static let baseURL = "https://api.lib.ntust.edu.tw/v1"
-
-    private static let session: URLSession = {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 30
-        config.urlCache = nil
-        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        return SchoolSessions.pinned(config)
-    }()
-
-    private static func validateHTTP(_ response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse else {
-            throw LibraryServiceError.networkError(URLError(.badServerResponse))
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            let underlying = URLError(
-                .badServerResponse,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "HTTP \(http.statusCode)",
-                    "statusCode": http.statusCode,
-                ]
-            )
-            throw LibraryServiceError.networkError(underlying)
-        }
-    }
-
     static var storedUsername: String? {
         KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryUsername)
     }
@@ -160,45 +133,7 @@ enum LibraryService: AccountScoped {
     }
 
     static func requestToken(username: String, password: String) async throws -> LibraryLoginData {
-        try await requestToken(username: username, password: password, session: session)
-    }
-
-    static func requestToken(username: String, password: String, session: URLSession) async throws -> LibraryLoginData {
-        do {
-            #if DEBUG
-            try await ServerFailureSimulator.shared.check(.library)
-            #endif
-            let url = URL(string: "\(baseURL)/passport/login")!
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(
-                LibraryLoginRequest(username: username, password: password)
-            )
-
-            let (data, urlResponse) = try await session.data(for: request, delegate: CredentialPostDelegate())
-            return try loginAnswer(urlResponse, data: data)
-        } catch {
-            AppLogger.captureError(error, context: ["service": "libraryLogin"])
-            throw error
-        }
-    }
-
-    static func loginAnswer(_ response: URLResponse, data: Data) throws -> LibraryLoginData {
-        if let status = (response as? HTTPURLResponse)?.statusCode, (400..<500).contains(status) {
-            throw LibraryServiceError.loginFailed("HTTP \(status)")
-        }
-        try validateHTTP(response)
-        let decoded = try JSONDecoder().decode(LibraryLoginResponse.self, from: data)
-        // Treat missing `error` as success (the API omits it on the
-        // happy path); only fail when an explicit non-zero code is set.
-        if let apiError = decoded.error, apiError.code != 0 {
-            throw LibraryServiceError.loginFailed(apiError.message)
-        }
-        guard let loginData = decoded.data else {
-            throw LibraryServiceError.loginFailed("missing data")
-        }
-        return loginData
+        try await LibraryRequests.requestToken(username: username, password: password, session: LibraryRequests.session)
     }
 
     /// The library's count in ``StoredPasswordBackoff``, which saving or clearing credentials resets.
@@ -236,7 +171,7 @@ enum LibraryService: AccountScoped {
     ) async -> Bool {
         guard !isTokenValid, storedUsername != nil, storedPassword != nil else { return false }
         guard storedPasswordPostIsDue(now: Date()) else {
-            armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
+            LibraryPasswordRetry.arm(signIn: signIn, retrySleep: retrySleep)
             return false
         }
         guard signInIsDue(lastFailure: storedSignInFailedAt, now: Date()),
@@ -244,56 +179,11 @@ enum LibraryService: AccountScoped {
         return (try? await ensureToken(signIn: signIn, retrySleep: retrySleep)) != nil
     }
 
-    @MainActor private(set) static var storedPasswordRetry: Task<Void, Never>?
-    @MainActor private static var storedPasswordRetryMisses = 0
+    @MainActor static var storedPasswordRetry: Task<Void, Never>? { LibraryPasswordRetry.task }
     @MainActor private static var typedSignIns = 0
 
-    /// Posts the stored password again once its wait ends, as `AuthService` does for the school,
-    /// so a page left on the sign-in form signs in without a return to the app.
     @MainActor
-    private static func armStoredPasswordRetry(
-        signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData,
-        retrySleep: @escaping @Sendable (Duration) async -> Void
-    ) {
-        storedPasswordRetryMisses = 0
-        let now = Date()
-        guard let retryAt = StoredPasswordBackoff.library.retryAt(now: now) else { return cancelStoredPasswordRetry() }
-        startStoredPasswordRetry(after: max(0, retryAt.timeIntervalSince(now)), signIn: signIn, retrySleep: retrySleep)
-    }
-
-    @MainActor
-    private static func startStoredPasswordRetry(
-        after wait: TimeInterval,
-        signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData,
-        retrySleep: @escaping @Sendable (Duration) async -> Void
-    ) {
-        cancelStoredPasswordRetry()
-        storedPasswordRetry = AccountSession.library.task { ticket in
-            await retrySleep(.seconds(wait))
-            guard !Task.isCancelled, AccountSession.library.isCurrent(ticket) else { return }
-            guard storedPasswordPostIsDue(now: Date()) else {
-                storedPasswordRetry = nil
-                return armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
-            }
-            let refusals = storedPasswordRefusals.count
-            let signedIn = (try? await ensureToken(signIn: signIn, retrySleep: retrySleep)) != nil
-            guard !Task.isCancelled else { return }
-            storedPasswordRetry = nil
-            guard !signedIn, AccountSession.library.isCurrent(ticket), refusals > 0,
-                  storedPasswordRefusals.count == refusals else { return }
-            storedPasswordRetryMisses += 1
-            startStoredPasswordRetry(
-                after: StoredPasswordBackoff.retryDelay(afterRefusals: refusals + storedPasswordRetryMisses),
-                signIn: signIn, retrySleep: retrySleep
-            )
-        }
-    }
-
-    @MainActor
-    static func cancelStoredPasswordRetry() {
-        storedPasswordRetry?.cancel()
-        storedPasswordRetry = nil
-    }
+    static func cancelStoredPasswordRetry() { LibraryPasswordRetry.cancel() }
 
     @MainActor
     static func ensureToken(
@@ -326,7 +216,7 @@ enum LibraryService: AccountScoped {
                     if case LibraryServiceError.loginFailed = error {
                         StoredPasswordBackoff.library.noteRefused(at: Date())
                         if typedSignIns == typedSignInsBefore {
-                            armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
+                            LibraryPasswordRetry.arm(signIn: signIn, retrySleep: retrySleep)
                         }
                         #if os(iOS)
                         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
@@ -357,31 +247,10 @@ enum LibraryService: AccountScoped {
 
     static func generateQRCode() async throws -> String {
         do {
-            return try await requestQRCode(token: try await ensureToken(), session: session)
+            return try await LibraryRequests.requestQRCode(token: try await ensureToken(), session: LibraryRequests.session)
         } catch {
             AppLogger.captureError(error, context: ["service": "libraryGenerateQRCode"])
             throw error
         }
-    }
-
-    static func requestQRCode(token: String, session: URLSession) async throws -> String {
-        #if DEBUG
-        try await ServerFailureSimulator.shared.check(.library)
-        #endif
-        let url = URL(string: "\(baseURL)/virtual-code/generate")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(LibraryQRRequest(token: token))
-
-        let (data, urlResponse) = try await session.data(for: request, delegate: CredentialPostDelegate())
-        try validateHTTP(urlResponse)
-        let response = try JSONDecoder().decode(LibraryQRResponse.self, from: data)
-
-        if let apiError = response.error, apiError.code != 0 {
-            throw LibraryServiceError.qrGenerationFailed(apiError.message)
-        }
-        guard let qrData = response.data else { throw LibraryServiceError.qrGenerationFailed("missing data") }
-        return qrData
     }
 }

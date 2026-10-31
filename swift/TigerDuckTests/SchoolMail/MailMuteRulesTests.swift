@@ -256,12 +256,12 @@ struct MailMuteRulesTests {
         let suiteName = "MailMuteRulesTests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
         defer { suite.removePersistentDomain(forName: suiteName) }
-        let prefs = DefaultsMailPreferences(defaults: suite)
+        let prefs = MailSettingsStore(defaults: suite)
         #expect(prefs.muteSettings == MailMuteSettings())
         prefs.muteSettings.rules = [Self.rule(.subject, .contains, "ad")]
-        #expect(DefaultsMailPreferences(defaults: suite).muteSettings.rules.map(\.value) == ["ad"])
+        #expect(MailSettingsStore(defaults: suite).muteSettings.rules.map(\.value) == ["ad"])
         prefs.inboxMutedUIDs = MailMutedUIDs(uidValidity: 7, uids: [4, 9])
-        #expect(DefaultsMailPreferences(defaults: suite).inboxMutedUIDs == MailMutedUIDs(uidValidity: 7, uids: [4, 9]))
+        #expect(MailSettingsStore(defaults: suite).inboxMutedUIDs == MailMutedUIDs(uidValidity: 7, uids: [4, 9]))
         prefs.reset()
         #expect(prefs.muteSettings == MailMuteSettings())
         #expect(prefs.inboxMutedUIDs == nil)

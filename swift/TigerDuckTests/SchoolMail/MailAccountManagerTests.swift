@@ -37,11 +37,11 @@ struct MailAccountManagerTests {
                 return fake
             }
         )
-        manager.onSignedIn = { hooks.signedIn += 1 }
-        manager.onSignedOut = { hooks.signedOut += 1 }
-        manager.onAuthFailed = { hooks.authFailed += 1 }
-        manager.onNotificationsEnabled = { hooks.enabled += 1 }
-        manager.onNotificationsDisabled = { hooks.disabled += 1 }
+        manager.listeners.signedIn = { hooks.signedIn += 1 }
+        manager.listeners.signedOut = { hooks.signedOut += 1 }
+        manager.listeners.authFailed = { hooks.authFailed += 1 }
+        manager.listeners.notificationsEnabled = { hooks.enabled += 1 }
+        manager.listeners.notificationsDisabled = { hooks.disabled += 1 }
         return Harness(manager: manager, prefs: prefs, secrets: secrets, cache: cache, fake: fake, hooks: hooks)
     }
 

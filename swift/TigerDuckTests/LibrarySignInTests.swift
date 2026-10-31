@@ -44,7 +44,7 @@ struct LibrarySignInTests {
         let url = URL(string: "https://api.lib.ntust.edu.tw/v1/passport/login")!
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
         do {
-            _ = try LibraryService.loginAnswer(response, data: Data())
+            _ = try LibraryRequests.loginAnswer(response, data: Data())
             return false
         } catch LibraryServiceError.loginFailed {
             return true

@@ -38,7 +38,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 | School Mail's cached pages, bodies and search index | `MailCache.clearAll()`, from School Mail's sign-out (`MailAccountManager.logout()`), which its next sign-in waits for |
 
 School Mail and the library are accounts of their own, with a session and a sign-out plan each,
-which a school sign-out keeps. School Mail's keys live in `MailPreferences` and
+which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` and
 `MailCredentialStore`, and its sign-out clears them; the library's sign-out is
 `LibraryService.clearCredentials()`.
 

@@ -120,7 +120,7 @@ final class DevMailServerSettings {
 
     static func applyRefusal(for draft: MailServerOverrideSettings) -> String? {
         guard draft.isEnabled, let settings = draft.normalized else { return nil }
-        let school = [settings.imapHost, settings.smtpHost].filter(DevMailConnectionProbe.isSchoolHost)
+        let school = [settings.imapHost, settings.smtpHost].filter(DevMailProbeDraft.isSchoolHost)
         guard !school.isEmpty else { return nil }
         return """
         \(Array(Set(school)).sorted().joined(separator: ", ")) is an NTUST host, and an override \

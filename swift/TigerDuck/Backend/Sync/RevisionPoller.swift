@@ -83,9 +83,14 @@ nonisolated struct RevisionPollSchedule: Sendable {
 final class RevisionPoller {
     var poll: @MainActor () async -> RevisionPollOutcome = { .unchanged }
 
-    private let sleep: @Sendable (Duration) async -> Void
-    private let now: () -> Date
-    private let jitter: () -> Double
+    private let clock: Clock
+
+    /// The waits, the time and the spread of retries, which tests set.
+    private struct Clock {
+        let sleep: @Sendable (Duration) async -> Void
+        let now: () -> Date
+        let jitter: () -> Double
+    }
     private var schedule: RevisionPollSchedule
     private var isRunning = false
     private(set) var isPolling = false
@@ -100,18 +105,16 @@ final class RevisionPoller {
         now: @escaping () -> Date = { Date() },
         jitter: @escaping () -> Double = { Double.random(in: 0...1) }
     ) {
-        self.sleep = sleep
-        self.now = now
-        self.jitter = jitter
+        clock = Clock(sleep: sleep, now: now, jitter: jitter)
         schedule = RevisionPollSchedule(now: now())
     }
 
     func start(pollNow: Bool) {
         isRunning = true
         isSuspended = false
-        schedule.noteActivity(at: now())
+        schedule.noteActivity(at: clock.now())
         guard !isPolling else { return }
-        let sinceLastPoll = lastPollAt.map { now().timeIntervalSince($0) } ?? .infinity
+        let sinceLastPoll = lastPollAt.map { clock.now().timeIntervalSince($0) } ?? .infinity
         let delay = pollNow
             ? max(0, RevisionPollSchedule.activeInterval - max(0, sinceLastPoll))
             : RevisionPollSchedule.activeInterval
@@ -134,9 +137,9 @@ final class RevisionPoller {
     }
 
     func noteActivity() {
-        schedule.noteActivity(at: now())
+        schedule.noteActivity(at: clock.now())
         guard isRunning, !isSuspended, !isPolling else { return }
-        let soonest = now().addingTimeInterval(RevisionPollSchedule.activeInterval)
+        let soonest = clock.now().addingTimeInterval(RevisionPollSchedule.activeInterval)
         if let nextPollAt, nextPollAt <= soonest { return }
         arm(after: RevisionPollSchedule.activeInterval)
     }
@@ -144,7 +147,7 @@ final class RevisionPoller {
     private func pollOnce() {
         guard isRunning, !isSuspended, !isPolling else { return }
         isPolling = true
-        lastPollAt = now()
+        lastPollAt = clock.now()
         inFlight = Task { [weak self] in
             guard let self else { return }
             let outcome = await self.poll()
@@ -157,14 +160,14 @@ final class RevisionPoller {
         let delay: TimeInterval
         switch outcome {
         case .changed:
-            schedule.noteActivity(at: now())
-            delay = schedule.delayAfterAnswer(at: now())
+            schedule.noteActivity(at: clock.now())
+            delay = schedule.delayAfterAnswer(at: clock.now())
         case .unchanged:
-            delay = schedule.delayAfterAnswer(at: now())
+            delay = schedule.delayAfterAnswer(at: clock.now())
         case .offline:
-            delay = schedule.currentInterval(at: now())
+            delay = schedule.currentInterval(at: clock.now())
         case .failed:
-            delay = schedule.delayAfterFailure(at: now(), jitter: jitter())
+            delay = schedule.delayAfterFailure(at: clock.now(), jitter: clock.jitter())
         case .unauthorized:
             // `BackendClient` already refreshed or signed in again once; polling waits for a return.
             isSuspended = true
@@ -176,8 +179,8 @@ final class RevisionPoller {
 
     private func arm(after delay: TimeInterval) {
         cancelWait()
-        nextPollAt = now().addingTimeInterval(delay)
-        wait = Task { [weak self, sleep] in
+        nextPollAt = clock.now().addingTimeInterval(delay)
+        wait = Task { [weak self, sleep = clock.sleep] in
             await sleep(.seconds(delay))
             guard !Task.isCancelled else { return }
             self?.nextPollAt = nil

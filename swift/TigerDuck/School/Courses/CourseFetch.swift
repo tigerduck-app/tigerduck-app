@@ -7,10 +7,6 @@ import TigerDuckCore
 /// and saves and uploads what it drew.
 enum CourseFetch {
 
-    typealias CourseUploader = (_ courses: [SDCourse], _ semester: String, _ asRoster: Bool, _ resend: Bool) -> Void
-
-    static var courseUploader: CourseUploader?
-    static var rosterRequests = RosterRequestLog()
 
     static func fetchCourses(
         authService: AuthService,
@@ -26,8 +22,8 @@ enum CourseFetch {
             resendingRoster: resendingRoster,
             applyAfter: applyAfter,
             ticket: authService.session.ticket,
-            moodle: { await fetchMoodleCourses(authService: authService) },
-            transcript: { await fetchTranscript(authService: authService) }
+            moodle: { await CourseSources.moodleCourses(authService: authService) },
+            transcript: { await CourseSources.transcript(authService: authService) }
         )
     }
 
@@ -43,7 +39,7 @@ enum CourseFetch {
         await warmTerms(
             semesters,
             account: authService.session,
-            shared: { (await fetchMoodleCourses(authService: authService), await fetchTranscript(authService: authService)) }
+            shared: { (await CourseSources.moodleCourses(authService: authService), await CourseSources.transcript(authService: authService)) }
         ) { semester, ticket, moodle, transcript in
             _ = await fetchCourses(
                 authService: authService,
@@ -79,47 +75,6 @@ enum CourseFetch {
         }
     }
 
-    /// Nil lets a term fetch go on without Moodle, which only adds names and links.
-    static func fetchMoodleCourses(authService: AuthService) async -> [MoodleEnrolledCourse]? {
-        let ticket = authService.session.ticket
-        do {
-            let courses = try await MoodleEnrolledCoursesService.fetchEnrolled()
-            record(.ok, for: .moodle, round: ticket, authService: authService)
-            return courses
-        } catch {
-            record(.failed, for: .moodle, round: ticket, authService: authService)
-            AppLogger.captureError(error, context: ["service": "fetchEnrolled", "flow": "classTable"])
-            return nil
-        }
-    }
-
-    /// A pull does not skip the day-long cache either, so a past term's refresh adds no
-    /// score-system sign-in.
-    static func fetchTranscript(authService: AuthService) async -> ScoreReport? {
-        let ticket = authService.session.ticket
-        guard let studentId = authService.storedStudentId,
-              let password = authService.storedPassword else { return nil }
-        do {
-            #if DEBUG
-            try await ServerFailureSimulator.shared.check(.scoreSystem)
-            #endif
-            let report = try await NTUSTScoreService.fetchScoreReport(
-                session: NTUSTSessionManager.shared.session,
-                studentId: studentId,
-                password: password,
-                persistGuard: { @Sendable [weak authService] in
-                    authService?.session.isCurrent(ticket) == true
-                }
-            ).report
-            record(.ok, for: .scoreSystem, round: ticket, authService: authService)
-            return report
-        } catch {
-            record(.failed, for: .scoreSystem, round: ticket, authService: authService)
-            AppLogger.captureError(error, context: ["service": "fetchScoreReport", "flow": "classTable"])
-            return nil
-        }
-    }
-
     private static func fetchCourses(
         authService: AuthService,
         semester: String,
@@ -146,39 +101,12 @@ enum CourseFetch {
             return CourseStore.shared.loadCourses(semester: semester)
         }
 
-        let session = NTUSTSessionManager.shared.session
-        var courseSelectionNos: [String]?
-        var selectionIsLive = false
-        if servesSelectionSemester {
-            do {
-                #if DEBUG
-                try await ServerFailureSimulator.shared.check(.courseSelection)
-                #endif
-                let answer = try await CourseSelectionService.fetchEnrolledCourseNos(
-                    session: session,
-                    studentId: studentId,
-                    password: password,
-                    forceRefresh: forceRefresh,
-                    persistGuard: { @Sendable [weak authService] in
-                        authService?.session.isCurrent(ticket) == true
-                    }
-                )
-                courseSelectionNos = answer.courseNos
-                selectionIsLive = answer.live
-                await MainActor.run {
-                    record(.ok, for: .courseSelection, round: ticket, authService: authService)
-                }
-            } catch {
-                await MainActor.run {
-                    record(.failed, for: .courseSelection, round: ticket, authService: authService)
-                    AppLogger.captureError(error, context: [
-                        "service": "fetchEnrolledCourseNos",
-                        "semester": semester,
-                        "fallback": "transcript",
-                    ])
-                }
-            }
-        }
+        let selection = servesSelectionSemester
+            ? await CourseSources.selectionCourseNos(authService: authService, studentId: studentId, password: password,
+                                                     semester: semester, forceRefresh: forceRefresh, ticket: ticket)
+            : nil
+        let courseSelectionNos = selection?.courseNos
+        let selectionIsLive = selection?.live ?? false
 
         let selectionAnswered = courseSelectionNos?.isEmpty == false
         let report = selectionAnswered
@@ -275,46 +203,12 @@ enum CourseFetch {
         guard CourseStore.shared.saveFetchedCourses(courses, semester: semester, display: display, since: editToken) else {
             return CourseStore.shared.loadCourses(semester: semester)
         }
-        uploadVisibleCourses(
+        CourseUpload.uploadVisibleCourses(
             courses, semester: semester, hidden: Set(CourseStore.shared.loadDeletedCourseNos()),
             roster: TermRoster.uploadedRoster(selection: term.roster, live: selectionIsLive, pastTerm: pastTerm?.roster),
-            resendingRoster: resendingRoster, to: courseUploader
+            resendingRoster: resendingRoster, to: CourseUpload.courseUploader
         )
         return courses
-    }
-
-    /// A requested term goes up even when unchanged: the backend asks because no roster of it
-    /// arrived for a week.
-    static func answerRosterRequests(in snapshot: [String: Any], authService: AuthService) {
-        guard SyncPolicy.current.uploadsCourses else { return }
-        for term in rosterRequests.termsToAsk(in: snapshot, signIn: authService.session.ticket, now: Date()) {
-            AppLogger.sync.info("[sync] roster requested for \(term, privacy: .public)")
-            Task {
-                _ = await fetchCourses(authService: authService, semester: term, forceRefresh: true, resendingRoster: true)
-            }
-        }
-    }
-
-    /// Uploads the term's courses but those hidden here. They go as the term's roster when
-    /// `roster`, course selection's answer or a past term's final transcript, names no course they
-    /// leave out but a hidden one: the backend drops each school course a roster leaves out, so a
-    /// failed lookup must not drop its course. A hidden course has no server row once its delete
-    /// lands; listing it would file one for a course hidden before the server held it, and the
-    /// next sync would show it again.
-    static func uploadVisibleCourses(
-        _ courses: [SDCourse],
-        semester: String,
-        hidden: Set<String>,
-        roster: [String]? = nil,
-        resendingRoster: Bool = false,
-        to upload: CourseUploader?
-    ) {
-        let isHidden = { (courseNo: String) in CourseTombstone.isHidden(courseNo, semester: semester, in: hidden) }
-        let visible = courses.filter { !isHidden($0.courseNo) }
-        guard !visible.isEmpty else { return }
-        let listed = Set(visible.map(\.courseNo))
-        let asRoster = roster?.allSatisfy { listed.contains($0) || isHidden($0) } ?? false
-        upload?(visible, semester, asRoster, resendingRoster && asRoster)
     }
 
     static func record(

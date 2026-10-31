@@ -105,7 +105,7 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
     }
 
     private func bubble(_ token: String, at index: Int) -> some View {
-        let valid = MailComposeViewModel.sendableAddress(token) != nil
+        let valid = MailRecipients.sendableAddress(token) != nil
         return HStack(spacing: 0) {
             Text(verbatim: token)
                 .fixedSize(horizontal: false, vertical: true)

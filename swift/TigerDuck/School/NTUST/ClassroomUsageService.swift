@@ -47,9 +47,6 @@ final class ClassroomUsageService {
     /// Past this a kept day is too old to stand in for the day, so a failed reload shows the
     /// failure rather than it (https://github.com/tigerduck-app/tigerduck-app/issues/477).
     static let keptLimit = FreshnessPolicy(lifetime: 12 * 60 * 60)
-    private static let campus = "HQ"
-    private static let maxPages = 20
-    private static let maxMonthSteps = 3
 
     nonisolated struct KeptUsage: Equatable, Sendable {
         let usage: CampusUsage
@@ -67,11 +64,7 @@ final class ClassroomUsageService {
     ) async throws -> Bool
     typealias LogFailure = @MainActor (any Error) -> Void
 
-    private let session: URLSession
-    private let queryURL: URL
-    private let account: AccountSession
-    private let signIn: SignIn
-    private let timeouts: (load: TimeInterval, post: TimeInterval)
+    private let pages: ClassroomUsagePages
     private let now: @MainActor () -> Date
     private let logFailure: LogFailure
 
@@ -91,11 +84,7 @@ final class ClassroomUsageService {
         now: @escaping @MainActor () -> Date = { Date() },
         logFailure: @escaping LogFailure = { AppLogger.captureError($0, context: ["service": "classroomUsage"]) }
     ) {
-        self.session = session
-        self.queryURL = queryURL
-        self.account = account
-        self.signIn = signIn
-        self.timeouts = timeouts
+        pages = ClassroomUsagePages(session: session, queryURL: queryURL, account: account, signIn: signIn, timeouts: timeouts)
         self.now = now
         self.logFailure = logFailure
     }
@@ -142,6 +131,8 @@ final class ClassroomUsageService {
         let epoch: Int
     }
 
+    private var account: AccountSession { pages.account }
+
     private func adoptSession() {
         let signIn = account.ticket
         guard stateSignIn != signIn else { return }
@@ -170,7 +161,7 @@ final class ClassroomUsageService {
             return try await read(day, credentials: credentials, ticket: ticket)
         } catch ClassroomUsageError.unreadable {
             try check(ticket)
-            NTUSTSessionManager.shared.dropServiceCookies(for: queryURL)
+            NTUSTSessionManager.shared.dropServiceCookies(for: pages.queryURL)
             do {
                 return try await read(day, credentials: credentials, ticket: ticket)
             } catch {
@@ -185,93 +176,11 @@ final class ClassroomUsageService {
     }
 
     private func read(_ day: Int, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
-        var page = try await campusPage(credentials: credentials, ticket: ticket)
-        // The campus page shows a grid as well, but nothing on it is known to name that grid's
-        // day, which the site may keep from an earlier read, so today's date is posted too
-        // (https://github.com/tigerduck-app/tigerduck-app/issues/475).
-        var monthSteps = 0
-        while true {
-            guard let step = ClassroomUsageParser.calendarStep(
-                toward: day, days: page.calendarDays, monthSteps: page.monthSteps
-            ) else { throw ClassroomUsageError.dateUnavailable }
-            page = try await post(step, from: page, ticket: ticket)
-            guard step.argument.hasPrefix("V") else { break }
-            monthSteps += 1
-            if monthSteps >= Self.maxMonthSteps { throw ClassroomUsageError.dateUnavailable }
-        }
-
-        // A postback can answer with a later page first, so pages are read by number. A page
-        // read twice, one for another campus or more pages than the cap is no whole day.
-        var rooms: [Int: [RoomUsage]] = [:]
-        while true {
-            guard let grid = page.grid, page.campus == Self.campus, rooms[grid.page] == nil else {
-                throw ClassroomUsageError.unreadable
-            }
-            rooms[grid.page] = grid.rooms
-            guard let next = grid.pageLinks.filter({ rooms[$0.key] == nil }).min(by: { $0.key < $1.key }) else { break }
-            guard rooms.count < Self.maxPages else { throw ClassroomUsageError.unreadable }
-            page = try await post(next.value, from: page, ticket: ticket)
-        }
-        return CampusUsage(rooms: rooms.keys.sorted().flatMap { rooms[$0] ?? [] }, buildingNames: page.buildingNames)
-    }
-
-    private func campusPage(credentials: Credentials, ticket: Ticket) async throws -> ClassroomUsageParser.Page {
-        var html = try await load(URLRequest(url: queryURL, timeoutInterval: timeouts.load))
-        if html.map(ClassroomUsageParser.isQueryPage) != true {
-            try check(ticket)
-            guard try await signIn(queryURL, credentials, { [account] in account.isCurrent(ticket.signIn) }) else {
-                throw ClassroomUsageError.notSignedIn
-            }
-            html = try await load(URLRequest(url: queryURL, timeoutInterval: timeouts.load))
-        }
-        guard let html, ClassroomUsageParser.isQueryPage(html) else { throw ClassroomUsageError.unreadable }
-        let query = await Self.parse(html)
-        let campus = try await post(
-            .init(target: ClassroomUsageParser.campusField, argument: ""),
-            from: query,
-            values: [ClassroomUsageParser.campusField: Self.campus],
-            ticket: ticket
+        let scope = ClassroomUsagePages.Scope(
+            isCurrent: { [account] in account.isCurrent(ticket.signIn) },
+            check: { try self.check(ticket) }
         )
-        // The query page opens on another campus, whose answer would read as a day with no rooms.
-        guard campus.campus == Self.campus else { throw ClassroomUsageError.unreadable }
-        return campus
-    }
-
-    private func post(
-        _ postback: ClassroomUsageParser.Postback,
-        from page: ClassroomUsageParser.Page,
-        values: [String: String] = [:],
-        ticket: Ticket
-    ) async throws -> ClassroomUsageParser.Page {
-        let overrides = values.merging(
-            ["__EVENTTARGET": postback.target, "__EVENTARGUMENT": postback.argument]
-        ) { _, event in event }
-        var fields = page.fields.map { (name: $0.name, value: overrides[$0.name] ?? $0.value) }
-        for (name, value) in overrides.sorted(by: { $0.key < $1.key }) where !fields.contains(where: { $0.name == name }) {
-            fields.append((name, value))
-        }
-        var request = URLRequest(url: queryURL, timeoutInterval: timeouts.post)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue(queryURL.absoluteString, forHTTPHeaderField: "Referer")
-        request.httpBody = Data(SSOLoginService.formBody(fields).utf8)
-
-        guard let html = try await load(request), ClassroomUsageParser.isQueryPage(html) else {
-            throw ClassroomUsageError.unreadable
-        }
-        let next = await Self.parse(html)
-        try check(ticket)
-        return next
-    }
-
-    private func load(_ request: URLRequest) async throws -> String? {
-        let (data, response) = try await session.data(for: request)
-        guard (response as? HTTPURLResponse)?.url?.host == queryURL.host else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    private static func parse(_ html: String) async -> ClassroomUsageParser.Page {
-        await Task.detached(priority: .userInitiated) { ClassroomUsageParser.page(html) }.value
+        return try await pages.read(day, credentials: credentials, scope: scope)
     }
 
     private func oneAtATime<T>(_ body: () async throws -> T) async throws -> T {

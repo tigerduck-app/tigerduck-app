@@ -17,20 +17,24 @@ struct MailComposeView: View {
     @State private var pendingPicks = 0
     @FocusState private var focused: Field?
 
-    init(
-        context: MailComposeContext,
-        session: MailPageSession,
-        folderRoles: [MailFolderRole: String],
-        onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void,
-        onSentCopyNotice: @escaping (String) -> Void
-    ) {
+    init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String], events: MailboxEvents) {
         let account = MailAccountManager.shared
         let sender = MailAddress(name: account.displayName, address: account.address ?? "")
-        let model = MailComposeViewModel(context: context, session: session, sender: sender, folderRoles: folderRoles)
-        model.onFolderRolesChanged = onFolderRolesChanged
-        model.onSentCopyNotice = onSentCopyNotice
-        _viewModel = State(initialValue: model)
+        _viewModel = State(initialValue: MailComposeViewModel(context: context, session: session, sender: sender,
+                                                              folderRoles: folderRoles, events: events))
         mode = context.mode
+    }
+
+    /// For a screen without a mailbox of its own: the folder roles and the sent-copy notice go to
+    /// the closures.
+    init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String],
+         onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void, onSentCopyNotice: @escaping (String) -> Void) {
+        let events = MailboxEvents()
+        events.observe { event in
+            if case let .folderRoles(roles) = event { onFolderRolesChanged(roles) }
+            if case let .sentCopyNotice(notice) = event { onSentCopyNotice(notice) }
+        }
+        self.init(context: context, session: session, folderRoles: folderRoles, events: events)
     }
 
     var body: some View {
@@ -185,49 +189,16 @@ struct MailComposeView: View {
     }
 
     private func addFile(_ url: URL) async {
-        let picked = await Task.detached {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let data = Self.readBounded(url) else { return nil as (Data, String, String)? }
-            let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-            return (data, mimeType, url.lastPathComponent)
-        }.value
-        guard let (data, mimeType, filename) = picked else {
+        guard let picked = await MailComposeFiles.read(url) else {
             viewModel.attachmentReadFailed()
             return
         }
-        viewModel.addAttachment(filename: filename, mimeType: mimeType, data: data)
-    }
-
-    private nonisolated static func readBounded(_ url: URL) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        return readBounded(read: handle.read(upToCount:))
-    }
-
-    nonisolated static func readBounded(read: (Int) throws -> Data?) -> Data? {
-        var data = Data()
-        do {
-            while let chunk = try read(1024 * 1024), !chunk.isEmpty {
-                data.append(chunk)
-                guard data.count <= MailConstants.maxEncodedMessageBytes else { return nil }
-            }
-        } catch {
-            return nil
-        }
-        return data
+        viewModel.addAttachment(filename: picked.filename, mimeType: picked.mimeType, data: picked.data)
     }
 
     private func addPhotos(_ items: [PhotosPickerItem]) async {
-        var anyFailed = false
-        for (index, item) in items.enumerated() {
-            guard let data = try? await item.loadTransferable(type: Data.self) else {
-                anyFailed = true
-                continue
-            }
-            let type = item.supportedContentTypes.first
-            let ext = type?.preferredFilenameExtension ?? "jpg"
-            viewModel.addAttachment(filename: "IMG_\(index + 1).\(ext)", mimeType: type?.preferredMIMEType ?? "image/jpeg", data: data)
+        let anyFailed = await MailComposeFiles.loadPhotos(items) { filename, mimeType, data in
+            viewModel.addAttachment(filename: filename, mimeType: mimeType, data: data)
         }
         if anyFailed { viewModel.attachmentReadFailed() }
         photoItems = []

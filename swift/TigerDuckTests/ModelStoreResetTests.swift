@@ -16,7 +16,7 @@ struct ModelStoreResetTests {
             try Data("stale".utf8).write(to: dir.appendingPathComponent(name))
         }
 
-        TigerDuckApp.deleteStoreFiles(at: dir.appendingPathComponent("default.store"))
+        AppModelStore.deleteStoreFiles(at: dir.appendingPathComponent("default.store"))
 
         let left = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         #expect(left == ["other.store"])
@@ -41,7 +41,7 @@ struct ModelStoreResetTests {
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: store.path) }
         var diskOpens = 0
 
-        let opened = TigerDuckApp.openStore(at: store) { inMemory in
+        let opened = AppModelStore.openStore(at: store) { inMemory in
             if inMemory { return "memory" }
             diskOpens += 1
             throw OpenFailed()
@@ -59,7 +59,7 @@ struct ModelStoreResetTests {
         try Data("damaged".utf8).write(to: store)
         var diskOpens = 0
 
-        let opened = TigerDuckApp.openStore(at: store) { inMemory in
+        let opened = AppModelStore.openStore(at: store) { inMemory in
             if inMemory { return "memory" }
             diskOpens += 1
             guard !FileManager.default.fileExists(atPath: store.path) else { throw OpenFailed() }

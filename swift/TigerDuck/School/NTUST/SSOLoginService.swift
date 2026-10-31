@@ -25,89 +25,6 @@ enum SSOLoginError: LocalizedError {
 
 enum SSOLoginService {
 
-    /// Decode an HTML response respecting `Content-Type` charset. Older NTUST
-    /// endpoints occasionally serve Big5 (or windows-1252 for ASCII-only
-    /// pages); a hard UTF-8 decode would return nil on those and surface as
-    /// `invalidResponse` for what is otherwise a recoverable response.
-    private static func decodeHTML(_ data: Data, response: URLResponse?) -> String? {
-        let charset = (response as? HTTPURLResponse)?
-            .value(forHTTPHeaderField: "Content-Type")?
-            .lowercased()
-        if let charset {
-            if charset.contains("big5") {
-                if let s = String(data: data, encoding: .init(rawValue:
-                    CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5.rawValue))
-                )) { return s }
-            }
-            if charset.contains("windows-1252") || charset.contains("iso-8859-1") {
-                if let s = String(data: data, encoding: .isoLatin1) { return s }
-            }
-        }
-        if let s = String(data: data, encoding: .utf8) { return s }
-        let big5 = String.Encoding(rawValue:
-            CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5.rawValue)))
-        return String(data: data, encoding: big5)
-    }
-
-    nonisolated static var storedPasswordRefusals: (count: Int, last: Date?) {
-        get { StoredPasswordBackoff.ntust.refusals }
-        set { StoredPasswordBackoff.ntust.refusals = newValue }
-    }
-
-    nonisolated static let storedPasswordPostWaits = Notification.Name("TigerDuck.storedPasswordPostWaits")
-    nonisolated static let storedPasswordRetryAtKey = "retryAt"
-
-    nonisolated static func storedPasswordRetryAt(now: Date = Date()) -> Date? {
-        StoredPasswordBackoff.ntust.retryAt(now: now)
-    }
-
-    nonisolated static func storedPasswordPostMustWait(now: Date = Date()) -> Bool {
-        guard let retryAt = storedPasswordRetryAt(now: now), retryAt > now else { return false }
-        announceStoredPasswordWait(until: retryAt)
-        return true
-    }
-
-    nonisolated static func noteStoredPasswordRefused(at now: Date = Date()) {
-        announceStoredPasswordWait(until: StoredPasswordBackoff.ntust.noteRefused(at: now))
-    }
-
-    private nonisolated static func announceStoredPasswordWait(until retryAt: Date) {
-        Task { @MainActor in
-            NotificationCenter.default.post(
-                name: storedPasswordPostWaits, object: nil, userInfo: [storedPasswordRetryAtKey: retryAt]
-            )
-        }
-    }
-
-    nonisolated static func forgetStoredPasswordRefusals() {
-        StoredPasswordBackoff.ntust.forget()
-    }
-
-    private nonisolated static let storedPasswordPosts = AsyncSerialLock()
-
-    nonisolated static func storedPasswordPostsWaiting() async -> Int {
-        await storedPasswordPosts.waiterCount
-    }
-
-    /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
-    /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
-    /// refused before either counted the refusal, and the school counts both toward the lockout.
-    /// `body` checks ``storedPasswordPostMustWait(now:)``, posts, reads the answer and counts a
-    /// refusal before it returns. A sign-in the user typed posts what was typed, so it does not wait.
-    nonisolated(nonsending) static func postingStoredPassword<T>(
-        _ body: nonisolated(nonsending) () async throws -> T
-    ) async rethrows -> T {
-        await storedPasswordPosts.acquire()
-        do {
-            let result = try await body()
-            await storedPasswordPosts.release()
-            return result
-        } catch {
-            await storedPasswordPosts.release()
-            throw error
-        }
-    }
-
     private static var isLoginRunning = false
     private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
 
@@ -149,7 +66,7 @@ enum SSOLoginService {
                 isCurrent: isCurrent, interactive: true, now: now, logFailure: logFailure
             )
         }
-        return try await postingStoredPassword {
+        return try await SchoolPasswordPosts.postingStoredPassword {
             try await signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
                 isCurrent: isCurrent, interactive: false, now: now, logFailure: logFailure
@@ -173,12 +90,12 @@ enum SSOLoginService {
         now: () -> Date = { Date() },
         mayPost: () -> Bool
     ) async throws -> Bool {
-        try await postingStoredPassword {
+        try await SchoolPasswordPosts.postingStoredPassword {
             try await oneAtATime {
                 try checkSignedIn(isCurrent)
-                guard storedPasswordRefusals.count > 0 else { return true }
+                guard SchoolPasswordPosts.storedPasswordRefusals.count > 0 else { return true }
                 guard mayPost() else { return false }
-                if storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
+                if SchoolPasswordPosts.storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
                 return try await performServiceLogin(
                     session: session, serviceURL: serviceURL, studentId: studentId, password: password,
                     isCurrent: isCurrent, interactive: false, retry: true, now: now,
@@ -205,12 +122,12 @@ enum SSOLoginService {
                 isCurrent: isCurrent, interactive: interactive, retry: false, now: now,
                 logFailure: logFailure
             )
-            if interactive, signedIn { forgetStoredPasswordRefusals() }
+            if interactive, signedIn { SchoolPasswordPosts.forgetStoredPasswordRefusals() }
             return signedIn
         }
     }
 
-    private static func checkSignedIn(_ isCurrent: @MainActor () -> Bool) throws {
+    static func checkSignedIn(_ isCurrent: @MainActor () -> Bool) throws {
         if !isCurrent() { throw CancellationError() }
     }
 
@@ -226,7 +143,7 @@ enum SSOLoginService {
         logFailure: @MainActor (any Error) -> Void
     ) async throws -> Bool {
         do {
-            var (currentHTML, currentURL) = try await visit(serviceURL, session: session, isCurrent: isCurrent)
+            var (currentHTML, currentURL) = try await SSOForms.visit(serviceURL, session: session, isCurrent: isCurrent)
 
             // Step 3: Check if we're on the SSO login page. A live session would let the password
             // through unchecked, so a sign-in past it drops the service's cookies and goes on to
@@ -238,7 +155,7 @@ enum SSOLoginService {
                 // A service whose own session lapsed sends the visit to the campus portal, not to
                 // the sign-in form; without its cookies the next visit goes through SSO.
                 NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
-                (currentHTML, currentURL) = try await visit(serviceURL, session: session, isCurrent: isCurrent)
+                (currentHTML, currentURL) = try await SSOForms.visit(serviceURL, session: session, isCurrent: isCurrent)
                 if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                     guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
                         throw SSOLoginError.loginFormNotFound
@@ -247,7 +164,7 @@ enum SSOLoginService {
                 }
             }
 
-            if !interactive, storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
+            if !interactive, SchoolPasswordPosts.storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
 
             // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
             // device-change warnings. They are in the session's jar, the NTUST-private one:
@@ -259,14 +176,14 @@ enum SSOLoginService {
 
             let (data2, response2) = try await session.data(from: serviceURL)
             guard let resp2 = response2 as? HTTPURLResponse,
-                  let html2 = decodeHTML(data2, response: resp2) else {
+                  let html2 = SSOForms.decodeHTML(data2, response: resp2) else {
                 throw SSOLoginError.invalidResponse
             }
             currentURL = resp2.url ?? serviceURL
             currentHTML = html2
 
             if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
-                (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
+                (currentHTML, currentURL) = try await SSOForms.resolveOIDCBridgeForms(
                     session: session, html: currentHTML, baseURL: currentURL, isCurrent: isCurrent
                 )
                 guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
@@ -280,38 +197,38 @@ enum SSOLoginService {
             }
 
             var payload: [(String, String)] = form.inputs
-            replaceOrAppend(&payload, name: "Username", value: studentId)
-            replaceOrAppend(&payload, name: "Password", value: password)
+            SSOForms.replaceOrAppend(&payload, name: "Username", value: studentId)
+            SSOForms.replaceOrAppend(&payload, name: "Password", value: password)
             if !payload.contains(where: { $0.0 == "captcha" }) {
                 payload.append(("captcha", ""))
             }
 
-            let actionURL = resolveURL(form.action, base: currentURL)
+            let actionURL = SSOForms.resolveURL(form.action, base: currentURL)
             guard CredentialPost.isSignInTarget(actionURL) else {
                 AppLogger.auth.error(
                     "Sign-in form action refused: \(CredentialPost.schemeLabel(of: actionURL), privacy: .public) \(actionURL.host ?? "", privacy: .private)"
                 )
                 throw SSOLoginError.invalidResponse
             }
-            let (loginData, loginResponse) = try await postForm(
+            let (loginData, loginResponse) = try await SSOForms.postForm(
                 session: session, url: actionURL, fields: payload, isCurrent: isCurrent,
                 delegate: CredentialPostDelegate()
             )
             guard let loginResp = loginResponse as? HTTPURLResponse,
                   !(300..<400).contains(loginResp.statusCode),
-                  let loginHTML = decodeHTML(loginData, response: loginResp) else {
+                  let loginHTML = SSOForms.decodeHTML(loginData, response: loginResp) else {
                 throw SSOLoginError.invalidResponse
             }
             currentURL = loginResp.url ?? actionURL
             currentHTML = loginHTML
 
-            (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
+            (currentHTML, currentURL) = try await SSOForms.resolveOIDCBridgeForms(
                 session: session, html: currentHTML, baseURL: currentURL, isCurrent: isCurrent
             )
 
             if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 if !interactive, isCurrent() {
-                    noteStoredPasswordRefused(at: now())
+                    SchoolPasswordPosts.noteStoredPasswordRefused(at: now())
                 }
                 throw SSOLoginError.loginFailed(reason: HTMLParser.loginErrorMessage(in: currentHTML))
             }
@@ -319,7 +236,7 @@ enum SSOLoginService {
             guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
                 throw SSOLoginError.invalidResponse
             }
-            if !interactive, !retry { forgetStoredPasswordRefusals() }
+            if !interactive, !retry { SchoolPasswordPosts.forgetStoredPasswordRefusals() }
             return true
         } catch SSOLoginError.loginFailed(let reason) {
             throw SSOLoginError.loginFailed(reason: reason)
@@ -329,17 +246,6 @@ enum SSOLoginService {
         }
     }
 
-    private static func visit(_ url: URL, session: URLSession, isCurrent: @escaping @MainActor () -> Bool) async throws -> (String, URL) {
-        let (data, response) = try await session.data(from: url)
-        guard let httpResp = response as? HTTPURLResponse,
-              let html = decodeHTML(data, response: httpResp) else {
-            throw SSOLoginError.invalidResponse
-        }
-        return try await resolveOIDCBridgeForms(
-            session: session, html: html, baseURL: httpResp.url ?? url, isCurrent: isCurrent
-        )
-    }
-
     private static func isSignedIn(html: String, url: URL, session: URLSession) async throws -> Bool {
         if HTMLParser.isNetIQLoginPage(html: html, url: url) {
             throw SSOLoginError.interactiveLoginRequired
@@ -347,106 +253,5 @@ enum SSOLoginService {
         guard await NTUSTSessionManager.shared.probeCookiesValid(using: session) else { return false }
         NTUSTSessionManager.shared.markLoginSuccess()
         return true
-    }
-
-    private static func resolveOIDCBridgeForms(
-        session: URLSession,
-        html: String,
-        baseURL: URL,
-        isCurrent: @escaping @MainActor () -> Bool,
-        maxSteps: Int = 3
-    ) async throws -> (String, URL) {
-        var currentHTML = html
-        var currentURL = baseURL
-
-        for _ in 0..<maxSteps {
-            if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
-                return (currentHTML, currentURL)
-            }
-
-            guard let form = HTMLParser.findOIDCBridgeForm(currentHTML) else {
-                return (currentHTML, currentURL)
-            }
-
-            let actionURL = resolveURL(form.action, base: currentURL)
-            guard CredentialPost.isSchoolTarget(actionURL) else {
-                AppLogger.auth.error(
-                    "Sign-in bridge form action refused: \(CredentialPost.schemeLabel(of: actionURL), privacy: .public) \(actionURL.host ?? "", privacy: .private)"
-                )
-                throw SSOLoginError.invalidResponse
-            }
-            let (data, response) = try await postForm(
-                session: session, url: actionURL, fields: form.inputs, isCurrent: isCurrent,
-                delegate: CredentialPostDelegate()
-            )
-            if let resp = response as? HTTPURLResponse, (300..<400).contains(resp.statusCode) {
-                throw SSOLoginError.invalidResponse
-            }
-            guard let newHTML = String(data: data, encoding: .utf8),
-                  let resp = response as? HTTPURLResponse else {
-                return (currentHTML, currentURL)
-            }
-            currentURL = resp.url ?? actionURL
-            currentHTML = newHTML
-        }
-
-        return (currentHTML, currentURL)
-    }
-
-    private static func postForm(
-        session: URLSession,
-        url: URL,
-        fields: [(name: String, value: String)],
-        isCurrent: @escaping @MainActor () -> Bool,
-        delegate: (any URLSessionTaskDelegate & Sendable)? = nil
-    ) async throws -> (Data, URLResponse) {
-        try checkSignedIn(isCurrent)
-        // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
-        // request takes `URLRequest`'s 60 s default and the configuration's 7-day resource
-        // timeout, so a stalled SSO server could hang the login Task indefinitely.
-        var request = URLRequest(url: url, timeoutInterval: 15)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Data(formBody(fields).utf8)
-
-        return try await session.data(for: request, delegate: delegate)
-    }
-
-    static func formBody(_ fields: [(name: String, value: String)]) -> String {
-        fields.map { "\(urlEncode($0.name))=\(urlEncode($0.value))" }.joined(separator: "&")
-    }
-
-    /// Form-encode a single name or value per
-    /// `application/x-www-form-urlencoded` rules:
-    /// percent-encode every byte outside RFC-3986 unreserved, then map
-    /// space → `+`. This keeps passwords containing `+ & = / ; %` and
-    /// CJK characters from being silently corrupted.
-    private static let formAllowed: CharacterSet = {
-        CharacterSet(charactersIn:
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")
-    }()
-
-    private static func urlEncode(_ string: String) -> String {
-        guard let percentEncoded = string
-            .addingPercentEncoding(withAllowedCharacters: formAllowed) else {
-            assertionFailure("urlEncode failed for value of length \(string.count)")
-            return ""
-        }
-        return percentEncoded.replacingOccurrences(of: "%20", with: "+")
-    }
-
-    private static func resolveURL(_ path: String, base: URL) -> URL {
-        if path.hasPrefix("http://") || path.hasPrefix("https://") {
-            return URL(string: path) ?? base
-        }
-        return URL(string: path, relativeTo: base)?.absoluteURL ?? base
-    }
-
-    private static func replaceOrAppend(_ fields: inout [(String, String)], name: String, value: String) {
-        if let idx = fields.firstIndex(where: { $0.0 == name }) {
-            fields[idx] = (name, value)
-        } else {
-            fields.append((name, value))
-        }
     }
 }

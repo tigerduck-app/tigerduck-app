@@ -163,7 +163,7 @@ struct SelectionDropsTests {
             SDCourse(courseNo: "EE2005301", courseName: "Merged", moodleIdNumber: "1151EE2005301", semester: "1151"),
         ]
 
-        let kept = CourseRosterReconciler.keptRows(
+        let kept = CourseServerRows.keptRows(
             rows, semester: "1151", dropped: ["GE1010001", "EE2005301", "PE1001301"], userAdded: userAdded
         )
         let listed = Set(kept.compactMap { $0["course_no"] as? String })
@@ -197,7 +197,7 @@ struct SelectionDropsTests {
     @Test("A row a roster dropped is not merged and takes its merged copy along; a hand-add here stays")
     @MainActor
     func serverDropLeavesLikeASelectionDrop() {
-        let listed = Set(CourseRosterReconciler.keptRows(
+        let listed = Set(CourseServerRows.keptRows(
             Self.rowsAfterARoster, semester: "1151", dropped: [], userAdded: Self.addedAndMerged
         ).compactMap { $0["course_no"] as? String })
         let unlisted = CourseRosterReconciler.unlistedCourses(
@@ -314,11 +314,11 @@ struct SelectionDropsTests {
     func serverDropEmptyingATermTakesMergedCopies() {
         let rows = Self.rowsAfterARoster.filter { $0["course_no"] as? String != "GE1010001" }
             .map { $0.merging(["enrollment_status": "dropped"]) { _, dropped in dropped } }
-        let droppedOnServer = CourseRosterReconciler.droppedOnServer(rows)
-        let kept = CourseRosterReconciler.keptRows(rows, semester: "1151", dropped: [], userAdded: Self.addedAndMerged)
+        let droppedOnServer = CourseServerRows.droppedOnServer(rows)
+        let kept = CourseServerRows.keptRows(rows, semester: "1151", dropped: [], userAdded: Self.addedAndMerged)
         let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: [], tombstoned: [], fetched: [], handAdded: ["GE1010001", "EE2005301"],
-            droppedMerges: CourseRosterReconciler.droppedMerges(Self.addedAndMerged, semester: "1151", dropped: droppedOnServer),
+            droppedMerges: CourseServerRows.droppedMerges(Self.addedAndMerged, semester: "1151", dropped: droppedOnServer),
             hidden: [], adding: []
         )
 
@@ -449,7 +449,7 @@ struct PastTermRebuildTests {
             ["course_no": "PE1001301", "source": "user_added"],
             ["course_no": "EC9999301", "source": "ntust_portal"],
         ]
-        let listed = Set(CourseRosterReconciler.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
+        let listed = Set(CourseServerRows.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
             .compactMap { $0["course_no"] as? String })
         let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1141", listed: listed, tombstoned: [], fetched: Set(rebuilt.courses.map(\.courseNo)),
@@ -466,11 +466,11 @@ struct PastTermRebuildTests {
         let dropped: Set<String> = ["GE1010001", "EC9999301"]
         let rows: [[String: Any]] = [["course_no": "EC9999301", "source": "ntust_portal"]]
 
-        let listed = Set(CourseRosterReconciler.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
+        let listed = Set(CourseServerRows.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
             .compactMap { $0["course_no"] as? String })
         let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1141", listed: listed, tombstoned: [], fetched: [], handAdded: Set(userAdded.map(\.courseNo)),
-            droppedMerges: CourseRosterReconciler.droppedMerges(userAdded, semester: "1141", dropped: dropped),
+            droppedMerges: CourseServerRows.droppedMerges(userAdded, semester: "1141", dropped: dropped),
             hidden: [], adding: []
         )
 
@@ -567,7 +567,7 @@ struct PastTermRebuildTests {
             "course_no": "GE1010001", "moodle_id": "1141GE1010001", "schedule_json": ["2": ["3", "4"]],
         ]
 
-        let filled = CourseRosterReconciler.scheduled(added, fromServerRow: row)
+        let filled = CourseServerRows.scheduled(added, fromServerRow: row)
 
         #expect(filled.schedule == [2: ["3", "4"]])
         #expect(filled.moodleIdNumber == nil)
