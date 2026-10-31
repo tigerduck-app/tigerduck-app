@@ -40,14 +40,14 @@ enum CourseSelectionService {
             return (cached, false)
         }
 
-        let generation = NTUSTSessionManager.shared.generation
+        let isCurrent = AccountSession.school.currentCheck()
         if !(await NTUSTSessionManager.shared.probeCookiesValid()) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,
                 studentId: studentId,
                 password: password,
-                generation: generation
+                isCurrent: isCurrent
             )
             guard loggedIn else { throw CourseServiceError.notAuthenticated }
         }
@@ -74,7 +74,7 @@ enum CourseSelectionService {
                 serviceURL: courseSelectionRoot,
                 studentId: studentId,
                 password: password,
-                generation: generation
+                isCurrent: isCurrent
             )
             guard loggedIn else { throw CourseServiceError.notAuthenticated }
 

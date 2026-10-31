@@ -20,7 +20,7 @@ struct ServerStatusSourcesTests {
     ) async {
         await ScoreViewModel().refresh(
             for: "TEST\(UUID().uuidString)",
-            generation: 1,
+            ticket: .after(signOuts: 1),
             isCurrent: { true },
             isReachable: { true },
             fetch: fetch,

@@ -43,4 +43,10 @@ nonisolated struct MailCredentialStore: Sendable {
     func password() -> String? { storage.load(forKey: Self.passwordKey) }
     func clear() { storage.deleteAll() }
 }
+
+extension MailCredentialStore: AccountScoped {
+    @MainActor static func forgetAccount(in storage: AccountStorage) {
+        storage.mailCredentials.clear()
+    }
+}
 #endif

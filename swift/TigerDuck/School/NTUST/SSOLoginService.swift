@@ -50,34 +50,15 @@ enum SSOLoginService {
     }
 
     nonisolated static var storedPasswordRefusals: (count: Int, last: Date?) {
-        get { (Defaults[.ntustStoredPasswordRefusals], Defaults[.ntustStoredPasswordRefusedAt]) }
-        set {
-            Defaults[.ntustStoredPasswordRefusals] = newValue.count
-            Defaults[.ntustStoredPasswordRefusedAt] = newValue.last
-        }
+        get { StoredPasswordBackoff.ntust.refusals }
+        set { StoredPasswordBackoff.ntust.refusals = newValue }
     }
 
     nonisolated static let storedPasswordPostWaits = Notification.Name("TigerDuck.storedPasswordPostWaits")
     nonisolated static let storedPasswordRetryAtKey = "retryAt"
 
-    nonisolated static let storedPasswordQuickRetries: [TimeInterval] = [10, 60, 5 * 60]
-    nonisolated static let storedPasswordRetryInterval: TimeInterval = 6 * 60 * 60
-
-    nonisolated static func storedPasswordRetryDelay(afterRefusals refusals: Int) -> TimeInterval {
-        refusals > storedPasswordQuickRetries.count
-            ? storedPasswordRetryInterval
-            : storedPasswordQuickRetries[max(refusals, 1) - 1]
-    }
-
-    nonisolated static func storedPasswordRetryAt(refusals: Int, lastRefusal: Date?, now: Date) -> Date? {
-        guard refusals > 0 else { return nil }
-        guard let lastRefusal, lastRefusal <= now else { return now }
-        return lastRefusal.addingTimeInterval(storedPasswordRetryDelay(afterRefusals: refusals))
-    }
-
     nonisolated static func storedPasswordRetryAt(now: Date = Date()) -> Date? {
-        let refusals = storedPasswordRefusals
-        return storedPasswordRetryAt(refusals: refusals.count, lastRefusal: refusals.last, now: now)
+        StoredPasswordBackoff.ntust.retryAt(now: now)
     }
 
     nonisolated static func storedPasswordPostMustWait(now: Date = Date()) -> Bool {
@@ -87,9 +68,7 @@ enum SSOLoginService {
     }
 
     nonisolated static func noteStoredPasswordRefused(at now: Date = Date()) {
-        let count = storedPasswordRefusals.count + 1
-        storedPasswordRefusals = (count, now)
-        announceStoredPasswordWait(until: now.addingTimeInterval(storedPasswordRetryDelay(afterRefusals: count)))
+        announceStoredPasswordWait(until: StoredPasswordBackoff.ntust.noteRefused(at: now))
     }
 
     private nonisolated static func announceStoredPasswordWait(until retryAt: Date) {
@@ -101,7 +80,7 @@ enum SSOLoginService {
     }
 
     nonisolated static func forgetStoredPasswordRefusals() {
-        storedPasswordRefusals = (0, nil)
+        StoredPasswordBackoff.ntust.forget()
     }
 
     private nonisolated static let storedPasswordPosts = AsyncSerialLock()
@@ -157,7 +136,7 @@ enum SSOLoginService {
         serviceURL: URL,
         studentId: String,
         password: String,
-        generation: Int,
+        isCurrent: @escaping @MainActor () -> Bool,
         interactive: Bool = false,
         now: () -> Date = { Date() },
         logFailure: @escaping @MainActor (any Error) -> Void = {
@@ -167,13 +146,13 @@ enum SSOLoginService {
         guard !interactive else {
             return try await signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: true, now: now, logFailure: logFailure
+                isCurrent: isCurrent, interactive: true, now: now, logFailure: logFailure
             )
         }
         return try await postingStoredPassword {
             try await signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: false, now: now, logFailure: logFailure
+                isCurrent: isCurrent, interactive: false, now: now, logFailure: logFailure
             )
         }
     }
@@ -190,19 +169,19 @@ enum SSOLoginService {
         serviceURL: URL,
         studentId: String,
         password: String,
-        generation: Int,
+        isCurrent: @escaping @MainActor () -> Bool,
         now: () -> Date = { Date() },
         mayPost: () -> Bool
     ) async throws -> Bool {
         try await postingStoredPassword {
             try await oneAtATime {
-                try checkSignedIn(generation)
+                try checkSignedIn(isCurrent)
                 guard storedPasswordRefusals.count > 0 else { return true }
                 guard mayPost() else { return false }
                 if storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
                 return try await performServiceLogin(
                     session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                    generation: generation, interactive: false, retry: true, now: now,
+                    isCurrent: isCurrent, interactive: false, retry: true, now: now,
                     logFailure: { AppLogger.captureError($0, context: ["service": "ssoSignInAgain"]) }
                 )
             }
@@ -214,16 +193,16 @@ enum SSOLoginService {
         serviceURL: URL,
         studentId: String,
         password: String,
-        generation: Int,
+        isCurrent: @escaping @MainActor () -> Bool,
         interactive: Bool,
         now: () -> Date,
         logFailure: @escaping @MainActor (any Error) -> Void
     ) async throws -> Bool {
         try await oneAtATime {
-            try checkSignedIn(generation)
+            try checkSignedIn(isCurrent)
             let signedIn = try await performServiceLogin(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation, interactive: interactive, retry: false, now: now,
+                isCurrent: isCurrent, interactive: interactive, retry: false, now: now,
                 logFailure: logFailure
             )
             if interactive, signedIn { forgetStoredPasswordRefusals() }
@@ -231,8 +210,8 @@ enum SSOLoginService {
         }
     }
 
-    private static func checkSignedIn(_ generation: Int) throws {
-        if NTUSTSessionManager.shared.generation != generation { throw CancellationError() }
+    private static func checkSignedIn(_ isCurrent: @MainActor () -> Bool) throws {
+        if !isCurrent() { throw CancellationError() }
     }
 
     private static func performServiceLogin(
@@ -240,14 +219,14 @@ enum SSOLoginService {
         serviceURL: URL,
         studentId: String,
         password: String,
-        generation: Int,
+        isCurrent: @escaping @MainActor () -> Bool,
         interactive: Bool,
         retry: Bool,
         now: () -> Date,
         logFailure: @MainActor (any Error) -> Void
     ) async throws -> Bool {
         do {
-            var (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
+            var (currentHTML, currentURL) = try await visit(serviceURL, session: session, isCurrent: isCurrent)
 
             // Step 3: Check if we're on the SSO login page. A live session would let the password
             // through unchecked, so a sign-in past it drops the service's cookies and goes on to
@@ -259,7 +238,7 @@ enum SSOLoginService {
                 // A service whose own session lapsed sends the visit to the campus portal, not to
                 // the sign-in form; without its cookies the next visit goes through SSO.
                 NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
-                (currentHTML, currentURL) = try await visit(serviceURL, session: session, generation: generation)
+                (currentHTML, currentURL) = try await visit(serviceURL, session: session, isCurrent: isCurrent)
                 if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                     guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
                         throw SSOLoginError.loginFormNotFound
@@ -288,7 +267,7 @@ enum SSOLoginService {
 
             if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
-                    session: session, html: currentHTML, baseURL: currentURL, generation: generation
+                    session: session, html: currentHTML, baseURL: currentURL, isCurrent: isCurrent
                 )
                 guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
                     throw SSOLoginError.loginFormNotFound
@@ -315,7 +294,7 @@ enum SSOLoginService {
                 throw SSOLoginError.invalidResponse
             }
             let (loginData, loginResponse) = try await postForm(
-                session: session, url: actionURL, fields: payload, generation: generation,
+                session: session, url: actionURL, fields: payload, isCurrent: isCurrent,
                 delegate: CredentialPostDelegate()
             )
             guard let loginResp = loginResponse as? HTTPURLResponse,
@@ -327,11 +306,11 @@ enum SSOLoginService {
             currentHTML = loginHTML
 
             (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
-                session: session, html: currentHTML, baseURL: currentURL, generation: generation
+                session: session, html: currentHTML, baseURL: currentURL, isCurrent: isCurrent
             )
 
             if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
-                if !interactive, NTUSTSessionManager.shared.generation == generation {
+                if !interactive, isCurrent() {
                     noteStoredPasswordRefused(at: now())
                 }
                 throw SSOLoginError.loginFailed(reason: HTMLParser.loginErrorMessage(in: currentHTML))
@@ -350,14 +329,14 @@ enum SSOLoginService {
         }
     }
 
-    private static func visit(_ url: URL, session: URLSession, generation: Int) async throws -> (String, URL) {
+    private static func visit(_ url: URL, session: URLSession, isCurrent: @escaping @MainActor () -> Bool) async throws -> (String, URL) {
         let (data, response) = try await session.data(from: url)
         guard let httpResp = response as? HTTPURLResponse,
               let html = decodeHTML(data, response: httpResp) else {
             throw SSOLoginError.invalidResponse
         }
         return try await resolveOIDCBridgeForms(
-            session: session, html: html, baseURL: httpResp.url ?? url, generation: generation
+            session: session, html: html, baseURL: httpResp.url ?? url, isCurrent: isCurrent
         )
     }
 
@@ -374,7 +353,7 @@ enum SSOLoginService {
         session: URLSession,
         html: String,
         baseURL: URL,
-        generation: Int,
+        isCurrent: @escaping @MainActor () -> Bool,
         maxSteps: Int = 3
     ) async throws -> (String, URL) {
         var currentHTML = html
@@ -397,7 +376,7 @@ enum SSOLoginService {
                 throw SSOLoginError.invalidResponse
             }
             let (data, response) = try await postForm(
-                session: session, url: actionURL, fields: form.inputs, generation: generation,
+                session: session, url: actionURL, fields: form.inputs, isCurrent: isCurrent,
                 delegate: CredentialPostDelegate()
             )
             if let resp = response as? HTTPURLResponse, (300..<400).contains(resp.statusCode) {
@@ -418,10 +397,10 @@ enum SSOLoginService {
         session: URLSession,
         url: URL,
         fields: [(name: String, value: String)],
-        generation: Int,
+        isCurrent: @escaping @MainActor () -> Bool,
         delegate: (any URLSessionTaskDelegate & Sendable)? = nil
     ) async throws -> (Data, URLResponse) {
-        try checkSignedIn(generation)
+        try checkSignedIn(isCurrent)
         // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
         // request takes `URLRequest`'s 60 s default and the configuration's 7-day resource
         // timeout, so a stalled SSO server could hang the login Task indefinitely.

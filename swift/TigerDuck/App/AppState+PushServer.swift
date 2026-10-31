@@ -119,7 +119,6 @@ extension AppState {
     }
 
     func cancelHolidayUploads() {
-        HolidayUploadQueue.generation += 1
         HolidayUploadQueue.tail?.cancel()
         HolidayUploadQueue.tail = nil
     }
@@ -133,14 +132,13 @@ extension AppState {
 
     private func enqueueHolidayUpload(holidayID: Int) {
         let previous = HolidayUploadQueue.tail
-        let generation = HolidayUploadQueue.generation
         let store = AcademicCalendarStore.shared
         store.setHolidayAcknowledged(false, holidayID: holidayID)
         store.beginHolidayUpload()
-        HolidayUploadQueue.tail = Task { [weak self] in
+        HolidayUploadQueue.tail = authService.session.task { [weak self] ticket in
             _ = await previous?.value
             defer { AcademicCalendarStore.shared.endHolidayUpload() }
-            guard let self, generation == HolidayUploadQueue.generation else { return }
+            guard let self, self.authService.session.isCurrent(ticket) else { return }
             let sent = AcademicCalendarStore.shared.optedInHolidayIDs.contains(holidayID)
             do {
                 try await self.pushCoordinator.registration.uploadHolidayOverride(
@@ -176,5 +174,4 @@ extension AppState {
 @MainActor
 private enum HolidayUploadQueue {
     static var tail: Task<Void, Never>?
-    static var generation = 0
 }

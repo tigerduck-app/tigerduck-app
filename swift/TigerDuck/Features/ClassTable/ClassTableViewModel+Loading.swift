@@ -75,7 +75,7 @@ extension ClassTableViewModel {
     private func fetchData(authService: AuthService, semester: String? = nil) async {
         let manager = NTUSTSessionManager.shared
         let targetSemester = semester ?? currentSemester
-        let generation = await MainActor.run { authService.loginGeneration }
+        let ticket = await MainActor.run { authService.session.ticket }
         guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
@@ -100,17 +100,17 @@ extension ClassTableViewModel {
         await MainActor.run {
             showFetched(
                 buildCourseList(fetchedCourses, userAdded), assignments: fetchedAssignments, of: targetSemester,
-                startedUnder: generation, loginGeneration: authService.loginGeneration
+                signedOutSince: !authService.session.isCurrent(ticket)
             )
         }
     }
 
     func showFetched(
         _ fetched: [SDCourse], assignments fetchedAssignments: [SDAssignment], of targetSemester: String,
-        startedUnder generation: Int, loginGeneration: Int
+        signedOutSince: Bool
     ) {
         let manager = NTUSTSessionManager.shared
-        guard loginGeneration == generation else {
+        guard !signedOutSince else {
             manager.loadingState = .loaded
             return
         }

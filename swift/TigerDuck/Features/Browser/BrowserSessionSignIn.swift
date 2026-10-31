@@ -19,7 +19,8 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
     }
 
     func signIn() async -> Bool {
-        let generation = Self.accountGeneration()
+        let isCurrent = AccountSession.school.currentCheck()
+        let epoch = BrowserData.shared.epoch
         let cookies = store.httpCookieStore
         let jars = [HTTPCookieStorage.shared, NTUSTSessionManager.shared.cookieStorage]
         for cookie in Self.sessionCookies(in: jars.map { $0.cookies ?? [] }) {
@@ -28,7 +29,7 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
         guard await runSignInPage() else { return false }
         let signedIn = await cookies.allCookies()
         // A sign-out since the start purged the jar, which must not get the departing account's cookies back.
-        guard !Task.isCancelled, Self.accountGeneration() == generation else { return false }
+        guard !Task.isCancelled, isCurrent(), BrowserData.shared.epoch == epoch else { return false }
         signedIn.filter(BrowserRouting.isSharedCookie).forEach(HTTPCookieStorage.shared.setCookie)
         return BrowserRouting.hasMoodleSession(signedIn)
     }
@@ -38,10 +39,6 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
     /// keeps alive, comes after the shared one, which holds what the last Moodle token harvest left.
     nonisolated static func sessionCookies(in jars: [[HTTPCookie]]) -> [HTTPCookie] {
         jars.joined().filter(BrowserRouting.isSharedCookie)
-    }
-
-    private static func accountGeneration() -> [Int] {
-        [NTUSTSessionManager.shared.generation, BrowserData.shared.generation]
     }
 
     private func runSignInPage() async -> Bool {

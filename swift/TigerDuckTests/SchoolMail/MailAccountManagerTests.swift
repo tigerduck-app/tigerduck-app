@@ -170,6 +170,35 @@ struct MailAccountManagerTests {
         #expect(h.hooks.authFailed == 0)
     }
 
+    @Test func aRejectionOfTheReplacedPasswordLeavesTheNextSignInAlone() async throws {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        let secrets = InMemoryMailSecretStorage()
+        try MailCredentialStore(storage: secrets).savePassword("old")
+        let stale = FakeMailClient()
+        await stale.update { $0.acceptedPassword = "new" }
+        await stale.hold("login")
+        let fresh = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 1)]])
+        var clients: [FakeMailClient] = [stale, fresh]
+        let manager = MailAccountManager(
+            prefs: prefs,
+            credentials: MailCredentialStore(storage: secrets),
+            cache: SchoolMailTestDoubles.temporaryCache(),
+            isDemoLogin: { _, _ in false },
+            makeClient: { _ in clients.removeFirst() }
+        )
+        let session = Task { try await manager.openSession() }
+        await stale.waitForArrival("login")
+
+        await manager.login(studentID: "B10000001", password: "new")
+        #expect(manager.studentID == "B10000001")
+        await stale.release("login")
+        await #expect(throws: MailClientError.authenticationFailed) { _ = try await session.value }
+
+        #expect(!manager.authFailed)
+        #expect(!prefs.authFailed)
+    }
+
     @Test func logoutClearsEverything() async throws {
         let h = Self.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")

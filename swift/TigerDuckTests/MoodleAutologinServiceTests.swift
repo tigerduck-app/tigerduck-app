@@ -21,14 +21,14 @@ struct MoodleAutologinServiceTests {
 
     private static func service(
         clock: OSAllocatedUnfairLock<Date> = OSAllocatedUnfairLock(initialState: start),
-        signInGeneration: @escaping () -> Int = { 0 },
+        account: AccountSession = AccountSession(),
         deadline: ManualSleeper = ManualSleeper(),
         keySource: @escaping @Sendable () async throws -> MoodleAutologinService.Key?
     ) -> MoodleAutologinService {
         MoodleAutologinService(
             keySource: keySource,
             now: { clock.withLock { $0 } },
-            signInGeneration: signInGeneration,
+            account: account,
             sleep: { await deadline.sleep(for: $0) }
         )
     }
@@ -209,12 +209,12 @@ struct MoodleAutologinServiceTests {
     @Test("a key that arrives after a sign-out opens the page as it is and starts no wait")
     func signOutWhileKeyIsOnItsWay() async {
         let requests = KeyRequests()
-        let signOuts = OSAllocatedUnfairLock(initialState: 0)
+        let account = AccountSession()
         let signsOutWhileWaiting = OSAllocatedUnfairLock(initialState: true)
         let key = Self.key
-        let service = Self.service(signInGeneration: { signOuts.withLock { $0 } }) {
+        let service = Self.service(account: account) {
             await requests.record()
-            if signsOutWhileWaiting.withLock({ $0 }) { signOuts.withLock { $0 += 1 } }
+            if signsOutWhileWaiting.withLock({ $0 }) { await MainActor.run { account.moveOn() } }
             return key
         }
 

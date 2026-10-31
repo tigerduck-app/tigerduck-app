@@ -17,7 +17,7 @@ enum LibraryServiceError: LocalizedError {
     }
 }
 
-enum LibraryService {
+enum LibraryService: AccountScoped {
     private static let baseURL = "https://api.lib.ntust.edu.tw/v1"
 
     private static let session: URLSession = {
@@ -53,8 +53,6 @@ enum LibraryService {
         KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryUsername)
     }
 
-    @MainActor private(set) static var loginGeneration: Int = 0
-
     static let accountDidChange = Notification.Name("TigerDuck.libraryAccountDidChange")
 
     static let signInDidChange = Notification.Name("TigerDuck.librarySignInDidChange")
@@ -63,7 +61,7 @@ enum LibraryService {
     static func saveCredentials(username: String, password: String) {
         let accountChanged = storedUsername != username
         if accountChanged {
-            loginGeneration &+= 1
+            AccountSession.library.moveOn()
         }
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
@@ -81,20 +79,29 @@ enum LibraryService {
         #endif
     }
 
+    /// The library account's sign-out, which keeps the school account and School Mail.
     @MainActor
     static func clearCredentials() {
-        loginGeneration &+= 1
+        SignOutPlan(
+            session: AccountSession.library,
+            stores: SignOutPlan.libraryStores,
+            stopWork: { cancelStoredPasswordRetry() },
+            clearRest: {
+                LibraryQRCache.shared.clear()
+                #if os(iOS)
+                LibraryQRImageCache.shared.clear()
+                WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
+                #endif
+                NotificationCenter.default.post(name: accountDidChange, object: nil)
+            }
+        ).run()
+    }
+
+    static func forgetAccount(in storage: AccountStorage) {
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
-        storedPasswordRefusals = (0, nil)
-        cancelStoredPasswordRetry()
+        StoredPasswordBackoff.library.forget()
         clearToken()
-        LibraryQRCache.shared.clear()
-        #if os(iOS)
-        LibraryQRImageCache.shared.clear()
-        WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
-        #endif
-        NotificationCenter.default.post(name: accountDidChange, object: nil)
     }
 
     private static var storedPassword: String? {
@@ -146,9 +153,11 @@ enum LibraryService {
     ) async throws -> String {
         cancelStoredPasswordRetry()
         typedSignIns &+= 1
-        let generation = loginGeneration
+        let ticket = AccountSession.library.ticket
         let answer = try await request(username, password)
-        guard loginGeneration == generation, stillCurrent() else { throw LibraryServiceError.credentialsNotFound }
+        guard AccountSession.library.isCurrent(ticket), stillCurrent() else {
+            throw LibraryServiceError.credentialsNotFound
+        }
         saveCredentials(username: username, password: password)
         saveToken(answer.token, expirationMs: answer.expirationTimeStamp)
         return answer.token
@@ -196,23 +205,14 @@ enum LibraryService {
         return loginData
     }
 
-    /// Each refusal counts toward the library account's lockout, so after one an automatic sign-in
-    /// waits as the school's does (``SSOLoginService/storedPasswordRetryDelay(afterRefusals:)``).
-    /// A sign-in the user types is never held back, and saving or clearing credentials resets it.
+    /// The library's count in ``StoredPasswordBackoff``, which saving or clearing credentials resets.
     static var storedPasswordRefusals: (count: Int, last: Date?) {
-        get { (Defaults[.libraryStoredPasswordRefusals], Defaults[.libraryStoredPasswordRefusedAt]) }
-        set {
-            Defaults[.libraryStoredPasswordRefusals] = newValue.count
-            Defaults[.libraryStoredPasswordRefusedAt] = newValue.last
-        }
+        get { StoredPasswordBackoff.library.refusals }
+        set { StoredPasswordBackoff.library.refusals = newValue }
     }
 
     static func storedPasswordPostIsDue(now: Date) -> Bool {
-        let refusals = storedPasswordRefusals
-        guard let retryAt = SSOLoginService.storedPasswordRetryAt(
-            refusals: refusals.count, lastRefusal: refusals.last, now: now
-        ) else { return true }
-        return retryAt <= now
+        StoredPasswordBackoff.library.postIsDue(now: now)
     }
 
     @MainActor private static var pendingSignIns: [String: Task<String, Error>] = [:]
@@ -261,10 +261,7 @@ enum LibraryService {
     ) {
         storedPasswordRetryMisses = 0
         let now = Date()
-        let refusals = storedPasswordRefusals
-        guard let retryAt = SSOLoginService.storedPasswordRetryAt(
-            refusals: refusals.count, lastRefusal: refusals.last, now: now
-        ) else { return cancelStoredPasswordRetry() }
+        guard let retryAt = StoredPasswordBackoff.library.retryAt(now: now) else { return cancelStoredPasswordRetry() }
         startStoredPasswordRetry(after: max(0, retryAt.timeIntervalSince(now)), signIn: signIn, retrySleep: retrySleep)
     }
 
@@ -275,10 +272,9 @@ enum LibraryService {
         retrySleep: @escaping @Sendable (Duration) async -> Void
     ) {
         cancelStoredPasswordRetry()
-        let generation = loginGeneration
-        storedPasswordRetry = Task {
+        storedPasswordRetry = AccountSession.library.task { ticket in
             await retrySleep(.seconds(wait))
-            guard !Task.isCancelled, loginGeneration == generation else { return }
+            guard !Task.isCancelled, AccountSession.library.isCurrent(ticket) else { return }
             guard storedPasswordPostIsDue(now: Date()) else {
                 storedPasswordRetry = nil
                 return armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
@@ -287,11 +283,11 @@ enum LibraryService {
             let signedIn = (try? await ensureToken(signIn: signIn, retrySleep: retrySleep)) != nil
             guard !Task.isCancelled else { return }
             storedPasswordRetry = nil
-            guard !signedIn, loginGeneration == generation, refusals > 0,
+            guard !signedIn, AccountSession.library.isCurrent(ticket), refusals > 0,
                   storedPasswordRefusals.count == refusals else { return }
             storedPasswordRetryMisses += 1
             startStoredPasswordRetry(
-                after: SSOLoginService.storedPasswordRetryDelay(afterRefusals: refusals + storedPasswordRetryMisses),
+                after: StoredPasswordBackoff.retryDelay(afterRefusals: refusals + storedPasswordRetryMisses),
                 signIn: signIn, retrySleep: retrySleep
             )
         }
@@ -323,16 +319,16 @@ enum LibraryService {
             return try await pending.value
         }
 
-        let generation = loginGeneration
+        let ticket = AccountSession.library.ticket
         let typedSignInsBefore = typedSignIns
         let attempt = Task {
             let answer: LibraryLoginData
             do {
                 answer = try await signIn(username, password)
             } catch {
-                if loginGeneration == generation, storedPassword == password {
+                if AccountSession.library.isCurrent(ticket), storedPassword == password {
                     if case LibraryServiceError.loginFailed = error {
-                        storedPasswordRefusals = (storedPasswordRefusals.count + 1, Date())
+                        StoredPasswordBackoff.library.noteRefused(at: Date())
                         if typedSignIns == typedSignInsBefore {
                             armStoredPasswordRetry(signIn: signIn, retrySleep: retrySleep)
                         }
@@ -346,7 +342,7 @@ enum LibraryService {
                 }
                 throw error
             }
-            guard loginGeneration == generation else { throw LibraryServiceError.credentialsNotFound }
+            guard AccountSession.library.isCurrent(ticket) else { throw LibraryServiceError.credentialsNotFound }
             saveToken(answer.token, expirationMs: answer.expirationTimeStamp)
             storedSignInFailedAt = nil
             if storedPasswordRefusals.count > 0, storedPassword == password {

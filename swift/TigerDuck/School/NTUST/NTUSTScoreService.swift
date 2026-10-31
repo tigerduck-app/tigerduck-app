@@ -37,20 +37,20 @@ enum NTUSTScoreService {
             return cached
         }
 
-        let generation = NTUSTSessionManager.shared.generation
+        let isCurrent = AccountSession.school.currentCheck()
         if !(await NTUSTSessionManager.shared.probeCookiesValid(using: session)) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: scoreRootURL,
                 studentId: studentId,
                 password: password,
-                generation: generation
+                isCurrent: isCurrent
             )
             guard loggedIn else { throw NTUSTScoreServiceError.notAuthenticated }
         }
 
         let html = try await fetchHTML(
-            session: session, studentId: studentId, password: password, generation: generation
+            session: session, studentId: studentId, password: password, isCurrent: isCurrent
         )
         let report = await Task.detached(priority: .userInitiated) {
             NTUSTScoreParser.parse(html: html)
@@ -81,7 +81,7 @@ enum NTUSTScoreService {
         session: URLSession,
         studentId: String,
         password: String,
-        generation: Int
+        isCurrent: @escaping @MainActor () -> Bool
     ) async throws -> String {
         let (data, response) = try await session.data(from: scoreDisplayURL)
         guard let html = String(data: data, encoding: .utf8) else {
@@ -105,7 +105,7 @@ enum NTUSTScoreService {
                 serviceURL: scoreRootURL,
                 studentId: studentId,
                 password: password,
-                generation: generation
+                isCurrent: isCurrent
             )
             guard loggedIn else { throw NTUSTScoreServiceError.notAuthenticated }
 

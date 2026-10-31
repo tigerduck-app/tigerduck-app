@@ -403,19 +403,14 @@ import Vision
 @MainActor
 @Suite(.serialized)
 struct ClassTableShareSheetTests {
-    @Observable
-    final class Session {
-        var generation = 0
-    }
-
     private struct PresentedSheet: View {
         let model: ClassTableShareModel
-        let session: Session
+        let session: AccountSession
         @State private var presented: ClassTableShareModel?
 
         var body: some View {
             Color.clear
-                .classTableShareSheet(model: $presented, loginGeneration: session.generation)
+                .classTableShareSheet(model: $presented, signIn: session.ticket)
                 .onAppear { presented = model }
         }
     }
@@ -574,7 +569,7 @@ struct ClassTableShareSheetTests {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
-        let session = Session()
+        let session = AccountSession()
         let host = UIHostingController(rootView: PresentedSheet(model: model, session: session))
         window.rootViewController = host
         window.makeKeyAndVisible()
@@ -621,7 +616,7 @@ struct ClassTableShareSheetTests {
         )
         #expect(visible.contains(symbol.insetBy(dx: -4 * module, dy: -4 * module)), "the QR code's quiet zone must fit")
 
-        session.generation += 1
+        session.moveOn()
         try await waitUntil { host.presentedViewController == nil }
     }
 

@@ -7,10 +7,10 @@ import Testing
 struct WatchLibraryQRReplyTests {
     @Test func aCodeFetchedAcrossASignOutReachesNeitherTheCacheNorTheWatch() async {
         let cache = LibraryQRCache()
-        var generation = 1
+        let account = AccountSession()
 
-        let reply = await WatchSyncCoordinator.libraryQRReply(cache: cache, generation: { generation }) {
-            generation += 1
+        let reply = await WatchSyncCoordinator.libraryQRReply(cache: cache, account: account) {
+            account.moveOn()
             return "departing-code"
         }
 
@@ -22,7 +22,7 @@ struct WatchLibraryQRReplyTests {
     @Test func aCodeFetchedForTheSameAccountIsCachedAndSent() async {
         let cache = LibraryQRCache()
 
-        let reply = await WatchSyncCoordinator.libraryQRReply(cache: cache, generation: { 1 }) { "code" }
+        let reply = await WatchSyncCoordinator.libraryQRReply(cache: cache, account: AccountSession()) { "code" }
 
         #expect(reply[WatchWireFormat.LibraryQRKey.payload] as? String == "code")
         #expect(cache.reusable() == "code")

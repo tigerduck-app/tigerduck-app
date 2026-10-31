@@ -33,11 +33,11 @@ struct SharedAssignmentRoundTests {
     }
 
     private func start(
-        _ name: String, _ rounds: Rounds, generation: Int = 1, rechecks: Bool
+        _ name: String, _ rounds: Rounds, signOuts: Int = 1, rechecks: Bool
     ) -> Task<Void, Never> {
         Task {
             rounds.entered += 1
-            _ = await AppServiceBridge.sharedRound(generation: generation, rechecks: rechecks, isCurrent: { true }, rounds: shared) {
+            _ = await AppServiceBridge.sharedRound(signIn: .after(signOuts: signOuts), rechecks: rechecks, isCurrent: { true }, rounds: shared) {
                 await rounds.run(name)
             }
         }
@@ -93,7 +93,7 @@ struct SharedAssignmentRoundTests {
         let departing = "departing-" + UUID().uuidString
         let due = Date(timeIntervalSince1970: 1_800_000_000)
 
-        let shown = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
+        let shown = await AppServiceBridge.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
             signIn.isCurrent = false
             return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
         }
@@ -109,7 +109,7 @@ struct SharedAssignmentRoundTests {
         let due = Date(timeIntervalSince1970: 1_800_000_000)
         let pull = Task {
             rounds.entered += 1
-            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
+            _ = await AppServiceBridge.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
                 _ = await rounds.run("pull")
                 return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
             }
@@ -117,7 +117,7 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["pull"] }
         let joined = Task {
             rounds.entered += 1
-            return await AppServiceBridge.sharedRound(generation: 1, rechecks: false, isCurrent: { signIn.isCurrent }, rounds: shared) { [] }
+            return await AppServiceBridge.sharedRound(signIn: .after(signOuts: 1), rechecks: false, isCurrent: { signIn.isCurrent }, rounds: shared) { [] }
         }
         try await waitUntil { rounds.entered == 2 }
         signIn.isCurrent = false
@@ -135,7 +135,7 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["launch"] }
         let pull = Task {
             rounds.entered += 1
-            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
+            _ = await AppServiceBridge.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) {
                 await rounds.run("pull")
             }
         }
@@ -150,9 +150,9 @@ struct SharedAssignmentRoundTests {
     @Test("the next account never joins the departing account's round")
     func roundsAreKeptPerSignIn() async throws {
         let rounds = Rounds()
-        let departing = start("departing", rounds, generation: 1, rechecks: false)
+        let departing = start("departing", rounds, signOuts: 1, rechecks: false)
         try await waitUntil { rounds.started == ["departing"] }
-        let next = start("next", rounds, generation: 2, rechecks: false)
+        let next = start("next", rounds, signOuts: 2, rechecks: false)
         try await waitUntil { rounds.started == ["departing", "next"] }
         rounds.open()
         _ = await (departing.value, next.value)
@@ -289,7 +289,7 @@ struct SharedAssignmentRoundTests {
         round(of: id, askedAt: pageAskedAt - .seconds(60), in: cache)
         let rounds = Rounds()
         let pull = Task {
-            _ = await AppServiceBridge.sharedRound(generation: 1, rechecks: true, isCurrent: { true }, rounds: shared) {
+            _ = await AppServiceBridge.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { true }, rounds: shared) {
                 _ = await rounds.run("pull")
                 round(of: id, askedAt: pageAskedAt - .seconds(5), in: cache)
                 return []

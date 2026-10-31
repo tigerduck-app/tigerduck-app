@@ -2,13 +2,13 @@ import Defaults
 import Foundation
 
 private final class AssignmentRound {
-    let generation: Int
+    let signIn: AccountSession.Ticket
     let rechecks: Bool
     var task: Task<Void, Never>?
     var assignments: [SDAssignment] = []
 
-    init(generation: Int, rechecks: Bool) {
-        self.generation = generation
+    init(signIn: AccountSession.Ticket, rechecks: Bool) {
+        self.signIn = signIn
         self.rechecks = rechecks
     }
 }
@@ -23,31 +23,31 @@ final class AssignmentRounds {
 extension AppServiceBridge {
 
     static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
-        let generation = authService.loginGeneration
+        let ticket = authService.session.ticket
         return await sharedRound(
-            generation: generation,
+            signIn: ticket,
             rechecks: recheckSubmissions,
-            isCurrent: { authService.loginGeneration == generation }
+            isCurrent: { authService.session.isCurrent(ticket) }
         ) {
             await runAssignmentRound(authService: authService, recheckSubmissions: recheckSubmissions)
         }
     }
 
     static func sharedRound(
-        generation: Int,
+        signIn: AccountSession.Ticket,
         rechecks: Bool,
         isCurrent: @MainActor () -> Bool,
         rounds: AssignmentRounds = .shared,
         run: @escaping @MainActor () async -> [SDAssignment]
     ) async -> [SDAssignment] {
         var waitedFor: AssignmentRound?
-        while let round = rounds.running, round.generation == generation, round !== waitedFor {
+        while let round = rounds.running, round.signIn == signIn, round !== waitedFor {
             await round.task?.value
             if round.rechecks || !rechecks { return answer(round, isCurrent: isCurrent) }
             waitedFor = round
         }
         guard isCurrent() else { return DataCache.shared.loadAssignments() }
-        let round = AssignmentRound(generation: generation, rechecks: rechecks)
+        let round = AssignmentRound(signIn: signIn, rechecks: rechecks)
         round.task = Task { round.assignments = await run() }
         rounds.running = round
         await round.task?.value
@@ -103,7 +103,7 @@ extension AppServiceBridge {
     }
 
     private static func runAssignmentRound(authService: AuthService, recheckSubmissions: Bool) async -> [SDAssignment] {
-        let startGeneration = authService.loginGeneration
+        let ticket = authService.session.ticket
         guard let account = authService.storedStudentId,
               authService.storedPassword != nil else {
             return DataCache.shared.loadAssignments()
@@ -119,7 +119,7 @@ extension AppServiceBridge {
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
             let moodleIdMapForAssignments = moodleCourseIdMap(moodleEnrolled)
             if !Task.isCancelled,
-               authService.loginGeneration == startGeneration {
+               authService.session.isCurrent(ticket) {
                 DataCache.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
             }
 
@@ -141,7 +141,7 @@ extension AppServiceBridge {
             }
             let relevantMoodleCourseIds = relevantCourses.map(\.id)
             guard !relevantMoodleCourseIds.isEmpty else {
-                if !moodleEnrolled.isEmpty, authService.loginGeneration == startGeneration {
+                if !moodleEnrolled.isEmpty, authService.session.isCurrent(ticket) {
                     Defaults[.schoolDataSyncedAt] = Date()
                 }
                 return DataCache.shared.loadAssignments()
@@ -203,7 +203,7 @@ extension AppServiceBridge {
                 account: account,
                 fetchedAt: askedAt,
                 cache: .shared,
-                isCurrent: { authService.loginGeneration == startGeneration }
+                isCurrent: { authService.session.isCurrent(ticket) }
             )
             if persisted {
                 if statuses.count == recordsToAsk.count {
@@ -211,12 +211,12 @@ extension AppServiceBridge {
                 }
                 uploadForReminders(assignmentsToPersist)
             }
-            await MainActor.run { record(.ok, for: .moodle, round: startGeneration, authService: authService) }
+            await MainActor.run { record(.ok, for: .moodle, round: ticket, authService: authService) }
             return assignmentsToPersist
         } catch {
             await MainActor.run {
                 let note = (error as? MoodleWebserviceError) == .siteMaintenance ? error.localizedDescription : nil
-                record(.failed, for: .moodle, note: note, round: startGeneration, authService: authService)
+                record(.failed, for: .moodle, note: note, round: ticket, authService: authService)
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()

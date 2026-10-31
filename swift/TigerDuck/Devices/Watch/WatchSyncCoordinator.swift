@@ -239,7 +239,7 @@ extension WatchSyncCoordinator: WCSessionDelegate {
 
     static func libraryQRReply(
         cache: LibraryQRCache = .shared,
-        generation: @MainActor () -> Int = { LibraryService.loginGeneration },
+        account: AccountSession = .library,
         generate: () async throws -> String = { try await LibraryService.generateQRCode() }
     ) async -> [String: Any] {
         if let payload = cache.reusable() {
@@ -248,10 +248,10 @@ extension WatchSyncCoordinator: WCSessionDelegate {
                 WatchWireFormat.LibraryQRKey.remaining: cache.remaining(),
             ]
         }
-        let started = generation()
+        let ticket = account.ticket
         do {
             let payload = try await generate()
-            guard generation() == started else {
+            guard account.isCurrent(ticket) else {
                 return [WatchWireFormat.LibraryQRKey.error: LibraryServiceError.credentialsNotFound.localizedDescription]
             }
             cache.store(payload)

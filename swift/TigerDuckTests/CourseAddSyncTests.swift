@@ -47,14 +47,18 @@ struct CourseAddSyncTests {
         _ backend: Backend, cache: DataCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory()),
         push: PushCoordinator? = nil, uploadsCourses: @escaping @MainActor () -> Bool = { true },
         isProtectedDataAvailable: @escaping @MainActor () -> Bool = { true },
-        loginGeneration: @escaping @MainActor () -> Int = { 0 }
+        account: AccountSession = AccountSession(),
+        whileReading: @escaping @MainActor () -> Void = {}
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(
             pushCoordinator: push ?? makePush(backend), outbox: outbox, isEnabled: true,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
-            addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache, colors: [:]) },
+            addedCourseUpload: {
+                whileReading()
+                return AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache, colors: [:])
+            },
             uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
-            loginGeneration: loginGeneration
+            account: account
         )
     }
 
@@ -159,11 +163,10 @@ struct CourseAddSyncTests {
     @Test("A course add is not sent once the login has changed since its list was read")
     func addOfAnEarlierLoginIsNotSent() async {
         let backend = Backend()
-        let signedOut = Switch()
-        signedOut.isOn = false
+        let account = AccountSession()
         let coordinator = Self.makeCoordinator(
             backend, cache: Self.makeCache(userAdded: [Self.art()]),
-            loginGeneration: { defer { signedOut.isOn = true }; return signedOut.isOn ? 1 : 0 }
+            account: account, whileReading: { account.moveOn() }
         )
 
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value

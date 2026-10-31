@@ -385,12 +385,12 @@ struct UnchangedUploadTests {
         let key = UploadLedger.courses("1151")
         let now = Date()
 
-        let started = ledger.generation(of: key)
+        let started = ledger.forgets(of: key)
         ledger.forget(key)
         ledger.record(key, fingerprint: 1, at: now, startedIn: started)
         #expect(ledger.isDue(key, fingerprint: 1, now: now))
 
-        ledger.record(key, fingerprint: 1, at: now, startedIn: ledger.generation(of: key))
+        ledger.record(key, fingerprint: 1, at: now, startedIn: ledger.forgets(of: key))
         #expect(!ledger.isDue(key, fingerprint: 1, now: now))
     }
 
@@ -401,15 +401,15 @@ struct UnchangedUploadTests {
         let other = UploadLedger.courses("1142")
         let now = Date()
 
-        let otherStarted = ledger.generation(of: other)
-        let assignmentsStarted = ledger.generation(of: UploadLedger.assignments)
+        let otherStarted = ledger.forgets(of: other)
+        let assignmentsStarted = ledger.forgets(of: UploadLedger.assignments)
         ledger.forget(reset)
         ledger.record(other, fingerprint: 1, at: now, startedIn: otherStarted)
         ledger.record(UploadLedger.assignments, fingerprint: 2, at: now, startedIn: assignmentsStarted)
         #expect(!ledger.isDue(other, fingerprint: 1, now: now))
         #expect(!ledger.isDue(UploadLedger.assignments, fingerprint: 2, now: now))
 
-        let started = ledger.generation(of: other)
+        let started = ledger.forgets(of: other)
         ledger.forget(nil)
         ledger.record(other, fingerprint: 3, at: now, startedIn: started)
         #expect(ledger.isDue(other, fingerprint: 3, now: now))

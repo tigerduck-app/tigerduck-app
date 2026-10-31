@@ -39,7 +39,7 @@ private struct ClassTableImportHost: ViewModifier {
                 shareModel = shareAfterScanner
                 shareAfterScanner = nil
             }) { ClassTableImportScannerView(model: $0, onShare: { shareAfterScanner = $0 }) }
-            .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
+            .classTableShareSheet(model: $shareModel, signIn: appState.authService.session.ticket)
             .classTableImportPrompts(linkModel, onConfirmScreen: false)
             .sheet(item: Binding(get: { linkModel?.pending }, set: { if $0 == nil { linkModel?.cancel() } })) { pending in
                 if let linkModel {

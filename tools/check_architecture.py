@@ -35,7 +35,7 @@ EXTENSION_FOLDERS = ("swift/TigerDuckWidgets/", "swift/TigerDuckLiveActivity/", 
 # Sources of the other shipping targets; only the Taipei rule applies to them.
 OTHER_TARGET_FOLDERS = EXTENSION_FOLDERS + ("swift/TigerDuckWatch Watch App/", "swift/Shared/")
 
-ENFORCED_PHASE = 1
+ENFORCED_PHASE = 2
 
 TYPE_LINES = 250
 VIEW_LINES = 200

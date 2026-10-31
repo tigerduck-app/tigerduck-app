@@ -18,7 +18,7 @@ final class MoodleAutologinService {
 
     private let keySource: @Sendable () async throws -> Key?
     private let now: () -> Date
-    private let signInGeneration: () -> Int
+    private let account: AccountSession
     private let sleep: @Sendable (Duration) async -> Void
     private var lastKeyAt: Date?
     private(set) var isRequesting = false
@@ -26,26 +26,25 @@ final class MoodleAutologinService {
     init(
         keySource: @escaping @Sendable () async throws -> Key?,
         now: @escaping () -> Date = { Date() },
-        signInGeneration: @escaping () -> Int = { NTUSTSessionManager.shared.generation },
+        account: AccountSession = .school,
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.keySource = keySource
         self.now = now
-        self.signInGeneration = signInGeneration
+        self.account = account
         self.sleep = sleep
     }
 
     func url(for url: URL) async -> URL {
         guard Self.isMoodlePage(url), !isRequesting, isKeyDue() else { return url }
-        let generation = signInGeneration()
-        guard let key = await answer(of: startKeyRequest(generation: generation)),
-              signInGeneration() == generation else { return url }
+        let ticket = account.ticket
+        guard let key = await answer(of: startKeyRequest(for: ticket)), account.isCurrent(ticket) else { return url }
         return Self.signedInURL(key, opening: url) ?? url
     }
 
     /// Asks for a key in a task of its own, which runs to its end after the open that started it
     /// stops waiting: Moodle starts ``keyInterval`` at the request, so a key that comes late counts.
-    private func startKeyRequest(generation: Int) -> Task<Key?, Never> {
+    private func startKeyRequest(for ticket: AccountSession.Ticket) -> Task<Key?, Never> {
         isRequesting = true
         return Task {
             defer { isRequesting = false }
@@ -56,7 +55,7 @@ final class MoodleAutologinService {
                 AppLogger.breadcrumb("autologin key unavailable: \(error)", category: "moodle")
                 return nil
             }
-            guard let key, !key.value.isEmpty, signInGeneration() == generation else { return nil }
+            guard let key, !key.value.isEmpty, account.isCurrent(ticket) else { return nil }
             lastKeyAt = now()
             return key
         }

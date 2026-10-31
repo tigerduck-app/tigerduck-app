@@ -48,7 +48,7 @@ struct EmptyClassroomViewModelTests {
             service = ClassroomUsageService(
                 session: URLSession(configuration: config),
                 queryURL: url,
-                sessionGeneration: { 1 },
+                account: Self.account,
                 signIn: { _, _, _ in true },
                 timeouts: (600, 600)
             )
@@ -74,8 +74,9 @@ struct EmptyClassroomViewModelTests {
             model = newScreen()
         }
 
+        static let account = AccountSession()
         static let credentials = ClassroomUsageService.Credentials(
-            studentId: "B00000000", password: "not-a-password", generation: 1
+            studentId: "B00000000", password: "not-a-password", signIn: account.ticket
         )
 
         func serve(_ html: String, gate: SettingsAPIStub.ReplyGate? = nil) {

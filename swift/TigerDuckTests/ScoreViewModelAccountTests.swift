@@ -85,14 +85,14 @@ struct ScoreViewModelAccountTests {
     private static func refresh(
         _ model: ScoreViewModel,
         for studentId: String,
-        generation: Int = 1,
+        ticket: AccountSession.Ticket = .after(signOuts: 1),
         signIn: SignIn,
         school: School,
         indicator: Indicator? = nil
     ) async {
         await model.refresh(
             for: studentId,
-            generation: generation,
+            ticket: ticket,
             isCurrent: { signIn.isCurrent },
             isReachable: { await school.probe() },
             fetch: { await school.fetch(report(for: studentId)) },
@@ -108,7 +108,7 @@ struct ScoreViewModelAccountTests {
 
         await model.refresh(
             for: studentId,
-            generation: 1,
+            ticket: .after(signOuts: 1),
             isCurrent: { true },
             isReachable: { await school.probe() },
             fetch: { await school.fetch(Self.report(for: studentId), cachedAt: readAt) }
@@ -216,13 +216,13 @@ struct ScoreViewModelAccountTests {
         let slowSchool = School()
         slowSchool.holdsFetch = true
         let first = Task {
-            await Self.refresh(model, for: previous, generation: 1, signIn: departing, school: slowSchool)
+            await Self.refresh(model, for: previous, ticket: .after(signOuts: 1), signIn: departing, school: slowSchool)
         }
         try await waitUntil { slowSchool.isHolding }
 
         departing.signOut()
         model.showCachedReport(for: next)
-        await Self.refresh(model, for: next, generation: 2, signIn: SignIn(), school: School())
+        await Self.refresh(model, for: next, ticket: .after(signOuts: 2), signIn: SignIn(), school: School())
         #expect(model.report.student == next)
 
         slowSchool.release()
@@ -239,7 +239,7 @@ struct ScoreViewModelAccountTests {
         slowSchool.holdsFetch = true
         let first = Task {
             await Self.refresh(
-                model, for: Self.testStudentId(), generation: 1, signIn: departing, school: slowSchool, indicator: indicator
+                model, for: Self.testStudentId(), ticket: .after(signOuts: 1), signIn: departing, school: slowSchool, indicator: indicator
             )
         }
         try await waitUntil { slowSchool.isHolding }
@@ -249,7 +249,7 @@ struct ScoreViewModelAccountTests {
         nextSchool.holdsFetch = true
         let next = Task {
             await Self.refresh(
-                model, for: Self.testStudentId(), generation: 2, signIn: SignIn(), school: nextSchool, indicator: indicator
+                model, for: Self.testStudentId(), ticket: .after(signOuts: 2), signIn: SignIn(), school: nextSchool, indicator: indicator
             )
         }
         try await waitUntil { nextSchool.isHolding }
@@ -270,7 +270,7 @@ struct ScoreViewModelAccountTests {
         let indicator = Indicator()
         let first = Task {
             await Self.refresh(
-                model, for: Self.testStudentId(), generation: 1, signIn: departing, school: slowSchool, indicator: indicator
+                model, for: Self.testStudentId(), ticket: .after(signOuts: 1), signIn: departing, school: slowSchool, indicator: indicator
             )
         }
         try await waitUntil { slowSchool.isHolding }
@@ -279,7 +279,7 @@ struct ScoreViewModelAccountTests {
         let offline = School()
         offline.isOnline = false
         await Self.refresh(
-            model, for: Self.testStudentId(), generation: 2, signIn: SignIn(), school: offline, indicator: indicator
+            model, for: Self.testStudentId(), ticket: .after(signOuts: 2), signIn: SignIn(), school: offline, indicator: indicator
         )
         let offlineState = indicator.loadingState
         slowSchool.release()

@@ -38,7 +38,7 @@ enum AppServiceBridge {
             semester: semester,
             forceRefresh: forceRefresh,
             resendingRoster: resendingRoster,
-            startGeneration: authService.loginGeneration,
+            ticket: authService.session.ticket,
             moodle: { await fetchMoodleCourses(authService: authService) },
             transcript: { await fetchTranscript(authService: authService) }
         )
@@ -55,51 +55,52 @@ enum AppServiceBridge {
         }
         await warmTerms(
             semesters,
-            generation: { authService.loginGeneration },
+            account: authService.session,
             shared: { (await fetchMoodleCourses(authService: authService), await fetchTranscript(authService: authService)) }
-        ) { semester, generation, moodle, transcript in
+        ) { semester, ticket, moodle, transcript in
             _ = await fetchCourses(
                 authService: authService,
                 semester: semester,
                 forceRefresh: false,
-                startGeneration: generation,
+                ticket: ticket,
                 moodle: { moodle },
                 transcript: { transcript }
             )
         }
     }
 
-    /// Hands every term the answers fetched once for all of them, with the generation they were
+    /// Hands every term the answers fetched once for all of them, with the sign-in they were
     /// fetched under: another account's answers must never pass a term's save check. Answers that
     /// outlive a sign-out are dropped.
     static func warmTerms(
         _ semesters: [String],
-        generation: () -> Int,
+        account: AccountSession,
         shared: () async -> (moodle: [MoodleEnrolledCourse]?, transcript: ScoreReport?),
         fetch: @escaping @Sendable (
-            _ semester: String, _ generation: Int, _ moodle: [MoodleEnrolledCourse]?, _ transcript: ScoreReport?
+            _ semester: String, _ ticket: AccountSession.Ticket, _ moodle: [MoodleEnrolledCourse]?,
+            _ transcript: ScoreReport?
         ) async -> Void
     ) async {
         guard !semesters.isEmpty else { return }
-        let startGeneration = generation()
+        let ticket = account.ticket
         let answers = await shared()
-        guard generation() == startGeneration else { return }
+        guard account.isCurrent(ticket) else { return }
         await withTaskGroup(of: Void.self) { group in
             for semester in semesters {
-                group.addTask { await fetch(semester, startGeneration, answers.moodle, answers.transcript) }
+                group.addTask { await fetch(semester, ticket, answers.moodle, answers.transcript) }
             }
         }
     }
 
     /// Nil lets a term fetch go on without Moodle, which only adds names and links.
     static func fetchMoodleCourses(authService: AuthService) async -> [MoodleEnrolledCourse]? {
-        let startGeneration = authService.loginGeneration
+        let ticket = authService.session.ticket
         do {
             let courses = try await MoodleEnrolledCoursesService.fetchEnrolled()
-            record(.ok, for: .moodle, round: startGeneration, authService: authService)
+            record(.ok, for: .moodle, round: ticket, authService: authService)
             return courses
         } catch {
-            record(.failed, for: .moodle, round: startGeneration, authService: authService)
+            record(.failed, for: .moodle, round: ticket, authService: authService)
             AppLogger.captureError(error, context: ["service": "fetchEnrolled", "flow": "classTable"])
             return nil
         }
@@ -108,7 +109,7 @@ enum AppServiceBridge {
     /// A pull does not skip the day-long cache either, so a past term's refresh adds no
     /// score-system sign-in.
     static func fetchTranscript(authService: AuthService) async -> ScoreReport? {
-        let startGeneration = authService.loginGeneration
+        let ticket = authService.session.ticket
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else { return nil }
         do {
@@ -120,13 +121,13 @@ enum AppServiceBridge {
                 studentId: studentId,
                 password: password,
                 persistGuard: { @Sendable [weak authService] in
-                    authService?.loginGeneration == startGeneration
+                    authService?.session.isCurrent(ticket) == true
                 }
             ).report
-            record(.ok, for: .scoreSystem, round: startGeneration, authService: authService)
+            record(.ok, for: .scoreSystem, round: ticket, authService: authService)
             return report
         } catch {
-            record(.failed, for: .scoreSystem, round: startGeneration, authService: authService)
+            record(.failed, for: .scoreSystem, round: ticket, authService: authService)
             AppLogger.captureError(error, context: ["service": "fetchScoreReport", "flow": "classTable"])
             return nil
         }
@@ -137,7 +138,7 @@ enum AppServiceBridge {
         semester: String,
         forceRefresh: Bool,
         resendingRoster: Bool = false,
-        startGeneration: Int,
+        ticket: AccountSession.Ticket,
         moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
     ) async -> [SDCourse] {
@@ -170,17 +171,17 @@ enum AppServiceBridge {
                     password: password,
                     forceRefresh: forceRefresh,
                     persistGuard: { @Sendable [weak authService] in
-                        authService?.loginGeneration == startGeneration
+                        authService?.session.isCurrent(ticket) == true
                     }
                 )
                 courseSelectionNos = answer.courseNos
                 selectionIsLive = answer.live
                 await MainActor.run {
-                    record(.ok, for: .courseSelection, round: startGeneration, authService: authService)
+                    record(.ok, for: .courseSelection, round: ticket, authService: authService)
                 }
             } catch {
                 await MainActor.run {
-                    record(.failed, for: .courseSelection, round: startGeneration, authService: authService)
+                    record(.failed, for: .courseSelection, round: ticket, authService: authService)
                     AppLogger.captureError(error, context: [
                         "service": "fetchEnrolledCourseNos",
                         "semester": semester,
@@ -205,7 +206,7 @@ enum AppServiceBridge {
                 cached: cachedCourses.map(\.courseNo)
             )
         guard let term else { return cachedCourses }
-        if let roster = term.roster, !Task.isCancelled, authService.loginGeneration == startGeneration {
+        if let roster = term.roster, !Task.isCancelled, authService.session.isCurrent(ticket) {
             DataCache.shared.recordSelectionRoster(semester: semester, roster: roster)
             if selectionIsLive {
                 let stillDropped = DataCache.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
@@ -215,7 +216,7 @@ enum AppServiceBridge {
 
         let moodleAll = await moodle()
         // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
-        if let moodleAll, !Task.isCancelled, authService.loginGeneration == startGeneration {
+        if let moodleAll, !Task.isCancelled, authService.session.isCurrent(ticket) {
             DataCache.shared.saveMoodleCourseIdMap(moodleCourseIdMap(moodleAll))
         }
 
@@ -267,7 +268,7 @@ enum AppServiceBridge {
             looked.map(\.course), fromSelection: term.roster != nil, cached: Set(cachedByNo.keys)
         )
 
-        guard !Task.isCancelled, authService.loginGeneration == startGeneration else {
+        guard !Task.isCancelled, authService.session.isCurrent(ticket) else {
             return DataCache.shared.loadCourses(semester: semester)
         }
         guard let courses = savedCourses(
@@ -292,7 +293,7 @@ enum AppServiceBridge {
     /// arrived for a week.
     static func answerRosterRequests(in snapshot: [String: Any], authService: AuthService) {
         guard CourseUploadPolicy.uploadsCourses else { return }
-        for term in rosterRequests.termsToAsk(in: snapshot, generation: authService.loginGeneration, now: Date()) {
+        for term in rosterRequests.termsToAsk(in: snapshot, signIn: authService.session.ticket, now: Date()) {
             AppLogger.sync.info("[sync] roster requested for \(term, privacy: .public)")
             Task {
                 _ = await fetchCourses(authService: authService, semester: term, forceRefresh: true, resendingRoster: true)
@@ -344,11 +345,11 @@ enum AppServiceBridge {
         _ status: ServerStatus,
         for server: ServerKind,
         note: String? = nil,
-        round startGeneration: Int,
+        round ticket: AccountSession.Ticket,
         authService: AuthService,
         tracker: ServerStatusTracker = .shared
     ) {
-        guard authService.loginGeneration == startGeneration else { return }
+        guard authService.session.isCurrent(ticket) else { return }
         tracker.set(status, for: server, note: note)
     }
 
@@ -630,7 +631,7 @@ enum AppServiceBridge {
             try await CourseLookupService.lookupCourse(semester: $0, courseNo: $1, language: $2, fresh: $3)
         }
     ) async -> [SDCourse] {
-        let startGeneration = authService.loginGeneration
+        let ticket = authService.session.ticket
         let stored = DataCache.shared.loadUserAddedCourses()
         let targets = stored.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
         guard !targets.isEmpty else { return [] }
@@ -647,7 +648,7 @@ enum AppServiceBridge {
             ))
         }
         let refreshed = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
-        guard authService.loginGeneration == startGeneration else { return [] }
+        guard authService.session.isCurrent(ticket) else { return [] }
         // Lookups take seconds; an add, delete or sync merge meanwhile must survive the save.
         let current = DataCache.shared.loadUserAddedCourses()
         let inScope = { current.filter { DataCache.userAddedCourse($0, belongsTo: semester) } }
@@ -711,7 +712,7 @@ enum AppServiceBridge {
             try await CourseLookupService.lookupCourse(semester: $0, courseNo: $1, language: $2, fresh: $3)
         }
     ) async -> Bool {
-        let startGeneration = authService.loginGeneration
+        let ticket = authService.session.ticket
         let enrolled = DataCache.shared.loadCourses(semester: semester)
         let userAdded = DataCache.shared.loadUserAddedCourses()
         let isUserAddedHere: (SDCourse) -> Bool = { DataCache.userAddedCourse($0, belongsTo: semester) }
@@ -732,7 +733,7 @@ enum AppServiceBridge {
             return data.classroom.isEmpty ? nil : (courseNo, data)
         }
         let found = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
-        guard authService.loginGeneration == startGeneration, !found.isEmpty else { return false }
+        guard authService.session.isCurrent(ticket), !found.isEmpty else { return false }
 
         // Re-read both lists: a roster or user-added change saved during the lookups must survive.
         let enrolledNow = DataCache.shared.loadCourses(semester: semester)
@@ -913,16 +914,16 @@ private extension CourseData {
 /// on every full sync.
 nonisolated struct RosterRequestLog: Sendable {
     static let retryInterval: TimeInterval = 3600
-    private var asked: [String: (generation: Int, at: Date)] = [:]
+    private var asked: [String: (signIn: AccountSession.Ticket, at: Date)] = [:]
 
     /// The terms of the snapshot's `roster_requests` to ask now, recorded as asked. A snapshot
     /// without the key, from a backend that predates it, requests nothing.
-    mutating func termsToAsk(in snapshot: [String: Any], generation: Int, now: Date) -> [String] {
+    mutating func termsToAsk(in snapshot: [String: Any], signIn: AccountSession.Ticket, now: Date) -> [String] {
         let due = Set(snapshot["roster_requests"] as? [String] ?? []).filter { term in
-            guard let last = asked[term], last.generation == generation else { return true }
+            guard let last = asked[term], last.signIn == signIn else { return true }
             return now.timeIntervalSince(last.at) >= Self.retryInterval || now < last.at
         }
-        for term in due { asked[term] = (generation, now) }
+        for term in due { asked[term] = (signIn, now) }
         return due.sorted()
     }
 }

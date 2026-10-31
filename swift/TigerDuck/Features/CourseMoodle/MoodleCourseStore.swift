@@ -11,12 +11,7 @@ struct MoodleCacheContext {
 
     static func signedIn(_ authService: AuthService, cache: DataCache = .shared) -> MoodleCacheContext? {
         guard let account = authService.storedStudentId else { return nil }
-        let generation = authService.loginGeneration
-        return MoodleCacheContext(
-            account: account,
-            cache: cache,
-            isCurrent: { [weak authService] in authService?.loginGeneration == generation }
-        )
+        return MoodleCacheContext(account: account, cache: cache, isCurrent: authService.session.currentCheck())
     }
 }
 

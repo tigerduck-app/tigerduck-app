@@ -46,8 +46,6 @@ final class NTUSTSessionManager {
 
     let session: URLSession
 
-    private(set) var generation = 0
-
     /// NTUST-only cookie jar. In `HTTPCookieStorage.shared`, NTUST SSO cookies would leak into
     /// every other URLSession in the process that does not opt out of shared storage (Library,
     /// WKWebViews, third-party SDKs). Every NTUST cookie lives here, so logout and explicit
@@ -151,7 +149,6 @@ final class NTUSTSessionManager {
     func invalidateSession() {
         // Flows keep this session, and a request on an invalidated one ends the app with an
         // exception, so its tasks are cancelled instead.
-        generation &+= 1
         Self.cancelTasks(of: session, thenEmpty: cookieStorage)
         Defaults[.ssoLoginTimestamp] = nil
     }

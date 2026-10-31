@@ -140,7 +140,7 @@ struct ClassTableView: View {
                 tableSwitches += 1
                 viewModel.showShownTable()
             }
-            .onChange(of: appState.authService.loginGeneration) { _, _ in
+            .onChange(of: appState.authService.session.ticket) { _, _ in
                 viewModel.closeOwnEdits()
             }
             .sheet(item: $viewModel.selectedCourse) { course in
@@ -235,11 +235,9 @@ struct ClassTableView: View {
                 Text(String(localized: "error_network_unavailable"))
             }
             .sheet(item: $viewModel.courseToRecolor) { course in
-                let authService = appState.authService
-                let generation = authService.loginGeneration
                 CourseColorPickerSheet(
                     course: course,
-                    isCurrent: { authService.loginGeneration == generation },
+                    isCurrent: appState.authService.session.currentCheck(),
                     onSelect: { viewModel.setColor(hex: $0, for: course) }
                 )
                 .presentationDetents([.medium, .large])
@@ -287,7 +285,7 @@ struct ClassTableView: View {
             .alert(String(localized: "bulletin_save_failed_title"), isPresented: $viewModel.showsSaveFailed) {
                 Button(String(localized: "action_confirm"), role: .cancel) {}
             }
-            .classTableShareSheet(model: $shareModel, loginGeneration: appState.authService.loginGeneration)
+            .classTableShareSheet(model: $shareModel, signIn: appState.authService.session.ticket)
     }
 
     private var pageAccessState: NTUSTProtectedAccessState {

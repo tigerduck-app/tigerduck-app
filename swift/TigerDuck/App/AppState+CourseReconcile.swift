@@ -9,12 +9,12 @@ extension AppState {
     /// returns the deletes the reconcile still has to wait for, or nil when the full sync may no
     /// longer write; the reset then stays unseen and the next full sync applies it.
     func settleQueuedCourseEdits(
-        deleting: Set<String>, reset: (apply: Bool, remember: Date), generation: Int
+        deleting: Set<String>, reset: (apply: Bool, remember: Date), ticket: AccountSession.Ticket
     ) async -> Set<String>? {
         guard reset.apply else { return deleting }
         guard let dropped = await Self.applyCourseReset(
             at: reset.remember, cache: .shared, on: cloudSyncCoordinator,
-            mayWrite: { self.fullSyncMayWrite(since: generation) }
+            mayWrite: { self.fullSyncMayWrite(since: ticket) }
         ) else { return nil }
         Defaults[.lastSeenCoursesResetAt] = reset.remember
         recentCourseDeletions = [:]

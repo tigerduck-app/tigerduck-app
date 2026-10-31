@@ -72,7 +72,7 @@ struct CourseDetailSheet: View {
             }
         }
         .task(id: MoodleStoreKey(
-            courseNo: course.courseNo, attempt: moodleAttempt, generation: appState.authService.loginGeneration
+            courseNo: course.courseNo, attempt: moodleAttempt, signIn: appState.authService.session.ticket
         )) {
             moodle = makeMoodleStore()
         }
@@ -81,7 +81,7 @@ struct CourseDetailSheet: View {
             let loaded = await loadSyllabus()
             if !Task.isCancelled { syllabus = loaded }
         }
-        .onChange(of: appState.authService.loginGeneration) {
+        .onChange(of: appState.authService.session.ticket) {
             routes.wrappedValue = []
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
@@ -101,7 +101,7 @@ struct CourseDetailSheet: View {
     struct MoodleStoreKey: Equatable {
         let courseNo: String
         let attempt: Int
-        let generation: Int
+        let signIn: AccountSession.Ticket
     }
 
     private var routes: Binding<[MoodleCourseRoute]> {

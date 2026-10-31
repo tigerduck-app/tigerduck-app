@@ -23,9 +23,9 @@ extension AppState {
     }
 
     private func runFullSync(retried: Bool) async -> FullSyncOutcome {
-        let generation = authService.loginGeneration
+        let ticket = authService.session.ticket
         await authService.ensureBackendSignedIn()
-        guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: generation) else { return .skipped }
+        guard await authTokenManager.isLoggedIn, fullSyncMayWrite(since: ticket) else { return .skipped }
         await retryUnsentEdits()
         do {
             #if DEBUG
@@ -44,7 +44,7 @@ extension AppState {
                 try await pushCoordinator.fetchFullSync()
             })
             var courseDeletes = fetchedDeletes
-            guard fullSyncMayWrite(since: generation) else { return .skipped }
+            guard fullSyncMayWrite(since: ticket) else { return .skipped }
             var changed = false
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
 
@@ -93,7 +93,7 @@ extension AppState {
 
             let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 .union(cloudSyncCoordinator.pendingCourseIgnoreKeys())
-            guard fullSyncMayWrite(since: generation) else { return .skipped }
+            guard fullSyncMayWrite(since: ticket) else { return .skipped }
             let takesCourses = Self.switchedOnCategories().contains("courses")
                 && !Defaults[.pendingConflictCategories].contains("courses")
             let reset = Self.coursesReset(
@@ -102,13 +102,13 @@ extension AppState {
             )
             if takesCourses {
                 guard let settled = await settleQueuedCourseEdits(
-                    deleting: courseDeletes, reset: reset, generation: generation
+                    deleting: courseDeletes, reset: reset, ticket: ticket
                 ) else { return .skipped }
                 courseDeletes = settled
                 changed = reset.apply || changed
             }
             let courseAdds = await cloudSyncCoordinator.courseAddKeys(unlandedAt: fetchedAt)
-            guard fullSyncMayWrite(since: generation) else { return .skipped }
+            guard fullSyncMayWrite(since: ticket) else { return .skipped }
             let protectedOverrides = preFetchProtected
                 .union(pendingOverrides)
                 .union(inFlightOverrides)
@@ -245,7 +245,7 @@ extension AppState {
             #endif
             return .synced
         } catch {
-            guard !Self.isCancellation(error), fullSyncMayWrite(since: generation) else { return .skipped }
+            guard !Self.isCancellation(error), fullSyncMayWrite(since: ticket) else { return .skipped }
             ServerStatusTracker.shared.noteSyncResult(false)
             recordSyncSource(.local)
             var outcome = FullSyncOutcome.failed
@@ -254,7 +254,7 @@ extension AppState {
                 if reloginOk {
                     AppLogger.sync.info("auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
-                    guard fullSyncMayWrite(since: generation) else { return .skipped }
+                    guard fullSyncMayWrite(since: ticket) else { return .skipped }
                     outcome = await runFullSync(retried: true)
                 }
             }
@@ -552,20 +552,19 @@ extension AppState {
     }
 
     nonisolated static func fullSyncMayWrite(
-        startedIn generation: Int, current: Int, cloudSyncEnabled: Bool, protectedDataAvailable: Bool
+        signedOutSince: Bool, cloudSyncEnabled: Bool, protectedDataAvailable: Bool
     ) -> Bool {
-        generation == current && cloudSyncEnabled && protectedDataAvailable
+        !signedOutSince && cloudSyncEnabled && protectedDataAvailable
     }
 
-    func fullSyncMayWrite(since generation: Int) -> Bool {
+    func fullSyncMayWrite(since ticket: AccountSession.Ticket) -> Bool {
         #if os(iOS)
         let protectedDataAvailable = UIApplication.shared.isProtectedDataAvailable
         #else
         let protectedDataAvailable = true
         #endif
         return Self.fullSyncMayWrite(
-            startedIn: generation,
-            current: authService.loginGeneration,
+            signedOutSince: !authService.session.isCurrent(ticket),
             cloudSyncEnabled: Defaults[.cloudSyncEnabled],
             protectedDataAvailable: protectedDataAvailable
         )
@@ -790,10 +789,10 @@ extension AppState {
         let request = Self.courseUploadRequest(
             courses, semester: semester, forceKeys: forceKeys, rosterTerms: asRoster ? [semester] : nil
         )
-        let generation = authService.loginGeneration
+        let ticket = authService.session.ticket
         let coordinator = pushCoordinator
         Task { [weak self] in
-            await self?.sendUpload("uploadCourses \(semester)", generation: generation) { isCurrent in
+            await self?.sendUpload("uploadCourses \(semester)", ticket: ticket) { isCurrent in
                 try await coordinator.uploadCoursesIfChanged(
                     request, semester: semester, resend: resend, isCurrent: isCurrent
                 )
@@ -817,10 +816,10 @@ extension AppState {
 
     func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) {
         guard Defaults[.cloudSyncEnabled] else { return }
-        let generation = authService.loginGeneration
+        let ticket = authService.session.ticket
         let coordinator = pushCoordinator
         Task { [weak self] in
-            await self?.sendUpload("uploadAssignments", generation: generation) { isCurrent in
+            await self?.sendUpload("uploadAssignments", ticket: ticket) { isCurrent in
                 try await coordinator.uploadAssignmentsIfChanged(request, isCurrent: isCurrent)
             }
         }
@@ -828,12 +827,12 @@ extension AppState {
 
     private func sendUpload(
         _ label: String,
-        generation: Int,
+        ticket: AccountSession.Ticket,
         retried: Bool = false,
         _ send: (_ isCurrent: @escaping @MainActor () -> Bool) async throws -> Bool
     ) async {
         let isCurrent: @MainActor () -> Bool = { [weak self] in
-            self?.authService.loginGeneration == generation && Defaults[.cloudSyncEnabled]
+            self?.authService.session.isCurrent(ticket) == true && Defaults[.cloudSyncEnabled]
         }
         guard isCurrent() else { return }
         do {
@@ -844,7 +843,7 @@ extension AppState {
                 AppLogger.sync.error("\(label, privacy: .public) failed: 401, relogin failed")
                 return
             }
-            await sendUpload(label, generation: generation, retried: true, send)
+            await sendUpload(label, ticket: ticket, retried: true, send)
         } catch {
             AppLogger.sync.error("\(label, privacy: .public) failed: \(error, privacy: .private)")
         }

@@ -34,7 +34,7 @@ struct StoredPasswordLatchRetryMigrationTests {
                 #expect(UserDefaults.standard.object(forKey: Self.latchKey) == nil)
                 SSOLoginService.noteStoredPasswordRefused(at: now)
                 #expect(SSOLoginService.storedPasswordRetryAt(now: now)
-                    == now.addingTimeInterval(SSOLoginService.storedPasswordRetryInterval))
+                    == now.addingTimeInterval(StoredPasswordBackoff.retryInterval))
             }
         }
     }

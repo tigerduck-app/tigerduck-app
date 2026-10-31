@@ -79,7 +79,7 @@ final class MailAccountManager {
     @ObservationIgnored private let makeClient: (Bool) -> any MailClient
     @ObservationIgnored private let clearCache: @Sendable () async -> Void
     @ObservationIgnored private(set) var pendingCacheClear: Task<Void, Never>?
-    @ObservationIgnored private var loginGeneration = 0
+    @ObservationIgnored let session: AccountSession
     @ObservationIgnored private let signOutEvents: NotificationCenter
 
     init(
@@ -89,8 +89,10 @@ final class MailAccountManager {
         isDemoLogin: @escaping (String, String) -> Bool = { MailDemoFixture.shared?.matches(studentID: $0, password: $1) ?? false },
         makeClient: @escaping (Bool) -> any MailClient = { MailClientFactory.make(demo: $0) },
         clearCache: (@Sendable () async -> Void)? = nil,
-        signOutEvents: NotificationCenter = NotificationCenter()
+        signOutEvents: NotificationCenter = NotificationCenter(),
+        session: AccountSession = AccountSession()
     ) {
+        self.session = session
         self.prefs = prefs
         self.signOutEvents = signOutEvents
         self.credentials = credentials
@@ -111,17 +113,17 @@ final class MailAccountManager {
         isLoggingIn = true
         loginError = nil
         defer { isLoggingIn = false }
-        let generation = loginGeneration
+        var ticket = session.ticket
 
         await pendingCacheClear?.value
-        guard generation == loginGeneration else { return }
+        guard session.isCurrent(ticket) else { return }
         pendingCacheClear = nil
 
         let demo = isDemoLogin(id, password)
         let client = makeClient(demo)
         do {
             try await client.login(studentID: id, password: password)
-            guard generation == loginGeneration else {
+            guard session.isCurrent(ticket) else {
                 await client.logout()
                 return
             }
@@ -133,19 +135,22 @@ final class MailAccountManager {
             loginError = failure
             return
         }
+        // A session opened with the password this replaced must not mark this sign-in failed.
+        session.moveOn()
+        ticket = session.ticket
 
         lastRejectedPassword = nil
         prefs.studentID = id
         prefs.demoActive = demo
         prefs.authFailed = false
-        await establishBaseline(client: client, generation: generation)
+        await establishBaseline(client: client, ticket: ticket)
         if prefs.displayName == nil {
             let discovered = await discoverDisplayName(client: client, address: MailConstants.address(forStudentID: id))
-            if generation == loginGeneration { displayName = discovered }
+            if session.isCurrent(ticket) { displayName = discovered }
         }
         await client.logout()
 
-        guard generation == loginGeneration else { return }
+        guard session.isCurrent(ticket) else { return }
         authFailed = false
         studentID = id
         onSignedIn?()
@@ -172,14 +177,14 @@ final class MailAccountManager {
         guard let id = prefs.studentID, let password = credentials.password() else {
             throw MailClientError.protocolError("credentials unavailable")
         }
-        let generation = loginGeneration
+        let ticket = session.ticket
         let client = makeClient(prefs.demoActive)
         do {
             try await client.login(studentID: id, password: password)
             return client
         } catch MailClientError.authenticationFailed {
             await client.logout()
-            if generation == loginGeneration { handleAuthFailure() }
+            if session.isCurrent(ticket) { handleAuthFailure() }
             throw MailClientError.authenticationFailed
         } catch {
             await client.logout()
@@ -194,19 +199,20 @@ final class MailAccountManager {
         onAuthFailed?()
     }
 
+    /// School Mail's sign-out, which keeps the school and library accounts. A sign-in waits for
+    /// the cache wipe it starts.
     func logout() {
-        loginGeneration += 1
-        credentials.clear()
-        prefs.reset()
-        startCacheWipe()
-        studentID = nil
-        loginError = nil
-        authFailed = false
-        displayName = nil
-        notificationsEnabled = prefs.notificationsEnabled
-        muteSettings = prefs.muteSettings
-        signOutEvents.post(name: Self.didSignOut, object: nil)
-        onSignedOut?()
+        SignOutPlan(session: session, stores: SignOutPlan.mailStores, clearRest: { [self] in
+            startCacheWipe()
+            studentID = nil
+            loginError = nil
+            authFailed = false
+            displayName = nil
+            notificationsEnabled = prefs.notificationsEnabled
+            muteSettings = prefs.muteSettings
+            signOutEvents.post(name: Self.didSignOut, object: nil)
+            onSignedOut?()
+        }).run(in: AccountStorage(mailPreferences: prefs, mailCredentials: credentials))
     }
 
     private func startCacheWipe() {
@@ -224,9 +230,9 @@ final class MailAccountManager {
         startCacheWipe()
     }
 
-    private func establishBaseline(client: any MailClient, generation: Int) async {
+    private func establishBaseline(client: any MailClient, ticket: AccountSession.Ticket) async {
         guard let status = try? await client.status(folder: MailConstants.inbox) else { return }
-        guard generation == loginGeneration else { return }
+        guard session.isCurrent(ticket) else { return }
         prefs.inboxUIDValidity = status.uidValidity
         prefs.inboxNextUID = status.uidNext
     }

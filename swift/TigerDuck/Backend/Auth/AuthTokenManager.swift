@@ -11,10 +11,10 @@ actor AuthTokenManager {
     private var refreshTask: Task<String?, Never>?
     private var isSigningIn = false
     private var waitingSignIns: [CheckedContinuation<Void, Never>] = []
-    private var signInGeneration = 0
+    private var signIns = SignInCount()
     /// Keyed by the refresh token each sent: a refresh of a pair a sign-in replaced can end after the
     /// next pair's, and a sign-out takes only the one of the token it ends.
-    private var lateRefreshes: [String: (generation: Int, accessToken: String?, refreshToken: String?, mayResend: Bool)] = [:]
+    private var lateRefreshes: [String: (ticket: AccountSession.Ticket, accessToken: String?, refreshToken: String?, mayResend: Bool)] = [:]
     /// How many times the backend may have used the stored refresh token without this device
     /// keeping the pair: sends that may have reached it and got no reply, a server error or a 200
     /// it could not keep. The backend rotates a token sent again while its successor is unused and
@@ -175,7 +175,7 @@ actor AuthTokenManager {
     ) async throws -> LoginResult? {
         // One at a time: a sign-in ends the device's older sessions, so the pair stored last has to be
         // the one the backend issued last (https://github.com/tigerduck-app/tigerduck-backend/issues/48).
-        let generation = signInGeneration
+        let ticket = signIns.ticket
         if isSigningIn {
             await withCheckedContinuation { waitingSignIns.append($0) }
         } else {
@@ -187,7 +187,7 @@ actor AuthTokenManager {
         if let refused, let stored = accessToken, stored != refused { return nil }
         return try await sendLogin(
             studentId: studentId, moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken,
-            platform: platform, generation: generation
+            platform: platform, ticket: ticket
         )
     }
 
@@ -196,7 +196,7 @@ actor AuthTokenManager {
         moodleToken: String?,
         moodlePrivateToken: String?,
         platform: String,
-        generation: Int
+        ticket: AccountSession.Ticket
     ) async throws -> LoginResult {
         struct LoginRequest: Encodable {
             let student_id: String
@@ -242,7 +242,7 @@ actor AuthTokenManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
-        guard signInGeneration == generation else { throw CancellationError() }
+        guard signIns.isCurrent(ticket) else { throw CancellationError() }
         let (data, response) = try await session.data(for: request, delegate: CredentialPostDelegate())
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             if let http = response as? HTTPURLResponse {
@@ -251,7 +251,7 @@ actor AuthTokenManager {
             throw AuthError.loginFailed
         }
         let result = try JSONDecoder().decode(LoginResponse.self, from: data)
-        guard signInGeneration == generation else { throw CancellationError() }
+        guard signIns.isCurrent(ticket) else { throw CancellationError() }
         store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
         // A refresh still out is the replaced pair's, so neither a caller nor a sign-out waits on it.
         refreshTask = nil
@@ -269,7 +269,7 @@ actor AuthTokenManager {
     }
 
     func logout() {
-        signInGeneration &+= 1
+        signIns.moveOn()
         clearTokens()
     }
 
@@ -284,7 +284,7 @@ actor AuthTokenManager {
     func endSession(on backend: URL? = nil) async -> DepartingAccount {
         let baseURL = backend ?? baseURLProvider()
         let access = accessToken, refresh = refreshToken, expiry = expiresAt
-        let refreshOut = refreshTask, generation = signInGeneration, uses = refreshTokenUses
+        let refreshOut = refreshTask, ticket = signIns.ticket, uses = refreshTokenUses
         logout()
         signOutsStarting.withLock { $0 = max($0 - 1, 0) }
         guard let refresh else { return DepartingAccount(accessToken: nil, baseURL: baseURL) }
@@ -293,19 +293,19 @@ actor AuthTokenManager {
         )
         storeDepartingSessions(storedDepartingSessions().filter { !Self.isSameBackend($0.baseURL, baseURL) } + [departing])
         let token = await unregisterToken(
-            for: departing, access: access, expiry: expiry, refreshOut: refreshOut, generation: generation, uses: uses
+            for: departing, access: access, expiry: expiry, refreshOut: refreshOut, ticket: ticket, uses: uses
         )
         return DepartingAccount(accessToken: token, baseURL: baseURL, sessionID: departing.id)
     }
 
     private func unregisterToken(
         for departing: DepartingSession, access: String?, expiry: Date, refreshOut: Task<String?, Never>?,
-        generation: Int, uses: Int
+        ticket: AccountSession.Ticket, uses: Int
     ) async -> String? {
         if let access, Date.now < expiry.addingTimeInterval(-Self.signOutCallsWindow) { return access }
         if let refreshOut {
             _ = await refreshOut.value
-            let late = lateRefreshes[departing.refreshToken].flatMap { $0.generation == generation ? $0 : nil }
+            let late = lateRefreshes[departing.refreshToken].flatMap { $0.ticket == ticket ? $0 : nil }
             lateRefreshes = [:]
             if let late, let token = late.accessToken {
                 if let next = late.refreshToken { keepDeparting(departing.rotated(to: next)) }
@@ -459,15 +459,15 @@ actor AuthTokenManager {
 
     private func refresh() async -> String? {
         guard let refreshToken else { return nil }
-        let generation = signInGeneration
+        let ticket = signIns.ticket
         let endBackgroundTask = await beginBackgroundTask()
-        let token = await refreshStoredToken(refreshToken, generation: generation)
+        let token = await refreshStoredToken(refreshToken, ticket: ticket)
         await endBackgroundTask()
         return token
     }
 
     /// Sends only the token it was started for, the one a sign-out counts a refresh still out against.
-    private func refreshStoredToken(_ refreshToken: String, generation: Int) async -> String? {
+    private func refreshStoredToken(_ refreshToken: String, ticket: AccountSession.Ticket) async -> String? {
         struct RefreshResponse: Decodable {
             let access_token: String
             let refresh_token: String
@@ -477,13 +477,13 @@ actor AuthTokenManager {
         // Read before the check: a sign-out holds the tokens before it stores another endpoint.
         // The resend goes where the first send went, whatever endpoint is stored meanwhile.
         let backend = baseURLProvider()
-        guard signInGeneration == generation, signOutsStarting.withLock({ $0 == 0 }),
+        guard signIns.isCurrent(ticket), signOutsStarting.withLock({ $0 == 0 }),
               self.refreshToken == refreshToken else { return nil }
         guard refreshTokenUses < Self.refreshTokenUseLimit else {
-            return await signedInAgain(since: generation) ? accessToken : nil
+            return await signedInAgain(since: ticket) ? accessToken : nil
         }
         var send = await postCounted(refreshToken, usedBefore: refreshTokenUses, on: backend)
-        if send.reply == nil, !send.uncounted, signInGeneration == generation, send.uses < Self.refreshTokenUseLimit {
+        if send.reply == nil, !send.uncounted, signIns.isCurrent(ticket), send.uses < Self.refreshTokenUseLimit {
             send = await postCounted(refreshToken, usedBefore: send.uses, on: backend)
         }
         let uses = send.uses
@@ -491,21 +491,21 @@ actor AuthTokenManager {
         let reply = send.reply
         let mayResend = uses < Self.refreshTokenUseLimit
         // A sign-in sends no refresh token, so a Keychain that refuses every count still leaves a session.
-        if send.uncounted, await signedInAgain(since: generation) { return accessToken }
+        if send.uncounted, await signedInAgain(since: ticket) { return accessToken }
         guard let (data, http) = reply else {
-            noteOvertaken(generation, sent: refreshToken, accessToken: nil, mayResend: mayResend)
+            noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: mayResend)
             return nil
         }
 
         if http.statusCode == 200 {
             guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data) else {
-                noteOvertaken(generation, sent: refreshToken, accessToken: nil, mayResend: mayResend)
+                noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: mayResend)
                 return nil
             }
             // A sign-in that stored its pair meanwhile ended this token's session on the backend.
-            guard signInGeneration == generation, self.refreshToken == refreshToken else {
+            guard signIns.isCurrent(ticket), self.refreshToken == refreshToken else {
                 noteOvertaken(
-                    generation, sent: refreshToken, accessToken: result.access_token,
+                    ticket, sent: refreshToken, accessToken: result.access_token,
                     refreshToken: result.refresh_token, mayResend: false
                 )
                 return nil
@@ -516,16 +516,16 @@ actor AuthTokenManager {
 
         await APIVersionGate.shared.note(statusCode: http.statusCode)
         let turnedDown = Self.turnsDown(http.statusCode)
-        guard signInGeneration == generation else {
-            noteOvertaken(generation, sent: refreshToken, accessToken: nil, mayResend: mayResend && !turnedDown)
+        guard signIns.isCurrent(ticket) else {
+            noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: mayResend && !turnedDown)
             return nil
         }
         // A refusal of a token a sign-in has replaced says nothing of the sign-in's pair.
         guard turnedDown, self.refreshToken == refreshToken else { return nil }
 
-        if await signedInAgain(since: generation) { return accessToken }
-        noteOvertaken(generation, sent: refreshToken, accessToken: nil, mayResend: false)
-        guard http.statusCode == 401, signInGeneration == generation, self.refreshToken == refreshToken else {
+        if await signedInAgain(since: ticket) { return accessToken }
+        noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: false)
+        guard http.statusCode == 401, signIns.isCurrent(ticket), self.refreshToken == refreshToken else {
             return nil
         }
         clearTokens()
@@ -537,15 +537,15 @@ actor AuthTokenManager {
     }
 
     private func noteOvertaken(
-        _ generation: Int, sent: String, accessToken: String?, refreshToken: String? = nil, mayResend: Bool
+        _ ticket: AccountSession.Ticket, sent: String, accessToken: String?, refreshToken: String? = nil, mayResend: Bool
     ) {
-        guard signInGeneration != generation else { return }
-        lateRefreshes[sent] = (generation, accessToken, refreshToken, mayResend)
+        guard !signIns.isCurrent(ticket) else { return }
+        lateRefreshes[sent] = (ticket, accessToken, refreshToken, mayResend)
     }
 
-    private func signedInAgain(since generation: Int) async -> Bool {
+    private func signedInAgain(since ticket: AccountSession.Ticket) async -> Bool {
         guard let relogin = onRefreshFailed else { return false }
-        return await relogin() && signInGeneration == generation
+        return await relogin() && signIns.isCurrent(ticket)
     }
 
     private struct RefreshSend {

@@ -66,11 +66,10 @@ final class ClassTableImportModel: Identifiable {
     }
 
     static func live(authService: AuthService) -> ClassTableImportModel {
-        let generation = authService.loginGeneration
-        return ClassTableImportModel(
+        ClassTableImportModel(
             store: .shared,
             signedInStudentId: { authService.storedStudentId },
-            isCurrent: { authService.loginGeneration == generation },
+            isCurrent: authService.session.currentCheck(),
             lookup: { try await AppServiceBridge.importedCourses(semester: $0, courseNos: $1) }
         )
     }

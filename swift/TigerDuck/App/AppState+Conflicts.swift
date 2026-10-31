@@ -102,10 +102,10 @@ extension AppState {
         let pending = Self.categoriesToCheck(
             pending: Defaults[.pendingConflictCategories], answering: useLocalHold.held
         )
-        let generation = authService.loginGeneration
+        let ticket = authService.session.ticket
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
-            if isRetry { endConflictCheck(checked: pending, startedIn: generation) }
+            if isRetry { endConflictCheck(checked: pending, startedIn: ticket) }
             return
         }
         if !isRetry {
@@ -120,7 +120,7 @@ extension AppState {
             var handedOffToRetry = false
             defer {
                 if !handedOffToRetry {
-                    Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: generation) }
+                    Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: ticket) }
                 }
             }
             do {
@@ -258,13 +258,13 @@ extension AppState {
                 AppLogger.sync.info("[reenable] result: \(diffs.count, privacy: .public) diffs → \(diffs.isEmpty ? "no conflict" : "SHOW POPUP", privacy: .public)")
                 await MainActor.run {
                     let outcome = Self.conflictCheckOutcome(
-                        mayWrite: fullSyncMayWrite(since: generation), checked: pending,
+                        mayWrite: fullSyncMayWrite(since: ticket), checked: pending,
                         stillPending: Self.categoriesToCheck(
                             pending: Defaults[.pendingConflictCategories], answering: useLocalHold.held
                         ),
                         foundDifference: !diffs.isEmpty
                     )
-                    conflictCheckRetry.note(outcome, at: Date(), generation: generation)
+                    conflictCheckRetry.note(outcome, at: Date(), signIn: ticket)
                     switch outcome {
                     case .dropped:
                         AppLogger.sync.info("[reenable] result discarded — signed out, sync off or locked while in flight")
@@ -283,7 +283,7 @@ extension AppState {
                     }
                 }
             } catch {
-                conflictCheckRetry.noteFailure(at: Date(), generation: generation)
+                conflictCheckRetry.noteFailure(at: Date(), signIn: ticket)
                 AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .private) — pending kept for retry")
                 if case PushAPIError.httpStatus(401, _, let sent) = error, retriesLeft > 0 {
                     let reloginOk = await attemptBackendRelogin(replacing: sent?.value)
@@ -330,11 +330,11 @@ extension AppState {
         return (local.subtracting(server).count, server.subtracting(local).count)
     }
 
-    private func endConflictCheck(checked pending: Set<String>, startedIn generation: Int) {
+    private func endConflictCheck(checked pending: Set<String>, startedIn ticket: AccountSession.Ticket) {
         isCheckingConflicts = false
         let unchecked = Self.categoriesLeftToCheck(
             pending: Defaults[.pendingConflictCategories], checked: pending,
-            signedOutSince: generation != authService.loginGeneration
+            signedOutSince: !authService.session.isCurrent(ticket)
         )
         if reenableConflict == nil, !unchecked.isEmpty {
             checkPendingConflicts()
@@ -344,7 +344,7 @@ extension AppState {
     func retryOwedConflictCheck() {
         guard conflictCheckRetry.isDue(
             pending: Defaults[.pendingConflictCategories], checking: isCheckingConflicts,
-            awaitingAnswer: reenableConflict != nil, now: Date(), generation: authService.loginGeneration
+            awaitingAnswer: reenableConflict != nil, now: Date(), signIn: authService.session.ticket
         ) else { return }
         checkPendingConflicts()
     }
@@ -353,28 +353,30 @@ extension AppState {
         static let firstDelay: TimeInterval = 30
         static let maxDelay: TimeInterval = 30 * 60
 
-        private(set) var generation: Int
+        private(set) var signIn: AccountSession.Ticket?
         private(set) var owed = true
         private(set) var failures = 0
         private(set) var notBefore: Date?
 
-        init(generation: Int = 0) {
-            self.generation = generation
+        init(signIn: AccountSession.Ticket? = nil) {
+            self.signIn = signIn
         }
 
-        func isDue(pending: Set<String>, checking: Bool, awaitingAnswer: Bool, now: Date, generation: Int) -> Bool {
-            let state = generation == self.generation ? self : Self(generation: generation)
+        func isDue(
+            pending: Set<String>, checking: Bool, awaitingAnswer: Bool, now: Date, signIn: AccountSession.Ticket
+        ) -> Bool {
+            let state = signIn == self.signIn ? self : Self(signIn: signIn)
             return state.owed && !pending.isEmpty && !checking && !awaitingAnswer
                 && (state.notBefore.map { now >= $0 } ?? true)
         }
 
-        mutating func noteFailure(at now: Date, generation: Int) {
-            guard adopt(generation) else { return }
+        mutating func noteFailure(at now: Date, signIn: AccountSession.Ticket) {
+            guard adopt(signIn) else { return }
             recordFailure(at: now)
         }
 
-        mutating func note(_ outcome: ConflictCheckOutcome, at now: Date, generation: Int) {
-            guard adopt(generation) else { return }
+        mutating func note(_ outcome: ConflictCheckOutcome, at now: Date, signIn: AccountSession.Ticket) {
+            guard adopt(signIn) else { return }
             switch outcome {
             case .dropped:
                 recordFailure(at: now)
@@ -389,9 +391,9 @@ extension AppState {
 
         mutating func noteAnswered(
             leaving pending: Set<String>, awaitingAnswer: Bool, saveFailed: Bool = false, at now: Date = Date(),
-            generation: Int
+            signIn: AccountSession.Ticket
         ) {
-            guard adopt(generation) else { return }
+            guard adopt(signIn) else { return }
             if saveFailed { return recordFailure(at: now) }
             if !pending.isEmpty, !awaitingAnswer { owed = true }
         }
@@ -402,9 +404,9 @@ extension AppState {
             notBefore = now.addingTimeInterval(min(Self.firstDelay * pow(2, Double(failures - 1)), Self.maxDelay))
         }
 
-        private mutating func adopt(_ generation: Int) -> Bool {
-            guard generation >= self.generation else { return false }
-            if generation != self.generation { self = Self(generation: generation) }
+        private mutating func adopt(_ signIn: AccountSession.Ticket) -> Bool {
+            if let current = self.signIn, signIn < current { return false }
+            if signIn != self.signIn { self = Self(signIn: signIn) }
             return true
         }
     }
@@ -446,8 +448,8 @@ extension AppState {
         guard let conflict = reenableConflict else { return }
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
         reenableConflict = nil
-        let generation = authService.loginGeneration
-        let isCurrent = { [weak self] in self?.authService.loginGeneration == generation }
+        let ticket = authService.session.ticket
+        let isCurrent = { [weak self] in self?.authService.session.isCurrent(ticket) == true }
         let effects = ReenableAnswerEffects(
             isCurrent: isCurrent,
             take: { self.useLocalHold.take($0, keepLocal: $1, from: &Defaults[.pendingConflictCategories]) },
@@ -465,7 +467,7 @@ extension AppState {
             noteAnswered: { saveFailed in
                 self.conflictCheckRetry.noteAnswered(
                     leaving: Defaults[.pendingConflictCategories], awaitingAnswer: self.reenableConflict != nil,
-                    saveFailed: saveFailed, generation: generation
+                    saveFailed: saveFailed, signIn: ticket
                 )
                 self.retryOwedConflictCheck()
             }

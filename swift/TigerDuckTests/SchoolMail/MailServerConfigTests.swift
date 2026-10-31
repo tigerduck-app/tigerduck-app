@@ -223,12 +223,12 @@ struct MailServerConfigTests {
         h.settings.draft = Self.settings()
         #expect(h.settings.apply())
         #expect(h.resets.count == 1)
-        #expect(h.settings.generation == 1)
+        #expect(h.settings.revision == 1)
         #expect(h.settings.effectiveConfig.imapHost == "imap.example.com")
 
         #expect(h.settings.resetToSchoolServer())
         #expect(h.resets.count == 2)
-        #expect(h.settings.generation == 2)
+        #expect(h.settings.revision == 2)
         #expect(h.settings.effectiveConfig == .school)
     }
 
@@ -247,7 +247,7 @@ struct MailServerConfigTests {
         h.settings.draft = Self.settings(enabled: false, imapHost: "imap.other.test")
         #expect(!h.settings.apply())
         #expect(h.resets.count == 0)
-        #expect(h.settings.generation == 0)
+        #expect(h.settings.revision == 0)
 
         h.settings.draft = Self.settings()
         h.settings.apply()

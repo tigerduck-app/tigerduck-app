@@ -26,21 +26,21 @@ nonisolated enum ClassTableShareLink {
 
 /// A share link that came before its import could open, with no one signed in or onboarding not
 /// finished, held until both are done. It is kept in memory only, so quitting the app loses it.
-/// A newer link replaces it, and a sign-out, which moves `AuthService.loginGeneration`, drops it.
+/// A newer link replaces it, and a sign-out, which moves the school `AccountSession` on, drops it.
 @Observable
 final class HeldShareLink {
     struct Link: Equatable {
         let id = UUID()
         let text: String
-        let loginGeneration: Int
+        let signIn: AccountSession.Ticket
     }
 
     static let shared = HeldShareLink()
 
     private(set) var link: Link?
 
-    func arrived(_ text: String, loginGeneration: Int) {
-        link = Link(text: text, loginGeneration: loginGeneration)
+    func arrived(_ text: String, signIn: AccountSession.Ticket) {
+        link = Link(text: text, signIn: signIn)
     }
 
     /// Imports are filed under the signed-in account, which also tells the user's own code apart,
@@ -50,14 +50,14 @@ final class HeldShareLink {
     }
 
     func take(in appState: AppState) -> String? {
-        take(mayOpen: Self.mayOpen(in: appState), loginGeneration: appState.authService.loginGeneration)
+        take(mayOpen: Self.mayOpen(in: appState), signIn: appState.authService.session.ticket)
     }
 
     /// The held link's text, taken, once it may open; nil while it may not, and for one that
     /// came before a sign-out, which this drops.
-    func take(mayOpen: Bool, loginGeneration: Int) -> String? {
+    func take(mayOpen: Bool, signIn: AccountSession.Ticket) -> String? {
         guard let link else { return nil }
-        guard link.loginGeneration == loginGeneration else {
+        guard link.signIn == signIn else {
             self.link = nil
             return nil
         }
