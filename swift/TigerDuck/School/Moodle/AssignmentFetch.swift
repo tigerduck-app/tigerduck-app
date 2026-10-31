@@ -1,15 +1,31 @@
 import Defaults
 import Foundation
 
+/// Returns once a fetch may apply what it got: true after the pull it waits on completed, false
+/// when that pull was cancelled.
+typealias PullGate = @MainActor () async -> Bool
+
 private final class AssignmentRound {
     let signIn: AccountSession.Ticket
     let rechecks: Bool
     var task: Task<Void, Never>?
     var assignments: [SDAssignment] = []
+    /// The gates of the callers sharing the round, in the order they came.
+    var gates: [PullGate] = []
 
     init(signIn: AccountSession.Ticket, rechecks: Bool) {
         self.signIn = signIn
         self.rechecks = rechecks
+    }
+
+    /// A caller's cancelled pull hands the wait on to the next caller's.
+    func pulled() async -> Bool {
+        var next = 0
+        while next < gates.count {
+            if await gates[next]() { return true }
+            next += 1
+        }
+        return false
     }
 }
 
@@ -25,39 +41,45 @@ enum AssignmentFetch {
 
     static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
 
-    /// `applyAfter` returns once the round may apply what it fetched, as after a refresh's pull.
+    /// The round applies what it fetched once `applyAfter` passes, as after a refresh's pull.
     static func fetchAssignments(
         authService: AuthService, recheckSubmissions: Bool = false,
-        applyAfter: @escaping @MainActor () async -> Void = {}
+        applyAfter: @escaping PullGate = { true }
     ) async -> [SDAssignment] {
         let ticket = authService.session.ticket
         return await sharedRound(
             signIn: ticket,
             rechecks: recheckSubmissions,
-            isCurrent: { authService.session.isCurrent(ticket) }
-        ) {
+            isCurrent: { authService.session.isCurrent(ticket) },
+            applyAfter: applyAfter
+        ) { pulled in
             await runAssignmentRound(
-                authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: applyAfter
+                authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: pulled
             )
         }
     }
 
+    /// `run` gets the gate of every caller that shares the round, so a caller that joins can
+    /// release a round whose starter's pull was cancelled.
     static func sharedRound(
         signIn: AccountSession.Ticket,
         rechecks: Bool,
         isCurrent: @MainActor () -> Bool,
         rounds: AssignmentRounds = .shared,
-        run: @escaping @MainActor () async -> [SDAssignment]
+        applyAfter: @escaping PullGate = { true },
+        run: @escaping @MainActor (_ pulled: @escaping PullGate) async -> [SDAssignment]
     ) async -> [SDAssignment] {
         var waitedFor: AssignmentRound?
         while let round = rounds.running, round.signIn == signIn, round !== waitedFor {
+            round.gates.append(applyAfter)
             await round.task?.value
             if round.rechecks || !rechecks { return answer(round, isCurrent: isCurrent) }
             waitedFor = round
         }
         guard isCurrent() else { return AssignmentStore.shared.loadAssignments() }
         let round = AssignmentRound(signIn: signIn, rechecks: rechecks)
-        round.task = Task { round.assignments = await run() }
+        round.gates = [applyAfter]
+        round.task = Task { round.assignments = await run { await round.pulled() } }
         rounds.running = round
         await round.task?.value
         if rounds.running === round { rounds.running = nil }
@@ -81,7 +103,7 @@ enum AssignmentFetch {
     }
 
     static func refreshAssignmentsIfDue(
-        authService: AuthService, applyAfter: @escaping @MainActor () async -> Void = {}
+        authService: AuthService, applyAfter: @escaping PullGate = { true }
     ) async {
         let now = Date()
         guard authService.storedStudentId != nil,
@@ -104,7 +126,7 @@ enum AssignmentFetch {
     }
 
     private static func runAssignmentRound(
-        authService: AuthService, recheckSubmissions: Bool, applyAfter: @MainActor () async -> Void
+        authService: AuthService, recheckSubmissions: Bool, applyAfter: PullGate
     ) async -> [SDAssignment] {
         let ticket = authService.session.ticket
         guard let account = authService.storedStudentId,
@@ -174,7 +196,7 @@ enum AssignmentFetch {
             }
             let statuses = answers.mapValues(\.status)
             // The marks below, and what is saved, are read once the backend's have been applied.
-            await applyAfter()
+            guard await applyAfter() else { return AssignmentStore.shared.loadAssignments() }
 
             let freshAssignments = AssignmentRecords.assignments(
                 from: records,
