@@ -193,6 +193,89 @@ struct SyncRaceTests {
         #expect(await coordinator.outbox.parkedSnapshot().map(\.op.dedupKey) == ["ci|1151|1151CS1"])
     }
 
+    // MARK: - Auto colours
+
+    private static let resetClock = PushAPI.clock(of: Date(timeIntervalSince1970: 1_790_000_000))
+
+    private static func courseRow(_ semester: String, _ courseNo: String) -> [String: Any] {
+        ["course_key": "client:\(semester):\(courseNo)", "semester": semester, "course_no": courseNo,
+         "moodle_id": "\(semester)\(courseNo)"]
+    }
+
+    private static func fills(
+        local: [String: UInt32], overrides: [[String: Any]] = [], holding: Set<String> = []
+    ) -> [String: CourseColorFill] {
+        let snapshot: [String: Any] = ["courses_reset_hlc": resetClock - 5_000_000, "term_resets": ["1151": resetClock]]
+        let fills = CourseOverridesReconciler.colorFills(
+            overrides, courses: [courseRow("1151", "CS1"), courseRow("1151", "CS2"), courseRow("1142", "CS3")],
+            local: local, holding: holding, snapshot: snapshot
+        )
+        return Dictionary(uniqueKeysWithValues: fills.map { ($0.courseNo, $0) })
+    }
+
+    @Test("An auto colour goes stamped just after the term's latest reset, the same on every device, and a colour the backend holds is not sent")
+    func autoColoursGoWithOneStampPerTerm() throws {
+        let here = Self.fills(local: ["CS1": Self.red, "CS2": Self.teal, "CS3": 0xF7DC6F])
+        let there = Self.fills(local: ["CS1": Self.teal, "CS2": Self.red, "CS3": 0x9B59B6])
+
+        let cs1 = try #require(here["CS1"])
+        #expect(cs1.courseKey == "client:1151:CS1")
+        #expect(cs1.colorHex == "#FF6B6B")
+        #expect((Self.resetClock + 1)...(Self.resetClock + 1_000) ~= PushAPI.clock(of: cs1.stamp))
+        let cs3Clock = PushAPI.clock(of: try #require(here["CS3"]).stamp)
+        #expect((Self.resetClock - 4_999_999)...(Self.resetClock - 4_999_000) ~= cs3Clock)
+        #expect(here.mapValues(\.stamp) == there.mapValues(\.stamp))
+        #expect(here.mapValues(\.courseKey) == there.mapValues(\.courseKey))
+        #expect(Self.fills(local: ["CS1": Self.red, "CS3": 0xF7DC6F], holding: ["1142CS3"]).keys.sorted() == ["CS1"])
+
+        let onServer: [[String: Any]] = [
+            ["moodle_id": "1151CS1", "semester": "1151", "course_no": "CS1", "color_hex": "#4ECDC4",
+             "color_hex_hlc": Self.resetClock + 9_000_000],
+            ["moodle_id": "1151CS2", "semester": "1151", "course_no": "CS2", "color_hex": NSNull(),
+             "color_hex_hlc": Self.resetClock + 2_000],
+        ]
+        #expect(Self.fills(local: ["CS1": Self.teal, "CS2": Self.red], overrides: onServer).isEmpty)
+        let moved = try #require(Self.fills(local: ["CS1": Self.red], overrides: onServer)["CS1"])
+        #expect(moved.colorHex == "#FF6B6B")
+        #expect(PushAPI.clock(of: moved.stamp) > Self.resetClock + 9_000_000)
+    }
+
+    @Test("A device whose auto colour lost to another's takes that colour, and the course it moved goes at the next full sync")
+    func aLaterDeviceTakesTheFirstAutoColour() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Data(##"{"color_hex":"#4ECDC4","custom_names":{},"applied":[]}"##.utf8)), for: url
+        )
+        let cache = Self.cache()
+        let colors = CourseColorStore(files: cache.colors)
+        colors.applyColors([("CS1", Self.red), ("CS2", Self.teal)], palette: TigerDuckTheme.coursePaletteHexes)
+        let coordinator = CloudSyncCoordinator(
+            pushCoordinator: Self.push(baseURL),
+            outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
+            isEnabled: true, syncsCourseOverrides: { _ in true }, courses: cache.courses,
+            kept: KeptValues(policy: Self.policy(["courses", "course_colors"]), colors: colors,
+                             courses: cache.courses, assignments: cache.assignments)
+        )
+        let fill = try #require(Self.fills(local: colors.map)["CS1"])
+
+        await coordinator.sendColorFills([fill])
+
+        let body = try #require(SettingsAPIStub.requests(for: url).first.flatMap(SettingsAPIStub.bodyData(from:)))
+        let sent = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect((sent["hlc"] as? NSNumber)?.int64Value == PushAPI.clock(of: fill.stamp))
+        #expect(sent["color_hex"] as? String == "#FF6B6B")
+        #expect(colors.map["CS1"] == Self.teal)
+        let moved = try #require(colors.map["CS2"])
+        #expect(moved != Self.teal)
+        let next = Self.fills(local: colors.map, overrides: [
+            ["moodle_id": "1151CS1", "semester": "1151", "course_no": "CS1", "color_hex": "#4ECDC4",
+             "color_hex_hlc": PushAPI.clock(of: fill.stamp)],
+        ])
+        #expect(next.keys.sorted() == ["CS2"])
+        #expect(next["CS2"]?.colorHex == String(format: "#%06X", moved))
+    }
+
     // MARK: - R4
 
     @Test("A rule edited while the save before it is out stays on screen and goes in the next save")
