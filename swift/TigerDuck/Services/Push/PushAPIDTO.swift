@@ -161,9 +161,11 @@ enum PushAPI {
 
     struct AssignmentOverrideRequest: Encodable, Sendable {
         let localStatus: String
+        let hlc: Int64?
 
         enum CodingKeys: String, CodingKey {
             case localStatus = "local_status"
+            case hlc
         }
     }
 
@@ -173,6 +175,7 @@ enum PushAPI {
         let locale: String?
         var ignoreAssignments: Bool? = nil
         var moodleCourseId: Int? = nil
+        var hlc: Int64? = nil
 
         enum CodingKeys: String, CodingKey {
             case colorHex = "color_hex"
@@ -180,6 +183,7 @@ enum PushAPI {
             case locale
             case ignoreAssignments = "ignore_assignments"
             case moodleCourseId = "moodle_course_id"
+            case hlc
         }
     }
 
