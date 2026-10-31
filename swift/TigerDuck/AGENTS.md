@@ -59,6 +59,7 @@ yet in the tree arrives with its refactor phase; until then the rule stays where
 - Course colors: `Stores/CourseColorStore.swift`.
 - Term codes: `AcademicTerm` in TigerDuckCore.
 - Today's classes, now and next: `ClassTimeline` in TigerDuckCore.
+- Days without classes, from the terms and holidays: `QuietDayCalendar` in TigerDuckCore.
 - Taipei dates: `TaipeiTime` in TigerDuckCore.
 - What this device may send or apply: `Backend/Sync/SyncPolicy.swift`.
 - Whether an upload already went out: `Backend/Sync/SendLedger.swift`.

@@ -35,7 +35,7 @@ EXTENSION_FOLDERS = ("swift/TigerDuckWidgets/", "swift/TigerDuckLiveActivity/", 
 # Sources of the other shipping targets; only the Taipei rule applies to them.
 OTHER_TARGET_FOLDERS = EXTENSION_FOLDERS + ("swift/TigerDuckWatch Watch App/", "swift/Shared/")
 
-ENFORCED_PHASE = 0
+ENFORCED_PHASE = 1
 
 TYPE_LINES = 250
 VIEW_LINES = 200
@@ -53,6 +53,7 @@ RULES = {r.name: r for r in (
     Rule("taipei-zone", 0),
     Rule("duplicate-base-name", 0),
     Rule("on-screen-test", 0),
+    Rule("academic-term", 1),
     Rule("login-generation", 2),
     Rule("data-did-update", 3),
     Rule("is-updating-from-network", 3),
@@ -97,6 +98,11 @@ PATTERNS = (
      "or `StateSignal`"),
 )
 TAIPEI = re.compile(r'"Asia/Taipei"')
+# (rule, pattern on code with comments and strings blanked, message) for rules whose only home is
+# TigerDuckCore; like the Taipei rule they read every shipping target.
+CORE_PATTERNS = (
+    ("academic-term", r"\b1911\b", "the ROC year offset outside TigerDuckCore; use `AcademicTerm` in TigerDuckCore"),
+)
 STRING_OPEN = re.compile(r'(#*)("""|")')
 LAYERS = ("School/", "Backend/", "Persistence/")
 
@@ -276,6 +282,12 @@ def taipei_findings(sources: list[Source]) -> list[Finding]:
             for src in sources if not src.path.startswith(CORE) for m in TAIPEI.finditer(src.text)]
 
 
+def core_findings(sources: list[Source]) -> list[Finding]:
+    return [Finding(src.path, line_of(src.code, m.start()), rule, message)
+            for src in sources if not src.path.startswith(CORE)
+            for rule, pattern, message in CORE_PATTERNS for m in re.finditer(pattern, src.code)]
+
+
 def other_target_paths(root: Path, known: list[str]) -> list[str]:
     listed = subprocess.run(["git", "-C", str(root), "ls-files", *(f"{d}*.swift" for d in OTHER_TARGET_FOLDERS)],
                             capture_output=True, text=True, check=True).stdout.split("\n")
@@ -397,7 +409,8 @@ def findings(root: Path = ROOT) -> list[Finding]:
     sources = load(root, paths)
     others = load(root, other_target_paths(root, paths))
     workflow = (root / WORKFLOW.relative_to(ROOT)).read_text(encoding="utf-8")
-    return (pattern_findings(sources) + taipei_findings(others) + base_name_findings(paths) + on_screen_findings(workflow, test_code(root))
+    return (pattern_findings(sources) + taipei_findings(others) + core_findings(sources + others)
+            + base_name_findings(paths) + on_screen_findings(workflow, test_code(root))
             + size_findings(sources) + layering_findings(sources))
 
 

@@ -35,9 +35,8 @@ and the macOS build's source list was kept by hand in two copies.
   The app, the Watch app and the widget, Live Activity and Watch complication extensions link it,
   so an extension calls a rule instead of copying it. Its API is `public`, it builds in the Swift 6
   language mode without a default actor, and `swift test` runs its tests in the `TigerDuckCore`
-  job of `.github/workflows/tests.yaml`. `TaipeiTime` is its first type; the term codes
-  (`AcademicTerm`), a day's classes (`ClassTimeline`) and the quiet days (`QuietDayCalendar`)
-  follow.
+  job of `.github/workflows/tests.yaml`. It holds `TaipeiTime`, the term codes
+  (`AcademicTerm`), a day's classes (`ClassTimeline`) and the quiet days (`QuietDayCalendar`).
 - Each shared rule has one home, listed under "Shared homes" in `swift/TigerDuck/AGENTS.md` and
   under "Conventions" in a folder's AGENTS.md for a rule of that folder alone.
 - A type stays under 250 lines, its extensions in other files counted and its nested types not;
@@ -50,6 +49,7 @@ and the macOS build's source list was kept by hand in two copies.
   | Phase | Rule |
   | --- | --- |
   | 0 | `"Asia/Taipei"` outside TigerDuckCore; two app-target Swift files with one base name; an `on_screen_tests` entry in `tests.yaml` naming no test |
+  | 1 | the ROC year offset, `1911`, outside TigerDuckCore in any shipping target |
   | 2 | a login generation compared outside `Account/` |
   | 3 | `dataDidUpdate` or `isUpdatingFromNetwork`; `UserDefaults` outside `Persistence/` |
   | 4 | a `URLSession` created outside `School/NTUST/`, `Backend/Client/` and `Mail/Transport/` |
