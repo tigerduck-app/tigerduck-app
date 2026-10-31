@@ -401,7 +401,11 @@ enum AppServiceBridge {
     /// its own, so both only add. An exempted row can be filed under any term and counts for neither.
     static func rebuildsFromTranscript(_ report: ScoreReport?, term: String, servedBySelection: Bool) -> Bool {
         guard !servedBySelection, let report else { return false }
-        let order = { (code: String) in Int(code.filter(\.isNumber)) ?? 0 }
+        // A year's terms run 1, 2, then summer (H), so 114H follows 1142 and precedes 1151.
+        let order = { (code: String) -> (year: Int, term: Int) in
+            let code = code.uppercased()
+            return (SemesterCatalog.academicYear(of: code) ?? 0, code.last.flatMap { Array("12H").firstIndex(of: $0) } ?? 0)
+        }
         let listed = report.courses.filter { $0.status != .exempted }
         return listed.contains { $0.term == term } && listed.contains { order($0.term) > order(term) }
     }

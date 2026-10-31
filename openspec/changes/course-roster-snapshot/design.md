@@ -98,7 +98,9 @@ the unchanged-fingerprint check.
 ### D10. Retire released versions with 410 after the fix ships
 iOS has shown an "update required" alert on any 410 since 2.0.2 (`APIVersionGate`). Once both
 fixed apps are out, the backend answers sync requests from devices below a minimum version
-(`user_devices.app_version`) with 410. The minimum and the date are set then, with the owner.
+(`user_devices.app_version`) with 410 and the body `{"error": "app_version_retired"}`, which
+both apps tell apart from the change feed's 410 `sync_revision_expired`. The minimum and the
+date are set then, with the owner.
 - Lost: retiring now. Students would be asked to update before a fixed version exists.
 
 ## Risks / Trade-offs
