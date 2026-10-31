@@ -17,8 +17,7 @@ extension AppState {
         do {
             let written = try await NotificationSettingsSync.push(
                 local: local,
-                // No copy stored: no field counts as changed, so the push cannot revert a newer one.
-                base: NotificationSettingsSync.synced ?? local,
+                base: NotificationSettingsSync.pushBase(local: local),
                 client: client,
                 cloudSyncEnabled: Defaults[.cloudSyncEnabled],
                 syncAssignmentRemindersEnabled: NotificationSettingsSync.pushes(.assignments),
@@ -26,7 +25,7 @@ extension AppState {
                 isCurrent: isCurrent
             )
             guard written, isCurrent() else { return }
-            NotificationSettingsSync.synced = local
+            NotificationSettingsSync.recordPushed(local)
             if NotificationSettingsSync.canClearPendingMarker(
                 written: written,
                 sent: local,
@@ -114,6 +113,7 @@ extension AppState {
         NotificationSettingsPushQueue.cancelAll()
         Defaults[.notificationSettingsPushPending] = false
         Defaults[.notificationSettingsSyncedPreferences] = nil
+        Defaults[.notificationSettingsPushSendsEveryField] = false
         Defaults[.notificationSettingsSectionsToAdopt] = []
     }
     #endif
@@ -333,6 +333,20 @@ nonisolated enum NotificationSettingsSync {
         }
     }
 
+    /// What a push compares the device's values with; nil sends every field. With no copy, as
+    /// after a sign-out, nothing counts as changed, so a push cannot revert the account's values,
+    /// except the one push an upgrade found pending, which holds an edit from an earlier build.
+    @MainActor
+    static func pushBase(local: LocalPreferences) -> LocalPreferences? {
+        synced ?? (Defaults[.notificationSettingsPushSendsEveryField] ? nil : local)
+    }
+
+    @MainActor
+    static func recordPushed(_ sent: LocalPreferences) {
+        synced = sent
+        Defaults[.notificationSettingsPushSendsEveryField] = false
+    }
+
     /// Whether a push writes `section`: its device switch is on, and a switch turned back on has
     /// had the server's section adopted since.
     @MainActor
@@ -421,7 +435,7 @@ nonisolated enum NotificationSettingsSync {
     @discardableResult
     static func push(
         local: LocalPreferences,
-        base: LocalPreferences,
+        base: LocalPreferences?,
         client: SettingsDocumentClient,
         cloudSyncEnabled: Bool,
         syncAssignmentRemindersEnabled: Bool = true,

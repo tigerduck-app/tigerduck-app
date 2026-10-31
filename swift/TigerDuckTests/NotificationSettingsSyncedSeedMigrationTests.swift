@@ -13,13 +13,16 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             let savedDone = UserDefaults.standard.object(forKey: doneKey)
             let savedPending = Defaults[.notificationSettingsPushPending]
             let savedCopy = Defaults[.notificationSettingsSyncedPreferences]
+            let savedEveryField = Defaults[.notificationSettingsPushSendsEveryField]
             defer {
                 UserDefaults.standard.set(savedDone, forKey: doneKey)
                 Defaults[.notificationSettingsPushPending] = savedPending
                 Defaults[.notificationSettingsSyncedPreferences] = savedCopy
+                Defaults[.notificationSettingsPushSendsEveryField] = savedEveryField
             }
             UserDefaults.standard.removeObject(forKey: doneKey)
             Defaults[.notificationSettingsSyncedPreferences] = nil
+            Defaults[.notificationSettingsPushSendsEveryField] = false
             try await body()
         }
     }
@@ -52,15 +55,44 @@ struct NotificationSettingsSyncedSeedMigrationTests {
         }
     }
 
-    @Test("an upgrade with a push pending stores no copy, as the device's values hold an unsent edit")
-    func upgradeWithAPendingPushStoresNoCopy() async {
-        await Self.withCleanState {
+    @Test("an edit left unsent at the upgrade goes up whole, and the push that lands records the copy")
+    func editUnsentAtTheUpgradeGoesUp() async throws {
+        try await Self.withCleanState {
             Defaults[.notificationSettingsPushPending] = true
+            let local = Self.preferences(showInClass: true)
 
-            NotificationSettingsSyncedSeedMigration.runIfNeeded(current: Self.preferences(showInClass: true))
+            NotificationSettingsSyncedSeedMigration.runIfNeeded(current: local)
 
-            #expect(NotificationSettingsSync.synced == nil)
             #expect(UserDefaults.standard.bool(forKey: doneKey))
+            let base = NotificationSettingsSync.pushBase(local: local)
+            #expect(base == nil)
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = NotificationSettingsFixtures.documentURL(baseURL)
+            SettingsAPIStub.enqueue(
+                try NotificationSettingsFixtures.found(["live_activity": ["show_in_class": false]], revision: 3),
+                for: url
+            )
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 4), for: url)
+
+            let written = try await NotificationSettingsSync.push(
+                local: local, base: base, client: SettingsAPIStub.makeClient(baseURL: baseURL), cloudSyncEnabled: true
+            )
+            let sent = try NotificationSettingsFixtures.sentDocument(SettingsAPIStub.requests(for: url)[1])
+            #expect(written)
+            #expect((sent["live_activity"] as? [String: Any])?["show_in_class"] as? Bool == true)
+
+            NotificationSettingsSync.recordPushed(local)
+            #expect(NotificationSettingsSync.synced == local)
+            #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == local)
+        }
+    }
+
+    @Test("with no copy and no upgrade owed, as after a sign-out, a push counts nothing as changed")
+    func noCopyAfterSignOutChangesNothing() async {
+        await Self.withCleanState {
+            let local = Self.preferences(showInClass: true)
+
+            #expect(NotificationSettingsSync.pushBase(local: local) == local)
         }
     }
 }
