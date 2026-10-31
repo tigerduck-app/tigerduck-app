@@ -132,8 +132,13 @@ MoreView.swift
 MoreViewModel.swift
 
 # Features/Onboarding — iOS onboarding flow; macOS enters through MacLoginView
+OnboardingCloudSyncPage.swift
+OnboardingLoginPage.swift
+OnboardingNotificationsPage.swift
 OnboardingPageView.swift
+OnboardingPrivacyPage.swift
 OnboardingView.swift
+PagingScrollLock.swift
 
 # Features/Score — iOS score surfaces
 CreditSummaryBento.swift
