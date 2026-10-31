@@ -415,12 +415,15 @@ MailMover.swift
 MailTLSVerifier.swift
 
 # Features/Browser — the TigerDuck browser is iOS only; the Mac opens links in its default browser
+BrowserBar.swift
 BrowserCertificate.swift
 BrowserChromeCollapse.swift
 BrowserData.swift
 BrowserFind.swift
 BrowserFindBar.swift
+BrowserFindScript.swift
 BrowserMenu.swift
+BrowserNavigator.swift
 BrowserPage.swift
 BrowserPageScripts.swift
 BrowserRouting.swift
