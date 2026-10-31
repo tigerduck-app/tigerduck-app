@@ -222,6 +222,8 @@ LiveActivityPreferencesStore.swift
 
 # Devices/LiveActivity/Runtime — ActivityKit — iOS only
 LiveActivityCoordinator.swift
+LiveActivityEndRules.swift
+LiveActivityTasks.swift
 TigerDuckActivityAttributes.swift
 
 # Devices/LiveActivity/Scheduling — ActivityKit — iOS only
