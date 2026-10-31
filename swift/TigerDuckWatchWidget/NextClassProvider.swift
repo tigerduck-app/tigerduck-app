@@ -1,6 +1,7 @@
 import WidgetKit
 import Foundation
 import os
+import TigerDuckCore
 
 nonisolated struct NextClassProvider: TimelineProvider {
     var snapshotFileURL = SharedAppGroup.snapshotFileURL
@@ -32,7 +33,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
     func timeline(for snapshot: WatchSnapshot?, now: Date) -> Timeline<NextClassEntry> {
         let courses = snapshot?.courses ?? []
         let quietDays = snapshot?.quietDays ?? []
-        let cal = SharedTaipei.calendar
+        let cal = TaipeiTime.calendar
 
         var boundaries: Set<Date> = [now]
         if let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) {
@@ -91,7 +92,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
     }
 
     private func combine(hhmm: String, with anchor: Date) -> Date? {
-        let cal = SharedTaipei.calendar
+        let cal = TaipeiTime.calendar
         let parts = hhmm.split(separator: ":")
         guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
         var dc = cal.dateComponents([.year, .month, .day], from: anchor)
@@ -108,7 +109,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
         case .later: return low
         }
         guard let next = r.next,
-              let day = SharedTaipei.calendar.date(byAdding: .day, value: daysAhead, to: now),
+              let day = TaipeiTime.calendar.date(byAdding: .day, value: daysAhead, to: now),
               let start = combine(hhmm: next.startHHmm, with: day)
         else { return low }
         let minutesUntil = start.timeIntervalSince(now) / 60

@@ -228,9 +228,6 @@ WatchWireFormat.swift
 # Shared/Sensors — CoreMotion face-down detection, iOS hardware only
 FlipDetector.swift
 
-# Shared — used only by the iOS-side surfaces above
-TaipeiCalendar.swift
-
 # App — AppState extensions that are entirely iOS-only
 # ActivityKit has no macOS counterpart; the whole file body sits inside
 # #if os(iOS), so compiling it on the Mac would only produce an empty

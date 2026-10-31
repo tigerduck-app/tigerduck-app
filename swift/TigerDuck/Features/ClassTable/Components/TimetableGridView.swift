@@ -1,5 +1,6 @@
 import Defaults
 import SwiftUI
+import TigerDuckCore
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -233,7 +234,7 @@ struct TimetableGridView: View {
     }
 
     private static func minuteOfDay(_ date: Date) -> Int {
-        let parts = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: date)
+        let parts = TaipeiTime.calendar.dateComponents([.hour, .minute], from: date)
         return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
     }
 

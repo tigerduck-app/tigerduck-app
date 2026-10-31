@@ -25,7 +25,7 @@ before working in those directories.
   (`dataDidUpdate`, `liveActivityPreferencesDidChange`, `languageDidChange`, ...). There is no
   dependency-injection container or store framework.
 - Styling goes through `TigerDuckTheme`, `VisualPreset` and `VisualStylePolicy`.
-- Day and class-time math uses the Taipei calendar (`AppConstants.taipeiCalendar`), never
+- Day and class-time math uses the Taipei calendar (`TaipeiTime` in TigerDuckCore), never
   `Calendar.current`. Schedule-sensitive code reads the time through `Support/Clock/AppClock`, so
   the debug clock override applies.
 - Persistence is split: SwiftData models in `Persistence/Models/` and JSON caches in
@@ -40,9 +40,10 @@ before working in those directories.
   and course data and backend ids too: course numbers and keys, device, Live Activity and token
   ids, and request paths that hold one. Fixed labels, counts, booleans and status codes stay
   `.public`. `tools/check_comments.py` reports an error logged as `.public`.
-- Code the Watch app also needs goes in `swift/Shared/`, which both targets compile. The
-  `TigerDuckWidgets` and Live Activity extensions do not compile it and keep their own copies,
-  such as `WidgetTaipei`.
+- A rule with no screen and no I/O that the Watch app or an extension also needs goes in
+  `swift/Packages/TigerDuckCore/`, which the app, the Watch app and all three extensions link.
+  Other code the Watch app also needs goes in `swift/Shared/`, which both targets compile; the
+  `TigerDuckWidgets` and Live Activity extensions do not compile it.
 
 ## Anti-patterns
 

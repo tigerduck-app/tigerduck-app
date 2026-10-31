@@ -1,5 +1,6 @@
 #if os(iOS)
 import SwiftUI
+import TigerDuckCore
 
 extension MoodleAssignmentView {
     enum Badge: Equatable {
@@ -140,8 +141,8 @@ extension MoodleAssignmentView {
         if let formatter = formatters[key] { return formatter.string(from: date) }
         let formatter = DateFormatter()
         formatter.locale = locale
-        formatter.calendar = AppConstants.taipeiCalendar
-        formatter.timeZone = AppConstants.taipeiTimeZone
+        formatter.calendar = TaipeiTime.calendar
+        formatter.timeZone = TaipeiTime.timeZone
         formatter.setLocalizedDateFormatFromTemplate(template)
         formatters[key] = formatter
         return formatter.string(from: date)

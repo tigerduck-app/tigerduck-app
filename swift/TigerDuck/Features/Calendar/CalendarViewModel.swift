@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import TigerDuckCore
 
 @MainActor
 @Observable
@@ -27,16 +28,16 @@ final class CalendarViewModel {
     }
 
     func eventsOnDate(_ date: Date) -> [SDCalendarEvent] {
-        let key = AppConstants.taipeiCalendar.dateComponents([.year, .month, .day], from: date)
+        let key = TaipeiTime.calendar.dateComponents([.year, .month, .day], from: date)
         return eventsByDay[key] ?? []
     }
 
     func previousMonth() {
-        displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: -1, to: displayedMonth)!
+        displayedMonth = TaipeiTime.calendar.date(byAdding: .month, value: -1, to: displayedMonth)!
     }
 
     func nextMonth() {
-        displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: 1, to: displayedMonth)!
+        displayedMonth = TaipeiTime.calendar.date(byAdding: .month, value: 1, to: displayedMonth)!
     }
 
     func goToToday() {
@@ -119,7 +120,7 @@ final class CalendarViewModel {
     }
 
     private static func buildCalendarDays(for month: Date) -> [Date?] {
-        let cal = AppConstants.taipeiCalendar
+        let cal = TaipeiTime.calendar
         let start = month.startOfMonth
         let daysInMonth = month.daysInMonth
         let firstWeekday = month.firstWeekdayOfMonth
@@ -138,7 +139,7 @@ final class CalendarViewModel {
         let newEvents = newEvents.filter { $0.source != .holiday && $0.source != .semester }
             + AcademicCalendarStore.shared.calendar.calendarEvents()
         events = newEvents
-        let cal = AppConstants.taipeiCalendar
+        let cal = TaipeiTime.calendar
         eventsByDay = Dictionary(grouping: newEvents) { event in
             cal.dateComponents([.year, .month, .day], from: event.date)
         }

@@ -1,5 +1,6 @@
 import XCTest
 import WidgetKit
+import TigerDuckCore
 @testable import TigerDuckWatch_Watch_App
 
 final class NextClassProviderTests: XCTestCase {
@@ -40,7 +41,7 @@ final class NextClassProviderTests: XCTestCase {
     private func mondayAt(_ hhmm: String, dayOffset: Int = 0) -> Date {
         let parts = hhmm.split(separator: ":").compactMap { Int($0) }
         let day = DateComponents(year: 2026, month: 5, day: 11 + dayOffset, hour: parts[0], minute: parts[1])
-        return SharedTaipei.calendar.date(from: day)!
+        return TaipeiTime.calendar.date(from: day)!
     }
 
     private func writeSnapshot(_ snapshot: WatchSnapshot) throws -> URL {
@@ -53,7 +54,7 @@ final class NextClassProviderTests: XCTestCase {
         let now = mondayAt("09:00")
         let monday = course("A", weekday: 1, start: "10:20", end: "11:10")
         let tuesday = course("B", weekday: 2, start: "08:10", end: "09:00")
-        let holiday = snapshot([monday, tuesday], quietDays: [SharedTaipei.dayKey(for: now)])
+        let holiday = snapshot([monday, tuesday], quietDays: [TaipeiTime.dayKey(for: now)])
 
         let entries = NextClassProvider().timeline(for: holiday, now: now).entries
 
@@ -68,7 +69,7 @@ final class NextClassProviderTests: XCTestCase {
     func test_timeline_skippedClass_isNeitherShownNorABoundary() {
         let now = mondayAt("09:00")
         let skipped = course(
-            "A", weekday: 1, start: "10:20", end: "11:10", skippedDates: [SharedTaipei.dayKey(for: now)]
+            "A", weekday: 1, start: "10:20", end: "11:10", skippedDates: [TaipeiTime.dayKey(for: now)]
         )
         let later = course("B", weekday: 1, start: "13:30", end: "14:20")
 
@@ -125,7 +126,7 @@ final class NextClassProviderTests: XCTestCase {
         let holidayMorning = mondayAt("07:50")
         let provider = NextClassProvider()
 
-        let holiday = snapshot([monday, tuesday], quietDays: [SharedTaipei.dayKey(for: holidayMorning)])
+        let holiday = snapshot([monday, tuesday], quietDays: [TaipeiTime.dayKey(for: holidayMorning)])
         let onTheHoliday = provider.timeline(for: holiday, now: holidayMorning).entries.first
         XCTAssertEqual(onTheHoliday?.next?.id, "B")
         XCTAssertEqual(onTheHoliday?.relevance?.score, 30)

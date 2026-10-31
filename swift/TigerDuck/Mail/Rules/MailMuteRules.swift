@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import TigerDuckCore
 
 /// Which new mail is left out of notifications. It only decides whether a notification is posted:
 /// the mail stays in the inbox, unread. Kept on the device only and reset at sign-out
@@ -9,7 +10,7 @@ nonisolated struct MailMuteSettings: Codable, Equatable, Sendable {
     var presets: Set<MailMutePreset> = []
     var rules: [MailMuteRule] = []
 
-    func mutes(_ mail: MailSummary, arrivedAt: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Bool {
+    func mutes(_ mail: MailSummary, arrivedAt: Date, calendar: Calendar = TaipeiTime.calendar) -> Bool {
         quietHours.contains(arrivedAt, calendar: calendar)
             || presets.contains { $0.matches(mail) }
             || rules.contains { $0.matches(mail) }
@@ -26,7 +27,7 @@ nonisolated struct MailQuietHours: Codable, Equatable, Sendable {
 
     /// A window that ends on the next day belongs to the day it starts on. Equal start and end
     /// make an empty window.
-    func contains(_ date: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Bool {
+    func contains(_ date: Date, calendar: Calendar = TaipeiTime.calendar) -> Bool {
         guard isEnabled, start != end else { return false }
         let parts = calendar.dateComponents([.weekday, .hour, .minute], from: date)
         guard let weekday = parts.weekday, let hour = parts.hour, let minute = parts.minute else { return false }

@@ -12,7 +12,7 @@ same-tokens REF
     but comments.
 
 Exit status: 0 when clean, 1 on findings, 2 on usage or git errors.
-`swift/Packages/` (vendored code) is never checked.
+`swift/Packages/SwiftMail/` (vendored code) is never checked.
 """
 import argparse
 import bisect
@@ -23,7 +23,7 @@ import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-EXCLUDED_PREFIX = 'swift/Packages/'
+EXCLUDED_PREFIX = 'swift/Packages/SwiftMail/'
 REGULAR_LIMIT = 3
 DOC_LIMIT = 8
 

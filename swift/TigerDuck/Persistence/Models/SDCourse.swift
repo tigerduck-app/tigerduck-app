@@ -2,6 +2,7 @@ import Defaults
 import Foundation
 import SwiftData
 import SwiftUI
+import TigerDuckCore
 
 @Model
 final class SDCourse: Identifiable {
@@ -248,7 +249,7 @@ extension SDCourse {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         f.dateFormat = "yyyy-MM-dd"
         return f
     }()

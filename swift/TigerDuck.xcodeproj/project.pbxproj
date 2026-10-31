@@ -23,6 +23,11 @@
 		C3D0F1012FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C3D0F1062FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C3D0F1022FC0A00000AE2430 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC002F90EBFA00D3B5A1 /* WidgetKit.framework */; };
 		C3D0F1032FC0A00000AE2430 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
+		DC0DE00330AA000100000001 /* TigerDuckCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC0DE00230AA000100000001 /* TigerDuckCore */; };
+		DC0DE00330AA000100000002 /* TigerDuckCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC0DE00230AA000100000002 /* TigerDuckCore */; };
+		DC0DE00330AA000100000003 /* TigerDuckCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC0DE00230AA000100000003 /* TigerDuckCore */; };
+		DC0DE00330AA000100000004 /* TigerDuckCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC0DE00230AA000100000004 /* TigerDuckCore */; };
+		DC0DE00330AA000100000005 /* TigerDuckCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC0DE00230AA000100000005 /* TigerDuckCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -209,7 +214,6 @@
 		B244D7912FB87B590040D6FA /* Exceptions for "TigerDuckWidgets" folder in "TigerDuck" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Logic/WidgetTaipei.swift,
 				Logic/WidgetTimelineDerivation.swift,
 				Snapshot/WidgetSnapshotStore.swift,
 			);
@@ -225,7 +229,6 @@
 		C3D0F1082FC0A00000AE2430 /* Exceptions for "Shared" folder in "TigerDuckWatchWidgetExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				TaipeiCalendar.swift,
 				Theme/VisualPreset.swift,
 				Watch/NextClassResolver.swift,
 				Watch/WatchCourse.swift,
@@ -351,6 +354,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC0DE00330AA000100000001 /* TigerDuckCore in Frameworks */,
 				60A0A00430AA000100000001 /* Defaults in Frameworks */,
 				60A0A00530AA000100000001 /* MarkdownUI in Frameworks */,
 				60A0A00230AA000100000001 /* SwiftSoup in Frameworks */,
@@ -377,6 +381,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC0DE00330AA000100000004 /* TigerDuckCore in Frameworks */,
 				42B9BC032F90EBFA00D3B5A1 /* SwiftUI.framework in Frameworks */,
 				42B9BC012F90EBFA00D3B5A1 /* WidgetKit.framework in Frameworks */,
 			);
@@ -386,6 +391,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC0DE00330AA000100000002 /* TigerDuckCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -407,6 +413,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC0DE00330AA000100000003 /* TigerDuckCore in Frameworks */,
 				B244D7512FB87B580040D6FA /* SwiftUI.framework in Frameworks */,
 				B244D7502FB87B580040D6FA /* WidgetKit.framework in Frameworks */,
 			);
@@ -416,6 +423,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC0DE00330AA000100000005 /* TigerDuckCore in Frameworks */,
 				C3D0F1032FC0A00000AE2430 /* SwiftUI.framework in Frameworks */,
 				C3D0F1022FC0A00000AE2430 /* WidgetKit.framework in Frameworks */,
 			);
@@ -501,6 +509,7 @@
 				60A0A20430AA000100000001 /* Defaults */,
 				60A0A20530AA000100000001 /* MarkdownUI */,
 				286A28B6C50C02BAA1C53862 /* SwiftMail */,
+				DC0DE00230AA000100000001 /* TigerDuckCore */,
 			);
 			productName = TigerDuck;
 			productReference = 424C46562F6E763C009D1DDA /* TigerDuck.app */;
@@ -569,6 +578,7 @@
 			);
 			name = TigerDuckLiveActivityExtension;
 			packageProductDependencies = (
+				DC0DE00230AA000100000004 /* TigerDuckCore */,
 			);
 			productName = TigerDuckLiveActivityExtension;
 			productReference = 42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */;
@@ -594,6 +604,7 @@
 			);
 			name = "TigerDuckWatch Watch App";
 			packageProductDependencies = (
+				DC0DE00230AA000100000002 /* TigerDuckCore */,
 			);
 			productName = "TigerDuckWatch Watch App";
 			productReference = B21DC6922FB887D900AE2430 /* TigerDuckWatch Watch App.app */;
@@ -662,6 +673,7 @@
 			);
 			name = TigerDuckWidgetsExtension;
 			packageProductDependencies = (
+				DC0DE00230AA000100000003 /* TigerDuckCore */,
 			);
 			productName = TigerDuckWidgetsExtension;
 			productReference = B244D74F2FB87B580040D6FA /* TigerDuckWidgetsExtension.appex */;
@@ -684,6 +696,7 @@
 			);
 			name = TigerDuckWatchWidgetExtension;
 			packageProductDependencies = (
+				DC0DE00230AA000100000005 /* TigerDuckCore */,
 			);
 			productName = TigerDuckWatchWidgetExtension;
 			productReference = C3D0F1062FC0A00000AE2430 /* TigerDuckWatchWidgetExtension.appex */;
@@ -813,6 +826,7 @@
 				60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */,
 				60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 				E8CC3E13C4358E9783C31871 /* XCLocalSwiftPackageReference "Packages/SwiftMail" */,
+				DC0DE00130AA000100000001 /* XCLocalSwiftPackageReference "Packages/TigerDuckCore" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 424C46572F6E763C009D1DDA /* Products */;
@@ -1436,7 +1450,6 @@
 					WidgetSnapshotBuilder.swift,
 					WidgetSnapshotStore.swift,
 					WidgetSnapshotWriter.swift,
-					WidgetTaipei.swift,
 					WidgetTimelineDerivation.swift,
 					WidgetURLRouter.swift,
 				);
@@ -1757,7 +1770,6 @@
 					WidgetSnapshotBuilder.swift,
 					WidgetSnapshotStore.swift,
 					WidgetSnapshotWriter.swift,
-					WidgetTaipei.swift,
 					WidgetTimelineDerivation.swift,
 					WidgetURLRouter.swift,
 				);
@@ -2428,6 +2440,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/SwiftMail;
 		};
+		DC0DE00130AA000100000001 /* XCLocalSwiftPackageReference "Packages/TigerDuckCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/TigerDuckCore;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -2489,6 +2505,26 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
+		};
+		DC0DE00230AA000100000001 /* TigerDuckCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TigerDuckCore;
+		};
+		DC0DE00230AA000100000002 /* TigerDuckCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TigerDuckCore;
+		};
+		DC0DE00230AA000100000003 /* TigerDuckCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TigerDuckCore;
+		};
+		DC0DE00230AA000100000004 /* TigerDuckCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TigerDuckCore;
+		};
+		DC0DE00230AA000100000005 /* TigerDuckCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TigerDuckCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 /// A time of day reads on a 24-hour clock in every locale, as the class times do: a 12-hour
@@ -7,7 +8,7 @@ import Testing
 /// (https://github.com/tigerduck-app/tigerduck-app/issues/724).
 struct TimeStringTests {
     private static func taipei(_ hour: Int, _ minute: Int) -> Date {
-        AppConstants.taipeiCalendar.date(
+        TaipeiTime.calendar.date(
             from: DateComponents(year: 2026, month: 10, day: 13, hour: hour, minute: minute)
         )!
     }

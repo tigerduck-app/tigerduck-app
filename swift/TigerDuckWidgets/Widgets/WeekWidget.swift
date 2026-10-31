@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import TigerDuckCore
 
 struct WeekEntry: TimelineEntry {
     let date: Date
@@ -24,7 +25,7 @@ struct WeekProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WeekEntry>) -> Void) {
         let snap = store.readSnapshot() ?? Self.emptySnapshot
-        let appMidnight = WidgetTaipei.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        let appMidnight = TaipeiTime.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
         // WidgetKit interprets `.after(...)` against real wall-clock time,
         // so translate the fake-clock midnight to the real instant it maps
         // to. Identity when no debug override is active.

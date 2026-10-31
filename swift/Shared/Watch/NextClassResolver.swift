@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 public nonisolated enum NextClassResolver {
 
@@ -47,7 +48,7 @@ public nonisolated enum NextClassResolver {
 
     public static func resolve(courses: [WatchCourse], now: Date, quietDays: Set<String> = []) -> Result {
         let today = todaysClasses(courses: courses, now: now, quietDays: quietDays)
-        let cal = SharedTaipei.calendar
+        let cal = TaipeiTime.calendar
         let hh = cal.component(.hour, from: now)
         let mm = cal.component(.minute, from: now)
         let nowMin = hh * 60 + mm
@@ -69,9 +70,9 @@ public nonisolated enum NextClassResolver {
     }
 
     public static func todaysClasses(courses: [WatchCourse], now: Date, quietDays: Set<String>) -> [WatchCourse] {
-        let todayKey = SharedTaipei.dayKey(for: now)
+        let todayKey = TaipeiTime.dayKey(for: now)
         guard !quietDays.contains(todayKey) else { return [] }
-        let raw = SharedTaipei.calendar.component(.weekday, from: now)
+        let raw = TaipeiTime.calendar.component(.weekday, from: now)
         let isoWeekday = ((raw + 5) % 7) + 1
         return courses
             .filter { $0.weekday == isoWeekday && $0.skippedDates?.contains(todayKey) != true }
@@ -81,7 +82,7 @@ public nonisolated enum NextClassResolver {
 
     private static func firstClassAhead(courses: [WatchCourse], after now: Date, quietDays: Set<String>) -> Result {
         for offset in 1...7 {
-            guard let day = SharedTaipei.calendar.date(byAdding: .day, value: offset, to: now),
+            guard let day = TaipeiTime.calendar.date(byAdding: .day, value: offset, to: now),
                   let first = todaysClasses(courses: courses, now: day, quietDays: quietDays).first
             else { continue }
             let nextDay: Day = offset == 1 ? .tomorrow : .later(weekday: first.weekday)

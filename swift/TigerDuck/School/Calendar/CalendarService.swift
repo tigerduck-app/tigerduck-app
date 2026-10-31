@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 enum CalendarService {
 
@@ -59,7 +60,7 @@ enum CalendarService {
     }
 
     nonisolated static func rocAcademicYear(at date: Date) -> Int {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let year = calendar.component(.year, from: date) - 1911
         return calendar.component(.month, from: date) >= 8 ? year : year - 1
     }
@@ -158,8 +159,8 @@ enum CalendarService {
         return events
     }
 
-    static let icsDateOnly = icsFormatter("yyyyMMdd", timeZone: TimeZone(identifier: "Asia/Taipei"))
-    static let icsDateTime = icsFormatter("yyyyMMdd'T'HHmmss", timeZone: TimeZone(identifier: "Asia/Taipei"))
+    static let icsDateOnly = icsFormatter("yyyyMMdd", timeZone: TaipeiTime.timeZone)
+    static let icsDateTime = icsFormatter("yyyyMMdd'T'HHmmss", timeZone: TaipeiTime.timeZone)
     static let icsDateTimeZ = icsFormatter("yyyyMMdd'T'HHmmss'Z'", timeZone: TimeZone(identifier: "UTC"))
 
     private static func icsFormatter(_ format: String, timeZone: TimeZone?) -> DateFormatter {
@@ -173,7 +174,7 @@ enum CalendarService {
 
     private static let icsCalendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
+        cal.timeZone = TaipeiTime.timeZone
         return cal
     }()
 

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftSoup
+import TigerDuckCore
 
 nonisolated enum RoomSlotUse: Equatable, Sendable {
     case free
@@ -83,7 +84,7 @@ nonisolated enum ClassroomUsageParser {
         )
     }
 
-    static func dayNumber(of date: Date, in calendar: Calendar = AppConstants.taipeiCalendar) -> Int {
+    static func dayNumber(of date: Date, in calendar: Calendar = TaipeiTime.calendar) -> Int {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         var utc = Calendar(identifier: .gregorian)
         utc.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt

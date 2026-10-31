@@ -1,5 +1,6 @@
 import Defaults
 import SwiftUI
+import TigerDuckCore
 
 extension ClassTableViewModel {
 
@@ -97,7 +98,7 @@ extension ClassTableViewModel {
     /// The date a weekday column shows. The week runs from today, so on a Wednesday the Monday
     /// and Tuesday columns are next week's.
     static func columnDate(weekday: Int, today: Date) -> Date {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let start = calendar.startOfDay(for: today)
         let ahead = (weekday - today.scheduleWeekday + 7) % 7
         return calendar.date(byAdding: .day, value: ahead, to: start) ?? start

@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import SwiftUI
+import TigerDuckCore
 
 @Model
 final class SDCalendarEvent {
@@ -35,7 +36,7 @@ final class SDCalendarEvent {
         case .holiday, .semester:
             return true
         case .school:
-            return AppConstants.taipeiCalendar.startOfDay(for: date) == date
+            return TaipeiTime.calendar.startOfDay(for: date) == date
         case .moodle, .exam:
             return false
         }

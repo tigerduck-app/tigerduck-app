@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 struct OngoingCourseInfo: Identifiable {
     let course: SDCourse
@@ -14,7 +15,7 @@ struct OngoingCourseInfo: Identifiable {
 
     init(slot: CourseTimeSlot) {
         func minute(_ date: Date) -> Int {
-            let parts = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: date)
+            let parts = TaipeiTime.calendar.dateComponents([.hour, .minute], from: date)
             return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
         }
         course = slot.course

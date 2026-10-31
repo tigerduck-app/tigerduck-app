@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import TigerDuckCore
 
 struct LibraryShortcutEntry: TimelineEntry {
     let date: Date
@@ -23,7 +24,7 @@ struct LibraryShortcutProvider: TimelineProvider {
         // date is real time: WidgetKit schedules by it, and a fake future stamp defers rendering.
         let snapshot = store.readSnapshot()
         let entry = LibraryShortcutEntry(date: Date(), snapshot: snapshot)
-        let appMidnight = WidgetTaipei.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        let appMidnight = TaipeiTime.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
         // WidgetKit interprets `.after(...)` against real wall-clock time,
         // so translate the fake-clock midnight to the real instant it maps
         // to. Identity when no debug override is active.

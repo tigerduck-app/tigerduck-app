@@ -1,6 +1,7 @@
 import Defaults
 import Foundation
 import os
+import TigerDuckCore
 
 nonisolated struct SemesterTerm: Codable, Equatable, Sendable {
     let code: String
@@ -55,7 +56,7 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
 
     static let calendar: Calendar = {
         var c = Calendar(identifier: .gregorian)
-        c.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
+        c.timeZone = TaipeiTime.timeZone
         return c
     }()
 

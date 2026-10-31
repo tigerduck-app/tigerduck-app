@@ -525,3 +525,22 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         working-directory: swift/Packages/SwiftMail
         run: swift test
+
+  # TigerDuckCore's rules have no screen and no I/O, so its SwiftPM tests need no simulator. They
+  # are in no Xcode scheme, so only this job runs them.
+  core-package:
+    name: TigerDuckCore
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        # No submodules: this package does not read app-translation.
+        with:
+          fetch-depth: 1
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Package tests
+        working-directory: swift/Packages/TigerDuckCore
+        run: swift test

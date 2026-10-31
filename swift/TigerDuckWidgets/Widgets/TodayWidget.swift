@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import TigerDuckCore
 
 struct TodayEntry: TimelineEntry {
     let date: Date
@@ -42,8 +43,8 @@ struct TodayProvider: TimelineProvider {
         if hasCourses {
             policy = .atEnd
         } else {
-            let startOfToday = WidgetTaipei.calendar.startOfDay(for: Date())
-            let midnight = WidgetTaipei.calendar.date(byAdding: .day, value: 1, to: startOfToday)
+            let startOfToday = TaipeiTime.calendar.startOfDay(for: Date())
+            let midnight = TaipeiTime.calendar.date(byAdding: .day, value: 1, to: startOfToday)
                 ?? startOfToday.addingTimeInterval(86400)
             policy = .after(midnight)
         }

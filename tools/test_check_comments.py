@@ -226,10 +226,15 @@ class CommandLineTests(unittest.TestCase):
         self.commit()
         self.assertEqual(self.run_checker('check', 'a.swift').returncode, 1)
 
-    def test_vendored_packages_are_skipped(self) -> None:
-        self.write('swift/Packages/Lib/a.swift', block('//', 9))
+    def test_the_vendored_package_is_skipped(self) -> None:
+        self.write('swift/Packages/SwiftMail/a.swift', block('//', 9))
         self.commit()
         self.assertEqual(self.run_checker('check', '--all').returncode, 0)
+
+    def test_our_own_packages_are_checked(self) -> None:
+        self.write('swift/Packages/TigerDuckCore/a.swift', block('//', 9))
+        self.commit()
+        self.assertEqual(self.run_checker('check', '--all').returncode, 1)
 
     def test_annotations_on_github_actions(self) -> None:
         self.write('a.swift', '// fix round 1\n')

@@ -13,14 +13,6 @@ extension URL {
 nonisolated enum AppConstants {
     static let appName = "TigerDuck"
 
-    static let taipeiTimeZone: TimeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
-
-    static let taipeiCalendar: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = taipeiTimeZone
-        return cal
-    }()
-
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
     ///

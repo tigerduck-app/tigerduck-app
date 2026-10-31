@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct CourseTimeCard: View {
     let state: CourseState
@@ -44,7 +45,7 @@ struct CourseTimeCard: View {
     @ViewBuilder
     private func cardSurface(slot: CourseTimeSlot, opacity: Double) -> some View {
         let course = slot.course
-        let isToday = AppConstants.taipeiCalendar.isDateInToday(slot.date)
+        let isToday = TaipeiTime.calendar.isDateInToday(slot.date)
         let showsChangedTime = slot.hasChangedTime && !slot.isCancelled
 
         HStack(alignment: .top, spacing: 10) {
@@ -138,7 +139,7 @@ struct CourseTimeCard: View {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         f.dateFormat = "M/d"
         return f
     }()

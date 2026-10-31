@@ -40,6 +40,7 @@ xcodebuild test -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destinatio
 xcodebuild test -project swift/TigerDuck.xcodeproj -scheme 'TigerDuckWatch Watch App' -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm),OS=26.5'
 xcodebuild build -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=macOS'
 (cd swift/Packages/SwiftMail && swift test)
+(cd swift/Packages/TigerDuckCore && swift test)
 python3 tools/check_macos_sources.py
 python3 tools/check_privacy_manifests.py
 python3 tools/localization/check_keys.py
@@ -59,7 +60,8 @@ two at once compete for the same build folder.
 - `api-poc/` uses `uv` (`api-poc/pyproject.toml`, `uv.lock`) and reads credentials from
   `api-poc/api/.env` (template: `.env.template`).
 - Test targets: `TigerDuckTests` (phone unit tests), `TigerDuckWatch Watch AppTests` (watch) and
-  `TigerDuckUITests` (UI, not run in CI). The vendored SwiftMail package has its own tests.
+  `TigerDuckUITests` (UI, not run in CI). The vendored SwiftMail package and TigerDuckCore have
+  their own tests (`TigerDuckCoreTests`, Swift Testing).
   The scripts in `tools/` have `unittest` tests next to them; `api-poc/` has none.
 - Localization covers 67 locales and is generated in the `app-translation` submodule. What's New
   feature-page copy is the exception: zh-Hant and English, written in the app.

@@ -1,13 +1,14 @@
 import Defaults
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 // Serialized because the feed and store tests write the stored feed that every slot build reads.
 @MainActor
 @Suite("Course changes", .serialized)
 struct CourseChangesTests {
-    private static let thursday = AppConstants.taipeiCalendar.date(
+    private static let thursday = TaipeiTime.calendar.date(
         from: DateComponents(year: 2026, month: 11, day: 5, hour: 7)
     )!
 
@@ -317,10 +318,10 @@ struct CourseChangesTests {
         let wednesday = Self.thursday.addingTimeInterval(-86400 + 6 * 3600)
         let shown = (1...7).map { ClassTableViewModel.columnDate(weekday: $0, today: wednesday) }
 
-        #expect(shown.map { SharedTaipei.dayKey(for: $0) } == [
+        #expect(shown.map { TaipeiTime.dayKey(for: $0) } == [
             "2026-11-09", "2026-11-10", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08",
         ])
-        #expect(shown.allSatisfy { $0 == AppConstants.taipeiCalendar.startOfDay(for: $0) })
+        #expect(shown.allSatisfy { $0 == TaipeiTime.calendar.startOfDay(for: $0) })
     }
 
     @Test func aMeetingIsCancelledOnlyWhenEveryPeriodOfItIs() throws {
@@ -363,7 +364,7 @@ struct CourseChangesTests {
 
     @Test func theChangesListShowsUpcomingDaysEarliestFirstAndAtMostEight() throws {
         let thursdays = (-1...9).map { offset in
-            SharedTaipei.dayKey(for: Self.thursday.addingTimeInterval(Double(offset) * 7 * 86400))
+            TaipeiTime.dayKey(for: Self.thursday.addingTimeInterval(Double(offset) * 7 * 86400))
         }
         let changes = try Self.changes(
             thursdays.reversed().enumerated().map { Self.row($0.offset, "cancelled", days: [$0.element]) }
@@ -371,10 +372,10 @@ struct CourseChangesTests {
         )
 
         let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.at("23:00"), changes: changes)
-        #expect(days.map { SharedTaipei.dayKey(for: $0.day) } == Array(thursdays[1...]))
+        #expect(days.map { TaipeiTime.dayKey(for: $0.day) } == Array(thursdays[1...]))
         #expect(days.allSatisfy { $0.meetings.count == 2 && $0.meetings.allSatisfy { $0.isCancelled } })
         let rows = CourseDetailSheet.changeRows(days, besides: nil)
-        #expect(rows.map { SharedTaipei.dayKey(for: $0.day) } == Array(thursdays[1...8]))
+        #expect(rows.map { TaipeiTime.dayKey(for: $0.day) } == Array(thursdays[1...8]))
         #expect(rows.allSatisfy { $0.summary == String(localized: "course_card_cancelled") })
     }
 

@@ -1,6 +1,7 @@
 import Defaults
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -15,7 +16,7 @@ struct CourseBlockSelectionTests {
         )
     }
 
-    private static let mondayAt1030 = AppConstants.taipeiCalendar.date(
+    private static let mondayAt1030 = TaipeiTime.calendar.date(
         from: DateComponents(year: 2026, month: 11, day: 2, hour: 10, minute: 30)
     )!
 

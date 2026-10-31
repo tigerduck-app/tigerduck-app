@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct WeekGridView: View {
     let snapshot: WidgetSnapshot
@@ -166,7 +167,7 @@ struct WeekGridView: View {
     /// The week runs from today, as the app's class table does, so each column has one date.
     private func dayKey(of weekday: Int) -> String {
         let ahead = (weekday - WidgetTimelineDerivation.weekdayFor(now) + 7) % 7
-        let day = WidgetTaipei.calendar.date(byAdding: .day, value: ahead, to: now) ?? now
+        let day = TaipeiTime.calendar.date(byAdding: .day, value: ahead, to: now) ?? now
         return WidgetTimelineDerivation.dateKey(for: day)
     }
 

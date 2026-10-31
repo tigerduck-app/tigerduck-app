@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 nonisolated enum EmptyClassroomSchedule {
     static let periodIDs = AppConstants.Periods.chronologicalOrder
@@ -14,18 +15,18 @@ nonisolated enum EmptyClassroomSchedule {
         return AppConstants.PeriodTimes.mapping[periodIDs[period]]
     }
 
-    static func periods(from start: Date, to end: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> [Int] {
+    static func periods(from start: Date, to end: Date, calendar: Calendar = TaipeiTime.calendar) -> [Int] {
         let from = minuteOfDay(start, calendar: calendar)
         let to = minuteOfDay(end, calendar: calendar)
         return periodMinutes.indices.filter { periodMinutes[$0].start < to && periodMinutes[$0].end > from }
     }
 
-    static func upcomingPeriod(at time: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Int? {
+    static func upcomingPeriod(at time: Date, calendar: Calendar = TaipeiTime.calendar) -> Int? {
         let minute = minuteOfDay(time, calendar: calendar)
         return periodMinutes.firstIndex { $0.end > minute }
     }
 
-    static func endedPeriods(at time: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Int {
+    static func endedPeriods(at time: Date, calendar: Calendar = TaipeiTime.calendar) -> Int {
         let minute = minuteOfDay(time, calendar: calendar)
         return periodMinutes.filter { $0.end <= minute }.count
     }
@@ -34,7 +35,7 @@ nonisolated enum EmptyClassroomSchedule {
         at now: Date,
         horizon: Int,
         isTeachingDay: (Date) -> Bool,
-        calendar: Calendar = AppConstants.taipeiCalendar
+        calendar: Calendar = TaipeiTime.calendar
     ) -> (day: Date, period: Int) {
         let today = calendar.startOfDay(for: now)
         let upcoming = upcomingPeriod(at: now, calendar: calendar)
@@ -49,7 +50,7 @@ nonisolated enum EmptyClassroomSchedule {
         after day: Date,
         horizon: Int,
         isTeachingDay: (Date) -> Bool,
-        calendar: Calendar = AppConstants.taipeiCalendar
+        calendar: Calendar = TaipeiTime.calendar
     ) -> Date? {
         guard horizon > 0 else { return nil }
         let start = calendar.startOfDay(for: day)
@@ -71,14 +72,14 @@ nonisolated enum EmptyClassroomSchedule {
         _ day: Date,
         holidays: (Date) -> [Holiday],
         isInSession: (Date) -> Bool,
-        calendar: Calendar = AppConstants.taipeiCalendar
+        calendar: Calendar = TaipeiTime.calendar
     ) -> DayOff? {
         if isWeekend(day, calendar: calendar) { return .weekend }
         if let holiday = holidays(day).first { return .holiday(holiday) }
         return isInSession(day) ? nil : .outOfTerm
     }
 
-    static func isWeekend(_ day: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Bool {
+    static func isWeekend(_ day: Date, calendar: Calendar = TaipeiTime.calendar) -> Bool {
         let weekday = calendar.component(.weekday, from: day)
         return weekday == 1 || weekday == 7
     }

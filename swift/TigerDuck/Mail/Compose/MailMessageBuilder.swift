@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import TigerDuckCore
 
 nonisolated struct OutgoingAttachment: Equatable, Sendable {
     var filename: String
@@ -121,7 +122,7 @@ nonisolated enum MailMessageBuilder {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone(identifier: "Asia/Taipei")
+        formatter.timeZone = TaipeiTime.timeZone
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
         return formatter.string(from: date)
     }

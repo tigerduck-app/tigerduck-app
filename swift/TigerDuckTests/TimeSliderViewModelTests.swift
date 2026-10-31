@@ -1,6 +1,7 @@
 import Defaults
 import Testing
 import Foundation
+import TigerDuckCore
 @testable import TigerDuck
 
 /// On the main actor, like `TimeSliderViewModel`, whose init prepares a `UIFeedbackGenerator`
@@ -10,9 +11,9 @@ import Foundation
 struct TimeSliderViewModelTests {
 
     @Test func dateFromTimeString_parsesCorrectly() {
-        let ref = AppConstants.taipeiCalendar.startOfDay(for: AppClock.now())
+        let ref = TaipeiTime.calendar.startOfDay(for: AppClock.now())
         let date = CourseTimeSlot.dateFromTimeString("10:20", on: ref)!
-        let comps = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: date)
+        let comps = TaipeiTime.calendar.dateComponents([.hour, .minute], from: date)
         #expect(comps.hour == 10)
         #expect(comps.minute == 20)
     }
@@ -106,7 +107,7 @@ struct TimeSliderViewModelTests {
         let vm = TimeSliderViewModel()
         vm.configure(courses: [])
 
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let now = calendar.date(byAdding: .hour, value: 10, to: today)!
         vm.selectedTime = now
@@ -120,7 +121,7 @@ struct TimeSliderViewModelTests {
 
     @Test func xOffset_returnsCorrectPixels() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
 
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
@@ -143,7 +144,7 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_inClass() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let slot = makeMockSlot(
             courseNo: "MATH101",
@@ -163,7 +164,7 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_inClass_keepsEveryOverlappingCourse() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let earlier = makeMockSlot(
             courseNo: "MATH101",
@@ -186,7 +187,7 @@ struct TimeSliderViewModelTests {
     }
 
     @Test func timelineResolver_inClass_ordersOverlapsAsGiven() {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let earlier = makeMockSlot(
             courseNo: "MATH101",
@@ -211,7 +212,7 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_beforeFirst() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let slot = makeMockSlot(
             courseNo: "MATH101",
@@ -231,7 +232,7 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_between() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let slot1 = makeMockSlot(
             courseNo: "MATH101",
@@ -257,7 +258,7 @@ struct TimeSliderViewModelTests {
 
     @Test func drag_advancesPastOverlappingCourses() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
 
         let periods34 = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
@@ -289,7 +290,7 @@ struct TimeSliderViewModelTests {
     }
 
     @Test func clashingSlotsStackInLanes() {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         func at(_ hour: Int) -> Date { calendar.date(byAdding: .hour, value: hour, to: today)! }
         let vm = TimeSliderViewModel()
@@ -308,7 +309,7 @@ struct TimeSliderViewModelTests {
     }
 
     @Test func backToBackSlotsKeepTheFullHeight() {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         func at(_ hour: Int) -> Date { calendar.date(byAdding: .hour, value: hour, to: today)! }
 

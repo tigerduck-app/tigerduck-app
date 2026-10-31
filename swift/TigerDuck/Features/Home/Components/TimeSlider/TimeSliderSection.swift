@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct TimeSliderSection: View {
     let courses: [SDCourse]
@@ -102,7 +103,7 @@ struct TimeSliderSection: View {
     }
 
     private var timeLabelString: String {
-        let isToday = AppConstants.taipeiCalendar.isDateInToday(viewModel.selectedTime)
+        let isToday = TaipeiTime.calendar.isDateInToday(viewModel.selectedTime)
         if isToday {
             return Self.timeFormatter.string(from: viewModel.selectedTime)
         } else {
@@ -126,7 +127,7 @@ struct TimeSliderSection: View {
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         return f
     }()
 
@@ -134,7 +135,7 @@ struct TimeSliderSection: View {
         let f = DateFormatter()
         f.locale = .autoupdatingCurrent
         f.dateFormat = "M/d (EEEEE) HH:mm"
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         return f
     }()
 }

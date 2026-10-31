@@ -1,5 +1,6 @@
 #if os(macOS)
 import SwiftUI
+import TigerDuckCore
 
 /// macOS desktop widgets would need pbxproj changes to `TigerDuckWidgetsExtension`, whose
 /// `SUPPORTED_PLATFORMS` is `"iphoneos iphonesimulator"`. Until that target supports Mac,
@@ -29,7 +30,7 @@ struct MacHomeWidgetsRow: View {
     }
 
     private func upcomingSlots(for now: Date) -> [CourseTimeSlot] {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let start = calendar.startOfDay(for: now)
         let changes = CourseChanges.cached
         var slots: [CourseTimeSlot] = []

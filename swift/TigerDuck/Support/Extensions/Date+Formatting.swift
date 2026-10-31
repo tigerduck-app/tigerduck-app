@@ -1,11 +1,12 @@
 import Foundation
+import TigerDuckCore
 
 extension Date {
-    static let scheduleCalendar: Calendar = AppConstants.taipeiCalendar
+    static let scheduleCalendar: Calendar = TaipeiTime.calendar
 
     var shortDateString: String {
         var style = Date.FormatStyle.dateTime.month(.defaultDigits).day()
-        style.timeZone = AppConstants.taipeiTimeZone
+        style.timeZone = TaipeiTime.timeZone
         return formatted(style)
     }
 
@@ -21,7 +22,7 @@ extension Date {
         // Pin time zone too so a traveler sees Taipei's calendar day.
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         return f
     }()
 
@@ -33,8 +34,8 @@ extension Date {
 
     static let timeStyle = Date.VerbatimFormatStyle(
         format: "\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits)",
-        timeZone: AppConstants.taipeiTimeZone,
-        calendar: AppConstants.taipeiCalendar
+        timeZone: TaipeiTime.timeZone,
+        calendar: TaipeiTime.calendar
     )
 
     func moodleListDateString(now: Date = AppClock.now()) -> String {
@@ -67,7 +68,7 @@ extension Date {
     static let dayWeekdayFormatter: DateFormatter = {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         f.dateFormat = "M/d (EEEEE)"
         return f
     }()
@@ -77,7 +78,7 @@ extension Date {
         formatter.dateFormat = format
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = AppConstants.taipeiTimeZone
+        formatter.timeZone = TaipeiTime.timeZone
         return formatter
     }
 
@@ -128,7 +129,7 @@ extension Date {
         f.dateFormat = "M/d HH:mm:ss"
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         return f
     }()
 
@@ -137,7 +138,7 @@ extension Date {
         f.dateFormat = "M/d HH:mm"
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         return f
     }()
 

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TigerDuckCore
 
 @MainActor
 @Observable
@@ -42,7 +43,7 @@ final class TimezoneObserver {
     private static func computeIsNonTaipei() -> Bool {
         let now = AppClock.now()
         let deviceOffset = TimeZone.current.secondsFromGMT(for: now)
-        let taipeiOffset = AppConstants.taipeiTimeZone.secondsFromGMT(for: now)
+        let taipeiOffset = TaipeiTime.timeZone.secondsFromGMT(for: now)
         return deviceOffset != taipeiOffset
     }
 }

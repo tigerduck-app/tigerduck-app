@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 struct CourseTimeSlot: Identifiable, Equatable {
     static let defaultDayRadius: Int = 28
@@ -257,7 +258,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
         dayRadius: Int = CourseTimeSlot.defaultDayRadius,
         changes: CourseChanges = .cached
     ) -> [CourseTimeSlot] {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         var allSlots: [CourseTimeSlot] = []
 
         for offset in -dayRadius...dayRadius {
@@ -270,7 +271,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
         return allSlots.sorted { $0.start < $1.start }
     }
 
-    static func dateFromTimeString(_ time: String, on date: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Date? {
+    static func dateFromTimeString(_ time: String, on date: Date, calendar: Calendar = TaipeiTime.calendar) -> Date? {
         let parts = time.split(separator: ":").compactMap { Int($0) }
         guard parts.count == 2 else { return nil }
         var dc = calendar.dateComponents([.year, .month, .day], from: date)
@@ -284,7 +285,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         f.dateFormat = "yyyyMMdd"
         return f
     }()

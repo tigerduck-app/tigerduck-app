@@ -1,6 +1,7 @@
 import Defaults
 import Foundation
 import Observation
+import TigerDuckCore
 
 @Observable
 @MainActor
@@ -70,7 +71,7 @@ final class EmptyClassroomViewModel {
         loadCourses = courses ?? { CanonicalCourseProvider().currentCourses() }
         self.rawRoom = rawRoom ?? { NameAbbrService.shared.rawClassroom($0) }
         minuteTicker = MinuteTicker(now: clock)
-        selectedDay = AppConstants.taipeiCalendar.startOfDay(for: clock())
+        selectedDay = TaipeiTime.calendar.startOfDay(for: clock())
         pickedBuilding = Defaults[.emptyClassroomBuilding]
     }
 
@@ -96,17 +97,17 @@ final class EmptyClassroomViewModel {
         return clock()
     }
 
-    var today: Date { AppConstants.taipeiCalendar.startOfDay(for: now) }
+    var today: Date { TaipeiTime.calendar.startOfDay(for: now) }
 
     var days: [Date] {
         let today = today
         return (0..<Self.dayCount).compactMap {
-            AppConstants.taipeiCalendar.date(byAdding: .day, value: $0, to: today)
+            TaipeiTime.calendar.date(byAdding: .day, value: $0, to: today)
         }
     }
 
     var isShowingToday: Bool {
-        AppConstants.taipeiCalendar.isDate(selectedDay, inSameDayAs: now)
+        TaipeiTime.calendar.isDate(selectedDay, inSameDayAs: now)
     }
 
     var endedPeriods: Int {
@@ -119,7 +120,7 @@ final class EmptyClassroomViewModel {
 
     var nextTeachingDay: Date? {
         guard let last = days.last else { return nil }
-        let remaining = AppConstants.taipeiCalendar.dateComponents([.day], from: selectedDay, to: last).day ?? 0
+        let remaining = TaipeiTime.calendar.dateComponents([.day], from: selectedDay, to: last).day ?? 0
         return EmptyClassroomSchedule.nextTeachingDay(after: selectedDay, horizon: remaining, isTeachingDay: isTeachingDay)
     }
 
@@ -208,7 +209,7 @@ final class EmptyClassroomViewModel {
     }
 
     func select(day: Date) {
-        let day = AppConstants.taipeiCalendar.startOfDay(for: day)
+        let day = TaipeiTime.calendar.startOfDay(for: day)
         guard day != selectedDay else { return }
         selectedDay = day
         refreshClasses()
@@ -276,7 +277,7 @@ final class EmptyClassroomViewModel {
         } else {
             show(.loading)
         }
-        let isToday = AppConstants.taipeiCalendar.isDate(day, inSameDayAs: now)
+        let isToday = TaipeiTime.calendar.isDate(day, inSameDayAs: now)
         loads &+= 1
         let id = loads
         running = (day, id)
@@ -328,7 +329,7 @@ final class EmptyClassroomViewModel {
     }
 
     func dayLabel(_ day: Date) -> String {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let date = Self.dateText(day)
         if calendar.isDate(day, inSameDayAs: today) {
             return "\(String(localized: "calendar_today")) \(date)"
@@ -346,7 +347,7 @@ final class EmptyClassroomViewModel {
         let narrow = symbols.veryShortWeekdaySymbols
         var style = Date.FormatStyle.dateTime.month(.defaultDigits).day()
             .weekday(Set(narrow).count == narrow.count ? .narrow : .abbreviated)
-        style.timeZone = AppConstants.taipeiTimeZone
+        style.timeZone = TaipeiTime.timeZone
         style.calendar = Calendar(identifier: .gregorian)
         return day.formatted(style)
     }

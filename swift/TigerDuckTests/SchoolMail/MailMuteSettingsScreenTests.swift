@@ -2,6 +2,7 @@
 import SwiftUI
 import Testing
 import UIKit
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -85,8 +86,8 @@ struct MailMuteSettingsScreenTests {
             let formatter = DateFormatter()
             formatter.dateStyle = .none
             formatter.timeStyle = .short
-            formatter.timeZone = AppConstants.taipeiTimeZone
-            let eleven = try #require(AppConstants.taipeiCalendar.date(from: DateComponents(year: 2026, month: 1, day: 1, hour: 23)))
+            formatter.timeZone = TaipeiTime.timeZone
+            let eleven = try #require(TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 1, day: 1, hour: 23)))
             let texts = exposedAccessibilityTexts(in: root)
             #expect(texts.contains { $0.contains(formatter.string(from: eleven)) }, "\(texts)")
         }
