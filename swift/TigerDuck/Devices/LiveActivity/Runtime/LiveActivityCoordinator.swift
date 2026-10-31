@@ -23,10 +23,11 @@ final class LiveActivityCoordinator {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "LiveActivity")
     private let tasks = LiveActivityTasks()
     private var activityObserverTask: Task<Void, Never>?
-    /// promise that an ended activity has left `Activity.activities` by the
-    /// time `end` returns, so a survivor search that trusted
-    /// `activityState` alone could pick a copy that is already on its way
-    /// out. Pruned of ids ActivityKit no longer lists, on every pass of
+    /// `Activity.id`s this coordinator has ended. ActivityKit does not promise that an ended
+    /// activity has left `Activity.activities` by the time `end` returns, so a survivor search
+    /// that trusted `activityState` alone could pick a copy on its way out. Pruned of ids
+    /// ActivityKit no longer lists on every pass of `pruneRunningActivities`, including the
+    /// passes while Live Activity is unavailable, when the ending happens wholesale.
     private var endedActivityIds: Set<String> = []
     private var conditions = LiveActivityEndRules.Conditions()
 
@@ -86,6 +87,8 @@ final class LiveActivityCoordinator {
         let content = ActivityContent(state: state, staleDate: realStaleDate)
 
         // Skip a copy this coordinator just ended, which ActivityKit can still list. One the
+        // system or the user ended still matches: updating it is a no-op, and the app must not
+        // put back an activity the person got rid of.
         if let matching = runningActivities.first(where: {
             $0.attributes.activityId == targetId && !endedActivityIds.contains($0.id)
         }) {
@@ -259,6 +262,8 @@ final class LiveActivityCoordinator {
             "Ending Live Activity id=\(activityId, privacy: .private) reason=\(reason, privacy: .public)"
         )
         // Record before the await: ActivityKit can still list an ended copy, and an unrecorded one
+        // is picked up again; `apply` would update it, and the prune would re-register its token,
+        // which tells the server the activity still runs.
         endedActivityIds.insert(activity.id)
         await activity.end(nil, dismissalPolicy: .immediate)
         tasks.cancel(activityId)
