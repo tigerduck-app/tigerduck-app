@@ -48,10 +48,10 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             Defaults[.notificationSettingsPushPending] = false
 
             NotificationSettingsSyncedSeedMigration.runIfNeeded(
-                current: Self.preferences(showInClass: true), storedDataReadsBack: { true }
+                current: Self.preferences(showInClass: true), signedIn: true, storedDataReadsBack: { true }
             )
             NotificationSettingsSyncedSeedMigration.runIfNeeded(
-                current: Self.preferences(showInClass: false), storedDataReadsBack: { true }
+                current: Self.preferences(showInClass: false), signedIn: true, storedDataReadsBack: { true }
             )
 
             #expect(NotificationSettingsSync.synced == Self.preferences(showInClass: true))
@@ -65,7 +65,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             Defaults[.notificationSettingsPushPending] = true
             let local = Self.preferences(showInClass: true)
 
-            NotificationSettingsSyncedSeedMigration.runIfNeeded(current: local, storedDataReadsBack: { true })
+            NotificationSettingsSyncedSeedMigration.runIfNeeded(current: local, signedIn: true, storedDataReadsBack: { true })
 
             #expect(UserDefaults.standard.bool(forKey: doneKey))
             let base = NotificationSettingsSync.pushBase(local: local)
@@ -91,12 +91,67 @@ struct NotificationSettingsSyncedSeedMigrationTests {
         }
     }
 
-    @Test("with no copy and no upgrade owed, as after a sign-out, a push counts nothing as changed")
-    func noCopyAfterSignOutChangesNothing() async {
-        await Self.withCleanState {
-            let local = Self.preferences(showInClass: true)
+    @Test("a sign-in with no synced copy takes the device's values as the copy: an edit made while signed out gives way, one made after goes up")
+    func signInStartsTheCopy() async throws {
+        try await Self.withCleanState {
+            var server = Self.preferences(showInClass: true)
+            server.classPreparingLeadTime = 900
+            let signedOut = Self.preferences(showInClass: true)
 
-            #expect(NotificationSettingsSync.pushBase(local: local) == local)
+            NotificationSettingsSync.accountSignedIn(local: signedOut)
+
+            #expect(NotificationSettingsSync.synced == signedOut)
+            let edited = Self.preferences(showInClass: false)
+            let base = NotificationSettingsSync.pushBase(local: edited)
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = NotificationSettingsFixtures.documentURL(baseURL)
+            SettingsAPIStub.enqueue(
+                try NotificationSettingsFixtures.found(try server.documentUpdates(existing: [:]), revision: 5),
+                for: url
+            )
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 6), for: url)
+
+            try await NotificationSettingsSync.push(
+                local: edited, base: base, client: SettingsAPIStub.makeClient(baseURL: baseURL), cloudSyncEnabled: true
+            )
+
+            let requests = SettingsAPIStub.requests(for: url)
+            try #require(requests.map(\.httpMethod) == ["GET", "PUT"])
+            let liveActivity = try #require(
+                try NotificationSettingsFixtures.sentDocument(requests[1])["live_activity"] as? [String: Any]
+            )
+            #expect(liveActivity["show_in_class"] as? Bool == false)
+            #expect(liveActivity["class_preparing_lead_seconds"] as? Int == 900)
+        }
+    }
+
+    @Test("a sign-in keeps a copy it finds, and leaves none while the upgrade's push still sends every field")
+    func signInKeepsACopyAndTheUpgradeMark() async {
+        await Self.withCleanState {
+            NotificationSettingsSync.synced = Self.preferences(showInClass: true)
+            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false))
+            #expect(NotificationSettingsSync.synced == Self.preferences(showInClass: true))
+
+            NotificationSettingsSync.synced = nil
+            Defaults[.notificationSettingsPushSendsEveryField] = true
+            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false))
+            #expect(NotificationSettingsSync.synced == nil)
+            #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == nil)
+        }
+    }
+
+    @Test("an upgrade while signed out stores neither copy nor mark, so the sign-in starts the copy")
+    func upgradeWhileSignedOutLeavesItToTheSignIn() async {
+        await Self.withCleanState {
+            Defaults[.notificationSettingsPushPending] = true
+
+            NotificationSettingsSyncedSeedMigration.runIfNeeded(
+                current: Self.preferences(showInClass: true), signedIn: false, storedDataReadsBack: { true }
+            )
+
+            #expect(NotificationSettingsSync.synced == nil)
+            #expect(!Defaults[.notificationSettingsPushSendsEveryField])
+            #expect(UserDefaults.standard.bool(forKey: doneKey))
         }
     }
 
@@ -106,14 +161,14 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             Defaults[.notificationSettingsPushPending] = false
 
             NotificationSettingsSyncedSeedMigration.runIfNeeded(
-                current: Self.preferences(showInClass: true), storedDataReadsBack: { false }
+                current: Self.preferences(showInClass: true), signedIn: true, storedDataReadsBack: { false }
             )
 
             #expect(NotificationSettingsSync.synced == nil)
             #expect(!UserDefaults.standard.bool(forKey: doneKey))
 
             NotificationSettingsSyncedSeedMigration.runIfNeeded(
-                current: Self.preferences(showInClass: true), storedDataReadsBack: { true }
+                current: Self.preferences(showInClass: true), signedIn: true, storedDataReadsBack: { true }
             )
 
             #expect(NotificationSettingsSync.synced == Self.preferences(showInClass: true))

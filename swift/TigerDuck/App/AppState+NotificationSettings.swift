@@ -368,12 +368,20 @@ nonisolated enum NotificationSettingsSync {
         }
     }
 
-    /// What a push compares the device's values with; nil sends every field. With no copy, as
-    /// after a sign-out, nothing counts as changed, so a push cannot revert the account's values,
-    /// except the one push an upgrade found pending, which holds an edit from an earlier build.
+    /// What a push compares the device's values with; nil sends every field, which only the one
+    /// push an upgrade found pending does, as it holds an edit from an earlier build. A signed-in
+    /// device otherwise always has a copy; without one nothing counts as changed.
     @MainActor
     static func pushBase(local: LocalPreferences) -> LocalPreferences? {
         synced ?? (Defaults[.notificationSettingsPushSendsEveryField] ? nil : local)
+    }
+
+    /// A sign-in starts the copy from the device's values, so what was edited while signed out
+    /// gives way to the account's document and an edit made after the sign-in goes up.
+    @MainActor
+    static func accountSignedIn(local: LocalPreferences) {
+        guard synced == nil, !Defaults[.notificationSettingsPushSendsEveryField] else { return }
+        synced = local
     }
 
     @MainActor
