@@ -43,7 +43,6 @@ nonisolated struct CourseSearchFilters: Hashable {
 }
 
 enum CourseSearch {
-    static let languages = ["zh", "en"]
     static let gridDays = Array(1...6)
 
     private nonisolated static let courseNoPattern = #"^[A-Za-z0-9]+$"#
@@ -58,9 +57,9 @@ enum CourseSearch {
     /// and the name and teacher are matched only when no course number starts with it.
     nonisolated static func search(
         _ query: String,
-        in catalogs: [String: [CourseCatalog.Course]],
+        in catalogs: [String: [CourseCatalogStore.Catalog.Course]],
         filters: CourseSearchFilters
-    ) -> [String: [CourseSearchResult]] {
+    ) -> [String: [CourseCatalogStore.Row]] {
         if query.range(of: courseNoPattern, options: .regularExpression) != nil {
             let prefix = query.uppercased()
             let found = rows(in: catalogs, filters) { _, course in course.numberKey.hasPrefix(prefix) }
@@ -75,11 +74,11 @@ enum CourseSearch {
     }
 
     private nonisolated static func rows(
-        in catalogs: [String: [CourseCatalog.Course]],
+        in catalogs: [String: [CourseCatalogStore.Catalog.Course]],
         _ filters: CourseSearchFilters,
-        where matches: (_ language: String, CourseCatalog.Course) -> Bool
-    ) -> [String: [CourseSearchResult]] {
-        var found: [String: [CourseSearchResult]] = [:]
+        where matches: (_ language: String, CourseCatalogStore.Catalog.Course) -> Bool
+    ) -> [String: [CourseCatalogStore.Row]] {
+        var found: [String: [CourseCatalogStore.Row]] = [:]
         for (language, courses) in catalogs {
             let rows = courses.compactMap { admits($0, filters) && matches(language, $0) ? $0.row : nil }
             if !rows.isEmpty { found[language] = rows }
@@ -94,7 +93,7 @@ enum CourseSearch {
         }
     }
 
-    nonisolated static func admits(_ course: CourseCatalog.Course, _ filters: CourseSearchFilters) -> Bool {
+    nonisolated static func admits(_ course: CourseCatalogStore.Catalog.Course, _ filters: CourseSearchFilters) -> Bool {
         let row = course.row
         let level = course.numberKey.dropFirst(2).first ?? " "
         let levelMatches = switch filters.level {
@@ -111,36 +110,14 @@ enum CourseSearch {
             && (!filters.excludeAlliance || !course.isAlliance)
     }
 
-    /// The filter lists of the term, with each name in both languages. A list only one language
-    /// has keeps that language's names for both.
-    static func options(_ catalogs: [String: CourseCatalog]) -> CourseSearchOptions {
-        guard let zh = catalogs["zh"] ?? catalogs["en"] else { return CourseSearchOptions() }
-        let en = catalogs["en"] ?? zh
-        func list(_ named: [CourseCatalog.Named], english: [CourseCatalog.Named]) -> [CourseSearchOptions.Option] {
-            let english = Dictionary(english.map { ($0.no, $0.name) }, uniquingKeysWith: { first, _ in first })
-            return named.map { .init(code: $0.no, name: $0.name, englishName: english[$0.no] ?? $0.name) }
-        }
-        let enColleges = Dictionary(en.colleges.map { ($0.no, $0) }, uniquingKeysWith: { first, _ in first })
-        return CourseSearchOptions(
-            colleges: zh.colleges.map { college in
-                CourseSearchOptions.College(
-                    name: college.name,
-                    englishName: enColleges[college.no]?.name ?? college.name,
-                    departments: list(college.departments, english: enColleges[college.no]?.departments ?? [])
-                )
-            },
-            dimensions: list(zh.dimensions, english: en.dimensions)
-        )
-    }
-
     /// The rows to show: the primary language's, then the courses only another language found,
     /// with each course's name in the other language.
     static func shown(
-        _ results: [String: [CourseSearchResult]],
+        _ results: [String: [CourseCatalogStore.Row]],
         primary: String
-    ) -> (rows: [CourseSearchResult], otherNames: [String: String]) {
+    ) -> (rows: [CourseCatalogStore.Row], otherNames: [String: String]) {
         let mine = results[primary] ?? []
-        let other = languages.filter { $0 != primary }.flatMap { results[$0] ?? [] }
+        let other = CourseCatalogStore.languages.filter { $0 != primary }.flatMap { results[$0] ?? [] }
         let mineNos = Set(mine.map(\.CourseNo))
         let otherNames = Dictionary(other.map { ($0.CourseNo, $0.CourseName) }, uniquingKeysWith: { first, _ in first })
         return (mine + other.filter { !mineNos.contains($0.CourseNo) }, otherNames)
@@ -176,9 +153,9 @@ enum CourseSearch {
 
     /// The colleges with only the departments whose code or name holds `query`, ignoring case.
     static func colleges(
-        _ colleges: [CourseSearchOptions.College],
+        _ colleges: [CourseCatalogStore.Options.College],
         matching query: String
-    ) -> [CourseSearchOptions.College] {
+    ) -> [CourseCatalogStore.Options.College] {
         let query = query.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return colleges }
         return colleges.compactMap { college in

@@ -40,7 +40,7 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         let address = link.dropFirst(scheme?.count ?? 0)
         if let path = shareHostPath(address) {
             if path.hasPrefix(classTableType) {
-                return try decodePacked(prefix + withoutTrailingSlash(path.dropFirst(classTableType.count)))
+                return try PackedShareCode.Decoder.decode(prefix + withoutTrailingSlash(path.dropFirst(classTableType.count)))
             }
             throw namesType(path) ? ClassTableShareCodeError.unknownType : .malformed
         }
@@ -51,7 +51,7 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         // not one, so a stray QR code or word never shows an error.
         let last = address.split(separator: "/").last ?? ""
         do {
-            return try last.hasPrefix("TAT") ? decodeTAT(tatPrefix + last) : decodePacked(prefix + last)
+            return try last.hasPrefix("TAT") ? decodeTAT(tatPrefix + last) : PackedShareCode.Decoder.decode(prefix + last)
         } catch {
             throw ClassTableShareCodeError.unknownPrefix
         }
@@ -95,7 +95,7 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
             return Term(semester: semester, courseNos: courseNos)
         }
         guard !kept.isEmpty else { return nil }
-        return encodePacked(studentId: id, sharedAt: sharedAt, terms: kept)
+        return PackedShareCode.Encoder.encode(studentId: id, sharedAt: sharedAt, terms: kept)
     }
 
     static func isSemester(_ text: Substring) -> Bool {

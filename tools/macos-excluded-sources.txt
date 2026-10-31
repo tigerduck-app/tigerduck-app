@@ -60,15 +60,32 @@ MonthCalendarView.swift
 # Features/ClassTable — UIKit-dependent timetable interactions; macOS uses Platform/Mac/MacClassTableView
 ClassTableView.swift
 ClassTableViewModel.swift
-ClassTableViewModel+Grid.swift
-ClassTableViewModel+Editing.swift
-ClassTableViewModel+Loading.swift
+ClassTableEditor.swift
+ClassTableGrid.swift
+ClassTableLoader.swift
+ClassTableSelection.swift
+ClassTableSync.swift
+ClassTableToday.swift
+ShownPersonModel.swift
+ClassTableCourseEditDialogs.swift
+ClassTablePersonDialogs.swift
+ClassTableEditDialogs.swift
+ClassTableHeaderMenu.swift
+ClassTableSemesterBar.swift
 ClassTableTabBarGestures.swift
 ConflictCoursePickerSheet.swift
 ClassTableExportView.swift
 ClassTableImportScannerView.swift  # camera scanner; the Mac reads an image file instead
 ConflictLShape.swift
+ConflictMirrorLPath.swift
+ConflictClusterView.swift
+ConflictLanesView.swift
+ConflictPairView.swift
 TimetableGridView.swift
+TimetableCell.swift
+TimetableCourseMenu.swift
+TimetableNowLine.swift
+TimetableSoloCell.swift
 
 # Features/CourseMoodle — the assignment page; the Mac opens an assignment on Moodle instead
 MoodleAssignmentView.swift

@@ -1,16 +1,10 @@
 import Defaults
 import SwiftUI
 import TigerDuckCore
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 struct CourseDetailSheet: View {
     @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let course: CourseStore.Course
     let assignments: [AssignmentStore.Assignment]
@@ -34,19 +28,18 @@ struct CourseDetailSheet: View {
     @State private var detent: PresentationDetent = .medium
     #endif
 
-    @State private var codeCopied = false
-    @State private var copyFeedback = 0
-
     var body: some View {
         NavigationStack(path: routes) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
                         headerSection
-                        emphasisCards
-                        secondaryInfo
-                        courseChangesSection
-                        assignmentsSection
+                        CourseDetailRoomAndTime(
+                            course: course, timeRange: timeRange, weekday: weekday, periods: periods, meeting: shownMeeting
+                        )
+                        CourseDetailInfoRows(course: course)
+                        CourseDetailChanges(course: course, date: date, shown: shownMeeting, changes: changes)
+                        CourseDetailAssignments(assignments: assignments, open: openListed)
                     }
                     if let moodle {
                         MoodleCourseSection(store: moodle, policy: app.preferences.visualStylePolicy)
@@ -66,15 +59,18 @@ struct CourseDetailSheet: View {
                     CourseSyllabusView(syllabus: syllabus, policy: app.preferences.visualStylePolicy)
                         .moodleLinkOpening()
                 } else if let moodle {
-                    moodleDestination(route, store: moodle)
-                        .moodleLinkOpening()
+                    CourseMoodleDestination(
+                        route: route, store: moodle, courseName: course.displayName, path: routes,
+                        refresh: refreshAssignments, openAssignment: openAssignment
+                    )
+                    .moodleLinkOpening()
                 }
             }
         }
         .task(id: MoodleStoreKey(
             courseNo: course.courseNo, attempt: moodleAttempt, signIn: app.authService.session.ticket
         )) {
-            moodle = makeMoodleStore()
+            moodle = showsMoodle ? CourseMoodleDestination.store(for: course, authService: app.authService) : nil
         }
         .task(id: [course.semester, course.courseNo]) {
             syllabus = nil
@@ -108,45 +104,6 @@ struct CourseDetailSheet: View {
         moodlePath ?? $ownMoodlePath
     }
 
-    @ViewBuilder
-    private func moodleDestination(_ route: MoodleCourseRoute, store: MoodleCourseStore) -> some View {
-        switch route {
-        case .announcements:
-            MoodleAnnouncementsView(store: store) { routes.wrappedValue.append($0) }
-        case .announcement(let discussion):
-            MoodleAnnouncementView(store: store, discussion: discussion) { routes.wrappedValue.append($0) }
-        case .materials:
-            MoodleMaterialsView(store: store, policy: app.preferences.visualStylePolicy)
-        case .grades:
-            MoodleGradesView(store: store)
-        case .members:
-            MoodleMembersView(store: store, policy: app.preferences.visualStylePolicy) { routes.wrappedValue.append($0) }
-        case .member(let member):
-            MoodleMemberView(store: store, member: member)
-        case .forums:
-            MoodleForumsView(store: store) { routes.wrappedValue.append($0) }
-        case .forum(let forum):
-            MoodleForumView(store: store, forum: forum) { routes.wrappedValue.append($0) }
-        case .discussion(let discussion, let forum):
-            MoodleDiscussionView(store: store, discussion: discussion, forum: forum)
-        case .assignments:
-            MoodleAssignmentsView(
-                store: store, policy: app.preferences.visualStylePolicy, refresh: refreshAssignments, open: openAssignment
-            )
-        case .assignment(let entry):
-            #if os(iOS)
-            MoodleAssignmentView(
-                store: store, entry: entry, courseName: course.displayName,
-                policy: app.preferences.visualStylePolicy, accent: app.preferences.accentColor
-            )
-            #else
-            EmptyView()
-            #endif
-        case .syllabus:
-            EmptyView()
-        }
-    }
-
     /// Nil for a course without a term or course number, such as one the student added by hand,
     /// and when the fetch fails or the syllabus has nothing to show.
     private func loadSyllabus() async -> CourseLookup.Syllabus? {
@@ -157,30 +114,6 @@ struct CourseDetailSheet: View {
             language: LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
         )
         return syllabus?.hasContent == true ? syllabus : nil
-    }
-
-    private func makeMoodleStore() -> MoodleCourseStore? {
-        guard showsMoodle, let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
-              let courseId = CourseLookup.moodleCourseId(idnumber: idnumber),
-              let context = MoodleCacheContext.signedIn(app.authService) else { return nil }
-        let term = AcademicTerm.codePrefix(ofMoodleId: idnumber)
-        let idMap = CourseLookup.moodleCourseIds()
-        let termCourseIds = idMap
-            .filter { term != nil && AcademicTerm.codePrefix(ofMoodleId: $0.key) == term }
-            .map(\.value)
-        return MoodleCourseStore(
-            courseId: courseId,
-            termCourseIds: termCourseIds,
-            courseCodes: Self.moodleCourseCodes(
-                idnumber: idnumber, courseNo: course.courseNo, courseId: courseId, idMap: idMap
-            ),
-            context: context
-        )
-    }
-
-    static func moodleCourseCodes(idnumber: String, courseNo: String, courseId: Int, idMap: [String: Int]) -> [String] {
-        let idnumbers = [idnumber] + idMap.filter { $0.value == courseId }.map(\.key)
-        return idnumbers + idnumbers.map(CourseStore.Course.courseNoFromMoodleId) + [courseNo]
     }
 
     private var headerSection: some View {
@@ -219,29 +152,6 @@ struct CourseDetailSheet: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    private var emphasisCards: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.md))
-            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
-
-        let meeting = shownMeeting
-        return layout {
-            EmphasisCard(
-                label: String(localized: "course_detail_classroom_label"),
-                value: meeting?.hasChangedRoom == true ? meeting?.room ?? classroomValue : classroomValue,
-                isChanged: meeting?.hasChangedRoom == true,
-                policy: app.preferences.visualStylePolicy
-            )
-            EmphasisCard(
-                label: String(localized: "course_detail_time_label"),
-                value: meeting.flatMap(Self.changedTime) ?? timeValue,
-                isChanged: meeting.flatMap(Self.changedTime) != nil,
-                policy: app.preferences.visualStylePolicy
-            )
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-    }
-
     private var shownMeeting: CourseTimeSlot? {
         Self.shownMeeting(of: course, slot: slot, periods: periods, on: date, changes: changes)
     }
@@ -255,210 +165,6 @@ struct CourseDetailSheet: View {
         }
         return meeting.flatMap { $0.changes.isEmpty ? nil : $0 }
     }
-
-    private static func changedTime(_ meeting: CourseTimeSlot) -> String? {
-        if meeting.isCancelled { return String(localized: "course_card_cancelled") }
-        return meeting.hasChangedTime ? "\(meeting.start.timeString) - \(meeting.end.timeString)" : nil
-    }
-
-    private var classroomValue: String {
-        let resolved = Self.classroom(of: course, weekday: weekday, periods: periods)
-        return resolved.isEmpty ? "—" : resolved
-    }
-
-    static func classroom(of course: CourseStore.Course, weekday: Int?, periods: [String]?) -> String {
-        guard let weekday else { return CourseStore.Course.dedup(course.classroom) }
-        guard let periods, !periods.isEmpty else { return course.classroom(for: weekday) }
-        return course.classroom(weekday: weekday, periods: periods)
-    }
-
-    private var timeValue: String {
-        if let timeRange, !timeRange.isEmpty { return timeRange }
-        if let weekday, let derived = course.timeRange(for: weekday) { return derived }
-        return "—"
-    }
-
-    private var secondaryInfo: some View {
-        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-            InfoRow(
-                label: String(localized: "course_detail_instructor_label"),
-                value: course.instructor.isEmpty ? "—" : course.instructor
-            )
-            InfoRow(
-                label: String(localized: "course_detail_code_label"),
-                value: course.courseNo,
-                copied: codeCopied,
-                onTap: copyCourseCode
-            )
-            // Only general-education courses carry a dimension; for every
-            // other course the portal sends an empty string and the row
-            // would be a label with nothing beside it.
-            if !course.dimension.isEmpty {
-                InfoRow(
-                    label: String(localized: "course_detail_dimension_label"),
-                    value: course.dimension
-                )
-            }
-            if let duration = durationText {
-                InfoRow(
-                    label: String(localized: "course_detail_duration_label"),
-                    value: duration
-                )
-            }
-            if let requireOption = Self.requireOptionText(course.requireOption) {
-                InfoRow(
-                    label: String(localized: "course_detail_require_option_label"),
-                    value: requireOption
-                )
-            }
-            InfoRow(
-                label: String(localized: "course_detail_credits_label"),
-                value: course.credits.creditsText
-            )
-            InfoRow(
-                label: String(localized: "course_detail_enrollment_label"),
-                value: "\(course.enrolledCount) / \(course.maxCount)"
-            )
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .sensoryFeedback(.success, trigger: copyFeedback)
-    }
-
-    /// QueryCourse spells `AllYear` as "F" (spans the academic year) or "H"
-    /// (a single semester). Anything else — including the empty string a row
-    /// cached before this field existed carries — says nothing, so the row
-    /// is left out rather than shown blank.
-    private var durationText: String? {
-        switch course.allYear.uppercased() {
-        case "F": return String(localized: "course_detail_duration_full_year")
-        case "H": return String(localized: "course_detail_duration_one_semester")
-        default: return nil
-        }
-    }
-
-    /// QueryCourse's `RequireOption`, "R" required or "E" elective. Anything else, such as the
-    /// empty string of a row merged from another device, says nothing, so the row is left out.
-    static func requireOptionText(_ requireOption: String) -> String? {
-        switch requireOption.uppercased() {
-        case "R": return String(localized: "course_detail_require_option_required")
-        case "E": return String(localized: "course_detail_require_option_elective")
-        default: return nil
-        }
-    }
-
-    @ViewBuilder
-    private var courseChangesSection: some View {
-        let rows = date == nil ? [] : Self.changeRows(
-            CourseTimeSlot.upcomingChanges(of: course, from: AppClock.now(), changes: changes), besides: shownMeeting
-        )
-        if !rows.isEmpty {
-            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-                Divider()
-                Text(String(localized: "course_detail_changes"))
-                    .font(TigerDuckTheme.Typography.headline)
-                    .foregroundStyle(Color.textPrimary)
-                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: TigerDuckTheme.Spacing.lg, verticalSpacing: 6) {
-                    ForEach(rows, id: \.day) { row in
-                        GridRow {
-                            Text(Date.dayWeekdayFormatter.string(from: row.day))
-                                .foregroundStyle(Color.textSecondary)
-                                .fixedSize()
-                            Text(row.summary)
-                                .foregroundStyle(Color.textPrimary)
-                                .lineLimit(1)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                }
-                .font(.subheadline.monospacedDigit())
-            }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        }
-    }
-
-    /// At most eight days' changes in a line each. The room, time or cancellation of the meeting
-    /// the cards show is left to the cards; its notes stay, as the cards have no place for them.
-    static func changeRows(
-        _ days: [(day: Date, meetings: [CourseTimeSlot])], besides shown: CourseTimeSlot?
-    ) -> [(day: Date, summary: String)] {
-        let rows = days.lazy
-            .map { day in
-                (day: day.day, summary: changeSummary(day.meetings, besides: shown))
-            }
-            .filter { !$0.summary.isEmpty }
-        return Array(rows.prefix(8))
-    }
-
-    private static func changeSummary(_ meetings: [CourseTimeSlot], besides shown: CourseTimeSlot?) -> String {
-        var parts: [String] = []
-        for meeting in meetings {
-            if let shown, meeting.periods.contains(where: shown.periods.contains),
-               TaipeiTime.calendar.startOfDay(for: meeting.date) == TaipeiTime.calendar.startOfDay(for: shown.date) {
-                // The cards show the tapped class; a room its meeting's other classes move to does not.
-                parts += meeting.changes
-                    .filter { $0.kind == .room && !shown.periods.contains(where: $0.covers) }
-                    .compactMap(\.room)
-                continue
-            }
-            if meeting.isCancelled {
-                parts.append(String(localized: "course_card_cancelled"))
-                continue
-            }
-            if meeting.hasChangedRoom { parts.append(meeting.room) }
-            if meeting.hasChangedTime { parts.append("\(meeting.start.timeString) - \(meeting.end.timeString)") }
-        }
-        var noteIds = Set<Int>()
-        parts += meetings.flatMap(\.notes).filter { noteIds.insert($0.id).inserted }.compactMap { $0.note() }
-        var seen = Set<String>()
-        return parts.filter { seen.insert($0).inserted }.joined(separator: " · ")
-    }
-
-    @ViewBuilder
-    private var assignmentsSection: some View {
-        if !assignments.isEmpty {
-            Divider().background(Color.textSecondary)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-
-            Text(String(localized: "course_detail_incomplete_assignments"))
-                .font(TigerDuckTheme.Typography.headline)
-                .foregroundStyle(Color.textPrimary)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-
-            ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { _, assignment in
-                Button {
-                    openListed(assignment)
-                } label: {
-                    HStack {
-                        Image(systemName: "doc.text")
-                            .foregroundStyle(.tint)
-                        VStack(alignment: .leading) {
-                            Text(assignment.displayTitle)
-                                .font(TigerDuckTheme.Typography.body)
-                                .foregroundStyle(Color.textPrimary)
-                            Text(String(format: String(localized: "course_detail_due_prefix"), assignment.dueDate.shortDateString))
-                                .font(TigerDuckTheme.Typography.caption)
-                                .foregroundStyle(assignment.isOverdue ? Color.badgeRed : Color.textSecondary)
-                        }
-                        Spacer()
-                        Image(systemName: Self.assignmentAccessory)
-                            .foregroundStyle(Color.textSecondary)
-                            .font(.caption)
-                    }
-                    .cardPadding()
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .glassCard()
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            }
-        }
-    }
-
-    #if os(macOS)
-    private static let assignmentAccessory = "arrow.up.right.square"
-    #else
-    private static let assignmentAccessory = "chevron.right"
-    #endif
 
     private func openListed(_ assignment: AssignmentStore.Assignment) {
         #if os(iOS)
@@ -493,98 +199,6 @@ struct CourseDetailSheet: View {
         guard let url = course.moodleOpenURL else { return }
         let web = course.moodleWebURL
         Task { await openURL(url, fallback: web) }
-    }
-
-    private func copyCourseCode() {
-        #if canImport(UIKit)
-        UIPasteboard.general.string = course.courseNo
-        #elseif canImport(AppKit)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(course.courseNo, forType: .string)
-        #endif
-        copyFeedback += 1
-        AccessibilityNotification.Announcement(
-            String(localized: "course_detail_code_copied")
-        ).post()
-        let generation = copyFeedback
-        withAnimation { codeCopied = true }
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.5))
-            guard copyFeedback == generation else { return }
-            withAnimation { codeCopied = false }
-        }
-    }
-}
-
-private struct EmphasisCard: View {
-    let label: String
-    let value: String
-    var isChanged = false
-    let policy: VisualStylePolicy
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
-            Text(label)
-                .font(TigerDuckTheme.Typography.caption)
-                .foregroundStyle(Color.textSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text(value)
-                .font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit())
-                .foregroundStyle(isChanged ? Color.changeInk : Color.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-                .allowsTightening(true)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, alignment: .center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(TigerDuckTheme.Spacing.md)
-        .presetCard(policy: policy)
-    }
-}
-
-private struct InfoRow: View {
-    let label: String
-    let value: String
-    var copied: Bool = false
-    var onTap: (() -> Void)? = nil
-
-    var body: some View {
-        if let onTap {
-            Button(action: onTap) { content }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("\(label), \(value)"))
-                .accessibilityHint(Text(String(localized: "course_detail_copy_code")))
-        } else {
-            content
-        }
-    }
-
-    private var content: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textSecondary)
-            Spacer()
-            if onTap != nil {
-                if copied {
-                    Image(systemName: "checkmark")
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(.tint)
-                } else {
-                    Image(systemName: "doc.on.doc")
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(Color.textSecondary)
-                }
-            }
-            Text(value)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textPrimary)
-                .multilineTextAlignment(.trailing)
-        }
-        // Without this the button only reacts on the label and value text,
-        // not on the gap between them — which is most of the row.
-        .contentShape(Rectangle())
     }
 }
 

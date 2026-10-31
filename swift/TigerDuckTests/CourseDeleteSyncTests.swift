@@ -309,12 +309,12 @@ struct CourseDeleteSyncTests {
         viewModel.courses = [course]
         courses.saveDeletedCourseNos([CourseTombstone.key(semester: viewModel.currentSemester, courseNo: "GE1010001")])
         var added: [String] = []
-        viewModel.onCourseAdded = { _, _, courseNo in added.append(courseNo) }
+        viewModel.editor.sync.courseAdded = { _, _, courseNo in added.append(courseNo) }
 
-        #expect(!viewModel.addCourse(course))
+        #expect(!viewModel.editor.addCourse(course))
 
         #expect(added == ["GE1010001"])
-        #expect(viewModel.deletedCourseNos.isEmpty)
+        #expect(viewModel.editor.deletedCourseNos.isEmpty)
     }
 
     @Test("The courses re-enable check counts a course whose delete is queued as gone from the server")

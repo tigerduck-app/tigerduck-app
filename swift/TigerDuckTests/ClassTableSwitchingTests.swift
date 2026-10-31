@@ -124,7 +124,7 @@ struct ClassTableSwitchingTests {
             #expect(viewModel.currentSemester == "1151")
             #expect(viewModel.availableSemesters == ["1151", "1142"])
             #expect(viewModel.courses.map(\.courseNo) == ["CS1010001"])
-            #expect(viewModel.totalCredits == 3)
+            #expect(viewModel.grid.totalCredits == 3)
         }
     }
 
@@ -186,10 +186,10 @@ struct ClassTableSwitchingTests {
             let viewModel = ClassTableViewModel(importedTables: people.store)
             Self.show(people.ming.id, in: people, on: viewModel)
 
-            viewModel.startDeletingPerson()
-            #expect(viewModel.isDeletingPerson)
-            #expect(viewModel.personInAlert?.nickname == "Ming")
-            viewModel.deletePersonInAlert()
+            viewModel.people.startDeletingPerson()
+            #expect(viewModel.people.isDeletingPerson)
+            #expect(viewModel.people.personInAlert?.nickname == "Ming")
+            viewModel.people.deletePersonInAlert()
             #expect(viewModel.shownPerson?.nickname == "Ming")
             viewModel.showShownTable()
 
@@ -197,7 +197,7 @@ struct ClassTableSwitchingTests {
             #expect(viewModel.shownPerson == nil)
             #expect(viewModel.availableSemesters == ["1151", "1142", "1141"])
             #expect(!viewModel.courses.contains { $0.courseNo == "CS1010001" })
-            #expect(viewModel.personInAlert?.nickname == "Ming")
+            #expect(viewModel.people.personInAlert?.nickname == "Ming")
         }
     }
 
@@ -208,16 +208,16 @@ struct ClassTableSwitchingTests {
             let viewModel = ClassTableViewModel(importedTables: people.store)
             Self.show(people.ming.id, in: people, on: viewModel)
 
-            viewModel.startRenamingPerson()
+            viewModel.people.startRenamingPerson()
             Self.show(people.hua.id, in: people, on: viewModel)
-            viewModel.nicknameDraft = "Xiao Ming"
-            viewModel.saveNickname()
+            viewModel.people.nicknameDraft = "Xiao Ming"
+            viewModel.people.saveNickname()
             #expect(people.store.people.map(\.nickname) == ["Xiao Ming", "Hua"])
 
             Self.show(people.ming.id, in: people, on: viewModel)
-            viewModel.startDeletingPerson()
+            viewModel.people.startDeletingPerson()
             Self.show(people.hua.id, in: people, on: viewModel)
-            viewModel.deletePersonInAlert()
+            viewModel.people.deletePersonInAlert()
             #expect(people.store.people.map(\.nickname) == ["Hua"])
         }
     }
@@ -237,17 +237,17 @@ struct ClassTableSwitchingTests {
 
             #expect(!viewModel.hasAssignment(for: "CS1010001"))
             #expect(viewModel.assignmentsFor(courseNo: "CS1010001").isEmpty)
-            #expect(!viewModel.offersIgnoreAssignments)
-            #expect(!viewModel.ignoresAssignments(of: "CS1010001"))
+            #expect(!viewModel.editor.offersIgnoreAssignments)
+            #expect(!viewModel.editor.ignoresAssignments(of: "CS1010001"))
             #expect(viewModel.todayCourses.isEmpty)
 
-            viewModel.startRename(theirs)
-            viewModel.startRecolor(theirs)
-            #expect(!viewModel.showRenameAlert)
-            #expect(viewModel.courseToRename == nil)
-            #expect(viewModel.courseToRecolor == nil)
-            #expect(!viewModel.addCourse(Self.course("GE1010001", "Art", semester: "1151")))
-            viewModel.deleteCourse(theirs)
+            viewModel.editor.startRename(theirs)
+            viewModel.editor.startRecolor(theirs)
+            #expect(!viewModel.editor.dialogs.showRenameAlert)
+            #expect(viewModel.editor.dialogs.courseToRename == nil)
+            #expect(viewModel.editor.dialogs.courseToRecolor == nil)
+            #expect(!viewModel.editor.addCourse(Self.course("GE1010001", "Art", semester: "1151")))
+            viewModel.editor.deleteCourse(theirs)
             #expect(viewModel.courses.map(\.courseNo) == ["CS1010001"])
 
             Self.show(nil, in: people, on: viewModel)
@@ -262,23 +262,23 @@ struct ClassTableSwitchingTests {
             let people = try Self.people(Folder())
             let viewModel = ClassTableViewModel(importedTables: people.store)
             let own = Self.course("GE1010009", "Own course", semester: "1151")
-            viewModel.courseToRename = own
-            viewModel.renameText = "Renamed"
-            viewModel.showRenameAlert = true
-            viewModel.courseToRecolor = own
-            viewModel.showAddCourse = true
+            viewModel.editor.dialogs.courseToRename = own
+            viewModel.editor.dialogs.renameText = "Renamed"
+            viewModel.editor.dialogs.showRenameAlert = true
+            viewModel.editor.dialogs.courseToRecolor = own
+            viewModel.editor.dialogs.showAddCourse = true
             let customNames = CourseStore.shared.loadCourseCustomNames()
             let userAdded = CourseStore.shared.loadUserAddedCourses().map(\.courseNo)
 
             Self.show(people.ming.id, in: people, on: viewModel)
-            #expect(!viewModel.showRenameAlert)
-            #expect(viewModel.courseToRecolor == nil)
-            #expect(!viewModel.showAddCourse)
+            #expect(!viewModel.editor.dialogs.showRenameAlert)
+            #expect(viewModel.editor.dialogs.courseToRecolor == nil)
+            #expect(!viewModel.editor.dialogs.showAddCourse)
 
-            viewModel.courseToRename = own
-            viewModel.confirmRename()
-            viewModel.revertRename(own)
-            viewModel.removeUserAddedCourse(courseNo: "CS1010001")
+            viewModel.editor.dialogs.courseToRename = own
+            viewModel.editor.confirmRename()
+            viewModel.editor.revertRename(own)
+            viewModel.editor.removeUserAddedCourse(courseNo: "CS1010001")
             #expect(CourseStore.shared.loadCourseCustomNames() == customNames)
             #expect(CourseStore.shared.loadUserAddedCourses().map(\.courseNo) == userAdded)
         }
@@ -289,22 +289,22 @@ struct ClassTableSwitchingTests {
         let viewModel = ClassTableViewModel(importedTables: try Self.people(Folder()).store)
         let own = Self.course("GE1010009", "Own course", semester: "1151")
         own.customName = "Own name"
-        viewModel.courseToRename = own
-        viewModel.renameText = "Renamed"
-        viewModel.showRenameAlert = true
-        viewModel.courseToRecolor = own
-        viewModel.showAddCourse = true
-        viewModel.showResetConfirm = true
+        viewModel.editor.dialogs.courseToRename = own
+        viewModel.editor.dialogs.renameText = "Renamed"
+        viewModel.editor.dialogs.showRenameAlert = true
+        viewModel.editor.dialogs.courseToRecolor = own
+        viewModel.editor.dialogs.showAddCourse = true
+        viewModel.editor.dialogs.showResetConfirm = true
         let customNames = CourseStore.shared.loadCourseCustomNames()
 
-        viewModel.closeOwnEdits()
-        #expect(!viewModel.showRenameAlert)
-        #expect(viewModel.courseToRecolor == nil)
-        #expect(!viewModel.showAddCourse)
-        #expect(!viewModel.showResetConfirm)
+        viewModel.editor.closeDialogs()
+        #expect(!viewModel.editor.dialogs.showRenameAlert)
+        #expect(viewModel.editor.dialogs.courseToRecolor == nil)
+        #expect(!viewModel.editor.dialogs.showAddCourse)
+        #expect(!viewModel.editor.dialogs.showResetConfirm)
 
-        viewModel.confirmRename()
-        viewModel.revertRename(own)
+        viewModel.editor.confirmRename()
+        viewModel.editor.revertRename(own)
         #expect(own.customName == "Own name")
         #expect(CourseStore.shared.loadCourseCustomNames() == customNames)
     }
@@ -314,8 +314,8 @@ struct ClassTableSwitchingTests {
         try Self.withCatalogue(["1151", "1142", "1141"], storedPick: nil) {
             let people = try Self.people(Folder())
             let viewModel = ClassTableViewModel(importedTables: people.store)
-            viewModel.deletedCourseNos = [CourseTombstone.key(semester: "1151", courseNo: "CS1010001")]
-            viewModel.courseCustomNames = ["CS1010001": [viewModel.currentLocale: "Own name"]]
+            viewModel.editor.deletedCourseNos = [CourseTombstone.key(semester: "1151", courseNo: "CS1010001")]
+            viewModel.editor.courseCustomNames = ["CS1010001": [viewModel.editor.currentLocale: "Own name"]]
 
             Self.show(people.ming.id, in: people, on: viewModel)
 
@@ -348,7 +348,7 @@ struct ClassTableSwitchingTests {
             defer { CourseStore.shared.saveCourses(saved, semester: "1142") }
             if !signedOut { CourseStore.shared.saveCourses(fetched, semester: "1142") }
 
-            viewModel.showFetched(signedOutSince: signedOut)
+            viewModel.loader.showFetched(signedOutSince: signedOut)
 
             #expect(viewModel.courses.map(\.courseNo) == (change == .none ? ["GE1010009"] : onScreen))
         }
@@ -394,7 +394,7 @@ struct ClassTableSwitchingTests {
             store.show(person.id)
             viewModel.showShownTable()
             let departing = "QQ" + UUID().uuidString.prefix(7)
-            viewModel.currentSemesterCourses = [Self.course(departing, "Departing course", semester: "1151")]
+            viewModel.today.courses = [Self.course(departing, "Departing course", semester: "1151")]
 
             viewModel.reloadFromCache()
 
@@ -409,17 +409,17 @@ struct ClassTableSwitchingTests {
             let viewModel = ClassTableViewModel(importedTables: people.store)
             Self.show(people.ming.id, in: people, on: viewModel)
 
-            viewModel.startRenamingPerson()
-            #expect(viewModel.isRenamingPerson)
-            #expect(viewModel.nicknameDraft == "Ming")
-            #expect(viewModel.canSaveNickname)
+            viewModel.people.startRenamingPerson()
+            #expect(viewModel.people.isRenamingPerson)
+            #expect(viewModel.people.nicknameDraft == "Ming")
+            #expect(viewModel.people.canSaveNickname)
 
-            viewModel.nicknameDraft = " \n "
-            #expect(!viewModel.canSaveNickname)
+            viewModel.people.nicknameDraft = " \n "
+            #expect(!viewModel.people.canSaveNickname)
 
-            viewModel.nicknameDraft = " Xiao Ming "
-            #expect(viewModel.canSaveNickname)
-            viewModel.saveNickname()
+            viewModel.people.nicknameDraft = " Xiao Ming "
+            #expect(viewModel.people.canSaveNickname)
+            viewModel.people.saveNickname()
 
             #expect(viewModel.shownPerson?.nickname == "Xiao Ming")
             #expect(people.store.people.map(\.nickname) == ["Xiao Ming", "Hua"])
@@ -459,8 +459,8 @@ struct ClassTableSwitchingTests {
         #expect(lookups.first?.courseNos == ["CS1010001"])
         #expect(lookups.first?.current == ["CS1010001"])
         #expect(viewModel.courses.map(\.classroom) == ["TR-313"])
-        #expect(!viewModel.showsLookupFailed)
-        #expect(!viewModel.isRefreshingShownPerson)
+        #expect(!viewModel.people.showsLookupFailed)
+        #expect(!viewModel.people.isRefreshing)
         var stored = try #require(people.store.people.first)
         #expect(stored.courses(in: "1151").map(\.classroom) == ["TR-313"])
         #expect(stored.courses(in: "1142").map(\.courseName) == ["Circuits"])
@@ -468,7 +468,7 @@ struct ClassTableSwitchingTests {
         await viewModel.refreshShownPerson()
 
         #expect(lookups.count == 2)
-        #expect(viewModel.showsLookupFailed)
+        #expect(viewModel.people.showsLookupFailed)
         stored = try #require(people.store.people.first)
         #expect(stored.courses(in: "1151").map(\.classroom) == ["TR-313"])
         #expect(viewModel.courses.map(\.classroom) == ["TR-313"])
@@ -490,18 +490,18 @@ struct ClassTableSwitchingTests {
 
         switch operation {
         case "rename":
-            viewModel.startRenamingPerson()
-            viewModel.nicknameDraft = "New nickname"
-            viewModel.saveNickname()
+            viewModel.people.startRenamingPerson()
+            viewModel.people.nicknameDraft = "New nickname"
+            viewModel.people.saveNickname()
         case "delete":
-            viewModel.startDeletingPerson()
-            viewModel.deletePersonInAlert()
+            viewModel.people.startDeletingPerson()
+            viewModel.people.deletePersonInAlert()
         default:
             await viewModel.refreshShownPerson()
         }
 
-        #expect(viewModel.showsSaveFailed)
-        #expect(!viewModel.showsLookupFailed)
+        #expect(viewModel.people.showsSaveFailed)
+        #expect(!viewModel.people.showsLookupFailed)
         #expect(people.store.shownTable == shown)
         #expect(viewModel.shownPerson?.nickname == "Ming")
         #expect(viewModel.courses.map(\.courseName) == ["Data Structures"])
@@ -529,8 +529,8 @@ struct ClassTableSwitchingTests {
 
         #expect(people.store.shownPerson?.courses(in: "1151").map(\.courseName) == ["New import"])
         #expect(viewModel.courses.map(\.courseName) == ["New import"])
-        #expect(!viewModel.showsSaveFailed)
-        #expect(!viewModel.showsLookupFailed)
+        #expect(!viewModel.people.showsSaveFailed)
+        #expect(!viewModel.people.showsLookupFailed)
     }
 
     @Test("signing out asks first while unsynced data or imported class tables would go with it, naming each")

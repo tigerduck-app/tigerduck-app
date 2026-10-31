@@ -86,8 +86,8 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
     var requestImport: () -> Void = {}
 
     private(set) weak var bar: UIView?
-    private var menuInteraction: UIContextMenuInteraction?
-    private var doubleTap: ClassTableTabDoubleTap?
+    /// What `attach(to:)` added to the bar, for `detach()` to take off.
+    private var added: (menu: UIContextMenuInteraction, doubleTap: ClassTableTabDoubleTap)?
     private var hasLoggedMissingTab = false
     private var lastDoubleTap: ContinuousClock.Instant?
 
@@ -107,7 +107,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         self.bar = bar
         let interaction = UIContextMenuInteraction(delegate: self)
         bar.addInteraction(interaction)
-        menuInteraction = interaction
 
         let doubleTap = ClassTableTabDoubleTap(target: self, action: #selector(didDoubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
@@ -116,14 +115,15 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
         doubleTap.cancelsTouchesInView = false
         doubleTap.delegate = self
         bar.addGestureRecognizer(doubleTap)
-        self.doubleTap = doubleTap
+        added = (interaction, doubleTap)
     }
 
     func detach() {
-        if let menuInteraction { bar?.removeInteraction(menuInteraction) }
-        if let doubleTap { bar?.removeGestureRecognizer(doubleTap) }
-        menuInteraction = nil
-        doubleTap = nil
+        if let added {
+            bar?.removeInteraction(added.menu)
+            bar?.removeGestureRecognizer(added.doubleTap)
+        }
+        added = nil
         bar = nil
     }
 

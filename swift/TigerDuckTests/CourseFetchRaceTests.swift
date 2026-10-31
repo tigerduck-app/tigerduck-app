@@ -119,7 +119,7 @@ struct CourseFetchRaceTests {
         viewModel.courses = [mine]
 
         store.saveUserAddedCourses([mine, SDCourse(courseNo: "GE1010002", courseName: "Music", semester: term)])
-        viewModel.removeUserAddedCourse(courseNo: "GE1010001")
+        viewModel.editor.removeUserAddedCourse(courseNo: "GE1010001")
 
         #expect(store.loadUserAddedCourses().map(\.courseNo) == ["GE1010002"])
     }

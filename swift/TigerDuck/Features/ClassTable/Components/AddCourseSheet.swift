@@ -24,11 +24,15 @@ struct AddCourseSheet: View {
 
     var body: some View {
         #if os(macOS)
-        macBody
-            .onAppear { searchFocused = true }
-            .task(id: searchKey) {
-                await model.search(searchText, semester: semester, fetch: fetchCatalog)
-            }
+        AddCourseMacLayout(
+            model: model, searchText: $searchText, showFilters: $showFilters, searchFocused: $searchFocused,
+            shown: shownCourses, rows: resultRows(shownCourses), failureText: failureText,
+            filterSymbol: filterSymbol, busySlots: busySlots, language: language
+        )
+        .onAppear { searchFocused = true }
+        .task(id: searchKey) {
+            await model.search(searchText, semester: semester, fetch: fetchCatalog)
+        }
         #else
         iosBody
             .onAppear { searchFocused = true }
@@ -43,10 +47,7 @@ struct AddCourseSheet: View {
     }
 
     private var fetchCatalog: CourseSearchModel.FetchCatalog {
-        let client = CourseCatalogClient(backend: BackendClient(
-            session: BackendClient.catalogSession, auth: app.authTokenManager.backendAuth
-        ))
-        return { @MainActor in try await client.fetch(semester: $0, language: $1, etag: $2) }
+        CourseCatalogStore.fetch(auth: app.authTokenManager.backendAuth)
     }
 
     private var trimmedQuery: String {
@@ -149,139 +150,12 @@ struct AddCourseSheet: View {
     }
 
     @ViewBuilder
-    private func emptyState(_ shown: [ShownCourse]) -> some View {
+    private func emptyState(_ shown: [AddCourseResults.Shown]) -> some View {
         if trimmedQuery.isEmpty {
             ContentUnavailableView(String(localized: "add_course_placeholder"), systemImage: "magnifyingglass")
         } else if model.hasSearched, !model.isSearching, model.failure == nil, shown.isEmpty {
             ContentUnavailableView(String(localized: "add_course_not_found"), systemImage: "magnifyingglass")
         }
-    }
-    #endif
-
-    #if os(macOS)
-    // No `Form`: on macOS it makes the search field tiny. The frame stays modest so the
-    // sheet does not dwarf the window.
-    private var macBody: some View {
-        VStack(spacing: 0) {
-            macSearchBar
-            Divider()
-            macResultsArea
-            Divider()
-            macBottomBar
-        }
-        .frame(minWidth: 580, idealWidth: 660, minHeight: 460, idealHeight: 600)
-    }
-
-    @ViewBuilder
-    private var macSearchBar: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(String(localized: "add_course_title"))
-                .font(.title3.weight(.semibold))
-            HStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField(String(localized: "add_course_placeholder"), text: $searchText)
-                        .textFieldStyle(.plain)
-                        .autocorrectionDisabled()
-                        .focused($searchFocused)
-                        .submitLabel(.search)
-                        .onSubmit { model.submit() }
-                    if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.tertiary)
-                        }
-                        .buttonStyle(.plain)
-                        .help(String(localized: "action_close"))
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.secondary.opacity(0.10))
-                )
-                Button {
-                    showFilters = true
-                } label: {
-                    Image(systemName: filterSymbol)
-                        .font(.title3)
-                }
-                .buttonStyle(.plain)
-                .help(String(localized: "course_search_filters"))
-                .accessibilityLabel(String(localized: "course_search_filters"))
-                .popover(isPresented: $showFilters, arrowEdge: .bottom) {
-                    CourseSearchFilterView(model: model, busy: busySlots, language: language)
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
-    }
-
-    @ViewBuilder
-    private var macResultsArea: some View {
-        let shown = shownCourses
-        if model.isSearching && shown.isEmpty {
-            VStack(spacing: 8) {
-                ProgressView()
-                Text(String(localized: "add_course_searching"))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let failureText {
-            VStack(spacing: 8) {
-                Image(systemName: "xmark.circle")
-                    .font(.title2)
-                    .foregroundStyle(.red)
-                Text(failureText)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if shown.isEmpty {
-            VStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.title2)
-                    .foregroundStyle(.secondary)
-                Text(trimmedQuery.isEmpty
-                     ? String(localized: "add_course_placeholder")
-                     : String(localized: "add_course_not_found"))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List {
-                resultRows(shown)
-            }
-            .listStyle(.inset)
-            .scrollContentBackground(.hidden)
-            // Strip the default macOS bordered-button chrome from each row. Otherwise
-            // each result sits in its own rounded button frame, which shifts the leading
-            // text edge and makes the course-no / instructor / classroom column uneven.
-            .buttonStyle(.plain)
-        }
-    }
-
-    @ViewBuilder
-    private var macBottomBar: some View {
-        HStack {
-            Spacer()
-            Button(String(localized: "action_close")) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
     #endif
 
@@ -293,214 +167,20 @@ struct AddCourseSheet: View {
         Set(table.flatMap(\.slots))
     }
 
-    private struct ShownCourse {
-        let course: GroupedCourse
-        let conflicts: [String]
+    private var shownCourses: [AddCourseResults.Shown] {
+        AddCourseResults.shown(model.results, language: language, table: table, filters: model.filters)
     }
 
-    private var shownCourses: [ShownCourse] {
-        let table = table
-        let filters = model.filters
-        return groupedResults.compactMap { course in
-            CourseSearch.visibleConflicts(
-                courseNo: course.courseNo, schedule: course.schedule, table: table, filters: filters
-            ).map { ShownCourse(course: course, conflicts: $0) }
-        }
+    private func resultRows(_ shown: [AddCourseResults.Shown]) -> AddCourseResultRows {
+        AddCourseResultRows(
+            shown: shown, tableCourses: tableCourses, addedHere: $sessionAddedCourseNos, add: addCourse, remove: onRemove
+        )
     }
 
-    @ViewBuilder
-    private func resultRows(_ shown: [ShownCourse]) -> some View {
-        let existingCourseNos = Set(tableCourses.map(\.courseNo))
-        ForEach(shown, id: \.course.courseNo) { item in
-            let group = item.course
-            // A course added here joins `tableCourses` too, and stays removable.
-            let mark: AddCourseRowMark = sessionAddedCourseNos.contains(group.courseNo) ? .addedHere
-                : existingCourseNos.contains(group.courseNo) ? .inTable : .notAdded
-            Button {
-                switch mark {
-                case .addedHere:
-                    sessionAddedCourseNos.remove(group.courseNo)
-                    onRemove?(group.courseNo)
-                case .notAdded:
-                    addCourse(from: group)
-                case .inTable:
-                    break
-                }
-            } label: {
-                HStack(alignment: .top, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(group.displayName)
-                            .font(TigerDuckTheme.Typography.headline)
-                            .foregroundStyle(Color.textPrimary)
-                        Text(String(format: String(localized: "add_course_result_meta"), group.courseNo, group.instructor, group.credits.creditsText))
-                            .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(Color.textSecondary)
-                        if !group.classroom.isEmpty {
-                            Text(group.classroom)
-                                .font(TigerDuckTheme.Typography.caption)
-                                .foregroundStyle(Color.textSecondary)
-                        }
-                        if !group.nodeDisplay.isEmpty {
-                            Text(group.nodeDisplay)
-                                .font(TigerDuckTheme.Typography.caption)
-                                .foregroundStyle(Color.textSecondary)
-                        }
-                        if mark == .notAdded, !item.conflicts.isEmpty {
-                            Label(
-                                String(
-                                    format: String(localized: "course_search_conflicts_with"),
-                                    ListFormatter.localizedString(byJoining: item.conflicts)
-                                ),
-                                systemImage: "exclamationmark.triangle"
-                            )
-                            .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(TigerDuckTheme.Tint.orange)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    Image(systemName: mark.symbol)
-                        .foregroundStyle(mark == .inTable ? AnyShapeStyle(Color.textSecondary) : AnyShapeStyle(.tint))
-                        .accessibilityHidden(true)
-                }
-                .contentShape(Rectangle())
-            }
-            .disabled(mark == .inTable)
-            .accessibilityValue(mark.accessibilityValue)
-            .accessibilityHint(mark.accessibilityHint)
-        }
-    }
-
-    private struct GroupedCourse {
-        let courseNo: String
-        let primaryName: String
-        let secondaryName: String?
-        let instructor: String
-        let credits: Double
-        let classroom: String
-        let classroomMap: [String: String]
-        let enrolledCount: Int
-        let maxCount: Int
-        let schedule: [Int: [String]]
-        let nodeDisplay: String
-        let dimension: String
-        let allYear: String
-        let requireOption: String
-
-        var displayName: String {
-            guard let secondary = secondaryName,
-                  !secondary.isEmpty,
-                  secondary != primaryName
-            else { return primaryName }
-            return "\(primaryName) (\(secondary))"
-        }
-    }
-
-    private var groupedResults: [GroupedCourse] {
-        let (rows, secondaryNamesByNo) = CourseSearch.shown(model.results, primary: language)
-        var seen: [String: GroupedCourse] = [:]
-        var order: [String] = []
-
-        for result in rows {
-            let key = result.CourseNo
-            let partial = CourseLookup.schedule(of: result.Node)
-            var rowSeen = Set<String>()
-            let rowRoomParts = CourseStore.Course.splitRoom(result.ClassRoomNo ?? "")
-                .filter { rowSeen.insert($0).inserted }
-            let rowRoom = rowRoomParts.joined(separator: ", ")
-
-            if var existing = seen[key] {
-                var merged = existing.schedule
-                for (day, periods) in partial {
-                    merged[day, default: []].append(contentsOf: periods)
-                }
-                let room = (result.ClassRoomNo ?? "").trimmingCharacters(in: .whitespaces)
-                let existingRooms = existing.classroom.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                let newClassroom = existing.classroom.isEmpty ? room :
-                    (room.isEmpty || existingRooms.contains(room)) ? existing.classroom :
-                    "\(existing.classroom), \(room)"
-                let nodeStr = existing.nodeDisplay.isEmpty ? (result.Node ?? "") :
-                    (result.Node == nil || result.Node!.isEmpty) ? existing.nodeDisplay :
-                    "\(existing.nodeDisplay), \(result.Node!)"
-
-                var mergedMap = existing.classroomMap
-                if !rowRoom.isEmpty {
-                    for (day, periods) in partial {
-                        for period in periods {
-                            mergedMap["\(day)-\(period)"] = rowRoom
-                        }
-                    }
-                }
-
-                existing = GroupedCourse(
-                    courseNo: existing.courseNo,
-                    primaryName: existing.primaryName,
-                    secondaryName: existing.secondaryName,
-                    instructor: existing.instructor,
-                    credits: existing.credits,
-                    classroom: newClassroom,
-                    classroomMap: mergedMap,
-                    enrolledCount: existing.enrolledCount,
-                    maxCount: existing.maxCount,
-                    schedule: merged,
-                    nodeDisplay: nodeStr,
-                    dimension: existing.dimension.isEmpty ? (result.Dimension ?? "") : existing.dimension,
-                    allYear: existing.allYear.isEmpty ? (result.AllYear ?? "") : existing.allYear,
-                    requireOption: existing.requireOption.isEmpty ? (result.RequireOption ?? "") : existing.requireOption
-                )
-                seen[key] = existing
-            } else {
-                var initialMap: [String: String] = [:]
-                if !rowRoom.isEmpty {
-                    for (day, periods) in partial {
-                        for period in periods {
-                            initialMap["\(day)-\(period)"] = rowRoom
-                        }
-                    }
-                }
-                order.append(key)
-                seen[key] = GroupedCourse(
-                    courseNo: result.CourseNo,
-                    primaryName: result.CourseName,
-                    secondaryName: secondaryNamesByNo[result.CourseNo],
-                    instructor: result.CourseTeacher,
-                    credits: Double(result.CreditPoint) ?? 0,
-                    classroom: result.ClassRoomNo ?? "",
-                    classroomMap: initialMap,
-                    enrolledCount: result.ChooseStudent ?? 0,
-                    maxCount: Int(result.Restrict2 ?? "0") ?? 0,
-                    schedule: partial,
-                    nodeDisplay: result.Node ?? "",
-                    dimension: result.Dimension ?? "",
-                    allYear: result.AllYear ?? "",
-                    requireOption: result.RequireOption ?? ""
-                )
-            }
-        }
-
-        return order.compactMap { seen[$0] }
-    }
-
-    private func addCourse(from group: GroupedCourse) {
+    private func addCourse(from group: AddCourseResults.Course) {
         let row = model.appLanguageRow(of: group.courseNo, language: language)
-        add(group, name: row?.CourseName ?? group.primaryName, instructor: row?.CourseTeacher ?? group.instructor)
-    }
-
-    private func add(_ group: GroupedCourse, name: String, instructor: String) {
-        let course = CourseStore.Course(
-            courseNo: group.courseNo,
-            courseName: name,
-            instructor: instructor,
-            credits: group.credits,
-            classroom: group.classroom,
-            enrolledCount: group.enrolledCount,
-            maxCount: group.maxCount,
-            schedule: group.schedule,
-            moodleIdNumber: nil,
-            semester: semester,
-            classroomMap: group.classroomMap,
-            dimension: group.dimension,
-            allYear: group.allYear,
-            requireOption: group.requireOption
+        let course = group.tableCourse(
+            semester: semester, name: row?.CourseName ?? group.primaryName, instructor: row?.CourseTeacher ?? group.instructor
         )
         if onAdd(course) {
             sessionAddedCourseNos.insert(group.courseNo)
