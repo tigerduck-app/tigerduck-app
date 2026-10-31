@@ -505,54 +505,6 @@ struct NotificationSettingsReconcileTests {
         }
     }
 
-    @Test("a section switched back on stays out of every push, an edit to it included, until a reconcile adopts it")
-    func reenabledSectionWaitsForTheServersCopy() async throws {
-        try await Fixtures.withStore { store in
-            let savedSwitch = Defaults[.syncLiveActivity]
-            let savedHeld = Defaults[.notificationSettingsSectionsToAdopt]
-            defer {
-                Defaults[.syncLiveActivity] = savedSwitch
-                Defaults[.notificationSettingsSectionsToAdopt] = savedHeld
-            }
-            Defaults[.notificationSettingsSectionsToAdopt] = []
-            Self.setDeviceValues(store)
-            let synced = NotificationSettingsSync.LocalPreferences(from: store)
-            Defaults[.syncLiveActivity] = true
-            NotificationSettingsSync.holdForServer(.liveActivity)
-            #expect(!NotificationSettingsSync.pushes(.liveActivity))
-            store.assignmentLiveActivityLeadTime = 600
-            let baseURL = SettingsAPIStub.uniqueBaseURL()
-            let url = Fixtures.documentURL(baseURL)
-            let client = SettingsAPIStub.makeClient(baseURL: baseURL)
-            SettingsAPIStub.enqueue(try Fixtures.found(Self.serverDocument(), revision: 2), for: url)
-            SettingsAPIStub.enqueue(try Fixtures.written(revision: 3), for: url)
-
-            try await NotificationSettingsSync.push(
-                local: .init(from: store),
-                base: synced,
-                client: client,
-                cloudSyncEnabled: true,
-                syncLiveActivityEnabled: NotificationSettingsSync.pushes(.liveActivity)
-            )
-
-            let sent = try Fixtures.sentDocument(SettingsAPIStub.requests(for: url)[1])
-            let liveActivity = try #require(sent["live_activity"] as? [String: Any])
-            #expect(liveActivity["show_in_class"] as? Bool == false)
-            #expect(liveActivity["assignment_lead_seconds"] as? Int == 7200)
-
-            SettingsAPIStub.enqueue(try Fixtures.found(sent, revision: 3), for: url)
-            let outcome = try await Self.reconcile(store, client: client)
-            if case .settled(let adopted, let seeded) = outcome {
-                NotificationSettingsSync.releaseHeld(adopted.union(seeded))
-            }
-
-            #expect(outcome == .settled(adopted: [.assignments, .liveActivity, .courses], seeded: []))
-            #expect(store.showInClassScenario == false)
-            #expect(store.assignmentLiveActivityLeadTime == 7200)
-            #expect(NotificationSettingsSync.pushes(.liveActivity))
-        }
-    }
-
     @Test("a snapshot gives its notification document, none, or nothing to go on")
     func documentSourceFromTheSnapshot() throws {
         let entry: [String: Any] = ["namespace": "notification", "document": ["assignments": ["enabled": true]], "revision": 7]

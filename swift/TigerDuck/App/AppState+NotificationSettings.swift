@@ -5,9 +5,11 @@ import os
 extension AppState {
     #if os(iOS)
 
-    func pushNotificationSettings(isCurrent: @escaping @MainActor () -> Bool = { true }) async {
-        guard Defaults[.cloudSyncEnabled] else { return }
-        guard await authTokenManager.isLoggedIn, isCurrent() else { return }
+    /// Whether the push landed and nothing changed here since, which leaves nothing to send.
+    @discardableResult
+    func pushNotificationSettings(isCurrent: @escaping @MainActor () -> Bool = { true }) async -> Bool {
+        guard Defaults[.cloudSyncEnabled] else { return false }
+        guard await authTokenManager.isLoggedIn, isCurrent() else { return false }
 
         let atm = authTokenManager
         let client = SettingsDocumentClient(
@@ -20,11 +22,11 @@ extension AppState {
                 base: NotificationSettingsSync.pushBase(local: local),
                 client: client,
                 cloudSyncEnabled: Defaults[.cloudSyncEnabled],
-                syncAssignmentRemindersEnabled: NotificationSettingsSync.pushes(.assignments),
-                syncLiveActivityEnabled: NotificationSettingsSync.pushes(.liveActivity),
+                syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
+                syncLiveActivityEnabled: Defaults[.syncLiveActivity],
                 isCurrent: isCurrent
             )
-            guard written, isCurrent() else { return }
+            guard written, isCurrent() else { return false }
             NotificationSettingsSync.recordPushed(local)
             if NotificationSettingsSync.canClearPendingMarker(
                 written: written,
@@ -32,12 +34,14 @@ extension AppState {
                 current: .init(from: liveActivityPreferences)
             ) {
                 Defaults[.notificationSettingsPushPending] = false
+                return true
             }
         } catch {
             AppLogger.sync.error(
                 "pushNotificationSettings failed: \(error.localizedDescription, privacy: .private)"
             )
         }
+        return false
     }
 
     @discardableResult
@@ -47,8 +51,8 @@ extension AppState {
         linksBeforeSnapshot: Int = 0
     ) -> Task<Void, Never> {
         NotificationSettingsPushQueue.enqueueReconcile { [weak self] isCurrent in
-            guard let self, Defaults[.cloudSyncEnabled] else { return }
-            guard await self.authTokenManager.isLoggedIn, isCurrent() else { return }
+            guard let self, Defaults[.cloudSyncEnabled] else { return false }
+            guard await self.authTokenManager.isLoggedIn, isCurrent() else { return false }
 
             let atm = self.authTokenManager
             let client = SettingsDocumentClient(
@@ -67,11 +71,11 @@ extension AppState {
                     recordSynced: { NotificationSettingsSync.synced = $0 }
                 )
                 switch outcome {
-                case .settled(let adopted, let seeded):
-                    if isCurrent() { NotificationSettingsSync.releaseHeld(adopted.union(seeded)) }
+                case .settled:
                     onSettled?()
                 case .deferredToPendingPush:
                     self.retryUnacknowledgedNotificationSettings()
+                    return true
                 case .skipped, .abandoned:
                     break
                 }
@@ -80,6 +84,7 @@ extension AppState {
                     "reconcileNotificationSettings failed: \(error.localizedDescription, privacy: .private)"
                 )
             }
+            return false
         }
     }
 
@@ -92,7 +97,7 @@ extension AppState {
 
     func enqueueNotificationSettingsPush() {
         NotificationSettingsPushQueue.enqueuePush { [weak self] isCurrent in
-            await self?.pushNotificationSettings(isCurrent: isCurrent)
+            await self?.pushNotificationSettings(isCurrent: isCurrent) ?? false
         }
     }
 
@@ -102,10 +107,12 @@ extension AppState {
         enqueueNotificationSettingsPush()
     }
 
-    /// A device switch turned back on takes the server's section: no push writes the section
-    /// until a reconcile has adopted it, so an edit made against its stale values never goes up.
+    /// A device switch turned back on takes the server's section: the section's values here become
+    /// the synced copy, so a push sends only what is edited after, and a reconcile adopts the rest.
     func adoptNotificationSettingsSection(_ section: NotificationSettingsSync.OwnedSection) {
-        NotificationSettingsSync.holdForServer(section)
+        if let synced = NotificationSettingsSync.synced {
+            NotificationSettingsSync.synced = synced.replacing(section, from: .init(from: liveActivityPreferences))
+        }
         reconcileNotificationSettings()
     }
 
@@ -114,7 +121,6 @@ extension AppState {
         Defaults[.notificationSettingsPushPending] = false
         Defaults[.notificationSettingsSyncedPreferences] = nil
         Defaults[.notificationSettingsPushSendsEveryField] = false
-        Defaults[.notificationSettingsSectionsToAdopt] = []
     }
     #endif
 }
@@ -125,6 +131,9 @@ enum NotificationSettingsPushQueue {
     static var tail: Task<Void, Never>?
     static var generation = 0
     private(set) static var finishedLinks = 0
+    private static var owedReconcile: Link?
+
+    typealias Link = @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Bool
 
     static func source(
         _ snapshot: NotificationSettingsSync.DocumentSource,
@@ -159,18 +168,23 @@ enum NotificationSettingsPushQueue {
         return task
     }
 
+    /// `reconcile` reports whether it deferred to a pending push; it runs again once a push lands
+    /// with nothing left to send, so the server's document is adopted right after.
     @discardableResult
-    static func enqueueReconcile(
-        _ reconcile: @escaping @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Void
-    ) -> Task<Void, Never> {
-        enqueueGuarded(reconcile)
+    static func enqueueReconcile(_ reconcile: @escaping Link) -> Task<Void, Never> {
+        enqueueGuarded { isCurrent in
+            if await reconcile(isCurrent), isCurrent() { owedReconcile = reconcile }
+        }
     }
 
+    /// `push` reports whether it landed with nothing left to send.
     @discardableResult
-    static func enqueuePush(
-        _ push: @escaping @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Void
-    ) -> Task<Void, Never> {
-        enqueueGuarded(push)
+    static func enqueuePush(_ push: @escaping Link) -> Task<Void, Never> {
+        enqueueGuarded { isCurrent in
+            guard await push(isCurrent), isCurrent(), let owed = owedReconcile else { return }
+            owedReconcile = nil
+            enqueueReconcile(owed)
+        }
     }
 
     private static func enqueueGuarded(
@@ -184,6 +198,7 @@ enum NotificationSettingsPushQueue {
 
     static func cancelAll() {
         generation += 1
+        owedReconcile = nil
         pendingDebounce?.cancel()
         pendingDebounce = nil
         tail?.cancel()
@@ -249,6 +264,26 @@ nonisolated enum NotificationSettingsSync {
                 classReminderLeadMinutes: store.classReminderLeadMinutes,
                 hasPickedClassReminderLead: store.hasPickedClassReminderLead
             )
+        }
+
+        func replacing(_ section: OwnedSection, from other: LocalPreferences) -> LocalPreferences {
+            var copy = self
+            switch section {
+            case .assignments:
+                copy.isAssignmentReminderEnabled = other.isAssignmentReminderEnabled
+                copy.assignmentReminderOffsets = other.assignmentReminderOffsets
+            case .liveActivity:
+                copy.showClassPreparingScenario = other.showClassPreparingScenario
+                copy.showInClassScenario = other.showInClassScenario
+                copy.showAssignmentScenario = other.showAssignmentScenario
+                copy.classPreparingLeadTime = other.classPreparingLeadTime
+                copy.assignmentLiveActivityLeadTime = other.assignmentLiveActivityLeadTime
+            case .courses:
+                copy.isClassReminderEnabled = other.isClassReminderEnabled
+                copy.classReminderLeadMinutes = other.classReminderLeadMinutes
+                copy.hasPickedClassReminderLead = other.hasPickedClassReminderLead
+            }
+            return copy
         }
 
         var reminderOffsetsMinutes: [Int] {
@@ -345,28 +380,6 @@ nonisolated enum NotificationSettingsSync {
     static func recordPushed(_ sent: LocalPreferences) {
         synced = sent
         Defaults[.notificationSettingsPushSendsEveryField] = false
-    }
-
-    /// Whether a push writes `section`: its device switch is on, and a switch turned back on has
-    /// had the server's section adopted since.
-    @MainActor
-    static func pushes(_ section: OwnedSection) -> Bool {
-        let isOn = switch section {
-        case .assignments: Defaults[.syncAssignmentReminders]
-        case .liveActivity: Defaults[.syncLiveActivity]
-        case .courses: true
-        }
-        return isOn && !Defaults[.notificationSettingsSectionsToAdopt].contains(section.rawValue)
-    }
-
-    @MainActor
-    static func holdForServer(_ section: OwnedSection) {
-        Defaults[.notificationSettingsSectionsToAdopt].insert(section.rawValue)
-    }
-
-    @MainActor
-    static func releaseHeld(_ sections: Set<OwnedSection>) {
-        Defaults[.notificationSettingsSectionsToAdopt].subtract(sections.map(\.rawValue))
     }
 
     static func merging(_ updates: [String: Any], into existing: [String: Any]) -> [String: Any] {
