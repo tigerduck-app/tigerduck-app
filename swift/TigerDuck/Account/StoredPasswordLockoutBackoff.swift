@@ -13,20 +13,19 @@ nonisolated struct StoredPasswordLockoutBackoff: Sendable {
     static let quickRetries: [TimeInterval] = [10, 60, 5 * 60]
     static let retryInterval: TimeInterval = 6 * 60 * 60
 
-    private let count: Defaults.Key<Int>
-    private let last: Defaults.Key<Date?>
+    private let count: AccountKey<Int>
+    private let last: AccountKey<Date?>
 
-    private init(count: Defaults.Key<Int>, last: Defaults.Key<Date?>) {
+    private init(count: AccountKey<Int>, last: AccountKey<Date?>) {
         self.count = count
         self.last = last
     }
 
-    var refusals: (count: Int, last: Date?) {
-        get { (Defaults[count], Defaults[last]) }
-        nonmutating set {
-            Defaults[count] = newValue.count
-            Defaults[last] = newValue.last
-        }
+    var refusals: (count: Int, last: Date?) { (Defaults[count], Defaults[last]) }
+
+    func setRefusals(_ refusals: (count: Int, last: Date?), for signIn: SignIn) {
+        Defaults[count, for: signIn] = refusals.count
+        Defaults[last, for: signIn] = refusals.last
     }
 
     static func retryDelay(afterRefusals refusals: Int) -> TimeInterval {
@@ -49,13 +48,13 @@ nonisolated struct StoredPasswordLockoutBackoff: Sendable {
     }
 
     @discardableResult
-    func recordRefusalAndNextPost(at now: Date) -> Date {
+    func recordRefusalAndNextPost(at now: Date, for signIn: SignIn) -> Date {
         let count = refusals.count + 1
-        refusals = (count, now)
+        setRefusals((count, now), for: signIn)
         return now.addingTimeInterval(Self.retryDelay(afterRefusals: count))
     }
 
     func forget() {
-        refusals = (0, nil)
+        Defaults.reset(count, last)
     }
 }

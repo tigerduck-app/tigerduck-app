@@ -37,8 +37,11 @@ struct SSOServiceLoginTests {
     func withRefusals<T>(_ count: Int, last: Date? = nil, _ body: () async -> T) async -> T {
         await withExclusiveRealDefaults {
             let saved = (SchoolPasswordPosts.storedPasswordRefusals, Defaults[.ssoLoginTimestamp])
-            SchoolPasswordPosts.storedPasswordRefusals = (count, last)
-            defer { (SchoolPasswordPosts.storedPasswordRefusals, Defaults[.ssoLoginTimestamp]) = saved }
+            SchoolPasswordPosts.setStoredPasswordRefusals((count, last), for: testSignIn)
+            defer {
+                SchoolPasswordPosts.setStoredPasswordRefusals(saved.0, for: testSignIn)
+                Defaults[.ssoLoginTimestamp, for: testSignIn] = saved.1
+            }
             return await body()
         }
     }
@@ -404,7 +407,7 @@ struct SSOServiceLoginTests {
             let retrying = await SchoolPasswordPosts.postingStoredPassword {
                 let retrying = Task { await Self.retry(service, on: session) }
                 await Self.waitForAQueuedPost()
-                SchoolPasswordPosts.forgetStoredPasswordRefusals()
+                SchoolPasswordPosts.forgetStoredPasswordRefusals(for: testSignIn)
                 return retrying
             }
             return await retrying.value
@@ -429,7 +432,7 @@ struct SSOServiceLoginTests {
             let retrying = await SchoolPasswordPosts.postingStoredPassword {
                 let retrying = Task { await Self.retry(service, on: session) }
                 await Self.waitForAQueuedPost()
-                SchoolPasswordPosts.noteStoredPasswordRefused(at: Self.now)
+                SchoolPasswordPosts.noteStoredPasswordRefused(at: Self.now, for: testSignIn)
                 return retrying
             }
             return await retrying.value
@@ -857,7 +860,7 @@ struct SSOServiceLoginTests {
             let renewing = await SchoolPasswordPosts.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
                 await Self.waitForAQueuedPost()
-                SchoolPasswordPosts.storedPasswordRefusals = (1, Self.now)
+                SchoolPasswordPosts.setStoredPasswordRefusals((1, Self.now), for: testSignIn)
                 return renewing
             }
             return (await renewing.value, await log.calls)

@@ -9,7 +9,7 @@ struct EventRowView: View {
     #endif
 
     #if os(iOS)
-    @Default(.holidayNotifyOverrides) private var holidayOverrides
+    @AccountDefault(.holidayNotifyOverrides) private var holidayOverrides
     #endif
 
     var body: some View {

@@ -16,11 +16,11 @@ struct StoredPasswordLatchRetryMigrationTests {
             for (key, value) in saved {
                 if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
             }
-            SchoolPasswordPosts.storedPasswordRefusals = savedRefusals
+            SchoolPasswordPosts.setStoredPasswordRefusals(savedRefusals, for: testSignIn)
         }
         defaults.removeObject(forKey: doneKey)
         if latched { defaults.set(true, forKey: latchKey) } else { defaults.removeObject(forKey: latchKey) }
-        SchoolPasswordPosts.forgetStoredPasswordRefusals()
+        SchoolPasswordPosts.forgetStoredPasswordRefusals(for: testSignIn)
         try await body()
     }
 
@@ -32,7 +32,7 @@ struct StoredPasswordLatchRetryMigrationTests {
 
                 #expect(!SchoolPasswordPosts.storedPasswordPostMustWait(now: now))
                 #expect(UserDefaults.standard.object(forKey: Self.latchKey) == nil)
-                SchoolPasswordPosts.noteStoredPasswordRefused(at: now)
+                SchoolPasswordPosts.noteStoredPasswordRefused(at: now, for: testSignIn)
                 #expect(SchoolPasswordPosts.storedPasswordRetryAt(now: now)
                     == now.addingTimeInterval(StoredPasswordLockoutBackoff.retryInterval))
             }

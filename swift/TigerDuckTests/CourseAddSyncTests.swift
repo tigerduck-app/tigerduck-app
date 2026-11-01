@@ -122,10 +122,10 @@ struct CourseAddSyncTests {
         let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
 
-        await coordinator.discardEdits(of: ["course_colors", "course_names", "assignments"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.courseColors, .courseNames, .assignments], courseIgnores: true)
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()) == ["1151:GE1010001"])
 
-        await coordinator.discardEdits(of: ["courses"], courseIgnores: false)
+        await coordinator.discardEdits(of: [.courses], courseIgnores: false)
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
     }
 
@@ -267,7 +267,7 @@ struct CourseAddSyncTests {
         let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
 
         let add = coordinator.addCourse(semester: "1151", courseNo: "GE1010001")
-        await coordinator.discardEdits(of: ["courses"], courseIgnores: false)
+        await coordinator.discardEdits(of: [.courses], courseIgnores: false)
         await add.value
 
         #expect(backend.uploads.isEmpty)

@@ -60,6 +60,7 @@ struct MoodleForumsView: View {
 struct MoodleForumView: View {
     let store: MoodleCourseStore
     let forum: MoodleForum
+    let policy: VisualStylePolicy
     let open: (MoodleCourseRoute) -> Void
 
     var body: some View {
@@ -67,6 +68,7 @@ struct MoodleForumView: View {
             pages: store.discussions(of: forum),
             title: forum.name,
             page: .forum(cmid: forum.cmid),
+            policy: policy,
             showsFooter: true
         ) { open(.discussion($0, in: forum)) }
     }

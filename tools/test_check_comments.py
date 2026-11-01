@@ -20,8 +20,9 @@ def comments(src: str) -> list[str]:
     return [text for kind, text in kinds(src) if kind in ('comment', 'doc')]
 
 
-def rules(src: str, changed: set[int] | None = None) -> list[tuple[int, str]]:
-    return [(f.line, f.rule) for f in cc.check_source('x.swift', src, changed)]
+def rules(src: str, changed: set[int] | None = None,
+          plain: set[int] = frozenset()) -> list[tuple[int, str]]:
+    return [(f.line, f.rule) for f in cc.check_source('x.swift', src, changed, plain)]
 
 
 def block(prefix: str, count: int) -> str:
@@ -123,6 +124,30 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(rules(src), [(1, 'length'), (7, 'length')])
 
 
+class PlainWordingTests(unittest.TestCase):
+    def test_each_pattern_fails(self) -> None:
+        for text in ('a \u2014 b', 'a **bold** b', 'IMPORTANT: keep', 'NOTE: keep', 'Note: keep',
+                     'done deliberately', 'Intentionally slow', 'note that it waits'):
+            with self.subTest(text=text):
+                self.assertEqual(rules(f'// {text}\n', plain={1}), [(1, 'plain')])
+
+    def test_plain_wording_passes(self) -> None:
+        for text in ('a - b', 'a * b', 'unintentionally', 'a footnote', 'the notes', 'denote that'):
+            with self.subTest(text=text):
+                self.assertEqual(rules(f'// {text}\n', plain={1}), [])
+
+    def test_doc_block_markers_are_not_bold(self) -> None:
+        self.assertEqual(rules('/** one */\n/**\n * two\n **/\n', plain={1, 2, 3, 4}), [])
+
+    def test_only_the_given_lines_are_read(self) -> None:
+        src = '// a \u2014 b\nlet x = 1\n// c \u2014 d\n'
+        self.assertEqual(rules(src, plain={3}), [(3, 'plain')])
+        self.assertEqual(rules(src), [])
+
+    def test_code_and_strings_are_not_read(self) -> None:
+        self.assertEqual(rules('let a = "a \u2014 b **" // fine\n', plain={1}), [])
+
+
 class LogPrivacyTests(unittest.TestCase):
     def test_public_error_values(self) -> None:
         for value in ('error', 'error.localizedDescription', 'String(describing: error)',
@@ -206,6 +231,16 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout.splitlines(),
                          ['a.swift:14: length: doc comment block is 12 lines; the limit is 8'])
+
+    def test_plain_wording_reads_changed_lines_and_new_files_only(self) -> None:
+        self.write('a.swift', '// old \u2014 line\nlet a = 1\n')
+        self.commit()
+        self.write('a.swift', '// old \u2014 line\nlet a = 1\n// new \u2014 line\n')
+        self.write('new.swift', '// first\n// second \u2014 line\n')
+        result = self.run_checker('check', '--base', 'HEAD')
+        self.assertEqual(sorted(line.split(': ')[0] + ': ' + line.split(': ')[1] for line in result.stdout.splitlines()),
+                         ['a.swift:3: plain', 'new.swift:2: plain'])
+        self.assertEqual(self.run_checker('check', '--all').returncode, 0)
 
     def test_untouched_files_and_blocks_pass(self) -> None:
         self.write('a.swift', block('//', 6))

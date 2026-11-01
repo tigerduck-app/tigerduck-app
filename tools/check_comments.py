@@ -6,7 +6,8 @@ check [--base REF] [--all] [PATH ...]
     and each error or error text interpolated with `privacy: .public`.
     Without paths it checks the Swift files changed since REF, or every
     tracked Swift file with --all. Given REF, the length rule only reports
-    blocks that hold a line added or changed since REF.
+    blocks that hold a line added or changed since REF. The plain-wording rule
+    reads only the lines added or changed since REF, so it needs --base.
 same-tokens REF
     Fail when a Swift file in the working tree differs from REF in anything
     but comments.
@@ -35,6 +36,9 @@ TRACE = re.compile(
 TOOL = re.compile(
     r'(?i)\b(claude|codex|copilot|greptile|coderabbit|superpowers|opencode|sisyphus|bmad|openspec)\b(?!/)')
 OPENSPEC_PATH = re.compile(r'(?i)\bopenspec/')
+# A `/**` doc opener and a `**/` closer are not bold markers.
+PLAIN = re.compile(
+    '\u2014|(?<!/)\\*\\*(?!/)|(?i:\\b(?:important|note):|\\b(?:deliberately|intentionally|note that)\\b)')
 HUNK = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', re.M)
 STRING_OPEN = re.compile(r'(#*)("""|"|/)')
 WORD = re.compile(r'\S+')
@@ -48,6 +52,7 @@ MESSAGES = {
     'han': 'comment contains Han characters; write comments in English',
     'trace': 'cites a review round, a dispatch or a section of an outside document; state the reason',
     'openspec': 'cites an openspec/ path, which moves when the change is archived; state the reason',
+    'plain': 'comment uses an em dash, bold, a label or an emphasis word; use plain wording',
     'log-privacy': 'logs an error or its description as .public; it can hold server text, so log it as .private',
 }
 
@@ -206,8 +211,10 @@ def blocks(lines: list[Line]) -> Iterator[tuple[int, int, str]]:
             start, kind = number, current
 
 
-def check_source(path: str, src: str, changed: set[int] | None = None) -> list[Finding]:
-    """Return the findings for one file; `changed` limits the length rule to those 1-based lines."""
+def check_source(path: str, src: str, changed: set[int] | None = None,
+                 plain: set[int] = frozenset()) -> list[Finding]:
+    """Return the findings for one file; `changed` limits the length rule to those 1-based lines
+    and `plain` is the set of lines the plain-wording rule reads."""
     lines = analyze(src)
     findings = []
     for number, line in enumerate(lines, start=1):
@@ -224,6 +231,8 @@ def check_source(path: str, src: str, changed: set[int] | None = None) -> list[F
             findings.append(Finding(path, number, 'tool', message))
         if OPENSPEC_PATH.search(text):
             findings.append(Finding(path, number, 'openspec', MESSAGES['openspec']))
+        if number in plain and PLAIN.search(text):
+            findings.append(Finding(path, number, 'plain', MESSAGES['plain']))
     for start, length, kind in blocks(lines):
         limit = DOC_LIMIT if kind == 'doc' else REGULAR_LIMIT
         if length <= limit:
@@ -370,8 +379,10 @@ def run_check(root: str, args: argparse.Namespace, parser: argparse.ArgumentPars
         verify_ref(root, args.base)
     findings = []
     for path in paths_to_check(root, args, parser):
+        src = read(root, path)
         changed = changed_lines(root, args.base, path) if args.base else None
-        findings.extend(check_source(path, read(root, path), changed))
+        plain = set(range(1, src.count('\n') + 2)) if args.base and changed is None else changed or set()
+        findings.extend(check_source(path, src, changed, plain))
     report(findings)
     return 1 if findings else 0
 

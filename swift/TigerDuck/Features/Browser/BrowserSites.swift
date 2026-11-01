@@ -42,8 +42,8 @@ nonisolated struct BrowserSites: Equatable {
         guard signIn.isCurrent else { return }
         var sites = stored
         body(&sites)
-        Defaults[.browserZoom] = sites.zoom
-        Defaults[.browserDesktopSites] = sites.desktop.sorted()
+        Defaults[.browserZoom, for: signIn] = sites.zoom
+        Defaults[.browserDesktopSites, for: signIn] = sites.desktop.sorted()
     }
 
     static func forget() {

@@ -73,4 +73,17 @@ struct GPATrendPointTests {
         #expect(abs(trend[1].semester.gpa! - 3.65) < 1e-9)
         #expect(abs(trend[1].cumulative.gpa! - (4.0 * 3 + 4.3 * 2 + 3.0 * 2) / 7) < 1e-9)
     }
+
+    @Test("a padded year before 100 comes first, and its cumulative GPA counts no later term")
+    func paddedYearBefore100IsTheEarliest() {
+        let report = ScoreReport(
+            student: "B9915000", currentTerm: "1001", rankings: [],
+            courses: [course("1001", "B", credits: 3, grade: "C"), course("99 1", "A", credits: 3, grade: "A")],
+            creditSummary: .empty
+        )
+        let trend = GPATrendPoint.trend(for: report)
+        #expect(trend.map(\.term) == ["99 1", "1001"])
+        #expect(trend.first?.cumulative.gpa == 4.0)
+        #expect(trend.last?.cumulative.gpa == 3.0)
+    }
 }

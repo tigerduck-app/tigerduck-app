@@ -143,9 +143,8 @@ final class ClassTableViewModel {
     }
 
     func refreshCourseColors() {
-        let shown = shownPerson == nil ? courses.map(\.courseNo) : []
-        let courseNos = Set(shown).union(today.courses.map(\.courseNo))
-        TigerDuckTheme.ensureAssignments(courseNos: Array(courseNos), for: AccountSession.school.currentSignIn)
+        let shown = shownPerson == nil ? courses : []
+        TigerDuckTheme.ensureAssignments(courses: shown + today.courses, for: AccountSession.school.currentSignIn)
     }
 
     var todayCourses: [CourseStore.Course] {

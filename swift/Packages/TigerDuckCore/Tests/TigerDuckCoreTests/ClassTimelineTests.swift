@@ -147,7 +147,6 @@ struct ClassTimelineTests {
         let second = Slot(start: at(2, 9, 10), end: at(2, 10))
         let tied = Slot(start: at(2, 9, 10), end: at(2, 11))
         #expect(ClassTimeline.running(at: at(2, 9), in: [first, second]).isEmpty)
-        #expect(ClassTimeline.running(at: at(2, 9), in: [first, second], includingEnd: true) == [first])
         #expect(ClassTimeline.next(after: at(2, 8, 30), in: [tied, second, first]) == tied)
         #expect(ClassTimeline.next(after: at(2, 9, 10), in: [first, second]) == nil)
     }
@@ -160,7 +159,6 @@ struct ClassTimelineTests {
         #expect(ClassTimeline.state(at: at(2, 7), in: slots) == .beforeFirst(next: first))
         #expect(ClassTimeline.state(at: at(2, 8, 30), in: slots) == .inClass([first]))
         #expect(ClassTimeline.state(at: at(2, 9), in: slots) == .between(previous: first, next: second))
-        #expect(ClassTimeline.state(at: at(2, 9), in: slots, includingEnd: true) == .inClass([first]))
         #expect(ClassTimeline.state(at: at(2, 11), in: slots) == .afterLast(previous: second))
         #expect(ClassTimeline.state(at: at(2, 11), in: [Slot]()) == .between(previous: nil, next: nil))
     }

@@ -71,6 +71,20 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual(rules(found), ["login-generation", "data-did-update", "is-updating-from-network",
                                         "user-defaults", "url-session", "unbound-backend-auth"])
 
+    def test_device_calendar_device_zone_and_print_fail_outside_core_and_the_observer(self) -> None:
+        text = ("let c = Calendar.current\nlet z = TimeZone.current\nprint(x)\nfunc print() {}\n"
+                "page.print()\nSwift.print(x)\nlet s = \"print(\"\n")
+        found = ca.shipping_findings([source(APP + "Features/X.swift", text),
+                                      source(APP + "Support/Clock/TimezoneObserver.swift", text),
+                                      source(ca.CORE_SOURCES + "TigerDuckCore/X.swift", text)])
+        self.assertEqual([(f.path.rsplit("/", 1)[-1], f.line, f.rule) for f in found],
+                         [("X.swift", 1, "calendar-current"), ("X.swift", 2, "timezone-current"),
+                          ("X.swift", 3, "print"), ("X.swift", 6, "print"),
+                          ("TimezoneObserver.swift", 1, "calendar-current"),
+                          ("TimezoneObserver.swift", 3, "print"), ("TimezoneObserver.swift", 6, "print")])
+        self.assertIn("TaipeiTime", found[0].message)
+        self.assertIn("AppLogger", found[2].message)
+
     def test_two_app_files_with_one_base_name_fail(self) -> None:
         found = ca.base_name_findings([APP + "App/Foo.swift", APP + "School/Foo.swift", APP + "Bar.swift"])
         self.assertEqual([f.path for f in found], [APP + "App/Foo.swift", APP + "School/Foo.swift"])
@@ -85,6 +99,75 @@ class ArchitectureTests(unittest.TestCase):
         code = "@MainActor struct PageTests {\n    @Test func opens(width: Int) {}\n}\n"
         found = ca.on_screen_findings(workflow, code)
         self.assertEqual([(f.line, f.message.split("`")[1]) for f in found], [(5, "closes"), (6, "GoneTests")])
+
+    def test_a_suite_that_shows_a_window_must_be_in_the_on_screen_list(self) -> None:
+        workflow = ("          - leg: phone\n            on_screen_tests: >-\n"
+                    "              TigerDuckTests/ListedTests\n"
+                    "              TigerDuckTests/FuncTests/shows()\n")
+        window = "struct %s {\n    func shows() {\n        window.makeKeyAndVisible()\n    }\n}\n"
+        tests = {"A.swift": window % "ListedTests", "B.swift": window % "FuncTests",
+                 "C.swift": window % "MissingTests",
+                 "D.swift": "struct WebTests {\n    let view = WKWebView(frame: .zero)\n}\n",
+                 "E.swift": "struct PlainTests {\n    let view: WKWebView? = nil\n    // field.becomeFirstResponder()\n}\n"}
+        found = ca.unlisted_on_screen_findings(workflow, {k: ca.strip_code(v) for k, v in tests.items()})
+        self.assertEqual([(f.path, f.message.split("`")[1]) for f in found],
+                         [("C.swift", "MissingTests/shows"), ("D.swift", "WebTests")])
+
+    def test_a_well_formed_migration_passes(self) -> None:
+        good = ('enum ADoneMigration {\n    private static let doneKey = "ADoneMigration.v1.done"\n'
+                '    static func runIfNeeded() {}\n}\n')
+        runner = source(ca.MIGRATION_RUNNER, "func run() { ADoneMigration.runIfNeeded() }\n")
+        self.assertEqual(ca.migration_findings([source(ca.MIGRATIONS + "ADoneMigration.swift", good), runner]), [])
+
+    def test_a_migration_that_breaks_the_folder_rules_fails(self) -> None:
+        def fail(name: str, text: str) -> list[str]:
+            return [f.message for f in ca.migration_findings([source(ca.MIGRATIONS + name, text)])]
+        self.assertEqual(len(fail("Helper.swift", "enum Helper {}\n")), 1)
+        key = 'private static let doneKey = "%s.v1.done"\n'
+        self.assertEqual(len(fail("AMigration.swift", "enum AMigration {\n" + key % "AMigration" + "}\n")), 1)
+        self.assertEqual(len(fail("AMigration.swift", "enum AMigration {\n static func runIfNeeded() {}\n}\n")), 1)
+        self.assertEqual(len(fail("AMigration.swift", "enum Other {\n" + key % "AMigration"
+                                  + " static func runIfNeeded() {}\n}\n")), 1)
+        self.assertEqual(len(fail("AMigration.swift", "enum AMigration {\n" + key % "Other"
+                                  + " static func runIfNeeded() {}\n}\n")), 1)
+
+    def test_migrations_may_not_refer_to_each_other_or_be_used_outside(self) -> None:
+        def migration(name: str, extra: str = "") -> ca.Source:
+            return source(ca.MIGRATIONS + name + ".swift",
+                          f'enum {name} {{\n    private static let doneKey = "{name}.v1.done"\n'
+                          f'    static func runIfNeeded() {{ {extra} }}\n}}\n')
+        found = ca.migration_findings([
+            migration("AMigration", "BMigration.runIfNeeded()"), migration("BMigration"),
+            source(APP + "Stores/X.swift", "BMigration.runIfNeeded()\n// AMigration\n"),
+            source(ca.MIGRATION_RUNNER, "AMigration.runIfNeeded()\n")])
+        self.assertEqual([(f.path, f.rule) for f in found],
+                         [(ca.MIGRATIONS + "AMigration.swift", "migration"), (APP + "Stores/X.swift", "migration")])
+
+    def test_a_listed_function_does_not_cover_its_unlisted_sibling(self) -> None:
+        workflow = ("          - leg: phone\n            on_screen_tests: >-\n"
+                    "              TigerDuckTests/FuncTests/shows()\n              TigerDuckTests/WholeTests\n")
+        window = ("struct %s {\n    func shows() {\n        window.makeKeyAndVisible()\n    }\n"
+                  "    func hides() {\n        let v = WKWebView(frame: .zero)\n    }\n}\n")
+        tests = {"A.swift": ca.strip_code(window % "FuncTests"), "B.swift": ca.strip_code(window % "WholeTests")}
+        found = ca.unlisted_on_screen_findings(workflow, tests)
+        self.assertEqual([(f.path, f.line, f.message.split("`")[1]) for f in found],
+                         [("A.swift", 6, "FuncTests/hides")])
+
+    def test_a_commented_done_key_or_a_second_migration_type_fails(self) -> None:
+        def fail(text: str) -> list[str]:
+            return [f.message for f in ca.migration_findings([source(ca.MIGRATIONS + "AMigration.swift", text)])]
+        entry = "    static func runIfNeeded() {}\n"
+        self.assertEqual(len(fail('enum AMigration {\n    // private static let doneKey = "AMigration.v1.done"\n'
+                                  + entry + "}\n")), 1)
+        self.assertEqual(len(fail('enum AMigration {\n    private static let doneKey = "AMigration.v1.done"\n'
+                                  + entry + "}\nenum BMigration {}\n")), 1)
+
+    def test_a_type_declared_in_another_migration_file_is_still_checked_outside(self) -> None:
+        a = source(ca.MIGRATIONS + "AMigration.swift",
+                   'enum AMigration {\n    private static let doneKey = "AMigration.v1.done"\n'
+                   "    static func runIfNeeded() {}\n}\nenum BMigration {}\n")
+        found = ca.migration_findings([a, source(APP + "Stores/X.swift", "BMigration.run()\n")])
+        self.assertIn(APP + "Stores/X.swift", [f.path for f in found])
 
     def test_a_type_counts_its_extensions_and_not_its_nested_types(self) -> None:
         main = "struct Store {\n" + body(200) + "    struct Row {\n" + body(100) + "    }\n}\n"
@@ -170,34 +253,18 @@ class ArchitectureTests(unittest.TestCase):
                                            source(APP + "Migrations/X.swift", text)], "")
         self.assertEqual([(f.path, f.rule) for f in found], [(APP + "Backend/Sync/X.swift", "account-store-write")])
 
-    def test_an_account_key_written_outside_the_file_that_clears_it_fails(self) -> None:
+    def test_an_account_key_written_or_reset_outside_the_file_that_clears_it_fails(self) -> None:
         inventory = ("| defaults | `syncedOnce` | school | `swift/TigerDuck/Backend/Sync/Progress.swift` `forget` |\n"
                      "| defaults | `theme` | device |  |\n")
-        text = ("let seen = Defaults[.syncedOnce]\nDefaults[.syncedOnce] = true\nDefaults[.syncedOnce].insert(x)\n"
-                "Defaults.reset(.syncedOnce)\nchange(&Defaults[.syncedOnce])\nDefaults[.theme] = 1\n"
-                "Defaults[Defaults.Keys.syncedOnce] = true\nDefaults[.syncedOnce][id]?[key] = 1\n"
-                "_ = Defaults[.syncedOnce].popLast()\nDefaults[.syncedOnce].sort()\nDefaults[.syncedOnce] += [x]\n"
-                "if Defaults[.syncedOnce].contains(x) {}\nlet n = Defaults[Keys.syncedOnce].count\n")
+        text = ("let seen = Defaults[.syncedOnce]\nDefaults[.syncedOnce, for: signIn] = true\n"
+                "Defaults[.syncedOnce, for: signIn].insert(x)\nDefaults.reset(.syncedOnce)\n"
+                "change(&Defaults[.syncedOnce, for: signIn])\nDefaults[.theme] = 1\n"
+                "Defaults[AccountKeys.syncedOnce, for: signIn] = true\nDefaults.reset(.theme, .syncedOnce)\n"
+                "if Defaults[.syncedOnce].contains(x) {}\nlet n = Defaults[AccountKeys.syncedOnce].count\n")
         found = ca.account_store_findings([source(APP + "Backend/Sync/FullSync.swift", text),
                                            source(APP + "Backend/Sync/Progress.swift", text)], inventory)
         self.assertEqual([(f.path, f.line, f.rule) for f in found],
-                         [(APP + "Backend/Sync/FullSync.swift", n, "account-store-write")
-                          for n in (2, 3, 4, 5, 7, 8, 9, 10, 11)])
-
-    def test_an_account_key_written_through_its_default_wrapper_fails(self) -> None:
-        inventory = "| defaults | `syncOn` | school | `swift/TigerDuck/Backend/Sync/Preference.swift` `turnOff` |\n"
-        text = ("struct V: View {\n    @Default(.syncOn) private var on\n    @Default(.theme) var theme\n"
-                "    var body: some View { Toggle(\"\", isOn: $on) }\n    func a() { on = true }\n"
-                "    func b() { self.on.toggle() }\n    func c() { if on { theme = 1 } }\n}\n")
-        found = ca.account_store_findings([source(APP + "Features/V.swift", text)], inventory)
-        self.assertEqual([f.line for f in found], [4, 5, 6])
-
-    def test_a_default_wrapper_on_its_own_line_is_still_seen(self) -> None:
-        inventory = "| defaults | `syncOn` | school | `swift/TigerDuck/Backend/Sync/Preference.swift` `turnOff` |\n"
-        text = ("struct V: View {\n    @Default(.syncOn)\n    private var on\n    var count = 0\n"
-                "    func a() { on = true; count = 1 }\n}\n")
-        found = ca.account_store_findings([source(APP + "Features/V.swift", text)], inventory)
-        self.assertEqual([f.line for f in found], [5])
+                         [(APP + "Backend/Sync/FullSync.swift", n, "account-store-write") for n in (2, 3, 4, 5, 7, 8)])
 
     def test_a_writable_mail_store_outside_the_mail_store_fails(self) -> None:
         text = ("let store = MailSettingsStore(defaults: suite)\nlet fields = prefs as? MailPreferenceFields\n"

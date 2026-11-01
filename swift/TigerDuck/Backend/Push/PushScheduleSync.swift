@@ -68,7 +68,7 @@ final class PushScheduleSync {
     private func pushScheduleInputs() -> ScheduleSyncService.Inputs {
         #if os(iOS)
         return ScheduleSyncService.Inputs(
-            now: AppClock.now(),
+            now: Date(),
             courses: { self.app.liveActivity.courseProvider.currentCourses(semester: $0) },
             assignments: AssignmentStore.shared.loadAssignments(),
             preferences: app.liveActivity.preferences,

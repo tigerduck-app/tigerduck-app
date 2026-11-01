@@ -3,24 +3,19 @@ import Foundation
 
 enum SchoolAccountKeys: AccountScoped {
     static func forgetAccount(in storage: AccountStorage) {
-        Defaults[.schoolDataSyncedAt] = nil
-        Defaults[.classTableSelectedSemester] = nil
-        Defaults[.emptyClassroomBuilding] = nil
+        Defaults.reset(.schoolDataSyncedAt, .classTableSelectedSemester, .emptyClassroomBuilding)
         SyncProgress.forget()
     }
 
     static func noteSchoolDataSynced(for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        Defaults[.schoolDataSyncedAt] = Date()
+        Defaults[.schoolDataSyncedAt, for: signIn] = Date()
     }
 
     static func pickSemester(_ semester: String, for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        Defaults[.classTableSelectedSemester] = semester
+        Defaults[.classTableSelectedSemester, for: signIn] = semester
     }
 
     static func pickEmptyClassroomBuilding(_ building: String?, for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        Defaults[.emptyClassroomBuilding] = building
+        Defaults[.emptyClassroomBuilding, for: signIn] = building
     }
 }

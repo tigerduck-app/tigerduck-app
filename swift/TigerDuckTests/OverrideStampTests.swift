@@ -154,6 +154,28 @@ struct OverrideStampTests {
         }
     }
 
+    @Test("A holiday setting refused as ahead waits when cloud sync turns off during its first send")
+    func holidayAheadResendWaitsWhenSyncTurnsOff() async throws {
+        try await Self.withCleanHolidayDefaults { id, url, registration in
+            let gate = SettingsAPIStub.ReplyGate()
+            var refused = Attempts.clockAhead
+            refused.gate = gate
+            SettingsAPIStub.enqueue(refused, for: url)
+            let store = AcademicCalendarStore()
+            store.setNotify(true, forHoliday: id, for: testSignIn)
+            store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
+
+            let upload = Task { await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration, for: testSignIn) }
+            try await waitUntil { !SettingsAPIStub.requests(for: url).isEmpty }
+            Defaults[.cloudSyncEnabled, for: testSignIn] = false
+            gate.open()
+            await upload.value
+
+            #expect(SettingsAPIStub.requests(for: url).count == 1)
+            #expect(store.unacknowledgedHolidayIDs.contains(id))
+        }
+    }
+
     @Test("A holiday setting changed and changed back while its send is out stays unacknowledged for the newer time")
     func holidayEditDuringTheSendKeepsItUnacknowledged() async throws {
         try await Self.withCleanHolidayDefaults { id, url, registration in
@@ -180,13 +202,15 @@ struct OverrideStampTests {
         try await withExclusiveRealDefaults {
             let saved = (
                 Defaults[.holidayNotifyOverrides], Defaults[.holidayOverridesAwaitingUpload],
-                Defaults[.holidayOverrideEditTimes]
+                Defaults[.holidayOverrideEditTimes], Defaults[.cloudSyncEnabled]
             )
             defer {
-                Defaults[.holidayNotifyOverrides] = saved.0
-                Defaults[.holidayOverridesAwaitingUpload] = saved.1
-                Defaults[.holidayOverrideEditTimes] = saved.2
+                Defaults[.holidayNotifyOverrides, for: testSignIn] = saved.0
+                Defaults[.holidayOverridesAwaitingUpload, for: testSignIn] = saved.1
+                Defaults[.holidayOverrideEditTimes, for: testSignIn] = saved.2
+                Defaults[.cloudSyncEnabled, for: testSignIn] = saved.3
             }
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let id = Int.random(in: 100_000...999_999)
             try await body(

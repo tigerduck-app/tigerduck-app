@@ -3,7 +3,6 @@ import os
 
 @MainActor
 struct AssignmentMarksReconciler: CategoryReconciler {
-    static let category = "assignments"
     unowned let resolver: SyncConflicts
     var assignments: AssignmentStore = .shared
 

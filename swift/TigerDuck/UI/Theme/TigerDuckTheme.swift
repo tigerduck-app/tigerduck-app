@@ -71,6 +71,16 @@ enum TigerDuckTheme {
         0x2980B9,
     ]
 
+    /// Moodle's default `coursecolor1` to `coursecolor10`, made readable on the cards.
+    /// `core_course\output\course_image::get_generated_color_for_id` picks `coursecolor{id % 10 + 1}`.
+    nonisolated static let moodleCourseColors: [UInt32] = [
+        0x81ECEC, 0x74B9FF, 0xA29BFE, 0xDFE6E9, 0x00B894, 0x0984E3, 0xB2BEC3, 0xFDCB6E, 0xFD79A8, 0x6C5CE7,
+    ].map { UInt32(AccentContrast.readable($0)) }
+
+    nonisolated static func moodleCourseColor(forCourseId id: Int) -> UInt32 {
+        moodleCourseColors[Int(id.magnitude % UInt(moodleCourseColors.count))]
+    }
+
     static let courseColors: [Color] = coursePaletteHexes.map { Color(hex: UInt($0)) }
 
     static func courseColorHex(for courseNo: String) -> String {
@@ -83,8 +93,8 @@ enum TigerDuckTheme {
         store.state.snapshot()
     }
 
-    static func ensureAssignments(courseNos: [String], for signIn: SignIn) {
-        store.ensureAssignments(courseNos: courseNos, palette: coursePaletteHexes, for: signIn)
+    static func ensureAssignments(courses: [SDCourse], for signIn: SignIn) {
+        store.ensureAssignments(courses: courses, ids: CourseLookup.moodleCourseIds, palette: coursePaletteHexes, for: signIn)
     }
 
     static func courseColor(for courseNo: String) -> Color {
@@ -127,8 +137,8 @@ enum TigerDuckTheme {
         store.reload()
     }
 
-    static func reassignAll(courseNos: [String], for signIn: SignIn) {
-        store.reassignAll(courseNos: courseNos, palette: coursePaletteHexes, for: signIn)
+    static func reassignAll(courses: [SDCourse], for signIn: SignIn) {
+        store.reassignAll(courses: courses, ids: CourseLookup.moodleCourseIds(), palette: coursePaletteHexes, for: signIn)
     }
 }
 
@@ -212,20 +222,20 @@ final class ColorState: @unchecked Sendable {
         }
     }
 
-    func ensureAssignments(courseNos: [String], palette: [UInt32]) {
+    func ensureAssignments(courseNos: [String], moodleColors: [String: UInt32] = [:], palette: [UInt32]) {
         let didMutate: Bool = lock.withLock {
             guard var map = loadedMap() else { return false }
             var mutated = false
             var seenHexes: Set<UInt32> = []
             for courseNo in map.keys.sorted() {
-                guard let hex = map[courseNo] else { continue }
+                guard let hex = map[courseNo], !Self.mayBeShared(hex) else { continue }
                 if seenHexes.insert(hex).inserted { continue }
                 map.removeValue(forKey: courseNo)
                 mutated = true
             }
             var used = Set(map.values)
             for courseNo in courseNos.sorted() where map[courseNo] == nil {
-                let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: palette)
+                let assigned = moodleColors[courseNo] ?? Self.pickUnusedHex(seed: courseNo, used: used, palette: palette)
                 map[courseNo] = assigned
                 used.insert(assigned)
                 mutated = true
@@ -265,6 +275,22 @@ final class ColorState: @unchecked Sendable {
         return didMutate
     }
 
+    /// Gives each course that has a colour the colour Moodle gives it.
+    func takeMoodleColors(_ colors: [String: UInt32]) {
+        let didMutate: Bool = lock.withLock {
+            guard let current = loadedMap() else { return false }
+            let moving = colors.filter { courseNo, hex in current[courseNo].map { $0 != hex } == true }
+            map = current.merging(moving) { $1 }
+            return !moving.isEmpty
+        }
+        if didMutate { persist() }
+    }
+
+    /// Moodle gives two courses one colour when their ids end alike, so its colours stay shared.
+    private nonisolated static func mayBeShared(_ hex: UInt32) -> Bool {
+        TigerDuckTheme.moodleCourseColors.contains(hex)
+    }
+
     nonisolated static func assigning(
         _ newHex: UInt32,
         to courseNo: String,
@@ -273,7 +299,7 @@ final class ColorState: @unchecked Sendable {
     ) -> (map: [String: UInt32], changed: [String: UInt32]) {
         guard map[courseNo] != newHex else { return (map, [:]) }
         var updated = map
-        let displaced = map.compactMap { entry -> String? in
+        let displaced = mayBeShared(newHex) ? [] : map.compactMap { entry -> String? in
             entry.key != courseNo && entry.value == newHex ? entry.key : nil
         }.sorted()
         updated[courseNo] = newHex
@@ -291,23 +317,25 @@ final class ColorState: @unchecked Sendable {
         lock.withLock { map = read() }
     }
 
-    func reassignAll(courseNos: [String], palette: [UInt32]) {
+    @discardableResult
+    func reassignAll(courseNos: [String], moodleColors: [String: UInt32] = [:], palette: [UInt32]) -> Bool {
         let reassigned: Bool = lock.withLock {
             guard loadedMap() != nil else { return false }
             let shuffled = palette.shuffled()
             var fresh: [String: UInt32] = [:]
             var used: Set<UInt32> = []
             for courseNo in courseNos.sorted() {
-                let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: shuffled)
+                let assigned = moodleColors[courseNo] ?? Self.pickUnusedHex(seed: courseNo, used: used, palette: shuffled)
                 fresh[courseNo] = assigned
                 used.insert(assigned)
             }
             map = fresh
             return true
         }
-        guard reassigned else { return }
+        guard reassigned else { return false }
         persist()
         io.forgetPicks()
+        return true
     }
 
     private func persist() {
