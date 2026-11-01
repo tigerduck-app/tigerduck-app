@@ -18,7 +18,7 @@ struct SyncContentSettingsView: View {
                     Toggle(String(localized: "cloud_sync_assignments"), isOn: $syncAssignments)
                         .onChange(of: syncAssignments) { old, new in
                             if new && !old {
-                                app.conflicts.markCategoryReenabled("assignments")
+                                app.conflicts.markCategoryReenabled(.assignments)
                                 app.conflicts.checkPendingConflicts()
                             }
                             app.pushSchedule.pushSyncPreferences()
@@ -51,7 +51,7 @@ struct SyncContentSettingsView: View {
                     Toggle(String(localized: "sync_content_class_table_all"), isOn: $syncCourses)
                         .onChange(of: syncCourses) { old, new in
                             if new && !old {
-                                app.conflicts.markCategoryReenabled("courses")
+                                app.conflicts.markCategoryReenabled(.courses)
                                 app.conflicts.checkPendingConflicts()
                             }
                             syncCourseColors = app.edits.syncsCourseColors(coursesNowOn: new)
@@ -62,7 +62,7 @@ struct SyncContentSettingsView: View {
                         .disabled(!syncCourses)
                         .onChange(of: syncCourseColors) { old, new in
                             if new && !old {
-                                app.conflicts.markCategoryReenabled("course_colors")
+                                app.conflicts.markCategoryReenabled(.courseColors)
                                 app.conflicts.checkPendingConflicts()
                             }
                             app.pushSchedule.pushSyncPreferences()
@@ -71,7 +71,7 @@ struct SyncContentSettingsView: View {
                     Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $syncCourseNames)
                         .onChange(of: syncCourseNames) { old, new in
                             if new && !old {
-                                app.conflicts.markCategoryReenabled("course_names")
+                                app.conflicts.markCategoryReenabled(.courseNames)
                                 app.conflicts.checkPendingConflicts()
                             }
                             app.pushSchedule.pushSyncPreferences()

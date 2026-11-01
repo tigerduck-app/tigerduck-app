@@ -180,9 +180,9 @@ nonisolated extension Defaults.Keys {
     static let syncAssignmentReminders = Key<Bool>("syncAssignmentReminders", default: true)
     static let syncLiveActivity = Key<Bool>("syncLiveActivity", default: true)
     static let syncPreferencesPushPending = Key<Bool>("syncPreferencesPushPending", default: false)
-    static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
+    static let pendingConflictCategories = Key<Set<SyncCategory>>("pendingConflictCategories", default: [])
     static let assignmentMarksSyncedOnce = Key<Bool>("assignmentMarksSyncedOnce", default: false)
-    static let categoriesSyncedOnce = Key<Set<String>>("categoriesSyncedOnce", default: [])
+    static let categoriesSyncedOnce = Key<Set<SyncCategory>>("categoriesSyncedOnce", default: [])
     static let courseRowIdsSeen = Key<[String: Int]>("courseRowIdsSeen", default: [:])
 
     static let academicCalendarCache = Key<Data>("academicCalendarCache", default: Data())

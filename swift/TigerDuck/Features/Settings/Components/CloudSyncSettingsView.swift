@@ -34,10 +34,10 @@ struct CloudSyncSettingsView: View {
                 Toggle(String(localized: "sync_courses_toggle"), isOn: app.cloudSyncSwitch)
                     .onChange(of: syncEnabled) { old, newValue in
                         if newValue && !old {
-                            if syncCourses { app.conflicts.markCategoryReenabled("courses") }
-                            if syncCourseColors { app.conflicts.markCategoryReenabled("course_colors") }
-                            if syncCourseNames { app.conflicts.markCategoryReenabled("course_names") }
-                            if syncAssignments { app.conflicts.markCategoryReenabled("assignments") }
+                            if syncCourses { app.conflicts.markCategoryReenabled(.courses) }
+                            if syncCourseColors { app.conflicts.markCategoryReenabled(.courseColors) }
+                            if syncCourseNames { app.conflicts.markCategoryReenabled(.courseNames) }
+                            if syncAssignments { app.conflicts.markCategoryReenabled(.assignments) }
                             app.conflicts.checkPendingConflicts()
                         }
                     }

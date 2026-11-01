@@ -4,7 +4,7 @@ import Foundation
 /// What the school account's sync has done so far; a write lands only in the sign-in it names.
 @MainActor
 enum SyncProgress {
-    static func recordFullSync(coursesReset: Date, taken: Set<String>, for signIn: SignIn) {
+    static func recordFullSync(coursesReset: Date, taken: Set<SyncCategory>, for signIn: SignIn) {
         guard signIn.isCurrent else { return }
         Defaults[.lastSeenCoursesResetAt] = coursesReset
         Defaults[.categoriesSyncedOnce].formUnion(taken)
@@ -26,7 +26,7 @@ enum SyncProgress {
     }
 
     @discardableResult
-    static func changePendingConflicts<Value>(for signIn: SignIn, _ change: (inout Set<String>) -> Value) -> Value? {
+    static func changePendingConflicts<Value>(for signIn: SignIn, _ change: (inout Set<SyncCategory>) -> Value) -> Value? {
         guard signIn.isCurrent else { return nil }
         return change(&Defaults[.pendingConflictCategories])
     }

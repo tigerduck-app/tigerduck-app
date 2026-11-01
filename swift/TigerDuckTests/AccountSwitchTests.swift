@@ -126,9 +126,9 @@ struct AccountSwitchTests {
             Defaults[.schoolDataSyncedAt] = Date()
             Defaults[.classTableSelectedSemester] = semester
             Defaults[.emptyClassroomBuilding] = "TR"
-            Defaults[.categoriesSyncedOnce] = ["courses"]
+            Defaults[.categoriesSyncedOnce] = [.courses]
             Defaults[.courseRowIdsSeen] = [semester: 3]
-            Defaults[.pendingConflictCategories] = ["courses"]
+            Defaults[.pendingConflictCategories] = [.courses]
             Defaults[.assignmentMarksSyncedOnce] = true
             Defaults[.lastSeenCoursesResetAt] = Date()
             Defaults[.holidayNotifyOverrides] = [12]

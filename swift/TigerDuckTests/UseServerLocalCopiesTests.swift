@@ -23,7 +23,7 @@ struct UseServerLocalCopiesTests {
 
         SyncConflicts.dropLocalCopies(
             for: SyncConflicts.ReenableConflict(
-                categories: ["courses", "course_names", "assignments"], description: "",
+                categories: [.courses, .courseNames, .assignments], description: "",
                 serverIgnoredCourses: [], serverMarkedAssignments: []
             ),
             courses: cache.courses, assignments: cache.assignments, colors: CourseColorStore(files: cache.colors), signIn: testSignIn
@@ -43,7 +43,7 @@ struct UseServerLocalCopiesTests {
 
         SyncConflicts.dropLocalCopies(
             for: SyncConflicts.ReenableConflict(
-                categories: ["course_colors"], description: "",
+                categories: [.courseColors], description: "",
                 serverIgnoredCourses: nil, serverMarkedAssignments: []
             ),
             courses: cache.courses, assignments: cache.assignments, colors: CourseColorStore(files: cache.colors), signIn: testSignIn

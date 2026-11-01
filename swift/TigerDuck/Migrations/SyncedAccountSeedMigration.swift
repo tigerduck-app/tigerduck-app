@@ -11,6 +11,6 @@ enum SyncedAccountSeedMigration {
             SyncProgress.forget()
             return
         }
-        Defaults[.categoriesSyncedOnce].formUnion(SyncConflicts.reenableCategories)
+        Defaults[.categoriesSyncedOnce].formUnion(SyncCategory.allCases)
     }
 }
