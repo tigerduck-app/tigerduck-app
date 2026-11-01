@@ -103,7 +103,7 @@ struct MacLoginView: View {
             VStack(spacing: 4) {
                 Toggle(
                     String(localized: "settings_sync_toggle_label"),
-                    isOn: Bindable(app).cloudSyncEnabled
+                    isOn: app.cloudSyncSwitch
                 )
                 .toggleStyle(.switch)
                 .frame(maxWidth: 280)

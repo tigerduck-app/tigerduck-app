@@ -36,9 +36,12 @@ final class AppEnvironment {
     var notificationSettings: NotificationSettingsSyncer { sync.notificationSettings }
     #endif
 
-    var cloudSyncEnabled: Bool {
-        get { cloudSyncPreference.isEnabled }
-        set { cloudSyncPreference.isEnabled = newValue }
+    var cloudSyncEnabled: Bool { cloudSyncPreference.isEnabled }
+
+    /// The TigerSync switch, which keeps each flip for the sign-in it was made in.
+    var cloudSyncSwitch: Binding<Bool> {
+        Binding(get: { self.cloudSyncEnabled },
+                set: { self.cloudSyncPreference.setEnabled($0, for: self.authService.session.currentSignIn) })
     }
 
     var signOutCheck: SignOutCheck { SignOutCheck(app: self) }
