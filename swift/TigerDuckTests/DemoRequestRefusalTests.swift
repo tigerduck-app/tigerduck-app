@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// A refusal bound to a series no other test signs in on, so the demo it starts stays here.
 private nonisolated final class SeriesRefusal: DemoRequestRefusal {
     static let series = SignInSeries()
 
@@ -56,5 +55,16 @@ struct DemoRequestRefusalTests {
         let (_, response) = try await session.data(from: url)
         #expect((response as? HTTPURLResponse)?.statusCode == 200)
         #expect(SettingsAPIStub.requests(for: url).count == 1)
+    }
+
+    @Test("during the demo the refusal claims web requests only, not file or data URLs")
+    func onlyWebRequestsAreRefused() throws {
+        SeriesRefusal.series.startDemo()
+        defer { SeriesRefusal.series.end() }
+
+        #expect(SeriesRefusal.canInit(with: URLRequest(url: try #require(URL(string: "HTTPS://example.invalid")))))
+        #expect(SeriesRefusal.canInit(with: URLRequest(url: try #require(URL(string: "http://example.invalid")))))
+        #expect(!SeriesRefusal.canInit(with: URLRequest(url: try #require(URL(string: "data:text/plain,demo")))))
+        #expect(!SeriesRefusal.canInit(with: URLRequest(url: URL.temporaryDirectory)))
     }
 }
