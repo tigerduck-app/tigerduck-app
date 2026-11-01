@@ -69,6 +69,41 @@ struct LateMoodleIdColorTests {
         #expect(folder.colors.lateMoodleColors.isEmpty)
     }
 
+    @Test("A reset leaves no course waiting, so with sync off a Moodle id found later keeps the reset's colour")
+    func aResetLeavesNoWaitsWithSyncOff() throws {
+        let folder = Folder()
+        folder.giveColours(["CS1"])
+
+        folder.colors.reassignAll(courses: [Self.course("CS1")], ids: [:], palette: Self.palette, for: testSignIn)
+        let reset = try #require(folder.colors.map["CS1"])
+        folder.storeIds(["CS1": 4127])
+        folder.giveColours(["CS1"])
+
+        #expect(folder.cache.colors.loadMoodleColorWaits() == MoodleColorWaits())
+        #expect(folder.colors.map == ["CS1": reset])
+        #expect(folder.syncsAsked == 0)
+    }
+
+    @Test("A reset ends every wait and unsent mark, so with sync on its own echo is neither held nor moved")
+    func aResetLeavesNoWaitsWithSyncOn() throws {
+        let folder = Folder()
+        folder.giveColours(["CS1", "CS2"])
+        folder.storeIds(["CS2": 5332])
+        folder.giveColours(["CS1", "CS2"])
+        #expect(folder.colors.lateMoodleColors == ["CS2": Self.moodle[2]])
+
+        folder.colors.reassignAll(courses: [Self.course("CS1"), Self.course("CS2")], ids: [:], palette: Self.palette, for: testSignIn)
+        let reset = try #require(folder.colors.map["CS1"])
+        let echo = Self.serverColour(reset, at: Self.resetClock + 60_000_000)
+        #expect(Self.late(echo, folder.colors.lateMoodleColors).holding.isEmpty)
+        folder.storeIds(["CS1": 4127, "CS2": 5332])
+        folder.giveColours(["CS1", "CS2"])
+
+        #expect(folder.cache.colors.loadMoodleColorWaits() == MoodleColorWaits())
+        #expect(folder.colors.map["CS1"] == reset)
+        #expect(folder.colors.lateMoodleColors.isEmpty)
+    }
+
     @Test("Picking the colour a course already has ends its wait, so its Moodle id moves it no more")
     func pickingTheSameColourEndsTheWait() throws {
         let folder = Folder()

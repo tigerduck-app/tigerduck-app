@@ -128,13 +128,13 @@ final class CourseColorStore {
         return changed
     }
 
-    /// Fresh colours for every course, forgetting the picks.
+    /// Fresh colours for every course, final like a pick: the picks and the Moodle waits go.
     func reassignAll(courses: [SDCourse], ids: [String: Int], palette: [UInt32], for signIn: SignIn) {
         let moodleColors = Self.moodleColors(of: courses, ids: ids)
         let reset = saving(signIn, unchanged: false) {
             $0.reassignAll(courseNos: courses.map(\.courseNo), moodleColors: moodleColors, palette: palette)
         }
         guard reset else { return }
-        changingWaits(signIn) { $0 = MoodleColorWaits(awaiting: Set(Self.awaitingMoodleColors(courses, moodleColors))) }
+        changingWaits(signIn) { $0 = MoodleColorWaits() }
     }
 }
