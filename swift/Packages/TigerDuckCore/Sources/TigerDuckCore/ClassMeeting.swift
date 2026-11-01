@@ -7,9 +7,9 @@ public protocol TimedClass {
 }
 
 extension TimedClass {
-    /// Begun at `time` and not yet over, or not past its end with `includingEnd`.
-    public func isOn(at time: Date, includingEnd: Bool = false) -> Bool {
-        start <= time && (includingEnd ? time <= end : time < end)
+    /// Begun at `time` and not yet over: a class is over at its end.
+    public func isOn(at time: Date) -> Bool {
+        start <= time && time < end
     }
 }
 

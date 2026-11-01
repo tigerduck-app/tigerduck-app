@@ -69,7 +69,7 @@ private struct TodayScheduleWidgetCard: View {
 
     private func scheduleRow(_ slot: CourseTimeSlot) -> some View {
         let color = TigerDuckTheme.courseColor(for: slot.courseKey)
-        let isPast = slot.end < now
+        let isPast = slot.end <= now
         let isLive = slot.isOn(at: now)
         let primary: Color = isLive ? .white : .primary
         let secondary: Color = isLive ? Color.white.opacity(0.85) : .secondary
