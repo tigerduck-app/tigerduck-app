@@ -27,7 +27,7 @@ struct CourseDeleteHideTests {
         cache.courses.saveCourses(roster, semester: term, for: testSignIn)
         var uploaded: [String] = []
         CourseUpload.uploadVisibleCourses(roster, semester: term, hidden: Set(cache.courses.loadDeletedCourseNos()), for: testSignIn) {
-            courses, _, _, _, _ in uploaded = courses.map(\.courseNo)
+            courses, _, _, _ in uploaded = courses.map(\.courseNo)
         }
         let shown = CanonicalCourseProvider(courses: cache.courses).currentCourses(semester: term).map(\.courseNo)
         return (shown.sorted(), uploaded.sorted())

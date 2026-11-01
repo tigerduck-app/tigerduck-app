@@ -133,8 +133,8 @@ final class AppEnvironment {
             relabeler.relabelAll(for: authService.session.currentSignIn)
         }
 
-        CourseUpload.courseUploader = { [weak self] courses, semester, asRoster, resend, signIn in
-            self?.uploads.uploadCourses(courses, semester: semester, asRoster: asRoster, resend: resend, for: signIn)
+        CourseUpload.courseUploader = { [weak self] courses, semester, kind, signIn in
+            self?.uploads.uploadCourses(courses, semester: semester, asRoster: kind.asRoster, resend: kind.resend, for: signIn)
         }
         AssignmentAnswers.assignmentUploader = { [weak self] request, signIn in
             self?.uploads.uploadAssignments(request, for: signIn)

@@ -19,8 +19,8 @@ struct CourseRefreshUploadTests {
         CourseUpload.uploadVisibleCourses(
             courseNos.map { SDCourse(courseNo: $0, courseName: $0) }, semester: "1151", hidden: hidden,
             roster: roster, resendingRoster: resendingRoster, for: testSignIn
-        ) { courses, _, asRoster, resend, _ in
-            uploads.append(Upload(courses: courses.map(\.courseNo), asRoster: asRoster, resend: resend))
+        ) { courses, _, kind, _ in
+            uploads.append(Upload(courses: courses.map(\.courseNo), asRoster: kind.asRoster, resend: kind.resend))
         }
         return uploads
     }
@@ -31,7 +31,7 @@ struct CourseRefreshUploadTests {
 
         CourseUpload.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"], for: testSignIn
-        ) { courses, semester, _, _, _ in uploads.append((courses.map(\.courseNo), semester)) }
+        ) { courses, semester, _, _ in uploads.append((courses.map(\.courseNo), semester)) }
 
         #expect(uploads.map(\.courses) == [["CS1"]])
         #expect(uploads.map(\.semester) == ["1151"])
@@ -44,7 +44,7 @@ struct CourseRefreshUploadTests {
         CourseUpload.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"], roster: ["CS1", "CS2", "CS3"],
             for: testSignIn
-        ) { _, _, _, _, _ in uploads += 1 }
+        ) { _, _, _, _ in uploads += 1 }
 
         #expect(uploads == 0)
     }
