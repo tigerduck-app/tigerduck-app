@@ -18,10 +18,7 @@ enum NotificationSettingsSyncedSeedMigration {
         guard !AppUserDefaults.standard.bool(forKey: doneKey), storedDataReadsBack() else { return }
         defer { AppUserDefaults.standard.set(true, forKey: doneKey) }
         guard signedIn() else { return }
-        if Defaults[.notificationSettingsPushPending] {
-            Defaults[.notificationSettingsPushSendsEveryField] = true
-        } else if NotificationSettingsSync.synced == nil {
-            NotificationSettingsSync.synced = current()
-        }
+        NotificationSettingsSync.seedOnUpgrade(local: current(), pushPending: Defaults[.notificationSettingsPushPending],
+                                               for: AccountSession.school.currentSignIn)
     }
 }

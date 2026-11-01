@@ -511,7 +511,8 @@ struct NotificationSettingsReconcileTests {
             let savedCopy = Defaults[.notificationSettingsSyncedPreferences]
             defer { Defaults[.notificationSettingsSyncedPreferences] = savedCopy }
             Self.setDeviceValues(store)
-            NotificationSettingsSync.synced = .init(from: store)
+            NotificationSettingsSync.forget()
+            NotificationSettingsSync.accountSignedIn(local: .init(from: store), for: testSignIn)
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let url = Fixtures.documentURL(baseURL)
             SettingsAPIStub.enqueue(try Fixtures.found(["assignments": Self.serverAssignments()], revision: 3), for: url)

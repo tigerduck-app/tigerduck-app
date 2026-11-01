@@ -137,11 +137,11 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     @Test("a sign-in keeps a copy it finds, and leaves none while the upgrade's push still sends every field")
     func signInKeepsACopyAndTheUpgradeMark() async {
         await Self.withCleanState {
-            NotificationSettingsSync.synced = Self.preferences(showInClass: true)
+            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: true), for: testSignIn)
             NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false), for: testSignIn)
             #expect(NotificationSettingsSync.synced == Self.preferences(showInClass: true))
 
-            NotificationSettingsSync.synced = nil
+            NotificationSettingsSync.forget()
             Defaults[.notificationSettingsPushSendsEveryField] = true
             NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false), for: testSignIn)
             #expect(NotificationSettingsSync.synced == nil)
@@ -182,7 +182,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     func pushRecordsOnlyWhatItSent() async throws {
         try await Self.withCleanState {
             let copy = Self.preferences(showInClass: true)
-            NotificationSettingsSync.synced = copy
+            NotificationSettingsSync.accountSignedIn(local: copy, for: testSignIn)
             var startOfPush = copy
             startOfPush.isAssignmentReminderEnabled = false
             var duringPush = startOfPush
@@ -237,7 +237,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     @Test("a push with nothing to write records the fields it changed, so a later change back goes up")
     func noWritePushRecordsTheFieldsItChanged() async throws {
         try await Self.withCleanState {
-            NotificationSettingsSync.synced = Self.preferences(showInClass: false)
+            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false), for: testSignIn)
             let turnedOn = Self.preferences(showInClass: true)
             let server = try turnedOn.documentUpdates(existing: [:])
             let baseURL = SettingsAPIStub.uniqueBaseURL()

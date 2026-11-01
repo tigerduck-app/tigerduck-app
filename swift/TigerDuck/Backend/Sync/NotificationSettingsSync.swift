@@ -13,7 +13,7 @@ nonisolated enum NotificationSettingsSync {
     typealias LocalPreferences = NotificationSettingsLocalPreferences
 
     @MainActor
-    static var synced: LocalPreferences? {
+    static private(set) var synced: LocalPreferences? {
         get {
             Defaults[.notificationSettingsSyncedPreferences]
                 .flatMap { try? JSONDecoder().decode(LocalPreferences.self, from: $0) }
@@ -32,6 +32,18 @@ nonisolated enum NotificationSettingsSync {
     static func accountSignedIn(local: LocalPreferences, for signIn: SignIn) {
         guard signIn.isCurrent, synced == nil, !Defaults[.notificationSettingsPushSendsEveryField] else { return }
         synced = local
+    }
+
+    /// The upgrade's seed of the copy, from Migrations/NotificationSettingsSyncedSeedMigration.swift: a
+    /// push left pending sends every field, since its edit is not on the server yet.
+    @MainActor
+    static func seedOnUpgrade(local: LocalPreferences, pushPending: Bool, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        if pushPending {
+            Defaults[.notificationSettingsPushSendsEveryField] = true
+        } else if synced == nil {
+            synced = local
+        }
     }
 
     @MainActor
