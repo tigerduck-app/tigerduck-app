@@ -41,7 +41,7 @@ enum SchoolRefresh {
         _ = await CourseFetch.fetchCourses(authService: authService, semester: semester, forceRefresh: force, for: signIn)
     }
 
-    static func allTerms(authService: AuthService, for signIn: SignIn) async {
+    static func missingTerms(authService: AuthService, for signIn: SignIn) async {
         await CourseFetch.warmAllSemesterCaches(authService: authService, for: signIn)
     }
 

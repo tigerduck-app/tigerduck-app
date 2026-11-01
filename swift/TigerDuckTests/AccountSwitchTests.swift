@@ -118,7 +118,7 @@ struct AccountSwitchTests {
                 SDCalendarEvent(eventId: "moodle-1", title: "Quiz", date: Date(), source: .moodle),
             ], for: testSignIn)
             cache.bulletins.saveBulletinSummaries([])
-            cache.moodle.saveMoodleCourseIdMap(["1141CS1001": 7], for: testSignIn)
+            cache.moodle.replaceMoodleCourseIdMap(["1141CS1001": 7], for: testSignIn)
             cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: first, for: testSignIn)
             try FileManager.default.createDirectory(at: cache.moodleFilesDir, withIntermediateDirectories: true)
             try Data("pdf".utf8).write(to: cache.moodleFilesDir.appendingPathComponent("slides.pdf"))
