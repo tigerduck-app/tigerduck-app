@@ -148,6 +148,9 @@ final class AppEnvironment {
         }
         poller.poll = { [weak self] in await self?.feed.pollRevision() ?? .unchanged }
         pushCoordinator.onCoursesUploaded = { [weak self] in self?.cloudSyncCoordinator.courseUploadLanded() }
+        CourseColorStore.shared.onLateMoodleColors = { [weak self] in
+            Task { await self?.fullSync.sync(followUpIfBusy: true) }
+        }
 
         // Skip "system": apply() would remove AppleLanguages, wiping the per-app override iOS
         // Settings writes there.

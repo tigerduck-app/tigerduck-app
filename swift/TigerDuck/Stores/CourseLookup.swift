@@ -15,6 +15,10 @@ enum CourseLookup {
         MoodleFiles.shared.lookupMoodleCourseId(idnumber: idnumber)
     }
 
+    static func moodleCourseId(idnumber: String?, in ids: [String: Int]) -> Int? {
+        MoodleFiles.moodleCourseId(idnumber: idnumber, in: ids)
+    }
+
     /// Every Moodle course id stored, by its Moodle id number.
     static func moodleCourseIds() -> [String: Int] {
         MoodleFiles.shared.loadMoodleCourseIdMap()

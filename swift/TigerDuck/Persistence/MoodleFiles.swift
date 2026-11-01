@@ -28,8 +28,12 @@ final class MoodleFiles: AccountScoped {
     }
 
     func lookupMoodleCourseId(idnumber: String) -> Int? {
-        guard !idnumber.isEmpty else { return nil }
-        return loadMoodleCourseIdMap()[SDCourse.normalizedMoodleId(idnumber)]
+        Self.moodleCourseId(idnumber: idnumber, in: loadMoodleCourseIdMap())
+    }
+
+    static func moodleCourseId(idnumber: String?, in map: [String: Int]) -> Int? {
+        guard let idnumber, !idnumber.isEmpty else { return nil }
+        return map[SDCourse.normalizedMoodleId(idnumber)]
     }
 
     func saveMoodleData<Value: Codable>(_ value: Value, fetchedAt: Date, name: String, account: String, for signIn: SignIn) {
