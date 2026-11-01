@@ -81,6 +81,6 @@ enum SchoolSignIn {
             password: password,
             for: signIn,
             mayPost: mayPost
-        )
+        ).leavesSchoolSignedIn
     }
 }

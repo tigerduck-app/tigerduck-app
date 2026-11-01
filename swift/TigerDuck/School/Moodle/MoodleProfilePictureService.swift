@@ -30,6 +30,14 @@ nonisolated enum MoodleProfilePictureService {
         guard var components = URLComponents(url: siteURL, resolvingAgainstBaseURL: false) else { return nil }
         components.path = uploadPath
         guard let url = components.url else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = uploadForm(carrying: token, jpeg: jpeg, boundary: boundary)
+        return request
+    }
+
+    private static func uploadForm(carrying token: String, jpeg: Data, boundary: String) -> Data {
         var body = Data()
         func part(_ headers: String, _ content: Data) {
             body.append(Data("--\(boundary)\r\n\(headers)\r\n\r\n".utf8))
@@ -41,11 +49,7 @@ nonisolated enum MoodleProfilePictureService {
         part(#"Content-Disposition: form-data; name="itemid""#, Data("0".utf8))
         part("Content-Disposition: form-data; name=\"file\"; filename=\"picture.jpg\"\r\nContent-Type: image/jpeg", jpeg)
         body.append(Data("--\(boundary)--\r\n".utf8))
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
-        return request
+        return body
     }
 
     private static func upload(jpeg: Data, token: String, session: URLSession, siteURL: URL, boundary: String) async throws -> Int {

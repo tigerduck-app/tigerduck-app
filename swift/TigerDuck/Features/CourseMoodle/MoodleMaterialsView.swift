@@ -103,7 +103,7 @@ struct MoodleMaterialsView: View {
                 file: file,
                 state: store.downloadState(of: file, in: ref.owner),
                 indent: row.indent,
-                tap: { files.tap(ref, among: neighbours, store: store) { store.open(material) } },
+                tap: { files.tap(ref, among: neighbours, store: store) { store.logView(of: material) } },
                 share: { files.share(ref, store: store) },
                 openInMoodle: { open(page) }
             )
@@ -114,7 +114,7 @@ struct MoodleMaterialsView: View {
                 open: {
                     files.forgetPendingOpen()
                     openMoodleLink(url)
-                    store.open(material)
+                    store.logView(of: material)
                 },
                 share: { files.share(link: url) },
                 openInMoodle: { open(page) }

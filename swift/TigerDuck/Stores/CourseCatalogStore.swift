@@ -13,7 +13,7 @@ final class CourseCatalogStore {
     static let languages = ["zh", "en"]
 
     private(set) var options = CourseSearchOptions()
-    private(set) var revision = 0
+    private(set) var staleSearchGeneration = 0
     @ObservationIgnored private(set) var catalogs: [String: CourseCatalog] = [:]
     @ObservationIgnored private(set) var loadFailure: (any Error)?
     @ObservationIgnored private(set) var lacksLanguage = false
@@ -31,7 +31,7 @@ final class CourseCatalogStore {
         return { @MainActor in try await client.fetch(semester: $0, language: $1, etag: $2) }
     }
 
-    func retry() {
+    func allowRevalidation() {
         lacksLanguage = false
         revalidation = nil
     }
@@ -103,13 +103,11 @@ final class CourseCatalogStore {
                 }
             }
         }
-        for (language, copy) in fresh {
-            catalogs[language] = copy.catalog
-            storedETags[language] = copy.etag
-        }
+        catalogs.merge(fresh.mapValues(\.catalog)) { _, new in new }
+        for (language, copy) in fresh { storedETags[language] = copy.etag }
         if !fresh.isEmpty {
             options = Self.options(catalogs)
-            if hadCatalog { revision &+= 1 }
+            if hadCatalog { staleSearchGeneration &+= 1 }
         }
         if catalogs.isEmpty { loadFailure = firstError }
         lacksLanguage = catalogs.count < Self.languages.count

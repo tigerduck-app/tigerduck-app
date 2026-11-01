@@ -31,7 +31,7 @@ nonisolated enum MoodleWebserviceClient {
     /// An access error gets one more try with the same token: Moodle answers an expired token
     /// with `accessexception` once and deletes it, then answers `invalidtoken`. A function the
     /// site does not allow fails the same way twice and starts no renewal.
-    static func withToken<T>(
+    static func withRenewingToken<T>(
         _ tokens: TokenSource = .keychain,
         _ body: (String) async throws -> T
     ) async throws -> T {
@@ -72,7 +72,7 @@ nonisolated enum MoodleWebserviceClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Data(formBody([("wstoken", token)] + params).utf8)
+        request.httpBody = formCarrying(token: token, params)
 
         let data: Data
         let response: URLResponse
@@ -96,6 +96,11 @@ nonisolated enum MoodleWebserviceClient {
                 throw MoodleWebserviceError.malformedResponse(detail: "Unable to decode \(function): \(error)")
             }
         }.value
+    }
+
+    /// Server and proxy access logs keep URLs, so a token goes only in a form body.
+    static func formCarrying(token: String, as field: String = "wstoken", _ params: [(String, String)] = []) -> Data {
+        Data(formBody([(field, token)] + params).utf8)
     }
 
     static func formBody(_ params: [(String, String)]) -> String {

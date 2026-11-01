@@ -44,7 +44,7 @@ final class EmptyClassroomViewModel {
         let calendar = calendar ?? EmptyClassroomCalendar()
         self.calendar = calendar
         self.loader = loader ?? EmptyClassroomLoader()
-        selectedDay = TaipeiTime.calendar.startOfDay(for: calendar.instant)
+        selectedDay = TaipeiTime.calendar.startOfDay(for: calendar.untrackedNow)
         pickedBuilding = Defaults[.emptyClassroomBuilding]
     }
 
@@ -62,7 +62,7 @@ final class EmptyClassroomViewModel {
 
     var siteStatus: ServerStatus { loader.siteStatus }
     var isReading: Bool { loader.isReading }
-    var now: Date { calendar.now }
+    var now: Date { calendar.minuteTickingNow }
     var today: Date { TaipeiTime.calendar.startOfDay(for: now) }
 
     var days: [Date] {

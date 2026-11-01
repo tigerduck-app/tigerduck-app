@@ -40,7 +40,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 School Mail and the library are accounts of their own, with a session and a sign-out plan each,
 which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` and
 `MailCredentialStore`, written with School Mail's sign-in, and its sign-out clears them; the library's sign-out is
-`LibraryService.clearCredentials()`.
+`LibraryService.signOutLibraryOnly()`.
 
 ## Stored state
 
@@ -132,7 +132,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `showInClassScenario` | device |  |
 | defaults | `shownServerPopupIds` | device |  |
 | defaults | `skippedUpdateVersion` | device |  |
-| defaults | `ssoLoginTimestamp` | school | `swift/TigerDuck/School/NTUST/NTUSTSessionManager.swift` `invalidateSession` |
+| defaults | `ssoLoginTimestamp` | school | `swift/TigerDuck/School/NTUST/NTUSTSessionManager.swift` `cancelTasksAndForgetSignIn` |
 | defaults | `syncAssignmentReminders` | device |  |
 | defaults | `syncAssignments` | device |  |
 | defaults | `syncCourseColors` | device |  |

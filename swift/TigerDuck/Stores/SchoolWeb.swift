@@ -11,5 +11,5 @@ enum SchoolWeb {
         await MoodleAutologinService.shared.url(for: url)
     }
 
-    static var schoolCookies: HTTPCookieStorage { NTUSTSessionManager.shared.cookieStorage }
+    static var schoolCookies: HTTPCookieStorage { NTUSTSessionManager.shared.ntustCookieJar }
 }

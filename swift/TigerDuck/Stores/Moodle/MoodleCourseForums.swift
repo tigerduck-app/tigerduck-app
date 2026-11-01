@@ -45,9 +45,12 @@ final class MoodleCourseForums {
                 return MoodleTermForums(courseIds: termCourseIds, forums: [])
             }
             let all = try await api.forums(termCourseIds)
-            let shown = functions.contains(MoodleForumService.discussionPostsFunction) ? all : all.filter(\.isNews)
-            return MoodleTermForums(courseIds: termCourseIds, forums: shown)
+            return MoodleTermForums(courseIds: termCourseIds, forums: Self.shown(all, allowedFunctions: functions))
         }
+    }
+
+    private nonisolated static func shown(_ forums: [MoodleForum], allowedFunctions: Set<String>) -> [MoodleForum] {
+        allowedFunctions.contains(MoodleForumService.discussionPostsFunction) ? forums : forums.filter(\.isNews)
     }
 
     func discussions(of forum: MoodleForum) -> MoodleDiscussionPages {
@@ -82,10 +85,12 @@ final class MoodleCourseForums {
 
     func refreshThread(of discussion: MoodleDiscussion) async {
         await thread(of: discussion).refresh { [api] in
-            guard try await api.functions().contains(MoodleForumService.discussionPostsFunction) else {
-                return MoodleDiscussionThread(discussionId: discussion.id, posts: [])
-            }
-            return MoodleDiscussionThread(discussionId: discussion.id, posts: try await api.posts(discussion.id))
+            MoodleDiscussionThread(
+                discussionId: discussion.id,
+                posts: try await api.ifAllowed(MoodleForumService.discussionPostsFunction, else: []) {
+                    try await api.posts(discussion.id)
+                }
+            )
         }
     }
 
@@ -94,7 +99,7 @@ final class MoodleCourseForums {
         guard context.signIn.isCurrent, !Task.isCancelled else { return Task {} }
         if let forum { discussions(of: forum).markRead(discussion.id) }
         if let thread = threads[discussion.id], thread.value?.posts.contains(where: \.isUnread) == true {
-            thread.edit { value in
+            thread.applyUserEdit { value in
                 for index in value.posts.indices { value.posts[index].isUnread = false }
             }
         }

@@ -106,19 +106,19 @@ struct AccountSwitchTests {
             cache.courses.saveUserAddedCourses([], for: testSignIn)
             cache.courses.saveDeletedCourseNos(["CS1001"], for: testSignIn)
             cache.courses.saveSelectionDroppedNos([semester: ["CS1002"]], for: testSignIn)
-            cache.courses.recordSelectionRoster(semester: semester, roster: ["CS1003"], for: testSignIn)
+            cache.courses.recordRoster(.courseSelection(["CS1003"]), semester: semester, for: testSignIn)
             cache.courses.saveCourseCustomNames([semester: ["CS1001": "Mine"]], for: testSignIn)
             cache.colors.saveCourseColorMap(["CS1001": 0xFF0000])
             cache.colors.savePickedCourseColors(["CS1001"])
             cache.assignments.saveAssignments([], for: testSignIn)
             cache.assignments.apply(.setArchived(id: "1", true), for: testSignIn)
-            cache.assignments.apply(.setCompleted(id: "2", true), for: testSignIn)
+            cache.assignments.apply(.setLocallyCompleted(id: "2", true), for: testSignIn)
             cache.assignments.apply(.ignoreCourse(courseNo: "CS1001", semester: semester, ignored: true), for: testSignIn)
             cache.assignments.saveCalendarEvents([
                 SDCalendarEvent(eventId: "moodle-1", title: "Quiz", date: Date(), source: .moodle),
             ], for: testSignIn)
             cache.bulletins.saveBulletinSummaries([])
-            cache.moodle.saveMoodleCourseIdMap(["1141CS1001": 7], for: testSignIn)
+            cache.moodle.replaceMoodleCourseIdMap(["1141CS1001": 7], for: testSignIn)
             cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: first, for: testSignIn)
             try FileManager.default.createDirectory(at: cache.moodleFilesDir, withIntermediateDirectories: true)
             try Data("pdf".utf8).write(to: cache.moodleFilesDir.appendingPathComponent("slides.pdf"))
@@ -343,7 +343,7 @@ struct AccountSwitchTests {
                 case .school:
                     await Self.schoolSignOut(auth).run(in: device.storage)?.value
                 case .library:
-                    LibraryService.clearCredentials()
+                    LibraryService.signOutLibraryOnly()
                 #if os(iOS)
                 case .mail:
                     mail.logout()

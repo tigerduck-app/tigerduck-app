@@ -33,7 +33,7 @@ final class LibraryAccountStatus {
     }
 
     func logout() {
-        LibraryService.clearCredentials()
+        LibraryService.signOutLibraryOnly()
         revision += 1
     }
 

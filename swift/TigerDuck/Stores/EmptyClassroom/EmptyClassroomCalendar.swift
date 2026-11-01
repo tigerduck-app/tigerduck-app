@@ -31,12 +31,12 @@ final class EmptyClassroomCalendar {
         minuteTicker = MinuteTicker(now: clock)
     }
 
-    var now: Date {
+    var minuteTickingNow: Date {
         _ = minuteTicker.tick
         return clock()
     }
 
-    var instant: Date { clock() }
+    var untrackedNow: Date { clock() }
 
     func dayOff(_ day: Date) -> EmptyClassroomSchedule.DayOff? {
         EmptyClassroomSchedule.dayOff(day, holidays: holidays, isInSession: isInSession)

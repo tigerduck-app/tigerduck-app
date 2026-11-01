@@ -50,7 +50,7 @@ final class ClassTableLoader {
     func warmCachesIfNeeded(authService: AuthService) async {
         guard !hasWarmedCaches else { return }
         hasWarmedCaches = true
-        await authService.session.withSignIn { await SchoolRefresh.allTerms(authService: authService, for: $0) }
+        await authService.session.withSignIn { await SchoolRefresh.missingTerms(authService: authService, for: $0) }
         guard let table = owner else { return }
         table.followNewestSemesterIfUnpicked()
         table.refreshSemesterOptions()

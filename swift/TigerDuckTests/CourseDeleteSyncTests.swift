@@ -329,7 +329,7 @@ struct CourseDeleteSyncTests {
         let editor = try #require(viewModel?.editor)
         let semester = try #require(viewModel?.currentSemester)
         let added = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: semester)
-        courses.apply(.add(added, semester: semester), for: testSignIn)
+        courses.apply(.addByHand(added, semester: semester), for: testSignIn)
         let backend = ResetBackend()
         editor.sync.resetBackendCourses = { _, resetLocally in
             await backend.delete()

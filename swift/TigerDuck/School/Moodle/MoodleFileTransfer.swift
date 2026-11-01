@@ -27,7 +27,7 @@ nonisolated enum MoodleFileTransfer {
         if key == nil {
             request.httpMethod = "POST"
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-            request.httpBody = Data(MoodleWebserviceClient.formBody([("token", token)]).utf8)
+            request.httpBody = MoodleWebserviceClient.formCarrying(token: token, as: "token")
         }
         return request
     }

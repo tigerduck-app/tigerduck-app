@@ -113,7 +113,7 @@ struct CourseMeeting {
 
     private static func changedTime(_ kind: CourseChange.Kind, in changes: [CourseChange], on date: Date) -> Date? {
         guard let change = changes.first(where: { $0.kind == kind }),
-              let time = kind == .start ? change.start : change.end
+              let time = kind == .start ? change.startHHmm : change.endHHmm
         else { return nil }
         return CourseTimeSlot.dateFromTimeString(time, on: date)
     }

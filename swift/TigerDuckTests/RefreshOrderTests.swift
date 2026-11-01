@@ -78,7 +78,7 @@ struct RefreshOrderTests {
                 pushOutbox: { log.events.append("outbox") },
                 fetchSchool: { applyAfter in
                     log.events.append("fetched")
-                    #expect(await applyAfter())
+                    #expect(await applyAfter() == .completed)
                     log.events.append("applied")
                     uploader.uploadCourses([Self.course], semester: "1151", for: account.signIns.currentSignIn)
                 }
@@ -105,7 +105,7 @@ struct RefreshOrderTests {
             pull: { log.events.append("pull failed") },
             pushOutbox: { log.events.append("outbox") },
             fetchSchool: { applyAfter in
-                #expect(await applyAfter())
+                #expect(await applyAfter() == .completed)
                 log.events.append("applied")
                 uploader.uploadCourses([Self.course], semester: "1151", for: account.signIns.currentSignIn)
             }
@@ -122,7 +122,7 @@ struct RefreshOrderTests {
     func aCancelledRefreshAppliesNothing() async throws {
         let log = Log()
         let pull = Gate()
-        var applies: Bool?
+        var applies: PullOutcome?
 
         let refresh = Task {
             await RefreshOrder.run(
@@ -142,7 +142,7 @@ struct RefreshOrderTests {
         pull.open()
         await refresh.value
 
-        #expect(applies == false)
+        #expect(applies == .cancelled)
         #expect(log.events == ["fetched", "pulled", "outbox"])
     }
 

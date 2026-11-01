@@ -147,7 +147,7 @@ struct LibrarySignInTests {
     @Test func aSignOutWhileARetryWaitsEndsTheWait() async throws {
         try await Self.withStoredAccount { _ in
             LibraryService.storedPasswordRefusals = (1, Date())
-            LibraryService.clearCredentials()
+            LibraryService.signOutLibraryOnly()
             #expect(LibraryService.storedPasswordRefusals.count == 0)
             #expect(LibraryService.storedPasswordRefusals.last == nil)
         }
@@ -210,7 +210,7 @@ struct LibrarySignInTests {
                 }
             }
             try await waitUntil { calls.count == 1 }
-            LibraryService.clearCredentials()
+            LibraryService.signOutLibraryOnly()
             calls.isOpen = true
 
             await #expect(throws: LibraryServiceError.self) { try await signingIn.value }
@@ -266,7 +266,7 @@ struct LibrarySignInTests {
                 })
             }
             try await waitUntil { calls.count == 1 }
-            LibraryService.clearCredentials()
+            LibraryService.signOutLibraryOnly()
             calls.isOpen = true
 
             await #expect(throws: LibraryServiceError.self) { try await signingIn.value }
@@ -761,7 +761,7 @@ struct LibrarySignInTests {
             case .savedCredentials:
                 LibraryService.saveCredentials(username: username, password: "new")
             case .signOut:
-                LibraryService.clearCredentials()
+                LibraryService.signOutLibraryOnly()
             case .typedSignIn:
                 _ = try? await LibraryService.login(username: username, password: "typed", request: { _, _ in
                     throw LibraryServiceError.loginFailed("wrong password")

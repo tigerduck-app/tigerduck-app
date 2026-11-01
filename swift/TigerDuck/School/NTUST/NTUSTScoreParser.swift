@@ -221,3 +221,9 @@ nonisolated enum NTUSTScoreParser {
         }
     }
 }
+
+extension ScoreReport {
+    /// False for a page with no part of a transcript, such as a sign-in page the score site serves
+    /// with a 200.
+    var holdsAnyTranscriptPart: Bool { self != .empty }
+}

@@ -132,15 +132,11 @@ final class CourseFiles: AccountScoped {
         return Set(stored[semester] ?? [])
     }
 
-    func recordSelectionRoster(semester: String, roster: [String], alsoListed: [String] = [], isFinal: Bool = false) {
-        guard !roster.isEmpty || isFinal else { return }
+    func recordRoster(_ source: TermRoster.RosterSource, semester: String) {
         var stored = loadSelectionDroppedNos()
         let previous = Set(stored[semester] ?? [])
         let updated = TermRoster.selectionDrops(
-            previous: previous,
-            localPortalNos: loadCourses(semester: semester).map(\.courseNo) + alsoListed,
-            roster: roster,
-            isFinal: isFinal
+            previous: previous, localPortalNos: loadCourses(semester: semester).map(\.courseNo), roster: source
         )
         guard updated != previous else { return }
         if updated.isEmpty {
@@ -155,18 +151,25 @@ final class CourseFiles: AccountScoped {
         persistent.save(courseNos, to: "deleted_courses.json")
     }
 
+    /// See docs/decisions/0005-course-tombstones.md.
     func deleteCourse(_ courseNo: String, semester: String) {
-        let userAdded = loadUserAddedCourses()
-        let isThisCourse = { (course: SDCourse) in
-            course.courseNo == courseNo && Self.userAddedCourse(course, belongsTo: semester)
-        }
-        let kept = userAdded.filter { !isThisCourse($0) }
-        let isHandAdded = userAdded.contains { isThisCourse($0) && $0.moodleIdNumber == nil }
+        if !isLocalOnlyHandAdded(courseNo, semester: semester) { hide(courseNo, semester: semester) }
+        removeAddedByHand(courseNo, semester: semester)
+    }
+
+    private func isLocalOnlyHandAdded(_ courseNo: String, semester: String) -> Bool {
+        loadUserAddedCourses(semester: semester).contains { $0.courseNo == courseNo && $0.moodleIdNumber == nil }
             && !loadCourses(semester: semester).contains { $0.courseNo == courseNo }
-        if !isHandAdded {
-            let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
-            saveDeletedCourseNos(Array(Set(loadDeletedCourseNos()).union([key])))
-        }
+    }
+
+    private func hide(_ courseNo: String, semester: String) {
+        let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
+        saveDeletedCourseNos(Array(Set(loadDeletedCourseNos()).union([key])))
+    }
+
+    private func removeAddedByHand(_ courseNo: String, semester: String) {
+        let userAdded = loadUserAddedCourses()
+        let kept = userAdded.filter { !($0.courseNo == courseNo && Self.userAddedCourse($0, belongsTo: semester)) }
         if kept.count != userAdded.count { saveUserAddedCourses(kept) }
     }
 

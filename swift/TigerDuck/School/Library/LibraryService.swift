@@ -49,7 +49,7 @@ enum LibraryService: AccountScoped {
     }
 
     @MainActor
-    static func clearCredentials() {
+    static func signOutLibraryOnly() {
         SignOutPlan(
             session: AccountSession.library,
             stores: SignOutPlan.libraryStores,
@@ -82,7 +82,11 @@ enum LibraryService: AccountScoped {
 
     @MainActor
     static func schoolAccountDidSignOut() {
-        if storedUsername == nil, !hasAccount { NotificationCenter.default.post(name: accountDidChange, object: nil) }
+        if signInFormOffersSchoolStudentID { NotificationCenter.default.post(name: accountDidChange, object: nil) }
+    }
+
+    @MainActor private static var signInFormOffersSchoolStudentID: Bool {
+        storedUsername == nil && !hasAccount
     }
 
     static var storedToken: String? {
@@ -167,7 +171,7 @@ enum LibraryService: AccountScoped {
     ) async -> Bool {
         guard !isTokenValid, storedUsername != nil, storedPassword != nil else { return false }
         guard storedPasswordPostIsDue(now: Date()) else {
-            LibraryPasswordRetry.arm(signIn: signIn, retrySleep: retrySleep)
+            LibraryPasswordRetry.retryStoredPasswordWhenWaitEnds(signIn: signIn, retrySleep: retrySleep)
             return false
         }
         guard signInIsDue(lastFailure: storedSignInFailedAt, now: Date()),
@@ -212,7 +216,7 @@ enum LibraryService: AccountScoped {
                     if case LibraryServiceError.loginFailed = error {
                         StoredPasswordBackoff.library.noteRefused(at: Date())
                         if typedSignIns == typedSignInsBefore {
-                            LibraryPasswordRetry.arm(signIn: signIn, retrySleep: retrySleep)
+                            LibraryPasswordRetry.retryStoredPasswordWhenWaitEnds(signIn: signIn, retrySleep: retrySleep)
                         }
                         #if os(iOS)
                         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()

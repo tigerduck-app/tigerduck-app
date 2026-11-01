@@ -299,7 +299,7 @@ struct SSOServiceLoginTests {
 
     static func retry(
         _ service: URL, on session: URLSession, mayPost: () -> Bool = { true }
-    ) async -> Result<Bool, Error> {
+    ) async -> Result<SSOLoginService.SignInAgainOutcome, Error> {
         await result {
             try await SSOLoginService.signInAgain(
                 session: session, serviceURL: service, studentId: "B00000000", password: "unused",
@@ -321,7 +321,7 @@ struct SSOServiceLoginTests {
         Self.enqueueLiveSessionThenSignIn(for: service)
         let typed = TypedSignIn()
 
-        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<Bool, Error> in
+        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<SSOLoginService.SignInAgainOutcome, Error> in
             let retrying = await SchoolPasswordPosts.postingStoredPassword {
                 let retrying = Task { await Self.retry(service, on: session) { !typed.isUnderWay } }
                 await Self.waitForAQueuedPost()
@@ -331,7 +331,7 @@ struct SSOServiceLoginTests {
             return await retrying.value
         }
 
-        guard case .success(false) = outcome else {
+        guard case .success(.heldBack) = outcome else {
             Issue.record("expected no sign-in, got \(outcome)")
             return
         }
@@ -345,11 +345,11 @@ struct SSOServiceLoginTests {
         let (session, jar) = try Self.sessionSignedInToSSO()
         Self.enqueueLiveSessionThenSignIn(for: service)
 
-        let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<Bool, Error>, Int) in
+        let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<SSOLoginService.SignInAgainOutcome, Error>, Int) in
             (await Self.retry(service, on: session), SchoolPasswordPosts.storedPasswordRefusals.count)
         }
 
-        guard case .success(true) = outcome else {
+        guard case .success(.signedIn) = outcome else {
             Issue.record("expected a sign-in, got \(outcome)")
             return
         }
@@ -370,7 +370,7 @@ struct SSOServiceLoginTests {
             try await SSOLoginService.signInAgain(
                 session: session, serviceURL: service, studentId: studentId, password: password, for: signIn,
                 mayPost: mayPost
-            )
+            ).leavesSchoolSignedIn
         }
 
         try await StoredPasswordRetryTests.signedIn(refusals: 0, last: nil) { _ in
@@ -400,7 +400,7 @@ struct SSOServiceLoginTests {
         let (session, jar) = try Self.sessionSignedInToSSO()
         Self.enqueueLiveSessionThenSignIn(for: service)
 
-        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<Bool, Error> in
+        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<SSOLoginService.SignInAgainOutcome, Error> in
             let retrying = await SchoolPasswordPosts.postingStoredPassword {
                 let retrying = Task { await Self.retry(service, on: session) }
                 await Self.waitForAQueuedPost()
@@ -410,7 +410,7 @@ struct SSOServiceLoginTests {
             return await retrying.value
         }
 
-        guard case .success(true) = outcome else {
+        guard case .success(.refusalSettledMeanwhile) = outcome else {
             Issue.record("expected a sign-in, got \(outcome)")
             return
         }
@@ -425,7 +425,7 @@ struct SSOServiceLoginTests {
         let (session, jar) = try Self.sessionSignedInToSSO()
         Self.enqueueLiveSessionThenSignIn(for: service)
 
-        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<Bool, Error> in
+        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<SSOLoginService.SignInAgainOutcome, Error> in
             let retrying = await SchoolPasswordPosts.postingStoredPassword {
                 let retrying = Task { await Self.retry(service, on: session) }
                 await Self.waitForAQueuedPost()

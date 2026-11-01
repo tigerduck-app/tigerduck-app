@@ -32,7 +32,7 @@ enum MoodleEnrolledCoursesService {
     }
 
     private static func fetchUnshared() async throws -> [MoodleEnrolledCourse] {
-        try await MoodleWebserviceClient.withToken { token in
+        try await MoodleWebserviceClient.withRenewingToken { token in
             let userId = try await MoodleSiteInfoService.shared.userId(token: token)
             return try await MoodleWebserviceClient.call(
                 "core_enrol_get_users_courses",

@@ -1,5 +1,7 @@
 import Foundation
 
+typealias ClosedUnsubmittedAnswerTimes = [String: Date]
+
 final class AssignmentFiles: AccountScoped {
     private let cache: JSONFiles
     private let persistent: JSONFiles
@@ -36,11 +38,11 @@ final class AssignmentFiles: AccountScoped {
         )
     }
 
-    func loadClosedUnsubmittedAssignments() -> [String: Date] {
+    func loadClosedUnsubmittedAssignments() -> ClosedUnsubmittedAnswerTimes {
         cache.load("closed_unsubmitted_assignments.json") ?? [:]
     }
 
-    func replaceClosedUnsubmittedAssignments(_ closed: [String: Date]) {
+    func replaceClosedUnsubmittedAssignments(_ closed: ClosedUnsubmittedAnswerTimes) {
         cache.save(closed, to: "closed_unsubmitted_assignments.json")
     }
 

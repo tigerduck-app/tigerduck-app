@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 nonisolated enum MoodleRefreshInterval {
     static let forums: TimeInterval = 5 * 60
@@ -14,7 +15,7 @@ final class MoodleRefreshTimer {
     let ttl: TimeInterval
     private let now: () -> Date
     private let sleep: @Sendable (Duration) async -> Void
-    private nonisolated(unsafe) var loop: Task<Void, Never>?
+    private let loop = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
     init(
         ttl: TimeInterval,
@@ -27,14 +28,13 @@ final class MoodleRefreshTimer {
     }
 
     deinit {
-        loop?.cancel()
+        loop.withLock { $0?.cancel() }
     }
 
-    var isRunning: Bool { loop != nil }
+    var isRunning: Bool { loop.withLock { $0 != nil } }
 
     func start(fetchedAt: @escaping () -> Date?, refresh: @escaping () async -> Void) {
-        loop?.cancel()
-        loop = Task { [ttl, now, sleep] in
+        let task = Task { [ttl, now, sleep] in
             var lastTry: Date?
             while !Task.isCancelled {
                 let wait = Self.wait(fetchedAt: fetchedAt(), lastTry: lastTry, ttl: ttl, now: now())
@@ -46,11 +46,17 @@ final class MoodleRefreshTimer {
                 }
             }
         }
+        loop.withLock { running in
+            running?.cancel()
+            running = task
+        }
     }
 
     func stop() {
-        loop?.cancel()
-        loop = nil
+        loop.withLock { running in
+            running?.cancel()
+            running = nil
+        }
     }
 
     nonisolated static func wait(fetchedAt: Date?, lastTry: Date?, ttl: TimeInterval, now: Date) -> TimeInterval {

@@ -62,7 +62,7 @@ final class MoodleDiscussionPages {
             }
             guard feed.status == .ok, let list, !list.hasMore else { return }
             pageFailure = nil
-            forums.update { term in
+            forums.applyDerived { term in
                 guard let index = term.forums.firstIndex(where: { $0.id == forumId }) else { return }
                 term.forums[index].discussionCount = list.discussions.count
                 term.forums[index].unreadPostCount = list.discussions.reduce(0) { $0 + $1.unreadCount }
@@ -78,12 +78,12 @@ final class MoodleDiscussionPages {
             do {
                 guard try await api.functions().contains(MoodleForumService.discussionsFunction) else {
                     pageFailure = nil
-                    feed.update { $0.hasMore = false }
+                    feed.applyDerived { $0.hasMore = false }
                     return
                 }
                 let page = try await api.discussions(forumId, list.pageCount)
                 pageFailure = nil
-                feed.update { current in
+                feed.applyDerived { current in
                     guard current.forumId == list.forumId, current.pageCount == list.pageCount else { return }
                     current.append(page: page)
                 }
@@ -96,11 +96,11 @@ final class MoodleDiscussionPages {
     func markRead(_ discussionId: Int) {
         let unread = list?.discussions.first { $0.id == discussionId }?.unreadCount ?? 0
         guard unread > 0 else { return }
-        feed.edit { list in
+        feed.applyUserEdit { list in
             guard let index = list.discussions.firstIndex(where: { $0.id == discussionId }) else { return }
             list.discussions[index].unreadCount = 0
         }
-        forums.edit { term in
+        forums.applyUserEdit { term in
             guard let index = term.forums.firstIndex(where: { $0.id == forumId }) else { return }
             term.forums[index].unreadPostCount = max(0, term.forums[index].unreadPostCount - unread)
         }
