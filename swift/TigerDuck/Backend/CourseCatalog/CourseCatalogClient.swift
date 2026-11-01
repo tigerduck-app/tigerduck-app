@@ -89,7 +89,7 @@ struct CourseCatalogClient {
         session: URLSession = BackendClient.catalogSession,
         authHeaderProvider: @escaping @Sendable () async -> String?
     ) {
-        self.init(backend: BackendClient(baseURL: baseURLProvider, session: session, auth: .header(authHeaderProvider)))
+        self.init(backend: BackendClient(baseURL: baseURLProvider, session: session, auth: .unbound(authHeaderProvider)))
     }
 
     func fetch(semester: String, language: String, etag: String?) async throws -> Answer {

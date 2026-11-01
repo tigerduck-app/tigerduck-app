@@ -74,11 +74,13 @@ nonisolated struct BackendAuth: Sendable {
     let header: @Sendable () async -> (value: String, signIn: SignIn?)?
     let recover: @Sendable (_ refused: String, _ code: String?, _ signIn: SignIn) async -> Bool
 
-    static func header(_ provider: @escaping @Sendable () async -> String?) -> BackendAuth {
+    /// A header that names no sign-in, for a client whose requests carry no account data, such as
+    /// the course catalog; `BackendClient` refuses to send a request bound to a sign-in with it.
+    static func unbound(_ provider: @escaping @Sendable () async -> String?) -> BackendAuth {
         BackendAuth(header: { await provider().map { ($0, nil) } }, recover: { _, _, _ in false })
     }
 
-    static let none = BackendAuth.header { nil }
+    static let none = BackendAuth.unbound { nil }
 }
 
 nonisolated struct ResendHeldError: Error {}
@@ -139,7 +141,7 @@ nonisolated final class BackendClient: Sendable {
         if request.signIn?.isCurrent == false { throw PushAPIError.notSignedIn }
         if request.authenticated {
             if let header = await auth.header(), !header.value.isEmpty {
-                if let bound = replaying ?? request.signIn, let held = header.signIn, held != bound {
+                if let bound = replaying ?? request.signIn, header.signIn != bound {
                     throw PushAPIError.notSignedIn
                 }
                 urlRequest.setValue(header.value, forHTTPHeaderField: "Authorization")

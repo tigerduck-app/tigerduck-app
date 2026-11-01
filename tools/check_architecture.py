@@ -67,6 +67,7 @@ RULES = {r.name: r for r in (
     Rule("sign-in-read", 8),
     Rule("sign-in-compare", 8),
     Rule("account-store-write", 8),
+    Rule("unbound-backend-auth", 8),
 )}
 
 
@@ -99,6 +100,9 @@ PATTERNS = (
     ("task-sleep", r"\bTask\.sleep\b", (APP + "Support/Clock/", APP + "Support/Concurrency/"),
      "`Task.sleep` outside Support/Clock/ and Support/Concurrency/; wait with `AppClock.sleep(until:)` "
      "or `StateSignal`"),
+    ("unbound-backend-auth", r"\.unbound\s*[({]", (APP + "Backend/Client/", APP + "Backend/CourseCatalog/"),
+     "a backend header that names no sign-in outside the course catalog; a client of account data "
+     "takes `AuthTokenManager.backendAuth`"),
 )
 # Where account work starts and so may read the sign-in it runs for; every other layer is handed
 # one (docs/decisions/0029-account-bound-writes.md).

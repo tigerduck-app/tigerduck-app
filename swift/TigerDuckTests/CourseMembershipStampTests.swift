@@ -127,7 +127,7 @@ struct CourseMembershipStampTests {
             outbox: SyncOutbox(directory: root.appendingPathComponent("outbox", isDirectory: true)), isEnabled: true,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
             addedCourseUpload: { SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses) },
-            uploadsCourses: { true }, isProtectedDataAvailable: { true }
+            uploadsCourses: { true }, isProtectedDataAvailable: { true }, account: AccountSession(signIns: testSignIns)
         )
     }
 }

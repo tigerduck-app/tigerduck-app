@@ -42,7 +42,8 @@ struct CourseDeleteSyncTests {
         let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: Self.freshDirectory()), isEnabled: isEnabled,
-            syncsAssignmentMarks: { true }, syncsCourseIgnores: syncsCourseIgnores, syncsCourseOverrides: { _ in true }
+            syncsAssignmentMarks: { true }, syncsCourseIgnores: syncsCourseIgnores, syncsCourseOverrides: { _ in true },
+            account: AccountSession(signIns: testSignIns)
         )
     }
 

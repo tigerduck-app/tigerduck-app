@@ -219,7 +219,8 @@ struct OverrideStampTests {
             .appendingPathComponent("OverrideStampTests-\(UUID().uuidString)", isDirectory: true)
         return CloudSyncCoordinator(
             pushCoordinator: pushCoordinator(baseURL), outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: { !held() }, syncsCourseIgnores: { !held() }, syncsCourseOverrides: { _ in !held() }
+            syncsAssignmentMarks: { !held() }, syncsCourseIgnores: { !held() }, syncsCourseOverrides: { _ in !held() },
+            account: AccountSession(signIns: testSignIns)
         )
     }
 }

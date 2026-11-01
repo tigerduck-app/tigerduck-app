@@ -11,11 +11,9 @@ actor SettingsDocumentClient {
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        authHeaderProvider: @escaping @Sendable () async -> String? = { nil }
+        auth: BackendAuth = .none
     ) {
-        backend = BackendClient(
-            baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: .header(authHeaderProvider)
-        )
+        backend = BackendClient(baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: auth)
     }
 
     func read(namespace: String) async throws -> (document: Data, revision: Int)? {

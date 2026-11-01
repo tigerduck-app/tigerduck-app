@@ -158,6 +158,21 @@ struct BackendClientTests {
         #expect(SettingsAPIStub.requests(for: url).isEmpty)
     }
 
+    @Test("A send of a sign-in is not sent with a header that names no sign-in")
+    func aBoundSendNeedsAHeaderOfItsSignIn() async throws {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let url = base.appendingPathComponent("sync/assignments/upload")
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: url)
+        let unbound = PushAPIClient(
+            backend: BackendClient(baseURL: { base }, session: Self.stubSession(), auth: .unbound { "Bearer A0" })
+        )
+
+        await #expect(throws: PushAPIError.self) {
+            try await unbound.uploadAssignments(PushAPI.AssignmentUploadRequest(assignments: []), for: testSignIn)
+        }
+        #expect(SettingsAPIStub.requests(for: url).isEmpty)
+    }
+
     @Test("A send refused after its sign-in ended does not go again with the next sign-in's token")
     func aSendRefusedAcrossASignOutIsNotReplayed() async throws {
         let signIns = SignInSeries()

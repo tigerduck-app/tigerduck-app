@@ -19,8 +19,9 @@ struct SyncRaceTests {
         return URLSession(configuration: config)
     }
 
-    private static func push(_ baseURL: URL) -> PushCoordinator {
-        let client = PushAPIClient(baseURLProvider: { baseURL }, session: stubSession(), authHeaderProvider: { "Bearer test" })
+    private static func push(_ baseURL: URL, signIns: SignInSeries = testSignIns) -> PushCoordinator {
+        let client = PushAPIClient(baseURLProvider: { baseURL }, session: stubSession(), authHeaderProvider: { "Bearer test" },
+                                   signIns: signIns)
         return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
     }
 
@@ -43,10 +44,11 @@ struct SyncRaceTests {
     }
 
     private static func sender(
-        _ baseURL: URL, cache: TestCache, colors: CourseColorStore, switchedOn: Set<String>
+        _ baseURL: URL, cache: TestCache, colors: CourseColorStore, switchedOn: Set<String>,
+        signIns: SignInSeries = testSignIns
     ) -> OutboxSender {
         OutboxSender(
-            push: push(baseURL), addedCourseUpload: { _, _ in nil }, uploadsCourses: { true },
+            push: push(baseURL, signIns: signIns), addedCourseUpload: { _, _ in nil }, uploadsCourses: { true },
             isProtectedDataAvailable: { true }, courses: cache.courses,
             kept: KeptValues(
                 policy: policy(switchedOn), colors: colors, courses: cache.courses, assignments: cache.assignments
@@ -138,7 +140,8 @@ struct SyncRaceTests {
         let session = AccountSession()
 
         try await Self.sender(
-            baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"]
+            baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"],
+            signIns: session.signIns
         ).send(op, for: session.signIns.currentSignIn, newerQueued: { _ in
             session.endSignIn()
             session.endSignIn()
@@ -169,7 +172,7 @@ struct SyncRaceTests {
             pushCoordinator: Self.push(baseURL),
             outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
             isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
-            syncsCourseOverrides: { _ in true }, courses: cache.courses,
+            syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
             kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
                              courses: cache.courses, assignments: cache.assignments)
         )
@@ -207,7 +210,7 @@ struct SyncRaceTests {
             pushCoordinator: Self.push(baseURL),
             outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
             isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
-            syncsCourseOverrides: { _ in true }, courses: cache.courses,
+            syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
             kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
                              courses: cache.courses, assignments: cache.assignments)
         )
@@ -281,7 +284,7 @@ struct SyncRaceTests {
         let coordinator = CloudSyncCoordinator(
             pushCoordinator: Self.push(baseURL),
             outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
-            isEnabled: true, syncsCourseOverrides: { _ in true }, courses: cache.courses,
+            isEnabled: true, syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
             kept: KeptValues(policy: Self.policy(["courses", "course_colors"]), colors: colors,
                              courses: cache.courses, assignments: cache.assignments)
         )

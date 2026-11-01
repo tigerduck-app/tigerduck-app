@@ -149,6 +149,19 @@ struct NotificationSettingsSyncedSeedMigrationTests {
         }
     }
 
+    @Test("an upgrade seed for a sign-in that has ended stores neither copy nor mark")
+    func seedOfAnEndedSignInStoresNothing() async {
+        await Self.withCleanState {
+            NotificationSettingsSync.seedOnUpgrade(local: Self.preferences(showInClass: true), pushPending: false,
+                                                   for: endedTestSignIn)
+            NotificationSettingsSync.seedOnUpgrade(local: Self.preferences(showInClass: true), pushPending: true,
+                                                   for: endedTestSignIn)
+
+            #expect(NotificationSettingsSync.synced == nil)
+            #expect(!Defaults[.notificationSettingsPushSendsEveryField])
+        }
+    }
+
     @Test("an upgrade while signed out stores neither copy nor mark, so the sign-in starts the copy")
     func upgradeWhileSignedOutLeavesItToTheSignIn() async {
         await Self.withCleanState {

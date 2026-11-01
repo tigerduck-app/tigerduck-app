@@ -47,7 +47,7 @@ struct CourseAddSyncTests {
         _ backend: Backend, cache: TestCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory()),
         push: PushCoordinator? = nil, uploadsCourses: @escaping @MainActor () -> Bool = { true },
         isProtectedDataAvailable: @escaping @MainActor () -> Bool = { true },
-        account: AccountSession = AccountSession(),
+        account: AccountSession = AccountSession(signIns: testSignIns),
         whileReading: @escaping @MainActor () -> Void = {}
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(

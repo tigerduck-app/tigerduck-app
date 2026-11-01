@@ -2381,7 +2381,7 @@ private struct RegistrationFixture {
             apiClient: PushAPIClient(
                 baseURLProvider: { resolvingAsTheApp ? PushServerConfig.resolveServerURL() : baseURL },
                 session: URLSession(configuration: config),
-                authHeaderProvider: { await manager.authorizationHeader() }
+                auth: manager.backendAuth
             ),
             deviceClass: "iphone",
             debounceSleep: { _ in },

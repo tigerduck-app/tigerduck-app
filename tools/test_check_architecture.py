@@ -66,10 +66,10 @@ class ArchitectureTests(unittest.TestCase):
     def test_each_pattern_rule_reports_its_rule(self) -> None:
         text = ("if gen == loginGeneration {}\nlet d = UserDefaults(suiteName: group)\n"
                 "let s = URLSession(configuration: .default)\nNotificationCenter.default.post(name: dataDidUpdate)\n"
-                "isUpdatingFromNetwork = true\n")
+                "isUpdatingFromNetwork = true\nlet c = BackendClient(auth: .unbound { token })\n")
         found = ca.pattern_findings([source(APP + "Features/X.swift", text)])
         self.assertEqual(rules(found), ["login-generation", "data-did-update", "is-updating-from-network",
-                                        "user-defaults", "url-session"])
+                                        "user-defaults", "url-session", "unbound-backend-auth"])
 
     def test_two_app_files_with_one_base_name_fail(self) -> None:
         found = ca.base_name_findings([APP + "App/Foo.swift", APP + "School/Foo.swift", APP + "Bar.swift"])

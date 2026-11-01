@@ -12,12 +12,11 @@ final class PushAPIClient: Sendable {
     convenience init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        authHeaderProvider: @escaping @Sendable () async -> String? = { nil },
+        auth: BackendAuth = .none,
         versionGate: APIVersionGate? = nil
     ) {
         self.init(backend: BackendClient(
-            baseURL: baseURLProvider, session: session ?? BackendClient.session,
-            auth: .header(authHeaderProvider), versionGate: versionGate
+            baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: auth, versionGate: versionGate
         ))
     }
 
