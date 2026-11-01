@@ -11,6 +11,8 @@ run() {
 }
 
 run python3 tools/check_architecture.py
+run python3 tools/check_agent_files.py
+run python3 tools/check_comments.py check --base origin/dev
 run python3 tools/check_account_state.py
 run python3 tools/check_macos_sources.py
 run python3 tools/check_privacy_manifests.py
