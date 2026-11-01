@@ -41,7 +41,11 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
         return name.mailNonEmpty
     }
 
-    private static func splitTopLevel(_ raw: String) -> [String] {
+    /// Splits at `,` and `;`, or where `separates` says, outside angle brackets and quoted strings,
+    /// in which a backslash escapes the next character (RFC 5322 §3.2.4). The last piece is the rest.
+    static func splitTopLevel(
+        _ raw: String, separates: (Character, String) -> Bool = { character, _ in character == "," || character == ";" }
+    ) -> [String] {
         var pieces: [String] = []
         var current = ""
         var inQuotes = false
@@ -61,7 +65,7 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
             if character == "\"" { inQuotes.toggle() }
             if character == "<", !inQuotes { inAngle = true }
             if character == ">", !inQuotes { inAngle = false }
-            if (character == "," || character == ";") && !inQuotes && !inAngle {
+            if !inQuotes, !inAngle, separates(character, current) {
                 pieces.append(current)
                 current = ""
             } else {

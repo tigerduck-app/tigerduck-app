@@ -36,7 +36,7 @@ nonisolated enum MailRecipients {
     static func parse(_ raw: String) -> (addresses: [MailAddress], invalid: [String]) {
         var addresses: [MailAddress] = []
         var invalid: [String] = []
-        for token in splitTopLevel(raw) {
+        for token in MailAddress.splitTopLevel(raw) {
             let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
             if let address = sendableAddress(trimmed) {
@@ -52,37 +52,6 @@ nonisolated enum MailRecipients {
         guard let address = MailAddress.parseList(token).first,
               address.address.unicodeScalars.allSatisfy(\.isASCII) else { return nil }
         return address
-    }
-
-    private static func splitTopLevel(_ raw: String) -> [String] {
-        var pieces: [String] = []
-        var current = ""
-        var inQuotes = false
-        var inAngle = false
-        var escaped = false
-        for character in raw {
-            if escaped {
-                current.append(character)
-                escaped = false
-                continue
-            }
-            if character == "\\", inQuotes {
-                current.append(character)
-                escaped = true
-                continue
-            }
-            if character == "\"" { inQuotes.toggle() }
-            if character == "<", !inQuotes { inAngle = true }
-            if character == ">", !inQuotes { inAngle = false }
-            if (character == "," || character == ";") && !inQuotes && !inAngle {
-                pieces.append(current)
-                current = ""
-            } else {
-                current.append(character)
-            }
-        }
-        pieces.append(current)
-        return pieces
     }
 }
 #endif
