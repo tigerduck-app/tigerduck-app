@@ -7,6 +7,7 @@ extension PageSettings {
         content
             .navigationTitle(String(localized: titleKey))
             .inlineNavigationTitle()
+            .modifier(LeavesWhenEmpty(page: self))
             .toastHost()
             .settingsEnvironment()
     }
@@ -21,6 +22,20 @@ extension PageSettings {
         case .library: LibrarySettingsView()
         case .browser: BrowserPageSettingsView()
         case .moodle: MoodlePageSettingsView()
+        }
+    }
+}
+
+/// Goes back once the page has no row left, as after a sign-out on a page whose other rows the
+/// device lacks.
+private struct LeavesWhenEmpty: ViewModifier {
+    let page: PageSettings
+    @Environment(\.settingsState) private var state
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content.onChange(of: page.isShown(in: state)) { _, isShown in
+            if !isShown { dismiss() }
         }
     }
 }
