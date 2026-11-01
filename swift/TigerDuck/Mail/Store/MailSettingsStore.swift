@@ -2,7 +2,7 @@
 import Defaults
 import Foundation
 
-nonisolated final class MailSettingsStore: MailPreferences, @unchecked Sendable {
+nonisolated final class MailSettingsStore: MailPreferenceFields, @unchecked Sendable {
     static let shared = MailSettingsStore()
 
     private struct OwnedDeletedRecord: Codable, Equatable, Sendable {

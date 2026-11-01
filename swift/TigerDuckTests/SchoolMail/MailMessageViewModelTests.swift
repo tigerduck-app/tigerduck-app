@@ -14,6 +14,7 @@ struct MailMessageViewModelTests {
         let center: RecordingNotificationCenter
         let cache: MailCache
         let session: MailPageSession
+        let account: AccountSession
         let folder: String
 
         @MainActor
@@ -38,14 +39,31 @@ struct MailMessageViewModelTests {
         let prefs = InMemoryMailPreferences()
         prefs.inboxUIDValidity = 1
         let center = RecordingNotificationCenter()
-        let session = MailPageSession(idleClose: .milliseconds(10), open: { fake })
+        let account = AccountSession()
+        let session = MailPageSession(idleClose: .milliseconds(10), open: { fake }, account: account)
         let model = MailMessageViewModel(
             route: MailMessageRoute(folder: folder, uid: message.summary.uid),
             session: session,
             folderRoles: [.inbox: "INBOX", .trash: Self.trash],
             cache: cache, prefs: prefs, notifier: MailNotifier(center: center)
         )
-        return Harness(model: model, fake: fake, prefs: prefs, center: center, cache: cache, session: session, folder: folder)
+        return Harness(model: model, fake: fake, prefs: prefs, center: center, cache: cache, session: session,
+                       account: account, folder: folder)
+    }
+
+    @Test func aMailOpenedAcrossASignOutIsNotCached() async {
+        let kept = Self.harness(FakeMailClient.message(uid: 5, text: "hello"))
+        await kept.model.load()
+        #expect(kept.cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5) != nil)
+
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "hello"))
+        await h.fake.hold("detail")
+        let load = Task { await h.model.load() }
+        await h.fake.waitForArrival("detail")
+        h.account.endSignIn()
+        await h.fake.release("detail")
+        await load.value
+        #expect(h.cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
     }
 
     @Test func loadsSanitizedHTMLAndWarnings() async {

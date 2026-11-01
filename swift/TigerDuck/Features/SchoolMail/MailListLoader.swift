@@ -41,8 +41,8 @@ enum MailListLoader {
             }
             guard list.isCurrent(selection, signIn) else { return }
             let fetched = try await newestPages(of: list.targets, session: list.session)
-            if fetched.failure == .authenticationFailed, signIn.isCurrent {
-                list.session.reportAuthenticationRejection()
+            if fetched.failure == .authenticationFailed {
+                list.session.reportAuthenticationRejection(for: signIn)
             }
             guard list.isCurrent(selection, signIn) else { return }
             for (folder, page) in fetched.pages {

@@ -32,7 +32,7 @@ struct MailComposeViewModelTests {
         MailComposeViewModel(
             context: context,
             session: MailPageSession(idleClose: .milliseconds(10), open: { fake },
-                                     onAuthFailure: { prefs.authFailed = true }),
+                                     onAuthFailure: { _ in prefs.authFailed = true }),
             sender: Self.me,
             folderRoles: roles ?? [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
             prefs: prefs,

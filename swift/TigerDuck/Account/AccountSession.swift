@@ -38,6 +38,7 @@ final class AccountSession {
     nonisolated static let schoolSignIns = SignInSeries()
     nonisolated static let school = AccountSession(signIns: schoolSignIns)
     nonisolated static let library = AccountSession()
+    nonisolated static let mail = AccountSession()
 
     nonisolated let signIns: SignInSeries
     private var ended = 0

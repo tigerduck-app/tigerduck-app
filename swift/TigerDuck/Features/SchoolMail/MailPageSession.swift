@@ -10,14 +10,14 @@ final class MailPageSession {
     private var inFlight = 0
     private var isReleased = false
     private var pendingDrop = false
-    private let onAuthFailure: @MainActor () -> Void
-    private let account: AccountSession
+    private let onAuthFailure: @MainActor (SignIn) -> Void
+    let account: AccountSession
     private var signOutListener: MailSignOutListener?
 
     init(
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
         open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() },
-        onAuthFailure: @escaping @MainActor () -> Void = { MailAccountManager.shared.handleAuthFailure() },
+        onAuthFailure: @escaping @MainActor (SignIn) -> Void = { MailAccountManager.shared.handleAuthFailure(for: $0) },
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
         signOutEvents: NotificationCenter = .default,
         account: AccountSession? = nil
@@ -30,13 +30,14 @@ final class MailPageSession {
     }
 
     func use<T>(_ body: (any MailClient) async throws -> T) async throws -> T {
+        let signIn = await account.startingSignIn
         cancelClose()
         inFlight += 1
         let client: any MailClient
         do {
-            client = try await resolveClient()
+            client = try await resolveClient(for: signIn)
         } catch {
-            reportIfAuthenticationRejected(error)
+            reportIfAuthenticationRejected(error, for: signIn)
             await endUse()
             throw error
         }
@@ -46,7 +47,7 @@ final class MailPageSession {
             return result
         } catch {
             if MailErrorClass(error)?.closesConnection == true { pendingDrop = true }
-            reportIfAuthenticationRejected(error)
+            reportIfAuthenticationRejected(error, for: signIn)
             await endUse()
             throw error
         }
@@ -58,9 +59,9 @@ final class MailPageSession {
     /// `MailAccountManager.openSession()`, so without this they would leave `authFailed` unset
     /// and the next tap would send the rejected password again. NTUST locks the account (and
     /// its Wi-Fi) after repeated failures, so every layer reports here.
-    private func reportIfAuthenticationRejected(_ error: any Error) {
+    private func reportIfAuthenticationRejected(_ error: any Error, for signIn: SignIn) {
         guard (error as? MailClientError) == .authenticationFailed else { return }
-        reportAuthenticationRejection()
+        reportAuthenticationRejection(for: signIn)
     }
 
     /// Reports a rejected password a `use(_:)` body caught and did not rethrow.
@@ -69,8 +70,9 @@ final class MailPageSession {
     /// `.authenticationFailed` is caught and turned into an outcome. NTUST locks the account (and
     /// its Wi-Fi) after repeated failures, so that caller reports here, reaching the same choke
     /// point a thrown error would.
-    func reportAuthenticationRejection() {
-        onAuthFailure()
+    func reportAuthenticationRejection(for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        onAuthFailure(signIn)
     }
 
     func releaseSoon() {
@@ -107,8 +109,7 @@ final class MailPageSession {
         }
     }
 
-    private func resolveClient() async throws -> any MailClient {
-        let signIn = await account.startingSignIn
+    private func resolveClient(for signIn: SignIn) async throws -> any MailClient {
         if let client { return client }
         if let opening {
             let opened = try await opening.value

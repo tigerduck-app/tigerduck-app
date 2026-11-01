@@ -173,13 +173,14 @@ final class MailComposeViewModel {
         }
         guard let message = await build(mail, messageID: messageID) else { return }
         defer { status.isSending = false }
+        let signIn = await session.account.startingSignIn
         do {
             let filing = try await MailComposeSending.send(MailComposeSending.Send(
                 message: message, messageID: messageID, from: sender.address, recipients: mail.envelopeRecipients,
                 roles: folderRoles, answered: tracking.sourceLoaded && isReply ? context.message : nil, replaced: replaced
-            ), session: session, services: services)
+            ), session: session, services: services, signIn: signIn)
             if let refreshedRoles = filing.roles { adoptFolderRoles(refreshedRoles) }
-            if filing.rejectedPassword { session.reportAuthenticationRejection() }
+            if filing.rejectedPassword { session.reportAuthenticationRejection(for: signIn) }
             status.sentCopy = filing.outcome
             if let notice = MailComposeSending.notice(for: filing.outcome) { events.post(.sentCopyNotice(notice)) }
             status.didFinish = true
@@ -201,9 +202,10 @@ final class MailComposeViewModel {
         let replaced = replacesDraft ? context.uid.map(replacedDraft) : nil
         guard let message = await build(mail, messageID: MailMessageBuilder.makeMessageID()) else { return false }
         defer { status.isSending = false }
+        let signIn = await session.account.startingSignIn
         do {
             let refreshedRoles = try await MailComposeSending.saveDraft(message, roles: folderRoles, replacing: replaced,
-                                                                        session: session, prefs: services.prefs)
+                                                                        session: session, prefs: services.prefs, signIn: signIn)
             adoptFolderRoles(refreshedRoles)
             tracking.baseline = savedBaseline
             return true

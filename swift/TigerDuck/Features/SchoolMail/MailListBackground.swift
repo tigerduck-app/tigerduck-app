@@ -6,14 +6,14 @@ final class MailListBackground {
     let indexer: MailIndexer
     private(set) var isPaused = false
     private var pollTask: Task<Void, Never>?
-    private let noteSeenByPage: (MailboxStatusInfo) async -> Void
+    private let noteSeenByPage: (MailboxStatusInfo, SignIn) async -> Void
     private var warmTask: Task<Void, Never>?
     private var warmDone = false
     private let warmDelay: @Sendable () async -> Void
     private weak var list: MailListViewModel?
 
     init(
-        list: MailListViewModel, indexer: MailIndexer, noteSeenByPage: @escaping (MailboxStatusInfo) async -> Void,
+        list: MailListViewModel, indexer: MailIndexer, noteSeenByPage: @escaping (MailboxStatusInfo, SignIn) async -> Void,
         warmDelay: @escaping @Sendable () async -> Void
     ) {
         self.list = list
@@ -99,7 +99,7 @@ final class MailListBackground {
             movedUp.append(folder)
         }
         list.status.syncedAt = list.mailbox.syncedAt(of: list.targets)
-        await noteSeenByPage(status)
+        await noteSeenByPage(status, signIn)
         guard list.isCurrent(selection, signIn) else { return }
         let cache = list.writer.cache
         let writes = movedUp.compactMap { folder in

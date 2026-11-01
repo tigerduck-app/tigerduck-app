@@ -104,7 +104,7 @@ PATTERNS = (
 # one (docs/decisions/0029-account-bound-writes.md).
 SIGN_IN_HOMES = tuple(APP + p for p in (
     "Account/", "App/", "Features/", "Platform/", "Debug/", "Devices/", "Backend/Auth/", "Backend/Sync/",
-    "Mail/Account/", "School/Library/", "School/Moodle/MoodleTokenService.swift",
+    "Mail/Account/", "Mail/Sync/MailChecker.swift", "School/Library/", "School/Moodle/MoodleTokenService.swift",
     "School/Moodle/MoodleAutologinService.swift", "Migrations/",
 ))
 # Where one sign-in may be compared with another: `SignIn` itself, the backend client and the tokens.
@@ -130,6 +130,9 @@ ACCOUNT_FILES = {
 }
 # Persistence/ defines them, the sign-out deletes them, and a migration runs before any sign-in work.
 ACCOUNT_FILE_HOMES = (APP + "Persistence/", APP + "Account/SignOutPlan.swift", APP + "Migrations/")
+# School Mail's stored fields change only through `MailPreferences.change(for:_:)`.
+MAIL_FIELDS_WRITE = re.compile(r"\bMailPreferenceFields\b|\bMailSettingsStore\.shared\.\w+\s*=(?!=)")
+MAIL_STORE = APP + "Mail/Store/"
 INVENTORY = ROOT / "docs" / "account-state.md"
 ACCOUNT_KEY_ROW = re.compile(r"^\|\s*defaults\s*\|\s*`(\w+)`\s*\|\s*(?:school|library)\s*\|\s*`([^`]+\.swift)`")
 TAIPEI = re.compile(r'"Asia/Taipei"')
@@ -479,6 +482,10 @@ def account_store_findings(sources: list[Source], inventory: str) -> list[Findin
     for src in sources:
         if not src.path.startswith(APP) or src.path.startswith(ACCOUNT_FILE_HOMES):
             continue
+        if not src.path.startswith(MAIL_STORE):
+            found += [Finding(src.path, line_of(src.code, m.start()), "account-store-write",
+                              "School Mail's fields written outside Mail/Store/; use `MailPreferences.change(for:_:)`")
+                      for m in MAIL_FIELDS_WRITE.finditer(src.code)]
         for m in files.finditer(src.code):
             stores = ACCOUNT_FILES[m.group(1)]
             if not src.path.startswith(tuple(APP + s for s in stores)):

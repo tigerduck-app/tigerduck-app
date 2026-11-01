@@ -25,7 +25,7 @@ final class MailListViewModel {
         session: MailPageSession? = nil,
         account: AccountSession? = nil,
         cache: MailCache? = nil,
-        noteSeenByPage: ((MailboxStatusInfo) async -> Void)? = nil,
+        noteSeenByPage: ((MailboxStatusInfo, SignIn) async -> Void)? = nil,
         signOutEvents: NotificationCenter = .default,
         warmDelay: @escaping @Sendable () async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + MailConstants.warmStartDelay) },
         catchUpDelay: @escaping @Sendable () async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + MailConstants.searchCatchUpInterval) }
@@ -42,7 +42,7 @@ final class MailListViewModel {
         // Starts after the warm's delay too, so the refresh that follows a paint goes first.
         let indexer = MailIndexer(session: session, cache: cache, startDelay: warmDelay)
         background = MailListBackground(list: self, indexer: indexer,
-                                        noteSeenByPage: noteSeenByPage ?? { await MailChecker.shared.noteSeenByPage($0) },
+                                        noteSeenByPage: noteSeenByPage ?? { await MailChecker.shared.noteSeenByPage($0, for: $1) },
                                         warmDelay: warmDelay)
         search = MailListSearch(list: self, catchUpDelay: catchUpDelay)
         indexer.onFill = { [weak self] folder in self?.search.indexDidFill(folder) }

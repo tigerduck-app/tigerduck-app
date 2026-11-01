@@ -47,9 +47,9 @@ struct MailListViewModelTests {
         let seen = SeenLog()
         let account = AccountSession()
         let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake },
-                                      onAuthFailure: { seen.authFailures += 1 }, signOutEvents: signOutEvents,
+                                      onAuthFailure: { _ in seen.authFailures += 1 }, signOutEvents: signOutEvents,
                                       account: account)
-        let model = MailListViewModel(session: session, account: account, cache: cache, noteSeenByPage: { seen.noted.append($0) },
+        let model = MailListViewModel(session: session, account: account, cache: cache, noteSeenByPage: { status, _ in seen.noted.append(status) },
                                       signOutEvents: signOutEvents, warmDelay: warmDelay, catchUpDelay: catchUpDelay)
         return Harness(model: model, fake: fake, cache: cache, seen: seen, account: account)
     }
@@ -612,7 +612,7 @@ struct MailListViewModelTests {
         await h.fake.update { $0.pageError = .serverBusy }
         let visit = MailListViewModel(
             session: MailPageSession(idleClose: .milliseconds(10), open: { h.fake }, signOutEvents: NotificationCenter()),
-            cache: h.cache, noteSeenByPage: { _ in }, signOutEvents: NotificationCenter(),
+            cache: h.cache, noteSeenByPage: { _, _ in }, signOutEvents: NotificationCenter(),
             warmDelay: { try? await Task.sleep(for: .seconds(86_400)) }
         )
         await visit.load()

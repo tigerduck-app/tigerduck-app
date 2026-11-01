@@ -104,7 +104,7 @@ struct MailPageSessionTests {
     @Test func anAuthenticationRejectionFromInsideAUseIsReported() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         var failures = 0
-        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { failures += 1 })
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { _ in failures += 1 })
         await #expect(throws: MailClientError.self) {
             try await session.use { _ in throw MailClientError.authenticationFailed }
         }
@@ -114,7 +114,7 @@ struct MailPageSessionTests {
     @Test func anOrdinaryFailureIsNotReportedAsAnAuthenticationRejection() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         var failures = 0
-        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { failures += 1 })
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { _ in failures += 1 })
         await #expect(throws: MailClientError.self) {
             try await session.use { _ in throw MailClientError.serverBusy }
         }

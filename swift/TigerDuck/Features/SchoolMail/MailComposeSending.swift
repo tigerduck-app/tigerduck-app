@@ -19,7 +19,9 @@ enum MailComposeSending {
         var replaced: (folder: String, draft: ReplacedDraft)?
     }
 
-    static func send(_ send: Send, session: MailPageSession, services: MailComposeServices) async throws -> SentCopyFiler.Filing {
+    static func send(
+        _ send: Send, session: MailPageSession, services: MailComposeServices, signIn: SignIn
+    ) async throws -> SentCopyFiler.Filing {
         try await session.use { client -> SentCopyFiler.Filing in
             try await client.send(send.message, from: send.from, to: send.recipients)
             if let answered = send.answered {
@@ -28,7 +30,7 @@ enum MailComposeSending {
             let filing = await SentCopyFiler.file(send.message, messageID: send.messageID, in: send.roles, client: client,
                                                   dedupeDelay: MailConstants.sentCopyDedupeDelay, sleep: services.sleep)
             if let replaced = send.replaced {
-                await removeDraft(replaced.draft, folder: replaced.folder, client: client, prefs: services.prefs)
+                await removeDraft(replaced.draft, folder: replaced.folder, client: client, prefs: services.prefs, signIn: signIn)
             }
             return filing
         }
@@ -36,14 +38,14 @@ enum MailComposeSending {
 
     static func saveDraft(
         _ message: Data, roles: [MailFolderRole: String], replacing draft: ReplacedDraft?,
-        session: MailPageSession, prefs: any MailPreferences
+        session: MailPageSession, prefs: any MailPreferences, signIn: SignIn
     ) async throws -> [MailFolderRole: String] {
         try await session.use { client -> [MailFolderRole: String] in
             guard let drafts = await MailFolderProvisioner.ensure(.drafts, in: roles, client: client) else {
                 throw MailFolderUnavailable(role: .drafts)
             }
             try await client.append(message, to: drafts.name, flags: [.draft, .seen])
-            if let draft { await removeDraft(draft, folder: drafts.name, client: client, prefs: prefs) }
+            if let draft { await removeDraft(draft, folder: drafts.name, client: client, prefs: prefs, signIn: signIn) }
             return drafts.roles
         }
     }
@@ -61,18 +63,20 @@ enum MailComposeSending {
         }
     }
 
-    private static func removeDraft(_ draft: ReplacedDraft, folder: String, client: any MailClient, prefs: any MailPreferences) async {
+    private static func removeDraft(
+        _ draft: ReplacedDraft, folder: String, client: any MailClient, prefs: any MailPreferences, signIn: SignIn
+    ) async {
         guard let pageUIDValidity = draft.pageUIDValidity else { return }
         let owned = prefs.ownedDeleted(folder: folder, uidValidity: pageUIDValidity)
         do {
             let result = try await MailMover.deletePermanently(uids: [draft.uid], in: folder, client: client, previouslyFlagged: owned)
-            prefs.setOwnedDeleted(result.stillPending)
+            prefs.change(for: signIn) { $0.setOwnedDeleted(result.stillPending) }
         } catch {
             guard let claim = await MailMover.recoverAfterFailure(after: error, uid: draft.uid, previouslyFlagged: owned,
                                                                   client: client, wasAlreadyDeleted: draft.wasAlreadyDeleted) else {
                 return
             }
-            prefs.setOwnedDeleted(claim)
+            prefs.change(for: signIn) { $0.setOwnedDeleted(claim) }
         }
     }
 }

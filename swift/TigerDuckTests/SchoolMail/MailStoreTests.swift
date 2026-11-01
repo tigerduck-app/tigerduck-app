@@ -13,10 +13,26 @@ struct MailStoreTests {
     @Test func credentialsRoundTripAndClear() throws {
         let store = MailCredentialStore(storage: InMemoryMailSecretStorage())
         #expect(store.password() == nil)
-        try store.savePassword("secret")
+        try store.savePassword("secret", for: testSignIn)
         #expect(store.password() == "secret")
         store.clear()
         #expect(store.password() == nil)
+    }
+
+    @Test func aMailWriteOfAnEndedSignInIsDropped() throws {
+        let (prefs, cleanup) = Self.isolatedPreferences()
+        defer { cleanup() }
+        let store = MailCredentialStore(storage: InMemoryMailSecretStorage())
+        try store.savePassword("secret", for: endedTestSignIn)
+        prefs.change(for: endedTestSignIn) {
+            $0.studentID = "B10000000"
+            $0.setOwnedDeleted(OwnedDeleted(folder: "INBOX", uidValidity: 7, uids: [3]))
+        }
+        #expect(store.password() == nil)
+        #expect(prefs.studentID == nil)
+        #expect(prefs.ownedDeleted(folder: "INBOX", uidValidity: 7).uids.isEmpty)
+        prefs.change(for: testSignIn) { $0.studentID = "B10000000" }
+        #expect(prefs.studentID == "B10000000")
     }
 
     @Test func valetStorageRoundTrips() throws {

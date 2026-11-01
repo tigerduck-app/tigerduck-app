@@ -2,7 +2,7 @@
 import Foundation
 @testable import TigerDuck
 
-final class InMemoryMailPreferences: MailPreferences, @unchecked Sendable {
+final class InMemoryMailPreferences: MailPreferenceFields, @unchecked Sendable {
     private let lock = NSLock()
 
     private var _studentID: String?

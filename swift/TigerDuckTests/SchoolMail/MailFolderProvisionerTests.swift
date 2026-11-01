@@ -298,7 +298,7 @@ struct MailFolderProvisionerTests {
         let model = MailComposeViewModel(
             context: MailComposeContext(mode: mode),
             session: MailPageSession(idleClose: .milliseconds(10), open: { fake },
-                                     onAuthFailure: { prefs.authFailed = true }),
+                                     onAuthFailure: { _ in prefs.authFailed = true }),
             sender: MailComposeViewModelTests.me,
             folderRoles: roles,
             prefs: prefs,

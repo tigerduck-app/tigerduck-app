@@ -48,14 +48,25 @@ struct MailAccountManagerTests {
     @Test func theAuthFailedBannerStaysClosedUntilTheNextFailure() async {
         let h = Self.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")
-        h.manager.handleAuthFailure()
+        h.manager.handleAuthFailure(for: h.manager.session.signIns.currentSignIn)
         #expect(h.manager.showsAuthFailedBanner)
         h.manager.authBannerDismissed = true
         #expect(!h.manager.showsAuthFailedBanner)
         await h.manager.login(studentID: "B10000000", password: "pw")
         #expect(!h.manager.showsAuthFailedBanner)
-        h.manager.handleAuthFailure()
+        h.manager.handleAuthFailure(for: h.manager.session.signIns.currentSignIn)
         #expect(h.manager.showsAuthFailedBanner)
+    }
+
+    @Test func aRejectedPasswordOfAnEndedSignInIsNotRecorded() async {
+        let h = Self.harness()
+        await h.manager.login(studentID: "B10000000", password: "pw")
+        let signIn = h.manager.session.signIns.currentSignIn
+        h.manager.session.endSignIn()
+        h.manager.handleAuthFailure(for: signIn)
+        #expect(!h.prefs.authFailed)
+        #expect(!h.manager.showsAuthFailedBanner)
+        #expect(h.hooks.authFailed == 0)
     }
 
     @Test func aSuccessfulLoginStoresEverythingAndSetsTheBaseline() async {
@@ -155,7 +166,7 @@ struct MailAccountManagerTests {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
         let h = Self.harness(prefs: prefs)
-        try MailCredentialStore(storage: h.secrets).savePassword("pw")
+        try MailCredentialStore(storage: h.secrets).savePassword("pw", for: testSignIn)
         await h.fake.update { $0.acceptedPassword = "changed" }
         await h.fake.hold("login")
         let session = Task { try await h.manager.openSession() }
@@ -174,7 +185,7 @@ struct MailAccountManagerTests {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
         let secrets = InMemoryMailSecretStorage()
-        try MailCredentialStore(storage: secrets).savePassword("old")
+        try MailCredentialStore(storage: secrets).savePassword("old", for: testSignIn)
         let stale = FakeMailClient()
         await stale.update { $0.acceptedPassword = "new" }
         await stale.hold("login")

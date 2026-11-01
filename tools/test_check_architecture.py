@@ -160,6 +160,14 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual([(f.path, f.line, f.rule) for f in found],
                          [(APP + "Backend/Sync/FullSync.swift", n, "account-store-write") for n in (2, 3, 4, 5)])
 
+    def test_a_mail_field_written_around_its_sign_in_fails_outside_the_mail_store(self) -> None:
+        text = ("MailSettingsStore.shared.studentID = id\nlet fields = prefs as? MailPreferenceFields\n"
+                "if MailSettingsStore.shared.studentID == id {}\nprefs.change(for: signIn) { $0.studentID = id }\n")
+        found = ca.account_store_findings([source(APP + "Mail/Sync/X.swift", text),
+                                           source(APP + "Mail/Store/X.swift", text)], "")
+        self.assertEqual([(f.path, f.line, f.rule) for f in found],
+                         [(APP + "Mail/Sync/X.swift", n, "account-store-write") for n in (1, 2)])
+
 
 if __name__ == "__main__":
     unittest.main()

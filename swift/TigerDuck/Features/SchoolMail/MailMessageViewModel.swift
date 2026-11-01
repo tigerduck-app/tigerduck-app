@@ -108,11 +108,11 @@ final class MailMessageViewModel {
     var original: MailOriginal? { detail.map { MailOriginal(detail: $0, bodyText: plainText) } }
 
     func load() async {
+        let signIn = await session.account.startingSignIn
         let cache = stores.cache
         let prefs = stores.prefs
         let folder = route.folder
         let uid = route.uid
-        let account = prefs.studentID
         let wipeCount = cache.wipeCount
         let cachedPage = await Task.detached { cache.loadPage(folder: folder) }.value
         let validity = route.uidValidity ?? cachedPage?.uidValidity
@@ -130,7 +130,7 @@ final class MailMessageViewModel {
                 try await client.detail(folder: folder, uid: uid, expectedUIDValidity: validity)
             }
             await apply(fresh)
-            if let validity, prefs.studentID == account {
+            if let validity, signIn.isCurrent {
                 await Task.detached { cache.saveDetail(fresh, folder: folder, uidValidity: validity, wipeCount: wipeCount) }.value
             }
             if !fresh.summary.isSeen {

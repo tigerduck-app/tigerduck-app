@@ -29,7 +29,7 @@ final class MailAccountManager {
         }
     }
 
-    static let shared = MailAccountManager(signOutEvents: .default)
+    static let shared = MailAccountManager(signOutEvents: .default, session: .mail)
 
     static let didSignOut = Notification.Name("SchoolMail.didSignOut")
 
@@ -61,7 +61,7 @@ final class MailAccountManager {
         get { settings.displayName }
         set {
             settings.displayName = newValue
-            prefs.displayName = newValue?.mailNonEmpty
+            prefs.change(for: session.currentSignIn) { $0.displayName = newValue?.mailNonEmpty }
         }
     }
 
@@ -71,7 +71,7 @@ final class MailAccountManager {
             let changed = newValue != settings.notificationsEnabled
             settings.notificationsEnabled = newValue
             guard changed else { return }
-            prefs.notificationsEnabled = newValue
+            prefs.change(for: session.currentSignIn) { $0.notificationsEnabled = newValue }
             guard isLoggedIn else { return }
             if newValue { listeners.notificationsEnabled?() } else { listeners.notificationsDisabled?() }
         }
@@ -81,7 +81,7 @@ final class MailAccountManager {
         get { settings.muteSettings }
         set {
             settings.muteSettings = newValue
-            prefs.muteSettings = newValue
+            prefs.change(for: session.currentSignIn) { $0.muteSettings = newValue }
         }
     }
 
@@ -122,9 +122,11 @@ final class MailAccountManager {
         let signedIn = session.endSignIn()
 
         lastRejectedPassword = nil
-        prefs.studentID = id
-        prefs.demoActive = client.demo
-        prefs.authFailed = false
+        prefs.change(for: signedIn) {
+            $0.studentID = id
+            $0.demoActive = client.demo
+            $0.authFailed = false
+        }
         await establishBaseline(client: client.client, for: signedIn)
         if prefs.displayName == nil {
             let discovered = await discoverDisplayName(client: client.client, address: MailConstants.address(forStudentID: id))
@@ -153,7 +155,7 @@ final class MailAccountManager {
                 await client.logout()
                 return nil
             }
-            try signIn.credentials.savePassword(password)
+            try signIn.credentials.savePassword(password, for: signedOut)
         } catch {
             await client.logout()
             let failure = LoginError(error)
@@ -185,7 +187,7 @@ final class MailAccountManager {
                 return client
             } catch MailClientError.authenticationFailed {
                 await client.logout()
-                if signedIn.isCurrent { handleAuthFailure() }
+                handleAuthFailure(for: signedIn)
                 throw MailClientError.authenticationFailed
             } catch {
                 await client.logout()
@@ -194,9 +196,9 @@ final class MailAccountManager {
         }
     }
 
-    func handleAuthFailure() {
-        guard !authFailed else { return }
-        prefs.authFailed = true
+    func handleAuthFailure(for signIn: SignIn) {
+        guard signIn.isCurrent, !authFailed else { return }
+        prefs.change(for: signIn) { $0.authFailed = true }
         authFailed = true
         listeners.authFailed?()
     }
@@ -222,7 +224,7 @@ final class MailAccountManager {
     private func establishBaseline(client: any MailClient, for signIn: SignIn) async {
         guard let status = try? await client.status(folder: MailConstants.inbox) else { return }
         guard signIn.isCurrent else { return }
-        MailInboxCursor(prefs: prefs).reset(to: status)
+        MailInboxCursor(prefs: prefs).reset(to: status, for: signIn)
     }
 
     private func discoverDisplayName(client: any MailClient, address: String) async -> String? {

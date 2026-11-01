@@ -195,8 +195,8 @@ struct MailMuteRulesTests {
             Self.message(uid: 4, from: "bulletin@mail.ntust.edu.tw", arrivedAt: Self.at(day: 23, 12)),
         ]])
         let center = RejectingNotificationCenter(rejecting: ["school-mail-1-3"])
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { fake }, onAuthFailure: {})
+        let checker = MailChecker(prefs: prefs, session: AccountSession(), notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { _ in })
         #expect(await checker.check(trigger: .backgroundTask) == .newMail(1))
         #expect(prefs.inboxNextUID == 3)
 
@@ -218,8 +218,8 @@ struct MailMuteRulesTests {
             Self.message(uid: 4, from: "bulletin@mail.ntust.edu.tw", arrivedAt: Self.at(day: 23, 12)),
         ]])
         let center = RejectingNotificationCenter(rejecting: ["school-mail-1-3"])
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { fake }, onAuthFailure: {})
+        let checker = MailChecker(prefs: prefs, session: AccountSession(), notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { _ in })
         _ = await checker.check(trigger: .backgroundTask)
         await fake.update { $0.folders["INBOX"]?[1].summary.isSeen = true }
         _ = await checker.check(trigger: .backgroundTask)
