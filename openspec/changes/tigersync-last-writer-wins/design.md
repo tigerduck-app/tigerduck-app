@@ -306,21 +306,11 @@ Lost:
 - Sending nothing: a device that never synced a category would lose its local values at first
   sync, where today the re-enable prompt offered Use Local.
 
-### D14. One refresh pipeline on iOS
+### D14. One refresh pipeline on iOS (superseded)
 
-A refresh entry on `AppState` runs: stored data is already on screen; `cloudSyncCoordinator`
-drains, then `syncOverridesFromBackend(followUpIfBusy: true)`; then course selection
-(`syncCoursesIfAuthenticated`), Moodle (`AppServiceBridge.fetchAssignments`) and the calendar in
-parallel. `backgroundSync` becomes that pipeline. `HomeView.refreshable`, which today fires
-`HomeViewModel.triggerRefresh` and `syncOverridesFromBackend` side by side, calls it, as do the
-Mac's Refresh (`MacRootView`) and the Calendar, Class Table and Score pulls before their own
-fetch. Revision polling and sync pushes still run the TigerSync step alone. `FullSyncGate`
-already joins concurrent pulls.
-
-Lost:
-- Keeping the parallel start and relying on the base layer alone: the owner fixed the order.
-- Starting school fetches only after a successful TigerSync: an unreachable backend would block
-  school data.
+Superseded by refactor-v4's D13 (`openspec/changes/archive/2026-11-01-refactor-v4/design.md`):
+the school fetch starts together with the pull, and its result is applied after the pull. The
+main `sync-order` spec holds that rule.
 
 ### D15. "Use Server / Use Local": removed
 
@@ -454,7 +444,8 @@ iOS (`xcodebuild test ... -only-testing:TigerDuckTests`):
   replace an edit made while the write was in flight.
 - Courses: reconcile from tombstones, kinds and resets; the #689 cases end to end against a fake
   backend.
-- Refresh order: a fake school fetch starts only after the TigerSync step returns or fails.
+- TigerSync-only triggers: a revision change and a sync push record no school fetch. The refresh
+  order's tests are refactor-v4's D13.
 - Two devices by hand before release: each #689 case and a pull while the other device edits.
 
 Android (`./gradlew :app:testPlayDebugUnitTest`): reconciler and parser tests for the same
@@ -484,8 +475,8 @@ backend, for colour, mark, hide and reset.
 ## Owner decisions
 
 1. Re-enable "Use Server / Use Local" (D15): removed.
-2. The school fetches wait for TigerSync at most 3 seconds, then start; TigerSync keeps running
-   and the base layer keeps user choices safe whatever finishes first.
+2. Superseded by refactor-v4's D13: the school fetches start together with the pull, and their
+   results are applied after it.
 3. The legacy branches (Rollout step 4) go in a separate change once no active device has
    reported an older version for 30 days.
 4. `fix/course-outbox-ordering` (#689) merges into the current patch release. The iOS course

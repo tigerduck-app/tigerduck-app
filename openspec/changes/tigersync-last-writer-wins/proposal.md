@@ -28,8 +28,8 @@ apps and the backend share.
 - Course membership becomes a user layer over the school roster: adds, hides and removals carry
   the clock, a term reset is one timestamp, and a school upload never brings back what the user
   hid. A reset no longer depends on which device wrote it.
-- iOS: refresh runs local state, then TigerSync, then course selection, Moodle and grades. The
-  outbox becomes the record of unsent edits, kept while TigerSync or a category is off.
+- iOS: the outbox becomes the record of unsent edits, kept while TigerSync or a category is off.
+  The refresh order is refactor-v4's D13.
 - **BREAKING (UI)**: the per-assignment conflict alert and the re-enable "Use Server / Use Local"
   prompt go away.
 - The `fix/course-outbox-ordering` fixes (#689) ship first in a patch release; the iOS course
@@ -44,8 +44,8 @@ apps and the backend share.
 - `tigersync-merge`: per-item, per-field last-writer-wins on the backend and in the apps:
   inventory of synced fields, tombstones and resets, compatibility with released apps, and
   migration of existing server and device data.
-- `tigersync-refresh-order`: the order of local state, TigerSync and the school fetches on
-  launch and refresh, and the school base layer under user overrides.
+- `tigersync-refresh-order`: one refresh at a time, which triggers fetch from the school, and the
+  school base layer under user overrides.
 
 ### Modified Capabilities
 
