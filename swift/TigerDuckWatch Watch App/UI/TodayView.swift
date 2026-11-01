@@ -15,7 +15,7 @@ struct TodayView: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { _ in
+        TimelineView(.everyMinute) { _ in
             Group {
                 if todaysCourses.isEmpty {
                     ContentUnavailableView(

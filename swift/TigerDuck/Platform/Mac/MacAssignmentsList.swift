@@ -12,7 +12,7 @@ struct MacAssignmentsList: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { _ in
+        TimelineView(.everyMinute) { _ in
             content(now: AppClock.now())
         }
     }
