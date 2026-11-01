@@ -3,7 +3,8 @@ import Defaults
 import Foundation
 
 nonisolated final class MailSettingsStore: MailPreferenceFields, @unchecked Sendable {
-    static let shared = MailSettingsStore()
+    /// Read-only outside this store: a write goes through `change(for:_:)`.
+    static let shared: any MailPreferences = MailSettingsStore()
 
     private struct OwnedDeletedRecord: Codable, Equatable, Sendable {
         var folder: String
