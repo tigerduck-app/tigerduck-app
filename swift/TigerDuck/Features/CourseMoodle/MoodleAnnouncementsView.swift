@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MoodleAnnouncementsView: View {
     let store: MoodleCourseStore
+    let policy: VisualStylePolicy
     let open: (MoodleCourseRoute) -> Void
 
     var body: some View {
@@ -9,7 +10,8 @@ struct MoodleAnnouncementsView: View {
             MoodleDiscussionsView(
                 pages: pages,
                 title: String(localized: "feature_announcements"),
-                page: store.newsForum.map { MoodlePage.forum(cmid: $0.cmid) }
+                page: store.newsForum.map { MoodlePage.forum(cmid: $0.cmid) },
+                policy: policy
             ) { open(.announcement($0)) }
         } else {
             ScrollView {
