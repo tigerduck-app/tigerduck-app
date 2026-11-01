@@ -24,9 +24,12 @@ struct MailListStatus: Equatable {
     var sentCopyNotice: String?
 }
 
+/// `running` names the load that set `loadingSelection`, so a load clears only its own mark,
+/// whether or not the sign-in it ran for is still current.
 struct MailListLoads {
     let account: AccountSession
     var loadingSelection: MailFolderSelection?
+    var running: UUID?
 }
 
 struct MailboxPages {

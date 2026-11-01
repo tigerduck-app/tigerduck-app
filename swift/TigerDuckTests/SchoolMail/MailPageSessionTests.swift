@@ -194,6 +194,25 @@ struct MailPageSessionTests {
         #expect(next === opener.second)
     }
 
+    @Test("an open a sign-in of the same account overtook leaves nothing behind, so the next use opens again")
+    func anOpenASignInOvertookLeavesNothingBehind() async throws {
+        let opener = Opener(first: FakeMailClient(folders: ["INBOX": []]), second: FakeMailClient(folders: ["INBOX": []]))
+        let account = AccountSession()
+        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() },
+                                      signOutEvents: NotificationCenter(), account: account)
+        await opener.first.hold("login")
+        let use = Task { try await session.use { $0 } }
+        await opener.first.waitForArrival("login")
+
+        account.endSignIn()
+        await opener.first.release("login")
+
+        await #expect(throws: CancellationError.self) { _ = try await use.value }
+        let next = try await session.use { $0 }
+        #expect(next === opener.second)
+        #expect(opener.count == 2)
+    }
+
     @Test func aSignOutElsewhereLeavesTheSessionAlone() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         let session = MailPageSession(idleClose: .seconds(30), open: { fake }, signOutEvents: NotificationCenter())

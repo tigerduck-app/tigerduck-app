@@ -12,9 +12,11 @@ enum MailListLoader {
         var selection = list.selection
         let signIn = await list.account.startingSignIn
         guard list.loads.loadingSelection != selection else { return }
+        let load = UUID()
         list.loads.loadingSelection = selection
+        list.loads.running = load
         defer {
-            if signIn.isCurrent, list.loads.loadingSelection == selection { list.loads.loadingSelection = nil }
+            if list.loads.running == load { (list.loads.loadingSelection, list.loads.running) = (nil, nil) }
         }
         let token = list.mailbox.editToken
         if await paintFromCache(list: list) {
@@ -24,7 +26,7 @@ enum MailListLoader {
         }
         list.status.isRefreshing = true
         defer {
-            if list.isCurrent(selection, signIn), list.loads.loadingSelection == selection { list.status.isRefreshing = false }
+            if list.loads.running == load, selection == list.selection { list.status.isRefreshing = false }
         }
         do {
             if list.folders.roles.isEmpty {

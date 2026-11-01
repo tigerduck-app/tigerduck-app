@@ -159,14 +159,24 @@ final class MailListBackground {
         let cache = list.writer.cache
         warmTask = Task { [weak self] in
             await delay()
-            for folder in queue {
-                guard !Task.isCancelled, let self, let list = self.list, signIn.isCurrent else { return }
+            var warmed = true
+            warming: for folder in queue {
+                guard !Task.isCancelled, let self, let list = self.list else { return }
+                // A sign-in that ended stops the warm, which a later page visit starts again.
+                guard signIn.isCurrent else {
+                    warmed = false
+                    break
+                }
                 do {
                     var page = try await list.session.use { client in
                         try await client.page(folder: folder, olderThanSequence: nil, pageSize: MailConstants.warmPageSize)
                     }
                     page.fetchedAt = Date()
-                    guard !Task.isCancelled, signIn.isCurrent else { return }
+                    guard !Task.isCancelled else { return }
+                    guard signIn.isCurrent else {
+                        warmed = false
+                        break warming
+                    }
                     if list.targets.contains(folder) { continue }
                     await list.writer.chain { [page] wipeCount in
                         if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page, wipeCount: wipeCount) }
@@ -178,7 +188,7 @@ final class MailListBackground {
                 }
             }
             guard let self, !Task.isCancelled else { return }
-            self.warmDone = true
+            self.warmDone = warmed
             self.warmTask = nil
         }
     }

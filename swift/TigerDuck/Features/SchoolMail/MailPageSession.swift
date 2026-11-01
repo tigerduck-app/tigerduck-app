@@ -5,7 +5,8 @@ import Foundation
 final class MailPageSession {
     private let open: () async throws -> any MailClient
     private var client: (any MailClient)?
-    private var opening: Task<any MailClient, Error>?
+    /// The open under way and the sign-in it was started in; a later sign-in opens its own.
+    private var opening: (task: Task<any MailClient, Error>, signIn: SignIn)?
     private let idleClose: MailIdleClose
     private var inFlight = 0
     private var isReleased = false
@@ -111,14 +112,14 @@ final class MailPageSession {
 
     private func resolveClient(for signIn: SignIn) async throws -> any MailClient {
         if let client { return client }
-        if let opening {
-            let opened = try await opening.value
+        if let opening, opening.signIn.isCurrent {
+            let opened = try await opening.task.value
             guard signIn.isCurrent else { throw CancellationError() }
             return opened
         }
         let task = Task { try await open() }
-        opening = task
-        defer { if signIn.isCurrent { opening = nil } }
+        opening = (task, signIn)
+        defer { if opening?.task == task { opening = nil } }
         let opened = try await task.value
         guard signIn.isCurrent else {
             await opened.logout()
