@@ -57,7 +57,7 @@ final class HolidaySettingSender {
     ) async {
         let sent = store.holidayEdit(holidayID)
         do {
-            let reply = try await BackendClient.$holdsResend.withValue({ !Defaults[.cloudSyncEnabled] }) {
+            let reply = try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.cloudSyncEnabled }) {
                 try await registration.uploadHolidayOverride(
                     holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? Date(), for: signIn
                 )

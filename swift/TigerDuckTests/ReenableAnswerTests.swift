@@ -46,10 +46,11 @@ struct ReenableAnswerTests {
         #expect(app.pending.isEmpty)
     }
 
-    @Test("Course requests that fail keep the courses pending, and the rest is let go of")
-    func failedCourseRequestsKeepTheCoursesPending() async {
+    @Test("Course requests that fail, or wait as course sync went off, keep the courses pending, and the rest is let go of",
+          arguments: [URLError(.notConnectedToInternet), ResendHeldError()] as [any Error])
+    func failedCourseRequestsKeepTheCoursesPending(_ failure: any Error) async {
         let app = AnswerProbe(pending: [.courses, .courseNames])
-        app.sendCourses = { throw URLError(.notConnectedToInternet) }
+        app.sendCourses = { throw failure }
 
         await SyncConflicts.answerReenableConflict(
             Self.conflict([.courses, .courseNames]), keepLocal: true, effects: app.effects
