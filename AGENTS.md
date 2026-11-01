@@ -96,21 +96,21 @@ length in CI and, in Claude Code, after every edit (`.claude/hooks/check-comment
 applies the rest. Before pushing, run `python3 tools/check_comments.py check --base origin/dev`.
 
 - Write comments in English. String literals may hold Chinese, comments may not.
-- Say why: a reason, an invariant or a non-obvious constraint. Do not restate the code or tell
-  its history; git keeps the history.
+- Comment only what the code cannot say: a behavior of Apple's platforms, the school's servers,
+  a dependency or a protocol that we cannot change, a contract callers rely on, a license, or an
+  issue or RFC link. Do not restate the code or tell its history; git keeps the history.
 - Keep a regular comment block to 3 lines and a doc comment to 8.
 - Cite only what a reader can open: repository paths, RFC sections, Apple documentation, issue
   and pull request URLs. Never cite review rounds, dispatch or task numbers, sections of
   documents outside the repository, OpenSpec changes or paths, or agent and tool names.
 - Do not record who decided something or what a pull request discussion said; write the reason.
-- A comment that explains our own ordering, a flag or a guard means a type or a state is
-  missing; change the code instead. Comments stay for the school's servers and Apple's
-  behavior, on a type whose name says what it handles.
+- When our own code needs a comment to be understood, such as its ordering, a flag or a guard,
+  a name, a type or a state is missing; change the code instead.
 - Use plain wording: no bold, no `IMPORTANT:` or `NOTE:`, no em dashes, and no "exactly",
   "deliberately", "intentionally" or "note that" as emphasis.
 - Put longer knowledge where it belongs: rationale that spans files in an ADR under
-  `docs/decisions/` with a one-line pointer in the code, procedures in a skill, agent rules in
-  the nearest AGENTS.md, and described behavior in a test.
+  `docs/decisions/`, procedures in a skill, agent rules in the nearest AGENTS.md, and described
+  behavior in a test.
 
 ## Planning
 
