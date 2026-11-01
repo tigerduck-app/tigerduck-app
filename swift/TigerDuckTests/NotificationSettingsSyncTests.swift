@@ -163,7 +163,7 @@ struct NotificationSettingsSyncTests {
 
         try await NotificationSettingsSync.push(
             local: Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 30, hasPickedClassReminderLead: true),
-            base: Self.local(),
+            base: .since(Self.local()),
             client: client,
             cloudSyncEnabled: true
         )
@@ -212,7 +212,7 @@ struct NotificationSettingsSyncTests {
                 classReminderLeadMinutes: 15,
                 hasPickedClassReminderLead: true
             ),
-            base: Self.local(isAssignmentReminderEnabled: false, assignmentReminderOffsets: [.hr1], showInClassScenario: false),
+            base: .since(Self.local(isAssignmentReminderEnabled: false, assignmentReminderOffsets: [.hr1], showInClassScenario: false)),
             client: client,
             cloudSyncEnabled: true
         )
@@ -247,7 +247,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 1)), for: url)
 
-        try await NotificationSettingsSync.push(local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true)
+        try await NotificationSettingsSync.push(local: Self.local(), base: .since(Self.local()), client: client, cloudSyncEnabled: true)
 
         let requests = SettingsAPIStub.requests(for: url)
         let sent = try Self.sentEnvelope(from: requests[1])
@@ -288,7 +288,7 @@ struct NotificationSettingsSyncTests {
         )
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 6)), for: url)
 
-        try await NotificationSettingsSync.push(local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true)
+        try await NotificationSettingsSync.push(local: Self.local(), base: .since(Self.local()), client: client, cloudSyncEnabled: true)
 
         let requests = SettingsAPIStub.requests(for: url)
         #expect(requests.map(\.httpMethod) == ["GET", "PUT", "PUT"])
@@ -317,7 +317,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 409, body: try Self.conflictEnvelope(document: doc, revision: 3)), for: url)
 
         await #expect(throws: NotificationSettingsSync.SyncError.self) {
-            try await NotificationSettingsSync.push(local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true)
+            try await NotificationSettingsSync.push(local: Self.local(), base: .since(Self.local()), client: client, cloudSyncEnabled: true)
         }
 
         let requests = SettingsAPIStub.requests(for: url)
@@ -335,14 +335,14 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(documentObject: original, revision: 1)), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 2)), for: url)
         try await NotificationSettingsSync.push(
-            local: Self.local(showInClassScenario: true), base: synced, client: client, cloudSyncEnabled: true
+            local: Self.local(showInClassScenario: true), base: .since(synced), client: client, cloudSyncEnabled: true
         )
         let afterFirst = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
 
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(documentObject: afterFirst, revision: 2)), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 3)), for: url)
         try await NotificationSettingsSync.push(
-            local: Self.local(assignmentLiveActivityLeadTime: 5400), base: synced, client: client, cloudSyncEnabled: true
+            local: Self.local(assignmentLiveActivityLeadTime: 5400), base: .since(synced), client: client, cloudSyncEnabled: true
         )
 
         let requests = SettingsAPIStub.requests(for: url)
@@ -370,7 +370,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 3)), for: url)
 
         try await NotificationSettingsSync.push(
-            local: Self.local(assignmentLiveActivityLeadTime: 5400), base: synced, client: client, cloudSyncEnabled: true
+            local: Self.local(assignmentLiveActivityLeadTime: 5400), base: .since(synced), client: client, cloudSyncEnabled: true
         )
 
         let requests = SettingsAPIStub.requests(for: url)
@@ -394,7 +394,7 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(documentObject: existing, revision: 4)), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 5)), for: url)
 
-        try await NotificationSettingsSync.push(local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true)
+        try await NotificationSettingsSync.push(local: Self.local(), base: .since(Self.local()), client: client, cloudSyncEnabled: true)
 
         let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
         let assignments = try #require(sent["assignments"] as? [String: Any])
@@ -418,10 +418,10 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 8)), for: url)
 
         let written = try await NotificationSettingsSync.push(
-            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true
+            local: Self.local(), base: .since(Self.local()), client: client, cloudSyncEnabled: true
         )
 
-        #expect(written)
+        #expect(written == .landed)
         #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
     }
 
@@ -441,9 +441,9 @@ struct NotificationSettingsSyncTests {
             hasPickedClassReminderLead: true
         )
 
-        #expect(copy.taking([:], from: sentValues) == copy)
-        #expect(copy.taking(try sentValues.documentUpdates(existing: [:]), from: sentValues) == sentValues)
-        let one = copy.taking(["live_activity": ["show_in_class": true]], from: sentValues)
+        #expect(copy.mergeSentFields([:], of: sentValues) == copy)
+        #expect(copy.mergeSentFields(try sentValues.documentUpdates(existing: [:]), of: sentValues) == sentValues)
+        let one = copy.mergeSentFields(["live_activity": ["show_in_class": true]], of: sentValues)
         #expect(one.showInClassScenario == true)
         #expect(one.classPreparingLeadTime == copy.classPreparingLeadTime)
     }
@@ -455,10 +455,10 @@ struct NotificationSettingsSyncTests {
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
 
         let written = try await NotificationSettingsSync.push(
-            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: false
+            local: Self.local(), base: .since(Self.local()), client: client, cloudSyncEnabled: false
         )
 
-        #expect(written == false)
+        #expect(written == .skipped)
         #expect(SettingsAPIStub.requests(for: url).isEmpty)
     }
 
@@ -471,10 +471,10 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 1)), for: url)
 
         let written = try await NotificationSettingsSync.push(
-            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true
+            local: Self.local(), base: .since(Self.local()), client: client, cloudSyncEnabled: true
         )
 
-        #expect(written)
+        #expect(written == .landed)
     }
 
     @Test("assignments off leaves that section exactly as the server holds it, but live_activity still updates")
@@ -493,14 +493,14 @@ struct NotificationSettingsSyncTests {
 
         let written = try await NotificationSettingsSync.push(
             local: Self.local(isAssignmentReminderEnabled: true, showInClassScenario: true),
-            base: Self.local(),
+            base: .since(Self.local()),
             client: client,
             cloudSyncEnabled: true,
             syncAssignmentRemindersEnabled: false,
             syncLiveActivityEnabled: true
         )
 
-        #expect(written)
+        #expect(written == .landed)
         let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
 
         let sentAssignments = try #require(sent["assignments"] as? [String: Any])
@@ -527,14 +527,14 @@ struct NotificationSettingsSyncTests {
 
         let written = try await NotificationSettingsSync.push(
             local: Self.local(isAssignmentReminderEnabled: true),
-            base: Self.local(isAssignmentReminderEnabled: false),
+            base: .since(Self.local(isAssignmentReminderEnabled: false)),
             client: client,
             cloudSyncEnabled: true,
             syncAssignmentRemindersEnabled: true,
             syncLiveActivityEnabled: false
         )
 
-        #expect(written)
+        #expect(written == .landed)
         let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
 
         let sentLiveActivity = try #require(sent["live_activity"] as? [String: Any])
@@ -563,14 +563,14 @@ struct NotificationSettingsSyncTests {
 
         let written = try await NotificationSettingsSync.push(
             local: Self.local(isAssignmentReminderEnabled: true, showInClassScenario: false, isClassReminderEnabled: false),
-            base: Self.local(),
+            base: .since(Self.local()),
             client: client,
             cloudSyncEnabled: true,
             syncAssignmentRemindersEnabled: false,
             syncLiveActivityEnabled: false
         )
 
-        #expect(written)
+        #expect(written == .landed)
         let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
         #expect((sent["assignments"] as? [String: Any])?["enabled"] as? Bool == false)
         #expect((sent["live_activity"] as? [String: Any])?["show_in_class"] as? Bool == true)
@@ -581,12 +581,12 @@ struct NotificationSettingsSyncTests {
     func canClearPendingMarkerRequiresWriteAndNoInterveningEdit() {
         let sent = Self.local()
 
-        #expect(NotificationSettingsSync.canClearPendingMarker(written: true, sent: sent, current: sent))
+        #expect(NotificationSettingsSync.canClearPendingMarker(.landed, sent: sent, current: sent))
 
-        #expect(!NotificationSettingsSync.canClearPendingMarker(written: false, sent: sent, current: sent))
+        #expect(!NotificationSettingsSync.canClearPendingMarker(.skipped, sent: sent, current: sent))
 
         let editedWhileInFlight = Self.local(isAssignmentReminderEnabled: !sent.isAssignmentReminderEnabled)
-        #expect(!NotificationSettingsSync.canClearPendingMarker(written: true, sent: sent, current: editedWhileInFlight))
+        #expect(!NotificationSettingsSync.canClearPendingMarker(.landed, sent: sent, current: editedWhileInFlight))
     }
 
     @Test("a device switch turning back on adopts the server's section; turning it off does not")
@@ -610,10 +610,10 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 4)), for: url)
 
         let written = try await NotificationSettingsSync.push(
-            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true
+            local: Self.local(), base: .since(Self.local()), client: client, cloudSyncEnabled: true
         )
 
-        #expect(written)
+        #expect(written == .landed)
         let requests = SettingsAPIStub.requests(for: url)
         #expect(requests.map(\.httpMethod) == ["GET", "PUT"])
         let sent = try Self.sentDocumentObject(from: requests[1])
@@ -634,10 +634,10 @@ struct NotificationSettingsSyncTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 9)), for: url)
 
         let written = try await NotificationSettingsSync.push(
-            local: Self.local(), base: Self.local(), client: client, cloudSyncEnabled: true
+            local: Self.local(), base: .since(Self.local()), client: client, cloudSyncEnabled: true
         )
 
-        #expect(written)
+        #expect(written == .landed)
         let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
         #expect(Set(sent.keys) == ["assignments", "courses", "live_activity"])
     }
@@ -667,7 +667,7 @@ struct NotificationSettingsSyncTests {
 
         try await NotificationSettingsSync.push(
             local: Self.local(assignmentReminderOffsets: [.hr24, .hr2]),
-            base: Self.local(assignmentReminderOffsets: [.hr24]),
+            base: .since(Self.local(assignmentReminderOffsets: [.hr24])),
             client: client,
             cloudSyncEnabled: true
         )
@@ -718,7 +718,7 @@ struct NotificationSettingsSyncTests {
 
         try await NotificationSettingsSync.push(
             local: Self.local(assignmentReminderOffsets: [.hr24]),
-            base: Self.local(),
+            base: .since(Self.local()),
             client: client,
             cloudSyncEnabled: true
         )
@@ -760,7 +760,7 @@ struct NotificationSettingsSyncTests {
 
         try await NotificationSettingsSync.push(
             local: Self.local(assignmentReminderOffsets: [.hr24]),
-            base: Self.local(),
+            base: .since(Self.local()),
             client: client,
             cloudSyncEnabled: true
         )
@@ -784,7 +784,7 @@ struct NotificationSettingsSyncTests {
 
         try await NotificationSettingsSync.push(
             local: Self.local(isClassReminderEnabled: false, classReminderLeadMinutes: 10),
-            base: Self.local(),
+            base: .since(Self.local()),
             client: client,
             cloudSyncEnabled: true
         )

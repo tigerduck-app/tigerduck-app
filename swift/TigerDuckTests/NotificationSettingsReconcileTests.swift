@@ -512,7 +512,7 @@ struct NotificationSettingsReconcileTests {
             defer { Defaults[.notificationSettingsSyncedPreferences] = savedCopy }
             Self.setDeviceValues(store)
             NotificationSettingsSync.forget()
-            NotificationSettingsSync.accountSignedIn(local: .init(from: store), for: testSignIn)
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(from: .init(from: store), for: testSignIn)
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let url = Fixtures.documentURL(baseURL)
             SettingsAPIStub.enqueue(try Fixtures.found(["assignments": Self.serverAssignments()], revision: 3), for: url)
@@ -531,13 +531,13 @@ struct NotificationSettingsReconcileTests {
                 store,
                 client: client,
                 syncLiveActivity: false,
-                recordSynced: { NotificationSettingsSync.recordSynced($0, sections: $1, for: testSignIn) }
+                recordSynced: { NotificationSettingsSync.recordSyncedSections($1, of: $0, for: testSignIn) }
             )
 
             #expect(outcome == .settled(adopted: [.assignments], seeded: [.courses]))
             #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
-            #expect(NotificationSettingsSync.synced?.classPreparingLeadTime == 600)
-            #expect(NotificationSettingsSync.synced?.isAssignmentReminderEnabled == true)
+            #expect(NotificationSettingsSync.lastSyncedPreferences?.classPreparingLeadTime == 600)
+            #expect(NotificationSettingsSync.lastSyncedPreferences?.isAssignmentReminderEnabled == true)
         }
     }
 

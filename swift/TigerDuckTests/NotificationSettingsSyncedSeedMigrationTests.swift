@@ -54,7 +54,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 current: Self.preferences(showInClass: false), signedIn: true, storedDataReadsBack: { true }
             )
 
-            #expect(NotificationSettingsSync.synced == Self.preferences(showInClass: true))
+            #expect(NotificationSettingsSync.lastSyncedPreferences == Self.preferences(showInClass: true))
             #expect(UserDefaults.standard.bool(forKey: doneKey))
         }
     }
@@ -69,7 +69,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
 
             #expect(UserDefaults.standard.bool(forKey: doneKey))
             let base = NotificationSettingsSync.pushBase(local: local)
-            #expect(base == nil)
+            #expect(base == .everyField)
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let url = NotificationSettingsFixtures.documentURL(baseURL)
             SettingsAPIStub.enqueue(
@@ -82,12 +82,12 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 local: local, base: base, client: SettingsAPIStub.makeClient(baseURL: baseURL), cloudSyncEnabled: true
             )
             let sent = try NotificationSettingsFixtures.sentDocument(SettingsAPIStub.requests(for: url)[1])
-            #expect(written)
+            #expect(written == .landed)
             #expect((sent["live_activity"] as? [String: Any])?["show_in_class"] as? Bool == true)
 
-            NotificationSettingsSync.recordPushed(local, fields: try local.documentUpdates(existing: [:]), for: testSignIn)
-            #expect(NotificationSettingsSync.synced == local)
-            #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == local)
+            NotificationSettingsSync.mergeSentFields(try local.documentUpdates(existing: [:]), of: local, for: testSignIn)
+            #expect(NotificationSettingsSync.lastSyncedPreferences == local)
+            #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == .since(local))
         }
     }
 
@@ -107,9 +107,9 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             server.classPreparingLeadTime = 900
             let signedOut = Self.preferences(showInClass: true)
 
-            NotificationSettingsSync.accountSignedIn(local: signedOut, for: testSignIn)
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(from: signedOut, for: testSignIn)
 
-            #expect(NotificationSettingsSync.synced == signedOut)
+            #expect(NotificationSettingsSync.lastSyncedPreferences == signedOut)
             let edited = Self.preferences(showInClass: false)
             let base = NotificationSettingsSync.pushBase(local: edited)
             let baseURL = SettingsAPIStub.uniqueBaseURL()
@@ -137,15 +137,15 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     @Test("a sign-in keeps a copy it finds, and leaves none while the upgrade's push still sends every field")
     func signInKeepsACopyAndTheUpgradeMark() async {
         await Self.withCleanState {
-            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: true), for: testSignIn)
-            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false), for: testSignIn)
-            #expect(NotificationSettingsSync.synced == Self.preferences(showInClass: true))
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(from: Self.preferences(showInClass: true), for: testSignIn)
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(from: Self.preferences(showInClass: false), for: testSignIn)
+            #expect(NotificationSettingsSync.lastSyncedPreferences == Self.preferences(showInClass: true))
 
             NotificationSettingsSync.forget()
             Defaults[.notificationSettingsPushSendsEveryField] = true
-            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false), for: testSignIn)
-            #expect(NotificationSettingsSync.synced == nil)
-            #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == nil)
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(from: Self.preferences(showInClass: false), for: testSignIn)
+            #expect(NotificationSettingsSync.lastSyncedPreferences == nil)
+            #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == .everyField)
         }
     }
 
@@ -157,7 +157,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             NotificationSettingsSync.seedOnUpgrade(local: Self.preferences(showInClass: true), pushPending: true,
                                                    for: endedTestSignIn)
 
-            #expect(NotificationSettingsSync.synced == nil)
+            #expect(NotificationSettingsSync.lastSyncedPreferences == nil)
             #expect(!Defaults[.notificationSettingsPushSendsEveryField])
         }
     }
@@ -171,7 +171,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 current: Self.preferences(showInClass: true), signedIn: false, storedDataReadsBack: { true }
             )
 
-            #expect(NotificationSettingsSync.synced == nil)
+            #expect(NotificationSettingsSync.lastSyncedPreferences == nil)
             #expect(!Defaults[.notificationSettingsPushSendsEveryField])
             #expect(UserDefaults.standard.bool(forKey: doneKey))
         }
@@ -195,7 +195,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     func pushRecordsOnlyWhatItSent() async throws {
         try await Self.withCleanState {
             let copy = Self.preferences(showInClass: true)
-            NotificationSettingsSync.accountSignedIn(local: copy, for: testSignIn)
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(from: copy, for: testSignIn)
             var startOfPush = copy
             startOfPush.isAssignmentReminderEnabled = false
             var duringPush = startOfPush
@@ -225,13 +225,13 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 client: client,
                 cloudSyncEnabled: true,
                 syncLiveActivityEnabled: false,
-                recordSent: { sent = $0 }
+                recordOnServer: { sent = $0 }
             )
-            #expect(written)
-            NotificationSettingsSync.recordPushed(startOfPush, fields: sent, for: testSignIn)
+            #expect(written == .landed)
+            NotificationSettingsSync.mergeSentFields(sent, of: startOfPush, for: testSignIn)
 
-            #expect(NotificationSettingsSync.synced?.classPreparingLeadTime == 900)
-            #expect(NotificationSettingsSync.synced?.isAssignmentReminderEnabled == false)
+            #expect(NotificationSettingsSync.lastSyncedPreferences?.classPreparingLeadTime == 900)
+            #expect(NotificationSettingsSync.lastSyncedPreferences?.isAssignmentReminderEnabled == false)
             let afterFirst = try NotificationSettingsFixtures.sentDocument(SettingsAPIStub.requests(for: url)[1])
             SettingsAPIStub.enqueue(try NotificationSettingsFixtures.found(afterFirst, revision: 2), for: url)
             SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 3), for: url)
@@ -250,7 +250,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     @Test("a push with nothing to write records the fields it changed, so a later change back goes up")
     func noWritePushRecordsTheFieldsItChanged() async throws {
         try await Self.withCleanState {
-            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false), for: testSignIn)
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(from: Self.preferences(showInClass: false), for: testSignIn)
             let turnedOn = Self.preferences(showInClass: true)
             let server = try turnedOn.documentUpdates(existing: [:])
             let baseURL = SettingsAPIStub.uniqueBaseURL()
@@ -266,11 +266,11 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 base: NotificationSettingsSync.pushBase(local: turnedOn),
                 client: client,
                 cloudSyncEnabled: true,
-                recordSent: { sent = $0 }
+                recordOnServer: { sent = $0 }
             )
-            #expect(landed)
-            NotificationSettingsSync.recordPushed(turnedOn, fields: sent, for: testSignIn)
-            #expect(NotificationSettingsSync.synced?.showInClassScenario == true)
+            #expect(landed == .landed)
+            NotificationSettingsSync.mergeSentFields(sent, of: turnedOn, for: testSignIn)
+            #expect(NotificationSettingsSync.lastSyncedPreferences?.showInClassScenario == true)
 
             let turnedOff = Self.preferences(showInClass: false)
             try await NotificationSettingsSync.push(
@@ -296,14 +296,14 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 current: Self.preferences(showInClass: true), signedIn: true, storedDataReadsBack: { false }
             )
 
-            #expect(NotificationSettingsSync.synced == nil)
+            #expect(NotificationSettingsSync.lastSyncedPreferences == nil)
             #expect(!UserDefaults.standard.bool(forKey: doneKey))
 
             NotificationSettingsSyncedSeedMigration.runIfNeeded(
                 current: Self.preferences(showInClass: true), signedIn: true, storedDataReadsBack: { true }
             )
 
-            #expect(NotificationSettingsSync.synced == Self.preferences(showInClass: true))
+            #expect(NotificationSettingsSync.lastSyncedPreferences == Self.preferences(showInClass: true))
             #expect(UserDefaults.standard.bool(forKey: doneKey))
         }
     }

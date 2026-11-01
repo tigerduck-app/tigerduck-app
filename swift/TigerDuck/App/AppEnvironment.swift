@@ -112,8 +112,8 @@ final class AppEnvironment {
             pushCoordinator.refreshRegistrationAfterAuth()
             pushSchedule.requestSync()
             #if os(iOS)
-            NotificationSettingsSync.accountSignedIn(
-                local: .init(from: liveActivity.preferences), for: authService.session.currentSignIn
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(
+                from: .init(from: liveActivity.preferences), for: authService.session.currentSignIn
             )
             notificationSettings.reconcile()
             #endif
