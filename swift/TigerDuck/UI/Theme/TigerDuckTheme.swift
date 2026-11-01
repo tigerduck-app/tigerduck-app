@@ -71,6 +71,16 @@ enum TigerDuckTheme {
         0x2980B9,
     ]
 
+    /// Moodle's default `coursecolor1` to `coursecolor10`, made readable on the cards.
+    /// `core_course\output\course_image::get_generated_color_for_id` picks `coursecolor{id % 10 + 1}`.
+    nonisolated static let moodleCourseColors: [UInt32] = [
+        0x81ECEC, 0x74B9FF, 0xA29BFE, 0xDFE6E9, 0x00B894, 0x0984E3, 0xB2BEC3, 0xFDCB6E, 0xFD79A8, 0x6C5CE7,
+    ].map { UInt32(AccentContrast.readable($0)) }
+
+    nonisolated static func moodleCourseColor(forCourseId id: Int) -> UInt32 {
+        moodleCourseColors[Int(id.magnitude % UInt(moodleCourseColors.count))]
+    }
+
     static let courseColors: [Color] = coursePaletteHexes.map { Color(hex: UInt($0)) }
 
     static func courseColorHex(for courseNo: String) -> String {
