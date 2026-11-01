@@ -58,7 +58,7 @@ struct MailMessageContent {
     var plainText = ""
     var linkedPlainText = AttributedString()
     var warnings: [MailWarning] = []
-    var parseFailed = false
+    var hasNothingRenderable = false
 }
 
 struct MailMessageDisplay {

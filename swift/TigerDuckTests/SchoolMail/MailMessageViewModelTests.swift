@@ -225,9 +225,9 @@ struct MailMessageViewModelTests {
         #expect(h.model.formattedHTML == ##"<p style="color: #959595">Hi <img src="https://x.example/a.png" /></p>"##)
     }
 
-    @Test func cancellingTheCallerCancelsTheDetachedWork() async {
+    @Test func cancellingTheCallerCancelsTheDetachedWork() async throws {
         let caller = Task {
-            await MailMessageRenderer.detachedCancellably { () -> Bool in
+            try await MailMessageRenderer.detachedCancellably { () -> Bool in
                 for _ in 0..<5_000 {
                     if Task.isCancelled { return true }
                     usleep(1_000)
@@ -236,7 +236,7 @@ struct MailMessageViewModelTests {
             }
         }
         caller.cancel()
-        #expect(await caller.value)
+        #expect(try await caller.value)
     }
 
     @Test func aCancelledLoadAppliesNothing() async throws {
@@ -253,7 +253,7 @@ struct MailMessageViewModelTests {
     @Test func unreadableMailFallsBackToSource() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: nil))
         await h.model.load()
-        #expect(h.model.parseFailed)
+        #expect(h.model.hasNothingRenderable)
         #expect(h.model.mode == .source)
     }
 

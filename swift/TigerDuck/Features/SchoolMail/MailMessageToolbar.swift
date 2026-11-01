@@ -1,11 +1,13 @@
 #if os(iOS)
 import SwiftUI
 
+enum MailDeleteConfirmation { case toTrash, permanent }
+
 struct MailMessageToolbar: ToolbarContent {
     @Bindable var viewModel: MailMessageViewModel
     let onCompose: (MailComposeMode) -> Void
     let onMove: () -> Void
-    let onDelete: (Bool) -> Void
+    let onDelete: (MailDeleteConfirmation) -> Void
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
@@ -48,7 +50,7 @@ struct MailMessageToolbar: ToolbarContent {
                 }
                 Section {
                     Button(role: .destructive) {
-                        Task { onDelete(await viewModel.prepareDelete()) }
+                        Task { onDelete(await viewModel.prepareDelete() ? .permanent : .toTrash) }
                     } label: {
                         Label(String(localized: "school_mail_delete"), systemImage: "trash")
                     }

@@ -65,7 +65,7 @@ final class MailMessageViewModel {
     var plainText: String { content.plainText }
     var linkedPlainText: AttributedString { content.linkedPlainText }
     var warnings: [MailWarning] { content.warnings }
-    var parseFailed: Bool { content.parseFailed }
+    var hasNothingRenderable: Bool { content.hasNothingRenderable }
     var source: String? { activity.source }
     var sourceLoadFailed: Bool { activity.sourceLoadFailed }
     var actionError: String? { activity.actionError }
@@ -157,7 +157,7 @@ final class MailMessageViewModel {
     func loadImages() async {
         display.allowRemoteImages = true
         guard let html = detail?.htmlBody else { return }
-        guard let rendered = await render(html: html, textBody: nil, allowImages: true) else { return }
+        guard let rendered = try? await render(html: html, textBody: nil, allowImages: true) else { return }
         content.sanitized = rendered.sanitized
         content.linkedDocument = rendered.linked
         content.pages = rendered.pages
@@ -223,16 +223,16 @@ final class MailMessageViewModel {
         MailLinkTarget.target(text: url.absoluteString, href: url.absoluteString)
     }
 
-    private func render(html: String?, textBody: String?, allowImages: Bool) async -> MailMessageRenderer.Rendered? {
+    private func render(html: String?, textBody: String?, allowImages: Bool) async throws -> MailMessageRenderer.Rendered {
         htmlGeneration += 1
         let generation = htmlGeneration
-        let rendered = await MailMessageRenderer.render(html: html, textBody: textBody, allowImages: allowImages)
-        guard let rendered, generation == htmlGeneration else { return nil }
+        let rendered = try await MailMessageRenderer.render(html: html, textBody: textBody, allowImages: allowImages)
+        guard generation == htmlGeneration else { throw CancellationError() }
         return rendered
     }
 
     private func apply(_ detail: MailMessageDetail) async {
-        guard let rendered = await render(html: detail.htmlBody, textBody: detail.textBody,
+        guard let rendered = try? await render(html: detail.htmlBody, textBody: detail.textBody,
                                           allowImages: allowRemoteImages) else { return }
         content.detail = detail
         content.sanitized = rendered.sanitized
@@ -245,8 +245,8 @@ final class MailMessageViewModel {
         content.plainText = rendered.plainText
         content.linkedPlainText = MailTextLinkifier.attributed(rendered.plainText)
         if rendered.linked == nil, mode == .formatted { mode = .plain }
-        content.parseFailed = detail.textBody == nil && detail.htmlBody == nil && detail.attachments.isEmpty
-        if parseFailed { mode = .source }
+        content.hasNothingRenderable = detail.textBody == nil && detail.htmlBody == nil && detail.attachments.isEmpty
+        if hasNothingRenderable { mode = .source }
         content.warnings = MailMessageRenderer.warnings(for: detail, plainText: plainText, links: rendered.sanitized?.links ?? [])
         content.loadState = .loaded
     }
