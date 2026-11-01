@@ -102,7 +102,7 @@ enum TigerDuckTheme {
 
     @discardableResult
     static func setColor(hex: UInt32, for courseNo: String, signIn: SignIn) -> [String: UInt32] {
-        store.apply(.pick(hex & 0xFFFFFF, courseNo: courseNo), palette: coursePaletteHexes, for: signIn)
+        store.pick(hex & 0xFFFFFF, courseNo: courseNo, palette: coursePaletteHexes, for: signIn)
     }
 
     @discardableResult
@@ -128,7 +128,7 @@ enum TigerDuckTheme {
     }
 
     static func reassignAll(courseNos: [String], for signIn: SignIn) {
-        store.apply(.reassignAll(courseNos: courseNos), palette: coursePaletteHexes, for: signIn)
+        store.reassignAll(courseNos: courseNos, palette: coursePaletteHexes, for: signIn)
     }
 }
 
