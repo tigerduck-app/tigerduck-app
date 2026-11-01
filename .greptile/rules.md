@@ -31,29 +31,6 @@ in this repo and consider flagging the type as "too broad", check that
 the surrounding delegate still gates on `activePayload` identity. If
 it does, skip the comment.
 
-## Watch / widget schedule helpers using device time zone
-
-**Rule:** Do not flag watch-side or widget-side schedule code (e.g.
-`swift/Shared/Watch/NextClassResolver.swift`,
-`swift/TigerDuckWatch Watch App/UI/TodayView.swift`,
-`swift/TigerDuckWatchWidget/NextClassProvider.swift`, and the iOS
-widget's `WidgetTimelineDerivation` helpers) for using
-`Calendar.current` or the device time zone instead of pinning to
-`Asia/Taipei`.
-
-**Why:** A "students abroad" timezone feature is planned. The intended
-fix routes timezone resolution through a user preference, not a hard
-`TimeZone(identifier: "Asia/Taipei")` pin. The iOS widget side has
-already been deliberately left on device tz for this reason (flagged
-and deferred on the `feat/widgets` branch, 2026-05-16); the watch side
-follows the same deferral on `integration/watchos`.
-
-**How to apply:** If you see a watch/widget calendar derived from the
-device locale/timezone and would normally suggest pinning to
-`Asia/Taipei`, skip the comment. The proper fix is the upcoming
-timezone-preference plumbing; pre-pinning now would just have to be
-ripped out and would conflict with that work.
-
 ## Course-name font scale is iOS/iPadOS only
 
 **Rule:** Do not flag `MacClassTableView` (`swift/TigerDuck/Platform/Mac/MacClassTableView.swift`)

@@ -441,7 +441,7 @@ def size_findings(sources: list[Source]) -> list[Finding]:
             what = "view" if view else main.kind
             found.append(Finding(main.path, main.start, "type-size",
                                  f"{what} `{key}` is {lines} lines with its extensions, over {limit}; split it by "
-                                 "responsibility (swift/TigerDuck/AGENTS.md, Size)"))
+                                 "responsibility (docs/decisions/0028-v4-layout.md)"))
         if main.kind in ("class", "actor") and main.stored > STORED_PROPERTIES and not main.model:
             found.append(Finding(main.path, main.start, "stored-properties",
                                  f"{main.kind} `{key}` holds {main.stored} stored properties, over "

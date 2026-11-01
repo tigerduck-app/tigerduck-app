@@ -1,35 +1,13 @@
 # Live Activity
 
-Rules for `swift/TigerDuck/Devices/LiveActivity/`, the app side of the Dynamic Island and lock-screen
-activities: scenario resolution from courses and assignments, preferences and the ActivityKit
-lifecycle. The extension UI is in `swift/TigerDuckLiveActivity/`. The backend sends assignment
-reminders; nothing here schedules them.
+Rules for `swift/TigerDuck/Devices/LiveActivity/`, the app side of the Dynamic Island and
+lock-screen activities. The extension UI is in `swift/TigerDuckLiveActivity/`. The backend sends
+assignment reminders; nothing here schedules them.
 
-## Conventions
-
-- `LiveActivityRefresher` and `SceneActivation` decide when to enter this subsystem; the rules
-  for scenarios and scheduling live here.
-- Preference changes broadcast `AppConstants.liveActivityPreferencesDidChange`, and the refresh
-  they trigger is debounced.
 - Courses come from `CanonicalCourseProvider`, so Home, Class Table and Live Activity agree.
-
-## Anti-patterns
-
-- Do not end an activity only because it is not the current resolved target. Several can run at
-  once: server push-to-start pre-starts later ones (a classPreparing activity and its inClass
-  follow-up are distinct), and each is ended by its server end job or its own countdown. The
-  coordinator ends only expired activities, duplicate copies of one `composedActivityId`, class
-  activities on a day classes do not meet (by the academic calendar and the user's "still have
-  class" choices), class activities of a class skipped or cancelled that day
-  (`CourseTimeSlot.isSkipped(slotId:in:)`) or already over by its changed times
-  (`CourseTimeSlot.hasEnded(slotId:in:at:)`), assignment activities whose cached assignment is
-  submitted, ignored or marked done, and all of them while Live Activity is unavailable.
-- Do not exceed the 8-hour assignment lead-time limit in `LiveActivityPreferencesStore`.
-- Do not ask for notification permission from background scheduling paths; it needs an explicit
-  user action.
-- Do not reschedule for purely visual changes such as accent-only updates.
-
-## Gotchas
-
-- Foreground freshness relies on one-shot refresh tasks at class boundaries; correctness in the
-  background would need push updates.
+- `Backend/Push/ScheduleSyncService.swift` builds the 48-hour event list it sends to the backend
+  with these resolvers, so a resolver change also changes what the server pushes.
+- An activity ends only for a reason `docs/decisions/0010-live-activity-end-policy.md` lists,
+  never for not being the current resolved target: several run at once, pre-started by push.
+- Ask for notification permission only on an explicit user action, never from a background
+  scheduling path.
