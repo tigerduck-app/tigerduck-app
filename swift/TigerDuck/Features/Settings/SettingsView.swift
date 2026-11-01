@@ -11,9 +11,6 @@ struct SettingsView: View {
     }
 }
 
-/// The Settings root. It and its page views read the app only in actions, through an optional:
-/// SwiftUI stops at a missing environment object as soon as a view updates, and a test shows
-/// these views without an app.
 struct SettingsList: View {
     let sheets: SettingsSheetState
 
@@ -145,8 +142,6 @@ struct SettingsList: View {
     }
 }
 
-/// Each result is named by its place and title. A page's row opens that page; a root row closes
-/// the search and scrolls to the row.
 private struct SettingsSearchResults: View {
     let query: String
     let state: SettingsState

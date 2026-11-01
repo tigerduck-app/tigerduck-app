@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// What decides which Settings rows show and which gates are open. `settingsEnvironment()` reads
-/// it from the app; a test sets it above the view instead.
 nonisolated struct SettingsState: Equatable, Sendable {
     nonisolated struct Account: Equatable, Sendable {
         var isSignedIn = false
@@ -26,7 +24,6 @@ extension EnvironmentValues {
 }
 
 extension View {
-    /// Marks a view as `row`: the root list scrolls to it by this id, and a closed gate disables it.
     func settingsRow(_ row: SettingsRow) -> some View {
         modifier(SettingsRowModifier(row: row))
     }

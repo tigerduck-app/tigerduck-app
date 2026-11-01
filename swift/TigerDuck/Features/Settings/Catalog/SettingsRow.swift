@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Every row of Settings and of the page settings views. The views take each row's title, gate
-/// and condition from here, and search walks the same cases.
 nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
     case schoolAccount, libraryAccount, mailAccount
     case accentColor, visualPreset, colorTheme, tabBar

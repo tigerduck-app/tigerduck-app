@@ -1,7 +1,6 @@
 import SwiftUI
 
 extension View {
-    /// Sets the `SettingsState` and the `AppPreferences` that the Settings views read, from the app.
     func settingsEnvironment() -> some View {
         modifier(SettingsEnvironment())
     }
@@ -18,7 +17,6 @@ extension SettingsState {
         isCheckingForUpdate = app.updateNotifyCoordinator.isCheckingForUpdate
     }
 
-    /// The accounts and TigerSync, which open and close the gates.
     init(school: AuthService, library: LibraryAccountStatus, mail: MailAccountManager, isCloudSyncOn: Bool) {
         self.init(
             school: Account(isSignedIn: school.hasStoredCredentials, name: school.storedStudentId),
@@ -45,7 +43,6 @@ private struct SettingsEnvironment: ViewModifier {
                 .environment(\.settingsState, SettingsState(app: app, isCloudSyncOn: cloudSyncEnabled))
                 .environment(app.preferences)
         } else {
-            // A unit test has no app and sets both above the view.
             content
         }
     }

@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Shows a short message in the nearest `toastHost()`; without one it does nothing.
 struct ShowToastAction {
     fileprivate let show: (LocalizedStringResource) -> Void
 
@@ -14,14 +13,10 @@ extension EnvironmentValues {
 }
 
 extension View {
-    /// Lets the views inside show a toast at the bottom, which lets touches through, goes away
-    /// on its own and is read out by VoiceOver.
     func toastHost() -> some View {
         modifier(ToastHost())
     }
 
-    /// Looks disabled and, when tapped, shows `reason` in a toast instead of acting. A nil
-    /// reason leaves the view as it is.
     func disabled(because reason: LocalizedStringResource?) -> some View {
         modifier(DisabledWithReason(closedReason: reason))
     }

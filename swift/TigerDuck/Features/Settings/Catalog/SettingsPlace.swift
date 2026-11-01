@@ -1,11 +1,9 @@
 import SwiftUI
 
-/// Where a row sits: a section of the Settings root, or a page's settings view.
 nonisolated enum SettingsPlace: Hashable {
     case section(SettingsSection)
     case page(PageSettings)
 
-    /// The section or page name, nil for the root section that has no header.
     var titleKey: LocalizedStringResource? {
         switch self {
         case .section(let section): section.titleKey
@@ -14,7 +12,6 @@ nonisolated enum SettingsPlace: Hashable {
     }
 }
 
-/// The Settings root's sections other than the page rows, in their order on screen.
 nonisolated enum SettingsSection: CaseIterable {
     case account, appearance, tigerSync, notificationPermissions, language, other, about
 
@@ -31,8 +28,6 @@ nonisolated enum SettingsSection: CaseIterable {
     }
 }
 
-/// A condition that has to hold before a row can be used. A closed gate leaves the row on
-/// screen, looking disabled, and a tap shows the reason.
 nonisolated enum SettingsGate {
     case tigerSync, schoolSignIn, mailSignIn, librarySignIn
 
@@ -87,7 +82,6 @@ nonisolated extension SettingsRow {
         }
     }
 
-    /// Whether the row is on screen at all; search lists only these.
     func isShown(in state: SettingsState) -> Bool {
         switch self {
         case .mailAccount, .mailNotifications, .mailDisplayName, .mailStorage: state.hasSchoolMail
@@ -100,7 +94,6 @@ nonisolated extension SettingsRow {
         }
     }
 
-    /// The reason the row cannot be used now, or nil when it can.
     func closedReason(in state: SettingsState) -> LocalizedStringResource? {
         guard let gate, !gate.isOpen(in: state) else { return nil }
         return gate.reasonKey

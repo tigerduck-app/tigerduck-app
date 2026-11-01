@@ -1,8 +1,6 @@
 import Defaults
 import SwiftUI
 
-// The page settings that the Mac's settings window shows too, under a header naming the page.
-
 struct HomeDisplayToggles: View {
     @Bindable var preferences: AppPreferences
 

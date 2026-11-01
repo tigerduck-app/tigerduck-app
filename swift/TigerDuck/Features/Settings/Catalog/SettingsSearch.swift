@@ -1,6 +1,5 @@
 import Foundation
 
-/// A row that a search found, named by where it sits and what it is called.
 nonisolated struct SettingsSearchResult: Identifiable, Equatable {
     let row: SettingsRow
     let path: [String]
@@ -10,8 +9,6 @@ nonisolated struct SettingsSearchResult: Identifiable, Equatable {
 }
 
 nonisolated enum SettingsSearch {
-    /// The shown rows whose title or section or page name holds every word of `query`, in the
-    /// app's language, ignoring case and width.
     static func results(for query: String, in state: SettingsState) -> [SettingsSearchResult] {
         let words = query.split(whereSeparator: \.isWhitespace)
         guard !words.isEmpty else { return [] }

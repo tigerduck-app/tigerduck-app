@@ -48,7 +48,6 @@ struct StorageSettingsView: View {
     }
 }
 
-/// One kind's row, for a page that holds that kind's data.
 struct StorageKindSection: View {
     let kind: StorageKind
     var cleaner: StorageCleaner = .live

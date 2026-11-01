@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Bulletin push and its rules, which need the school sign-in for the account they belong to.
 struct BulletinsPageSettingsView: View {
     @Environment(\.settingsState) private var state
 
