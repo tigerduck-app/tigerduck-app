@@ -99,6 +99,36 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual([(f.path, f.message.split("`")[1]) for f in found],
                          [("C.swift", "MissingTests"), ("D.swift", "WebTests")])
 
+    def test_a_well_formed_migration_passes(self) -> None:
+        good = ('enum ADoneMigration {\n    private static let doneKey = "ADoneMigration.v1.done"\n'
+                '    static func runIfNeeded() {}\n}\n')
+        runner = source(ca.MIGRATION_RUNNER, "func run() { ADoneMigration.runIfNeeded() }\n")
+        self.assertEqual(ca.migration_findings([source(ca.MIGRATIONS + "ADoneMigration.swift", good), runner]), [])
+
+    def test_a_migration_that_breaks_the_folder_rules_fails(self) -> None:
+        def fail(name: str, text: str) -> list[str]:
+            return [f.message for f in ca.migration_findings([source(ca.MIGRATIONS + name, text)])]
+        self.assertEqual(len(fail("Helper.swift", "enum Helper {}\n")), 1)
+        key = 'private static let doneKey = "%s.v1.done"\n'
+        self.assertEqual(len(fail("AMigration.swift", "enum AMigration {\n" + key % "AMigration" + "}\n")), 1)
+        self.assertEqual(len(fail("AMigration.swift", "enum AMigration {\n static func runIfNeeded() {}\n}\n")), 1)
+        self.assertEqual(len(fail("AMigration.swift", "enum Other {\n" + key % "AMigration"
+                                  + " static func runIfNeeded() {}\n}\n")), 1)
+        self.assertEqual(len(fail("AMigration.swift", "enum AMigration {\n" + key % "Other"
+                                  + " static func runIfNeeded() {}\n}\n")), 1)
+
+    def test_migrations_may_not_refer_to_each_other_or_be_used_outside(self) -> None:
+        def migration(name: str, extra: str = "") -> ca.Source:
+            return source(ca.MIGRATIONS + name + ".swift",
+                          f'enum {name} {{\n    private static let doneKey = "{name}.v1.done"\n'
+                          f'    static func runIfNeeded() {{ {extra} }}\n}}\n')
+        found = ca.migration_findings([
+            migration("AMigration", "BMigration.runIfNeeded()"), migration("BMigration"),
+            source(APP + "Stores/X.swift", "BMigration.runIfNeeded()\n// AMigration\n"),
+            source(ca.MIGRATION_RUNNER, "AMigration.runIfNeeded()\n")])
+        self.assertEqual([(f.path, f.rule) for f in found],
+                         [(ca.MIGRATIONS + "AMigration.swift", "migration"), (APP + "Stores/X.swift", "migration")])
+
     def test_a_type_counts_its_extensions_and_not_its_nested_types(self) -> None:
         main = "struct Store {\n" + body(200) + "    struct Row {\n" + body(100) + "    }\n}\n"
         ext = "extension Store {\n" + body(60) + "}\n"

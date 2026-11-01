@@ -53,6 +53,7 @@ RULES = {r.name: r for r in (
     Rule("taipei-zone", 0),
     Rule("duplicate-base-name", 0),
     Rule("on-screen-test", 0),
+    Rule("migration", 0),
     Rule("academic-term", 1),
     Rule("login-generation", 2),
     Rule("data-did-update", 3),
@@ -172,6 +173,10 @@ STRING_OPEN = re.compile(r'(#*)("""|")')
 ON_SCREEN_TRIGGER = re.compile(r"\bmakeKeyAndVisible\b|\bbecomeFirstResponder\b|\bWKWebView\s*\(")
 # Test types that use a trigger and stay out of `on_screen_tests`.
 ON_SCREEN_ALLOWED: frozenset[str] = frozenset()
+MIGRATIONS = APP + "Migrations/"
+MIGRATION_NAME = re.compile(r"[A-Z][A-Za-z0-9]*Migration")
+# The one file outside Migrations/ that runs them (swift/TigerDuck/Migrations/AGENTS.md).
+MIGRATION_RUNNER = APP + "App/AppEnvironment.swift"
 LAYERS = ("School/", "Backend/", "Persistence/")
 
 # Swift parsing: comments and string contents are blanked first, so braces count only in code.
@@ -468,6 +473,40 @@ def unlisted_on_screen_findings(workflow: str, tests: dict[str, str]) -> list[Fi
     return found
 
 
+def migration_findings(sources: list[Source]) -> list[Finding]:
+    """Migrations/ keeps one migration per file, named for its type, with its own done flag and
+    entry point; none refers to another, and only the runner outside the folder refers to any."""
+    stems = {Path(src.path).stem: src for src in sources if src.path.startswith(MIGRATIONS)}
+    found = []
+    for stem, src in sorted(stems.items()):
+        def add(message: str) -> None:
+            found.append(Finding(src.path, 1, "migration", message))
+        if not MIGRATION_NAME.fullmatch(stem):
+            add("name the file `<Subject><Action>Migration.swift`")
+            continue
+        if not re.search(rf"\b(?:enum|struct|class|actor)\s+{stem}\b", src.code):
+            add(f"declare `{stem}`, the type the file is named for")
+        if not re.search(rf'private\s+static\s+let\s+\w+\s*=\s*"{stem}\.v1\.done"', src.text):
+            add(f'declare `private static let doneKey = "{stem}.v1.done"` in the file')
+        if not re.search(r"\bstatic\s+func\s+runIfNeeded\b", src.code):
+            add("declare a static `runIfNeeded` entry point")
+        others = sorted(stems.keys() - {stem})
+        if others:
+            found += [Finding(src.path, line_of(src.code, m.start()), "migration",
+                              f"refers to `{m.group()}`; migrations do not refer to each other")
+                      for m in re.finditer(rf"\b(?:{'|'.join(others)})\b", src.code)]
+    if not stems:
+        return found
+    pattern = re.compile(rf"\b(?:{'|'.join(sorted(stems))})\b")
+    for src in sources:
+        if src.path.startswith(MIGRATIONS) or src.path == MIGRATION_RUNNER:
+            continue
+        found += [Finding(src.path, line_of(src.code, m.start()), "migration",
+                          f"refers to `{m.group()}` outside Migrations/; only `AppEnvironment` runs a migration")
+                  for m in pattern.finditer(src.code)]
+    return found
+
+
 def size_findings(sources: list[Source]) -> list[Finding]:
     found = []
     decls = [d for src in sources for d in declarations(src.path, src.code)]
@@ -607,7 +646,7 @@ def findings(root: Path = ROOT) -> list[Finding]:
     workflow = (root / WORKFLOW.relative_to(ROOT)).read_text(encoding="utf-8")
     return (pattern_findings(sources) + taipei_findings(others) + core_findings(sources + others)
             + base_name_findings(paths) + on_screen_findings(workflow, test_code(root))
-            + unlisted_on_screen_findings(workflow, test_files(root))
+            + unlisted_on_screen_findings(workflow, test_files(root)) + migration_findings(sources)
             + size_findings(sources) + layering_findings(sources) + sign_in_findings(sources)
             + account_store_findings(sources, (root / INVENTORY.relative_to(ROOT)).read_text(encoding="utf-8")))
 
