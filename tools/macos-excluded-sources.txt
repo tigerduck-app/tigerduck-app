@@ -190,7 +190,6 @@ LiveActivitySettingsView.swift
 LoginSheet.swift
 NotificationPermissionSettingsView.swift  # macOS never receives notifications, by design (spec §2) — not merely a different UI tree like the rest of this group
 OpenSourceLicensesView.swift
-OtherSettingsView.swift
 SourceCodePickerView.swift
 StorageSettingsView.swift  # School Mail and the TigerDuck browser are iOS only; the Mac keeps MoodleFilesCacheSection
 StorageUsage.swift
@@ -198,9 +197,16 @@ SyncContentSettingsView.swift
 TabEditorView.swift
 SettingsAboutSection.swift
 SettingsAccountSection.swift
-SettingsDisplaySections.swift
 SettingsSheets.swift
 SettingsView.swift
+SettingsAppearanceSection.swift
+SettingsEnvironment.swift
+PageSettings+View.swift
+HomePageSettingsView.swift
+ClassTablePageSettingsView.swift
+BulletinsPageSettingsView.swift
+BrowserPageSettingsView.swift
+MoodlePageSettingsView.swift
 
 # Features/Updates — the iPhone's update and What's New sheets; the Mac answers
 # with an alert (MacUpdateCheck.swift) and shows no What's New

@@ -22,7 +22,7 @@ struct AssignmentReminderSettingsView: View {
             }
             .disabled(!store.isAssignmentReminderEnabled)
         }
-        .navigationTitle(String(localized: "live_activity_settings_assignment_notification_header"))
+        .navigationTitle(SettingsRow.assignmentReminders.label)
         .task {
             app.notificationSettings.reconcile()
             await app.liveActivity.requestNotificationAuthorization()

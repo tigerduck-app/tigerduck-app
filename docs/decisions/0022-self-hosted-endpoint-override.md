@@ -7,8 +7,9 @@ Status: accepted
 TigerDuck's backend is open source and self-hostable, and every build lets the user point the
 app at another backend: `DebugEndpointStore` keeps a user-set endpoint in the Keychain, set in
 Settings → Other settings → API endpoint or on onboarding's sign-in page. Debug builds also
-read `Defaults[.pushServerURLOverride]` and `Secrets.plist["DebugServerURL"]`. Requests to the
-backend carry the Bearer token from `AuthTokenManager`.
+read `Defaults[.pushServerURLOverride]` and `Secrets.plist["DebugServerURL"]`, from a gitignored
+file that only Debug builds bundle. Requests to the backend carry the Bearer token from
+`AuthTokenManager`.
 
 ## Decision
 

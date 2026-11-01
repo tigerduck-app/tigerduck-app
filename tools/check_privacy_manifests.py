@@ -13,6 +13,10 @@ or when its Swift code matches a pattern in CATEGORIES and the manifest does not
 category, or declares a reason Apple does not list for it. A package module with its own manifest
 is held to the same rules, and Package.swift must list that manifest as a resource.
 
+It also keeps a developer's backend endpoint override out of shipped bundles: no target may build
+Secrets.example.plist, and a target that would build the gitignored Secrets.plist must leave it out
+of every configuration but Debug with EXCLUDED_SOURCE_FILE_NAMES.
+
 Remote packages are not scanned, since CI does not resolve them. Defaults, swift-nio's NIOPosix
 and swift-nio-ssl ship their own manifests; Valet, SwiftSoup, swift-markdown-ui and the rest call
 none of these APIs. Check a new or updated remote package by hand.
@@ -22,6 +26,7 @@ Run manually:  python3 tools/check_privacy_manifests.py
 
 from __future__ import annotations
 
+import fnmatch
 import plistlib
 import re
 import sys
@@ -61,6 +66,11 @@ CATEGORIES = {
     ),
 }
 
+# A developer's gitignored Debug endpoint override, which PushServerConfig.secretsPlistDict() reads
+# from the app bundle, and its tracked template.
+OVERRIDE, TEMPLATE = "Secrets.plist", "Secrets.example.plist"
+EXCLUDED_RE = re.compile(r'^\t\t\t\t"?EXCLUDED_SOURCE_FILE_NAMES(\[[^\]]*\])?"? = (\(.*?\)|[^\n]*?);$', re.M | re.S)
+
 OBJECT_RE = re.compile(r"^\t\t(\w{24}) (?:/\*[^\n]*?\*/ )?= \{\n(.*?)^\t\t\};", re.M | re.S)
 COMMENT_RE = re.compile(r"/\*.*?\*/")
 LINE_COMMENT_RE = re.compile(r"(^|\s)//.*$", re.M)
@@ -98,7 +108,8 @@ def target_files(objs: dict[str, str], target_id: str, swift_dir: Path) -> list[
     """Every file a target builds from the synchronized folders, as Xcode decides membership.
 
     An exception set on one of the target's own folders lists files it leaves out; on any other
-    folder it lists the only files the target takes from it.
+    folder it lists the only files the target takes from it. OVERRIDE counts next to its template
+    whether or not it exists, since CI has none.
     """
     own = set(items(objs[target_id], "fileSystemSynchronizedGroups"))
     files = []
@@ -111,11 +122,31 @@ def target_files(objs: dict[str, str], target_id: str, swift_dir: Path) -> list[
                    for entry in items(objs[set_id], "membershipExceptions")]
         if group_id not in own and not entries:
             continue
-        for path in sorted(p for p in folder.rglob("*") if p.is_file()):
+        on_disk = {p for p in folder.rglob("*") if p.is_file()}
+        for path in sorted(on_disk | {p.with_name(OVERRIDE) for p in on_disk if p.name == TEMPLATE}):
             inside = listed(path.relative_to(folder).as_posix(), entries)
             if inside != (group_id in own):
                 files.append(path)
     return files
+
+
+def override_problems(objs: dict[str, str], target_id: str, files: list[Path], root: Path) -> list[str]:
+    """The template ships in no bundle, and the override only in Debug, the one build that reads it."""
+    name = field(objs[target_id], "name")
+    found = [f"{name}: builds {path.relative_to(root)}; leave it out with a membership exception"
+             for path in files if path.name == TEMPLATE]
+    if not any(path.name == OVERRIDE for path in files):
+        return found
+    for config_id in items(objs.get(field(objs[target_id], "buildConfigurationList"), ""), "buildConfigurations"):
+        config = objs[config_id]
+        if field(config, "name") == "Debug":
+            continue
+        settings = {condition: re.findall(r'[^\s(),"]+', value) for condition, value in EXCLUDED_RE.findall(config)}
+        if "" not in settings or not all(any(fnmatch.fnmatchcase(OVERRIDE, pattern) for pattern in patterns)
+                                         for patterns in settings.values()):
+            found.append(f"{name}: the {field(config, 'name')} configuration ships {OVERRIDE}; "
+                         "list it in each of its EXCLUDED_SOURCE_FILE_NAMES settings")
+    return found
 
 
 def package_sources(
@@ -193,6 +224,7 @@ def problems(root: Path = ROOT) -> list[str]:
     for target_id, body in targets.items():
         name = field(body, "name")
         files = target_files(objs, target_id, swift_dir)
+        found += override_problems(objs, target_id, files, root)
         manifests = [path for path in files if path.name == MANIFEST]
         if len(manifests) != 1:
             found.append(f"{name}: builds {len(manifests)} {MANIFEST} files, needs one: "
@@ -207,11 +239,12 @@ def problems(root: Path = ROOT) -> list[str]:
 def main() -> int:
     found = problems()
     if found:
-        print("error: privacy manifests are out of date\n", file=sys.stderr)
+        print("error: a shipping bundle is out of date\n", file=sys.stderr)
         for problem in found:
             print(f"  {problem}", file=sys.stderr)
         return 1
-    print("OK every app and extension target declares the required-reason APIs it uses")
+    print("OK every app and extension target declares the required-reason APIs it uses "
+          f"and ships no {TEMPLATE}, and {OVERRIDE} only in Debug")
     return 0
 
 
