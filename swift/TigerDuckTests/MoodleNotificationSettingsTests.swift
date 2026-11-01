@@ -108,6 +108,23 @@ struct MoodleNotificationSettingsTests {
         #expect(settings.canChange(Self.forum))
     }
 
+    @Test("a load while a write runs sends no read of its own, and the write's read shows the server")
+    func loadWaitsOutTheWrite() async throws {
+        let gate = ManualSleeper()
+        let site = Site(Fixtures.matrix([Self.forum]), gate: gate)
+        let settings = await Self.loaded(site)
+        let write = try #require(settings.set(false, for: Self.forum.key))
+        try await gate.waitUntilArmed()
+
+        await settings.load()
+
+        #expect(site.loads == 1)
+        await gate.fire()
+        await write.value
+        #expect(site.loads == 2)
+        #expect(!settings.isOn(try Self.shown(Self.forum.key, in: settings)))
+    }
+
     @Test("a load failure keeps the error for the page and shows no list")
     func loadFailure() async {
         let api = MoodleNotificationAPI(

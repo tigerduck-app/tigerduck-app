@@ -31,14 +31,14 @@ nonisolated struct MoodleNotificationAPI: Sendable {
 }
 
 /// The Moodle notification preferences page. Each write sends the whole processor list of its
-/// preference, so one runs at a time, and the page then shows what the server holds.
+/// preference, so one read or write runs at a time, and the page then shows what the server holds.
 @Observable
 @MainActor
 final class MoodleNotificationSettings {
     private var shown = SignInBound<MoodleNotificationMatrix?>(empty: nil)
     private var chosenMethod: String?
     private(set) var loadFailure: (any Error)?
-    private(set) var isSaving = false
+    private(set) var isBusy = false
     var saveFailure: String?
 
     @ObservationIgnored private let signIn: SignIn
@@ -66,10 +66,14 @@ final class MoodleNotificationSettings {
 
     func canChange(_ preference: MoodleNotificationMatrix.Preference) -> Bool {
         guard let matrix else { return false }
-        return !isSaving && !matrix.disablesAll && !preference.locked.contains(method)
+        return !isBusy && !matrix.disablesAll && !preference.locked.contains(method)
     }
 
+    /// A load while a write runs is skipped: the write reads the matrix again when it ends.
     func load() async {
+        guard !isBusy else { return }
+        isBusy = true
+        defer { isBusy = false }
         loadFailure = nil
         do {
             shown.set(try await api.load(), for: signIn)
@@ -82,13 +86,13 @@ final class MoodleNotificationSettings {
     func set(_ on: Bool, for key: String) -> Task<Void, Never>? {
         guard let before = matrix, let preference = before.preference(key), canChange(preference) else { return nil }
         let changed = preference.setting(method, on: on)
-        isSaving = true
+        isBusy = true
         shown.set(before.replacing(changed), for: signIn)
         return Task { await save(changed, restoring: before) }
     }
 
     private func save(_ preference: MoodleNotificationMatrix.Preference, restoring before: MoodleNotificationMatrix) async {
-        defer { isSaving = false }
+        defer { isBusy = false }
         do {
             try await api.save(preference, signIn)
         } catch {
