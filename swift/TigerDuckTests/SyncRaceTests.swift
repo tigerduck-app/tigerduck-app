@@ -45,11 +45,12 @@ struct SyncRaceTests {
     }
 
     private static func sender(
-        _ baseURL: URL, cache: TestCache, colors: CourseColorStore, switchedOn: Set<String>
+        _ baseURL: URL, cache: TestCache, colors: CourseColorStore, switchedOn: Set<String>,
+        account: AccountSession = AccountSession()
     ) -> OutboxSender {
         OutboxSender(
             push: push(baseURL), addedCourseUpload: { _, _ in nil }, uploadsCourses: { true },
-            isProtectedDataAvailable: { true }, account: AccountSession(), courses: cache.courses,
+            isProtectedDataAvailable: { true }, account: account, courses: cache.courses,
             kept: KeptValues(
                 policy: policy(switchedOn), colors: colors, courses: cache.courses, assignments: cache.assignments
             )
@@ -123,6 +124,32 @@ struct SyncRaceTests {
 
         #expect(cache.assignments.loadArchivedAssignmentIds().isEmpty)
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["42"])
+    }
+
+    @Test("A value the backend kept is dropped when a sign-out lands while its reply waits")
+    func keptMarkAfterASignOutIsDropped() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let cache = Self.cache()
+        cache.assignments.replaceArchivedAssignmentIds(["42"])
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Data(#"{"local_status":"locally_completed","local_status_hlc":2,"applied":false}"#.utf8)),
+            for: baseURL.appendingPathComponent("sync/assignments/42/override")
+        )
+        let op = SyncOp.assignmentOverride(
+            moodleCourseId: 7, moodleAssignmentId: 42, localStatus: "ignored", stamp: Date(timeIntervalSince1970: 1_790_000_000)
+        )
+        let session = AccountSession()
+
+        try await Self.sender(
+            baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"], account: session
+        ).send(op, newerQueued: { _ in
+            session.stopWork()
+            session.moveOn()
+            return false
+        })
+
+        #expect(cache.assignments.loadArchivedAssignmentIds() == ["42"])
+        #expect(cache.assignments.loadLocallyCompletedAssignmentIds().isEmpty)
     }
 
     @Test(

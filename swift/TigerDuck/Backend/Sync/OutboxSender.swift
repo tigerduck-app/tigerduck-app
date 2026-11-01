@@ -42,6 +42,10 @@ final class OutboxSender {
     /// `newerQueued` tells whether an edit of the same field was queued after `op`; a value the
     /// backend kept is applied only when none was.
     func send(_ op: SyncOp, newerQueued: @MainActor (SyncOp) async -> Bool) async throws {
+        // A sign-out during the waits clears the account's files; a value applied after it would
+        // write the departing account's back.
+        let isCurrent = account.currentCheck()
+        func applies() async -> Bool { !(await newerQueued(op)) && isCurrent() && !Task.isCancelled }
         switch op {
         case .courseOverride(let semester, let moodleId, let customName, let colorHex, let locale, let stamp):
             guard let (courseKey, courseNo) = courseKey(semester: semester, identity: moodleId) else {
@@ -51,7 +55,7 @@ final class OutboxSender {
             let reply = try await push.patchCourseOverride(
                 courseKey: courseKey, colorHex: colorHex, customName: customName, locale: resolvedLocale, madeAt: stamp
             )
-            guard !(await newerQueued(op)) else { return }
+            guard await applies() else { return }
             if colorHex != nil, !reply.applied.contains("color_hex") {
                 kept.colorKept(reply.colorHex, courseNo: courseNo)
             }
@@ -63,7 +67,7 @@ final class OutboxSender {
             let reply = try await push.patchAssignmentOverride(
                 moodleAssignmentId: String(moodleAssignmentId), localStatus: localStatus, madeAt: stamp
             )
-            if !reply.applied, !(await newerQueued(op)) {
+            if !reply.applied, await applies() {
                 kept.markKept(reply.localStatus, assignmentId: String(moodleAssignmentId))
             }
 
@@ -73,7 +77,7 @@ final class OutboxSender {
                 ignoreAssignments: ignore, moodleCourseId: moodleCourseId, madeAt: stamp
             )
             guard let ignoring = reply.ignoreAssignments else { throw CourseIgnoreNotStoredError() }
-            if ignore != nil, !reply.applied.contains("ignore_assignments"), !(await newerQueued(op)) {
+            if ignore != nil, !reply.applied.contains("ignore_assignments"), await applies() {
                 kept.ignoreKept(ignoring, key: CourseTombstone.key(semester: semester, courseNo: courseNo))
             }
 
