@@ -24,10 +24,10 @@ leaves on the device.
   1. It stops the account's work in flight: the session's scoped tasks and, for the school
      account, revision polling, the sync task, the shared assignment round, Moodle file
      downloads, holiday uploads and the Live Activity refreshes.
-  2. It moves the account's `AccountSession` on. For the school account `AuthService.logout()`
-     deletes the credentials in the same main-actor step; `AuthTokenManager.endSession()` and
-     `MoodleTokenService.signOut()` move their own counts on their actors and keep nothing a late
-     reply brings.
+  2. It ends the account's sign-in (`AccountSession.endSignIn()`). For the school account
+     `AuthService.logout()` deletes the credentials in the same main-actor step, and
+     `AuthTokenManager` and `MoodleTokenService` keep nothing a late reply of the ended sign-in
+     brings.
   3. It clears every store the account owns: first the plan's static list of `AccountScoped`
      types, each deleting its files and keys by name, so a store this process never built is
      cleared too; then what the stores do not hold, such as `AppEnvironment`'s lists. The cleared stores
@@ -38,12 +38,9 @@ leaves on the device.
      the device with the session it kept, ends Live Activities and removes the account's
      notifications; School Mail's plan wipes its cache. The account's next sign-in waits for them.
 - `AccountSession` is the account generation: `AccountSession.school`, `AccountSession.library`
-  and one in each `MailAccountManager`. Code that writes data of an account takes the session's
-  ticket before its first `await`, or runs as one of the session's scoped tasks, and writes only
-  while `isCurrent` holds after the last one; code that cannot reach the session gets a
-  `currentCheck()`. `AuthTokenManager` and `MoodleTokenService` keep a `SignInCount` on their
-  actors, and a store that step 3 clears may keep an epoch of its own (the bulletin list,
-  classroom usage, `MailCache.wipeCount`).
+  and one in each `MailAccountManager`. How a write of account data is tied to one sign-in is
+  `docs/decisions/0029-account-bound-writes.md`. A store that step 3 clears may keep a count of
+  its own wipes (classroom usage, `MailCache.wipeCount`).
 - `docs/account-state.md` lists every store and what clears it, and
   `tools/check_account_state.py` fails CI when a Keychain key, `Defaults` key or cache file is
   declared without a row, an account's row names a function that does not clear it, or an

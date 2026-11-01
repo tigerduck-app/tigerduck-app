@@ -28,7 +28,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 | Imported class tables of the account (`imported_class_tables.json`) | `ImportedClassTableStore.forgetAccount(in:)` deletes the file by name, and `removeAll()` empties the store in memory, both in `SignOutPlan.school(_:)` |
 | Moodle file downloads in flight | `MoodleFileDownloads.cancelAll()`, in the first step of `SignOutPlan.school(_:)` |
 | `AppEnvironment`'s conflicts, pending overrides, refreshes and polling | `SignOutPlan.school(_:)` |
-| Courses deleted in the last two minutes, which a full sync keeps hidden | `LocalEdits.recentCourseDeletions` holds them for one sign-in of the school `AccountSession` (`SignInScoped`) |
+| Courses deleted in the last two minutes, which a full sync keeps hidden | `LocalEdits.recentCourseDeletions` holds them for one sign-in of the school `AccountSession` (`SignInBound`) |
 | Uploads, outbox and pending document pushes | `PushCoordinator.forgetUploads()`, `CloudSyncCoordinator.settleForSignOut()` |
 | Feature view models (scores, class table, empty classroom, calendar, Moodle course pages) | they reload when the school `AccountSession`'s ticket changes and when `CourseStore` or `AssignmentStore` changes, which the sign-out notes |
 | Widgets and the Watch | `DeviceSurfaceSyncer` rebuilds them from the cleared caches when the stores and the sign-in state change |
@@ -68,17 +68,17 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `appHasBeenInstalled` | device |  |
 | defaults | `appLanguage` | device |  |
 | defaults | `assignmentLiveActivityLeadTime` | device |  |
-| defaults | `assignmentMarksSyncedOnce` | school | `swift/TigerDuck/Account/SignOutCheck.swift` `forgetSyncProgress` |
+| defaults | `assignmentMarksSyncedOnce` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
 | defaults | `assignmentReminderOffsetsData` | device |  |
 | defaults | `browserAddressBar` | device |  |
 | defaults | `browserAppearance` | device |  |
 | defaults | `browserDataState` | device |  |
-| defaults | `browserDesktopSites` | school | `swift/TigerDuck/Features/Browser/BrowserData.swift` `reset` |
-| defaults | `browserZoom` | school | `swift/TigerDuck/Features/Browser/BrowserData.swift` `reset` |
+| defaults | `browserDesktopSites` | school | `swift/TigerDuck/Features/Browser/BrowserSites.swift` `forget` |
+| defaults | `browserZoom` | school | `swift/TigerDuck/Features/Browser/BrowserSites.swift` `forget` |
 | defaults | `bulletinPushEnabled` | device |  |
 | defaults | `bulletinReadIds` | device |  |
 | defaults | `bulletinsSyncedAt` | school | `swift/TigerDuck/Stores/Bulletins/BulletinFeed.swift` `forgetListSession` |
-| defaults | `categoriesSyncedOnce` | school | `swift/TigerDuck/Account/SignOutCheck.swift` `forgetSyncProgress` |
+| defaults | `categoriesSyncedOnce` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
 | defaults | `classPreparingLeadTime` | device |  |
 | defaults | `classReminderLeadMinutes` | device |  |
 | defaults | `classTableSelectedSemester` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |
@@ -87,7 +87,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `configuredTabsData` | device |  |
 | defaults | `courseChangesCache` | device |  |
 | defaults | `courseChangesETag` | device |  |
-| defaults | `courseRowIdsSeen` | school | `swift/TigerDuck/Account/SignOutCheck.swift` `forgetSyncProgress` |
+| defaults | `courseRowIdsSeen` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
 | defaults | `emptyClassroomBuilding` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |
 | defaults | `flipToLibraryEnabled` | device |  |
 | defaults | `hasCompletedOnboarding` | device |  |
@@ -104,7 +104,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `lastPromptedUpdateAt` | device |  |
 | defaults | `lastPromptedUpdateVersion` | device |  |
 | defaults | `lastReportedUnparseableStoreVersion` | device |  |
-| defaults | `lastSeenCoursesResetAt` | school | `swift/TigerDuck/Account/SignOutCheck.swift` `forgetSyncProgress` |
+| defaults | `lastSeenCoursesResetAt` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
 | defaults | `lastShownWhatsNewVersion` | device |  |
 | defaults | `lastUpdateCheckAt` | device |  |
 | defaults | `libraryStoredPasswordRefusals` | library | `swift/TigerDuck/Account/StoredPasswordBackoff.swift` `library` |
@@ -112,17 +112,18 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `macConfiguredTabsData` | device |  |
 | defaults | `macMoodleOpenTarget` | device |  |
 | defaults | `notificationSettingsPushPending` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSyncer.swift` `cancelPushes` |
-| defaults | `notificationSettingsPushSendsEveryField` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSyncer.swift` `cancelPushes` |
-| defaults | `notificationSettingsSyncedPreferences` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSyncer.swift` `cancelPushes` |
+| defaults | `notificationSettingsPushSendsEveryField` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSync.swift` `forget` |
+| defaults | `notificationSettingsSyncedPreferences` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSync.swift` `forget` |
 | defaults | `ntustCredentialsPresent` | school | `swift/TigerDuck/Account/AuthService.swift` `markCredentialsChanged` |
 | defaults | `ntustStoredPasswordRefusals` | school | `swift/TigerDuck/Account/StoredPasswordBackoff.swift` `ntust` |
 | defaults | `ntustStoredPasswordRefusedAt` | school | `swift/TigerDuck/Account/StoredPasswordBackoff.swift` `ntust` |
 | defaults | `outlineRequiredCourses` | device |  |
-| defaults | `pendingConflictCategories` | school | `swift/TigerDuck/Account/SignOutCheck.swift` `forgetSyncProgress` |
+| defaults | `pendingConflictCategories` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
 | defaults | `pinTodayCoursesOnClassTable` | device |  |
 | defaults | `pushServerEnabled` | device |  |
 | defaults | `pushServerURLOverride` | device |  |
 | defaults | `schoolDataSyncedAt` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |
+| defaults | `semesterResetAt` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
 | defaults | `serverPushUserOptOut` | device |  |
 | defaults | `showAbsoluteAssignmentTime` | device |  |
 | defaults | `showAssignmentScenario` | device |  |

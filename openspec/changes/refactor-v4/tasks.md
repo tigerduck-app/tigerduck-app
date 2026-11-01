@@ -76,6 +76,13 @@ last task's check passes and a read-only review finds nothing High or above.
 - [x] 8.1 Merge `dev` into the branch and resolve. Check: every check above again.
 - [ ] 8.2 Open the pull request, with the owner's go-ahead to push. Check: GitHub CI green, and the bots' findings addressed.
 
+## 9. Writes bound to a sign-in
+
+- [x] 9.1 Give `SignIn` its own `isCurrent`, read it only where account work starts, and remove the ticket getter, `SignInCount` and `SignInScoped`. Check: `check_architecture.py` finds no sign-in read or hand comparison outside its homes.
+- [x] 9.2 Make every write to an account's stores and `Defaults` keys take its `SignIn`, and drop a stale one in the store. Check: a test per store writes for an ended sign-in and finds nothing written.
+- [x] 9.3 Bind backend requests built from account data to their `SignIn`, on the first send and on a 401 replay. Check: a request built before a sign-out and a new sign-in is not sent with the new token, first send or replay.
+- [x] 9.4 Turn on the phase-8 rules, with tests. Check: `check_architecture.py` passes at `ENFORCED_PHASE = 8`; its tests; `check_account_state.py`; the phone and watch suites; the mac build; the TigerDuckCore tests.
+
 ## Workflow follow-up
 
 - Deploy `/v4`, release 4.0.0, and retire `/v3` no earlier than a month later.

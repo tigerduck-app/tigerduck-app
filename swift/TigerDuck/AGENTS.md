@@ -60,6 +60,8 @@ yet in the tree arrives with its refactor phase; until then the rule stays where
 
 - Signed-in account, sign-out, writes after a sign-out: `Account/AccountSession.swift`.
   A store of one account's data conforms to `AccountScoped`.
+- The sign-in a write or send belongs to: a `SignIn` handed to the store or request, which drops
+  it once that sign-in has ended (`docs/decisions/0029-account-bound-writes.md`).
 - Courses and assignments, and every edit to them: `Stores/CourseStore.swift`,
   `Stores/AssignmentStore.swift`.
 - Course colors: `Stores/CourseColorStore.swift`.

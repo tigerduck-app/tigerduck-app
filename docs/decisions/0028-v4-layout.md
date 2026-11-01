@@ -58,6 +58,7 @@ and the macOS build's source list was kept by hand in two copies.
   | 5 | none of its own; the phase adds `AppEnvironment`, `AppRouter` and `SceneActivation` |
   | 6 | the size budget; `Features/` using a type declared in `School/`, `Backend/` or `Persistence/` |
   | 7 | `Task.sleep` outside `Support/Clock/` and `Support/Concurrency/` |
+  | 8 | a sign-in read, compared or written outside its homes (`docs/decisions/0029-account-bound-writes.md`) |
 
   `architecture.yaml` runs it, with `tools/check_account_state.py`, on every pull request to
   `main` and `dev`.

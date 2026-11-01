@@ -242,6 +242,24 @@ channel in flight, and a write computed from a snapshot taken before an `await`.
 - Lost: fixing them on `dev` first. Each fix would be written twice, once in code this refactor
   replaces, and none loses data across accounts.
 
+### D15. A write lands only in the sign-in it was read for
+Phase 2 gave each account an `AccountSession` and left the stale-write check to each caller, which
+wrote it again in new shapes (closures, `currentCheck()`, `SignInCount`, list epochs, sign-out
+counts) and sometimes forgot it. Phase 8 moves the check into the type that lands the write.
+
+- A `SignIn` answers `isCurrent` itself; at most one of an account is current. Work reads it where
+  it starts (`session.task {}`, `withSignIn {}`, `startingSignIn`, or `currentSignIn` in a
+  synchronous user action), in the layers that start account work, and hands it down.
+- Every store of account data, every account-scoped `Defaults` key and every backend request built
+  from account data takes the `SignIn`; the store or `BackendClient` drops what an ended sign-in
+  sends, on the first send and on a replay after a 401. The token pair records its sign-in.
+- Hand-made counters go: a value held for one sign-in is a `SignInBound`; a counter kept only where
+  it guards something other than the sign-in (`MailCache.wipeCount`, the classroom usage reads,
+  the notification-settings queue) keeps a name that says what.
+- `check_architecture.py` phase 8 fails a sign-in read, compared or written outside its homes.
+- Lost: a write already in flight still runs; only where it lands changes. The one change users
+  could see is that a write or send crossing a sign-out is dropped.
+
 ## Risks / Trade-offs
 
 - [No CI until the end] → Each phase runs the phone suite, the watch suite, the mac build and the
