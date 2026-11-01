@@ -67,6 +67,7 @@ RULES = {r.name: r for r in (
     Rule("sign-in-read", 8),
     Rule("sign-in-compare", 8),
     Rule("sign-in-in-setter", 8),
+    Rule("sign-in-in-cleanup", 8),
     Rule("account-store-write", 8),
     Rule("unbound-backend-auth", 8),
 )}
@@ -135,6 +136,10 @@ SIGN_IN_PATTERNS = (
 # A property accessor runs whenever it is used, after an await too, so one that reads the
 # current sign-in writes for whichever sign-in is current then (docs/decisions/0029-account-bound-writes.md).
 ACCESSOR = re.compile(r"\b(?:set|didSet|willSet)\s*(?:\(\s*\w+\s*\))?\s*\{")
+# A `defer` clears what its work holds while running; gated on the sign-in it would leave that
+# held once the sign-in ends, so it compares the work's own mark instead.
+DEFER = re.compile(r"\bdefer\s*\{")
+SIGN_IN_CHECK = re.compile(r"\bisCurrent\b")
 # The persistence types of an account and the stores that write them (docs/account-state.md).
 ACCOUNT_FILES = {
     "CourseFiles": ("Stores/CourseStore.swift",),
@@ -481,15 +486,21 @@ def block_end(code: str, opening: int) -> int:
     return len(code)
 
 
-def setter_findings(src: Source) -> list[Finding]:
+def block_findings(src: Source, opening: re.Pattern[str], inside: re.Pattern[str], rule: str,
+                   message: str) -> list[Finding]:
     found = []
-    for accessor in ACCESSOR.finditer(src.code):
-        start = accessor.end() - 1
+    for block in opening.finditer(src.code):
+        start = block.end() - 1
         body = src.code[start:block_end(src.code, start)]
-        found += [Finding(src.path, line_of(src.code, start + m.start()), "sign-in-in-setter",
-                          "a setter that reads the current sign-in; make the write a method that takes its `SignIn`")
-                  for m in SIGN_IN_READ.finditer(body)]
+        found += [Finding(src.path, line_of(src.code, start + m.start()), rule, message) for m in inside.finditer(body)]
     return found
+
+
+def setter_findings(src: Source) -> list[Finding]:
+    return (block_findings(src, ACCESSOR, SIGN_IN_READ, "sign-in-in-setter",
+                           "a setter that reads the current sign-in; make the write a method that takes its `SignIn`")
+            + block_findings(src, DEFER, SIGN_IN_CHECK, "sign-in-in-cleanup",
+                             "a cleanup gated on the sign-in; clear only the work's own mark, whatever the sign-in"))
 
 
 def sign_in_findings(sources: list[Source]) -> list[Finding]:

@@ -156,6 +156,12 @@ class ArchitectureTests(unittest.TestCase):
         found = [f for f in ca.sign_in_findings([source(APP + "Features/X.swift", text)]) if f.rule == "sign-in-in-setter"]
         self.assertEqual([f.line for f in found], [3, 6])
 
+    def test_a_cleanup_gated_on_the_sign_in_fails_everywhere(self) -> None:
+        text = ("func load() async {\n    defer { if signIn.isCurrent { loading = nil } }\n"
+                "    defer { if running == load { loading = nil } }\n    guard signIn.isCurrent else { return }\n}\n")
+        found = [f for f in ca.sign_in_findings([source(APP + "Account/X.swift", text)]) if f.rule == "sign-in-in-cleanup"]
+        self.assertEqual([f.line for f in found], [2])
+
     def test_an_account_file_type_outside_its_store_fails(self) -> None:
         text = "let id = MoodleFiles.shared.lookupMoodleCourseId(idnumber: n)\n"
         found = ca.account_store_findings([source(APP + "Backend/Sync/X.swift", text),
