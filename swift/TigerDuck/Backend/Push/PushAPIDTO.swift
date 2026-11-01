@@ -211,7 +211,7 @@ enum PushAPI {
 
         let colorHex: String?
         let customNames: [String: String]
-        let ignoreAssignments: Bool?
+        let ignoreAssignments: Bool
         let applied: Set<Field>
 
         enum CodingKeys: String, CodingKey {
@@ -225,7 +225,7 @@ enum PushAPI {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
             customNames = try c.decodeIfPresent([String: String].self, forKey: .customNames) ?? [:]
-            ignoreAssignments = try c.decodeIfPresent(Bool.self, forKey: .ignoreAssignments)
+            ignoreAssignments = try c.decode(Bool.self, forKey: .ignoreAssignments)
             applied = Set((try c.decodeIfPresent([String].self, forKey: .applied) ?? []).compactMap(Field.init(rawValue:)))
         }
     }

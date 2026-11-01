@@ -68,7 +68,7 @@ struct SyncRaceTests {
 
     private static func keptRed(_ baseURL: URL) {
         SettingsAPIStub.enqueue(
-            .init(statusCode: 200, body: Data(##"{"color_hex":"#FF6B6B","custom_names":{},"applied":[]}"##.utf8)),
+            .init(statusCode: 200, body: Data(##"{"color_hex":"#FF6B6B","custom_names":{},"ignore_assignments":false,"applied":[]}"##.utf8)),
             for: baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
         )
     }
@@ -164,7 +164,7 @@ struct SyncRaceTests {
         )
         SettingsAPIStub.enqueue(
             .init(statusCode: 200, body: Data(
-                ##"{"color_hex":"#4ECDC4","custom_names":{"zh":"Algorithms"},"applied":["color_hex","custom_name"]}"##.utf8
+                ##"{"color_hex":"#4ECDC4","custom_names":{"zh":"Algorithms"},"ignore_assignments":false,"applied":["color_hex","custom_name"]}"##.utf8
             )), for: url
         )
         let cache = Self.cache()
@@ -276,7 +276,7 @@ struct SyncRaceTests {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
         SettingsAPIStub.enqueue(
-            .init(statusCode: 200, body: Data(##"{"color_hex":"#4ECDC4","custom_names":{},"applied":[]}"##.utf8)), for: url
+            .init(statusCode: 200, body: Data(##"{"color_hex":"#4ECDC4","custom_names":{},"ignore_assignments":false,"applied":[]}"##.utf8)), for: url
         )
         let cache = Self.cache()
         let colors = CourseColorStore(files: cache.colors)

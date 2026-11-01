@@ -45,7 +45,7 @@ struct BackendClientTests {
     func courseKeyWithASlashReachesItsCourse() async throws {
         let base = SettingsAPIStub.uniqueBaseURL()
         let url = try #require(URL(string: base.absoluteString + "/sync/courses/client:1151:AB%2F12/override"))
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(##"{"color_hex":"#FF6B6B","applied":["color_hex"]}"##.utf8)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(##"{"color_hex":"#FF6B6B","ignore_assignments":false,"applied":["color_hex"]}"##.utf8)), for: url)
         let client = PushAPIClient(baseURLProvider: { base }, session: Self.stubSession(), authHeaderProvider: { "Bearer A0" })
 
         let reply = try await client.patchCourseOverride(

@@ -194,5 +194,5 @@ struct RefreshOrderTests {
     }
 
     private static let colourReply =
-        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"##
+        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"ignore_assignments":false,"updated_at":"2026-10-12T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"##
 }

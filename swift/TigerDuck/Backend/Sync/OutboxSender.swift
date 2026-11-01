@@ -61,9 +61,8 @@ final class OutboxSender {
                 courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
                 ignoreAssignments: ignore, moodleCourseId: moodleCourseId, madeAt: stamp, for: signIn
             )
-            if ignore != nil, let ignoring = reply.ignoreAssignments, !reply.applied.contains(.ignoreAssignments),
-               !(await hasNewerQueuedEdit(op)) {
-                kept.ignoreKept(ignoring, key: CourseTombstone.key(semester: semester, courseNo: courseNo), for: signIn)
+            if ignore != nil, !reply.applied.contains(.ignoreAssignments), !(await hasNewerQueuedEdit(op)) {
+                kept.ignoreKept(reply.ignoreAssignments, key: CourseTombstone.key(semester: semester, courseNo: courseNo), for: signIn)
             }
 
         case .courseDelete(let semester, let courseNo, let stamp):

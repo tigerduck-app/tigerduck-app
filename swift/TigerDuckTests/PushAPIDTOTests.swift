@@ -79,6 +79,16 @@ struct PushAPIDTOTests {
         }
     }
 
+    @Test("a course override reply without ignore_assignments does not decode, so the outbox keeps the edit")
+    func aCourseOverrideReplyWithoutTheIgnoreFlagDoesNotDecode() throws {
+        let full = Data(#"{"color_hex":null,"custom_names":{},"ignore_assignments":true,"applied":[]}"#.utf8)
+        #expect(try JSONDecoder().decode(PushAPI.CourseOverrideResponse.self, from: full).ignoreAssignments)
+        let missing = Data(#"{"color_hex":null,"custom_names":{},"applied":[]}"#.utf8)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(PushAPI.CourseOverrideResponse.self, from: missing)
+        }
+    }
+
     private static func preferencesReply(_ override: String? = nil) -> Data {
         var fields = [
             #""device_id": "abc-123""#, #""server_push_enabled": true"#, #""sync_courses": true"#,
