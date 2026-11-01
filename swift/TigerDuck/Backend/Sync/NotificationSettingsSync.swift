@@ -66,6 +66,7 @@ nonisolated enum NotificationSettingsSync {
 
     @MainActor
     static func mergeSentFields(_ fields: [String: Any], of sent: LocalPreferences, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         setLastSyncedPreferences((lastSyncedPreferences ?? sent).mergeSentFields(fields, of: sent), for: signIn)
         Defaults[.notificationSettingsPushSendsEveryField, for: signIn] = false
     }
