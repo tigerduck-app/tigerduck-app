@@ -1,5 +1,6 @@
 #if os(iOS)
 import SwiftUI
+import TigerDuckCore
 import UIKit
 
 private struct FlipToLibraryModifier: ViewModifier {
@@ -68,7 +69,8 @@ private struct FlipToLibraryModifier: ViewModifier {
     }
 
     private func handleFaceDown(app: AppEnvironment, host: HostWindow) {
-        guard app.preferences.flipToLibraryEnabled, app.library.isLoggedIn else { return }
+        guard app.preferences.flipToLibraryEnabled, app.library.isLoggedIn,
+              FlipToLibraryGate.opensLibrary(at: AppClock.now()) else { return }
 
         guard !host.isPresenting else { return }
 
@@ -116,6 +118,14 @@ enum FlipToLibraryGate {
     /// prompt, which share the root with it, where two sheets set in one render leave one unshown.
     static func offerWaits(sheetPresented: Bool, notifySheetPending: Bool) -> Bool {
         sheetPresented || notifySheetPending
+    }
+
+    static func opensLibrary(at date: Date) -> Bool {
+        let now = TaipeiTime.calendar.dateComponents([.weekday, .hour, .minute], from: date)
+        guard let weekday = now.weekday, let hour = now.hour, let minute = now.minute else { return false }
+        let isWeekend = weekday == 1 || weekday == 7
+        let hours = isWeekend ? (8 * 60 + 30)..<(21 * 60 + 30) : (8 * 60 + 10)..<(23 * 60 + 30)
+        return hours.contains(hour * 60 + minute)
     }
 }
 
