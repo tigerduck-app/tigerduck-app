@@ -24,7 +24,7 @@ struct LateMoodleIdColorTests {
 
         func giveColours(_ courseNos: [String], for signIn: SignIn = testSignIn) {
             colors.ensureAssignments(
-                courses: courseNos.map(LateMoodleIdColorTests.course), ids: cache.moodle.loadMoodleCourseIdMap(),
+                courses: courseNos.map(LateMoodleIdColorTests.course), ids: { self.cache.moodle.loadMoodleCourseIdMap() },
                 palette: TigerDuckTheme.coursePaletteHexes, for: signIn
             )
         }

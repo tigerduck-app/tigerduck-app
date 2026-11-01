@@ -35,7 +35,7 @@ struct MoodleCourseColorTests {
     func aNewCourseWithAMoodleIdGetsItsMoodleColour() {
         let folder = Folder()
 
-        folder.store.ensureAssignments(courses: [Self.course("CS1")], ids: Self.ids, palette: Self.palette, for: testSignIn)
+        folder.store.ensureAssignments(courses: [Self.course("CS1")], ids: { Self.ids }, palette: Self.palette, for: testSignIn)
 
         #expect(folder.store.map == ["CS1": Self.moodle[7]])
     }
@@ -46,8 +46,8 @@ struct MoodleCourseColorTests {
         let with = Folder()
         let courses = [Self.course("CS4"), Self.course("CS5", moodle: false)]
 
-        without.store.ensureAssignments(courses: courses, ids: [:], palette: Self.palette, for: testSignIn)
-        with.store.ensureAssignments(courses: courses + [Self.course("CS1")], ids: Self.ids, palette: Self.palette, for: testSignIn)
+        without.store.ensureAssignments(courses: courses, ids: { [:] }, palette: Self.palette, for: testSignIn)
+        with.store.ensureAssignments(courses: courses + [Self.course("CS1")], ids: { Self.ids }, palette: Self.palette, for: testSignIn)
 
         #expect(with.store.map["CS4"] == without.store.map["CS4"])
         #expect(with.store.map["CS5"] == without.store.map["CS5"])
@@ -58,7 +58,7 @@ struct MoodleCourseColorTests {
     func aResetReplacesAPick() {
         let folder = Folder()
         let courses = [Self.course("CS1"), Self.course("CS3"), Self.course("CS5", moodle: false)]
-        folder.store.ensureAssignments(courses: courses, ids: [:], palette: Self.palette, for: testSignIn)
+        folder.store.ensureAssignments(courses: courses, ids: { [:] }, palette: Self.palette, for: testSignIn)
         folder.store.pick(0x123456, courseNo: "CS1", palette: Self.palette, for: testSignIn)
 
         folder.store.reassignAll(courses: courses, ids: Self.ids, palette: Self.palette, for: testSignIn)
@@ -85,8 +85,8 @@ struct MoodleCourseColorTests {
         let folder = Folder()
         let courses = [Self.course("CS1"), Self.course("CS2")]
 
-        folder.store.ensureAssignments(courses: courses, ids: Self.ids, palette: Self.palette, for: testSignIn)
-        folder.store.ensureAssignments(courses: courses, ids: Self.ids, palette: Self.palette, for: testSignIn)
+        folder.store.ensureAssignments(courses: courses, ids: { Self.ids }, palette: Self.palette, for: testSignIn)
+        folder.store.ensureAssignments(courses: courses, ids: { Self.ids }, palette: Self.palette, for: testSignIn)
         folder.store.applyColors([("CS9", Self.moodle[7])], palette: Self.palette, for: testSignIn)
         #expect(folder.store.map == ["CS1": Self.moodle[7], "CS2": Self.moodle[7], "CS9": Self.moodle[7]])
         folder.store.reassignAll(courses: courses, ids: Self.ids, palette: Self.palette, for: testSignIn)
@@ -102,7 +102,7 @@ struct MoodleCourseColorTests {
         let folder = Folder()
         let courses = [Self.course("CS1")]
 
-        folder.store.ensureAssignments(courses: courses, ids: Self.ids, palette: Self.palette, for: endedTestSignIn)
+        folder.store.ensureAssignments(courses: courses, ids: { Self.ids }, palette: Self.palette, for: endedTestSignIn)
         folder.store.reassignAll(courses: courses, ids: Self.ids, palette: Self.palette, for: endedTestSignIn)
 
         #expect(folder.store.map.isEmpty)

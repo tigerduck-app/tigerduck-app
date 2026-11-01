@@ -94,7 +94,7 @@ enum TigerDuckTheme {
     }
 
     static func ensureAssignments(courses: [SDCourse], for signIn: SignIn) {
-        store.ensureAssignments(courses: courses, ids: CourseLookup.moodleCourseIds(), palette: coursePaletteHexes, for: signIn)
+        store.ensureAssignments(courses: courses, ids: CourseLookup.moodleCourseIds, palette: coursePaletteHexes, for: signIn)
     }
 
     static func courseColor(for courseNo: String) -> Color {

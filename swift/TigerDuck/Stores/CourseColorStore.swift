@@ -51,11 +51,12 @@ final class CourseColorStore {
     }
 
     /// Gives each new course a colour and moves each course awaiting its Moodle colour whose id
-    /// `ids` now holds.
-    func ensureAssignments(courses: [SDCourse], ids: [String: Int], palette: [UInt32], for signIn: SignIn) {
+    /// `ids` now holds. `ids` is read only when a course needs it.
+    func ensureAssignments(courses: [SDCourse], ids: () -> [String: Int], palette: [UInt32], for signIn: SignIn) {
         let before = state.snapshot()
         let awaiting = files.loadMoodleColorWaits().awaiting
-        let moodleColors = Self.moodleColors(of: courses, ids: ids)
+        let looksUp = courses.contains { before[$0.courseNo] == nil || awaiting.contains($0.courseNo) }
+        let moodleColors = looksUp ? Self.moodleColors(of: courses, ids: ids()) : [:]
         let arrived = moodleColors.filter { awaiting.contains($0.key) }
         saving(signIn, unchanged: ()) {
             $0.ensureAssignments(courseNos: courses.map(\.courseNo), moodleColors: moodleColors, palette: palette)
