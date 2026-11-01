@@ -22,7 +22,7 @@ final class ChangeFeedPull {
 
     func pollOnReturn() async {
         startPolling(pollNow: true)
-        await app.poller.pollInFlight()
+        await app.poller.waitForPollInFlight()
     }
 
     func stopPolling() {
@@ -43,14 +43,14 @@ final class ChangeFeedPull {
             app.conflicts.retryOwedConflictCheck()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self.lastKnownRevision)")
             guard serverRevision > lastKnownRevision else {
-                if lastKnownRevision > 0 { app.syncTarget.notePull(signIn) }
+                if lastKnownRevision > 0 { app.firstPullGate.notePull(signIn) }
                 return .unchanged
             }
             let outcome = await syncChanges(for: signIn)
             await app.cloudSyncCoordinator.onRevisionChanged()
             return outcome
         } catch PushAPIError.httpStatus(401, _, let sent) {
-            return .unauthorized(refused: sent?.value)
+            return .unauthorized(refusedAccessToken: sent?.value)
         } catch {
             AppLogger.sync.info("[poll] tick failed: \(error, privacy: .private)")
             return .failed
@@ -104,7 +104,7 @@ final class ChangeFeedPull {
     private func advanceRevision(from since: Int, to revision: Int, for signIn: SignIn) {
         guard mayAdvanceRevision(from: since, for: signIn) else { return }
         lastKnownRevision = revision
-        app.syncTarget.notePull(signIn)
+        app.firstPullGate.notePull(signIn)
         ServerStatusTracker.shared.noteSyncResult(true)
     }
 

@@ -27,14 +27,14 @@ final class EditSender {
         AppLogger.sync.debug("override enqueue: \(moodleId, privacy: .private) → \(status, privacy: .public)")
         guard let moodleAssignmentId = Int(moodleId) else { return nil }
         localEdits.overrideEditGeneration &+= 1
-        localEdits.pendingOverrides.insert(moodleId)
+        localEdits.marksAndIgnoresEnqueuing.insert(moodleId)
         let queued = Task { [weak self] in
             guard let self else { return }
             await coordinator.enqueueAssignmentOverride(
                 moodleCourseId: 0,
                 moodleAssignmentId: moodleAssignmentId,
                 localStatus: status, for: signIn)
-            localEdits.pendingOverrides.remove(moodleId)
+            localEdits.marksAndIgnoresEnqueuing.remove(moodleId)
         }
         coordinator.scheduleTick(after: 1)
         poller.noteActivity()
@@ -50,13 +50,13 @@ final class EditSender {
         let moodleCourseId = CourseLookup.moodleCourseId(idnumber: moodleId)
         let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
         localEdits.overrideEditGeneration &+= 1
-        localEdits.pendingOverrides.insert(key)
+        localEdits.marksAndIgnoresEnqueuing.insert(key)
         let queued = Task { [weak self] in
             guard let self else { return }
             await coordinator.enqueueCourseIgnore(
                 semester: semester, courseNo: courseNo, moodleId: moodleId,
                 moodleCourseId: moodleCourseId, ignore: ignore, for: signIn)
-            localEdits.pendingOverrides.remove(key)
+            localEdits.marksAndIgnoresEnqueuing.remove(key)
         }
         coordinator.scheduleTick(after: 1)
         poller.noteActivity()
@@ -99,12 +99,12 @@ final class EditSender {
         return queued
     }
 
-    func addCourses(_ keys: [String], semester: String, for signIn: SignIn) {
+    func addCourses(_ serverKeys: [String], semester: String, for signIn: SignIn) {
         let addedAt = Date()
-        Task { await coordinator.discardCourseDeletes(courseKeys: Set(keys), madeBefore: addedAt) }
+        Task { await coordinator.discardCourseDeletes(courseKeys: Set(serverKeys), madeBeforeAction: addedAt) }
         guard SyncPolicy.current.uploadsCourses else { return }
         let prefix = CourseTombstone.serverKey(semester: semester, courseNo: "")
-        for key in keys where key.hasPrefix(prefix) {
+        for key in serverKeys where key.hasPrefix(prefix) {
             coordinator.addCourse(semester: semester, courseNo: String(key.dropFirst(prefix.count)), for: signIn)
         }
     }
@@ -149,10 +149,10 @@ final class EditSender {
         onServer reset: () async throws -> Void, thenLocally resetLocally: () -> Void
     ) async throws {
         try await reset()
-        let resetAt = Date()
+        let serverResetLandedAt = Date()
         resetLocally()
         await coordinator.discardCourseIgnores(semester: semester)
-        await coordinator.discardCourseDeletes(semester: semester, madeBefore: resetAt)
+        await coordinator.discardCourseDeletes(semester: semester, madeBeforeAction: serverResetLandedAt)
     }
 
     nonisolated static func courseColorsAfterCoursesChange(coursesNowOn: Bool) -> Bool {

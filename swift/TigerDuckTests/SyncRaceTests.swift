@@ -82,7 +82,7 @@ struct SyncRaceTests {
         Self.keptRed(baseURL)
 
         try await Self.sender(baseURL, cache: cache, colors: colors, switchedOn: ["courses", "course_colors"])
-            .send(Self.colourEdit, for: testSignIn, newerQueued: { _ in false })
+            .send(Self.colourEdit, for: testSignIn, hasNewerQueuedEdit: { _ in false })
 
         #expect(colors.map["CS1"] == Self.red)
         #expect(colors.map["CS2"] != Self.red)
@@ -99,7 +99,7 @@ struct SyncRaceTests {
             Self.keptRed(baseURL)
 
             try await Self.sender(baseURL, cache: cache, colors: colors, switchedOn: switchedOn)
-                .send(Self.colourEdit, for: testSignIn, newerQueued: { _ in newer })
+                .send(Self.colourEdit, for: testSignIn, hasNewerQueuedEdit: { _ in newer })
 
             #expect(colors.map == ["CS1": Self.teal, "CS2": Self.red])
         }
@@ -119,7 +119,7 @@ struct SyncRaceTests {
         )
 
         try await Self.sender(baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"])
-            .send(op, for: testSignIn, newerQueued: { _ in false })
+            .send(op, for: testSignIn, hasNewerQueuedEdit: { _ in false })
 
         #expect(cache.assignments.loadArchivedAssignmentIds().isEmpty)
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["42"])
@@ -142,7 +142,7 @@ struct SyncRaceTests {
         try await Self.sender(
             baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"],
             signIns: session.signIns
-        ).send(op, for: session.signIns.currentSignIn, newerQueued: { _ in
+        ).send(op, for: session.signIns.currentSignIn, hasNewerQueuedEdit: { _ in
             session.endSignIn()
             session.endSignIn()
             return false
@@ -466,14 +466,14 @@ struct SyncRaceTests {
         cache.assignments.replaceLocallyCompletedAssignmentIds([], for: testSignIn)
 
         await AssignmentMarksReconciler.keepServerSide(
-            read: { ServerMarks(archived: [], completed: ["2"]) }, protected: { [] }, for: testSignIn,
+            rereadServer: { ServerMarks(archived: [], completed: ["2"]) }, protected: { [] }, for: testSignIn,
             assignments: cache.assignments
         )
         #expect(cache.assignments.loadArchivedAssignmentIds().isEmpty)
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["2"])
 
         await AssignmentMarksReconciler.keepServerSide(
-            read: { ServerMarks(archived: ["3"], completed: []) }, protected: { [] }, for: endedTestSignIn,
+            rereadServer: { ServerMarks(archived: ["3"], completed: []) }, protected: { [] }, for: endedTestSignIn,
             assignments: cache.assignments
         )
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["2"])

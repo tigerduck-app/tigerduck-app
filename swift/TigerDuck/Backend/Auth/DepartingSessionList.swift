@@ -4,20 +4,25 @@ nonisolated struct DepartingSession: Codable, Sendable {
     var refreshToken: String
     var uses: Int
     var baseURL: URL
-    var id: String?
+    var signOutID: String?
 
-    var budget: RefreshTokenUseBudget { RefreshTokenUseBudget(uses: uses) }
+    private enum CodingKeys: String, CodingKey {
+        case refreshToken, uses, baseURL
+        case signOutID = "id"
+    }
+
+    var budget: UnconfirmedRefreshSends { UnconfirmedRefreshSends(uses: uses) }
 
     func counted() -> DepartingSession {
-        DepartingSession(refreshToken: refreshToken, uses: uses + 1, baseURL: baseURL, id: id)
+        DepartingSession(refreshToken: refreshToken, uses: uses + 1, baseURL: baseURL, signOutID: signOutID)
     }
 
     func rotated(to next: String) -> DepartingSession {
-        DepartingSession(refreshToken: next, uses: 0, baseURL: baseURL, id: id)
+        DepartingSession(refreshToken: next, uses: 0, baseURL: baseURL, signOutID: signOutID)
     }
 
     func isSame(as other: DepartingSession) -> Bool {
-        id == other.id && AuthTokenManager.isSameBackend(baseURL, other.baseURL)
+        signOutID == other.signOutID && AuthTokenManager.isSameBackend(baseURL, other.baseURL)
     }
 }
 
@@ -37,7 +42,7 @@ nonisolated struct DepartingSessionList: Sendable {
     }
 
     @discardableResult
-    func keep(_ session: DepartingSession) -> Bool {
+    func replaceIfStored(_ session: DepartingSession) -> Bool {
         var sessions = load()
         guard let index = sessions.firstIndex(where: { $0.isSame(as: session) }) else { return false }
         sessions[index] = session
@@ -50,13 +55,13 @@ nonisolated struct DepartingSessionList: Sendable {
         store(sessions.filter { !$0.isSame(as: session) })
     }
 
-    func forgetAll(on backend: URL) {
+    func forgetClaimedBySignIn(on backend: URL) {
         let kept = load()
         let elsewhere = kept.filter { !AuthTokenManager.isSameBackend($0.baseURL, backend) }
         if elsewhere.count != kept.count { store(elsewhere) }
     }
 
-    func add(_ session: DepartingSession) {
+    func keepAsItsBackendsSession(_ session: DepartingSession) {
         store(load().filter { !AuthTokenManager.isSameBackend($0.baseURL, session.baseURL) } + [session])
     }
 }

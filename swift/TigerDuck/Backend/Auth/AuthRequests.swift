@@ -53,7 +53,7 @@ nonisolated struct AuthRequests: Sendable {
         request.authenticated = false
         request.postsCredentials = true
         request.acceptsEveryStatus = true
-        request.baseURL = baseURL
+        request.baseURLOverride = baseURL
         return request
     }
 
@@ -69,6 +69,12 @@ nonisolated struct AuthRequests: Sendable {
     struct RefreshSend {
         let reply: (Data, HTTPURLResponse)?
         let mayHaveUsed: Bool
+
+        var status: Int? { reply?.1.statusCode }
+
+        var endedSession: Bool { status == 401 }
+
+        var turnedDown: Bool { status.map { (400...499).contains($0) && ![410, 429].contains($0) } ?? false }
     }
 
     /// `URLError`s of a request that never left the device: no network or no host to reach, a TLS
@@ -92,7 +98,7 @@ nonisolated struct AuthRequests: Sendable {
         request.postsCredentials = true
         request.acceptsEveryStatus = true
         request.timeout = refreshTimeout
-        request.baseURL = baseURL
+        request.baseURLOverride = baseURL
 
         do {
             let response = try await backend.send(request)

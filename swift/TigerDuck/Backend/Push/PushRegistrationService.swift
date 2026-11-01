@@ -103,7 +103,7 @@ actor PushRegistrationService {
         self.retrySleep = retrySleep
     }
 
-    static var currentLocaleTag: String {
+    static var renderedLanguageTag: String {
         Bundle.main.preferredLocalizations.first ?? "en"
     }
 
@@ -153,47 +153,46 @@ actor PushRegistrationService {
     }
 
     func updateServerPushOptOut(_ optOut: Bool) async throws {
-        let requests = self.requests, predecessor = chains.optOut, tokenHex = tokens.device
-        let signIn = requests.signIns.currentSignIn
-        let task = Task<Void, Error> {
-            try await requests.sendServerPushOptOut(optOut, deviceToken: tokenHex, after: predecessor, for: signIn)
+        let requests = self.requests, tokenHex = tokens.device, signIn = requests.signIns.currentSignIn
+        let task = chains.optOut.append {
+            try await requests.sendServerPushOptOut(optOut, deviceToken: tokenHex, for: signIn)
         }
-        chains.optOut = task
-        defer {
-            if chains.optOut == task { chains.optOut = nil }
-        }
+        defer { chains.optOut.finished(task) }
         try await task.value
     }
 
     func updateBulletinPushEnabled(_ enabled: Bool) async throws {
-        let requests = self.requests, predecessor = chains.bulletin, signIn = requests.signIns.currentSignIn
-        let task = Task<Void, Error> { try await requests.sendBulletinPushEnabled(enabled, after: predecessor, for: signIn) }
-        chains.bulletin = task
-        defer {
-            if chains.bulletin == task { chains.bulletin = nil }
-        }
+        let requests = self.requests, signIn = requests.signIns.currentSignIn
+        let task = chains.bulletin.append { try await requests.sendBulletinPushEnabled(enabled, for: signIn) }
+        defer { chains.bulletin.finished(task) }
         try await task.value
     }
 
     func updateCloudSyncEnabled(_ enabled: Bool) async {
-        let signIn = requests.signIns.currentSignIn
-        if running.isRegistering {
-            await withCheckedContinuation { running.cloudSyncPatchesWaiting.append($0) }
+        let requests = self.requests, signIn = requests.signIns.currentSignIn
+        let task = chains.cloudSync.append { [self] in
+            await self.waitOutRunningRegistrations()
+            await requests.sendCloudSyncEnabled(enabled, for: signIn)
         }
-        await requests.sendCloudSyncEnabled(enabled, for: signIn)
+        defer { chains.cloudSync.finished(task) }
+        _ = try? await task.value
         #if os(iOS)
         if enabled, status.lastError != nil { await registerAgain() }
         #endif
     }
 
+    var cloudSyncPatchesInLine: Int { chains.cloudSync.inLine }
+
+    private func waitOutRunningRegistrations() async {
+        guard running.isRegistering else { return }
+        await withCheckedContinuation { running.cloudSyncPatchesWaiting.append($0) }
+    }
+
     func updateSyncPreferences() async {
-        let requests = self.requests, predecessor = chains.syncPreferences
-        let task = Task<Void, Never> { await requests.sendSyncPreferences(after: predecessor) }
-        chains.syncPreferences = task
-        defer {
-            if chains.syncPreferences == task { chains.syncPreferences = nil }
-        }
-        await task.value
+        let requests = self.requests
+        let task = chains.syncPreferences.append { await requests.sendSyncPreferences() }
+        defer { chains.syncPreferences.finished(task) }
+        _ = try? await task.value
     }
 
     func resendSyncPreferencesIfPending() async {

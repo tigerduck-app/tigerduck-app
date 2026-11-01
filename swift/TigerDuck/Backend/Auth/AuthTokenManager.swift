@@ -14,11 +14,22 @@ actor AuthTokenManager {
     private struct SignInTurns {
         var isSigningIn = false
         var waiting: [CheckedContinuation<Void, Never>] = []
+
+        mutating func passOn() {
+            if waiting.isEmpty { isSigningIn = false } else { waiting.removeFirst().resume() }
+        }
+    }
+
+    struct LateRefresh {
+        let signIn: SignIn
+        let accessToken: String?
+        let refreshToken: String?
+        let mayResend: Bool
     }
 
     struct Refreshes {
         var task: Task<String?, Never>?
-        var late: [String: (signIn: SignIn, accessToken: String?, refreshToken: String?, mayResend: Bool)] = [:]
+        var lateBySentRefreshToken: [String: LateRefresh] = [:]
     }
 
     struct Handlers {
@@ -80,23 +91,33 @@ actor AuthTokenManager {
 
     nonisolated var backendAuth: BackendAuth {
         BackendAuth(
-            header: { [weak self] in await self?.authorizationHeaderOfSignIn() },
+            header: { [weak self] in await self?.authorizationHeaderIfSignInUnchanged() },
             recover: { [weak self] in await self?.recover(fromRejectionOf: $0, code: $1, signIn: $2) ?? false }
         )
     }
 
-    static let endedSessionCodes: Set<String> = ["session_revoked", "session_user_mismatch"]
+    enum Rejection {
+        case sessionEnded
+        case tokenRefused
+
+        init(code: String?) {
+            let endedSessionCodes: Set<String> = ["session_revoked", "session_user_mismatch"]
+            self = code.map(endedSessionCodes.contains) == true ? .sessionEnded : .tokenRefused
+        }
+    }
 
     func recover(fromRejectionOf refused: String, code: String?, signIn: SignIn) async -> Bool {
         guard Self.departing == nil, pair.refreshToken != nil, pair.holds(signIn) else { return false }
-        if let code, Self.endedSessionCodes.contains(code) {
+        switch Rejection(code: code) {
+        case .sessionEnded:
             guard let onRejected = handlers.rejected, await onRejected(refused, signIn) else { return false }
             return (pair.accessToken.map { $0 != refused } ?? false) && pair.holds(signIn)
+        case .tokenRefused:
+            if let stored = pair.accessToken, stored != refused { return true }
+            pair.expiresAt = .distantPast
+            guard let token = await validAccessToken() else { return false }
+            return token != refused && pair.holds(signIn)
         }
-        if let stored = pair.accessToken, stored != refused { return true }
-        pair.expiresAt = .distantPast
-        guard let token = await validAccessToken() else { return false }
-        return token != refused && pair.holds(signIn)
     }
 
     var isLoggedIn: Bool { pair.refreshToken != nil }
@@ -124,10 +145,10 @@ actor AuthTokenManager {
     }
 
     func authorizationHeader() async -> String? {
-        await authorizationHeaderOfSignIn()?.value
+        await authorizationHeaderIfSignInUnchanged()?.value
     }
 
-    func authorizationHeaderOfSignIn() async -> (value: String, signIn: SignIn?)? {
+    func authorizationHeaderIfSignInUnchanged() async -> (value: String, signIn: SignIn?)? {
         if let departing = Self.departing { return departing.accessToken.map { ("Bearer \($0)", nil) } }
         guard let token = await validAccessToken(), token == pair.accessToken, let signIn = pair.signIn,
               pair.holds(signIn) else { return nil }
@@ -154,14 +175,8 @@ actor AuthTokenManager {
         for signIn: SignIn,
         replacing refused: String? = nil
     ) async throws -> LoginResult? {
-        if turns.isSigningIn {
-            await withCheckedContinuation { turns.waiting.append($0) }
-        } else {
-            turns.isSigningIn = true
-        }
-        defer {
-            if turns.waiting.isEmpty { turns.isSigningIn = false } else { turns.waiting.removeFirst().resume() }
-        }
+        await takeSignInTurn()
+        defer { turns.passOn() }
         if let refused, let stored = pair.accessToken, stored != refused { return nil }
         let baseURL = requests.baseURL()
         let request = try requests.login(
@@ -173,7 +188,7 @@ actor AuthTokenManager {
         guard signIn.isCurrent else { throw CancellationError() }
         pair.store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in, for: signIn)
         refreshes.task = nil
-        departingSessions.list.forgetAll(on: baseURL)
+        departingSessions.list.forgetClaimedBySignIn(on: baseURL)
         return LoginResult(
             accessToken: result.access_token,
             refreshToken: result.refresh_token,
@@ -181,6 +196,14 @@ actor AuthTokenManager {
             userId: result.user.id,
             deviceId: result.device_id
         )
+    }
+
+    private func takeSignInTurn() async {
+        guard turns.isSigningIn else {
+            turns.isSigningIn = true
+            return
+        }
+        await withCheckedContinuation { turns.waiting.append($0) }
     }
 
     func logout() {
@@ -202,13 +225,13 @@ actor AuthTokenManager {
         signOutsStarting.withLock { $0 = max($0 - 1, 0) }
         guard let refresh else { return DepartingAccount(accessToken: nil, baseURL: baseURL) }
         let departing = DepartingSession(
-            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURL, id: UUID().uuidString
+            refreshToken: refresh, uses: uses + (refreshOut == nil ? 0 : 1), baseURL: baseURL, signOutID: UUID().uuidString
         )
-        departingSessions.list.add(departing)
+        departingSessions.list.keepAsItsBackendsSession(departing)
         let token = await departingSessions.signOutToken(
             for: departing, access: access, expiry: expiry, refreshOut: refreshOut, signIn: signIn, uses: uses, of: self
         )
-        return DepartingAccount(accessToken: token, baseURL: baseURL, sessionID: departing.id)
+        return DepartingAccount(accessToken: token, baseURL: baseURL, sessionID: departing.signOutID)
     }
 
     nonisolated var hasDepartingSession: Bool { departingSessions.hasSession }
@@ -234,9 +257,17 @@ actor AuthTokenManager {
         return server(one) == server(other)
     }
 
+    nonisolated static func isClaimedBySignIn(_ kept: URL, signedIn: Bool, backend: URL) -> Bool {
+        signedIn && isSameBackend(kept, backend)
+    }
+
+    /// A private address of a cleartext backend may name another host on another network.
+    nonisolated static func isCleartextElsewhere(_ kept: URL, backend: URL) -> Bool {
+        kept.scheme?.lowercased() == "http" && !isSameBackend(kept, backend)
+    }
+
     nonisolated static func retriesKeptSession(on kept: URL, signedIn: Bool, backend: URL) -> Bool {
-        let inUse = isSameBackend(kept, backend)
-        return (!signedIn || !inUse) && (kept.scheme?.lowercased() != "http" || inUse)
+        !isClaimedBySignIn(kept, signedIn: signedIn, backend: backend) && !isCleartextElsewhere(kept, backend: backend)
     }
 
     func retryDepartingUnregister(_ unregister: @MainActor @Sendable (_ backend: URL) async -> Bool) async {
@@ -244,7 +275,7 @@ actor AuthTokenManager {
     }
 
     func unregisterDeparting(as account: DepartingAccount, _ unregister: @MainActor @Sendable () async -> Bool) async {
-        let session = account.sessionID.flatMap { id in departingSessions.list.load().first { $0.id == id } }
+        let session = account.sessionID.flatMap { id in departingSessions.list.load().first { $0.signOutID == id } }
         await departingSessions.unregister(session, as: account, of: self, unregister)
     }
 

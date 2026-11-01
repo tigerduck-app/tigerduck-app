@@ -36,7 +36,7 @@ final class PushAPIClient: Sendable {
 
     func unregisterDevice(deviceId: String, at baseURL: URL? = nil) async throws {
         var request = BackendRequest("DELETE", segments: ["devices", deviceId])
-        request.baseURL = baseURL
+        request.baseURLOverride = baseURL
         _ = try await backend.send(request)
     }
 
@@ -133,22 +133,27 @@ final class PushAPIClient: Sendable {
         madeAt stamp: Date,
         for signIn: SignIn
     ) async throws -> PushAPI.CourseOverrideResponse {
-        try await backend.sendStamped(at: stamp) { hlc in
-            try BackendRequest("PATCH", segments: ["sync", "courses", courseKey, "override"]).json(PushAPI.CourseOverrideRequest(
-                colorHex: colorHex, customName: customName, locale: locale,
-                ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, hlc: hlc
-            )).sent(for: signIn)
-        }.decoded(PushAPI.CourseOverrideResponse.self)
+        do {
+            return try await backend.sendStamped(at: stamp) { hlc in
+                try BackendRequest("PATCH", segments: ["sync", "courses", courseKey, "override"]).json(PushAPI.CourseOverrideRequest(
+                    colorHex: colorHex, customName: customName, locale: locale,
+                    ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, hlc: hlc
+                )).sent(for: signIn)
+            }.decoded(PushAPI.CourseOverrideResponse.self)
+        } catch let error as PushAPIError {
+            guard case .httpStatus(404, _, _) = error, error.code == "course_not_found" else { throw error }
+            throw PushAPIError.courseNotFound
+        }
     }
 
     func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil, for signIn: SignIn) async throws {
-        guard let stamp, let adds = request.adds, !adds.isEmpty else {
+        guard let stamp, let adds = request.handAddedCourses, !adds.isEmpty else {
             _ = try await backend.send(BackendRequest("POST", "sync", "courses", "upload").json(request).sent(for: signIn))
             return
         }
         _ = try await backend.sendStamped(at: stamp) { hlc in
             var stamped = request
-            stamped.adds = adds.map { PushAPI.CourseAdd(courseKey: $0.courseKey, hlc: hlc) }
+            stamped.handAddedCourses = adds.map { PushAPI.CourseAdd(courseKey: $0.courseKey, hlc: hlc) }
             return try BackendRequest("POST", "sync", "courses", "upload").json(stamped).sent(for: signIn)
         }
     }
@@ -206,9 +211,10 @@ enum PushAPIError: Error, LocalizedError {
     case encodingFailed(Error)
     case decodingFailed(Error)
     case invalidResponse
-    case httpStatus(Int, body: String, sent: SentToken? = nil)
+    case httpStatus(Int, body: String, accessToken: RedactedToken? = nil)
     case syncRevisionExpired
     case clockAhead(serverClock: Int64?)
+    case courseNotFound
     case notSignedIn
 
     var errorDescription: String? {
@@ -219,6 +225,7 @@ enum PushAPIError: Error, LocalizedError {
         case .httpStatus(let code, let body, _): return "Push server returned HTTP \(code): \(body)"
         case .syncRevisionExpired: return "Push server has compacted the changes asked for."
         case .clockAhead: return "Push server refused a time ahead of its clock."
+        case .courseNotFound: return "Push server does not hold the course yet."
         case .notSignedIn: return String(localized: "common_auto_sign_in_failed")
         }
     }
@@ -228,7 +235,7 @@ enum PushAPIError: Error, LocalizedError {
         return BackendClient.errorCode(in: Data(body.utf8))
     }
 
-    nonisolated struct SentToken: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    nonisolated struct RedactedToken: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
         let value: String
         var description: String { "***" }
         var debugDescription: String { "***" }

@@ -158,15 +158,7 @@ nonisolated enum PushServerConfig {
             || host == "127.0.0.1"
             || isPrivateIPv4(host)
             || host == AppConstants.productionPushServerURL.host?.lowercased()
-        let expectedEnv = "development"
-        assert(
-            hostOK,
-            "Push env mismatch: \(expectedEnv) build resolved to \(resolved)"
-        )
-        assert(
-            PushAPNsEnv.resolvedForBuild == expectedEnv,
-            "Push env mismatch: build is \(expectedEnv) but PushAPNsEnv = \(PushAPNsEnv.resolvedForBuild)"
-        )
+        assert(hostOK, "Push env mismatch: development build resolved to \(resolved)")
         #endif
     }
 }

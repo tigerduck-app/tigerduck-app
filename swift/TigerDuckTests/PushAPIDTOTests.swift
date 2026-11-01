@@ -60,84 +60,45 @@ struct PushAPIDTOTests {
 
     @Test("decoding sync_assignment_reminders and sync_live_activity from the wire populates both properties")
     func responseDecodesNewFieldsFromTheirWireKeys() throws {
-        let json = Data("""
-        {
-          "device_id": "abc-123",
-          "server_push_enabled": true,
-          "sync_courses": true,
-          "sync_course_colors": true,
-          "sync_course_names": true,
-          "sync_assignments": true,
-          "sync_assignment_reminders": false,
-          "sync_live_activity": true,
-          "cloud_sync_enabled": true
-        }
-        """.utf8)
-
-        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
+        let response = try JSONDecoder().decode(
+            PushAPI.DevicePreferencesResponse.self, from: Self.preferencesReply(#""sync_assignment_reminders": false"#)
+        )
 
         #expect(response.syncAssignmentReminders == false)
         #expect(response.syncLiveActivity == true)
     }
 
-    @Test("a response from a backend without the two fields still decodes")
-    func responseWithoutNewFieldsStillDecodes() throws {
-        let json = Data("""
-        {
-          "device_id": "abc-123",
-          "server_push_enabled": true,
-          "sync_courses": true,
-          "sync_course_colors": true,
-          "sync_course_names": true,
-          "sync_assignments": true,
-          "cloud_sync_enabled": false
+    @Test("a preferences reply without one of the device's switches does not decode, as /v4 sends them all")
+    func aReplyWithoutASwitchDoesNotDecode() {
+        for key in ["sync_assignment_reminders", "sync_live_activity", "bulletin_push_enabled"] {
+            let json = Data(String(decoding: Self.preferencesReply(), as: UTF8.self)
+                .replacingOccurrences(of: #""\#(key)": true,"#, with: "").utf8)
+            #expect(throws: DecodingError.self) {
+                try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
+            }
         }
-        """.utf8)
+    }
 
-        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
-
-        #expect(response.syncAssignmentReminders == nil)
-        #expect(response.syncLiveActivity == nil)
-        #expect(response.cloudSyncEnabled == false)
+    private static func preferencesReply(_ override: String? = nil) -> Data {
+        var fields = [
+            #""device_id": "abc-123""#, #""server_push_enabled": true"#, #""sync_courses": true"#,
+            #""sync_course_colors": true"#, #""sync_course_names": true"#, #""sync_assignments": true"#,
+            #""sync_assignment_reminders": true"#, #""sync_live_activity": true"#, #""bulletin_push_enabled": true"#,
+            #""cloud_sync_enabled": true"#,
+        ]
+        if let override, let key = override.split(separator: ":").first {
+            fields = fields.map { $0.hasPrefix(key + ":") ? override : $0 }
+        }
+        return Data("{\(fields.joined(separator: ", "))}".utf8)
     }
 
     @Test("decoding bulletin_push_enabled from the wire populates bulletinPushEnabled")
     func responseDecodesBulletinPushEnabledFromItsWireKey() throws {
-        let json = Data("""
-        {
-          "device_id": "abc-123",
-          "server_push_enabled": true,
-          "sync_courses": true,
-          "sync_course_colors": true,
-          "sync_course_names": true,
-          "sync_assignments": true,
-          "cloud_sync_enabled": true,
-          "bulletin_push_enabled": false
-        }
-        """.utf8)
-
-        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
+        let response = try JSONDecoder().decode(
+            PushAPI.DevicePreferencesResponse.self, from: Self.preferencesReply(#""bulletin_push_enabled": false"#)
+        )
 
         #expect(response.bulletinPushEnabled == false)
-    }
-
-    @Test("a response without bulletin_push_enabled still decodes, leaving the field nil")
-    func responseWithoutBulletinPushEnabledStillDecodes() throws {
-        let json = Data("""
-        {
-          "device_id": "abc-123",
-          "server_push_enabled": true,
-          "sync_courses": true,
-          "sync_course_colors": true,
-          "sync_course_names": true,
-          "sync_assignments": true,
-          "cloud_sync_enabled": true
-        }
-        """.utf8)
-
-        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
-
-        #expect(response.bulletinPushEnabled == nil)
     }
 
     @Test("encoding bulletin_push_enabled on the register request produces its wire key")

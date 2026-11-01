@@ -13,7 +13,7 @@ struct CourseIgnoresReconciler: CategoryReconciler {
         }
         return applyIgnoredCourses(
             server, decided: Self.serverDecidedCourses(pass.courseOverrides),
-            coursesArray: pass.coursesArray, protected: pass.protected, deleting: pass.courseDeletes,
+            coursesArray: pass.coursesArray, protected: pass.queuedMarkAndIgnoreKeys, deleting: pass.courseDeletes,
             fetchedAt: pass.fetchedAt, for: pass.signIn
         )
     }

@@ -276,7 +276,7 @@ struct CourseAddSyncTests {
     }
 
     @Test("A reset made elsewhere wipes the hand-added and hidden courses but keeps those an add or hide made after it still sends")
-    func resetElsewhereKeepsTheCoursesOfLaterEdits() async {
+    func resetElsewhereKeepsTheCoursesOfLaterEdits() async throws {
         let resetAt = Date().addingTimeInterval(-3600)
         let early = resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin - 60)
         let courses = ["GE1010001", "GE2", "GE3"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }
@@ -288,7 +288,7 @@ struct CourseAddSyncTests {
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE5", stamp: early))
         let coordinator = Self.makeCoordinator(Backend(), cache: cache, outbox: outbox)
 
-        #expect(await CourseReset.apply(at: resetAt, courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { true }) == ["1151:PE5"])
+        #expect(try await CourseReset.apply(at: resetAt, courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { true }) == ["1151:PE5"])
 
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
         #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
@@ -300,7 +300,9 @@ struct CourseAddSyncTests {
         let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:PE4"])
         let coordinator = Self.makeCoordinator(Backend(), cache: cache)
 
-        #expect(await CourseReset.apply(at: Date(), courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { false }) == nil)
+        await #expect(throws: FullSyncAbandoned.self) {
+            try await CourseReset.apply(at: Date(), courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { false })
+        }
 
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
         #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])

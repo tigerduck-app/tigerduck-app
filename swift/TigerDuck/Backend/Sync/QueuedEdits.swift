@@ -8,8 +8,8 @@ final class QueuedEdits {
     private var lastColorEdit: [String: Int] = [:]
     private var lastNameEdit: [String: Int] = [:]
     private var addsEnqueuing: [UUID: String] = [:]
-    private var addTimes: [String: Date] = [:]
-    private(set) var cutoffs: [String: Date] = [:]
+    private var addStartedOrLandedAt: [String: Date] = [:]
+    private(set) var cutoffs = DiscardCutoffs()
 
     init(outbox: SyncOutbox) {
         self.outbox = outbox
@@ -29,7 +29,7 @@ final class QueuedEdits {
         }
     }
 
-    func colorEdit(of identity: String) -> Int {
+    func editCountAtLastColorEdit(of identity: String) -> Int {
         lastColorEdit[identity, default: 0]
     }
 
@@ -70,19 +70,21 @@ final class QueuedEdits {
     }
 
     func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
-        var scopes = categories.intersection(["assignments", "course_colors", "course_names"])
-        if categories.contains("courses") { scopes.insert("ca") }
-        if courseIgnores && categories.contains("assignments") { scopes.insert("course_ignores") }
-        overridesEnqueuing = overridesEnqueuing.filter { scopes.isDisjoint(with: $0.value.scopes) }
-        if scopes.contains("ca") { addsEnqueuing = [:] }
+        let byCategory: [String: DiscardScope] = [
+            "assignments": .assignmentMarks, "course_colors": .courseColors, "course_names": .courseNames,
+            "courses": .allCourseAdds,
+        ]
+        var scopes = Set(categories.compactMap { byCategory[$0] })
+        if courseIgnores && categories.contains("assignments") { scopes.insert(.courseIgnores) }
+        overridesEnqueuing = overridesEnqueuing.filter { scopes.isDisjoint(with: $0.value.discardScopes) }
+        if scopes.contains(.allCourseAdds) { addsEnqueuing = [:] }
         let now = Date()
         await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
     }
 
     @discardableResult
-    private func discard(madeBefore scopeCutoffs: [String: Date]) async -> [SyncOp] {
-        let now = Date()
-        cutoffs.merge(scopeCutoffs.mapValues { min($0, now) }, uniquingKeysWith: max)
+    private func discard(madeBefore scopeCutoffs: [DiscardScope: Date]) async -> [SyncOp] {
+        cutoffs.keep(scopeCutoffs, notAfter: Date())
         return await outbox.discard(madeBefore: scopeCutoffs)
     }
 
@@ -122,22 +124,23 @@ final class QueuedEdits {
     }
 
     func addCourse(
-        semester: String, courseNo: String, for signIn: SignIn, then: @escaping @MainActor () async -> Void
+        semester: String, courseNo: String, for signIn: SignIn,
+        afterEnqueued: @escaping @MainActor () async -> Void
     ) -> Task<Void, Never> {
         let id = UUID()
         let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
         let stamp = Date()
         addsEnqueuing[id] = key
-        addTimes[key] = stamp
+        addStartedOrLandedAt[key] = stamp
         return Task {
             await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: stamp), for: signIn)
             addsEnqueuing[id] = nil
-            await then()
+            await afterEnqueued()
         }
     }
 
     func noteCourseAddLanded(_ key: String) {
-        addTimes[key] = Date()
+        addStartedOrLandedAt[key] = Date()
     }
 
     func courseAddKeys(unlandedAt date: Date) async -> Set<String> {
@@ -147,28 +150,28 @@ final class QueuedEdits {
                 keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
             }
         }
-        return keys.union(addTimes.filter { $0.value >= date }.keys)
+        return keys.union(addStartedOrLandedAt.filter { $0.value >= date }.keys)
     }
 
     func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
         let cutoff = resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin)
-        let dropped = await discard(madeBefore: ["ca": cutoff, "cd": cutoff])
+        let dropped = await discard(madeBefore: [.allCourseAdds: cutoff, .allCourseDeletes: cutoff])
         return Self.courseKeys(of: dropped.filter { op in
             if case .courseDelete = op { return true }
             return false
         })
     }
 
-    func discardCourseDeletes(semester: String?, courseKeys: Set<String>?, madeBefore cutoff: Date) async {
+    func discardCourseDeletes(semester: String?, courseKeys: Set<String>?, madeBeforeAction cutoff: Date) async {
         let serverPrefix = CourseTombstone.serverKey(of: "")
         let scopes = courseKeys.map { keys in
-            keys.compactMap { key -> String? in
+            keys.compactMap { key -> DiscardScope? in
                 let local = String(key.dropFirst(serverPrefix.count))
                 guard key.hasPrefix(serverPrefix),
                       semester == nil || CourseTombstone.parts(of: local)?.semester == semester else { return nil }
-                return "cd|" + local
+                return .courseDelete(key: local)
             }
-        } ?? [semester.map { "cd|\($0)" } ?? "cd"]
+        } ?? [semester.map { .courseDeletes(term: $0) } ?? .allCourseDeletes]
         await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, cutoff) }))
     }
 
@@ -184,8 +187,8 @@ final class QueuedEdits {
     }
 
     func forgetDiscards() {
-        cutoffs = [:]
-        addTimes = [:]
+        cutoffs = DiscardCutoffs()
+        addStartedOrLandedAt = [:]
     }
 
     func hasNewerEdit(than op: SyncOp) async -> Bool {

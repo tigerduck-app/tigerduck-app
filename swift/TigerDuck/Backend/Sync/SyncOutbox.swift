@@ -7,10 +7,15 @@ actor SyncOutbox {
     private let files: OutboxFiles
     private var entries: [OutboxEntry] = []
     private var parked: [OutboxEntry] = []
-    private var generation = 0
-    private var isLoaded: Bool
+    private var clearGeneration = 0
+    private var loadState: LoadState
     private var unreadableLoads = 0
-    private var cutoffs: [String: Date] = [:]
+    private var cutoffs = DiscardCutoffs()
+
+    private enum LoadState {
+        case loaded
+        case filesUnreadable
+    }
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
 
     init(
@@ -18,15 +23,19 @@ actor SyncOutbox {
         read: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) }
     ) {
         files = OutboxFiles(directory: directory, read: read)
-        let loaded = files.load()
-        self.entries = loaded?.queued ?? []
-        self.parked = loaded?.parked ?? []
-        self.isLoaded = loaded != nil
+        switch files.load() {
+        case .read(let queued, let parked):
+            entries = queued
+            self.parked = parked
+            loadState = .loaded
+        case .unreadable:
+            loadState = .filesUnreadable
+        }
     }
 
     func enqueue(_ op: SyncOp, for signIn: SignIn) {
         loadIfNeeded()
-        guard signIn.isCurrent, !Self.isCutOff(op, by: cutoffs) else { return }
+        guard signIn.isCurrent, !cutoffs.cutsOff(op) else { return }
         let key = op.dedupKey
         entries.removeAll { $0.op.dedupKey == key }
         parked.removeAll { $0.op.dedupKey == key }
@@ -42,9 +51,9 @@ actor SyncOutbox {
     static let unreadableLoadLimit = 3
 
     func loadOrGiveUp(protectedDataAvailable: Bool) {
-        guard !isLoaded else { return }
-        if let onDisk = files.load() {
-            adopt(queued: onDisk.queued, parked: onDisk.parked)
+        guard loadState == .filesUnreadable else { return }
+        if case .read(let queued, let parked) = files.load() {
+            adopt(queued: queued, parked: parked)
             return
         }
         guard protectedDataAvailable else { return }
@@ -73,9 +82,9 @@ actor SyncOutbox {
     func clearAll() {
         entries = []
         parked = []
-        cutoffs = [:]
-        isLoaded = true
-        generation += 1
+        cutoffs = DiscardCutoffs()
+        loadState = .loaded
+        clearGeneration += 1
         persist()
     }
 
@@ -90,14 +99,10 @@ actor SyncOutbox {
     }
 
     @discardableResult
-    func discard(madeBefore scopeCutoffs: [String: Date]) -> [SyncOp] {
-        let now = Date()
-        cutoffs.merge(scopeCutoffs.mapValues { min($0, now) }, uniquingKeysWith: max)
-        return discard { Self.isCutOff($0, by: scopeCutoffs) }
-    }
-
-    nonisolated static func isCutOff(_ op: SyncOp, by cutoffs: [String: Date]) -> Bool {
-        op.scopes.contains { scope in cutoffs[scope].map { op.stamp < $0 } ?? false }
+    func discard(madeBefore scopeCutoffs: [DiscardScope: Date]) -> [SyncOp] {
+        cutoffs.keep(scopeCutoffs, notAfter: Date())
+        let discarding = DiscardCutoffs(scopeCutoffs)
+        return discard { discarding.cutsOff($0) }
     }
 
     func requeueParked() {
@@ -127,12 +132,12 @@ actor SyncOutbox {
         loadIfNeeded()
         let snapshot = entries
         let snapshotIds = Set(snapshot.map(\.id))
-        let startGeneration = generation
+        let startGeneration = clearGeneration
         var kept: [OutboxEntry] = []
         var index = 0
 
         func mergeAndStore(retainRemainder fromIndex: Int) {
-            guard generation == startGeneration else { return }
+            guard clearGeneration == startGeneration else { return }
             kept.append(contentsOf: snapshot[fromIndex...])
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
             let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
@@ -144,7 +149,7 @@ actor SyncOutbox {
         }
 
         while index < snapshot.count {
-            guard generation == startGeneration else { return entries.isEmpty }
+            guard clearGeneration == startGeneration else { return entries.isEmpty }
             let entry = snapshot[index]
             guard entries.contains(where: { $0.id == entry.id }) else {
                 index += 1
@@ -159,7 +164,7 @@ actor SyncOutbox {
             do {
                 try await execute(entry.op, entry.signIn ?? signIn)
             } catch {
-                guard generation == startGeneration else { return entries.isEmpty }
+                guard clearGeneration == startGeneration else { return entries.isEmpty }
                 if error is ResendHeldError {
                     kept.append(entry)
                     index += 1
@@ -169,7 +174,7 @@ actor SyncOutbox {
                     mergeAndStore(retainRemainder: index)
                     return false
                 }
-                if OutboxErrorPolicy.parksAtOnce(error, for: entry.op) {
+                if OutboxErrorPolicy.waitsForCourseUpload(error, for: entry.op) {
                     park(entry)
                     index += 1
                     continue
@@ -214,20 +219,20 @@ actor SyncOutbox {
     }
 
     private func loadIfNeeded() {
-        guard !isLoaded, let onDisk = files.load() else { return }
-        adopt(queued: onDisk.queued, parked: onDisk.parked)
+        guard loadState == .filesUnreadable, case .read(let queued, let parked) = files.load() else { return }
+        adopt(queued: queued, parked: parked)
     }
 
     private func adopt(queued: [OutboxEntry], parked parkedOnDisk: [OutboxEntry]) {
         let newer = Set((entries + parked).map(\.op.dedupKey))
         entries = queued.filter { !newer.contains($0.op.dedupKey) } + entries
         parked = parkedOnDisk.filter { !newer.contains($0.op.dedupKey) } + parked
-        isLoaded = true
+        loadState = .loaded
         persist()
     }
 
     private func persist() {
-        guard isLoaded else { return }
+        guard loadState == .loaded else { return }
         files.persist(queued: entries, parked: parked)
     }
 }

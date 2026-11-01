@@ -99,12 +99,12 @@ struct StaleWriteTests {
             SchoolAccountKeys.noteSchoolDataSynced(for: endedTestSignIn)
             SyncProgress.noteMarksSynced(for: endedTestSignIn)
             BrowserSites.change(for: endedTestSignIn) { $0.setZoom(150, for: "moodle2.ntust.edu.tw") }
-            NotificationSettingsSync.accountSignedIn(local: local, for: endedTestSignIn)
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(from: local, for: endedTestSignIn)
 
             #expect(Defaults[.schoolDataSyncedAt] == nil)
             #expect(!Defaults[.assignmentMarksSyncedOnce])
             #expect(BrowserSites.stored == BrowserSites())
-            #expect(NotificationSettingsSync.synced == nil)
+            #expect(NotificationSettingsSync.lastSyncedPreferences == nil)
 
             SyncProgress.noteMarksSynced(for: testSignIn)
             #expect(Defaults[.assignmentMarksSyncedOnce])

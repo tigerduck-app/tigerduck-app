@@ -16,7 +16,7 @@ struct UnchangedUploadTests {
     private static func courses(_ entries: PushAPI.CourseUploadEntry..., adds: [String] = [])
         -> PushAPI.CourseUploadRequest {
         PushAPI.CourseUploadRequest(
-            courses: entries, adds: adds.isEmpty ? nil : adds.map { PushAPI.CourseAdd(courseKey: $0, hlc: 1) }
+            courses: entries, handAddedCourses: adds.isEmpty ? nil : adds.map { PushAPI.CourseAdd(courseKey: $0, hlc: 1) }
         )
     }
 
@@ -70,11 +70,18 @@ struct UnchangedUploadTests {
         #expect(one != moved)
     }
 
+    @Test("The courses an upload adds by hand leave its list the same, as once it lands the backend holds that list")
+    func handAddsLeaveTheListAlone() {
+        let plain = PushCoordinator.fingerprint(of: Self.courses(Self.entry("CS1")))
+        let adding = PushCoordinator.fingerprint(of: Self.courses(Self.entry("CS1"), adds: ["client:1151:CS1"]))
+        #expect(plain == adding)
+    }
+
     @Test("A roster names its terms in roster_terms, and is another list than the same courses sent without")
     func rosterTermsGoUpAndCount() throws {
         let plain = Self.courses(Self.entry("CS1"))
         var roster = plain
-        roster.rosterTerms = ["1151"]
+        roster.completeRosterTerms = ["1151"]
 
         let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(roster)) as? [String: Any]
         let sentPlain = try JSONSerialization.jsonObject(with: JSONEncoder().encode(plain)) as? [String: Any]
@@ -223,7 +230,7 @@ struct UnchangedUploadTests {
         _ = try? await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {
             throw URLError(.notConnectedToInternet)
         }
-        #expect(try await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {})
+        #expect(try await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {} == .sent)
     }
 
     @Test("Cancelling an upload's caller stops its send, or skips it while it waits its turn, and records no failure")
@@ -280,7 +287,7 @@ struct UnchangedUploadTests {
             try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn)
         }
         #expect(coordinator.holdsUnsentCourseUploads)
-        clock.now += SendLedger.refusalPause
+        clock.now += SendLedger.refusedBodyHoldInterval
         #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn))
         #expect(!coordinator.holdsUnsentCourseUploads)
 
@@ -344,7 +351,7 @@ struct UnchangedUploadTests {
         let key = SendLedger.Channel.courses("1151")
         #expect(try await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {
             await sends.send(1)
-        })
+        } == .sent)
 
         sends.holds = true
         let resend = Task {
@@ -355,7 +362,7 @@ struct UnchangedUploadTests {
         try await waitUntil { sends.isParked }
         #expect(!coordinator.holdsUnsentCourseUploads)
         sends.release()
-        #expect(try await resend.value)
+        #expect(try await resend.value == .sent)
     }
 
     @Test("A course list counts as unsent while it is out, and an assignment list does not")
@@ -393,9 +400,9 @@ struct UnchangedUploadTests {
 
         #expect(try await ledger.send(channel, fingerprint: "1", resend: .never) {
             ledger.forget(channel)
-        })
+        } == .sent)
         #expect(!ledger.accepts(channel, fingerprint: "1"))
-        #expect(try await ledger.send(channel, fingerprint: "1", resend: .never) {})
+        #expect(try await ledger.send(channel, fingerprint: "1", resend: .never) {} == .sent)
         #expect(ledger.accepts(channel, fingerprint: "1"))
     }
 
@@ -443,7 +450,7 @@ struct UnchangedUploadTests {
         let coordinator = Backend().makeCoordinator()
         let sends = Sends()
         let key = SendLedger.Channel.courses("1151")
-        #expect(try await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) { await sends.send(1) })
+        #expect(try await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) { await sends.send(1) } == .sent)
 
         sends.holds = true
         let edit = Task { try await coordinator.ledger.send(key, fingerprint: "2", resend: .after(PushCoordinator.unchangedUploadInterval)) { await sends.send(2) } }
@@ -454,8 +461,8 @@ struct UnchangedUploadTests {
         #expect(coordinator.holdsUnsentCourseUploads)
         sends.release()
 
-        #expect(try await edit.value)
-        #expect(try await undo.value)
+        #expect(try await edit.value == .sent)
+        #expect(try await undo.value == .sent)
         #expect(sends.sent == [1, 2, 1])
         #expect(!coordinator.holdsUnsentCourseUploads)
     }
@@ -483,8 +490,8 @@ struct UnchangedUploadTests {
         account.endSignIn()
         sends.release()
 
-        #expect(try await first.value)
-        #expect(try await !queued.value)
+        #expect(try await first.value == .sent)
+        #expect(try await queued.value == .skipped)
         #expect(sends.sent == [1])
     }
 }

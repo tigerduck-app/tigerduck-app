@@ -26,9 +26,10 @@ extension PushRegistrationService {
     }
 
     nonisolated struct PatchChains {
-        var optOut: Task<Void, Error>?
-        var bulletin: Task<Void, Error>?
-        var syncPreferences: Task<Void, Never>?
+        var optOut = RequestChain()
+        var bulletin = RequestChain()
+        var syncPreferences = RequestChain()
+        var cloudSync = RequestChain()
     }
 
     nonisolated struct DeviceRetry {
@@ -121,7 +122,7 @@ extension PushRegistrationService {
     }
     #endif
 
-    static func retryDelay(attempt: Int) -> Double {
-        min(30 * pow(3.0, Double(attempt - 1)), 600)
+    static func retryDelay(attempt: Int) -> Duration {
+        .seconds(min(30 * pow(3.0, Double(attempt - 1)), 600))
     }
 }

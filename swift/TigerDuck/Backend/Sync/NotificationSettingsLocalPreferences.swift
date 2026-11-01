@@ -73,7 +73,7 @@ nonisolated struct NotificationSettingsLocalPreferences: Equatable, Sendable, Co
         return copy
     }
 
-    func taking(_ fields: [String: Any], from other: NotificationSettingsLocalPreferences) -> NotificationSettingsLocalPreferences {
+    func mergeSentFields(_ fields: [String: Any], of other: NotificationSettingsLocalPreferences) -> NotificationSettingsLocalPreferences {
         let sent = { (section: NotificationSettingsSync.OwnedSection) in
             Set((fields[section.rawValue] as? [String: Any] ?? [:]).keys)
         }
@@ -82,7 +82,7 @@ nonisolated struct NotificationSettingsLocalPreferences: Equatable, Sendable, Co
         if assignments.contains("enabled") {
             copy.isAssignmentReminderEnabled = other.isAssignmentReminderEnabled
         }
-        if !assignments.isDisjoint(with: ["reminder_offsets_minutes", "reminder_offsets_hours"]) {
+        if !assignments.isDisjoint(with: NotificationSettingsSync.mirroredOffsetKeys) {
             copy.assignmentReminderOffsets = other.assignmentReminderOffsets
         }
         if liveActivity.contains("show_class_preparing") {
@@ -145,7 +145,7 @@ nonisolated struct NotificationSettingsLocalPreferences: Equatable, Sendable, Co
 
     func documentUpdates(
         existing: [String: Any],
-        since synced: NotificationSettingsLocalPreferences? = nil,
+        since base: NotificationSettingsSync.PushBase = .everyField,
         includeAssignments: Bool = true,
         includeLiveActivity: Bool = true,
         includeCourses: Bool = true
@@ -164,7 +164,7 @@ nonisolated struct NotificationSettingsLocalPreferences: Equatable, Sendable, Co
                 coursesSection(preservingOffsetsIn: existing)
             )
         }
-        guard let synced else { return updates }
+        guard case .since(let synced) = base else { return updates }
         let before = try synced.documentUpdates(
             existing: existing,
             includeAssignments: includeAssignments,

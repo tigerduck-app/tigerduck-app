@@ -12,9 +12,13 @@ final class APIVersionGate {
     init() {}
 
     func note(statusCode: Int, code: String? = nil) {
-        guard statusCode == 410, !isRetired else { return }
-        if let code, !Self.retiringCodes.contains(code) { return }
-        isRetired = true
+        if !isRetired, Self.retires(status: statusCode, code: code) { isRetired = true }
+    }
+
+    nonisolated static func retires(status: Int, code: String?) -> Bool {
+        guard status == 410 else { return false }
+        guard let code else { return true }
+        return retiringCodes.contains(code)
     }
 
     func resetForTesting() {

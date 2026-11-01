@@ -50,7 +50,7 @@ struct RefreshOrderTests {
         }
     }
 
-    private static func uploader(_ target: SyncTarget, _ log: Log) -> SchoolDataUploader {
+    private static func uploader(_ target: FirstPullGate, _ log: Log) -> SchoolDataUploader {
         SchoolDataUploader(
             target: target, backend: Backend(log: log),
             policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: ["courses"], pendingChecks: []) }
@@ -62,7 +62,7 @@ struct RefreshOrderTests {
     @Test("A school fetch that finishes before the pull applies and uploads only after the pull and the outbox")
     func aSchoolFetchFinishingFirstUploadsAfterThePull() async throws {
         let account = AccountSession()
-        let target = SyncTarget()
+        let target = FirstPullGate()
         let log = Log()
         let uploader = Self.uploader(target, log)
         let pull = Gate()
@@ -97,7 +97,7 @@ struct RefreshOrderTests {
     @Test("A failed pull lets school data apply but holds its uploads until a later pull")
     func aFailedPullHoldsTheSchoolUploads() async throws {
         let account = AccountSession()
-        let target = SyncTarget()
+        let target = FirstPullGate()
         let log = Log()
         let uploader = Self.uploader(target, log)
 

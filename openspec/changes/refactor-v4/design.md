@@ -206,7 +206,7 @@ Course membership follows the newest school roster, whichever device fetched it.
 edits follow the last writer by `hlc`. A local edit is sent at once and never waits for a pull.
 When the pull fails, school data still shows and its uploads wait for the next successful pull, so
 a device sends nothing derived from school data before its first pull after a sign-in.
-That hold lives in `SyncTarget`, not in its callers, so an upload started outside
+That hold lives in `FirstPullGate`, not in its callers, so an upload started outside
 `SceneActivation` waits too.
 - Lost: finishing the pull before starting the school fetch. It adds the backend round trip to
   every launch for the same result.

@@ -6,7 +6,7 @@ import Testing
 struct SyncOrderTests {
     @MainActor
     private final class Released {
-        var value: Bool?
+        var value: FirstPullGate.Release?
         var entered = 0
         var order: [Int] = []
         var pendingChecks: Set<String> = []
@@ -15,7 +15,7 @@ struct SyncOrderTests {
     @Test("What this device derives from school data waits for the sign-in's first pull, and goes once it is applied")
     func schoolUploadsWaitForTheFirstPull() async throws {
         let account = AccountSession()
-        let target = SyncTarget()
+        let target = FirstPullGate()
         let ticket = account.signIns.currentSignIn
         let released = Released()
 
@@ -26,14 +26,14 @@ struct SyncOrderTests {
 
         target.notePull(ticket)
         await upload.value
-        #expect(released.value == true)
-        #expect(await target.waitForPull(ticket))
+        #expect(released.value == .pulled)
+        #expect(await target.waitForPull(ticket) == .pulled)
     }
 
     @Test("A sign-out drops the uploads still waiting, and the next sign-in waits for its own pull")
     func aSignOutDropsTheWaitingUploads() async throws {
         let account = AccountSession()
-        let target = SyncTarget()
+        let target = FirstPullGate()
         let before = account.signIns.currentSignIn
         target.notePull(before)
         let released = Released()
@@ -46,7 +46,7 @@ struct SyncOrderTests {
 
         target.signedOut()
         await upload.value
-        #expect(released.value == false)
+        #expect(released.value == .dropped)
         #expect(!target.hasPulled(before))
         #expect(!target.hasPulled(after))
         target.notePull(before)
@@ -56,7 +56,7 @@ struct SyncOrderTests {
     @Test("Uploads held for the first pull go out in the order they came, and one that comes as they go follows them")
     func heldUploadsGoInTheirOrder() async throws {
         let account = AccountSession()
-        let target = SyncTarget()
+        let target = FirstPullGate()
         let ticket = account.signIns.currentSignIn
         let released = Released()
         func held(_ index: Int) -> Task<Void, Never> {
@@ -83,7 +83,7 @@ struct SyncOrderTests {
     func passReadsThePolicyAfterSettling() async throws {
         let state = Released()
 
-        let settled = try #require(await FullSyncRunner.settle(
+        let settled = try await FullSyncRunner.settleCourseEditsThenReadPolicy(
             ["1151|CS1"], takingCourses: true,
             settle: { deletes in
                 state.pendingChecks.insert("assignments")
@@ -95,11 +95,21 @@ struct SyncOrderTests {
             },
             mayWrite: { true },
             policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: ["assignments"], pendingChecks: state.pendingChecks) }
-        ))
+        )
 
         #expect(settled.policy.pendingChecks == ["assignments", "courses"])
         #expect(settled.deletes == ["1151|CS1"])
         #expect(settled.adds == ["1151|CS2"])
+    }
+
+    @Test("A full sync that may no longer write once its course edits settle is abandoned")
+    func passIsAbandonedWhenItMayNoLongerWrite() async {
+        await #expect(throws: FullSyncAbandoned.self) {
+            try await FullSyncRunner.settleCourseEditsThenReadPolicy(
+                [], takingCourses: true, settle: { $0 }, adds: { [] }, mayWrite: { false },
+                policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: [], pendingChecks: []) }
+            )
+        }
     }
 
     @Test("A full sync applies marks, course ignores, colours and names, holidays and then the roster")

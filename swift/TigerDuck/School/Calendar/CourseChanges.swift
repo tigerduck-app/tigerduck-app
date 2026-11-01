@@ -172,7 +172,7 @@ final class CourseChangeStore {
         request.authenticated = false
         // The ETag is ours to send; URLCache would serve its copy for the feed's max-age and hide a change.
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.accepting = [304]
+        request.returnedStatuses = [304]
         let tag = Defaults[.courseChangesETag]
         if !tag.isEmpty, (try? CourseChanges(json: Defaults[.courseChangesCache])) != nil {
             request.headers["If-None-Match"] = tag

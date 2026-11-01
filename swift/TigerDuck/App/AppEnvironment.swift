@@ -19,7 +19,7 @@ final class AppEnvironment {
     var pushCoordinator: PushCoordinator { backend.pushCoordinator }
     var cloudSyncCoordinator: CloudSyncCoordinator { backend.cloudSyncCoordinator }
     var cloudSyncPreference: CloudSyncPreference { backend.cloudSyncPreference }
-    var syncTarget: SyncTarget { backend.syncTarget }
+    var firstPullGate: FirstPullGate { backend.firstPullGate }
     var localEdits: LocalEdits { backend.localEdits }
     var poller: RevisionPoller { backend.poller }
     var edits: EditSender { backend.edits }
@@ -112,8 +112,8 @@ final class AppEnvironment {
             pushCoordinator.refreshRegistrationAfterAuth()
             pushSchedule.requestSync()
             #if os(iOS)
-            NotificationSettingsSync.accountSignedIn(
-                local: .init(from: liveActivity.preferences), for: authService.session.currentSignIn
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(
+                from: .init(from: liveActivity.preferences), for: authService.session.currentSignIn
             )
             notificationSettings.reconcile()
             #endif

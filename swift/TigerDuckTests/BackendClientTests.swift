@@ -31,6 +31,16 @@ struct BackendClientTests {
         #expect(AuthTokenManager.isSameBackend(stored, BackendClient.apiBase(stored)))
     }
 
+    @Test("Only a 410 retires the build: one naming a retired API or app version, or one whose code cannot be read")
+    func onlyAGoneAnswerRetiresTheBuild() {
+        #expect(APIVersionGate.retires(status: 410, code: "api_retired"))
+        #expect(APIVersionGate.retires(status: 410, code: "app_version_retired"))
+        #expect(APIVersionGate.retires(status: 410, code: nil))
+        #expect(!APIVersionGate.retires(status: 410, code: "sync_revision_expired"))
+        #expect(!APIVersionGate.retires(status: 409, code: "api_retired"))
+        #expect(!APIVersionGate.retires(status: 404, code: nil))
+    }
+
     @Test("A colour edit of a course whose number holds a slash reaches the backend's one course key")
     func courseKeyWithASlashReachesItsCourse() async throws {
         let base = SettingsAPIStub.uniqueBaseURL()
@@ -42,7 +52,7 @@ struct BackendClientTests {
             courseKey: "client:1151:AB/12", colorHex: "#FF6B6B", customName: nil, locale: nil, madeAt: Date(), for: testSignIn
         )
 
-        #expect(reply.applied == ["color_hex"])
+        #expect(reply.applied == [.colorHex])
         #expect(SettingsAPIStub.requests(for: url).count == 1)
     }
 

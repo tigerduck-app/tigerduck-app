@@ -12,8 +12,20 @@ nonisolated enum NotificationSettingsSync {
 
     typealias LocalPreferences = NotificationSettingsLocalPreferences
 
+    enum PushBase: Equatable, Sendable {
+        case everyField
+        case since(LocalPreferences)
+    }
+
+    enum PushResult: Equatable, Sendable {
+        case landed
+        case skipped
+    }
+
+    static let mirroredOffsetKeys: Set<String> = ["reminder_offsets_minutes", "reminder_offsets_hours"]
+
     @MainActor
-    static private(set) var synced: LocalPreferences? {
+    static private(set) var lastSyncedPreferences: LocalPreferences? {
         get {
             Defaults[.notificationSettingsSyncedPreferences]
                 .flatMap { try? JSONDecoder().decode(LocalPreferences.self, from: $0) }
@@ -24,14 +36,15 @@ nonisolated enum NotificationSettingsSync {
     }
 
     @MainActor
-    static func pushBase(local: LocalPreferences) -> LocalPreferences? {
-        synced ?? (Defaults[.notificationSettingsPushSendsEveryField] ? nil : local)
+    static func pushBase(local: LocalPreferences) -> PushBase {
+        if let lastSyncedPreferences { return .since(lastSyncedPreferences) }
+        return Defaults[.notificationSettingsPushSendsEveryField] ? .everyField : .since(local)
     }
 
     @MainActor
-    static func accountSignedIn(local: LocalPreferences, for signIn: SignIn) {
-        guard signIn.isCurrent, synced == nil, !Defaults[.notificationSettingsPushSendsEveryField] else { return }
-        synced = local
+    static func seedSyncedCopyOnSignIn(from local: LocalPreferences, for signIn: SignIn) {
+        guard signIn.isCurrent, lastSyncedPreferences == nil, !Defaults[.notificationSettingsPushSendsEveryField] else { return }
+        lastSyncedPreferences = local
     }
 
     /// The upgrade's seed of the copy, from Migrations/NotificationSettingsSyncedSeedMigration.swift: a
@@ -41,28 +54,28 @@ nonisolated enum NotificationSettingsSync {
         guard signIn.isCurrent else { return }
         if pushPending {
             Defaults[.notificationSettingsPushSendsEveryField] = true
-        } else if synced == nil {
-            synced = local
+        } else if lastSyncedPreferences == nil {
+            lastSyncedPreferences = local
         }
     }
 
     @MainActor
     static func sectionTurnedOn(_ section: OwnedSection, local: LocalPreferences, for signIn: SignIn) {
-        guard signIn.isCurrent, let synced else { return }
-        self.synced = synced.replacing(section, from: local)
+        guard signIn.isCurrent, let lastSyncedPreferences else { return }
+        self.lastSyncedPreferences = lastSyncedPreferences.replacing(section, from: local)
     }
 
     @MainActor
-    static func recordPushed(_ sent: LocalPreferences, fields: [String: Any], for signIn: SignIn) {
+    static func mergeSentFields(_ fields: [String: Any], of sent: LocalPreferences, for signIn: SignIn) {
         guard signIn.isCurrent else { return }
-        synced = (synced ?? sent).taking(fields, from: sent)
+        lastSyncedPreferences = (lastSyncedPreferences ?? sent).mergeSentFields(fields, of: sent)
         Defaults[.notificationSettingsPushSendsEveryField] = false
     }
 
     @MainActor
-    static func recordSynced(_ settled: LocalPreferences, sections: Set<OwnedSection>, for signIn: SignIn) {
+    static func recordSyncedSections(_ sections: Set<OwnedSection>, of settled: LocalPreferences, for signIn: SignIn) {
         guard signIn.isCurrent else { return }
-        synced = sections.reduce(synced ?? settled) { $0.replacing($1, from: settled) }
+        lastSyncedPreferences = sections.reduce(lastSyncedPreferences ?? settled) { $0.replacing($1, from: settled) }
     }
 
     @MainActor
@@ -89,8 +102,7 @@ nonisolated enum NotificationSettingsSync {
         since synced: [String: Any],
         over existing: [String: Any]
     ) -> [String: Any] {
-        let offsets: Set = ["reminder_offsets_minutes", "reminder_offsets_hours"]
-        return updates.reduce(into: [:]) { changed, entry in
+        updates.reduce(into: [:]) { changed, entry in
             guard let fields = entry.value as? [String: Any],
                   let server = existing[entry.key] as? [String: Any]
             else {
@@ -99,7 +111,7 @@ nonisolated enum NotificationSettingsSync {
             }
             let before = synced[entry.key] as? [String: Any] ?? [:]
             changed[entry.key] = fields.filter { key, _ in
-                let field: Set = offsets.contains(key) ? offsets : [key]
+                let field: Set = mirroredOffsetKeys.contains(key) ? mirroredOffsetKeys : [key]
                 return field.allSatisfy { server[$0] == nil }
                     || field.contains { (fields[$0] as? NSObject) != (before[$0] as? NSObject) }
             }
@@ -127,31 +139,31 @@ nonisolated enum NotificationSettingsSync {
         return object
     }
 
+    /// docs/decisions/0002-notification-settings-json-merge.md
     @MainActor
-    @discardableResult
     static func push(
         local: LocalPreferences,
-        base: LocalPreferences?,
+        base: PushBase,
         client: SettingsDocumentClient,
         cloudSyncEnabled: Bool,
         syncAssignmentRemindersEnabled: Bool = true,
         syncLiveActivityEnabled: Bool = true,
         isCurrent: () -> Bool = { true },
-        recordSent: ([String: Any]) -> Void = { _ in }
-    ) async throws -> Bool {
-        guard cloudSyncEnabled else { return false }
+        recordOnServer: ([String: Any]) -> Void = { _ in }
+    ) async throws -> PushResult {
+        guard cloudSyncEnabled else { return .skipped }
 
         var existing: [String: Any] = [:]
-        var baseRevision: Int?
+        var mode = SettingsWriteMode.create
 
-        if let (data, revision) = try await client.read(namespace: namespace) {
+        if case .stored(let data, let revision) = try await client.read(namespace: namespace) {
             existing = Self.object(from: data)
-            baseRevision = revision
+            mode = .replace(revision: revision)
         }
 
         var attempt = 0
         while true {
-            guard isCurrent() else { return false }
+            guard isCurrent() else { return .skipped }
             let updates = try local.documentUpdates(
                 existing: existing,
                 since: base,
@@ -160,23 +172,23 @@ nonisolated enum NotificationSettingsSync {
             )
             let merged = merging(updates, into: existing)
             if NSDictionary(dictionary: merged).isEqual(to: existing) {
-                recordSent(updates)
-                return isCurrent()
+                recordOnServer(updates)
+                return isCurrent() ? .landed : .skipped
             }
             let body = try JSONSerialization.data(withJSONObject: merged, options: [.sortedKeys])
-            let result = try await client.write(namespace: namespace, document: body, baseRevision: baseRevision)
+            let result = try await client.write(namespace: namespace, document: body, mode: mode)
 
             switch result {
             case .written:
-                recordSent(updates)
-                return isCurrent()
+                recordOnServer(updates)
+                return isCurrent() ? .landed : .skipped
             case .conflict(let serverDocument, let serverRevision):
                 attempt += 1
                 guard attempt <= 1 else {
                     throw SyncError.conflictNotResolved
                 }
                 existing = Self.object(from: serverDocument)
-                baseRevision = serverRevision
+                mode = .replace(revision: serverRevision)
             }
         }
     }
@@ -186,11 +198,11 @@ nonisolated enum NotificationSettingsSync {
     }
 
     static func canClearPendingMarker(
-        written: Bool,
+        _ result: PushResult,
         sent: LocalPreferences,
         current: LocalPreferences
     ) -> Bool {
-        written && current == sent
+        result == .landed && current == sent
     }
 
     static func shouldAdoptOnDeviceSwitchChange(old: Bool, new: Bool) -> Bool {
@@ -211,7 +223,7 @@ nonisolated enum NotificationSettingsSync {
 
     enum DocumentSource: Sendable {
         case read
-        case snapshot((document: Data, revision: Int)?)
+        case snapshot(SettingsDocument)
     }
 
     enum ReconcileOutcome: Equatable, Sendable {

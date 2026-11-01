@@ -63,7 +63,7 @@ final class ScheduleSyncService {
         inflight = Task { [apiClient, ledger, logger] in
             await previous?.value
             do {
-                let sent = try await ledger.send(
+                let outcome = try await ledger.send(
                     SendLedger.Channel.schedule, fingerprint: fingerprint, resend: .never
                 ) {
                     let response = try await apiClient.syncSchedule(request, for: signIn)
@@ -71,7 +71,7 @@ final class ScheduleSyncService {
                         "sync ok pending=\(response.pending, privacy: .public) replaced=\(response.replaced, privacy: .public)"
                     )
                 }
-                if !sent { logger.info("sync skipped, list unchanged") }
+                if outcome == .skipped { logger.info("sync skipped, list unchanged") }
             } catch {
                 logger.error("sync failed: \(error.localizedDescription, privacy: .private)")
             }
@@ -202,7 +202,7 @@ final class ScheduleSyncService {
         await pendingRequest?.value
     }
 
-    func forgetAcceptedList() {
+    func resendScheduleOnNextSync() {
         ledger.forget(SendLedger.Channel.schedule)
     }
 }

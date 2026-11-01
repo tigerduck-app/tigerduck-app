@@ -88,7 +88,7 @@ nonisolated struct PushDeviceRequests: Sendable {
             app_version: appVersion,
             os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
             device_model: PushDeviceModel.current,
-            locale: PushRegistrationService.currentLocaleTag,
+            locale: PushRegistrationService.renderedLanguageTag,
             push_token: pushToken,
             cloud_sync_enabled: cloudSync,
             bulletin_push_enabled: Defaults[.bulletinPushEnabled],
