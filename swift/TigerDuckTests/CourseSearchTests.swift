@@ -403,16 +403,16 @@ struct CourseSearchTests {
         #expect(model.options.dimensions.map(\.code) == ["A"])
         #expect(!model.isSearching)
 
-        let revision = model.revision
+        let revision = model.searchAgainCount
         for _ in 0..<10_000 where sent.value.count < 2 {
             await Task.yield()
         }
         #expect(Set(sent.value) == [#"zh W/"zh1""#, #"en W/"en1""#])
         gate.open()
-        for _ in 0..<10_000 where model.revision == revision {
+        for _ in 0..<10_000 where model.searchAgainCount == revision {
             await Task.yield()
         }
-        #expect(model.revision != revision)
+        #expect(model.searchAgainCount != revision)
         #expect(cache.catalog.loadCourseCatalog(semester: "1151", language: "zh") == storedZh)
         #expect(cache.catalog.loadCourseCatalog(semester: "1151", language: "en") == freshEn)
 
@@ -444,13 +444,13 @@ struct CourseSearchTests {
         #expect(model.isSearching)
         #expect(model.failure == nil)
         model.submit()
-        #expect(model.revision == 0)
+        #expect(model.searchAgainCount == 0)
 
         gate.open()
         await search.value
         #expect(!model.isSearching)
         #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1002301"]])
-        #expect(model.revision == 0)
+        #expect(model.searchAgainCount == 0)
         #expect(cache.catalog.loadCourseCatalog(semester: "1151", language: "zh")?.etag == #"W/"zh""#)
         #expect(cache.catalog.loadCourseCatalog(semester: "1151", language: "en")?.etag == #"W/"en""#)
 
@@ -495,14 +495,14 @@ struct CourseSearchTests {
 
         online.value = true
         model.submit()
-        #expect(model.revision == 1)
+        #expect(model.searchAgainCount == 1)
         await model.search("CS1", semester: "1151", fetch: fetch)
         #expect(model.failure == nil)
         #expect(model.results["zh"]?.map(\.CourseNo) == ["CS1001301", "CS1002301"])
         #expect(sent.value.count == 4)
 
         model.submit()
-        #expect(model.revision == 1)
+        #expect(model.searchAgainCount == 1)
         #expect(sent.value.count == 4)
     }
 
@@ -522,9 +522,9 @@ struct CourseSearchTests {
 
         online.value = true
         model.submit()
-        #expect(model.revision == 1)
+        #expect(model.searchAgainCount == 1)
         await model.search("data", semester: "1151", fetch: fetch)
-        for _ in 0..<10_000 where model.revision == 1 {
+        for _ in 0..<10_000 where model.searchAgainCount == 1 {
             await Task.yield()
         }
         await model.search("data", semester: "1151", fetch: fetch)
@@ -532,7 +532,7 @@ struct CourseSearchTests {
         #expect(Set(sent.value.dropFirst(2)) == [#"zh W/"1""#, "en -"])
 
         model.submit()
-        #expect(model.revision == 2)
+        #expect(model.searchAgainCount == 2)
     }
 
     @Test("with nothing stored, a search started after one language answered waits for the other")
@@ -562,7 +562,7 @@ struct CourseSearchTests {
         enAnswer.open()
         await second.value
         #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1002301"]])
-        #expect(model.revision == 0)
+        #expect(model.searchAgainCount == 0)
     }
 
     @Test("each row mark looks and reads differently, and only a course already in the table is dimmed")

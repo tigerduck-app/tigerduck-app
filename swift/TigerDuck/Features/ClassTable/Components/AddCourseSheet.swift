@@ -19,7 +19,7 @@ struct AddCourseSheet: View {
     private struct SearchKey: Equatable {
         let text: String
         let filters: CourseSearchFilters
-        let revision: Int
+        let searchAgainCount: Int
     }
 
     var body: some View {
@@ -43,7 +43,7 @@ struct AddCourseSheet: View {
     }
 
     private var searchKey: SearchKey {
-        SearchKey(text: trimmedQuery, filters: model.filters.searched, revision: model.revision)
+        SearchKey(text: trimmedQuery, filters: model.filters.searched, searchAgainCount: model.searchAgainCount)
     }
 
     private var fetchCatalog: CourseSearchModel.FetchCatalog {

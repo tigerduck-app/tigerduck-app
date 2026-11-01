@@ -94,7 +94,7 @@ struct TimetableGridView: View {
                     ForEach(viewModel.grid.activeWeekdays, id: \.self) { weekday in
                         let role = viewModel.grid.cellRole(weekday: weekday, periodIndex: periodIndex)
                         let meeting = thisWeek ? changedMeeting(role, weekday: weekday, periodId: period.id, now: now) : nil
-                        let key = TimetableCellKey.of(
+                        let key = TimetableCellTransitionID.of(
                             role, weekday: weekday, periodId: period.id, meeting: meeting,
                             showsRooms: app.preferences.showClassroomInClassTable
                         )
@@ -178,7 +178,7 @@ struct TimetableGridView: View {
 
 }
 
-enum TimetableCellKey {
+enum TimetableCellTransitionID {
     static func of(
         _ role: ClassTableGrid.CellRole, weekday: Int, periodId: String, meeting: CourseTimeSlot?, showsRooms: Bool
     ) -> String {

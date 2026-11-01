@@ -61,24 +61,29 @@ final class ShownPersonModel {
         if store.delete(personInAlert.id, for: AccountSession.school.currentSignIn) == .failed { showsSaveFailed = true }
     }
 
-    func refresh(semester: String) async -> Bool {
+    enum TermRefresh {
+        case lookedUpWhileShown
+        case nothingToShow
+    }
+
+    func refresh(semester: String) async -> TermRefresh {
         await AccountSession.school.withSignIn { await refresh(semester: semester, for: $0) }
     }
 
-    private func refresh(semester: String, for signIn: SignIn) async -> Bool {
+    private func refresh(semester: String, for signIn: SignIn) async -> TermRefresh {
         guard !isRefreshing, let person = shownPerson,
-              let term = person.terms.first(where: { $0.semester == semester }) else { return false }
+              let term = person.terms.first(where: { $0.semester == semester }) else { return .nothingToShow }
         isRefreshing = true
         defer { isRefreshing = false }
         guard let refreshed = await lookUpTerm(term.semester, term.courseNos, term.courses) else {
             showsLookupFailed = true
-            return false
+            return .nothingToShow
         }
         let change = store.updateCourses(
             person.id, semester: term.semester, courseNos: term.courseNos, courses: refreshed,
             importedAt: person.importedAt, for: signIn
         )
         if change == .failed { showsSaveFailed = true }
-        return shownPerson?.id == person.id
+        return shownPerson?.id == person.id ? .lookedUpWhileShown : .nothingToShow
     }
 }

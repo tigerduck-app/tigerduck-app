@@ -3,14 +3,15 @@ import TigerDuckCore
 
 struct CourseDetailChanges: View {
     let course: CourseStore.Course
-    let date: Date?
-    let shown: CourseTimeSlot?
+    let meetingOnCards: CourseTimeSlot?
     let changes: SchoolCalendar.Changes
+
+    static let shownDays = 8
 
     @ViewBuilder
     var body: some View {
-        let rows = date == nil ? [] : Self.changeRows(
-            CourseTimeSlot.upcomingChanges(of: course, from: AppClock.now(), changes: changes), besides: shown
+        let rows = Self.changeRows(
+            CourseTimeSlot.upcomingChanges(of: course, from: AppClock.now(), changes: changes), besides: meetingOnCards
         )
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
@@ -38,24 +39,21 @@ struct CourseDetailChanges: View {
     }
 
     static func changeRows(
-        _ days: [(day: Date, meetings: [CourseTimeSlot])], besides shown: CourseTimeSlot?
+        _ days: [(day: Date, meetings: [CourseTimeSlot])], besides meetingOnCards: CourseTimeSlot?
     ) -> [(day: Date, summary: String)] {
         let rows = days.lazy
             .map { day in
-                (day: day.day, summary: changeSummary(day.meetings, besides: shown))
+                (day: day.day, summary: changeSummary(day.meetings, besides: meetingOnCards))
             }
             .filter { !$0.summary.isEmpty }
-        return Array(rows.prefix(8))
+        return Array(rows.prefix(shownDays))
     }
 
-    private static func changeSummary(_ meetings: [CourseTimeSlot], besides shown: CourseTimeSlot?) -> String {
+    private static func changeSummary(_ meetings: [CourseTimeSlot], besides meetingOnCards: CourseTimeSlot?) -> String {
         var parts: [String] = []
         for meeting in meetings {
-            if let shown, meeting.periods.contains(where: shown.periods.contains),
-               TaipeiTime.calendar.startOfDay(for: meeting.date) == TaipeiTime.calendar.startOfDay(for: shown.date) {
-                parts += meeting.changes
-                    .filter { $0.kind == .room && !shown.periods.contains(where: $0.covers) }
-                    .compactMap(\.room)
+            if let onCards = meetingOnCards, meeting.overlaps(onCards) {
+                parts += roomsOutsideTheCards(meeting, onCards)
                 continue
             }
             if meeting.isCancelled {
@@ -69,5 +67,18 @@ struct CourseDetailChanges: View {
         parts += meetings.flatMap(\.notes).filter { noteIds.insert($0.id).inserted }.compactMap { $0.note() }
         var seen = Set<String>()
         return parts.filter { seen.insert($0).inserted }.joined(separator: " · ")
+    }
+
+    private static func roomsOutsideTheCards(_ meeting: CourseTimeSlot, _ onCards: CourseTimeSlot) -> [String] {
+        meeting.changes
+            .filter { $0.kind == .room && !onCards.periods.contains(where: $0.covers) }
+            .compactMap(\.room)
+    }
+}
+
+private extension CourseTimeSlot {
+    func overlaps(_ other: CourseTimeSlot) -> Bool {
+        periods.contains(where: other.periods.contains)
+            && TaipeiTime.calendar.startOfDay(for: date) == TaipeiTime.calendar.startOfDay(for: other.date)
     }
 }

@@ -120,7 +120,7 @@ final class ClassTableLoader {
         guard !refreshing.value, let table = owner else { return }
         refreshing.value = true
         let signIn = authService.session.currentSignIn
-        Task {
+        Task { [self, table] in
             guard await NetworkMonitor.shared.isReachable() else {
                 SchoolRefresh.showOffline()
                 self.refreshing.value = false
@@ -154,10 +154,10 @@ final class ClassTableLoader {
         async let userAddedTask: Void = SchoolRefresh.userAddedCourses(targetSemester, for: signIn)
 
         _ = await (coursesTask, assignmentsTask, userAddedTask)
-        showFetched(signedOutSince: !signIn.isCurrent)
+        reloadFromStoresAfterFetch(signedOutSince: !signIn.isCurrent)
     }
 
-    func showFetched(signedOutSince: Bool) {
+    func reloadFromStoresAfterFetch(signedOutSince: Bool) {
         SchoolRefresh.end()
         guard !signedOutSince else { return }
         owner?.reloadFromCache()

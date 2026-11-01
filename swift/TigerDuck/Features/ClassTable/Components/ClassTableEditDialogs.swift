@@ -17,7 +17,7 @@ struct ClassTableEditDialogs: ViewModifier {
                     weekday: viewModel.selection.weekday,
                     periods: viewModel.selection.coursePeriods,
                     date: viewModel.selection.date,
-                    slot: viewModel.selection.slot,
+                    slot: viewModel.selection.currentClassSlot,
                     showsMoodle: viewModel.shownPerson == nil
                 )
                 .linkRouting()

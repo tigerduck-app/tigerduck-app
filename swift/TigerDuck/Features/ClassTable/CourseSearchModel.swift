@@ -22,7 +22,7 @@ final class CourseSearchModel {
 
     var options: CourseCatalogStore.Options { catalog.options }
 
-    var revision: Int { retries &+ catalog.revision }
+    var searchAgainCount: Int { retries &+ catalog.revision }
 
     /// Searches the catalog, once it is loaded, off the main thread. A blank query only clears.
     func search(_ query: String, semester: String, fetch: @escaping FetchCatalog) async {

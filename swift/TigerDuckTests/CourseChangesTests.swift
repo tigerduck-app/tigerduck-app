@@ -316,7 +316,7 @@ struct CourseChangesTests {
 
     @Test func theClassTableRunsAWeekFromToday() {
         let wednesday = Self.thursday.addingTimeInterval(-86400 + 6 * 3600)
-        let shown = (1...7).map { ClassTableViewModel.columnDate(weekday: $0, today: wednesday) }
+        let shown = (1...7).map { ClassTableViewModel.nextDate(onWeekday: $0, from: wednesday) }
 
         #expect(shown.map { TaipeiTime.dayKey(for: $0) } == [
             "2026-11-09", "2026-11-10", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08",
@@ -428,7 +428,7 @@ struct CourseChangesTests {
         let viewModel = ClassTableViewModel()
         viewModel.selectOngoing(piece)
         let opened = CourseDetailSheet.shownMeeting(
-            of: Self.course(), slot: viewModel.selection.slot, periods: viewModel.selection.coursePeriods,
+            of: Self.course(), slot: viewModel.selection.currentClassSlot, periods: viewModel.selection.coursePeriods,
             on: viewModel.selection.date, changes: partly
         )
         #expect(piece.periods == ["2", "3"] && opened == nil)

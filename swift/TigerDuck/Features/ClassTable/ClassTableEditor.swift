@@ -39,7 +39,7 @@ final class ClassTableEditor {
         ignoredAssignmentCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
     }
 
-    private var isEditable: Bool {
+    private var isOwnTableShown: Bool {
         owner.map { $0.shownPerson == nil } ?? false
     }
 
@@ -129,7 +129,7 @@ final class ClassTableEditor {
         guard !resettingSemesters.contains(semester) else { return }
         resettingSemesters.insert(semester)
         let signIn = authService.session.currentSignIn
-        Task {
+        Task { [self, table] in
             defer { self.resettingSemesters.remove(semester) }
             let resetLocally: @MainActor () -> Void = { self.resetLocalCourses(of: table, semester: semester, for: signIn) }
             let backendOk: Bool
@@ -165,14 +165,14 @@ final class ClassTableEditor {
     }
 
     func startRename(_ course: CourseStore.Course) {
-        guard isEditable else { return }
+        guard isOwnTableShown else { return }
         dialogs.courseToRename = course
         dialogs.renameText = course.displayName
         dialogs.showRenameAlert = true
     }
 
     func confirmRename() {
-        guard isEditable, let course = dialogs.courseToRename else { return }
+        guard isOwnTableShown, let course = dialogs.courseToRename else { return }
         let trimmed = dialogs.renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty || trimmed == course.courseName {
             revertRename(course)
@@ -182,7 +182,7 @@ final class ClassTableEditor {
     }
 
     func revertRename(_ course: CourseStore.Course) {
-        guard isEditable, dialogs.courseToRename === course else { return }
+        guard isOwnTableShown, dialogs.courseToRename === course else { return }
         rename(course, to: nil)
     }
 
@@ -202,7 +202,7 @@ final class ClassTableEditor {
     }
 
     func startRecolor(_ course: CourseStore.Course) {
-        guard isEditable else { return }
+        guard isOwnTableShown else { return }
         dialogs.courseToRecolor = course
     }
 
@@ -228,7 +228,7 @@ final class ClassTableEditor {
     }
 
     func setColor(hex: UInt32, for course: CourseStore.Course) {
-        guard isEditable else { return }
+        guard isOwnTableShown else { return }
         let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo, signIn: AccountSession.school.currentSignIn)
         sync.colorPick?(hex, course, changed)
     }
