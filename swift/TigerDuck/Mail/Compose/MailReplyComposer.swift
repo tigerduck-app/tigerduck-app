@@ -33,8 +33,6 @@ extension MailOriginal {
 }
 
 nonisolated enum MailReplyComposer {
-    private static let nameSpecials = CharacterSet(charactersIn: ",;\"<>():@\\")
-
     static func replySubject(_ subject: String) -> String {
         hasPrefix(subject, ["re:"]) ? subject : "Re: \(subject)"
     }
@@ -51,30 +49,12 @@ nonisolated enum MailReplyComposer {
     static func forwardBody(of original: MailOriginal, dateText: String) -> String {
         let block = [
             String(localized: "school_mail_forwarded_header"),
-            String(format: String(localized: "school_mail_forward_from"), formatted(original.from)),
+            String(format: String(localized: "school_mail_forward_from"), original.from.map(MailRecipients.format) ?? ""),
             String(format: String(localized: "school_mail_forward_date"), dateText),
             String(format: String(localized: "school_mail_forward_subject"), original.subject),
-            String(format: String(localized: "school_mail_details_to"), formatted(original.to)),
+            String(format: String(localized: "school_mail_details_to"), MailRecipients.format(original.to)),
         ].joined(separator: "\n")
         return "\n\n\(block)\n\n\(normalizedLines(original.bodyText).joined(separator: "\n"))"
-    }
-
-    static func formatted(_ address: MailAddress) -> String {
-        guard let name = address.name?.mailNonEmpty else { return address.address }
-        guard !address.address.isEmpty else { return name }
-        guard name.unicodeScalars.contains(where: nameSpecials.contains) else {
-            return "\(name) <\(address.address)>"
-        }
-        let escaped = name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\" <\(address.address)>"
-    }
-
-    static func formatted(_ address: MailAddress?) -> String {
-        address.map(formatted) ?? ""
-    }
-
-    static func formatted(_ addresses: [MailAddress]) -> String {
-        addresses.map(formatted).joined(separator: ", ")
     }
 
     static func replyRecipients(

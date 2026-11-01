@@ -16,12 +16,21 @@ nonisolated enum MailRecipients {
         return Parsed(to: toList, cc: ccList, bcc: bccList, invalid: toInvalid + ccInvalid + bccInvalid)
     }
 
+    /// RFC 5322 specials, which a display name may hold only quoted.
+    private static let nameSpecials = CharacterSet(charactersIn: ",;\"<>():@\\")
+
+    static func format(_ address: MailAddress) -> String {
+        guard let name = address.name?.mailNonEmpty else { return address.address }
+        guard !address.address.isEmpty else { return name }
+        guard name.unicodeScalars.contains(where: nameSpecials.contains) else {
+            return "\(name) <\(address.address)>"
+        }
+        let escaped = name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\" <\(address.address)>"
+    }
+
     static func format(_ addresses: [MailAddress]) -> String {
-        addresses.map { address in
-            guard let name = address.name?.mailNonEmpty else { return address.address }
-            let needsQuotes = name.contains(",") || name.contains(";")
-            return needsQuotes ? "\"\(name)\" <\(address.address)>" : "\(name) <\(address.address)>"
-        }.joined(separator: ", ")
+        addresses.map(format).joined(separator: ", ")
     }
 
     static func parse(_ raw: String) -> (addresses: [MailAddress], invalid: [String]) {
