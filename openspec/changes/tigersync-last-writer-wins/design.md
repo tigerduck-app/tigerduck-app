@@ -444,7 +444,8 @@ iOS (`xcodebuild test ... -only-testing:TigerDuckTests`):
   replace an edit made while the write was in flight.
 - Courses: reconcile from tombstones, kinds and resets; the #689 cases end to end against a fake
   backend.
-- Refresh order: a fake school fetch starts only after the TigerSync step returns or fails.
+- TigerSync-only triggers: a revision change and a sync push record no school fetch. The refresh
+  order's tests are refactor-v4's D13.
 - Two devices by hand before release: each #689 case and a pull while the other device edits.
 
 Android (`./gradlew :app:testPlayDebugUnitTest`): reconciler and parser tests for the same
