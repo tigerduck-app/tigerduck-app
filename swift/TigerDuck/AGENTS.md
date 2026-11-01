@@ -13,12 +13,11 @@ Rules for `swift/TigerDuck/`, the iOS app and its native macOS build.
   `NotificationCenter` names in `AppConstants`.
 - Styling goes through `TigerDuckTheme`, `VisualPreset` and `VisualStylePolicy`, with no spacing
   or color system of a feature's own.
-- Day and class-time math uses the Taipei calendar (`TaipeiTime`), never `Calendar.current` or
-  `TimeZone.current`. Schedule code reads the time through `Support/Clock/AppClock`, so the
-  debug clock override applies.
-- Logging goes through `AppLogger`, never `print`. Its `os.Logger`s write only to the device's
-  system log; `captureError` and `breadcrumb` log as private, which a logging profile can reveal,
-  so they still scrub tokens, passwords and URL query strings first.
+- Schedule code reads the time through `Support/Clock/AppClock`, so the debug clock override
+  applies.
+- `AppLogger`'s `os.Logger`s write only to the device's system log; `captureError` and
+  `breadcrumb` log as private, which a logging profile can reveal, so they still scrub tokens,
+  passwords and URL query strings first.
 - Console and a sysdiagnose show `.public` values without a logging profile. Log errors and
   their descriptions as `.private`, and course data and backend ids too: course numbers and
   keys, device, Live Activity and token ids, and request paths that hold one. Fixed labels,

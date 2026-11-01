@@ -75,8 +75,9 @@ the same build folder.
 
 ## Comments
 
-`tools/check_comments.py` checks the language, citations and length of Swift comments in CI and,
-in Claude Code, after every edit (`.claude/hooks/check-comments.sh`). Review applies the rest:
+`tools/check_comments.py` checks the language, citations, length and plain wording (no em dashes,
+bold, labels or emphasis words) of Swift comments in CI and, in Claude Code, after every edit
+(`.claude/hooks/check-comments.sh`). Review applies the rest:
 
 - Comment only what the code cannot say: a behavior of Apple's platforms, the school's servers,
   a dependency or a protocol we cannot change, a contract callers rely on, a license, or an
@@ -85,8 +86,6 @@ in Claude Code, after every edit (`.claude/hooks/check-comments.sh`). Review app
   add the missing name, type or state instead.
 - Cite only what a reader can open: repository paths, RFC sections, Apple documentation, issue
   and pull request URLs.
-- Use plain wording: no bold, no `IMPORTANT:` or `NOTE:`, no em dashes, and no "exactly",
-  "deliberately", "intentionally" or "note that" as emphasis.
 - Longer knowledge goes where it belongs: rationale that spans files in an ADR under
   `docs/decisions/`, procedures in a skill, agent rules in the nearest AGENTS.md, and described
   behavior in a test.
