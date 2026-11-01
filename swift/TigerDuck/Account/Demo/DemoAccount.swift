@@ -47,7 +47,9 @@ struct DemoAccount {
     /// so this runs again once it opens.
     func resume(in session: AccountSession) {
         guard let fixture, !session.signIns.currentSignIn.isDemo, isKept else { return }
-        write(fixture, for: session.startDemoSignIn())
+        let signIn = session.startDemoSignIn()
+        stores.turnOffSync(signIn)
+        write(fixture, for: signIn)
     }
 
     /// Leaving the demo signs out the library and the mailbox it let the reviewer into.

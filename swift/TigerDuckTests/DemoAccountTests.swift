@@ -214,7 +214,8 @@ struct DemoAccountTests {
     @Test("the Keychain's demo credentials alone start the demo sign-in, at launch and once the Keychain opens")
     func theKeptCredentialsStartTheDemo() async {
         let folder = Folder()
-        let demo = Self.account(folder)
+        let calls = Calls()
+        let demo = Self.account(folder, calls: calls)
         let auth = AuthService(
             session: AccountSession(signIns: SignInSeries()), keychainHasCredentials: { false },
             notificationCenter: NotificationCenter(), demo: demo
@@ -237,6 +238,7 @@ struct DemoAccountTests {
         #expect(auth.session.signIns.currentSignIn.isDemo)
         #expect(launch.signIns.currentSignIn.isDemo)
         #expect(folder.cache.courses.loadCourses(semester: semester).count == 5)
+        #expect(calls.syncTurnedOff == 2)
     }
 
     @Test("signing out of the demo signs out the library it signed in")
