@@ -71,6 +71,19 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual(rules(found), ["login-generation", "data-did-update", "is-updating-from-network",
                                         "user-defaults", "url-session", "unbound-backend-auth"])
 
+    def test_device_calendar_device_zone_and_print_fail_outside_core_and_the_observer(self) -> None:
+        text = ("let c = Calendar.current\nlet z = TimeZone.current\nprint(x)\nfunc print() {}\n"
+                "page.print()\nlet s = \"print(\"\n")
+        found = ca.shipping_findings([source(APP + "Features/X.swift", text),
+                                      source(APP + "Support/Clock/TimezoneObserver.swift", text),
+                                      source(ca.CORE_SOURCES + "TigerDuckCore/X.swift", text)])
+        self.assertEqual([(f.path.rsplit("/", 1)[-1], f.line, f.rule) for f in found],
+                         [("X.swift", 1, "calendar-current"), ("X.swift", 2, "timezone-current"),
+                          ("X.swift", 3, "print"), ("TimezoneObserver.swift", 1, "calendar-current"),
+                          ("TimezoneObserver.swift", 3, "print")])
+        self.assertIn("TaipeiTime", found[0].message)
+        self.assertIn("AppLogger", found[2].message)
+
     def test_two_app_files_with_one_base_name_fail(self) -> None:
         found = ca.base_name_findings([APP + "App/Foo.swift", APP + "School/Foo.swift", APP + "Bar.swift"])
         self.assertEqual([f.path for f in found], [APP + "App/Foo.swift", APP + "School/Foo.swift"])

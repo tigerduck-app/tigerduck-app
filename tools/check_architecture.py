@@ -54,6 +54,9 @@ RULES = {r.name: r for r in (
     Rule("duplicate-base-name", 0),
     Rule("on-screen-test", 0),
     Rule("migration", 0),
+    Rule("calendar-current", 0),
+    Rule("timezone-current", 0),
+    Rule("print", 0),
     Rule("academic-term", 1),
     Rule("login-generation", 2),
     Rule("data-did-update", 3),
@@ -170,6 +173,16 @@ CORE_PATTERNS = (
     ("academic-term", r"\b1911\b", "the ROC year offset outside TigerDuckCore; use `AcademicTerm` in TigerDuckCore"),
 )
 STRING_OPEN = re.compile(r'(#*)("""|")')
+# (rule, pattern on code, path prefixes it may appear under, message) for every shipping target.
+# The timezone observer compares the device's zone with Taipei's, which is its job.
+SHIPPING_PATTERNS = (
+    ("calendar-current", r"\bCalendar\.current\b", (),
+     "`Calendar.current` follows the device; use `TaipeiTime.calendar` in TigerDuckCore"),
+    ("timezone-current", r"\bTimeZone\.current\b", (APP + "Support/Clock/TimezoneObserver.swift",),
+     "`TimeZone.current` follows the device; use `TaipeiTime.timeZone` in TigerDuckCore"),
+    ("print", r"(?<![\w.])(?<!func )print\(", (),
+     "`print(` writes to no log; use `AppLogger` (`WatchAppLogger` on the watch)"),
+)
 ON_SCREEN_TRIGGER = re.compile(r"\bmakeKeyAndVisible\b|\bbecomeFirstResponder\b|\bWKWebView\s*\(")
 # Test types that use a trigger and stay out of `on_screen_tests`.
 ON_SCREEN_ALLOWED: frozenset[str] = frozenset()
@@ -369,6 +382,13 @@ def core_findings(sources: list[Source]) -> list[Finding]:
     return [Finding(src.path, line_of(src.code, m.start()), rule, message)
             for src in sources if not src.path.startswith(CORE)
             for rule, pattern, message in CORE_PATTERNS for m in re.finditer(pattern, src.code)]
+
+
+def shipping_findings(sources: list[Source]) -> list[Finding]:
+    return [Finding(src.path, line_of(src.code, m.start()), rule, message)
+            for src in sources if not src.path.startswith(CORE)
+            for rule, pattern, allowed, message in SHIPPING_PATTERNS if not src.path.startswith(allowed)
+            for m in re.finditer(pattern, src.code)]
 
 
 def other_target_paths(root: Path, known: list[str]) -> list[str]:
@@ -645,6 +665,7 @@ def findings(root: Path = ROOT) -> list[Finding]:
     others = load(root, other_target_paths(root, paths))
     workflow = (root / WORKFLOW.relative_to(ROOT)).read_text(encoding="utf-8")
     return (pattern_findings(sources) + taipei_findings(others) + core_findings(sources + others)
+            + shipping_findings(sources + others)
             + base_name_findings(paths) + on_screen_findings(workflow, test_code(root))
             + unlisted_on_screen_findings(workflow, test_files(root)) + migration_findings(sources)
             + size_findings(sources) + layering_findings(sources) + sign_in_findings(sources)
