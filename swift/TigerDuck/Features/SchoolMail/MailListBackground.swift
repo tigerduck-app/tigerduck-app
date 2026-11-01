@@ -45,7 +45,7 @@ final class MailListBackground {
         stopPoll()
         cancelWarm()
         indexer.stop()
-        list?.search.catchUp.pause()
+        list?.search.catchUp.pauseUntilPageReopens()
     }
 
     func stopPoll() {

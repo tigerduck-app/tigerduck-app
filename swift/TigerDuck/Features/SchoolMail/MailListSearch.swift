@@ -8,15 +8,17 @@ final class MailListSearch {
     typealias Matches = (uidValidity: UInt32, uids: [UInt32])
 
     private struct Generations {
-        var current = 0
-        var shown = -1
+        var latest = 0
+        var displayed = -1
     }
+
+    private enum Fetch { case shown, stopped }
 
     var text = ""
     private(set) var results: [MailListRow]?
     private(set) var usedLocalFallback = false
     @ObservationIgnored private var query = ""
-    @ObservationIgnored private var known = MailSearchKnown()
+    @ObservationIgnored private var known = MailSearchFetchState()
     @ObservationIgnored private var generations = Generations()
     @ObservationIgnored private var indexLookup: Task<Matches?, Never>?
     @ObservationIgnored let catchUp: MailSearchCatchUp
@@ -40,16 +42,16 @@ final class MailListSearch {
         let signIn = await list.account.startingSignIn
         supersede()
         self.query = query
-        let generation = generations.current
+        let generation = generations.latest
         var found: [MailListRow] = []
         var unfetched: [String: Matches] = [:]
         var usedFallback = false
         var serverFailed = false
         var recreated: [String] = []
         for folder in list.targets {
-            guard !Task.isCancelled, generation == generations.current else { return }
-            let matched = await matchingUIDs(in: folder, query: query)
-            guard !Task.isCancelled, list.isCurrent(selection, signIn), generation == generations.current else { return }
+            guard !Task.isCancelled, generation == generations.latest else { return }
+            let matched = await indexedAndLoadedMatches(in: folder, query: query)
+            guard !Task.isCancelled, list.isCurrent(selection, signIn), generation == generations.latest else { return }
             guard let matched, !matched.uids.isEmpty else { continue }
             let validity = matched.uidValidity
             let newest = Array(matched.uids.prefix(MailConstants.pageSize))
@@ -57,7 +59,7 @@ final class MailListSearch {
                 let summaries = try await list.session.use { client in
                     try await client.summaries(folder: folder, uids: newest, expectedUIDValidity: validity)
                 }
-                guard list.isCurrent(selection, signIn), generation == generations.current else { return }
+                guard list.isCurrent(selection, signIn), generation == generations.latest else { return }
                 known.noteGone(newest, summaries, folder: folder)
                 found += summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
                 unfetched[folder] = (validity, Array(matched.uids.dropFirst(newest.count)))
@@ -74,20 +76,20 @@ final class MailListSearch {
                 usedFallback = true
             }
         }
-        guard list.isCurrent(selection, signIn), generation == generations.current else { return }
+        guard list.isCurrent(selection, signIn), generation == generations.latest else { return }
         if serverFailed { list.status.serverStatus = .failed }
         results = list.ordered(found)
-        generations.shown = generation
+        generations.displayed = generation
         known.unfetched = unfetched
         usedLocalFallback = usedFallback
         for folder in recreated { await list.recoverFromFolderChange(folder) }
         if list.displayedRows.isEmpty { await loadMore() }
-        guard generation == generations.current else { return }
+        guard generation == generations.latest else { return }
         if catchUp.isBehind { scheduleCatchUp() }
         if list.targets.contains(where: { !list.background.indexer.isIndexed($0) }) { list.background.startIndexIfLoaded(for: .search) }
     }
 
-    private func matchingUIDs(in folder: String, query: String) async -> Matches? {
+    private func indexedAndLoadedMatches(in folder: String, query: String) async -> Matches? {
         guard let list else { return nil }
         let lookup = Task.detached { [index = list.writer.cache.searchIndex] in index.search(folder: folder, query: query) }
         indexLookup = lookup
@@ -103,64 +105,68 @@ final class MailListSearch {
         guard let list else { return }
         guard !query.isEmpty, list.targets.contains(folder) else { return }
         catchUp.isBehind = true
-        if generations.shown == generations.current { scheduleCatchUp() }
+        if generations.displayed == generations.latest { scheduleCatchUp() }
     }
 
     func resumeCatchUp() {
-        if catchUp.isBehind, generations.shown == generations.current { scheduleCatchUp() }
+        if catchUp.isBehind, generations.displayed == generations.latest { scheduleCatchUp() }
     }
 
     private func scheduleCatchUp() {
         guard let list else { return }
         guard !list.background.isPaused else { return }
-        let generation = generations.current
+        let generation = generations.latest
         catchUp.schedule(
-            isCurrent: { [weak self] in
-                guard let self, let list = self.list else { return false }
-                return !list.background.isPaused && generation == self.generations.current
-            },
-            run: { [weak self] in await self?.catchUpResults() ?? false },
-            stillCurrent: { [weak self] in generation == self?.generations.current }
+            canRun: { [weak self] in self?.list.map { !$0.background.isPaused } ?? false },
+            run: { [weak self] in await self?.catchUpResults(for: generation) ?? .superseded }
         )
     }
 
-    private func catchUpResults() async -> Bool {
-        guard let list else { return false }
+    private func catchUpResults(for generation: Int) async -> MailCatchUpPass {
+        guard let list, generation == generations.latest else { return .superseded }
         let query = self.query
         let selection = list.selection
         let signIn = await list.account.startingSignIn
-        let generation = generations.current
         for folder in list.targets {
-            let matched = await matchingUIDs(in: folder, query: query)
-            guard !Task.isCancelled, list.isCurrent(selection, signIn), generation == generations.current,
-                  results != nil else { return false }
+            let matched = await indexedAndLoadedMatches(in: folder, query: query)
+            guard !Task.isCancelled, list.isCurrent(selection, signIn), generation == generations.latest,
+                  results != nil else { return stoppedPass(generation) }
             guard let matched else { continue }
             if let known = known.unfetched[folder], known.uidValidity != matched.uidValidity {
                 results?.removeAll { $0.folder == folder }
                 self.known.gone[folder] = nil
             }
             let listed = Set((results ?? []).filter { $0.folder == folder }.map(\.uid))
-            let batch = known.nextBatch(of: matched, folder: folder, listed: listed)
+            let waiting = known.waiting(in: matched, folder: folder, listed: listed)
+            known.unfetched[folder] = (matched.uidValidity, waiting)
+            let batch = MailSearchFetchState.nextBatch(of: waiting, listed: listed)
             guard !batch.isEmpty else { continue }
-            guard await fetch(batch, folder: folder, uidValidity: matched.uidValidity,
-                              selection: selection, signIn: signIn, generation: generation) else { return false }
+            let fetched = await fetch(batch, folder: folder, uidValidity: matched.uidValidity,
+                                      selection: selection, signIn: signIn, generation: generation)
+            guard fetched == .shown else { return stoppedPass(generation) }
         }
-        guard !Task.isCancelled, list.isCurrent(selection, signIn), generation == generations.current else { return false }
+        guard !Task.isCancelled, list.isCurrent(selection, signIn), generation == generations.latest else {
+            return stoppedPass(generation)
+        }
         if list.displayedRows.isEmpty, !list.isPaginating { await loadMore() }
-        return true
+        return .caughtUp
+    }
+
+    private func stoppedPass(_ generation: Int) -> MailCatchUpPass {
+        generation == generations.latest ? .stopped : .superseded
     }
 
     private func fetch(
         _ batch: [UInt32], folder: String, uidValidity: UInt32,
         selection: MailFolderSelection, signIn: SignIn, generation: Int
-    ) async -> Bool {
-        guard let list else { return false }
+    ) async -> Fetch {
+        guard let list else { return .stopped }
         do {
             let summaries = try await list.session.use { client in
                 try await client.summaries(folder: folder, uids: batch, expectedUIDValidity: uidValidity)
             }
-            guard list.isCurrent(selection, signIn), generation == generations.current, let current = results else {
-                return false
+            guard list.isCurrent(selection, signIn), generation == generations.latest, let current = results else {
+                return .stopped
             }
             known.noteGone(batch, summaries, folder: folder)
             known.unfetched[folder]?.uids.removeAll { batch.contains($0) }
@@ -168,17 +174,17 @@ final class MailListSearch {
             let rows = summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
                 .filter { !shown.contains($0.id) }
             if !rows.isEmpty { results = list.ordered(current + rows) }
-            return true
+            return .shown
         } catch MailClientError.folderChanged {
-            guard list.isCurrent(selection, signIn), generation == generations.current else { return false }
+            guard list.isCurrent(selection, signIn), generation == generations.latest else { return .stopped }
             known.unfetched[folder] = nil
             results?.removeAll { $0.folder == folder }
             await list.recoverFromFolderChange(folder)
-            return false
+            return .stopped
         } catch {
-            guard !Task.isCancelled, list.isCurrent(selection, signIn) else { return false }
+            guard !Task.isCancelled, list.isCurrent(selection, signIn) else { return .stopped }
             list.status.serverStatus = .failed
-            return false
+            return .stopped
         }
     }
 
@@ -186,7 +192,7 @@ final class MailListSearch {
         guard let list else { return }
         let selection = list.selection
         let signIn = await list.account.startingSignIn
-        let generation = generations.current
+        let generation = generations.latest
         let end = list.displayedRows.last?.id
         list.status.isPaginating = true
         defer { list.status.isPaginating = false }
@@ -195,12 +201,13 @@ final class MailListSearch {
             guard !pending.isEmpty else { return }
             for (folder, matches) in pending {
                 guard !Task.isCancelled, !list.background.isPaused else {
-                    if list.background.isPaused, generation == generations.current { catchUp.isBehind = true }
+                    if list.background.isPaused, generation == generations.latest { catchUp.isBehind = true }
                     return
                 }
                 let batch = Array(matches.uids.prefix(MailConstants.pageSize))
-                guard await fetch(batch, folder: folder, uidValidity: matches.uidValidity,
-                                  selection: selection, signIn: signIn, generation: generation) else { return }
+                let fetched = await fetch(batch, folder: folder, uidValidity: matches.uidValidity,
+                                          selection: selection, signIn: signIn, generation: generation)
+                guard fetched == .shown else { return }
             }
         }
     }
@@ -213,7 +220,7 @@ final class MailListSearch {
     }
 
     private func supersede() {
-        generations.current += 1
+        generations.latest += 1
         indexLookup?.cancel()
         catchUp.cancel()
         catchUp.isBehind = false
@@ -231,7 +238,7 @@ final class MailListSearch {
     }
 }
 
-struct MailSearchKnown {
+struct MailSearchFetchState {
     var unfetched: [String: MailListSearch.Matches] = [:]
     var gone: [String: Set<UInt32>] = [:]
 
@@ -240,13 +247,16 @@ struct MailSearchKnown {
         gone[folder, default: []].formUnion(requested.filter { !kept.contains($0) })
     }
 
-    mutating func nextBatch(of matched: MailListSearch.Matches, folder: String, listed: Set<UInt32>) -> [UInt32] {
+    func waiting(in matched: MailListSearch.Matches, folder: String, listed: Set<UInt32>) -> [UInt32] {
         let skipped = listed.union(gone[folder] ?? [])
-        let waiting = matched.uids.filter { !skipped.contains($0) }
+        return matched.uids.filter { !skipped.contains($0) }
+    }
+
+    static func nextBatch(of waiting: [UInt32], listed: Set<UInt32>) -> [UInt32] {
         let oldestListed = listed.min() ?? .max
-        let wanted = waiting.prefix { $0 > oldestListed }.count + max(0, MailConstants.pageSize - listed.count)
-        unfetched[folder] = (matched.uidValidity, waiting)
-        return Array(waiting.prefix(min(wanted, MailConstants.pageSize)))
+        let newerThanListed = waiting.prefix { $0 > oldestListed }.count
+        let roomOnFirstPage = max(0, MailConstants.pageSize - listed.count)
+        return Array(waiting.prefix(min(newerThanListed + roomOnFirstPage, MailConstants.pageSize)))
     }
 }
 
@@ -255,6 +265,8 @@ private extension MailSummary {
         [subject, fromName, fromAddress].contains { $0?.localizedCaseInsensitiveContains(query) == true }
     }
 }
+
+enum MailCatchUpPass { case caughtUp, stopped, superseded }
 
 @MainActor
 final class MailSearchCatchUp {
@@ -266,25 +278,27 @@ final class MailSearchCatchUp {
         self.delay = delay
     }
 
-    func schedule(isCurrent: @escaping () -> Bool, run: @escaping () async -> Bool, stillCurrent: @escaping () -> Bool) {
+    func schedule(canRun: @escaping () -> Bool, run: @escaping () async -> MailCatchUpPass) {
         guard task == nil else { return }
         let delay = self.delay
         task = Task { [weak self] in
             await delay()
-            while let self, !Task.isCancelled, isCurrent(), self.isBehind {
+            passes: while let self, !Task.isCancelled, canRun(), self.isBehind {
                 self.isBehind = false
-                guard await run() else {
-                    if stillCurrent() { self.isBehind = true }
-                    break
+                switch await run() {
+                case .caughtUp: await delay()
+                case .stopped:
+                    self.isBehind = true
+                    break passes
+                case .superseded: return
                 }
-                await delay()
             }
-            guard let self, !Task.isCancelled, stillCurrent() else { return }
+            guard let self, !Task.isCancelled else { return }
             self.task = nil
         }
     }
 
-    func pause() {
+    func pauseUntilPageReopens() {
         if task != nil { isBehind = true }
         cancel()
     }
