@@ -46,22 +46,18 @@ nonisolated final class CourseColorFiles: AccountScoped, Sendable {
     }
 
     func loadCourseColorMap() -> [String: UInt32] {
-        if let map: [String: UInt32] = persistent.load("course_color_map.json") {
-            return map
-        }
-        let legacy: [String: Int] = persistent.load("course_custom_colors.json") ?? [:]
-        guard !legacy.isEmpty else { return [:] }
-        let migrated = legacy.compactMapValues { idx -> UInt32? in
-            guard Self.legacyPaletteHex.indices.contains(idx) else { return nil }
-            return Self.legacyPaletteHex[idx]
-        }
-        if !migrated.isEmpty {
-            saveCourseColorMap(migrated)
-        }
-        return migrated
+        persistent.load("course_color_map.json") ?? movePaletteIndexesToColorMap()
     }
 
-    private static let legacyPaletteHex: [UInt32] = [
+    private func movePaletteIndexesToColorMap() -> [String: UInt32] {
+        let indexes: [String: Int] = persistent.load("course_custom_colors.json") ?? [:]
+        let palette = Self.paletteBeforeColorMap
+        let map = indexes.compactMapValues { palette.indices.contains($0) ? palette[$0] : nil }
+        if !map.isEmpty { saveCourseColorMap(map) }
+        return map
+    }
+
+    private static let paletteBeforeColorMap: [UInt32] = [
         0xFF6B6B, 0x4ECDC4, 0x45B7D1, 0xF39C12, 0xDDA0DD,
         0x2ECC71, 0xE74C3C, 0x3498DB, 0xF7DC6F, 0x9B59B6,
         0x1ABC9C, 0xE67E22, 0x85C1E9, 0xD35400, 0x27AE60,
