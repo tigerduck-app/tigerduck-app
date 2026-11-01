@@ -9,6 +9,31 @@ import TigerDuckCore
 @Suite("Store-review demo account")
 @MainActor
 struct DemoAccountTests {
+    private nonisolated final class KeyAtSaveKeychain: KeychainStore, @unchecked Sendable {
+        private let stored = LockablePhoneKeychain()
+        private let key: AccountKey<Bool>
+        private let lock = NSLock()
+        private var keySetAtSave: [String: Bool] = [:]
+
+        init(recording key: AccountKey<Bool>) {
+            self.key = key
+        }
+
+        func keyWasSet(whenSaving item: String) -> Bool? { lock.withLock { keySetAtSave[item] } }
+
+        func object(forKey key: String) throws -> Data { try stored.object(forKey: key) }
+
+        func setObject(_ object: Data, forKey item: String) throws {
+            let isSet = Defaults[key]
+            lock.withLock { keySetAtSave[item] = isSet }
+            try stored.setObject(object, forKey: item)
+        }
+
+        func removeObject(forKey key: String) throws { try stored.removeObject(forKey: key) }
+
+        func removeAllObjects() throws { try stored.removeAllObjects() }
+    }
+
     private static let studentId = "B11308964"
     private static let schoolPassword = "its-my-duty"
     private static let libraryPassword = "its-my-duty"
@@ -99,10 +124,11 @@ struct DemoAccountTests {
         #expect(!DemoFixture.isDemoLibrary(Self.studentId, nil))
     }
 
-    @Test("signing in with the demo credentials starts a demo sign-in and never asks the school")
+    @Test("signing in with the demo credentials starts a demo sign-in, kept before its credentials, and never asks the school")
     func demoCredentialsStartTheDemo() async {
         let folder = Folder()
         let calls = Calls()
+        let keychain = KeyAtSaveKeychain(recording: folder.demoSignedIn)
         let auth = AuthService(
             session: AccountSession(signIns: SignInSeries()), keychainHasCredentials: { false },
             notificationCenter: NotificationCenter(),
@@ -122,13 +148,15 @@ struct DemoAccountTests {
                 Defaults[.ssoLoginTimestamp, for: testSignIn] = saved.0
                 Defaults[.ntustCredentialsPresent, for: testSignIn] = saved.1
             }
-            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { () async -> Void in
+            await SecureStore.$sharedForTesting.withValue(keychain) { () async -> Void in
                 #expect(await auth.login(studentId: Self.studentId.lowercased(), password: Self.schoolPassword))
                 #expect(auth.storedStudentId == Self.studentId)
                 #expect(Defaults[auth.deps.demo.stores.demoSignedIn])
             }
         }
 
+        #expect(keychain.keyWasSet(whenSaving: AppConstants.KeychainKeys.studentId) == true)
+        #expect(keychain.keyWasSet(whenSaving: AppConstants.KeychainKeys.password) == true)
         #expect(auth.session.signIns.currentSignIn.isDemo)
         #expect(calls.schoolSignIns == 0)
         #expect(calls.syncTurnedOff == 1)
