@@ -18,16 +18,16 @@ struct AssignmentMarksReconciler: CategoryReconciler {
         }
         let conflicts = Self.conflicts(
             server: pass.marks, localArchived: pass.localArchived, localCompleted: pass.localCompleted,
-            protected: pass.protected, titles: assignmentTitles()
+            protected: pass.queuedMarkAndIgnoreKeys, titles: assignmentTitles()
         )
         let conflictIds = Set(conflicts.map(\.id))
         let currentArchived = assignments.loadArchivedAssignmentIds()
         let currentCompleted = assignments.loadLocallyCompletedAssignmentIds()
         var safeArchived = Self.mergedMarks(
-            server: pass.marks.archived.subtracting(conflictIds), local: currentArchived, protected: pass.protected
+            server: pass.marks.archived.subtracting(conflictIds), local: currentArchived, protected: pass.queuedMarkAndIgnoreKeys
         )
         var safeCompleted = Self.mergedMarks(
-            server: pass.marks.completed.subtracting(conflictIds), local: currentCompleted, protected: pass.protected
+            server: pass.marks.completed.subtracting(conflictIds), local: currentCompleted, protected: pass.queuedMarkAndIgnoreKeys
         )
         for conflict in conflicts {
             switch conflict.localStatus {

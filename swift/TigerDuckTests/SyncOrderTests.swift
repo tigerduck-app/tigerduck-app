@@ -83,7 +83,7 @@ struct SyncOrderTests {
     func passReadsThePolicyAfterSettling() async throws {
         let state = Released()
 
-        let settled = try #require(await FullSyncRunner.settle(
+        let settled = try await FullSyncRunner.settleCourseEditsThenReadPolicy(
             ["1151|CS1"], takingCourses: true,
             settle: { deletes in
                 state.pendingChecks.insert("assignments")
@@ -95,11 +95,21 @@ struct SyncOrderTests {
             },
             mayWrite: { true },
             policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: ["assignments"], pendingChecks: state.pendingChecks) }
-        ))
+        )
 
         #expect(settled.policy.pendingChecks == ["assignments", "courses"])
         #expect(settled.deletes == ["1151|CS1"])
         #expect(settled.adds == ["1151|CS2"])
+    }
+
+    @Test("A full sync that may no longer write once its course edits settle is abandoned")
+    func passIsAbandonedWhenItMayNoLongerWrite() async {
+        await #expect(throws: FullSyncAbandoned.self) {
+            try await FullSyncRunner.settleCourseEditsThenReadPolicy(
+                [], takingCourses: true, settle: { $0 }, adds: { [] }, mayWrite: { false },
+                policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: [], pendingChecks: []) }
+            )
+        }
     }
 
     @Test("A full sync applies marks, course ignores, colours and names, holidays and then the roster")
