@@ -16,7 +16,7 @@ struct UnchangedUploadTests {
     private static func courses(_ entries: PushAPI.CourseUploadEntry..., adds: [String] = [])
         -> PushAPI.CourseUploadRequest {
         PushAPI.CourseUploadRequest(
-            courses: entries, adds: adds.isEmpty ? nil : adds.map { PushAPI.CourseAdd(courseKey: $0, hlc: 1) }
+            courses: entries, handAddedCourses: adds.isEmpty ? nil : adds.map { PushAPI.CourseAdd(courseKey: $0, hlc: 1) }
         )
     }
 
@@ -70,11 +70,18 @@ struct UnchangedUploadTests {
         #expect(one != moved)
     }
 
+    @Test("The courses an upload adds by hand leave its list the same, as once it lands the backend holds that list")
+    func handAddsLeaveTheListAlone() {
+        let plain = PushCoordinator.fingerprint(of: Self.courses(Self.entry("CS1")))
+        let adding = PushCoordinator.fingerprint(of: Self.courses(Self.entry("CS1"), adds: ["client:1151:CS1"]))
+        #expect(plain == adding)
+    }
+
     @Test("A roster names its terms in roster_terms, and is another list than the same courses sent without")
     func rosterTermsGoUpAndCount() throws {
         let plain = Self.courses(Self.entry("CS1"))
         var roster = plain
-        roster.rosterTerms = ["1151"]
+        roster.completeRosterTerms = ["1151"]
 
         let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(roster)) as? [String: Any]
         let sentPlain = try JSONSerialization.jsonObject(with: JSONEncoder().encode(plain)) as? [String: Any]

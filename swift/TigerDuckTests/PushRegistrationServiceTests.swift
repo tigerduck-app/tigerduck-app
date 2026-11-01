@@ -221,7 +221,7 @@ struct PushRegistrationServiceTests {
             let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             #expect(appVersion != nil)
             #expect(registration["app_version"] as? String == appVersion)
-            #expect(registration["locale"] as? String == PushRegistrationService.currentLocaleTag)
+            #expect(registration["locale"] as? String == PushRegistrationService.renderedLanguageTag)
             #expect(registration["cloud_sync_enabled"] as? Bool == Defaults[.cloudSyncEnabled])
 
             #expect(registration["bulletin_push_enabled"] as? Bool == false)

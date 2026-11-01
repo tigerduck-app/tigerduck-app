@@ -61,7 +61,7 @@ nonisolated enum DeviceRegistration {
         let sleep = service.retrySleep
         service.retry.task?.cancel()
         service.retry.task = Task { [weak service] in
-            await sleep(.seconds(delay))
+            await sleep(delay)
             if Task.isCancelled { return }
             guard let service else { return }
             await perform(on: service)

@@ -75,7 +75,7 @@ final class OutboxSender {
             guard isProtectedDataAvailable() else { throw CancellationError() }
             guard var request = addedCourseUpload(semester, courseNo) else { return }
             let key = CourseTombstone.serverKey(semester: semester, courseNo: courseNo)
-            request.adds = [PushAPI.CourseAdd(courseKey: key, hlc: PushAPI.clock(of: stamp))]
+            request.handAddedCourses = [PushAPI.CourseAdd(courseKey: key, hlc: PushAPI.clock(of: stamp))]
             guard try await push.uploadCoursesIfChanged(
                 request, semester: semester, addedAt: stamp, for: signIn, while: uploadsCourses
             ) else { return }

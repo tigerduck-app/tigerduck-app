@@ -258,13 +258,13 @@ enum PushAPI {
 
     nonisolated struct CourseUploadRequest: Encodable, Sendable {
         let courses: [CourseUploadEntry]
-        var adds: [CourseAdd]?
-        var rosterTerms: [String]?
+        var handAddedCourses: [CourseAdd]?
+        var completeRosterTerms: [String]?
 
         enum CodingKeys: String, CodingKey {
             case courses
-            case adds
-            case rosterTerms = "roster_terms"
+            case handAddedCourses = "adds"
+            case completeRosterTerms = "roster_terms"
         }
     }
 

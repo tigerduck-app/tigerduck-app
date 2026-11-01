@@ -4,9 +4,8 @@ import os
 
 nonisolated extension PushDeviceRequests {
     func sendServerPushOptOut(
-        _ optOut: Bool, deviceToken: String?, after predecessor: Task<Void, Error>?, for signIn: SignIn
+        _ optOut: Bool, deviceToken: String?, for signIn: SignIn
     ) async throws {
-        _ = try? await predecessor?.value
         let uuid = identity.uuid
         do {
             try await apiClient.registerAnonymousDevice(
@@ -32,8 +31,7 @@ nonisolated extension PushDeviceRequests {
         }
     }
 
-    func sendBulletinPushEnabled(_ enabled: Bool, after predecessor: Task<Void, Error>?, for signIn: SignIn) async throws {
-        _ = try? await predecessor?.value
+    func sendBulletinPushEnabled(_ enabled: Bool, for signIn: SignIn) async throws {
         do {
             let response = try await apiClient.updateDevicePreferences(
                 deviceId: identity.uuid, bulletinPushEnabled: enabled, for: signIn
@@ -62,8 +60,7 @@ nonisolated extension PushDeviceRequests {
         }
     }
 
-    func sendSyncPreferences(after predecessor: Task<Void, Never>?) async {
-        await predecessor?.value
+    func sendSyncPreferences() async {
         let sent = SyncPreferences.current, signIn = signIns.currentSignIn
         Defaults[.syncPreferencesPushPending] = true
         do {

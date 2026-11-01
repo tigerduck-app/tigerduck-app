@@ -92,7 +92,7 @@ final class PushCoordinator {
     func bindTokenForwarding(_ appDelegate: some PushTokenSource) {
         appDelegate.forwardToken = { [weak self] data in
             guard let self else { return }
-            scheduleSync.forgetAcceptedList()
+            scheduleSync.resendScheduleOnNextSync()
             Task { await self.registration.update(deviceToken: data) }
         }
         appDelegate.forwardError = { [weak self] error in
@@ -117,15 +117,17 @@ final class PushCoordinator {
                     .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
                 logger.info("notification authorization granted=\(granted, privacy: .public)")
             }
-            #if os(iOS)
-            UIApplication.shared.registerForRemoteNotifications()
-            #elseif os(macOS)
-            await registration.registerPassiveDevice()
-            #endif
+            await registerWithPushService()
         }
     }
 
-    static let unchangedCredentialsInterval = BackendUploads.unchangedCredentialsInterval
+    private func registerWithPushService() async {
+        #if os(iOS)
+        UIApplication.shared.registerForRemoteNotifications()
+        #elseif os(macOS)
+        await registration.registerPassiveDevice()
+        #endif
+    }
 
     func updateCredentialsIfDue(moodleToken: String, moodlePrivateToken: String?, for signIn: SignIn) async throws {
         try await uploads.updateCredentialsIfDue(moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken, for: signIn)
@@ -207,7 +209,7 @@ final class PushCoordinator {
     }
 
     func refreshRegistrationAfterAuth() {
-        scheduleSync.forgetAcceptedList()
+        scheduleSync.resendScheduleOnNextSync()
         if run.stoppedBySignOut {
             run.stoppedBySignOut = false
             enable()
@@ -250,7 +252,7 @@ final class PushCoordinator {
         #endif
         await scheduleSync.cancelRequest()
         await scheduleSync.awaitInflight()
-        scheduleSync.forgetAcceptedList()
+        scheduleSync.resendScheduleOnNextSync()
         return await registration.unregister()
     }
 

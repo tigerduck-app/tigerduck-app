@@ -202,7 +202,7 @@ final class ScheduleSyncService {
         await pendingRequest?.value
     }
 
-    func forgetAcceptedList() {
+    func resendScheduleOnNextSync() {
         ledger.forget(SendLedger.Channel.schedule)
     }
 }

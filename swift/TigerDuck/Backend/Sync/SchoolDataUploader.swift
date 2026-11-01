@@ -96,6 +96,6 @@ final class SchoolDataUploader {
                 classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
             )
         }
-        return PushAPI.CourseUploadRequest(courses: entries, rosterTerms: rosterTerms)
+        return PushAPI.CourseUploadRequest(courses: entries, completeRosterTerms: rosterTerms)
     }
 }

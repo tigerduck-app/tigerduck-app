@@ -30,8 +30,12 @@ final class PushScheduleSync {
         guard Self.sendsScheduleAfterSyncTrigger(
             outcome: outcome, applicationState: UIApplication.shared.applicationState
         ) else { return }
-        await NotificationSettingsPushQueue.tail?.value
+        await awaitQueuedSettingsReconcile()
         await app.pushCoordinator.syncNow { self.pushScheduleInputs() }
+    }
+
+    private func awaitQueuedSettingsReconcile() async {
+        await NotificationSettingsPushQueue.tail?.value
     }
 
     nonisolated static func sendsScheduleAfterSyncTrigger(
