@@ -17,6 +17,10 @@ WidgetKit timeline entry dates.
 - `ScheduleSyncService.sync` builds its 48-hour window from `AppClock.now()`, so the server's
   event window matches what the Live Activity, widgets and watch show; the horizon is display
   state.
+- The term and academic year that pick real data come from the real date: the year of the
+  school calendar `CalendarService` downloads, and the term whose courses `PushScheduleSync`
+  sends. A clock set into another term would otherwise replace the cached school calendar and
+  the backend's schedule with that term's.
 - A date the server or the OS acts on goes through `AppClock.realTime(forApp:)`: every
   `fireAt` from `ScheduleSyncService.buildEvents`, the Live Activity `countdown_target` (the
   end job's `fire_at`), the `staleDate` and automatic-end sleep in `LiveActivityCoordinator`,
