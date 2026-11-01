@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 struct ScoreReport: Codable, Equatable, Sendable {
     var student: String
@@ -55,7 +56,7 @@ struct GPATrendPoint: Equatable, Sendable, Identifiable {
     static func trend(for report: ScoreReport) -> [GPATrendPoint] {
         let coursesByTerm = Dictionary(grouping: report.courses, by: \.term)
         let rankings = Dictionary(report.rankings.map { ($0.term, $0) }, uniquingKeysWith: { first, _ in first })
-        return Set(coursesByTerm.keys).union(rankings.keys).sorted().compactMap { term in
+        return Set(coursesByTerm.keys).union(rankings.keys).sorted(by: AcademicTerm.precedes).compactMap { term in
             if let ranking = rankings[term], ranking.semester.gpa != nil {
                 return GPATrendPoint(ranking: ranking)
             }
@@ -63,7 +64,7 @@ struct GPATrendPoint: Equatable, Sendable, Identifiable {
             return GPATrendPoint(
                 term: term,
                 semesterGPA: semesterGPA,
-                cumulativeGPA: NTUSTGradePoints.gpa(of: report.courses.filter { $0.term <= term })
+                cumulativeGPA: NTUSTGradePoints.gpa(of: report.courses.filter { !AcademicTerm.precedes(term, $0.term) })
             )
         }
     }

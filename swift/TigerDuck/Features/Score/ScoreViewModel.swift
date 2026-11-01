@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import TigerDuckCore
 
 @Observable
 @MainActor
@@ -49,7 +50,7 @@ final class ScoreViewModel {
         cachedAt = date
         groupedCourses = Dictionary(grouping: newReport.courses, by: \.term)
             .map { (term: $0.key, courses: $0.value.sorted { ($0.index ?? 0) < ($1.index ?? 0) }) }
-            .sorted { $0.term > $1.term }
+            .sorted { AcademicTerm.precedes($1.term, $0.term) }
         gpaTrend = GPATrendPoint.trend(for: newReport)
         applyDefaultCollapseRule()
     }
