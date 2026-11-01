@@ -1,19 +1,42 @@
 import SwiftUI
 
+nonisolated extension MoodleDiscussion {
+    static func matching(_ query: String, in discussions: [MoodleDiscussion]) -> [MoodleDiscussion] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return discussions }
+        return discussions.filter { discussion in
+            [discussion.title, discussion.preview, discussion.authorName.map(MoodlePersonName.displayName)]
+                .contains { $0?.localizedStandardContains(needle) == true }
+        }
+    }
+}
+
 struct MoodleDiscussionsView: View {
     let pages: MoodleDiscussionPages
     let title: String
     let page: MoodlePage?
+    let policy: VisualStylePolicy
     var showsFooter = false
     let open: (MoodleDiscussion) -> Void
 
-    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
+    @State private var query = ""
+    @FocusState private var isSearchFocused: Bool
+    #if os(iOS)
+    @State private var isSearchRevealed = false
+    #endif
 
     var body: some View {
         List {
             if let list = pages.list {
-                let discussions = list.sorted(by: pages.date)
+                searchRow
+                let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                let discussions = MoodleDiscussion.matching(needle, in: list.sorted(by: pages.date))
+                if discussions.isEmpty, !needle.isEmpty {
+                    ContentUnavailableView.search(text: needle)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
                 ForEach(discussions) { discussion in
                     Button {
                         open(discussion)
@@ -21,19 +44,14 @@ struct MoodleDiscussionsView: View {
                         MoodleDiscussionCard(
                             discussion: discussion,
                             date: discussion[keyPath: pages.date],
-                            policy: app.preferences.visualStylePolicy,
+                            policy: policy,
                             showsFooter: showsFooter
                         )
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(
-                        top: TigerDuckTheme.Spacing.xs,
-                        leading: TigerDuckTheme.Spacing.lg,
-                        bottom: TigerDuckTheme.Spacing.xs,
-                        trailing: TigerDuckTheme.Spacing.lg
-                    ))
+                    .listRowInsets(Self.rowInsets)
                     .contextMenu {
                         Button {
                             Task { await openURL(MoodlePage.discussion(discussion.id)) }
@@ -41,20 +59,14 @@ struct MoodleDiscussionsView: View {
                             Label(String(localized: "action_open_in_moodle"), systemImage: "arrow.up.right.square")
                         }
                     }
-                    .task {
-                        if discussion.id == discussions.last?.id {
+                    .task(id: needle.isEmpty) {
+                        if needle.isEmpty, discussion.id == discussions.last?.id {
                             await pages.loadMore(after: discussion.id)
                         }
                     }
                 }
-                if pages.isLoadingMore {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, TigerDuckTheme.Spacing.md)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                } else if let failure = pages.pageFailure, list.hasMore {
-                    pageRetry(failure, after: discussions.last?.id)
+                if needle.isEmpty {
+                    pageFooter(list, after: discussions.last?.id)
                 }
             } else {
                 MoodleFirstLoadView(
@@ -69,6 +81,9 @@ struct MoodleDiscussionsView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
+        #if os(iOS)
+        .pullToRevealSearch(isRevealed: $isSearchRevealed, isActive: isSearchFocused || !query.isEmpty)
+        #endif
         .refreshable { await pages.refresh() }
         .moodleRefreshFailureNote(pages.feed, hasContent: pages.list != nil)
         .moodleListChrome(
@@ -78,6 +93,39 @@ struct MoodleDiscussionsView: View {
         )
         .moodleAutoRefresh(every: pages.feed.ttl, fetchedAt: { pages.fetchedAt }) {
             await pages.refresh()
+        }
+    }
+
+    private static let rowInsets = EdgeInsets(
+        top: TigerDuckTheme.Spacing.xs, leading: TigerDuckTheme.Spacing.lg,
+        bottom: TigerDuckTheme.Spacing.xs, trailing: TigerDuckTheme.Spacing.lg
+    )
+
+    @ViewBuilder
+    private var searchRow: some View {
+        #if os(iOS)
+        let isShown = isSearchRevealed || !query.isEmpty
+        #else
+        let isShown = true
+        #endif
+        if isShown {
+            MoodleSearchField(query: $query, isFocused: $isSearchFocused)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(Self.rowInsets)
+        }
+    }
+
+    @ViewBuilder
+    private func pageFooter(_ list: MoodleDiscussionList, after lastId: Int?) -> some View {
+        if pages.isLoadingMore {
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, TigerDuckTheme.Spacing.md)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        } else if let failure = pages.pageFailure, list.hasMore {
+            pageRetry(failure, after: lastId)
         }
     }
 
