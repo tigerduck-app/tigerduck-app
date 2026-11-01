@@ -8,7 +8,7 @@ struct CourseRosterReconciler: CategoryReconciler {
     unowned let app: AppEnvironment
 
     func reconcile(_ pass: FullSyncPass) -> Bool {
-        defer { CourseUpload.answerRosterRequests(in: pass.json, authService: app.authService) }
+        defer { CourseUpload.answerRosterRequests(in: pass.json, authService: app.authService, for: pass.signIn) }
         guard pass.taken.contains("courses") else {
             if pass.policy.pendingChecks.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
@@ -17,14 +17,14 @@ struct CourseRosterReconciler: CategoryReconciler {
         }
         return reconcileCourses(
             serverRows: pass.coursesArray, tombstones: pass.json["course_tombstones"] as? [[String: Any]] ?? [],
-            deleting: pass.courseDeletes, adding: pass.courseAdds, fetchedAt: pass.fetchedAt
+            deleting: pass.courseDeletes, adding: pass.courseAdds, fetchedAt: pass.fetchedAt, for: pass.signIn
         )
     }
 
     @discardableResult
     private func reconcileCourses(
         serverRows: [[String: Any]], tombstones: [[String: Any]], deleting queuedDeletes: Set<String>,
-        adding: Set<String>, fetchedAt: Date
+        adding: Set<String>, fetchedAt: Date, for signIn: SignIn
     ) -> Bool {
         let rowsBySemester = Dictionary(grouping: serverRows) { ($0["semester"] as? String) ?? "" }
             .filter { !$0.key.isEmpty }
@@ -50,7 +50,7 @@ struct CourseRosterReconciler: CategoryReconciler {
         let ownResets = tombstonesBySemester.filter { semester, tombstones in
             tombstones.contains { Self.isOwnReset($0, resetLandedAt: resetAt[semester]) }
         }
-        CourseStore.shared.clearSemesterResets(outlivedBy: fetchedAt, keeping: Set(ownResets.keys))
+        CourseStore.shared.clearSemesterResets(outlivedBy: fetchedAt, keeping: Set(ownResets.keys), for: signIn)
 
         for semester in semesters.sorted() {
             if app.localEdits.resettingSemesters.contains(semester) { continue }
@@ -60,7 +60,7 @@ struct CourseRosterReconciler: CategoryReconciler {
                 selectionDropped: Set(selectionDropped[semester] ?? []), userAdded: userAdded, hidden: deletedNos,
                 adding: adding, resetLandedAt: resetAt[semester],
                 liveAnswer: studentId.flatMap { CourseSelectionService.lastAnswer(studentId: $0, semester: semester) },
-                courses: .shared,
+                courses: .shared, for: signIn,
                 forgetAnswer: { if let studentId { CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId) } }
             )
             let (rows, serverNos, localCourses, unlisted) = (term.rows, term.serverNos, term.localCourses, term.unlisted)
@@ -84,7 +84,7 @@ struct CourseRosterReconciler: CategoryReconciler {
             guard !term.serverHoldsNothing else {
                 let uploadable = localCourses.filter { !isHidden($0.courseNo) }
                 if !uploadable.isEmpty {
-                    app.uploads.uploadCourses(uploadable, semester: semester, resend: true)
+                    app.uploads.uploadCourses(uploadable, semester: semester, resend: true, for: signIn)
                     AppLogger.sync.info("[sync] \(semester, privacy: .public): server empty, uploaded \(uploadable.count, privacy: .public) local courses")
                 }
                 userAdded.removeAll { $0.semester == semester && isHidden($0.courseNo) }
@@ -120,13 +120,13 @@ struct CourseRosterReconciler: CategoryReconciler {
         }
 
         if deletedChanged {
-            CourseStore.shared.saveDeletedCourseNos(Array(deletedNos))
+            CourseStore.shared.saveDeletedCourseNos(Array(deletedNos), for: signIn)
         }
         guard !mergedSemesters.isEmpty else { return deletedChanged || coursesLeft }
-        CourseStore.shared.saveUserAddedCourses(userAdded)
+        CourseStore.shared.saveUserAddedCourses(userAdded, for: signIn)
         Task {
             for semester in mergedSemesters {
-                _ = await CourseDetails.refreshUserAddedCourses(semester: semester, authService: app.authService)
+                _ = await CourseDetails.refreshUserAddedCourses(semester: semester, for: signIn)
             }
         }
         return true
@@ -144,10 +144,11 @@ struct CourseRosterReconciler: CategoryReconciler {
     static func readTerm(
         _ semester: String, rows termRows: [[String: Any]], tombstones: [[String: Any]],
         selectionDropped: Set<String>, userAdded: [SDCourse], hidden: Set<String>, adding: Set<String>,
-        resetLandedAt: Date? = nil, liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore, forgetAnswer: () -> Void
+        resetLandedAt: Date? = nil, liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore,
+        for signIn: SignIn, forgetAnswer: () -> Void
     ) -> TermRead {
         let droppedOnServer = CourseServerRows.droppedOnServer(termRows, liveAnswer: liveAnswer)
-        courses.saveServerDroppedNos(droppedOnServer, semester: semester)
+        courses.saveServerDroppedNos(droppedOnServer, semester: semester, for: signIn)
         let rows = CourseServerRows.keptRows(
             termRows, semester: semester, dropped: selectionDropped, userAdded: userAdded, liveAnswer: liveAnswer
         )
@@ -155,7 +156,7 @@ struct CourseRosterReconciler: CategoryReconciler {
         let fetched = courses.loadCourses(semester: semester)
         let localCourses = fetched.filter { !droppedOnServer.contains($0.courseNo) }
         let left = Set(fetched.map(\.courseNo)).subtracting(localCourses.map(\.courseNo))
-        courses.removeCourses(droppedOnServer, semester: semester)
+        courses.removeCourses(droppedOnServer, semester: semester, for: signIn)
         if liveAnswer?.courseNos.contains(where: droppedOnServer.contains) == true { forgetAnswer() }
         let tombstoned = tombstones.compactMap { tombstone -> String? in
             isOwnReset(tombstone, resetLandedAt: resetLandedAt) ? nil : tombstone["course_no"] as? String

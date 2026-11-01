@@ -29,26 +29,34 @@ nonisolated enum NotificationSettingsSync {
     }
 
     @MainActor
-    static func accountSignedIn(local: LocalPreferences) {
-        guard synced == nil, !Defaults[.notificationSettingsPushSendsEveryField] else { return }
+    static func accountSignedIn(local: LocalPreferences, for signIn: SignIn) {
+        guard signIn.isCurrent, synced == nil, !Defaults[.notificationSettingsPushSendsEveryField] else { return }
         synced = local
     }
 
     @MainActor
-    static func sectionTurnedOn(_ section: OwnedSection, local: LocalPreferences) {
-        guard let synced else { return }
+    static func sectionTurnedOn(_ section: OwnedSection, local: LocalPreferences, for signIn: SignIn) {
+        guard signIn.isCurrent, let synced else { return }
         self.synced = synced.replacing(section, from: local)
     }
 
     @MainActor
-    static func recordPushed(_ sent: LocalPreferences, fields: [String: Any]) {
+    static func recordPushed(_ sent: LocalPreferences, fields: [String: Any], for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         synced = (synced ?? sent).taking(fields, from: sent)
         Defaults[.notificationSettingsPushSendsEveryField] = false
     }
 
     @MainActor
-    static func recordSynced(_ settled: LocalPreferences, sections: Set<OwnedSection>) {
+    static func recordSynced(_ settled: LocalPreferences, sections: Set<OwnedSection>, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         synced = sections.reduce(synced ?? settled) { $0.replacing($1, from: settled) }
+    }
+
+    @MainActor
+    static func forget() {
+        Defaults[.notificationSettingsSyncedPreferences] = nil
+        Defaults[.notificationSettingsPushSendsEveryField] = false
     }
 
     static func merging(_ updates: [String: Any], into existing: [String: Any]) -> [String: Any] {

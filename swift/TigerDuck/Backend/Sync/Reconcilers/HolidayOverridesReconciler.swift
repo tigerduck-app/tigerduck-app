@@ -14,6 +14,6 @@ struct HolidayOverridesReconciler: CategoryReconciler {
             guard row["notify"] as? Bool == true else { return nil }
             return row["holiday_id"] as? Int
         })
-        return calendar.applySyncedOverrides(optedIn, fetchedAt: pass.fetchedAt)
+        return calendar.applySyncedOverrides(optedIn, fetchedAt: pass.fetchedAt, for: pass.signIn)
     }
 }

@@ -5,10 +5,10 @@ import os
 protocol SchoolDataBackend: AnyObject {
     func uploadCoursesIfChanged(
         _ request: PushAPI.CourseUploadRequest, semester: String, resend: Bool, addedAt stamp: Date?,
-        isCurrent: @escaping @MainActor () -> Bool
+        for signIn: SignIn, while wanted: @escaping @MainActor () -> Bool
     ) async throws -> Bool
     func uploadAssignmentsIfChanged(
-        _ request: PushAPI.AssignmentUploadRequest, isCurrent: @escaping @MainActor () -> Bool
+        _ request: PushAPI.AssignmentUploadRequest, for signIn: SignIn, while wanted: @escaping @MainActor () -> Bool
     ) async throws -> Bool
 }
 
@@ -16,30 +16,29 @@ extension PushCoordinator: SchoolDataBackend {}
 
 @MainActor
 final class SchoolDataUploader {
-    private let account: AccountSession
     private let target: SyncTarget
     private let backend: any SchoolDataBackend
     private let policy: () -> SyncPolicy
 
     init(
-        account: AccountSession, target: SyncTarget, backend: any SchoolDataBackend,
+        target: SyncTarget, backend: any SchoolDataBackend,
         policy: @escaping () -> SyncPolicy = { .current }
     ) {
-        self.account = account
         self.target = target
         self.backend = backend
         self.policy = policy
     }
 
-    func uploadCourses(_ courses: [SDCourse], semester: String, asRoster: Bool = false, resend: Bool = false) {
+    func uploadCourses(
+        _ courses: [SDCourse], semester: String, asRoster: Bool = false, resend: Bool = false, for signIn: SignIn
+    ) {
         guard policy().uploadsCourses else { return }
         let request = Self.courseUploadRequest(courses, semester: semester, rosterTerms: asRoster ? [semester] : nil)
-        let ticket = account.ticket
         let backend = backend
         Task { [weak self] in
-            await self?.sendUpload("uploadCourses \(semester)", ticket: ticket) { isCurrent in
+            await self?.sendUpload("uploadCourses \(semester)", for: signIn) { wanted in
                 try await backend.uploadCoursesIfChanged(
-                    request, semester: semester, resend: resend, addedAt: nil, isCurrent: isCurrent
+                    request, semester: semester, resend: resend, addedAt: nil, for: signIn, while: wanted
                 )
             }
         }
@@ -53,29 +52,25 @@ final class SchoolDataUploader {
         return courseUploadRequest([course], semester: semester)
     }
 
-    func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) {
+    func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest, for signIn: SignIn) {
         guard policy().cloudSyncEnabled else { return }
-        let ticket = account.ticket
         let backend = backend
         Task { [weak self] in
-            await self?.sendUpload("uploadAssignments", ticket: ticket) { isCurrent in
-                try await backend.uploadAssignmentsIfChanged(request, isCurrent: isCurrent)
+            await self?.sendUpload("uploadAssignments", for: signIn) { wanted in
+                try await backend.uploadAssignmentsIfChanged(request, for: signIn, while: wanted)
             }
         }
     }
 
     private func sendUpload(
         _ label: String,
-        ticket: AccountSession.Ticket,
-        _ send: (_ isCurrent: @escaping @MainActor () -> Bool) async throws -> Bool
+        for signIn: SignIn,
+        _ send: (_ wanted: @escaping @MainActor () -> Bool) async throws -> Bool
     ) async {
-        let isCurrent: @MainActor () -> Bool = { [weak self] in
-            guard let self else { return false }
-            return account.isCurrent(ticket) && policy().cloudSyncEnabled
-        }
-        guard isCurrent(), await target.waitForPull(ticket), isCurrent() else { return }
+        let wanted: @MainActor () -> Bool = { [weak self] in self?.policy().cloudSyncEnabled == true }
+        guard signIn.isCurrent, wanted(), await target.waitForPull(signIn), wanted() else { return }
         do {
-            let sent = try await send(isCurrent)
+            let sent = try await send(wanted)
             AppLogger.sync.info("\(label, privacy: .public): \(sent ? "sent" : "skipped", privacy: .public)")
         } catch {
             AppLogger.sync.error("\(label, privacy: .public) failed: \(error, privacy: .private)")

@@ -59,7 +59,7 @@ final class CloudSyncCoordinator {
         self.outbox = outbox
         let sender = OutboxSender(
             push: pushCoordinator, addedCourseUpload: addedCourseUpload, uploadsCourses: uploadsCourses,
-            isProtectedDataAvailable: isProtectedDataAvailable, account: account, courses: courses, kept: kept ?? KeptValues()
+            isProtectedDataAvailable: isProtectedDataAvailable, courses: courses, kept: kept ?? KeptValues()
         )
         self.sender = sender
         let edits = QueuedEdits(outbox: outbox)
@@ -67,7 +67,7 @@ final class CloudSyncCoordinator {
         let drain = OutboxDrain(outbox: outbox, sender: sender, edits: edits, push: pushCoordinator, policy: .init(
             syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseIgnores: syncsCourseIgnores,
             syncsCourseOverrides: syncsCourseOverrides, isProtectedDataAvailable: isProtectedDataAvailable
-        ))
+        ), account: account)
         self.drain = drain
         lifecycle = CloudSyncLifecycle(
             push: pushCoordinator, outbox: outbox, edits: edits, drain: drain, isEnabled: isEnabled
@@ -99,8 +99,8 @@ final class CloudSyncCoordinator {
         state != .disabled || Defaults[.cloudSyncEnabled]
     }
 
-    func sendColorFills(_ fills: [CourseColorFill]) async {
-        await drain.sendColorFills(fills)
+    func sendColorFills(_ fills: [CourseColorFill], for signIn: SignIn) async {
+        await drain.sendColorFills(fills, for: signIn)
     }
 
     @discardableResult

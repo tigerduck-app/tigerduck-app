@@ -10,7 +10,8 @@ enum CourseReset {
     }
 
     static func apply(
-        at resetAt: Date, courses: CourseStore, on coordinator: CloudSyncCoordinator, mayWrite: () -> Bool
+        at resetAt: Date, courses: CourseStore, on coordinator: CloudSyncCoordinator, for signIn: SignIn,
+        mayWrite: () -> Bool
     ) async -> Set<String>? {
         let dropped = await coordinator.dropCourseEdits(madeBeforeReset: resetAt)
         let adding = await coordinator.courseAddKeys(unlandedAt: resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin))
@@ -19,8 +20,8 @@ enum CourseReset {
         let added = adding.compactMap(CourseTombstone.parts(of:))
         courses.saveUserAddedCourses(courses.loadUserAddedCourses().filter { course in
             added.contains { $0.courseNo == course.courseNo && CourseStore.userAddedCourse(course, belongsTo: $0.semester) }
-        })
-        courses.saveDeletedCourseNos(courses.loadDeletedCourseNos().filter(deleting.contains))
+        }, for: signIn)
+        courses.saveDeletedCourseNos(courses.loadDeletedCourseNos().filter(deleting.contains), for: signIn)
         return dropped
     }
 }

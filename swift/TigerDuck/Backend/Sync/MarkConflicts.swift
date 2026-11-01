@@ -31,14 +31,14 @@ final class MarkConflicts {
         } else {
             let coordinator = app.cloudSyncCoordinator
             let push = app.pushCoordinator
-            let isCurrent = app.authService.session.currentCheck()
+            let signIn = app.authService.session.currentSignIn
             Task { [weak self] in
                 await AssignmentMarksReconciler.keepServerSide(
                     read: { ServerMarks(try await push.fetchFullSync()) },
                     protected: { [weak self] in
                         await coordinator.pendingAssignmentOverrideIds().union(self?.app?.localEdits.pendingOverrides ?? [])
                     },
-                    isCurrent: isCurrent,
+                    for: signIn,
                     assignments: .shared
                 )
             }

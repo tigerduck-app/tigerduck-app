@@ -38,11 +38,11 @@ struct AssignmentMarksReconciler: CategoryReconciler {
         }
         var changed = false
         if safeArchived != currentArchived {
-            assignments.replaceArchivedAssignmentIds(safeArchived)
+            assignments.replaceArchivedAssignmentIds(safeArchived, for: pass.signIn)
             changed = true
         }
         if safeCompleted != currentCompleted {
-            assignments.replaceLocallyCompletedAssignmentIds(safeCompleted)
+            assignments.replaceLocallyCompletedAssignmentIds(safeCompleted, for: pass.signIn)
             changed = true
         }
         AppLogger.sync.info("applied: \(safeArchived.count, privacy: .public) archived, \(safeCompleted.count, privacy: .public) completed, \(conflicts.count, privacy: .public) conflicts pending")
@@ -81,7 +81,7 @@ struct AssignmentMarksReconciler: CategoryReconciler {
     static func keepServerSide(
         read: () async throws -> ServerMarks,
         protected: () async -> Set<String>,
-        isCurrent: () -> Bool,
+        for signIn: SignIn,
         assignments: AssignmentStore
     ) async {
         guard let server = try? await read() else {
@@ -89,13 +89,12 @@ struct AssignmentMarksReconciler: CategoryReconciler {
             return
         }
         let protected = await protected()
-        guard isCurrent() else { return }
         assignments.replaceArchivedAssignmentIds(Self.mergedMarks(
             server: server.archived, local: assignments.loadArchivedAssignmentIds(), protected: protected
-        ))
+        ), for: signIn)
         assignments.replaceLocallyCompletedAssignmentIds(Self.mergedMarks(
             server: server.completed, local: assignments.loadLocallyCompletedAssignmentIds(), protected: protected
-        ))
+        ), for: signIn)
     }
 
     nonisolated static func mergedMarks(

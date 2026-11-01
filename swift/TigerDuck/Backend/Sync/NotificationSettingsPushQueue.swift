@@ -10,7 +10,7 @@ enum NotificationSettingsPushQueue {
     private(set) static var finishedLinks = 0
     private static var owedReconcile: Link?
 
-    typealias Link = @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Bool
+    typealias Link = @MainActor (_ stillQueued: @escaping @MainActor () -> Bool) async -> Bool
 
     static func source(
         _ snapshot: NotificationSettingsSync.DocumentSource,
@@ -47,22 +47,22 @@ enum NotificationSettingsPushQueue {
 
     @discardableResult
     static func enqueueReconcile(_ reconcile: @escaping Link) -> Task<Void, Never> {
-        enqueueGuarded { isCurrent in
-            if await reconcile(isCurrent), isCurrent() { owedReconcile = reconcile }
+        enqueueGuarded { stillQueued in
+            if await reconcile(stillQueued), stillQueued() { owedReconcile = reconcile }
         }
     }
 
     @discardableResult
     static func enqueuePush(_ push: @escaping Link) -> Task<Void, Never> {
-        enqueueGuarded { isCurrent in
-            guard await push(isCurrent), isCurrent(), let owed = owedReconcile else { return }
+        enqueueGuarded { stillQueued in
+            guard await push(stillQueued), stillQueued(), let owed = owedReconcile else { return }
             owedReconcile = nil
             enqueueReconcile(owed)
         }
     }
 
     private static func enqueueGuarded(
-        _ work: @escaping @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Void
+        _ work: @escaping @MainActor (_ stillQueued: @escaping @MainActor () -> Bool) async -> Void
     ) -> Task<Void, Never> {
         let queuedGeneration = generation
         return enqueue {

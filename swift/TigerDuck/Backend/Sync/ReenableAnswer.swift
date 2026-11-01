@@ -6,7 +6,7 @@ enum ReenableAnswer {
     typealias Conflict = SyncConflicts.ReenableConflict
 
     struct Effects {
-        let isCurrent: () -> Bool
+        let signIn: SignIn
         let take: (_ categories: [String], _ keepLocal: Bool) -> Set<String>
         let release: (_ held: Set<String>) -> Void
         let end: (_ held: Set<String>) -> Void
@@ -23,7 +23,7 @@ enum ReenableAnswer {
         if !keepLocal {
             await effects.dropQueuedEdits(Set(conflict.categories), conflict.serverIgnoredCourses != nil)
         }
-        guard effects.isCurrent() else { return }
+        guard effects.signIn.isCurrent else { return }
         let held = effects.take(conflict.categories, keepLocal)
         var coursesSaveFailed = false
         if keepLocal {
@@ -33,24 +33,24 @@ enum ReenableAnswer {
                     try await effects.sendCourses()
                 } catch {
                     AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .private)")
-                    if effects.isCurrent() { effects.markCoursesForCheck() }
+                    if effects.signIn.isCurrent { effects.markCoursesForCheck() }
                     coursesSaveFailed = true
                 }
             }
-            guard effects.isCurrent() else { return }
+            guard effects.signIn.isCurrent else { return }
             for task in effects.queueEdits() { await task.value }
-            guard effects.isCurrent() else { return }
+            guard effects.signIn.isCurrent else { return }
             effects.release(held)
         } else {
             effects.dropLocalCopies()
             await effects.syncFromServer(true)
         }
-        guard effects.isCurrent() else { return }
+        guard effects.signIn.isCurrent else { return }
         effects.noteAnswered(coursesSaveFailed)
     }
 
     static func sendLocalCourses(
-        localEdits: LocalEdits, push: PushCoordinator, isCurrent: () -> Bool
+        localEdits: LocalEdits, push: PushCoordinator, for signIn: SignIn
     ) async throws {
         guard SyncPolicy.current.uploadsCourses else { return }
         let terms = SemesterCatalog.availableSemesters().map { semester in
@@ -62,10 +62,10 @@ enum ReenableAnswer {
         localEdits.resettingSemesters.formUnion(latched)
         defer {
             localEdits.resettingSemesters.subtract(latched)
-            for semester in latched { CourseStore.shared.recordSemesterReset(semester) }
+            for semester in latched { CourseStore.shared.recordSemesterReset(semester, for: signIn) }
         }
         try await keepLocalCourses(
-            terms, hiding: Set(CourseStore.shared.loadDeletedCourseNos()), on: push, isCurrent: isCurrent
+            terms, hiding: Set(CourseStore.shared.loadDeletedCourseNos()), on: push, for: signIn
         )
     }
 
@@ -127,20 +127,20 @@ enum ReenableAnswer {
     }
 
     static func dropLocalCopies(
-        for conflict: Conflict, courses: CourseStore, assignments: AssignmentStore, colors: CourseColorFiles
+        for conflict: Conflict, courses: CourseStore, assignments: AssignmentStore, colors: CourseColorStore,
+        signIn: SignIn
     ) {
         if conflict.categories.contains("course_colors") {
-            colors.saveCourseColorMap([:])
-            TigerDuckTheme.reload()
+            colors.forgetColors(for: signIn)
         }
         if conflict.categories.contains("course_names") {
-            courses.saveCourseCustomNames([:])
+            courses.saveCourseCustomNames([:], for: signIn)
         }
         if conflict.categories.contains("assignments") {
-            assignments.replaceArchivedAssignmentIds([])
-            assignments.replaceLocallyCompletedAssignmentIds([])
+            assignments.replaceArchivedAssignmentIds([], for: signIn)
+            assignments.replaceLocallyCompletedAssignmentIds([], for: signIn)
             if conflict.serverIgnoredCourses != nil {
-                assignments.replaceIgnoredAssignmentCourses([])
+                assignments.replaceIgnoredAssignmentCourses([], for: signIn)
             }
         }
     }
@@ -149,7 +149,7 @@ enum ReenableAnswer {
         _ terms: [(semester: String, courses: [SDCourse])],
         hiding deletedNos: Set<String>,
         on backend: some CourseSyncBackend,
-        isCurrent: () -> Bool
+        for signIn: SignIn
     ) async throws {
         for (semester, courses) in terms {
             let hiddenNos = CourseTombstone.courseNos(hiddenIn: semester, in: deletedNos)
@@ -157,15 +157,14 @@ enum ReenableAnswer {
                 .map { SDCourse(courseNo: $0, courseName: $0) }
             guard !courses.isEmpty || !stubs.isEmpty else { continue }
             if !courses.isEmpty {
-                guard isCurrent() else { throw CancellationError() }
-                try await backend.deleteAllCourses(semester: semester, madeAt: Date())
+                try await backend.deleteAllCourses(semester: semester, madeAt: Date(), for: signIn)
             }
-            guard isCurrent() else { throw CancellationError() }
-            try await backend.uploadCourses(SchoolDataUploader.courseUploadRequest(courses + stubs, semester: semester), addedAt: nil)
+            try await backend.uploadCourses(
+                SchoolDataUploader.courseUploadRequest(courses + stubs, semester: semester), addedAt: nil, for: signIn
+            )
             for courseNo in hiddenNos.sorted() {
-                guard isCurrent() else { throw CancellationError() }
                 try await backend.deleteCourse(
-                    courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), madeAt: Date()
+                    courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), madeAt: Date(), for: signIn
                 )
             }
         }

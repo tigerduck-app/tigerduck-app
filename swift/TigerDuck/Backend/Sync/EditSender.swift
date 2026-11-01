@@ -8,12 +8,17 @@ final class EditSender {
     private let push: PushCoordinator
     private let poller: RevisionPoller
     private let localEdits: LocalEdits
+    private let account: AccountSession
 
-    init(coordinator: CloudSyncCoordinator, push: PushCoordinator, poller: RevisionPoller, localEdits: LocalEdits) {
+    init(
+        coordinator: CloudSyncCoordinator, push: PushCoordinator, poller: RevisionPoller, localEdits: LocalEdits,
+        account: AccountSession
+    ) {
         self.coordinator = coordinator
         self.push = push
         self.poller = poller
         self.localEdits = localEdits
+        self.account = account
     }
 
     @discardableResult
@@ -40,7 +45,7 @@ final class EditSender {
     func syncCourseIgnore(semester: String, courseNo: String, moodleIdNumber: String?, ignore: Bool) -> Task<Void, Never>? {
         guard Defaults[.cloudSyncEnabled] else { return nil }
         let moodleId = moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 } ?? "\(semester)\(courseNo)"
-        let moodleCourseId = MoodleFiles.shared.lookupMoodleCourseId(idnumber: moodleId)
+        let moodleCourseId = CourseLookup.moodleCourseId(idnumber: moodleId)
         let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
         localEdits.overrideEditGeneration &+= 1
         localEdits.pendingOverrides.insert(key)
@@ -116,14 +121,15 @@ final class EditSender {
             resetLocally()
             return true
         }
+        let signIn = await account.startingSignIn
         if let semester { localEdits.resettingSemesters.insert(semester) }
         defer { if let semester { localEdits.resettingSemesters.remove(semester) } }
         let madeAt = Date()
         do {
             try await Self.resetCourses(semester: semester, on: coordinator, onServer: { [push] in
-                try await push.deleteAllCourses(semester: semester, madeAt: madeAt)
+                try await push.deleteAllCourses(semester: semester, madeAt: madeAt, for: signIn)
                 AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
-                if let semester { CourseStore.shared.recordSemesterReset(semester) }
+                if let semester { CourseStore.shared.recordSemesterReset(semester, for: signIn) }
                 push.forgetUploads(semester: semester)
             }, thenLocally: resetLocally)
             return true
@@ -155,7 +161,7 @@ final class EditSender {
     func reassignAllCourseColors() {
         let semester = CourseSelectionService.currentSemesterCode()
         let courses = CanonicalCourseProvider().currentCourses(semester: semester)
-        TigerDuckTheme.reassignAll(courseNos: courses.map(\.courseNo))
+        TigerDuckTheme.reassignAll(courseNos: courses.map(\.courseNo), for: account.currentSignIn)
         guard Defaults[.cloudSyncEnabled] else { return }
         let colorMap = TigerDuckTheme.snapshot()
         for course in courses {

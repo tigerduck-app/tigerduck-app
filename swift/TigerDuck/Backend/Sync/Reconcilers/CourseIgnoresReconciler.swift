@@ -14,7 +14,7 @@ struct CourseIgnoresReconciler: CategoryReconciler {
         return applyIgnoredCourses(
             server, decided: Self.serverDecidedCourses(pass.courseOverrides),
             coursesArray: pass.coursesArray, protected: pass.protected, deleting: pass.courseDeletes,
-            fetchedAt: pass.fetchedAt
+            fetchedAt: pass.fetchedAt, for: pass.signIn
         )
     }
 
@@ -171,7 +171,8 @@ struct CourseIgnoresReconciler: CategoryReconciler {
         coursesArray: [[String: Any]],
         protected: Set<String>,
         deleting queuedDeletes: Set<String>,
-        fetchedAt: Date
+        fetchedAt: Date,
+        for signIn: SignIn
     ) -> Bool {
         let now = Date()
         let deleting = app.localEdits.recentCourseDeletions.filter { now.timeIntervalSince($0.value) < LocalEdits.courseDeleteGraceInterval }
@@ -182,14 +183,14 @@ struct CourseIgnoresReconciler: CategoryReconciler {
         let listed = Self.listedCourses(coursesArray)
         let listedRows = Self.listedCourseRows(coursesArray)
         let recreated = Self.recreatedCourses(listed: listedRows, seen: Defaults[.courseRowIdsSeen])
-        Defaults[.courseRowIdsSeen] = listedRows
+        SyncProgress.noteCourseRows(listedRows, for: signIn)
         let protected = protected.union(Self.courseKeysPullLeaves(
             Set(server.map(\.key)).union(listed).union(current),
             deleting: Set(deleting.keys).union(queuedDeletes),
             resetSemesters: resetSemesters
         ))
         let missingIds = Self.moodleCourseIdsToSend(server, protected: protected) {
-            MoodleFiles.shared.lookupMoodleCourseId(idnumber: $0)
+            CourseLookup.moodleCourseId(idnumber: $0)
         }
         for (course, moodleId, moodleCourseId) in missingIds {
             Task { [coordinator = app.cloudSyncCoordinator] in
@@ -213,7 +214,7 @@ struct CourseIgnoresReconciler: CategoryReconciler {
             app.edits.syncCourseIgnores(resend)
         }
         guard merged != current else { return false }
-        AssignmentStore.shared.replaceIgnoredAssignmentCourses(merged)
+        AssignmentStore.shared.replaceIgnoredAssignmentCourses(merged, for: signIn)
         return true
     }
 }

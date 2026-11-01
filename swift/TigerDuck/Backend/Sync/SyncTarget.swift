@@ -2,48 +2,43 @@ import Foundation
 
 @MainActor
 final class SyncTarget {
-    private typealias Waiter = (id: UUID, ticket: AccountSession.Ticket, resume: CheckedContinuation<Bool, Never>)
+    private typealias Waiter = (id: UUID, signIn: SignIn, resume: CheckedContinuation<Bool, Never>)
 
-    private let account: AccountSession
-    private var pulledIn: AccountSession.Ticket?
+    private var pulled = SignInBound(empty: false)
     private var waiters: [Waiter] = []
     /// One is resumed at a time and resumes the next once it
     /// runs, as the executor may run tasks resumed together in another order.
     private var releasing: [(id: UUID, result: Bool, resume: CheckedContinuation<Bool, Never>)] = []
     private var resumed: UUID?
 
-    init(account: AccountSession) {
-        self.account = account
+    func hasPulled(_ signIn: SignIn) -> Bool {
+        signIn.isCurrent && pulled.value
     }
 
-    func hasPulled(_ ticket: AccountSession.Ticket) -> Bool {
-        pulledIn == ticket && account.isCurrent(ticket)
-    }
-
-    func notePull(_ ticket: AccountSession.Ticket) {
-        guard account.isCurrent(ticket) else { return }
-        pulledIn = ticket
-        release { $0 == ticket }
+    func notePull(_ signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        pulled.set(true, for: signIn)
+        release(pulled: true)
     }
 
     func signedOut() {
-        pulledIn = nil
-        release { _ in false }
+        pulled = SignInBound(empty: false)
+        release(pulled: false)
     }
 
-    func waitForPull(_ ticket: AccountSession.Ticket) async -> Bool {
-        if hasPulled(ticket), releasing.isEmpty, resumed == nil { return true }
-        guard account.isCurrent(ticket) else { return false }
+    func waitForPull(_ signIn: SignIn) async -> Bool {
+        if hasPulled(signIn), releasing.isEmpty, resumed == nil { return true }
+        guard signIn.isCurrent else { return false }
         let id = UUID()
         let pulled = await withTaskCancellationHandler {
             await withCheckedContinuation { resume in
                 if Task.isCancelled {
                     resume.resume(returning: false)
-                } else if hasPulled(ticket) {
+                } else if hasPulled(signIn) {
                     releasing.append((id, true, resume))
                     if resumed == nil { resumeNextReleased() }
                 } else {
-                    waiters.append((id, ticket, resume))
+                    waiters.append((id, signIn, resume))
                 }
             }
         } onCancel: {
@@ -56,8 +51,8 @@ final class SyncTarget {
         return pulled
     }
 
-    private func release(pulled: (AccountSession.Ticket) -> Bool) {
-        releasing += waiters.map { ($0.id, pulled($0.ticket) && account.isCurrent($0.ticket), $0.resume) }
+    private func release(pulled: Bool) {
+        releasing += waiters.map { ($0.id, pulled && $0.signIn.isCurrent, $0.resume) }
         waiters = []
         if resumed == nil { resumeNextReleased() }
     }

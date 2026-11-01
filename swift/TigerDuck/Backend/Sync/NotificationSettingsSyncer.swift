@@ -15,9 +15,10 @@ final class NotificationSettingsSyncer {
 
 
     @discardableResult
-    func push(isCurrent: @escaping @MainActor () -> Bool = { true }) async -> Bool {
+    func push(stillQueued: @escaping @MainActor () -> Bool = { true }) async -> Bool {
         guard Defaults[.cloudSyncEnabled] else { return false }
-        guard await authTokenManager.isLoggedIn, isCurrent() else { return false }
+        let signIn = await AccountSession.school.startingSignIn
+        guard await authTokenManager.isLoggedIn, stillQueued() else { return false }
 
         let atm = authTokenManager
         let client = SettingsDocumentClient(
@@ -33,11 +34,11 @@ final class NotificationSettingsSyncer {
                 cloudSyncEnabled: Defaults[.cloudSyncEnabled],
                 syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
                 syncLiveActivityEnabled: Defaults[.syncLiveActivity],
-                isCurrent: isCurrent,
+                isCurrent: stillQueued,
                 recordSent: { sent = $0 }
             )
-            guard written, isCurrent() else { return false }
-            NotificationSettingsSync.recordPushed(local, fields: sent)
+            guard written, stillQueued() else { return false }
+            NotificationSettingsSync.recordPushed(local, fields: sent, for: signIn)
             if NotificationSettingsSync.canClearPendingMarker(
                 written: written,
                 sent: local,
@@ -60,9 +61,10 @@ final class NotificationSettingsSyncer {
         snapshot: NotificationSettingsSync.DocumentSource = .read,
         linksBeforeSnapshot: Int = 0
     ) -> Task<Void, Never> {
-        NotificationSettingsPushQueue.enqueueReconcile { [weak self] isCurrent in
+        NotificationSettingsPushQueue.enqueueReconcile { [weak self] stillQueued in
             guard let self, Defaults[.cloudSyncEnabled] else { return false }
-            guard await self.authTokenManager.isLoggedIn, isCurrent() else { return false }
+            let signIn = await AccountSession.school.startingSignIn
+            guard await self.authTokenManager.isLoggedIn, stillQueued() else { return false }
 
             let atm = self.authTokenManager
             let client = SettingsDocumentClient(
@@ -76,9 +78,9 @@ final class NotificationSettingsSyncer {
                     syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
                     syncLiveActivityEnabled: Defaults[.syncLiveActivity],
                     isPushPending: { Defaults[.notificationSettingsPushPending] },
-                    isCurrent: isCurrent,
+                    isCurrent: stillQueued,
                     source: NotificationSettingsPushQueue.source(snapshot, linksBeforeSnapshot: linksBeforeSnapshot),
-                    recordSynced: { NotificationSettingsSync.recordSynced($0, sections: $1) }
+                    recordSynced: { NotificationSettingsSync.recordSynced($0, sections: $1, for: signIn) }
                 )
                 switch outcome {
                 case .settled:
@@ -106,8 +108,8 @@ final class NotificationSettingsSyncer {
     }
 
     func enqueuePush() {
-        NotificationSettingsPushQueue.enqueuePush { [weak self] isCurrent in
-            await self?.push(isCurrent: isCurrent) ?? false
+        NotificationSettingsPushQueue.enqueuePush { [weak self] stillQueued in
+            await self?.push(stillQueued: stillQueued) ?? false
         }
     }
 
@@ -118,7 +120,9 @@ final class NotificationSettingsSyncer {
     }
 
     func adoptSection(_ section: NotificationSettingsSync.OwnedSection) {
-        NotificationSettingsSync.sectionTurnedOn(section, local: .init(from: preferences))
+        NotificationSettingsSync.sectionTurnedOn(
+            section, local: .init(from: preferences), for: AccountSession.school.currentSignIn
+        )
         reconcile()
     }
 
@@ -129,8 +133,7 @@ final class NotificationSettingsSyncer {
     func cancelPushes() {
         NotificationSettingsPushQueue.cancelAll()
         Defaults[.notificationSettingsPushPending] = false
-        Defaults[.notificationSettingsSyncedPreferences] = nil
-        Defaults[.notificationSettingsPushSendsEveryField] = false
+        NotificationSettingsSync.forget()
     }
 }
 #endif

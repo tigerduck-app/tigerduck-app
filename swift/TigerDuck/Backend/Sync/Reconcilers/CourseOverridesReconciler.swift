@@ -15,7 +15,7 @@ struct CourseOverridesReconciler: CategoryReconciler {
         }
         let changed = !pass.courseOverrides.isEmpty && applyCourseOverrides(
             pass.courseOverrides, coursesArray: pass.coursesArray, colors: colors, names: names,
-            holdingColors: pass.heldCourseOverrides.colors, holdingNames: pass.heldCourseOverrides.names
+            holdingColors: pass.heldCourseOverrides.colors, holdingNames: pass.heldCourseOverrides.names, for: pass.signIn
         )
         if colors {
             let fills = Self.colorFills(
@@ -23,7 +23,7 @@ struct CourseOverridesReconciler: CategoryReconciler {
                 holding: pass.heldCourseOverrides.colors, snapshot: pass.json
             )
             if !fills.isEmpty {
-                Task { [coordinator = app.cloudSyncCoordinator] in await coordinator.sendColorFills(fills) }
+                Task { [coordinator = app.cloudSyncCoordinator] in await coordinator.sendColorFills(fills, for: pass.signIn) }
             }
         }
         return changed
@@ -66,7 +66,7 @@ struct CourseOverridesReconciler: CategoryReconciler {
 
     private func applyCourseOverrides(
         _ overrides: [[String: Any]], coursesArray: [[String: Any]], colors: Bool, names: Bool,
-        holdingColors: Set<String>, holdingNames: Set<String>
+        holdingColors: Set<String>, holdingNames: Set<String>, for signIn: SignIn
     ) -> Bool {
         var moodleIdToNo: [String: String] = [:]
         for c in coursesArray {
@@ -82,7 +82,7 @@ struct CourseOverridesReconciler: CategoryReconciler {
         AppLogger.sync.info("moodleIdToNo: \(moodleIdToNo.count, privacy: .public) entries, overrides: \(overrides.count, privacy: .public)")
 
         let colorsChanged = colors && TigerDuckTheme.applyColors(
-            Self.serverCourseColors(overrides, courseNos: moodleIdToNo, holding: holdingColors)
+            Self.serverCourseColors(overrides, courseNos: moodleIdToNo, holding: holdingColors), for: signIn
         )
         let namesBefore = CourseStore.shared.loadCourseCustomNames()
         let customNames = names
@@ -90,7 +90,7 @@ struct CourseOverridesReconciler: CategoryReconciler {
             : namesBefore
         let namesChanged = customNames != namesBefore
         if namesChanged {
-            CourseStore.shared.saveCourseCustomNames(customNames)
+            CourseStore.shared.saveCourseCustomNames(customNames, for: signIn)
         }
         return colorsChanged || namesChanged
     }

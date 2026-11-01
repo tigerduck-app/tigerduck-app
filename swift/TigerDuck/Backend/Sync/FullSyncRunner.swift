@@ -66,48 +66,46 @@ final class FullSyncRunner {
             ?? TigerDuckDateFormatters.withoutFractional.date(from: raw)
     }
 
-    static func recordFullSync(coursesReset: Date, taken: Set<String>) {
-        Defaults[.lastSeenCoursesResetAt] = coursesReset
-        Defaults[.categoriesSyncedOnce].formUnion(taken)
-    }
-
     nonisolated static func fullSyncMayWrite(
         signedOutSince: Bool, cloudSyncEnabled: Bool, protectedDataAvailable: Bool
     ) -> Bool {
         !signedOutSince && cloudSyncEnabled && protectedDataAvailable
     }
 
-    func mayWrite(since ticket: AccountSession.Ticket) -> Bool {
+    func mayWrite(for signIn: SignIn) -> Bool {
         #if os(iOS)
         let protectedDataAvailable = UIApplication.shared.isProtectedDataAvailable
         #else
         let protectedDataAvailable = true
         #endif
         return Self.fullSyncMayWrite(
-            signedOutSince: !app.authService.session.isCurrent(ticket),
+            signedOutSince: !signIn.isCurrent,
             cloudSyncEnabled: Defaults[.cloudSyncEnabled],
             protectedDataAvailable: protectedDataAvailable
         )
     }
 
     func settleQueuedCourseEdits(
-        deleting: Set<String>, reset: (apply: Bool, remember: Date), ticket: AccountSession.Ticket
+        deleting: Set<String>, reset: (apply: Bool, remember: Date), for signIn: SignIn
     ) async -> Set<String>? {
         guard reset.apply else { return deleting }
         guard let dropped = await CourseReset.apply(
-            at: reset.remember, courses: .shared, on: app.cloudSyncCoordinator,
-            mayWrite: { self.mayWrite(since: ticket) }
+            at: reset.remember, courses: .shared, on: app.cloudSyncCoordinator, for: signIn,
+            mayWrite: { self.mayWrite(for: signIn) }
         ) else { return nil }
-        Defaults[.lastSeenCoursesResetAt] = reset.remember
+        SyncProgress.noteCoursesReset(reset.remember, for: signIn)
         app.localEdits.recentCourseDeletions = [:]
         AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: reset.remember), privacy: .public)), wiped local state")
         return deleting.subtracting(dropped)
     }
 
     private func run() async -> FullSyncOutcome {
-        let ticket = app.authService.session.ticket
+        await app.authService.session.withSignIn { await run(for: $0) }
+    }
+
+    private func run(for signIn: SignIn) async -> FullSyncOutcome {
         await app.authService.ensureBackendSignedIn()
-        guard await app.authTokenManager.isLoggedIn, mayWrite(since: ticket) else { return .skipped }
+        guard await app.authTokenManager.isLoggedIn, mayWrite(for: signIn) else { return .skipped }
         await retryUnsentEdits()
         do {
             #if DEBUG
@@ -116,17 +114,17 @@ final class FullSyncRunner {
             #if os(iOS)
             let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
             #endif
-            guard let pass = try await read(ticket: ticket) else { return .skipped }
+            guard let pass = try await read(for: signIn) else { return .skipped }
             var changed = pass.reset.apply
             for reconciler in Self.reconcilers {
                 changed = reconciler.init(app: app).reconcile(pass) || changed
             }
-            Self.recordFullSync(coursesReset: pass.reset.remember, taken: pass.taken)
+            SyncProgress.recordFullSync(coursesReset: pass.reset.remember, taken: pass.taken, for: signIn)
             if app.localEdits.overrideEditGeneration == pass.editGenerationAtFetch,
                let revision = pass.json["current_revision"] as? Int {
                 app.feed.lastKnownRevision = revision
             }
-            app.syncTarget.notePull(ticket)
+            app.syncTarget.notePull(signIn)
             ServerStatusTracker.shared.noteSyncResult(true)
             app.conflicts.retryOwedConflictCheck()
             #if os(iOS)
@@ -137,14 +135,14 @@ final class FullSyncRunner {
             #endif
             return .synced
         } catch {
-            guard !Self.isCancellation(error), mayWrite(since: ticket) else { return .skipped }
+            guard !Self.isCancellation(error), mayWrite(for: signIn) else { return .skipped }
             ServerStatusTracker.shared.noteSyncResult(false)
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .private)")
             return .failed
         }
     }
 
-    private func read(ticket: AccountSession.Ticket) async throws -> FullSyncPass? {
+    private func read(for signIn: SignIn) async throws -> FullSyncPass? {
         let coordinator = app.cloudSyncCoordinator
         let preFetchProtected = await coordinator.pendingAssignmentOverrideIds()
             .union(coordinator.pendingCourseIgnoreKeys()).union(app.localEdits.pendingOverrides)
@@ -154,7 +152,7 @@ final class FullSyncRunner {
         let (json, fetchedDeletes) = try await coordinator.courseDeletes(around: {
             try await app.pushCoordinator.fetchFullSync()
         })
-        guard mayWrite(since: ticket) else { return nil }
+        guard mayWrite(for: signIn) else { return nil }
         let marks = ServerMarks(json)
         let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
         let serverIgnoredCourses = CourseIgnoresReconciler.serverIgnoredCourses(courseOverrides, syncsCourses: Defaults[.syncCourses])
@@ -175,10 +173,10 @@ final class FullSyncRunner {
             for id in localCompleted { app.edits.syncAssignmentOverride(moodleId: id, status: "locally_completed") }
             app.edits.syncCourseIgnores(localIgnoredCourses)
         }
-        if syncsMarks { Defaults[.assignmentMarksSyncedOnce] = true }
+        if syncsMarks { SyncProgress.noteMarksSynced(for: signIn) }
 
         let inFlight = await coordinator.pendingAssignmentOverrideIds().union(coordinator.pendingCourseIgnoreKeys())
-        guard mayWrite(since: ticket) else { return nil }
+        guard mayWrite(for: signIn) else { return nil }
         let before = SyncPolicy.current
         let takesCourses = before.switchedOn.contains("courses") && !before.pendingChecks.contains("courses")
         let reset = CourseReset.decide(
@@ -187,9 +185,9 @@ final class FullSyncRunner {
         )
         guard let settled = await Self.settle(
             fetchedDeletes, takingCourses: takesCourses,
-            settle: { await self.settleQueuedCourseEdits(deleting: $0, reset: reset, ticket: ticket) },
+            settle: { await self.settleQueuedCourseEdits(deleting: $0, reset: reset, for: signIn) },
             adds: { await coordinator.courseAddKeys(unlandedAt: fetchedAt) },
-            mayWrite: { mayWrite(since: ticket) }, policy: { SyncPolicy.current }
+            mayWrite: { mayWrite(for: signIn) }, policy: { SyncPolicy.current }
         ) else { return nil }
         let policy = settled.policy
 
@@ -200,7 +198,7 @@ final class FullSyncRunner {
             editedDuringFetch: app.localEdits.overrideEditGeneration != editGenerationAtFetch
         )
         return FullSyncPass(
-            json: json, ticket: ticket, fetchedAt: fetchedAt, policy: policy, marks: marks,
+            json: json, signIn: signIn, fetchedAt: fetchedAt, policy: policy, marks: marks,
             courseOverrides: courseOverrides, serverIgnoredCourses: serverIgnoredCourses,
             localArchived: localArchived, localCompleted: localCompleted,
             protected: preFetchProtected.union(app.localEdits.pendingOverrides).union(inFlight),
@@ -265,7 +263,7 @@ nonisolated struct ServerMarks: Sendable {
 
 struct FullSyncPass {
     let json: [String: Any]
-    let ticket: AccountSession.Ticket
+    let signIn: SignIn
     let fetchedAt: Date
     let policy: SyncPolicy
     let marks: ServerMarks

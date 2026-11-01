@@ -30,20 +30,23 @@ final class ChangeFeedPull {
     }
 
     func pollRevision() async -> RevisionPollOutcome {
+        await app.authService.session.withSignIn { await pollRevision(for: $0) }
+    }
+
+    private func pollRevision(for signIn: SignIn) async -> RevisionPollOutcome {
         guard Defaults[.cloudSyncEnabled] else { return .unchanged }
         guard NetworkMonitor.shared.isConnected else { return .offline }
         await app.authService.ensureBackendSignedIn()
         guard await app.authTokenManager.isLoggedIn else { return .unchanged }
-        let ticket = app.authService.session.ticket
         do {
             let serverRevision = try await app.pushCoordinator.fetchRevision()
             app.conflicts.retryOwedConflictCheck()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self.lastKnownRevision)")
             guard serverRevision > lastKnownRevision else {
-                if lastKnownRevision > 0 { app.syncTarget.notePull(ticket) }
+                if lastKnownRevision > 0 { app.syncTarget.notePull(signIn) }
                 return .unchanged
             }
-            let outcome = await syncChangesSinceLastRevision()
+            let outcome = await syncChanges(for: signIn)
             await app.cloudSyncCoordinator.onRevisionChanged()
             return outcome
         } catch PushAPIError.httpStatus(401, _, let sent) {
@@ -54,9 +57,8 @@ final class ChangeFeedPull {
         }
     }
 
-    func syncChangesSinceLastRevision() async -> RevisionPollOutcome {
+    private func syncChanges(for signIn: SignIn) async -> RevisionPollOutcome {
         let since = lastKnownRevision
-        let ticket = app.authService.session.ticket
         guard since > 0, !app.fullSync.gate.isRunning else {
             await app.fullSync.sync(followUpIfBusy: true)
             return .changed
@@ -68,7 +70,7 @@ final class ChangeFeedPull {
             AppLogger.sync.info("[feed] read failed: \(error, privacy: .private)")
             page = nil
         }
-        guard mayAdvanceRevision(from: since, ticket: ticket), !app.fullSync.gate.isRunning else {
+        guard mayAdvanceRevision(from: since, for: signIn), !app.fullSync.gate.isRunning else {
             return .changed
         }
         let plan = ChangeFeedPlan(page, since: since)
@@ -78,39 +80,39 @@ final class ChangeFeedPull {
             await app.fullSync.sync()
         case .advance(let revision):
             await app.fullSync.retryUnsentEdits()
-            advanceRevision(from: since, to: revision, ticket: ticket)
+            advanceRevision(from: since, to: revision, for: signIn)
         case .reconcileSettings(let revision):
             await app.fullSync.retryUnsentEdits()
-            await reconcileSettings(thenAdvanceFrom: since, to: revision, ticket: ticket)
+            await reconcileSettings(thenAdvanceFrom: since, to: revision, for: signIn)
             if lastKnownRevision == since { return .failed }
         }
         return .changed
     }
 
-    private func reconcileSettings(thenAdvanceFrom since: Int, to revision: Int, ticket: AccountSession.Ticket) async {
+    private func reconcileSettings(thenAdvanceFrom since: Int, to revision: Int, for signIn: SignIn) async {
         #if os(iOS)
         if !Defaults[.notificationSettingsPushPending] {
             await app.notificationSettings.reconcile(onSettled: { [weak self] in
-                self?.advanceRevision(from: since, to: revision, ticket: ticket)
+                self?.advanceRevision(from: since, to: revision, for: signIn)
             }).value
             return
         }
         #endif
-        advanceRevision(from: since, to: revision, ticket: ticket)
+        advanceRevision(from: since, to: revision, for: signIn)
     }
 
-    private func advanceRevision(from since: Int, to revision: Int, ticket: AccountSession.Ticket) {
-        guard mayAdvanceRevision(from: since, ticket: ticket) else { return }
+    private func advanceRevision(from since: Int, to revision: Int, for signIn: SignIn) {
+        guard mayAdvanceRevision(from: since, for: signIn) else { return }
         lastKnownRevision = revision
-        app.syncTarget.notePull(ticket)
+        app.syncTarget.notePull(signIn)
         ServerStatusTracker.shared.noteSyncResult(true)
     }
 
-    private func mayAdvanceRevision(from since: Int, ticket: AccountSession.Ticket) -> Bool {
+    private func mayAdvanceRevision(from since: Int, for signIn: SignIn) -> Bool {
         Self.feedMayAdvanceRevision(
             readAfter: since,
             watermark: lastKnownRevision,
-            signedOutSince: !app.authService.session.isCurrent(ticket),
+            signedOutSince: !signIn.isCurrent,
             cloudSyncEnabled: Defaults[.cloudSyncEnabled]
         )
     }

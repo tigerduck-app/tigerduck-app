@@ -10,11 +10,6 @@ final class OutboxDrain {
         let isProtectedDataAvailable: @MainActor () -> Bool
     }
 
-    private struct SignOuts {
-        var count = 0
-        var settling = 0
-    }
-
     private struct Tick {
         var inFlight = false
         var askedDuringFlight = false
@@ -25,17 +20,22 @@ final class OutboxDrain {
     private let edits: QueuedEdits
     private let push: PushCoordinator
     private let policy: Policy
+    private let account: AccountSession
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
-    private var signOuts = SignOuts()
+    private var signOutsClearingOutbox = 0
     private var tick = Tick()
     private var sending: Task<Void, Error>?
 
-    init(outbox: SyncOutbox, sender: OutboxSender, edits: QueuedEdits, push: PushCoordinator, policy: Policy) {
+    init(
+        outbox: SyncOutbox, sender: OutboxSender, edits: QueuedEdits, push: PushCoordinator, policy: Policy,
+        account: AccountSession
+    ) {
         self.outbox = outbox
         self.sender = sender
         self.edits = edits
         self.push = push
         self.policy = policy
+        self.account = account
     }
 
     func run(while isActive: () -> Bool) async {
@@ -47,30 +47,32 @@ final class OutboxDrain {
         defer { tick.inFlight = false }
         repeat {
             tick.askedDuringFlight = false
-            await drainOnce()
+            await account.withSignIn { await drainOnce(for: $0) }
         } while tick.askedDuringFlight && isActive()
     }
 
     func beginSignOut() {
-        signOuts.count += 1
-        signOuts.settling += 1
+        signOutsClearingOutbox += 1
         sending?.cancel()
     }
 
     func endSignOut() {
-        signOuts.settling -= 1
+        signOutsClearingOutbox -= 1
+    }
+
+    private func sends(for signIn: SignIn) -> Bool {
+        signIn.isCurrent && signOutsClearingOutbox == 0
     }
 
     func awaitSending() async {
         _ = await sending?.result
     }
 
-    private func drainOnce() async {
+    private func drainOnce(for signIn: SignIn) async {
         let protectedDataAvailable = policy.isProtectedDataAvailable()
         await outbox.loadOrGiveUp(protectedDataAvailable: protectedDataAvailable)
         guard await outbox.pendingCount() > 0 else { return }
 
-        let signOutsBefore = signOuts.count
         let syncsMarks = policy.syncsAssignmentMarks
         let syncsIgnores = policy.syncsCourseIgnores
         let syncsOverrides = policy.syncsCourseOverrides
@@ -88,25 +90,24 @@ final class OutboxDrain {
         await outbox.drain(holding: isHeld) { [weak self] op in
             guard let self else { throw CancellationError() }
             try await BackendClient.$holdsResend.withValue({ isHeld(op) }) {
-                try await self.execute(op, signOutsBefore: signOutsBefore)
+                try await self.execute(op, for: signIn)
             }
         }
     }
 
-    func sendColorFills(_ fills: [CourseColorFill]) async {
-        let signOutsBefore = signOuts.count
+    func sendColorFills(_ fills: [CourseColorFill], for signIn: SignIn) async {
         let editsBefore = edits.overrideEdits
         for fill in fills {
-            guard signOuts.count == signOutsBefore, signOuts.settling == 0,
-                  policy.syncsCourseOverrides("course_colors") else { return }
+            guard sends(for: signIn), policy.syncsCourseOverrides("course_colors") else { return }
             do {
                 let syncsOverrides = policy.syncsCourseOverrides
                 let reply = try await BackendClient.$holdsResend.withValue({ !syncsOverrides("course_colors") }) {
-                    try await push.patchCourseOverride(courseKey: fill.courseKey, colorHex: fill.colorHex, madeAt: fill.stamp)
+                    try await push.patchCourseOverride(
+                        courseKey: fill.courseKey, colorHex: fill.colorHex, madeAt: fill.stamp, for: signIn
+                    )
                 }
-                guard signOuts.count == signOutsBefore, !reply.applied.contains("color_hex"),
-                      edits.colorEdit(of: fill.identity) <= editsBefore else { continue }
-                sender.kept.colorKept(reply.colorHex, courseNo: fill.courseNo)
+                guard !reply.applied.contains("color_hex"), edits.colorEdit(of: fill.identity) <= editsBefore else { continue }
+                sender.kept.colorKept(reply.colorHex, courseNo: fill.courseNo, for: signIn)
             } catch is ResendHeldError {
                 return
             } catch {
@@ -115,12 +116,12 @@ final class OutboxDrain {
         }
     }
 
-    private func execute(_ op: SyncOp, signOutsBefore: Int) async throws {
-        guard signOuts.count == signOutsBefore, signOuts.settling == 0 else { throw CancellationError() }
+    private func execute(_ op: SyncOp, for signIn: SignIn) async throws {
+        guard sends(for: signIn) else { throw CancellationError() }
         guard !SyncOutbox.isCutOff(op, by: edits.cutoffs) else { return }
         let request = Task {
             do {
-                try await self.sender.send(op, newerQueued: { await self.edits.hasNewerEdit(than: $0) })
+                try await self.sender.send(op, for: signIn, newerQueued: { await self.edits.hasNewerEdit(than: $0) })
             } catch let error where Self.isUnauthorized(error) {
                 throw SyncOutboxAuthError(statusCode: 401)
             }

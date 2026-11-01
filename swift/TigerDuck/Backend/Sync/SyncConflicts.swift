@@ -63,17 +63,18 @@ final class SyncConflicts {
 
     func markCategoryReenabled(_ category: String) {
         app.pushCoordinator.forgetUploads()
-        Self.markForReenableCheck(category, signedIn: app.authService.hasStoredCredentials)
+        let signIn = app.authService.session.currentSignIn
+        Self.markForReenableCheck(category, signedIn: app.authService.hasStoredCredentials, for: signIn)
         useLocalHold.noteReenabled(category)
     }
 
-    static func markForReenableCheck(_ category: String, signedIn: Bool) {
+    static func markForReenableCheck(_ category: String, signedIn: Bool, for signIn: SignIn) {
         let synced = hasSynced(category)
         guard signedIn, synced else {
             AppLogger.sync.info("[reenable] not marked: \(category, privacy: .public), signedIn=\(signedIn, privacy: .public) synced=\(synced, privacy: .public)")
             return
         }
-        Defaults[.pendingConflictCategories].insert(category)
+        SyncProgress.changePendingConflicts(for: signIn) { $0.insert(category) }
         AppLogger.sync.info("[reenable] marked category: \(category, privacy: .public), pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public)")
     }
 
@@ -91,7 +92,7 @@ final class SyncConflicts {
         let pending = Self.categoriesToCheck(
             pending: Defaults[.pendingConflictCategories], answering: useLocalHold.held
         )
-        let ticket = app.authService.session.ticket
+        let signIn = app.authService.session.currentSignIn
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
             return
@@ -104,7 +105,7 @@ final class SyncConflicts {
         AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.sorted(), privacy: .public)")
         Task {
             defer {
-                Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: ticket) }
+                Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: signIn) }
             }
             do {
                 let (json, courseDeletes) = try await app.cloudSyncCoordinator.courseDeletes(around: {
@@ -116,13 +117,13 @@ final class SyncConflicts {
                 )
                 await MainActor.run {
                     let outcome = Self.conflictCheckOutcome(
-                        mayWrite: app.fullSync.mayWrite(since: ticket), checked: pending,
+                        mayWrite: app.fullSync.mayWrite(for: signIn), checked: pending,
                         stillPending: Self.categoriesToCheck(
                             pending: Defaults[.pendingConflictCategories], answering: useLocalHold.held
                         ),
                         foundDifference: !found.lines.isEmpty
                     )
-                    conflictCheckRetry.note(outcome, at: Date(), signIn: ticket)
+                    conflictCheckRetry.note(outcome, at: Date(), signIn: signIn)
                     switch outcome {
                     case .dropped:
                         AppLogger.sync.info("[reenable] result discarded — signed out, sync off or locked while in flight")
@@ -136,12 +137,12 @@ final class SyncConflicts {
                             serverMarkedAssignments: found.serverMarkedAssignments
                         )
                     case .clear(let checked):
-                        Defaults[.pendingConflictCategories].subtract(checked)
+                        SyncProgress.changePendingConflicts(for: signIn) { $0.subtract(checked) }
                         app.cloudSyncCoordinator.scheduleTick()
                     }
                 }
             } catch {
-                conflictCheckRetry.noteFailure(at: Date(), signIn: ticket)
+                conflictCheckRetry.noteFailure(at: Date(), signIn: signIn)
                 AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .private) — pending kept for retry")
             }
         }
@@ -159,11 +160,11 @@ final class SyncConflicts {
         ReenableDifferences.coursesOnOneSide(server: server, local: local, semester: semester, deleting: deleting)
     }
 
-    private func endConflictCheck(checked pending: Set<String>, startedIn ticket: AccountSession.Ticket) {
+    private func endConflictCheck(checked pending: Set<String>, startedIn signIn: SignIn) {
         isCheckingConflicts = false
         let unchecked = Self.categoriesLeftToCheck(
             pending: Defaults[.pendingConflictCategories], checked: pending,
-            signedOutSince: !app.authService.session.isCurrent(ticket)
+            signedOutSince: !signIn.isCurrent
         )
         if reenableConflict == nil, !unchecked.isEmpty {
             checkPendingConflicts()
@@ -173,70 +174,66 @@ final class SyncConflicts {
     func retryOwedConflictCheck() {
         guard conflictCheckRetry.isDue(
             pending: Defaults[.pendingConflictCategories], checking: isCheckingConflicts,
-            awaitingAnswer: reenableConflict != nil, now: Date(), signIn: app.authService.session.ticket
+            awaitingAnswer: reenableConflict != nil, now: Date()
         ) else { return }
         checkPendingConflicts()
     }
 
-    nonisolated struct ConflictCheckRetry: Equatable, Sendable {
+    nonisolated struct ConflictCheckRetry: Sendable {
         static let firstDelay: TimeInterval = 30
         static let maxDelay: TimeInterval = 30 * 60
 
-        private(set) var signIn: AccountSession.Ticket?
-        private(set) var owed = true
-        private(set) var failures = 0
-        private(set) var notBefore: Date?
+        private struct Attempts: Sendable {
+            var owed = true
+            var failures = 0
+            var notBefore: Date?
 
-        init(signIn: AccountSession.Ticket? = nil) {
-            self.signIn = signIn
+            mutating func recordFailure(at now: Date) {
+                owed = true
+                failures += 1
+                notBefore = now.addingTimeInterval(min(ConflictCheckRetry.firstDelay * pow(2, Double(failures - 1)), ConflictCheckRetry.maxDelay))
+            }
         }
 
-        func isDue(
-            pending: Set<String>, checking: Bool, awaitingAnswer: Bool, now: Date, signIn: AccountSession.Ticket
-        ) -> Bool {
-            let state = signIn == self.signIn ? self : Self(signIn: signIn)
+        private var attempts = SignInBound(empty: Attempts())
+
+        func isDue(pending: Set<String>, checking: Bool, awaitingAnswer: Bool, now: Date) -> Bool {
+            let state = attempts.value
             return state.owed && !pending.isEmpty && !checking && !awaitingAnswer
                 && (state.notBefore.map { now >= $0 } ?? true)
         }
 
-        mutating func noteFailure(at now: Date, signIn: AccountSession.Ticket) {
-            guard adopt(signIn) else { return }
-            recordFailure(at: now)
+        mutating func noteFailure(at now: Date, signIn: SignIn) {
+            change(for: signIn) { $0.recordFailure(at: now) }
         }
 
-        mutating func note(_ outcome: ConflictCheckOutcome, at now: Date, signIn: AccountSession.Ticket) {
-            guard adopt(signIn) else { return }
-            switch outcome {
-            case .dropped:
-                recordFailure(at: now)
-            case .conflict, .clear:
-                owed = false
-                failures = 0
-                notBefore = nil
-            case .resolvedMeanwhile:
-                break
+        mutating func note(_ outcome: ConflictCheckOutcome, at now: Date, signIn: SignIn) {
+            change(for: signIn) { state in
+                switch outcome {
+                case .dropped:
+                    state.recordFailure(at: now)
+                case .conflict, .clear:
+                    state = Attempts(owed: false)
+                case .resolvedMeanwhile:
+                    break
+                }
             }
         }
 
         mutating func noteAnswered(
             leaving pending: Set<String>, awaitingAnswer: Bool, saveFailed: Bool = false, at now: Date = Date(),
-            signIn: AccountSession.Ticket
+            signIn: SignIn
         ) {
-            guard adopt(signIn) else { return }
-            if saveFailed { return recordFailure(at: now) }
-            if !pending.isEmpty, !awaitingAnswer { owed = true }
+            change(for: signIn) { state in
+                if saveFailed { return state.recordFailure(at: now) }
+                if !pending.isEmpty, !awaitingAnswer { state.owed = true }
+            }
         }
 
-        private mutating func recordFailure(at now: Date) {
-            owed = true
-            failures += 1
-            notBefore = now.addingTimeInterval(min(Self.firstDelay * pow(2, Double(failures - 1)), Self.maxDelay))
-        }
-
-        private mutating func adopt(_ signIn: AccountSession.Ticket) -> Bool {
-            if let current = self.signIn, signIn < current { return false }
-            if signIn != self.signIn { self = Self(signIn: signIn) }
-            return true
+        private mutating func change(for signIn: SignIn, _ body: (inout Attempts) -> Void) {
+            var state = attempts.value
+            body(&state)
+            attempts.set(state, for: signIn)
         }
     }
 
@@ -281,30 +278,34 @@ final class SyncConflicts {
         guard let conflict = reenableConflict else { return }
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
         reenableConflict = nil
-        let ticket = app.authService.session.ticket
-        let isCurrent = { [weak self] in self?.app.authService.session.isCurrent(ticket) == true }
+        let signIn = app.authService.session.currentSignIn
         let effects = ReenableAnswerEffects(
-            isCurrent: isCurrent,
-            take: { self.useLocalHold.take($0, keepLocal: $1, from: &Defaults[.pendingConflictCategories]) },
+            signIn: signIn,
+            take: { categories, keepLocal in
+                SyncProgress.changePendingConflicts(for: signIn) {
+                    self.useLocalHold.take(categories, keepLocal: keepLocal, from: &$0)
+                } ?? []
+            },
             release: {
-                self.useLocalHold.release($0, from: &Defaults[.pendingConflictCategories])
+                let kept = $0
+                SyncProgress.changePendingConflicts(for: signIn) { self.useLocalHold.release(kept, from: &$0) }
                 self.app.cloudSyncCoordinator.scheduleTick()
             },
             end: { self.useLocalHold.end($0) },
             dropQueuedEdits: { await self.app.cloudSyncCoordinator.discardEdits(of: $0, courseIgnores: $1) },
             sendCourses: {
                 try await ReenableAnswer.sendLocalCourses(
-                    localEdits: self.app.localEdits, push: self.app.pushCoordinator, isCurrent: isCurrent
+                    localEdits: self.app.localEdits, push: self.app.pushCoordinator, for: signIn
                 )
             },
             markCoursesForCheck: { self.markCategoryReenabled("courses") },
             queueEdits: { ReenableAnswer.queueLocalEdits(of: conflict, edits: self.app.edits) },
-            dropLocalCopies: { Self.dropLocalCopies(for: conflict) },
+            dropLocalCopies: { Self.dropLocalCopies(for: conflict, signIn: signIn) },
             syncFromServer: { await self.app.fullSync.sync(followUpIfBusy: $0) },
             noteAnswered: { saveFailed in
                 self.conflictCheckRetry.noteAnswered(
                     leaving: Defaults[.pendingConflictCategories], awaitingAnswer: self.reenableConflict != nil,
-                    saveFailed: saveFailed, signIn: ticket
+                    saveFailed: saveFailed, signIn: signIn
                 )
                 self.retryOwedConflictCheck()
             }
@@ -354,23 +355,25 @@ final class SyncConflicts {
 
     static func dropLocalCopies(
         for conflict: ReenableConflict, courses: CourseStore = .shared, assignments: AssignmentStore = .shared,
-        colors: CourseColorFiles = CourseColorStore.shared.files
+        colors: CourseColorStore = .shared, signIn: SignIn
     ) {
-        ReenableAnswer.dropLocalCopies(for: conflict, courses: courses, assignments: assignments, colors: colors)
+        ReenableAnswer.dropLocalCopies(
+            for: conflict, courses: courses, assignments: assignments, colors: colors, signIn: signIn
+        )
     }
 
     static func keepLocalCourses(
         _ terms: [(semester: String, courses: [SDCourse])], hiding deletedNos: Set<String>,
-        on backend: some CourseSyncBackend, isCurrent: () -> Bool = { true }
+        on backend: some CourseSyncBackend, for signIn: SignIn
     ) async throws {
-        try await ReenableAnswer.keepLocalCourses(terms, hiding: deletedNos, on: backend, isCurrent: isCurrent)
+        try await ReenableAnswer.keepLocalCourses(terms, hiding: deletedNos, on: backend, for: signIn)
     }
 }
 
 protocol CourseSyncBackend {
-    func deleteAllCourses(semester: String?, madeAt: Date) async throws
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?) async throws
-    func deleteCourse(courseKey: String, madeAt: Date) async throws
+    func deleteAllCourses(semester: String?, madeAt: Date, for signIn: SignIn) async throws
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?, for signIn: SignIn) async throws
+    func deleteCourse(courseKey: String, madeAt: Date, for signIn: SignIn) async throws
 }
 
 extension PushCoordinator: CourseSyncBackend {}

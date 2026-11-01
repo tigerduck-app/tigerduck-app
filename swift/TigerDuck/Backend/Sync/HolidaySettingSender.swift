@@ -17,7 +17,7 @@ final class HolidaySettingSender {
     }
 
     func setHolidayNotify(_ notify: Bool, holidayID: Int) {
-        guard AcademicCalendarStore.shared.setNotify(notify, forHoliday: holidayID) else {
+        guard AcademicCalendarStore.shared.setNotify(notify, forHoliday: holidayID, for: account.currentSignIn) else {
             return
         }
         onChange()
@@ -42,27 +42,27 @@ final class HolidaySettingSender {
     private func enqueueHolidayUpload(holidayID: Int) {
         let previous = tail
         let store = AcademicCalendarStore.shared
-        store.setHolidayAcknowledged(false, holidayID: holidayID)
+        store.setHolidayAcknowledged(false, holidayID: holidayID, for: account.currentSignIn)
         store.beginHolidayUpload()
-        tail = account.task { [weak self] ticket in
+        tail = account.task { [weak self] signIn in
             _ = await previous?.value
             defer { AcademicCalendarStore.shared.endHolidayUpload() }
-            guard let self, account.isCurrent(ticket) else { return }
-            await Self.uploadHolidayOverride(holidayID, from: .shared, via: push.registration)
+            guard let self, signIn.isCurrent else { return }
+            await Self.uploadHolidayOverride(holidayID, from: .shared, via: push.registration, for: signIn)
         }
     }
 
     static func uploadHolidayOverride(
-        _ holidayID: Int, from store: AcademicCalendarStore, via registration: PushRegistrationService
+        _ holidayID: Int, from store: AcademicCalendarStore, via registration: PushRegistrationService, for signIn: SignIn
     ) async {
         let sent = store.holidayEdit(holidayID)
         do {
             let reply = try await registration.uploadHolidayOverride(
-                holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? Date()
+                holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? Date(), for: signIn
             )
             guard store.holidayEdit(holidayID) == sent else { return }
-            if !reply.applied { store.applyKeptNotify(reply.notify, forHoliday: holidayID) }
-            store.setHolidayAcknowledged(true, holidayID: holidayID)
+            if !reply.applied { store.applyKeptNotify(reply.notify, forHoliday: holidayID, for: signIn) }
+            store.setHolidayAcknowledged(true, holidayID: holidayID, for: signIn)
         } catch {
             AppLogger.sync.error(
                 "holiday override upload failed: \(error.localizedDescription, privacy: .private)"

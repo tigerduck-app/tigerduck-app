@@ -8,14 +8,14 @@ final class LocalEdits {
     var pendingOverrides: Set<String> = []
     var overrideEditGeneration = 0
     var resettingSemesters: Set<String> = []
-    private var courseDeletions = SignInScoped<[String: Date]>(empty: [:])
+    private var courseDeletions = SignInBound<[String: Date]>(empty: [:])
 
     init(account: AccountSession) {
         self.account = account
     }
 
     var recentCourseDeletions: [String: Date] {
-        get { courseDeletions.value(in: account) }
-        set { courseDeletions.set(newValue, in: account) }
+        get { courseDeletions.value }
+        set { courseDeletions.set(newValue, for: account.currentSignIn) }
     }
 }

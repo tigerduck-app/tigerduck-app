@@ -52,16 +52,18 @@ final class SendLedger {
         fingerprint: String,
         resend: Resend,
         pausesAfterRefusal: Bool = false,
-        isCurrent: @escaping @MainActor () -> Bool,
+        for signIn: SignIn? = nil,
+        while wanted: @escaping @MainActor () -> Bool = { true },
         _ body: @escaping @MainActor () async throws -> Void
     ) async throws -> Bool {
+        let applies = { @MainActor in signIn?.isCurrent != false && wanted() }
         let previous = lastSends[channel]
         let send = Task { @MainActor [weak self] () async throws -> Bool in
             await previous?.value
             try Task.checkCancellation()
-            guard let self, isCurrent() else { return false }
+            guard let self, applies() else { return false }
             return try await self.sendIfDue(
-                channel, fingerprint: fingerprint, resend: resend, pauses: pausesAfterRefusal, isCurrent: isCurrent, body
+                channel, fingerprint: fingerprint, resend: resend, pauses: pausesAfterRefusal, applies: applies, body
             )
         }
         let ended = Task<Void, Never> { _ = try? await send.value }
@@ -76,7 +78,7 @@ final class SendLedger {
 
     private func sendIfDue(
         _ channel: String, fingerprint: String, resend: Resend, pauses: Bool,
-        isCurrent: @MainActor () -> Bool, _ body: @MainActor () async throws -> Void
+        applies: @MainActor () -> Bool, _ body: @MainActor () async throws -> Void
     ) async throws -> Bool {
         let now = clock()
         if resend != .always, isHeldBack(channel, fingerprint: fingerprint, now: now) {
@@ -91,7 +93,7 @@ final class SendLedger {
         do {
             try await body()
         } catch {
-            if !AppLogger.isCancellation(error), isCurrent(), started == forgets.of(channel) {
+            if !AppLogger.isCancellation(error), applies(), started == forgets.of(channel) {
                 failed[channel] = fingerprint
                 if pauses, case PushAPIError.httpStatus(let status, _, _) = error, status != 401 {
                     refused[channel] = (fingerprint, clock())
