@@ -236,8 +236,11 @@ struct SelectionDropsTests {
         let term = CourseRosterReconciler.readTerm(
             "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: Self.addedAndMerged, hidden: [],
             adding: [], liveAnswer: offset.map { (courseNos: ["CS1001301", "MA1010003"], at: droppedAt + $0) },
-            courses: cache.courses, for: testSignIn, forgetAnswer: { forgotten += 1 }
+            courses: cache.courses
         )
+        CourseRosterReconciler.recordServerDrops(of: term, semester: "1151", courses: cache.courses, for: testSignIn) {
+            forgotten += 1
+        }
 
         let keptLive = offset == 3600
         #expect(term.left == (keptLive ? [] : ["MA1010003"]))
@@ -282,12 +285,15 @@ struct SelectionDropsTests {
             "updated_at": TigerDuckDateFormatters.withFractional.string(from: droppedAt),
         ]]
         var forgotten = 0
+        let courses = Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses
 
         let term = CourseRosterReconciler.readTerm(
             "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: [], hidden: [], adding: [],
-            liveAnswer: (courseNos: ["CS1001301", "MA1010003"], at: droppedAt - 3600),
-            courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses, for: testSignIn, forgetAnswer: { forgotten += 1 }
+            liveAnswer: (courseNos: ["CS1001301", "MA1010003"], at: droppedAt - 3600), courses: courses
         )
+        CourseRosterReconciler.recordServerDrops(of: term, semester: "1151", courses: courses, for: testSignIn) {
+            forgotten += 1
+        }
 
         #expect(term.left.isEmpty)
         #expect(forgotten == 1)
@@ -299,7 +305,7 @@ struct SelectionDropsTests {
         let read = { (rows: [[String: Any]]) in
             CourseRosterReconciler.readTerm(
                 "1151", rows: rows, tombstones: [], selectionDropped: ["EE2005301"], userAdded: [], hidden: [], adding: [],
-                liveAnswer: nil, courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses, for: testSignIn, forgetAnswer: {}
+                liveAnswer: nil, courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses
             )
         }
         let dropped: [[String: Any]] = [["course_no": "MA1010003", "enrollment_status": "dropped"]]
@@ -342,7 +348,7 @@ struct SelectionDropsTests {
             CourseRosterReconciler.readTerm(
                 "1151", rows: [], tombstones: tombstones, selectionDropped: [], userAdded: [], hidden: [], adding: [],
                 resetLandedAt: landedAt, liveAnswer: nil,
-                courses: Self.makeCache(fetched: fetched.sorted(), userAdded: []).courses, for: testSignIn, forgetAnswer: {}
+                courses: Self.makeCache(fetched: fetched.sorted(), userAdded: []).courses
             )
         }
 

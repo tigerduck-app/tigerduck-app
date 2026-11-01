@@ -48,7 +48,7 @@ struct CourseRosterReconciler: CategoryReconciler {
         let deleting = Set(app.localEdits.recentCourseDeletions.keys).union(queuedDeletes)
         let resetAt = CourseStore.shared.loadSemesterResetAt()
         let ownResets = tombstonesBySemester.filter { semester, tombstones in
-            tombstones.contains { Self.isOwnReset($0, resetLandedAt: resetAt[semester]) }
+            tombstones.contains { ServerTombstone($0).isOwnReset(landedAt: resetAt[semester]) }
         }
         CourseStore.shared.clearSemesterResets(outlivedBy: fetchedAt, keeping: Set(ownResets.keys), for: signIn)
 
@@ -60,9 +60,11 @@ struct CourseRosterReconciler: CategoryReconciler {
                 selectionDropped: Set(selectionDropped[semester] ?? []), userAdded: userAdded, hidden: deletedNos,
                 adding: adding, resetLandedAt: resetAt[semester],
                 liveAnswer: studentId.flatMap { CourseSelectionService.lastAnswer(studentId: $0, semester: semester) },
-                courses: .shared, for: signIn,
-                forgetAnswer: { if let studentId { CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId) } }
+                courses: .shared
             )
+            Self.recordServerDrops(of: term, semester: semester, courses: .shared, for: signIn) {
+                if let studentId { CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId) }
+            }
             let (rows, serverNos, localCourses, unlisted) = (term.rows, term.serverNos, term.localCourses, term.unlisted)
             if !term.left.isEmpty {
                 coursesLeft = true
@@ -139,16 +141,16 @@ struct CourseRosterReconciler: CategoryReconciler {
         let left: Set<String>
         let unlisted: (hide: Set<String>, drop: Set<String>)
         let serverHoldsNothing: Bool
+        let droppedOnServer: Set<String>
+        let liveAnswerListsADrop: Bool
     }
 
     static func readTerm(
         _ semester: String, rows termRows: [[String: Any]], tombstones: [[String: Any]],
         selectionDropped: Set<String>, userAdded: [SDCourse], hidden: Set<String>, adding: Set<String>,
-        resetLandedAt: Date? = nil, liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore,
-        for signIn: SignIn, forgetAnswer: () -> Void
+        resetLandedAt: Date? = nil, liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore
     ) -> TermRead {
         let droppedOnServer = CourseServerRows.droppedOnServer(termRows, liveAnswer: liveAnswer)
-        courses.saveServerDroppedNos(droppedOnServer, semester: semester, for: signIn)
         let rows = CourseServerRows.keptRows(
             termRows, semester: semester, dropped: selectionDropped, userAdded: userAdded, liveAnswer: liveAnswer
         )
@@ -156,10 +158,8 @@ struct CourseRosterReconciler: CategoryReconciler {
         let fetched = courses.loadCourses(semester: semester)
         let localCourses = fetched.filter { !droppedOnServer.contains($0.courseNo) }
         let left = Set(fetched.map(\.courseNo)).subtracting(localCourses.map(\.courseNo))
-        courses.removeCourses(droppedOnServer, semester: semester, for: signIn)
-        if liveAnswer?.courseNos.contains(where: droppedOnServer.contains) == true { forgetAnswer() }
-        let tombstoned = tombstones.compactMap { tombstone -> String? in
-            isOwnReset(tombstone, resetLandedAt: resetLandedAt) ? nil : tombstone["course_no"] as? String
+        let tombstoned = tombstones.map(ServerTombstone.init).compactMap { tombstone in
+            tombstone.isOwnReset(landedAt: resetLandedAt) ? nil : tombstone.courseNo
         }
         let unlisted = unlistedCourses(
             in: semester, listed: serverNos, tombstoned: Set(tombstoned),
@@ -170,14 +170,18 @@ struct CourseRosterReconciler: CategoryReconciler {
         )
         return TermRead(
             rows: rows, serverNos: serverNos, localCourses: localCourses, left: left, unlisted: unlisted,
-            serverHoldsNothing: serverNos.isEmpty && CourseServerRows.droppedOnServer(termRows).isEmpty
+            serverHoldsNothing: !CourseServerRows.holdsAnyCourse(termRows, listing: serverNos),
+            droppedOnServer: droppedOnServer,
+            liveAnswerListsADrop: liveAnswer?.courseNos.contains(where: droppedOnServer.contains) == true
         )
     }
 
-    nonisolated static func isOwnReset(_ tombstone: [String: Any], resetLandedAt: Date?) -> Bool {
-        guard tombstone["kind"] as? String == "reset", let resetLandedAt,
-              let hlc = (tombstone["hlc"] as? NSNumber)?.int64Value else { return false }
-        return hlc <= PushAPI.clock(of: resetLandedAt)
+    static func recordServerDrops(
+        of term: TermRead, semester: String, courses: CourseStore, for signIn: SignIn, forgetAnswer: () -> Void
+    ) {
+        courses.saveServerDroppedNos(term.droppedOnServer, semester: semester, for: signIn)
+        courses.removeCourses(term.droppedOnServer, semester: semester, for: signIn)
+        if term.liveAnswerListsADrop { forgetAnswer() }
     }
 
     nonisolated static func unhideListedCourses(
@@ -214,7 +218,8 @@ struct CourseRosterReconciler: CategoryReconciler {
         }
         let isShown = { (courseNo: String) in !CourseTombstone.isHidden(courseNo, semester: semester, in: hidden) }
         let byTombstone = tombstoned.filter { isGone($0) && isShown($0) }
-        guard !listed.isEmpty else { return (byTombstone, droppedMerges.filter(isGone)) }
+        let termMayNotHaveReachedServer = listed.isEmpty
+        guard !termMayNotHaveReachedServer else { return (byTombstone, droppedMerges.filter(isGone)) }
         return (byTombstone.union(fetched.filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
     }
 
