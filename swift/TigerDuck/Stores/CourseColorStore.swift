@@ -82,7 +82,7 @@ final class CourseColorStore {
     }
 
     private static func awaitingMoodleColors(_ courses: [SDCourse], _ moodleColors: [String: UInt32]) -> [String] {
-        courses.filter { moodleColors[$0.courseNo] == nil && $0.moodleIdNumber?.isEmpty == false }.map(\.courseNo)
+        courses.filter { moodleColors[$0.courseNo] == nil }.map(\.courseNo)
     }
 
     /// The courses a late Moodle id moved, with their colour, until the backend is seen holding it.

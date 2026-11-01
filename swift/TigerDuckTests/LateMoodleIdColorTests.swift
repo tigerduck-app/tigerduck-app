@@ -56,6 +56,23 @@ struct LateMoodleIdColorTests {
         #expect(folder.syncsAsked == 1)
     }
 
+    @Test("A course first loaded with no Moodle id number moves once a later load gives it one the map holds")
+    func aCourseLoadedWithoutAnIdNumberMovesLater() throws {
+        let folder = Folder()
+        folder.storeIds(["CS1": 4127])
+        let fromTranscript = SDCourse(courseNo: "CS1", courseName: "CS1", semester: "1151")
+        folder.colors.ensureAssignments(
+            courses: [fromTranscript], ids: { folder.cache.moodle.loadMoodleCourseIdMap() },
+            palette: Self.palette, for: testSignIn
+        )
+        #expect(Self.palette.contains(try #require(folder.colors.map["CS1"])))
+
+        folder.giveColours(["CS1"])
+
+        #expect(folder.colors.map == ["CS1": Self.moodle[7]])
+        #expect(folder.colors.lateMoodleColors == ["CS1": Self.moodle[7]])
+    }
+
     @Test("A colour the user picked stays when the course's Moodle id arrives")
     func aPickedColourSurvivesALateMoodleId() {
         let folder = Folder()
