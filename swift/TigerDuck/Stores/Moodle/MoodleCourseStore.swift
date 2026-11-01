@@ -102,17 +102,16 @@ final class MoodleCourseStore {
 
     func refreshMaterials() async {
         await materials.refresh { [api, courseId] in
-            guard try await api.functions().contains(MoodleCourseContentsService.contentsFunction) else {
-                return MoodleCourseMaterials(sections: [])
+            try await api.ifAllowed(MoodleCourseContentsService.contentsFunction, else: MoodleCourseMaterials(sections: [])) {
+                try await api.materials(courseId)
             }
-            return try await api.materials(courseId)
         }
         guard materials.status == .ok, let fresh = materials.value else { return }
         downloads.removeOutdated(fresh.fileRefs.map { ($0.file, location(of: $0.file, in: $0.owner)) })
     }
 
     @discardableResult
-    func open(_ material: MoodleMaterial) -> Task<Void, Never> {
+    func logView(of material: MoodleMaterial) -> Task<Void, Never> {
         Task { [api, context] in
             guard let call = MoodleCourseContentsService.viewCalls[material.module],
                   (try? await api.functions())?.contains(call.function) == true else { return }
@@ -145,10 +144,9 @@ final class MoodleCourseStore {
 
     func refreshGrades() async {
         await grades.refresh { [api, courseId] in
-            guard try await api.functions().contains(MoodleGradeService.gradeItemsFunction) else {
-                return MoodleCourseGrades(items: [])
+            try await api.ifAllowed(MoodleGradeService.gradeItemsFunction, else: MoodleCourseGrades(items: [])) {
+                MoodleCourseGrades(items: try await api.gradeItems(courseId))
             }
-            return MoodleCourseGrades(items: try await api.gradeItems(courseId))
         }
     }
 
@@ -187,13 +185,13 @@ final class MoodleCourseStore {
 
     private var membersFetch: @Sendable () async throws -> MoodleMemberList {
         { [api, courseId] in
-            guard try await api.functions().contains(MoodleCourseMembersService.membersFunction) else {
-                return MoodleMemberList(ownId: nil, members: [])
-            }
-            do {
-                return try await api.members(courseId)
-            } catch MoodleWebserviceError.malformedResponse(let code) where code == MoodleCourseMembersService.hiddenCode {
-                return MoodleMemberList(ownId: nil, members: [])
+            let none = MoodleMemberList(ownId: nil, members: [])
+            return try await api.ifAllowed(MoodleCourseMembersService.membersFunction, else: none) {
+                do {
+                    return try await api.members(courseId)
+                } catch MoodleWebserviceError.malformedResponse(let code) where code == MoodleCourseMembersService.hiddenCode {
+                    return none
+                }
             }
         }
     }
@@ -209,7 +207,7 @@ final class MoodleCourseStore {
 
     func refetchMembers() async {
         guard context.signIn.isCurrent else { return }
-        await members.refetch(membersFetch)
+        await members.refreshAfterSiteChange(membersFetch)
     }
 
     var pictures: [URL: CGImage] { memberPictures.pictures }
@@ -233,8 +231,7 @@ final class MoodleCourseStore {
 
     func refreshSummary() async {
         await summary.refresh { [api, courseId] in
-            guard try await api.functions().contains(MoodleCourseSummaryService.coursesFunction) else { return .empty }
-            return try await api.summary(courseId)
+            try await api.ifAllowed(MoodleCourseSummaryService.coursesFunction, else: .empty) { try await api.summary(courseId) }
         }
     }
 }

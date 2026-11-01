@@ -31,6 +31,11 @@ nonisolated struct MoodleCourseAPI: Sendable {
         _ status: MoodleSubmissionStatus, _ askedAt: ContinuousClock.Instant, _ context: MoodleCacheContext
     ) -> Void = { _, _, _ in }
 
+    func ifAllowed<Answer>(_ function: String, else empty: Answer, _ call: () async throws -> Answer) async throws -> Answer {
+        guard try await functions().contains(function) else { return empty }
+        return try await call()
+    }
+
     static let live = MoodleCourseAPI(
         functions: {
             try await MoodleWebserviceClient.withRenewingToken { try await MoodleSiteInfoService.shared.functions(token: $0) }

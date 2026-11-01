@@ -67,7 +67,7 @@ final class MoodleFeed<Value: Codable & Sendable> {
         if running == task { running = nil }
     }
 
-    func refetch(_ fetch: @escaping @Sendable () async throws -> Value) async {
+    func refreshAfterSiteChange(_ fetch: @escaping @Sendable () async throws -> Value) async {
         if let earlier = running {
             await earlier.value
             if running == earlier { running = nil }
@@ -75,17 +75,17 @@ final class MoodleFeed<Value: Codable & Sendable> {
         await refresh(fetch)
     }
 
-    func update(_ change: (inout Value) -> Void) {
+    func applyDerived(_ change: (inout Value) -> Void) {
         guard var changed = value, let fetchedAt, context.signIn.isCurrent else { return }
         change(&changed)
         value = changed
         copy.save(changed, fetchedAt: fetchedAt)
     }
 
-    func edit(_ change: (inout Value) -> Void) {
+    func applyUserEdit(_ change: (inout Value) -> Void) {
         guard value != nil, fetchedAt != nil, context.signIn.isCurrent else { return }
         edits.recordUserEdit()
-        update(change)
+        applyDerived(change)
     }
 
     private func run(_ fetch: @Sendable () async throws -> Value) async {
