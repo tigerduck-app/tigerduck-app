@@ -93,6 +93,7 @@ final class MailAccountManager {
         cache: MailCache = .shared,
         isDemoLogin: @escaping (String, String) -> Bool = { MailDemoFixture.shared?.matches(studentID: $0, password: $1) ?? false },
         makeClient: @escaping (Bool) -> any MailClient = { MailClientFactory.make(demo: $0) },
+        schoolIsDemo: @escaping () -> Bool = { AccountSession.schoolSignIns.currentSignIn.isDemo },
         clearCache: (@Sendable () async -> Void)? = nil,
         signOutEvents: NotificationCenter = NotificationCenter(),
         session: AccountSession = AccountSession()
@@ -100,7 +101,9 @@ final class MailAccountManager {
         self.session = session
         self.prefs = prefs
         listeners = MailAccountListeners(signOutEvents: signOutEvents)
-        signIn = MailSignInParts(credentials: credentials, isDemoLogin: isDemoLogin, makeClient: makeClient)
+        signIn = MailSignInParts(
+            credentials: credentials, isDemoLogin: isDemoLogin, makeClient: makeClient, schoolIsDemo: schoolIsDemo
+        )
         cacheWipe = MailCacheWipe(cache: cache, clear: clearCache)
         studentID = prefs.studentID
         auth = MailAuthFailure(isFailed: prefs.authFailed)
@@ -144,7 +147,13 @@ final class MailAccountManager {
         cacheWipe.forgetFinished()
 
         let demo = signIn.isDemoLogin(id, password)
-        let client = signIn.makeClient(demo)
+        let client: any MailClient
+        do {
+            client = try signIn.client(demo: demo)
+        } catch {
+            signInStatus.error = LoginError(error)
+            return nil
+        }
         do {
             try await client.login(studentID: id, password: password)
             guard signedOut.isCurrent else {
@@ -177,7 +186,7 @@ final class MailAccountManager {
         guard let id = prefs.studentID, let password = signIn.credentials.password() else {
             throw MailClientError.protocolError("credentials unavailable")
         }
-        let client = signIn.makeClient(prefs.demoActive)
+        let client = try signIn.client(demo: prefs.demoActive)
         return try await session.withSignIn { signedIn in
             do {
                 try await client.login(studentID: id, password: password)
