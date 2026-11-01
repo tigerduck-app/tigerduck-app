@@ -63,6 +63,15 @@ struct WhatsNewPagerTests {
             scrollView.delegate?.scrollViewWillEndDragging?(scrollView, withVelocity: .zero, targetContentOffset: &target)
             scrollView.delegate?.scrollViewDidEndDragging?(scrollView, willDecelerate: false)
         }
+
+        /// A scroll that is not a drag, as VoiceOver's three-finger swipe makes. SwiftUI can undo
+        /// one that comes right after its own programmatic scroll, so it repeats until `done`.
+        func scrollWithoutDragging(to page: Double, until done: () -> Bool) async throws {
+            try await waitUntil {
+                scrollView.setContentOffset(offset(page), animated: false)
+                return done()
+            }
+        }
     }
 
     @Test(arguments: [false, true])
@@ -84,6 +93,19 @@ struct WhatsNewPagerTests {
             scrollView.setContentOffset(CGPoint(x: 2 * scrollView.bounds.width, y: 0), animated: true)
             try await waitUntil { pager.index == 2 }
         }
+    }
+
+    @Test func theButtonsMoveThePagerAfterAScrollThatIsNotADrag() async throws {
+        let pager = Pager()
+        let (window, scrollView) = try await host(Host(pager: pager))
+        defer { window.isHidden = true }
+        let finger = Finger(scrollView)
+
+        pager.position.go(to: 1)
+        try await waitUntil { finger.isResting(on: 1) && pager.index == 1 }
+        try await finger.scrollWithoutDragging(to: 0) { finger.isResting(on: 0) && pager.index == 0 }
+        pager.position.go(to: 1)
+        try await waitUntil { finger.isResting(on: 1) && pager.index == 1 }
     }
 
     @Test func aSwipeIntoALockedPageLandsThereAndGoesNoFurther() async throws {
@@ -109,23 +131,22 @@ struct WhatsNewPagerTests {
     }
 
     @Test func aScrollThatIsNotADragStopsAtALockedPage() async throws {
-        try await withAccessibilityAutomation {
-            let pager = Pager()
-            let (window, scrollView) = try await host(Host(pager: pager, lockedPages: [1]))
-            defer { window.isHidden = true }
-            let finger = Finger(scrollView)
+        let pager = Pager()
+        let (window, scrollView) = try await host(Host(pager: pager, lockedPages: [1]))
+        defer { window.isHidden = true }
+        let finger = Finger(scrollView)
 
-            pager.position.go(to: 1)
+        pager.position.go(to: 1)
+        try await waitUntil { finger.isResting(on: 1) && pager.index == 1 }
+
+        for _ in 0..<2 {
+            pager.farthest = 0
+            try await finger.scrollWithoutDragging(to: 2) { pager.farthest > 1.1 * scrollView.bounds.width }
             try await waitUntil { finger.isResting(on: 1) && pager.index == 1 }
-
-            let width = scrollView.bounds.width
-            scrollView.setContentOffset(finger.offset(2), animated: true)
-            try await waitUntil { pager.farthest > 1.1 * width }
-            try await waitUntil { finger.isResting(on: 1) && pager.index == 1 }
-
-            pager.position.go(to: 2)
-            try await waitUntil { finger.isResting(on: 2) && pager.index == 2 }
         }
+
+        pager.position.go(to: 2)
+        try await waitUntil { finger.isResting(on: 2) && pager.index == 2 }
     }
 
     @Test(arguments: [false, true])
