@@ -1,7 +1,7 @@
 import Foundation
 import TigerDuckCore
 
-/// `demo.json` is the Android app's file too. A change may land here first, with an Android issue to copy it.
+/// `demo.json` is the Android app's file too.
 nonisolated struct DemoFixture: Decodable, Sendable {
     let studentId: String
     let schoolPassword: String

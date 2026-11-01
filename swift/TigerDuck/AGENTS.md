@@ -51,6 +51,8 @@ Each rule below has one home; call it instead of writing the rule again.
 - Requests to the TigerDuck backend: `Backend/Client/BackendClient.swift`.
 - A full sync's categories: one `CategoryReconciler` each, in `Backend/Sync/Reconcilers/`.
 - Freshness of a cached answer: `Persistence/FreshnessPolicy.swift`.
+- The demo account's data: `Account/Demo/demo.json`, shared with the Android app's
+  `app/src/main/assets/demo.json`; a change here comes with an Android issue to copy it.
 - Waiting for a state: `StateSignal` in `Support/Concurrency/`; for a time: `AppClock.sleep(until:)`
   in `Support/Clock/`.
 - Deep links and sheets: `App/Routing/AppRouter.swift`.
