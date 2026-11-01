@@ -151,6 +151,7 @@ final class CourseFiles: AccountScoped {
         persistent.save(courseNos, to: "deleted_courses.json")
     }
 
+    /// See docs/decisions/0005-course-tombstones.md.
     func deleteCourse(_ courseNo: String, semester: String) {
         if !isLocalOnlyHandAdded(courseNo, semester: semester) { hide(courseNo, semester: semester) }
         removeAddedByHand(courseNo, semester: semester)
