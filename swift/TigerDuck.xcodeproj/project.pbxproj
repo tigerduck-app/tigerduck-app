@@ -155,6 +155,7 @@
 				Mail/AGENTS.md,
 				Migrations/AGENTS.md,
 				School/AGENTS.md,
+				Secrets.example.plist,
 			);
 			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
 		};
@@ -1818,8 +1819,11 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				EXCLUDED_SOURCE_FILE_NAMES = "";
-				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "*.swift";
+				EXCLUDED_SOURCE_FILE_NAMES = Secrets.plist;
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
+					"*.swift",
+					Secrets.plist,
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INCLUDED_SOURCE_FILE_NAMES = "";
 				"INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
