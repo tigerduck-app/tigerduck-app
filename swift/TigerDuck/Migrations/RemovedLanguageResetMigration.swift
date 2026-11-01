@@ -1,9 +1,9 @@
 import Defaults
 import Foundation
 
-/// Arabic, Persian, Hebrew and Urdu left the app (https://github.com/tigerduck-app/app-translation/pull/75).
-/// A language picked in the app stays saved, so one of them would leave the Mac picker with no
-/// choice and the Watch and the Live Activity formatting in it; it moves once to the system setting.
+/// A saved language choice outlives its bundled translation, leaving the Mac picker with no match
+/// and the Watch and the Live Activity formatting in it
+/// (https://github.com/tigerduck-app/app-translation/pull/75).
 enum RemovedLanguageResetMigration {
     private static let doneKey = "RemovedLanguageResetMigration.v1.done"
     private static let removedLanguageCodes: Set<String> = ["ar", "fa", "he", "ur"]
