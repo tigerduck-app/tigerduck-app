@@ -5,10 +5,9 @@ import Observation
 import Testing
 @testable import TigerDuck
 
-/// The gates as the app reads them: from the school, library and mail accounts and TigerSync.
 @MainActor
 struct SettingsGateSourceTests {
-    /// Counted on the main thread, where each change below is made.
+    // Observation calls `onChange` on the thread that makes the change, the main thread here.
     private final class Changes: @unchecked Sendable {
         var count = 0
     }
@@ -35,7 +34,6 @@ struct SettingsGateSourceTests {
             func open() -> [SettingsGate] {
                 Self.gates.filter { $0.isOpen(in: state()) }
             }
-            /// Observes the state as SwiftUI does, then makes `change` and waits for the observer.
             func observed(_ change: () async throws -> Void) async throws {
                 let changes = Changes()
                 withObservationTracking { _ = state() } onChange: { changes.count += 1 }

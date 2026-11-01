@@ -4,18 +4,16 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// Pictures of Settings for a person to look at, kept when the checkout has a `.out` folder, and
-/// a check that no screen is wider than the phone.
 @MainActor
 @Suite(.serialized)
 struct SettingsSnapshotTests {
     private typealias Screen = SettingsScreen
-    /// An iPhone 18 Pro, and the narrowest phone the app supports.
-    static let widths: [CGFloat] = [402, 375]
+    static let proPhoneWidth: CGFloat = 402
+    static let narrowestPhoneWidth: CGFloat = 375
+    static let widths = [proPhoneWidth, narrowestPhoneWidth]
 
     private static func state(_ preferences: AppPreferences) -> SettingsState {
-        var state = Screen.reachable(preferences)
-        state.school = .init(isSignedIn: false)
+        var state = Screen.allOpenButSchool(preferences)
         state.isChineseUI = Bundle.main.preferredLocalizations.first?.hasPrefix("zh") == true
         return state
     }
@@ -77,8 +75,6 @@ struct SettingsSnapshotTests {
         }
     }
 
-    /// Saves the window once per screenful while scrolling its list down, and checks that the
-    /// list never scrolls sideways.
     private static func saveEveryScreen(of window: UIWindow, as name: String) async throws {
         let list = try #require(window.rootViewController?.view.descendants(ofType: UICollectionView.self).first)
         for screen in 0..<6 {

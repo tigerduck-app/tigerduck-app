@@ -3,8 +3,7 @@ import Testing
 @testable import TigerDuck
 
 struct SettingsCatalogTests {
-    /// Every row shown: a gate closed or open does not hide a row.
-    static let everything = SettingsState(
+    static let everyRowShown = SettingsState(
         library: .init(isSignedIn: true), usesEnglishClassroomNames: true,
         hasFlipToLibrary: true, hasSchoolMail: true, hasWhatsNew: true
     )
@@ -22,19 +21,19 @@ struct SettingsCatalogTests {
     @Test("with every row shown, a search for a row's title finds it")
     func eachRowIsFoundByItsTitle() {
         for row in SettingsRow.allCases {
-            let found = SettingsSearch.results(for: row.label, in: Self.everything).map(\.row)
+            let found = SettingsSearch.results(for: row.label, in: Self.everyRowShown).map(\.row)
             #expect(found.contains(row), "\(row) is not found by its own title")
         }
     }
 
     @Test("a row its condition hides is not listed")
     func hiddenRowsAreNotListed() {
-        var chinese = Self.everything
+        var chinese = Self.everyRowShown
         chinese.isChineseUI = true
         for row in [SettingsRow.englishCourseNames, .englishClassroomNames, .mandarinClassroomNames] {
             #expect(!Self.found(row, in: chinese))
         }
-        var noClassroomNames = Self.everything
+        var noClassroomNames = Self.everyRowShown
         noClassroomNames.usesEnglishClassroomNames = false
         #expect(!Self.found(.mandarinClassroomNames, in: noClassroomNames))
         #expect(Self.found(.englishClassroomNames, in: noClassroomNames))
@@ -62,22 +61,21 @@ struct SettingsCatalogTests {
         let label = SettingsRow.showClassroom.label
         #expect(Self.found(.showClassroom, query: label.uppercased()))
         #expect(Self.found(.showClassroom, query: label.lowercased()))
-        // TigerSync is spelled in Latin letters in every language, so it has a full-width form.
-        let sync = SettingsRow.tigerSync.label
-        let wide = try #require(sync.applyingTransform(.fullwidthToHalfwidth, reverse: true))
-        #expect(wide != sync)
+        let latinLetters = SettingsRow.tigerSync.label
+        let wide = try #require(latinLetters.applyingTransform(.fullwidthToHalfwidth, reverse: true))
+        #expect(wide != latinLetters)
         #expect(Self.found(.tigerSync, query: wide))
 
         let page = String(localized: PageSettings.classTable.titleKey)
-        let pageRows = SettingsSearch.results(for: page, in: Self.everything).map(\.row)
+        let pageRows = SettingsSearch.results(for: page, in: Self.everyRowShown).map(\.row)
         #expect(Set(PageSettings.classTable.rows).isSubset(of: Set(pageRows)))
-        #expect(SettingsSearch.results(for: "   ", in: Self.everything).isEmpty)
-        #expect(SettingsSearch.results(for: "\(page) zzzz-no-such-setting", in: Self.everything).isEmpty)
+        #expect(SettingsSearch.results(for: "   ", in: Self.everyRowShown).isEmpty)
+        #expect(SettingsSearch.results(for: "\(page) zzzz-no-such-setting", in: Self.everyRowShown).isEmpty)
     }
 
     @Test("a result is named by its page and its title")
     func aResultReadsPageThenTitle() throws {
-        let result = try #require(SettingsSearch.results(for: SettingsRow.showClassroom.label, in: Self.everything)
+        let result = try #require(SettingsSearch.results(for: SettingsRow.showClassroom.label, in: Self.everyRowShown)
             .first { $0.row == .showClassroom })
         #expect(result.text == "\(String(localized: PageSettings.classTable.titleKey)) › \(SettingsRow.showClassroom.label)")
         #expect(SettingsSearch.path(of: .tigerSync) == [SettingsRow.tigerSync.label])
@@ -101,6 +99,6 @@ struct SettingsCatalogTests {
     }
 
     private static func found(_ row: SettingsRow, query: String) -> Bool {
-        SettingsSearch.results(for: query, in: everything).contains { $0.row == row }
+        SettingsSearch.results(for: query, in: everyRowShown).contains { $0.row == row }
     }
 }

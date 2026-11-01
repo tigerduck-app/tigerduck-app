@@ -130,7 +130,7 @@ struct SettingsScreenTests {
     func everyRowOfAPageIsOnIt(page: PageSettings) async throws {
         try await withAccessibilityAutomation {
             let preferences = AppPreferences()
-            let state = Screen.reachable(preferences)
+            let state = Screen.allOpenButSchool(preferences)
             let (window, host) = try Screen.show(page.view, state: state, preferences: preferences)
             defer { window.isHidden = true }
             let rows = page.rows.filter { $0.isShown(in: state) }
@@ -141,7 +141,7 @@ struct SettingsScreenTests {
     @Test("every row of the Settings root and every page is on it")
     func everyRootRowIsOnSettings() async throws {
         try await withAccessibilityAutomation {
-            let state = Screen.reachable(AppPreferences())
+            let state = Screen.allOpenButSchool(AppPreferences())
             let (window, host) = try Screen.show(SettingsList(sheets: SettingsSheetState()), state: state, height: 4000)
             defer { window.isHidden = true }
             let rows = SettingsRow.allCases.filter { row in

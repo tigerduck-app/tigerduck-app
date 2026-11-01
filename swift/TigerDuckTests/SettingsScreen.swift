@@ -4,14 +4,11 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// Shows a Settings view as the app would, with the state and preferences the app would set.
 @MainActor
 enum SettingsScreen {
-    /// Every gate closed, every row but the library sign-out and the What's New row shown.
     static let closed = SettingsState(hasFlipToLibrary: true, hasSchoolMail: true)
 
-    /// Every row shown except the school sign-in's, whose pages need an app behind them.
-    static func reachable(_ preferences: AppPreferences) -> SettingsState {
+    static func allOpenButSchool(_ preferences: AppPreferences) -> SettingsState {
         SettingsState(
             library: .init(isSignedIn: true, name: "B11000000"), mail: .init(isSignedIn: true, name: "B11000000"),
             isCloudSyncOn: true, usesEnglishClassroomNames: preferences.useEnglishClassroomAbbreviation,
@@ -19,7 +16,6 @@ enum SettingsScreen {
         )
     }
 
-    /// Shows `message` in the nearest toast host once on screen, as a tap on a closed row does.
     struct ShowsToast: View {
         let message: LocalizedStringResource
         @Environment(\.showToast) private var showToast
@@ -29,7 +25,6 @@ enum SettingsScreen {
         }
     }
 
-    /// A state a test changes while the view is on screen, as the app's accounts change it.
     @Observable
     final class LiveState {
         var state: SettingsState
@@ -92,7 +87,6 @@ enum SettingsScreen {
         texts(in: host).contains { $0.contains(text) }
     }
 
-    /// The row's element: the one carrying the gate's reason as its hint when the gate is closed.
     static func element(of row: SettingsRow, hint: String?, in host: UIViewController) -> NSObject? {
         let hinted = elements(in: host).filter { hint == nil || $0.accessibilityHint == hint }
         let named = hinted.first { element in
@@ -101,7 +95,6 @@ enum SettingsScreen {
         return named ?? (hint == nil ? nil : hinted.first)
     }
 
-    /// A row that opens something, such as a page row on the Settings root, rather than its text.
     static func link(labeled label: String, in host: UIViewController) -> NSObject? {
         elements(in: host).first {
             $0.accessibilityLabel == label && $0.accessibilityTraits.contains(.button)
