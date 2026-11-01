@@ -13,9 +13,14 @@ struct CourseOverridesReconciler: CategoryReconciler {
             AppLogger.sync.info("[syncOverrides] skipping course overrides — switched off or conflict check pending")
             return false
         }
+        let lateMoodleColors = colors ? Self.lateMoodleColors(
+            pass.courseOverrides, courses: pass.coursesArray, moved: CourseColorStore.shared.lateMoodleColors,
+            local: TigerDuckTheme.snapshot(), snapshot: pass.json
+        ) : []
         let changed = !pass.courseOverrides.isEmpty && applyCourseOverrides(
             pass.courseOverrides, coursesArray: pass.coursesArray, colors: colors, names: names,
-            holdingColors: pass.heldCourseOverrides.colors, holdingNames: pass.heldCourseOverrides.names, for: pass.signIn
+            holdingColors: pass.heldCourseOverrides.colors.union(lateMoodleColors),
+            holdingNames: pass.heldCourseOverrides.names, for: pass.signIn
         )
         if colors {
             let fills = Self.colorFills(
@@ -33,10 +38,7 @@ struct CourseOverridesReconciler: CategoryReconciler {
         _ overrides: [[String: Any]], courses: [[String: Any]], local: [String: UInt32],
         holding held: Set<String>, snapshot json: [String: Any]
     ) -> [CourseColorFill] {
-        let byIdentity = Dictionary(
-            overrides.compactMap { row in Self.overrideIdentity(row).map { ($0, row) } },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let byIdentity = overridesByIdentity(overrides)
         return courses.compactMap { row in
             guard let identity = Self.overrideIdentity(row), !held.contains(identity),
                   let semester = row["semester"] as? String, let courseNo = row["course_no"] as? String,
@@ -54,6 +56,29 @@ struct CourseOverridesReconciler: CategoryReconciler {
                 courseNo: courseNo, identity: identity, colorHex: String(format: "#%06X", hex), stamp: stamp
             )
         }
+    }
+
+    /// The courses a late Moodle id moved here whose backend colour is still an automatic fill.
+    /// The move is not overwritten, and `colorFills` stamps it just after that fill.
+    static func lateMoodleColors(
+        _ overrides: [[String: Any]], courses: [[String: Any]], moved: [String: UInt32], local: [String: UInt32],
+        snapshot json: [String: Any]
+    ) -> Set<String> {
+        let byIdentity = overridesByIdentity(overrides)
+        return Set(courses.compactMap { row in
+            guard let identity = overrideIdentity(row), let semester = row["semester"] as? String,
+                  let courseNo = row["course_no"] as? String, let hex = moved[courseNo], local[courseNo] == hex,
+                  let clock = (byIdentity[identity]?["color_hex_hlc"] as? NSNumber)?.int64Value else { return nil }
+            let fill = deterministicFillStamp(serverHasColor: false, stampedAt: nil, snapshot: json, semester: semester)
+            return clock <= PushAPI.clock(of: fill) ? identity : nil
+        })
+    }
+
+    private static func overridesByIdentity(_ overrides: [[String: Any]]) -> [String: [String: Any]] {
+        Dictionary(
+            overrides.compactMap { row in overrideIdentity(row).map { ($0, row) } },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     static func deterministicFillStamp(

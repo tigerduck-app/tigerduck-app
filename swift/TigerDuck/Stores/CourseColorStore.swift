@@ -8,6 +8,8 @@ final class CourseColorStore {
     @ObservationIgnored let files: CourseColorFiles
     @ObservationIgnored let state: ColorState
     private(set) var revision = 0
+    @ObservationIgnored private var movedByLateIds = SignInBound<[String: UInt32]>(empty: [:])
+    @ObservationIgnored var onLateMoodleColors: () -> Void = {}
 
     init(files: CourseColorFiles = CourseColorFiles()) {
         self.files = files
@@ -57,6 +59,19 @@ final class CourseColorStore {
         }
         return colors
     }
+
+    /// Moves the courses whose Moodle id arrived after their colour to Moodle's colour, unless
+    /// the user picked one.
+    func takeMoodleColors(_ colors: [String: UInt32], for signIn: SignIn) {
+        let moved = saving(signIn, unchanged: [:]) { $0.takeMoodleColors(colors) }
+        guard !moved.isEmpty else { return }
+        movedByLateIds.set(movedByLateIds.value.merging(moved) { $1 }, for: signIn)
+        onLateMoodleColors()
+    }
+
+    /// What `takeMoodleColors` moved in this sign-in, which the next full sync sends.
+    /// shortcut: kept in memory, so a move not sent before the app quits is lost; store it if that shows up.
+    var lateMoodleColors: [String: UInt32] { movedByLateIds.value }
 
     /// Colours another device picked, applied without counting as picks here.
     @discardableResult

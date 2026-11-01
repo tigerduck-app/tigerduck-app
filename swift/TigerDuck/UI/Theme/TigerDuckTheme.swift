@@ -275,6 +275,22 @@ final class ColorState: @unchecked Sendable {
         return didMutate
     }
 
+    /// Gives each course that has a colour and no pick the colour Moodle gives it, and returns
+    /// the courses whose colour changed.
+    func takeMoodleColors(_ colors: [String: UInt32]) -> [String: UInt32] {
+        let picks = io.picks()
+        let moved: [String: UInt32] = lock.withLock {
+            guard let current = loadedMap() else { return [:] }
+            let moving = colors.filter { courseNo, hex in
+                !picks.contains(courseNo) && current[courseNo].map { $0 != hex } == true
+            }
+            map = current.merging(moving) { $1 }
+            return moving
+        }
+        if !moved.isEmpty { persist() }
+        return moved
+    }
+
     /// Moodle gives two courses one colour when their ids end alike, so its colours stay shared.
     private nonisolated static func mayBeShared(_ hex: UInt32) -> Bool {
         TigerDuckTheme.moodleCourseColors.contains(hex)
