@@ -348,7 +348,7 @@ struct ClassTableSwitchingTests {
             defer { CourseStore.shared.saveCourses(saved, semester: "1142", for: testSignIn) }
             if !signedOut { CourseStore.shared.saveCourses(fetched, semester: "1142", for: testSignIn) }
 
-            viewModel.loader.showFetched(signedOutSince: signedOut)
+            viewModel.loader.reloadFromStoresAfterFetch(signedOutSince: signedOut)
 
             #expect(viewModel.courses.map(\.courseNo) == (change == .none ? ["GE1010009"] : onScreen))
         }

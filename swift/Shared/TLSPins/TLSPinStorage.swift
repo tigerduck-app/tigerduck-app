@@ -19,7 +19,7 @@ nonisolated struct TLSPinStorage {
         self.buildNumber = buildNumber
     }
 
-    func storedDocument() -> TLSPinDocument? {
+    func reverifiedStoredDocument() -> TLSPinDocument? {
         guard let envelope = defaults.data(forKey: Key.document) else { return nil }
         let document = try? TLSPinDocument.verify(envelope: envelope, keys: keys)
         if document == nil {
@@ -29,7 +29,7 @@ nonisolated struct TLSPinStorage {
         return document
     }
 
-    func storedAcceptances() -> [TLSPinAcceptance] {
+    func currentBuildAcceptances() -> [TLSPinAcceptance] {
         guard let data = defaults.data(forKey: Key.acceptances),
               let stored = try? JSONDecoder().decode([TLSPinAcceptance].self, from: data) else { return [] }
         let current = stored.filter { $0.buildNumber == buildNumber }

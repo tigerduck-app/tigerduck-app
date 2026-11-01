@@ -40,7 +40,7 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         let address = link.dropFirst(scheme?.count ?? 0)
         if let path = shareHostPath(address) {
             if path.hasPrefix(classTableType) {
-                return try PackedShareCode.Decoder.decode(prefix + withoutTrailingSlash(path.dropFirst(classTableType.count)))
+                return try PackedShareCode.Decoder.decode(uppercasedAfterPrefix: withoutTrailingSlash(path.dropFirst(classTableType.count)))
             }
             throw namesType(path) ? ClassTableShareCodeError.unknownType : .malformed
         }
@@ -51,7 +51,7 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
         // not one, so a stray QR code or word never shows an error.
         let last = address.split(separator: "/").last ?? ""
         do {
-            return try last.hasPrefix("TAT") ? decodeTAT(tatPrefix + last) : PackedShareCode.Decoder.decode(prefix + last)
+            return try last.hasPrefix("TAT") ? decodeTAT(tatPrefix + last) : PackedShareCode.Decoder.decode(uppercasedAfterPrefix: last)
         } catch {
             throw ClassTableShareCodeError.unknownPrefix
         }
@@ -83,19 +83,27 @@ nonisolated struct ClassTableShareCode: Equatable, Sendable {
     /// the table is past the packed layout's limits.
     static func encode(studentId: String, sharedAt: Date, terms: [Term]) -> String? {
         let id = studentId.uppercased()
-        guard isUpperAlphanumerics(id[...]) else { return nil }
-        var semesters = Set<String>()
-        let kept = terms.compactMap { term -> Term? in
-            let semester = term.semester.uppercased()
-            let courseNos = Set(term.courseNos.map { $0.uppercased() }.filter { SchoolTerms.isCourseNo($0[...]) })
-                .sorted()
-            guard isSemester(semester[...]), !courseNos.isEmpty, semesters.insert(semester).inserted else {
-                return nil
-            }
-            return Term(semester: semester, courseNos: courseNos)
-        }
-        guard !kept.isEmpty else { return nil }
+        guard isUpperAlphanumerics(id[...]), let kept = CheckedTerms(terms) else { return nil }
         return PackedShareCode.Encoder.encode(studentId: id, sharedAt: sharedAt, terms: kept)
+    }
+
+    struct CheckedTerms {
+        let terms: [Term]
+
+        fileprivate init?(_ terms: [Term]) {
+            var semesters = Set<String>()
+            let kept = terms.compactMap { term -> Term? in
+                let semester = term.semester.uppercased()
+                let courseNos = Set(term.courseNos.map { $0.uppercased() }.filter { SchoolTerms.isCourseNo($0[...]) })
+                    .sorted()
+                guard ClassTableShareCode.isSemester(semester[...]), !courseNos.isEmpty, semesters.insert(semester).inserted else {
+                    return nil
+                }
+                return Term(semester: semester, courseNos: courseNos)
+            }
+            guard !kept.isEmpty else { return nil }
+            self.terms = kept
+        }
     }
 
     static func isSemester(_ text: Substring) -> Bool {

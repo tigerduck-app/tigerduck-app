@@ -3,15 +3,15 @@ import Testing
 import UIKit
 @testable import TigerDuck
 
-/// `PagingScrollLock` relies on the page-style `TabView` being backed by a
+/// `ForwardPagingLock` relies on the page-style `TabView` being backed by a
 /// `UIScrollView` ancestor it can reach from a page's background. Host a
 /// real pager in a window and check the walk still lands on it.
 @MainActor
-struct PagingScrollLockTests {
+struct ForwardPagingLockTests {
     @Test(arguments: [true, false])
     func pagerStaysScrollableWhileLocked(isLocked: Bool) async throws {
         let pager = TabView {
-            Color.red.background(PagingScrollLock(isLocked: isLocked)).tag(0)
+            Color.red.background(ForwardPagingLock(isLocked: isLocked)).tag(0)
             Color.blue.tag(1)
         }
         .tabViewStyle(.page)
@@ -21,9 +21,9 @@ struct PagingScrollLockTests {
         window.rootViewController = host
         window.makeKeyAndVisible()
         host.view.layoutIfNeeded()
-        try await waitUntil { host.view.descendants(ofType: PagingScrollLock.LockView.self).first?.attachedPager != nil }
+        try await waitUntil { host.view.descendants(ofType: ForwardPagingLock.LockView.self).first?.attachedPager != nil }
 
-        let lock = try #require(host.view.descendants(ofType: PagingScrollLock.LockView.self).first, "the representable should be in the hierarchy")
+        let lock = try #require(host.view.descendants(ofType: ForwardPagingLock.LockView.self).first, "the representable should be in the hierarchy")
 
         let attached = try #require(
             lock.attachedPager, "the superview walk should reach the pager's scroll view"
@@ -44,7 +44,7 @@ struct PagingScrollLockTests {
     ])
     func forwardDragMirrorsUnderRTL(dx: Double, isRTL: Bool, isForward: Bool) {
         #expect(
-            PagingScrollLock.isForwardDrag(translationX: CGFloat(dx), isRTL: isRTL) == isForward
+            ForwardPagingLock.isForwardDrag(translationX: CGFloat(dx), isRTL: isRTL) == isForward
         )
     }
 }

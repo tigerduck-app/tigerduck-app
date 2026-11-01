@@ -13,7 +13,7 @@ struct ClassTableSelection {
     var periodId: String?
     var coursePeriods: [String]?
     var date: Date?
-    var slot: CourseTimeSlot?
+    var currentClassSlot: CourseTimeSlot?
     var conflictPickerTarget: ConflictPickerTarget?
 
     var timeRange: String? {
@@ -27,7 +27,7 @@ struct ClassTableSelection {
         periodId = nil
         weekday = now.scheduleWeekday
         date = now
-        slot = nil
+        currentClassSlot = nil
         self.course = course
     }
 
@@ -36,7 +36,7 @@ struct ClassTableSelection {
         weekday = info.weekday
         periodId = info.firstPeriodId
         coursePeriods = info.periods
-        slot = info.slot
+        currentClassSlot = info.slot
         course = info.course
     }
 }

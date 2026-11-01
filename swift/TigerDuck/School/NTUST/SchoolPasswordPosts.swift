@@ -2,15 +2,15 @@ import Foundation
 
 nonisolated enum SchoolPasswordPosts {
     static var storedPasswordRefusals: (count: Int, last: Date?) {
-        get { StoredPasswordBackoff.ntust.refusals }
-        set { StoredPasswordBackoff.ntust.refusals = newValue }
+        get { StoredPasswordLockoutBackoff.ntust.refusals }
+        set { StoredPasswordLockoutBackoff.ntust.refusals = newValue }
     }
 
     static let storedPasswordPostWaits = Notification.Name("TigerDuck.storedPasswordPostWaits")
     static let storedPasswordRetryAtKey = "retryAt"
 
     static func storedPasswordRetryAt(now: Date = Date()) -> Date? {
-        StoredPasswordBackoff.ntust.retryAt(now: now)
+        StoredPasswordLockoutBackoff.ntust.retryAt(now: now)
     }
 
     static func storedPasswordPostMustWait(now: Date = Date()) -> Bool {
@@ -20,7 +20,7 @@ nonisolated enum SchoolPasswordPosts {
     }
 
     static func noteStoredPasswordRefused(at now: Date = Date()) {
-        announceStoredPasswordWait(until: StoredPasswordBackoff.ntust.noteRefused(at: now))
+        announceStoredPasswordWait(until: StoredPasswordLockoutBackoff.ntust.recordRefusalAndNextPost(at: now))
     }
 
     private static func announceStoredPasswordWait(until retryAt: Date) {
@@ -32,7 +32,7 @@ nonisolated enum SchoolPasswordPosts {
     }
 
     static func forgetStoredPasswordRefusals() {
-        StoredPasswordBackoff.ntust.forget()
+        StoredPasswordLockoutBackoff.ntust.forget()
     }
 
     private static let storedPasswordPosts = AsyncSerialLock()

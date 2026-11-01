@@ -19,18 +19,6 @@ final class LiveActivityRefresher {
 
     init(app: AppEnvironment) {
         self.app = app
-        preferencesObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.liveActivityPreferencesDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            MainActor.assumeIsolated {
-                self?.scheduleRefresh()
-                self?.app.pushSchedule.requestSync()
-                guard NotificationSettingsSync.changeNeedsDocumentPush(note.userInfo) else { return }
-                self?.app.notificationSettings.schedulePush()
-            }
-        }
         coordinator.setUpdateTokenRegistrationHandler { [weak self] registration in
             await self?.app.pushCoordinator.registerLiveActivityUpdateToken(registration)
         }
@@ -58,6 +46,22 @@ final class LiveActivityRefresher {
         boundaryRefreshTask?.cancel()
         if let preferencesObserver {
             NotificationCenter.default.removeObserver(preferencesObserver)
+        }
+    }
+
+    func observePreferenceChanges() {
+        guard preferencesObserver == nil else { return }
+        preferencesObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.liveActivityPreferencesDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                self?.scheduleRefresh()
+                self?.app.pushSchedule.requestSync()
+                guard NotificationSettingsSync.changeNeedsDocumentPush(note.userInfo) else { return }
+                self?.app.notificationSettings.schedulePush()
+            }
         }
     }
 

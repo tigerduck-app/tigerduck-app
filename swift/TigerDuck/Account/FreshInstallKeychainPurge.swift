@@ -22,14 +22,21 @@ enum FreshInstallKeychainPurge {
         ]
     }
 
-    static func runIfFreshInstall() -> Bool {
-        guard !Defaults[.appHasBeenInstalled] else { return false }
-        let allOk = keys
-            .map { KeychainManager.deleteReportingSuccess(key: $0) }
-            .allSatisfy { $0 }
-        if allOk {
-            Defaults[.appHasBeenInstalled] = true
-        }
-        return true
+    enum Outcome {
+        case installedBefore
+        case purged
+        case itemsLeft
+
+        var isFreshInstall: Bool { self != .installedBefore }
+    }
+
+    static func runIfFreshInstall(
+        delete: (String) -> Bool = { KeychainManager.deleteReportingSuccess(key: $0) }
+    ) -> Outcome {
+        guard !Defaults[.appHasBeenInstalled] else { return .installedBefore }
+        let everyItemDeleted = keys.map(delete).allSatisfy { $0 }
+        guard everyItemDeleted else { return .itemsLeft }
+        Defaults[.appHasBeenInstalled] = true
+        return .purged
     }
 }

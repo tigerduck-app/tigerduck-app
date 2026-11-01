@@ -32,11 +32,11 @@ struct MacClassTableImport: ViewModifier {
             .onChange(of: model?.isFinished) { _, isFinished in
                 if isFinished == true { model = nil }
             }
-            .onChange(of: HeldShareLink.shared.link?.id, initial: true) { openHeldLink() }
-            .onChange(of: HeldShareLink.mayOpen(in: app)) { openHeldLink() }
+            .onChange(of: HeldShareLink.shared.link?.id, initial: true) { openHeldLinkInShownImport() }
+            .onChange(of: HeldShareLink.mayOpen(in: app)) { openHeldLinkInShownImport() }
     }
 
-    private func openHeldLink() {
+    private func openHeldLinkInShownImport() {
         guard let text = HeldShareLink.shared.take(in: app) else { return }
         if let model, !model.isFinished {
             model.linkOpened(text)

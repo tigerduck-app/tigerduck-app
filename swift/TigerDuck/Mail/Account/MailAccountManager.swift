@@ -200,7 +200,7 @@ final class MailAccountManager {
     }
 
     func logout() {
-        SignOutPlan(session: session, stores: SignOutPlan.mailStores, clearRest: { [self] in
+        SignOutPlan(session: session, stores: SignOutPlan.mailStores, clearMemoryState: { [self] in
             cacheWipe.start(prefs: prefs)
             studentID = nil
             signInStatus.error = nil

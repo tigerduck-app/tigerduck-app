@@ -13,7 +13,6 @@ nonisolated enum MailAttachmentRisk {
     ]
     static let archiveExtensions: Set<String> = ["zip", "rar", "7z", "tar", "gz", "tgz"]
     static let archivePasswordHints = ["密碼", "password", "解壓縮"]
-    static let neverRenderInApp: Set<String> = ["html", "htm", "shtml", "xhtml", "mht", "mhtml", "svg"]
 
     static func displayFilename(_ raw: String) -> String {
         var name = MailTextCleaner.clean(raw)
@@ -53,14 +52,12 @@ nonisolated enum MailAttachmentRisk {
     }
 
     static func neverRenderedInApp(filename: String) -> Bool {
-        let ext = scannedFilename(filename).lowercased().split(separator: ".").last.map(String.init) ?? ""
-        return neverRenderInApp.contains(ext)
+        neverRenderedInApp(filename: filename, contentType: nil)
     }
 
     static func neverRenderedInApp(filename: String, contentType: String?) -> Bool {
-        if neverRenderedInApp(filename: filename) { return true }
-        let type = contentTypeWithoutParameters(contentType) ?? ""
-        return type == "text/html" || type == "image/svg+xml"
+        let ext = scannedFilename(filename).lowercased().split(separator: ".").last.map(String.init) ?? ""
+        return ScriptedPreview.isScripted(extension: ext, contentType: contentType)
     }
 }
 #endif

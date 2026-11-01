@@ -19,14 +19,14 @@ nonisolated struct BitWriter {
         for shift in (0..<count).reversed() { bits.append(value >> shift & 1 == 1) }
     }
 
-    mutating func gamma(_ value: Int) {
+    mutating func putEliasGamma(_ value: Int) {
         let count = bitLength(value)
         put(0, count - 1)
         put(value, count)
     }
 
-    mutating func subset(_ indices: [Int], of n: Int, nonEmpty: Bool) {
-        gamma(indices.count + (nonEmpty ? 0 : 1))
+    mutating func putCombinatorialRank(_ indices: [Int], of n: Int, nonEmpty: Bool) {
+        putEliasGamma(indices.count + (nonEmpty ? 0 : 1))
         let rank = indices.enumerated().reduce(0) { $0 + binomial($1.element, $1.offset + 1) }
         put(rank, bitLength(binomial(n, indices.count) - 1))
     }
@@ -47,7 +47,7 @@ nonisolated struct BitReader {
         return value
     }
 
-    mutating func gamma(limit: Int = 1 << 32) throws -> Int {
+    mutating func getEliasGamma(limit: Int = 1 << 32) throws -> Int {
         var zeros = 0
         while try get(1) == 0 {
             zeros += 1
@@ -58,8 +58,8 @@ nonisolated struct BitReader {
         return value
     }
 
-    mutating func subset(of n: Int, nonEmpty: Bool) throws -> [Int] {
-        let count = try nonEmpty ? gamma(limit: n) : gamma(limit: n + 1) - 1
+    mutating func getCombinatorialRank(of n: Int, nonEmpty: Bool) throws -> [Int] {
+        let count = try nonEmpty ? getEliasGamma(limit: n) : getEliasGamma(limit: n + 1) - 1
         let total = binomial(n, count)
         var rank = try get(bitLength(total - 1))
         guard rank < total else { throw ClassTableShareCodeError.malformed }

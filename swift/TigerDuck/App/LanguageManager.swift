@@ -44,17 +44,7 @@ nonisolated enum LanguageManager {
     }
 
     static func supportedLocaleTags() -> [String] {
-        guard let resourceURL = Bundle.main.resourceURL else { return [] }
-        let urls = (try? FileManager.default.contentsOfDirectory(
-            at: resourceURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        return urls
-            .filter { $0.pathExtension == "lproj" }
-            .map { $0.deletingPathExtension().lastPathComponent }
-            .filter { $0 != "Base" }
-            .sorted()
+        Bundle.main.localizations.filter { $0 != "Base" }.sorted()
     }
 
     static func displayName(for tag: String) -> String {

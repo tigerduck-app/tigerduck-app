@@ -44,10 +44,10 @@ struct MacClassTableView: View {
             viewModel.editor.sync = .live(app)
             viewModel.loader.load()
             await viewModel.loader.warmCachesIfNeeded(authService: app.authService)
-            await ensureSemesterFetched()
+            await fetchSemesterIfNeverStored()
         }
         .onChange(of: viewModel.currentSemester) {
-            Task { await ensureSemesterFetched() }
+            Task { await fetchSemesterIfNeverStored() }
         }
         .onChange(of: viewModel.shownTable) {
             viewModel.showShownTable()
@@ -72,7 +72,7 @@ struct MacClassTableView: View {
         return "\(course.courseNo)-\(selection.weekday ?? 0)-\(selection.periodId ?? "")"
     }
 
-    private func ensureSemesterFetched() async {
+    private func fetchSemesterIfNeverStored() async {
         let target = viewModel.currentSemester
         guard viewModel.shownPerson == nil, viewModel.courseStore.loadCourses(semester: target).isEmpty else { return }
         isLoadingSemester = true

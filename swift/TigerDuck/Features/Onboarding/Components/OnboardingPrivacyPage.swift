@@ -50,7 +50,7 @@ struct OnboardingPrivacyPage: View {
             }
         )
         .background(
-            PagingScrollLock(isLocked: isCurrent && !hasAgreedToTerms)
+            ForwardPagingLock(isLocked: isCurrent && !hasAgreedToTerms)
                 .allowsHitTesting(false)
         )
     }

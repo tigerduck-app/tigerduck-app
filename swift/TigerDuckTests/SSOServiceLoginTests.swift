@@ -226,7 +226,7 @@ struct SSOServiceLoginTests {
     @Test("once a refusal's wait is over, a sign-in the user did not start posts again, and its success clears the refusals")
     func silentSignInPostsAgainAfterTheWait() async {
         let service = Self.serviceURL()
-        let wait = StoredPasswordBackoff.retryDelay(afterRefusals: 1)
+        let wait = StoredPasswordLockoutBackoff.retryDelay(afterRefusals: 1)
         let outcome = await signIn(service, refusals: 1, lastRefusal: Self.now.addingTimeInterval(-wait)) {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
@@ -244,8 +244,8 @@ struct SSOServiceLoginTests {
     @Test("a refusal after the three quick tries is counted on, so the next waits six hours")
     func refusalAfterTheQuickTriesCountsOn() async {
         let service = Self.serviceURL()
-        let quickTries = StoredPasswordBackoff.quickRetries.count
-        let wait = StoredPasswordBackoff.retryDelay(afterRefusals: quickTries)
+        let quickTries = StoredPasswordLockoutBackoff.quickRetries.count
+        let wait = StoredPasswordLockoutBackoff.retryDelay(afterRefusals: quickTries)
         let outcome = await signIn(service, refusals: quickTries, lastRefusal: Self.now.addingTimeInterval(-wait)) {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
@@ -256,7 +256,7 @@ struct SSOServiceLoginTests {
             return
         }
         #expect(outcome.refusals.count == quickTries + 1)
-        #expect(StoredPasswordBackoff.retryDelay(afterRefusals: quickTries + 1) == 6 * 60 * 60)
+        #expect(StoredPasswordLockoutBackoff.retryDelay(afterRefusals: quickTries + 1) == 6 * 60 * 60)
     }
 
     @Test("a sign-in the user did not start that a live session lets through leaves the refusals")
@@ -619,7 +619,7 @@ struct SSOServiceLoginTests {
             await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: "帳號或密碼錯誤")) {
                 try await service.refreshTokenIfNeeded()
             }
-            clock.withLock { $0 += StoredPasswordBackoff.retryDelay(afterRefusals: 1) - 1 }
+            clock.withLock { $0 += StoredPasswordLockoutBackoff.retryDelay(afterRefusals: 1) - 1 }
             await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: nil)) {
                 try await service.refreshTokenIfNeeded()
             }
@@ -630,7 +630,7 @@ struct SSOServiceLoginTests {
         }
         #expect(await log.calls == 2)
         #expect(refusals.count == 2)
-        #expect(refusals.last == start.addingTimeInterval(StoredPasswordBackoff.retryDelay(afterRefusals: 1)))
+        #expect(refusals.last == start.addingTimeInterval(StoredPasswordLockoutBackoff.retryDelay(afterRefusals: 1)))
     }
 
     @Test("after the three quick tries were refused, a renewal waits six hours")
@@ -639,8 +639,8 @@ struct SSOServiceLoginTests {
         let start = Date(timeIntervalSince1970: 1_000_000)
         let clock = OSAllocatedUnfairLock(initialState: start)
         let service = tokenService(log: log, failure: .ssoLoginRejected(reason: nil), now: { clock.withLock { $0 } })
-        let quickTries = StoredPasswordBackoff.quickRetries.count
-        let lastQuickWait = StoredPasswordBackoff.retryDelay(afterRefusals: quickTries)
+        let quickTries = StoredPasswordLockoutBackoff.quickRetries.count
+        let lastQuickWait = StoredPasswordLockoutBackoff.retryDelay(afterRefusals: quickTries)
         let refusals = await withRefusals(quickTries, last: start.addingTimeInterval(-lastQuickWait)) {
             () async -> (count: Int, last: Date?) in
             _ = try? await service.refreshTokenIfNeeded()

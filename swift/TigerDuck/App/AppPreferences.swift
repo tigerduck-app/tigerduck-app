@@ -7,9 +7,9 @@ final class AppPreferences {
     @ObservationIgnored private var hooks = Hooks()
     private var toggles = AppDisplayToggles()
 
-    var onLanguageChange: () -> Void {
-        get { hooks.languageChange }
-        set { hooks.languageChange = newValue }
+    var willChangeLanguage: () -> Void {
+        get { hooks.languageWillChange }
+        set { hooks.languageWillChange = newValue }
     }
     var onCourseLabelsChange: () -> Void {
         get { hooks.courseLabelsChange }
@@ -17,11 +17,11 @@ final class AppPreferences {
     }
 
     private struct Hooks {
-        var languageChange: () -> Void = {}
+        var languageWillChange: () -> Void = {}
         var courseLabelsChange: () -> Void = {}
     }
 
-    @ObservationIgnored private let widgetReloadCoordinator = WidgetReloadCoordinator()
+    @ObservationIgnored private let debouncedWidgetReload = WidgetReloadCoordinator()
 
     var accentColorHex: Int {
         get { toggles.accentColorHex }
@@ -72,7 +72,7 @@ final class AppPreferences {
             let oldSnapped = CourseCardFontScale.normalize(oldValue)
             guard newSnapped != oldSnapped else { return }
             CourseCardFontScaleStore().write(newSnapped)
-            let coordinator = widgetReloadCoordinator
+            let coordinator = debouncedWidgetReload
             Task { @MainActor in
                 coordinator.requestReload()
             }
@@ -82,7 +82,7 @@ final class AppPreferences {
     var appLanguage: String = Defaults[.appLanguage] {
         didSet {
             guard appLanguage != oldValue else { return }
-            onLanguageChange()
+            willChangeLanguage()
             Defaults[.appLanguage] = appLanguage
             LanguageManager.apply(appLanguage)
             CourseFetch.handleLanguageChange()

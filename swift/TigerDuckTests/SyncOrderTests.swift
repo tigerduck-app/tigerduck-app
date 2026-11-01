@@ -119,7 +119,7 @@ struct SyncOrderTests {
         ])
     }
 
-    private static let queuedFile = #"""
+    private static let queuedFileFrom3x = #"""
     [{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","attempts":2,"op":{"courseOverride":{"semester":"1151","moodleId":"1151CS1001301","colorHex":"#FF6B6B","stamp":815000000.5}}},
      {"id":"6F9619FF-8B86-D011-B42D-00C04FC964F1","attempts":0,"op":{"courseOverride":{"semester":"1151","moodleId":"1151CS1001301","customName":"Algorithms","locale":"zh","stamp":815000001}}},
      {"id":"6F9619FF-8B86-D011-B42D-00C04FC964F2","attempts":0,"op":{"courseIgnore":{"semester":"1151","courseNo":"CS1001301","moodleId":"1151CS1001301","moodleCourseId":4242,"ignore":true,"stamp":815000002}}},
@@ -135,7 +135,7 @@ struct SyncOrderTests {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("SyncOrderTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try Data(Self.queuedFile.utf8).write(to: directory.appendingPathComponent("outbox.json"))
+        try Data(Self.queuedFileFrom3x.utf8).write(to: directory.appendingPathComponent("outbox.json"))
         try Data(Self.parkedFile.utf8).write(to: directory.appendingPathComponent("outbox-parked.json"))
         let outbox = SyncOutbox(directory: directory)
 

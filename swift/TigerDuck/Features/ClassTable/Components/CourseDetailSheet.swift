@@ -38,7 +38,9 @@ struct CourseDetailSheet: View {
                             course: course, timeRange: timeRange, weekday: weekday, periods: periods, meeting: shownMeeting
                         )
                         CourseDetailInfoRows(course: course)
-                        CourseDetailChanges(course: course, date: date, shown: shownMeeting, changes: changes)
+                        if date != nil {
+                            CourseDetailChanges(course: course, meetingOnCards: shownMeeting, changes: changes)
+                        }
                         CourseDetailAssignments(assignments: assignments, open: openListed)
                     }
                     if let moodle {

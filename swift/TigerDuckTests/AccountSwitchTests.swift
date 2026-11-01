@@ -235,13 +235,6 @@ struct AccountSwitchTests {
         return auth
     }
 
-    private static func schoolSignOut(_ auth: AuthService) -> SignOutPlan {
-        SignOutPlan(session: auth.session, stores: SignOutPlan.schoolStores, endSession: {
-            auth.logout()
-            return { auth.startSignOutCalls {} }
-        })
-    }
-
     @Test("signing in as a second student after a first leaves nothing of the first")
     func aSecondAccountFindsNothingOfTheFirst() async throws {
         try await withExclusiveRealDefaults {
@@ -252,7 +245,7 @@ struct AccountSwitchTests {
             let moodleToken = OSAllocatedUnfairLock<String?>(initialState: nil)
             let signedIn = OSAllocatedUnfairLock<[String]>(initialState: [])
             let auth = Self.auth(schoolSignIns: signedIn, moodleToken: moodleToken)
-            auth.signOutStoredAccount = { await Self.schoolSignOut(auth).run(in: device.storage)?.value }
+            auth.signOutStoredAccount = { await SignOutPlan.school(auth: auth).run(in: device.storage)?.value }
 
             try await SecureStore.$sharedForTesting.withValue(device.keychain) {
                 #expect(await auth.login(studentId: Self.first, password: "first-password"))
@@ -294,13 +287,10 @@ struct AccountSwitchTests {
 
             try await SecureStore.$sharedForTesting.withValue(device.keychain) {
                 #expect(await auth.login(studentId: Self.first, password: "first-password"))
-                SignOutPlan(session: auth.session, stores: SignOutPlan.schoolStores, endSession: {
-                    auth.logout()
-                    return {
-                        auth.startSignOutCalls {
-                            callsBegan.withLock { $0 = true }
-                            for await _ in unregistered {}
-                        }
+                SignOutPlan.school(auth: auth, endBackendSession: {
+                    {
+                        callsBegan.withLock { $0 = true }
+                        for await _ in unregistered {}
                     }
                 }).run(in: device.storage)
 
@@ -341,7 +331,7 @@ struct AccountSwitchTests {
 
                 switch account {
                 case .school:
-                    await Self.schoolSignOut(auth).run(in: device.storage)?.value
+                    await SignOutPlan.school(auth: auth).run(in: device.storage)?.value
                 case .library:
                     LibraryService.signOutLibraryOnly()
                 #if os(iOS)

@@ -1811,12 +1811,13 @@ struct BackendSignInTests {
             let backend = BackendFixture(signedIn: false, signIn: signIns.currentSignIn)
             let signingIn = SheetSignIn()
             let harvests = CallCount()
+            let outlivingToken: MoodleTokenService.TokenStore = .init(load: { "moodle-token" }, save: { _ in }, drop: {})
             let auth = AuthService(
                 keychainHasCredentials: { false },
                 notificationCenter: NotificationCenter(),
                 moodleTokens: MoodleTokenService(
                     storedCredentials: { nil },
-                    tokens: .init(load: { "moodle-token" }, save: { _ in }, drop: {}),
+                    tokens: outlivingToken,
                     harvest: { _, _ in
                         harvests.increment()
                         await MainActor.run { signingIn.signOut?() }
@@ -1925,6 +1926,31 @@ struct BackendSignInTests {
 
         #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 2)
         withExtendedLifetime(auth) {}
+    }
+
+    @Test("a backend sign-in waits for the launch's retry of an unregister a sign-out kept")
+    func aSignInWaitsForTheKeptUnregister() async throws {
+        let backend = BackendFixture(signedIn: false)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+        auth.authTokenManager = backend.manager
+        auth.beginSignOutBackgroundTask = { {} }
+        let (unregistered, unregister) = AsyncStream<Void>.makeStream()
+        auth.backend.retryDepartingUnregisterBeforeSigningIn {
+            for await _ in unregistered {}
+        }
+
+        try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            async let signIn: Void = auth.ensureBackendSignedIn()
+            try await waitUntil { auth.isSigningInToBackend }
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+
+            unregister.finish()
+            await signIn
+        }
+
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
     }
 
     @Test("sign-ins that overlap share one login")

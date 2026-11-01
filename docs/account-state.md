@@ -21,7 +21,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 | Store | Cleared by |
 |---|---|
 | School session cookies, the Moodle and SSO cookies | `AuthService.endSchoolSession(departing:)` and `MoodleTokenService.signOut()` |
-| Shared URL cache and the in-app browser's website data | `AuthService.forgetSchoolPages`, in the sign-out calls a sign-in waits for |
+| Shared URL cache and the in-app browser's website data | `AccountSignOutCleanup.clearAllCachedPages`, in the sign-out calls a sign-in waits for |
 | The TigerDuck browser's website data, in a store of its own on disk, and the files it saved | `BrowserData.reset()`, the school's `AccountScoped` store, and at each sign-in in `AuthService.login`; what it could not remove the next browser clears before it loads (`browserDataState`) |
 | Delivered notifications of the account | `AuthService.logout()` and again at the end of the sign-out calls; School Mail's thread stays |
 | Answers shared between callers (Moodle enrolment, classroom usage, enrolled course numbers) | `AuthService.endSchoolSession(departing:)` |
@@ -107,16 +107,16 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `lastSeenCoursesResetAt` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
 | defaults | `lastShownWhatsNewVersion` | device |  |
 | defaults | `lastUpdateCheckAt` | device |  |
-| defaults | `libraryStoredPasswordRefusals` | library | `swift/TigerDuck/Account/StoredPasswordBackoff.swift` `library` |
-| defaults | `libraryStoredPasswordRefusedAt` | library | `swift/TigerDuck/Account/StoredPasswordBackoff.swift` `library` |
+| defaults | `libraryStoredPasswordRefusals` | library | `swift/TigerDuck/Account/StoredPasswordLockoutBackoff.swift` `library` |
+| defaults | `libraryStoredPasswordRefusedAt` | library | `swift/TigerDuck/Account/StoredPasswordLockoutBackoff.swift` `library` |
 | defaults | `macConfiguredTabsData` | device |  |
 | defaults | `macMoodleOpenTarget` | device |  |
 | defaults | `notificationSettingsPushPending` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSyncer.swift` `cancelPushes` |
 | defaults | `notificationSettingsPushSendsEveryField` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSync.swift` `forget` |
 | defaults | `notificationSettingsSyncedPreferences` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSync.swift` `forget` |
 | defaults | `ntustCredentialsPresent` | school | `swift/TigerDuck/Account/AuthService.swift` `markCredentialsChanged` |
-| defaults | `ntustStoredPasswordRefusals` | school | `swift/TigerDuck/Account/StoredPasswordBackoff.swift` `ntust` |
-| defaults | `ntustStoredPasswordRefusedAt` | school | `swift/TigerDuck/Account/StoredPasswordBackoff.swift` `ntust` |
+| defaults | `ntustStoredPasswordRefusals` | school | `swift/TigerDuck/Account/StoredPasswordLockoutBackoff.swift` `ntust` |
+| defaults | `ntustStoredPasswordRefusedAt` | school | `swift/TigerDuck/Account/StoredPasswordLockoutBackoff.swift` `ntust` |
 | defaults | `outlineRequiredCourses` | device |  |
 | defaults | `pendingConflictCategories` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
 | defaults | `pinTodayCoursesOnClassTable` | device |  |

@@ -11,7 +11,7 @@ struct OverrideStampTests {
     enum Attempts: String, Sendable, CaseIterable {
         case lands, lostReplyThenLands, refusedAsAheadThenLandsRestamped
 
-        func replies(_ body: Data) -> [(SettingsAPIStub.StubResponse, hlc: Int64)] {
+        func replies(_ body: Data) -> [(SettingsAPIStub.StubResponse, sentStamp: Int64)] {
             let landed = SettingsAPIStub.StubResponse(statusCode: 200, body: body)
             switch self {
             case .lands: return [(landed, OverrideStampTests.hlc)]
@@ -71,9 +71,9 @@ struct OverrideStampTests {
 
         let sent = SettingsAPIStub.requests(for: url)
         #expect(sent.count == replies.count)
-        for (request, (_, hlc)) in zip(sent, replies) {
+        for (request, (_, sentStamp)) in zip(sent, replies) {
             let json = try Self.json(request)
-            #expect((json["hlc"] as? NSNumber)?.int64Value == hlc)
+            #expect((json["hlc"] as? NSNumber)?.int64Value == sentStamp)
             switch edit {
             case .colour: #expect(json["color_hex"] as? String == "#FF6B6B")
             case .name: #expect(json["custom_name"] as? String == "Algorithms")
@@ -94,13 +94,13 @@ struct OverrideStampTests {
         var refused = Attempts.clockAhead
         refused.gate = gate
         SettingsAPIStub.enqueue(refused, for: url)
-        let held = OSAllocatedUnfairLock(initialState: false)
-        let coordinator = Self.makeCoordinator(baseURL, held: { held.withLock { $0 } })
+        let conflictCheckOwed = OSAllocatedUnfairLock(initialState: false)
+        let coordinator = Self.makeCoordinator(baseURL, conflictCheckOwed: { conflictCheckOwed.withLock { $0 } })
         await coordinator.outbox.enqueue(Self.op(edit))
 
         let tick = Task { await coordinator.syncTick() }
         try await waitUntil { !SettingsAPIStub.requests(for: url).isEmpty }
-        held.withLock { $0 = true }
+        conflictCheckOwed.withLock { $0 = true }
         gate.open()
         await tick.value
 
@@ -213,13 +213,13 @@ struct OverrideStampTests {
     }
 
     private static func makeCoordinator(
-        _ baseURL: URL, held: @escaping @Sendable () -> Bool = { false }
+        _ baseURL: URL, conflictCheckOwed: @escaping @Sendable () -> Bool = { false }
     ) -> CloudSyncCoordinator {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OverrideStampTests-\(UUID().uuidString)", isDirectory: true)
         return CloudSyncCoordinator(
             pushCoordinator: pushCoordinator(baseURL), outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: { !held() }, syncsCourseIgnores: { !held() }, syncsCourseOverrides: { _ in !held() },
+            syncsAssignmentMarks: { !conflictCheckOwed() }, syncsCourseIgnores: { !conflictCheckOwed() }, syncsCourseOverrides: { _ in !conflictCheckOwed() },
             account: AccountSession(signIns: testSignIns)
         )
     }

@@ -9,7 +9,7 @@ import UIKit
 struct StoredPasswordScheduleTests {
     @Test("after refusals in a row the waits are ten seconds, a minute and five minutes, then six hours")
     func waitsGrowToSixHours() {
-        let waits = (1...6).map { StoredPasswordBackoff.retryDelay(afterRefusals: $0) }
+        let waits = (1...6).map { StoredPasswordLockoutBackoff.retryDelay(afterRefusals: $0) }
         let sixHours: TimeInterval = 6 * 60 * 60
         let expected: [TimeInterval] = [10, 60, 300, sixHours, sixHours, sixHours]
         #expect(waits == expected)
@@ -19,12 +19,12 @@ struct StoredPasswordScheduleTests {
     func nextTryIsMeasuredFromTheLastRefusal() {
         let refused = Date(timeIntervalSince1970: 1_000_000)
         func retryAt(after refusals: Int, lastAt last: Date?, now: Date) -> Date? {
-            StoredPasswordBackoff.retryAt(refusals: refusals, lastRefusal: last, now: now)
+            StoredPasswordLockoutBackoff.retryAt(refusals: refusals, lastRefusal: last, now: now)
         }
         #expect(retryAt(after: 0, lastAt: nil, now: refused) == nil)
         #expect(retryAt(after: 1, lastAt: refused, now: refused) == refused.addingTimeInterval(10))
         #expect(retryAt(after: 4, lastAt: refused, now: refused.addingTimeInterval(60))
-            == refused.addingTimeInterval(StoredPasswordBackoff.retryInterval))
+            == refused.addingTimeInterval(StoredPasswordLockoutBackoff.retryInterval))
         let setBack = refused.addingTimeInterval(-1)
         #expect(retryAt(after: 4, lastAt: refused, now: setBack) == setBack)
         #expect(retryAt(after: 2, lastAt: nil, now: refused) == refused)
@@ -33,27 +33,27 @@ struct StoredPasswordScheduleTests {
     @Test("the school's and the library's refusals count apart, under the keys they had before")
     func eachAccountCountsItsOwnRefusals() async {
         await withExclusiveRealDefaults {
-            let saved = (StoredPasswordBackoff.ntust.refusals, StoredPasswordBackoff.library.refusals)
+            let saved = (StoredPasswordLockoutBackoff.ntust.refusals, StoredPasswordLockoutBackoff.library.refusals)
             defer {
-                StoredPasswordBackoff.ntust.refusals = saved.0
-                StoredPasswordBackoff.library.refusals = saved.1
+                StoredPasswordLockoutBackoff.ntust.refusals = saved.0
+                StoredPasswordLockoutBackoff.library.refusals = saved.1
             }
             let refused = Date(timeIntervalSince1970: 1_000_000)
-            StoredPasswordBackoff.ntust.forget()
-            StoredPasswordBackoff.library.forget()
+            StoredPasswordLockoutBackoff.ntust.forget()
+            StoredPasswordLockoutBackoff.library.forget()
 
-            let due = StoredPasswordBackoff.library.noteRefused(at: refused)
+            let due = StoredPasswordLockoutBackoff.library.recordRefusalAndNextPost(at: refused)
 
             #expect(due == refused.addingTimeInterval(10))
             #expect(Defaults[.libraryStoredPasswordRefusals] == 1)
             #expect(Defaults[.libraryStoredPasswordRefusedAt] == refused)
-            #expect(!StoredPasswordBackoff.library.postIsDue(now: refused))
+            #expect(!StoredPasswordLockoutBackoff.library.postIsDue(now: refused))
             #expect(Defaults[.ntustStoredPasswordRefusals] == 0)
-            #expect(StoredPasswordBackoff.ntust.postIsDue(now: refused))
-            StoredPasswordBackoff.ntust.noteRefused(at: refused)
-            StoredPasswordBackoff.ntust.noteRefused(at: refused)
+            #expect(StoredPasswordLockoutBackoff.ntust.postIsDue(now: refused))
+            StoredPasswordLockoutBackoff.ntust.recordRefusalAndNextPost(at: refused)
+            StoredPasswordLockoutBackoff.ntust.recordRefusalAndNextPost(at: refused)
             #expect(Defaults[.ntustStoredPasswordRefusals] == 2)
-            #expect(StoredPasswordBackoff.ntust.retryAt(now: refused) == refused.addingTimeInterval(60))
+            #expect(StoredPasswordLockoutBackoff.ntust.retryAt(now: refused) == refused.addingTimeInterval(60))
             #expect(Defaults[.libraryStoredPasswordRefusals] == 1)
         }
     }
@@ -276,6 +276,23 @@ struct StoredPasswordRetryTests {
         #expect(SettingsAPIStub.requests(for: device.backend.loginURL).isEmpty)
     }
 
+    @Test("a try the school takes keeps the refusals while Moodle's token sign-in still refuses the password")
+    func aSchoolYesAloneKeepsTheRefusals() async throws {
+        let device = Device(harvests: Harvests(refusing: 1))
+
+        try await Self.signedIn(refusals: 1, last: Self.start) { _ in
+            let firstTry = try await device.armTheTry()
+            device.advance(by: 10)
+            await device.sleeper.fire()
+            await firstTry.value
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 2)
+        }
+
+        #expect(device.school.posts == 1)
+        #expect(device.harvests.count == 1)
+        #expect(SettingsAPIStub.requests(for: device.backend.loginURL).isEmpty)
+    }
+
     @Test("a try with the school session gone signs in to the school, then harvests the token and signs in to the backend")
     func goneSchoolSessionIsRenewedFirst() async throws {
         let device = Device(harvests: Harvests(refusing: 0))
@@ -485,7 +502,7 @@ struct StoredPasswordRetryTests {
     @Test("a refusal and each automatic post it holds back are announced with when the next post may go")
     func waitsAreAnnounced() async throws {
         let refused = Date(timeIntervalSince1970: 3_000_000 + Double(Int.random(in: 0..<1_000_000)))
-        let retryAt = refused.addingTimeInterval(StoredPasswordBackoff.retryDelay(afterRefusals: 1))
+        let retryAt = refused.addingTimeInterval(StoredPasswordLockoutBackoff.retryDelay(afterRefusals: 1))
         try await Self.signedIn(refusals: 0, last: nil) { _ in
             let heard = Announcements()
             let observer = NotificationCenter.default.addObserver(

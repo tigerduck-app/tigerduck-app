@@ -39,7 +39,7 @@ struct SignOutPlanTests {
                     return Task {}
                 }
             },
-            clearRest: { steps.taken.append("rest") }
+            clearMemoryState: { steps.taken.append("rest") }
         ).run()
 
         #expect(steps.taken == ["stop", "end", "stores", "rest", "calls"])

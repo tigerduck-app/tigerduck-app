@@ -70,7 +70,7 @@ nonisolated enum PackedShareCode {
     }
 
     static func number(_ digits: Substring) -> Int {
-        digits.utf8.reduce(0) { $0 * 10 + Int($1) - Int(UInt8(ascii: "0")) }
+        Int(digits) ?? 0
     }
 
     static func padded(_ value: Int, _ width: Int) -> String {

@@ -7,7 +7,7 @@ struct StateSignalTests {
     @Test(.timeLimit(.minutes(1)))
     func aValueThatAlreadyPassesReturnsAtOnce() async {
         let signal = StateSignal(true)
-        #expect(await signal.wait(until: { $0 }))
+        #expect(await signal.wait(until: { $0 }) == .ready)
         #expect(signal.waiterCount == 0)
     }
 
@@ -21,7 +21,7 @@ struct StateSignalTests {
         #expect(signal.waiterCount == 1)
         signal.value = 2
         #expect(signal.waiterCount == 0)
-        #expect(await waiter.value)
+        #expect(await waiter.value == .ready)
     }
 
     @Test(.timeLimit(.minutes(1)))
@@ -32,40 +32,40 @@ struct StateSignalTests {
         try await waitUntil { signal.waiterCount == 2 }
 
         signal.value = "loading"
-        #expect(await loading.value)
+        #expect(await loading.value == .ready)
         #expect(signal.waiterCount == 1)
         signal.value = "done"
-        #expect(await done.value)
+        #expect(await done.value == .ready)
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func theDeadlineEndsTheWaitWithFalse() async {
+    func theDeadlineEndsTheWaitTimedOut() async {
         let signal = StateSignal(false)
         let start = ContinuousClock.now
         let passed = await signal.wait(until: { $0 }, deadline: start + .milliseconds(50))
-        #expect(!passed)
+        #expect(passed == .timedOut)
         #expect(ContinuousClock.now >= start + .milliseconds(50))
         #expect(signal.waiterCount == 0)
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func aChangeBeforeTheDeadlineReturnsTrue() async throws {
+    func aChangeBeforeTheDeadlineEndsTheWaitReady() async throws {
         let signal = StateSignal(false)
         let waiter = Task { await signal.wait(until: { $0 }, deadline: ContinuousClock.now + .seconds(60)) }
         try await waitUntil { signal.waiterCount == 1 }
 
         signal.value = true
-        #expect(await waiter.value)
+        #expect(await waiter.value == .ready)
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func cancellingTheTaskEndsTheWaitWithFalse() async throws {
+    func cancellingTheTaskEndsTheWaitCancelled() async throws {
         let signal = StateSignal(false)
         let waiter = Task { await signal.wait(until: { $0 }) }
         try await waitUntil { signal.waiterCount == 1 }
 
         waiter.cancel()
-        #expect(await waiter.value == false)
+        #expect(await waiter.value == .cancelled)
         #expect(signal.waiterCount == 0)
     }
 }

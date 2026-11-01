@@ -103,6 +103,13 @@ struct WidgetSchedule {
 
     func courseIndex(of item: ScheduledClass) -> Int { sources[item.meeting].course }
 
+    func firstPerCourseInCourseOrder(_ classes: [ScheduledClass]) -> [ScheduledClass] {
+        var seen = Set<Int>()
+        return classes
+            .filter { seen.insert(courseIndex(of: $0)).inserted }
+            .sorted { courseIndex(of: $0) < courseIndex(of: $1) }
+    }
+
     func row(_ item: ScheduledClass) -> WidgetTimelineDerivation.TodayRow {
         let change = item.change.map { sources[item.meeting].changes[$0] }
         return .init(
@@ -123,10 +130,7 @@ enum WidgetTimelineDerivation {
 
         let schedule = WidgetSchedule(snapshot)
         let today = schedule.timeline.classes(on: date).filter { !$0.isCancelled }
-        var seen = Set<Int>()
-        let ongoing = ClassTimeline.running(at: date, in: today)
-            .filter { seen.insert(schedule.courseIndex(of: $0)).inserted }
-            .sorted { schedule.courseIndex(of: $0) < schedule.courseIndex(of: $1) }
+        let ongoing = schedule.firstPerCourseInCourseOrder(ClassTimeline.running(at: date, in: today))
         if !ongoing.isEmpty {
             return .ongoing(ongoing.map { ongoingInfo(schedule.row($0), at: date) })
         }

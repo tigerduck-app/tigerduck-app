@@ -6,10 +6,11 @@ import os
 final class BackendSignIn {
     private(set) var isSigningIn = false
     @ObservationIgnored private var running: Task<Void, Never>?
+    @ObservationIgnored private(set) var departingUnregister: Task<Void, Never>?
     @ObservationIgnored private var failedAt: Date?
     @ObservationIgnored private weak var auth: AuthService?
 
-    nonisolated static let pause: TimeInterval = 5 * 60
+    nonisolated static let loginLimitPause: TimeInterval = 5 * 60
 
     init(auth: AuthService) {
         self.auth = auth
@@ -18,14 +19,14 @@ final class BackendSignIn {
     nonisolated static func isDue(lastFailure: Date?, now: Date) -> Bool {
         guard let lastFailure else { return true }
         let age = now.timeIntervalSince(lastFailure)
-        return age >= pause || age < 0
+        return age >= loginLimitPause || age < 0
     }
 
     @discardableResult
     func signIn(studentId: String, harvesting: Bool = false, for signIn: SignIn) async -> Bool {
         guard let auth else { return false }
         guard let authTokenManager = auth.authTokenManager else { return false }
-        await auth.departingUnregisterRetry?.value
+        await departingUnregister?.value
         let moodleToken = harvesting ? await moodleToken() : await auth.deps.moodleTokens.currentToken()
         guard let moodleToken, !moodleToken.isEmpty, signIn.isCurrent else { return false }
         do {
@@ -85,7 +86,17 @@ final class BackendSignIn {
         if running == task { running = nil }
     }
 
-    func signInAgain() async {
+    func retryDepartingUnregisterBeforeSigningIn(_ retry: @escaping @MainActor () async -> Void) {
+        guard let auth else { return }
+        let beginBackgroundTask = auth.beginSignOutBackgroundTask
+        departingUnregister = Task { @MainActor in
+            let endBackgroundTask = await beginBackgroundTask()
+            await retry()
+            await endBackgroundTask()
+        }
+    }
+
+    func signInIgnoringFailurePause() async {
         if let current = running {
             await current.value
             if running == current { running = nil }
@@ -160,7 +171,7 @@ final class StoredPasswordRetry {
         let refusals = SchoolPasswordPosts.storedPasswordRefusals.count
         guard refusals > 0 else { return }
         misses += 1
-        start(after: StoredPasswordBackoff.retryDelay(afterRefusals: refusals + misses))
+        start(after: StoredPasswordLockoutBackoff.retryDelay(afterRefusals: refusals + misses))
     }
 
     private func start(after wait: TimeInterval) {
@@ -191,15 +202,22 @@ final class StoredPasswordRetry {
     private func run(_ signIn: SignIn) async -> Bool {
         guard let auth else { return false }
         guard !auth.isLoggingIn, let studentId = auth.storedStudentId, let password = auth.storedPassword else { return false }
-        let mayPost = { !auth.isLoggingIn }
-        let posted = try? await auth.deps.retrySchoolSignIn(studentId, password, signIn, mayPost)
+        let noTypedSignInStarted = { !auth.isLoggingIn }
+        let posted = try? await auth.deps.retrySchoolSignIn(studentId, password, signIn, noTypedSignInStarted)
         guard posted == true else { return false }
         auth.noteSchoolSignInRenewed()
         guard signIn.isCurrent else { return false }
         auth.clearReauthError()
-        guard (try? await auth.deps.moodleTokens.refreshTokenIfNeeded()) != nil, signIn.isCurrent else { return false }
+        guard await forgetRefusalsOnceMoodleAccepts(signIn) else { return false }
+        await auth.backend.signInIgnoringFailurePause()
+        return true
+    }
+
+    private func forgetRefusalsOnceMoodleAccepts(_ signIn: SignIn) async -> Bool {
+        guard let auth, (try? await auth.deps.moodleTokens.refreshTokenIfNeeded()) != nil, signIn.isCurrent else {
+            return false
+        }
         SchoolPasswordPosts.forgetStoredPasswordRefusals()
-        await auth.backend.signInAgain()
         return true
     }
 }

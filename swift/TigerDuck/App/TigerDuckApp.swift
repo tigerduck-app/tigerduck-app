@@ -80,7 +80,7 @@ struct TigerDuckApp: App {
                     watch: { watchSync.pushCurrentState() },
                     liveActivity: { app.liveActivity.scheduleRefresh(after: .zero) }
                 ),
-                fingerprint: { DeviceSurfaceSyncer.fingerprint(of: app, nudges: $0) }
+                fingerprint: { DeviceSurfaceSyncer.fingerprint(of: app, unobserved: $0) }
             )
             return Built(
                 app: app, watchSync: watchSync, widgetSnapshotWriter: widgetSnapshotWriter,
@@ -117,7 +117,7 @@ struct TigerDuckApp: App {
                     Task { widgetSnapshotWriter.regenerate() }
                     UNUserNotificationCenter.current().setBadgeCount(0)
                     TLSPinMismatchQueue.shared.isForeground = true
-                    fetchPinDocumentIfDue()
+                    fetchPinDocumentAfterOnboarding()
                 }
                 .onOpenURL { url in
                     app.router.open(url, signIn: app.authService.session.currentSignIn)
@@ -156,7 +156,7 @@ struct TigerDuckApp: App {
         }
         app.activation.becameActive()
         widgetSnapshotWriter.regenerate()
-        fetchPinDocumentIfDue()
+        fetchPinDocumentAfterOnboarding()
     }
 }
 
@@ -193,11 +193,11 @@ struct TigerDuckApp: App {
                         writer.regenerate()
                         deviceSurfaces = DeviceSurfaceSyncer(
                             surfaces: .init(widgets: { writer.regenerate(forceReload: $0) }),
-                            fingerprint: { [app] in DeviceSurfaceSyncer.fingerprint(of: app, nudges: $0) }
+                            fingerprint: { [app] in DeviceSurfaceSyncer.fingerprint(of: app, unobserved: $0) }
                         )
                     }
                     TLSPinMismatchQueue.shared.isForeground = true
-                    fetchPinDocumentIfDue()
+                    fetchPinDocumentAfterOnboarding()
                 }
                 .onOpenURL { url in
                     app.router.open(url, signIn: app.authService.session.currentSignIn)
@@ -265,14 +265,14 @@ struct TigerDuckApp: App {
         }
         app.activation.becameActive()
         widgetSnapshotWriter?.regenerate()
-        fetchPinDocumentIfDue()
+        fetchPinDocumentAfterOnboarding()
     }
 }
 
 #endif
 
 extension TigerDuckApp {
-    private func fetchPinDocumentIfDue() {
+    private func fetchPinDocumentAfterOnboarding() {
         guard app.hasCompletedOnboarding else { return }
         Task { await TLSPinDocumentFetcher.shared.fetchIfDue() }
     }
