@@ -45,14 +45,15 @@ final class AccountSession {
         return task
     }
 
-    /// The first step of a sign-out: cancels the tasks of the departing sign-in.
+    /// Cancels the departing sign-in's tasks, so work still waiting stops before it writes.
     func stopWork() {
         let running = tasks.values
         tasks = [:]
         running.forEach { $0.cancel() }
     }
 
-    /// The second step of a sign-out: every ticket taken so far reads as stale.
+    /// Makes every ticket taken so far stale: work already past its last `await`, which cancelling
+    /// cannot stop, drops what it fetched at its ticket check.
     func moveOn() {
         signIns.moveOn()
     }
