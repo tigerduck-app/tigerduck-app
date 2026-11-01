@@ -32,8 +32,11 @@ account's token, a course reset stamp, the SSO login stamp, a bulletin detail.
   observable stores in `Stores/`, and the account-scoped `Defaults` keys of
   `docs/account-state.md`, which only the file that clears them writes (`SyncProgress`,
   `SchoolAccountKeys`, `BrowserSites`, `NotificationSettingsSync`, `CourseFiles`,
-  `CloudSyncPreference`). School Mail's fields change only through `MailPreferences.change(for:_:)`,
-  and `MailSettingsStore.shared` is typed read-only, so another write does not compile; its
+  `CloudSyncPreference`). Those keys are `AccountKey`s (`swift/TigerDuck/Account/AccountKey.swift`):
+  `Defaults[.key]` reads one, a write is `Defaults[.key, for: signIn]`, and one without a sign-in
+  does not compile; the sign-out clears one with `Defaults.reset`. School Mail's fields change
+  only through `MailPreferences.change(for:_:)`, and `MailSettingsStore.shared` is typed
+  read-only, so another write does not compile; its
   password is saved with the sign-in it was entered for. An outbox edit carries the sign-in it was
   made in and goes out only for it. A value kept in memory for one sign-in is a `SignInBound`,
   which reads as empty once that sign-in has ended. A counter stays only where it counts
@@ -55,11 +58,11 @@ account's token, a course reset stamp, the SSO login stamp, a bulletin detail.
   setter that reads the sign-in, and a `defer` that checks it, anywhere; a sign-in compared by
   hand, in a collection lookup or as a set or dictionary key, outside `Account/`,
   `Backend/Client/` and `Backend/Auth/`; a persistence type of an account named outside its
-  store; a write to an account-scoped `Defaults` key outside the file `docs/account-state.md`
-  names for it, through any key spelling, a `@Default` wrapper or its binding; a writable School
-  Mail store outside `Mail/Store/`; and a header that names no sign-in outside
-  `Backend/Client/` and `Backend/CourseCatalog/`. The removed counter types need no rule: they no
-  longer compile.
+  store; a write or reset of an account-scoped `Defaults` key outside the file
+  `docs/account-state.md` names for it; a writable School Mail store outside `Mail/Store/`; and a
+  header that names no sign-in outside `Backend/Client/` and `Backend/CourseCatalog/`. The removed
+  counter types need no rule: they no longer compile, nor does a write of an account key without
+  a sign-in.
 
 ## Consequences
 
