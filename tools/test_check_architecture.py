@@ -73,14 +73,15 @@ class ArchitectureTests(unittest.TestCase):
 
     def test_device_calendar_device_zone_and_print_fail_outside_core_and_the_observer(self) -> None:
         text = ("let c = Calendar.current\nlet z = TimeZone.current\nprint(x)\nfunc print() {}\n"
-                "page.print()\nlet s = \"print(\"\n")
+                "page.print()\nSwift.print(x)\nlet s = \"print(\"\n")
         found = ca.shipping_findings([source(APP + "Features/X.swift", text),
                                       source(APP + "Support/Clock/TimezoneObserver.swift", text),
                                       source(ca.CORE_SOURCES + "TigerDuckCore/X.swift", text)])
         self.assertEqual([(f.path.rsplit("/", 1)[-1], f.line, f.rule) for f in found],
                          [("X.swift", 1, "calendar-current"), ("X.swift", 2, "timezone-current"),
-                          ("X.swift", 3, "print"), ("TimezoneObserver.swift", 1, "calendar-current"),
-                          ("TimezoneObserver.swift", 3, "print")])
+                          ("X.swift", 3, "print"), ("X.swift", 6, "print"),
+                          ("TimezoneObserver.swift", 1, "calendar-current"),
+                          ("TimezoneObserver.swift", 3, "print"), ("TimezoneObserver.swift", 6, "print")])
         self.assertIn("TaipeiTime", found[0].message)
         self.assertIn("AppLogger", found[2].message)
 
@@ -110,7 +111,7 @@ class ArchitectureTests(unittest.TestCase):
                  "E.swift": "struct PlainTests {\n    let view: WKWebView? = nil\n    // field.becomeFirstResponder()\n}\n"}
         found = ca.unlisted_on_screen_findings(workflow, {k: ca.strip_code(v) for k, v in tests.items()})
         self.assertEqual([(f.path, f.message.split("`")[1]) for f in found],
-                         [("C.swift", "MissingTests"), ("D.swift", "WebTests")])
+                         [("C.swift", "MissingTests/shows"), ("D.swift", "WebTests")])
 
     def test_a_well_formed_migration_passes(self) -> None:
         good = ('enum ADoneMigration {\n    private static let doneKey = "ADoneMigration.v1.done"\n'
@@ -141,6 +142,32 @@ class ArchitectureTests(unittest.TestCase):
             source(ca.MIGRATION_RUNNER, "AMigration.runIfNeeded()\n")])
         self.assertEqual([(f.path, f.rule) for f in found],
                          [(ca.MIGRATIONS + "AMigration.swift", "migration"), (APP + "Stores/X.swift", "migration")])
+
+    def test_a_listed_function_does_not_cover_its_unlisted_sibling(self) -> None:
+        workflow = ("          - leg: phone\n            on_screen_tests: >-\n"
+                    "              TigerDuckTests/FuncTests/shows()\n              TigerDuckTests/WholeTests\n")
+        window = ("struct %s {\n    func shows() {\n        window.makeKeyAndVisible()\n    }\n"
+                  "    func hides() {\n        let v = WKWebView(frame: .zero)\n    }\n}\n")
+        tests = {"A.swift": ca.strip_code(window % "FuncTests"), "B.swift": ca.strip_code(window % "WholeTests")}
+        found = ca.unlisted_on_screen_findings(workflow, tests)
+        self.assertEqual([(f.path, f.line, f.message.split("`")[1]) for f in found],
+                         [("A.swift", 6, "FuncTests/hides")])
+
+    def test_a_commented_done_key_or_a_second_migration_type_fails(self) -> None:
+        def fail(text: str) -> list[str]:
+            return [f.message for f in ca.migration_findings([source(ca.MIGRATIONS + "AMigration.swift", text)])]
+        entry = "    static func runIfNeeded() {}\n"
+        self.assertEqual(len(fail('enum AMigration {\n    // private static let doneKey = "AMigration.v1.done"\n'
+                                  + entry + "}\n")), 1)
+        self.assertEqual(len(fail('enum AMigration {\n    private static let doneKey = "AMigration.v1.done"\n'
+                                  + entry + "}\nenum BMigration {}\n")), 1)
+
+    def test_a_type_declared_in_another_migration_file_is_still_checked_outside(self) -> None:
+        a = source(ca.MIGRATIONS + "AMigration.swift",
+                   'enum AMigration {\n    private static let doneKey = "AMigration.v1.done"\n'
+                   "    static func runIfNeeded() {}\n}\nenum BMigration {}\n")
+        found = ca.migration_findings([a, source(APP + "Stores/X.swift", "BMigration.run()\n")])
+        self.assertIn(APP + "Stores/X.swift", [f.path for f in found])
 
     def test_a_type_counts_its_extensions_and_not_its_nested_types(self) -> None:
         main = "struct Store {\n" + body(200) + "    struct Row {\n" + body(100) + "    }\n}\n"
