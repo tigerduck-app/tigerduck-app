@@ -7,6 +7,7 @@ enum SchoolMailBootstrap {
         account: MailAccountManager? = nil,
         notifier: MailNotifier = MailChecker.shared.notifier
     ) {
+        // Swift 5 mode type-checks a default argument outside the main actor (SE-0411 is off).
         let account = account ?? .shared
         guard SchoolMailAvailability.isEnabled else { return }
         SchoolMailCharsetHook.install()

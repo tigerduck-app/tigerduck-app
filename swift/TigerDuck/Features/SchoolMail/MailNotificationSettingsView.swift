@@ -153,10 +153,10 @@ struct MailNotificationSettingsView: View {
             Toggle(String(localized: "school_mail_quiet_hours"), isOn: quietHours.isEnabled)
             if quietHours.wrappedValue.isEnabled {
                 DatePicker(String(localized: "school_mail_quiet_hours_start"),
-                           selection: Self.timeBinding(quietHours.start), displayedComponents: .hourAndMinute)
+                           selection: Self.timeBinding(quietHours.startMinute), displayedComponents: .hourAndMinute)
                     .environment(\.timeZone, TaipeiTime.timeZone)
                 DatePicker(String(localized: "school_mail_quiet_hours_end"),
-                           selection: Self.timeBinding(quietHours.end), displayedComponents: .hourAndMinute)
+                           selection: Self.timeBinding(quietHours.endMinute), displayedComponents: .hourAndMinute)
                     .environment(\.timeZone, TaipeiTime.timeZone)
                 NavigationLink {
                     MailQuietDaysView(weekdays: quietHours.weekdays)

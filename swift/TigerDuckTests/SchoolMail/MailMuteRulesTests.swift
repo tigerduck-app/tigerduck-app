@@ -93,7 +93,7 @@ struct MailMuteRulesTests {
 
     @Test func settingsSurviveEncoding() throws {
         var settings = MailMuteSettings()
-        settings.quietHours = MailQuietHours(isEnabled: true, start: 22 * 60 + 30, end: 6 * 60, weekdays: [2, 3])
+        settings.quietHours = MailQuietHours(isEnabled: true, startMinute: 22 * 60 + 30, endMinute: 6 * 60, weekdays: [2, 3])
         settings.presets = [.moodleSubmission]
         settings.rules = [Self.rule(.toOrCc, .is, "a@b.c")]
         let decoded = try JSONDecoder().decode(MailMuteSettings.self, from: JSONEncoder().encode(settings))
@@ -105,7 +105,7 @@ struct MailMuteRulesTests {
             {"quietHours":{"isEnabled":true,"end":360},"rules":[{"field":"subject","op":"is","value":"Digest"}]}
             """#.utf8)
         let decoded = try JSONDecoder().decode(MailMuteSettings.self, from: stored)
-        #expect(decoded.quietHours == MailQuietHours(isEnabled: true, start: 23 * 60, end: 360, weekdays: Set(1...7)))
+        #expect(decoded.quietHours == MailQuietHours(isEnabled: true, startMinute: 23 * 60, endMinute: 360, weekdays: Set(1...7)))
         #expect(decoded.presets.isEmpty)
         #expect(decoded.rules.map(\.field) == [.subject])
         #expect(decoded.rules.map(\.op) == [.is])
@@ -113,10 +113,17 @@ struct MailMuteRulesTests {
         #expect(try JSONDecoder().decode(MailMuteSettings.self, from: Data("{}".utf8)) == MailMuteSettings())
     }
 
+    @Test func quietHoursKeepTheirStoredKeys() throws {
+        let encoded = try JSONEncoder().encode(MailQuietHours(isEnabled: true, startMinute: 60, endMinute: 120))
+        let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        #expect(Set(object.keys) == ["isEnabled", "start", "end", "weekdays"])
+        #expect(object["start"] as? Int == 60)
+    }
+
     // MARK: Quiet hours
 
     @Test func aWindowInsideOneDay() {
-        let quiet = MailQuietHours(isEnabled: true, start: 13 * 60, end: 14 * 60)
+        let quiet = MailQuietHours(isEnabled: true, startMinute: 13 * 60, endMinute: 14 * 60)
         #expect(!quiet.contains(Self.at(day: 23, 12, 59)))
         #expect(quiet.contains(Self.at(day: 23, 13)))
         #expect(quiet.contains(Self.at(day: 23, 13, 59)))
@@ -146,7 +153,7 @@ struct MailMuteRulesTests {
 
     @Test func offOrEmptyWindowsQuietNothing() {
         #expect(!MailQuietHours().contains(Self.at(day: 23, 23, 30)))
-        #expect(!MailQuietHours(isEnabled: true, start: 60, end: 60).contains(Self.at(day: 23, 1)))
+        #expect(!MailQuietHours(isEnabled: true, startMinute: 60, endMinute: 60).contains(Self.at(day: 23, 1)))
         #expect(!MailQuietHours(isEnabled: true, weekdays: []).contains(Self.at(day: 23, 23, 30)))
     }
 

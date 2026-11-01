@@ -14,9 +14,21 @@ nonisolated struct SanitizedHTML: Equatable, Sendable {
     var links: [MailLink]
 }
 
-nonisolated struct LinkedHTML: Equatable, Sendable {
-    var html: String
-    var links: [MailLink]
+nonisolated enum LinkedHTML: Equatable, Sendable {
+    /// Anchor `n`'s `href` reads `https://link.invalid/<n>`, and `links[n]` holds its text and
+    /// original href.
+    case linked(html: String, links: [MailLink])
+    case stripped(html: String)
+
+    var html: String {
+        switch self {
+        case .linked(let html, _), .stripped(let html): html
+        }
+    }
+
+    var links: [MailLink] {
+        if case .linked(_, let links) = self { links } else { [] }
+    }
 }
 
 nonisolated enum MailHTMLSanitizer {
@@ -158,12 +170,12 @@ nonisolated enum MailHTMLSanitizer {
     /// web view's reparse can shift an index. `.invalid` never resolves (RFC 2606).
     static func rewriteLinks(_ html: String) -> LinkedHTML {
         guard let doc = try? SwiftSoup.parseBodyFragment(html) else {
-            return LinkedHTML(html: stripHrefsWithRegex(html), links: [])
+            return .stripped(html: stripHrefsWithRegex(html))
         }
         doc.outputSettings().prettyPrint(pretty: false)
         guard let anchors = try? doc.select("a[href]") else {
             _ = try? doc.select("a").removeAttr("href")
-            return LinkedHTML(html: (try? doc.body()?.html()) ?? stripHrefsWithRegex(html), links: [])
+            return .stripped(html: (try? doc.body()?.html()) ?? stripHrefsWithRegex(html))
         }
         var links: [MailLink] = []
         for (index, anchor) in anchors.array().enumerated() {
@@ -175,10 +187,10 @@ nonisolated enum MailHTMLSanitizer {
         let rewritten = (try? doc.body()?.html()) ?? html
         if let reparsed = try? SwiftSoup.parseBodyFragment(rewritten), let reanchors = try? reparsed.select("a[href]"),
            Self.hrefsAndTexts(reanchors) == Self.hrefsAndTexts(anchors) {
-            return LinkedHTML(html: rewritten, links: links)
+            return .linked(html: rewritten, links: links)
         }
         _ = try? anchors.removeAttr("href")
-        return LinkedHTML(html: (try? doc.body()?.html()) ?? stripHrefsWithRegex(rewritten), links: [])
+        return .stripped(html: (try? doc.body()?.html()) ?? stripHrefsWithRegex(rewritten))
     }
 
     private static func hrefsAndTexts(_ anchors: Elements) -> [[String]] {
@@ -190,7 +202,7 @@ nonisolated enum MailHTMLSanitizer {
     /// carries a live `href`. After a quoted value no separator is needed (`<a href="a"href="b">`
     /// is two attributes), so a quote also starts a match, via a zero-width lookbehind that keeps
     /// the previous closing quote.
-    static let hrefAttributePattern = try! NSRegularExpression(
+    private static let hrefAttributePattern = try! NSRegularExpression(
         pattern: #"(?:[\s/]+|(?<=["']))href\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)"#, options: .caseInsensitive
     )
 
