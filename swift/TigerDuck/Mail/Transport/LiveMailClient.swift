@@ -184,7 +184,7 @@ actor LiveMailClient: MailClient {
 
     /// `IMAPServer.createMailbox` sends the name as raw bytes (`MailboxName(ByteBuffer(string:))`)
     /// after `resolveMailboxPath` has applied any advertised personal-namespace prefix, so the
-    /// modified-UTF-7 name the caller passes is exactly what reaches the wire — the same spelling
+    /// modified-UTF-7 name the caller passes is what reaches the wire, the same spelling
     /// `listFolders()` reports back and `selectMailbox`/`copy`/`append` already take.
     func createFolder(_ name: String) async throws {
         try await run { try await self.imap.createMailbox(name) }
@@ -276,7 +276,7 @@ actor LiveMailClient: MailClient {
 }
 
 /// The app's transport scheme in SwiftMail's own terms. Internal rather than private so
-/// `MailServerConfigTests` can pin the mapping — this is the one step between what the
+/// `MailServerConfigTests` can pin the mapping, this is the one step between what the
 /// developer override says and what actually goes on the wire, and `.startTLS` mapping to
 /// SwiftMail's
 /// `.startTLS` (which resolves to `startTLSRequired`, not `startTLSIfAvailable`) is the part

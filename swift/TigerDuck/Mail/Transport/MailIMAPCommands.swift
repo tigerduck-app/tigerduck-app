@@ -125,8 +125,8 @@ nonisolated enum MailIMAPCommands {
 
     /// Wrapped in the same `mapSearchError` as `undeletedUIDs(folder:)`, and for the same reason:
     /// nothing in Mail2000's CAPABILITY banner promises `SEARCH HEADER "Message-ID"` is honoured,
-    /// so a server that refuses the key must come back as `.searchUnsupported` — the typed "this
-    /// server will not answer that" — rather than as a raw `IMAPError` flattened into a generic
+    /// so a server that refuses the key must come back as `.searchUnsupported`, the typed "this
+    /// server will not answer that", rather than as a raw `IMAPError` flattened into a generic
     /// `.protocolError`. The sent-copy dedupe (`SentCopyFiler`) turns either into
     /// `SentCopyProbe.unknown`, but only one of them says which of the two happened.
     static func containsMessageID(_ messageID: String, in folder: String, imap: IMAPServer) async throws -> Bool {

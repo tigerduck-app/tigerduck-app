@@ -148,8 +148,8 @@ nonisolated enum MailMessageBuilder {
     // MARK: Attachment names
 
     /// RFC 2045 `type/subtype`, restricted to token characters (no whitespace, no
-    /// control character, no `/` beyond the one separator). Anything else — including a
-    /// value carrying a smuggled CRLF — falls back to a safe default rather than being
+    /// control character, no `/` beyond the one separator). Anything else, including a
+    /// value carrying a smuggled CRLF, falls back to a safe default rather than being
     /// written into the header verbatim.
     private static let mimeTypePattern = try! NSRegularExpression(
         pattern: #"^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$"#
@@ -174,11 +174,11 @@ nonisolated enum MailMessageBuilder {
 
     // MARK: Body
 
-    /// RFC 2045 §6.7's line-length cap the quoted-printable encoder wraps at — shared by
+    /// RFC 2045 §6.7's line-length cap the quoted-printable encoder wraps at, shared by
     /// the real encoder (`encodeLine`) and its size estimate (`quotedPrintableUpperBound`)
     /// so the two can never drift apart. A gap here (the estimate wrapping later than the
     /// encoder actually does) undercounts every soft break past the first for a long
-    /// unbroken run, which is exactly the kind of gap that turns an "upper bound" into one
+    /// unbroken run, which is the kind of gap that turns an "upper bound" into one
     /// that isn't.
     private static let qpLineLength = 75
 

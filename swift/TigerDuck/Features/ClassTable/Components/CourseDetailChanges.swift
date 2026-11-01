@@ -58,7 +58,6 @@ struct CourseDetailChanges: View {
         for meeting in meetings {
             if let shown, meeting.periods.contains(where: shown.periods.contains),
                TaipeiTime.calendar.startOfDay(for: meeting.date) == TaipeiTime.calendar.startOfDay(for: shown.date) {
-                // The cards show the tapped class; a room its meeting's other classes move to does not.
                 parts += meeting.changes
                     .filter { $0.kind == .room && !shown.periods.contains(where: $0.covers) }
                     .compactMap(\.room)

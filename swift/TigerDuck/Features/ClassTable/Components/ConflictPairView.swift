@@ -61,9 +61,6 @@ struct ConflictPairView: View {
                 sharpBottomOuter: sharpBottom
             )
 
-            // `scrollSafeTapAction` wraps the cluster in a real `Button` so the first tap
-            // wins iOS 18 scroll arbitration; see View+ScrollSafeGesture. Any tap opens
-            // the picker, not per-shape hit-testing, so the user sees both, as on Android.
             ZStack(alignment: .topLeading) {
                 courseRegion(
                     course: courseA,

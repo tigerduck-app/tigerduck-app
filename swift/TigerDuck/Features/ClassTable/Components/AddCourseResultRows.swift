@@ -13,7 +13,6 @@ struct AddCourseResultRows: View {
         let existingCourseNos = Set(tableCourses.map(\.courseNo))
         ForEach(shown, id: \.course.courseNo) { item in
             let group = item.course
-            // A course added here joins `tableCourses` too, and stays removable.
             let mark: AddCourseRowMark = addedHere.contains(group.courseNo) ? .addedHere
                 : existingCourseNos.contains(group.courseNo) ? .inTable : .notAdded
             Button {

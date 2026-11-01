@@ -137,7 +137,7 @@ nonisolated enum DevMailNetworkProbe {
                         resumer.resume(.ready(DevMailNetworkProbe.describe(ready: connection)))
                     // `.waiting` is a result, not a stage on the way to one: Network keeps
                     // retrying a refused or unroutable connection indefinitely, and the error it
-                    // is waiting on is exactly the diagnosis.
+                    // is waiting on is the diagnosis.
                     case .waiting(let error), .failed(let error):
                         resumer.resume(.failed(error))
                     case .cancelled:
@@ -170,8 +170,8 @@ nonisolated enum DevMailNetworkProbe {
 
     /// Not a task group: a group does not return until every child has finished, and not waiting
     /// for work that has not finished is the whole point here. SwiftMail's IMAP and SMTP commands
-    /// ignore task cancellation, and a filtered port is exactly the case where a socket sits for a
-    /// minute or more — so the unfinished work is left to end on its own, with nobody reading it,
+    /// ignore task cancellation, and a filtered port is the case where a socket sits for a
+    /// minute or more, so the unfinished work is left to end on its own, with nobody reading it,
     /// while the stage reports the hang. Every connection this probe opens is held by its caller
     static func withTimeout<T: Sendable>(
         _ timeout: Duration,

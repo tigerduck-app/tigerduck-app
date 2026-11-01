@@ -19,14 +19,7 @@ actor SettingsDocumentClient {
         )
     }
 
-    // MARK: - Public surface
-
-    /// GET the current document for `namespace`.
-    ///
-    /// `nil` means the user has never written to this namespace — the
-    /// backend 404s (`settings_docs.py:read_document`), and that is the
-    /// normal state for a fresh account, not an error the caller needs to
-    /// handle specially.
+    /// nil when the backend 404s because the namespace was never written (`settings_docs.py:read_document`).
     func read(namespace: String) async throws -> (document: Data, revision: Int)? {
         var request = BackendRequest("GET", segments: ["settings", namespace])
         request.sendsWithoutSession = true
@@ -42,13 +35,9 @@ actor SettingsDocumentClient {
         return try Self.parseDocumentEnvelope(response.data)
     }
 
-    /// PUT `document` to `namespace`.
-    /// `baseRevision: nil` asks the backend to create the document; it
-    /// 409s if one already exists. A non-nil value does a compare-and-swap
-    /// and 409s if the server's revision has moved on since. Either way a
-    /// 409 is not thrown as an error — the response carries the winning
-    /// document and revision (`settings_docs.py:_conflict_response`) so
-    /// the caller can merge and retry instead of just failing.
+    /// A nil `baseRevision` creates the document, any other compare-and-swaps on it. A 409 is
+    /// returned, not thrown: it carries the winning document and revision
+    /// (`settings_docs.py:_conflict_response`) for the caller to merge and retry.
     func write(namespace: String, document: Data, baseRevision: Int?) async throws -> SettingsWriteResult {
         let documentObject: Any
         do {

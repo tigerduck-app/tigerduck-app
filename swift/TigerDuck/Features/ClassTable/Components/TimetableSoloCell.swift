@@ -31,9 +31,6 @@ struct TimetableSoloCell: View {
 
         Color.clear
             .overlay(alignment: .top) {
-                // `scrollSafeTapAction` wraps the cell in a real `Button` so
-                // the first tap wins iOS 18 arbitration against the grid's
-                // scroll view. See View+ScrollSafeGesture.
                 courseFace(
                     course, spanCount: spanCount,
                     showsRoomHint: bottomLine != nil, showsMark: hasBadge || ignoresAssignments,

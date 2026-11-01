@@ -68,7 +68,6 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         page.find.run = { [weak webView] in await webView?.runFind($0) }
         Task {
             await BrowserData.shared.prepare()
-            // A sign-in or sign-out has come since this browser opened, and it is closing.
             guard BrowserData.shared.epoch == page.epoch else { return }
             // Until asked for its records, the store answers with no cookies, not those on disk.
             _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
@@ -158,12 +157,10 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         download.delegate = self
-        // The load ends here without finishing, which would leave a sign-in that led to it showing.
         page.signIn.pageSettled()
     }
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
-        // A folder each, so two files of one name both keep theirs.
         let folder = page.downloads.folder.appendingPathComponent(UUID().uuidString, isDirectory: true)
         guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else { return nil }
         let file = folder.appendingPathComponent(MoodleFileDownloads.safeName(suggestedFilename))
@@ -217,7 +214,6 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         let cookies = page.store.httpCookieStore
         let expiry = Date.now.addingTimeInterval(Self.sessionKept)
         let lasting = await cookies.allCookies().compactMap { BrowserRouting.lastingSession($0, until: expiry) }
-        // A sign-in or sign-out since has emptied this store for the departing account.
         guard BrowserData.shared.epoch == page.epoch else { return }
         for cookie in lasting { await cookies.setCookie(cookie) }
     }

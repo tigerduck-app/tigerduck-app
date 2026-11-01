@@ -63,7 +63,6 @@ final class HomeViewModel {
         guard await SchoolRefresh.begin() else { return }
         SchoolRefresh.dropMoodleCourses()
         await SchoolRefresh.assignments(authService: authService)
-        // Read back from the store, so a mark made while the round ran stays.
         reloadFromCache()
         SchoolRefresh.end()
     }

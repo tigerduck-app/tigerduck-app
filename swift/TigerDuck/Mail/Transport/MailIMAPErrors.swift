@@ -35,11 +35,11 @@ nonisolated enum MailIMAPErrors {
         return classify(described, fallback: isNetworkShaped(error) ? .unreachable : .protocolError(described))
     }
 
-    /// A failure of the IMAP/SMTP response decoder or its parser — the server sent something
+    /// A failure of the IMAP/SMTP response decoder or its parser, the server sent something
     /// this client cannot read.
     /// NIOIMAP surfaces these as `IMAPDecoderError` (wrapping a `ParserError`) straight from the
     /// channel and SwiftMail rethrows them untouched, but SwiftMail does not re-export NIOIMAP,
-    /// so the type cannot be named here. Matched by name instead — the same way SwiftMail's own
+    /// so the type cannot be named here. Matched by name instead, the same way SwiftMail's own
     /// `shouldRecycleConnection` recognizes it.
     static func isDecodeFailure(_ error: any Error) -> Bool {
         let text = (String(describing: type(of: error)) + " " + String(describing: error)).lowercased()
@@ -65,12 +65,12 @@ nonisolated enum MailIMAPErrors {
 
     /// SwiftMail turns every tagged NO/BAD reply to LOGIN into `IMAPError.loginFailed(text)`
     /// (`LoginHandler.handleTaggedErrorResponse`), with no distinction between a wrong password
-    /// and the server temporarily refusing new sessions — a LOGIN NO for "too many connections"
+    /// and the server temporarily refusing new sessions, a LOGIN NO for "too many connections"
     /// looks identical in shape to a rejected password. Only the RFC 5530 response codes a
     /// server actually uses to say "temporarily unavailable, try later" (`[UNAVAILABLE]`,
     /// `[LIMIT]`, `[INUSE]`) or the literal phrase Mail2000 sends for its connection cap count as
-    /// `.serverBusy`; every other LOGIN failure — including generic phrasing like "try again"
-    /// that a wrong-password reply could just as easily contain — stays `.authenticationFailed`.
+    /// `.serverBusy`; every other LOGIN failure, including generic phrasing like "try again"
+    /// that a wrong-password reply could just as easily contain, stays `.authenticationFailed`.
     static func classifyLoginFailure(_ text: String) -> MailClientError {
         let lowered = text.lowercased()
         let busyResponseCodes = ["[unavailable]", "[limit]", "[inuse]"]
@@ -82,9 +82,9 @@ nonisolated enum MailIMAPErrors {
     /// TLS certificate/verification failures surface as NIOSSL handshake errors that mention
     /// the certificate; a busy server as NO/BYE text. A handshake failure that does *not*
     /// mention a certificate (e.g. a protocol-version alert) is a transport problem, not a
-    /// trust one, and falls through to whatever `fallback` the caller passed — `.unreachable`
+    /// trust one, and falls through to whatever `fallback` the caller passed, `.unreachable`
     /// for a raw connection failure, `.protocolError(...)` for an otherwise-unrecognized
-    /// `IMAPError`/`SMTPError`/`SMTPSendError` — rather than being misreported as
+    /// `IMAPError`/`SMTPError`/`SMTPSendError`, rather than being misreported as
     /// `.certificateRejected`.
     static func classify(_ text: String, fallback: MailClientError) -> MailClientError {
         let lowered = text.lowercased()

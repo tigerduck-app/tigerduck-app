@@ -171,7 +171,7 @@ final class NTUSTSessionManager {
 /// ``NTUSTSessionManager.probeCookiesValid()`` /Home/Index signal).
 ///
 /// Also forwards server-trust challenges to ``TLSPinningDelegate.shared``
-/// — see the auth-challenge method below.
+/// in the auth-challenge method below.
 private final class NoRedirectSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(
         _ session: URLSession,

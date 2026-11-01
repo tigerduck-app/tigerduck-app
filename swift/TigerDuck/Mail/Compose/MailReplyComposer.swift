@@ -63,7 +63,7 @@ nonisolated enum MailReplyComposer {
         return "\n\n\(block)\n\n\(normalizedLines(original.bodyText).joined(separator: "\n"))"
     }
 
-    /// "Name <address>" when a name is present, else the bare address — for the
+    /// "Name <address>" when a name is present, else the bare address, for the
     /// human-readable From/To lines in a forward's header block (not a MIME header) and
     /// for a compose recipient field. A name containing an RFC 5322 special is quoted with
     /// `"` and has `\` and `"` backslash-escaped so it parses back through

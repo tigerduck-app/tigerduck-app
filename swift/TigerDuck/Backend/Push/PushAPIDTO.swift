@@ -21,7 +21,6 @@ enum PushAPI {
         let token_kind: String
         let token_value: String
         let bundle_id: String
-        /// "development" or "production" — must match the build configuration.
         let environment: String
         let scope_key: String
     }

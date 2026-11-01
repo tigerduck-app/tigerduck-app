@@ -240,7 +240,6 @@ final class LibraryViewModel {
         stopTimers()
         code = ShownCode()
         cycle.noteSuccess()
-        // A typed sign-in in flight settles the state when it ends; a second one must not start before.
         if access != .signingIn { access = .stored }
         libUsername = LibraryAccount.suggestedUsername
         libPassword = ""

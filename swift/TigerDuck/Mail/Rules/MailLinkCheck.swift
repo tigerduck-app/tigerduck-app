@@ -72,8 +72,8 @@ nonisolated enum MailLinkCheck {
     /// All scanning here is on `unicodeScalars`, never on `String`'s default `Character`
     /// (extended grapheme cluster) view: a combining mark attaches to whatever scalar
     /// precedes it, so `Character`-based comparison of `/`, `\`, `?`, `#`, `@`, `[`, `]` or
-    /// `:` can silently merge one of those separators into a bogus, non-matching cluster —
-    /// e.g. `/` immediately followed by a combining mark stops being `"/"` as a `Character` —
+    /// `:` can silently merge one of those separators into a bogus, non-matching cluster,
+    /// e.g. `/` immediately followed by a combining mark stops being `"/"` as a `Character`,
     /// letting the scan run straight past a real terminator or the true last `@` to a
     /// forged one further along (spec A.4 rule 2 parity).
     private static func browserHostOf(_ href: String, authorityStart: String.Index) -> String? {

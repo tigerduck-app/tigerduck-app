@@ -105,7 +105,6 @@ nonisolated extension PackedShareCode {
         private static func readHeads(_ r: inout BitReader) throws -> [String] {
             let known = try r.subset(of: knownHeads.count, nonEmpty: false)
             let unknownCount = try r.gamma() - 1
-            // A longer list than there are heads cannot be one of distinct heads.
             guard unknownCount <= headValueCount - knownHeads.count else { throw ClassTableShareCodeError.malformed }
             let unknown = try (0..<unknownCount).map { _ in try r.get(11) }
             guard unknown.allSatisfy({ $0 < headValueCount && !knownHeads.contains(headText($0)) }),
@@ -124,7 +123,6 @@ nonisolated extension PackedShareCode {
                 level = nextLevel
                 if let last, !last.utf8.lexicographicallyPrecedes(tail.utf8) { throw ClassTableShareCodeError.malformed }
                 last = tail
-                // A head and tail the head rule splits otherwise, as 3N with G115701, are another course's.
                 guard let parts = split(head + tail), parts.head == head, parts.tail == tail else {
                     throw ClassTableShareCodeError.malformed
                 }

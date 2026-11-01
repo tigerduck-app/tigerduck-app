@@ -3,8 +3,8 @@ import Foundation
 
 /// What the mail list is pointed at.
 ///
-/// Mail2000 has no server-side "all mail" folder — there is no SPECIAL-USE, and IMAP has no
-/// cross-folder view at all — so All mail is a client-side merge with no name any server
+/// Mail2000 has no server-side "all mail" folder, there is no SPECIAL-USE, and IMAP has no
+/// cross-folder view at all, so All mail is a client-side merge with no name any server
 /// command would accept. Modelling it as its own case instead of a magic folder string is the
 /// whole point: `real(name)` is the only case whose name may ever reach a `SELECT`, and every
 /// `switch` over a selection has to state out loud what it does with `allMail`.

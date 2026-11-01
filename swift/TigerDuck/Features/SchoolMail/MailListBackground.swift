@@ -38,7 +38,6 @@ final class MailListBackground {
                 try? await AppClock.sleep(until: ContinuousClock.now + .seconds(MailConstants.pagePollInterval))
                 guard !Task.isCancelled, let self else { return }
                 await self.pollOnce()
-                // A pass Low Data Mode paused, or one waiting out a failure, picks up here.
                 self.startIndexIfLoaded()
             }
         }
@@ -170,8 +169,6 @@ final class MailListBackground {
         let delay = warmDelay
         let cache = list.writer.cache
         warmTask = Task { [weak self] in
-            // Cancelling cannot abort a page already on the wire, so the only way to spare the
-            // refresh that follows a paint straight away is for the warm not to have started yet.
             await delay()
             for folder in queue {
                 guard !Task.isCancelled, let self, let list = self.list, list.loads.accountEpoch == epoch else { return }

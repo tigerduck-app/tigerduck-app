@@ -124,7 +124,6 @@ private struct TLSPinPromptHost: ViewModifier {
                 await show(prompt)
                 return
             }
-            // What else holds the turn back is in `Turn`, whose change starts a new run.
             #if os(iOS)
             guard window.isPresenting else { return }
             await window.presentationsClosed()

@@ -76,9 +76,9 @@ nonisolated enum MailIMAPMessages {
         )
     }
 
-    /// `Return-Path` off the full header section `detailOptions` already fetches — nil when the
+    /// `Return-Path` off the full header section `detailOptions` already fetches, nil when the
     /// fetch fell back to the summary attributes (`detailInfo`), which carry no headers at all.
-    /// The **first** one, not the last. The final delivery agent prepends its `Return-Path`
+    /// The first one, not the last. The final delivery agent prepends its `Return-Path`
     /// above everything the sender wrote, so a message carrying extra copies lower down is one
     /// where the top line is the server's and the rest are the sender's. `additionalFields` is
     /// the same headers as a dictionary and keeps the *last* value for a repeated name, which is

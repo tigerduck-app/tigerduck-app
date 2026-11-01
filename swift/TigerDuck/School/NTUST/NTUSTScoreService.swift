@@ -58,7 +58,7 @@ enum NTUSTScoreService {
 
         // Defensive: a successful fetch that parses to a fully empty report
         // usually means the HTML was actually the SSO page disguised as a
-        // 200 — avoid poisoning the cache with that.
+        // 200, avoid poisoning the cache with that.
         if report == .empty {
             throw NTUSTScoreServiceError.parseFailed
         }

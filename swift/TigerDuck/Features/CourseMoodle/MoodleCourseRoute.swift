@@ -17,7 +17,6 @@ enum MoodleCourseRoute: Hashable {
     var refreshesOnItsOwn: Bool {
         switch self {
         case .announcements, .materials, .grades, .members, .forums, .forum, .discussion, .assignments: true
-        // Its chrome takes the Mac's refresh shortcut and has nothing to fetch again.
         case .syllabus: true
         case .announcement, .member, .assignment: false
         }

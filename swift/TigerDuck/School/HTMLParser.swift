@@ -16,7 +16,7 @@ nonisolated enum HTMLParser {
     /// Body-only signature for the SSO login form, ignoring the URL.
     /// Use this when an upstream service (e.g. stuinfosys / score
     /// portal) returns 200 with the SSO form rendered inline instead
-    /// of redirecting to ssoam2 — the URL-gated `isSSOLoginPage`
+    /// of redirecting to ssoam2, the URL-gated `isSSOLoginPage`
     /// would miss that case and the HTML parser would fall through
     /// to `.empty`.
     static func looksLikeSSOLoginBody(_ html: String) -> Bool {

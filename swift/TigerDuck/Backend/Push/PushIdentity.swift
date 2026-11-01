@@ -1,11 +1,6 @@
 import Foundation
 
-/// Persistent device identity for the push server.
-///
-/// A single UUIDv4 stored in the iOS Keychain. Keychain items survive
-/// app uninstall/reinstall, so this UUID is stable across the device's
-/// lifetime (until the user resets the device or explicitly wipes
-/// Keychain via Settings).
+/// The device's UUIDv4, kept in the Keychain so it survives a reinstall.
 nonisolated struct PushIdentity: Sendable {
     let uuid: String
 

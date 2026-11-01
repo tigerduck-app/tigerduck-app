@@ -137,7 +137,6 @@ struct MailMessageContentView: View {
                     )
                     .frame(height: webHeight)
                     .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
-                    // The page is blank until its rules compile and it first loads.
                     if !webLoaded {
                         ProgressView().frame(maxWidth: .infinity).padding(.vertical, 60)
                     }

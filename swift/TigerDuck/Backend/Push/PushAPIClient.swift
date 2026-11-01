@@ -102,8 +102,6 @@ final class PushAPIClient: Sendable {
         )
     }
 
-    // MARK: - Override sync
-
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String,

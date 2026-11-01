@@ -61,8 +61,6 @@ nonisolated enum PushServerConfig {
         return url
     }
 
-    // MARK: - Host classification
-
     /// True when `host` cannot be routed off the local network, and so may
     /// be reached over plain HTTP: `localhost` and RFC 6761 `*.localhost`,
     /// IPv4 loopback, RFC 1918 and link-local, IPv6 `::1`, `fc00::/7` and
@@ -99,7 +97,7 @@ nonisolated enum PushServerConfig {
         }
     }
 
-    /// Strict dotted-quad parse: exactly four decimal octets in 0...255
+    /// Strict dotted-quad parse: four decimal octets in 0...255
     /// with no leading zeros. Leading zeros are rejected because some
     /// resolvers read `0192.168.1.5` as octal, which would let a crafted
     /// literal read as private here and resolve somewhere else entirely.
@@ -134,10 +132,8 @@ nonisolated enum PushServerConfig {
         return false
     }
 
-    /// Parses an IPv6 literal into 16 bytes via the system resolver, which
-    /// is the same parser URLSession will use — hand-rolling the `::`
-    /// expansion risks classifying an address differently from the stack
-    /// that actually dials it.
+    /// Parses an IPv6 literal into 16 bytes via the system resolver, the
+    /// parser URLSession dials with, so a hand-rolled `::` expansion cannot classify differently.
     private static func parseIPv6(_ host: String) -> [UInt8]? {
         var address = in6_addr()
         guard host.withCString({ inet_pton(AF_INET6, $0, &address) }) == 1 else { return nil }

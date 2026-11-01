@@ -5,7 +5,7 @@ import Security
 
 /// Names the errors and TLS versions the probe reports.
 nonisolated enum DevMailProbeErrors {
-    /// the two cases worth *reporting* most loudly — 1.0 and 1.1 — are the two the SDK deprecates
+    /// the two cases worth reporting most loudly, 1.0 and 1.1, are the two the SDK deprecates
     /// naming, and a diagnostic that cannot say "this server negotiated TLS 1.0" is no use. The
     /// numbers are the TLS `ProtocolVersion` values themselves and do not move.
     static func tlsVersionName(_ rawVersion: UInt16) -> String {

@@ -12,7 +12,7 @@ nonisolated enum ASCIIText {
 
     /// ASCII case-insensitive prefix check, scalar by scalar. Not `String.hasPrefix`, which
     /// compares `Character`s (extended grapheme clusters): a combining mark attaches to
-    /// whatever scalar precedes it — including `/` or another scheme letter — merging it into
+    /// whatever scalar precedes it, including `/` or another scheme letter, merging it into
     /// one `Character` that no longer equals the plain ASCII character `hasPrefix` is looking
     /// for (spec A.4 rule 1/2/3 parity; this is the same class of bug `MailLinkCheck.browserHostOf` guards
     /// against below). `prefix` must itself be lowercase ASCII.

@@ -36,7 +36,6 @@ enum BrowserFindScript {
           if (node.nodeType === Node.ELEMENT_NODE) {
             var skipped = node.isContentEditable || node.matches('script, style, noscript, textarea, select, template, svg');
             var display = getComputedStyle(node).display;
-            // The walk never stops at an element, so one that shows between two texts ends the run here.
             if (display !== 'none' && (skipped || node.localName === 'br' || !/^(inline|contents)$/.test(display))) run = null;
             return skipped ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
           }
@@ -90,12 +89,10 @@ enum BrowserFindScript {
       (document.head || document.documentElement).appendChild(style);
       return matches.length;
     }
-    // A page script that removes a match's text collapses its ranges, which measure as an empty box.
     function current() {
       var pieces = (window.tigerduckFindMatches || [])[window.tigerduckFindCurrent] || [];
       return pieces.filter(function(range) { return !range.collapsed; });
     }
-    // A clear box over the current match whose shadow dims the rest of the page, as Safari's find does.
     function spotlight() {
       var light = document.querySelector('[' + marker + '-light]'), pieces = current();
       if (!pieces.length) return light && light.remove();
@@ -112,7 +109,6 @@ enum BrowserFindScript {
         + 'box-shadow: 0 0 0 100000px rgba(0, 0, 0, 0.35); left: ' + (box[0] + scrollX) + 'px; top: ' + (box[1] + scrollY)
         + 'px; width: ' + (box[2] - box[0]) + 'px; height: ' + (box[3] - box[1]) + 'px';
     }
-    // The box scrolls with the page; a scrolled frame or a new layout moves the match under it.
     if (!window.tigerduckFindListens) {
       window.tigerduckFindListens = true;
       addEventListener('scroll', spotlight, true);
@@ -128,7 +124,6 @@ enum BrowserFindScript {
         if (box === document.scrollingElement) continue;
         var style = getComputedStyle(box), m = range.getBoundingClientRect(), b = box.getBoundingClientRect();
         if (box.scrollHeight > box.clientHeight && /auto|scroll/.test(style.overflowY)) {
-          // A box outside the band is centred on its own; the browser then scrolls the page to it.
           var from = Math.max(b.top, top), to = Math.min(b.bottom, bottom);
           if (from >= to) { from = b.top; to = b.bottom; }
           box.scrollTop += (m.top + m.bottom - from - to) / 2;

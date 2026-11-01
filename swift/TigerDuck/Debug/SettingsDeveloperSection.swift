@@ -65,7 +65,7 @@ struct SettingsDeveloperSection: View {
         SecureStore.removeAll(preserving: [DebugEndpointStore.keychainKey])
 
         // Batch-delete through the live container rather than removing the
-        // store file — the container is still mounted and every view is
+        // store file; the container is still mounted and every view is
         // holding queries against it.
         try? modelContext.delete(model: SDCourse.self)
         try? modelContext.delete(model: SDAssignment.self)

@@ -13,11 +13,8 @@ struct PushRegistrationSnapshot: Sendable {
     let lastRegisteredAt: Date?
 }
 
-/// APNs environment of the PTS token Apple issues for this build. Debug
-/// builds use the sandbox (`api.sandbox.push.apple.com`); TestFlight and
-/// App Store builds are issued production tokens. The server uses the
-/// value we upload to select the correct APNs host, so it MUST match the
-/// build configuration — never a constant string.
+/// Debug builds are issued sandbox tokens and TestFlight and App Store builds production ones;
+/// the backend picks the APNs host from the value uploaded.
 nonisolated enum PushAPNsEnv {
     #if DEBUG
     static let resolvedForBuild = "development"
@@ -118,8 +115,6 @@ actor PushRegistrationService {
         self.debounceSleep = debounceSleep
         self.retrySleep = retrySleep
     }
-
-    // MARK: - Locale
 
     /// The language the app is rendering, not the device's region setting:
     /// `preferredLocalizations` reflects what actually resolved against the

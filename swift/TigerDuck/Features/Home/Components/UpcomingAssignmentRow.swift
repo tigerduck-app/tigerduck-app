@@ -12,8 +12,6 @@ struct UpcomingAssignmentRow: View {
 
     var body: some View {
         let status = assignment.status(now: now)
-        // Side by side at accessibility sizes, the title and the status squeeze each other to a few
-        // letters, so the status goes under the title, as in MoodleAssignmentsView.
         let stacked = dynamicTypeSize.isAccessibilitySize
         let layout = stacked
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))

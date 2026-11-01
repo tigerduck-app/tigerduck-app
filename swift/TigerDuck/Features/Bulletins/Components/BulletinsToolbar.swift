@@ -44,7 +44,6 @@ struct BulletinsToolbar: ToolbarContent {
                 ? String(localized: "bulletin_show_all_action")
                 : String(localized: "bulletin_show_unread_only_action"))
         }
-        // The backend stores bulletin subscriptions only for a signed-in account.
         if showsNotificationSettings {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

@@ -27,7 +27,7 @@ nonisolated enum MailHref {
         var fragment: String?
     }
 
-    /// Characters a path/query/fragment carries literally after canonicalization —
+    /// Characters a path/query/fragment carries literally after canonicalization,
     /// unreserved (RFC 3986) plus sub-delims and the structural characters `:@/?#`. Mirrors
     /// Android's `PATH_SAFE` constant; anything else (space, control characters, quotes,
     /// brackets, any non-ASCII byte) is percent-encoded the way a browser's own

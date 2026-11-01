@@ -2,7 +2,7 @@
 import Foundation
 
 /// Mail2000's own folders (Appendix A.1). The server has no SPECIAL-USE, so roles are found by
-/// name — never by a `\Sent`/`\Drafts`/`\Trash` attribute, which this server never sends.
+/// name, never by a `\Sent`/`\Drafts`/`\Trash` attribute, which this server never sends.
 ///
 /// Resolution itself never creates anything: an absent role stays absent here and its chip stays
 /// hidden. Sent, Drafts and Trash are created on demand by `MailFolderProvisioner`, but only from

@@ -169,7 +169,6 @@ final class BulletinsViewModel: AccountScoped {
         while !Task.isCancelled, feed.hasMore, let cursor = feed.nextCursor {
             do {
                 let page = try await feed.page(after: cursor, includeDeleted: showDeleted)
-                // The refresh that cancelled this walk has set the cursor since.
                 guard !Task.isCancelled else { return }
                 if dropsAfterSignOut(epoch) { return }
                 feed.add(page)

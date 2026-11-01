@@ -75,7 +75,6 @@ final class MailListSearch {
                 let uids = Set(matched.uids)
                 found += (list.mailbox[folder]?.summaries ?? []).filter { uids.contains($0.uid) }
                     .map { MailListRow(folder: folder, summary: $0) }
-                // The rows' validity, so a catch-up can tell they predate a recreated folder.
                 unfetched[folder] = (validity, [])
                 usedFallback = true
             }
@@ -90,7 +89,6 @@ final class MailListSearch {
         if list.displayedRows.isEmpty { await loadMore() }
         guard generation == generations.current else { return }
         if catchUp.isBehind { scheduleCatchUp() }
-        // A folder the index has not caught up with is downloaded now; its matches join as they arrive.
         if list.targets.contains(where: { !list.background.indexer.isIndexed($0) }) { list.background.startIndexIfLoaded(for: .search) }
     }
 
@@ -152,7 +150,6 @@ final class MailListSearch {
                   results != nil else { return false }
             guard let matched else { continue }
             if let known = known.unfetched[folder], known.uidValidity != matched.uidValidity {
-                // The folder was recreated, so its old uids may name other mail now.
                 results?.removeAll { $0.folder == folder }
                 self.known.gone[folder] = nil
             }
@@ -162,8 +159,6 @@ final class MailListSearch {
             guard await fetch(batch, folder: folder, uidValidity: matched.uidValidity,
                               selection: selection, epoch: epoch, generation: generation) else { return false }
         }
-        // Under the unread filter every row added can be read, and an empty list has no row whose
-        // appearance asks for the next page.
         guard !Task.isCancelled, list.isCurrent(selection, epoch), generation == generations.current else { return false }
         if list.displayedRows.isEmpty, !list.isPaginating { await loadMore() }
         return true
@@ -183,7 +178,6 @@ final class MailListSearch {
                 return false
             }
             known.noteGone(batch, summaries, folder: folder)
-            // Only what this fetch asked for: a catch-up may have queued more meanwhile.
             known.unfetched[folder]?.uids.removeAll { batch.contains($0) }
             let shown = Set(current.map(\.id))
             let rows = summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
@@ -197,7 +191,6 @@ final class MailListSearch {
             await list.recoverFromFolderChange(folder)
             return false
         } catch {
-            // A stop, as the page closing, can be what failed it; the server is not to blame.
             guard !Task.isCancelled, list.isCurrent(selection, epoch) else { return false }
             list.status.serverStatus = .failed
             return false
@@ -216,8 +209,6 @@ final class MailListSearch {
             let pending = known.unfetched.filter { !$0.value.uids.isEmpty }
             guard !pending.isEmpty else { return }
             for (folder, matches) in pending {
-                // A stopped catch-up or a closed page fetches no further page; the reopening's
-                // catch-up pages on, since an empty unread-only list has no row to ask for it.
                 guard !Task.isCancelled, !list.background.isPaused else {
                     if list.background.isPaused, generation == generations.current { catchUp.isBehind = true }
                     return

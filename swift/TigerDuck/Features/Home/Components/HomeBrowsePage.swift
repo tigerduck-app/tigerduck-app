@@ -50,9 +50,6 @@ struct HomeBrowsePage: View {
             value: viewModel.assignments.upcoming.map(\.assignmentId)
         )
         .refreshable {
-            // Fire-and-forget so the UIRefreshControl spinner dismisses on release.
-            // `triggerRefresh` coalesces repeated pulls into one in-flight fetch, and
-            // the top-right SyncStatusDot shows its status.
             viewModel.triggerRefresh(authService: app.authService)
             Task { await SchoolRefresh.courseChanges() }
             if Defaults[.cloudSyncEnabled] {
