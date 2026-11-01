@@ -93,8 +93,8 @@ enum TigerDuckTheme {
         store.state.snapshot()
     }
 
-    static func ensureAssignments(courseNos: [String], for signIn: SignIn) {
-        store.ensureAssignments(courseNos: courseNos, palette: coursePaletteHexes, for: signIn)
+    static func ensureAssignments(courses: [SDCourse], for signIn: SignIn) {
+        store.ensureAssignments(courses: courses, ids: CourseLookup.moodleCourseIds(), palette: coursePaletteHexes, for: signIn)
     }
 
     static func courseColor(for courseNo: String) -> Color {
@@ -137,8 +137,8 @@ enum TigerDuckTheme {
         store.reload()
     }
 
-    static func reassignAll(courseNos: [String], for signIn: SignIn) {
-        store.reassignAll(courseNos: courseNos, palette: coursePaletteHexes, for: signIn)
+    static func reassignAll(courses: [SDCourse], for signIn: SignIn) {
+        store.reassignAll(courses: courses, ids: CourseLookup.moodleCourseIds(), palette: coursePaletteHexes, for: signIn)
     }
 }
 
@@ -155,7 +155,7 @@ final class ColorState: @unchecked Sendable {
         let load: @Sendable () -> [String: UInt32]?
         let save: @Sendable ([String: UInt32]) -> Void
         let notePick: @Sendable (String) -> Void
-        let forgetPicks: @Sendable () -> Void
+        let picks: @Sendable () -> Set<String>
         let protectedDataAvailable: @Sendable () -> Bool
         let now: @Sendable () -> Date
     }
@@ -169,11 +169,11 @@ final class ColorState: @unchecked Sendable {
         load: @escaping @Sendable () -> [String: UInt32]?,
         save: @escaping @Sendable ([String: UInt32]) -> Void,
         notePick: @escaping @Sendable (String) -> Void,
-        forgetPicks: @escaping @Sendable () -> Void,
+        picks: @escaping @Sendable () -> Set<String>,
         protectedDataAvailable: @escaping @Sendable () -> Bool = ColorState.isProtectedDataAvailable,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
-        io = IO(load: load, save: save, notePick: notePick, forgetPicks: forgetPicks,
+        io = IO(load: load, save: save, notePick: notePick, picks: picks,
                 protectedDataAvailable: protectedDataAvailable, now: now)
         self.map = read()
     }
@@ -222,20 +222,20 @@ final class ColorState: @unchecked Sendable {
         }
     }
 
-    func ensureAssignments(courseNos: [String], palette: [UInt32]) {
+    func ensureAssignments(courseNos: [String], moodleColors: [String: UInt32] = [:], palette: [UInt32]) {
         let didMutate: Bool = lock.withLock {
             guard var map = loadedMap() else { return false }
             var mutated = false
             var seenHexes: Set<UInt32> = []
             for courseNo in map.keys.sorted() {
-                guard let hex = map[courseNo] else { continue }
+                guard let hex = map[courseNo], !Self.mayBeShared(hex) else { continue }
                 if seenHexes.insert(hex).inserted { continue }
                 map.removeValue(forKey: courseNo)
                 mutated = true
             }
             var used = Set(map.values)
             for courseNo in courseNos.sorted() where map[courseNo] == nil {
-                let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: palette)
+                let assigned = moodleColors[courseNo] ?? Self.pickUnusedHex(seed: courseNo, used: used, palette: palette)
                 map[courseNo] = assigned
                 used.insert(assigned)
                 mutated = true
@@ -275,6 +275,11 @@ final class ColorState: @unchecked Sendable {
         return didMutate
     }
 
+    /// Moodle gives two courses one colour when their ids end alike, so its colours stay shared.
+    private nonisolated static func mayBeShared(_ hex: UInt32) -> Bool {
+        TigerDuckTheme.moodleCourseColors.contains(hex)
+    }
+
     nonisolated static func assigning(
         _ newHex: UInt32,
         to courseNo: String,
@@ -283,7 +288,7 @@ final class ColorState: @unchecked Sendable {
     ) -> (map: [String: UInt32], changed: [String: UInt32]) {
         guard map[courseNo] != newHex else { return (map, [:]) }
         var updated = map
-        let displaced = map.compactMap { entry -> String? in
+        let displaced = mayBeShared(newHex) ? [] : map.compactMap { entry -> String? in
             entry.key != courseNo && entry.value == newHex ? entry.key : nil
         }.sorted()
         updated[courseNo] = newHex
@@ -301,23 +306,22 @@ final class ColorState: @unchecked Sendable {
         lock.withLock { map = read() }
     }
 
-    func reassignAll(courseNos: [String], palette: [UInt32]) {
+    func reassignAll(courseNos: [String], moodleColors: [String: UInt32] = [:], palette: [UInt32]) {
+        let picks = io.picks()
         let reassigned: Bool = lock.withLock {
-            guard loadedMap() != nil else { return false }
+            guard let current = loadedMap() else { return false }
             let shuffled = palette.shuffled()
-            var fresh: [String: UInt32] = [:]
-            var used: Set<UInt32> = []
-            for courseNo in courseNos.sorted() {
-                let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: shuffled)
+            var fresh = current.filter { picks.contains($0.key) }
+            var used = Set(fresh.values)
+            for courseNo in courseNos.sorted() where fresh[courseNo] == nil {
+                let assigned = moodleColors[courseNo] ?? Self.pickUnusedHex(seed: courseNo, used: used, palette: shuffled)
                 fresh[courseNo] = assigned
                 used.insert(assigned)
             }
             map = fresh
             return true
         }
-        guard reassigned else { return }
-        persist()
-        io.forgetPicks()
+        if reassigned { persist() }
     }
 
     private func persist() {

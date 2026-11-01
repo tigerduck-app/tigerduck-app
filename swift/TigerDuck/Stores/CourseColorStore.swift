@@ -15,7 +15,7 @@ final class CourseColorStore {
             load: { files.loadCourseColorMapIfReadable() },
             save: { files.saveCourseColorMap($0) },
             notePick: { files.notePickedCourseColor($0) },
-            forgetPicks: { files.savePickedCourseColors([]) }
+            picks: { files.loadPickedCourseColors() }
         )
     }
 
@@ -41,8 +41,21 @@ final class CourseColorStore {
         state.hex(for: courseNo, palette: palette)
     }
 
-    func ensureAssignments(courseNos: [String], palette: [UInt32], for signIn: SignIn) {
-        saving(signIn, unchanged: ()) { $0.ensureAssignments(courseNos: courseNos, palette: palette) }
+    func ensureAssignments(courses: [SDCourse], ids: [String: Int], palette: [UInt32], for signIn: SignIn) {
+        let moodleColors = Self.moodleColors(of: courses, ids: ids)
+        saving(signIn, unchanged: ()) {
+            $0.ensureAssignments(courseNos: courses.map(\.courseNo), moodleColors: moodleColors, palette: palette)
+        }
+    }
+
+    /// The colour Moodle gives each course whose Moodle id `ids` holds.
+    static func moodleColors(of courses: [SDCourse], ids: [String: Int]) -> [String: UInt32] {
+        var colors: [String: UInt32] = [:]
+        for course in courses {
+            guard let id = CourseLookup.moodleCourseId(idnumber: course.moodleIdNumber, in: ids) else { continue }
+            colors[course.courseNo] = TigerDuckTheme.moodleCourseColor(forCourseId: id)
+        }
+        return colors
     }
 
     /// Colours another device picked, applied without counting as picks here.
@@ -69,8 +82,11 @@ final class CourseColorStore {
         saving(signIn, unchanged: [:]) { $0.setColor(hex: hex, for: courseNo, palette: palette) }
     }
 
-    /// Fresh colours for every course, forgetting the picks.
-    func reassignAll(courseNos: [String], palette: [UInt32], for signIn: SignIn) {
-        saving(signIn, unchanged: ()) { $0.reassignAll(courseNos: courseNos, palette: palette) }
+    /// Fresh colours for every course the user did not pick a colour for.
+    func reassignAll(courses: [SDCourse], ids: [String: Int], palette: [UInt32], for signIn: SignIn) {
+        let moodleColors = Self.moodleColors(of: courses, ids: ids)
+        saving(signIn, unchanged: ()) {
+            $0.reassignAll(courseNos: courses.map(\.courseNo), moodleColors: moodleColors, palette: palette)
+        }
     }
 }

@@ -166,11 +166,12 @@ final class EditSender {
     func reassignAllCourseColors(for signIn: SignIn) {
         let semester = CourseSelectionService.currentSemesterCode()
         let courses = CanonicalCourseProvider().currentCourses(semester: semester)
-        TigerDuckTheme.reassignAll(courseNos: courses.map(\.courseNo), for: signIn)
+        let before = TigerDuckTheme.snapshot()
+        TigerDuckTheme.reassignAll(courses: courses, for: signIn)
         guard Defaults[.cloudSyncEnabled] else { return }
         let colorMap = TigerDuckTheme.snapshot()
         for course in courses {
-            guard let hex = colorMap[course.courseNo] else { continue }
+            guard let hex = colorMap[course.courseNo], hex != before[course.courseNo] else { continue }
             syncCourseOverride(
                 moodleCourseId: Self.colorIdentity(of: course, semester: semester),
                 colorHex: String(format: "#%06X", hex), for: signIn
