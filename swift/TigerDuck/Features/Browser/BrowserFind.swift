@@ -15,7 +15,7 @@ final class BrowserFind {
     var mode = Mode.plain
     private(set) var count = 0
     private(set) var index = 0
-    @ObservationIgnored var run: (_ arguments: [String: Any]) async -> Any? = { _ in nil }
+    @ObservationIgnored var runInPage: (BrowserFindAction) async -> Any? = { _ in nil }
     @ObservationIgnored private var searches = 0
 
     var position: String {
@@ -34,7 +34,7 @@ final class BrowserFind {
     func end() {
         isActive = false
         searches += 1
-        Task { _ = await run(["action": "clear"]) }
+        Task { _ = await runInPage(.clear) }
     }
 
     /// Marks every match of the query in the page and shows the first; a later search wins.
@@ -43,21 +43,21 @@ final class BrowserFind {
         let search = searches
         var marked = 0
         if !query.isEmpty {
-            let texts = await run(["action": "texts"]) as? [String] ?? []
+            let texts = await runInPage(.texts) as? [String] ?? []
             guard search == searches else { return }
             let query = query, regex = mode == .regex
             let found = await Task.detached(priority: .userInitiated) {
                 Self.ranges(of: query, regex: regex, in: texts)
             }.value
             guard search == searches else { return }
-            if !found.isEmpty { marked = await run(["action": "mark", "ranges": found]) as? Int ?? 0 }
+            if !found.isEmpty { marked = await runInPage(.mark(ranges: found)) as? Int ?? 0 }
         } else {
-            _ = await run(["action": "clear"])
+            _ = await runInPage(.clear)
         }
         guard search == searches else { return }
         count = marked
         index = 0
-        if count > 0 { _ = await run(["action": "select", "index": 0]) }
+        if count > 0 { _ = await runInPage(.select(index: 0)) }
     }
 
     func next() async { await move(by: 1) }
@@ -67,7 +67,7 @@ final class BrowserFind {
     private func move(by step: Int) async {
         guard count > 0 else { return }
         index = (index + step + count) % count
-        _ = await run(["action": "select", "index": index])
+        _ = await runInPage(.select(index: index))
     }
 
     /// Safari stops at a thousand matches too; more would only slow the page.

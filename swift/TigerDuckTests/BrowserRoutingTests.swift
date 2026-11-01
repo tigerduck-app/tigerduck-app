@@ -189,9 +189,9 @@ struct BrowserRoutingTests {
     @Test func aPageWhoseProcessEndedReloadsOrLoadsItsAddress() {
         let page = Self.url("https://moodle2.ntust.edu.tw/user/edit.php")
         let keyLink = Self.url("https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php?key=k")
-        #expect(BrowserRouting.pageToRestore(url: page, address: page) == nil)
-        #expect(BrowserRouting.pageToRestore(url: nil, address: page) == page)
-        #expect(BrowserRouting.pageToRestore(url: keyLink, address: page) == page)
+        #expect(BrowserRouting.pageToRestore(url: page, address: page) == .reload)
+        #expect(BrowserRouting.pageToRestore(url: nil, address: page) == .load(page))
+        #expect(BrowserRouting.pageToRestore(url: keyLink, address: page) == .load(page))
     }
 
     @Test @MainActor func aSlowAnswerGivesWayToTheDeadline() async {

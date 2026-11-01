@@ -16,7 +16,7 @@ struct BrowserBar: View {
     private static let capsuleHeight: CGFloat = 30
     static let toolbarHeight: CGFloat = 56
     private static let homeIndicatorClearance: CGFloat = 16
-    private static let toCapsule: CGFloat = 56
+    private static let slideTowardCapsule: CGFloat = 56
 
     private var collapsed: Bool { page.isCollapsed }
 
@@ -31,7 +31,7 @@ struct BrowserBar: View {
 
     private var topBar: some View {
         HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
-            closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.toCapsule, height: -24), moving: !reduceMotion)
+            closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.slideTowardCapsule, height: -24), moving: !reduceMotion)
             address {
                 VStack(spacing: 0) {
                     HStack(spacing: collapsed ? 4 : 5) {
@@ -50,7 +50,7 @@ struct BrowserBar: View {
                 }
                 .accessibilityLabel(String(localized: "browser_share"))
             }
-            .hiddenWhenCollapsed(collapsed, toward: CGSize(width: -Self.toCapsule, height: -24), moving: !reduceMotion)
+            .hiddenWhenCollapsed(collapsed, toward: CGSize(width: -Self.slideTowardCapsule, height: -24), moving: !reduceMotion)
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
@@ -81,10 +81,10 @@ struct BrowserBar: View {
 
     private var bottomBar: some View {
         HStack(alignment: .bottom, spacing: TigerDuckTheme.Spacing.md) {
-            closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.toCapsule, height: 24), moving: !reduceMotion)
+            closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.slideTowardCapsule, height: 24), moving: !reduceMotion)
             address {
                 HStack(spacing: 0) {
-                    intoCapsule(
+                    shrinkingIntoCapsule(
                         Button { page.find.start() } label: {
                             Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .semibold))
                                 .frame(maxWidth: .infinity, minHeight: Self.barHeight)
@@ -95,7 +95,7 @@ struct BrowserBar: View {
                     )
                     Text(page.host).font(.system(size: collapsed ? 13 : 15, weight: .semibold))
                         .frame(maxWidth: collapsed ? nil : .infinity)
-                    intoCapsule(reloadButton(size: 16))
+                    shrinkingIntoCapsule(reloadButton(size: 16))
                 }
             }
             circle {
@@ -106,7 +106,7 @@ struct BrowserBar: View {
                 }
                 .accessibilityLabel(String(localized: "browser_more"))
             }
-            .hiddenWhenCollapsed(collapsed, toward: CGSize(width: -Self.toCapsule, height: 24), moving: !reduceMotion)
+            .hiddenWhenCollapsed(collapsed, toward: CGSize(width: -Self.slideTowardCapsule, height: 24), moving: !reduceMotion)
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         // Collapsed, the row leaves the safe area for a spot just above the home indicator; the
@@ -116,7 +116,7 @@ struct BrowserBar: View {
         .ignoresSafeArea(.container, edges: collapsed ? .bottom : [])
     }
 
-    private func intoCapsule(_ button: some View) -> some View {
+    private func shrinkingIntoCapsule(_ button: some View) -> some View {
         button.frame(width: collapsed ? 0 : 40, height: collapsed ? 0 : nil)
             .hiddenWhenCollapsed(collapsed, toward: CGSize(width: 0, height: 10), moving: !reduceMotion)
     }
@@ -155,8 +155,7 @@ struct BrowserBar: View {
         .browserGlass(in: Capsule())
         .contextMenu { BrowserAddressMenu(page: page, sheet: $sheet, onCopy: onCopy) }
         .accessibilityLabel(String(format: String(localized: "browser_address"), page.host))
-        .id(reduceMotion && collapsed)
-        .transition(.opacity)
+        .crossFadingInsteadOfMorphing(when: reduceMotion && collapsed)
         .frame(maxWidth: .infinity)
     }
 
@@ -223,5 +222,11 @@ private struct BrowserAddressMenu: View {
                 }
             }
             Button(String(localized: "browser_certificate"), systemImage: "lock") { sheet = .certificate }
+    }
+}
+
+private extension View {
+    func crossFadingInsteadOfMorphing(when crossFades: Bool) -> some View {
+        id(crossFades).transition(.opacity)
     }
 }
