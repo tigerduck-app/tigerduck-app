@@ -80,10 +80,10 @@ enum PushAPI {
         let syncCourseColors: Bool
         let syncCourseNames: Bool
         let syncAssignments: Bool
-        let syncAssignmentReminders: Bool?
-        let syncLiveActivity: Bool?
+        let syncAssignmentReminders: Bool
+        let syncLiveActivity: Bool
         let cloudSyncEnabled: Bool
-        let bulletinPushEnabled: Bool?
+        let bulletinPushEnabled: Bool
 
         enum CodingKeys: String, CodingKey {
             case deviceId = "device_id"

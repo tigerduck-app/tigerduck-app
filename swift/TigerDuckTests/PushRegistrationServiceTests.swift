@@ -54,6 +54,8 @@ struct PushRegistrationServiceTests {
           "sync_course_colors": true,
           "sync_course_names": true,
           "sync_assignments": true,
+          "sync_assignment_reminders": true,
+          "sync_live_activity": true,
           "cloud_sync_enabled": true\(echo)
         }
         """.utf8)
@@ -534,7 +536,7 @@ struct PushRegistrationServiceTests {
         }
     }
 
-    @Test("a 200 that does not come back carrying the new value is not treated as success")
+    @Test("a 200 without the bulletin switch is not treated as success")
     func unconfirmedBulletinPatchDoesNotPersist() async throws {
         await Self.withBulletinPreference(startingAt: true) {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
