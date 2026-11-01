@@ -14,8 +14,7 @@ struct MoodleCacheContext {
     }
 
     func save<Value: Codable>(_ value: Value, fetchedAt: Date, name: String) {
-        guard signIn.isCurrent else { return }
-        cache.saveMoodleData(value, fetchedAt: fetchedAt, name: name, account: account)
+        cache.saveMoodleData(value, fetchedAt: fetchedAt, name: name, account: account, for: signIn)
     }
 }
 

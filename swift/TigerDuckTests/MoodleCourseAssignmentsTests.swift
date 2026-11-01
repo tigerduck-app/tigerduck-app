@@ -45,7 +45,8 @@ struct MoodleCourseAssignmentsTests {
     )
 
     private static func round(_ records: [MoodleAssignmentRecord], in folder: Folder, account: String = account) {
-        folder.cache.moodle.saveMoodleData(records, fetchedAt: Date(), name: MoodleAssignmentRecord.cacheName, account: account)
+        folder.cache.moodle.saveMoodleData(records, fetchedAt: Date(), name: MoodleAssignmentRecord.cacheName, account: account,
+                                       for: testSignIn)
         folder.cache.assignments.saveAssignments(records.filter { $0.dueDate != nil && !$0.noSubmissions }.map { assignment($0.assignId) }, for: testSignIn)
     }
 

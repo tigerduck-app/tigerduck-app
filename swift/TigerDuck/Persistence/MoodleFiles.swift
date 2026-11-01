@@ -18,7 +18,8 @@ final class MoodleFiles: AccountScoped {
 
     /// Moodle Mobile's deep-link router honors only `?id=N` redirects reliably (the web accepts
     /// `?idnumber=`, the in-app handler does not), so deep links look the numeric id up here.
-    func saveMoodleCourseIdMap(_ map: [String: Int]) {
+    func saveMoodleCourseIdMap(_ map: [String: Int], for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         folders.persistentFiles.save(map, to: "moodle_course_id_map.json")
     }
 
@@ -31,7 +32,8 @@ final class MoodleFiles: AccountScoped {
         return loadMoodleCourseIdMap()[SDCourse.normalizedMoodleId(idnumber)]
     }
 
-    func saveMoodleData<Value: Codable>(_ value: Value, fetchedAt: Date, name: String, account: String) {
+    func saveMoodleData<Value: Codable>(_ value: Value, fetchedAt: Date, name: String, account: String, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         let url = moodleFileURL(name: name, account: account)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         JSONFiles(directory: url.deletingLastPathComponent())

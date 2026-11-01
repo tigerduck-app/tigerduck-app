@@ -51,6 +51,19 @@ struct StaleWriteTests {
         #expect(colors.map == ["CS1001301": 0x4ECDC4])
     }
 
+    @Test("Moodle copies and course ids read for a sign-in that has ended are not saved")
+    func moodle() {
+        let folder = Folder()
+
+        folder.cache.moodle.saveMoodleCourseIdMap(["1151CS1001301": 7], for: endedTestSignIn)
+        folder.cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: "B11300000",
+                                           for: endedTestSignIn)
+        #expect(folder.cache.moodle.loadMoodleCourseIdMap().isEmpty)
+        #expect(folder.cache.moodle.loadMoodleData([String].self, name: "forums-7", account: "B11300000") == nil)
+        folder.cache.moodle.saveMoodleCourseIdMap(["1151CS1001301": 7], for: testSignIn)
+        #expect(folder.cache.moodle.loadMoodleCourseIdMap() == ["1151CS1001301": 7])
+    }
+
     @Test("A class table imported for a sign-in that has ended is not kept")
     func importedTables() throws {
         let folder = Folder()
