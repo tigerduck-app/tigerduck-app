@@ -22,6 +22,7 @@ nonisolated struct DemoMoodle: Decodable, Sendable {
         let size: Int?
         let mime: String?
         let modified: String?
+        let base64: Data?
     }
 
     struct Announcement: Decodable, Sendable {
@@ -170,6 +171,7 @@ nonisolated struct DemoMoodleCourses: Sendable {
 
     let ownMemberId: Int
     let courses: [Course]
+    let files: [String: Data]
 
     func course(_ moodleId: Int) -> Course? { courses.first { $0.moodleId == moodleId } }
 
