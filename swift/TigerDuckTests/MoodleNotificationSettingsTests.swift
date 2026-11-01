@@ -1,0 +1,250 @@
+import Foundation
+import os
+import Testing
+@testable import TigerDuck
+
+@MainActor
+struct MoodleNotificationSettingsTests {
+    private typealias Fixtures = MoodleNotificationFixtures
+
+    private final class Site: @unchecked Sendable {
+        enum Failure {
+            case beforeStoring(any Error), afterStoring(any Error)
+        }
+
+        private let lock = NSLock()
+        private var held: MoodleNotificationMatrix
+        private var sent: [MoodleNotificationMatrix.Preference] = []
+        private var reads = 0
+        private var readFailure: (any Error)?
+        private let gate: ManualSleeper?
+        private let failure: Failure?
+        private let afterWrite: MoodleNotificationMatrix?
+
+        init(
+            _ matrix: MoodleNotificationMatrix, gate: ManualSleeper? = nil, failure: Failure? = nil,
+            afterWrite: MoodleNotificationMatrix? = nil
+        ) {
+            held = matrix
+            self.gate = gate
+            self.failure = failure
+            self.afterWrite = afterWrite
+        }
+
+        var saves: [MoodleNotificationMatrix.Preference] { lock.withLock { sent } }
+        var loads: Int { lock.withLock { reads } }
+
+        func failReads(with error: (any Error)?) { lock.withLock { readFailure = error } }
+
+        var api: MoodleNotificationAPI {
+            MoodleNotificationAPI(
+                load: {
+                    try self.lock.withLock {
+                        self.reads += 1
+                        if let failure = self.readFailure { throw failure }
+                        return self.held
+                    }
+                },
+                save: { preference, _ in
+                    self.lock.withLock { self.sent.append(preference) }
+                    await self.gate?.sleep(for: .seconds(1))
+                    if case .beforeStoring(let error) = self.failure { throw error }
+                    self.lock.withLock { self.held = self.afterWrite ?? self.held.replacing(preference) }
+                    if case .afterStoring(let error) = self.failure { throw error }
+                }
+            )
+        }
+    }
+
+    private static let forum = Fixtures.preference("mod_forum_posts", enabled: ["popup"])
+    private static let digest = Fixtures.preference("mod_forum_digests", enabled: [])
+
+    private static func loaded(_ site: Site) async -> MoodleNotificationSettings {
+        let settings = MoodleNotificationSettings(signIn: testSignIn, api: site.api)
+        await settings.load()
+        return settings
+    }
+
+    private static func shown(_ key: String, in settings: MoodleNotificationSettings) throws -> MoodleNotificationMatrix.Preference {
+        try #require(settings.matrix?.preference(key))
+    }
+
+    @Test("a switch moves at once and every switch stays off until the write and its reload end")
+    func oneWriteAtATime() async throws {
+        let gate = ManualSleeper()
+        let site = Site(Fixtures.matrix([Self.forum, Self.digest]), gate: gate)
+        let settings = await Self.loaded(site)
+        settings.method = "email"
+
+        let write = try #require(settings.set(true, for: Self.forum.key))
+
+        #expect(settings.isOn(try Self.shown(Self.forum.key, in: settings)))
+        #expect(!settings.canChange(Self.digest))
+        #expect(settings.set(true, for: Self.digest.key) == nil)
+        try await gate.waitUntilArmed()
+        await gate.fire()
+        await write.value
+
+        #expect(site.saves == [Self.forum.setting("email", on: true)])
+        #expect(settings.canChange(Self.digest))
+    }
+
+    @Test("after a write the page shows what the server holds")
+    func reloadsAfterWrite() async throws {
+        let serverSide = Fixtures.matrix([Self.forum.setting("email", on: true), Self.digest.setting("popup", on: true)])
+        let site = Site(Fixtures.matrix([Self.forum, Self.digest]), afterWrite: serverSide)
+        let settings = await Self.loaded(site)
+
+        await settings.set(false, for: Self.forum.key)?.value
+
+        #expect(site.loads == 2)
+        #expect(settings.matrix == serverSide)
+    }
+
+    @Test("a failed write puts the switch back and says why")
+    func failedWriteReverts() async throws {
+        let failure = MoodleWebserviceError.malformedResponse(detail: "nopermission")
+        let site = Site(Fixtures.matrix([Self.forum]), failure: .beforeStoring(failure))
+        let settings = await Self.loaded(site)
+
+        await settings.set(false, for: Self.forum.key)?.value
+
+        #expect(settings.isOn(try Self.shown(Self.forum.key, in: settings)))
+        #expect(settings.saveFailure == MoodleFailure.message(for: failure))
+        #expect(settings.canChange(Self.forum))
+    }
+
+    @Test("a write that fails after Moodle stored it shows what Moodle holds")
+    func failedWriteShowsTheServer() async throws {
+        let failure = MoodleWebserviceError.transientNetwork(underlying: "timed out")
+        let site = Site(Fixtures.matrix([Self.forum]), failure: .afterStoring(failure))
+        let settings = await Self.loaded(site)
+
+        await settings.set(false, for: Self.forum.key)?.value
+
+        #expect(site.loads == 2)
+        #expect(!settings.isOn(try Self.shown(Self.forum.key, in: settings)))
+        #expect(settings.saveFailure == MoodleFailure.message(for: failure))
+    }
+
+    @Test("after a write that timed out once stored and a failed read, nothing can change until a read shows Moodle")
+    func failedWriteAndReadLeaveNothingToEdit() async throws {
+        let timeout = MoodleWebserviceError.transientNetwork(underlying: "timed out")
+        let offline = MoodleWebserviceError.transientNetwork(underlying: "offline")
+        let site = Site(Fixtures.matrix([Self.forum, Self.digest]), failure: .afterStoring(timeout))
+        let settings = await Self.loaded(site)
+        settings.method = "email"
+        site.failReads(with: offline)
+
+        await settings.set(true, for: Self.forum.key)?.value
+
+        #expect(settings.matrix == nil)
+        #expect(settings.loadFailure as? MoodleWebserviceError == offline)
+        #expect(settings.set(true, for: Self.digest.key) == nil)
+        #expect(site.saves.count == 1)
+        site.failReads(with: nil)
+        await settings.load()
+        #expect(settings.isOn(try Self.shown(Self.forum.key, in: settings)))
+        #expect(settings.canChange(Self.digest))
+    }
+
+    @Test("a load while a write runs sends no read of its own, and the write's read shows the server")
+    func loadWaitsOutTheWrite() async throws {
+        let gate = ManualSleeper()
+        let site = Site(Fixtures.matrix([Self.forum]), gate: gate)
+        let settings = await Self.loaded(site)
+        let write = try #require(settings.set(false, for: Self.forum.key))
+        try await gate.waitUntilArmed()
+
+        await settings.load()
+
+        #expect(site.loads == 1)
+        await gate.fire()
+        await write.value
+        #expect(site.loads == 2)
+        #expect(!settings.isOn(try Self.shown(Self.forum.key, in: settings)))
+    }
+
+    @Test("a load after its sign-in ended sends no read and tells the page its sign-in ended")
+    func endedSignInLoadsNothing() async {
+        let site = Site(Fixtures.matrix([Self.forum]))
+        let settings = MoodleNotificationSettings(signIn: endedTestSignIn, api: site.api)
+
+        await settings.load()
+
+        #expect(site.loads == 0)
+        #expect(settings.signInEnded)
+        #expect(settings.loadFailure == nil)
+    }
+
+    @Test("a load failure keeps the error for the page and shows no list")
+    func loadFailure() async {
+        let api = MoodleNotificationAPI(
+            load: { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }, save: { _, _ in }
+        )
+        let settings = MoodleNotificationSettings(signIn: testSignIn, api: api)
+
+        await settings.load()
+
+        #expect(settings.matrix == nil)
+        #expect(settings.loadFailure as? MoodleWebserviceError == .transientNetwork(underlying: "offline"))
+    }
+
+    @Test("a locked switch and every switch under Disable notifications cannot change")
+    func lockedAndDisableAll() async throws {
+        let locked = Fixtures.preference("moodle_reportbuilderschedule", enabled: ["email"], locked: ["email"])
+        let settings = await Self.loaded(Site(Fixtures.matrix([Self.forum, locked])))
+        let disabled = await Self.loaded(Site(Fixtures.matrix([Self.forum], disablesAll: true)))
+
+        #expect(settings.canChange(locked))
+        settings.method = "email"
+        #expect(!settings.canChange(locked))
+        #expect(settings.set(false, for: locked.key) == nil)
+        #expect(!disabled.canChange(Self.forum))
+        #expect(disabled.set(true, for: Self.forum.key) == nil)
+    }
+
+    @Test("a write whose sign-in ends while it waits for the Moodle token is not sent")
+    func endedSignInSendsNothing() async throws {
+        let token = UUID().uuidString
+        let site = URL(string: "https://moodle-stub.invalid")!
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let gate = ManualSleeper()
+        let calls = Calls()
+        let tokens = MoodleWebserviceClient.TokenSource(
+            stored: {
+                if calls.next() > 1 { await gate.sleep(for: .seconds(1)) }
+                return token
+            },
+            renew: { _ in token }
+        )
+        MoodleNotificationPreferencesServiceTests.answer(
+            Fixtures.answer, function: MoodleNotificationPreferencesService.readFunction, token: token
+        )
+        let signedIn = TestSignIn()
+        let settings = MoodleNotificationSettings(
+            signIn: signedIn.signIn,
+            api: .live(chinese: false, tokens: tokens, session: URLSession(configuration: config), siteURL: site)
+        )
+        await settings.load()
+        let preference = try Self.shown("message_provider_mod_assign_assign_notification", in: settings)
+
+        let write = try #require(settings.set(true, for: preference.key))
+        try await gate.waitUntilArmed()
+        signedIn.signOut()
+        await gate.fire()
+        await write.value
+
+        #expect(MoodleNotificationPreferencesServiceTests.bodies(
+            of: MoodleNotificationPreferencesService.writeFunction, token: token
+        ).isEmpty)
+        #expect(settings.saveFailure == nil)
+    }
+}
+
+private final class Calls: Sendable {
+    private let count = OSAllocatedUnfairLock(initialState: 0)
+
+    func next() -> Int { count.withLock { $0 += 1; return $0 } }
+}
