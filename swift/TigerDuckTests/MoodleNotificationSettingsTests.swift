@@ -16,6 +16,7 @@ struct MoodleNotificationSettingsTests {
         private var held: MoodleNotificationMatrix
         private var sent: [MoodleNotificationMatrix.Preference] = []
         private var reads = 0
+        private var readFailure: (any Error)?
         private let gate: ManualSleeper?
         private let failure: Failure?
         private let afterWrite: MoodleNotificationMatrix?
@@ -33,11 +34,14 @@ struct MoodleNotificationSettingsTests {
         var saves: [MoodleNotificationMatrix.Preference] { lock.withLock { sent } }
         var loads: Int { lock.withLock { reads } }
 
+        func failReads(with error: (any Error)?) { lock.withLock { readFailure = error } }
+
         var api: MoodleNotificationAPI {
             MoodleNotificationAPI(
                 load: {
-                    self.lock.withLock {
+                    try self.lock.withLock {
                         self.reads += 1
+                        if let failure = self.readFailure { throw failure }
                         return self.held
                     }
                 },
@@ -121,6 +125,27 @@ struct MoodleNotificationSettingsTests {
         #expect(site.loads == 2)
         #expect(!settings.isOn(try Self.shown(Self.forum.key, in: settings)))
         #expect(settings.saveFailure == MoodleFailure.message(for: failure))
+    }
+
+    @Test("after a write that timed out once stored and a failed read, nothing can change until a read shows Moodle")
+    func failedWriteAndReadLeaveNothingToEdit() async throws {
+        let timeout = MoodleWebserviceError.transientNetwork(underlying: "timed out")
+        let offline = MoodleWebserviceError.transientNetwork(underlying: "offline")
+        let site = Site(Fixtures.matrix([Self.forum, Self.digest]), failure: .afterStoring(timeout))
+        let settings = await Self.loaded(site)
+        settings.method = "email"
+        site.failReads(with: offline)
+
+        await settings.set(true, for: Self.forum.key)?.value
+
+        #expect(settings.matrix == nil)
+        #expect(settings.loadFailure as? MoodleWebserviceError == offline)
+        #expect(settings.set(true, for: Self.digest.key) == nil)
+        #expect(site.saves.count == 1)
+        site.failReads(with: nil)
+        await settings.load()
+        #expect(settings.isOn(try Self.shown(Self.forum.key, in: settings)))
+        #expect(settings.canChange(Self.digest))
     }
 
     @Test("a load while a write runs sends no read of its own, and the write's read shows the server")

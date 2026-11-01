@@ -98,18 +98,25 @@ final class MoodleNotificationSettings {
 
     private func save(_ preference: MoodleNotificationMatrix.Preference, restoring before: MoodleNotificationMatrix) async {
         defer { isBusy = false }
+        let stored: Bool
         do {
             try await api.save(preference, signIn)
+            stored = true
         } catch {
             shown.set(before, for: signIn)
             guard !AppLogger.isCancellation(error) else { return }
             saveFailure = MoodleFailure.message(for: error)
+            stored = false
         }
-        // A write that failed on its way back may still have been stored.
         do {
             shown.set(try await api.load(), for: signIn)
         } catch {
             AppLogger.captureError(error, context: ["phase": "moodleNotifications.reload"])
+            guard !stored else { return }
+            // Moodle may have stored a write that failed on its way back, and a later write sends the
+            // whole processor list, so the old switches must not stay editable.
+            shown.set(nil, for: signIn)
+            loadFailure = error
         }
     }
 }
