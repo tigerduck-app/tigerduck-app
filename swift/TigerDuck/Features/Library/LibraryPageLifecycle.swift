@@ -1,7 +1,4 @@
 import SwiftUI
-#if os(iOS)
-import PassKit
-#endif
 
 struct LibraryPageLifecycle: ViewModifier {
     let viewModel: LibraryViewModel
@@ -9,7 +6,6 @@ struct LibraryPageLifecycle: ViewModifier {
     @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
-    @State private var passSuppressionToken: PKSuppressionRequestToken?
     @State private var hostScreen = WeakScreen()
     @State private var brightnessToken = UUID()
     #endif
@@ -21,13 +17,11 @@ struct LibraryPageLifecycle: ViewModifier {
                 viewModel.load()
                 viewModel.onAppear()
                 if viewModel.isLoggedIn {
-                    suppressExpressTransit()
                     boostBrightnessForQR()
                 }
             }
             .onDisappear {
                 viewModel.onDisappear()
-                releaseExpressTransit()
                 restoreBrightness()
             }
             #if os(iOS)
@@ -40,10 +34,8 @@ struct LibraryPageLifecycle: ViewModifier {
             #endif
             .onChange(of: viewModel.isLoggedIn) { _, loggedIn in
                 if loggedIn {
-                    suppressExpressTransit()
                     boostBrightnessForQR()
                 } else {
-                    releaseExpressTransit()
                     restoreBrightness()
                 }
             }
@@ -52,37 +44,17 @@ struct LibraryPageLifecycle: ViewModifier {
                 case .active:
                     viewModel.onAppear()
                     if viewModel.isLoggedIn {
-                        suppressExpressTransit()
                         boostBrightnessForQR()
                     }
                 case .background, .inactive:
                     viewModel.stopTimers()
-                    releaseExpressTransit()
                     restoreBrightness()
                 @unknown default:
                     viewModel.stopTimers()
-                    releaseExpressTransit()
                     restoreBrightness()
                 }
             }
     }
-
-    #if os(iOS)
-    private func suppressExpressTransit() {
-        guard passSuppressionToken == nil else { return }
-        let token = PKPassLibrary.requestAutomaticPassPresentationSuppression { _ in }
-        passSuppressionToken = token
-    }
-
-    private func releaseExpressTransit() {
-        guard let token = passSuppressionToken else { return }
-        PKPassLibrary.endAutomaticPassPresentationSuppression(withRequestToken: token)
-        passSuppressionToken = nil
-    }
-    #else
-    private func suppressExpressTransit() {}
-    private func releaseExpressTransit() {}
-    #endif
 
     #if os(iOS)
     /// Reads `potentialEDRHeadroom`, which Apple documents as queryable before any

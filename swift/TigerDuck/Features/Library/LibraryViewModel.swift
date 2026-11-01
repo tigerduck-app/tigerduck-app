@@ -19,9 +19,14 @@ final class LibraryViewModel {
         var isLoading = false
     }
 
+    private struct Failure {
+        let message: String
+        let retriesOnItsOwn: Bool
+    }
+
     private(set) var access = LibraryAccess.signedOut
     private var code = ShownCode()
-    var errorMessage: String?
+    private var failure: Failure?
     var libUsername = ""
     var libPassword = ""
     var onLibraryStateChanged: (() -> Void)?
@@ -46,7 +51,9 @@ final class LibraryViewModel {
     var backoffSchedule: [TimeInterval] { get { cycle.backoffSchedule } set { cycle.backoffSchedule = newValue } }
     var refreshInterval: TimeInterval { get { cycle.refreshInterval } set { cycle.refreshInterval = newValue } }
 
-    var isWaitingToRetry: Bool { isLoggedIn && errorMessage != nil }
+    var errorMessage: String? { failure?.message }
+
+    var isWaitingToRetry: Bool { isLoggedIn && failure?.retriesOnItsOwn == true }
 
     init() {
         // `queue: nil` delivers synchronously on the posting thread, and
@@ -102,7 +109,7 @@ final class LibraryViewModel {
 
     func retryNow() {
         guard isWaitingToRetry else { return }
-        errorMessage = nil
+        failure = nil
         startQRRefreshCycle()
     }
 
@@ -112,7 +119,7 @@ final class LibraryViewModel {
         access = .signingIn
         let signIn = signIn ?? { try await LibraryAccount.signIn(username: $0, password: $1) }
         Task { @MainActor in
-            errorMessage = nil
+            failure = nil
             do {
                 try await signIn(trimmedUsername.uppercased(), libPassword)
                 libPassword = ""
@@ -120,7 +127,7 @@ final class LibraryViewModel {
                 startQRRefreshCycle()
                 onLibraryStateChanged?()
             } catch {
-                errorMessage = error.localizedDescription
+                failure = Failure(message: error.localizedDescription, retriesOnItsOwn: false)
                 libPassword = ""
                 if access == .signingIn { access = .signedOut }
             }
@@ -132,7 +139,7 @@ final class LibraryViewModel {
         Task { @MainActor in
             runShownCodesClock()
             code.isLoading = code.image == nil
-            errorMessage = nil
+            failure = nil
             do {
                 let payload = try await cycle.fetchCode()
                 let image = await Self.render(payload)
@@ -144,11 +151,12 @@ final class LibraryViewModel {
                 restartCountdown()
             } catch {
                 guard signIn.isCurrent else { return }
-                errorMessage = error.localizedDescription
                 code.isLoading = false
                 if !LibraryAccount.hasAccount {
+                    failure = Failure(message: error.localizedDescription, retriesOnItsOwn: false)
                     showSignInForm()
                 } else {
+                    failure = Failure(message: error.localizedDescription, retriesOnItsOwn: true)
                     let pause = cycle.noteFailure()
                     cycle.schedule(after: pause) { [weak self] in self?.startQRRefreshCycle() }
                 }
@@ -168,11 +176,11 @@ final class LibraryViewModel {
 
     private func followSignInElsewhere() {
         if isLoggedIn, !LibraryAccount.hasAccount {
-            errorMessage = nil
+            failure = nil
             showSignInForm()
         } else if hasLoaded, !isLoggedIn, !isLoggingIn, LibraryAccount.hasAccount {
             access = .signedIn(username: LibraryAccount.username)
-            errorMessage = nil
+            failure = nil
             libPassword = ""
             onLibraryStateChanged?()
             if isShowing { startQRRefreshCycle() }

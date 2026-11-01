@@ -5,7 +5,7 @@ import Foundation
 final class HomeLayout {
     var sections: [HomeSection] = []
 
-    func loadIfEmpty() {
+    func loadSavedLayoutAddingNewSections() {
         guard sections.isEmpty else { return }
         if var saved = loadSectionLayout() {
             let savedIDs = Set(saved.map(\.id))

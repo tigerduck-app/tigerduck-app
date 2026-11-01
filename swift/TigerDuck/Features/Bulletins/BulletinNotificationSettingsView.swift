@@ -154,10 +154,7 @@ struct BulletinNotificationSettingsView: View {
     /// on-state branch's status row and Settings button are unreachable from here, so this section
     /// carries both.
     static func requiresSystemSettingsRoute(for status: UNAuthorizationStatus) -> Bool {
-        switch status {
-        case .denied: return true
-        case .authorized, .provisional, .ephemeral, .notDetermined: return false
-        @unknown default: return true
-        }
+        status != .notDetermined
+            && NotificationPermissionSettingsView.notificationPermissionStatus(for: status) == .notGranted
     }
 }
