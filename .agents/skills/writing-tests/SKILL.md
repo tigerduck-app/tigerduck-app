@@ -1,6 +1,6 @@
 ---
 name: writing-tests
-description: Use when writing or changing a TigerDuck unit test, or when a test is flaky, failing on CI and passing on a rerun. Covers parallel suites, a busy main actor, waiting and fakes.
+description: Use when writing or changing a TigerDuck unit test, or when a test is flaky, failing on CI and passing on a rerun. Covers parallel suites, a busy main actor, on-screen tests, dates, the test host, waiting and fakes.
 ---
 
 # Writing tests
@@ -30,6 +30,10 @@ unrelated tests with "Time limit was exceeded".
 - A test that holds the main actor on purpose polls; a semaphore wait there is a priority
   inversion the Thread Performance Checker stalls the whole process to report.
 - A suite that calls main-actor app API is `@MainActor` as a whole.
+- A test that makes a window key or brings up the keyboard, a view service, accessibility or
+  WebKit goes in `on_screen_tests` in `.github/workflows/tests.yaml`. On a just-booted simulator
+  such a call can hold the main thread for a minute, so CI runs those after the rest, one at a
+  time.
 
 ## Wait on a condition
 
@@ -41,10 +45,14 @@ unrelated tests with "Time limit was exceeded".
 - A deadline the code enforces gets a limit a starved main actor still meets; the test checks
   the order of events.
 
-## Fakes
+## The test environment
 
-`SchoolNetworkGuard` fails a test that reaches the school, Moodle or the library; give that seam
-a fake, such as a `URLProtocol` stub.
+- `SchoolNetworkGuard` fails a test that reaches the school, Moodle or the library; give that
+  seam a fake, such as a `URLProtocol` stub.
+- The host app shows an empty scene (`TigerDuckLauncher` in `App/TigerDuckApp.swift`), so
+  nothing from `TigerDuckApp` runs: a test installs the hooks it needs itself, as
+  `LiveMailClientTests` does with `SchoolMailCharsetHook.install()`.
+- CI runs in UTC: build dates in the Taipei zone (`TaipeiTime.calendar`), not the device's.
 
 ## Reading a flaky CI run
 
