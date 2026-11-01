@@ -197,7 +197,7 @@ struct DemoAccountTests {
         #expect(calls.syncTurnedOff == 1)
     }
 
-    @Test("signing out ends the demo, and the sign-out's clearing takes the file's data with it")
+    @Test("signing out ends the demo, and the sign-out's clearing takes the file's data and the kept key with it")
     func signingOutLeavesTheDemo() async throws {
         let folder = Folder()
         let session = AccountSession(signIns: SignInSeries())
@@ -208,8 +208,14 @@ struct DemoAccountTests {
         #expect(!folder.cache.courses.loadCourses(semester: semester).isEmpty)
 
         session.endSignIn()
-        await withExclusiveRealDefaults { folder.cache.forgetAccount() }
+        let keptDemo = await withExclusiveRealDefaults { () -> Bool in
+            Defaults[.demoSignedIn, for: testSignIn] = true
+            defer { Defaults.reset(.demoSignedIn) }
+            folder.cache.forgetAccount()
+            return Defaults[.demoSignedIn]
+        }
 
+        #expect(!keptDemo)
         #expect(!session.signIns.currentSignIn.isDemo)
         #expect(folder.cache.courses.loadCourses(semester: semester).isEmpty)
         #expect(folder.cache.assignments.loadAssignments(semester: semester).isEmpty)

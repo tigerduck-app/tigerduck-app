@@ -3,7 +3,7 @@ import Foundation
 import TigerDuckCore
 
 /// The account App Store review signs in with: `demo.json`'s made-up student, whom no server knows.
-struct DemoAccount {
+struct DemoAccount: AccountScoped {
     let fixture: DemoFixture?
     var stores = DemoStores()
     var language: () -> DemoLanguage = { .shown }
@@ -62,6 +62,10 @@ struct DemoAccount {
         } catch {
             return nil
         }
+    }
+
+    static func forgetAccount(in storage: AccountStorage) {
+        Defaults.reset(.demoSignedIn)
     }
 
     func leave() {
