@@ -24,6 +24,16 @@ struct TimeSliderViewModelTests {
         #expect(CourseTimeSlot.dateFromTimeString("", on: ref) == nil)
     }
 
+    @Test func aClassIsOverAtItsEnd() throws {
+        let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3"]) })
+        let viewModel = TimeSliderViewModel()
+        viewModel.configure(courses: [SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)])
+        let slot = try #require(viewModel.timeSlots.first)
+
+        #expect(viewModel.courseState(at: slot.start) == .inClass([slot]))
+        #expect(viewModel.courseState(at: slot.end) != .inClass([slot]))
+    }
+
     @Test func holidaySlots_areLeftOffTheTimeline() {
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)

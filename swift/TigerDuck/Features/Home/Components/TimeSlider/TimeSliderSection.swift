@@ -5,6 +5,7 @@ struct TimeSliderSection: View {
     let courses: [CourseStore.Course]
     var onSelectCourse: ((CourseTimeSlot) -> Void)? = nil
     @Environment(AppEnvironment.self) private var app
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = TimeSliderViewModel(isQuietDay: { !SchoolCalendar.isClassDay($0) })
 
     var body: some View {
@@ -14,6 +15,9 @@ struct TimeSliderSection: View {
         }
         .onAppear {
             viewModel.configure(courses: courses)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { viewModel.tick(AppClock.now()) }
         }
         .onChange(of: courses.map { course in
             "\(course.courseNo)|\(course.scheduleJSON)|\(course.classroomMapJSON)|\(course.displayName)"

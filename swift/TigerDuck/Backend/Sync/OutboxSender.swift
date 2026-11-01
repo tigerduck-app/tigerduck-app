@@ -29,6 +29,8 @@ final class OutboxSender {
         self.kept = kept ?? KeptValues()
     }
 
+    var sendsCourseAdds: Bool { isProtectedDataAvailable() && uploadsCourses() }
+
     func send(_ op: SyncOp, for signIn: SignIn, hasNewerQueuedEdit: @MainActor (SyncOp) async -> Bool) async throws {
         switch op {
         case .courseOverride(let semester, let moodleId, let customName, let colorHex, let locale, let stamp):

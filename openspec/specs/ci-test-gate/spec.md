@@ -6,10 +6,13 @@ every required check reporting, and make test timing independent of the machine.
 
 ## Requirements
 
-### Requirement: Documentation-only pull requests skip the Xcode legs
-A pull request whose changed paths all match `*.md`, `docs/**`, `openspec/**`, `.claude/**`,
-`.agents/**` or `.greptile/**` SHALL get a passing `unit-tests (phone)` and `unit-tests (watch)`
-without compiling or running tests. Each skipped leg SHALL log that it skipped and why.
+### Requirement: Documentation-only changes skip the Xcode legs
+A pull request or a push to `dev` or `main` whose changed paths all match `*.md`, `docs/**`,
+`openspec/**`, `api-poc/**`, `.claude/**`, `.agents/**`, `.greptile/**`,
+`.github/ISSUE_TEMPLATE/**` or `LICENSE*` SHALL get a passing `unit-tests (phone)`,
+`unit-tests (watch)` and `macOS build` without compiling or running tests. Each skipped leg SHALL
+log that it skipped and why. A push SHALL be compared with the commit it replaced, not only its
+last commit.
 
 #### Scenario: Documentation only
 - **WHEN** a pull request changes only `AGENTS.md` and files under `openspec/`
@@ -23,6 +26,18 @@ without compiling or running tests. Each skipped leg SHALL log that it skipped a
 - **WHEN** a pull request changes anything under `.github/workflows/`
 - **THEN** both legs build and test
 
+#### Scenario: Documentation commit after a code commit
+- **WHEN** one push to `dev` carries a Swift change and then a Markdown change
+- **THEN** the push builds
+
+### Requirement: Pushes build without testing
+A push to `dev` or `main` SHALL build each Xcode leg and the macOS app, to save the caches pull
+requests start from, and SHALL NOT run the tests the pull request already ran.
+
+#### Scenario: A pull request merges into dev
+- **WHEN** a pull request that changed Swift code merges into `dev`
+- **THEN** the push run builds and saves the caches, and runs no tests
+
 ### Requirement: Required checks never wait on skipped work
 Skipping SHALL happen inside the jobs, so every check name a branch rule may require reports a
 result on every pull request instead of staying pending.
@@ -33,8 +48,8 @@ result on every pull request instead of staying pending.
 
 ### Requirement: SwiftMail tests run only when they can fail differently
 On a pull request, the vendored SwiftMail job SHALL run `swift test` only when the pull request
-changes `swift/Packages/SwiftMail/**` or `.github/workflows/tests.yaml`. On pushes to `dev` and
-`main` it SHALL always run.
+changes `swift/Packages/SwiftMail/**` or `.github/workflows/tests.yaml`. Pushes to `dev` and
+`main` SHALL NOT run it.
 
 #### Scenario: App-only pull request
 - **WHEN** a pull request changes only app sources
@@ -79,12 +94,18 @@ Every pull request to `main` or `dev` SHALL run `tools/check_architecture.py` an
 - **WHEN** a pull request declares a new cache file of the school account and adds no row to `docs/account-state.md`
 - **THEN** the account-state check fails
 
-### Requirement: TigerDuckCore tests run on every pull request
-Every pull request to `main` or `dev` SHALL run `swift test` for `swift/Packages/TigerDuckCore`.
+### Requirement: TigerDuckCore tests run only when they can fail differently
+A pull request to `main` or `dev` SHALL run `swift test` for `swift/Packages/TigerDuckCore` only
+when it changes `swift/Packages/TigerDuckCore/**` or `.github/workflows/tests.yaml`. Pushes to
+`dev` and `main` SHALL NOT run it.
 
 #### Scenario: A change to a shared rule
 - **WHEN** a pull request changes the class timeline in TigerDuckCore
 - **THEN** the package's tests run on that pull request
+
+#### Scenario: App-only pull request
+- **WHEN** a pull request changes only app sources
+- **THEN** the TigerDuckCore job passes without running `swift test` and logs why
 
 ### Requirement: The macOS source lists follow one source
 The macOS source lists in `project.pbxproj` SHALL equal every app-target Swift file minus

@@ -42,6 +42,12 @@ struct AcademicTermTests {
         #expect(AcademicTerm(code: "114H")! < AcademicTerm(code: "1151")!)
     }
 
+    @Test func codesSortAsTermsWithUnreadableOnesFirst() {
+        let codes = ["1151", "99 1", "114H", "X", "1142", "991", "1001"]
+        #expect(codes.sorted(by: AcademicTerm.precedes) == ["X", "99 1", "991", "1001", "1142", "114H", "1151"])
+        #expect(!AcademicTerm.precedes("1142", "1142"))
+    }
+
     @Test func aWalkBackSkipsSummerTerms() {
         #expect(AcademicTerm(code: "1151")!.previousRegular.code == "1142")
         #expect(AcademicTerm(code: "1142")!.previousRegular.code == "1141")

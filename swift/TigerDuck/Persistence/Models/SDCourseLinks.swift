@@ -77,7 +77,7 @@ enum CourseRoomList {
         guard !map.isEmpty, let periods else { return fallback }
         var seen = Set<String>()
         var rooms: [String] = []
-        for period in periods.sortedByPeriodOrder() {
+        for period in periods.timedPeriodsInOrder() {
             if let raw = map["\(weekday)-\(period)"] {
                 for part in SDCourse.splitRoom(raw) where !seen.contains(part) {
                     seen.insert(part)

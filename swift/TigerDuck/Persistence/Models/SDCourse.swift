@@ -183,7 +183,7 @@ final class SDCourse: Identifiable {
     }
 
     static func timeRange(periods: [String]) -> String? {
-        let sorted = periods.sortedByPeriodOrder()
+        let sorted = periods.timedPeriodsInOrder()
         guard let first = sorted.first,
               let last = sorted.last,
               let firstTime = AppConstants.PeriodTimes.mapping[first],
@@ -212,7 +212,7 @@ final class SDCourse: Identifiable {
 extension Array where Element == SDCourse {
     func coursesForToday() -> [SDCourse] {
         let today = AppClock.now().scheduleWeekday
-        return filter { $0.schedule[today] != nil }
+        return filter { !($0.schedule[today] ?? []).timedPeriodsInOrder().isEmpty }
     }
 }
 

@@ -151,21 +151,23 @@ enum ReenableAnswer {
         on backend: some CourseSyncBackend,
         for signIn: SignIn
     ) async throws {
-        for (semester, courses) in terms {
-            let hiddenNos = CourseTombstone.courseNos(hiddenIn: semester, in: deletedNos)
-            let stubs = hiddenNos.subtracting(courses.map(\.courseNo)).sorted()
-                .map { SDCourse(courseNo: $0, courseName: $0) }
-            guard !courses.isEmpty || !stubs.isEmpty else { continue }
-            if !courses.isEmpty {
-                try await backend.deleteAllCourses(semester: semester, madeAt: Date(), for: signIn)
-            }
-            try await backend.uploadCourses(
-                SchoolDataUploader.courseUploadRequest(courses + stubs, semester: semester), addedAt: nil, for: signIn
-            )
-            for courseNo in hiddenNos.sorted() {
-                try await backend.deleteCourse(
-                    courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), madeAt: Date(), for: signIn
+        try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.uploadsCourses }) {
+            for (semester, courses) in terms {
+                let hiddenNos = CourseTombstone.courseNos(hiddenIn: semester, in: deletedNos)
+                let stubs = hiddenNos.subtracting(courses.map(\.courseNo)).sorted()
+                    .map { SDCourse(courseNo: $0, courseName: $0) }
+                guard !courses.isEmpty || !stubs.isEmpty else { continue }
+                if !courses.isEmpty {
+                    try await backend.deleteAllCourses(semester: semester, madeAt: Date(), for: signIn)
+                }
+                try await backend.uploadCourses(
+                    SchoolDataUploader.courseUploadRequest(courses + stubs, semester: semester), addedAt: nil, for: signIn
                 )
+                for courseNo in hiddenNos.sorted() {
+                    try await backend.deleteCourse(
+                        courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), madeAt: Date(), for: signIn
+                    )
+                }
             }
         }
     }

@@ -65,6 +65,15 @@ public struct AcademicTerm: Hashable, Comparable, Sendable {
         (lhs.year, lhs.season) < (rhs.year, rhs.season)
     }
 
+    /// Whether `lhs` is the earlier term. A code that is not a term comes before every term, and
+    /// two spellings of one term, such as `99 1` and `991`, keep their string order.
+    public static func precedes(_ lhs: String, _ rhs: String) -> Bool {
+        let left = AcademicTerm(code: lhs), right = AcademicTerm(code: rhs)
+        guard left != right else { return lhs < rhs }
+        guard let left, let right else { return left == nil }
+        return left < right
+    }
+
     /// The year of any code that ends in one season character, read numerically so `99 1` is 99.
     public static func year(of code: String) -> Int? {
         Int(code.dropLast().trimmingCharacters(in: .whitespaces))
