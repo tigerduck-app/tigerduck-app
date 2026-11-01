@@ -117,7 +117,7 @@ struct TigerDuckApp: App {
                     Task { widgetSnapshotWriter.regenerate() }
                     UNUserNotificationCenter.current().setBadgeCount(0)
                     TLSPinMismatchQueue.shared.isForeground = true
-                    fetchPinDocumentIfDue()
+                    fetchPinDocumentAfterOnboarding()
                 }
                 .onOpenURL { url in
                     app.router.open(url, signIn: app.authService.session.currentSignIn)
@@ -156,7 +156,7 @@ struct TigerDuckApp: App {
         }
         app.activation.becameActive()
         widgetSnapshotWriter.regenerate()
-        fetchPinDocumentIfDue()
+        fetchPinDocumentAfterOnboarding()
     }
 }
 
@@ -197,7 +197,7 @@ struct TigerDuckApp: App {
                         )
                     }
                     TLSPinMismatchQueue.shared.isForeground = true
-                    fetchPinDocumentIfDue()
+                    fetchPinDocumentAfterOnboarding()
                 }
                 .onOpenURL { url in
                     app.router.open(url, signIn: app.authService.session.currentSignIn)
@@ -265,14 +265,14 @@ struct TigerDuckApp: App {
         }
         app.activation.becameActive()
         widgetSnapshotWriter?.regenerate()
-        fetchPinDocumentIfDue()
+        fetchPinDocumentAfterOnboarding()
     }
 }
 
 #endif
 
 extension TigerDuckApp {
-    private func fetchPinDocumentIfDue() {
+    private func fetchPinDocumentAfterOnboarding() {
         guard app.hasCompletedOnboarding else { return }
         Task { await TLSPinDocumentFetcher.shared.fetchIfDue() }
     }

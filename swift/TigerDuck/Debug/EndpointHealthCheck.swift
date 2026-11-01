@@ -36,10 +36,10 @@ nonisolated enum EndpointHealthCheck {
             return .unreachable(detail: String(localized: "settings_api_endpoint_error_malformed"))
         }
         do {
-            guard let status = try await json(at: health, session: session)?["status"] as? String,
-                  status.lowercased() == "ok",
-                  let v4 = try await json(at: version, session: session)?["api_v4_base_path"] as? String,
-                  !v4.isEmpty
+            guard let healthAnswer: Health = try await decoded(at: health, session: session),
+                  healthAnswer.status.lowercased() == "ok",
+                  let backendVersion: BackendVersion = try await decoded(at: version, session: session),
+                  !backendVersion.apiV4BasePath.isEmpty
             else { return .notTigerDuck }
             return .ok
         } catch {
@@ -47,13 +47,25 @@ nonisolated enum EndpointHealthCheck {
         }
     }
 
-    private static func json(at url: URL, session: URLSession) async throws -> [String: Any]? {
+    private struct Health: Decodable {
+        let status: String
+    }
+
+    private struct BackendVersion: Decodable {
+        let apiV4BasePath: String
+
+        enum CodingKeys: String, CodingKey {
+            case apiV4BasePath = "api_v4_base_path"
+        }
+    }
+
+    private static func decoded<Body: Decodable>(at url: URL, session: URLSession) async throws -> Body? {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = timeout
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         let (data, response) = try await session.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return try? JSONDecoder().decode(Body.self, from: data)
     }
 }

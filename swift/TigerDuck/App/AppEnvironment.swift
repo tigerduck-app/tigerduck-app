@@ -133,7 +133,7 @@ final class AppEnvironment {
         cloudSyncPreference.onChange { [weak self] enabled in
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
-        preferences.onLanguageChange = { [weak self] in self?.activation.cancelRefresh() }
+        preferences.willChangeLanguage = { [weak self] in self?.activation.cancelRefresh() }
         preferences.onCourseLabelsChange = { [weak self] in
             guard let self else { return }
             relabeler.relabelAll(for: authService.session.currentSignIn)

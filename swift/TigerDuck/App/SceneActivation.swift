@@ -20,7 +20,7 @@ final class SceneActivation {
     }
 
     func becameActive() {
-        Task { await CourseChangeStore.shared.refresh() }
+        refreshCourseChanges()
         returnTask?.cancel()
         returnTask = Task { [app] in
             #if os(iOS)
@@ -51,7 +51,7 @@ final class SceneActivation {
     func refresh(recheckSubmissions: Bool = false) {
         guard app.hasCompletedOnboarding else { return }
         app.feed.startPolling(pollNow: false)
-        Task { await CourseChangeStore.shared.refresh() }
+        refreshCourseChanges()
         refreshTask?.cancel()
         let signIn = app.authService.session.currentSignIn
         refreshTask = Task { [app] in
@@ -73,6 +73,10 @@ final class SceneActivation {
             guard !Task.isCancelled else { return }
             NTUSTSessionManager.shared.loadingState = .loaded
         }
+    }
+
+    private func refreshCourseChanges() {
+        Task { await CourseChangeStore.shared.refresh() }
     }
 
     func cancelRefresh() {
@@ -134,17 +138,17 @@ enum RefreshOrder {
         pushOutbox: @escaping @MainActor () async -> Void,
         fetchSchool: @MainActor (_ applyAfter: @escaping PullGate) async -> Void
     ) async {
-        let pulled = Task { @MainActor () -> Bool in
+        let pullThenOutbox = Task { @MainActor () -> Bool in
             await pull()
-            let completed = !Task.isCancelled
+            let pullRanToItsEnd = !Task.isCancelled
             await pushOutbox()
-            return completed
+            return pullRanToItsEnd
         }
         await withTaskCancellationHandler {
-            await fetchSchool { await pulled.value }
-            await pulled.value
+            await fetchSchool { await pullThenOutbox.value }
+            await pullThenOutbox.value
         } onCancel: {
-            pulled.cancel()
+            pullThenOutbox.cancel()
         }
     }
 }

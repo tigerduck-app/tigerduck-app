@@ -314,12 +314,12 @@ struct ModalClosingTests {
         try await waitUntil { front.window === window && back.window === other }
 
         window.makeKey()
-        #expect(front.isForeground)
-        #expect(!back.isForeground)
-        #expect(HostWindow().isForeground)
+        #expect(front.mayBeForeground)
+        #expect(!back.mayBeForeground)
+        #expect(HostWindow().mayBeForeground)
         other.makeKey()
-        #expect(!front.isForeground)
-        #expect(back.isForeground)
+        #expect(!front.mayBeForeground)
+        #expect(back.mayBeForeground)
     }
 
     enum Link: String, CaseIterable {
