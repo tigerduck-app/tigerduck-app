@@ -17,7 +17,7 @@ enum CourseFetch {
         semester: String = CourseSelectionService.currentSemesterCode(),
         forceRefresh: Bool = false,
         resendingRoster: Bool = false,
-        applyAfter: PullGate = { true },
+        afterBackendPull: PullGate = { .completed },
         for signIn: SignIn
     ) async -> [SDCourse] {
         await fetchCourses(
@@ -25,7 +25,7 @@ enum CourseFetch {
             semester: semester,
             forceRefresh: forceRefresh,
             resendingRoster: resendingRoster,
-            applyAfter: applyAfter,
+            afterBackendPull: afterBackendPull,
             signIn: signIn,
             moodle: { await CourseSources.moodleCourses(for: signIn) },
             transcript: { await CourseSources.transcript(authService: authService, for: signIn) }
@@ -79,7 +79,7 @@ enum CourseFetch {
         semester: String,
         forceRefresh: Bool,
         resendingRoster: Bool = false,
-        applyAfter: PullGate = { true },
+        afterBackendPull: PullGate = { .completed },
         signIn: SignIn,
         moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
@@ -170,7 +170,7 @@ enum CourseFetch {
             item.data.map { TermRoster.LookedUpCourse(course: $0.course(in: semester), lookup: item.found ? .found : .fallback) }
         }
 
-        guard await applyAfter() else { return CourseStore.shared.loadCourses(semester: semester) }
+        guard await afterBackendPull() == .completed else { return CourseStore.shared.loadCourses(semester: semester) }
         if let roster = term.selectionRoster, !Task.isCancelled {
             CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster, for: signIn)
             if selectionIsLive {

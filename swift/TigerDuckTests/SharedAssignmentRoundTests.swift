@@ -155,7 +155,7 @@ struct SharedAssignmentRoundTests {
     @MainActor
     private final class Pulls {
         var asked: [String] = []
-        var applies: Bool?
+        var applies: PullOutcome?
     }
 
     @Test("a round whose starter's pull was cancelled applies after the pull of a refresh that joined it")
@@ -166,7 +166,7 @@ struct SharedAssignmentRoundTests {
             rounds.entered += 1
             _ = await AssignmentFetch.sharedRound(
                 signIn: session.signIns.currentSignIn, rechecks: false, rounds: shared,
-                applyAfter: { pulls.asked.append("cancelled"); return false }
+                afterBackendPull: { pulls.asked.append("cancelled"); return .cancelled }
             ) { pulled in
                 _ = await rounds.run("cancelled")
                 pulls.applies = await pulled()
@@ -178,7 +178,7 @@ struct SharedAssignmentRoundTests {
             rounds.entered += 1
             _ = await AssignmentFetch.sharedRound(
                 signIn: session.signIns.currentSignIn, rechecks: false, rounds: shared,
-                applyAfter: { pulls.asked.append("joined"); return true }
+                afterBackendPull: { pulls.asked.append("joined"); return .completed }
             ) { _ in await rounds.run("joined") }
         }
         try await waitUntil { rounds.entered == 2 }
@@ -187,7 +187,7 @@ struct SharedAssignmentRoundTests {
 
         #expect(rounds.started == ["cancelled"])
         #expect(pulls.asked == ["cancelled", "joined"])
-        #expect(pulls.applies == true)
+        #expect(pulls.applies == .completed)
     }
 
     @Test("a round whose only pull was cancelled applies nothing")
@@ -195,12 +195,12 @@ struct SharedAssignmentRoundTests {
         let pulls = Pulls()
         _ = await AssignmentFetch.sharedRound(
             signIn: session.signIns.currentSignIn, rechecks: false, rounds: shared,
-            applyAfter: { false }
+            afterBackendPull: { .cancelled }
         ) { pulled in
             pulls.applies = await pulled()
             return []
         }
-        #expect(pulls.applies == false)
+        #expect(pulls.applies == .cancelled)
     }
 
     @MainActor
