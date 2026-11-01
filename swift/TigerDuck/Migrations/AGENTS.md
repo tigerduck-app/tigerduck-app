@@ -13,8 +13,10 @@ up. Retry and refresh policies and new features belong with the feature.
    one that moves Keychain items launch code reads runs earlier there, before `AuthService` is
    built. One that finds protected data unreadable, as on a locked phone, may run itself again
    once it becomes readable, since unlocking resumes the process instead of launching it again.
-4. A migration stays while the app supports upgrading from a version older than the one that
-   first shipped it. Once the minimum supported version, the floor below which the backend
-   answers 410 `app_version_retired`, is at or above that version, delete its file and its call
-   in `runPendingMigrations()`; its flag may stay behind. `git log --diff-filter=A --follow` on
-   the file finds the version. No floor is set yet, so every migration stays for now.
+4. A migration stays until no install can launch with data older than it. The backend's
+   `app_version_retired` floor alone does not show that: a user below it can update straight to
+   the newest app. Deleting a migration therefore needs, in the same change, a path for such an
+   install: the app keeps the version of its last launch and resets the data the deleted
+   migrations covered when that version is older than the oldest migration kept. Pick the
+   cut-off from the floor once one is set. Neither the reset path nor a floor exists yet, so
+   every migration stays.
