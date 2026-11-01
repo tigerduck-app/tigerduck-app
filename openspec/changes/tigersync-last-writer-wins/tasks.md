@@ -57,9 +57,8 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 - [ ] 6.2 Rebuild `AppState.reconcileCourses` on tombstones, kinds, `term_resets` and `courses_reset_hlc`, with pending outbox ops held, and delete the course heuristics D12 lists; verify tests for each #689 case against a fake backend, then update `docs/decisions/0005-course-tombstones.md` (or supersede it with a new ADR) and verify `python3 tools/check_comments.py check --base origin/dev` passes
 - [ ] 6.3 Run the two-device checks of design.md's test plan on real devices against a backend built from `dev`; verify each #689 case ends with both devices agreeing
 
-## 7. iOS PR: refresh order
+## 7. iOS PR: TigerSync-only triggers (the refresh order is refactor-v4's D13)
 
-- [ ] 7.1 Make `backgroundSync` the pipeline of design.md D14 and call it from `HomeView.refreshable`, `MacRootView`'s Refresh and the Calendar, Class Table and Score pulls before their own fetch; with the 3-second wait cap (design.md, Owner decisions, item 2); verify a test where a fake school fetch starts only after the TigerSync step returns, and one where the step fails
 - [ ] 7.2 Verify that a revision change and a sync push still run TigerSync alone, with a test that records no school fetch
 
 ## 8. iOS PR: the re-enable prompt (after the owner decides D15)
