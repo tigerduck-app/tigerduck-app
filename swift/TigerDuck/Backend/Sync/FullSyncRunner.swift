@@ -176,7 +176,7 @@ final class FullSyncRunner {
         let inFlight = await coordinator.pendingAssignmentOverrideIds().union(coordinator.pendingCourseIgnoreKeys())
         try requireMayWrite(for: signIn)
         let before = SyncPolicy.current
-        let takesCourses = before.switchedOn.contains("courses") && !before.pendingChecks.contains("courses")
+        let takesCourses = before.switchedOn.contains(.courses) && !before.pendingChecks.contains(.courses)
         let reset = CourseReset.decide(
             server: Self.backendDate(json["courses_reset_at"]), lastSeen: Defaults[.lastSeenCoursesResetAt],
             takesCourses: takesCourses
@@ -191,7 +191,7 @@ final class FullSyncRunner {
 
         let marksLeftFor = SyncPolicy.reasonToLeaveMarks(
             syncsMarks: syncsMarks && Defaults[.syncAssignments],
-            conflictCheckPending: policy.pendingChecks.contains("assignments"),
+            conflictCheckPending: policy.pendingChecks.contains(.assignments),
             uploadedLocalMarks: isMigrating,
             editedDuringFetch: app.localEdits.overrideEditGeneration != editGenerationAtFetch
         )
@@ -297,7 +297,7 @@ struct FullSyncPass {
     let courseAdds: Set<String>
     let heldCourseOverrides: (colors: Set<String>, names: Set<String>)
     let marksLeftFor: SyncPolicy.MarksLeftReason?
-    let taken: Set<String>
+    let taken: Set<SyncCategory>
     let reset: (apply: Bool, remember: Date)
     let editGenerationAtFetch: Int
 
@@ -306,7 +306,6 @@ struct FullSyncPass {
 
 @MainActor
 protocol CategoryReconciler {
-    static var category: String { get }
     init(app: AppEnvironment)
     func reconcile(_ pass: FullSyncPass) -> Bool
 }

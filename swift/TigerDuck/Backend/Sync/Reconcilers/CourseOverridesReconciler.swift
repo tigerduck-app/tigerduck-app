@@ -3,12 +3,11 @@ import os
 
 @MainActor
 struct CourseOverridesReconciler: CategoryReconciler {
-    static let category = "course_overrides"
     unowned let app: AppEnvironment
 
     func reconcile(_ pass: FullSyncPass) -> Bool {
-        let colors = pass.taken.contains("course_colors")
-        let names = pass.taken.contains("course_names")
+        let colors = pass.taken.contains(.courseColors)
+        let names = pass.taken.contains(.courseNames)
         guard colors || names else {
             AppLogger.sync.info("[syncOverrides] skipping course overrides — switched off or conflict check pending")
             return false

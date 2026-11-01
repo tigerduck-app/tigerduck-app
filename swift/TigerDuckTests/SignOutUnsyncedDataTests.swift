@@ -4,14 +4,14 @@ import Testing
 struct SignOutUnsyncedDataTests {
     private typealias Held = SignOutCheck.SignOutData
 
-    private static let categories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
+    private static let categories = Set(SyncCategory.allCases)
 
-    private static let kinds: [(data: Held, needs: Set<String>)] = [
-        (Held(courses: true), ["courses"]),
-        (Held(courseNames: true), ["course_names"]),
-        (Held(courseColors: true), ["course_colors"]),
-        (Held(assignmentMarks: true), ["assignments"]),
-        (Held(ignoredCourses: true), ["assignments", "courses"]),
+    private static let kinds: [(data: Held, needs: Set<SyncCategory>)] = [
+        (Held(courses: true), [.courses]),
+        (Held(courseNames: true), [.courseNames]),
+        (Held(courseColors: true), [.courseColors]),
+        (Held(assignmentMarks: true), [.assignments]),
+        (Held(ignoredCourses: true), [.assignments, .courses]),
     ]
 
     private static let everything = Held(
@@ -22,9 +22,9 @@ struct SignOutUnsyncedDataTests {
     private static func deletes(
         _ data: Held,
         cloudSyncEnabled: Bool = true,
-        switchedOn: Set<String> = categories,
-        synced: Set<String> = categories,
-        pendingChecks: Set<String> = [],
+        switchedOn: Set<SyncCategory> = categories,
+        synced: Set<SyncCategory> = categories,
+        pendingChecks: Set<SyncCategory> = [],
         unsent: Bool = false
     ) -> Bool {
         SignOutCheck.signOutDeletesUnsyncedData(
@@ -36,9 +36,9 @@ struct SignOutUnsyncedDataTests {
     private static func leaves(
         _ data: Held,
         cloudSyncEnabled: Bool = true,
-        switchedOn: Set<String> = categories,
-        synced: Set<String> = categories,
-        pendingChecks: Set<String> = []
+        switchedOn: Set<SyncCategory> = categories,
+        synced: Set<SyncCategory> = categories,
+        pendingChecks: Set<SyncCategory> = []
     ) -> Bool {
         SignOutCheck.signOutLeavesSyncedData(
             data, cloudSyncEnabled: cloudSyncEnabled, switchedOn: switchedOn, synced: synced, pendingChecks: pendingChecks

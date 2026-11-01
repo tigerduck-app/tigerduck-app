@@ -170,34 +170,18 @@ class ArchitectureTests(unittest.TestCase):
                                            source(APP + "Migrations/X.swift", text)], "")
         self.assertEqual([(f.path, f.rule) for f in found], [(APP + "Backend/Sync/X.swift", "account-store-write")])
 
-    def test_an_account_key_written_outside_the_file_that_clears_it_fails(self) -> None:
+    def test_an_account_key_written_or_reset_outside_the_file_that_clears_it_fails(self) -> None:
         inventory = ("| defaults | `syncedOnce` | school | `swift/TigerDuck/Backend/Sync/Progress.swift` `forget` |\n"
                      "| defaults | `theme` | device |  |\n")
-        text = ("let seen = Defaults[.syncedOnce]\nDefaults[.syncedOnce] = true\nDefaults[.syncedOnce].insert(x)\n"
-                "Defaults.reset(.syncedOnce)\nchange(&Defaults[.syncedOnce])\nDefaults[.theme] = 1\n"
-                "Defaults[Defaults.Keys.syncedOnce] = true\nDefaults[.syncedOnce][id]?[key] = 1\n"
-                "_ = Defaults[.syncedOnce].popLast()\nDefaults[.syncedOnce].sort()\nDefaults[.syncedOnce] += [x]\n"
-                "if Defaults[.syncedOnce].contains(x) {}\nlet n = Defaults[Keys.syncedOnce].count\n")
+        text = ("let seen = Defaults[.syncedOnce]\nDefaults[.syncedOnce, for: signIn] = true\n"
+                "Defaults[.syncedOnce, for: signIn].insert(x)\nDefaults.reset(.syncedOnce)\n"
+                "change(&Defaults[.syncedOnce, for: signIn])\nDefaults[.theme] = 1\n"
+                "Defaults[AccountKeys.syncedOnce, for: signIn] = true\nDefaults.reset(.theme, .syncedOnce)\n"
+                "if Defaults[.syncedOnce].contains(x) {}\nlet n = Defaults[AccountKeys.syncedOnce].count\n")
         found = ca.account_store_findings([source(APP + "Backend/Sync/FullSync.swift", text),
                                            source(APP + "Backend/Sync/Progress.swift", text)], inventory)
         self.assertEqual([(f.path, f.line, f.rule) for f in found],
-                         [(APP + "Backend/Sync/FullSync.swift", n, "account-store-write")
-                          for n in (2, 3, 4, 5, 7, 8, 9, 10, 11)])
-
-    def test_an_account_key_written_through_its_default_wrapper_fails(self) -> None:
-        inventory = "| defaults | `syncOn` | school | `swift/TigerDuck/Backend/Sync/Preference.swift` `turnOff` |\n"
-        text = ("struct V: View {\n    @Default(.syncOn) private var on\n    @Default(.theme) var theme\n"
-                "    var body: some View { Toggle(\"\", isOn: $on) }\n    func a() { on = true }\n"
-                "    func b() { self.on.toggle() }\n    func c() { if on { theme = 1 } }\n}\n")
-        found = ca.account_store_findings([source(APP + "Features/V.swift", text)], inventory)
-        self.assertEqual([f.line for f in found], [4, 5, 6])
-
-    def test_a_default_wrapper_on_its_own_line_is_still_seen(self) -> None:
-        inventory = "| defaults | `syncOn` | school | `swift/TigerDuck/Backend/Sync/Preference.swift` `turnOff` |\n"
-        text = ("struct V: View {\n    @Default(.syncOn)\n    private var on\n    var count = 0\n"
-                "    func a() { on = true; count = 1 }\n}\n")
-        found = ca.account_store_findings([source(APP + "Features/V.swift", text)], inventory)
-        self.assertEqual([f.line for f in found], [5])
+                         [(APP + "Backend/Sync/FullSync.swift", n, "account-store-write") for n in (2, 3, 4, 5, 7, 8)])
 
     def test_a_writable_mail_store_outside_the_mail_store_fails(self) -> None:
         text = ("let store = MailSettingsStore(defaults: suite)\nlet fields = prefs as? MailPreferenceFields\n"

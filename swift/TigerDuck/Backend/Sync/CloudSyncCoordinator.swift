@@ -39,7 +39,7 @@ final class CloudSyncCoordinator {
         isEnabled: Bool = Defaults[.cloudSyncEnabled],
         syncsAssignmentMarks: @escaping @Sendable () -> Bool = { SyncPolicy.current.sendsAssignmentMarks },
         syncsCourseIgnores: @escaping @Sendable () -> Bool = { SyncPolicy.current.sendsCourseIgnores },
-        syncsCourseOverrides: @escaping @Sendable (_ category: String) -> Bool = {
+        syncsCourseOverrides: @escaping @Sendable (_ category: SyncCategory) -> Bool = {
             SyncPolicy.current.sendsCourseOverride($0)
         },
         addedCourseUpload: @escaping @MainActor (_ semester: String, _ courseNo: String)
@@ -152,7 +152,7 @@ final class CloudSyncCoordinator {
         edits.courseOverridesToHold(since: pending)
     }
 
-    func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
+    func discardEdits(of categories: Set<SyncCategory>, courseIgnores: Bool) async {
         await edits.discardEdits(of: categories, courseIgnores: courseIgnores)
         await drain.awaitSending()
     }

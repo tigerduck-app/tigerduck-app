@@ -8,12 +8,13 @@ by name, so a store this process never built is cleared too.
 
 `tools/check_account_state.py` reads the table at the end, and the Architecture workflow runs it
 on every pull request. Every Keychain key in `AppConstants.KeychainKeys` and `AuthTokenManager`,
-every `Defaults` key declared in a `Defaults.Keys` extension of the app target and every file a
-source under `swift/TigerDuck/Persistence/` names needs a row; each file store there deletes its own
+every `Defaults` key declared in a `Defaults.Keys` or `AccountKeys` extension of the app target
+and every file a source under `swift/TigerDuck/Persistence/` names needs a row; each file store there deletes its own
 files in `forgetAccount(in:)`. A row of the school account
 (`school`) or the library account (`library`) names the function or property that clears it, and
 its body must mention it; a Keychain key of either is also deleted by the fresh-install wipe,
-`FreshInstallKeychainPurge.keys`. `device` rows outlive any account: preferences, the device's own identity and
+`FreshInstallKeychainPurge.keys`, and a `Defaults` key of either is an `AccountKey`, written with
+the `SignIn` it was read for. `device` rows outlive any account: preferences, the device's own identity and
 public school data. Every `AccountScoped` type must be in one account's list in `SignOutPlan`.
 
 ## Stores the check cannot read
@@ -83,7 +84,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `classReminderLeadMinutes` | device |  |
 | defaults | `classTableSelectedSemester` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |
 | defaults | `classroomMandarinDisplay` | device |  |
-| defaults | `cloudSyncEnabled` | school | `swift/TigerDuck/Backend/Sync/CloudSyncPreference.swift` `turnOff` |
+| defaults | `cloudSyncEnabled` | school | `swift/TigerDuck/Backend/Sync/CloudSyncPreference.swift` `setEnabled` |
 | defaults | `configuredTabsData` | device |  |
 | defaults | `courseChangesCache` | device |  |
 | defaults | `courseChangesETag` | device |  |

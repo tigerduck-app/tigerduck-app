@@ -4,13 +4,12 @@ import TigerDuckCore
 
 @MainActor
 struct CourseRosterReconciler: CategoryReconciler {
-    static let category = "courses"
     unowned let app: AppEnvironment
 
     func reconcile(_ pass: FullSyncPass) -> Bool {
         defer { CourseUpload.answerRosterRequests(in: pass.json, authService: app.authService, for: pass.signIn) }
-        guard pass.taken.contains("courses") else {
-            if pass.policy.pendingChecks.contains("courses") {
+        guard pass.taken.contains(.courses) else {
+            if pass.policy.pendingChecks.contains(.courses) {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             }
             return false

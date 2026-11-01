@@ -129,15 +129,14 @@ final class NTUSTSessionManager {
     }
 
     func markLoginSuccess(for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
+        Defaults[.ssoLoginTimestamp, for: signIn] = Date().timeIntervalSince1970
     }
 
     func cancelTasksAndForgetSignIn() {
         // Flows keep this session, and a request on an invalidated one ends the app with an
         // exception, so its tasks are cancelled instead.
         Self.cancelTasks(of: session, thenEmpty: ntustCookieJar)
-        Defaults[.ssoLoginTimestamp] = nil
+        Defaults.reset(.ssoLoginTimestamp)
     }
 
     nonisolated static func cancelTasks(of session: URLSession, thenEmpty jar: HTTPCookieStorage) {

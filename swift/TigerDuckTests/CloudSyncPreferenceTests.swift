@@ -8,11 +8,11 @@ import Testing
 @MainActor
 struct CloudSyncPreferenceTests {
 
-    private static func withIsolatedKey(_ body: (Defaults.Key<Bool>) -> Void) {
+    private static func withIsolatedKey(_ body: (AccountKey<Bool>) -> Void) {
         let suiteName = "CloudSyncPreferenceTests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
         defer { suite.removePersistentDomain(forName: suiteName) }
-        body(Defaults.Key<Bool>("cloudSyncEnabled", default: true, suite: suite))
+        body(AccountKey<Bool>("cloudSyncEnabled", default: true, suite: suite))
     }
 
     /// Set from `withObservationTracking`'s `onChange`, which is `@Sendable`.
@@ -27,7 +27,7 @@ struct CloudSyncPreferenceTests {
             var reported: [Bool] = []
             preference.onChange { reported.append($0) }
 
-            Defaults[key] = false
+            Defaults[key, for: testSignIn] = false
 
             #expect(preference.isEnabled == false)
             #expect(reported == [false])
@@ -41,7 +41,7 @@ struct CloudSyncPreferenceTests {
             var reported: [Bool] = []
             preference.onChange { reported.append($0) }
 
-            Defaults[key] = false
+            Defaults[key, for: testSignIn] = false
             preference.setEnabled(true, for: testSignIn)
 
             #expect(reported == [false, true])
@@ -60,7 +60,7 @@ struct CloudSyncPreferenceTests {
                 invalidated.raised = true
             }
 
-            Defaults[key] = false
+            Defaults[key, for: testSignIn] = false
 
             #expect(invalidated.raised)
         }

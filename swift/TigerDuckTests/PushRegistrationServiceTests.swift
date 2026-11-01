@@ -402,9 +402,9 @@ struct PushRegistrationServiceTests {
     func switchTurnedOffDuringARegistrationEndsOff() async throws {
         try await Self.withSyncPreferences {
             let savedSync = Defaults[.cloudSyncEnabled]
-            defer { Defaults[.cloudSyncEnabled] = savedSync }
+            defer { Defaults[.cloudSyncEnabled, for: testSignIn] = savedSync }
             Defaults[.syncPreferencesPushPending] = false
-            Defaults[.cloudSyncEnabled] = true
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let service = Self.makeService(baseURL: baseURL)
             Self.expectAttempt(baseURL, registrations: 1)
@@ -424,7 +424,7 @@ struct PushRegistrationServiceTests {
             await service.update(ptsTokenHex: "a1b2")
             try await waitUntil { SettingsAPIStub.requests(for: Self.registerURL(baseURL)).count == 2 }
 
-            Defaults[.cloudSyncEnabled] = false
+            Defaults[.cloudSyncEnabled, for: testSignIn] = false
             let patch = Task { await service.updateCloudSyncEnabled(false) }
             for _ in 0..<60 where SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).isEmpty {
                 try await Task.sleep(for: .milliseconds(5))

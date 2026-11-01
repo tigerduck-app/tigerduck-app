@@ -52,6 +52,11 @@ struct AccountSwitchTests {
             restores.append { Defaults[key] = value }
         }
 
+        private mutating func keep<Value: Defaults.Serializable>(_ key: AccountKey<Value>) {
+            let value = Defaults[key]
+            restores.append { Defaults[key, for: testSignIn] = value }
+        }
+
         func restore() {
             restores.forEach { $0() }
         }
@@ -123,21 +128,21 @@ struct AccountSwitchTests {
             try FileManager.default.createDirectory(at: cache.moodleFilesDir, withIntermediateDirectories: true)
             try Data("pdf".utf8).write(to: cache.moodleFilesDir.appendingPathComponent("slides.pdf"))
             try Data("{}".utf8).write(to: cache.persistentDir.appendingPathComponent("imported_class_tables.json"))
-            Defaults[.schoolDataSyncedAt] = Date()
-            Defaults[.classTableSelectedSemester] = semester
-            Defaults[.emptyClassroomBuilding] = "TR"
-            Defaults[.categoriesSyncedOnce] = ["courses"]
-            Defaults[.courseRowIdsSeen] = [semester: 3]
-            Defaults[.pendingConflictCategories] = ["courses"]
-            Defaults[.assignmentMarksSyncedOnce] = true
-            Defaults[.lastSeenCoursesResetAt] = Date()
-            Defaults[.holidayNotifyOverrides] = [12]
-            Defaults[.holidayOverridesAwaitingUpload] = [12]
-            Defaults[.bulletinsSyncedAt] = Date()
-            SchoolPasswordPosts.storedPasswordRefusals = (1, Date())
+            Defaults[.schoolDataSyncedAt, for: testSignIn] = Date()
+            Defaults[.classTableSelectedSemester, for: testSignIn] = semester
+            Defaults[.emptyClassroomBuilding, for: testSignIn] = "TR"
+            Defaults[.categoriesSyncedOnce, for: testSignIn] = [.courses]
+            Defaults[.courseRowIdsSeen, for: testSignIn] = [semester: 3]
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.courses]
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = true
+            Defaults[.lastSeenCoursesResetAt, for: testSignIn] = Date()
+            Defaults[.holidayNotifyOverrides, for: testSignIn] = [12]
+            Defaults[.holidayOverridesAwaitingUpload, for: testSignIn] = [12]
+            Defaults[.bulletinsSyncedAt, for: testSignIn] = Date()
+            SchoolPasswordPosts.setStoredPasswordRefusals((1, Date()), for: testSignIn)
             #if os(iOS)
-            Defaults[.browserZoom] = ["moodle2.ntust.edu.tw": 120]
-            Defaults[.browserDesktopSites] = ["moodle2.ntust.edu.tw"]
+            Defaults[.browserZoom, for: testSignIn] = ["moodle2.ntust.edu.tw": 120]
+            Defaults[.browserDesktopSites, for: testSignIn] = ["moodle2.ntust.edu.tw"]
             #endif
         }
 
@@ -167,7 +172,7 @@ struct AccountSwitchTests {
             KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: "lib-password")
             KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryToken, value: "lib-token")
             KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryTokenExpiry, value: "4102444800000")
-            LibraryService.storedPasswordRefusals = (2, Date())
+            LibraryService.setStoredPasswordRefusals((2, Date()), for: testSignIn)
         }
 
         func libraryIsEmpty() -> Bool {
