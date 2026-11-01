@@ -35,8 +35,8 @@ final class FirstPullGate {
         if hasPulled(signIn), releasing.isEmpty, resumed == nil { return .pulled }
         guard signIn.isCurrent else { return .dropped }
         let id = UUID()
-        let release = await withTaskCancellationHandler {
-            await withCheckedContinuation { resume in
+        let outcome = await withTaskCancellationHandler {
+            await withCheckedContinuation { (resume: CheckedContinuation<Release, Never>) in
                 if Task.isCancelled {
                     resume.resume(returning: .dropped)
                 } else if hasPulled(signIn) {
@@ -53,7 +53,7 @@ final class FirstPullGate {
             }
         }
         if resumed == id { resumeNextReleased() }
-        return release
+        return outcome
     }
 
     private func release(_ release: Release) {
