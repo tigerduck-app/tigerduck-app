@@ -81,7 +81,8 @@ private struct DisabledWithReason: ViewModifier {
 
     func body(content: Content) -> some View {
         if let reason = closedReason {
-            // A disabled element ignores VoiceOver's activation, so only the content inside is disabled.
+            // VoiceOver's double tap on a dimmed control becomes a tap at its activation point,
+            // which lands on the overlay as a finger's tap does.
             content
                 .disabled(true)
                 .overlay {
@@ -89,9 +90,7 @@ private struct DisabledWithReason: ViewModifier {
                         .buttonStyle(.plain)
                         .accessibilityHidden(true)
                 }
-                .accessibilityElement(children: .combine)
                 .accessibilityHint(Text(reason))
-                .accessibilityAction { showToast(reason) }
         } else {
             content
         }
