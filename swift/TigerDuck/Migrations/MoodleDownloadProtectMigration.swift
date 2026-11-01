@@ -6,7 +6,7 @@ enum MoodleDownloadProtectMigration {
     private static let maxFailedLaunches = 3
 
     static func runIfNeeded(
-        root: URL,
+        root: URL = MoodleFiles.shared.moodleFilesDir,
         isProtectedDataAvailable: Bool,
         protect: @escaping @Sendable (URL) throws -> Void = MoodleDownloadProtectMigration.protect(_:)
     ) async {

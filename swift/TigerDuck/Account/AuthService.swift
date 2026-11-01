@@ -28,14 +28,14 @@ final class AuthService {
         keychainHasCredentials: @escaping () -> Bool = AuthService.readKeychainHasCredentials,
         notificationCenter center: NotificationCenter = .default,
         moodleTokens: MoodleTokenService = .shared,
-        schoolSignIn: @escaping (_ studentId: String, _ password: String) async throws -> Bool
+        schoolSignIn: @escaping (_ studentId: String, _ password: String, _ signIn: SignIn) async throws -> Bool
             = SchoolSignIn.signIn,
-        schoolSessionIsLive: @escaping () async -> Bool = { await NTUSTSessionManager.shared.probeCookiesValid() },
-        renewSchoolSignIn: @escaping (
-            _ studentId: String, _ password: String, _ isCurrent: @escaping @MainActor () -> Bool
-        ) async throws -> Bool = SchoolSignIn.renew,
+        schoolSessionIsLive: @escaping (_ signIn: SignIn) async -> Bool
+            = { await NTUSTSessionManager.shared.probeCookiesValid(for: $0) },
+        renewSchoolSignIn: @escaping (_ studentId: String, _ password: String, _ signIn: SignIn) async throws -> Bool
+            = SchoolSignIn.renew,
         retrySchoolSignIn: @escaping (
-            _ studentId: String, _ password: String, _ isCurrent: @escaping @MainActor () -> Bool, _ mayPost: () -> Bool
+            _ studentId: String, _ password: String, _ signIn: SignIn, _ mayPost: () -> Bool
         ) async throws -> Bool = SchoolSignIn.retry,
         endSchoolSession: @escaping @MainActor (_ departingStudentId: String?) -> Void
             = AccountSignOutCleanup.endSchoolSession(departing:),
@@ -191,23 +191,23 @@ final class AuthService {
         await SchoolAccountSignIn.login(studentId: studentId, password: password, auth: self)
     }
 
-    func signInToServices(studentId: String, password: String, ticket: AccountSession.Ticket) async {
-        guard session.isCurrent(ticket) else { return }
+    func signInToServices(studentId: String, password: String, signIn: SignIn) async {
+        guard signIn.isCurrent else { return }
         do {
-            _ = try await deps.moodleTokens.obtainToken(studentId: studentId, password: password)
+            _ = try await deps.moodleTokens.obtainToken(studentId: studentId, password: password, for: signIn)
         } catch {
             AppLogger.captureError(error, context: ["flow": "moodleTokenObtain"])
         }
-        guard session.isCurrent(ticket) else { return }
-        await backend.signIn(studentId: studentId)
+        guard signIn.isCurrent else { return }
+        await backend.signIn(studentId: studentId, for: signIn)
     }
 
-    func reloginToBackend(replacing refused: String? = nil) async -> Bool {
-        await backend.relogin(replacing: refused)
+    func reloginToBackend(replacing refused: String? = nil, for signIn: SignIn) async -> Bool {
+        await backend.relogin(replacing: refused, for: signIn)
     }
 
-    func ensureAuthenticated() async -> Bool {
-        await SchoolAccountSignIn.ensureAuthenticated(auth: self)
+    func ensureAuthenticated(for signIn: SignIn) async -> Bool {
+        await SchoolAccountSignIn.ensureAuthenticated(auth: self, for: signIn)
     }
 
     func ensureBackendSignedIn() async {
@@ -223,7 +223,7 @@ final class AuthService {
         status.loginError = nil
         status.reauthErrorMessage = nil
         status.isReauthenticating = false
-        session.moveOn()
+        session.endSignIn()
         backend.reset()
         SchoolPasswordPosts.forgetStoredPasswordRefusals()
         passwordRetry.cancel()

@@ -10,7 +10,7 @@ enum SchoolAccountSignIn {
     static func login(studentId: String, password: String, auth: AuthService) async -> Bool {
         auth.status.isLoggingIn = true
         auth.status.loginError = nil
-        var schoolStep: AccountSession.Ticket?
+        var schoolStep: SignIn?
 
         do {
             let normalizedId = AuthService.normalizedStudentId(studentId)
@@ -20,11 +20,11 @@ enum SchoolAccountSignIn {
                 await auth.signOutStoredAccount?()
                 try Task.checkCancellation()
             }
-            let ticket = auth.session.ticket
-            schoolStep = ticket
+            let signIn = auth.session.signIns.currentSignIn
+            schoolStep = signIn
 
-            let success = try await auth.deps.schoolSignIn(normalizedId, password)
-            guard auth.session.isCurrent(ticket), !Task.isCancelled else {
+            let success = try await auth.deps.schoolSignIn(normalizedId, password, signIn)
+            guard signIn.isCurrent, !Task.isCancelled else {
                 auth.status.isLoggingIn = false
                 return false
             }
@@ -33,7 +33,7 @@ enum SchoolAccountSignIn {
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
-                ImportedClassTableStore.shared.accountDidSignIn(studentId: normalizedId)
+                ImportedClassTableStore.shared.accountDidSignIn(studentId: normalizedId, for: signIn)
                 #if os(iOS)
                 BrowserData.shared.reset()
                 #endif
@@ -41,13 +41,13 @@ enum SchoolAccountSignIn {
                 auth.markCredentialsChanged()
 
                 await Task {
-                    await auth.signInToServices(studentId: normalizedId, password: password, ticket: ticket)
+                    await auth.signInToServices(studentId: normalizedId, password: password, signIn: signIn)
                 }.value
             }
 
             auth.status.isLoggingIn = false
             return success
-        } catch where Task.isCancelled || schoolStep.map({ !auth.session.isCurrent($0) }) == true {
+        } catch where Task.isCancelled || schoolStep.map({ !$0.isCurrent }) == true {
             auth.status.isLoggingIn = false
             return false
         } catch {
@@ -60,14 +60,13 @@ enum SchoolAccountSignIn {
         }
     }
 
-    static func ensureAuthenticated(auth: AuthService) async -> Bool {
+    static func ensureAuthenticated(auth: AuthService, for signIn: SignIn) async -> Bool {
         guard let studentId = auth.storedStudentId, let password = auth.storedPassword else {
             return false
         }
-        let isCurrent = auth.session.currentCheck()
 
-        if await auth.deps.schoolSessionIsLive() {
-            NTUSTSessionManager.shared.markLoginSuccess()
+        if await auth.deps.schoolSessionIsLive(signIn) {
+            NTUSTSessionManager.shared.markLoginSuccess(for: signIn)
             auth.status.reauthErrorMessage = nil
             await auth.ensureBackendSignedIn()
             return true
@@ -75,9 +74,7 @@ enum SchoolAccountSignIn {
 
         auth.status.isReauthenticating = true
         auth.status.reauthErrorMessage = nil
-        let success = await renewSchoolSession(
-            auth: auth, studentId: studentId, password: password, isCurrent: isCurrent
-        )
+        let success = await renewSchoolSession(auth: auth, studentId: studentId, password: password, for: signIn)
         auth.status.isReauthenticating = false
 
         if !success {
@@ -87,13 +84,13 @@ enum SchoolAccountSignIn {
     }
 
     private static func renewSchoolSession(
-        auth: AuthService, studentId: String, password: String, isCurrent: @escaping @MainActor () -> Bool
+        auth: AuthService, studentId: String, password: String, for signIn: SignIn
     ) async -> Bool {
         auth.status.isLoggingIn = true
         auth.status.loginError = nil
         defer { auth.status.isLoggingIn = false }
         do {
-            guard try await auth.deps.renewSchoolSignIn(studentId, password, isCurrent) else { return false }
+            guard try await auth.deps.renewSchoolSignIn(studentId, password, signIn) else { return false }
         } catch is CancellationError {
             return false
         } catch {

@@ -102,12 +102,4 @@ struct SignOutCheck {
         let kept = switchedOn.intersection(synced).subtracting(pendingChecks)
         return data.holidays || data.categoriesNeeded.contains { $0.held && $0.categories.isSubset(of: kept) }
     }
-
-    static func forgetSyncProgress() {
-        Defaults[.pendingConflictCategories] = []
-        Defaults[.assignmentMarksSyncedOnce] = false
-        Defaults[.lastSeenCoursesResetAt] = nil
-        Defaults[.categoriesSyncedOnce] = []
-        Defaults[.courseRowIdsSeen] = [:]
-    }
 }

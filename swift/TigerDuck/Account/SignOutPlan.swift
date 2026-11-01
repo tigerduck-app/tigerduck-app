@@ -21,9 +21,8 @@ struct SignOutPlan {
 
     @discardableResult
     func run(in storage: AccountStorage = AccountStorage()) -> Task<Void, Never>? {
-        session.stopWork()
+        session.endSignIn()
         stopWork()
-        session.moveOn()
         let startCalls = endSession()
         for store in stores {
             store.forgetAccount(in: storage)

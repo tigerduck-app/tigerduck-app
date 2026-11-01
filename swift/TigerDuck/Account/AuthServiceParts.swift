@@ -6,13 +6,11 @@ import UserNotifications
 struct AuthServiceDependencies {
     let keychainHasCredentials: () -> Bool
     let moodleTokens: MoodleTokenService
-    let schoolSignIn: (_ studentId: String, _ password: String) async throws -> Bool
-    let schoolSessionIsLive: () async -> Bool
-    let renewSchoolSignIn: (
-        _ studentId: String, _ password: String, _ isCurrent: @escaping @MainActor () -> Bool
-    ) async throws -> Bool
+    let schoolSignIn: (_ studentId: String, _ password: String, _ signIn: SignIn) async throws -> Bool
+    let schoolSessionIsLive: (_ signIn: SignIn) async -> Bool
+    let renewSchoolSignIn: (_ studentId: String, _ password: String, _ signIn: SignIn) async throws -> Bool
     let retrySchoolSignIn: (
-        _ studentId: String, _ password: String, _ isCurrent: @escaping @MainActor () -> Bool, _ mayPost: () -> Bool
+        _ studentId: String, _ password: String, _ signIn: SignIn, _ mayPost: () -> Bool
     ) async throws -> Bool
     let endSchoolSession: @MainActor (_ departingStudentId: String?) -> Void
     let now: () -> Date
@@ -52,38 +50,36 @@ struct SignOutTasks {
 enum SchoolSignIn {
     private static let ssoServiceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")
 
-    static func signIn(studentId: String, password: String) async throws -> Bool {
+    static func signIn(studentId: String, password: String, for signIn: SignIn) async throws -> Bool {
         try await SSOLoginService.ensureServiceLogin(
             session: NTUSTSessionManager.shared.session,
             serviceURL: ssoServiceURL,
             studentId: studentId,
             password: password,
-            isCurrent: AccountSession.school.currentCheck(),
+            for: signIn,
             interactive: true
         )
     }
 
-    static func renew(
-        studentId: String, password: String, isCurrent: @escaping @MainActor () -> Bool
-    ) async throws -> Bool {
+    static func renew(studentId: String, password: String, for signIn: SignIn) async throws -> Bool {
         try await SSOLoginService.ensureServiceLogin(
             session: NTUSTSessionManager.shared.session,
             serviceURL: ssoServiceURL,
             studentId: studentId,
             password: password,
-            isCurrent: isCurrent
+            for: signIn
         )
     }
 
     static func retry(
-        studentId: String, password: String, isCurrent: @escaping @MainActor () -> Bool, mayPost: () -> Bool
+        studentId: String, password: String, for signIn: SignIn, mayPost: () -> Bool
     ) async throws -> Bool {
         try await SSOLoginService.signInAgain(
             session: NTUSTSessionManager.shared.session,
             serviceURL: ssoServiceURL,
             studentId: studentId,
             password: password,
-            isCurrent: isCurrent,
+            for: signIn,
             mayPost: mayPost
         )
     }

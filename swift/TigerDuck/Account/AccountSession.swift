@@ -1,76 +1,110 @@
 import Foundation
 import Observation
+import os
+
+/// One sign-in of an account. Account data read or fetched for it is written and sent only
+/// while it is current; the account's sign-out ends it. See
+/// docs/decisions/0029-account-bound-writes.md.
+nonisolated struct SignIn: Hashable, Sendable {
+    fileprivate let series: SignInSeries
+    fileprivate let number: Int
+
+    var isCurrent: Bool { series.holds(number) }
+
+    static func == (lhs: SignIn, rhs: SignIn) -> Bool {
+        lhs.series === rhs.series && lhs.number == rhs.number
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(ObjectIdentifier(series))
+        hasher.combine(number)
+    }
+}
+
+/// An account's sign-ins, one after another, readable from any actor.
+nonisolated final class SignInSeries: Sendable {
+    private let number = OSAllocatedUnfairLock(initialState: 0)
+
+    var currentSignIn: SignIn { SignIn(series: self, number: number.withLock { $0 }) }
+
+    fileprivate func holds(_ number: Int) -> Bool { self.number.withLock { $0 == number } }
+
+    /// The app ends a sign-in through `AccountSession.endSignIn`, which also stops its work.
+    func end() { number.withLock { $0 &+= 1 } }
+}
 
 @Observable
 final class AccountSession {
-    nonisolated struct Ticket: Hashable, Comparable, Sendable {
-        fileprivate let count: Int
+    nonisolated static let schoolSignIns = SignInSeries()
+    nonisolated static let school = AccountSession(signIns: schoolSignIns)
+    nonisolated static let library = AccountSession()
 
-        static func < (lhs: Ticket, rhs: Ticket) -> Bool { lhs.count < rhs.count }
-    }
-
-    static let school = AccountSession()
-    static let library = AccountSession()
-
-    private(set) var signIns = SignInCount()
+    nonisolated let signIns: SignInSeries
+    private var ended = 0
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
 
-    var ticket: Ticket { signIns.ticket }
+    nonisolated init(signIns: SignInSeries = SignInSeries()) {
+        self.signIns = signIns
+    }
 
-    func isCurrent(_ ticket: Ticket) -> Bool { signIns.isCurrent(ticket) }
+    @available(*, noasync, message: "async work takes its sign-in as a parameter or runs as the session's task")
+    var currentSignIn: SignIn {
+        _ = ended
+        return signIns.currentSignIn
+    }
 
-    func currentCheck() -> () -> Bool {
-        let ticket = ticket
-        return { [weak self] in self?.isCurrent(ticket) ?? false }
+    /// The sign-in async work runs for, read where the work starts.
+    var startingSignIn: SignIn {
+        get async { signIns.currentSignIn }
     }
 
     @discardableResult
-    func task(_ work: @escaping @MainActor (Ticket) async -> Void) -> Task<Void, Never> {
+    func withSignIn<Value>(_ work: (SignIn) async throws -> Value) async rethrows -> Value {
+        try await work(signIns.currentSignIn)
+    }
+
+    @discardableResult
+    func task(_ work: @escaping @MainActor (SignIn) async -> Void) -> Task<Void, Never> {
         let id = UUID()
-        let ticket = ticket
+        let signIn = signIns.currentSignIn
         let task = Task { @MainActor [weak self] in
-            await work(ticket)
+            await work(signIn)
             self?.tasks[id] = nil
         }
         tasks[id] = task
         return task
     }
 
-    func stopWork() {
+    /// Ends the current sign-in and cancels its tasks; the sign-in it returns follows it.
+    @discardableResult
+    func endSignIn() -> SignIn {
         let running = tasks.values
         tasks = [:]
+        signIns.end()
+        ended &+= 1
         running.forEach { $0.cancel() }
-    }
-
-    func moveOn() {
-        signIns.moveOn()
+        return signIns.currentSignIn
     }
 }
 
-struct SignInScoped<Value> {
+/// A value that holds for one sign-in and reads as `empty` once that sign-in ended.
+nonisolated struct SignInBound<Value> {
     private let empty: Value
-    private var held: (signIn: AccountSession.Ticket, value: Value)?
+    private var held: (signIn: SignIn, value: Value)?
 
     init(empty: Value) {
         self.empty = empty
     }
 
-    func value(in session: AccountSession) -> Value {
-        guard let held, session.isCurrent(held.signIn) else { return empty }
+    var value: Value {
+        guard let held, held.signIn.isCurrent else { return empty }
         return held.value
     }
 
-    mutating func set(_ value: Value, in session: AccountSession) {
-        held = (session.ticket, value)
+    mutating func set(_ value: Value, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        held = (signIn, value)
     }
 }
 
-nonisolated struct SignInCount: Sendable {
-    private(set) var ticket = AccountSession.Ticket(count: 0)
-
-    func isCurrent(_ ticket: AccountSession.Ticket) -> Bool { ticket == self.ticket }
-
-    mutating func moveOn() {
-        ticket = AccountSession.Ticket(count: ticket.count &+ 1)
-    }
-}
+extension SignInBound: Sendable where Value: Sendable {}

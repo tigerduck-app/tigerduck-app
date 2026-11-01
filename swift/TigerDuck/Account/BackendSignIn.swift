@@ -22,41 +22,39 @@ final class BackendSignIn {
     }
 
     @discardableResult
-    func signIn(studentId: String, harvesting: Bool = false) async -> Bool {
+    func signIn(studentId: String, harvesting: Bool = false, for signIn: SignIn) async -> Bool {
         guard let auth else { return false }
         guard let authTokenManager = auth.authTokenManager else { return false }
-        let session = auth.session
-        let ticket = session.ticket
         await auth.departingUnregisterRetry?.value
         let moodleToken = harvesting ? await moodleToken() : await auth.deps.moodleTokens.currentToken()
-        guard let moodleToken, !moodleToken.isEmpty, session.isCurrent(ticket) else { return false }
+        guard let moodleToken, !moodleToken.isEmpty, signIn.isCurrent else { return false }
         do {
             _ = try await authTokenManager.login(
                 studentId: studentId,
                 moodleToken: moodleToken,
                 moodlePrivateToken: KeychainManager.loadString(key: AppConstants.KeychainKeys.moodlePrivateToken),
-                platform: PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
+                platform: PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild),
+                for: signIn
             )
-            guard session.isCurrent(ticket) else { return false }
+            guard signIn.isCurrent else { return false }
             failedAt = nil
             auth.onV3SignedIn?()
             return true
         } catch {
-            guard session.isCurrent(ticket) else { return false }
+            guard signIn.isCurrent else { return false }
             AppLogger.captureError(error, context: ["flow": "v3Login"])
             return false
         }
     }
 
-    func relogin(replacing refused: String?) async -> Bool {
+    func relogin(replacing refused: String?, for signIn: SignIn) async -> Bool {
         guard let auth else { return false }
         guard let authTokenManager = auth.authTokenManager,
               Self.isDue(lastFailure: failedAt, now: Date()),
               let studentId = auth.storedStudentId else { return false }
-        let ticket = auth.session.ticket
-        guard let moodleToken = await moodleToken(), auth.session.isCurrent(ticket) else {
+        guard let moodleToken = await moodleToken(), signIn.isCurrent else {
             AppLogger.sync.info("auto-relogin skipped: no Moodle token")
-            noteFailure(since: ticket)
+            noteFailure(of: signIn)
             return false
         }
         do {
@@ -65,6 +63,7 @@ final class BackendSignIn {
                 moodleToken: moodleToken,
                 moodlePrivateToken: KeychainManager.loadString(key: AppConstants.KeychainKeys.moodlePrivateToken),
                 platform: PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild),
+                for: signIn,
                 replacing: refused
             )
             AppLogger.sync.info("auto-relogin: \(result == nil ? "newer session kept" : "v3 JWT refreshed", privacy: .public)")
@@ -72,14 +71,15 @@ final class BackendSignIn {
             return true
         } catch {
             AppLogger.sync.error("auto-relogin failed: \(error, privacy: .private)")
-            noteFailure(since: ticket)
+            noteFailure(of: signIn)
             return false
         }
     }
 
     func ensureSignedIn() async {
         if let running { return await running.value }
-        let task = Task { await signInIfSignedOut() }
+        guard let auth else { return }
+        let task = auth.session.task { [weak self] signIn in await self?.signInIfSignedOut(signIn) }
         running = task
         await task.value
         if running == task { running = nil }
@@ -100,22 +100,20 @@ final class BackendSignIn {
         failedAt = nil
     }
 
-    private func signInIfSignedOut() async {
+    private func signInIfSignedOut(_ signIn: SignIn) async {
         guard let auth else { return }
         guard let atm = auth.authTokenManager, !(await atm.isLoggedIn),
               Self.isDue(lastFailure: failedAt, now: Date()),
               let studentId = auth.storedStudentId, auth.storedPassword != nil else { return }
-        let ticket = auth.session.ticket
         isSigningIn = true
         defer { isSigningIn = false }
-        if await !signIn(studentId: studentId, harvesting: true) {
-            noteFailure(since: ticket)
+        if await !self.signIn(studentId: studentId, harvesting: true, for: signIn) {
+            noteFailure(of: signIn)
         }
     }
 
-    private func noteFailure(since ticket: AccountSession.Ticket) {
-        guard let auth else { return }
-        guard auth.session.isCurrent(ticket) else { return }
+    private func noteFailure(of signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         failedAt = Date()
     }
 
@@ -169,15 +167,15 @@ final class StoredPasswordRetry {
         guard let auth else { return }
         task?.cancel()
         let sleep = auth.deps.retrySleep
-        task = auth.session.task { [weak self] ticket in
+        task = auth.session.task { [weak self] signIn in
             await sleep(.seconds(wait))
-            guard !Task.isCancelled, let self, let auth = self.auth, auth.session.isCurrent(ticket) else { return }
+            guard !Task.isCancelled, let self, signIn.isCurrent else { return }
             self.task = nil
-            await self.retry()
+            await self.retry(signIn)
         }
     }
 
-    private func retry() async {
+    private func retry(_ signIn: SignIn) async {
         guard let auth else { return }
         let now = auth.deps.now
         guard let retryAt = SchoolPasswordPosts.storedPasswordRetryAt(now: now()) else { return }
@@ -186,21 +184,20 @@ final class StoredPasswordRetry {
             return
         }
         let refusals = SchoolPasswordPosts.storedPasswordRefusals.count
-        guard await !run(), SchoolPasswordPosts.storedPasswordRefusals.count == refusals else { return }
+        guard await !run(signIn), SchoolPasswordPosts.storedPasswordRefusals.count == refusals else { return }
         armAfterAMiss()
     }
 
-    private func run() async -> Bool {
+    private func run(_ signIn: SignIn) async -> Bool {
         guard let auth else { return false }
         guard !auth.isLoggingIn, let studentId = auth.storedStudentId, let password = auth.storedPassword else { return false }
-        let session = auth.session
-        let ticket = session.ticket
-        let posted = try? await auth.deps.retrySchoolSignIn(studentId, password, session.currentCheck()) { !auth.isLoggingIn }
+        let mayPost = { !auth.isLoggingIn }
+        let posted = try? await auth.deps.retrySchoolSignIn(studentId, password, signIn, mayPost)
         guard posted == true else { return false }
         auth.noteSchoolSignInRenewed()
-        guard session.isCurrent(ticket) else { return false }
+        guard signIn.isCurrent else { return false }
         auth.clearReauthError()
-        guard (try? await auth.deps.moodleTokens.refreshTokenIfNeeded()) != nil, session.isCurrent(ticket) else { return false }
+        guard (try? await auth.deps.moodleTokens.refreshTokenIfNeeded()) != nil, signIn.isCurrent else { return false }
         SchoolPasswordPosts.forgetStoredPasswordRefusals()
         await auth.backend.signInAgain()
         return true
