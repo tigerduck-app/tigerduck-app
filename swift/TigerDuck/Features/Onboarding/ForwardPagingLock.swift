@@ -6,12 +6,6 @@ import SwiftUI
 struct ForwardPagingLock: UIViewRepresentable {
     let isLocked: Bool
 
-    /// A page-style `TabView` reverses under a right-to-left language, so the
-    /// same finger movement that advances in English goes back in Arabic.
-    static func isForwardDrag(translationX: CGFloat, isRTL: Bool) -> Bool {
-        isRTL ? translationX > 0 : translationX < 0
-    }
-
     func makeUIView(context: Context) -> LockView {
         let view = LockView()
         view.isUserInteractionEnabled = false
@@ -60,8 +54,8 @@ struct ForwardPagingLock: UIViewRepresentable {
             guard abs(dx) > 4 else { return }
             hasJudgedDrag = true
 
-            let isRTL = pager.effectiveUserInterfaceLayoutDirection == .rightToLeft
-            guard ForwardPagingLock.isForwardDrag(translationX: dx, isRTL: isRTL) else { return }
+            let isTowardNextPage = dx < 0
+            guard isTowardNextPage else { return }
 
             // Turning scrolling off and straight back on cancels the pan in
             // flight; the pager snaps back to the page it started on.

@@ -53,7 +53,6 @@ enum ClassTableExporter {
         app: AppEnvironment,
         colorScheme: ColorScheme,
         dynamicTypeSize: DynamicTypeSize,
-        layoutDirection: LayoutDirection,
         legibilityWeight: LegibilityWeight?,
         differentiateWithoutColor: Bool
     ) async -> URL? {
@@ -66,9 +65,6 @@ enum ClassTableExporter {
             .environment(app)
             .environment(\.colorScheme, colorScheme)
             .environment(\.dynamicTypeSize, dynamicTypeSize)
-            // A right-to-left language mirrors the page's grid; the empty
-            // environment would draw it left-to-right.
-            .environment(\.layoutDirection, layoutDirection)
             // Bold Text. Differentiate Without Color cannot be set here, so
             // it rides on the view instead.
             .environment(\.legibilityWeight, legibilityWeight)
