@@ -153,7 +153,7 @@ final class AcademicCalendarStore: AccountScoped {
         return true
     }
 
-    func applyKeptNotify(_ notify: Bool, forHoliday holidayID: Int, for signIn: SignIn) {
+    func applyNotifyTheBackendKept(_ notify: Bool, forHoliday holidayID: Int, for signIn: SignIn) {
         guard signIn.isCurrent else { return }
         var ids = Set(Defaults[.holidayNotifyOverrides])
         if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }

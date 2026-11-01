@@ -61,7 +61,7 @@ final class HolidaySettingSender {
                 holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? Date(), for: signIn
             )
             guard store.holidayEdit(holidayID) == sent else { return }
-            if !reply.applied { store.applyKeptNotify(reply.notify, forHoliday: holidayID, for: signIn) }
+            if !reply.applied { store.applyNotifyTheBackendKept(reply.notify, forHoliday: holidayID, for: signIn) }
             store.setHolidayAcknowledged(true, holidayID: holidayID, for: signIn)
         } catch {
             AppLogger.sync.error(
