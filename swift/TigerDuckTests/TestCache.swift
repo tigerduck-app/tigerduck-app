@@ -36,3 +36,9 @@ struct TestCache {
     }
     var moodleFilesDir: URL { moodle.moodleFilesDir }
 }
+
+extension CacheFolders {
+    init(root: URL) {
+        self.init(cache: root.appending(path: "cache/"), persistent: root.appending(path: "persistent/"))
+    }
+}
