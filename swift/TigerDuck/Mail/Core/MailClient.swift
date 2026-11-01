@@ -12,6 +12,11 @@ nonisolated enum MailClientError: Error, Equatable, Sendable {
     case protocolError(String)
 }
 
+/// A result whose work caught a rejected password instead of throwing it.
+nonisolated protocol MailCaughtRejection {
+    var rejectedPassword: Bool { get }
+}
+
 nonisolated enum MailFlag: String, Codable, Sendable {
     case seen, answered, deleted, draft
 }

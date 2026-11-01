@@ -761,5 +761,26 @@ struct MailComposeViewModelTests {
         #expect(await SentCopyFiler.probe(messageID, in: sentFolder, client: demo).result == .found)
         #expect(await SentCopyFiler.probe("<someone-else@mail.ntust.edu.tw>", in: sentFolder, client: demo).result == .notFound)
     }
+
+    @Test func aMailWrittenBeforeTheMailSignInEndedIsNeitherSentNorSaved() async {
+        let fake = Self.fake()
+        let account = AccountSession()
+        let model = MailComposeViewModel(
+            context: MailComposeContext(mode: .new),
+            session: MailPageSession(idleClose: .milliseconds(10), open: { fake }, onAuthFailure: { _ in }, account: account),
+            sender: Self.me, folderRoles: [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
+            prefs: InMemoryMailPreferences(), cache: SchoolMailTestDoubles.temporaryCache(), sleep: { _ in }
+        )
+        model.to = "a@mail.ntust.edu.tw"
+        model.body = "written as the first account"
+        account.endSignIn()
+
+        await model.send()
+        #expect(model.shouldClose)
+        #expect(!model.didFinish)
+        #expect(await model.saveDraft() == false)
+        #expect(await fake.sent.isEmpty)
+        #expect(await !fake.calls.contains { $0.hasPrefix("append") })
+    }
 }
 #endif

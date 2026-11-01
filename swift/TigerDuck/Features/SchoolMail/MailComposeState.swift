@@ -50,6 +50,7 @@ struct MailComposeStatus {
     var loadError: String?
     var invalidRecipients: [String] = []
     var didFinish = false
+    var signInEnded = false
     var sentCopy: SentCopy?
 
     mutating func takeRecipients(of draft: MailComposeDraft, requireOne: Bool) -> MailRecipients.Parsed? {

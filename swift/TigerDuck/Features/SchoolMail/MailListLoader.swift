@@ -3,7 +3,11 @@ import Foundation
 
 @MainActor
 enum MailListLoader {
-    typealias Fetched = (pages: [(String, MailFolderPage)], failure: MailClientError?)
+    struct Fetched: MailCaughtRejection {
+        var pages: [(String, MailFolderPage)]
+        var failure: MailClientError?
+        var rejectedPassword: Bool { failure == .authenticationFailed }
+    }
 
     /// Paints each covered folder's cached page first, then merges the newest page of each from
     /// the server into what is loaded: one round trip per covered folder however far the list was
@@ -43,9 +47,6 @@ enum MailListLoader {
             }
             guard list.isCurrent(selection, signIn) else { return }
             let fetched = try await newestPages(of: list.targets, session: list.session)
-            if fetched.failure == .authenticationFailed {
-                list.session.reportAuthenticationRejection(for: signIn)
-            }
             guard list.isCurrent(selection, signIn) else { return }
             for (folder, page) in fetched.pages {
                 guard await merge(page, folder: folder, since: token, selection: selection, signIn: signIn, list: list) else { return }
@@ -115,7 +116,7 @@ enum MailListLoader {
                     if MailErrorClass(error).endsTheRun { break }
                 }
             }
-            return (pages, failure)
+            return Fetched(pages: pages, failure: failure)
         }
         let fetchedAt = Date()
         let pages = fetched.pages.map { folder, page in
@@ -123,7 +124,7 @@ enum MailListLoader {
             fresh.fetchedAt = fetchedAt
             return (folder, fresh)
         }
-        return (pages, fetched.failure)
+        return Fetched(pages: pages, failure: fetched.failure)
     }
 
     static func walkBack(

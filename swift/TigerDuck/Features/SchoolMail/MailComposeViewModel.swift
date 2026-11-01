@@ -21,6 +21,7 @@ final class MailComposeViewModel {
     @ObservationIgnored private let sender: MailAddress
     @ObservationIgnored private var folderRoles: [MailFolderRole: String]
     @ObservationIgnored private let services: MailComposeServices
+    @ObservationIgnored private let signIn: SignIn
 
     init(
         context: MailComposeContext,
@@ -38,6 +39,7 @@ final class MailComposeViewModel {
         self.sender = sender
         self.folderRoles = folderRoles
         self.events = events ?? MailboxEvents()
+        signIn = session.account.currentSignIn
         services = MailComposeServices(prefs: prefs ?? MailAccountManager.shared.prefs,
                                        cache: cache ?? MailAccountManager.shared.cache, sleep: sleep, now: now)
     }
@@ -68,6 +70,7 @@ final class MailComposeViewModel {
     var loadError: String? { status.loadError }
     var invalidRecipients: [String] { status.invalidRecipients }
     var didFinish: Bool { status.didFinish }
+    var shouldClose: Bool { status.didFinish || status.signInEnded }
     var sentCopy: SentCopy? { status.sentCopy }
 
     var hasChanges: Bool { draft.snapshot != tracking.baseline }
@@ -93,7 +96,8 @@ final class MailComposeViewModel {
         status.loadError = nil
         defer { status.isLoading = false }
         do {
-            switch try await MailComposePrefill.fetch(context, sender: sender, session: session, cache: services.cache) {
+            switch try await MailComposePrefill.fetch(context, sender: sender, session: session, signIn: signIn,
+                                                      cache: services.cache) {
             case .prefill(let prefill):
                 apply(prefill)
             case .missingDraft:
@@ -149,6 +153,11 @@ final class MailComposeViewModel {
         return false
     }
 
+    private func checkSignIn() -> Bool {
+        if !signIn.isCurrent { status.signInEnded = true }
+        return signIn.isCurrent
+    }
+
     private func validate() -> MailRecipients.Parsed? {
         let credentials = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError.credentials.message
         guard checkAccount(credentials), let recipients = status.takeRecipients(of: draft, requireOne: true),
@@ -162,7 +171,7 @@ final class MailComposeViewModel {
     }
 
     func send() async {
-        guard !isSending, let recipients = validate() else { return }
+        guard !isSending, checkSignIn(), let recipients = validate() else { return }
         let isReply = context.mode == .reply || context.mode == .replyAll
         let threading = isReply ? context.original.map(MailReplyComposer.threadingHeaders(for:)) : nil
         let mail = outgoing(recipients, threading: threading)
@@ -171,19 +180,19 @@ final class MailComposeViewModel {
         if tracking.sourceLoaded, context.mode == .draft, let message = context.message {
             replaced = (message.folder, replacedDraft(message.uid))
         }
-        guard let message = await build(mail, messageID: messageID) else { return }
+        guard let message = await beginSending(mail, messageID: messageID) else { return }
         defer { status.isSending = false }
-        let signIn = await session.account.startingSignIn
         do {
             let filing = try await MailComposeSending.send(MailComposeSending.Send(
                 message: message, messageID: messageID, from: sender.address, recipients: mail.envelopeRecipients,
                 roles: folderRoles, answered: tracking.sourceLoaded && isReply ? context.message : nil, replaced: replaced
             ), session: session, services: services, signIn: signIn)
             if let refreshedRoles = filing.roles { adoptFolderRoles(refreshedRoles) }
-            if filing.rejectedPassword { session.reportAuthenticationRejection(for: signIn) }
             status.sentCopy = filing.outcome
             if let notice = MailComposeSending.notice(for: filing.outcome) { events.post(.sentCopyNotice(notice)) }
             status.didFinish = true
+        } catch where !signIn.isCurrent {
+            status.signInEnded = true
         } catch MailClientError.sendUnconfirmed {
             status.error = String(localized: "school_mail_send_unconfirmed")
         } catch {
@@ -193,22 +202,24 @@ final class MailComposeViewModel {
 
     @discardableResult
     func saveDraft() async -> Bool {
-        guard !isSending, checkAccount(MailAccountManager.LoginError.credentials.message),
+        guard !isSending, checkSignIn(), checkAccount(MailAccountManager.LoginError.credentials.message),
               let recipients = status.takeRecipients(of: draft, requireOne: false) else { return false }
         let mail = outgoing(recipients, threading: nil)
         let savedBaseline = draft.snapshot
         guard status.fitsSizeLimit(draft) else { return false }
         let replacesDraft = tracking.sourceLoaded && context.mode == .draft && context.folder == folderRoles[.drafts]
         let replaced = replacesDraft ? context.uid.map(replacedDraft) : nil
-        guard let message = await build(mail, messageID: MailMessageBuilder.makeMessageID()) else { return false }
+        guard let message = await beginSending(mail, messageID: MailMessageBuilder.makeMessageID()) else { return false }
         defer { status.isSending = false }
-        let signIn = await session.account.startingSignIn
         do {
             let refreshedRoles = try await MailComposeSending.saveDraft(message, roles: folderRoles, replacing: replaced,
                                                                         session: session, prefs: services.prefs, signIn: signIn)
             adoptFolderRoles(refreshedRoles)
             tracking.baseline = savedBaseline
             return true
+        } catch where !signIn.isCurrent {
+            status.signInEnded = true
+            return false
         } catch is MailFolderUnavailable {
             status.error = String(localized: "school_mail_error_generic")
             return false
@@ -218,7 +229,7 @@ final class MailComposeViewModel {
         }
     }
 
-    private func build(_ mail: OutgoingMail, messageID: String) async -> Data? {
+    private func beginSending(_ mail: OutgoingMail, messageID: String) async -> Data? {
         let date = services.now()
         status.isSending = true
         let message = await Task.detached { MailMessageBuilder.build(mail, messageID: messageID, date: date) }.value

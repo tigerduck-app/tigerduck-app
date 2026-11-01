@@ -160,8 +160,8 @@ struct MailComposeView: View {
                     pendingPicks -= 1
                 }
             }
-            .onChange(of: viewModel.didFinish) { _, finished in
-                if finished { dismiss() }
+            .onChange(of: viewModel.shouldClose) { _, closes in
+                if closes { dismiss() }
             }
             .task { await viewModel.prepare() }
             .interactiveDismissDisabled(viewModel.hasChanges || viewModel.isSending)

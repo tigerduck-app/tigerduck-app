@@ -121,6 +121,36 @@ struct MailPageSessionTests {
         #expect(failures == 0)
     }
 
+    private struct CaughtRejection: MailCaughtRejection {
+        var rejectedPassword: Bool
+    }
+
+    @Test func aRejectionTheBodyCaughtIsReportedLikeAThrownOne() async throws {
+        let fake = FakeMailClient(folders: ["INBOX": []])
+        var failures = 0
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { _ in failures += 1 })
+        _ = try await session.use { _ in CaughtRejection(rejectedPassword: false) }
+        #expect(failures == 0)
+        _ = try await session.use { _ in CaughtRejection(rejectedPassword: true) }
+        #expect(failures == 1)
+    }
+
+    @Test func workForASignInThatEndedOpensNoConnection() async throws {
+        let account = AccountSession()
+        var opens = 0
+        let session = MailPageSession(idleClose: .seconds(30), open: {
+            opens += 1
+            return FakeMailClient(folders: [:])
+        }, account: account)
+        let ended = await account.startingSignIn
+        account.endSignIn()
+
+        await #expect(throws: CancellationError.self) { try await session.use(for: ended) { _ in } }
+        #expect(opens == 0)
+        _ = try await session.use(for: await account.startingSignIn) { _ in }
+        #expect(opens == 1)
+    }
+
     private final class Opener {
         let first: FakeMailClient
         let second: FakeMailClient

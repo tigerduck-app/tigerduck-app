@@ -16,7 +16,7 @@ nonisolated enum SentCopy: Equatable, Sendable {
 }
 
 nonisolated enum SentCopyFiler {
-    struct Filing: Equatable, Sendable {
+    struct Filing: Equatable, Sendable, MailCaughtRejection {
         var outcome: SentCopy
         var roles: [MailFolderRole: String]?
         var rejectedPassword = false

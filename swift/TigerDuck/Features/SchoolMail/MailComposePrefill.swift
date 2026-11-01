@@ -17,11 +17,12 @@ struct MailComposePrefill {
     var draft: (pageUIDValidity: UInt32?, wasAlreadyDeleted: Bool)?
 
     static func fetch(
-        _ context: MailComposeContext, sender: MailAddress, session: MailPageSession, cache: MailCache
+        _ context: MailComposeContext, sender: MailAddress, session: MailPageSession, signIn: SignIn, cache: MailCache
     ) async throws -> Outcome {
         if context.mode == .draft {
             guard let message = context.message else { return .missingDraft }
-            return .prefill(try await reopenedDraft(folder: message.folder, uid: message.uid, session: session, cache: cache))
+            return .prefill(try await reopenedDraft(folder: message.folder, uid: message.uid, session: session,
+                                                    signIn: signIn, cache: cache))
         }
         guard let original = context.original else { return .nothing }
         let dateText = original.date.map(MailDateFormatter.detailString(for:)) ?? ""
@@ -30,7 +31,7 @@ struct MailComposePrefill {
             var replyTo = original.replyTo
             if replyTo == nil, let message = context.message {
                 let pin = await cachedPageUIDValidity(of: message.folder, cache: cache)
-                let raw = try? await session.use { client in
+                let raw = try? await session.use(for: signIn) { client in
                     try await client.rawSource(folder: message.folder, uid: message.uid, expectedUIDValidity: pin)
                 }
                 replyTo = raw.map { MailRawHeaders.value(named: "Reply-To", in: $0).map(MailAddress.parseList) ?? [] }
@@ -47,7 +48,7 @@ struct MailComposePrefill {
             var pin: UInt32?
             if let folder = context.folder { pin = await cachedPageUIDValidity(of: folder, cache: cache) }
             let parts = context.attachments
-            let downloaded: [MailComposeViewModel.Attachment] = try await session.use { client in
+            let downloaded: [MailComposeViewModel.Attachment] = try await session.use(for: signIn) { client in
                 guard let message = context.message else { return [] }
                 return try await download(parts, folder: message.folder, uid: message.uid, pin: pin, client: client)
             }
@@ -63,10 +64,10 @@ struct MailComposePrefill {
     }
 
     private static func reopenedDraft(
-        folder: String, uid: UInt32, session: MailPageSession, cache: MailCache
+        folder: String, uid: UInt32, session: MailPageSession, signIn: SignIn, cache: MailCache
     ) async throws -> MailComposePrefill {
         let pin = await cachedPageUIDValidity(of: folder, cache: cache)
-        let (draft, downloaded) = try await session.use { client -> (MailMessageDetail, [MailComposeViewModel.Attachment]) in
+        let (draft, downloaded) = try await session.use(for: signIn) { client -> (MailMessageDetail, [MailComposeViewModel.Attachment]) in
             let draft = try await client.detail(folder: folder, uid: uid, expectedUIDValidity: pin)
             return (draft, try await download(draft.attachments, folder: folder, uid: uid, pin: pin, client: client))
         }

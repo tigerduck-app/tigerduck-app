@@ -22,7 +22,7 @@ enum MailComposeSending {
     static func send(
         _ send: Send, session: MailPageSession, services: MailComposeServices, signIn: SignIn
     ) async throws -> SentCopyFiler.Filing {
-        try await session.use { client -> SentCopyFiler.Filing in
+        try await session.use(for: signIn) { client -> SentCopyFiler.Filing in
             try await client.send(send.message, from: send.from, to: send.recipients)
             if let answered = send.answered {
                 try? await client.setFlag(.answered, on: true, folder: answered.folder, uids: [answered.uid], expectedUIDValidity: nil)
@@ -40,7 +40,7 @@ enum MailComposeSending {
         _ message: Data, roles: [MailFolderRole: String], replacing draft: ReplacedDraft?,
         session: MailPageSession, prefs: any MailPreferences, signIn: SignIn
     ) async throws -> [MailFolderRole: String] {
-        try await session.use { client -> [MailFolderRole: String] in
+        try await session.use(for: signIn) { client -> [MailFolderRole: String] in
             guard let drafts = await MailFolderProvisioner.ensure(.drafts, in: roles, client: client) else {
                 throw MailFolderUnavailable(role: .drafts)
             }
