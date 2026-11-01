@@ -242,7 +242,6 @@ actor PushRegistrationService {
     }
 
     func registerAgain() async {
-        guard !servesDemoAccount else { return }
         retry.attempts = 0
         guard running.inFlight == 0 else {
             retry.againIfRunningFails = true
