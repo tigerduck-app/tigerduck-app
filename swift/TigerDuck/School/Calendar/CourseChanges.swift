@@ -1,25 +1,32 @@
 import Defaults
 import Foundation
 import Observation
-import os
 
 nonisolated struct CourseChange: Equatable, Sendable {
     enum Kind: String, Sendable {
         case cancelled, room, start, end, note
     }
 
+    enum Periods: Equatable, Sendable {
+        case everyPeriodThatDay
+        case only([String])
+    }
+
     let id: Int
     let courseNo: String
     let kind: Kind
-    let periods: [String]?
+    let periods: Periods
     let room: String?
-    let start: String?
-    let end: String?
+    let startHHmm: String?
+    let endHHmm: String?
     let noteZh: String?
     let noteEn: String?
 
     func covers(_ period: String) -> Bool {
-        periods?.contains(period) ?? true
+        switch periods {
+        case .everyPeriodThatDay: true
+        case .only(let periods): periods.contains(period)
+        }
     }
 
     func note(for locale: Locale = .current) -> String? {
@@ -53,15 +60,10 @@ nonisolated struct CourseChanges: Equatable, Sendable {
     static var cached: CourseChanges {
         let data = Defaults[.courseChangesCache]
         guard !data.isEmpty else { return .empty }
-        return lastDecoded.withLock { last in
-            if let last, last.data == data { return last.changes }
-            let changes = (try? CourseChanges(json: data)) ?? .empty
-            last = (data, changes)
-            return changes
-        }
+        return lastDecoded.value(of: data) { (try? CourseChanges(json: $0)) ?? .empty }
     }
 
-    private static let lastDecoded = OSAllocatedUnfairLock<(data: Data, changes: CourseChanges)?>(initialState: nil)
+    private static let lastDecoded = LastDecoded<CourseChanges>()
 }
 
 private nonisolated struct CourseChangesDTO: Decodable, Sendable {
@@ -111,10 +113,10 @@ private nonisolated extension CourseChange {
             id: row.id,
             courseNo: row.course_no,
             kind: kind,
-            periods: row.periods,
+            periods: row.periods.map(Periods.only) ?? .everyPeriodThatDay,
             room: row.room,
-            start: row.start,
-            end: row.end,
+            startHHmm: row.start,
+            endHHmm: row.end,
             noteZh: row.note_zh,
             noteEn: row.note_en ?? row.note_zh
         )
@@ -150,11 +152,19 @@ final class CourseChangeStore {
         let task = Task<Bool, Never> { [weak self] in
             guard let self else { return false }
             let changed = await self.performRefresh()
-            if self.endpointGeneration == generation { self.refreshTask = nil }
+            self.clearRefreshTask(ifStartedIn: generation)
             return changed
         }
         refreshTask = task
         return await task.value
+    }
+
+    private func clearRefreshTask(ifStartedIn generation: Int) {
+        if endpointGeneration == generation { refreshTask = nil }
+    }
+
+    private var hasReadableStoredFeed: Bool {
+        (try? CourseChanges(json: Defaults[.courseChangesCache])) != nil
     }
 
     func endpointDidChange() {
@@ -174,7 +184,7 @@ final class CourseChangeStore {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.accepting = [304]
         let tag = Defaults[.courseChangesETag]
-        if !tag.isEmpty, (try? CourseChanges(json: Defaults[.courseChangesCache])) != nil {
+        if !tag.isEmpty, hasReadableStoredFeed {
             request.headers["If-None-Match"] = tag
         }
 

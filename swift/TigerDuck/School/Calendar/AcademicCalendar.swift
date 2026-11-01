@@ -31,6 +31,19 @@ nonisolated struct Holiday: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+nonisolated struct LastDecoded<Value: Sendable>: Sendable {
+    private let last = OSAllocatedUnfairLock<(data: Data, value: Value)?>(initialState: nil)
+
+    func value(of data: Data, decode: @Sendable (Data) -> Value) -> Value {
+        last.withLock { last in
+            if let last, last.data == data { return last.value }
+            let value = decode(data)
+            last = (data, value)
+            return value
+        }
+    }
+}
+
 nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
     let revision: Int
     let terms: [SemesterTerm]
@@ -41,15 +54,10 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
     static var cached: AcademicCalendar {
         let data = Defaults[.academicCalendarCache]
         guard !data.isEmpty else { return .empty }
-        return lastDecoded.withLock { last in
-            if let last, last.data == data { return last.calendar }
-            let calendar = (try? JSONDecoder().decode(AcademicCalendar.self, from: data)) ?? .empty
-            last = (data, calendar)
-            return calendar
-        }
+        return lastDecoded.value(of: data) { (try? JSONDecoder().decode(AcademicCalendar.self, from: $0)) ?? .empty }
     }
 
-    private static let lastDecoded = OSAllocatedUnfairLock<(data: Data, calendar: AcademicCalendar)?>(initialState: nil)
+    private static let lastDecoded = LastDecoded<AcademicCalendar>()
 
     static let calendar: Calendar = {
         var c = Calendar(identifier: .gregorian)
