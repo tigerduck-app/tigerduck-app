@@ -307,7 +307,7 @@ struct CourseDeleteSyncTests {
         ))
         let course = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: viewModel.currentSemester)
         viewModel.courses = [course]
-        courses.saveDeletedCourseNos([CourseTombstone.key(semester: viewModel.currentSemester, courseNo: "GE1010001")])
+        courses.saveDeletedCourseNos([CourseTombstone.key(semester: viewModel.currentSemester, courseNo: "GE1010001")], for: testSignIn)
         var added: [String] = []
         viewModel.editor.sync.courseAdded = { _, _, courseNo in added.append(courseNo) }
 
@@ -328,7 +328,7 @@ struct CourseDeleteSyncTests {
         let editor = try #require(viewModel?.editor)
         let semester = try #require(viewModel?.currentSemester)
         let added = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: semester)
-        courses.apply(.add(added, semester: semester))
+        courses.apply(.add(added, semester: semester), for: testSignIn)
         let backend = ResetBackend()
         editor.sync.resetBackendCourses = { _, resetLocally in
             await backend.delete()
@@ -338,7 +338,7 @@ struct CourseDeleteSyncTests {
         weak var released = viewModel
 
         editor.resetCourses(authService: AuthService(
-            keychainHasCredentials: { false }, notificationCenter: NotificationCenter(), schoolSignIn: { _, _ in false }
+            keychainHasCredentials: { false }, notificationCenter: NotificationCenter(), schoolSignIn: { _, _, _ in false }
         ))
         try await waitUntil { backend.entered }
         viewModel = nil

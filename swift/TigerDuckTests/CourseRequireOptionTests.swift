@@ -44,7 +44,7 @@ struct CourseRequireOptionTests {
                                 requireOption: "R")
         let unknown = SDCourse(courseNo: "GE1001", courseName: "通識課", semester: "1151")
 
-        cache.courses.saveUserAddedCourses([required, unknown])
+        cache.courses.saveUserAddedCourses([required, unknown], for: testSignIn)
 
         let loaded = cache.courses.loadUserAddedCourses()
         #expect(loaded.first { $0.courseNo == "CS1003301" }?.requireOption == "R")

@@ -17,10 +17,10 @@ struct KeepLocalCoursesTests {
         )
         let roster = Self.roster("CS1", "CS2")
 
-        try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
+        try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server, for: testSignIn)
         #expect(server.rows == ["client:1151:CS1"])
 
-        try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(roster, semester: "1151"), addedAt: nil)
+        try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(roster, semester: "1151"), addedAt: nil, for: testSignIn)
         #expect(server.rows == ["client:1151:CS1"])
     }
 
@@ -34,11 +34,11 @@ struct KeepLocalCoursesTests {
             tombstones: deletedOnServer ? ["client:1151:CS2": false] : [:]
         )
 
-        try await SyncConflicts.keepLocalCourses([("1151", cached)], hiding: ["1151:CS2"], on: server)
+        try await SyncConflicts.keepLocalCourses([("1151", cached)], hiding: ["1151:CS2"], on: server, for: testSignIn)
 
         try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(
             cached + Self.roster("CS2"), semester: "1151"
-        ), addedAt: nil)
+        ), addedAt: nil, for: testSignIn)
         #expect(server.rows == cachedKeys)
     }
 
@@ -46,11 +46,11 @@ struct KeepLocalCoursesTests {
     func uncachedLegacyHiddenCourseStaysDeleted() async throws {
         let server = FakeCourseServer(rows: ["client:1151:CS1"], tombstones: ["client:1151:CS2": false])
 
-        try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"))], hiding: ["CS2"], on: server)
+        try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"))], hiding: ["CS2"], on: server, for: testSignIn)
 
         try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(
             Self.roster("CS1", "CS2"), semester: "1151"
-        ), addedAt: nil)
+        ), addedAt: nil, for: testSignIn)
         #expect(server.rows == ["client:1151:CS1"])
     }
 
@@ -61,11 +61,11 @@ struct KeepLocalCoursesTests {
         server.failingDeletes = 1
 
         await #expect(throws: URLError.self) {
-            try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
+            try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server, for: testSignIn)
         }
-        try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
+        try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server, for: testSignIn)
 
-        try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(roster, semester: "1151"), addedAt: nil)
+        try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(roster, semester: "1151"), addedAt: nil, for: testSignIn)
         #expect(server.rows == ["client:1151:CS1"])
     }
 
@@ -74,7 +74,7 @@ struct KeepLocalCoursesTests {
         let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1142:CS9"])
 
         try await SyncConflicts.keepLocalCourses(
-            [("1151", Self.roster("CS1")), ("1142", [])], hiding: [], on: server
+            [("1151", Self.roster("CS1")), ("1142", [])], hiding: [], on: server, for: testSignIn
         )
 
         #expect(server.fullResets == 0)
@@ -84,15 +84,12 @@ struct KeepLocalCoursesTests {
     @Test("Use Local sends nothing more once the sign-in it was answered under is gone")
     func stopsAfterASignOut() async {
         let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1142:CS9"])
-        var checks = 0
+        let signedIn = TestSignIn()
+        server.afterSend = { signedIn.signOut() }
 
-        await #expect(throws: CancellationError.self) {
+        await #expect(throws: PushAPIError.self) {
             try await SyncConflicts.keepLocalCourses(
-                [("1151", Self.roster("CS1")), ("1142", Self.roster("CS9"))], hiding: [], on: server,
-                isCurrent: {
-                    checks += 1
-                    return checks == 1
-                }
+                [("1151", Self.roster("CS1")), ("1142", Self.roster("CS9"))], hiding: [], on: server, for: signedIn.signIn
             )
         }
 
@@ -106,13 +103,16 @@ private final class FakeCourseServer: CourseSyncBackend {
     private(set) var tombstones: [String: Bool]
     private(set) var fullResets = 0
     var failingDeletes = 0
+    var afterSend: () -> Void = {}
 
     init(rows: Set<String>, tombstones: [String: Bool] = [:]) {
         self.rows = rows
         self.tombstones = tombstones
     }
 
-    func deleteAllCourses(semester: String?, madeAt: Date) async throws {
+    func deleteAllCourses(semester: String?, madeAt: Date, for signIn: SignIn) async throws {
+        guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
+        defer { afterSend() }
         guard let semester else {
             fullResets += 1
             rows = []
@@ -126,14 +126,18 @@ private final class FakeCourseServer: CourseSyncBackend {
         for key in removed { tombstones[key] = true }
     }
 
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?) async throws {
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?, for signIn: SignIn) async throws {
+        guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
+        defer { afterSend() }
         for add in request.adds ?? [] { tombstones[add.courseKey] = nil }
         let keys = request.courses.map { "client:\($0.semester):\($0.courseNo)" }
         for key in keys where tombstones[key] == true { tombstones[key] = nil }
         rows.formUnion(keys.filter { tombstones[$0] == nil })
     }
 
-    func deleteCourse(courseKey: String, madeAt: Date) async throws {
+    func deleteCourse(courseKey: String, madeAt: Date, for signIn: SignIn) async throws {
+        guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
+        defer { afterSend() }
         if failingDeletes > 0 {
             failingDeletes -= 1
             throw URLError(.networkConnectionLost)

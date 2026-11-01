@@ -31,8 +31,7 @@ struct EmptyClassroomLayoutTests {
         let service = ClassroomUsageService(
             session: URLSession(configuration: config),
             queryURL: URL(string: "https://cour01.stub.invalid/\(UUID().uuidString)/classroom_usecondition.aspx")!,
-            account: AccountSession(),
-            signIn: { _, _, _ in true }
+            signIn: { _, _ in true }
         )
         return EmptyClassroomViewModel(
             calendar: EmptyClassroomCalendar(

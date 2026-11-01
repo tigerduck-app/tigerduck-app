@@ -15,7 +15,7 @@ struct SignOutCallsTests {
         let auth = AuthService(
             keychainHasCredentials: { false },
             notificationCenter: NotificationCenter(),
-            schoolSignIn: { _, _ in false }
+            schoolSignIn: { _, _, _ in false }
         )
         #if os(iOS)
         auth.accountNotifications = DeliveredNotificationsStub()
@@ -36,7 +36,7 @@ struct SignOutCallsTests {
         let auth = AuthService(
             keychainHasCredentials: { false },
             notificationCenter: NotificationCenter(),
-            schoolSignIn: { _, _ in false }
+            schoolSignIn: { _, _, _ in false }
         )
         #if os(iOS)
         auth.accountNotifications = DeliveredNotificationsStub()
@@ -83,7 +83,7 @@ struct SignOutCallsTests {
         let auth = AuthService(
             keychainHasCredentials: { false },
             notificationCenter: NotificationCenter(),
-            schoolSignIn: { _, _ in false }
+            schoolSignIn: { _, _, _ in false }
         )
         #if os(iOS)
         let center = DeliveredNotificationsStub([("reminder-1", "assignments")])

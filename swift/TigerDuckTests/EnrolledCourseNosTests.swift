@@ -217,8 +217,8 @@ struct SelectionDropsTests {
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
-        cache.courses.saveCourses(fetched.map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
-        cache.courses.saveUserAddedCourses(userAdded)
+        cache.courses.saveCourses(fetched.map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151", for: testSignIn)
+        cache.courses.saveUserAddedCourses(userAdded, for: testSignIn)
         return cache
     }
 
@@ -236,7 +236,7 @@ struct SelectionDropsTests {
         let term = CourseRosterReconciler.readTerm(
             "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: Self.addedAndMerged, hidden: [],
             adding: [], liveAnswer: offset.map { (courseNos: ["CS1001301", "MA1010003"], at: droppedAt + $0) },
-            courses: cache.courses, forgetAnswer: { forgotten += 1 }
+            courses: cache.courses, for: testSignIn, forgetAnswer: { forgotten += 1 }
         )
 
         let keptLive = offset == 3600
@@ -258,13 +258,13 @@ struct SelectionDropsTests {
             .appendingPathComponent("ServerDropTests-\(UUID().uuidString)", isDirectory: true)
         let cacheDir = root.appendingPathComponent("cache", isDirectory: true)
         let cache = TestCache(cacheDir: cacheDir, persistentDir: root.appendingPathComponent("persistent", isDirectory: true))
-        cache.courses.saveCourses(["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
+        cache.courses.saveCourses(["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151", for: testSignIn)
         let files = FileManager.default
         let current = try #require(try files.contentsOfDirectory(atPath: cacheDir.path).first { $0.hasPrefix("courses_1151_") })
         let other = cacheDir.appendingPathComponent("courses_1151_other.json")
         try files.copyItem(at: cacheDir.appendingPathComponent(current), to: other)
 
-        cache.courses.removeCourses(["MA1010003"], semester: "1151")
+        cache.courses.removeCourses(["MA1010003"], semester: "1151", for: testSignIn)
         let currentLeft = cache.courses.loadCourses(semester: "1151").map(\.courseNo)
         try files.removeItem(at: cacheDir.appendingPathComponent(current))
         try files.moveItem(at: other, to: cacheDir.appendingPathComponent(current))
@@ -286,7 +286,7 @@ struct SelectionDropsTests {
         let term = CourseRosterReconciler.readTerm(
             "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: [], hidden: [], adding: [],
             liveAnswer: (courseNos: ["CS1001301", "MA1010003"], at: droppedAt - 3600),
-            courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses, forgetAnswer: { forgotten += 1 }
+            courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses, for: testSignIn, forgetAnswer: { forgotten += 1 }
         )
 
         #expect(term.left.isEmpty)
@@ -299,7 +299,7 @@ struct SelectionDropsTests {
         let read = { (rows: [[String: Any]]) in
             CourseRosterReconciler.readTerm(
                 "1151", rows: rows, tombstones: [], selectionDropped: ["EE2005301"], userAdded: [], hidden: [], adding: [],
-                liveAnswer: nil, courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses, forgetAnswer: {}
+                liveAnswer: nil, courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses, for: testSignIn, forgetAnswer: {}
             )
         }
         let dropped: [[String: Any]] = [["course_no": "MA1010003", "enrollment_status": "dropped"]]
@@ -342,7 +342,7 @@ struct SelectionDropsTests {
             CourseRosterReconciler.readTerm(
                 "1151", rows: [], tombstones: tombstones, selectionDropped: [], userAdded: [], hidden: [], adding: [],
                 resetLandedAt: landedAt, liveAnswer: nil,
-                courses: Self.makeCache(fetched: fetched.sorted(), userAdded: []).courses, forgetAnswer: {}
+                courses: Self.makeCache(fetched: fetched.sorted(), userAdded: []).courses, for: testSignIn, forgetAnswer: {}
             )
         }
 
@@ -362,12 +362,12 @@ struct SelectionDropsTests {
             let courses = Self.makeCache(fetched: [], userAdded: []).courses
             let (owned, other) = ("own-\(UUID().uuidString)", "other-\(UUID().uuidString)")
             let landedAt = Date()
-            courses.recordSemesterReset(owned, at: landedAt)
-            courses.recordSemesterReset(other, at: landedAt)
+            courses.recordSemesterReset(owned, at: landedAt, for: testSignIn)
+            courses.recordSemesterReset(other, at: landedAt, for: testSignIn)
 
-            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), keeping: [owned])
+            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), keeping: [owned], for: testSignIn)
             let left = courses.loadSemesterResetAt()
-            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120))
+            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), for: testSignIn)
 
             #expect(left[owned] == landedAt)
             #expect(left[other] == nil)
@@ -579,18 +579,22 @@ struct WarmTermsTests {
     @Test("Shared answers that outlive a sign-out reach no term; the terms save under the sign-in they were fetched in")
     func answersFromAnotherAccountReachNoTerm() async {
         let account = AccountSession()
-        let calls = OSAllocatedUnfairLock(initialState: [String: AccountSession.Ticket]())
-        let fetch: @Sendable (String, AccountSession.Ticket, [MoodleEnrolledCourse]?, ScoreReport?) async -> Void = {
-            semester, ticket, _, _ in calls.withLock { $0[semester] = ticket }
+        let calls = OSAllocatedUnfairLock(initialState: [String: SignIn]())
+        let fetch: @Sendable (String, CourseFetch.TermAnswers) async -> Void = { semester, answers in
+            calls.withLock { $0[semester] = answers.signIn }
         }
 
-        await CourseFetch.warmTerms(["1141", "1142"], account: account, shared: {
-            account.moveOn()
-            return (nil, nil)
+        await CourseFetch.warmTerms(["1141", "1142"], shared: {
+            let departing = account.signIns.currentSignIn
+            account.endSignIn()
+            return CourseFetch.TermAnswers(signIn: departing, moodle: nil, transcript: nil)
         }, fetch: fetch)
         #expect(calls.withLock { $0 }.isEmpty)
 
-        await CourseFetch.warmTerms(["1141", "1142"], account: account, shared: { (nil, nil) }, fetch: fetch)
-        #expect(calls.withLock { $0 } == ["1141": account.ticket, "1142": account.ticket])
+        let signIn = account.signIns.currentSignIn
+        await CourseFetch.warmTerms(["1141", "1142"], shared: {
+            CourseFetch.TermAnswers(signIn: signIn, moodle: nil, transcript: nil)
+        }, fetch: fetch)
+        #expect(calls.withLock { $0 } == ["1141": signIn, "1142": signIn])
     }
 }

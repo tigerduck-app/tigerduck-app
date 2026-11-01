@@ -153,20 +153,22 @@ private final class AnswerProbe {
     var queueEdits: () -> [Task<Void, Never>] = { [] }
     var dropQueuedEdits: (Set<String>, Bool) async -> Void = { _, _ in }
     var syncFromServer: () async -> Void = {}
-    private var signedIn = true
+    private let session = AccountSession()
+    private let signIn: SignIn
 
     init(pending: Set<String>) {
         self.pending = pending
+        signIn = session.signIns.currentSignIn
     }
 
     func signOut(nextAccountPending: Set<String>) {
-        signedIn = false
+        session.endSignIn()
         pending = nextAccountPending
     }
 
     var effects: SyncConflicts.ReenableAnswerEffects {
         SyncConflicts.ReenableAnswerEffects(
-            isCurrent: { self.signedIn },
+            signIn: signIn,
             take: { self.hold.take($0, keepLocal: $1, from: &self.pending) },
             release: {
                 self.events.append("release")

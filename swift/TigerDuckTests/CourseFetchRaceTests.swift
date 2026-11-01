@@ -41,13 +41,13 @@ struct CourseFetchRaceTests {
     func anEditDuringTheAddedCourseRefreshIsKept() async {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = store
-        store.saveUserAddedCourses([Self.course("AA1"), Self.course("BB2")])
+        store.saveUserAddedCourses([Self.course("AA1"), Self.course("BB2")], for: testSignIn)
 
         let kept = await CourseDetails.refreshUserAddedCourses(
-            semester: Self.semester, authService: Self.auth(), courses: store
+            semester: Self.semester, for: testSignIn, courses: store
         ) { _, courseNo, _, _ in
-            store.apply(.remove(courseNo: "BB2", semester: Self.semester))
-            store.apply(.add(Self.course("CC3"), semester: Self.semester))
+            store.apply(.remove(courseNo: "BB2", semester: Self.semester), for: testSignIn)
+            store.apply(.add(Self.course("CC3"), semester: Self.semester), for: testSignIn)
             return [Self.result(courseNo, name: "New")]
         }
 
@@ -61,14 +61,14 @@ struct CourseFetchRaceTests {
     func aNewerRosterDuringTheClassroomRefreshIsKept() async {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = store
-        store.saveCourses([Self.course("EN1"), Self.course("EN2")], semester: Self.semester)
-        store.saveUserAddedCourses([Self.course("UA1"), Self.course("UA2")])
+        store.saveCourses([Self.course("EN1"), Self.course("EN2")], semester: Self.semester, for: testSignIn)
+        store.saveUserAddedCourses([Self.course("UA1"), Self.course("UA2")], for: testSignIn)
 
         let applied = await CourseDetails.refreshCoursesMissingClassroom(
-            semester: Self.semester, authService: Self.auth(), courses: store
+            semester: Self.semester, for: testSignIn, courses: store
         ) { _, courseNo, _, _ in
-            store.saveCourses([Self.course("EN1"), Self.course("EN3")], semester: Self.semester)
-            store.apply(.remove(courseNo: "UA2", semester: Self.semester))
+            store.saveCourses([Self.course("EN1"), Self.course("EN3")], semester: Self.semester, for: testSignIn)
+            store.apply(.remove(courseNo: "UA2", semester: Self.semester), for: testSignIn)
             return [Self.result(courseNo, name: "New")]
         }
 
@@ -84,10 +84,10 @@ struct CourseFetchRaceTests {
     func namesFromBeforeALanguageChangeAreDropped() async {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = store
-        store.saveUserAddedCourses([Self.course("AA1")])
+        store.saveUserAddedCourses([Self.course("AA1")], for: testSignIn)
 
         let kept = await CourseDetails.refreshUserAddedCourses(
-            semester: Self.semester, authService: Self.auth(), courses: store
+            semester: Self.semester, for: testSignIn, courses: store
         ) { [display] _, courseNo, _, _ in
             display.value = CourseDetails.CourseDisplayPreferences(
                 language: "en", courseAbbrEnabled: false, classroomAbbrEnabled: false,
@@ -99,7 +99,7 @@ struct CourseFetchRaceTests {
         #expect(store.loadUserAddedCourses().map(\.courseName) == ["Old"])
         #expect(kept.map(\.courseName) == ["Old"])
         #expect(!store.saveFetchedCourses(
-            [Self.course("EN1", name: "New")], semester: Self.semester, display: Self.zh, since: store.editToken
+            [Self.course("EN1", name: "New")], semester: Self.semester, display: Self.zh, since: store.editToken, for: testSignIn
         ))
         #expect(store.loadCourses(semester: Self.semester).isEmpty)
     }
@@ -113,10 +113,10 @@ struct CourseFetchRaceTests {
         ))
         let term = viewModel.currentSemester
         let mine = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: term)
-        store.saveUserAddedCourses([mine])
+        store.saveUserAddedCourses([mine], for: testSignIn)
         viewModel.courses = [mine]
 
-        store.saveUserAddedCourses([mine, SDCourse(courseNo: "GE1010002", courseName: "Music", semester: term)])
+        store.saveUserAddedCourses([mine, SDCourse(courseNo: "GE1010002", courseName: "Music", semester: term)], for: testSignIn)
         viewModel.editor.removeUserAddedCourse(courseNo: "GE1010001")
 
         #expect(store.loadUserAddedCourses().map(\.courseNo) == ["GE1010002"])

@@ -41,7 +41,7 @@ struct CourseSelectionServiceTests {
             defer { CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId) }
 
             let answer = try await CourseSelectionService.fetchEnrolledCourseNos(
-                session: .shared, studentId: studentId, password: "unused"
+                session: .shared, studentId: studentId, password: "unused", for: testSignIn
             )
             let last = try #require(CourseSelectionService.lastAnswer(studentId: studentId, semester: semester))
 

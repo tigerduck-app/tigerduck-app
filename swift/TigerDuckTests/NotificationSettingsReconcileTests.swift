@@ -520,7 +520,7 @@ struct NotificationSettingsReconcileTests {
                 await MainActor.run {
                     if SettingsAPIStub.requests(for: url).count == 1 {
                         store.classPreparingLeadTime = 600
-                        NotificationSettingsSync.sectionTurnedOn(.liveActivity, local: .init(from: store))
+                        NotificationSettingsSync.sectionTurnedOn(.liveActivity, local: .init(from: store), for: testSignIn)
                     }
                 }
                 return nil
@@ -530,7 +530,7 @@ struct NotificationSettingsReconcileTests {
                 store,
                 client: client,
                 syncLiveActivity: false,
-                recordSynced: { NotificationSettingsSync.recordSynced($0, sections: $1) }
+                recordSynced: { NotificationSettingsSync.recordSynced($0, sections: $1, for: testSignIn) }
             )
 
             #expect(outcome == .settled(adopted: [.assignments], seeded: [.courses]))

@@ -486,7 +486,7 @@ struct CloudSyncCoordinatorTests {
             Defaults[.pendingConflictCategories] = ["assignments", "courses"]
             Defaults[.assignmentMarksSyncedOnce] = true
 
-            SignOutCheck.forgetSyncProgress()
+            SyncProgress.forget()
 
             #expect(Defaults[.pendingConflictCategories].isEmpty)
             #expect(!Defaults[.assignmentMarksSyncedOnce])

@@ -34,7 +34,7 @@ struct SyncRaceTests {
         cache.courses.saveCourses([
             SDCourse(courseNo: "CS1", courseName: "CS1", moodleIdNumber: "1151CS1", semester: "1151"),
             SDCourse(courseNo: "CS2", courseName: "CS2", moodleIdNumber: "1151CS2", semester: "1151"),
-        ], semester: "1151")
+        ], semester: "1151", for: testSignIn)
         return cache
     }
 
@@ -43,12 +43,11 @@ struct SyncRaceTests {
     }
 
     private static func sender(
-        _ baseURL: URL, cache: TestCache, colors: CourseColorStore, switchedOn: Set<String>,
-        account: AccountSession = AccountSession()
+        _ baseURL: URL, cache: TestCache, colors: CourseColorStore, switchedOn: Set<String>
     ) -> OutboxSender {
         OutboxSender(
             push: push(baseURL), addedCourseUpload: { _, _ in nil }, uploadsCourses: { true },
-            isProtectedDataAvailable: { true }, account: account, courses: cache.courses,
+            isProtectedDataAvailable: { true }, courses: cache.courses,
             kept: KeptValues(
                 policy: policy(switchedOn), colors: colors, courses: cache.courses, assignments: cache.assignments
             )
@@ -77,11 +76,11 @@ struct SyncRaceTests {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let cache = Self.cache()
         let colors = CourseColorStore(files: cache.colors)
-        colors.applyColors([("CS1", Self.teal), ("CS2", Self.red)], palette: TigerDuckTheme.coursePaletteHexes)
+        colors.applyColors([("CS1", Self.teal), ("CS2", Self.red)], palette: TigerDuckTheme.coursePaletteHexes, for: testSignIn)
         Self.keptRed(baseURL)
 
         try await Self.sender(baseURL, cache: cache, colors: colors, switchedOn: ["courses", "course_colors"])
-            .send(Self.colourEdit, newerQueued: { _ in false })
+            .send(Self.colourEdit, for: testSignIn, newerQueued: { _ in false })
 
         #expect(colors.map["CS1"] == Self.red)
         #expect(colors.map["CS2"] != Self.red)
@@ -94,11 +93,11 @@ struct SyncRaceTests {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let cache = Self.cache()
             let colors = CourseColorStore(files: cache.colors)
-            colors.applyColors([("CS1", Self.teal), ("CS2", Self.red)], palette: TigerDuckTheme.coursePaletteHexes)
+            colors.applyColors([("CS1", Self.teal), ("CS2", Self.red)], palette: TigerDuckTheme.coursePaletteHexes, for: testSignIn)
             Self.keptRed(baseURL)
 
             try await Self.sender(baseURL, cache: cache, colors: colors, switchedOn: switchedOn)
-                .send(Self.colourEdit, newerQueued: { _ in newer })
+                .send(Self.colourEdit, for: testSignIn, newerQueued: { _ in newer })
 
             #expect(colors.map == ["CS1": Self.teal, "CS2": Self.red])
         }
@@ -108,7 +107,7 @@ struct SyncRaceTests {
     func keptMarkGoesThroughTheAssignmentStore() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let cache = Self.cache()
-        cache.assignments.replaceArchivedAssignmentIds(["42"])
+        cache.assignments.replaceArchivedAssignmentIds(["42"], for: testSignIn)
         SettingsAPIStub.enqueue(
             .init(statusCode: 200, body: Data(#"{"local_status":"locally_completed","local_status_hlc":2,"applied":false}"#.utf8)),
             for: baseURL.appendingPathComponent("sync/assignments/42/override")
@@ -118,7 +117,7 @@ struct SyncRaceTests {
         )
 
         try await Self.sender(baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"])
-            .send(op, newerQueued: { _ in false })
+            .send(op, for: testSignIn, newerQueued: { _ in false })
 
         #expect(cache.assignments.loadArchivedAssignmentIds().isEmpty)
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["42"])
@@ -128,7 +127,7 @@ struct SyncRaceTests {
     func keptMarkAfterASignOutIsDropped() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let cache = Self.cache()
-        cache.assignments.replaceArchivedAssignmentIds(["42"])
+        cache.assignments.replaceArchivedAssignmentIds(["42"], for: testSignIn)
         SettingsAPIStub.enqueue(
             .init(statusCode: 200, body: Data(#"{"local_status":"locally_completed","local_status_hlc":2,"applied":false}"#.utf8)),
             for: baseURL.appendingPathComponent("sync/assignments/42/override")
@@ -139,10 +138,10 @@ struct SyncRaceTests {
         let session = AccountSession()
 
         try await Self.sender(
-            baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"], account: session
-        ).send(op, newerQueued: { _ in
-            session.stopWork()
-            session.moveOn()
+            baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"]
+        ).send(op, for: session.signIns.currentSignIn, newerQueued: { _ in
+            session.endSignIn()
+            session.endSignIn()
             return false
         })
 
@@ -278,7 +277,7 @@ struct SyncRaceTests {
         )
         let cache = Self.cache()
         let colors = CourseColorStore(files: cache.colors)
-        colors.applyColors([("CS1", Self.red), ("CS2", Self.teal)], palette: TigerDuckTheme.coursePaletteHexes)
+        colors.applyColors([("CS1", Self.red), ("CS2", Self.teal)], palette: TigerDuckTheme.coursePaletteHexes, for: testSignIn)
         let coordinator = CloudSyncCoordinator(
             pushCoordinator: Self.push(baseURL),
             outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
@@ -288,7 +287,7 @@ struct SyncRaceTests {
         )
         let fill = try #require(Self.fills(local: colors.map)["CS1"])
 
-        await coordinator.sendColorFills([fill])
+        await coordinator.sendColorFills([fill], for: testSignIn)
 
         let body = try #require(SettingsAPIStub.requests(for: url).first.flatMap(SettingsAPIStub.bodyData(from:)))
         let sent = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -400,18 +399,18 @@ struct SyncRaceTests {
     @Test("Keeping the server's side of a conflict reads the server again, and a sign-out meanwhile writes nothing")
     func keepingTheServerSideReadsItAgain() async {
         let cache = Self.cache()
-        cache.assignments.replaceArchivedAssignmentIds(["1"])
-        cache.assignments.replaceLocallyCompletedAssignmentIds([])
+        cache.assignments.replaceArchivedAssignmentIds(["1"], for: testSignIn)
+        cache.assignments.replaceLocallyCompletedAssignmentIds([], for: testSignIn)
 
         await AssignmentMarksReconciler.keepServerSide(
-            read: { ServerMarks(archived: [], completed: ["2"]) }, protected: { [] }, isCurrent: { true },
+            read: { ServerMarks(archived: [], completed: ["2"]) }, protected: { [] }, for: testSignIn,
             assignments: cache.assignments
         )
         #expect(cache.assignments.loadArchivedAssignmentIds().isEmpty)
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["2"])
 
         await AssignmentMarksReconciler.keepServerSide(
-            read: { ServerMarks(archived: ["3"], completed: []) }, protected: { [] }, isCurrent: { false },
+            read: { ServerMarks(archived: ["3"], completed: []) }, protected: { [] }, for: endedTestSignIn,
             assignments: cache.assignments
         )
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["2"])

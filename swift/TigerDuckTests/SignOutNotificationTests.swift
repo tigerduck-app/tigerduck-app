@@ -42,9 +42,10 @@ struct SignOutNotificationTests {
             notificationCenter: NotificationCenter(),
             moodleTokens: MoodleTokenService(
                 storedCredentials: { nil }, tokens: .init(load: { nil }, save: { _ in }, drop: {}),
-                harvest: { _, _ in throw CancellationError() }
+                harvest: { _, _ in throw CancellationError() },
+                signIns: SignInSeries()
             ),
-            schoolSignIn: { _, _ in false },
+            schoolSignIn: { _, _, _ in false },
             endSchoolSession: { _ in }
         )
         auth.accountNotifications = center

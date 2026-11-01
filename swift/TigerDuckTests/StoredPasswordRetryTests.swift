@@ -141,7 +141,7 @@ struct StoredPasswordRetryTests {
             harvests: Harvests,
             moodleToken: String? = nil,
             retry: ((
-                _ studentId: String, _ password: String, _ isCurrent: @escaping @MainActor () -> Bool, _ mayPost: () -> Bool
+                _ studentId: String, _ password: String, _ signIn: SignIn, _ mayPost: () -> Bool
             ) async throws -> Bool)?
                 = nil
         ) {
@@ -165,14 +165,15 @@ struct StoredPasswordRetryTests {
                     await harvests.whileOut()
                     return try harvests.answer()
                 },
-                now: { clock.withLock { $0 } }
+                now: { clock.withLock { $0 } },
+                signIns: SignInSeries()
             )
             auth = AuthService(
                 keychainHasCredentials: { false },
                 notificationCenter: center,
                 moodleTokens: tokens,
-                schoolSignIn: { _, _ in true },
-                schoolSessionIsLive: { school.sessionIsLive },
+                schoolSignIn: { _, _, _ in true },
+                schoolSessionIsLive: { _ in school.sessionIsLive },
                 renewSchoolSignIn: { _, _, _ in try school.post(at: clock.withLock { $0 }, forgetting: true) },
                 retrySchoolSignIn: retry ?? { _, _, _, mayPost in
                     school.whileWaitingForTheLock()

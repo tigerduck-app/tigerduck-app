@@ -31,8 +31,8 @@ struct CourseIgnoredAssignmentsTests {
         cache.assignments.saveAssignments([
             assignment("a1", course: "CS1"), assignment("a2", course: "CS1", dueIn: 30),
             assignment("b1", course: "EE2", dueIn: 6),
-        ])
-        cache.assignments.apply(.ignoreCourse(courseNo: "CS1", semester: term, ignored: true))
+        ], for: testSignIn)
+        cache.assignments.apply(.ignoreCourse(courseNo: "CS1", semester: term, ignored: true), for: testSignIn)
         return cache
     }
 
@@ -58,12 +58,12 @@ struct CourseIgnoredAssignmentsTests {
     @Test("An assignment kept from last term falls under last term's setting, not this term's")
     func keptAssignmentsFollowTheTermTheyCameFrom() {
         let cache = Self.makeCache()
-        cache.assignments.saveAssignments([Self.assignment("old", course: "CS1", semester: "1142")])
+        cache.assignments.saveAssignments([Self.assignment("old", course: "CS1", semester: "1142")], for: testSignIn)
 
-        cache.assignments.apply(.ignoreCourse(courseNo: "CS1", semester: Self.term, ignored: true))
+        cache.assignments.apply(.ignoreCourse(courseNo: "CS1", semester: Self.term, ignored: true), for: testSignIn)
         #expect(cache.assignments.loadAssignments(semester: Self.term).filter(\.isIgnoredByCourse).isEmpty)
 
-        cache.assignments.replaceIgnoredAssignmentCourses(["1142:CS1"])
+        cache.assignments.replaceIgnoredAssignmentCourses(["1142:CS1"], for: testSignIn)
         #expect(Self.ids(cache.assignments.loadAssignments(semester: Self.term).filter(\.isIgnoredByCourse)) == ["old"])
     }
 
@@ -89,14 +89,14 @@ struct CourseIgnoredAssignmentsTests {
     @Test("A mark of done shows as ignored, and each assignment's own mark returns with the setting off")
     func ownMarksReturnWhenTheCourseIsNoLongerIgnored() {
         let cache = Self.cacheIgnoringCS1()
-        cache.assignments.apply(.setArchived(id: "a1", true))
-        cache.assignments.apply(.setCompleted(id: "a2", true))
+        cache.assignments.apply(.setArchived(id: "a1", true), for: testSignIn)
+        cache.assignments.apply(.setCompleted(id: "a2", true), for: testSignIn)
 
         let ignored = cache.assignments.loadAssignments(semester: Self.term)
         #expect(Self.ids(ignored.filter(\.isArchived)) == ["a1", "a2"])
         #expect(ignored.filter(\.isLocallyCompleted).isEmpty)
 
-        cache.assignments.apply(.ignoreCourse(courseNo: "CS1", semester: Self.term, ignored: false))
+        cache.assignments.apply(.ignoreCourse(courseNo: "CS1", semester: Self.term, ignored: false), for: testSignIn)
         let restored = cache.assignments.loadAssignments(semester: Self.term)
         #expect(Self.ids(restored.filter(\.isArchived)) == ["a1"])
         #expect(Self.ids(restored.filter(\.isLocallyCompleted)) == ["a2"])
@@ -182,13 +182,13 @@ struct CourseIgnoredAssignmentsTests {
     @Test("Deleting the course clears its setting, and a reset clears only its own term's")
     func deleteAndResetClearTheSetting() {
         let cache = Self.cacheIgnoringCS1()
-        cache.assignments.apply(.ignoreCourse(courseNo: "EE2", semester: Self.term, ignored: true))
-        cache.assignments.apply(.ignoreCourse(courseNo: "CS1", semester: "1142", ignored: true))
+        cache.assignments.apply(.ignoreCourse(courseNo: "EE2", semester: Self.term, ignored: true), for: testSignIn)
+        cache.assignments.apply(.ignoreCourse(courseNo: "CS1", semester: "1142", ignored: true), for: testSignIn)
 
-        cache.assignments.apply(.ignoreCourse(courseNo: "EE2", semester: Self.term, ignored: false))
+        cache.assignments.apply(.ignoreCourse(courseNo: "EE2", semester: Self.term, ignored: false), for: testSignIn)
         #expect(cache.assignments.loadIgnoredAssignmentCourses() == ["1151:CS1", "1142:CS1"])
 
-        cache.assignments.clearIgnoredAssignmentCourses(semester: Self.term)
+        cache.assignments.clearIgnoredAssignmentCourses(semester: Self.term, for: testSignIn)
         #expect(cache.assignments.loadIgnoredAssignmentCourses() == ["1142:CS1"])
     }
 }

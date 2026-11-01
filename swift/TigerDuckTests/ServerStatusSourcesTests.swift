@@ -19,9 +19,7 @@ struct ServerStatusSourcesTests {
         fetch: () async throws -> (report: ScoreReport, cachedAt: Date)
     ) async {
         await ScoreViewModel().refresh(
-            for: "TEST\(UUID().uuidString)",
-            ticket: .after(signOuts: 1),
-            isCurrent: { true },
+            for: "TEST\(UUID().uuidString)", signIn: testSignIn,
             isReachable: { true },
             fetch: fetch,
             reports: ScoreReports(indicator: Indicator()),

@@ -23,7 +23,7 @@ struct AssignmentRoundPersistTests {
         deinit { try? FileManager.default.removeItem(at: root) }
     }
 
-    private static func persist(in cache: TestCache, isCurrent: () -> Bool) -> Bool {
+    private static func persist(in cache: TestCache, signIn: SignIn = testSignIn) -> Bool {
         AssignmentAnswers.persistRound(
             [SDAssignment(assignmentId: "701", courseNo: "CS3105301", courseName: "Data Structures", title: "HW 2", dueDate: due)],
             records: [record],
@@ -33,7 +33,7 @@ struct AssignmentRoundPersistTests {
             fetchedAt: due,
             assignments: cache.assignments,
             moodle: cache.moodle,
-            isCurrent: isCurrent
+            for: signIn
         )
     }
 
@@ -45,7 +45,7 @@ struct AssignmentRoundPersistTests {
     func writes() {
         let folder = Folder()
 
-        #expect(Self.persist(in: folder.cache, isCurrent: { true }))
+        #expect(Self.persist(in: folder.cache))
 
         #expect(folder.cache.assignments.loadAssignments().map(\.assignmentId) == ["701"])
         #expect(Self.records(in: folder.cache) == [Self.record])
@@ -57,7 +57,7 @@ struct AssignmentRoundPersistTests {
     func signedOut() {
         let folder = Folder()
 
-        #expect(!Self.persist(in: folder.cache, isCurrent: { false }))
+        #expect(!Self.persist(in: folder.cache, signIn: endedTestSignIn))
 
         #expect(folder.cache.assignments.loadAssignments().isEmpty)
         #expect(Self.records(in: folder.cache) == nil)
@@ -71,7 +71,7 @@ struct AssignmentRoundPersistTests {
         let cache = folder.cache
         let round = Task { @MainActor () -> Bool in
             try? await Task.sleep(for: .seconds(60))
-            return Self.persist(in: cache, isCurrent: { true })
+            return Self.persist(in: cache)
         }
 
         round.cancel()

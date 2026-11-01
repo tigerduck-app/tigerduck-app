@@ -25,7 +25,7 @@ struct SignOutPlanTests {
         RecordingStore.steps = steps
         defer { RecordingStore.steps = nil }
         let session = AccountSession()
-        let signIn = session.ticket
+        let signIn = session.signIns.currentSignIn
         let work = session.task { _ in }
 
         let calls = SignOutPlan(
@@ -33,7 +33,7 @@ struct SignOutPlanTests {
             stores: [RecordingStore.self],
             stopWork: { steps.taken.append(work.isCancelled ? "stop" : "stop with work running") },
             endSession: {
-                steps.taken.append(session.isCurrent(signIn) ? "end before the move" : "end")
+                steps.taken.append(signIn.isCurrent ? "end before the move" : "end")
                 return {
                     steps.taken.append("calls")
                     return Task {}
@@ -44,7 +44,7 @@ struct SignOutPlanTests {
 
         #expect(steps.taken == ["stop", "end", "stores", "rest", "calls"])
         #expect(calls != nil)
-        #expect(!session.isCurrent(signIn))
+        #expect(!signIn.isCurrent)
     }
 
     @Test("a course deletion made before a sign-out hides nothing of the next sign-in, which keeps its own")
@@ -65,21 +65,19 @@ struct SignOutPlanTests {
 
 @MainActor
 struct AccountSessionTests {
-    @Test("a ticket stays current until the session moves on, and only for its own session")
-    func ticketsBelongToOneSignIn() {
+    @Test("a sign-in stays current until its session ends it, and only for its own session")
+    func aSignInBelongsToOneSession() {
         let school = AccountSession()
         let library = AccountSession()
-        let signIn = school.ticket
-        let check = school.currentCheck()
+        let signIn = school.signIns.currentSignIn
 
-        library.moveOn()
-        #expect(school.isCurrent(signIn))
-        #expect(check())
+        library.endSignIn()
+        #expect(signIn.isCurrent)
 
-        school.moveOn()
-        #expect(!school.isCurrent(signIn))
-        #expect(!check())
-        #expect(school.isCurrent(school.ticket))
+        let next = school.endSignIn()
+        #expect(!signIn.isCurrent)
+        #expect(next.isCurrent)
+        #expect(next == school.signIns.currentSignIn)
     }
 
     @Test("stopping the work cancels the scoped tasks of the sign-in, which see their ticket go stale")
@@ -91,12 +89,12 @@ struct AccountSessionTests {
             start.finish()
             try? await Task.sleep(for: .seconds(60))
             steps.taken.append(Task.isCancelled ? "cancelled" : "slept")
-            steps.taken.append(session.isCurrent(ticket) ? "current" : "stale")
+            steps.taken.append(ticket.isCurrent ? "current" : "stale")
         }
         for await _ in started {}
 
-        session.stopWork()
-        session.moveOn()
+        session.endSignIn()
+        session.endSignIn()
         await task.value
 
         #expect(steps.taken == ["cancelled", "stale"])

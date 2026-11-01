@@ -72,7 +72,7 @@ struct MoodleMaterialsWeekPageTests {
         return MoodleCourseStore(
             courseId: 20119,
             termCourseIds: [20119],
-            context: MoodleCacheContext(account: "B11399001", cache: cache.moodle, isCurrent: { true }),
+            context: MoodleCacheContext(account: "B11399001", cache: cache.moodle, signIn: testSignIn),
             api: MoodleCourseAPI(
                 functions: { [MoodleCourseContentsService.contentsFunction, MoodleCourseSummaryService.coursesFunction] },
                 forums: { _ in [] },

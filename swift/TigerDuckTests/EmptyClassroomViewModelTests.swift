@@ -9,8 +9,8 @@ struct EmptyClassroomViewModelTests {
     private typealias Pages = ClassroomPageFixtures
 
     @MainActor
-    private final class SignIn {
-        var isCurrent = true
+    private final class Account {
+        let signIn = TestSignIn()
         var reads = 0
     }
 
@@ -33,7 +33,7 @@ struct EmptyClassroomViewModelTests {
     @MainActor
     private struct Harness {
         let url = URL(string: "https://cour01.stub.invalid/\(UUID().uuidString)/classroom_usecondition.aspx")!
-        let signIn = SignIn()
+        let signIn = Account()
         let classTable = ClassTable()
         let now: Now
         let service: ClassroomUsageService
@@ -48,8 +48,7 @@ struct EmptyClassroomViewModelTests {
             service = ClassroomUsageService(
                 session: URLSession(configuration: config),
                 queryURL: url,
-                account: Self.account,
-                signIn: { _, _, _ in true },
+                signIn: { _, _ in true },
                 timeouts: (600, 600)
             )
             let classTable = classTable
@@ -69,17 +68,14 @@ struct EmptyClassroomViewModelTests {
                 )
                 model.loader.reader = {
                     signIn.reads += 1
-                    return .init(credentials: Self.credentials, isCurrent: { signIn.isCurrent })
+                    return .init(credentials: .init(
+                        studentId: "B00000000", password: "not-a-password", signIn: signIn.signIn.signIn
+                    ))
                 }
                 return model
             }
             model = newScreen()
         }
-
-        static let account = AccountSession()
-        static let credentials = ClassroomUsageService.Credentials(
-            studentId: "B00000000", password: "not-a-password", signIn: account.ticket
-        )
 
         func serve(_ html: String, gate: SettingsAPIStub.ReplyGate? = nil) {
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(html.utf8), gate: gate), for: url)
@@ -349,7 +345,7 @@ struct EmptyClassroomViewModelTests {
     @Test("an answer that arrives after the account changed is not shown")
     func anotherAccount() async {
         let harness = Harness(at: Self.time(14, 10, 5))
-        harness.signIn.isCurrent = false
+        harness.signIn.signIn.signOut()
         harness.serveDay([Pages.row("IB-508", "..............")])
 
         await harness.model.refresh()

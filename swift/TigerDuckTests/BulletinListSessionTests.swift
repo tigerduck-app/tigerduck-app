@@ -6,6 +6,8 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct BulletinListSessionTests {
+    private let account = AccountSession()
+
     private static func page(_ ids: [Int], next: Int? = nil, orgs: [Int: String] = [:]) -> Data {
         let items = ids.map { id in
             let org = orgs[id].map { #""\#($0)""# } ?? "null"
@@ -66,10 +68,10 @@ struct BulletinListSessionTests {
             stub.serve(Self.page([older]), cursor: older)
             stub.serve(Self.page([newest, newer], next: older))
 
-            let firstVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let firstVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             await firstVisit.loadIfNeeded()
             try await waitUntil { firstVisit.items.contains { $0.id == older } }
-            let secondVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let secondVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             await secondVisit.loadIfNeeded()
 
             #expect(SettingsAPIStub.requests(for: stub.listURL()).count == 2)
@@ -89,9 +91,9 @@ struct BulletinListSessionTests {
             stub.serve(Self.page([newest], next: gap))
             stub.serve(Self.page([gap]), cursor: gap)
 
-            let firstVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let firstVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             await firstVisit.loadIfNeeded()
-            let secondVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let secondVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             await secondVisit.loadIfNeeded()
 
             try await waitUntil { secondVisit.items.contains { $0.id == gap } }
@@ -109,7 +111,7 @@ extension BulletinListSessionTests {
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
             stub.serve(Self.page([stub.id]))
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             #expect(Defaults[.bulletinsSyncedAt] == nil)
 
             let before = Date()
@@ -130,9 +132,10 @@ extension BulletinListSessionTests {
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
             stub.serve(Self.page([stub.id]))
-            await BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client)).refresh()
+            await BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account).refresh()
             #expect(Defaults[.bulletinsSyncedAt] != nil)
 
+            account.endSignIn()
             BulletinsViewModel.forgetListSession()
 
             #expect(Defaults[.bulletinsSyncedAt] == nil)
@@ -155,7 +158,7 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let departed = stub.id, next = stub.id + 1
             stub.serve(Self.page([departed]))
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             await model.refresh()
             #expect(Self.cachedIds.contains(departed))
 
@@ -163,6 +166,7 @@ extension BulletinListSessionTests {
             let refresh = Task {
                 let signOut = Task {
                     Self.wipeCached([departed])
+                    account.endSignIn()
                     BulletinsViewModel.forgetListSession()
                 }
                 await model.refresh()
@@ -184,10 +188,11 @@ extension BulletinListSessionTests {
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
             let gate = Self.serveHeld(Self.page([stub.id]), for: stub.listURL())
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             let refresh = Task { await model.refresh() }
             try await waitUntil { SettingsAPIStub.requests(for: stub.listURL()).count == 1 }
 
+            account.endSignIn()
             BulletinsViewModel.forgetListSession()
             let signedOut = Defaults[.bulletinsSyncedAt]
             gate.open()
@@ -209,12 +214,13 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (kept, newest) = (stub.id, stub.id + 1)
             stub.serve(Self.page([kept]))
-            await BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client)).loadIfNeeded()
+            await BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account).loadIfNeeded()
             let gate = Self.serveHeld(Self.page([newest, kept]), for: stub.listURL())
-            let secondVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let secondVisit = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             let visit = Task { await secondVisit.loadIfNeeded() }
             try await waitUntil { SettingsAPIStub.requests(for: stub.listURL()).count == 2 }
 
+            account.endSignIn()
             BulletinsViewModel.forgetListSession()
             let signedOut = Defaults[.bulletinsSyncedAt]
             gate.open()
@@ -236,10 +242,11 @@ extension BulletinListSessionTests {
             let (older, newer) = (stub.id, stub.id + 1)
             stub.serve(Self.page([newer], next: older))
             let gate = Self.serveHeld(Self.page([older]), for: stub.listURL(cursor: older))
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             await model.refresh()
             try await waitUntil { SettingsAPIStub.requests(for: stub.listURL(cursor: older)).count == 1 }
 
+            account.endSignIn()
             BulletinsViewModel.forgetListSession()
             gate.open()
             await model.waitForPrefetch()
@@ -259,13 +266,14 @@ extension BulletinListSessionTests {
             let (older, newer) = (stub.id, stub.id + 1)
             stub.serve(Self.page([newer], next: older))
             let gate = Self.serveHeld(Self.page([older]), for: stub.listURL(cursor: older))
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             model.pausePrefetch()
             await model.refresh()
             let last = try #require(model.items.last)
             let scroll = Task { await model.loadMoreIfNeeded(triggeredBy: last) }
             try await waitUntil { SettingsAPIStub.requests(for: stub.listURL(cursor: older)).count == 1 }
 
+            account.endSignIn()
             BulletinsViewModel.forgetListSession()
             gate.open()
             await scroll.value
@@ -283,7 +291,7 @@ extension BulletinListSessionTests {
             defer { BulletinsViewModel.forgetListSession() }
             let (old, new) = (Stub(), Stub())
             old.serve(Self.page([old.id]))
-            await BulletinsViewModel(feed: BulletinFeed(apiClient: old.client)).loadIfNeeded()
+            await BulletinsViewModel(feed: BulletinFeed(apiClient: old.client, for: account.signIns.currentSignIn), account: account).loadIfNeeded()
             #expect(Self.cachedIds.contains(old.id))
 
             let article = try JSONDecoder().decode(BulletinAPI.BulletinDetail.self, from: Self.detail(old.id))
@@ -294,7 +302,7 @@ extension BulletinListSessionTests {
             #expect(!Self.cachedIds.contains(old.id))
             #expect(BulletinFiles.shared.loadBulletinDetail(id: old.id) == nil)
             new.serve(Self.page([new.id]))
-            let visit = BulletinsViewModel(feed: BulletinFeed(apiClient: new.client))
+            let visit = BulletinsViewModel(feed: BulletinFeed(apiClient: new.client, for: account.signIns.currentSignIn), account: account)
             await visit.loadIfNeeded()
             #expect(visit.items.map(\.id) == [new.id])
         }
@@ -310,8 +318,9 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (kept, fresh) = (stub.id, stub.id + 1)
             stub.serve(Self.page([kept]))
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             await model.loadIfNeeded()
+            account.endSignIn()
             BulletinsViewModel.forgetListSession()
             Self.wipeCached([kept])
 
@@ -334,8 +343,9 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (kept, fresh) = (stub.id, stub.id + 1)
             stub.serve(Self.page([kept]))
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             await model.refresh()
+            account.endSignIn()
             BulletinsViewModel.forgetListSession()
             Self.wipeCached([kept])
 
@@ -359,9 +369,10 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (older, kept, fresh) = (stub.id, stub.id + 1, stub.id + 2)
             stub.serve(Self.page([kept], next: older))
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             model.pausePrefetch()
             await model.refresh()
+            account.endSignIn()
             BulletinsViewModel.forgetListSession()
             Self.wipeCached([kept])
 
@@ -383,8 +394,9 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (kept, tapped) = (stub.id, stub.id + 1)
             stub.serve(Self.page([kept]))
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             await model.refresh()
+            account.endSignIn()
             BulletinsViewModel.forgetListSession()
             Self.wipeCached([kept])
 
@@ -407,10 +419,11 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (tapped, fresh) = (stub.id, stub.id + 1)
             let gate = Self.serveHeld(Self.detail(tapped), for: stub.detailURL(tapped))
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             let resolve = Task { try await model.summary(forId: tapped) }
             try await waitUntil { SettingsAPIStub.requests(for: stub.detailURL(tapped)).count == 1 }
 
+            account.endSignIn()
             BulletinsViewModel.forgetListSession()
             stub.serve(Self.page([fresh]))
             await model.loadIfNeeded()
@@ -431,7 +444,7 @@ extension BulletinListSessionTests {
             let stub = Stub()
             let (shown, hidden) = (stub.id, stub.id + 1)
             stub.serve(Self.page([shown, hidden], orgs: [shown: "TEST-A", hidden: "TEST-B"]))
-            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client))
+            let model = BulletinsViewModel(feed: BulletinFeed(apiClient: stub.client, for: account.signIns.currentSignIn), account: account)
             await model.loadIfNeeded()
             try await waitUntil { model.items.contains { $0.id == hidden } }
             model.selectedOrgs = ["TEST-A"]
@@ -461,9 +474,10 @@ extension BulletinListSessionTests {
                     guard let cursor else { return firstPages.removeFirst() }
                     return await held.answer(cursor, with: olderPage)
                 },
-                detail: { _ in throw URLError(.badURL) }
+                detail: { _ in throw URLError(.badURL) },
+                for: account.signIns.currentSignIn
             )
-            let model = BulletinsViewModel(feed: feed)
+            let model = BulletinsViewModel(feed: feed, account: account)
             await model.refresh()
             try await waitUntil { held.isWaiting(walked) }
 

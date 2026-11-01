@@ -29,10 +29,9 @@ struct ClassroomUsageServiceTests {
             service = ClassroomUsageService(
                 session: URLSession(configuration: config),
                 queryURL: url,
-                account: account.session,
-                signIn: { _, _, isCurrent in
+                signIn: { _, credentials in
                     account.signInAttempts += 1
-                    guard isCurrent() else { throw CancellationError() }
+                    guard credentials.signIn.isCurrent else { throw CancellationError() }
                     account.signIns += 1
                     return true
                 },
@@ -71,12 +70,12 @@ struct ClassroomUsageServiceTests {
             return fields
         }
 
-        func usage(on day: Date, isToday: Bool = false, force: Bool = false, signIn: AccountSession.Ticket? = nil) async throws -> CampusUsage {
+        func usage(on day: Date, isToday: Bool = false, force: Bool = false, signIn: SignIn? = nil) async throws -> CampusUsage {
             try await service.usage(
                 on: day, isToday: isToday, force: force,
                 credentials: .init(
                     studentId: "B00000000", password: "not-a-password",
-                    signIn: signIn ?? account.session.ticket
+                    signIn: signIn ?? account.session.signIns.currentSignIn
                 )
             ).usage
         }
@@ -103,7 +102,7 @@ struct ClassroomUsageServiceTests {
         _ = try await harness.usage(on: Self.day(10, 14))
         #expect(harness.service.siteStatus == .failed)
 
-        harness.account.session.moveOn()
+        harness.account.session.endSignIn()
         #expect(harness.service.keptUsage(on: Self.day(10, 14)) == nil)
         #expect(harness.service.siteStatus == .unknown)
     }
@@ -195,7 +194,7 @@ struct ClassroomUsageServiceTests {
 
         let read = Task { try await harness.usage(on: Self.day(10, 14)) }
         try await waitUntil { harness.requests.count == 3 }
-        harness.account.session.moveOn()
+        harness.account.session.endSignIn()
         gate.open()
 
         await #expect(throws: CancellationError.self) { try await read.value }
@@ -258,7 +257,7 @@ struct ClassroomUsageServiceTests {
         harness.serveFirstDay()
         _ = try await harness.usage(on: Self.day(10, 14))
 
-        harness.account.session.moveOn()
+        harness.account.session.endSignIn()
 
         #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == nil)
         harness.serveFirstDay()
@@ -329,14 +328,14 @@ struct ClassroomUsageServiceTests {
         let gate = SettingsAPIStub.ReplyGate()
         harness.serve(Pages.signInPage, gate: gate)
         harness.serve(Pages.signInPage)
-        let departed = harness.account.session.ticket
+        let departed = harness.account.session.signIns.currentSignIn
 
         let first = Task { try await harness.usage(on: Self.day(10, 14), signIn: departed) }
         try await waitUntil { harness.requests.count == 1 }
         let second = Task { try await harness.usage(on: Self.day(10, 15), signIn: departed) }
         for _ in 0..<5 { await Task.yield() }
         harness.service.forget()
-        harness.account.session.moveOn()
+        harness.account.session.endSignIn()
         gate.open()
 
         await #expect(throws: (any Error).self) { try await first.value }

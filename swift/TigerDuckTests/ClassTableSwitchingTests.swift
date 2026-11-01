@@ -41,7 +41,7 @@ struct ClassTableSwitchingTests {
             courses: [
                 "1151": [course("CS1010001", "Data Structures", semester: "1151")],
                 "1142": [course("EE1010002", "Circuits", semester: "1142")],
-            ]
+            ], for: testSignIn
         ))
         let hua = try #require(store.add(
             ClassTableShareCode(format: .tigerDuck, studentId: "B11300002", sharedAt: nil, terms: [
@@ -52,7 +52,7 @@ struct ClassTableSwitchingTests {
             courses: [
                 "1141": [course("MA1010001", "Calculus", semester: "1141")],
                 "1142": [course("PE1010002", "Swimming", semester: "1142")],
-            ]
+            ], for: testSignIn
         ))
         return People(store: store, ming: ming, hua: hua)
     }
@@ -345,8 +345,8 @@ struct ClassTableSwitchingTests {
             }
             let onScreen = viewModel.courses.map(\.courseNo)
             let saved = CourseStore.shared.loadCourses(semester: "1142")
-            defer { CourseStore.shared.saveCourses(saved, semester: "1142") }
-            if !signedOut { CourseStore.shared.saveCourses(fetched, semester: "1142") }
+            defer { CourseStore.shared.saveCourses(saved, semester: "1142", for: testSignIn) }
+            if !signedOut { CourseStore.shared.saveCourses(fetched, semester: "1142", for: testSignIn) }
 
             viewModel.loader.showFetched(signedOutSince: signedOut)
 
@@ -366,7 +366,7 @@ struct ClassTableSwitchingTests {
                     Term(semester: "1151", courseNos: [theirs]),
                 ]),
                 nickname: "Chen",
-                courses: ["1151": [Self.course(theirs, "Rare course", semester: "1151")]]
+                courses: ["1151": [Self.course(theirs, "Rare course", semester: "1151")]], for: testSignIn
             ))
             let viewModel = ClassTableViewModel(importedTables: store)
 
@@ -388,7 +388,7 @@ struct ClassTableSwitchingTests {
                     Term(semester: "1151", courseNos: ["QQ0000001"]),
                 ]),
                 nickname: "Chen",
-                courses: ["1151": [Self.course("QQ0000001", "Their course", semester: "1151")]]
+                courses: ["1151": [Self.course("QQ0000001", "Their course", semester: "1151")]], for: testSignIn
             ))
             let viewModel = ClassTableViewModel(importedTables: store)
             store.show(person.id)
@@ -518,7 +518,7 @@ struct ClassTableSwitchingTests {
                     Term(semester: semester, courseNos: ["CS1010001"]),
                 ]),
                 nickname: "Ming", courses: [semester: [Self.course("CS1010001", "New import", semester: semester)]],
-                importedAt: people.ming.importedAt.addingTimeInterval(1)
+                importedAt: people.ming.importedAt.addingTimeInterval(1), for: testSignIn
             ))
             return [Self.course("CS1010001", "Older lookup", semester: semester)]
         }
@@ -551,7 +551,7 @@ struct ClassTableSwitchingTests {
             ClassTableShareCode(format: .tigerDuck, studentId: "B11300001", sharedAt: nil, terms: [
                 Term(semester: "1151", courseNos: ["CS1010001"]),
             ]),
-            nickname: "Ming", courses: [:]
+            nickname: "Ming", courses: [:], for: testSignIn
         )
         store.requestSignOut(unsyncedData: false, confirm: { asked.append($0) }, signOut: { signedOut += 1 })
         store.requestSignOut(unsyncedData: true, confirm: { asked.append($0) }, signOut: { signedOut += 1 })

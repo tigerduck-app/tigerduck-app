@@ -18,8 +18,8 @@ struct CourseRefreshUploadTests {
         var uploads: [Upload] = []
         CourseUpload.uploadVisibleCourses(
             courseNos.map { SDCourse(courseNo: $0, courseName: $0) }, semester: "1151", hidden: hidden,
-            roster: roster, resendingRoster: resendingRoster
-        ) { courses, _, asRoster, resend in
+            roster: roster, resendingRoster: resendingRoster, for: testSignIn
+        ) { courses, _, asRoster, resend, _ in
             uploads.append(Upload(courses: courses.map(\.courseNo), asRoster: asRoster, resend: resend))
         }
         return uploads
@@ -30,8 +30,8 @@ struct CourseRefreshUploadTests {
         var uploads: [(courses: [String], semester: String)] = []
 
         CourseUpload.uploadVisibleCourses(
-            Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"]
-        ) { courses, semester, _, _ in uploads.append((courses.map(\.courseNo), semester)) }
+            Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"], for: testSignIn
+        ) { courses, semester, _, _, _ in uploads.append((courses.map(\.courseNo), semester)) }
 
         #expect(uploads.map(\.courses) == [["CS1"]])
         #expect(uploads.map(\.semester) == ["1151"])
@@ -42,8 +42,9 @@ struct CourseRefreshUploadTests {
         var uploads = 0
 
         CourseUpload.uploadVisibleCourses(
-            Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"], roster: ["CS1", "CS2", "CS3"]
-        ) { _, _, _, _ in uploads += 1 }
+            Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"], roster: ["CS1", "CS2", "CS3"],
+            for: testSignIn
+        ) { _, _, _, _, _ in uploads += 1 }
 
         #expect(uploads == 0)
     }
@@ -109,13 +110,16 @@ struct CourseRefreshUploadTests {
     @Test("A roster request goes to the school once, then again only after an hour or a new sign-in")
     func rosterRequestRetriesAfterAnHour() {
         var log = RosterRequestLog()
-        let (first, second) = (AccountSession.Ticket.after(signOuts: 1), AccountSession.Ticket.after(signOuts: 2))
+        let signIns = SignInSeries()
+        let first = signIns.currentSignIn
         let now = Date()
         let snapshot: [String: Any] = ["roster_requests": ["1151", "1151"]]
 
         #expect(log.termsToAsk(in: [:], signIn: first, now: now).isEmpty)
         #expect(log.termsToAsk(in: snapshot, signIn: first, now: now) == ["1151"])
         #expect(log.termsToAsk(in: snapshot, signIn: first, now: now + 3599).isEmpty)
+        signIns.end()
+        let second = signIns.currentSignIn
         #expect(log.termsToAsk(in: snapshot, signIn: second, now: now + 3599) == ["1151"])
         #expect(log.termsToAsk(in: snapshot, signIn: second, now: now + 3599 + 3600) == ["1151"])
     }

@@ -8,6 +8,7 @@ import Testing
 @Suite(.serialized)
 struct SharedAssignmentRoundTests {
     private let shared = AssignmentRounds()
+    private let session = AccountSession()
 
     @MainActor
     private final class Rounds {
@@ -33,11 +34,11 @@ struct SharedAssignmentRoundTests {
     }
 
     private func start(
-        _ name: String, _ rounds: Rounds, signOuts: Int = 1, rechecks: Bool
+        _ name: String, _ rounds: Rounds, rechecks: Bool
     ) -> Task<Void, Never> {
         Task {
             rounds.entered += 1
-            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: signOuts), rechecks: rechecks, isCurrent: { true }, rounds: shared) { _ in
+            _ = await AssignmentFetch.sharedRound(signIn: session.signIns.currentSignIn, rechecks: rechecks, rounds: shared) { _ in
                 await rounds.run(name)
             }
         }
@@ -82,19 +83,13 @@ struct SharedAssignmentRoundTests {
         #expect(rounds.started == ["pull"])
     }
 
-    @MainActor
-    private final class SignIn {
-        var isCurrent = true
-    }
-
     @Test("a round its account signed out of hands back the cache, not that account's list")
     func aRoundOutlivedBySignOutHandsBackTheCache() async {
-        let signIn = SignIn()
         let departing = "departing-" + UUID().uuidString
         let due = Date(timeIntervalSince1970: 1_800_000_000)
 
-        let shown = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) { _ in
-            signIn.isCurrent = false
+        let shown = await AssignmentFetch.sharedRound(signIn: session.signIns.currentSignIn, rechecks: true, rounds: shared) { _ in
+            session.endSignIn()
             return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
         }
 
@@ -104,12 +99,11 @@ struct SharedAssignmentRoundTests {
     @Test("a caller that joined a round its account signed out of gets the cache too")
     func aJoinerOfARoundOutlivedBySignOutGetsTheCache() async throws {
         let rounds = Rounds()
-        let signIn = SignIn()
         let departing = "departing-" + UUID().uuidString
         let due = Date(timeIntervalSince1970: 1_800_000_000)
         let pull = Task {
             rounds.entered += 1
-            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) { _ in
+            _ = await AssignmentFetch.sharedRound(signIn: session.signIns.currentSignIn, rechecks: true, rounds: shared) { _ in
                 _ = await rounds.run("pull")
                 return [SDAssignment(assignmentId: departing, courseNo: "CS1", courseName: "", title: "", dueDate: due)]
             }
@@ -117,10 +111,10 @@ struct SharedAssignmentRoundTests {
         try await waitUntil { rounds.started == ["pull"] }
         let joined = Task {
             rounds.entered += 1
-            return await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: false, isCurrent: { signIn.isCurrent }, rounds: shared) { _ in [] }
+            return await AssignmentFetch.sharedRound(signIn: session.signIns.currentSignIn, rechecks: false, rounds: shared) { _ in [] }
         }
         try await waitUntil { rounds.entered == 2 }
-        signIn.isCurrent = false
+        session.endSignIn()
         rounds.open()
 
         #expect(await !joined.value.contains { $0.assignmentId == departing })
@@ -130,17 +124,16 @@ struct SharedAssignmentRoundTests {
     @Test("a pull whose account signed out while it waited starts no round")
     func aWaiterOutlivedBySignOutStartsNoRound() async throws {
         let rounds = Rounds()
-        let signIn = SignIn()
         let launch = start("launch", rounds, rechecks: false)
         try await waitUntil { rounds.started == ["launch"] }
         let pull = Task {
             rounds.entered += 1
-            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { signIn.isCurrent }, rounds: shared) { _ in
+            _ = await AssignmentFetch.sharedRound(signIn: session.signIns.currentSignIn, rechecks: true, rounds: shared) { _ in
                 await rounds.run("pull")
             }
         }
         try await waitUntil { rounds.entered == 2 }
-        signIn.isCurrent = false
+        session.endSignIn()
         rounds.open()
         _ = await (launch.value, pull.value)
 
@@ -150,9 +143,10 @@ struct SharedAssignmentRoundTests {
     @Test("the next account never joins the departing account's round")
     func roundsAreKeptPerSignIn() async throws {
         let rounds = Rounds()
-        let departing = start("departing", rounds, signOuts: 1, rechecks: false)
+        let departing = start("departing", rounds, rechecks: false)
         try await waitUntil { rounds.started == ["departing"] }
-        let next = start("next", rounds, signOuts: 2, rechecks: false)
+        session.endSignIn()
+        let next = start("next", rounds, rechecks: false)
         try await waitUntil { rounds.started == ["departing", "next"] }
         rounds.open()
         _ = await (departing.value, next.value)
@@ -171,7 +165,7 @@ struct SharedAssignmentRoundTests {
         let cancelled = Task {
             rounds.entered += 1
             _ = await AssignmentFetch.sharedRound(
-                signIn: .after(signOuts: 1), rechecks: false, isCurrent: { true }, rounds: shared,
+                signIn: session.signIns.currentSignIn, rechecks: false, rounds: shared,
                 applyAfter: { pulls.asked.append("cancelled"); return false }
             ) { pulled in
                 _ = await rounds.run("cancelled")
@@ -183,7 +177,7 @@ struct SharedAssignmentRoundTests {
         let joined = Task {
             rounds.entered += 1
             _ = await AssignmentFetch.sharedRound(
-                signIn: .after(signOuts: 1), rechecks: false, isCurrent: { true }, rounds: shared,
+                signIn: session.signIns.currentSignIn, rechecks: false, rounds: shared,
                 applyAfter: { pulls.asked.append("joined"); return true }
             ) { _ in await rounds.run("joined") }
         }
@@ -200,7 +194,7 @@ struct SharedAssignmentRoundTests {
     func aCancelledPullAppliesNothing() async {
         let pulls = Pulls()
         _ = await AssignmentFetch.sharedRound(
-            signIn: .after(signOuts: 1), rechecks: false, isCurrent: { true }, rounds: shared,
+            signIn: session.signIns.currentSignIn, rechecks: false, rounds: shared,
             applyAfter: { false }
         ) { pulled in
             pulls.applies = await pulled()
@@ -239,7 +233,7 @@ struct SharedAssignmentRoundTests {
                           dueDate: Self.due)],
             records: [], closed: [:], answered: [id: askedAt], account: "B11399001", fetchedAt: Self.due,
             assignments: cache.assignments, moodle: cache.moodle,
-            rounds: shared, isCurrent: { isCurrent }
+            rounds: shared, for: isCurrent ? testSignIn : endedTestSignIn
         )
     }
 
@@ -262,7 +256,7 @@ struct SharedAssignmentRoundTests {
         let before = store.revision
 
         #expect(await AssignmentFetch.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now, assignments: store, rounds: shared, isCurrent: { true }
+            Self.handedIn(id), askedAt: now, assignments: store, rounds: shared, for: testSignIn
         ))
 
         let cached = store.loadAssignments().first { $0.assignmentId == String(id) }
@@ -271,7 +265,7 @@ struct SharedAssignmentRoundTests {
         let written = store.revision
         #expect(written != before)
         #expect(await !AssignmentFetch.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now + .seconds(1), assignments: store, rounds: shared, isCurrent: { true }
+            Self.handedIn(id), askedAt: now + .seconds(1), assignments: store, rounds: shared, for: testSignIn
         ))
         #expect(store.revision == written)
     }
@@ -285,7 +279,7 @@ struct SharedAssignmentRoundTests {
         var status = MoodleSubmissionStatus(
             assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil, extensionDueDate: Self.due - 60
         )
-        #expect(await AssignmentFetch.takeSubmissionStatus(status, askedAt: now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }))
+        #expect(await AssignmentFetch.takeSubmissionStatus(status, askedAt: now, assignments: folder.cache.assignments, rounds: shared, for: testSignIn))
         let early = folder.cache.assignments.loadAssignments().first { $0.assignmentId == String(id) }
         #expect(early?.dueDate == Self.due)
         #expect(early?.extensionDueDate == Self.due - 60)
@@ -293,7 +287,7 @@ struct SharedAssignmentRoundTests {
         for (step, extensionDate) in [Self.due + 2 * 86_400, Self.due + 86_400, nil].enumerated() {
             status.extensionDueDate = extensionDate
             #expect(await AssignmentFetch.takeSubmissionStatus(
-                status, askedAt: now + .seconds(step + 1), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
+                status, askedAt: now + .seconds(step + 1), assignments: folder.cache.assignments, rounds: shared, for: testSignIn
             ))
             let cached = folder.cache.assignments.loadAssignments().first { $0.assignmentId == String(id) }
             #expect(cached?.dueDate == extensionDate ?? Self.due)
@@ -316,7 +310,7 @@ struct SharedAssignmentRoundTests {
                           dueDate: due, cutoffDate: due + 3600)],
             records: [], closed: [String(id): closedAt, "1": closedAt], answered: [id: now - .seconds(60)],
             account: "B11399001", fetchedAt: closedAt,
-            assignments: folder.cache.assignments, moodle: folder.cache.moodle, rounds: shared, isCurrent: { true }
+            assignments: folder.cache.assignments, moodle: folder.cache.moodle, rounds: shared, for: testSignIn
         )
 
         #expect(await AssignmentFetch.takeSubmissionStatus(
@@ -324,7 +318,7 @@ struct SharedAssignmentRoundTests {
                 assignId: id, submissionStatus: "new", gradingStatus: nil, submittedAt: nil,
                 extensionDueDate: Date() + 86_400
             ),
-            askedAt: now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
+            askedAt: now, assignments: folder.cache.assignments, rounds: shared, for: testSignIn
         ))
 
         #expect(folder.cache.assignments.loadClosedUnsubmittedAssignments() == ["1": closedAt])
@@ -339,7 +333,7 @@ struct SharedAssignmentRoundTests {
         round(of: id, askedAt: pageAskedAt - .seconds(60), in: cache)
         let rounds = Rounds()
         let pull = Task {
-            _ = await AssignmentFetch.sharedRound(signIn: .after(signOuts: 1), rechecks: true, isCurrent: { true }, rounds: shared) { _ in
+            _ = await AssignmentFetch.sharedRound(signIn: session.signIns.currentSignIn, rechecks: true, rounds: shared) { _ in
                 _ = await rounds.run("pull")
                 round(of: id, askedAt: pageAskedAt - .seconds(5), in: cache)
                 return []
@@ -351,7 +345,7 @@ struct SharedAssignmentRoundTests {
         let page = Task {
             asked.isSet = true
             return await AssignmentFetch.takeSubmissionStatus(
-                Self.handedIn(id), askedAt: pageAskedAt, assignments: cache.assignments, rounds: shared, isCurrent: { true }
+                Self.handedIn(id), askedAt: pageAskedAt, assignments: cache.assignments, rounds: shared, for: testSignIn
             )
         }
         try await waitUntil { asked.isSet }
@@ -371,16 +365,16 @@ struct SharedAssignmentRoundTests {
         round(of: id, askedAt: now, in: folder.cache)
 
         #expect(await !AssignmentFetch.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now - .seconds(1), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
+            Self.handedIn(id), askedAt: now - .seconds(1), assignments: folder.cache.assignments, rounds: shared, for: testSignIn
         ))
         #expect(Self.isCompleted(id, in: folder.cache) == false)
 
         #expect(await AssignmentFetch.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now + .seconds(10), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
+            Self.handedIn(id), askedAt: now + .seconds(10), assignments: folder.cache.assignments, rounds: shared, for: testSignIn
         ))
         let reverted = MoodleSubmissionStatus(assignId: id, submissionStatus: "draft", gradingStatus: nil, submittedAt: nil)
         #expect(await !AssignmentFetch.takeSubmissionStatus(
-            reverted, askedAt: now + .seconds(5), assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
+            reverted, askedAt: now + .seconds(5), assignments: folder.cache.assignments, rounds: shared, for: testSignIn
         ))
         #expect(Self.isCompleted(id, in: folder.cache) == true)
     }
@@ -394,7 +388,7 @@ struct SharedAssignmentRoundTests {
         #expect(!round(of: id, askedAt: now + .seconds(5), in: folder.cache, isCurrent: false))
 
         #expect(await AssignmentFetch.takeSubmissionStatus(
-            Self.handedIn(id), askedAt: now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
+            Self.handedIn(id), askedAt: now, assignments: folder.cache.assignments, rounds: shared, for: testSignIn
         ))
     }
 
@@ -405,7 +399,6 @@ struct SharedAssignmentRoundTests {
         let id = Self.newId()
         round(of: id, askedAt: .now - .seconds(60), in: cache)
         let rounds = Rounds()
-        let signIn = SignIn()
         let launch = start("launch", rounds, rechecks: false)
         try await waitUntil { rounds.started == ["launch"] }
 
@@ -413,11 +406,12 @@ struct SharedAssignmentRoundTests {
         let page = Task {
             asked.isSet = true
             return await AssignmentFetch.takeSubmissionStatus(
-                Self.handedIn(id), askedAt: .now, assignments: cache.assignments, rounds: shared, isCurrent: { signIn.isCurrent }
+                Self.handedIn(id), askedAt: .now, assignments: cache.assignments, rounds: shared,
+                for: session.signIns.currentSignIn
             )
         }
         try await waitUntil { asked.isSet }
-        signIn.isCurrent = false
+        session.endSignIn()
         rounds.open()
         await launch.value
 
@@ -433,7 +427,7 @@ struct SharedAssignmentRoundTests {
 
         MoodleCourseAPI.live.submissionFetched(
             Self.handedIn(id), .now, MoodleCacheContext(
-                account: "B11399001", cache: folder.cache.moodle, assignments: folder.cache.assignments, isCurrent: { true }
+                account: "B11399001", cache: folder.cache.moodle, assignments: folder.cache.assignments, signIn: testSignIn
             )
         )
 
@@ -451,7 +445,7 @@ struct SharedAssignmentRoundTests {
             let saved = Defaults[.cloudSyncEnabled]
             let sent = Sent()
             Defaults[.cloudSyncEnabled] = true
-            AssignmentAnswers.assignmentUploader = { sent.requests.append($0) }
+            AssignmentAnswers.assignmentUploader = { request, _ in sent.requests.append(request) }
             defer {
                 Defaults[.cloudSyncEnabled] = saved
                 AssignmentAnswers.assignmentUploader = nil
@@ -461,7 +455,7 @@ struct SharedAssignmentRoundTests {
             round(of: id, askedAt: .now - .seconds(60), in: folder.cache)
 
             await AssignmentFetch.takeSubmissionStatus(
-                Self.handedIn(id), askedAt: .now, assignments: folder.cache.assignments, rounds: shared, isCurrent: { true }
+                Self.handedIn(id), askedAt: .now, assignments: folder.cache.assignments, rounds: shared, for: testSignIn
             )
 
             #expect(sent.requests.map { $0.assignments.map(\.moodleAssignmentId) } == [[id]])

@@ -116,7 +116,7 @@ struct MoodleCourseStoreTests {
         _ folder: Folder,
         site: Site,
         account: String = "B11399001",
-        signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true),
+        signedIn: TestSignIn = TestSignIn(),
         beforeForums: @escaping @Sendable () async throws -> Void = {},
         beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in },
         beforeSummary: @escaping @Sendable () async throws -> Void = {},
@@ -129,7 +129,7 @@ struct MoodleCourseStoreTests {
             termCourseIds: [20103, courseId],
             courseCodes: courseCodes,
             context: MoodleCacheContext(
-                account: account, cache: folder.cache.moodle, isCurrent: { signedIn.withLock { $0 } }, now: now
+                account: account, cache: folder.cache.moodle, signIn: signedIn.signIn, now: now
             ),
             api: site.api(
                 beforeForums: beforeForums, beforePage: beforePage, beforeGrades: beforeGrades, beforeSummary: beforeSummary
@@ -170,7 +170,7 @@ struct MoodleCourseStoreTests {
     @Test("an answer that lands after a sign-out is neither shown nor kept")
     func signOutWhileFetching() async throws {
         let folder = Folder()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let answer = ManualSleeper()
         let store = Self.store(folder, site: Site(), signedIn: signedIn, beforeForums: {
             await answer.sleep(for: .zero)
@@ -178,7 +178,7 @@ struct MoodleCourseStoreTests {
 
         let refresh = Task { await store.refreshForums() }
         try await answer.waitUntilArmed()
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await answer.fire()
         await refresh.value
 
@@ -558,7 +558,7 @@ struct MoodleCourseStoreTests {
         let folder = Folder()
         let site = Site()
         site.set(gradeItems: Self.gradebook)
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let answer = ManualSleeper()
         let store = Self.store(folder, site: site, signedIn: signedIn, beforeGrades: {
             await answer.sleep(for: .zero)
@@ -566,7 +566,7 @@ struct MoodleCourseStoreTests {
 
         let refresh = Task { await store.refreshGrades() }
         try await answer.waitUntilArmed()
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await answer.fire()
         await refresh.value
 
@@ -801,8 +801,10 @@ struct MoodleCourseStoreTests {
 
     @Test("the course detail builds its Moodle store again for each sign-in")
     func detailStorePerSignIn() {
-        let key = CourseDetailSheet.MoodleStoreKey(courseNo: "CS3105301", attempt: 0, signIn: .after(signOuts: 1))
-        #expect(key != CourseDetailSheet.MoodleStoreKey(courseNo: "CS3105301", attempt: 0, signIn: .after(signOuts: 2)))
+        let account = TestSignIn()
+        let key = CourseDetailSheet.MoodleStoreKey(courseNo: "CS3105301", attempt: 0, signIn: account.signIn)
+        let next = TestSignIn()
+        #expect(key != CourseDetailSheet.MoodleStoreKey(courseNo: "CS3105301", attempt: 0, signIn: next.signIn))
     }
 
     @Test("signing out deletes the cached summary, and one that lands after a sign-out is not kept")
@@ -815,14 +817,14 @@ struct MoodleCourseStoreTests {
         #expect(Self.summaryOnDisk(folder) == nil)
         #expect(Self.store(folder, site: Site()).shownSummary == nil)
 
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let answer = ManualSleeper()
         let store = Self.store(folder, site: Site(), signedIn: signedIn, beforeSummary: {
             await answer.sleep(for: .zero)
         })
         let refresh = Task { await store.refreshSummary() }
         try await answer.waitUntilArmed()
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await answer.fire()
         await refresh.value
 

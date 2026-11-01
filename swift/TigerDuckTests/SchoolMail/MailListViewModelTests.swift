@@ -15,6 +15,7 @@ struct MailListViewModelTests {
         let fake: FakeMailClient
         let cache: MailCache
         let seen: SeenLog
+        let account: AccountSession
     }
 
     /// `nonisolated` because the fake-server `update` closures below are nonisolated, and the
@@ -46,9 +47,10 @@ struct MailListViewModelTests {
         let seen = SeenLog()
         let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake },
                                       onAuthFailure: { seen.authFailures += 1 }, signOutEvents: signOutEvents)
-        let model = MailListViewModel(session: session, cache: cache, noteSeenByPage: { seen.noted.append($0) },
+        let account = AccountSession()
+        let model = MailListViewModel(session: session, account: account, cache: cache, noteSeenByPage: { seen.noted.append($0) },
                                       signOutEvents: signOutEvents, warmDelay: warmDelay, catchUpDelay: catchUpDelay)
-        return Harness(model: model, fake: fake, cache: cache, seen: seen)
+        return Harness(model: model, fake: fake, cache: cache, seen: seen, account: account)
     }
 
     @Test func loadsFoldersAndTheNewestPage() async {
@@ -1022,6 +1024,7 @@ struct MailListViewModelTests {
         await h.fake.hold("page")
         let load = Task { await h.model.load() }
         await h.fake.waitForArrival("page")
+        h.account.endSignIn()
         center.post(name: MailAccountManager.didSignOut, object: nil)
         await h.fake.update { fake in
             fake.pageErrors["INBOX"] = .authenticationFailed
@@ -1324,6 +1327,7 @@ struct MailListViewModelTests {
         let h = Self.harness(inboxCount: 4, signOutEvents: center)
         await h.model.load()
         #expect(!h.model.rows.isEmpty)
+        h.account.endSignIn()
         center.post(name: MailAccountManager.didSignOut, object: nil)
         #expect(h.model.rows.isEmpty)
         #expect(h.model.folderRoles.isEmpty)
@@ -1341,6 +1345,7 @@ struct MailListViewModelTests {
         await h.fake.hold("page")
         let load = Task { await h.model.load() }
         await h.fake.waitForArrival("page")
+        h.account.endSignIn()
         center.post(name: MailAccountManager.didSignOut, object: nil)
         await h.fake.release("page")
         await load.value
@@ -1358,6 +1363,7 @@ struct MailListViewModelTests {
             h.model.markSeenLocally(folder: "INBOX", uid: 1, seen: seen)
         }
 
+        h.account.endSignIn()
         center.post(name: MailAccountManager.didSignOut, object: nil)
         h.cache.clearAll()
         await h.model.waitForCacheWrites()

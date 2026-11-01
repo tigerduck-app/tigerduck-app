@@ -33,9 +33,9 @@ struct ImportedClassTableStoreTests {
         let folder = Folder()
         let store = Self.store(folder)
 
-        store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:])
-        store.add(Self.code("B11300002", [Self.fall]), nickname: "B11300002", courses: [:])
-        store.add(Self.code(nil, [Self.spring]), nickname: "Hua", courses: [:])
+        store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn)
+        store.add(Self.code("B11300002", [Self.fall]), nickname: "B11300002", courses: [:], for: testSignIn)
+        store.add(Self.code(nil, [Self.spring]), nickname: "Hua", courses: [:], for: testSignIn)
 
         #expect(store.people.map(\.nickname) == ["Ming", "B11300002", "Hua"])
         #expect(store.hasImportedClassTables)
@@ -45,13 +45,13 @@ struct ImportedClassTableStoreTests {
     func reimportReplacesTerms() throws {
         let folder = Folder()
         let store = Self.store(folder)
-        let first = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
-        store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:])
+        let first = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
+        store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:], for: testSignIn)
         let sharedAt = Date(timeIntervalSince1970: 1_791_871_500)
 
         let again = store.add(
             Self.code("B11300001", [Self.spring], sharedAt: sharedAt), nickname: "Someone else",
-            courses: ["1142": [SDCourse(courseNo: "EE1010002", courseName: "Circuits")]]
+            courses: ["1142": [SDCourse(courseNo: "EE1010002", courseName: "Circuits")]], for: testSignIn
         )
 
         #expect(store.people.map(\.nickname) == ["Ming", "Hua"])
@@ -69,9 +69,9 @@ struct ImportedClassTableStoreTests {
         let folder = Folder()
         let store = Self.store(folder)
 
-        #expect(store.add(Self.code("B11300001", [Self.fall]), nickname: "  \n", courses: [:]) == nil)
-        store.add(Self.code(nil, [Self.fall]), nickname: "Ming", courses: [:])
-        store.add(Self.code(nil, [Self.fall]), nickname: " Ming ", courses: [:])
+        #expect(store.add(Self.code("B11300001", [Self.fall]), nickname: "  \n", courses: [:], for: testSignIn) == nil)
+        store.add(Self.code(nil, [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn)
+        store.add(Self.code(nil, [Self.fall]), nickname: " Ming ", courses: [:], for: testSignIn)
 
         #expect(store.people.map(\.nickname) == ["Ming", "Ming"])
     }
@@ -80,14 +80,14 @@ struct ImportedClassTableStoreTests {
     func renameAndDelete() throws {
         let folder = Folder()
         let store = Self.store(folder)
-        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
-        let hua = try #require(store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:]))
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
+        let hua = try #require(store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:], for: testSignIn))
 
-        store.rename(ming.id, to: " Xiao Ming ")
-        store.rename(hua.id, to: " ")
+        store.rename(ming.id, to: " Xiao Ming ", for: testSignIn)
+        store.rename(hua.id, to: " ", for: testSignIn)
         #expect(store.people.map(\.nickname) == ["Xiao Ming", "Hua"])
 
-        store.delete(ming.id)
+        store.delete(ming.id, for: testSignIn)
         #expect(store.people.map(\.id) == [hua.id])
     }
 
@@ -95,17 +95,17 @@ struct ImportedClassTableStoreTests {
     func shownPersonFallsBack() throws {
         let folder = Folder()
         let store = Self.store(folder)
-        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
-        let hua = try #require(store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:]))
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
+        let hua = try #require(store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:], for: testSignIn))
 
         store.show(hua.id)
         store.show(UUID())
         #expect(store.shownPerson?.id == hua.id)
         #expect(Self.store(folder).shownPersonID == nil)
 
-        store.delete(ming.id)
+        store.delete(ming.id, for: testSignIn)
         #expect(store.shownPersonID == hua.id)
-        store.delete(hua.id)
+        store.delete(hua.id, for: testSignIn)
         #expect(store.shownPersonID == nil)
         #expect(store.shownPerson == nil)
     }
@@ -116,8 +116,8 @@ struct ImportedClassTableStoreTests {
         let store = Self.store(folder)
         store.showNext()
         #expect(store.shownPersonID == nil)
-        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
-        let hua = try #require(store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:]))
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
+        let hua = try #require(store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:], for: testSignIn))
 
         store.showNext()
         #expect(store.shownPersonID == ming.id)
@@ -131,8 +131,8 @@ struct ImportedClassTableStoreTests {
     func showPreviousSwapsBack() throws {
         let folder = Folder()
         let store = Self.store(folder)
-        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
-        let hua = try #require(store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:]))
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
+        let hua = try #require(store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:], for: testSignIn))
 
         store.showPrevious()
         #expect(store.shownPersonID == ming.id)
@@ -146,7 +146,7 @@ struct ImportedClassTableStoreTests {
         #expect(store.shownPersonID == hua.id)
 
         store.show(nil)
-        store.delete(hua.id)
+        store.delete(hua.id, for: testSignIn)
         store.showPrevious()
         #expect(store.shownPersonID == ming.id)
     }
@@ -159,7 +159,7 @@ struct ImportedClassTableStoreTests {
         let importedAt = Date(timeIntervalSince1970: 1_791_900_000)
         let ming = try #require(store.add(
             Self.code("B11300001", [Self.fall, Self.spring], sharedAt: sharedAt), nickname: "Ming",
-            courses: ["1142": [SDCourse(courseNo: "EE1010002", courseName: "Circuits")]], importedAt: importedAt
+            courses: ["1142": [SDCourse(courseNo: "EE1010002", courseName: "Circuits")]], importedAt: importedAt, for: testSignIn
         ))
         store.show(ming.id)
         let before = store.shownTable
@@ -167,10 +167,10 @@ struct ImportedClassTableStoreTests {
         store.updateCourses(
             ming.id, semester: "1151", courseNos: Self.fall.courseNos,
             courses: [SDCourse(courseNo: "CS1010001", courseName: "Data Structures", classroom: "TR-313")],
-            importedAt: ming.importedAt
+            importedAt: ming.importedAt, for: testSignIn
         )
         store.updateCourses(
-            UUID(), semester: "1151", courseNos: Self.fall.courseNos, courses: [], importedAt: ming.importedAt
+            UUID(), semester: "1151", courseNos: Self.fall.courseNos, courses: [], importedAt: ming.importedAt, for: testSignIn
         )
 
         #expect(store.shownTable != before)
@@ -189,17 +189,17 @@ struct ImportedClassTableStoreTests {
     func updateCoursesAfterReimport() throws {
         let folder = Folder()
         let store = Self.store(folder)
-        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
         let reimported = Term(semester: "1151", courseNos: ["GE1010001"])
         store.add(
             Self.code("B11300001", [reimported]), nickname: "Ming",
-            courses: ["1151": [SDCourse(courseNo: "GE1010001", courseName: "Art")]]
+            courses: ["1151": [SDCourse(courseNo: "GE1010001", courseName: "Art")]], for: testSignIn
         )
         let shown = store.shownTable
 
         store.updateCourses(
             ming.id, semester: "1151", courseNos: Self.fall.courseNos,
-            courses: [SDCourse(courseNo: "CS1010001", courseName: "Data Structures")], importedAt: ming.importedAt
+            courses: [SDCourse(courseNo: "CS1010001", courseName: "Data Structures")], importedAt: ming.importedAt, for: testSignIn
         )
 
         let person = try #require(store.people.first)
@@ -214,14 +214,14 @@ struct ImportedClassTableStoreTests {
         let store = Self.store(folder)
         let ming = try #require(store.add(
             Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:],
-            importedAt: Date(timeIntervalSince1970: 1_791_900_000)
+            importedAt: Date(timeIntervalSince1970: 1_791_900_000), for: testSignIn
         ))
         store.show(ming.id)
         let before = store.shownTable
 
         store.add(
             Self.code("B11300001", [Self.spring]), nickname: "Ming", courses: [:],
-            importedAt: Date(timeIntervalSince1970: 1_791_990_000)
+            importedAt: Date(timeIntervalSince1970: 1_791_990_000), for: testSignIn
         )
 
         #expect(store.shownTable.personID == ming.id)
@@ -234,7 +234,7 @@ struct ImportedClassTableStoreTests {
         let store = Self.store(folder)
         let ming = try #require(store.add(
             Self.code("B11300001", [Self.spring, Self.fall, Term(semester: "114H", courseNos: ["PE1010001"])]),
-            nickname: "Ming", courses: [:]
+            nickname: "Ming", courses: [:], for: testSignIn
         ))
 
         #expect(ming.semesters == ["1151", "114H", "1142"])
@@ -254,9 +254,9 @@ struct ImportedClassTableStoreTests {
         )
         store.add(
             Self.code("B11300001", [Self.fall, Self.spring], sharedAt: sharedAt), nickname: "小明",
-            courses: ["1151": [course]], importedAt: importedAt
+            courses: ["1151": [course]], importedAt: importedAt, for: testSignIn
         )
-        store.add(Self.code(nil, [Self.spring]), nickname: "Hua", courses: [:], importedAt: importedAt)
+        store.add(Self.code(nil, [Self.spring]), nickname: "Hua", courses: [:], importedAt: importedAt, for: testSignIn)
 
         let reloaded = Self.store(folder).people
 
@@ -279,10 +279,10 @@ struct ImportedClassTableStoreTests {
     func excludedFromBackup() throws {
         let folder = Folder()
         let store = Self.store(folder)
-        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
         #expect(try folder.file.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
 
-        store.rename(ming.id, to: "Xiao Ming")
+        store.rename(ming.id, to: "Xiao Ming", for: testSignIn)
 
         #expect(try folder.file.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
     }
@@ -298,7 +298,7 @@ struct ImportedClassTableStoreTests {
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path) }
 
         let store = Self.store(folder)
-        let imported = store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:])
+        let imported = store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn)
 
         #expect(imported == nil)
         #expect(store.people.isEmpty)
@@ -312,7 +312,7 @@ struct ImportedClassTableStoreTests {
         let store = Self.store(folder)
         try Data("blocked parent".utf8).write(to: folder.url)
 
-        #expect(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]) == nil)
+        #expect(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn) == nil)
         #expect(store.people.isEmpty)
         #expect(store.shownPersonID == nil)
     }
@@ -321,7 +321,7 @@ struct ImportedClassTableStoreTests {
     func failedChangesKeepPreviousState(action: String) throws {
         let folder = Folder()
         let store = Self.store(folder)
-        let person = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
+        let person = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
         store.show(person.id)
         let kept = try Data(contentsOf: folder.file)
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.url.path)
@@ -329,11 +329,11 @@ struct ImportedClassTableStoreTests {
 
         switch action {
         case "update":
-            #expect(store.add(Self.code("B11300001", [Self.spring]), nickname: "Hua", courses: [:]) == nil)
+            #expect(store.add(Self.code("B11300001", [Self.spring]), nickname: "Hua", courses: [:], for: testSignIn) == nil)
         case "rename":
-            store.rename(person.id, to: "New name")
+            store.rename(person.id, to: "New name", for: testSignIn)
         default:
-            store.delete(person.id)
+            store.delete(person.id, for: testSignIn)
         }
 
         #expect(store.people.map(\.id) == [person.id])
@@ -347,7 +347,7 @@ struct ImportedClassTableStoreTests {
     func signOutEmpties() throws {
         let folder = Folder()
         let store = Self.store(folder)
-        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
         store.show(ming.id)
 
         store.removeAll()
@@ -363,13 +363,13 @@ struct ImportedClassTableStoreTests {
     func signInRules() {
         let folder = Folder()
         let store = Self.store(folder)
-        store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:])
+        store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn)
 
-        store.accountDidSignIn(studentId: "B11300000")
+        store.accountDidSignIn(studentId: "B11300000", for: testSignIn)
         #expect(store.people.count == 1)
         #expect(Self.store(folder).people.count == 1)
 
-        store.accountDidSignIn(studentId: "B11399999")
+        store.accountDidSignIn(studentId: "B11399999", for: testSignIn)
         #expect(store.people.isEmpty)
         #expect(Self.store(folder).people.isEmpty)
     }
@@ -377,10 +377,10 @@ struct ImportedClassTableStoreTests {
     @Test("a store owned by one account is read as that account's after a relaunch")
     func ownerOutlivesRelaunch() {
         let folder = Folder()
-        Self.store(folder).add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:])
+        Self.store(folder).add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn)
 
         let relaunched = Self.store(folder)
-        relaunched.accountDidSignIn(studentId: "B11399999")
+        relaunched.accountDidSignIn(studentId: "B11399999", for: testSignIn)
 
         #expect(relaunched.people.isEmpty)
     }
@@ -391,12 +391,12 @@ struct ImportedClassTableStoreTests {
         let account = Account()
         account.studentId = nil
         let store = Self.store(folder, account)
-        store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:])
+        store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn)
 
-        store.accountDidSignIn(studentId: "B11300000")
+        store.accountDidSignIn(studentId: "B11300000", for: testSignIn)
         #expect(store.people.count == 1)
 
-        store.accountDidSignIn(studentId: "B11399999")
+        store.accountDidSignIn(studentId: "B11399999", for: testSignIn)
         #expect(store.people.isEmpty)
     }
 
@@ -405,13 +405,13 @@ struct ImportedClassTableStoreTests {
         let folder = Folder()
         let account = Account()
         let store = Self.store(folder, account)
-        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:]))
-        store.delete(ming.id)
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
+        store.delete(ming.id, for: testSignIn)
 
         account.studentId = "B11399999"
-        store.accountDidSignIn(studentId: "B11399999")
-        store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:])
-        Self.store(folder, account).accountDidSignIn(studentId: "B11399999")
+        store.accountDidSignIn(studentId: "B11399999", for: testSignIn)
+        store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:], for: testSignIn)
+        Self.store(folder, account).accountDidSignIn(studentId: "B11399999", for: testSignIn)
 
         #expect(Self.store(folder, account).people.map(\.nickname) == ["Hua"])
     }
@@ -421,10 +421,10 @@ struct ImportedClassTableStoreTests {
         let folder = Folder()
         let account = Account()
         let store = Self.store(folder, account)
-        store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:])
+        store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn)
 
         account.studentId = "B11399999"
-        store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:])
+        store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:], for: testSignIn)
 
         #expect(store.people.map(\.nickname) == ["Hua"])
     }

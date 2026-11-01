@@ -57,13 +57,13 @@ struct ClassTableImportModelTests {
 
     private func makeModel(
         signedIn: String? = Self.signedIn,
-        isCurrent: @escaping () -> Bool = { true }
+        signIn: SignIn = testSignIn
     ) -> ClassTableImportModel {
         let lookup = lookup
         return ClassTableImportModel(
             store: store,
             signedInStudentId: { signedIn },
-            isCurrent: isCurrent,
+            signIn: signIn,
             lookup: { try await lookup($0, $1) }
         )
     }
@@ -189,8 +189,8 @@ struct ClassTableImportModelTests {
 
     @Test("a link over a shown alert closes it before showing its own, so Update carries the newer code")
     func linkOverAlertClosesItFirst() async throws {
-        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])
-        store.add(try ClassTableShareCode.decode(try Self.code("B11300002")), nickname: "小華", courses: [:])
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:], for: testSignIn)
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300002")), nickname: "小華", courses: [:], for: testSignIn)
         let model = makeModel()
         model.linkOpened(try Self.code("B11300001", [Self.spring]))
         #expect(model.prompt?.title == String(format: String(localized: "class_table_import_replace_title"), "小明"))
@@ -233,7 +233,7 @@ struct ClassTableImportModelTests {
     @Test("a student ID imported already asks to update it, naming its nickname")
     func importedStudentIdAsksToUpdate() throws {
         let existing = try ClassTableShareCode.decode(try Self.code("B11300001"))
-        store.add(existing, nickname: "小明", courses: [:])
+        store.add(existing, nickname: "小明", courses: [:], for: testSignIn)
         let model = makeModel()
 
         #expect(model.scanned(try Self.code("B11300001", [Self.spring])))
@@ -325,17 +325,17 @@ struct ClassTableImportModelTests {
 
     @Test("a photo read that finishes after sign-out closes without offering or saving the import")
     func signOutDuringPhotoRead() async throws {
-        var current = true
+        let session = AccountSession()
         let image = try Self.qrImage(try Self.code("B11300001"))
         let gate = Gate()
-        let model = makeModel(isCurrent: { current })
+        let model = makeModel(signIn: session.signIns.currentSignIn)
         let reading = try #require(model.readImage(load: {
             await gate.wait()
             return image
         }))
         try await Self.waitUntil { gate.isWaiting }
 
-        current = false
+        session.endSignIn()
         gate.open()
         await reading.value
 
@@ -497,7 +497,7 @@ struct ClassTableImportModelTests {
         let model = ClassTableImportModel(
             store: protectedStore,
             signedInStudentId: { Self.signedIn },
-            isCurrent: { true },
+            signIn: testSignIn,
             lookup: { semester, _ in [Self.course("CS1010001", "Networks", semester: semester)] }
         )
         model.scanned(try Self.code("B11300001"))
@@ -603,8 +603,8 @@ struct ClassTableImportModelTests {
     @Test("updating keeps the nickname, skips the nickname step and takes the new terms")
     func updateKeepsNickname() async throws {
         let first = try ClassTableShareCode.decode(try Self.code("B11300001"))
-        let ming = try #require(store.add(first, nickname: "小明", courses: [:]))
-        store.add(try ClassTableShareCode.decode(try Self.code("B11300002")), nickname: "小華", courses: [:])
+        let ming = try #require(store.add(first, nickname: "小明", courses: [:], for: testSignIn))
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300002")), nickname: "小華", courses: [:], for: testSignIn)
         lookup.courses = ["1142": [Self.course("EE1010002", "電路學", semester: "1142")]]
         let model = makeModel()
         model.scanned(try Self.code("B11300001", [Self.spring]))
@@ -629,7 +629,7 @@ struct ClassTableImportModelTests {
 
     @Test("an update, which has no confirm screen, is shown as updating until its lookup ends or fails")
     func updateShowsProgress() async throws {
-        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:], for: testSignIn)
         lookup.failing = ["1142"]
         let model = makeModel()
         model.linkOpened(try Self.code("B11300001", [Self.spring]))
@@ -662,7 +662,7 @@ struct ClassTableImportModelTests {
 
     @Test("a failed update saves nothing, and Cancel goes back to scanning")
     func failedUpdateKeepsThePerson() async throws {
-        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:], for: testSignIn)
         lookup.failing = ["1142"]
         let model = makeModel()
         model.scanned(try Self.code("B11300001", [Self.spring]))
@@ -702,7 +702,7 @@ struct ClassTableImportModelTests {
 
     @Test("Cancel during an update leaves the person's courses as they were")
     func cancelDuringUpdate() async throws {
-        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:], for: testSignIn)
         let gate = Gate()
         let model = gatedModel(gate)
         model.scanned(try Self.code("B11300001", [Self.spring]))
@@ -726,7 +726,7 @@ struct ClassTableImportModelTests {
     @Test("a person deleted during their update stays deleted")
     func deletedDuringUpdate() async throws {
         let person = try #require(
-            store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:])
+            store.add(try ClassTableShareCode.decode(try Self.code("B11300001")), nickname: "小明", courses: [:], for: testSignIn)
         )
         let gate = Gate()
         let model = gatedModel(gate)
@@ -738,7 +738,7 @@ struct ClassTableImportModelTests {
         model.lookUp(job)
         try await Self.waitUntil { gate.isWaiting }
 
-        store.delete(person.id)
+        store.delete(person.id, for: testSignIn)
         gate.open()
         await model.lookupTask?.value
 
@@ -749,7 +749,7 @@ struct ClassTableImportModelTests {
     @Test("an update leaves a newer import of the same person in place, and keeps a rename made meanwhile")
     func updateYieldsToChangesMadeMeanwhile() async throws {
         let first = try ClassTableShareCode.decode(try Self.code("B11300001"))
-        _ = try #require(store.add(first, nickname: "小明", courses: [:]))
+        _ = try #require(store.add(first, nickname: "小明", courses: [:], for: testSignIn))
         let gate = Gate()
         let model = gatedModel(gate)
         model.scanned(try Self.code("B11300001", [Self.spring]))
@@ -761,7 +761,7 @@ struct ClassTableImportModelTests {
         try await Self.waitUntil { gate.isWaiting }
 
         let person = try #require(store.person(withStudentId: "B11300001"))
-        store.rename(person.id, to: "阿明")
+        store.rename(person.id, to: "阿明", for: testSignIn)
         gate.open()
         await model.lookupTask?.value
         #expect(store.person(withStudentId: "B11300001")?.nickname == "阿明")
@@ -775,7 +775,7 @@ struct ClassTableImportModelTests {
         }
         again.lookUp(older)
         try await Self.waitUntil { gate.isWaiting }
-        store.add(try ClassTableShareCode.decode(try Self.code("B11300001", [Self.spring])), nickname: "阿明", courses: [:])
+        store.add(try ClassTableShareCode.decode(try Self.code("B11300001", [Self.spring])), nickname: "阿明", courses: [:], for: testSignIn)
         gate.open()
         await again.lookupTask?.value
 
@@ -787,7 +787,7 @@ struct ClassTableImportModelTests {
         ClassTableImportModel(
             store: store,
             signedInStudentId: { Self.signedIn },
-            isCurrent: { true },
+            signIn: testSignIn,
             lookup: { semester, _ in
                 await gate.wait()
                 return [Self.course("CS1010001", "資料結構", semester: semester)]
@@ -802,13 +802,13 @@ struct ClassTableImportModelTests {
 
     @Test("a sign-out during the lookup saves nothing and closes the import")
     func signOutSavesNothing() async throws {
-        var generation = 1
+        let session = AccountSession()
         let model = ClassTableImportModel(
             store: store,
             signedInStudentId: { Self.signedIn },
-            isCurrent: { generation == 1 },
+            signIn: session.signIns.currentSignIn,
             lookup: { semester, _ in
-                generation += 1
+                await session.endSignIn()
                 return [Self.course("CS1010001", "資料結構", semester: semester)]
             }
         )

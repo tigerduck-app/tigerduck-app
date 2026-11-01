@@ -85,7 +85,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             #expect(written)
             #expect((sent["live_activity"] as? [String: Any])?["show_in_class"] as? Bool == true)
 
-            NotificationSettingsSync.recordPushed(local, fields: try local.documentUpdates(existing: [:]))
+            NotificationSettingsSync.recordPushed(local, fields: try local.documentUpdates(existing: [:]), for: testSignIn)
             #expect(NotificationSettingsSync.synced == local)
             #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == local)
         }
@@ -107,7 +107,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             server.classPreparingLeadTime = 900
             let signedOut = Self.preferences(showInClass: true)
 
-            NotificationSettingsSync.accountSignedIn(local: signedOut)
+            NotificationSettingsSync.accountSignedIn(local: signedOut, for: testSignIn)
 
             #expect(NotificationSettingsSync.synced == signedOut)
             let edited = Self.preferences(showInClass: false)
@@ -138,12 +138,12 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     func signInKeepsACopyAndTheUpgradeMark() async {
         await Self.withCleanState {
             NotificationSettingsSync.synced = Self.preferences(showInClass: true)
-            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false))
+            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false), for: testSignIn)
             #expect(NotificationSettingsSync.synced == Self.preferences(showInClass: true))
 
             NotificationSettingsSync.synced = nil
             Defaults[.notificationSettingsPushSendsEveryField] = true
-            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false))
+            NotificationSettingsSync.accountSignedIn(local: Self.preferences(showInClass: false), for: testSignIn)
             #expect(NotificationSettingsSync.synced == nil)
             #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == nil)
         }
@@ -199,7 +199,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             let client = SettingsAPIStub.makeClient(baseURL: baseURL, authHeaderProvider: {
                 await MainActor.run {
                     if SettingsAPIStub.requests(for: url).count == 1 {
-                        NotificationSettingsSync.sectionTurnedOn(.liveActivity, local: duringPush)
+                        NotificationSettingsSync.sectionTurnedOn(.liveActivity, local: duringPush, for: testSignIn)
                     }
                 }
                 return nil
@@ -215,7 +215,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 recordSent: { sent = $0 }
             )
             #expect(written)
-            NotificationSettingsSync.recordPushed(startOfPush, fields: sent)
+            NotificationSettingsSync.recordPushed(startOfPush, fields: sent, for: testSignIn)
 
             #expect(NotificationSettingsSync.synced?.classPreparingLeadTime == 900)
             #expect(NotificationSettingsSync.synced?.isAssignmentReminderEnabled == false)
@@ -256,7 +256,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 recordSent: { sent = $0 }
             )
             #expect(landed)
-            NotificationSettingsSync.recordPushed(turnedOn, fields: sent)
+            NotificationSettingsSync.recordPushed(turnedOn, fields: sent, for: testSignIn)
             #expect(NotificationSettingsSync.synced?.showInClassScenario == true)
 
             let turnedOff = Self.preferences(showInClass: false)

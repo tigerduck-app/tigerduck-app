@@ -272,7 +272,7 @@ extension SSOServiceLoginTests {
         )
         await #expect(throws: AuthTokenManager.AuthError.loginFailed) {
             _ = try await manager.login(
-                studentId: "B00000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+                studentId: "B00000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios", for: testSignIn
             )
         }
         #expect(requests(to: elsewhere).isEmpty)

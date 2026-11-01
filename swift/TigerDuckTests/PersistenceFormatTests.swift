@@ -54,7 +54,7 @@ struct PersistenceFormatTests {
         #expect(courses.loadSelectionDroppedNos() == ["1151": ["MA3"]])
         #expect(courses.loadServerDroppedNos(semester: "1151") == ["PE4"])
 
-        courses.saveCourses([course], semester: "1151")
+        courses.saveCourses([course], semester: "1151", for: testSignIn)
         let saved = try #require(try json("cache/courses_1151_\(language).json") as? [[String: Any]]).first
         #expect(saved?["scheduleJSON"] as? String == #"{"1":["3","4"]}"#)
         #expect(saved?["semester"] as? String == "1151" && saved?["moodleIdNumber"] as? String == "1151CS1001301")
@@ -95,7 +95,7 @@ struct PersistenceFormatTests {
         #expect(store.loadCalendarEvents().map(\.eventId) == ["moodle-1"])
         #expect(store.loadCalendarEvents().first?.source == .moodle)
 
-        store.saveAssignments(assignments)
+        store.saveAssignments(assignments, for: testSignIn)
         let saved = try #require(try json("cache/assignments.json") as? [[String: Any]])
         #expect(saved.first { $0["assignmentId"] as? String == "2" }?["dueDate"] as? Double == 800_000_000)
         #expect(saved.first { $0["assignmentId"] as? String == "1" }?["semester"] as? String == "1151")

@@ -102,21 +102,21 @@ struct AccountSwitchTests {
         }
 
         func fillSchool() throws {
-            cache.courses.saveCourses([], semester: semester)
-            cache.courses.saveUserAddedCourses([])
-            cache.courses.saveDeletedCourseNos(["CS1001"])
-            cache.courses.saveSelectionDroppedNos([semester: ["CS1002"]])
-            cache.courses.recordSelectionRoster(semester: semester, roster: ["CS1003"])
-            cache.courses.saveCourseCustomNames([semester: ["CS1001": "Mine"]])
+            cache.courses.saveCourses([], semester: semester, for: testSignIn)
+            cache.courses.saveUserAddedCourses([], for: testSignIn)
+            cache.courses.saveDeletedCourseNos(["CS1001"], for: testSignIn)
+            cache.courses.saveSelectionDroppedNos([semester: ["CS1002"]], for: testSignIn)
+            cache.courses.recordSelectionRoster(semester: semester, roster: ["CS1003"], for: testSignIn)
+            cache.courses.saveCourseCustomNames([semester: ["CS1001": "Mine"]], for: testSignIn)
             cache.colors.saveCourseColorMap(["CS1001": 0xFF0000])
             cache.colors.savePickedCourseColors(["CS1001"])
-            cache.assignments.saveAssignments([])
-            cache.assignments.apply(.setArchived(id: "1", true))
-            cache.assignments.apply(.setCompleted(id: "2", true))
-            cache.assignments.apply(.ignoreCourse(courseNo: "CS1001", semester: semester, ignored: true))
+            cache.assignments.saveAssignments([], for: testSignIn)
+            cache.assignments.apply(.setArchived(id: "1", true), for: testSignIn)
+            cache.assignments.apply(.setCompleted(id: "2", true), for: testSignIn)
+            cache.assignments.apply(.ignoreCourse(courseNo: "CS1001", semester: semester, ignored: true), for: testSignIn)
             cache.assignments.saveCalendarEvents([
                 SDCalendarEvent(eventId: "moodle-1", title: "Quiz", date: Date(), source: .moodle),
-            ])
+            ], for: testSignIn)
             cache.bulletins.saveBulletinSummaries([])
             cache.moodle.saveMoodleCourseIdMap(["1141CS1001": 7])
             cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: first)
@@ -219,9 +219,10 @@ struct AccountSwitchTests {
                     save: { triple in moodleToken.withLock { $0 = triple.wstoken } },
                     drop: { moodleToken.withLock { $0 = nil } }
                 ),
-                harvest: { studentId, _ in .init(signature: "", wstoken: "token-\(studentId)", privatetoken: nil) }
+                harvest: { studentId, _ in .init(signature: "", wstoken: "token-\(studentId)", privatetoken: nil) },
+                signIns: SignInSeries()
             ),
-            schoolSignIn: { studentId, _ in
+            schoolSignIn: { studentId, _, _ in
                 schoolSignIns.withLock { $0.append(studentId) }
                 return true
             },
@@ -255,7 +256,7 @@ struct AccountSwitchTests {
 
             try await SecureStore.$sharedForTesting.withValue(device.keychain) {
                 #expect(await auth.login(studentId: Self.first, password: "first-password"))
-                let firstSignIn = auth.session.ticket
+                let firstSignIn = auth.session.signIns.currentSignIn
                 try device.fillSchool()
                 #expect(device.schoolIsKept())
                 #if os(iOS)
@@ -265,7 +266,7 @@ struct AccountSwitchTests {
                 #expect(await auth.login(studentId: Self.second, password: "second-password"))
 
                 #expect(signedIn.withLock { $0 } == [Self.first, Self.second])
-                #expect(!auth.session.isCurrent(firstSignIn))
+                #expect(!firstSignIn.isCurrent)
                 #expect(auth.storedStudentId == Self.second)
                 #expect(auth.storedPassword == "second-password")
                 #expect(moodleToken.withLock { $0 } == "token-\(Self.second)")

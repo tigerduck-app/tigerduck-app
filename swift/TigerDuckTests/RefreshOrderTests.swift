@@ -19,14 +19,14 @@ struct RefreshOrderTests {
 
         func uploadCoursesIfChanged(
             _ request: PushAPI.CourseUploadRequest, semester: String, resend: Bool, addedAt stamp: Date?,
-            isCurrent: @escaping @MainActor () -> Bool
+            for signIn: SignIn, while wanted: @escaping @MainActor () -> Bool
         ) async throws -> Bool {
             log.events.append("upload")
             return true
         }
 
         func uploadAssignmentsIfChanged(
-            _ request: PushAPI.AssignmentUploadRequest, isCurrent: @escaping @MainActor () -> Bool
+            _ request: PushAPI.AssignmentUploadRequest, for signIn: SignIn, while wanted: @escaping @MainActor () -> Bool
         ) async throws -> Bool {
             log.events.append("upload")
             return true
@@ -50,9 +50,9 @@ struct RefreshOrderTests {
         }
     }
 
-    private static func uploader(_ account: AccountSession, _ target: SyncTarget, _ log: Log) -> SchoolDataUploader {
+    private static func uploader(_ target: SyncTarget, _ log: Log) -> SchoolDataUploader {
         SchoolDataUploader(
-            account: account, target: target, backend: Backend(log: log),
+            target: target, backend: Backend(log: log),
             policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: ["courses"], pendingChecks: []) }
         )
     }
@@ -62,11 +62,11 @@ struct RefreshOrderTests {
     @Test("A school fetch that finishes before the pull applies and uploads only after the pull and the outbox")
     func aSchoolFetchFinishingFirstUploadsAfterThePull() async throws {
         let account = AccountSession()
-        let target = SyncTarget(account: account)
+        let target = SyncTarget()
         let log = Log()
-        let uploader = Self.uploader(account, target, log)
+        let uploader = Self.uploader(target, log)
         let pull = Gate()
-        let ticket = account.ticket
+        let ticket = account.signIns.currentSignIn
 
         let refresh = Task {
             await RefreshOrder.run(
@@ -80,7 +80,7 @@ struct RefreshOrderTests {
                     log.events.append("fetched")
                     #expect(await applyAfter())
                     log.events.append("applied")
-                    uploader.uploadCourses([Self.course], semester: "1151")
+                    uploader.uploadCourses([Self.course], semester: "1151", for: account.signIns.currentSignIn)
                 }
             )
         }
@@ -97,9 +97,9 @@ struct RefreshOrderTests {
     @Test("A failed pull lets school data apply but holds its uploads until a later pull")
     func aFailedPullHoldsTheSchoolUploads() async throws {
         let account = AccountSession()
-        let target = SyncTarget(account: account)
+        let target = SyncTarget()
         let log = Log()
-        let uploader = Self.uploader(account, target, log)
+        let uploader = Self.uploader(target, log)
 
         await RefreshOrder.run(
             pull: { log.events.append("pull failed") },
@@ -107,13 +107,13 @@ struct RefreshOrderTests {
             fetchSchool: { applyAfter in
                 #expect(await applyAfter())
                 log.events.append("applied")
-                uploader.uploadCourses([Self.course], semester: "1151")
+                uploader.uploadCourses([Self.course], semester: "1151", for: account.signIns.currentSignIn)
             }
         )
         for _ in 0..<50 { await Task.yield() }
         #expect(log.events == ["pull failed", "outbox", "applied"])
 
-        target.notePull(account.ticket)
+        target.notePull(account.signIns.currentSignIn)
         try await waitUntil { log.events.last == "upload" }
         #expect(log.events == ["pull failed", "outbox", "applied", "upload"])
     }

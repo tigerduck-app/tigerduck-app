@@ -63,7 +63,7 @@ struct MoodleOwnProfileTests {
                               persistentDir: root.appendingPathComponent("persistent", isDirectory: true))
         return MoodleCourseStore(
             courseId: 1, termCourseIds: [1],
-            context: MoodleCacheContext(account: "B11399001", cache: cache.moodle, isCurrent: { true }, now: { Date() }),
+            context: MoodleCacheContext(account: "B11399001", cache: cache.moodle, signIn: testSignIn, now: { Date() }),
             api: site.api
         )
     }

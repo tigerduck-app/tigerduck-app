@@ -114,15 +114,15 @@ struct OverrideStampTests {
             SettingsAPIStub.enqueue(.noReply, for: url)
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id)), for: url)
             let store = AcademicCalendarStore()
-            store.setNotify(true, forHoliday: id)
-            store.setHolidayAcknowledged(false, holidayID: id)
+            store.setNotify(true, forHoliday: id, for: testSignIn)
+            store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
             let madeAt = try #require(store.holidayEdit(id).madeAt)
 
-            await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration)
+            await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration, for: testSignIn)
             #expect(store.unacknowledgedHolidayIDs.contains(id))
             let retriedAt = Date()
             let relaunched = AcademicCalendarStore()
-            await HolidaySettingSender.uploadHolidayOverride(id, from: relaunched, via: registration)
+            await HolidaySettingSender.uploadHolidayOverride(id, from: relaunched, via: registration, for: testSignIn)
 
             let sent = SettingsAPIStub.requests(for: url)
             #expect(sent.count == 2)
@@ -142,10 +142,10 @@ struct OverrideStampTests {
             SettingsAPIStub.enqueue(Attempts.clockAhead, for: url)
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id)), for: url)
             let store = AcademicCalendarStore()
-            store.setNotify(true, forHoliday: id)
-            store.setHolidayAcknowledged(false, holidayID: id)
+            store.setNotify(true, forHoliday: id, for: testSignIn)
+            store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
 
-            await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration)
+            await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration, for: testSignIn)
 
             let stamps = try SettingsAPIStub.requests(for: url).map { try (Self.json($0)["hlc"] as? NSNumber)?.int64Value }
             let madeAt = try #require(store.holidayEdit(id).madeAt)
@@ -160,13 +160,13 @@ struct OverrideStampTests {
             let gate = SettingsAPIStub.ReplyGate()
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id), gate: gate), for: url)
             let store = AcademicCalendarStore()
-            store.setNotify(true, forHoliday: id)
-            store.setHolidayAcknowledged(false, holidayID: id)
+            store.setNotify(true, forHoliday: id, for: testSignIn)
+            store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
 
-            let upload = Task { await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration) }
+            let upload = Task { await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration, for: testSignIn) }
             try await waitUntil { !SettingsAPIStub.requests(for: url).isEmpty }
-            store.setNotify(false, forHoliday: id)
-            store.setNotify(true, forHoliday: id)
+            store.setNotify(false, forHoliday: id, for: testSignIn)
+            store.setNotify(true, forHoliday: id, for: testSignIn)
             gate.open()
             await upload.value
 

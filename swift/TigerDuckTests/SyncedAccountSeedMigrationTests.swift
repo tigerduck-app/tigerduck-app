@@ -85,7 +85,7 @@ struct SyncedAccountSeedMigrationTests {
 
             #expect(Defaults[.pendingConflictCategories] == ["courses"])
 
-            for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: true) }
+            for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: true, for: testSignIn) }
 
             #expect(Defaults[.pendingConflictCategories] == Self.categories)
         }

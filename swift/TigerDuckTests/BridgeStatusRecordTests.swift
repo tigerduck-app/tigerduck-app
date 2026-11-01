@@ -12,10 +12,10 @@ struct BridgeStatusRecordTests {
     @Test func aRoundFromBeforeASignOutRecordsNothing() {
         let auth = Self.signedOutAuth()
         let tracker = ServerStatusTracker()
-        let departed = auth.session.ticket
-        auth.session.moveOn()
+        let departed = auth.session.signIns.currentSignIn
+        auth.session.endSignIn()
 
-        CourseFetch.record(.failed, for: .moodle, round: departed, authService: auth, tracker: tracker)
+        CourseFetch.record(.failed, for: .moodle, round: departed, tracker: tracker)
 
         #expect(tracker.status(for: .moodle) == .unknown)
     }
@@ -36,7 +36,8 @@ struct BridgeStatusRecordTests {
                 notificationCenter: NotificationCenter(),
                 moodleTokens: MoodleTokenService(
                     storedCredentials: { nil }, tokens: .init(load: { nil }, save: { _ in }, drop: {}),
-                    harvest: { _, _ in throw CancellationError() }
+                    harvest: { _, _ in throw CancellationError() },
+                    signIns: SignInSeries()
                 ),
                 endSchoolSession: { _ in }
             )
@@ -45,12 +46,17 @@ struct BridgeStatusRecordTests {
             #endif
             let simulator = ServerFailureSimulator()
             simulator.failures[.moodle] = .timeout
-            simulator.sleep = { _ in await MainActor.run { auth.logout() } }
+            simulator.sleep = { _ in
+                await MainActor.run {
+                    auth.session.endSignIn()
+                    auth.logout()
+                }
+            }
             ServerStatusTracker.shared.set(.ok, for: .moodle)
 
             await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
                 await ServerFailureSimulator.$sharedForTesting.withValue(simulator) {
-                    _ = await AssignmentFetch.fetchAssignments(authService: auth)
+                    _ = await AssignmentFetch.fetchAssignments(authService: auth, for: auth.session.signIns.currentSignIn)
                 }
             }
 
@@ -63,7 +69,7 @@ struct BridgeStatusRecordTests {
         let auth = Self.signedOutAuth()
         let tracker = ServerStatusTracker()
 
-        CourseFetch.record(.failed, for: .courseSelection, round: auth.session.ticket, authService: auth, tracker: tracker)
+        CourseFetch.record(.failed, for: .courseSelection, round: auth.session.signIns.currentSignIn, tracker: tracker)
 
         #expect(tracker.status(for: .courseSelection) == .failed)
     }

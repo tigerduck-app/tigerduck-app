@@ -28,7 +28,7 @@ struct MoodleCourseSectionTests {
                     cacheDir: root.appendingPathComponent("cache", isDirectory: true),
                     persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
                 ).moodle,
-                isCurrent: { true }
+                signIn: testSignIn
             ),
             api: MoodleCourseAPI(
                 functions: {

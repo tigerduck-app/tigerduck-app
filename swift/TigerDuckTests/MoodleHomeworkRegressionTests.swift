@@ -136,8 +136,8 @@ struct MoodleHomeworkRegressionTests {
         let courseA = SDCourse(courseNo: "AAA001", courseName: "Course A", semester: semA)
         let courseB = SDCourse(courseNo: "BBB002", courseName: "Course B", semester: semB)
 
-        cache.courses.saveCourses([courseA], semester: semA)
-        cache.courses.saveCourses([courseB], semester: semB)
+        cache.courses.saveCourses([courseA], semester: semA, for: testSignIn)
+        cache.courses.saveCourses([courseB], semester: semB, for: testSignIn)
 
         let loadedA = cache.courses.loadCourses(semester: semA)
         let loadedB = cache.courses.loadCourses(semester: semB)

@@ -135,7 +135,7 @@ struct MoodleCourseForumsTests {
         _ folder: Folder,
         site: Site,
         account: String = "B11399001",
-        signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true),
+        signedIn: TestSignIn = TestSignIn(),
         api: MoodleCourseAPI? = nil,
         now: @escaping () -> Date = { Date() }
     ) -> MoodleCourseStore {
@@ -143,7 +143,7 @@ struct MoodleCourseForumsTests {
             courseId: courseId,
             termCourseIds: [20103, courseId],
             context: MoodleCacheContext(
-                account: account, cache: folder.cache.moodle, isCurrent: { signedIn.withLock { $0 } }, now: now
+                account: account, cache: folder.cache.moodle, signIn: signedIn.signIn, now: now
             ),
             api: api ?? site.api
         )
@@ -411,9 +411,9 @@ struct MoodleCourseForumsTests {
         #expect(afterSignOut.discussions(of: Self.qanda).list == nil)
         #expect(afterSignOut.thread(of: Self.discussion(801)).value == nil)
 
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let late = Self.store(folder, site: site, signedIn: signedIn)
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await late.refreshThread(of: Self.discussion(801))
         #expect(late.thread(of: Self.discussion(801)).value == nil)
         #expect(folder.cache.moodle.loadMoodleData(
@@ -491,7 +491,7 @@ struct MoodleCourseForumsTests {
         let fetched = Date(timeIntervalSince1970: 1_800_000_000)
         site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801, unread: true)])
         await Self.store(folder, site: site, now: { fetched }).refreshThread(of: discussion)
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let clock = OSAllocatedUnfairLock(initialState: fetched)
         let gate = ManualSleeper()
         var api = site.api
@@ -505,7 +505,7 @@ struct MoodleCourseForumsTests {
         let opening = Task { await store.openThread(of: discussion, in: Self.qanda) }
         try await gate.waitUntilArmed()
         switch invalidation {
-        case .signOut: signedIn.withLock { $0 = false }
+        case .signOut: signedIn.signOut()
         case .cancel: opening.cancel()
         }
         await gate.fire()
@@ -549,7 +549,7 @@ struct MoodleCourseForumsTests {
     func invalidatedViewFunctions(invalidation: Invalidation) async throws {
         let folder = Folder()
         let site = Site()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let gate = ManualSleeper()
         var api = site.api
         api.functions = {
@@ -560,7 +560,7 @@ struct MoodleCourseForumsTests {
         let event = store.open(Self.discussion(801), in: nil)
         try await gate.waitUntilArmed()
         switch invalidation {
-        case .signOut: signedIn.withLock { $0 = false }
+        case .signOut: signedIn.signOut()
         case .cancel: event.cancel()
         }
         await gate.fire()
@@ -573,19 +573,19 @@ struct MoodleCourseForumsTests {
     func viewEventAsksTheStore() async throws {
         let folder = Folder()
         let site = Site()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let gate = ManualSleeper()
         let answers = OSAllocatedUnfairLock<[Bool]>(initialState: [])
         var api = site.api
-        api.markViewed = { _, isCurrent in
+        api.markViewed = { _, signIn in
             await gate.sleep(for: .seconds(1))
-            let answer = await isCurrent()
+            let answer = signIn.isCurrent
             answers.withLock { $0.append(answer) }
         }
         let store = Self.store(folder, site: site, signedIn: signedIn, api: api)
         let event = store.open(Self.discussion(801), in: nil)
         try await gate.waitUntilArmed()
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await gate.fire()
         await event.value
 
@@ -603,7 +603,7 @@ struct MoodleCourseForumsTests {
             return Self.allFunctions
         }
         let store = Self.store(
-            folder, site: site, signedIn: OSAllocatedUnfairLock(initialState: false), api: api
+            folder, site: site, signedIn: .ended(), api: api
         )
 
         await store.open(Self.discussion(801), in: nil).value

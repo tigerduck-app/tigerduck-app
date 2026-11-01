@@ -61,7 +61,7 @@ struct ReenableCheckSignOutTests {
             }
             Defaults[.pendingConflictCategories] = ["assignments", "courses"]
 
-            SignOutCheck.forgetSyncProgress()
+            SyncProgress.forget()
 
             let left = SyncConflicts.categoriesLeftToCheck(
                 pending: Defaults[.pendingConflictCategories], checked: ["assignments"], signedOutSince: true
@@ -74,15 +74,19 @@ struct ReenableCheckSignOutTests {
 @MainActor
 struct ConflictCheckRetryTests {
     private static let start = Date(timeIntervalSince1970: 1_790_000_000)
+    private static let (departing, next): (SignIn, SignIn) = {
+        let session = AccountSession()
+        let departing = session.signIns.currentSignIn
+        return (departing, session.endSignIn())
+    }()
 
     private static func isDue(
         _ retry: SyncConflicts.ConflictCheckRetry, after seconds: TimeInterval = 0,
-        pending: Set<String> = ["assignments"], checking: Bool = false, awaitingAnswer: Bool = false,
-        signIn: AccountSession.Ticket = .after(signOuts: 0)
+        pending: Set<String> = ["assignments"], checking: Bool = false, awaitingAnswer: Bool = false
     ) -> Bool {
         retry.isDue(
             pending: pending, checking: checking, awaitingAnswer: awaitingAnswer,
-            now: start.addingTimeInterval(seconds), signIn: signIn
+            now: start.addingTimeInterval(seconds)
         )
     }
 
@@ -100,15 +104,15 @@ struct ConflictCheckRetryTests {
     func failuresBackOff() {
         var retry = SyncConflicts.ConflictCheckRetry()
 
-        retry.noteFailure(at: Self.start, signIn: .after(signOuts: 0))
+        retry.noteFailure(at: Self.start, signIn: testSignIn)
         #expect(!Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay - 1))
         #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay))
 
-        retry.noteFailure(at: Self.start, signIn: .after(signOuts: 0))
+        retry.noteFailure(at: Self.start, signIn: testSignIn)
         #expect(!Self.isDue(retry, after: 2 * SyncConflicts.ConflictCheckRetry.firstDelay - 1))
         #expect(Self.isDue(retry, after: 2 * SyncConflicts.ConflictCheckRetry.firstDelay))
 
-        for _ in 0..<20 { retry.noteFailure(at: Self.start, signIn: .after(signOuts: 0)) }
+        for _ in 0..<20 { retry.noteFailure(at: Self.start, signIn: testSignIn) }
         #expect(!Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.maxDelay - 1))
         #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.maxDelay))
     }
@@ -117,18 +121,18 @@ struct ConflictCheckRetryTests {
     func outcomesMoveWhatIsOwed() {
         var retry = SyncConflicts.ConflictCheckRetry()
 
-        retry.note(.clear(["assignments"]), at: Self.start, signIn: .after(signOuts: 0))
+        retry.note(.clear(["assignments"]), at: Self.start, signIn: testSignIn)
         #expect(!Self.isDue(retry, after: 3600))
-        retry.note(.resolvedMeanwhile, at: Self.start, signIn: .after(signOuts: 0))
+        retry.note(.resolvedMeanwhile, at: Self.start, signIn: testSignIn)
         #expect(!Self.isDue(retry, after: 3600))
 
-        retry.note(.dropped, at: Self.start, signIn: .after(signOuts: 0))
+        retry.note(.dropped, at: Self.start, signIn: testSignIn)
         #expect(!Self.isDue(retry, after: 1))
         #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay))
 
-        retry.note(.conflict(["assignments"]), at: Self.start, signIn: .after(signOuts: 0))
+        retry.note(.conflict(["assignments"]), at: Self.start, signIn: testSignIn)
         #expect(!Self.isDue(retry, after: 3600))
-        retry.noteFailure(at: Self.start, signIn: .after(signOuts: 0))
+        retry.noteFailure(at: Self.start, signIn: testSignIn)
         #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay))
     }
 
@@ -136,19 +140,19 @@ struct ConflictCheckRetryTests {
     func anAnswerOwesTheCategoriesMarkedDuringTheCheck() {
         var retry = SyncConflicts.ConflictCheckRetry()
 
-        retry.note(.conflict(["courses"]), at: Self.start, signIn: .after(signOuts: 0))
+        retry.note(.conflict(["courses"]), at: Self.start, signIn: testSignIn)
         #expect(!Self.isDue(retry, pending: ["assignments", "courses"], awaitingAnswer: true))
 
-        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, signIn: .after(signOuts: 0))
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, signIn: testSignIn)
         #expect(Self.isDue(retry, pending: ["assignments"]))
     }
 
     @Test("An answer that leaves nothing pending owes no check")
     func anAnswerThatLeavesNothingOwesNothing() {
         var retry = SyncConflicts.ConflictCheckRetry()
-        retry.note(.conflict(["courses"]), at: Self.start, signIn: .after(signOuts: 0))
+        retry.note(.conflict(["courses"]), at: Self.start, signIn: testSignIn)
 
-        retry.noteAnswered(leaving: [], awaitingAnswer: false, signIn: .after(signOuts: 0))
+        retry.noteAnswered(leaving: [], awaitingAnswer: false, signIn: testSignIn)
 
         #expect(!Self.isDue(retry, pending: ["assignments"]))
     }
@@ -156,10 +160,10 @@ struct ConflictCheckRetryTests {
     @Test("An answer that finds another dialog up owes no check of its own")
     func anAnswerWithAnotherDialogUpOwesNothing() {
         var retry = SyncConflicts.ConflictCheckRetry()
-        retry.note(.conflict(["courses"]), at: Self.start, signIn: .after(signOuts: 0))
-        retry.note(.conflict(["assignments"]), at: Self.start, signIn: .after(signOuts: 0))
+        retry.note(.conflict(["courses"]), at: Self.start, signIn: testSignIn)
+        retry.note(.conflict(["assignments"]), at: Self.start, signIn: testSignIn)
 
-        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: true, signIn: .after(signOuts: 0))
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: true, signIn: testSignIn)
 
         #expect(!Self.isDue(retry, pending: ["assignments"]))
     }
@@ -167,22 +171,22 @@ struct ConflictCheckRetryTests {
     @Test("A check of the departing account that ends after the next account's verdict changes nothing")
     func anOlderAccountsLateResultIsDropped() {
         var retry = SyncConflicts.ConflictCheckRetry()
-        retry.note(.clear(["assignments"]), at: Self.start, signIn: .after(signOuts: 5))
-        #expect(!Self.isDue(retry, signIn: .after(signOuts: 5)))
+        retry.note(.clear(["assignments"]), at: Self.start, signIn: Self.next)
+        #expect(!Self.isDue(retry))
 
-        retry.note(.dropped, at: Self.start, signIn: .after(signOuts: 4))
-        retry.noteFailure(at: Self.start, signIn: .after(signOuts: 4))
-        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, at: Self.start, signIn: .after(signOuts: 4))
+        retry.note(.dropped, at: Self.start, signIn: Self.departing)
+        retry.noteFailure(at: Self.start, signIn: Self.departing)
+        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, at: Self.start, signIn: Self.departing)
 
-        #expect(!Self.isDue(retry, signIn: .after(signOuts: 5)))
+        #expect(!Self.isDue(retry))
     }
 
     @Test("An answer whose save failed is checked again only after the wait a failed check gets")
     func aFailedSaveWaitsBeforeAskingAgain() {
         var retry = SyncConflicts.ConflictCheckRetry()
-        retry.note(.conflict(["courses"]), at: Self.start, signIn: .after(signOuts: 0))
+        retry.note(.conflict(["courses"]), at: Self.start, signIn: testSignIn)
 
-        retry.noteAnswered(leaving: ["courses"], awaitingAnswer: false, saveFailed: true, at: Self.start, signIn: .after(signOuts: 0))
+        retry.noteAnswered(leaving: ["courses"], awaitingAnswer: false, saveFailed: true, at: Self.start, signIn: testSignIn)
 
         #expect(!Self.isDue(retry, pending: ["courses"]))
         #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay, pending: ["courses"]))
@@ -190,15 +194,18 @@ struct ConflictCheckRetryTests {
 
     @Test("The next account starts as at launch, even after the departing account's check ends late")
     func aSignOutStartsTheRetriesOver() {
+        let session = AccountSession()
+        let departing = session.signIns.currentSignIn
         var retry = SyncConflicts.ConflictCheckRetry()
-        for _ in 0..<5 { retry.noteFailure(at: Self.start, signIn: .after(signOuts: 4)) }
-        retry.note(.dropped, at: Self.start, signIn: .after(signOuts: 4))
-        #expect(!Self.isDue(retry, signIn: .after(signOuts: 4)))
+        for _ in 0..<5 { retry.noteFailure(at: Self.start, signIn: departing) }
+        #expect(!Self.isDue(retry))
+        let next = session.endSignIn()
+        retry.note(.dropped, at: Self.start, signIn: departing)
 
-        #expect(Self.isDue(retry, signIn: .after(signOuts: 5)))
-        retry.noteFailure(at: Self.start, signIn: .after(signOuts: 5))
-        #expect(!Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay - 1, signIn: .after(signOuts: 5)))
-        #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay, signIn: .after(signOuts: 5)))
+        #expect(Self.isDue(retry))
+        retry.noteFailure(at: Self.start, signIn: next)
+        #expect(!Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay - 1))
+        #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay))
     }
 }
 
@@ -277,7 +284,7 @@ struct ReenableMarkTests {
     private static func recordSync(
         pendingChecks: Set<String> = [], marksLeftFor reason: SyncPolicy.MarksLeftReason? = nil
     ) {
-        FullSyncRunner.recordFullSync(coursesReset: .distantPast, taken: SyncPolicy(cloudSyncEnabled: true, switchedOn: SyncConflicts.switchedOnCategories(), pendingChecks: pendingChecks).categoriesTaken(marksLeftFor: reason))
+        SyncProgress.recordFullSync(coursesReset: .distantPast, taken: SyncPolicy(cloudSyncEnabled: true, switchedOn: SyncConflicts.switchedOnCategories(), pendingChecks: pendingChecks).categoriesTaken(marksLeftFor: reason), for: testSignIn)
     }
 
     @Test("A full sync takes a category's data unless a pending check or an edit during the fetch holds it back")
@@ -365,7 +372,7 @@ struct ReenableMarkTests {
             Defaults[.pendingConflictCategories] = ["course_colors"]
 
             Self.recordSync(pendingChecks: Defaults[.pendingConflictCategories])
-            SyncConflicts.markForReenableCheck("course_names", signedIn: true)
+            SyncConflicts.markForReenableCheck("course_names", signedIn: true, for: testSignIn)
 
             #expect(!SyncConflicts.hasSynced("course_names"))
             #expect(Defaults[.pendingConflictCategories] == ["course_colors"])
@@ -390,7 +397,7 @@ struct ReenableMarkTests {
             #expect(Self.synced == Self.categories)
             #expect(Defaults[.lastSeenCoursesResetAt] == Date.distantPast)
 
-            SignOutCheck.forgetSyncProgress()
+            SyncProgress.forget()
 
             #expect(Self.synced.isEmpty)
             #expect(Defaults[.courseRowIdsSeen].isEmpty)
@@ -407,7 +414,7 @@ struct ReenableMarkTests {
                 uploadedLocalMarks: false, editedDuringFetch: false
             ))
 
-            for name in Self.categories { SyncConflicts.markForReenableCheck(name, signedIn: true) }
+            for name in Self.categories { SyncConflicts.markForReenableCheck(name, signedIn: true, for: testSignIn) }
 
             #expect(Defaults[.pendingConflictCategories] == Self.categories.subtracting([category]))
         }
@@ -428,8 +435,8 @@ struct ReenableMarkTests {
             Defaults[.assignmentMarksSyncedOnce] = true
             Self.recordSync()
 
-            SignOutCheck.forgetSyncProgress()
-            for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: true) }
+            SyncProgress.forget()
+            for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: true, for: testSignIn) }
 
             #expect(Defaults[.pendingConflictCategories].isEmpty)
             #expect(SyncPolicy.reasonToLeaveMarks(
@@ -448,7 +455,7 @@ struct ReenableMarkTests {
             Defaults[.assignmentMarksSyncedOnce] = marksSynced
             Self.recordSync()
 
-            for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: true) }
+            for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: true, for: testSignIn) }
 
             #expect(Defaults[.pendingConflictCategories] == Self.categories)
         }
@@ -460,7 +467,7 @@ struct ReenableMarkTests {
             Defaults[.assignmentMarksSyncedOnce] = true
             Self.recordSync()
 
-            for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: false) }
+            for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: false, for: testSignIn) }
 
             #expect(Defaults[.pendingConflictCategories].isEmpty)
         }

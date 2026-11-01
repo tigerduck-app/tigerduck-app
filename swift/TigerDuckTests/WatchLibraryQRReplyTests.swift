@@ -10,7 +10,7 @@ struct WatchLibraryQRReplyTests {
         let account = AccountSession()
 
         let reply = await WatchSyncCoordinator.libraryQRReply(cache: cache, account: account) {
-            account.moveOn()
+            account.endSignIn()
             return "departing-code"
         }
 

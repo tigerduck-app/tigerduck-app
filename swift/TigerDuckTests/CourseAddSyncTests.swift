@@ -26,9 +26,9 @@ struct CourseAddSyncTests {
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
-        cache.courses.saveCourses(portal, semester: "1151")
-        cache.courses.saveUserAddedCourses(userAdded)
-        cache.courses.saveDeletedCourseNos(hidden)
+        cache.courses.saveCourses(portal, semester: "1151", for: testSignIn)
+        cache.courses.saveUserAddedCourses(userAdded, for: testSignIn)
+        cache.courses.saveDeletedCourseNos(hidden, for: testSignIn)
         return cache
     }
 
@@ -169,7 +169,7 @@ struct CourseAddSyncTests {
         let account = AccountSession()
         let coordinator = Self.makeCoordinator(
             backend, cache: Self.makeCache(userAdded: [Self.art()]),
-            account: account, whileReading: { account.moveOn() }
+            account: account, whileReading: { account.endSignIn() }
         )
 
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
@@ -288,7 +288,7 @@ struct CourseAddSyncTests {
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE5", stamp: early))
         let coordinator = Self.makeCoordinator(Backend(), cache: cache, outbox: outbox)
 
-        #expect(await CourseReset.apply(at: resetAt, courses: cache.courses, on: coordinator, mayWrite: { true }) == ["1151:PE5"])
+        #expect(await CourseReset.apply(at: resetAt, courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { true }) == ["1151:PE5"])
 
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
         #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
@@ -300,7 +300,7 @@ struct CourseAddSyncTests {
         let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:PE4"])
         let coordinator = Self.makeCoordinator(Backend(), cache: cache)
 
-        #expect(await CourseReset.apply(at: Date(), courses: cache.courses, on: coordinator, mayWrite: { false }) == nil)
+        #expect(await CourseReset.apply(at: Date(), courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { false }) == nil)
 
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
         #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
@@ -412,7 +412,7 @@ struct CourseAddSyncTests {
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
 
         let sameList = SchoolDataUploader.courseUploadRequest([Self.art()], semester: "1151")
-        #expect(try await !push.uploadCoursesIfChanged(sameList, semester: "1151", isCurrent: { true }))
+        #expect(try await !push.uploadCoursesIfChanged(sameList, semester: "1151", for: testSignIn))
         #expect(backend.uploads.count == 1)
     }
 

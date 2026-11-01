@@ -24,9 +24,10 @@ struct SchoolSignInStepsTests {
                 harvest: { _, _ in
                     await MainActor.run { calls.harvests += 1 }
                     return .init(signature: "", wstoken: "harvested", privatetoken: nil)
-                }
+                },
+                signIns: SignInSeries()
             ),
-            schoolSignIn: { _, _ in
+            schoolSignIn: { _, _, _ in
                 await MainActor.run { calls.onSchoolAnswer() }
                 return true
             },
@@ -204,7 +205,7 @@ struct SchoolSignInStepsTests {
                 let auth = AuthService(
                     keychainHasCredentials: { false },
                     notificationCenter: NotificationCenter(),
-                    schoolSignIn: { _, _ in
+                    schoolSignIn: { _, _, _ in
                         await MainActor.run { calls.onSchoolAnswer() }
                         throw failure
                     },
@@ -226,7 +227,7 @@ struct SchoolSignInStepsTests {
             let auth = AuthService(
                 keychainHasCredentials: { false },
                 notificationCenter: NotificationCenter(),
-                schoolSignIn: { _, _ in
+                schoolSignIn: { _, _, _ in
                     await MainActor.run { sheet.schoolStepStarted = true }
                     try await Task.sleep(for: .seconds(60))
                     return true

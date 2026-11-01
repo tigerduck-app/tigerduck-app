@@ -46,7 +46,7 @@ struct MoodleCourseAssignmentsTests {
 
     private static func round(_ records: [MoodleAssignmentRecord], in folder: Folder, account: String = account) {
         folder.cache.moodle.saveMoodleData(records, fetchedAt: Date(), name: MoodleAssignmentRecord.cacheName, account: account)
-        folder.cache.assignments.saveAssignments(records.filter { $0.dueDate != nil && !$0.noSubmissions }.map { assignment($0.assignId) })
+        folder.cache.assignments.saveAssignments(records.filter { $0.dueDate != nil && !$0.noSubmissions }.map { assignment($0.assignId) }, for: testSignIn)
     }
 
     private final class Site: @unchecked Sendable {
@@ -130,16 +130,16 @@ struct MoodleCourseAssignmentsTests {
     private static func context(
         _ folder: Folder,
         account: String = account,
-        signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true)
+        signedIn: TestSignIn = TestSignIn()
     ) -> MoodleCacheContext {
         MoodleCacheContext(
-            account: account, cache: folder.cache.moodle, assignments: folder.cache.assignments, isCurrent: { signedIn.withLock { $0 } })
+            account: account, cache: folder.cache.moodle, assignments: folder.cache.assignments, signIn: signedIn.signIn)
     }
 
     private static func store(
         _ folder: Folder,
         site: Site,
-        signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true),
+        signedIn: TestSignIn = TestSignIn(),
         before: @escaping @Sendable () async throws -> Void = {}
     ) -> MoodleCourseStore {
         MoodleCourseStore(
@@ -402,10 +402,10 @@ struct MoodleCourseAssignmentsTests {
     @Test("a sign-out while the submission is on its way writes nothing and asks for no comments or group")
     func signOutDuringFetch() async {
         let folder = Folder()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let site = Site()
         let store = Self.store(folder, site: site, signedIn: signedIn) {
-            signedIn.withLock { $0 = false }
+            signedIn.signOut()
         }
 
         await store.assignments.refreshSubmission(of: Self.record(701, team: true))
@@ -418,11 +418,11 @@ struct MoodleCourseAssignmentsTests {
     @Test("a sign-out while the submission is on its way asks for no group either")
     func signOutBeforeGroup() async {
         let folder = Folder()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let site = Site()
         site.set(functions: [MoodleAssignmentService.groupsFunction])
         let store = Self.store(folder, site: site, signedIn: signedIn) {
-            signedIn.withLock { $0 = false }
+            signedIn.signOut()
         }
 
         await store.assignments.refreshSubmission(of: Self.record(701, team: true))

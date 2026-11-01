@@ -158,11 +158,11 @@ struct ClassTableShareTermsTests {
     @Test("a term without courses is left out, and courses added by hand go in")
     func termsWithCourses() {
         let store = Cache()
-        store.cache.courses.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Programming")], semester: "1151")
+        store.cache.courses.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Programming")], semester: "1151", for: testSignIn)
         store.cache.courses.saveUserAddedCourses([
             SDCourse(courseNo: "GE1010004", courseName: "Film", semester: "1151"),
             SDCourse(courseNo: "MA1010003", courseName: "Calculus", semester: "1142"),
-        ])
+        ], for: testSignIn)
 
         let terms = ClassTableShareModel.terms(in: ["1152", "1151", "1142"], courses: store.cache.courses)
 
@@ -176,8 +176,8 @@ struct ClassTableShareTermsTests {
         store.cache.courses.saveCourses([
             SDCourse(courseNo: "CS1010001", courseName: "Programming"),
             SDCourse(courseNo: "1151CS101", courseName: "From Moodle only"),
-        ], semester: "1151")
-        store.cache.courses.saveCourses([SDCourse(courseNo: "1142EE102", courseName: "From Moodle only")], semester: "1142")
+        ], semester: "1151", for: testSignIn)
+        store.cache.courses.saveCourses([SDCourse(courseNo: "1142EE102", courseName: "From Moodle only")], semester: "1142", for: testSignIn)
 
         let terms = ClassTableShareModel.terms(in: ["1151", "1142"], courses: store.cache.courses)
 
@@ -187,7 +187,7 @@ struct ClassTableShareTermsTests {
     @Test("a term whose code a share code cannot hold stays out")
     func termsACodeCannotHold() {
         let store = Cache()
-        store.cache.courses.saveCourses([SDCourse(courseNo: "CS1000001", courseName: "Old term")], semester: "99 1")
+        store.cache.courses.saveCourses([SDCourse(courseNo: "CS1000001", courseName: "Old term")], semester: "99 1", for: testSignIn)
 
         #expect(ClassTableShareModel.terms(in: ["99 1"], courses: store.cache.courses).isEmpty)
     }
@@ -198,9 +198,9 @@ struct ClassTableShareTermsTests {
         store.cache.courses.saveCourses([
             SDCourse(courseNo: "CS1010001", courseName: "Programming"),
             SDCourse(courseNo: "EE1010002", courseName: "Circuits"),
-        ], semester: "1151")
-        store.cache.courses.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142")
-        store.cache.courses.saveDeletedCourseNos(["1151:EE1010002", "1142:MA1010003"])
+        ], semester: "1151", for: testSignIn)
+        store.cache.courses.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142", for: testSignIn)
+        store.cache.courses.saveDeletedCourseNos(["1151:EE1010002", "1142:MA1010003"], for: testSignIn)
 
         let terms = ClassTableShareModel.terms(in: ["1151", "1142"], courses: store.cache.courses)
 
@@ -219,7 +219,7 @@ struct ClassTableShareTermsTests {
             semesters: semesters, courses: store.cache.courses
         ), "a course on screen whose code a share code cannot carry is not enough")
 
-        store.cache.courses.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142")
+        store.cache.courses.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142", for: testSignIn)
         #expect(ClassTableShareModel.canShare(
             studentId: "B11300000", shownTerm: .init(semester: "1151", courses: []), semesters: semesters, courses: store.cache.courses
         ), "a course in an older term than the one on screen is enough")
@@ -247,13 +247,13 @@ struct ClassTableShareTermsTests {
                 studentId: "B11300000", shownTerm: shown, semesters: ["1151", "1142"], courses: store.cache.courses, memo: memo
             )
         }
-        store.cache.courses.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142")
+        store.cache.courses.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Calculus")], semester: "1142", for: testSignIn)
         #expect(canShare(empty))
 
         try FileManager.default.removeItem(at: store.root.appendingPathComponent("cache", isDirectory: true))
         #expect(canShare(empty))
 
-        store.cache.courses.saveDeletedCourseNos([])
+        store.cache.courses.saveDeletedCourseNos([], for: testSignIn)
         #expect(!canShare(empty))
         #expect(canShare(.init(semester: "1151", courses: [SDCourse(courseNo: "CS1010001", courseName: "Programming")])))
     }
@@ -261,7 +261,7 @@ struct ClassTableShareTermsTests {
     @Test("an empty displayed term does not resurrect cached courses or enable sharing")
     func emptyDisplayedTerm() {
         let store = Cache()
-        store.cache.courses.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Dropped")], semester: "1151")
+        store.cache.courses.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Dropped")], semester: "1151", for: testSignIn)
         let shown = ClassTableShareModel.Term(semester: "1151", courses: [])
 
         #expect(ClassTableShareModel.terms(in: ["1151"], courses: store.cache.courses, shownTerm: shown).isEmpty)
@@ -273,8 +273,8 @@ struct ClassTableShareTermsTests {
     @Test("the displayed term uses its current snapshot instead of stale enrolled and added courses")
     func displayedSnapshot() {
         let store = Cache()
-        store.cache.courses.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Dropped")], semester: "1151")
-        store.cache.courses.saveUserAddedCourses([SDCourse(courseNo: "GE1010004", courseName: "Removed", semester: "1151")])
+        store.cache.courses.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Dropped")], semester: "1151", for: testSignIn)
+        store.cache.courses.saveUserAddedCourses([SDCourse(courseNo: "GE1010004", courseName: "Removed", semester: "1151")], for: testSignIn)
         let shown = ClassTableShareModel.Term(semester: "1151", courses: [
             SDCourse(courseNo: "EE1010002", courseName: "Current"),
             SDCourse(courseNo: "MA1010003", courseName: "Added"),
@@ -288,8 +288,8 @@ struct ClassTableShareTermsTests {
     @Test("older terms still share from cache without reviving an empty displayed term in the QR code")
     func olderTermsWithEmptyDisplayedTerm() throws {
         let store = Cache()
-        store.cache.courses.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Dropped")], semester: "1151")
-        store.cache.courses.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Past")], semester: "1142")
+        store.cache.courses.saveCourses([SDCourse(courseNo: "CS1010001", courseName: "Dropped")], semester: "1151", for: testSignIn)
+        store.cache.courses.saveCourses([SDCourse(courseNo: "MA1010003", courseName: "Past")], semester: "1142", for: testSignIn)
         let shown = ClassTableShareModel.Term(semester: "1151", courses: [])
         let terms = ClassTableShareModel.terms(in: ["1151", "1142"], courses: store.cache.courses, shownTerm: shown)
         let model = ClassTableShareModel(studentId: "B11300000", terms: terms, semesterLabel: { $0 })
@@ -306,7 +306,7 @@ struct ClassTableShareTermsTests {
     @Test("the displayed snapshot still excludes hidden and unsupported course codes")
     func displayedSnapshotFilters() {
         let store = Cache()
-        store.cache.courses.saveDeletedCourseNos(["1151:CS1010001"])
+        store.cache.courses.saveDeletedCourseNos(["1151:CS1010001"], for: testSignIn)
         let shown = ClassTableShareModel.Term(semester: "1151", courses: [
             SDCourse(courseNo: "CS1010001", courseName: "Hidden"),
             SDCourse(courseNo: "1151EE101", courseName: "Moodle only"),
@@ -410,7 +410,7 @@ struct ClassTableShareSheetTests {
 
         var body: some View {
             Color.clear
-                .classTableShareSheet(model: $presented, signIn: session.ticket)
+                .classTableShareSheet(model: $presented, signIn: session.currentSignIn)
                 .onAppear { presented = model }
         }
     }
@@ -616,7 +616,7 @@ struct ClassTableShareSheetTests {
         )
         #expect(visible.contains(symbol.insetBy(dx: -4 * module, dy: -4 * module)), "the QR code's quiet zone must fit")
 
-        session.moveOn()
+        session.endSignIn()
         try await waitUntil { host.presentedViewController == nil }
     }
 

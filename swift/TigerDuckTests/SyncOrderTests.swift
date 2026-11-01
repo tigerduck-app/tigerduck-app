@@ -15,8 +15,8 @@ struct SyncOrderTests {
     @Test("What this device derives from school data waits for the sign-in's first pull, and goes once it is applied")
     func schoolUploadsWaitForTheFirstPull() async throws {
         let account = AccountSession()
-        let target = SyncTarget(account: account)
-        let ticket = account.ticket
+        let target = SyncTarget()
+        let ticket = account.signIns.currentSignIn
         let released = Released()
 
         let upload = Task { released.value = await target.waitForPull(ticket) }
@@ -33,13 +33,13 @@ struct SyncOrderTests {
     @Test("A sign-out drops the uploads still waiting, and the next sign-in waits for its own pull")
     func aSignOutDropsTheWaitingUploads() async throws {
         let account = AccountSession()
-        let target = SyncTarget(account: account)
-        let before = account.ticket
+        let target = SyncTarget()
+        let before = account.signIns.currentSignIn
         target.notePull(before)
         let released = Released()
 
-        account.moveOn()
-        let after = account.ticket
+        account.endSignIn()
+        let after = account.signIns.currentSignIn
         let upload = Task { released.value = await target.waitForPull(after) }
         for _ in 0..<50 { await Task.yield() }
         #expect(released.value == nil)
@@ -56,8 +56,8 @@ struct SyncOrderTests {
     @Test("Uploads held for the first pull go out in the order they came, and one that comes as they go follows them")
     func heldUploadsGoInTheirOrder() async throws {
         let account = AccountSession()
-        let target = SyncTarget(account: account)
-        let ticket = account.ticket
+        let target = SyncTarget()
+        let ticket = account.signIns.currentSignIn
         let released = Released()
         func held(_ index: Int) -> Task<Void, Never> {
             Task {

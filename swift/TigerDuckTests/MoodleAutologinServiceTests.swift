@@ -214,7 +214,7 @@ struct MoodleAutologinServiceTests {
         let key = Self.key
         let service = Self.service(account: account) {
             await requests.record()
-            if signsOutWhileWaiting.withLock({ $0 }) { await MainActor.run { account.moveOn() } }
+            if signsOutWhileWaiting.withLock({ $0 }) { await MainActor.run { account.endSignIn() } }
             return key
         }
 

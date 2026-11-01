@@ -35,14 +35,14 @@ struct MoodleRefreshFailureNoteTests {
             .appendingPathComponent("MoodleRefreshFailureNoteTests-\(UUID().uuidString)", isDirectory: true)
     }
 
-    private static func feed(in root: URL, isCurrent: @escaping () -> Bool = { true }) -> MoodleFeed<[Int]> {
+    private static func feed(in root: URL, signIn: SignIn = testSignIn) -> MoodleFeed<[Int]> {
         MoodleFeed(cacheName: "notes", ttl: 60, context: MoodleCacheContext(
             account: "B11399001",
             cache: TestCache(
                 cacheDir: root.appendingPathComponent("cache", isDirectory: true),
                 persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
             ).moodle,
-            isCurrent: isCurrent
+            signIn: signIn
         ))
     }
 
@@ -69,11 +69,11 @@ struct MoodleRefreshFailureNoteTests {
     func aDroppedFetchDoesNotCount() async {
         let root = Self.folder()
         defer { try? FileManager.default.removeItem(at: root) }
-        let signedIn = Flag()
-        let feed = Self.feed(in: root, isCurrent: { signedIn.isOn })
+        let signedIn = TestSignIn()
+        let feed = Self.feed(in: root, signIn: signedIn.signIn)
 
         await feed.refresh {
-            await MainActor.run { signedIn.isOn = false }
+            signedIn.signOut()
             throw Failure()
         }
         #expect(feed.failureCount == 0)

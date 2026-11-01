@@ -6,8 +6,6 @@ import Testing
 struct ClassTableShareLinkTests {
     private nonisolated static let rest = "CLASSTABLE/1KNTO5SJB234O09283J89PYINHMLGU86XQH3K2WVREW0CHIZS78"
     private nonisolated static let code = "HTTPS://SHARE.TIGERDUCK.APP/" + rest
-    private static let first = AccountSession.Ticket.after(signOuts: 3)
-    private static let second = AccountSession.Ticket.after(signOuts: 4)
 
     private static func text(_ link: String) throws -> String? {
         ClassTableShareLink.codeText(try #require(URL(string: link), "\(link)"))
@@ -77,12 +75,12 @@ struct ClassTableShareLinkTests {
     func heldUntilItMayOpen() {
         let held = HeldShareLink()
 
-        held.arrived("A", signIn: Self.first)
+        held.arrived("A", signIn: testSignIn)
 
-        #expect(held.take(mayOpen: false, signIn: Self.first) == nil)
+        #expect(held.take(mayOpen: false) == nil)
         #expect(held.link?.text == "A", "still held")
-        #expect(held.take(mayOpen: true, signIn: Self.first) == "A")
-        #expect(held.take(mayOpen: true, signIn: Self.first) == nil)
+        #expect(held.take(mayOpen: true) == "A")
+        #expect(held.take(mayOpen: true) == nil)
         #expect(held.link == nil)
     }
 
@@ -90,21 +88,23 @@ struct ClassTableShareLinkTests {
     func newerLinkReplaces() {
         let held = HeldShareLink()
 
-        held.arrived("A", signIn: Self.first)
-        held.arrived("B", signIn: Self.first)
+        held.arrived("A", signIn: testSignIn)
+        held.arrived("B", signIn: testSignIn)
 
-        #expect(held.take(mayOpen: true, signIn: Self.first) == "B")
-        #expect(held.take(mayOpen: true, signIn: Self.first) == nil)
+        #expect(held.take(mayOpen: true) == "B")
+        #expect(held.take(mayOpen: true) == nil)
     }
 
     @Test("a sign-out drops a held link, so it does not open after the next sign-in")
     func signOutDrops() {
         let held = HeldShareLink()
-        held.arrived("A", signIn: Self.first)
+        let account = TestSignIn()
+        held.arrived("A", signIn: account.signIn)
+        account.signOut()
 
-        #expect(held.take(mayOpen: false, signIn: Self.second) == nil)
+        #expect(held.take(mayOpen: false) == nil)
 
         #expect(held.link == nil)
-        #expect(held.take(mayOpen: true, signIn: Self.second) == nil)
+        #expect(held.take(mayOpen: true) == nil)
     }
 }

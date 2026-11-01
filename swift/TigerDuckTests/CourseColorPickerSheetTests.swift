@@ -8,7 +8,14 @@ import UIKit
 @Suite(.serialized)
 struct CourseColorPickerSheetTests {
     @Observable final class Login {
-        var generation = 0
+        private(set) var generation = 0
+        @ObservationIgnored private(set) var account = TestSignIn()
+
+        func signOut() {
+            account.signOut()
+            account = TestSignIn()
+            generation += 1
+        }
     }
 
     private final class Picks {
@@ -31,7 +38,7 @@ struct CourseColorPickerSheetTests {
             let _ = built.record(generation)
             CourseColorPickerSheet(
                 course: course,
-                isCurrent: { login.generation == generation },
+                signIn: login.account.signIn,
                 onSelect: { picks.hexes.append($0) }
             )
         }
@@ -54,7 +61,7 @@ struct CourseColorPickerSheetTests {
             let label = String(format: String(localized: "a11y_course_color_swatch"), 1)
             try await waitUntil { accessibilityElement(labeled: label, in: host.view) != nil }
             if signsOut {
-                login.generation += 1
+                login.signOut()
                 try await waitUntil { built.generation == login.generation }
             }
             let swatch = try #require(accessibilityElement(labeled: label, in: host.view))
