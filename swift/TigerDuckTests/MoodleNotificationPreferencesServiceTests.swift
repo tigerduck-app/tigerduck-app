@@ -27,7 +27,6 @@ struct MoodleNotificationPreferencesServiceTests {
         }
     }
 
-    /// The bodies the write sent, after their token.
     private static func save(_ preference: MoodleNotificationMatrix.Preference, chinese: Bool = false) async throws -> [String] {
         let token = UUID().uuidString
         answer("null", function: Service.writeFunction, token: token)

@@ -55,7 +55,6 @@ nonisolated enum MoodleNotificationFixtures {
         )
     }
 
-    /// Every component and notification the site lists, in English or in Chinese.
     static func site(chinese: Bool) -> MoodleNotificationMatrix {
         MoodleNotificationMatrix(
             methods: [

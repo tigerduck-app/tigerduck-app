@@ -117,11 +117,10 @@ struct MoodleNotificationSettingsScreenTests {
         return (window, host)
     }
 
-    /// Keeps a picture of the page for a person to look at, when the checkout has a `.out` folder;
-    /// CI's has none.
     private static func save(_ window: UIWindow, as name: String, file: String = #filePath) {
         let out = URL(filePath: file).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appending(path: ".out")
+        // CI's checkout has no `.out` folder, so only a local run keeps the picture for a person to look at.
         guard FileManager.default.fileExists(atPath: out.path(percentEncoded: false)) else { return }
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)

@@ -7,11 +7,9 @@ import Testing
 struct MoodleNotificationSettingsTests {
     private typealias Fixtures = MoodleNotificationFixtures
 
-    /// A site that keeps the preferences a write stores, optionally holding each write at a gate.
     private final class Site: @unchecked Sendable {
-        /// How a write fails: before the server stores it, or after, as a timeout on the way back.
         enum Failure {
-            case unstored(any Error), stored(any Error)
+            case beforeStoring(any Error), afterStoring(any Error)
         }
 
         private let lock = NSLock()
@@ -20,7 +18,6 @@ struct MoodleNotificationSettingsTests {
         private var reads = 0
         private let gate: ManualSleeper?
         private let failure: Failure?
-        /// What the server shows after a write, when it holds something else than was sent.
         private let afterWrite: MoodleNotificationMatrix?
 
         init(
@@ -47,9 +44,9 @@ struct MoodleNotificationSettingsTests {
                 save: { preference, _ in
                     self.lock.withLock { self.sent.append(preference) }
                     await self.gate?.sleep(for: .seconds(1))
-                    if case .unstored(let error) = self.failure { throw error }
+                    if case .beforeStoring(let error) = self.failure { throw error }
                     self.lock.withLock { self.held = self.afterWrite ?? self.held.replacing(preference) }
-                    if case .stored(let error) = self.failure { throw error }
+                    if case .afterStoring(let error) = self.failure { throw error }
                 }
             )
         }
@@ -103,7 +100,7 @@ struct MoodleNotificationSettingsTests {
     @Test("a failed write puts the switch back and says why")
     func failedWriteReverts() async throws {
         let failure = MoodleWebserviceError.malformedResponse(detail: "nopermission")
-        let site = Site(Fixtures.matrix([Self.forum]), failure: .unstored(failure))
+        let site = Site(Fixtures.matrix([Self.forum]), failure: .beforeStoring(failure))
         let settings = await Self.loaded(site)
 
         await settings.set(false, for: Self.forum.key)?.value
@@ -116,7 +113,7 @@ struct MoodleNotificationSettingsTests {
     @Test("a write that fails after Moodle stored it shows what Moodle holds")
     func failedWriteShowsTheServer() async throws {
         let failure = MoodleWebserviceError.transientNetwork(underlying: "timed out")
-        let site = Site(Fixtures.matrix([Self.forum]), failure: .stored(failure))
+        let site = Site(Fixtures.matrix([Self.forum]), failure: .afterStoring(failure))
         let settings = await Self.loaded(site)
 
         await settings.set(false, for: Self.forum.key)?.value
