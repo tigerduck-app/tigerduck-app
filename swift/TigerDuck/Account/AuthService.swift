@@ -50,7 +50,7 @@ final class AuthService {
         )
         let present = keychainHasCredentials()
         credentials.lastKnown = present
-        if present { Defaults[.ntustCredentialsPresent] = true }
+        if present { Defaults[.ntustCredentialsPresent, for: session.currentSignIn] = true }
         backend = BackendSignIn(auth: self)
         passwordRetry = StoredPasswordRetry(auth: self)
 
@@ -74,7 +74,7 @@ final class AuthService {
 
     func revalidateStoredCredentials() {
         let current = deps.keychainHasCredentials()
-        if current { Defaults[.ntustCredentialsPresent] = true }
+        if current { Defaults[.ntustCredentialsPresent, for: session.currentSignIn] = true }
         guard current != credentials.lastKnown else { return }
         credentials.lastKnown = current
         credentials.revision.moveOn()
@@ -82,7 +82,7 @@ final class AuthService {
 
     func markCredentialsChanged() {
         let present = deps.keychainHasCredentials()
-        Defaults[.ntustCredentialsPresent] = present
+        Defaults[.ntustCredentialsPresent, for: session.currentSignIn] = present
         credentials.lastKnown = present
         credentials.revision.moveOn()
     }
@@ -208,7 +208,7 @@ final class AuthService {
         status.isReauthenticating = false
         session.endSignIn()
         backend.reset()
-        SchoolPasswordPosts.forgetStoredPasswordRefusals()
+        SchoolPasswordPosts.forgetStoredPasswordRefusals(for: session.currentSignIn)
         passwordRetry.cancel()
         markCredentialsChanged()
         #if os(iOS)

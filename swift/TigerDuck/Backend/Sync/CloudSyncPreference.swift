@@ -5,11 +5,11 @@ import Observation
 @MainActor
 @Observable
 final class CloudSyncPreference {
-    private let cloudSyncEnabled: Defaults.Key<Bool>
+    private let cloudSyncEnabled: AccountKey<Bool>
     @ObservationIgnored private var handler: ((Bool) -> Void)?
     @ObservationIgnored private var observation: (any Defaults.Observation)?
 
-    init(key cloudSyncEnabled: Defaults.Key<Bool> = .cloudSyncEnabled) {
+    init(key cloudSyncEnabled: AccountKey<Bool> = .cloudSyncEnabled) {
         self.cloudSyncEnabled = cloudSyncEnabled
         observation = Defaults.observe(cloudSyncEnabled, options: []) { [weak self] change in
             let enabled = change.newValue
@@ -29,14 +29,9 @@ final class CloudSyncPreference {
         return Defaults[cloudSyncEnabled]
     }
 
+    /// The sign-out turns TigerSync off for the sign-in that follows it.
     func setEnabled(_ enabled: Bool, for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        Defaults[cloudSyncEnabled] = enabled
-    }
-
-    /// The sign-out turns TigerSync off after its sign-in has ended.
-    func turnOff() {
-        Defaults[cloudSyncEnabled] = false
+        Defaults[cloudSyncEnabled, for: signIn] = enabled
     }
 
     func onChange(_ handler: @escaping (Bool) -> Void) {

@@ -509,7 +509,7 @@ struct NotificationSettingsReconcileTests {
     func reconcileRecordsOnlyItsSections() async throws {
         try await Fixtures.withStore { store in
             let savedCopy = Defaults[.notificationSettingsSyncedPreferences]
-            defer { Defaults[.notificationSettingsSyncedPreferences] = savedCopy }
+            defer { Defaults[.notificationSettingsSyncedPreferences, for: testSignIn] = savedCopy }
             Self.setDeviceValues(store)
             NotificationSettingsSync.forget()
             NotificationSettingsSync.seedSyncedCopyOnSignIn(from: .init(from: store), for: testSignIn)

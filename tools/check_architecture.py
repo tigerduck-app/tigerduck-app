@@ -524,30 +524,11 @@ def account_keys(inventory: str) -> dict[str, str]:
     return {m.group(1): m.group(2) for line in inventory.split("\n") if (m := ACCOUNT_KEY_ROW.match(line))}
 
 
-MUTATING = (r"(?:formUnion|formIntersection|formSymmetricDifference|insert|remove\w*|subtract|append\w*|update\w*|"
-            r"pop\w*|sort|reverse|shuffle|merge|swapAt|toggle)")
-# What follows a stored value when it is written: an assignment, possibly through members and
-# subscripts, or a mutating call.
-WRITE_TAIL = rf"(?:\??\.\w+|\??\[[^\[\]]*\])*\s*(?:[-+*/]?=(?!=)|\.{MUTATING}\b)"
-
-
-def key_name(key: str) -> str:
-    return rf"(?:(?:Defaults\.)?Keys)?\.{key}\b"
-
-
 def key_write(key: str) -> re.Pattern[str]:
-    item = rf"Defaults\[\s*{key_name(key)}\s*\]"
-    return re.compile(rf"&{item}|{item}{WRITE_TAIL}|Defaults\.reset\([^)]*\.{key}\b")
-
-
-def default_wrapper_writes(key: str, code: str) -> list[int]:
-    """Offsets where a `@Default(.key)` property of the file is assigned, mutated or bound."""
-    found = []
-    for wrapper in re.finditer(rf"@Default\(\s*{key_name(key)}\s*\)[^{{}}=;]*?\bvar\s+(\w+)", code):
-        name = wrapper.group(1)
-        write = re.compile(rf"\${name}\b|&{name}\b|(?<![.\w$])(?:self\.)?{name}{WRITE_TAIL}")
-        found += [m.start() for m in write.finditer(code)]
-    return found
+    """A write of an account key, which names its sign-in, or the sign-out's reset of it; a write
+    without a sign-in does not compile (`Account/AccountKey.swift`)."""
+    name = rf"(?:AccountKeys)?\.{key}\b"
+    return re.compile(rf"Defaults\[\s*{name}\s*,\s*for:|Defaults\.reset\([^)]*\.{key}\b")
 
 
 def account_store_findings(sources: list[Source], inventory: str) -> list[Finding]:
@@ -569,10 +550,9 @@ def account_store_findings(sources: list[Source], inventory: str) -> list[Findin
         for key, (home, write) in keys.items():
             if src.path == home:
                 continue
-            offsets = [m.start() for m in write.finditer(src.code)] + default_wrapper_writes(key, src.code)
-            found += [Finding(src.path, line_of(src.code, at), "account-store-write",
-                              f"`{key}` written outside {home}; write it through that store with a `SignIn`")
-                      for at in sorted(offsets)]
+            found += [Finding(src.path, line_of(src.code, m.start()), "account-store-write",
+                              f"`{key}` written outside {home}; write it through that store")
+                      for m in write.finditer(src.code)]
     return found
 
 

@@ -16,13 +16,13 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             let savedEveryField = Defaults[.notificationSettingsPushSendsEveryField]
             defer {
                 UserDefaults.standard.set(savedDone, forKey: doneKey)
-                Defaults[.notificationSettingsPushPending] = savedPending
-                Defaults[.notificationSettingsSyncedPreferences] = savedCopy
-                Defaults[.notificationSettingsPushSendsEveryField] = savedEveryField
+                Defaults[.notificationSettingsPushPending, for: testSignIn] = savedPending
+                Defaults[.notificationSettingsSyncedPreferences, for: testSignIn] = savedCopy
+                Defaults[.notificationSettingsPushSendsEveryField, for: testSignIn] = savedEveryField
             }
             UserDefaults.standard.removeObject(forKey: doneKey)
-            Defaults[.notificationSettingsSyncedPreferences] = nil
-            Defaults[.notificationSettingsPushSendsEveryField] = false
+            Defaults[.notificationSettingsSyncedPreferences, for: testSignIn] = nil
+            Defaults[.notificationSettingsPushSendsEveryField, for: testSignIn] = false
             try await body()
         }
     }
@@ -45,7 +45,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     @Test("an upgrade with no push pending takes the device's values as the synced copy, once")
     func upgradeWithNothingPendingSeedsTheCopy() async {
         await Self.withCleanState {
-            Defaults[.notificationSettingsPushPending] = false
+            Defaults[.notificationSettingsPushPending, for: testSignIn] = false
 
             NotificationSettingsSyncedSeedMigration.runIfNeeded(
                 current: Self.preferences(showInClass: true), signedIn: true, storedDataReadsBack: { true }
@@ -62,7 +62,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     @Test("an edit left unsent at the upgrade goes up whole, and the push that lands records the copy")
     func editUnsentAtTheUpgradeGoesUp() async throws {
         try await Self.withCleanState {
-            Defaults[.notificationSettingsPushPending] = true
+            Defaults[.notificationSettingsPushPending, for: testSignIn] = true
             let local = Self.preferences(showInClass: true)
 
             NotificationSettingsSyncedSeedMigration.runIfNeeded(current: local, signedIn: true, storedDataReadsBack: { true })
@@ -142,7 +142,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             #expect(NotificationSettingsSync.lastSyncedPreferences == Self.preferences(showInClass: true))
 
             NotificationSettingsSync.forget()
-            Defaults[.notificationSettingsPushSendsEveryField] = true
+            Defaults[.notificationSettingsPushSendsEveryField, for: testSignIn] = true
             NotificationSettingsSync.seedSyncedCopyOnSignIn(from: Self.preferences(showInClass: false), for: testSignIn)
             #expect(NotificationSettingsSync.lastSyncedPreferences == nil)
             #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == .everyField)
@@ -165,7 +165,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     @Test("an upgrade while signed out stores neither copy nor mark, so the sign-in starts the copy")
     func upgradeWhileSignedOutLeavesItToTheSignIn() async {
         await Self.withCleanState {
-            Defaults[.notificationSettingsPushPending] = true
+            Defaults[.notificationSettingsPushPending, for: testSignIn] = true
 
             NotificationSettingsSyncedSeedMigration.runIfNeeded(
                 current: Self.preferences(showInClass: true), signedIn: false, storedDataReadsBack: { true }
@@ -180,7 +180,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     @Test("the migration reads the device's values only once stored data reads back")
     func readsTheValuesOnlyAfterTheGate() async {
         await Self.withCleanState {
-            Defaults[.notificationSettingsPushPending] = false
+            Defaults[.notificationSettingsPushPending, for: testSignIn] = false
             let log = ReadLog()
 
             NotificationSettingsSyncedSeedMigration.runIfNeeded(
@@ -290,7 +290,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
     @Test("before stored data reads back the migration stores nothing and stays owed")
     func waitsUntilStoredDataReadsBack() async {
         await Self.withCleanState {
-            Defaults[.notificationSettingsPushPending] = false
+            Defaults[.notificationSettingsPushPending, for: testSignIn] = false
 
             NotificationSettingsSyncedSeedMigration.runIfNeeded(
                 current: Self.preferences(showInClass: true), signedIn: true, storedDataReadsBack: { false }

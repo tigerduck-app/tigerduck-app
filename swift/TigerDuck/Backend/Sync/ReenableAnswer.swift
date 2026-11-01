@@ -7,10 +7,10 @@ enum ReenableAnswer {
 
     struct Effects {
         let signIn: SignIn
-        let take: (_ categories: [String], _ keepLocal: Bool) -> Set<String>
-        let release: (_ held: Set<String>) -> Void
-        let end: (_ held: Set<String>) -> Void
-        let dropQueuedEdits: (_ categories: Set<String>, _ courseIgnores: Bool) async -> Void
+        let take: (_ categories: [SyncCategory], _ keepLocal: Bool) -> Set<SyncCategory>
+        let release: (_ held: Set<SyncCategory>) -> Void
+        let end: (_ held: Set<SyncCategory>) -> Void
+        let dropQueuedEdits: (_ categories: Set<SyncCategory>, _ courseIgnores: Bool) async -> Void
         let sendCourses: () async throws -> Void
         let markCoursesForCheck: () -> Void
         let queueEdits: () -> [Task<Void, Never>]
@@ -28,7 +28,7 @@ enum ReenableAnswer {
         var coursesSaveFailed = false
         if keepLocal {
             defer { effects.end(held) }
-            if conflict.categories.contains("courses") {
+            if conflict.categories.contains(.courses) {
                 do {
                     try await effects.sendCourses()
                 } catch {
@@ -71,12 +71,12 @@ enum ReenableAnswer {
 
     static func queueLocalEdits(of conflict: Conflict, edits: EditSender, for signIn: SignIn) -> [Task<Void, Never>] {
         var queued: [Task<Void, Never>?] = []
-        if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
+        if conflict.categories.contains(.courseColors) || conflict.categories.contains(.courseNames) {
             let terms = SemesterCatalog.availableSemesters().map { ($0, CourseStore.shared.loadCourses(semester: $0)) }
             let moodleIdByCourseNo = Dictionary(
                 terms.flatMap(\.1).compactMap { c in c.moodleIdNumber.map { (c.courseNo, $0) } },
                 uniquingKeysWith: { first, _ in first })
-            if conflict.categories.contains("course_colors") {
+            if conflict.categories.contains(.courseColors) {
                 let identities = terms.flatMap { term in
                     term.1.map { ($0.courseNo, EditSender.colorIdentity(of: $0, semester: term.0)) }
                 }
@@ -87,7 +87,7 @@ enum ReenableAnswer {
                     queued += edits.syncCourseOverride(moodleCourseId: identity, colorHex: String(format: "#%06X", hex), for: signIn)
                 }
             }
-            if conflict.categories.contains("course_names") {
+            if conflict.categories.contains(.courseNames) {
                 let customNames = CourseStore.shared.loadCourseCustomNames()
                 for (courseNo, locales) in customNames {
                     guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
@@ -97,7 +97,7 @@ enum ReenableAnswer {
                 }
             }
         }
-        if conflict.categories.contains("assignments") {
+        if conflict.categories.contains(.assignments) {
             let archived = AssignmentStore.shared.loadArchivedAssignmentIds()
             let completed = AssignmentStore.shared.loadLocallyCompletedAssignmentIds()
             for id in archived {
@@ -130,13 +130,13 @@ enum ReenableAnswer {
         for conflict: Conflict, courses: CourseStore, assignments: AssignmentStore, colors: CourseColorStore,
         signIn: SignIn
     ) {
-        if conflict.categories.contains("course_colors") {
+        if conflict.categories.contains(.courseColors) {
             colors.forgetColors(for: signIn)
         }
-        if conflict.categories.contains("course_names") {
+        if conflict.categories.contains(.courseNames) {
             courses.saveCourseCustomNames([:], for: signIn)
         }
-        if conflict.categories.contains("assignments") {
+        if conflict.categories.contains(.assignments) {
             assignments.replaceArchivedAssignmentIds([], for: signIn)
             assignments.replaceLocallyCompletedAssignmentIds([], for: signIn)
             if conflict.serverIgnoredCourses != nil {

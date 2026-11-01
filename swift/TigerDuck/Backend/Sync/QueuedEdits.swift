@@ -69,13 +69,13 @@ final class QueuedEdits {
         return (pending.colors.union(edited.colors), pending.names.union(edited.names))
     }
 
-    func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
-        let byCategory: [String: DiscardScope] = [
-            "assignments": .assignmentMarks, "course_colors": .courseColors, "course_names": .courseNames,
-            "courses": .allCourseAdds,
+    func discardEdits(of categories: Set<SyncCategory>, courseIgnores: Bool) async {
+        let byCategory: [SyncCategory: DiscardScope] = [
+            .assignments: .assignmentMarks, .courseColors: .courseColors, .courseNames: .courseNames,
+            .courses: .allCourseAdds,
         ]
         var scopes = Set(categories.compactMap { byCategory[$0] })
-        if courseIgnores && categories.contains("assignments") { scopes.insert(.courseIgnores) }
+        if courseIgnores && categories.contains(.assignments) { scopes.insert(.courseIgnores) }
         overridesEnqueuing = overridesEnqueuing.filter { scopes.isDisjoint(with: $0.value.discardScopes) }
         if scopes.contains(.allCourseAdds) { addsEnqueuing = [:] }
         let now = Date()

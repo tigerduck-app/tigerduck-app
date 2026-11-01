@@ -10,6 +10,8 @@ enum StoredPasswordLatchRetryMigration {
         defer { defaults.set(true, forKey: doneKey) }
         guard defaults.bool(forKey: latchKey) else { return }
         defaults.removeObject(forKey: latchKey)
-        SchoolPasswordPosts.storedPasswordRefusals = (StoredPasswordLockoutBackoff.quickRetries.count, .distantPast)
+        SchoolPasswordPosts.setStoredPasswordRefusals(
+            (StoredPasswordLockoutBackoff.quickRetries.count, .distantPast), for: AccountSession.school.currentSignIn
+        )
     }
 }

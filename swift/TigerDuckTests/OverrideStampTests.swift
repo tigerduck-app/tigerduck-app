@@ -183,9 +183,9 @@ struct OverrideStampTests {
                 Defaults[.holidayOverrideEditTimes]
             )
             defer {
-                Defaults[.holidayNotifyOverrides] = saved.0
-                Defaults[.holidayOverridesAwaitingUpload] = saved.1
-                Defaults[.holidayOverrideEditTimes] = saved.2
+                Defaults[.holidayNotifyOverrides, for: testSignIn] = saved.0
+                Defaults[.holidayOverridesAwaitingUpload, for: testSignIn] = saved.1
+                Defaults[.holidayOverrideEditTimes, for: testSignIn] = saved.2
             }
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let id = Int.random(in: 100_000...999_999)

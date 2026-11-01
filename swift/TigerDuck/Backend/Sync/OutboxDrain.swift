@@ -6,7 +6,7 @@ final class OutboxDrain {
     struct Policy {
         let syncsAssignmentMarks: @Sendable () -> Bool
         let syncsCourseIgnores: @Sendable () -> Bool
-        let syncsCourseOverrides: @Sendable (_ category: String) -> Bool
+        let syncsCourseOverrides: @Sendable (_ category: SyncCategory) -> Bool
         let isProtectedDataAvailable: @MainActor () -> Bool
     }
 
@@ -82,8 +82,8 @@ final class OutboxDrain {
             case .courseIgnore: return !syncsIgnores()
             case .courseAdd: return !protectedDataAvailable
             case .courseOverride(_, _, let customName, let colorHex, _, _):
-                return (colorHex != nil && !syncsOverrides("course_colors"))
-                    || (customName != nil && !syncsOverrides("course_names"))
+                return (colorHex != nil && !syncsOverrides(.courseColors))
+                    || (customName != nil && !syncsOverrides(.courseNames))
             case .courseDelete: return false
             }
         }
@@ -98,10 +98,10 @@ final class OutboxDrain {
     func sendColorFills(_ fills: [CourseColorFill], for signIn: SignIn) async {
         let editsBefore = edits.overrideEdits
         for fill in fills {
-            guard sends(for: signIn), policy.syncsCourseOverrides("course_colors") else { return }
+            guard sends(for: signIn), policy.syncsCourseOverrides(.courseColors) else { return }
             do {
                 let syncsOverrides = policy.syncsCourseOverrides
-                let reply = try await BackendClient.$holdsResend.withValue({ !syncsOverrides("course_colors") }) {
+                let reply = try await BackendClient.$holdsResend.withValue({ !syncsOverrides(.courseColors) }) {
                     try await push.patchCourseOverride(
                         courseKey: fill.courseKey, colorHex: fill.colorHex, madeAt: fill.stamp, for: signIn
                     )

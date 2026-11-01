@@ -11,6 +11,7 @@ enum SyncedAccountSeedMigration {
             SyncProgress.forget()
             return
         }
-        Defaults[.categoriesSyncedOnce].formUnion(SyncConflicts.reenableCategories)
+        Defaults[.categoriesSyncedOnce, for: AccountSession.school.currentSignIn]
+            .formUnion([.courses, .courseColors, .courseNames, .assignments])
     }
 }

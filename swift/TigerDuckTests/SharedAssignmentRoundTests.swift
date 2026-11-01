@@ -444,10 +444,10 @@ struct SharedAssignmentRoundTests {
         await withExclusiveRealDefaults {
             let saved = Defaults[.cloudSyncEnabled]
             let sent = Sent()
-            Defaults[.cloudSyncEnabled] = true
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
             AssignmentAnswers.assignmentUploader = { request, _ in sent.requests.append(request) }
             defer {
-                Defaults[.cloudSyncEnabled] = saved
+                Defaults[.cloudSyncEnabled, for: testSignIn] = saved
                 AssignmentAnswers.assignmentUploader = nil
             }
             let folder = Folder()

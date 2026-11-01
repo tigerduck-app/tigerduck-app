@@ -49,12 +49,11 @@ final class BulletinFeed {
 
     static func forgetListSession() {
         listSession = nil
-        Defaults[.bulletinsSyncedAt] = nil
+        Defaults.reset(.bulletinsSyncedAt)
     }
 
     func noteSynced(for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        Defaults[.bulletinsSyncedAt] = Date()
+        Defaults[.bulletinsSyncedAt, for: signIn] = Date()
     }
 
     static func forgetPreviousEndpointBulletins() {

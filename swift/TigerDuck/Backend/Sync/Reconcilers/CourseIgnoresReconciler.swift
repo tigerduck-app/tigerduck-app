@@ -4,7 +4,6 @@ import os
 
 @MainActor
 struct CourseIgnoresReconciler: CategoryReconciler {
-    static let category = "course_ignores"
     unowned let app: AppEnvironment
 
     func reconcile(_ pass: FullSyncPass) -> Bool {

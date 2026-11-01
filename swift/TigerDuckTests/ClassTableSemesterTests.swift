@@ -14,10 +14,10 @@ struct ClassTableSemesterTests {
         let savedPick = Defaults[.classTableSelectedSemester]
         defer {
             defaults.set(savedTerms, forKey: catalogueKey)
-            Defaults[.classTableSelectedSemester] = savedPick
+            Defaults[.classTableSelectedSemester, for: testSignIn] = savedPick
         }
         defaults.set(terms, forKey: catalogueKey)
-        Defaults[.classTableSelectedSemester] = storedPick
+        Defaults[.classTableSelectedSemester, for: testSignIn] = storedPick
         body()
     }
 
@@ -56,7 +56,7 @@ struct ClassTableSemesterTests {
         Self.withCatalogue(["1151", "1142", "1141"], storedPick: "1142") {
             let viewModel = ClassTableViewModel()
 
-            Defaults[.classTableSelectedSemester] = nil
+            Defaults[.classTableSelectedSemester, for: testSignIn] = nil
             viewModel.reloadFromCache()
 
             #expect(viewModel.currentSemester == "1151")

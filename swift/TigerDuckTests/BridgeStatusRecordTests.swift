@@ -27,8 +27,8 @@ struct BridgeStatusRecordTests {
             let saved = (Defaults[.ntustCredentialsPresent], SchoolPasswordPosts.storedPasswordRefusals)
             let savedStatus = ServerStatusTracker.shared.status(for: .moodle)
             defer {
-                Defaults[.ntustCredentialsPresent] = saved.0
-                SchoolPasswordPosts.storedPasswordRefusals = saved.1
+                Defaults[.ntustCredentialsPresent, for: testSignIn] = saved.0
+                SchoolPasswordPosts.setStoredPasswordRefusals(saved.1, for: testSignIn)
                 ServerStatusTracker.shared.set(savedStatus, for: .moodle)
             }
             let auth = AuthService(
