@@ -39,7 +39,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 
 School Mail and the library are accounts of their own, with a session and a sign-out plan each,
 which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` and
-`MailCredentialStore`, and its sign-out clears them; the library's sign-out is
+`MailCredentialStore`, written with School Mail's sign-in, and its sign-out clears them; the library's sign-out is
 `LibraryService.clearCredentials()`.
 
 ## Stored state

@@ -82,6 +82,8 @@ last task's check passes and a read-only review finds nothing High or above.
 - [x] 9.2 Make every write to an account's stores and `Defaults` keys take its `SignIn`, and drop a stale one in the store. Check: a test per store writes for an ended sign-in and finds nothing written.
 - [x] 9.3 Bind backend requests built from account data to their `SignIn`, on the first send and on a 401 replay. Check: a request built before a sign-out and a new sign-in is not sent with the new token, first send or replay.
 - [x] 9.4 Turn on the phase-8 rules, with tests. Check: `check_architecture.py` passes at `ENFORCED_PHASE = 8`; its tests; `check_account_state.py`; the phone and watch suites; the mac build; the TigerDuckCore tests.
+- [x] 9.5 Give School Mail's stores, page connections and check the mail account's `SignIn`, and replace the classroom, mail page and browser counters with the sign-in or a name that says what they count. Check: a test writes or reports for an ended mail sign-in and finds nothing landed.
+- [x] 9.6 Give every backend client of account data a header that names its sign-in. Check: `check_architecture.py` fails a header that names none outside the course catalog.
 
 ## Workflow follow-up
 
