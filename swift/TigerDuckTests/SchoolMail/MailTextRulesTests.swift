@@ -197,19 +197,22 @@ struct MailTextRulesTests {
     @Test func keepsTheDisplayNameOfASenderWithNoParsableAddress() {
         let raw = "\"Mail Deliver System\" <MAILER-DAEMON>"
         #expect(MailAddress.parseList(raw) == [])
-        let sender = MailAddress.parseSender(raw)
-        #expect(sender == MailAddress(name: "Mail Deliver System", address: ""))
-        #expect(sender?.displayName == "Mail Deliver System")
-        #expect(sender?.isPlausible == false)
+        #expect(MailAddress.parseSender(raw) == MailSender(name: "Mail Deliver System", address: nil))
     }
 
     @Test func senderParsingRescuesNamesOnlyAndNeverInventsAnAddress() {
         #expect(MailAddress.parseSender("MAILER-DAEMON") == nil)
         #expect(MailAddress.parseSender("<MAILER-DAEMON>") == nil)
         #expect(MailAddress.parseSender("") == nil)
-        #expect(MailAddress.parseSender("\"Office\" <a@x.tw\r\nBcc: b@y.tw>")?.address == "")
+        #expect(MailAddress.parseSender("\"Office\" <a@x.tw\r\nBcc: b@y.tw>") == MailSender(name: "Office", address: nil))
         #expect(MailAddress.parseSender("教務處 <office@mail.ntust.edu.tw>")
-            == MailAddress(name: "教務處", address: "office@mail.ntust.edu.tw"))
+            == MailSender(name: "教務處", address: "office@mail.ntust.edu.tw"))
+    }
+
+    @Test func anASCIIPrefixOrWordMatchesWhateverTheCaseOfEitherSide() {
+        #expect(ASCIIText.hasASCIICaseInsensitivePrefix("MAILTO:a@x.tw", "MailTo:"))
+        #expect(ASCIIText.isASCIICaseInsensitiveEqual("HTTPS", "Https"))
+        #expect(!ASCIIText.hasASCIICaseInsensitivePrefix("ｍailto:a@x.tw", "mailto:"))
     }
 
     @Test func findsFoldedHeadersInRawSource() {

@@ -43,11 +43,11 @@ nonisolated enum MailMessageBuilder {
         lines.append("Subject: \(encodedWords(mail.subject))")
         lines.append("Date: \(rfc5322Date(date))")
         lines.append("Message-ID: \(sanitizedHeaderValue(messageID))")
-        if let inReplyTo = mail.inReplyTo, let token = threadingToken(inReplyTo) {
+        if let inReplyTo = mail.inReplyTo, let token = sevenBitMessageID(inReplyTo) {
             lines.append("In-Reply-To: \(token)")
         }
         if !mail.references.isEmpty {
-            let tokens = mail.references.compactMap(threadingToken)
+            let tokens = mail.references.compactMap(sevenBitMessageID)
             if !tokens.isEmpty { lines.append("References: \(tokens.joined(separator: " "))") }
         }
         lines.append("MIME-Version: 1.0")
@@ -129,7 +129,7 @@ nonisolated enum MailMessageBuilder {
         String(raw.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
     }
 
-    private static func threadingToken(_ raw: String) -> String? {
+    private static func sevenBitMessageID(_ raw: String) -> String? {
         let sanitized = sanitizedHeaderValue(raw)
         guard !sanitized.isEmpty, isPlainASCII(sanitized) else { return nil }
         return sanitized
@@ -193,12 +193,18 @@ nonisolated enum MailMessageBuilder {
         return output
     }
 
+    private static let base64InputBytesPerLine = 57
+    private static let base64LineBytes = 78
+    private static let attachmentPartHeaderBytes = 512
+    private static let messageHeaderBytes = 4096
+
     static func estimateEncodedSize(body: String, attachmentByteCounts: [Int] = []) -> Int {
         let text = quotedPrintableUpperBound(body)
         let attachments = attachmentByteCounts.reduce(0) { total, bytes in
-            total + ((bytes + 56) / 57) * 78 + 512
+            let lines = (bytes + base64InputBytesPerLine - 1) / base64InputBytesPerLine
+            return total + lines * base64LineBytes + attachmentPartHeaderBytes
         }
-        return text + attachments + 4096
+        return text + attachments + messageHeaderBytes
     }
 
     private static func quotedPrintableUpperBound(_ body: String) -> Int {

@@ -22,7 +22,7 @@ enum MailComposeSending {
     static func send(
         _ send: Send, session: MailPageSession, services: MailComposeServices, signIn: SignIn
     ) async throws -> SentCopyFiler.Filing {
-        try await session.use { client -> SentCopyFiler.Filing in
+        try await session.use(for: signIn) { client -> SentCopyFiler.Filing in
             try await client.send(send.message, from: send.from, to: send.recipients)
             if let answered = send.answered {
                 try? await client.setFlag(.answered, on: true, folder: answered.folder, uids: [answered.uid], expectedUIDValidity: nil)
@@ -40,7 +40,7 @@ enum MailComposeSending {
         _ message: Data, roles: [MailFolderRole: String], replacing draft: ReplacedDraft?,
         session: MailPageSession, prefs: any MailPreferences, signIn: SignIn
     ) async throws -> [MailFolderRole: String] {
-        try await session.use { client -> [MailFolderRole: String] in
+        try await session.use(for: signIn) { client -> [MailFolderRole: String] in
             guard let drafts = await MailFolderProvisioner.ensure(.drafts, in: roles, client: client) else {
                 throw MailFolderUnavailable(role: .drafts)
             }
@@ -68,16 +68,11 @@ enum MailComposeSending {
     ) async {
         guard let pageUIDValidity = draft.pageUIDValidity else { return }
         let owned = prefs.ownedDeleted(folder: folder, uidValidity: pageUIDValidity)
-        do {
-            let result = try await MailMover.deletePermanently(uids: [draft.uid], in: folder, client: client, previouslyFlagged: owned)
-            prefs.change(for: signIn) { $0.setOwnedDeleted(result.stillPending) }
-        } catch {
-            guard let claim = await MailMover.recoverAfterFailure(after: error, uid: draft.uid, previouslyFlagged: owned,
-                                                                  client: client, wasAlreadyDeleted: draft.wasAlreadyDeleted) else {
-                return
-            }
-            prefs.change(for: signIn) { $0.setOwnedDeleted(claim) }
-        }
+        let attempt = await MailMover.attempt(
+            { try await MailMover.deletePermanently(uids: [draft.uid], in: folder, client: client, previouslyFlagged: owned) },
+            uid: draft.uid, previouslyFlagged: owned, wasAlreadyDeleted: draft.wasAlreadyDeleted
+        ) { recover in await recover(client) }
+        if let pending = attempt.pending { prefs.change(for: signIn) { $0.setOwnedDeleted(pending) } }
     }
 }
 #endif

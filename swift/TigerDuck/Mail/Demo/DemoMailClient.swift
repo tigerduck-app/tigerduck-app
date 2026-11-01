@@ -158,11 +158,11 @@ actor DemoMailClient: MailClient {
         ((folders[folder] ?? []).filter { !$0.summary.isDeleted }.map(\.summary.uid), fixture.uidValidity)
     }
 
-    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: String] {
+    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: MailSearchText] {
         try assertUIDValidity(expectedUIDValidity)
-        var texts: [UInt32: String] = [:]
+        var texts: [UInt32: MailSearchText] = [:]
         for stored in folders[folder] ?? [] where uids.contains(stored.summary.uid) {
-            texts[stored.summary.uid] = MailSearchText.text(of: stored.summary, body: stored.text)
+            texts[stored.summary.uid] = MailSearchText(of: stored.summary, body: stored.text)
         }
         return texts
     }
@@ -221,7 +221,7 @@ actor DemoMailClient: MailClient {
         let to = MailRawHeaders.value(named: "To", in: message).map { MailAddress.parseList($0).map(\.address) }
         let cc = MailRawHeaders.value(named: "Cc", in: message).map { MailAddress.parseList($0).map(\.address) }
         let summary = MailSummary(
-            uid: uid, fromName: from?.name, fromAddress: from?.address.mailNonEmpty, to: to, cc: cc,
+            uid: uid, fromName: from?.name, fromAddress: from?.address, to: to, cc: cc,
             subject: MailRawHeaders.value(named: "Subject", in: message), date: Date(),
             isSeen: flags.contains(.seen), isAnswered: false, isDeleted: false, size: message.count,
             hasAttachments: false, isExternal: false

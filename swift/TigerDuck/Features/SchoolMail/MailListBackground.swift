@@ -45,7 +45,7 @@ final class MailListBackground {
         stopPoll()
         cancelWarm()
         indexer.stop()
-        list?.search.catchUp.pause()
+        list?.search.catchUp.pauseUntilPageReopens()
     }
 
     func stopPoll() {
@@ -61,9 +61,7 @@ final class MailListBackground {
 
     func waitForWarm() async { await warmTask?.value }
 
-    var isDownloading: Bool { indexer.isRunning && indexer.progress?.total != 0 }
-
-    var isIndexBusy: Bool { !indexer.isComplete || isDownloading }
+    var isIndexBusy: Bool { !indexer.isComplete || indexer.isDownloading }
 
     func pollOnce() async {
         guard let list else { return }
@@ -92,7 +90,7 @@ final class MailListBackground {
         guard list.isCurrent(selection, signIn), !Self.hasUnshownMail(status, page: list.mailbox[inbox]) else { return }
         var movedUp: [String] = []
         for (folder, folderStatus) in statuses
-        where !list.mailbox.cachePainted.contains(folder) && !Self.hasUnshownMail(folderStatus, page: list.mailbox[folder]) {
+        where !list.mailbox.cachedNotRefreshed.contains(folder) && !Self.hasUnshownMail(folderStatus, page: list.mailbox[folder]) {
             guard var page = list.mailbox[folder], page.fetchedAt.map({ $0 < checkedAt }) ?? true else { continue }
             page.fetchedAt = checkedAt
             list.mailbox[folder] = page
@@ -101,13 +99,7 @@ final class MailListBackground {
         list.status.syncedAt = list.mailbox.syncedAt(of: list.targets)
         await noteSeenByPage(status, signIn)
         guard list.isCurrent(selection, signIn) else { return }
-        let cache = list.writer.cache
-        let writes = movedUp.compactMap { folder in
-            list.mailbox[folder].map { page in
-                let stored = MailboxPages.cachedCopy(of: page)
-                return list.writer.chain { cache.savePage(stored, wipeCount: $0) }
-            }
-        }
+        let writes = movedUp.compactMap { list.mailbox[$0].map(list.writer.save) }
         for write in writes { await write.value }
     }
 
@@ -134,7 +126,7 @@ final class MailListBackground {
                     try await client.detail(folder: inbox, uid: uid, expectedUIDValidity: validity, inlineImages: false)
                 }
                 guard signIn.isCurrent else { return }
-                list.writer.chain { cache.saveDetail(detail, folder: inbox, uidValidity: validity, wipeCount: $0) }
+                list.writer.enqueue { cache.saveDetail(detail, folder: inbox, uidValidity: validity, unlessWipedSince: $0) }
             } catch let error as MailClientError where MailErrorClass(error).endsTheRun {
                 return
             } catch {
@@ -147,8 +139,7 @@ final class MailListBackground {
         guard let list else { return }
         warmTask?.cancel()
         warmDone = false
-        var covered = Set(list.targets)
-        let queue = MailFolderRole.allCases.compactMap { list.folderRoles[$0] }.filter { covered.insert($0).inserted }
+        let queue = Self.warmQueue(roles: list.folderRoles, shown: list.targets)
         guard !queue.isEmpty else {
             warmTask = nil
             warmDone = true
@@ -178,8 +169,8 @@ final class MailListBackground {
                         break warming
                     }
                     if list.targets.contains(folder) { continue }
-                    await list.writer.chain { [page] wipeCount in
-                        if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page, wipeCount: wipeCount) }
+                    await list.writer.enqueue { [page] wipeCount in
+                        if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page, unlessWipedSince: wipeCount) }
                     }.value
                 } catch let error as MailClientError where MailErrorClass(error).endsTheRun {
                     return
@@ -193,6 +184,12 @@ final class MailListBackground {
         }
     }
 
+    func pausingWarm(during load: () async -> Void) async {
+        cancelWarm()
+        await load()
+        startWarmIfLoaded()
+    }
+
     func startWarmIfLoaded() {
         guard let list else { return }
         guard !isPaused, list.loadState == .loaded, list.serverStatus == .ok else { return }
@@ -202,13 +199,18 @@ final class MailListBackground {
     func startIndexIfLoaded(for request: MailIndexer.Request? = nil) {
         guard let list else { return }
         guard !isPaused, list.loadState == .loaded, list.serverStatus == .ok, !list.folderRoles.isEmpty else { return }
-        let roles = MailFolderRole.allCases.compactMap { list.folderRoles[$0] }
+        let roles = MailFolderRole.listOrder.compactMap { list.folderRoles[$0] }
         indexer.startIfDue(folders: roles + list.otherFolders.filter { !roles.contains($0) }, for: request)
     }
 
     func cancelWarm() {
         warmTask?.cancel()
         warmTask = nil
+    }
+
+    private static func warmQueue(roles: [MailFolderRole: String], shown: [String]) -> [String] {
+        var queued = Set(shown)
+        return MailFolderRole.listOrder.compactMap { roles[$0] }.filter { queued.insert($0).inserted }
     }
 
     nonisolated static func warmShouldWrite(_ page: MailFolderPage, over cached: MailFolderPage?) -> Bool {

@@ -58,7 +58,7 @@ final class MailIndexer {
         var indexedFolders: Set<String> = []
         var lastPassCompleted = false
         var lastProgress: MailIndexProgress?
-        var resets = 0
+        var resetCount = 0
     }
 
     private struct Pacing {
@@ -95,7 +95,7 @@ final class MailIndexer {
     private func isConstrained() -> Bool { pacing.isConstrained() }
 
     func startIfDue(folders: [String], for request: Request? = nil) {
-        if let passWipeCount = coverage.wipeCount, passWipeCount != cache.wipeCount { reset() }
+        resetIfCacheWipedSincePass()
         if request != nil { schedule.skipFreshness() }
         if request == .pull { schedule.skipRetryWait() }
         if let reason = notDueReason {
@@ -124,6 +124,10 @@ final class MailIndexer {
         }
     }
 
+    private func resetIfCacheWipedSincePass() {
+        if let passWipeCount = coverage.wipeCount, passWipeCount != cache.wipeCount { reset() }
+    }
+
     private var notDueReason: String? {
         if task != nil { return "running" }
         if let reason = schedule.notDueReason(now: now, wipeCount: cache.wipeCount) { return reason }
@@ -141,12 +145,14 @@ final class MailIndexer {
         stop()
         schedule.reset()
         strikes = MailIndexStrikes()
-        coverage = Coverage(wipeCount: coverage.wipeCount, resets: coverage.resets + 1)
+        coverage = Coverage(wipeCount: coverage.wipeCount, resetCount: coverage.resetCount + 1)
     }
 
     var progress: MailIndexProgress? {
         coverage.wipeCount == cache.wipeCount ? coverage.lastProgress : nil
     }
+
+    var isDownloading: Bool { isRunning && progress?.total != 0 }
 
     var isComplete: Bool {
         coverage.lastPassCompleted && coverage.wipeCount == cache.wipeCount
@@ -173,14 +179,14 @@ final class MailIndexer {
             tally.logEnd(outcome, retryIn: schedule.passFailed(now: now))
         case .complete:
             tally.logEnd(outcome)
-            if !schedule.passCompleted(now: now, wipeCount: wipeCount, arrivalsAtStart: arrivals) {
+            if schedule.passCompleted(now: now, wipeCount: wipeCount, arrivalsAtStart: arrivals) == .mailArrivedDuringPass {
                 startIfDue(folders: folders)
             }
         }
     }
 
     private func pass(folders: [String], wipeCount: Int, tally: inout Tally) async -> Outcome {
-        let resets = coverage.resets
+        let resetsAtStart = coverage.resetCount
         isRunning = true
         coverage.lastProgress = .counting
         defer {
@@ -191,8 +197,8 @@ final class MailIndexer {
             var plans: [Plan] = []
             for folder in folders {
                 guard !Task.isCancelled, !isConstrained() else { return .paused }
-                let plan = try await attempt { try await self.plan(folder: folder, wipeCount: wipeCount) }
-                guard resets == coverage.resets else { return .paused }
+                let plan = try await skippingFolderFailure { try await self.pruneAndPlan(folder: folder, wipeCount: wipeCount) }
+                guard resetsAtStart == coverage.resetCount else { return .paused }
                 if let plan {
                     plans.append(plan)
                     tally.listed += 1
@@ -207,12 +213,12 @@ final class MailIndexer {
             coverage.lastProgress = MailIndexProgress(total: total)
             for plan in plans {
                 guard !Task.isCancelled, !isConstrained() else { return .paused }
-                let filled = try await attempt {
+                let filled = try await skippingFolderFailure {
                     try await self.fill(plan, wipeCount: wipeCount) { count in
-                        if resets == self.coverage.resets { self.coverage.lastProgress?.advance(by: count) }
+                        if resetsAtStart == self.coverage.resetCount { self.coverage.lastProgress?.advance(by: count) }
                     }
                 }
-                guard resets == coverage.resets else { return .paused }
+                guard resetsAtStart == coverage.resetCount else { return .paused }
                 if filled == true {
                     coverage.indexedFolders.insert(plan.folder)
                 } else {
@@ -227,7 +233,7 @@ final class MailIndexer {
         return tally.failed > 0 ? .failed : .complete
     }
 
-    private func attempt<T>(_ step: () async throws -> T?) async throws -> T? {
+    private func skippingFolderFailure<T>(_ step: () async throws -> T?) async throws -> T? {
         do {
             return try await step()
         } catch let error as MailClientError where MailErrorClass(error).endsTheRun {
@@ -238,17 +244,17 @@ final class MailIndexer {
     }
 
     func update(folder: String, wipeCount: Int) async throws -> Bool {
-        guard let plan = try await plan(folder: folder, wipeCount: wipeCount) else { return false }
+        guard let plan = try await pruneAndPlan(folder: folder, wipeCount: wipeCount) else { return false }
         return try await fill(plan, wipeCount: wipeCount)
     }
 
-    private func plan(folder: String, wipeCount: Int) async throws -> Plan? {
+    private func pruneAndPlan(folder: String, wipeCount: Int) async throws -> Plan? {
         let index = cache.searchIndex
         let listed = try await session.use { client in try await client.undeletedUIDs(folder: folder) }
         let validity = listed.uidValidity
         let onServer = Set(listed.uids)
         guard !Task.isCancelled, let held = await Task.detached(operation: {
-            index.prepare(folder: folder, uidValidity: validity, onServer: onServer, wipeCount: wipeCount)
+            index.prepare(folder: folder, uidValidity: validity, onServer: onServer, unlessWipedSince: wipeCount)
         }).value else { return nil }
         let missing = onServer.subtracting(held).filter { !strikes.skips($0, folder: folder, uidValidity: validity) }
         return Plan(folder: folder, uidValidity: validity, missing: missing.sorted(by: >))
@@ -266,13 +272,13 @@ final class MailIndexer {
                     try await client.searchTexts(folder: folder, uids: batch, expectedUIDValidity: validity)
                 }
                 let added = await Task.detached {
-                    index.add(texts, folder: folder, uidValidity: validity, wipeCount: wipeCount)
+                    index.add(texts, folder: folder, uidValidity: validity, unlessWipedSince: wipeCount)
                 }.value
                 guard added else { return false }
                 onFill?(folder)
             } catch let error as MailClientError where MailErrorClass(error).blamesTheMail {
                 guard !Task.isCancelled else { return false }
-                strikes.strike(batch, folder: folder, uidValidity: validity)
+                strikes.noteFailure(of: batch, folder: folder, uidValidity: validity)
                 complete = false
             }
             onBatch(batch.count)

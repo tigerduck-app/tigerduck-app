@@ -53,7 +53,7 @@ nonisolated protocol MailPreferenceFields: MailPreferences {
     func setOwnedDeleted(_ owned: OwnedDeleted)
 }
 
-extension MailPreferenceFields {
+nonisolated extension MailPreferenceFields {
     func change(for signIn: SignIn, _ write: (any MailPreferenceFields) -> Void) {
         guard signIn.isCurrent else { return }
         write(self)

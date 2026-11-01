@@ -74,18 +74,17 @@ struct BrowserFindMatcherTests {
 @MainActor
 struct BrowserFindTests {
     private final class Page {
-        var calls: [[String: Any]] = []
+        var calls: [BrowserFindAction] = []
         var texts = ["作業一", "作業二", "作業三"]
-        var actions: [String?] { calls.map { $0["action"] as? String } }
     }
 
     private func find(_ page: Page) -> BrowserFind {
         let find = BrowserFind()
-        find.run = { arguments in
-            page.calls.append(arguments)
-            switch arguments["action"] as? String {
-            case "texts": return page.texts
-            case "mark": return (arguments["ranges"] as? [[Int]])?.count ?? 0
+        find.runInPage = { action in
+            page.calls.append(action)
+            switch action {
+            case .texts: return page.texts
+            case .mark(let ranges): return ranges.count
             default: return 0
             }
         }
@@ -101,9 +100,7 @@ struct BrowserFindTests {
 
         #expect(find.count == 3 && find.index == 0)
         #expect(find.position == "1/3")
-        #expect(page.actions == ["texts", "mark", "select"])
-        #expect(page.calls[1]["ranges"] as? [[Int]] == [[0, 0, 3], [1, 0, 3], [2, 0, 3]])
-        #expect(page.calls[2]["index"] as? Int == 0)
+        #expect(page.calls == [.texts, .mark(ranges: [[0, 0, 3], [1, 0, 3], [2, 0, 3]]), .select(index: 0)])
     }
 
     @Test func nextAndPreviousWrapAround() async {
@@ -117,7 +114,7 @@ struct BrowserFindTests {
         await find.next()
         await find.next()
         #expect(find.index == 1)
-        #expect(page.calls.last?["index"] as? Int == 1)
+        #expect(page.calls.last == .select(index: 1))
     }
 
     @Test func noMatchOrABrokenExpressionSaysNoMatches() async {
@@ -129,7 +126,7 @@ struct BrowserFindTests {
 
         #expect(find.count == 0)
         #expect(find.position == String(localized: "browser_find_none"))
-        #expect(page.actions == ["texts"])
+        #expect(page.calls == [.texts])
         await find.next()
         #expect(page.calls.count == 1)
     }
@@ -145,7 +142,7 @@ struct BrowserFindTests {
 
         #expect(find.count == 0)
         #expect(find.position == String(localized: "browser_find_none"))
-        #expect(page.actions == ["texts"])
+        #expect(page.calls == [.texts])
     }
 
     @Test func anEmptyQueryClearsTheMarksAndShowsNothing() async {
@@ -153,7 +150,7 @@ struct BrowserFindTests {
         let find = find(page)
         await find.search()
 
-        #expect(page.actions == ["clear"])
+        #expect(page.calls == [.clear])
         #expect(find.position.isEmpty)
     }
 
@@ -165,7 +162,7 @@ struct BrowserFindTests {
         await find.search()
 
         find.end()
-        while page.calls.last?["action"] as? String != "clear" { await Task.yield() }
+        while page.calls.last != .clear { await Task.yield() }
         #expect(!find.isActive)
         find.start()
         #expect(find.isActive && find.query.isEmpty && find.count == 0 && find.position.isEmpty)

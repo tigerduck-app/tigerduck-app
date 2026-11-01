@@ -1,5 +1,6 @@
 #if DEBUG && os(iOS)
 import Foundation
+import SwiftMail
 import Testing
 @testable import TigerDuck
 
@@ -126,9 +127,9 @@ struct MailServerConfigTests {
     /// SwiftMail's required form: a server that does not advertise STARTTLS then fails the
     /// connection instead of quietly continuing in the clear.
     @Test func schemesMapOntoSwiftMailsTransportSecurity() {
-        #expect(MailTransportScheme.implicitTLS.swiftMailTransportSecurityName == "implicitTLS")
-        #expect(MailTransportScheme.startTLS.swiftMailTransportSecurityName == "startTLS")
-        #expect(MailTransportScheme.plaintext.swiftMailTransportSecurityName == "plainText")
+        #expect(MailTransportScheme.implicitTLS.swiftMailTransportSecurity == .implicitTLS)
+        #expect(MailTransportScheme.startTLS.swiftMailTransportSecurity == .startTLS)
+        #expect(MailTransportScheme.plaintext.swiftMailTransportSecurity == .plainText)
     }
 
     @Test func theSchoolConfigurationKeepsTheOriginalDomainRule() {
@@ -198,7 +199,13 @@ struct MailServerConfigTests {
 
     @Test func aUsernameThatIsAlreadyAnAddressIsLeftAlone() {
         #expect(MailConstants.address(forStudentID: " Me@Example.com ") == "me@example.com")
+    }
+
+    @Test func aStudentIDSignsInUpperCased() {
         #expect(MailAccountManager.normalizedUsername(" b10000000 ") == "B10000000")
+    }
+
+    @Test func anAddressSignsInWithTheCaseItWasTypedIn() {
         #expect(MailAccountManager.normalizedUsername(" Me@Example.com ") == "Me@Example.com")
     }
 

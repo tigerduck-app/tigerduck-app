@@ -28,6 +28,12 @@ nonisolated struct MailInboxCursor: Sendable {
         prefs.inboxMutedUIDs.flatMap { $0.uidValidity == uidValidity ? $0.uids : nil } ?? []
     }
 
+    static func toPassOver(
+        _ unread: [MailSummary], passedOver: Set<UInt32>, mutes: (MailSummary) -> Bool
+    ) -> Set<UInt32> {
+        Set(unread.filter { passedOver.contains($0.uid) || mutes($0) }.map(\.uid))
+    }
+
     func advance(to next: UInt32, uidValidity: UInt32, passedOver: Set<UInt32>, for signIn: SignIn) {
         guard prefs.inboxUIDValidity == uidValidity else { return }
         let marker = max(next, prefs.inboxNextUID ?? 0)

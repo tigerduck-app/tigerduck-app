@@ -11,6 +11,8 @@ final class MailPageSession {
     private var inFlight = 0
     private var isReleased = false
     private var pendingDrop = false
+    // NTUST locks the account and its Wi-Fi after repeated failed sign-ins, so every rejection a
+    // use sees, thrown or caught, reaches this.
     private let onAuthFailure: @MainActor (SignIn) -> Void
     let account: AccountSession
     private var signOutListener: MailSignOutListener?
@@ -30,8 +32,24 @@ final class MailPageSession {
         signOutListener = MailSignOutListener(center: signOutEvents) { [weak self] in self?.invalidateForSignOut() }
     }
 
-    func use<T>(_ body: (any MailClient) async throws -> T) async throws -> T {
-        let signIn = await account.startingSignIn
+    func use<T>(for signIn: SignIn? = nil, _ body: (any MailClient) async throws -> T) async throws -> T {
+        try await run(for: signIn, body) { _, _ in }
+    }
+
+    func use<T: MailCaughtRejection>(
+        for signIn: SignIn? = nil, _ body: (any MailClient) async throws -> T
+    ) async throws -> T {
+        try await run(for: signIn, body) { result, signIn in
+            if result.rejectedPassword { reportAuthenticationRejection(for: signIn) }
+        }
+    }
+
+    private func run<T>(
+        for given: SignIn?, _ body: (any MailClient) async throws -> T, then inspect: (T, SignIn) -> Void
+    ) async throws -> T {
+        let signIn: SignIn
+        if let given { signIn = given } else { signIn = await account.startingSignIn }
+        guard signIn.isCurrent else { throw CancellationError() }
         cancelClose()
         inFlight += 1
         let client: any MailClient
@@ -44,6 +62,7 @@ final class MailPageSession {
         }
         do {
             let result = try await body(client)
+            inspect(result, signIn)
             await endUse()
             return result
         } catch {
@@ -54,24 +73,12 @@ final class MailPageSession {
         }
     }
 
-    /// The choke point that keeps a rejected password from being sent again covers everything
-    /// the page does, not only the sign-in that opened the connection. SMTP `AUTH LOGIN` and the
-    /// held connection's own relogin run inside a `use(_:)` body, never through
-    /// `MailAccountManager.openSession()`, so without this they would leave `authFailed` unset
-    /// and the next tap would send the rejected password again. NTUST locks the account (and
-    /// its Wi-Fi) after repeated failures, so every layer reports here.
     private func reportIfAuthenticationRejected(_ error: any Error, for signIn: SignIn) {
         guard (error as? MailClientError) == .authenticationFailed else { return }
         reportAuthenticationRejection(for: signIn)
     }
 
-    /// Reports a rejected password a `use(_:)` body caught and did not rethrow.
-    /// `use(_:)` only hears about a rejection thrown as an error, and filing the sent copy is
-    /// best-effort: it must never fail a send that already succeeded (`SentCopyFiler`), so its
-    /// `.authenticationFailed` is caught and turned into an outcome. NTUST locks the account (and
-    /// its Wi-Fi) after repeated failures, so that caller reports here, reaching the same choke
-    /// point a thrown error would.
-    func reportAuthenticationRejection(for signIn: SignIn) {
+    private func reportAuthenticationRejection(for signIn: SignIn) {
         guard signIn.isCurrent else { return }
         onAuthFailure(signIn)
     }

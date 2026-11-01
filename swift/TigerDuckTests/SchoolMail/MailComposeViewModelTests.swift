@@ -202,6 +202,19 @@ struct MailComposeViewModelTests {
         #expect(await fake.folders[Self.drafts]?.map(\.summary.uid) == [2])
     }
 
+    @Test func aReplacedDraftWhoseDeleteFailedPartwayIsClaimed() async {
+        let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
+        let prefs = InMemoryMailPreferences()
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: Self.drafts, uidValidity: 1, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake, prefs: prefs, cache: cache)
+        await model.prepare()
+        model.body = "新內容"
+        await fake.update { $0.deletedUIDsError = .serverBusy }
+        #expect(await model.saveDraft())
+        #expect(prefs.ownedDeleted(folder: Self.drafts, uidValidity: 1).uids == [1])
+    }
+
     @Test func reopeningADraftRestoresItsAttachments() async {
         var draft = FakeMailClient.message(uid: 1, subject: "草稿", text: "附件在這")
         let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
@@ -760,6 +773,27 @@ struct MailComposeViewModelTests {
                               to: sentFolder, flags: [.seen])
         #expect(await SentCopyFiler.probe(messageID, in: sentFolder, client: demo).result == .found)
         #expect(await SentCopyFiler.probe("<someone-else@mail.ntust.edu.tw>", in: sentFolder, client: demo).result == .notFound)
+    }
+
+    @Test func aMailWrittenBeforeTheMailSignInEndedIsNeitherSentNorSaved() async {
+        let fake = Self.fake()
+        let account = AccountSession()
+        let model = MailComposeViewModel(
+            context: MailComposeContext(mode: .new),
+            session: MailPageSession(idleClose: .milliseconds(10), open: { fake }, onAuthFailure: { _ in }, account: account),
+            sender: Self.me, folderRoles: [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
+            prefs: InMemoryMailPreferences(), cache: SchoolMailTestDoubles.temporaryCache(), sleep: { _ in }
+        )
+        model.to = "a@mail.ntust.edu.tw"
+        model.body = "written as the first account"
+        account.endSignIn()
+
+        await model.send()
+        #expect(model.shouldClose)
+        #expect(!model.didFinish)
+        #expect(await model.saveDraft() == false)
+        #expect(await fake.sent.isEmpty)
+        #expect(await !fake.calls.contains { $0.hasPrefix("append") })
     }
 }
 #endif

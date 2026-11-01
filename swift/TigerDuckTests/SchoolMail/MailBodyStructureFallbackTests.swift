@@ -142,7 +142,7 @@ struct MailBodyStructureFallbackTests {
         )
         await harness.model.load()
         #expect(harness.model.loadState == .loaded)
-        #expect(!harness.model.parseFailed)
+        #expect(!harness.model.hasNothingRenderable)
         #expect(harness.model.mode == .plain)
         #expect(harness.model.warnings.contains(.mistypedRecipient))
     }
@@ -153,7 +153,7 @@ struct MailBodyStructureFallbackTests {
             FakeMailClient.message(uid: 11, text: nil, html: nil)
         )
         await harness.model.load()
-        #expect(harness.model.parseFailed)
+        #expect(harness.model.hasNothingRenderable)
         #expect(harness.model.mode == .source)
     }
 }

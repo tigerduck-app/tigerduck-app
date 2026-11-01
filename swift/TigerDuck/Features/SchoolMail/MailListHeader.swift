@@ -5,9 +5,7 @@ struct MailTitleBar: View {
     let viewModel: MailListViewModel
     let isLoggedIn: Bool
 
-    static var headerActionHeight: CGFloat {
-        if #available(iOS 26, *) { 36 } else { 40 }
-    }
+    static var headerActionHeight: CGFloat { HeaderMenuButton<EmptyView>.height }
     private static let headerActionWidth: CGFloat = 44
 
     var body: some View {

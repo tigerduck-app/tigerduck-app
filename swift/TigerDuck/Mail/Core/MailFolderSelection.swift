@@ -22,11 +22,16 @@ nonisolated enum MailFolderSelection: Hashable, Sendable {
 }
 
 nonisolated struct MailListRow: Identifiable, Hashable, Sendable {
+    struct ID: Hashable, Sendable {
+        var folder: String
+        var uid: UInt32
+    }
+
     var folder: String
     var summary: MailSummary
 
     var uid: UInt32 { summary.uid }
 
-    var id: String { "\(folder)\u{0}\(summary.uid)" }
+    var id: ID { ID(folder: folder, uid: summary.uid) }
 }
 #endif

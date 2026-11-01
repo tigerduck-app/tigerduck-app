@@ -6,12 +6,6 @@ nonisolated final class MailSettingsStore: MailPreferenceFields, @unchecked Send
     /// Read-only outside this store: a write goes through `change(for:_:)`.
     static let shared: any MailPreferences = MailSettingsStore()
 
-    private struct OwnedDeletedRecord: Codable, Equatable, Sendable {
-        var folder: String
-        var uidValidity: UInt32
-        var uids: Set<UInt32>
-    }
-
     private struct Keys {
         let studentID: Defaults.Key<String?>
         let displayName: Defaults.Key<String?>
@@ -107,29 +101,25 @@ nonisolated final class MailSettingsStore: MailPreferenceFields, @unchecked Send
         set { Defaults[keys.inboxMutedUIDs] = newValue.flatMap { try? JSONEncoder().encode($0) } }
     }
 
-    private var ownedDeletedRecords: [OwnedDeletedRecord] {
+    private var ownedDeletedRecords: [OwnedDeleted] {
         get {
             guard let data = Defaults[keys.ownedDeleted] else { return [] }
-            return (try? JSONDecoder().decode([OwnedDeletedRecord].self, from: data)) ?? []
+            return (try? JSONDecoder().decode([OwnedDeleted].self, from: data)) ?? []
         }
         set { Defaults[keys.ownedDeleted] = try? JSONEncoder().encode(newValue) }
     }
 
     func ownedDeleted(folder: String, uidValidity: UInt32) -> OwnedDeleted {
         Self.lock.withLock {
-            guard let record = ownedDeletedRecords.first(where: { $0.folder == folder && $0.uidValidity == uidValidity }) else {
-                return OwnedDeleted(folder: folder, uidValidity: uidValidity, uids: [])
-            }
-            return OwnedDeleted(folder: folder, uidValidity: uidValidity, uids: record.uids)
+            ownedDeletedRecords.first { $0.folder == folder && $0.uidValidity == uidValidity }
+                ?? OwnedDeleted(folder: folder, uidValidity: uidValidity, uids: [])
         }
     }
 
     func setOwnedDeleted(_ owned: OwnedDeleted) {
         Self.lock.withLock {
             var records = ownedDeletedRecords.filter { $0.folder != owned.folder }
-            if !owned.uids.isEmpty {
-                records.append(OwnedDeletedRecord(folder: owned.folder, uidValidity: owned.uidValidity, uids: owned.uids))
-            }
+            if !owned.uids.isEmpty { records.append(owned) }
             ownedDeletedRecords = records
         }
     }
