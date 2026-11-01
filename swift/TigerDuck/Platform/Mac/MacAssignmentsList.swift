@@ -230,22 +230,22 @@ final class MacAssignmentListModel {
     }
 
     func archive(_ assignment: SDAssignment) {
-        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, true))
+        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, true), for: AccountSession.school.currentSignIn)
         bump()
     }
 
     func unarchive(_ assignment: SDAssignment) {
-        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, false))
+        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
         bump()
     }
 
     func markComplete(_ assignment: SDAssignment) {
-        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, true))
+        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, true), for: AccountSession.school.currentSignIn)
         bump()
     }
 
     func undoComplete(_ assignment: SDAssignment) {
-        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false))
+        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
         bump()
     }
 
