@@ -38,6 +38,10 @@ nonisolated struct MoodleNotificationMatrix: Equatable, Sendable {
     /// Moodle's "Disable notifications", the account's `emailstop`.
     let disablesAll: Bool
 
+    func preference(_ key: String) -> Preference? {
+        components.lazy.flatMap(\.preferences).first { $0.key == key }
+    }
+
     func replacing(_ preference: Preference) -> MoodleNotificationMatrix {
         var changed = self
         changed.components = components.map { component in

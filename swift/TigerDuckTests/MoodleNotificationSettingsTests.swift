@@ -59,7 +59,7 @@ struct MoodleNotificationSettingsTests {
     }
 
     private static func shown(_ key: String, in settings: MoodleNotificationSettings) throws -> MoodleNotificationMatrix.Preference {
-        try #require(settings.matrix?.components.flatMap(\.preferences).first { $0.key == key })
+        try #require(settings.matrix?.preference(key))
     }
 
     @Test("a switch moves at once and every switch stays off until the write and its reload end")
@@ -69,11 +69,11 @@ struct MoodleNotificationSettingsTests {
         let settings = await Self.loaded(site)
         settings.method = "email"
 
-        let write = try #require(settings.set(true, for: Self.forum))
+        let write = try #require(settings.set(true, for: Self.forum.key))
 
         #expect(settings.isOn(try Self.shown(Self.forum.key, in: settings)))
         #expect(!settings.canChange(Self.digest))
-        #expect(settings.set(true, for: Self.digest) == nil)
+        #expect(settings.set(true, for: Self.digest.key) == nil)
         try await gate.waitUntilArmed()
         await gate.fire()
         await write.value
@@ -88,7 +88,7 @@ struct MoodleNotificationSettingsTests {
         let site = Site(Fixtures.matrix([Self.forum, Self.digest]), afterWrite: serverSide)
         let settings = await Self.loaded(site)
 
-        await settings.set(false, for: Self.forum)?.value
+        await settings.set(false, for: Self.forum.key)?.value
 
         #expect(site.loads == 2)
         #expect(settings.matrix == serverSide)
@@ -100,7 +100,7 @@ struct MoodleNotificationSettingsTests {
         let site = Site(Fixtures.matrix([Self.forum]), failure: failure)
         let settings = await Self.loaded(site)
 
-        await settings.set(false, for: Self.forum)?.value
+        await settings.set(false, for: Self.forum.key)?.value
 
         #expect(settings.isOn(try Self.shown(Self.forum.key, in: settings)))
         #expect(settings.saveFailure == MoodleFailure.message(for: failure))
@@ -130,9 +130,9 @@ struct MoodleNotificationSettingsTests {
         #expect(settings.canChange(locked))
         settings.method = "email"
         #expect(!settings.canChange(locked))
-        #expect(settings.set(false, for: locked) == nil)
+        #expect(settings.set(false, for: locked.key) == nil)
         #expect(!disabled.canChange(Self.forum))
-        #expect(disabled.set(true, for: Self.forum) == nil)
+        #expect(disabled.set(true, for: Self.forum.key) == nil)
     }
 
     @Test("a write whose sign-in ends while it waits for the Moodle token is not sent")
@@ -161,7 +161,7 @@ struct MoodleNotificationSettingsTests {
         await settings.load()
         let preference = try Self.shown("message_provider_mod_assign_assign_notification", in: settings)
 
-        let write = try #require(settings.set(true, for: preference))
+        let write = try #require(settings.set(true, for: preference.key))
         try await gate.waitUntilArmed()
         signedIn.signOut()
         await gate.fire()

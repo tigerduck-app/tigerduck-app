@@ -38,7 +38,7 @@ struct MoodleNotificationSettingsView: View {
                     ForEach(component.preferences) { preference in
                         Toggle(preference.name, isOn: Binding(
                             get: { settings.isOn(preference) },
-                            set: { settings.set($0, for: preference) }
+                            set: { settings.set($0, for: preference.key) }
                         ))
                         .disabled(!settings.canChange(preference))
                     }

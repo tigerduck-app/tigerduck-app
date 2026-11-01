@@ -79,8 +79,8 @@ final class MoodleNotificationSettings {
     }
 
     @discardableResult
-    func set(_ on: Bool, for preference: MoodleNotificationMatrix.Preference) -> Task<Void, Never>? {
-        guard let before = matrix, canChange(preference) else { return nil }
+    func set(_ on: Bool, for key: String) -> Task<Void, Never>? {
+        guard let before = matrix, let preference = before.preference(key), canChange(preference) else { return nil }
         let changed = preference.setting(method, on: on)
         isSaving = true
         shown.set(before.replacing(changed), for: signIn)
