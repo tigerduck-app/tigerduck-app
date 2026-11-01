@@ -57,7 +57,7 @@ struct CourseAbbreviationSection: View {
 }
 
 struct ReassignCourseColorsButton: View {
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @State private var isConfirming = false
 
     var body: some View {
@@ -69,6 +69,7 @@ struct ReassignCourseColorsButton: View {
         }
         .alert(String(localized: "settings_reset_course_colors_confirm_title"), isPresented: $isConfirming) {
             Button(String(localized: "action_confirm"), role: .destructive) {
+                guard let app else { return }
                 app.edits.reassignAllCourseColors(for: app.authService.session.currentSignIn)
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}

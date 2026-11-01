@@ -4,7 +4,7 @@ import SwiftData
 import SwiftUI
 
 struct SettingsDeveloperSection: View {
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @Environment(\.modelContext) private var modelContext
     @AppStorage(ScreenCaptureProtectionDebugFlag.userDefaultsKey)
     private var disableScreenCaptureProtection = false
@@ -52,6 +52,7 @@ struct SettingsDeveloperSection: View {
     }
 
     private func eraseEverything() {
+        guard let app else { return }
         SignOutPlan.school(app).run()
         app.library.logout()
         #if os(iOS)

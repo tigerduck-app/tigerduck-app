@@ -81,16 +81,17 @@ private struct DisabledWithReason: ViewModifier {
 
     func body(content: Content) -> some View {
         if let reason = closedReason {
+            // A disabled element ignores VoiceOver's activation, so only the content inside is disabled.
             content
                 .disabled(true)
+                .accessibilityElement(children: .combine)
+                .accessibilityHint(Text(reason))
+                .accessibilityAction { showToast(reason) }
                 .overlay {
                     Button { showToast(reason) } label: { Color.clear.contentShape(.rect) }
                         .buttonStyle(.plain)
                         .accessibilityHidden(true)
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityHint(Text(reason))
-                .accessibilityAction { showToast(reason) }
         } else {
             content
         }

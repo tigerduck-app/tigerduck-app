@@ -3,7 +3,7 @@ import SwiftUI
 struct SettingsAboutSection: View {
     let sheets: SettingsSheetState
 
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @Environment(\.openURL) private var openURL
     @Environment(\.settingsState) private var state
 
@@ -53,6 +53,7 @@ struct SettingsAboutSection: View {
     @ViewBuilder
     private var checkForUpdatesRow: some View {
         Button {
+            guard let app else { return }
             Task {
                 await app.updateNotifyCoordinator.checkManually()
                 let result = app.updateNotifyCoordinator.lastManualCheckResult
@@ -90,7 +91,7 @@ struct SettingsAboutSection: View {
 
     private var whatsNewRow: some View {
         Button {
-            sheets.manualWhatsNewItem = app.updateNotifyCoordinator.latestWhatsNew(in: app)
+            sheets.manualWhatsNewItem = app.flatMap { $0.updateNotifyCoordinator.latestWhatsNew(in: $0) }
         } label: {
             HStack {
                 Text(SettingsRow.whatsNew.label)

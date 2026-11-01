@@ -11,7 +11,9 @@ struct SettingsView: View {
     }
 }
 
-/// The Settings root, which reads the app only from its actions, so a test can show it.
+/// The Settings root. It and its page views read the app only in actions, through an optional:
+/// SwiftUI stops at a missing environment object as soon as a view updates, and a test shows
+/// these views without an app.
 struct SettingsList: View {
     let sheets: SettingsSheetState
 

@@ -3,7 +3,7 @@ import SwiftUI
 struct SettingsAccountSection: View {
     let sheets: SettingsSheetState
 
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @Environment(\.settingsState) private var state
 
     var body: some View {
@@ -25,8 +25,9 @@ struct SettingsAccountSection: View {
         accountRow(
             title: SettingsRow.schoolAccount.label,
             account: state.school,
-            onLogin: { app.router.presentNTUSTLogin() },
+            onLogin: { app?.router.presentNTUSTLogin() },
             onLogout: {
+                guard let app else { return }
                 Task {
                     let unsynced = await app.signOutCheck.deletesUnsyncedData()
                     guard app.authService.hasStoredCredentials else { return }
@@ -45,7 +46,7 @@ struct SettingsAccountSection: View {
             title: SettingsRow.libraryAccount.label,
             account: state.library,
             onLogin: { sheets.showLibraryLogin = true },
-            onLogout: { app.library.logout() }
+            onLogout: { app?.library.logout() }
         )
     }
 

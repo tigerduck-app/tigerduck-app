@@ -5,7 +5,7 @@ import UIKit
 
 struct LibrarySettingsView: View {
     @Environment(AppPreferences.self) private var preferences
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @Environment(\.settingsState) private var state
 
     var body: some View {
@@ -25,7 +25,7 @@ struct LibrarySettingsView: View {
             if SettingsRow.librarySignOut.isShown(in: state) {
                 Section {
                     Button(SettingsRow.librarySignOut.label, role: .destructive) {
-                        app.library.logout()
+                        app?.library.logout()
                     }
                 }
             }
