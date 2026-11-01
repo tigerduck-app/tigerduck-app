@@ -66,12 +66,11 @@ struct SettingsSnapshotTests {
     @Test("the toast a closed gate shows", arguments: widths)
     func toast(width: CGFloat) async throws {
         try await withAccessibilityAutomation {
-            let state = Screen.closed
-            let (window, host) = try Screen.show(PageSettings.home.view, state: state, width: width, height: 874)
+            let gate = SettingsGate.tigerSync
+            let page = ZStack { PageSettings.home.view; Screen.ShowsToast(message: gate.reasonKey) }
+            let (window, host) = try Screen.show(page.toastHost(), state: Screen.closed, width: width, height: 874)
             defer { window.isHidden = true }
-            let reason = String(localized: SettingsGate.tigerSync.reasonKey)
-            try await waitUntil { Screen.element(of: .liveActivity, hint: reason, in: host) != nil }
-            _ = Screen.element(of: .liveActivity, hint: reason, in: host)?.accessibilityActivate()
+            let reason = String(localized: gate.reasonKey)
             try await waitUntil { accessibilityElement(labeled: reason, in: host.view) != nil }
             try await Task.sleep(for: .milliseconds(400))
             Self.save(window, as: "toast-\(Int(width))")
