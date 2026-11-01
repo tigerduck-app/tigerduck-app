@@ -58,7 +58,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 - 原生 Mac App（非 Catalyst），側邊欄導覽，每一頁都有 Mac 版版面
 
 ### 🎨 **外觀與無障礙**
-- 內建 67 種語系，課程與教室名稱可自動簡寫
+- 內建 63 種語系，課程與教室名稱可自動簡寫
 - 自由拖放首頁區塊、編輯 Tab、選擇主題色與介面風格
 - 支援 VoiceOver、動態字級與減少動態效果，截圖與錄影時自動遮蔽密碼與 QR Code
 
@@ -204,7 +204,7 @@ tigerduck-app/
 ├── tools/                              # 翻譯、授權清單與 macOS 檔案歸屬檢查腳本
 ├── .github/workflows/                  # PR 檢查：單元測試、版本號、新功能介紹、翻譯
 ├── docs/                               # 規劃文件、移轉計畫（iOS 端）
-├── app-translation/                    # ⤴ git submodule：67 語系翻譯
+├── app-translation/                    # ⤴ git submodule：63 語系翻譯
 └── name-abbr/                          # ⤴ git submodule：課程 / 教室簡稱字典
 ```
 
