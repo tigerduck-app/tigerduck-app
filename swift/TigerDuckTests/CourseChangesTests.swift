@@ -65,11 +65,26 @@ struct CourseChangesTests {
 
         let thatDay = changes.changes(courseNo: "CC900", on: Self.thursday)
         #expect(changes.term == "1151")
-        #expect(thatDay.map(\.id) == [42, 45])
-        #expect(thatDay.last?.noteEn == "期中考")
-        #expect(changes.changes(courseNo: "CC900", on: Self.at("23:59")).map(\.id) == [42, 45])
+        #expect(thatDay.map(\.id) == [45, 42])
+        #expect(thatDay.first?.noteEn == "期中考")
+        #expect(changes.changes(courseNo: "CC900", on: Self.at("23:59")).map(\.id) == [45, 42])
         #expect(changes.changes(courseNo: "CC901", on: Self.thursday).isEmpty)
         #expect(Self.slots(changes).map(\.id) == ["CC900_20261105_2", "CC900_20261105_7"])
+    }
+
+    @Test func theNewestOfTwoRowsOfAKindWinsInAnyFeedOrder() throws {
+        let rows = [
+            Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "08:30"]),
+            Self.row(2, "start", periods: ["2", "3", "4"], values: ["start": "08:40"]),
+            Self.row(3, "room", periods: ["2", "3", "4"], values: ["room": "TR-313"]),
+            Self.row(4, "room", periods: ["2", "3", "4"], values: ["room": "TR-414"]),
+        ]
+
+        for feed in [rows, Array(rows.reversed())] {
+            let slot = try #require(Self.slots(try Self.changes(feed)).first)
+            #expect(slot.start == Self.at("08:40"))
+            #expect(slot.room == "TR-414")
+        }
     }
 
     @Test func aCancellationWithoutPeriodsCancelsEveryMeetingThatDayOnly() throws {
