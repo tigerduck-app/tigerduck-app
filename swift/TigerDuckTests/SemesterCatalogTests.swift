@@ -27,7 +27,7 @@ struct SemesterCatalogTests {
     @Test("Decodes the catalogue newest-first, summer terms included")
     func decodesCatalogue() throws {
         let list = try SemesterCatalog.decodeSemesters(Self.payload)
-        #expect(list.map(\.Semester) == ["1152", "1151", "114H", "1142"])
+        #expect(list.map(\.semester) == ["1152", "1151", "114H", "1142"])
     }
 
     @Test("Open term comes from LoginEnable, not from list position")
