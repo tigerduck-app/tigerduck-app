@@ -6,6 +6,7 @@ nonisolated struct MailDemoFixture: Sendable {
         var filename: String
         var contentType: String
         var size: Int
+        var data: Data?
     }
 
     struct Entry: Sendable {
@@ -72,6 +73,7 @@ extension MailDemoFixture {
             let name: DemoText
             let type: String?
             let size: Int?
+            let base64: Data?
         }
 
         let from: Address
@@ -94,7 +96,7 @@ extension MailDemoFixture {
                 attachments: (attachments ?? []).map {
                     MailDemoFixture.Attachment(
                         filename: $0.name.text(in: language), contentType: $0.type ?? "application/octet-stream",
-                        size: $0.size ?? 0
+                        size: $0.size ?? 0, data: $0.base64
                     )
                 }
             )

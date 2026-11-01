@@ -26,7 +26,7 @@ actor DemoMailClient: MailClient {
             let part = MailBodyPart(section: "\(index + 2)", contentType: attachment.contentType, charset: nil,
                                     transferEncoding: "base64", filename: attachment.filename, contentID: nil,
                                     size: attachment.size, isAttachment: true)
-            attachments[part] = Data()
+            attachments[part] = attachment.data ?? Data()
         }
         let summary = MailSummary(
             uid: entry.uid, fromName: entry.fromName?.mailNonEmpty, fromAddress: entry.fromAddress, to: entry.to, cc: nil,
