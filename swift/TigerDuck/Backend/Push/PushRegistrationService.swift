@@ -169,14 +169,23 @@ actor PushRegistrationService {
     }
 
     func updateCloudSyncEnabled(_ enabled: Bool) async {
-        let signIn = requests.signIns.currentSignIn
-        if running.isRegistering {
-            await withCheckedContinuation { running.cloudSyncPatchesWaiting.append($0) }
+        let requests = self.requests, signIn = requests.signIns.currentSignIn
+        let task = chains.cloudSync.append { [self] in
+            await self.waitOutRunningRegistrations()
+            await requests.sendCloudSyncEnabled(enabled, for: signIn)
         }
-        await requests.sendCloudSyncEnabled(enabled, for: signIn)
+        defer { chains.cloudSync.finished(task) }
+        _ = try? await task.value
         #if os(iOS)
         if enabled, status.lastError != nil { await registerAgain() }
         #endif
+    }
+
+    var cloudSyncPatchesInLine: Int { chains.cloudSync.inLine }
+
+    private func waitOutRunningRegistrations() async {
+        guard running.isRegistering else { return }
+        await withCheckedContinuation { running.cloudSyncPatchesWaiting.append($0) }
     }
 
     func updateSyncPreferences() async {

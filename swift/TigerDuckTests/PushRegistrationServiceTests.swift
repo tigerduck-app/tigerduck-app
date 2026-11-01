@@ -372,6 +372,32 @@ struct PushRegistrationServiceTests {
         }.last
     }
 
+    @Test("a TigerSync switch PATCH waits for the one before it, so turning it off and on at once leaves the server on")
+    func quickOffThenOnLeavesTheServerOn() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let service = Self.makeService(baseURL: baseURL)
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let reply = Self.preferencesBody(bulletinPushEnabled: true)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: reply, gate: gate), for: Self.preferencesURL(baseURL))
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: reply), for: Self.preferencesURL(baseURL))
+
+        let off = Task { await service.updateCloudSyncEnabled(false) }
+        try await waitUntil { SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).count == 1 }
+        let on = Task { await service.updateCloudSyncEnabled(true) }
+        while await service.cloudSyncPatchesInLine < 2,
+              SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).count < 2 {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).count == 1)
+        gate.open()
+        await off.value
+        await on.value
+
+        #expect(try Self.serverCloudSyncEnabled(baseURL) == true)
+        #expect(SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).count == 2)
+    }
+
     @Test("turning TigerSync off while a registration is out leaves the server off")
     func switchTurnedOffDuringARegistrationEndsOff() async throws {
         try await Self.withSyncPreferences {

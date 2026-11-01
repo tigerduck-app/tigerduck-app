@@ -29,6 +29,7 @@ extension PushRegistrationService {
         var optOut = RequestChain()
         var bulletin = RequestChain()
         var syncPreferences = RequestChain()
+        var cloudSync = RequestChain()
     }
 
     nonisolated struct DeviceRetry {
