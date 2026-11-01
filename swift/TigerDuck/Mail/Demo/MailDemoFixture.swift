@@ -1,9 +1,7 @@
 #if os(iOS)
 import Foundation
 
-/// The demo mailbox: `demo.json`'s `mail` section, its messages numbered by date in each folder.
 nonisolated struct MailDemoFixture: Sendable {
-    /// The file keeps an attachment's name and size, not its contents.
     struct Attachment: Sendable {
         var filename: String
         var contentType: String

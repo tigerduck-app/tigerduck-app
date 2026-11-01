@@ -4,8 +4,8 @@ import Testing
 import TigerDuckCore
 @testable import TigerDuck
 
-/// The store-review account of `demo.json`, which the Android app bundles too. Each test signs in
-/// on a series of its own, so the app's school sign-in never turns into the demo.
+/// Each test signs in on a series of its own: while the app's school sign-in is the demo, the
+/// app's sessions refuse every request in the process.
 @Suite("Store-review demo account")
 @MainActor
 struct DemoAccountTests {

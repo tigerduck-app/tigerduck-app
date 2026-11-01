@@ -154,7 +154,6 @@ final class MailMessageViewModel {
         }
     }
 
-    /// The demo mailbox's images stay blocked: their servers are the school's.
     func loadImages() async {
         guard !stores.prefs.demoActive else { return }
         display.allowRemoteImages = true

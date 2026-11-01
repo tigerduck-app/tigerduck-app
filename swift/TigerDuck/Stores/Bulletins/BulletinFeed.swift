@@ -120,7 +120,6 @@ final class BulletinFeed {
         return (Self.summary(of: detail), true)
     }
 
-    /// Bulletins a sign-in brings with it, kept with their bodies as the fetches keep them.
     static func keep(_ details: [BulletinAPI.BulletinDetail], files: BulletinFiles = .shared, for signIn: SignIn) {
         guard signIn.isCurrent else { return }
         files.saveBulletinSummaries(sortedUnique(details.map(summary(of:))))

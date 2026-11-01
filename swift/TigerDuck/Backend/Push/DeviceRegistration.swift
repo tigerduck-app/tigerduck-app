@@ -17,7 +17,6 @@ nonisolated enum DeviceRegistration {
         #endif
     }
 
-    /// The store-review account has no device to register, on a first attempt or a retry.
     static func perform(on service: isolated PushRegistrationService) async {
         guard !service.servesDemoAccount else { return }
         let requests = service.requests

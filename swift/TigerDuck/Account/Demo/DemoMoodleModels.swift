@@ -9,7 +9,6 @@ nonisolated extension DemoMoodle {
     }
 }
 
-/// Reads the section in one language into the models the Moodle web service's answers become.
 private nonisolated struct DemoMoodleReader {
     let language: DemoLanguage
 
@@ -39,8 +38,6 @@ private nonisolated struct DemoMoodleReader {
         )
     }
 
-    /// A file under the site's web-service path, so a tap takes a real file's path to the
-    /// download, which the demo account refuses as it has no network.
     private func file(_ file: DemoMoodle.File, area: String, created: Date? = nil) -> MoodleFile {
         MoodleFile(
             name: file.name, size: file.size ?? 0,
@@ -91,7 +88,7 @@ private nonisolated struct DemoMoodleReader {
         )
     }
 
-    /// As `mod_assign_get_submission_status` answers it, with its comments and its group's name.
+    /// As `mod_assign_get_submission_status` answers it.
     private func submission(_ entry: DemoMoodle.Submission, assignId: Int) -> MoodleAssignmentSubmission {
         let id = assignId * 10 + 1
         let comments = (entry.comments ?? []).enumerated().compactMap { index, comment -> MoodleSubmissionComment? in

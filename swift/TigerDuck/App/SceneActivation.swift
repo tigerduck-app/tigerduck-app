@@ -19,7 +19,6 @@ final class SceneActivation {
         app.updateNotifyCoordinator.checkInBackground()
     }
 
-    /// The store-review account sends nothing, so only its Live Activity follows the clock.
     func becameActive() {
         returnTask?.cancel()
         guard !app.authService.session.currentSignIn.isDemo else {
@@ -55,7 +54,6 @@ final class SceneActivation {
         }
     }
 
-    /// The store-review account has nothing to fetch: its data is the bundled file's.
     func refresh(recheckSubmissions: Bool = false) {
         guard app.hasCompletedOnboarding, !app.authService.session.currentSignIn.isDemo else { return }
         app.feed.startPolling(pollNow: false)

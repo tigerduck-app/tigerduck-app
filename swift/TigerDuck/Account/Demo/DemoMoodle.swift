@@ -1,7 +1,5 @@
 import Foundation
 
-/// `demo.json`'s `moodle` section: per course a few announcements, grades, members, a summary
-/// and the assignments' pages, and for one a forum and materials.
 nonisolated struct DemoMoodle: Decodable, Sendable {
     let ownMemberId: Int?
     let courses: [Course]?
@@ -136,8 +134,6 @@ nonisolated struct DemoMoodle: Decodable, Sendable {
     }
 }
 
-/// The demo student's Moodle in the app's own models, so the course pages take the path a real
-/// account's take.
 nonisolated struct DemoMoodleCourses: Sendable {
     struct Course: Sendable {
         let courseNo: String
@@ -177,8 +173,6 @@ nonisolated struct DemoMoodleCourses: Sendable {
 
     func course(_ moodleId: Int) -> Course? { courses.first { $0.moodleId == moodleId } }
 
-    /// The records an assignment round would have kept: one per Moodle assignment that a row in
-    /// `listed` has the id of, with that row's title and due time.
     @MainActor
     func records(listed: [SDAssignment]) -> [MoodleAssignmentRecord] {
         let rows = Dictionary(listed.map { ($0.assignmentId, $0) }, uniquingKeysWith: { first, _ in first })

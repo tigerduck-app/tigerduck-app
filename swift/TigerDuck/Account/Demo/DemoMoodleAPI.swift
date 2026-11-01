@@ -2,7 +2,6 @@ import Foundation
 import os
 
 nonisolated extension MoodleCourseAPI {
-    /// The API a course page of `signIn` reads from: the demo student's answers, or Moodle's.
     static func serving(_ signIn: SignIn) -> MoodleCourseAPI {
         guard signIn.isDemo, let demo = bundledDemo else { return .live }
         return demo
@@ -10,8 +9,6 @@ nonisolated extension MoodleCourseAPI {
 
     private static let bundledDemo: MoodleCourseAPI? = DemoMoodleCourses.bundled.map(demo)
 
-    /// Answers from `demo.json` and nothing from the network. A discussion opened stays read
-    /// while the app runs.
     static func demo(_ moodle: DemoMoodleCourses) -> MoodleCourseAPI {
         let read = OSAllocatedUnfairLock(initialState: Set<Int>())
         let unread: @Sendable (MoodleDiscussion) -> Int = { discussion in
@@ -94,7 +91,7 @@ nonisolated extension DemoMoodleCourses {
         courses.lazy.flatMap(\.assignments).first { $0.id == assignId }
     }
 
-    /// Each course's announcements forum, as Moodle keeps one per course, then its other forums.
+    /// Moodle keeps one announcements forum per course.
     func forums(in courseIds: [Int], unread: (MoodleDiscussion) -> Int) -> [MoodleForum] {
         courses.filter { courseIds.contains($0.moodleId) }.flatMap { course in
             let news = MoodleForum(

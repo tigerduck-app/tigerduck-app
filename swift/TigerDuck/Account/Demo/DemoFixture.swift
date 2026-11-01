@@ -1,8 +1,7 @@
 import Foundation
 import TigerDuckCore
 
-/// The store-review account's made-up student in `demo.json`, the file the Android app bundles
-/// too; it changes there first. School Mail reads its `mail` section itself (`Mail/Demo/`).
+/// `demo.json` is the Android app's file too, and it changes there first.
 nonisolated struct DemoFixture: Decodable, Sendable {
     let studentId: String
     let schoolPassword: String
@@ -72,7 +71,6 @@ nonisolated struct DemoFixture: Decodable, Sendable {
 
     static let bundled: DemoFixture? = load(from: .main)
 
-    /// The store-review account's library, whose QR code is the file's and which its server never sees.
     static func isDemoLibrary(_ username: String?, _ password: String?) -> Bool {
         guard let username, let password, let bundled else { return false }
         return bundled.matchesLibrary(username: username, password: password)
@@ -88,8 +86,6 @@ nonisolated struct DemoFixture: Decodable, Sendable {
         }
     }
 
-    /// The school sign-in's check: the ID as `AuthService.normalizedStudentId` writes it, the
-    /// password exactly.
     func matches(studentId: String, password: String) -> Bool {
         Self.credentialsMatch(studentId, password, id: self.studentId, password: schoolPassword)
     }
@@ -132,7 +128,6 @@ nonisolated struct DemoText: Decodable, Sendable {
         en = pair["en"].flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    /// A name in the other language reads as one at sight; a blank cell reads as a bug.
     func text(in language: DemoLanguage) -> String {
         (language == .zh ? zh ?? en : en ?? zh) ?? ""
     }
@@ -141,8 +136,6 @@ nonisolated struct DemoText: Decodable, Sendable {
 nonisolated enum DemoTime {
     private static let localFormats = ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"]
 
-    /// `2026-09-15T23:59`, a space in place of the `T`, or a plain date, in Taipei time; or a
-    /// time with its offset, such as `2026-09-07T14:30:00Z`.
     static func date(_ text: String?) -> Date? {
         guard let text = text?.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: " ", with: "T"),
               !text.isEmpty else { return nil }

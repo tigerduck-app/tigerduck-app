@@ -8,7 +8,6 @@ import os
 nonisolated struct SignIn: Hashable, Sendable {
     fileprivate let series: SignInSeries
     fileprivate let number: Int
-    /// The store-review account's, whose data comes from `demo.json` and which sends nothing.
     let isDemo: Bool
 
     var isCurrent: Bool { series.holds(number) }
@@ -41,7 +40,6 @@ nonisolated final class SignInSeries: Sendable {
     /// The app ends a sign-in through `AccountSession.endSignIn`, which also stops its work.
     func end() { current.withLock { $0 = Current(number: $0.number &+ 1) } }
 
-    /// Ends the current sign-in for one of the store-review account.
     func startDemo() { current.withLock { $0 = Current(number: $0.number &+ 1, isDemo: true) } }
 }
 
@@ -92,7 +90,6 @@ final class AccountSession {
     @discardableResult
     func endSignIn() -> SignIn { endSignIn { $0.end() } }
 
-    /// Ends the current sign-in as `endSignIn` does, followed by one of the store-review account.
     @discardableResult
     func startDemoSignIn() -> SignIn { endSignIn { $0.startDemo() } }
 

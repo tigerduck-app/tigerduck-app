@@ -1,8 +1,6 @@
 import Foundation
 
 extension DemoFixture.Course {
-    /// A course on Moodle gets the id number of one added by hand, its term and course number,
-    /// which the course page finds its Moodle course id under.
     func course(in language: DemoLanguage, semester: String, onMoodle: Bool) -> SDCourse {
         let byWeekday = (schedule ?? [:]).compactMap { key, periods in Int(key).map { ($0, periods) } }
         return SDCourse(
@@ -40,7 +38,6 @@ extension DemoFixture.CalendarEntry {
 }
 
 extension DemoFixture.Bulletin {
-    /// With the summary as its body, the detail page has nothing to fetch.
     func detail(index: Int) -> BulletinAPI.BulletinDetail {
         let id = self.id ?? index + 1
         return BulletinAPI.BulletinDetail(

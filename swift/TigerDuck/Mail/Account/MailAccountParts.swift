@@ -16,7 +16,6 @@ struct MailSignInParts {
     let makeClient: (Bool) -> any MailClient
     let schoolIsDemo: () -> Bool
 
-    /// The store-review school account sends nothing, so only the demo mailbox opens then.
     func client(demo: Bool) throws -> any MailClient {
         guard demo || !schoolIsDemo() else { throw MailClientError.unreachable }
         return makeClient(demo)
