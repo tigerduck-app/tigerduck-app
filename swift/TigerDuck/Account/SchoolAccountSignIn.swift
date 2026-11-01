@@ -14,24 +14,26 @@ enum SchoolAccountSignIn {
 
         do {
             let normalizedId = AuthService.normalizedStudentId(studentId)
+            let demo = auth.deps.demo
+            let isDemo = demo.matches(studentId: normalizedId, password: password)
             await auth.signOutCalls?.value
             try Task.checkCancellation()
-            if AuthService.replacesStoredAccount(stored: auth.storedStudentId, signingInAs: normalizedId) {
+            if AuthService.replacesStoredAccount(stored: auth.storedStudentId, signingInAs: normalizedId)
+                || (demo.isKept && !isDemo) {
                 await auth.signOutStoredAccount?()
                 try Task.checkCancellation()
             }
-            let demo = auth.deps.demo
-            let isDemo = demo.matches(studentId: normalizedId, password: password)
-            let signIn = isDemo ? auth.session.startDemoSignIn() : auth.session.signIns.currentSignIn
-            schoolStep = signIn
+            let attempt = auth.session.signIns.currentSignIn
+            schoolStep = attempt
 
-            let success = try await isDemo ? true : auth.deps.schoolSignIn(normalizedId, password, signIn)
-            guard signIn.isCurrent, !Task.isCancelled else {
+            let success = try await isDemo ? true : auth.deps.schoolSignIn(normalizedId, password, attempt)
+            guard attempt.isCurrent, !Task.isCancelled else {
                 auth.status.isLoggingIn = false
                 return false
             }
 
             if success {
+                let signIn = isDemo ? auth.session.startDemoSignIn() : attempt
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
