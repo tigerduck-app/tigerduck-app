@@ -1811,12 +1811,13 @@ struct BackendSignInTests {
             let backend = BackendFixture(signedIn: false, signIn: signIns.currentSignIn)
             let signingIn = SheetSignIn()
             let harvests = CallCount()
+            let outlivingToken: MoodleTokenService.TokenStore = .init(load: { "moodle-token" }, save: { _ in }, drop: {})
             let auth = AuthService(
                 keychainHasCredentials: { false },
                 notificationCenter: NotificationCenter(),
                 moodleTokens: MoodleTokenService(
                     storedCredentials: { nil },
-                    tokens: .init(load: { "moodle-token" }, save: { _ in }, drop: {}),
+                    tokens: outlivingToken,
                     harvest: { _, _ in
                         harvests.increment()
                         await MainActor.run { signingIn.signOut?() }

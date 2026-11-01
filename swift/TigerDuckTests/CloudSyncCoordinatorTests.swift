@@ -319,7 +319,7 @@ struct CloudSyncCoordinatorTests {
     func signOutStopsTheRestOfADrain() async throws {
         let backend = Backend()
         let courses = ["1151CS1", "1151EE2", "1151GE3"]
-        for course in courses { backend.answer("sync/courses/\(Self.courseKey(course))/override", body: Self.colourReply) }
+        for course in courses { backend.answer("sync/courses/\(Self.backendCourseKey(moodleId: course))/override", body: Self.colourReply) }
         let asks = OSAllocatedUnfairLock(initialState: 0)
         let release = DispatchSemaphore(value: 0)
         let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { _ in
@@ -337,7 +337,7 @@ struct CloudSyncCoordinatorTests {
         await signOut.value
         await drain.value
 
-        #expect(courses.map { backend.requests("sync/courses/\(Self.courseKey($0))/override").count } == [1, 0, 0])
+        #expect(courses.map { backend.requests("sync/courses/\(Self.backendCourseKey(moodleId: $0))/override").count } == [1, 0, 0])
     }
 
     @Test("A colour or name edit counts as pending from the edit until its request is sent")
@@ -373,7 +373,7 @@ struct CloudSyncCoordinatorTests {
     func editsQueuedAfterAReadingAreListedOnceSent() async {
         let backend = Backend()
         for course in ["1151CS0", "1151CS1", "1151EE2"] {
-            backend.answer("sync/courses/\(Self.courseKey(course))/override", body: Self.colourReply)
+            backend.answer("sync/courses/\(Self.backendCourseKey(moodleId: course))/override", body: Self.colourReply)
         }
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS0", semester: "1151", colorHex: "#4A90E2")?.value
@@ -397,7 +397,7 @@ struct CloudSyncCoordinatorTests {
     func aFullSyncHoldsWhatItsSampleListedAndWhatWasEditedSince() async {
         let backend = Backend()
         for course in ["1151CS0", "1151CS1", "1151EE2"] {
-            backend.answer("sync/courses/\(Self.courseKey(course))/override", body: Self.colourReply)
+            backend.answer("sync/courses/\(Self.backendCourseKey(moodleId: course))/override", body: Self.colourReply)
         }
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS0", semester: "1151", colorHex: "#4A90E2")?.value
@@ -601,7 +601,7 @@ struct CloudSyncCoordinatorTests {
         }
     }
 
-    private static func courseKey(_ moodleId: String) -> String {
+    private static func backendCourseKey(moodleId: String) -> String {
         "client:\(moodleId.prefix(4)):\(moodleId.dropFirst(4))"
     }
 

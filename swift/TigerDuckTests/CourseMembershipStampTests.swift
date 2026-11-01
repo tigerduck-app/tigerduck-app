@@ -10,24 +10,24 @@ struct CourseMembershipStampTests {
 
     struct Attempt: Sendable {
         let reply: SettingsAPIStub.StubResponse
-        let hlc: String
+        let sentStamp: String
         var landed: Bool { reply.statusCode == 200 }
 
         static let serverClock = "1789999000000000"
-        static let lands = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)), hlc: CourseMembershipStampTests.hlc)
-        static let loses = Attempt(reply: .noReply, hlc: CourseMembershipStampTests.hlc)
+        static let lands = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)), sentStamp: CourseMembershipStampTests.hlc)
+        static let loses = Attempt(reply: .noReply, sentStamp: CourseMembershipStampTests.hlc)
         static let refusedAsAhead = Attempt(
             reply: .init(
                 statusCode: 409, body: Data(#"{"error":"clock_ahead","message":"ahead"}"#.utf8),
                 headerFields: ["X-TigerSync-Clock": serverClock]
             ),
-            hlc: CourseMembershipStampTests.hlc
+            sentStamp: CourseMembershipStampTests.hlc
         )
         static let otherConflict = Attempt(
             reply: .init(statusCode: 409, body: Data(#"{"error":"something_else","message":"other"}"#.utf8)),
-            hlc: CourseMembershipStampTests.hlc
+            sentStamp: CourseMembershipStampTests.hlc
         )
-        static let landsRestamped = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)), hlc: serverClock)
+        static let landsRestamped = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)), sentStamp: serverClock)
     }
 
     struct Case: Sendable, CustomTestStringConvertible {
@@ -69,7 +69,7 @@ struct CourseMembershipStampTests {
             example.edit == .hide ? path.appending(queryItems: [URLQueryItem(name: "hlc", value: hlc)]) : path
         }
         for attempt in example.attempts {
-            SettingsAPIStub.enqueue(attempt.reply, for: stamped(attempt.hlc))
+            SettingsAPIStub.enqueue(attempt.reply, for: stamped(attempt.sentStamp))
         }
         let coordinator = Self.makeCoordinator(baseURL)
 
@@ -87,9 +87,9 @@ struct CourseMembershipStampTests {
         for (request, attempt) in zip(sent, example.attempts) {
             switch example.edit {
             case .hide:
-                #expect(request.url == stamped(attempt.hlc))
+                #expect(request.url == stamped(attempt.sentStamp))
             case .add:
-                try Self.expectAdd(request, hlc: attempt.hlc)
+                try Self.expectAdd(request, hlc: attempt.sentStamp)
             }
         }
         #expect(await coordinator.outbox.pendingCount() == (example.attempts.last?.landed == true ? 0 : 1))

@@ -468,7 +468,7 @@ extension BulletinListSessionTests {
             let decode = { try JSONDecoder().decode(BulletinAPI.BulletinListResponse.self, from: $0) }
             var firstPages = [try decode(Self.page([first], next: walked)), try decode(Self.page([refreshed], next: walkedAfterRefresh))]
             let olderPage = try decode(Self.page([stale], next: base + 30))
-            let held = HeldBulletinPages()
+            let held = CancellationIgnoringPages()
             let feed = BulletinFeed(
                 page: { cursor, _ in
                     guard let cursor else { return firstPages.removeFirst() }
@@ -495,7 +495,7 @@ extension BulletinListSessionTests {
 }
 
 @MainActor
-private final class HeldBulletinPages {
+private final class CancellationIgnoringPages {
     private var waiting: [Int: CheckedContinuation<Void, Never>] = [:]
     private(set) var answered: Set<Int> = []
 
