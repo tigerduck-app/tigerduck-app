@@ -40,7 +40,7 @@ struct MacScoreView: View {
                 HStack(spacing: 8) {
                     SyncStatusDot(servers: ServerKind.transcriptSources, lastSynced: .at(viewModel.cachedAt))
                     Button {
-                        Task { await viewModel.refresh(authService: app.authService, force: true) }
+                        viewModel.triggerRefresh(authService: app.authService)
                     } label: {
                         if viewModel.isRefreshing {
                             ProgressView().controlSize(.small)
@@ -57,7 +57,7 @@ struct MacScoreView: View {
         .task {
             viewModel.load(authService: app.authService)
         }
-        .onChange(of: app.authService.session.ticket) {
+        .onChange(of: app.authService.session.currentSignIn) {
             viewModel.load(authService: app.authService)
         }
     }

@@ -19,10 +19,12 @@ struct AppBackend {
         self.authTokenManager = authTokenManager
         self.pushCoordinator = pushCoordinator
         cloudSyncCoordinator = cloudSync
-        syncTarget = SyncTarget(account: account)
+        syncTarget = SyncTarget()
         localEdits = LocalEdits(account: account)
-        edits = EditSender(coordinator: cloudSync, push: pushCoordinator, poller: poller, localEdits: localEdits)
-        uploads = SchoolDataUploader(account: account, target: syncTarget, backend: pushCoordinator)
+        edits = EditSender(
+            coordinator: cloudSync, push: pushCoordinator, poller: poller, localEdits: localEdits, account: account
+        )
+        uploads = SchoolDataUploader(target: syncTarget, backend: pushCoordinator)
         holidays = HolidaySettingSender(account: account, push: pushCoordinator, poller: poller)
     }
 }

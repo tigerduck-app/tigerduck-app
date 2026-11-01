@@ -31,7 +31,7 @@ final class ScoreViewModel {
 
     private struct RefreshOwner: Equatable {
         let studentId: String
-        let signIn: AccountSession.Ticket
+        let signIn: SignIn
     }
 
     var rankingScope: RankingScope = .semester
@@ -67,7 +67,8 @@ final class ScoreViewModel {
         showCachedReport(for: studentId)
         guard studentId != nil else { return }
 
-        Task { await self.refresh(authService: authService, force: false) }
+        let signIn = authService.session.currentSignIn
+        Task { await self.refresh(authService: authService, force: false, for: signIn) }
     }
 
     func showCachedReport(for studentId: String?) {
@@ -94,13 +95,13 @@ final class ScoreViewModel {
         // Pinned to MainActor: `refresh` writes `manager.loadingState` and `@Observable` state that
         // SwiftUI reads on main, and a `Task` without an actor inherits the enclosing isolation, so
         // it could resume on a background executor after the network await.
+        let signIn = authService.session.currentSignIn
         Task { @MainActor [weak self] in
-            await self?.refresh(authService: authService, force: force)
+            await self?.refresh(authService: authService, force: force, for: signIn)
         }
     }
 
-    func refresh(authService: AuthService, force: Bool = true) async {
-        let ticket = authService.session.ticket
+    func refresh(authService: AuthService, force: Bool = true, for signIn: SignIn) async {
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
             switchAccount(to: nil)
@@ -109,21 +110,17 @@ final class ScoreViewModel {
         }
         await refresh(
             for: studentId,
-            ticket: ticket,
-            isCurrent: { [weak authService] in authService?.session.isCurrent(ticket) == true },
+            signIn: signIn,
             isReachable: { await NetworkMonitor.shared.isReachable() },
             fetch: { [reports] in
-                try await reports.fetch(studentId: studentId, password: password, force: force) { @Sendable [weak authService] in
-                    authService?.session.isCurrent(ticket) == true
-                }
+                try await reports.fetch(studentId: studentId, password: password, force: force, for: signIn)
             }
         )
     }
 
     func refresh(
         for studentId: String,
-        ticket: AccountSession.Ticket,
-        isCurrent: () -> Bool,
+        signIn: SignIn,
         isReachable: () async -> Bool,
         fetch: () async throws -> (report: ScoreReport, cachedAt: Date),
         reports override: ScoreReports? = nil,
@@ -131,13 +128,13 @@ final class ScoreViewModel {
     ) async {
         let manager = (override ?? reports).indicator
         switchAccount(to: studentId)
-        let owner = RefreshOwner(studentId: studentId, signIn: ticket)
+        let owner = RefreshOwner(studentId: studentId, signIn: signIn)
         guard inFlightRefresh != owner else { return }
         inFlightRefresh = owner
         defer { if inFlightRefresh == owner { inFlightRefresh = nil } }
         errorMessage = nil
         let reachable = await isReachable()
-        guard isCurrent(), inFlightRefresh == owner else { return }
+        guard signIn.isCurrent, inFlightRefresh == owner else { return }
         guard reachable else {
             let message = String(localized: "error_network_unavailable")
             errorMessage = message
@@ -156,7 +153,7 @@ final class ScoreViewModel {
         } catch {
             outcome = .failure(error)
         }
-        guard isCurrent(), inFlightRefresh == owner else {
+        guard signIn.isCurrent, inFlightRefresh == owner else {
             if manager.loadingStarts == starts, manager.loadingState == .loading {
                 manager.loadingState = .loaded
             }

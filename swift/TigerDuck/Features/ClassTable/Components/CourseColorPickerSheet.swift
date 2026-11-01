@@ -11,14 +11,14 @@ struct CourseColorPickerSheet: View {
     @State private var suppressNextColorChange = false
     @State private var customPicks: CustomColorPickDebouncer
 
-    init(course: CourseStore.Course, isCurrent: @escaping () -> Bool, onSelect: @escaping (UInt32) -> Void) {
+    init(course: CourseStore.Course, signIn: SignIn, onSelect: @escaping (UInt32) -> Void) {
         self.course = course
         _customColor = State(initialValue: Color(hex: UInt(TigerDuckTheme.assignedHex(for: course.courseNo))))
         let courseNo = course.courseNo
         _customPicks = State(initialValue: CustomColorPickDebouncer(
             apply: onSelect,
             appliedHex: { TigerDuckTheme.assignedHex(for: courseNo) },
-            isCurrent: isCurrent
+            isCurrent: { signIn.isCurrent }
         ))
     }
 

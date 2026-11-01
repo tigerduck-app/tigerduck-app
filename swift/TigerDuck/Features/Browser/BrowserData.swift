@@ -57,7 +57,7 @@ final class BrowserData: AccountScoped {
         epoch += 1
         current = nil
         try? FileManager.default.removeItem(at: BrowserPage.downloadsRoot)
-        if !keepingSiteChoices { Defaults.reset(.browserZoom, .browserDesktopSites) }
+        if !keepingSiteChoices { BrowserSites.forget() }
         guard loadState() != .empty else { return nil }
         saveState(.stale)
         let opensAtStart = opens

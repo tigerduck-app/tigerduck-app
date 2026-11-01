@@ -182,7 +182,7 @@ struct BulletinDetailView: View {
         loadError = nil
         defer { isLoading = false }
         do {
-            detail = try await BulletinDetails.fetch(id: bulletin.id)
+            detail = try await BulletinDetails.fetch(id: bulletin.id, for: await AccountSession.school.startingSignIn)
         } catch {
             logger.error("detail load failed id=\(bulletin.id, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
             if !hadCached {

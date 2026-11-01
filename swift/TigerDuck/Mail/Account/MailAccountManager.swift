@@ -118,19 +118,40 @@ final class MailAccountManager {
         signInStatus.isLoggingIn = true
         signInStatus.error = nil
         defer { signInStatus.isLoggingIn = false }
-        var ticket = session.ticket
+        guard let client = await session.withSignIn({ await signInClient(id, password, during: $0) }) else { return }
+        let signedIn = session.endSignIn()
 
+        lastRejectedPassword = nil
+        prefs.studentID = id
+        prefs.demoActive = client.demo
+        prefs.authFailed = false
+        await establishBaseline(client: client.client, for: signedIn)
+        if prefs.displayName == nil {
+            let discovered = await discoverDisplayName(client: client.client, address: MailConstants.address(forStudentID: id))
+            if signedIn.isCurrent { displayName = discovered }
+        }
+        await client.client.logout()
+
+        guard signedIn.isCurrent else { return }
+        authFailed = false
+        studentID = id
+        listeners.signedIn?()
+    }
+
+    private func signInClient(
+        _ id: String, _ password: String, during signedOut: SignIn
+    ) async -> (client: any MailClient, demo: Bool)? {
         await cacheWipe.pending?.value
-        guard session.isCurrent(ticket) else { return }
+        guard signedOut.isCurrent else { return nil }
         cacheWipe.forgetFinished()
 
         let demo = signIn.isDemoLogin(id, password)
         let client = signIn.makeClient(demo)
         do {
             try await client.login(studentID: id, password: password)
-            guard session.isCurrent(ticket) else {
+            guard signedOut.isCurrent else {
                 await client.logout()
-                return
+                return nil
             }
             try signIn.credentials.savePassword(password)
         } catch {
@@ -138,26 +159,9 @@ final class MailAccountManager {
             let failure = LoginError(error)
             if failure == .credentials { lastRejectedPassword = password }
             signInStatus.error = failure
-            return
+            return nil
         }
-        session.moveOn()
-        ticket = session.ticket
-
-        lastRejectedPassword = nil
-        prefs.studentID = id
-        prefs.demoActive = demo
-        prefs.authFailed = false
-        await establishBaseline(client: client, ticket: ticket)
-        if prefs.displayName == nil {
-            let discovered = await discoverDisplayName(client: client, address: MailConstants.address(forStudentID: id))
-            if session.isCurrent(ticket) { displayName = discovered }
-        }
-        await client.logout()
-
-        guard session.isCurrent(ticket) else { return }
-        authFailed = false
-        studentID = id
-        listeners.signedIn?()
+        return (client, demo)
     }
 
     static func normalizedUsername(_ raw: String) -> String {
@@ -174,18 +178,19 @@ final class MailAccountManager {
         guard let id = prefs.studentID, let password = signIn.credentials.password() else {
             throw MailClientError.protocolError("credentials unavailable")
         }
-        let ticket = session.ticket
         let client = signIn.makeClient(prefs.demoActive)
-        do {
-            try await client.login(studentID: id, password: password)
-            return client
-        } catch MailClientError.authenticationFailed {
-            await client.logout()
-            if session.isCurrent(ticket) { handleAuthFailure() }
-            throw MailClientError.authenticationFailed
-        } catch {
-            await client.logout()
-            throw error
+        return try await session.withSignIn { signedIn in
+            do {
+                try await client.login(studentID: id, password: password)
+                return client
+            } catch MailClientError.authenticationFailed {
+                await client.logout()
+                if signedIn.isCurrent { handleAuthFailure() }
+                throw MailClientError.authenticationFailed
+            } catch {
+                await client.logout()
+                throw error
+            }
         }
     }
 
@@ -214,9 +219,9 @@ final class MailAccountManager {
         cacheWipe.resumeIfInterrupted(prefs: prefs)
     }
 
-    private func establishBaseline(client: any MailClient, ticket: AccountSession.Ticket) async {
+    private func establishBaseline(client: any MailClient, for signIn: SignIn) async {
         guard let status = try? await client.status(folder: MailConstants.inbox) else { return }
-        guard session.isCurrent(ticket) else { return }
+        guard signIn.isCurrent else { return }
         MailInboxCursor(prefs: prefs).reset(to: status)
     }
 

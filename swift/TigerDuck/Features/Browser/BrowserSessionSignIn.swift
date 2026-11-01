@@ -18,8 +18,7 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
         self.host = host
     }
 
-    func signIn() async -> Bool {
-        let isCurrent = AccountSession.school.currentCheck()
+    func signIn(for signIn: SignIn) async -> Bool {
         let epoch = BrowserData.shared.epoch
         let cookies = store.httpCookieStore
         let jars = [HTTPCookieStorage.shared, SchoolWeb.schoolCookies]
@@ -29,7 +28,7 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
         guard await runSignInPage() else { return false }
         let signedIn = await cookies.allCookies()
         // A sign-out since the start purged the jar, which must not get the departing account's cookies back.
-        guard !Task.isCancelled, isCurrent(), BrowserData.shared.epoch == epoch else { return false }
+        guard !Task.isCancelled, signIn.isCurrent, BrowserData.shared.epoch == epoch else { return false }
         signedIn.filter(BrowserRouting.isSharedCookie).forEach(HTTPCookieStorage.shared.setCookie)
         return BrowserRouting.hasMoodleSession(signedIn)
     }

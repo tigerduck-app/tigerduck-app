@@ -49,10 +49,10 @@ struct CourseMoodleDestination: View {
         }
     }
 
-    static func store(for course: CourseStore.Course, authService: AuthService) -> MoodleCourseStore? {
+    static func store(for course: CourseStore.Course, authService: AuthService, signIn: SignIn) -> MoodleCourseStore? {
         guard let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
               let courseId = CourseLookup.moodleCourseId(idnumber: idnumber),
-              let context = MoodleCacheContext.signedIn(authService) else { return nil }
+              let context = MoodleCacheContext.signedIn(authService, for: signIn) else { return nil }
         let term = AcademicTerm.codePrefix(ofMoodleId: idnumber)
         let idMap = CourseLookup.moodleCourseIds()
         let termCourseIds = idMap

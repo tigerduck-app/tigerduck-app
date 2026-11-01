@@ -10,11 +10,11 @@ enum MailListLoader {
     /// scrolled, since Mail2000 caps connections and answers "server busy" under load.
     static func load(list: MailListViewModel) async {
         var selection = list.selection
-        let epoch = list.loads.accountEpoch
+        let signIn = await list.account.startingSignIn
         guard list.loads.loadingSelection != selection else { return }
         list.loads.loadingSelection = selection
         defer {
-            if epoch == list.loads.accountEpoch, list.loads.loadingSelection == selection { list.loads.loadingSelection = nil }
+            if signIn.isCurrent, list.loads.loadingSelection == selection { list.loads.loadingSelection = nil }
         }
         let token = list.mailbox.editToken
         if await paintFromCache(list: list) {
@@ -24,29 +24,29 @@ enum MailListLoader {
         }
         list.status.isRefreshing = true
         defer {
-            if list.isCurrent(selection, epoch), list.loads.loadingSelection == selection { list.status.isRefreshing = false }
+            if list.isCurrent(selection, signIn), list.loads.loadingSelection == selection { list.status.isRefreshing = false }
         }
         do {
             if list.folders.roles.isEmpty {
                 let available = try await list.session.use { client in try await client.listFolders() }
-                guard epoch == list.loads.accountEpoch else { return }
+                guard signIn.isCurrent else { return }
                 list.folders.roles = MailFolderMap.resolve(available: available)
                 list.folders.others = MailFolderMap.otherFolders(available: available)
-                guard list.isCurrent(selection, epoch) else { return }
+                guard list.isCurrent(selection, signIn) else { return }
                 if adoptDefaultSelection(list: list) {
                     selection = list.selection
                     list.loads.loadingSelection = selection
                 }
                 if await paintFromCache(list: list) { list.status.loadState = .loaded }
             }
-            guard list.isCurrent(selection, epoch) else { return }
+            guard list.isCurrent(selection, signIn) else { return }
             let fetched = try await newestPages(of: list.targets, session: list.session)
-            if fetched.failure == .authenticationFailed, epoch == list.loads.accountEpoch {
+            if fetched.failure == .authenticationFailed, signIn.isCurrent {
                 list.session.reportAuthenticationRejection()
             }
-            guard list.isCurrent(selection, epoch) else { return }
+            guard list.isCurrent(selection, signIn) else { return }
             for (folder, page) in fetched.pages {
-                guard await merge(page, folder: folder, since: token, selection: selection, epoch: epoch, list: list) else { return }
+                guard await merge(page, folder: folder, since: token, selection: selection, signIn: signIn, list: list) else { return }
             }
             list.rebuildRows()
             if let failure = fetched.failure { throw failure }
@@ -54,21 +54,21 @@ enum MailListLoader {
             list.status.loadState = .loaded
             list.background.startIndexIfLoaded()
         } catch {
-            guard list.isCurrent(selection, epoch) else { return }
+            guard list.isCurrent(selection, signIn) else { return }
             list.status.serverStatus = .failed
             list.status.loadState = list.rows.isEmpty ? .failed(MailAccountManager.LoginError(error).message) : .loaded
         }
     }
 
     private static func merge(
-        _ fresh: MailFolderPage, folder: String, since token: EditToken, selection: MailFolderSelection, epoch: Int,
+        _ fresh: MailFolderPage, folder: String, since token: EditToken, selection: MailFolderSelection, signIn: SignIn,
         list: MailListViewModel
     ) async -> Bool {
         if list.mailbox[folder]?.uidNext != fresh.uidNext { list.background.indexer.noteNewMail() }
         if let previous = list.mailbox[folder], previous.uidValidity != fresh.uidValidity {
             await list.writer.dropFolder(folder)
             list.mailbox.drop(folder)
-            guard list.isCurrent(selection, epoch) else { return false }
+            guard list.isCurrent(selection, signIn) else { return false }
         }
         var merged = list.mailbox.mergeFresh(fresh, folder: folder, since: token)
         list.rebuildRows()
@@ -76,7 +76,7 @@ enum MailListLoader {
             merged = list.mailbox.applyingEdits(to: await walkBack(from: merged, folder: folder, since: token, list: list),
                                                 since: token)
         }
-        guard list.isCurrent(selection, epoch) else { return false }
+        guard list.isCurrent(selection, signIn) else { return false }
         await list.writer.save(merged)
         return true
     }
@@ -130,14 +130,14 @@ enum MailListLoader {
         var current = start
         var fetched = 0
         let selection = list.selection
-        let epoch = list.loads.accountEpoch
+        let signIn = await list.account.startingSignIn
         while current.summaries.isEmpty, let cursor = current.oldestLoadedSequence,
               fetched < MailConstants.emptyWindowWalkbackPages {
             fetched += 1
             guard let older = try? await list.session.use({ client in
                 try await client.page(folder: folder, olderThanSequence: cursor, pageSize: MailConstants.pageSize)
             }) else { break }
-            guard list.isCurrent(selection, epoch), older.uidValidity == current.uidValidity else { break }
+            guard list.isCurrent(selection, signIn), older.uidValidity == current.uidValidity else { break }
             current = list.mailbox.applyingEdits(to: MailFolderPage(
                 folder: current.folder, uidValidity: current.uidValidity, messageCount: current.messageCount,
                 summaries: older.summaries.sorted { $0.uid > $1.uid },
@@ -151,7 +151,7 @@ enum MailListLoader {
 
     static func loadOlder(list: MailListViewModel) async {
         let selection = list.selection
-        let epoch = list.loads.accountEpoch
+        let signIn = await list.account.startingSignIn
         let token = list.mailbox.editToken
         let cursors = list.targets.compactMap { folder in list.mailbox[folder]?.oldestLoadedSequence.map { (folder, $0) } }
         guard !cursors.isEmpty else { return }
@@ -165,7 +165,7 @@ enum MailListLoader {
                     let next = try await list.session.use { client in
                         try await client.page(folder: folder, olderThanSequence: older, pageSize: MailConstants.pageSize)
                     }
-                    guard list.isCurrent(selection, epoch), let page = list.mailbox[folder] else { return }
+                    guard list.isCurrent(selection, signIn), let page = list.mailbox[folder] else { return }
                     guard next.uidValidity == page.uidValidity else {
                         await list.recoverFromFolderChange(folder)
                         return
@@ -184,7 +184,7 @@ enum MailListLoader {
                     await list.recoverFromFolderChange(folder)
                     return
                 } catch {
-                    guard list.isCurrent(selection, epoch) else { return }
+                    guard list.isCurrent(selection, signIn) else { return }
                     list.status.serverStatus = .failed
                     return
                 }

@@ -47,24 +47,24 @@ final class ClassTableImportModel: Identifiable {
     private struct Account {
         let store: ImportedClassTableStore
         let signedInStudentId: () -> String?
-        let isCurrent: () -> Bool
+        let signIn: SignIn
         let lookup: CourseLookup
     }
 
     init(
         store: ImportedClassTableStore,
         signedInStudentId: @escaping () -> String?,
-        isCurrent: @escaping () -> Bool,
+        signIn: SignIn,
         lookup: @escaping CourseLookup
     ) {
-        account = Account(store: store, signedInStudentId: signedInStudentId, isCurrent: isCurrent, lookup: lookup)
+        account = Account(store: store, signedInStudentId: signedInStudentId, signIn: signIn, lookup: lookup)
     }
 
     static func live(authService: AuthService) -> ClassTableImportModel {
         ClassTableImportModel(
             store: .shared,
             signedInStudentId: { authService.storedStudentId },
-            isCurrent: authService.session.currentCheck(),
+            signIn: authService.session.currentSignIn,
             lookup: { try await SchoolRefresh.importedCourses(semester: $0, courseNos: $1) }
         )
     }
@@ -145,7 +145,7 @@ final class ClassTableImportModel: Identifiable {
             guard !Task.isCancelled else { return }
             isReadingImage = false
             imageTask = nil
-            guard account.isCurrent() else {
+            guard account.signIn.isCurrent else {
                 isFinished = true
                 return
             }
@@ -193,7 +193,7 @@ final class ClassTableImportModel: Identifiable {
             let courses = await courses(for: job.code)
             guard !Task.isCancelled else { return }
             isLookingUp = false
-            guard account.isCurrent() else {
+            guard account.signIn.isCurrent else {
                 isFinished = true
                 return
             }
@@ -210,7 +210,7 @@ final class ClassTableImportModel: Identifiable {
                 }
                 nickname = current.nickname
             }
-            guard let person = account.store.add(job.code, nickname: nickname, courses: courses) else {
+            guard let person = account.store.add(job.code, nickname: nickname, courses: courses, for: account.signIn) else {
                 prompt = .saveFailed(job)
                 return
             }

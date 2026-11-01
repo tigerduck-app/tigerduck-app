@@ -47,7 +47,7 @@ final class ShownPersonModel {
 
     func saveNickname() {
         guard let personInAlert else { return }
-        if store.rename(personInAlert.id, to: nicknameDraft) == .failed { showsSaveFailed = true }
+        if store.rename(personInAlert.id, to: nicknameDraft, for: AccountSession.school.currentSignIn) == .failed { showsSaveFailed = true }
     }
 
     func startDeletingPerson() {
@@ -58,10 +58,14 @@ final class ShownPersonModel {
 
     func deletePersonInAlert() {
         guard let personInAlert else { return }
-        if store.delete(personInAlert.id) == .failed { showsSaveFailed = true }
+        if store.delete(personInAlert.id, for: AccountSession.school.currentSignIn) == .failed { showsSaveFailed = true }
     }
 
     func refresh(semester: String) async -> Bool {
+        await AccountSession.school.withSignIn { await refresh(semester: semester, for: $0) }
+    }
+
+    private func refresh(semester: String, for signIn: SignIn) async -> Bool {
         guard !isRefreshing, let person = shownPerson,
               let term = person.terms.first(where: { $0.semester == semester }) else { return false }
         isRefreshing = true
@@ -72,7 +76,7 @@ final class ShownPersonModel {
         }
         let change = store.updateCourses(
             person.id, semester: term.semester, courseNos: term.courseNos, courses: refreshed,
-            importedAt: person.importedAt
+            importedAt: person.importedAt, for: signIn
         )
         if change == .failed { showsSaveFailed = true }
         return shownPerson?.id == person.id

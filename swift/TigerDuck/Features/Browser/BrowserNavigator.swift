@@ -55,9 +55,10 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         observe(webView)
 
         let store = page.store
+        let schoolSignIn = AccountSession.school.currentSignIn
         page.signIn.load = { [weak webView] in webView?.load(URLRequest(url: $0)) }
         page.signIn.signInWithSession = { [weak container] in
-            await BrowserSessionSignIn(store: store, host: container).signIn()
+            await BrowserSessionSignIn(store: store, host: container).signIn(for: schoolSignIn)
         }
         page.find.run = { [weak webView] in await webView?.runFind($0) }
         Task {

@@ -28,7 +28,7 @@ final class HomeViewModel {
     private func reloadFromCache() {
         let courses = CanonicalCourseProvider().currentCourses()
         let all = AssignmentStore.shared.loadAssignments()
-        TigerDuckTheme.ensureAssignments(courseNos: courses.map(\.courseNo))
+        TigerDuckTheme.ensureAssignments(courseNos: courses.map(\.courseNo), for: AccountSession.school.currentSignIn)
         allCourses = courses
         todayCourses = courses.coursesForToday()
         let currentCourseNos = Set(courses.map(\.courseNo))
@@ -62,7 +62,7 @@ final class HomeViewModel {
     private func fetchData(authService: AuthService) async {
         guard await SchoolRefresh.begin() else { return }
         SchoolRefresh.dropMoodleCourses()
-        await SchoolRefresh.assignments(authService: authService)
+        await authService.session.withSignIn { await SchoolRefresh.assignments(authService: authService, for: $0) }
         reloadFromCache()
         SchoolRefresh.end()
     }

@@ -128,22 +128,22 @@ final class LibraryViewModel {
     }
 
     private func fetchAndDisplayQR() {
+        let signIn = AccountSession.library.currentSignIn
         Task { @MainActor in
             runShownCodesClock()
             code.isLoading = code.image == nil
             errorMessage = nil
-            let isCurrent = AccountSession.library.currentCheck()
             do {
                 let payload = try await cycle.fetchCode()
                 let image = await Self.render(payload)
-                guard isCurrent() else { return }
+                guard signIn.isCurrent else { return }
                 LibraryQRCache.shared.store(payload)
                 if let image { LibraryQRImageCache.shared.store(image, for: payload) }
                 code = ShownCode(image: image, payload: payload, fetchedAt: LibraryQRCache.shared.fetchedAt)
                 cycle.noteSuccess()
                 restartCountdown()
             } catch {
-                guard isCurrent() else { return }
+                guard signIn.isCurrent else { return }
                 errorMessage = error.localizedDescription
                 code.isLoading = false
                 if !LibraryAccount.hasAccount {
@@ -196,10 +196,10 @@ final class LibraryViewModel {
                 code.isLoading = false
             } else {
                 code.isLoading = code.image == nil
-                let isCurrent = AccountSession.library.currentCheck()
+                let signIn = AccountSession.library.currentSignIn
                 Task { @MainActor in
                     let image = await Self.render(payload)
-                    guard code.payload == payload, isCurrent() else { return }
+                    guard code.payload == payload, signIn.isCurrent else { return }
                     if let image { LibraryQRImageCache.shared.store(image, for: payload) }
                     code.image = image
                     code.isLoading = false

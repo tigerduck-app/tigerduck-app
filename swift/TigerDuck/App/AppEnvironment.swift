@@ -52,7 +52,7 @@ final class AppEnvironment {
         let authService = AuthService(session: .school)
         self.authService = authService
         let identity = PushIdentity.loadOrCreate()
-        let atm = AuthTokenManager(deviceUUID: identity.uuid)
+        let atm = AuthTokenManager(deviceUUID: identity.uuid, storedFor: authService.session.currentSignIn)
         let pushCoordinator = PushCoordinator(identity: identity, authTokenManager: atm)
         let cloudSync = CloudSyncCoordinator(
             pushCoordinator: pushCoordinator,
@@ -80,11 +80,11 @@ final class AppEnvironment {
 
     private func wire(_ atm: AuthTokenManager) {
         Task { [weak self] in
-            await atm.setRefreshFailedHandler { [weak self, weak atm] in
-                await self?.attemptBackendRelogin(replacing: await atm?.storedAccessToken) ?? false
+            await atm.setRefreshFailedHandler { [weak self, weak atm] signIn in
+                await self?.attemptBackendRelogin(replacing: await atm?.storedAccessToken, for: signIn) ?? false
             }
-            await atm.setSignInAgainHandler { [weak self] refused in
-                await self?.attemptBackendRelogin(replacing: refused) ?? false
+            await atm.setSignInAgainHandler { [weak self] refused, signIn in
+                await self?.attemptBackendRelogin(replacing: refused, for: signIn) ?? false
             }
             await atm.setNoSessionHandler { [weak self] in
                 await self?.authService.ensureBackendSignedIn()
@@ -109,7 +109,9 @@ final class AppEnvironment {
             pushCoordinator.refreshRegistrationAfterAuth()
             pushSchedule.requestSync()
             #if os(iOS)
-            NotificationSettingsSync.accountSignedIn(local: .init(from: liveActivity.preferences))
+            NotificationSettingsSync.accountSignedIn(
+                local: .init(from: liveActivity.preferences), for: authService.session.currentSignIn
+            )
             notificationSettings.reconcile()
             #endif
         }
@@ -123,13 +125,16 @@ final class AppEnvironment {
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
         preferences.onLanguageChange = { [weak self] in self?.activation.cancelRefresh() }
-        preferences.onCourseLabelsChange = { [weak self] in self?.relabeler.relabelAll() }
-
-        CourseUpload.courseUploader = { [weak self] courses, semester, asRoster, resend in
-            self?.uploads.uploadCourses(courses, semester: semester, asRoster: asRoster, resend: resend)
+        preferences.onCourseLabelsChange = { [weak self] in
+            guard let self else { return }
+            relabeler.relabelAll(for: authService.session.currentSignIn)
         }
-        AssignmentAnswers.assignmentUploader = { [weak self] request in
-            self?.uploads.uploadAssignments(request)
+
+        CourseUpload.courseUploader = { [weak self] courses, semester, asRoster, resend, signIn in
+            self?.uploads.uploadCourses(courses, semester: semester, asRoster: asRoster, resend: resend, for: signIn)
+        }
+        AssignmentAnswers.assignmentUploader = { [weak self] request, signIn in
+            self?.uploads.uploadAssignments(request, for: signIn)
         }
         poller.poll = { [weak self] in await self?.feed.pollRevision() ?? .unchanged }
         pushCoordinator.onCoursesUploaded = { [weak self] in self?.cloudSyncCoordinator.courseUploadLanded() }
@@ -149,8 +154,8 @@ final class AppEnvironment {
         Task { await TLSPinDocumentFetcher.shared.fetchIfDue() }
     }
 
-    private func attemptBackendRelogin(replacing refused: String?) async -> Bool {
-        guard await authService.reloginToBackend(replacing: refused) else { return false }
+    private func attemptBackendRelogin(replacing refused: String?, for signIn: SignIn) async -> Bool {
+        guard await authService.reloginToBackend(replacing: refused, for: signIn) else { return false }
         pushCoordinator.refreshRegistrationAfterAuth()
         return true
     }
@@ -191,7 +196,6 @@ final class AppEnvironment {
                 self.notificationSettings.reconcile(onSettled: onSettled)
             }
             await MoodleDownloadProtectMigration.runIfNeeded(
-                root: MoodleFiles.shared.moodleFilesDir,
                 isProtectedDataAvailable: UIApplication.shared.isProtectedDataAvailable
             )
             #endif

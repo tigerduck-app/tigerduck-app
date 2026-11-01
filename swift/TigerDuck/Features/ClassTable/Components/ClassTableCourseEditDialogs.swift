@@ -66,7 +66,7 @@ struct ClassTableCourseEditDialogs: ViewModifier {
             .sheet(item: $editor.dialogs.courseToRecolor) { course in
                 CourseColorPickerSheet(
                     course: course,
-                    isCurrent: app.authService.session.currentCheck(),
+                    signIn: app.authService.session.currentSignIn,
                     onSelect: { editor.setColor(hex: $0, for: course) }
                 )
                 #if os(iOS)

@@ -144,7 +144,7 @@ private struct CopyLinkButton: View {
 }
 
 extension View {
-    func classTableShareSheet(model: Binding<ClassTableShareModel?>, signIn: AccountSession.Ticket) -> some View {
+    func classTableShareSheet(model: Binding<ClassTableShareModel?>, signIn: SignIn) -> some View {
         sheet(item: model) { model in
             #if os(iOS)
             ClassTableShareSheet(model: model)

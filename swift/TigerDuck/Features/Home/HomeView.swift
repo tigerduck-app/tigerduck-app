@@ -65,7 +65,7 @@ struct HomeView: View {
             )
             .moodleLinkOpening()
         }
-        .onChange(of: app.authService.session.ticket) {
+        .onChange(of: app.authService.session.currentSignIn) {
             viewModel.sheets.closeAssignment()
         }
         .onChange(of: app.router.pendingDeepLink, initial: true) { _, link in
@@ -147,7 +147,7 @@ struct HomeView: View {
     }
 
     private func openAssignment(_ assignment: AssignmentStore.Assignment, closingSheet: Bool = true) {
-        if let context = MoodleCacheContext.signedIn(app.authService),
+        if let context = MoodleCacheContext.signedIn(app.authService, for: app.authService.session.currentSignIn),
            let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context),
            let entry = store.assignments.entry(for: assignment) {
             viewModel.sheets.show(

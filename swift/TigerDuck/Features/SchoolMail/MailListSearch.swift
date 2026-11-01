@@ -37,7 +37,7 @@ final class MailListSearch {
             return
         }
         let selection = list.selection
-        let epoch = list.loads.accountEpoch
+        let signIn = await list.account.startingSignIn
         supersede()
         self.query = query
         let generation = generations.current
@@ -49,7 +49,7 @@ final class MailListSearch {
         for folder in list.targets {
             guard !Task.isCancelled, generation == generations.current else { return }
             let matched = await matchingUIDs(in: folder, query: query)
-            guard !Task.isCancelled, list.isCurrent(selection, epoch), generation == generations.current else { return }
+            guard !Task.isCancelled, list.isCurrent(selection, signIn), generation == generations.current else { return }
             guard let matched, !matched.uids.isEmpty else { continue }
             let validity = matched.uidValidity
             let newest = Array(matched.uids.prefix(MailConstants.pageSize))
@@ -57,15 +57,15 @@ final class MailListSearch {
                 let summaries = try await list.session.use { client in
                     try await client.summaries(folder: folder, uids: newest, expectedUIDValidity: validity)
                 }
-                guard list.isCurrent(selection, epoch), generation == generations.current else { return }
+                guard list.isCurrent(selection, signIn), generation == generations.current else { return }
                 known.noteGone(newest, summaries, folder: folder)
                 found += summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
                 unfetched[folder] = (validity, Array(matched.uids.dropFirst(newest.count)))
             } catch MailClientError.folderChanged {
-                guard list.isCurrent(selection, epoch) else { return }
+                guard list.isCurrent(selection, signIn) else { return }
                 recreated.append(folder)
             } catch {
-                guard list.isCurrent(selection, epoch) else { return }
+                guard list.isCurrent(selection, signIn) else { return }
                 serverFailed = true
                 let uids = Set(matched.uids)
                 found += (list.mailbox[folder]?.summaries ?? []).filter { uids.contains($0.uid) }
@@ -74,7 +74,7 @@ final class MailListSearch {
                 usedFallback = true
             }
         }
-        guard list.isCurrent(selection, epoch), generation == generations.current else { return }
+        guard list.isCurrent(selection, signIn), generation == generations.current else { return }
         if serverFailed { list.status.serverStatus = .failed }
         results = list.ordered(found)
         generations.shown = generation
@@ -128,11 +128,11 @@ final class MailListSearch {
         guard let list else { return false }
         let query = self.query
         let selection = list.selection
-        let epoch = list.loads.accountEpoch
+        let signIn = await list.account.startingSignIn
         let generation = generations.current
         for folder in list.targets {
             let matched = await matchingUIDs(in: folder, query: query)
-            guard !Task.isCancelled, list.isCurrent(selection, epoch), generation == generations.current,
+            guard !Task.isCancelled, list.isCurrent(selection, signIn), generation == generations.current,
                   results != nil else { return false }
             guard let matched else { continue }
             if let known = known.unfetched[folder], known.uidValidity != matched.uidValidity {
@@ -143,23 +143,23 @@ final class MailListSearch {
             let batch = known.nextBatch(of: matched, folder: folder, listed: listed)
             guard !batch.isEmpty else { continue }
             guard await fetch(batch, folder: folder, uidValidity: matched.uidValidity,
-                              selection: selection, epoch: epoch, generation: generation) else { return false }
+                              selection: selection, signIn: signIn, generation: generation) else { return false }
         }
-        guard !Task.isCancelled, list.isCurrent(selection, epoch), generation == generations.current else { return false }
+        guard !Task.isCancelled, list.isCurrent(selection, signIn), generation == generations.current else { return false }
         if list.displayedRows.isEmpty, !list.isPaginating { await loadMore() }
         return true
     }
 
     private func fetch(
         _ batch: [UInt32], folder: String, uidValidity: UInt32,
-        selection: MailFolderSelection, epoch: Int, generation: Int
+        selection: MailFolderSelection, signIn: SignIn, generation: Int
     ) async -> Bool {
         guard let list else { return false }
         do {
             let summaries = try await list.session.use { client in
                 try await client.summaries(folder: folder, uids: batch, expectedUIDValidity: uidValidity)
             }
-            guard list.isCurrent(selection, epoch), generation == generations.current, let current = results else {
+            guard list.isCurrent(selection, signIn), generation == generations.current, let current = results else {
                 return false
             }
             known.noteGone(batch, summaries, folder: folder)
@@ -170,13 +170,13 @@ final class MailListSearch {
             if !rows.isEmpty { results = list.ordered(current + rows) }
             return true
         } catch MailClientError.folderChanged {
-            guard list.isCurrent(selection, epoch), generation == generations.current else { return false }
+            guard list.isCurrent(selection, signIn), generation == generations.current else { return false }
             known.unfetched[folder] = nil
             results?.removeAll { $0.folder == folder }
             await list.recoverFromFolderChange(folder)
             return false
         } catch {
-            guard !Task.isCancelled, list.isCurrent(selection, epoch) else { return false }
+            guard !Task.isCancelled, list.isCurrent(selection, signIn) else { return false }
             list.status.serverStatus = .failed
             return false
         }
@@ -185,7 +185,7 @@ final class MailListSearch {
     func loadMore() async {
         guard let list else { return }
         let selection = list.selection
-        let epoch = list.loads.accountEpoch
+        let signIn = await list.account.startingSignIn
         let generation = generations.current
         let end = list.displayedRows.last?.id
         list.status.isPaginating = true
@@ -200,7 +200,7 @@ final class MailListSearch {
                 }
                 let batch = Array(matches.uids.prefix(MailConstants.pageSize))
                 guard await fetch(batch, folder: folder, uidValidity: matches.uidValidity,
-                                  selection: selection, epoch: epoch, generation: generation) else { return }
+                                  selection: selection, signIn: signIn, generation: generation) else { return }
             }
         }
     }

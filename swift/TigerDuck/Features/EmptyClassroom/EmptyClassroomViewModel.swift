@@ -49,7 +49,15 @@ final class EmptyClassroomViewModel {
     }
 
     func connect(_ authService: AuthService) {
-        loader.connect(authService)
+        loader.reader = { [weak authService] in
+            guard let authService,
+                  let studentId = authService.storedStudentId,
+                  let password = authService.storedPassword else { return nil }
+            let signIn = authService.session.currentSignIn
+            return EmptyClassroomLoader.Reader(
+                credentials: .init(studentId: studentId, password: password, signIn: signIn)
+            )
+        }
     }
 
     var siteStatus: ServerStatus { loader.siteStatus }
@@ -175,7 +183,7 @@ final class EmptyClassroomViewModel {
 
     func pick(building: String) {
         pickedBuilding = building
-        Defaults[.emptyClassroomBuilding] = building
+        SchoolAccountKeys.pickEmptyClassroomBuilding(building, for: AccountSession.school.currentSignIn)
     }
 
     func open(room: RoomUsage) {

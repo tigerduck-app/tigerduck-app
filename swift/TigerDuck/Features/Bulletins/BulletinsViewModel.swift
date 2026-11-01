@@ -14,6 +14,7 @@ final class BulletinsViewModel: AccountScoped {
     }
 
     let feed: BulletinFeed
+    private let account: AccountSession
     private(set) var loadState: LoadState = .idle
     private(set) var isPaginating: Bool = false
     private var filter = BulletinFilter() {
@@ -30,9 +31,10 @@ final class BulletinsViewModel: AccountScoped {
     private var isPrefetchPaused = false
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.VM")
 
-    init(feed: BulletinFeed? = nil) {
-        let feed = feed ?? BulletinFeed()
+    init(feed: BulletinFeed? = nil, account: AccountSession = .school) {
+        let feed = feed ?? BulletinFeed(for: account.currentSignIn)
         self.feed = feed
+        self.account = account
         filteredItems = feed.items
     }
 
@@ -74,17 +76,17 @@ final class BulletinsViewModel: AccountScoped {
 
     private func refreshFirstPage() async {
         let includeDeleted = showDeleted
-        let epoch = BulletinFeed.listEpoch
+        let signIn = await account.startingSignIn
         guard let page = try? await feed.page(after: nil, includeDeleted: includeDeleted),
               includeDeleted == showDeleted else { return }
-        if dropsAfterSignOut(epoch) { return }
-        noteNewestPage()
+        if dropsAfterSignOut(signIn) { return }
+        noteNewestPage(for: signIn)
         let knownIds = Set(feed.items.map(\.id))
         let reachesKeptRows = page.items.contains { knownIds.contains($0.id) }
         feed.add(page, movesCursor: !reachesKeptRows)
         if !reachesKeptRows { startBackgroundPrefetch() }
         refilter()
-        persistSummaries()
+        persistSummaries(for: signIn)
     }
 
     func waitForPrefetch() async {
@@ -114,12 +116,12 @@ final class BulletinsViewModel: AccountScoped {
 
     func summary(forId id: Int) async throws -> BulletinAPI.BulletinSummary? {
         if feed.isFromBeforeSignOut { restartAfterSignOut() }
-        let epoch = BulletinFeed.listEpoch
+        let signIn = await account.startingSignIn
         guard let found = try await feed.summary(forId: id) else { return nil }
-        guard found.fetched, !dropsAfterSignOut(epoch) else { return found.summary }
+        guard found.fetched, !dropsAfterSignOut(signIn) else { return found.summary }
         feed.add(found.summary)
         refilter()
-        persistSummaries()
+        persistSummaries(for: signIn)
         return found.summary
     }
 
@@ -134,15 +136,15 @@ final class BulletinsViewModel: AccountScoped {
     private func performRefresh() async {
         loadState = .loading
         feed.restartWalk()
-        let epoch = BulletinFeed.listEpoch
+        let signIn = await account.startingSignIn
         do {
             let page = try await feed.page(after: nil, includeDeleted: showDeleted)
-            if dropsAfterSignOut(epoch) { return }
+            if dropsAfterSignOut(signIn) { return }
             feed.add(page)
             loadState = .loaded
-            noteNewestPage()
+            noteNewestPage(for: signIn)
             refilter()
-            persistSummaries()
+            persistSummaries(for: signIn)
             startBackgroundPrefetch()
         } catch {
             Self.logger.error("refresh failed: \(error.localizedDescription, privacy: .private)")
@@ -165,15 +167,15 @@ final class BulletinsViewModel: AccountScoped {
 
     private func runBackgroundPrefetch() async {
         var consecutiveFailures = 0
-        let epoch = BulletinFeed.listEpoch
+        let signIn = await account.startingSignIn
         while !Task.isCancelled, feed.hasMore, let cursor = feed.nextCursor {
             do {
                 let page = try await feed.page(after: cursor, includeDeleted: showDeleted)
                 guard !Task.isCancelled else { return }
-                if dropsAfterSignOut(epoch) { return }
+                if dropsAfterSignOut(signIn) { return }
                 feed.add(page)
                 refilter()
-                persistSummaries()
+                persistSummaries(for: signIn)
                 consecutiveFailures = 0
                 try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(200))
             } catch {
@@ -195,13 +197,13 @@ final class BulletinsViewModel: AccountScoped {
         }
         isPaginating = true
         defer { isPaginating = false }
-        let epoch = BulletinFeed.listEpoch
+        let signIn = await account.startingSignIn
         do {
             let page = try await feed.page(after: cursor, includeDeleted: showDeleted)
-            if dropsAfterSignOut(epoch) { return }
+            if dropsAfterSignOut(signIn) { return }
             feed.add(page)
             refilter()
-            persistSummaries()
+            persistSummaries(for: signIn)
         } catch {
             Self.logger.error("paginate failed (will retry on next trigger): \(error.localizedDescription, privacy: .private)")
         }
@@ -210,23 +212,23 @@ final class BulletinsViewModel: AccountScoped {
     private func restartAfterSignOut() {
         prefetchTask?.cancel()
         prefetchTask = nil
-        feed.restartAfterSignOut()
+        feed.restartAfterSignOut(for: account.currentSignIn)
         loadState = .idle
         refilter()
     }
 
-    private func dropsAfterSignOut(_ epoch: Int) -> Bool {
-        guard epoch != BulletinFeed.listEpoch || feed.isFromBeforeSignOut else { return false }
+    private func dropsAfterSignOut(_ signIn: SignIn) -> Bool {
+        guard !signIn.isCurrent || feed.isFromBeforeSignOut else { return false }
         if feed.isFromBeforeSignOut { restartAfterSignOut() }
         return true
     }
 
-    private func noteNewestPage() {
-        Defaults[.bulletinsSyncedAt] = Date()
+    private func noteNewestPage(for signIn: SignIn) {
+        feed.noteSynced(for: signIn)
     }
 
-    private func persistSummaries() {
-        feed.persist(showDeleted: showDeleted)
+    private func persistSummaries(for signIn: SignIn) {
+        feed.persist(showDeleted: showDeleted, for: signIn)
     }
 
     private func refilter() {

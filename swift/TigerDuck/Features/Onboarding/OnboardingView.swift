@@ -39,7 +39,7 @@ struct OnboardingView: View {
             )
             .tag(Page.privacy.rawValue)
             OnboardingCloudSyncPage(syncEnabled: $syncEnabled) {
-                Defaults[.cloudSyncEnabled] = syncEnabled
+                app.cloudSyncEnabled = syncEnabled
                 go(to: showsWatchPage ? .watchOS : .login)
             }
             .tag(Page.cloudSync.rawValue)

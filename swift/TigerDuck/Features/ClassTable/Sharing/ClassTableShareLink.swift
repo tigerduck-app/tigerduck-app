@@ -31,14 +31,14 @@ final class HeldShareLink {
     struct Link: Equatable {
         let id = UUID()
         let text: String
-        let signIn: AccountSession.Ticket
+        let signIn: SignIn
     }
 
     static let shared = HeldShareLink()
 
     private(set) var link: Link?
 
-    func arrived(_ text: String, signIn: AccountSession.Ticket) {
+    func arrived(_ text: String, signIn: SignIn) {
         link = Link(text: text, signIn: signIn)
     }
 
@@ -49,14 +49,14 @@ final class HeldShareLink {
     }
 
     func take(in app: AppEnvironment) -> String? {
-        take(mayOpen: Self.mayOpen(in: app), signIn: app.authService.session.ticket)
+        take(mayOpen: Self.mayOpen(in: app))
     }
 
     /// The held link's text, taken, once it may open; nil while it may not, and for one that
     /// came before a sign-out, which this drops.
-    func take(mayOpen: Bool, signIn: AccountSession.Ticket) -> String? {
+    func take(mayOpen: Bool) -> String? {
         guard let link else { return nil }
-        guard link.signIn == signIn else {
+        guard link.signIn.isCurrent else {
             self.link = nil
             return nil
         }

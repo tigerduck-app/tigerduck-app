@@ -69,7 +69,7 @@ final class MailListBackground {
         guard let list else { return }
         guard list.showsInbox, !list.search.isShowingResults else { return }
         let selection = list.selection
-        let epoch = list.loads.accountEpoch
+        let signIn = await list.account.startingSignIn
         let inbox = MailConstants.inbox
         let folders = list.targets
         guard let statuses = try? await list.session.use({ client -> [String: MailboxStatusInfo] in
@@ -79,17 +79,17 @@ final class MailListBackground {
                   }
                   return result
               }),
-              let status = statuses[inbox], list.isCurrent(selection, epoch), !list.search.isShowingResults else { return }
+              let status = statuses[inbox], list.isCurrent(selection, signIn), !list.search.isShowingResults else { return }
         let checkedAt = Date()
         let before = list.mailbox[inbox]
         if statuses.contains(where: { Self.hasUnshownMail($0.value, page: list.mailbox[$0.key]) }) {
             await list.load()
-            guard list.isCurrent(selection, epoch) else { return }
+            guard list.isCurrent(selection, signIn) else { return }
             if let before, before.uidValidity == status.uidValidity {
                 await prefetchArrivedBodies(after: before.summaries.map(\.uid).max() ?? 0)
             }
         }
-        guard list.isCurrent(selection, epoch), !Self.hasUnshownMail(status, page: list.mailbox[inbox]) else { return }
+        guard list.isCurrent(selection, signIn), !Self.hasUnshownMail(status, page: list.mailbox[inbox]) else { return }
         var movedUp: [String] = []
         for (folder, folderStatus) in statuses
         where !list.mailbox.cachePainted.contains(folder) && !Self.hasUnshownMail(folderStatus, page: list.mailbox[folder]) {
@@ -100,7 +100,7 @@ final class MailListBackground {
         }
         list.status.syncedAt = list.mailbox.syncedAt(of: list.targets)
         await noteSeenByPage(status)
-        guard list.isCurrent(selection, epoch) else { return }
+        guard list.isCurrent(selection, signIn) else { return }
         let cache = list.writer.cache
         let writes = movedUp.compactMap { folder in
             list.mailbox[folder].map { page in
@@ -118,7 +118,7 @@ final class MailListBackground {
 
     private func prefetchArrivedBodies(after previousNewest: UInt32) async {
         guard let list else { return }
-        let epoch = list.loads.accountEpoch
+        let signIn = await list.account.startingSignIn
         let inbox = MailConstants.inbox
         guard list.loadState == .loaded, list.serverStatus == .ok, let page = list.mailbox[inbox] else { return }
         let validity = page.uidValidity
@@ -126,14 +126,14 @@ final class MailListBackground {
             .sorted(by: >).prefix(MailConstants.bodyPrefetchLimit)
         let cache = list.writer.cache
         for uid in arrivals {
-            guard !Task.isCancelled, epoch == list.loads.accountEpoch else { return }
+            guard !Task.isCancelled, signIn.isCurrent else { return }
             let cached = await Task.detached { cache.loadDetail(folder: inbox, uidValidity: validity, uid: uid) }.value
             if cached != nil { continue }
             do {
                 let detail = try await list.session.use { client in
                     try await client.detail(folder: inbox, uid: uid, expectedUIDValidity: validity, inlineImages: false)
                 }
-                guard epoch == list.loads.accountEpoch else { return }
+                guard signIn.isCurrent else { return }
                 list.writer.chain { cache.saveDetail(detail, folder: inbox, uidValidity: validity, wipeCount: $0) }
             } catch let error as MailClientError where MailErrorClass(error).endsTheRun {
                 return
@@ -154,19 +154,19 @@ final class MailListBackground {
             warmDone = true
             return
         }
-        let epoch = list.loads.accountEpoch
+        let signIn = list.account.currentSignIn
         let delay = warmDelay
         let cache = list.writer.cache
         warmTask = Task { [weak self] in
             await delay()
             for folder in queue {
-                guard !Task.isCancelled, let self, let list = self.list, list.loads.accountEpoch == epoch else { return }
+                guard !Task.isCancelled, let self, let list = self.list, signIn.isCurrent else { return }
                 do {
                     var page = try await list.session.use { client in
                         try await client.page(folder: folder, olderThanSequence: nil, pageSize: MailConstants.warmPageSize)
                     }
                     page.fetchedAt = Date()
-                    guard !Task.isCancelled, list.loads.accountEpoch == epoch else { return }
+                    guard !Task.isCancelled, signIn.isCurrent else { return }
                     if list.targets.contains(folder) { continue }
                     await list.writer.chain { [page] wipeCount in
                         if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page, wipeCount: wipeCount) }

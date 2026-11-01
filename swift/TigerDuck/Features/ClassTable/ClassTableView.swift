@@ -105,13 +105,13 @@ struct ClassTableView: View {
                 tableSwitches += 1
                 viewModel.showShownTable()
             }
-            .onChange(of: app.authService.session.ticket) { _, _ in
+            .onChange(of: app.authService.session.currentSignIn) { _, _ in
                 viewModel.editor.closeDialogs()
             }
             .modifier(ClassTableEditDialogs(viewModel: viewModel, editor: viewModel.editor))
             .classTableExportSheets($export)
             .modifier(ClassTablePersonDialogs(people: viewModel.people))
-            .classTableShareSheet(model: $shareModel, signIn: app.authService.session.ticket)
+            .classTableShareSheet(model: $shareModel, signIn: app.authService.session.currentSignIn)
     }
 
     private var pageAccessState: NTUSTProtectedAccessState {

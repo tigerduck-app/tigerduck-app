@@ -65,7 +65,7 @@ final class ClassTableEditor {
         guard let table = owner, table.shownPerson == nil else { return false }
         let semester = table.currentSemester
         if table.courses.contains(where: { $0.courseNo == course.courseNo }) {
-            if store.apply(.unhide(courseNo: course.courseNo, semester: semester)) {
+            if store.apply(.unhide(courseNo: course.courseNo, semester: semester), for: AccountSession.school.currentSignIn) {
                 deletedCourseNos = Set(store.loadDeletedCourseNos())
                 sync.courseAdded?(table.courses, semester, course.courseNo)
             }
@@ -77,7 +77,7 @@ final class ClassTableEditor {
             return false
         }
 
-        if store.apply(.unhide(courseNo: course.courseNo, semester: semester)) {
+        if store.apply(.unhide(courseNo: course.courseNo, semester: semester), for: AccountSession.school.currentSignIn) {
             deletedCourseNos = Set(store.loadDeletedCourseNos())
             if let idnumber = course.moodleIdNumber,
                let numericId = CourseLookup.moodleCourseId(idnumber: idnumber) {
@@ -99,7 +99,7 @@ final class ClassTableEditor {
         course.customName = courseCustomNames[course.courseNo]?[currentLocale]
 
         table.courses.append(course)
-        store.apply(.add(course, semester: semester))
+        store.apply(.add(course, semester: semester), for: AccountSession.school.currentSignIn)
         if sync.courseAdded != nil {
             sync.courseAdded?(table.courses, semester, course.courseNo)
         } else {
@@ -113,10 +113,10 @@ final class ClassTableEditor {
         let courseNo = course.courseNo
         let semester = table.currentSemester
         table.courses.removeAll { $0.courseNo == courseNo }
-        store.apply(.delete(courseNo: courseNo, semester: semester))
+        store.apply(.delete(courseNo: courseNo, semester: semester), for: AccountSession.school.currentSignIn)
         deletedCourseNos = Set(store.loadDeletedCourseNos())
         if ignoresAssignments(of: courseNo) {
-            AssignmentStore.shared.apply(.ignoreCourse(courseNo: courseNo, semester: semester, ignored: false))
+            AssignmentStore.shared.apply(.ignoreCourse(courseNo: courseNo, semester: semester, ignored: false), for: AccountSession.school.currentSignIn)
             ignoredAssignmentCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
         }
         sync.courseDeleted?(courseNo, semester)
@@ -128,9 +128,10 @@ final class ClassTableEditor {
         let semester = table.currentSemester
         guard !resettingSemesters.contains(semester) else { return }
         resettingSemesters.insert(semester)
+        let signIn = authService.session.currentSignIn
         Task {
             defer { self.resettingSemesters.remove(semester) }
-            let resetLocally: @MainActor () -> Void = { self.resetLocalCourses(of: table, semester: semester) }
+            let resetLocally: @MainActor () -> Void = { self.resetLocalCourses(of: table, semester: semester, for: signIn) }
             let backendOk: Bool
             if let reset = sync.resetBackendCourses {
                 backendOk = await reset(semester, resetLocally)
@@ -147,9 +148,9 @@ final class ClassTableEditor {
         }
     }
 
-    private func resetLocalCourses(of table: ClassTableViewModel, semester: String) {
-        store.apply(.resetTerm(semester))
-        AssignmentStore.shared.clearIgnoredAssignmentCourses(semester: semester)
+    private func resetLocalCourses(of table: ClassTableViewModel, semester: String, for signIn: SignIn) {
+        store.apply(.resetTerm(semester), for: signIn)
+        AssignmentStore.shared.clearIgnoredAssignmentCourses(semester: semester, for: signIn)
         table.reloadFromCache()
     }
 
@@ -159,7 +160,7 @@ final class ClassTableEditor {
               course.moodleIdNumber == nil
         else { return }
         table.courses.removeAll { $0.courseNo == courseNo }
-        store.apply(.remove(courseNo: courseNo, semester: table.currentSemester))
+        store.apply(.remove(courseNo: courseNo, semester: table.currentSemester), for: AccountSession.school.currentSignIn)
         sync.courseDeleted?(courseNo, table.currentSemester)
     }
 
@@ -191,7 +192,7 @@ final class ClassTableEditor {
         if courseCustomNames[course.courseNo]?.isEmpty == true {
             courseCustomNames.removeValue(forKey: course.courseNo)
         }
-        store.apply(.rename(courseNo: course.courseNo, name: name, locale: locale))
+        store.apply(.rename(courseNo: course.courseNo, name: name, locale: locale), for: AccountSession.school.currentSignIn)
         course.customName = name
         owner?.grid.rebuildLookup()
         dialogs.courseToRename = nil
@@ -220,7 +221,7 @@ final class ClassTableEditor {
     func setIgnoresAssignments(_ ignore: Bool, for course: CourseStore.Course) {
         guard let table = owner, offersIgnoreAssignments else { return }
         let semester = table.currentSemester
-        AssignmentStore.shared.apply(.ignoreCourse(courseNo: course.courseNo, semester: semester, ignored: ignore))
+        AssignmentStore.shared.apply(.ignoreCourse(courseNo: course.courseNo, semester: semester, ignored: ignore), for: AccountSession.school.currentSignIn)
         ignoredAssignmentCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
         table.assignments = AssignmentStore.shared.loadAssignments()
         sync.courseIgnore?(course, semester, ignore)
@@ -228,7 +229,7 @@ final class ClassTableEditor {
 
     func setColor(hex: UInt32, for course: CourseStore.Course) {
         guard isEditable else { return }
-        let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
+        let changed = TigerDuckTheme.setColor(hex: hex, for: course.courseNo, signIn: AccountSession.school.currentSignIn)
         sync.colorPick?(hex, course, changed)
     }
 }

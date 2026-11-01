@@ -30,7 +30,7 @@ final class AppRouter {
         pendingWidgetDestination = nil
     }
 
-    func open(_ url: URL, signIn: AccountSession.Ticket) {
+    func open(_ url: URL, signIn: SignIn) {
         if let text = ClassTableShareLink.codeText(url) {
             HeldShareLink.shared.arrived(text, signIn: signIn)
             openFromWidget(.classTable)

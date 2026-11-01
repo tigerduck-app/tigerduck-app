@@ -50,7 +50,7 @@ final class ClassTableLoader {
     func warmCachesIfNeeded(authService: AuthService) async {
         guard !hasWarmedCaches else { return }
         hasWarmedCaches = true
-        await SchoolRefresh.allTerms(authService: authService)
+        await authService.session.withSignIn { await SchoolRefresh.allTerms(authService: authService, for: $0) }
         guard let table = owner else { return }
         table.followNewestSemesterIfUnpicked()
         table.refreshSemesterOptions()
@@ -59,7 +59,7 @@ final class ClassTableLoader {
 
     func refreshSelectedSemester(authService: AuthService) async {
         guard let target = owner?.currentSemester, owner?.shownPerson == nil else { return }
-        await SchoolRefresh.courses(target, authService: authService)
+        await authService.session.withSignIn { await SchoolRefresh.courses(target, authService: authService, for: $0) }
         guard let table = owner, table.currentSemester == target else { return }
         let merged = table.buildCourseList(
             table.courseStore.loadCourses(semester: target), table.courseStore.loadUserAddedCourses(semester: target)
@@ -109,25 +109,27 @@ final class ClassTableLoader {
 
     func refreshMissingClassrooms(authService: AuthService) {
         guard let semester = owner?.currentSemester else { return }
+        let signIn = authService.session.currentSignIn
         Task {
             guard await NetworkMonitor.shared.isReachable() else { return }
-            await SchoolRefresh.coursesMissingClassroom(semester, authService: authService)
+            await SchoolRefresh.coursesMissingClassroom(semester, for: signIn)
         }
     }
 
     func triggerRefresh(authService: AuthService, semester: String? = nil) {
         guard !refreshing.value, let table = owner else { return }
         refreshing.value = true
+        let signIn = authService.session.currentSignIn
         Task {
             guard await NetworkMonitor.shared.isReachable() else {
                 SchoolRefresh.showOffline()
                 self.refreshing.value = false
                 return
             }
-            await self.fetchData(table, authService: authService, semester: semester)
+            await self.fetchData(table, authService: authService, semester: semester, for: signIn)
             let latestSemester = SchoolTerms.current
             if latestSemester != table.currentSemester {
-                await SchoolRefresh.courses(latestSemester, authService: authService)
+                await SchoolRefresh.courses(latestSemester, authService: authService, for: signIn)
                 table.today.reload()
                 table.refreshCourseColors()
             }
@@ -137,21 +139,22 @@ final class ClassTableLoader {
 
     func refresh(authService: AuthService) async {
         guard let table = owner else { return }
-        await fetchData(table, authService: authService)
+        await authService.session.withSignIn { await fetchData(table, authService: authService, for: $0) }
     }
 
-    private func fetchData(_ table: ClassTableViewModel, authService: AuthService, semester: String? = nil) async {
+    private func fetchData(
+        _ table: ClassTableViewModel, authService: AuthService, semester: String? = nil, for signIn: SignIn
+    ) async {
         let targetSemester = semester ?? table.currentSemester
-        let ticket = authService.session.ticket
         guard await SchoolRefresh.begin() else { return }
 
         SchoolRefresh.dropMoodleCourses()
-        async let coursesTask: Void = SchoolRefresh.courses(targetSemester, authService: authService, force: true)
-        async let assignmentsTask = SchoolRefresh.assignments(authService: authService)
-        async let userAddedTask: Void = SchoolRefresh.userAddedCourses(targetSemester, authService: authService)
+        async let coursesTask: Void = SchoolRefresh.courses(targetSemester, authService: authService, force: true, for: signIn)
+        async let assignmentsTask = SchoolRefresh.assignments(authService: authService, for: signIn)
+        async let userAddedTask: Void = SchoolRefresh.userAddedCourses(targetSemester, for: signIn)
 
         _ = await (coursesTask, assignmentsTask, userAddedTask)
-        showFetched(signedOutSince: !authService.session.isCurrent(ticket))
+        showFetched(signedOutSince: !signIn.isCurrent)
     }
 
     func showFetched(signedOutSince: Bool) {

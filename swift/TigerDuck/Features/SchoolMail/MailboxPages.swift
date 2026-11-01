@@ -25,7 +25,7 @@ struct MailListStatus: Equatable {
 }
 
 struct MailListLoads {
-    var accountEpoch = 0
+    let account: AccountSession
     var loadingSelection: MailFolderSelection?
 }
 

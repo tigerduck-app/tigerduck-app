@@ -40,10 +40,10 @@ struct HomeAssignmentList {
     mutating func archive(_ assignment: AssignmentStore.Assignment) {
         guard let idx = all.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
         all[idx].isArchived = true
-        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, true))
+        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, true), for: AccountSession.school.currentSignIn)
         if all[idx].isLocallyCompleted {
             all[idx].isLocallyCompleted = false
-            AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false))
+            AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
         }
         recompute()
     }
@@ -51,17 +51,17 @@ struct HomeAssignmentList {
     mutating func unarchive(_ assignment: AssignmentStore.Assignment) {
         guard let idx = all.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
         all[idx].isArchived = false
-        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, false))
+        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
         recompute()
     }
 
     mutating func markCompleted(_ assignment: AssignmentStore.Assignment) {
         guard let idx = all.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
         all[idx].isLocallyCompleted = true
-        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, true))
+        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, true), for: AccountSession.school.currentSignIn)
         if all[idx].isArchived {
             all[idx].isArchived = false
-            AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, false))
+            AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
         }
         recompute()
     }
@@ -69,7 +69,7 @@ struct HomeAssignmentList {
     mutating func undoCompleted(_ assignment: AssignmentStore.Assignment) {
         guard let idx = all.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
         all[idx].isLocallyCompleted = false
-        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false))
+        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
         recompute()
     }
 }

@@ -28,7 +28,7 @@ final class SceneActivation {
             guard !Task.isCancelled else { return }
             #endif
             app.pushSchedule.requestSync()
-            await app.pushSchedule.refreshMoodleCredentials()
+            await app.authService.session.withSignIn { await app.pushSchedule.refreshMoodleCredentials(for: $0) }
         }
         refreshOnReturn()
         #if os(iOS)
@@ -53,6 +53,7 @@ final class SceneActivation {
         app.feed.startPolling(pollNow: false)
         Task { await CourseChangeStore.shared.refresh() }
         refreshTask?.cancel()
+        let signIn = app.authService.session.currentSignIn
         refreshTask = Task { [app] in
             // Behind a captive Wi-Fi login page the link is "satisfied" but egress is blocked, and
             // the pinned NTUST hosts would fail with an ATS error; say "no internet" instead.
@@ -65,7 +66,9 @@ final class SceneActivation {
             await RefreshOrder.run(
                 pull: { await app.fullSync.sync(followUpIfBusy: true) },
                 pushOutbox: { await app.cloudSyncCoordinator.syncTick() },
-                fetchSchool: { await Self.fetchSchoolData(app.authService, recheckSubmissions, applyAfter: $0) }
+                fetchSchool: {
+                    await Self.fetchSchoolData(app.authService, recheckSubmissions, applyAfter: $0, for: signIn)
+                }
             )
             guard !Task.isCancelled else { return }
             NTUSTSessionManager.shared.loadingState = .loaded
@@ -82,43 +85,46 @@ final class SceneActivation {
             app.feed.startPolling()
             return
         }
+        let signIn = app.authService.session.currentSignIn
         Task { [app] in
             await RefreshOrder.run(
                 pull: { await app.feed.pollOnReturn() },
                 pushOutbox: { await app.cloudSyncCoordinator.syncTick() },
-                fetchSchool: { await AssignmentFetch.refreshAssignmentsIfDue(authService: app.authService, applyAfter: $0) }
+                fetchSchool: {
+                    await AssignmentFetch.refreshAssignmentsIfDue(authService: app.authService, applyAfter: $0, for: signIn)
+                }
             )
         }
     }
 
     private static func fetchSchoolData(
-        _ authService: AuthService, _ recheckSubmissions: Bool, applyAfter: @escaping PullGate
+        _ authService: AuthService, _ recheckSubmissions: Bool, applyAfter: @escaping PullGate, for signIn: SignIn
     ) async {
         _ = await AssignmentFetch.fetchAssignments(
-            authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: applyAfter
+            authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: applyAfter, for: signIn
         )
         async let schoolEvents = CalendarService.fetchAndParseICS()
-        async let courses: Void = fetchCurrentTerm(authService, applyAfter: applyAfter)
+        async let courses: Void = fetchCurrentTerm(authService, applyAfter: applyAfter, for: signIn)
         let fetchedSchoolEvents = await schoolEvents
         await courses
         guard !Task.isCancelled, let fetchedSchoolEvents else { return }
         var calendarCache = AssignmentStore.shared.loadCalendarEvents()
         calendarCache.removeAll { $0.source == .school }
         calendarCache.append(contentsOf: fetchedSchoolEvents)
-        AssignmentStore.shared.saveCalendarEvents(calendarCache)
+        AssignmentStore.shared.saveCalendarEvents(calendarCache, for: signIn)
     }
 
     private static func fetchCurrentTerm(
-        _ authService: AuthService, applyAfter: @escaping PullGate
+        _ authService: AuthService, applyAfter: @escaping PullGate, for signIn: SignIn
     ) async {
         guard let studentId = authService.storedStudentId else { return }
         let semester = CourseSelectionService.currentSemesterCode()
         if CourseSelectionService.needsSchoolSession(studentId: studentId, semester: semester) {
-            guard await authService.ensureAuthenticated() else { return }
+            guard await authService.ensureAuthenticated(for: signIn) else { return }
         } else {
             await authService.ensureBackendSignedIn()
         }
-        _ = await CourseFetch.fetchCourses(authService: authService, semester: semester, applyAfter: applyAfter)
+        _ = await CourseFetch.fetchCourses(authService: authService, semester: semester, applyAfter: applyAfter, for: signIn)
     }
 }
 

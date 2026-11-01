@@ -120,7 +120,7 @@ struct TigerDuckApp: App {
                     fetchPinDocumentIfDue()
                 }
                 .onOpenURL { url in
-                    app.router.open(url, signIn: app.authService.session.ticket)
+                    app.router.open(url, signIn: app.authService.session.currentSignIn)
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
@@ -200,7 +200,7 @@ struct TigerDuckApp: App {
                     fetchPinDocumentIfDue()
                 }
                 .onOpenURL { url in
-                    app.router.open(url, signIn: app.authService.session.ticket)
+                    app.router.open(url, signIn: app.authService.session.currentSignIn)
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)

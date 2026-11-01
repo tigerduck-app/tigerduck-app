@@ -67,17 +67,16 @@ struct CourseDetailSheet: View {
                 }
             }
         }
-        .task(id: MoodleStoreKey(
-            courseNo: course.courseNo, attempt: moodleAttempt, signIn: app.authService.session.ticket
-        )) {
-            moodle = showsMoodle ? CourseMoodleDestination.store(for: course, authService: app.authService) : nil
+        .task(id: moodleKey) { [moodleKey] in
+            moodle = showsMoodle
+                ? CourseMoodleDestination.store(for: course, authService: app.authService, signIn: moodleKey.signIn) : nil
         }
         .task(id: [course.semester, course.courseNo]) {
             syllabus = nil
             let loaded = await loadSyllabus()
             if !Task.isCancelled { syllabus = loaded }
         }
-        .onChange(of: app.authService.session.ticket) {
+        .onChange(of: app.authService.session.currentSignIn) {
             routes.wrappedValue = []
         }
         .onChange(of: AppDataRevision.current) {
@@ -97,7 +96,11 @@ struct CourseDetailSheet: View {
     struct MoodleStoreKey: Equatable {
         let courseNo: String
         let attempt: Int
-        let signIn: AccountSession.Ticket
+        let signIn: SignIn
+    }
+
+    private var moodleKey: MoodleStoreKey {
+        MoodleStoreKey(courseNo: course.courseNo, attempt: moodleAttempt, signIn: app.authService.session.currentSignIn)
     }
 
     private var routes: Binding<[MoodleCourseRoute]> {
@@ -187,7 +190,7 @@ struct CourseDetailSheet: View {
     }
 
     private func refreshAssignments() async {
-        await SchoolRefresh.assignments(authService: app.authService)
+        await app.authService.session.withSignIn { await SchoolRefresh.assignments(authService: app.authService, for: $0) }
     }
 
     /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile

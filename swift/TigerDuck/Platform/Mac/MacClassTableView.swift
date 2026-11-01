@@ -36,7 +36,7 @@ struct MacClassTableView: View {
             )
         }
         .modifier(MacClassTableImport(model: $importModel, showsPicker: $showImportPicker, request: requestImport))
-        .classTableShareSheet(model: $shareModel, signIn: app.authService.session.ticket)
+        .classTableShareSheet(model: $shareModel, signIn: app.authService.session.currentSignIn)
         .modifier(ClassTableCourseEditDialogs(viewModel: viewModel, editor: viewModel.editor))
         .modifier(ClassTablePersonDialogs(people: viewModel.people))
         .task {

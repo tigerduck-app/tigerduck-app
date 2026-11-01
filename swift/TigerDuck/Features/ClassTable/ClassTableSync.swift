@@ -16,7 +16,7 @@ struct ClassTableSync {
             },
             courseOverride: { app.edits.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) },
             colorPick: { app.edits.syncColorPick($0, for: $1, changed: $2) },
-            coursesChanged: { app.uploads.uploadCourses($0, semester: $1) },
+            coursesChanged: { app.uploads.uploadCourses($0, semester: $1, for: app.authService.session.currentSignIn) },
             courseAdded: { app.edits.addCourses([CourseStore.Tombstone.serverKey(semester: $1, courseNo: $2)], semester: $1) },
             courseDeleted: { app.edits.deleteBackendCourse(courseNo: $0, semester: $1) },
             resetBackendCourses: { await app.edits.deleteBackendCourses(semester: $0, thenLocally: $1) }

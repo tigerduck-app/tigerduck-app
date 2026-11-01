@@ -107,7 +107,7 @@ final class BrowserPage {
 
     private func setZoom(_ percent: Int) {
         guard !host.isEmpty, let webView else { return }
-        BrowserSites.stored.setZoom(percent, for: host)
+        BrowserSites.change(for: AccountSession.school.currentSignIn) { $0.setZoom(percent, for: host) }
         BrowserPageScripts.addScripts(to: webView.configuration.userContentController)
         applySiteSettings()
     }
@@ -115,7 +115,7 @@ final class BrowserPage {
     /// The page loads again, as its site sends a desktop layout only to a new request.
     func setDesktopSite(_ isDesktop: Bool) {
         guard !host.isEmpty else { return }
-        BrowserSites.stored.setDesktop(isDesktop, for: host)
+        BrowserSites.change(for: AccountSession.school.currentSignIn) { $0.setDesktop(isDesktop, for: host) }
         site.isDesktop = isDesktop
         webView?.reload()
     }

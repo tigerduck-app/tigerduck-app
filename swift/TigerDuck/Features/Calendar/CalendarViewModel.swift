@@ -56,23 +56,22 @@ final class CalendarViewModel {
     func triggerRefresh(authService: AuthService) {
         guard !isRefreshing else { return }
         isRefreshing = true
+        let signIn = authService.session.currentSignIn
         Task {
-            await refresh(authService: authService)
+            await refresh(authService: authService, for: signIn)
             isRefreshing = false
         }
     }
 
-    func refresh(authService: AuthService) async {
-        let ticket = authService.session.ticket
+    func refresh(authService: AuthService, for signIn: SignIn) async {
         guard await SchoolRefresh.begin() else { return }
         SchoolRefresh.dropMoodleCourses()
-        async let moodleEvents = SchoolRefresh.moodleEvents(authService: authService)
+        async let moodleEvents = SchoolRefresh.moodleEvents(authService: authService, for: signIn)
         async let schoolEvents = SchoolRefresh.schoolEvents()
         let (moodle, school) = await (moodleEvents, schoolEvents)
         defer { SchoolRefresh.end() }
-        guard authService.session.isCurrent(ticket) else { return }
         let updated = moodle + (school ?? events.filter { $0.source == .school })
-        AssignmentStore.shared.saveCalendarEvents(updated)
+        guard AssignmentStore.shared.saveCalendarEvents(updated, for: signIn) else { return }
         setEvents(updated)
     }
 

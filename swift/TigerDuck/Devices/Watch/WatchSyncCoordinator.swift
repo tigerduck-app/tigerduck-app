@@ -256,19 +256,20 @@ extension WatchSyncCoordinator: WCSessionDelegate {
                 WatchWireFormat.LibraryQRKey.remaining: cache.remaining(),
             ]
         }
-        let ticket = account.ticket
-        do {
-            let payload = try await generate()
-            guard account.isCurrent(ticket) else {
-                return [WatchWireFormat.LibraryQRKey.error: LibraryServiceError.credentialsNotFound.localizedDescription]
+        return await account.withSignIn { signIn in
+            do {
+                let payload = try await generate()
+                guard signIn.isCurrent else {
+                    return [WatchWireFormat.LibraryQRKey.error: LibraryServiceError.credentialsNotFound.localizedDescription]
+                }
+                cache.store(payload)
+                return [
+                    WatchWireFormat.LibraryQRKey.payload: payload,
+                    WatchWireFormat.LibraryQRKey.remaining: LibraryQRCache.lifetime,
+                ]
+            } catch {
+                return [WatchWireFormat.LibraryQRKey.error: error.localizedDescription]
             }
-            cache.store(payload)
-            return [
-                WatchWireFormat.LibraryQRKey.payload: payload,
-                WatchWireFormat.LibraryQRKey.remaining: LibraryQRCache.lifetime,
-            ]
-        } catch {
-            return [WatchWireFormat.LibraryQRKey.error: error.localizedDescription]
         }
     }
 }

@@ -9,7 +9,7 @@ final class ClassTableViewModel {
         didSet {
             guard currentSemester != oldValue else { return }
             if !terms.isFollowingNewest, shownPerson == nil {
-                Defaults[.classTableSelectedSemester] = currentSemester
+                SchoolAccountKeys.pickSemester(currentSemester, for: AccountSession.school.currentSignIn)
             }
             reloadFromCache()
         }
@@ -144,7 +144,7 @@ final class ClassTableViewModel {
     func refreshCourseColors() {
         let shown = shownPerson == nil ? courses.map(\.courseNo) : []
         let courseNos = Set(shown).union(today.courses.map(\.courseNo))
-        TigerDuckTheme.ensureAssignments(courseNos: Array(courseNos))
+        TigerDuckTheme.ensureAssignments(courseNos: Array(courseNos), for: AccountSession.school.currentSignIn)
     }
 
     var todayCourses: [CourseStore.Course] {

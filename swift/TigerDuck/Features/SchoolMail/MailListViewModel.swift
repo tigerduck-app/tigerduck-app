@@ -16,13 +16,14 @@ final class MailListViewModel {
     @ObservationIgnored let session: MailPageSession
     @ObservationIgnored let writer: MailListCacheWriter
     @ObservationIgnored let events = MailboxEvents()
-    @ObservationIgnored var loads = MailListLoads()
+    @ObservationIgnored var loads: MailListLoads
     @ObservationIgnored private(set) var search: MailListSearch!
     @ObservationIgnored private(set) var background: MailListBackground!
     @ObservationIgnored private var signOutListener: MailSignOutListener?
 
     init(
         session: MailPageSession? = nil,
+        account: AccountSession? = nil,
         cache: MailCache? = nil,
         noteSeenByPage: ((MailboxStatusInfo) async -> Void)? = nil,
         signOutEvents: NotificationCenter = .default,
@@ -35,6 +36,7 @@ final class MailListViewModel {
         let session = session ?? MailPageSession()
         let cache = cache ?? MailAccountManager.shared.cache
         self.session = session
+        loads = MailListLoads(account: account ?? MailAccountManager.shared.session)
         writer = MailListCacheWriter(cache: cache)
         // Starts after the warm's delay too, so the refresh that follows a paint goes first.
         let indexer = MailIndexer(session: session, cache: cache, startDelay: warmDelay)
@@ -47,6 +49,7 @@ final class MailListViewModel {
         signOutListener = MailSignOutListener(center: signOutEvents) { [weak self] in self?.resetForAccountChange() }
     }
 
+    var account: AccountSession { loads.account }
     var folderRoles: [MailFolderRole: String] { folders.roles }
     var otherFolders: [String] { folders.others }
     var selection: MailFolderSelection { folders.selection }
@@ -68,8 +71,8 @@ final class MailListViewModel {
         set { folders.unreadOnly = newValue }
     }
 
-    func isCurrent(_ selection: MailFolderSelection, _ epoch: Int) -> Bool {
-        selection == self.selection && epoch == loads.accountEpoch
+    func isCurrent(_ selection: MailFolderSelection, _ signIn: SignIn) -> Bool {
+        selection == self.selection && signIn.isCurrent
     }
 
     var displayedRows: [MailListRow] {
@@ -211,7 +214,7 @@ final class MailListViewModel {
     #endif
 
     private func resetInMemoryState() {
-        loads = MailListLoads(accountEpoch: loads.accountEpoch + 1)
+        loads = MailListLoads(account: account)
         background.reset()
         folders = MailFolderChoice()
         mailbox.removeAll()
