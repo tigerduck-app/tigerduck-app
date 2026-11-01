@@ -182,6 +182,9 @@ final class AppEnvironment {
         if CustomAccentContrastMigration.runIfNeeded() {
             preferences.accentColorHex = Defaults[.accentColorHex]
         }
+        if RemovedLanguageResetMigration.runIfNeeded() {
+            preferences.appLanguage = Defaults[.appLanguage]
+        }
         #if os(iOS)
         BulletinPushOptOutMigration.runIfNeeded()
         if DefaultTabsPinMigration.runIfNeeded() {
