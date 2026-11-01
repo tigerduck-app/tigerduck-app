@@ -55,7 +55,7 @@ struct CourseRefreshUploadTests {
         let term = try #require(TermRoster.termCourseNos(
             selection: ["CS1", "CS2"], transcript: ["CS3"], cached: ["CS4"]
         ))
-        let roster = TermRoster.uploadedRoster(selection: term.roster, live: live, pastTerm: nil)
+        let roster = TermRoster.uploadedRoster(selection: term.selectionRoster, live: live, pastTerm: nil)
 
         #expect(Self.uploads(term.courseNos, roster: roster) == [Upload(courses: ["CS1", "CS2"], asRoster: live)])
     }
@@ -67,7 +67,7 @@ struct CourseRefreshUploadTests {
             selection: selection, transcript: ["CS1"], cached: ["CS2"]
         ))
 
-        #expect(Self.uploads(term.courseNos, roster: term.roster) == [Upload(courses: ["CS1", "CS2"], asRoster: false)])
+        #expect(Self.uploads(term.courseNos, roster: term.selectionRoster) == [Upload(courses: ["CS1", "CS2"], asRoster: false)])
     }
 
     @Test("A past term rebuilt from the final transcript goes up as its roster, once every class's lookup answered")
@@ -76,10 +76,10 @@ struct CourseRefreshUploadTests {
             SDCourse(courseNo: courseNo, courseName: courseNo, schedule: [2: ["3", "4"]], semester: "1141")
         }
         let answered = TermRoster.rebuiltPastTerm(
-            [.init(course: course("CS1"), answered: true)], unreadable: [], cached: [], others: [], userAdded: []
+            [.init(course: course("CS1"), lookup: .found)], unreadable: [], cached: [], others: [], userAdded: []
         )
         let waiting = TermRoster.rebuiltPastTerm(
-            [.init(course: course("CS1"), answered: true), .init(course: course("CS2"), answered: false)],
+            [.init(course: course("CS1"), lookup: .found), .init(course: course("CS2"), lookup: .fallback)],
             unreadable: [], cached: [], others: [], userAdded: []
         )
 

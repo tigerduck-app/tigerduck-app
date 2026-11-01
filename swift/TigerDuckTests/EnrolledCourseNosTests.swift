@@ -51,14 +51,14 @@ struct EnrolledCourseNosTests {
         ))
 
         #expect(term.courseNos == ["CS1001301", "PE1001301", "EE2005301"])
-        #expect(term.roster == nil)
+        #expect(term.selectionRoster == nil)
     }
 
     @Test("A fetch saves no course dropped on the server unless a live answer or a final transcript lists it")
     func savedCoursesSkipServerDrops() {
         let courses = ["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }
         let saved = { (pastTerm: Bool, live: Bool, dropped: Set<String>) in
-            TermRoster.savedCourses(courses, pastTerm: pastTerm, live: live, dropped: dropped)?.map(\.courseNo)
+            Self.saved(TermRoster.savedCourses(courses, pastTerm: pastTerm, live: live, dropped: dropped))
         }
 
         #expect(saved(false, false, ["MA1010003"]) == ["CS1001301"])
@@ -69,8 +69,13 @@ struct EnrolledCourseNosTests {
 
     @Test("A fetch that drew nothing keeps the cache, unless a past term's final transcript lists no class")
     func emptyDrawKeepsTheCache() {
-        #expect(TermRoster.savedCourses([], pastTerm: false, live: false, dropped: []) == nil)
-        #expect(TermRoster.savedCourses([], pastTerm: true, live: false, dropped: [])?.isEmpty == true)
+        #expect(Self.saved(TermRoster.savedCourses([], pastTerm: false, live: false, dropped: [])) == nil)
+        #expect(Self.saved(TermRoster.savedCourses([], pastTerm: true, live: false, dropped: [])) == [])
+    }
+
+    private static func saved(_ save: TermRoster.TermSave) -> [String]? {
+        guard case .save(let courses) = save else { return nil }
+        return courses.map(\.courseNo)
     }
 
     @Test("A class the transcript adds joins its term only with class times; course selection's and cached ones stay")
@@ -116,7 +121,7 @@ struct EnrolledCourseNosTests {
             selection: ["CS1", "CS2", "CS1"], transcript: ["CS1", "DROPPED"], cached: ["CS1", "OLD"]
         ))
         #expect(term.courseNos == ["CS1", "CS2"])
-        #expect(term.roster == ["CS1", "CS2"])
+        #expect(term.selectionRoster == ["CS1", "CS2"])
     }
 
     @Test("Course selection unreachable or empty: the latest term falls back to the transcript")
@@ -393,7 +398,7 @@ struct PastTermRebuildTests {
     }
 
     private static func looked(_ courseNo: String, times: Bool = true, answered: Bool = true) -> TermRoster.LookedUpCourse {
-        TermRoster.LookedUpCourse(course: course(courseNo, times: times), answered: answered)
+        TermRoster.LookedUpCourse(course: course(courseNo, times: times), lookup: answered ? .found : .fallback)
     }
 
     @Test("A past term keeps only the transcript's classes with class times; cached junk, Moodle sites and other rows are dropped")

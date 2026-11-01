@@ -113,8 +113,10 @@ enum CourseFetch {
         let scoreCoursesForSemester = report.map { TermRoster.classRows(of: $0, term: semester) }
         let cachedCourses = CourseStore.shared.loadCourses(semester: semester)
         let rebuilds = TermRoster.rebuildsFromTranscript(report, term: semester, servedBySelection: servesSelectionSemester)
-        let term: (courseNos: [String], roster: [String]?)? = rebuilds
-            ? (TermRoster.uniqueCourseNos(scoreCoursesForSemester?.map(\.code) ?? []), nil)
+        let term: TermRoster.TermCourseNos? = rebuilds
+            ? TermRoster.TermCourseNos(
+                courseNos: TermRoster.uniqueCourseNos(scoreCoursesForSemester?.map(\.code) ?? []), selectionRoster: nil
+            )
             : TermRoster.termCourseNos(
                 selection: courseSelectionNos,
                 transcript: scoreCoursesForSemester?.map(\.code),
@@ -146,8 +148,8 @@ enum CourseFetch {
             uniquingKeysWith: { first, _ in first }
         )
 
-        let looked = await concurrentMap(term.courseNos) { @MainActor courseNo -> (data: CourseData?, answered: Bool) in
-            var answered = false
+        let looked = await concurrentMap(term.courseNos) { @MainActor courseNo -> (data: CourseData?, found: Bool) in
+            var found = false
             let data = await CourseDetails.refreshedCourseData(
                 courseNo: courseNo,
                 semester: semester,
@@ -160,14 +162,16 @@ enum CourseFetch {
                     semester: semester, courseNo: courseNo, language: courseApiLanguage,
                     fresh: forceRefresh
                 )
-                answered = !results.isEmpty
+                found = !results.isEmpty
                 return results
             }
-            return (data, answered)
-        }.compactMap { item in item.data.map { TermRoster.LookedUpCourse(course: $0.course(in: semester), answered: item.answered) } }
+            return (data, found)
+        }.compactMap { item in
+            item.data.map { TermRoster.LookedUpCourse(course: $0.course(in: semester), lookup: item.found ? .found : .fallback) }
+        }
 
         guard await applyAfter() else { return CourseStore.shared.loadCourses(semester: semester) }
-        if let roster = term.roster, !Task.isCancelled {
+        if let roster = term.selectionRoster, !Task.isCancelled {
             CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster, for: signIn)
             if selectionIsLive {
                 let stillDropped = CourseStore.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
@@ -182,14 +186,14 @@ enum CourseFetch {
             userAdded: CourseStore.shared.loadUserAddedCourses().filter { CourseStore.userAddedCourse($0, belongsTo: semester) }
         )
         let drawn = pastTerm?.courses ?? TermRoster.drawnCourses(
-            looked.map(\.course), fromSelection: term.roster != nil, cached: Set(cachedByNo.keys)
+            looked.map(\.course), fromSelection: term.selectionRoster != nil, cached: Set(cachedByNo.keys)
         )
 
         guard !Task.isCancelled, signIn.isCurrent else {
             return CourseStore.shared.loadCourses(semester: semester)
         }
-        guard let courses = TermRoster.savedCourses(
-            drawn, pastTerm: pastTerm != nil, live: selectionIsLive && term.roster != nil,
+        guard case .save(let courses) = TermRoster.savedCourses(
+            drawn, pastTerm: pastTerm != nil, live: selectionIsLive && term.selectionRoster != nil,
             dropped: CourseStore.shared.loadServerDroppedNos(semester: semester)
         ) else { return cachedCourses }
         if let pastTerm {
@@ -204,7 +208,7 @@ enum CourseFetch {
         }
         CourseUpload.uploadVisibleCourses(
             courses, semester: semester, hidden: Set(CourseStore.shared.loadDeletedCourseNos()),
-            roster: TermRoster.uploadedRoster(selection: term.roster, live: selectionIsLive, pastTerm: pastTerm?.roster),
+            roster: TermRoster.uploadedRoster(selection: term.selectionRoster, live: selectionIsLive, pastTerm: pastTerm?.roster),
             resendingRoster: resendingRoster, for: signIn, to: CourseUpload.courseUploader
         )
         return courses
