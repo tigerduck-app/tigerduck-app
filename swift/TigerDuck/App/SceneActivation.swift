@@ -48,8 +48,9 @@ final class SceneActivation {
         }
     }
 
+    /// The store-review account has nothing to fetch: its data is the bundled file's.
     func refresh(recheckSubmissions: Bool = false) {
-        guard app.hasCompletedOnboarding else { return }
+        guard app.hasCompletedOnboarding, !app.authService.session.currentSignIn.isDemo else { return }
         app.feed.startPolling(pollNow: false)
         refreshCourseChanges()
         refreshTask?.cancel()
@@ -85,6 +86,7 @@ final class SceneActivation {
     }
 
     private func refreshOnReturn() {
+        guard !app.authService.session.currentSignIn.isDemo else { return }
         guard app.hasCompletedOnboarding else {
             app.feed.startPolling()
             return

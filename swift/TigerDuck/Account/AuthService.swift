@@ -40,13 +40,15 @@ final class AuthService {
         endSchoolSession: @escaping @MainActor (_ departingStudentId: String?) -> Void
             = AccountSignOutCleanup.endSchoolSession(departing:),
         now: @escaping () -> Date = { Date() },
-        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
+        retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
+        demo: DemoAccount = .app
     ) {
         self.session = session
         deps = AuthServiceDependencies(
             keychainHasCredentials: keychainHasCredentials, moodleTokens: moodleTokens, schoolSignIn: schoolSignIn,
             schoolSessionIsLive: schoolSessionIsLive, renewSchoolSignIn: renewSchoolSignIn,
-            retrySchoolSignIn: retrySchoolSignIn, endSchoolSession: endSchoolSession, now: now, retrySleep: retrySleep
+            retrySchoolSignIn: retrySchoolSignIn, endSchoolSession: endSchoolSession, now: now, retrySleep: retrySleep,
+            demo: demo
         )
         let present = keychainHasCredentials()
         credentials.lastKnown = present

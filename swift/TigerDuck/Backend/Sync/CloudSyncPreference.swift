@@ -29,9 +29,15 @@ final class CloudSyncPreference {
         return Defaults[cloudSyncEnabled]
     }
 
+    /// The store-review account has no backend account, so TigerSync stays off for it.
     func setEnabled(_ enabled: Bool, for signIn: SignIn) {
         guard signIn.isCurrent else { return }
-        Defaults[cloudSyncEnabled] = enabled
+        Defaults[cloudSyncEnabled] = enabled && !signIn.isDemo
+    }
+
+    static func turnOffForDemo(_ signIn: SignIn, key: Defaults.Key<Bool> = .cloudSyncEnabled) {
+        guard signIn.isCurrent, signIn.isDemo else { return }
+        Defaults[key] = false
     }
 
     /// The sign-out turns TigerSync off after its sign-in has ended.

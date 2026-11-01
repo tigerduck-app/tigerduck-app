@@ -118,19 +118,22 @@ final class BulletinFeed {
             Self.logger.info("summary(forId:) skipped deleted bulletin id=\(id, privacy: .public)")
             return nil
         }
-        return (Summary(
-            id: detail.id,
-            externalId: detail.externalId,
-            title: detail.title,
-            titleClean: detail.titleClean,
-            canonicalOrg: detail.canonicalOrg,
-            contentTags: detail.contentTags,
-            importance: detail.importance,
-            summary: detail.summary,
-            sourceUrl: detail.sourceUrl,
-            postedAt: detail.postedAt,
-            isDeleted: detail.isDeleted
-        ), true)
+        return (Self.summary(of: detail), true)
+    }
+
+    /// Bulletins a sign-in brings with it, kept with their bodies as the fetches keep them.
+    static func keep(_ details: [BulletinAPI.BulletinDetail], files: BulletinFiles = .shared, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        files.saveBulletinSummaries(sortedUnique(details.map(summary(of:))))
+        details.forEach(files.saveBulletinDetail)
+    }
+
+    private static func summary(of detail: BulletinAPI.BulletinDetail) -> Summary {
+        Summary(
+            id: detail.id, externalId: detail.externalId, title: detail.title, titleClean: detail.titleClean,
+            canonicalOrg: detail.canonicalOrg, contentTags: detail.contentTags, importance: detail.importance,
+            summary: detail.summary, sourceUrl: detail.sourceUrl, postedAt: detail.postedAt, isDeleted: detail.isDeleted
+        )
     }
 
     private func cachedSummary(id: Int) -> Summary? {

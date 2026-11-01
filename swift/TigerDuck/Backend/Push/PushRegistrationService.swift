@@ -84,6 +84,9 @@ actor PushRegistrationService {
 
     var logger: Logger { requests.logger }
 
+    /// The store-review account has no device to register.
+    nonisolated var servesDemoAccount: Bool { requests.signIns.currentSignIn.isDemo }
+
     init(
         identity: PushIdentity,
         apiClient: PushAPIClient,

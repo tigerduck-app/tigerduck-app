@@ -49,7 +49,7 @@ final class PushCoordinator {
 
     private struct RunState {
         var isStarted = false
-        var stoppedBySignOut = false
+        var waitsForSignIn = false
     }
     private let isProtectedDataAvailable: @MainActor () -> Bool
 
@@ -102,6 +102,7 @@ final class PushCoordinator {
     }
 
     func enable(requestPermission: Bool = false) {
+        if registration.servesDemoAccount { run.waitsForSignIn = true; return }
         let firstStart = !run.isStarted
         if firstStart {
             run.isStarted = true
@@ -210,8 +211,8 @@ final class PushCoordinator {
 
     func refreshRegistrationAfterAuth() {
         scheduleSync.resendScheduleOnNextSync()
-        if run.stoppedBySignOut {
-            run.stoppedBySignOut = false
+        if run.waitsForSignIn {
+            run.waitsForSignIn = false
             enable()
         }
         Task { await registration.registerAgain() }
@@ -243,7 +244,7 @@ final class PushCoordinator {
     func disable() async -> Bool {
         guard run.isStarted else { return false }
         run.isStarted = false
-        run.stoppedBySignOut = true
+        run.waitsForSignIn = true
         ledger.forget(SendLedger.Channel.credentials)
         logger.info("disabling push stack")
 

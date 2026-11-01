@@ -37,6 +37,7 @@ enum CourseFetch {
     }
 
     static func warmAllSemesterCaches(authService: AuthService, for signIn: SignIn) async {
+        guard !signIn.isDemo else { return }
         await SemesterCatalog.refreshIfStale()
         let semesters = SemesterCatalog.availableSemesters().filter {
             CourseStore.shared.loadCourses(semester: $0).isEmpty
@@ -84,6 +85,7 @@ enum CourseFetch {
         moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
     ) async -> [SDCourse] {
+        guard !signIn.isDemo else { return CourseStore.shared.loadCourses(semester: semester) }
         await SemesterCatalog.refreshIfStale()
         // The course-selection system serves one term and its list has no term
         // marker, so its numbers belong to the term the catalogue reports open.
