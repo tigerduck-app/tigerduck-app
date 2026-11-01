@@ -87,10 +87,10 @@ final class OutboxDrain {
             case .courseDelete: return false
             }
         }
-        await outbox.drain(holding: isHeld) { [weak self] op in
+        await outbox.drain(for: signIn, holding: isHeld) { [weak self] op, madeIn in
             guard let self else { throw CancellationError() }
             try await BackendClient.$holdsResend.withValue({ isHeld(op) }) {
-                try await self.execute(op, for: signIn)
+                try await self.execute(op, for: madeIn)
             }
         }
     }

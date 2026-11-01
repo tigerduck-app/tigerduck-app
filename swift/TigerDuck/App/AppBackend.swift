@@ -20,7 +20,7 @@ struct AppBackend {
         self.pushCoordinator = pushCoordinator
         cloudSyncCoordinator = cloudSync
         syncTarget = SyncTarget()
-        localEdits = LocalEdits(account: account)
+        localEdits = LocalEdits()
         edits = EditSender(
             coordinator: cloudSync, push: pushCoordinator, poller: poller, localEdits: localEdits, account: account
         )

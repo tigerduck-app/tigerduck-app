@@ -94,7 +94,7 @@ final class FullSyncRunner {
             mayWrite: { self.mayWrite(for: signIn) }
         ) else { return nil }
         SyncProgress.noteCoursesReset(reset.remember, for: signIn)
-        app.localEdits.recentCourseDeletions = [:]
+        app.localEdits.setRecentCourseDeletions([:], for: signIn)
         AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: reset.remember), privacy: .public)), wiped local state")
         return deleting.subtracting(dropped)
     }
@@ -169,9 +169,11 @@ final class FullSyncRunner {
             localHasMarks: !localArchived.isEmpty || !localCompleted.isEmpty || !localIgnoredCourses.isEmpty
         )
         if isMigrating {
-            for id in localArchived { app.edits.syncAssignmentOverride(moodleId: id, status: "archived") }
-            for id in localCompleted { app.edits.syncAssignmentOverride(moodleId: id, status: "locally_completed") }
-            app.edits.syncCourseIgnores(localIgnoredCourses)
+            for id in localArchived { app.edits.syncAssignmentOverride(moodleId: id, status: "archived", for: signIn) }
+            for id in localCompleted {
+                app.edits.syncAssignmentOverride(moodleId: id, status: "locally_completed", for: signIn)
+            }
+            app.edits.syncCourseIgnores(localIgnoredCourses, for: signIn)
         }
         if syncsMarks { SyncProgress.noteMarksSynced(for: signIn) }
 

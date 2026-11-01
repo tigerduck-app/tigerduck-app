@@ -15,7 +15,7 @@ final class QueuedEdits {
         self.outbox = outbox
     }
 
-    func enqueueOverride(_ op: SyncOp) -> Task<Void, Never> {
+    func enqueueOverride(_ op: SyncOp, for signIn: SignIn) -> Task<Void, Never> {
         if case .courseOverride(_, let moodleId, let customName, let colorHex, _, _) = op {
             overrideEdits += 1
             if colorHex != nil { lastColorEdit[moodleId] = overrideEdits }
@@ -24,7 +24,7 @@ final class QueuedEdits {
         let id = UUID()
         overridesEnqueuing[id] = op
         return Task {
-            await outbox.enqueue(op)
+            await outbox.enqueue(op, for: signIn)
             overridesEnqueuing[id] = nil
         }
     }
@@ -122,7 +122,7 @@ final class QueuedEdits {
     }
 
     func addCourse(
-        semester: String, courseNo: String, then: @escaping @MainActor () async -> Void
+        semester: String, courseNo: String, for signIn: SignIn, then: @escaping @MainActor () async -> Void
     ) -> Task<Void, Never> {
         let id = UUID()
         let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
@@ -130,7 +130,7 @@ final class QueuedEdits {
         addsEnqueuing[id] = key
         addTimes[key] = stamp
         return Task {
-            await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: stamp))
+            await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: stamp), for: signIn)
             addsEnqueuing[id] = nil
             await then()
         }

@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -23,6 +24,28 @@ struct SyncOutboxTests {
         for _ in 0..<times {
             await outbox.drain { _ in throw error }
         }
+    }
+
+    @Test("An edit made in a sign-in that has ended is not queued")
+    func anEditOfAnEndedSignInIsNotQueued() async {
+        let outbox = Self.makeOutbox()
+        await outbox.enqueue(Self.mark, for: endedTestSignIn)
+        #expect(await outbox.pendingCount() == 0)
+    }
+
+    @Test("A drain sends each edit for the sign-in it was made in, and one read from disk for its own")
+    func aDrainSendsEachEditForItsOwnSignIn() async {
+        let directory = Self.freshDirectory()
+        await Self.makeOutbox(directory: directory).enqueue(Self.mark, for: testSignIn)
+        let outbox = Self.makeOutbox(directory: directory)
+        let made = TestSignIn()
+        await outbox.enqueue(Self.colour, for: made.signIn)
+        let drained = TestSignIn()
+        let sent = OSAllocatedUnfairLock<[SignIn]>(initialState: [])
+
+        await outbox.drain(for: drained.signIn) { _, signIn in sent.withLock { $0.append(signIn) } }
+
+        #expect(sent.withLock { $0 } == [drained.signIn, made.signIn])
     }
 
     @Test("A server error, timeout or rate limit keeps the edit without counting an attempt",

@@ -24,14 +24,14 @@ final class MarkConflicts {
     func resolve(keepLocal: Bool) {
         defer { items = [] }
         guard let app else { return }
+        let signIn = app.authService.session.currentSignIn
         if keepLocal {
             for c in items {
-                app.edits.syncAssignmentOverride(moodleId: c.id, status: c.localStatus)
+                app.edits.syncAssignmentOverride(moodleId: c.id, status: c.localStatus, for: signIn)
             }
         } else {
             let coordinator = app.cloudSyncCoordinator
             let push = app.pushCoordinator
-            let signIn = app.authService.session.currentSignIn
             Task { [weak self] in
                 await AssignmentMarksReconciler.keepServerSide(
                     read: { ServerMarks(try await push.fetchFullSync()) },

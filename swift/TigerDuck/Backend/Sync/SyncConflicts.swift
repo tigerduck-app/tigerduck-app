@@ -299,7 +299,7 @@ final class SyncConflicts {
                 )
             },
             markCoursesForCheck: { self.markCategoryReenabled("courses") },
-            queueEdits: { ReenableAnswer.queueLocalEdits(of: conflict, edits: self.app.edits) },
+            queueEdits: { ReenableAnswer.queueLocalEdits(of: conflict, edits: self.app.edits, for: signIn) },
             dropLocalCopies: { Self.dropLocalCopies(for: conflict, signIn: signIn) },
             syncFromServer: { await self.app.fullSync.sync(followUpIfBusy: $0) },
             noteAnswered: { saveFailed in

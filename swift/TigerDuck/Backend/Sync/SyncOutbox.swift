@@ -24,13 +24,13 @@ actor SyncOutbox {
         self.isLoaded = loaded != nil
     }
 
-    func enqueue(_ op: SyncOp) {
+    func enqueue(_ op: SyncOp, for signIn: SignIn) {
         loadIfNeeded()
-        guard !Self.isCutOff(op, by: cutoffs) else { return }
+        guard signIn.isCurrent, !Self.isCutOff(op, by: cutoffs) else { return }
         let key = op.dedupKey
         entries.removeAll { $0.op.dedupKey == key }
         parked.removeAll { $0.op.dedupKey == key }
-        entries.append(OutboxEntry(id: UUID(), op: op, attempts: 0))
+        entries.append(OutboxEntry(id: UUID(), op: op, attempts: 0, signIn: signIn))
         persist()
     }
 
@@ -117,10 +117,12 @@ actor SyncOutbox {
         persist()
     }
 
+    /// Sends each op for the sign-in it was made in; `signIn` stands in for an entry read from disk.
     @discardableResult
     func drain(
+        for signIn: SignIn,
         holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
-        execute: @Sendable (SyncOp) async throws -> Void
+        execute: @Sendable (SyncOp, SignIn) async throws -> Void
     ) async -> Bool {
         loadIfNeeded()
         let snapshot = entries
@@ -155,7 +157,7 @@ actor SyncOutbox {
             }
 
             do {
-                try await execute(entry.op)
+                try await execute(entry.op, entry.signIn ?? signIn)
             } catch {
                 guard generation == startGeneration else { return entries.isEmpty }
                 if error is ResendHeldError {

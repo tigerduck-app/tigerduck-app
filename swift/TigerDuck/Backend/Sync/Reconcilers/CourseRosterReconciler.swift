@@ -42,9 +42,9 @@ struct CourseRosterReconciler: CategoryReconciler {
         var deletedChanged = false
         var mergedSemesters = Set<String>()
         let graceNow = Date()
-        app.localEdits.recentCourseDeletions = app.localEdits.recentCourseDeletions.filter {
+        app.localEdits.setRecentCourseDeletions(app.localEdits.recentCourseDeletions.filter {
             graceNow.timeIntervalSince($0.value) < LocalEdits.courseDeleteGraceInterval
-        }
+        }, for: signIn)
         let deleting = Set(app.localEdits.recentCourseDeletions.keys).union(queuedDeletes)
         let resetAt = CourseStore.shared.loadSemesterResetAt()
         let ownResets = tombstonesBySemester.filter { semester, tombstones in

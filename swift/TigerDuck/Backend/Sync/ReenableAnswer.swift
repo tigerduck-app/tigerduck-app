@@ -69,7 +69,7 @@ enum ReenableAnswer {
         )
     }
 
-    static func queueLocalEdits(of conflict: Conflict, edits: EditSender) -> [Task<Void, Never>] {
+    static func queueLocalEdits(of conflict: Conflict, edits: EditSender, for signIn: SignIn) -> [Task<Void, Never>] {
         var queued: [Task<Void, Never>?] = []
         if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
             let terms = SemesterCatalog.availableSemesters().map { ($0, CourseStore.shared.loadCourses(semester: $0)) }
@@ -84,7 +84,7 @@ enum ReenableAnswer {
                 let colorMap = TigerDuckTheme.courseColorMap
                 for (courseNo, hex) in colorMap {
                     guard let identity = identityByCourseNo[courseNo] else { continue }
-                    queued += edits.syncCourseOverride(moodleCourseId: identity, colorHex: String(format: "#%06X", hex))
+                    queued += edits.syncCourseOverride(moodleCourseId: identity, colorHex: String(format: "#%06X", hex), for: signIn)
                 }
             }
             if conflict.categories.contains("course_names") {
@@ -92,7 +92,7 @@ enum ReenableAnswer {
                 for (courseNo, locales) in customNames {
                     guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
                     for (locale, name) in locales where !name.isEmpty {
-                        queued += edits.syncCourseOverride(moodleCourseId: moodleId, customName: name, locale: locale)
+                        queued += edits.syncCourseOverride(moodleCourseId: moodleId, customName: name, locale: locale, for: signIn)
                     }
                 }
             }
@@ -101,24 +101,24 @@ enum ReenableAnswer {
             let archived = AssignmentStore.shared.loadArchivedAssignmentIds()
             let completed = AssignmentStore.shared.loadLocallyCompletedAssignmentIds()
             for id in archived {
-                queued.append(edits.syncAssignmentOverride(moodleId: id, status: "archived"))
+                queued.append(edits.syncAssignmentOverride(moodleId: id, status: "archived", for: signIn))
             }
             for id in completed {
-                queued.append(edits.syncAssignmentOverride(moodleId: id, status: "locally_completed"))
+                queued.append(edits.syncAssignmentOverride(moodleId: id, status: "locally_completed", for: signIn))
             }
             let cleared = AssignmentMarksReconciler.assignmentMarksToClear(
                 server: conflict.serverMarkedAssignments, local: archived.union(completed)
             )
             for id in cleared {
-                queued.append(edits.syncAssignmentOverride(moodleId: id, status: "none"))
+                queued.append(edits.syncAssignmentOverride(moodleId: id, status: "none", for: signIn))
             }
             if let serverIgnoredCourses = conflict.serverIgnoredCourses {
                 let ignoredCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
-                queued += edits.syncCourseIgnores(ignoredCourses)
+                queued += edits.syncCourseIgnores(ignoredCourses, for: signIn)
                 for course in CourseIgnoresReconciler.courseIgnoresToClear(server: serverIgnoredCourses, local: ignoredCourses) {
                     queued.append(edits.syncCourseIgnore(
                         semester: course.semester, courseNo: course.courseNo,
-                        moodleIdNumber: course.moodleId, ignore: false
+                        moodleIdNumber: course.moodleId, ignore: false, for: signIn
                     ))
                 }
             }

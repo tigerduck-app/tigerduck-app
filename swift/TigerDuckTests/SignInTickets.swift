@@ -59,3 +59,55 @@ extension BulletinAPIClient {
         self.init(baseURLProvider: baseURLProvider, session: session, auth: .signedIn(authHeaderProvider))
     }
 }
+
+extension SyncOutbox {
+    func enqueue(_ op: SyncOp) { enqueue(op, for: testSignIn) }
+
+    @discardableResult
+    func drain(
+        holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
+        execute: @Sendable (SyncOp) async throws -> Void
+    ) async -> Bool {
+        await drain(for: testSignIn, holding: isHeld) { op, _ in try await execute(op) }
+    }
+}
+
+extension CloudSyncCoordinator {
+    @discardableResult
+    func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) -> Task<Void, Never>? {
+        enqueueCourseColorOverride(moodleId: moodleId, semester: semester, colorHex: colorHex, for: testSignIn)
+    }
+
+    @discardableResult
+    func enqueueCourseNameOverride(
+        moodleId: String, semester: String, customName: String, locale: String?
+    ) -> Task<Void, Never>? {
+        enqueueCourseNameOverride(moodleId: moodleId, semester: semester, customName: customName, locale: locale, for: testSignIn)
+    }
+
+    func enqueueAssignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String) async {
+        await enqueueAssignmentOverride(
+            moodleCourseId: moodleCourseId, moodleAssignmentId: moodleAssignmentId, localStatus: localStatus, for: testSignIn
+        )
+    }
+
+    func enqueueCourseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?) async {
+        await enqueueCourseIgnore(
+            semester: semester, courseNo: courseNo, moodleId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore,
+            for: testSignIn
+        )
+    }
+
+    func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date = Date()) async {
+        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp, for: testSignIn)
+    }
+
+    func deleteCourse(semester: String, courseNo: String, at stamp: Date = Date()) async {
+        await deleteCourse(semester: semester, courseNo: courseNo, at: stamp, for: testSignIn)
+    }
+
+    @discardableResult
+    func addCourse(semester: String, courseNo: String) -> Task<Void, Never> {
+        addCourse(semester: semester, courseNo: courseNo, for: testSignIn)
+    }
+}

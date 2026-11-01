@@ -172,7 +172,7 @@ struct CourseAddSyncTests {
             account: account, whileReading: { account.endSignIn() }
         )
 
-        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001", for: account.currentSignIn).value
 
         #expect(backend.uploads.isEmpty)
     }

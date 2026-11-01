@@ -104,30 +104,34 @@ final class CloudSyncCoordinator {
     }
 
     @discardableResult
-    func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) -> Task<Void, Never>? {
-        guard takesEdits else { return nil }
-        return edits.enqueueOverride(.courseOverride(
-            semester: semester, moodleId: moodleId,
-            customName: nil, colorHex: colorHex, locale: nil, stamp: Date()))
-    }
-
-    @discardableResult
-    func enqueueCourseNameOverride(
-        moodleId: String, semester: String, customName: String, locale: String?
+    func enqueueCourseColorOverride(
+        moodleId: String, semester: String, colorHex: String, for signIn: SignIn
     ) -> Task<Void, Never>? {
         guard takesEdits else { return nil }
         return edits.enqueueOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
-            customName: customName, colorHex: nil, locale: locale, stamp: Date()))
+            customName: nil, colorHex: colorHex, locale: nil, stamp: Date()), for: signIn)
     }
 
-    func enqueueAssignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String) async {
+    @discardableResult
+    func enqueueCourseNameOverride(
+        moodleId: String, semester: String, customName: String, locale: String?, for signIn: SignIn
+    ) -> Task<Void, Never>? {
+        guard takesEdits else { return nil }
+        return edits.enqueueOverride(.courseOverride(
+            semester: semester, moodleId: moodleId,
+            customName: customName, colorHex: nil, locale: locale, stamp: Date()), for: signIn)
+    }
+
+    func enqueueAssignmentOverride(
+        moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String, for signIn: SignIn
+    ) async {
         guard takesEdits else { return }
         let op = SyncOp.assignmentOverride(
             moodleCourseId: moodleCourseId,
             moodleAssignmentId: moodleAssignmentId,
             localStatus: localStatus, stamp: Date())
-        await outbox.enqueue(op)
+        await outbox.enqueue(op, for: signIn)
     }
 
     func pendingAssignmentOverrideIds() async -> Set<String> { await edits.pendingAssignmentOverrideIds() }
@@ -153,11 +157,13 @@ final class CloudSyncCoordinator {
         await drain.awaitSending()
     }
 
-    func enqueueCourseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?) async {
+    func enqueueCourseIgnore(
+        semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?, for signIn: SignIn
+    ) async {
         guard takesEdits else { return }
         await outbox.enqueue(.courseIgnore(
             semester: semester, courseNo: courseNo, moodleId: moodleId,
-            moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()))
+            moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()), for: signIn)
     }
 
     func discardCourseIgnores(semester: String? = nil, courseNo: String? = nil) async {
@@ -166,14 +172,14 @@ final class CloudSyncCoordinator {
 
     func pendingCourseIgnoreKeys() async -> Set<String> { await edits.pendingCourseIgnoreKeys() }
 
-    func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date = Date()) async {
+    func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date = Date(), for signIn: SignIn) async {
         guard takesEdits else { return }
-        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp))
+        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp), for: signIn)
     }
 
-    func deleteCourse(semester: String, courseNo: String, at stamp: Date = Date()) async {
+    func deleteCourse(semester: String, courseNo: String, at stamp: Date = Date(), for signIn: SignIn) async {
         await discardCourseIgnores(semester: semester, courseNo: courseNo)
-        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp)
+        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp, for: signIn)
         await syncTick()
     }
 
@@ -186,8 +192,8 @@ final class CloudSyncCoordinator {
     func pendingCourseDeleteKeys() async -> Set<String> { await edits.pendingCourseDeleteKeys() }
 
     @discardableResult
-    func addCourse(semester: String, courseNo: String) -> Task<Void, Never> {
-        edits.addCourse(semester: semester, courseNo: courseNo) { await self.syncTick() }
+    func addCourse(semester: String, courseNo: String, for signIn: SignIn) -> Task<Void, Never> {
+        edits.addCourse(semester: semester, courseNo: courseNo, for: signIn) { await self.syncTick() }
     }
 
     func courseAddKeys(unlandedAt date: Date) async -> Set<String> { await edits.courseAddKeys(unlandedAt: date) }

@@ -114,8 +114,15 @@ nonisolated enum SyncOp: Codable, Sendable {
     }
 }
 
+/// `signIn` is the sign-in the op was made in. An entry read back from disk has none and goes out
+/// with the drain's, as a sign-out clears the outbox before the next account signs in.
 nonisolated struct OutboxEntry: Codable, Sendable {
     let id: UUID
     let op: SyncOp
     var attempts: Int
+    var signIn: SignIn?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, op, attempts
+    }
 }
