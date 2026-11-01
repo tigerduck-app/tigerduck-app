@@ -97,9 +97,10 @@ final class MoodleNotificationSettings {
             try await api.save(preference, signIn)
         } catch {
             shown.set(before, for: signIn)
-            if !AppLogger.isCancellation(error) { saveFailure = MoodleFailure.message(for: error) }
-            return
+            guard !AppLogger.isCancellation(error) else { return }
+            saveFailure = MoodleFailure.message(for: error)
         }
+        // A write that failed on its way back may still have been stored.
         do {
             shown.set(try await api.load(), for: signIn)
         } catch {

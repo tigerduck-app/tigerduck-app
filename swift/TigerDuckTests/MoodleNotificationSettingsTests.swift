@@ -9,17 +9,22 @@ struct MoodleNotificationSettingsTests {
 
     /// A site that keeps the preferences a write stores, optionally holding each write at a gate.
     private final class Site: @unchecked Sendable {
+        /// How a write fails: before the server stores it, or after, as a timeout on the way back.
+        enum Failure {
+            case unstored(any Error), stored(any Error)
+        }
+
         private let lock = NSLock()
         private var held: MoodleNotificationMatrix
         private var sent: [MoodleNotificationMatrix.Preference] = []
         private var reads = 0
         private let gate: ManualSleeper?
-        private let failure: (any Error)?
+        private let failure: Failure?
         /// What the server shows after a write, when it holds something else than was sent.
         private let afterWrite: MoodleNotificationMatrix?
 
         init(
-            _ matrix: MoodleNotificationMatrix, gate: ManualSleeper? = nil, failure: (any Error)? = nil,
+            _ matrix: MoodleNotificationMatrix, gate: ManualSleeper? = nil, failure: Failure? = nil,
             afterWrite: MoodleNotificationMatrix? = nil
         ) {
             held = matrix
@@ -42,8 +47,9 @@ struct MoodleNotificationSettingsTests {
                 save: { preference, _ in
                     self.lock.withLock { self.sent.append(preference) }
                     await self.gate?.sleep(for: .seconds(1))
-                    if let failure = self.failure { throw failure }
+                    if case .unstored(let error) = self.failure { throw error }
                     self.lock.withLock { self.held = self.afterWrite ?? self.held.replacing(preference) }
+                    if case .stored(let error) = self.failure { throw error }
                 }
             )
         }
@@ -97,15 +103,27 @@ struct MoodleNotificationSettingsTests {
     @Test("a failed write puts the switch back and says why")
     func failedWriteReverts() async throws {
         let failure = MoodleWebserviceError.malformedResponse(detail: "nopermission")
-        let site = Site(Fixtures.matrix([Self.forum]), failure: failure)
+        let site = Site(Fixtures.matrix([Self.forum]), failure: .unstored(failure))
         let settings = await Self.loaded(site)
 
         await settings.set(false, for: Self.forum.key)?.value
 
         #expect(settings.isOn(try Self.shown(Self.forum.key, in: settings)))
         #expect(settings.saveFailure == MoodleFailure.message(for: failure))
-        #expect(site.loads == 1)
         #expect(settings.canChange(Self.forum))
+    }
+
+    @Test("a write that fails after Moodle stored it shows what Moodle holds")
+    func failedWriteShowsTheServer() async throws {
+        let failure = MoodleWebserviceError.transientNetwork(underlying: "timed out")
+        let site = Site(Fixtures.matrix([Self.forum]), failure: .stored(failure))
+        let settings = await Self.loaded(site)
+
+        await settings.set(false, for: Self.forum.key)?.value
+
+        #expect(site.loads == 2)
+        #expect(!settings.isOn(try Self.shown(Self.forum.key, in: settings)))
+        #expect(settings.saveFailure == MoodleFailure.message(for: failure))
     }
 
     @Test("a load while a write runs sends no read of its own, and the write's read shows the server")
