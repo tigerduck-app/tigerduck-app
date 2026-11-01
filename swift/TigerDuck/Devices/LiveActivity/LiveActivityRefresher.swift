@@ -102,6 +102,8 @@ final class LiveActivityRefresher {
         )
     }
 
+    /// Refreshes at the next scenario boundary while the app runs. A suspended app misses it, and
+    /// meanwhile only the backend's push-to-start and end jobs change the activities.
     private func scheduleBoundaryRefresh(
         snapshot: LiveActivitySnapshot?,
         courses: [SDCourse],
