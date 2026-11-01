@@ -11,7 +11,7 @@ final class MailPageSession {
     private var isReleased = false
     private var pendingDrop = false
     private let onAuthFailure: @MainActor () -> Void
-    private var signOutEpoch = 0
+    private let account: AccountSession
     private var signOutListener: MailSignOutListener?
 
     init(
@@ -19,8 +19,10 @@ final class MailPageSession {
         open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() },
         onAuthFailure: @escaping @MainActor () -> Void = { MailAccountManager.shared.handleAuthFailure() },
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
-        signOutEvents: NotificationCenter = .default
+        signOutEvents: NotificationCenter = .default,
+        account: AccountSession? = nil
     ) {
+        self.account = account ?? MailAccountManager.shared.session
         self.idleClose = MailIdleClose(delay: idleClose, sleep: sleep)
         self.open = open
         self.onAuthFailure = onAuthFailure
@@ -86,7 +88,6 @@ final class MailPageSession {
     }
 
     func invalidateForSignOut() {
-        signOutEpoch += 1
         idleClose.cancel()
         isReleased = false
         pendingDrop = false
@@ -107,18 +108,18 @@ final class MailPageSession {
     }
 
     private func resolveClient() async throws -> any MailClient {
+        let signIn = await account.startingSignIn
         if let client { return client }
-        let epoch = signOutEpoch
         if let opening {
             let opened = try await opening.value
-            guard epoch == signOutEpoch else { throw CancellationError() }
+            guard signIn.isCurrent else { throw CancellationError() }
             return opened
         }
         let task = Task { try await open() }
         opening = task
-        defer { if epoch == signOutEpoch { opening = nil } }
+        defer { if signIn.isCurrent { opening = nil } }
         let opened = try await task.value
-        guard epoch == signOutEpoch else {
+        guard signIn.isCurrent else {
             await opened.logout()
             throw CancellationError()
         }

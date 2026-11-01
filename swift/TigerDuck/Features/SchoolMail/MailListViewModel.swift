@@ -33,10 +33,11 @@ final class MailListViewModel {
         // Resolved in the body, not the parameter list: a default-argument expression runs outside
         // the init's MainActor isolation, where `MailPageSession()` and `MailAccountManager.shared`
         // warn in Swift 6 mode and the checker's closure would be isolated to `MailChecker`.
-        let session = session ?? MailPageSession()
+        let account = account ?? MailAccountManager.shared.session
+        let session = session ?? MailPageSession(account: account)
         let cache = cache ?? MailAccountManager.shared.cache
         self.session = session
-        loads = MailListLoads(account: account ?? MailAccountManager.shared.session)
+        loads = MailListLoads(account: account)
         writer = MailListCacheWriter(cache: cache)
         // Starts after the warm's delay too, so the refresh that follows a paint goes first.
         let indexer = MailIndexer(session: session, cache: cache, startDelay: warmDelay)

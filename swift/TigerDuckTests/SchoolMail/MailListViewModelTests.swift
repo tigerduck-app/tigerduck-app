@@ -45,9 +45,10 @@ struct MailListViewModelTests {
         let fake = FakeMailClient(folders: folders)
         let cache = SchoolMailTestDoubles.temporaryCache()
         let seen = SeenLog()
-        let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake },
-                                      onAuthFailure: { seen.authFailures += 1 }, signOutEvents: signOutEvents)
         let account = AccountSession()
+        let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake },
+                                      onAuthFailure: { seen.authFailures += 1 }, signOutEvents: signOutEvents,
+                                      account: account)
         let model = MailListViewModel(session: session, account: account, cache: cache, noteSeenByPage: { seen.noted.append($0) },
                                       signOutEvents: signOutEvents, warmDelay: warmDelay, catchUpDelay: catchUpDelay)
         return Harness(model: model, fake: fake, cache: cache, seen: seen, account: account)

@@ -142,9 +142,12 @@ struct MailPageSessionTests {
     @Test func aSignOutClosesTheHeldConnectionAtOnce() async throws {
         let center = NotificationCenter()
         let opener = Opener(first: FakeMailClient(folders: ["INBOX": []]), second: FakeMailClient(folders: ["INBOX": []]))
-        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() }, signOutEvents: center)
+        let account = AccountSession()
+        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() }, signOutEvents: center,
+                                      account: account)
         _ = try await session.use { _ in }
 
+        account.endSignIn()
         center.post(name: MailAccountManager.didSignOut, object: nil)
         await opener.first.waitForArrival("logout")
         #expect(await opener.first.calls.contains("logout"))
@@ -163,7 +166,8 @@ struct MailPageSessionTests {
             cache: SchoolMailTestDoubles.temporaryCache(),
             signOutEvents: center
         )
-        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, signOutEvents: center)
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, signOutEvents: center,
+                                      account: manager.session)
         _ = try await session.use { _ in }
         manager.logout()
         await fake.waitForArrival("logout")
@@ -173,11 +177,14 @@ struct MailPageSessionTests {
     @Test func anOpenOvertakenByASignOutIsClosedNotAdopted() async throws {
         let center = NotificationCenter()
         let opener = Opener(first: FakeMailClient(folders: ["INBOX": []]), second: FakeMailClient(folders: ["INBOX": []]))
-        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() }, signOutEvents: center)
+        let account = AccountSession()
+        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() }, signOutEvents: center,
+                                      account: account)
         await opener.first.hold("login")
         let use = Task { try await session.use { $0 } }
         await opener.first.waitForArrival("login")
 
+        account.endSignIn()
         center.post(name: MailAccountManager.didSignOut, object: nil)
         await opener.first.release("login")
 
