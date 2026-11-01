@@ -92,9 +92,10 @@ final class CourseColorStore {
         return files.loadMoodleColorWaits().unsent.reduce(into: [:]) { $0[$1] = map[$1] }
     }
 
-    func noteLateMoodleColorsSent(_ courseNos: Set<String>, for signIn: SignIn) {
+    /// Ends the courses' waits for their Moodle colour, and their unsent marks.
+    func endMoodleWaits(_ courseNos: Set<String>, for signIn: SignIn) {
         guard !courseNos.isEmpty else { return }
-        changingWaits(signIn) { $0.unsent.subtract(courseNos) }
+        changingWaits(signIn) { $0.forget(Array(courseNos)) }
     }
 
     /// Colours another device picked, applied without counting as picks here.
@@ -125,7 +126,7 @@ final class CourseColorStore {
     @discardableResult
     func pick(_ hex: UInt32, courseNo: String, palette: [UInt32], for signIn: SignIn) -> [String: UInt32] {
         let changed = saving(signIn, unchanged: [:]) { $0.setColor(hex: hex, for: courseNo, palette: palette) }
-        if !changed.isEmpty { changingWaits(signIn) { $0.forget([courseNo]) } }
+        changingWaits(signIn) { $0.forget([courseNo]) }
         return changed
     }
 

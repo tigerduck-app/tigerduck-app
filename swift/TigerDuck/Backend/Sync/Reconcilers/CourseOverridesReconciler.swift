@@ -17,7 +17,11 @@ struct CourseOverridesReconciler: CategoryReconciler {
             pass.courseOverrides, courses: pass.coursesArray, moved: CourseColorStore.shared.lateMoodleColors,
             snapshot: pass.json
         ) : (holding: [], sent: [])
-        CourseColorStore.shared.noteLateMoodleColorsSent(late.sent, for: pass.signIn)
+        let choices = colors ? Self.colorChoices(
+            pass.courseOverrides, courses: pass.coursesArray,
+            holding: pass.heldCourseOverrides.colors.union(late.holding), snapshot: pass.json
+        ) : []
+        CourseColorStore.shared.endMoodleWaits(late.sent.union(choices), for: pass.signIn)
         let changed = !pass.courseOverrides.isEmpty && applyCourseOverrides(
             pass.courseOverrides, coursesArray: pass.coursesArray, colors: colors, names: names,
             holdingColors: pass.heldCourseOverrides.colors.union(late.holding),
@@ -81,6 +85,22 @@ struct CourseOverridesReconciler: CategoryReconciler {
             }
         }
         return late
+    }
+
+    /// The courses whose backend colour is stamped after an automatic fill, so a device chose it.
+    /// A fill of this device comes back on every pull and ends no wait.
+    static func colorChoices(
+        _ overrides: [[String: Any]], courses: [[String: Any]], holding held: Set<String>, snapshot json: [String: Any]
+    ) -> Set<String> {
+        let byIdentity = overridesByIdentity(overrides)
+        return Set(courses.compactMap { row in
+            guard let identity = overrideIdentity(row), !held.contains(identity),
+                  let semester = row["semester"] as? String, let courseNo = row["course_no"] as? String,
+                  let colorHex = byIdentity[identity]?["color_hex"] as? String, !colorHex.isEmpty,
+                  let clock = (byIdentity[identity]?["color_hex_hlc"] as? NSNumber)?.int64Value else { return nil }
+            let fill = deterministicFillStamp(serverHasColor: false, stampedAt: nil, snapshot: json, semester: semester)
+            return clock > PushAPI.clock(of: fill) ? courseNo : nil
+        })
     }
 
     private static func overridesByIdentity(_ overrides: [[String: Any]]) -> [String: [String: Any]] {

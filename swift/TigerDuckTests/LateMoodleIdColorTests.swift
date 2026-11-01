@@ -69,6 +69,40 @@ struct LateMoodleIdColorTests {
         #expect(folder.colors.lateMoodleColors.isEmpty)
     }
 
+    @Test("Picking the colour a course already has ends its wait, so its Moodle id moves it no more")
+    func pickingTheSameColourEndsTheWait() throws {
+        let folder = Folder()
+        folder.giveColours(["CS1"])
+        let automatic = try #require(folder.colors.map["CS1"])
+        folder.colors.pick(automatic, courseNo: "CS1", palette: Self.palette, for: testSignIn)
+
+        folder.storeIds(["CS1": 4127])
+        folder.giveColours(["CS1"])
+
+        #expect(folder.colors.map == ["CS1": automatic])
+        #expect(folder.colors.lateMoodleColors.isEmpty)
+    }
+
+    @Test("A colour another device chose ends the wait when pulled, though it is the colour here already")
+    func pullingTheSameChosenColourEndsTheWait() throws {
+        let folder = Folder()
+        folder.giveColours(["CS1"])
+        let automatic = try #require(folder.colors.map["CS1"])
+        let chosen = Self.serverColour(automatic, at: Self.resetClock + 60_000_000)
+        let echo = Self.serverColour(automatic, at: Self.automaticFillClock)
+        #expect(CourseOverridesReconciler.colorChoices(echo, courses: Self.courseRows, holding: [], snapshot: Self.snapshot).isEmpty)
+        #expect(CourseOverridesReconciler.colorChoices(chosen, courses: Self.courseRows, holding: ["1151CS1"], snapshot: Self.snapshot).isEmpty)
+
+        let choices = CourseOverridesReconciler.colorChoices(chosen, courses: Self.courseRows, holding: [], snapshot: Self.snapshot)
+        folder.colors.applyColors([("CS1", automatic)], palette: Self.palette, for: testSignIn)
+        folder.colors.endMoodleWaits(choices, for: testSignIn)
+        folder.storeIds(["CS1": 4127])
+        folder.giveColours(["CS1"])
+
+        #expect(choices == ["CS1"])
+        #expect(folder.colors.map == ["CS1": automatic])
+    }
+
     @Test("A colour pulled from another device stays when the course's Moodle id arrives")
     func aPulledColourIsNotOverwrittenByALateId() {
         let folder = Folder()
@@ -176,7 +210,7 @@ struct LateMoodleIdColorTests {
         let landed = Self.late(Self.serverColour(Self.moodle[7], at: Self.automaticFillClock + 1_000), moved)
         #expect(landed.holding.isEmpty)
         #expect(landed.sent == ["CS1"])
-        folder.colors.noteLateMoodleColorsSent(landed.sent, for: testSignIn)
+        folder.colors.endMoodleWaits(landed.sent, for: testSignIn)
 
         #expect(folder.colors.lateMoodleColors.isEmpty)
         #expect(folder.relaunch().lateMoodleColors.isEmpty)
