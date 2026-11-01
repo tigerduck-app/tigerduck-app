@@ -434,6 +434,38 @@ struct DemoAccountTests {
         await #expect(throws: URLError.self) { _ = try await api.download(file, { _ in }) }
     }
 
+    private nonisolated static var demoFiles: [MoodleFile] {
+        (DemoMoodleCourses.bundled?.courses ?? []).flatMap { course in
+            let materials = course.materials.sections.flatMap(\.materials).flatMap { material -> [MoodleFile] in
+                switch material.content {
+                case .file(let file): [file]
+                case .folder(let files): files
+                case .link: []
+                }
+            }
+            let posts: [MoodleFile] = course.forums.flatMap { $0.posts.values.joined().flatMap(\.attachments) }
+            let assignments: [MoodleFile] = course.assignments.flatMap { $0.attachments + ($0.submission?.files ?? []) }
+            return [course.announcements.flatMap(\.attachments), posts, assignments, materials].flatMap { $0 }
+        }
+    }
+
+    @Test("each Moodle file in the demo opens as the file it lists, with its content", arguments: demoFiles)
+    func demoMoodleFileOpens(_ file: MoodleFile) async throws {
+        let moodle = try #require(DemoMoodleCourses.bundled)
+        let content = try #require(moodle.files[file.url])
+        let folder = Folder()
+        let downloads = MoodleFileDownloads(root: folder.root)
+        let location = downloads.location(of: file, owner: .module(1), courseId: 90501, account: Self.studentId)
+
+        let copy = await downloads.download(
+            file, to: location, fetch: MoodleCourseAPI.demo(moodle).download, for: Self.demoSignIn()
+        )
+
+        #expect(copy?.lastPathComponent == file.name)
+        #expect(try copy.map { try Data(contentsOf: $0) } == content)
+        #expect(content.count == file.size)
+    }
+
     @Test("the empty-classroom page gets the file's week, and weekends have no rooms")
     func emptyClassroomsFromTheFile() async throws {
         let classrooms = try #require(DemoFixture.bundled?.emptyClassroom)

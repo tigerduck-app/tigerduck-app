@@ -43,7 +43,12 @@ nonisolated extension MoodleCourseAPI {
                 _ = read.withLock { $0.insert(discussionId) }
             },
             materials: { moodle.course($0)?.materials ?? MoodleCourseMaterials(sections: []) },
-            download: { _, _ in throw URLError(.notConnectedToInternet) },
+            download: { file, _ in
+                guard let content = moodle.files[file.url] else { throw URLError(.notConnectedToInternet) }
+                let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("MoodleDownload-\(UUID().uuidString)")
+                try content.write(to: temporary)
+                return temporary
+            },
             members: { MoodleMemberList(ownId: moodle.ownMemberId, members: moodle.course($0)?.members ?? []) },
             picture: { _ in throw URLError(.notConnectedToInternet) },
             gradeItems: { moodle.course($0)?.grades ?? [] },
