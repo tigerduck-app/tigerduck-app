@@ -13,7 +13,7 @@ nonisolated enum MoodleAssignmentService {
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> [MoodleAssignmentRecord] {
-        try await MoodleWebserviceClient.withToken(tokens) { token in
+        try await MoodleWebserviceClient.withRenewingToken(tokens) { token in
             try await MoodleWebserviceClient.call(
                 "mod_assign_get_assignments",
                 params: courseIds.enumerated().map { ("courseids[\($0.offset)]", String($0.element)) }
@@ -35,7 +35,7 @@ nonisolated enum MoodleAssignmentService {
     }
 
     private static func submissionStatus(assignId: Int) async throws -> RawSubmissionStatusResponse {
-        try await MoodleWebserviceClient.withToken { token in
+        try await MoodleWebserviceClient.withRenewingToken { token in
             let userId = try await MoodleSiteInfoService.shared.userId(token: token)
             return try await MoodleWebserviceClient.call(
                 "mod_assign_get_submission_status",
@@ -74,30 +74,7 @@ nonisolated enum MoodleAssignmentService {
                 siteURL: siteURL
             )
         }
-        func readPages() async throws -> (byId: [Int: MoodleSubmissionComment], total: Int, shrank: Bool) {
-            var byId: [Int: MoodleSubmissionComment] = [:]
-            var total: Int?
-            var shrank = false
-            for number in 0..<commentPageLimit {
-                let answer = try await page(number)
-                let known = byId.count
-                for comment in answer.comments { byId[comment.id] = comment.model }
-                let count = answer.count ?? 0
-                if let total, count < total { shrank = true }
-                total = count
-                guard byId.count > known, byId.count < count else { break }
-            }
-            return (byId, total ?? 0, shrank)
-        }
-        var read = try await readPages()
-        if read.shrank { read = try await readPages() }
-        if read.shrank { throw MoodleWebserviceError.transientNetwork(underlying: "comments changed while paging") }
-        var byId = read.byId
-        let total = read.total
-        if byId.count < total {
-            for comment in try await page(0).comments { byId[comment.id] = comment.model }
-        }
-        return byId.values.sorted { ($0.created, $0.id) < ($1.created, $1.id) }
+        return try await CommentPager(page: page).oldestFirst()
     }
 
     static func groups(
@@ -285,6 +262,42 @@ nonisolated struct RawSubmissionStatusResponse: Decodable, Sendable {
 
     private static func date(_ seconds: Int) -> Date? {
         seconds > 0 ? Date(timeIntervalSince1970: TimeInterval(seconds)) : nil
+    }
+}
+
+nonisolated private struct CommentPager {
+    private struct Pass {
+        var byId: [Int: MoodleSubmissionComment] = [:]
+        var total = 0
+        var totalShrank = false
+
+        mutating func add(_ answer: RawComments) {
+            for comment in answer.comments { byId[comment.id] = comment.model }
+        }
+    }
+
+    let page: (Int) async throws -> RawComments
+
+    func oldestFirst() async throws -> [MoodleSubmissionComment] {
+        var pass = try await readEveryPage()
+        if pass.totalShrank { pass = try await readEveryPage() }
+        if pass.totalShrank { throw MoodleWebserviceError.transientNetwork(underlying: "comments changed while paging") }
+        if pass.byId.count < pass.total { pass.add(try await page(0)) }
+        return pass.byId.values.sorted { ($0.created, $0.id) < ($1.created, $1.id) }
+    }
+
+    private func readEveryPage() async throws -> Pass {
+        var pass = Pass()
+        for number in 0..<MoodleAssignmentService.commentPageLimit {
+            let answer = try await page(number)
+            let known = pass.byId.count
+            pass.add(answer)
+            let count = answer.count ?? 0
+            if number > 0, count < pass.total { pass.totalShrank = true }
+            pass.total = count
+            guard pass.byId.count > known, pass.byId.count < count else { break }
+        }
+        return pass
     }
 }
 
