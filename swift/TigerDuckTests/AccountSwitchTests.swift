@@ -112,7 +112,7 @@ struct AccountSwitchTests {
             cache.colors.savePickedCourseColors(["CS1001"])
             cache.assignments.saveAssignments([], for: testSignIn)
             cache.assignments.apply(.setArchived(id: "1", true), for: testSignIn)
-            cache.assignments.apply(.setCompleted(id: "2", true), for: testSignIn)
+            cache.assignments.apply(.setLocallyCompleted(id: "2", true), for: testSignIn)
             cache.assignments.apply(.ignoreCourse(courseNo: "CS1001", semester: semester, ignored: true), for: testSignIn)
             cache.assignments.saveCalendarEvents([
                 SDCalendarEvent(eventId: "moodle-1", title: "Quiz", date: Date(), source: .moodle),

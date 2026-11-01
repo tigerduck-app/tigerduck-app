@@ -3,7 +3,7 @@ import Observation
 
 enum AssignmentEdit {
     case setArchived(id: String, Bool)
-    case setCompleted(id: String, Bool)
+    case setLocallyCompleted(id: String, Bool)
     case ignoreCourse(courseNo: String, semester: String, ignored: Bool)
 }
 
@@ -116,7 +116,7 @@ final class AssignmentStore {
         switch edit {
         case let .setArchived(id, archived):
             write(signIn) { archived ? $0.addArchivedAssignmentId(id) : $0.removeArchivedAssignmentId(id) }
-        case let .setCompleted(id, completed):
+        case let .setLocallyCompleted(id, completed):
             write(signIn) { completed ? $0.addLocallyCompletedAssignmentId(id) : $0.removeLocallyCompletedAssignmentId(id) }
         case let .ignoreCourse(courseNo, semester, ignored):
             write(signIn) { $0.setAssignmentsIgnored(ignored, semester: semester, courseNo: courseNo) }

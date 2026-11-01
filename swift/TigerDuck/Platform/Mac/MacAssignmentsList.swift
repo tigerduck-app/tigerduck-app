@@ -240,12 +240,12 @@ final class MacAssignmentListModel {
     }
 
     func markComplete(_ assignment: SDAssignment) {
-        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, true), for: AccountSession.school.currentSignIn)
+        AssignmentStore.shared.apply(.setLocallyCompleted(id: assignment.assignmentId, true), for: AccountSession.school.currentSignIn)
         bump()
     }
 
     func undoComplete(_ assignment: SDAssignment) {
-        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
+        AssignmentStore.shared.apply(.setLocallyCompleted(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
         bump()
     }
 
