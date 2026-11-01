@@ -20,7 +20,7 @@ struct MailAccountManagerTests {
         let hooks: Hooks
     }
 
-    static func harness(prefs: InMemoryMailPreferences = InMemoryMailPreferences()) -> Harness {
+    static func harness(prefs: InMemoryMailPreferences = InMemoryMailPreferences(), schoolIsDemo: Bool = false) -> Harness {
         let secrets = InMemoryMailSecretStorage()
         let cache = SchoolMailTestDoubles.temporaryCache()
         let fake = FakeMailClient(folders: [
@@ -36,7 +36,8 @@ struct MailAccountManagerTests {
             makeClient: { demo in
                 hooks.demoFlags.append(demo)
                 return fake
-            }
+            },
+            schoolIsDemo: { schoolIsDemo }
         )
         manager.listeners.signedIn = { hooks.signedIn += 1 }
         manager.listeners.signedOut = { hooks.signedOut += 1 }
@@ -346,19 +347,37 @@ struct MailAccountManagerTests {
     }
 
     @Test func theBundledDemoMailboxWorksOffline() async throws {
-        let fixture = try #require(MailDemoFixture.load(from: .main))
+        let fixture = try #require(MailDemoFixture.load(from: .main, in: .en))
         let demo = DemoMailClient(fixture: fixture)
-        await #expect(throws: MailClientError.authenticationFailed) { try await demo.login(studentID: "B99999999", password: "nope") }
-        try await demo.login(studentID: "b99999999", password: "tigerduck-review")
+        await #expect(throws: MailClientError.authenticationFailed) {
+            try await demo.login(studentID: fixture.studentId, password: fixture.password + "x")
+        }
+        try await demo.login(studentID: fixture.studentId.lowercased(), password: fixture.password)
         let page = try await demo.page(folder: "INBOX", olderThanSequence: nil, pageSize: 50)
         #expect(page.summaries.map(\.uid) == [4, 3, 2, 1])
-        let bait = try await demo.detail(folder: "INBOX", uid: 1, expectedUIDValidity: page.uidValidity)
-        #expect(bait.htmlBody?.contains("mailbox-quota.example") == true)
-        let withAttachment = try await demo.detail(folder: "INBOX", uid: 3, expectedUIDValidity: page.uidValidity)
+        let bait = try await demo.detail(folder: "INBOX", uid: 4, expectedUIDValidity: page.uidValidity)
+        #expect(bait.htmlBody?.contains("ntust-mail-verify.com") == true)
+        let withAttachment = try await demo.detail(folder: "INBOX", uid: 2, expectedUIDValidity: page.uidValidity)
         let part = try #require(withAttachment.attachments.first)
-        #expect(try await demo.attachment(folder: "INBOX", uid: 3, part: part,
-                                          expectedUIDValidity: page.uidValidity) == Data(base64Encoded: "JVBERi0xLjQK"))
+        #expect((part.size ?? 0) > 0)
+        await #expect(throws: MailClientError.unreachable) {
+            try await demo.attachment(folder: "INBOX", uid: 2, part: part, expectedUIDValidity: page.uidValidity)
+        }
+        let drafts = try await demo.page(folder: MailFolderRole.drafts.imapName, olderThanSequence: nil, pageSize: 50)
+        let sent = try await demo.page(folder: MailFolderRole.sent.imapName, olderThanSequence: nil, pageSize: 50)
+        #expect(drafts.summaries.count == 1)
+        #expect(sent.summaries.count == 1)
         #expect(!(try await demo.rawSource(folder: "INBOX", uid: 4, expectedUIDValidity: nil)).isEmpty)
+    }
+
+    @Test func aRealMailboxStaysClosedWhileTheSchoolAccountIsTheDemo() async {
+        let h = Self.harness(schoolIsDemo: true)
+
+        await h.manager.login(studentID: "B10000000", password: "pw")
+
+        #expect(h.hooks.demoFlags.isEmpty)
+        #expect(h.manager.loginError == .network)
+        #expect(!h.manager.isLoggedIn)
     }
 
     @Test func anInterruptedSignOutCacheWipeIsFinishedAtTheNextLaunch() async {

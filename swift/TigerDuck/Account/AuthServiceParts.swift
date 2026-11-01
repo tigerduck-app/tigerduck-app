@@ -15,6 +15,7 @@ struct AuthServiceDependencies {
     let endSchoolSession: @MainActor (_ departingStudentId: String?) -> Void
     let now: () -> Date
     let retrySleep: @Sendable (Duration) async -> Void
+    let demo: DemoAccount
 }
 
 struct AuthStatus {

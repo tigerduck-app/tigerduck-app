@@ -14,6 +14,12 @@ struct MailSignInParts {
     let credentials: MailCredentialStore
     let isDemoLogin: (String, String) -> Bool
     let makeClient: (Bool) -> any MailClient
+    let schoolIsDemo: () -> Bool
+
+    func client(demo: Bool) throws -> any MailClient {
+        guard demo || !schoolIsDemo() else { throw MailClientError.unreachable }
+        return makeClient(demo)
+    }
 }
 
 struct MailLoginStatus: Equatable {

@@ -6,7 +6,6 @@ struct FluidGlassTrackView: View {
     var invertDirection: Bool = false
     var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
     @State private var lastDragX: CGFloat = 0
-    @Environment(\.layoutDirection) private var layoutDirection
 
     private let trackHeight = TimeSliderMetrics.fluidTrackHeight
 
@@ -14,7 +13,6 @@ struct FluidGlassTrackView: View {
         GeometryReader { geo in
             let width = geo.size.width
             let centerX = width / 2
-            let rtlFactor: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
 
             ZStack {
                 if #available(iOS 26, *) {
@@ -26,13 +24,13 @@ struct FluidGlassTrackView: View {
                         .fill(.ultraThinMaterial)
                 }
 
-                tickMarks(centerX: centerX, visibleWidth: width, rtlFactor: rtlFactor)
+                tickMarks(centerX: centerX, visibleWidth: width)
 
                 ForEach(viewModel.timeSlots) { slot in
                     let startOffset = viewModel.xOffset(for: slot.start)
                     let endOffset = viewModel.xOffset(for: slot.end)
                     let segWidth = max(TimeSliderMetrics.minimumFluidBlockWidth, endOffset - startOffset)
-                    let segCenterX = centerX + rtlFactor * (startOffset + endOffset) / 2
+                    let segCenterX = centerX + (startOffset + endOffset) / 2
 
                     if segCenterX + segWidth / 2 > -50 && segCenterX - segWidth / 2 < width + 50 {
                         let isActive = slot.isOn(at: viewModel.selectedTime)
@@ -83,9 +81,8 @@ struct FluidGlassTrackView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        let rawDelta = value.translation.width - lastDragX
+                        let dx = value.translation.width - lastDragX
                         lastDragX = value.translation.width
-                        let dx = layoutDirection == .rightToLeft ? -rawDelta : rawDelta
                         viewModel.onDragChanged(dx: dx, invertDirection: invertDirection)
                     }
                     .onEnded { _ in
@@ -97,7 +94,7 @@ struct FluidGlassTrackView: View {
     }
 
     @ViewBuilder
-    private func tickMarks(centerX: CGFloat, visibleWidth: CGFloat, rtlFactor: CGFloat) -> some View {
+    private func tickMarks(centerX: CGFloat, visibleWidth: CGFloat) -> some View {
         let markerInterval = TimeSliderMetrics.markerIntervalMinutes * 60
         let majorInterval = TimeSliderMetrics.majorMarkerIntervalMinutes * 60
 
@@ -113,7 +110,7 @@ struct FluidGlassTrackView: View {
             var t = firstMarker
             while t <= rangeEnd {
                 let markerDate = Date(timeIntervalSinceReferenceDate: t)
-                let x = centerX + rtlFactor * viewModel.xOffset(for: markerDate)
+                let x = centerX + viewModel.xOffset(for: markerDate)
 
                 if x > -10 && x < size.width + 10 {
                     let isMajor = t.truncatingRemainder(dividingBy: majorInterval) == 0

@@ -121,6 +121,11 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         }
         switch BrowserRouting.decision(for: url, byLinkTap: action.navigationType == .linkActivated) {
         case .load:
+            guard !AccountSession.school.currentSignIn.isDemo else {
+                decisionHandler(.cancel)
+                page.failure = .unreachable(host: url.host(percentEncoded: false) ?? url.absoluteString)
+                return
+            }
             // No target frame means a new window, and the browser has only this one.
             guard action.targetFrame != nil else {
                 decisionHandler(.cancel)

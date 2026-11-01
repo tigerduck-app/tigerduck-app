@@ -58,7 +58,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 - A native Mac app (not Catalyst) with sidebar navigation and a Mac layout on every page
 
 ### 🎨 **Appearance & Accessibility**
-- 67 built-in locales, with automatic course and classroom abbreviations
+- 63 built-in locales, with automatic course and classroom abbreviations
 - Drag sections on Home, edit the tabs, and pick an accent color and interface style
 - VoiceOver, Dynamic Type and Reduce Motion support, with passwords and QR codes hidden in screenshots and recordings
 
@@ -204,7 +204,7 @@ tigerduck-app/
 ├── tools/                              # Localization, licence and macOS source checks
 ├── .github/workflows/                  # PR checks: unit tests, version bump, What's New, localization
 ├── docs/                               # Planning docs, migration notes (iOS side)
-├── app-translation/                    # ⤴ git submodule: 67 locale translations
+├── app-translation/                    # ⤴ git submodule: 63 locale translations
 └── name-abbr/                          # ⤴ git submodule: course / classroom abbreviation dictionaries
 ```
 

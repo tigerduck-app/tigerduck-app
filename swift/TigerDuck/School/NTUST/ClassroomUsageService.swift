@@ -98,7 +98,8 @@ final class ClassroomUsageService {
             if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
             let usage: CampusUsage
             do {
-                usage = try await fetch(number, credentials: credentials, attempt: attempt)
+                usage = try await attempt.isDemo
+                    ? DemoClassrooms.usage(on: day) : fetch(number, credentials: credentials, attempt: attempt)
                 try check(attempt)
             } catch {
                 noteFailure(error, for: attempt)

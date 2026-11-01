@@ -14,35 +14,43 @@ enum SchoolAccountSignIn {
 
         do {
             let normalizedId = AuthService.normalizedStudentId(studentId)
+            let demo = auth.deps.demo
+            let isDemo = demo.matches(studentId: normalizedId, password: password)
             await auth.signOutCalls?.value
             try Task.checkCancellation()
-            if AuthService.replacesStoredAccount(stored: auth.storedStudentId, signingInAs: normalizedId) {
+            if AuthService.replacesStoredAccount(stored: auth.storedStudentId, signingInAs: normalizedId)
+                || (auth.session.signIns.currentSignIn.isDemo && !isDemo) {
                 await auth.signOutStoredAccount?()
                 try Task.checkCancellation()
             }
-            let signIn = auth.session.signIns.currentSignIn
-            schoolStep = signIn
+            let attempt = auth.session.signIns.currentSignIn
+            schoolStep = attempt
 
-            let success = try await auth.deps.schoolSignIn(normalizedId, password, signIn)
-            guard signIn.isCurrent, !Task.isCancelled else {
+            let success = try await isDemo ? true : auth.deps.schoolSignIn(normalizedId, password, attempt)
+            guard attempt.isCurrent, !Task.isCancelled else {
                 auth.status.isLoggingIn = false
                 return false
             }
 
             if success {
+                let signIn = isDemo ? demo.startSignIn(in: auth.session) : attempt
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
-                ImportedClassTableStore.shared.accountDidSignIn(studentId: normalizedId, for: signIn)
+                demo.stores.classmates.accountDidSignIn(studentId: normalizedId, for: signIn)
                 #if os(iOS)
                 BrowserData.shared.reset()
                 #endif
                 auth.status.reauthErrorMessage = nil
                 auth.markCredentialsChanged()
 
-                await Task {
-                    await auth.signInToServices(studentId: normalizedId, password: password, signIn: signIn)
-                }.value
+                if isDemo {
+                    demo.enter(for: signIn)
+                } else {
+                    await Task {
+                        await auth.signInToServices(studentId: normalizedId, password: password, signIn: signIn)
+                    }.value
+                }
             }
 
             auth.status.isLoggingIn = false
@@ -61,6 +69,7 @@ enum SchoolAccountSignIn {
     }
 
     static func ensureAuthenticated(auth: AuthService, for signIn: SignIn) async -> Bool {
+        guard !signIn.isDemo else { return true }
         guard let studentId = auth.storedStudentId, let password = auth.storedPassword else {
             return false
         }

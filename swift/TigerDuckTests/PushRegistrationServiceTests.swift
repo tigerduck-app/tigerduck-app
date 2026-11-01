@@ -12,7 +12,8 @@ struct PushRegistrationServiceTests {
         baseURL: URL,
         debounces: OSAllocatedUnfairLock<[Duration]> = .init(initialState: []),
         retries: OSAllocatedUnfairLock<[Duration]> = .init(initialState: []),
-        authHeader: @escaping @Sendable () async -> String? = { "Bearer test" }
+        authHeader: @escaping @Sendable () async -> String? = { "Bearer test" },
+        signIns: SignInSeries = testSignIns
     ) -> PushRegistrationService {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -23,6 +24,7 @@ struct PushRegistrationServiceTests {
                 session: URLSession(configuration: config),
                 authHeaderProvider: authHeader
             ),
+            signIns: signIns,
             deviceClass: "iphone",
             debounceSleep: { window in debounces.withLock { $0.append(window) } },
             retrySleep: { delay in retries.withLock { $0.append(delay) } }
@@ -153,6 +155,21 @@ struct PushRegistrationServiceTests {
             }
             try await body()
         }
+    }
+
+    @Test("a push token that arrives for the demo account registers nothing, and nothing retries")
+    func aDemoTokenRegistersNothing() async {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let retries = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+        let signIns = SignInSeries()
+        signIns.startDemo()
+        let service = Self.makeService(baseURL: baseURL, retries: retries, signIns: signIns)
+
+        await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+        await service.awaitPendingRegistration()
+
+        #expect(SettingsAPIStub.requests(under: baseURL).isEmpty)
+        #expect(retries.withLock { $0 }.isEmpty)
     }
 
     @Test("a sync-preferences PATCH that fails is sent again once a registration goes through")

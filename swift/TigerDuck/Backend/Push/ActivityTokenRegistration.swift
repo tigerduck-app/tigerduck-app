@@ -14,6 +14,7 @@ nonisolated enum ActivityTokenRegistration {
     static func perform(
         _ registration: LiveActivityUpdateTokenRegistration, on service: isolated PushRegistrationService
     ) async {
+        guard !service.servesDemoAccount else { return }
         let logger = service.logger
         do {
             try await service.requests.registerActivity(registration)

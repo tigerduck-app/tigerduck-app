@@ -32,7 +32,7 @@ struct SignOutPlanTests {
             session: session,
             stores: [RecordingStore.self],
             stopWork: { steps.taken.append(work.isCancelled ? "stop" : "stop with work running") },
-            endSession: {
+            endSession: { _ in
                 steps.taken.append(signIn.isCurrent ? "end before the move" : "end")
                 return {
                     steps.taken.append("calls")
