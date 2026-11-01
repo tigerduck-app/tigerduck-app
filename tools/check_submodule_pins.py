@@ -56,7 +56,7 @@ def ancestor_in(repo: Path) -> Callable[[str, str], bool]:
     def is_ancestor(a: str, b: str) -> bool:
         proc = git(repo, "merge-base", "--is-ancestor", a, b, check=False)
         if proc.returncode > 1:
-            return False
+            raise RuntimeError(proc.stderr.strip() or f"cannot compare {a} with {b}")
         return proc.returncode == 0
     return is_ancestor
 

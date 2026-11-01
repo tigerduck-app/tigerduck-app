@@ -12,12 +12,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FORBIDDEN = ("CLAUDE.md", "CLAUDE.local.md")
+FORBIDDEN = ("claude.md", "claude.local.md")
 
 
 def forbidden(paths: list[str]) -> list[str]:
-    """The tracked paths whose file name is a CLAUDE rule file; `.claude/CLAUDE.md` is one too."""
-    return sorted(p for p in paths if p.rsplit("/", 1)[-1] in FORBIDDEN)
+    """The tracked paths whose file name is a CLAUDE rule file in any case; macOS matches names case-insensitively."""
+    return sorted(p for p in paths if p.rsplit("/", 1)[-1].lower() in FORBIDDEN)
 
 
 def main() -> int:

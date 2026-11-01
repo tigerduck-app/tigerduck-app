@@ -74,6 +74,8 @@ class GitTests(unittest.TestCase):
             is_ancestor = csp.ancestor_in(repo)
             self.assertTrue(is_ancestor(first, second))
             self.assertFalse(is_ancestor(second, first))
+            with self.assertRaises(RuntimeError):
+                is_ancestor("0" * 40, second)
 
 
 if __name__ == "__main__":

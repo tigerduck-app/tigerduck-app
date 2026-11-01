@@ -17,8 +17,8 @@ jobs:
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: |
-          pattern='^(feat|fix|refactor|docs|test|chore|perf|ci|build|style|revert)(\([^()]+\))?: .+'
-          if [[ ! "${TITLE}" =~ ${pattern} ]]; then
+          pattern='^(feat|fix|refactor|docs|test|chore|perf|ci|build|style|revert)(\([^()]+\))?!?: .+'
+          if [[ ! "${TITLE}" =~ ${pattern} && "${TITLE}" != Revert\ \"* ]]; then
             echo "::error::Title '${TITLE}' is not Conventional Commits: type(Scope): description, with a type of feat, fix, refactor, docs, test, chore, perf, ci, build, style or revert."
             exit 1
           fi
