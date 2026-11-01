@@ -3,7 +3,7 @@ import SwiftUI
 
 struct SyncContentSettingsView: View {
     @Environment(AppEnvironment.self) private var app
-    @Default(.cloudSyncEnabled) private var cloudSyncEnabled
+    @AccountDefault(.cloudSyncEnabled) private var cloudSyncEnabled
     @Default(.syncAssignments) private var syncAssignments
     @Default(.syncAssignmentReminders) private var syncAssignmentReminders
     @Default(.syncLiveActivity) private var syncLiveActivity

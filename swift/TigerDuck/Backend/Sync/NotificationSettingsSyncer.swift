@@ -41,7 +41,7 @@ final class NotificationSettingsSyncer {
                 sent: local,
                 current: .init(from: preferences)
             ) {
-                Defaults[.notificationSettingsPushPending] = false
+                Defaults[.notificationSettingsPushPending, for: signIn] = false
                 return .landedWithNothingLeft
             }
         } catch {
@@ -95,7 +95,7 @@ final class NotificationSettingsSyncer {
     }
 
     func schedulePush() {
-        Defaults[.notificationSettingsPushPending] = true
+        Defaults[.notificationSettingsPushPending, for: AccountSession.school.currentSignIn] = true
         NotificationSettingsPushQueue.debounce { [weak self] in
             self?.enqueuePush()
         }
@@ -124,7 +124,7 @@ final class NotificationSettingsSyncer {
 
     func cancelPushes() {
         NotificationSettingsPushQueue.cancelAll()
-        Defaults[.notificationSettingsPushPending] = false
+        Defaults.reset(.notificationSettingsPushPending)
         NotificationSettingsSync.forget()
     }
 }

@@ -217,7 +217,7 @@ final class StoredPasswordRetry {
         guard let auth, (try? await auth.deps.moodleTokens.refreshTokenIfNeeded()) != nil, signIn.isCurrent else {
             return false
         }
-        SchoolPasswordPosts.forgetStoredPasswordRefusals()
+        SchoolPasswordPosts.forgetStoredPasswordRefusals(for: signIn)
         return true
     }
 }

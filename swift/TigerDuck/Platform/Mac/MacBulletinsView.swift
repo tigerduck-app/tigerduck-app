@@ -7,7 +7,7 @@ import os
 struct MacBulletinsView: View {
     @Environment(AppEnvironment.self) private var app
     @State private var viewModel = BulletinsViewModel()
-    @Default(.bulletinsSyncedAt) private var bulletinsSyncedAt
+    @AccountDefault(.bulletinsSyncedAt) private var bulletinsSyncedAt
     @State private var readStore = BulletinReadStateStore()
     private let taxonomy = BulletinTaxonomyStore.shared
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.MacView")

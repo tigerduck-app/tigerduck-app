@@ -23,10 +23,10 @@ struct SyncedAccountSeedMigrationTests {
             let savedSwitches = switches.map { ($0, Defaults[$0]) }
             let savedDone = UserDefaults.standard.object(forKey: doneKey)
             defer {
-                Defaults[.categoriesSyncedOnce] = saved.0
-                Defaults[.pendingConflictCategories] = saved.1
-                Defaults[.assignmentMarksSyncedOnce] = saved.2
-                Defaults[.lastSeenCoursesResetAt] = saved.3
+                Defaults[.categoriesSyncedOnce, for: testSignIn] = saved.0
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.1
+                Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = saved.2
+                Defaults[.lastSeenCoursesResetAt, for: testSignIn] = saved.3
                 for (key, value) in savedSwitches { Defaults[key] = value }
                 if let savedDone {
                     UserDefaults.standard.set(savedDone, forKey: doneKey)
@@ -35,10 +35,10 @@ struct SyncedAccountSeedMigrationTests {
                 }
             }
             UserDefaults.standard.removeObject(forKey: doneKey)
-            Defaults[.categoriesSyncedOnce] = []
-            Defaults[.pendingConflictCategories] = []
-            Defaults[.assignmentMarksSyncedOnce] = false
-            Defaults[.lastSeenCoursesResetAt] = nil
+            Defaults[.categoriesSyncedOnce, for: testSignIn] = []
+            Defaults[.pendingConflictCategories, for: testSignIn] = []
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = false
+            Defaults[.lastSeenCoursesResetAt, for: testSignIn] = nil
             for key in switches { Defaults[key] = true }
             body()
         }
@@ -53,7 +53,7 @@ struct SyncedAccountSeedMigrationTests {
 
             #expect(Self.synced == [.courses, .courseColors, .courseNames, .assignments])
 
-            Defaults[.categoriesSyncedOnce] = []
+            Defaults[.categoriesSyncedOnce, for: testSignIn] = []
             SyncedAccountSeedMigration.runIfNeeded(signedIn: true)
 
             #expect(Self.synced.isEmpty)
@@ -63,7 +63,7 @@ struct SyncedAccountSeedMigrationTests {
     @Test("An install signed out at the update, as a fresh install reads, drops the checks a sign-out left and counts nothing as synced, even after a later sign-in")
     func signedOutAtTheUpdateDropsLeftChecksAndCountsNothing() async {
         await Self.withUpdatedInstall {
-            Defaults[.pendingConflictCategories] = [.assignments]
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.assignments]
 
             SyncedAccountSeedMigration.runIfNeeded(signedIn: false)
 
@@ -79,7 +79,7 @@ struct SyncedAccountSeedMigrationTests {
     @Test("Turning TigerSync back on before the first sync since the update checks every category of an account signed in at the update")
     func signedInAtTheUpdateKeepsTheReenableCheck() async {
         await Self.withUpdatedInstall {
-            Defaults[.pendingConflictCategories] = [.courses]
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.courses]
 
             SyncedAccountSeedMigration.runIfNeeded(signedIn: true)
 

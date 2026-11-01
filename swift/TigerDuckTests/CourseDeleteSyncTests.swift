@@ -222,14 +222,14 @@ struct CourseDeleteSyncTests {
     func hideDuringTheEnableWindowIsQueued() async {
         await withExclusiveRealDefaults {
             let saved = Defaults[.cloudSyncEnabled]
-            defer { Defaults[.cloudSyncEnabled] = saved }
+            defer { Defaults[.cloudSyncEnabled, for: testSignIn] = saved }
             let coordinator = Self.makeCoordinator(Backend(), isEnabled: false)
 
-            Defaults[.cloudSyncEnabled] = false
+            Defaults[.cloudSyncEnabled, for: testSignIn] = false
             await coordinator.deleteCourse(semester: "1151", courseNo: "EE2005301")
             #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
 
-            Defaults[.cloudSyncEnabled] = true
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
             await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
             #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:CS1001301"])
         }

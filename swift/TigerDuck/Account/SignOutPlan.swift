@@ -115,7 +115,7 @@ extension SignOutPlan {
                 #if os(iOS)
                 app.notificationSettings.cancelPushes()
                 #endif
-                app.cloudSyncPreference.turnOff()
+                app.cloudSyncPreference.setEnabled(false, for: app.authService.session.currentSignIn)
             }
         )
     }

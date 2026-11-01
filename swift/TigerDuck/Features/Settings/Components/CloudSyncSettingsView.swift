@@ -9,7 +9,7 @@ struct CloudSyncSettingsView: View {
     }
 
     @Environment(AppEnvironment.self) private var app
-    @Default(.cloudSyncEnabled) private var syncEnabled
+    @AccountDefault(.cloudSyncEnabled) private var syncEnabled
     @Default(.syncCourses) private var syncCourses
     @Default(.syncCourseColors) private var syncCourseColors
     @Default(.syncCourseNames) private var syncCourseNames

@@ -63,10 +63,10 @@ struct ClassTableSwitchingTests {
         let savedPick = Defaults[.classTableSelectedSemester]
         defer {
             defaults.set(savedTerms, forKey: catalogueKey)
-            Defaults[.classTableSelectedSemester] = savedPick
+            Defaults[.classTableSelectedSemester, for: testSignIn] = savedPick
         }
         defaults.set(terms, forKey: catalogueKey)
-        Defaults[.classTableSelectedSemester] = storedPick
+        Defaults[.classTableSelectedSemester, for: testSignIn] = storedPick
         try body()
     }
 
@@ -433,10 +433,10 @@ struct ClassTableSwitchingTests {
         let savedPick = Defaults[.classTableSelectedSemester]
         defer {
             defaults.set(savedTerms, forKey: Self.catalogueKey)
-            Defaults[.classTableSelectedSemester] = savedPick
+            Defaults[.classTableSelectedSemester, for: testSignIn] = savedPick
         }
         defaults.set(["1151", "1142", "1141"], forKey: Self.catalogueKey)
-        Defaults[.classTableSelectedSemester] = nil
+        Defaults[.classTableSelectedSemester, for: testSignIn] = nil
 
         let people = try Self.people(Folder())
         var lookups: [(semester: String, courseNos: [String], current: [String])] = []

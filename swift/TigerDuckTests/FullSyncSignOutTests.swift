@@ -53,13 +53,13 @@ struct ReenableCheckSignOutTests {
                 Defaults[.lastSeenCoursesResetAt], Defaults[.categoriesSyncedOnce], Defaults[.courseRowIdsSeen]
             )
             defer {
-                Defaults[.pendingConflictCategories] = saved.0
-                Defaults[.assignmentMarksSyncedOnce] = saved.1
-                Defaults[.lastSeenCoursesResetAt] = saved.2
-                Defaults[.categoriesSyncedOnce] = saved.3
-                Defaults[.courseRowIdsSeen] = saved.4
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.0
+                Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = saved.1
+                Defaults[.lastSeenCoursesResetAt, for: testSignIn] = saved.2
+                Defaults[.categoriesSyncedOnce, for: testSignIn] = saved.3
+                Defaults[.courseRowIdsSeen, for: testSignIn] = saved.4
             }
-            Defaults[.pendingConflictCategories] = [.assignments, .courses]
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.assignments, .courses]
 
             SyncProgress.forget()
 
@@ -267,15 +267,15 @@ struct ReenableMarkTests {
             )
             let savedSwitches = switches.map { ($0.key, Defaults[$0.key]) }
             defer {
-                Defaults[.pendingConflictCategories] = saved.0
-                Defaults[.assignmentMarksSyncedOnce] = saved.1
-                Defaults[.lastSeenCoursesResetAt] = saved.2
-                Defaults[.categoriesSyncedOnce] = saved.3
-                Defaults[.courseRowIdsSeen] = saved.4
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.0
+                Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = saved.1
+                Defaults[.lastSeenCoursesResetAt, for: testSignIn] = saved.2
+                Defaults[.categoriesSyncedOnce, for: testSignIn] = saved.3
+                Defaults[.courseRowIdsSeen, for: testSignIn] = saved.4
                 for (key, value) in savedSwitches { Defaults[key] = value }
             }
-            Defaults[.pendingConflictCategories] = []
-            Defaults[.categoriesSyncedOnce] = []
+            Defaults[.pendingConflictCategories, for: testSignIn] = []
+            Defaults[.categoriesSyncedOnce, for: testSignIn] = []
             for entry in switches { Defaults[entry.key] = true }
             body()
         }
@@ -368,8 +368,8 @@ struct ReenableMarkTests {
     @Test("Names a sync left for a pending colours check stay unrecorded, so switching them off and on checks nothing")
     func namesHeldForAColoursCheckAreNotRecorded() async {
         await Self.withSyncProgress {
-            Defaults[.categoriesSyncedOnce] = Self.categories.subtracting([.courseNames])
-            Defaults[.pendingConflictCategories] = [.courseColors]
+            Defaults[.categoriesSyncedOnce, for: testSignIn] = Self.categories.subtracting([.courseNames])
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.courseColors]
 
             Self.recordSync(pendingChecks: Defaults[.pendingConflictCategories])
             SyncConflicts.markForReenableCheck(.courseNames, signedIn: true, for: testSignIn)
@@ -392,7 +392,7 @@ struct ReenableMarkTests {
     func aFullSyncRecordsItsCategoriesAndASignOutForgetsThem() async {
         await Self.withSyncProgress {
             Self.recordSync()
-            Defaults[.courseRowIdsSeen] = ["1151:CS1": 1]
+            Defaults[.courseRowIdsSeen, for: testSignIn] = ["1151:CS1": 1]
 
             #expect(Self.synced == Self.categories)
             #expect(Defaults[.lastSeenCoursesResetAt] == Date.distantPast)
@@ -432,7 +432,7 @@ struct ReenableMarkTests {
     @Test("After a sign-out and a sign-in, turning TigerSync on raises no check, and the first pull takes the server's marks")
     func turningSyncOnAfterASignInChecksNothing() async {
         await Self.withSyncProgress {
-            Defaults[.assignmentMarksSyncedOnce] = true
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = true
             Self.recordSync()
 
             SyncProgress.forget()
@@ -452,7 +452,7 @@ struct ReenableMarkTests {
           arguments: [true, false])
     func turningSyncBackOnAfterASyncChecksEveryCategory(marksSynced: Bool) async {
         await Self.withSyncProgress {
-            Defaults[.assignmentMarksSyncedOnce] = marksSynced
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = marksSynced
             Self.recordSync()
 
             for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: true, for: testSignIn) }
@@ -464,7 +464,7 @@ struct ReenableMarkTests {
     @Test("Switching a category back on while signed out marks nothing for whoever signs in next")
     func signedOutMarksNothing() async {
         await Self.withSyncProgress {
-            Defaults[.assignmentMarksSyncedOnce] = true
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = true
             Self.recordSync()
 
             for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: false, for: testSignIn) }

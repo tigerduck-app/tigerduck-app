@@ -45,7 +45,7 @@ struct SchoolSignInStepsTests {
     ) async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.ntustCredentialsPresent]
-            defer { Defaults[.ntustCredentialsPresent] = saved }
+            defer { Defaults[.ntustCredentialsPresent, for: testSignIn] = saved }
             let keychain = MemoryKeychain.locked()
             if let libraryAccount {
                 try keychain.setObject(Data(libraryAccount.utf8), forKey: AppConstants.KeychainKeys.libraryUsername)

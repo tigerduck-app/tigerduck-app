@@ -476,16 +476,16 @@ struct CloudSyncCoordinatorTests {
             defer {
                 Defaults[.syncAssignments] = saved.0
                 Defaults[.syncCourses] = saved.1
-                Defaults[.pendingConflictCategories] = saved.2
-                Defaults[.assignmentMarksSyncedOnce] = saved.3
-                Defaults[.lastSeenCoursesResetAt] = saved.4
-                Defaults[.categoriesSyncedOnce] = saved.5
-                Defaults[.courseRowIdsSeen] = saved.6
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.2
+                Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = saved.3
+                Defaults[.lastSeenCoursesResetAt, for: testSignIn] = saved.4
+                Defaults[.categoriesSyncedOnce, for: testSignIn] = saved.5
+                Defaults[.courseRowIdsSeen, for: testSignIn] = saved.6
             }
             Defaults[.syncAssignments] = true
             Defaults[.syncCourses] = true
-            Defaults[.pendingConflictCategories] = [.assignments, .courses]
-            Defaults[.assignmentMarksSyncedOnce] = true
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.assignments, .courses]
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = true
 
             SyncProgress.forget()
 
@@ -575,10 +575,10 @@ struct CloudSyncCoordinatorTests {
             let saved = (Defaults[.syncAssignments], Defaults[.pendingConflictCategories])
             defer {
                 Defaults[.syncAssignments] = saved.0
-                Defaults[.pendingConflictCategories] = saved.1
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.1
             }
             Defaults[.syncAssignments] = true
-            Defaults[.pendingConflictCategories] = [.assignments, .courseColors]
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.assignments, .courseColors]
             let shown = ShownReenableConflict()
             shown.conflict = SyncConflicts.ReenableConflict(
                 categories: [.assignments, .courseColors], description: "",

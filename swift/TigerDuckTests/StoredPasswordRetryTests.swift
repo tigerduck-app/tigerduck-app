@@ -35,14 +35,14 @@ struct StoredPasswordScheduleTests {
         await withExclusiveRealDefaults {
             let saved = (StoredPasswordLockoutBackoff.ntust.refusals, StoredPasswordLockoutBackoff.library.refusals)
             defer {
-                StoredPasswordLockoutBackoff.ntust.refusals = saved.0
-                StoredPasswordLockoutBackoff.library.refusals = saved.1
+                StoredPasswordLockoutBackoff.ntust.setRefusals(saved.0, for: testSignIn)
+                StoredPasswordLockoutBackoff.library.setRefusals(saved.1, for: testSignIn)
             }
             let refused = Date(timeIntervalSince1970: 1_000_000)
             StoredPasswordLockoutBackoff.ntust.forget()
             StoredPasswordLockoutBackoff.library.forget()
 
-            let due = StoredPasswordLockoutBackoff.library.recordRefusalAndNextPost(at: refused)
+            let due = StoredPasswordLockoutBackoff.library.recordRefusalAndNextPost(at: refused, for: testSignIn)
 
             #expect(due == refused.addingTimeInterval(10))
             #expect(Defaults[.libraryStoredPasswordRefusals] == 1)
@@ -50,8 +50,8 @@ struct StoredPasswordScheduleTests {
             #expect(!StoredPasswordLockoutBackoff.library.postIsDue(now: refused))
             #expect(Defaults[.ntustStoredPasswordRefusals] == 0)
             #expect(StoredPasswordLockoutBackoff.ntust.postIsDue(now: refused))
-            StoredPasswordLockoutBackoff.ntust.recordRefusalAndNextPost(at: refused)
-            StoredPasswordLockoutBackoff.ntust.recordRefusalAndNextPost(at: refused)
+            StoredPasswordLockoutBackoff.ntust.recordRefusalAndNextPost(at: refused, for: testSignIn)
+            StoredPasswordLockoutBackoff.ntust.recordRefusalAndNextPost(at: refused, for: testSignIn)
             #expect(Defaults[.ntustStoredPasswordRefusals] == 2)
             #expect(StoredPasswordLockoutBackoff.ntust.retryAt(now: refused) == refused.addingTimeInterval(60))
             #expect(Defaults[.libraryStoredPasswordRefusals] == 1)
@@ -106,10 +106,10 @@ struct StoredPasswordRetryTests {
             posts += 1
             switch answers.isEmpty ? .takes : answers.removeFirst() {
             case .takes:
-                if forgetting { SchoolPasswordPosts.forgetStoredPasswordRefusals() }
+                if forgetting { SchoolPasswordPosts.forgetStoredPasswordRefusals(for: testSignIn) }
                 return true
             case .refuses:
-                SchoolPasswordPosts.noteStoredPasswordRefused(at: now)
+                SchoolPasswordPosts.noteStoredPasswordRefused(at: now, for: testSignIn)
                 throw SSOLoginError.loginFailed(reason: "帳號或密碼錯誤")
             case .isOffline:
                 throw URLError(.notConnectedToInternet)
@@ -221,10 +221,11 @@ struct StoredPasswordRetryTests {
             let saved = (
                 SchoolPasswordPosts.storedPasswordRefusals, Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent]
             )
-            SchoolPasswordPosts.storedPasswordRefusals = (count, last)
+            SchoolPasswordPosts.setStoredPasswordRefusals((count, last), for: testSignIn)
             defer {
-                (SchoolPasswordPosts.storedPasswordRefusals, Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent])
-                    = saved
+                SchoolPasswordPosts.setStoredPasswordRefusals(saved.0, for: testSignIn)
+                Defaults[.ssoLoginTimestamp, for: testSignIn] = saved.1
+                Defaults[.ntustCredentialsPresent, for: testSignIn] = saved.2
             }
             let keychain = MemoryKeychain.signedIn(withMoodleToken: false)
             try await SecureStore.$sharedForTesting.withValue(keychain) { try await body(keychain) }
@@ -513,7 +514,7 @@ struct StoredPasswordRetryTests {
             }
             defer { NotificationCenter.default.removeObserver(observer) }
 
-            SchoolPasswordPosts.noteStoredPasswordRefused(at: refused)
+            SchoolPasswordPosts.noteStoredPasswordRefused(at: refused, for: testSignIn)
             try await waitUntil { heard.retryTimes.contains(retryAt) }
             #expect(SchoolPasswordPosts.storedPasswordPostMustWait(now: refused.addingTimeInterval(1)))
             try await waitUntil { heard.retryTimes.filter { $0 == retryAt }.count == 2 }
@@ -530,7 +531,7 @@ struct StoredPasswordRetryTests {
             device.auth.logout()
             #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 0)
             keychain.unlock(withMoodleToken: false)
-            SchoolPasswordPosts.storedPasswordRefusals = (1, Self.start)
+            SchoolPasswordPosts.setStoredPasswordRefusals((1, Self.start), for: testSignIn)
             device.advance(by: 10)
             await device.sleeper.fire()
             await waiting.value
@@ -568,7 +569,7 @@ struct StoredPasswordRetryTests {
         try await Self.signedIn(refusals: 1, last: Self.start) { _ in
             let waiting = try await device.armTheTry()
 
-            SchoolPasswordPosts.forgetStoredPasswordRefusals()
+            SchoolPasswordPosts.forgetStoredPasswordRefusals(for: testSignIn)
             device.advance(by: 10)
             await device.sleeper.fire()
             await waiting.value
