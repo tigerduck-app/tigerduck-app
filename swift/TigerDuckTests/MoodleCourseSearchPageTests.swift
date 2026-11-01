@@ -29,6 +29,14 @@ struct MoodleCourseSearchPageTests {
         ], number: 4),
     ])
 
+    private final class PageRequests: @unchecked Sendable {
+        private let lock = NSLock()
+        private var pages: [Int] = []
+
+        func record(_ page: Int) { lock.withLock { pages.append(page) } }
+        var requested: [Int] { lock.withLock { pages } }
+    }
+
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleCourseSearchPageTests-\(UUID().uuidString)", isDirectory: true)
@@ -36,14 +44,16 @@ struct MoodleCourseSearchPageTests {
         deinit { try? FileManager.default.removeItem(at: root) }
     }
 
-    private static func store(_ folder: Folder) -> MoodleCourseStore {
+    private static func store(
+        _ folder: Folder, pages: [[MoodleDiscussion]] = [announcements], requests: PageRequests = PageRequests()
+    ) -> MoodleCourseStore {
         let cache = TestCache(
             cacheDir: folder.root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: folder.root.appendingPathComponent("persistent", isDirectory: true)
         )
         let news = MoodleForum(
             id: 501, courseId: courseId, type: "news", name: "Announcements", cmid: 8501,
-            discussionCount: announcements.count, unreadPostCount: 0
+            discussionCount: pages.joined().count, unreadPostCount: 0
         )
         return MoodleCourseStore(
             courseId: courseId,
@@ -52,7 +62,10 @@ struct MoodleCourseSearchPageTests {
             api: MoodleCourseAPI(
                 functions: { MoodleCourseStore.forumFunctions.union([MoodleCourseContentsService.contentsFunction]) },
                 forums: { _ in [news] },
-                discussions: { _, page in page == 0 ? announcements : [] },
+                discussions: { _, page in
+                    requests.record(page)
+                    return page < pages.count ? pages[page] : []
+                },
                 markViewed: { _, _ in },
                 materials: { _ in materials }
             ),
@@ -60,11 +73,13 @@ struct MoodleCourseSearchPageTests {
         )
     }
 
-    private static func announcementsPage(_ folder: Folder) async throws -> some View {
-        let store = store(folder)
+    private static func announcementsPage(
+        _ folder: Folder, pages: [[MoodleDiscussion]] = [announcements], requests: PageRequests = PageRequests()
+    ) async throws -> some View {
+        let store = store(folder, pages: pages, requests: requests)
         await store.refreshForums()
         await store.announcementPages?.refresh()
-        #expect(store.announcementPages?.list?.discussions.count == announcements.count)
+        #expect(store.announcementPages?.list?.discussions.count == pages.first?.count)
         return MoodleAnnouncementsView(store: store, policy: VisualStylePolicy(preset: .default)) { _ in }
     }
 
@@ -75,7 +90,6 @@ struct MoodleCourseSearchPageTests {
         return MoodleMaterialsView(store: store, policy: VisualStylePolicy(preset: .default))
     }
 
-    /// Pulls the page down to reveal the field, types `query` in it and scrolls back to the top.
     private static func show(_ page: some View, searching query: String) async throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -103,6 +117,10 @@ struct MoodleCourseSearchPageTests {
 
     private static func shows(_ text: String, in window: UIWindow) -> Bool {
         labels(in: window).contains { $0.contains(text) }
+    }
+
+    private static func showsCard(titled title: String, in window: UIWindow) -> Bool {
+        labels(in: window).contains { $0.hasPrefix("\(title),") }
     }
 
     private static func expectNoOverflow(in window: UIWindow, sourceLocation: SourceLocation = #_sourceLocation) throws {
@@ -187,6 +205,35 @@ struct MoodleCourseSearchPageTests {
             #expect(!Self.shows("Syllabus", in: window))
             try Self.expectNoOverflow(in: window)
             try await Self.save(window, as: "moodle-search-materials-empty")
+        }
+    }
+
+    @Test("clearing a search that reached the last loaded announcement loads the next page")
+    func clearingLoadsTheNextPage() async throws {
+        try await withAccessibilityAutomation {
+            let folder = Folder()
+            let requests = PageRequests()
+            let first = (1...MoodleForumService.discussionsPerPage).map {
+                Fixtures.announcement($0, title: String(format: "Notice %02d", $0))
+            }
+            let page = try await Self.announcementsPage(folder, pages: [first], requests: requests)
+            let window = try await Self.show(page, searching: "notice")
+            defer { Self.close(window) }
+            try await waitUntil { Self.shows(String(localized: "action_clear_text"), in: window) }
+            let list = try #require(window.descendants(ofType: UICollectionView.self).first)
+
+            try await waitUntil {
+                let bottom = list.contentSize.height - list.bounds.height + list.adjustedContentInset.bottom
+                list.setContentOffset(CGPoint(x: 0, y: max(bottom, -list.adjustedContentInset.top)), animated: false)
+                return Self.showsCard(titled: "Notice 01", in: window)
+            }
+            try await Task.sleep(for: .milliseconds(300))
+            #expect(requests.requested == [0])
+
+            let field = try #require(window.descendants(ofType: UITextField.self).first)
+            for _ in "notice" { field.deleteBackward() }
+
+            try await waitUntil { requests.requested.contains(1) }
         }
     }
 }

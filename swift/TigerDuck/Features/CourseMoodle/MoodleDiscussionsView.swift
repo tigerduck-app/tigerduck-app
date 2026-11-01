@@ -59,7 +59,7 @@ struct MoodleDiscussionsView: View {
                             Label(String(localized: "action_open_in_moodle"), systemImage: "arrow.up.right.square")
                         }
                     }
-                    .task {
+                    .task(id: needle.isEmpty) {
                         if needle.isEmpty, discussion.id == discussions.last?.id {
                             await pages.loadMore(after: discussion.id)
                         }
