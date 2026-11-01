@@ -120,7 +120,7 @@ struct ScoreViewModelAccountTests {
         #expect(model.cachedAt == readAt)
     }
 
-    @Test func termsListNewestFirstWithAPaddedYearBefore100Last() async {
+    @Test func termsListNewestFirstWithAPaddedYearBefore100LastAndOnlyTheNewestOpen() async {
         let model = ScoreViewModel()
         let studentId = Self.testStudentId()
         let school = School()
@@ -137,6 +137,7 @@ struct ScoreViewModelAccountTests {
         )
 
         #expect(model.groupedCourses.map(\.term) == ["1151", "1142", "99 1"])
+        #expect(model.collapsedTerms == ["1142", "99 1"])
     }
 
     @Test func theDayLongCacheAnswersWithTheTimeItWasRead() async throws {

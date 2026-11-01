@@ -186,10 +186,7 @@ final class ScoreViewModel {
 
     private func applyDefaultCollapseRule() {
         let terms = Set(report.courses.map(\.term))
-        let latest = terms.max { lhs, rhs in
-            if let l = Int(lhs), let r = Int(rhs) { return l < r }
-            return lhs < rhs
-        }
+        let latest = terms.max(by: AcademicTerm.precedes)
         guard let latest else { return }
         guard collapsedTerms.isEmpty else {
             collapsedTerms = collapsedTerms.intersection(terms)
