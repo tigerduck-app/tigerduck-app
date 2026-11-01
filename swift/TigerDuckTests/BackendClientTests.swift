@@ -42,7 +42,7 @@ struct BackendClientTests {
             courseKey: "client:1151:AB/12", colorHex: "#FF6B6B", customName: nil, locale: nil, madeAt: Date(), for: testSignIn
         )
 
-        #expect(reply.applied == ["color_hex"])
+        #expect(reply.applied == [.colorHex])
         #expect(SettingsAPIStub.requests(for: url).count == 1)
     }
 

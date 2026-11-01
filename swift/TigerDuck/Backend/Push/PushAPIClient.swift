@@ -133,12 +133,17 @@ final class PushAPIClient: Sendable {
         madeAt stamp: Date,
         for signIn: SignIn
     ) async throws -> PushAPI.CourseOverrideResponse {
-        try await backend.sendStamped(at: stamp) { hlc in
-            try BackendRequest("PATCH", segments: ["sync", "courses", courseKey, "override"]).json(PushAPI.CourseOverrideRequest(
-                colorHex: colorHex, customName: customName, locale: locale,
-                ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, hlc: hlc
-            )).sent(for: signIn)
-        }.decoded(PushAPI.CourseOverrideResponse.self)
+        do {
+            return try await backend.sendStamped(at: stamp) { hlc in
+                try BackendRequest("PATCH", segments: ["sync", "courses", courseKey, "override"]).json(PushAPI.CourseOverrideRequest(
+                    colorHex: colorHex, customName: customName, locale: locale,
+                    ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, hlc: hlc
+                )).sent(for: signIn)
+            }.decoded(PushAPI.CourseOverrideResponse.self)
+        } catch let error as PushAPIError {
+            guard case .httpStatus(404, _, _) = error, error.code == "course_not_found" else { throw error }
+            throw PushAPIError.courseNotFound
+        }
     }
 
     func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil, for signIn: SignIn) async throws {
@@ -209,6 +214,7 @@ enum PushAPIError: Error, LocalizedError {
     case httpStatus(Int, body: String, sent: SentToken? = nil)
     case syncRevisionExpired
     case clockAhead(serverClock: Int64?)
+    case courseNotFound
     case notSignedIn
 
     var errorDescription: String? {
@@ -219,6 +225,7 @@ enum PushAPIError: Error, LocalizedError {
         case .httpStatus(let code, let body, _): return "Push server returned HTTP \(code): \(body)"
         case .syncRevisionExpired: return "Push server has compacted the changes asked for."
         case .clockAhead: return "Push server refused a time ahead of its clock."
+        case .courseNotFound: return "Push server does not hold the course yet."
         case .notSignedIn: return String(localized: "common_auto_sign_in_failed")
         }
     }

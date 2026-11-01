@@ -106,7 +106,7 @@ final class OutboxDrain {
                         courseKey: fill.courseKey, colorHex: fill.colorHex, madeAt: fill.stamp, for: signIn
                     )
                 }
-                guard !reply.applied.contains("color_hex"), edits.editCountAtLastColorEdit(of: fill.identity) <= editsBefore else { continue }
+                guard !reply.applied.contains(.colorHex), edits.editCountAtLastColorEdit(of: fill.identity) <= editsBefore else { continue }
                 sender.kept.colorKept(reply.colorHex, courseNo: fill.courseNo, for: signIn)
             } catch is ResendHeldError {
                 return
@@ -121,7 +121,7 @@ final class OutboxDrain {
         guard !edits.cutoffs.cutsOff(op) else { return }
         let request = Task {
             do {
-                try await self.sender.send(op, for: signIn, newerQueued: { await self.edits.hasNewerEdit(than: $0) })
+                try await self.sender.send(op, for: signIn, hasNewerQueuedEdit: { await self.edits.hasNewerEdit(than: $0) })
             } catch let error where Self.isUnauthorized(error) {
                 throw SyncOutboxAuthError(statusCode: 401)
             }

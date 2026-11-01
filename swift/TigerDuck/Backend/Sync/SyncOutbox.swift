@@ -174,7 +174,7 @@ actor SyncOutbox {
                     mergeAndStore(retainRemainder: index)
                     return false
                 }
-                if OutboxErrorPolicy.parksAtOnce(error, for: entry.op) {
+                if OutboxErrorPolicy.waitsForCourseUpload(error, for: entry.op) {
                     park(entry)
                     index += 1
                     continue
