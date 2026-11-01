@@ -1927,6 +1927,31 @@ struct BackendSignInTests {
         withExtendedLifetime(auth) {}
     }
 
+    @Test("a backend sign-in waits for the launch's retry of an unregister a sign-out kept")
+    func aSignInWaitsForTheKeptUnregister() async throws {
+        let backend = BackendFixture(signedIn: false)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+        auth.authTokenManager = backend.manager
+        auth.beginSignOutBackgroundTask = { {} }
+        let (unregistered, unregister) = AsyncStream<Void>.makeStream()
+        let loginsDuringTheRetry = OSAllocatedUnfairLock<Int?>(initialState: nil)
+        auth.backend.retryDepartingUnregisterBeforeSigningIn {
+            for await _ in unregistered {}
+            loginsDuringTheRetry.withLock { $0 = SettingsAPIStub.requests(for: backend.loginURL).count }
+        }
+
+        try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            async let signIn: Void = auth.ensureBackendSignedIn()
+            try await waitUntil { auth.isSigningInToBackend }
+            unregister.finish()
+            await signIn
+        }
+
+        #expect(loginsDuringTheRetry.withLock { $0 } == 0)
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+    }
+
     @Test("sign-ins that overlap share one login")
     func overlappingSignInsShareOneLogin() async throws {
         let backend = BackendFixture(signedIn: false)

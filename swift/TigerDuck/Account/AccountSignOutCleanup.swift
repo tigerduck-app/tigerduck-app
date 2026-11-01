@@ -12,7 +12,7 @@ enum AccountSignOutCleanup {
         CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId)
     }
 
-    static func forgetSchoolPages(
+    static func clearAllCachedPages(
         cache: URLCache = .shared,
         clearBrowser: @MainActor () async -> Void = { await AccountSignOutCleanup.clearInAppBrowser() }
     ) async {

@@ -129,7 +129,7 @@ enum AuthServiceObservers {
         credentialObservers.append(center.addObserver(
             forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main
         ) { [weak auth] _ in
-            Task { @MainActor in await auth?.backend.signInAgain() }
+            Task { @MainActor in await auth?.backend.signInIgnoringFailurePause() }
         })
         let returnToApp = UIApplication.didBecomeActiveNotification
         #elseif os(macOS)

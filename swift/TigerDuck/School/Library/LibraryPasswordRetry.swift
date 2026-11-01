@@ -11,7 +11,7 @@ enum LibraryPasswordRetry {
     ) {
         misses = 0
         let now = Date()
-        guard let retryAt = StoredPasswordBackoff.library.retryAt(now: now) else { return cancel() }
+        guard let retryAt = StoredPasswordLockoutBackoff.library.retryAt(now: now) else { return cancel() }
         start(after: max(0, retryAt.timeIntervalSince(now)), signIn: signIn, retrySleep: retrySleep)
     }
 
@@ -36,7 +36,7 @@ enum LibraryPasswordRetry {
                   LibraryService.storedPasswordRefusals.count == refusals else { return }
             misses += 1
             start(
-                after: StoredPasswordBackoff.retryDelay(afterRefusals: refusals + misses),
+                after: StoredPasswordLockoutBackoff.retryDelay(afterRefusals: refusals + misses),
                 signIn: signIn, retrySleep: retrySleep
             )
         }

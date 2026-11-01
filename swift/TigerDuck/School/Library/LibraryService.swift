@@ -54,7 +54,7 @@ enum LibraryService: AccountScoped {
             session: AccountSession.library,
             stores: SignOutPlan.libraryStores,
             stopWork: { cancelStoredPasswordRetry() },
-            clearRest: {
+            clearMemoryState: {
                 LibraryQRCache.shared.clear()
                 #if os(iOS)
                 LibraryQRImageCache.shared.clear()
@@ -68,7 +68,7 @@ enum LibraryService: AccountScoped {
     static func forgetAccount(in storage: AccountStorage) {
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
-        StoredPasswordBackoff.library.forget()
+        StoredPasswordLockoutBackoff.library.forget()
         clearToken()
     }
 
@@ -134,12 +134,12 @@ enum LibraryService: AccountScoped {
     }
 
     static var storedPasswordRefusals: (count: Int, last: Date?) {
-        get { StoredPasswordBackoff.library.refusals }
-        set { StoredPasswordBackoff.library.refusals = newValue }
+        get { StoredPasswordLockoutBackoff.library.refusals }
+        set { StoredPasswordLockoutBackoff.library.refusals = newValue }
     }
 
     static func storedPasswordPostIsDue(now: Date) -> Bool {
-        StoredPasswordBackoff.library.postIsDue(now: now)
+        StoredPasswordLockoutBackoff.library.postIsDue(now: now)
     }
 
     @MainActor private static var pendingSignIns: [String: Task<String, Error>] = [:]
@@ -210,7 +210,7 @@ enum LibraryService: AccountScoped {
             } catch {
                 if librarySignIn.isCurrent, storedPassword == password {
                     if case LibraryServiceError.loginFailed = error {
-                        StoredPasswordBackoff.library.noteRefused(at: Date())
+                        StoredPasswordLockoutBackoff.library.recordRefusalAndNextPost(at: Date())
                         if typedSignIns == typedSignInsBefore {
                             LibraryPasswordRetry.arm(signIn: signIn, retrySleep: retrySleep)
                         }

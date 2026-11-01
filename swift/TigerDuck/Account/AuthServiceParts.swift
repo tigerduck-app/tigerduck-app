@@ -25,7 +25,7 @@ struct AuthStatus {
 }
 
 struct CredentialMirror {
-    var revision = 0
+    var revision = KeychainRevision()
     var lastKnown: Bool?
 }
 
@@ -39,21 +39,16 @@ struct AuthServiceHooks {
     var beginSignOutBackgroundTask: @Sendable () async -> @Sendable () async -> Void = {
         await AuthTokenManager.beginBackgroundTask(named: "Sign-out")
     }
-    var forgetPages: @MainActor () async -> Void = {}
-}
-
-struct SignOutTasks {
-    var calls: Task<Void, Never>?
-    var departingUnregisterRetry: Task<Void, Never>?
+    var clearAllCachedPages: @MainActor () async -> Void = {}
 }
 
 enum SchoolSignIn {
-    private static let ssoServiceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")
+    private static let sharedSessionService = URL.knownGood("https://courseselection.ntust.edu.tw/")
 
     static func signIn(studentId: String, password: String, for signIn: SignIn) async throws -> Bool {
         try await SSOLoginService.ensureServiceLogin(
             session: NTUSTSessionManager.shared.session,
-            serviceURL: ssoServiceURL,
+            serviceURL: sharedSessionService,
             studentId: studentId,
             password: password,
             for: signIn,
@@ -64,7 +59,7 @@ enum SchoolSignIn {
     static func renew(studentId: String, password: String, for signIn: SignIn) async throws -> Bool {
         try await SSOLoginService.ensureServiceLogin(
             session: NTUSTSessionManager.shared.session,
-            serviceURL: ssoServiceURL,
+            serviceURL: sharedSessionService,
             studentId: studentId,
             password: password,
             for: signIn
@@ -76,7 +71,7 @@ enum SchoolSignIn {
     ) async throws -> Bool {
         try await SSOLoginService.signInAgain(
             session: NTUSTSessionManager.shared.session,
-            serviceURL: ssoServiceURL,
+            serviceURL: sharedSessionService,
             studentId: studentId,
             password: password,
             for: signIn,

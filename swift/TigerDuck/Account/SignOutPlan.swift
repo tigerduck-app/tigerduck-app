@@ -13,11 +13,13 @@ struct AccountStorage {
 }
 
 struct SignOutPlan {
+    typealias StartSignOutCalls = () -> Task<Void, Never>?
+
     let session: AccountSession
     let stores: [any AccountScoped.Type]
     var stopWork: () -> Void = {}
-    var endSession: () -> () -> Task<Void, Never>? = { { nil } }
-    var clearRest: () -> Void = {}
+    var endSession: () -> StartSignOutCalls = { { nil } }
+    var clearMemoryState: () -> Void = {}
 
     @discardableResult
     func run(in storage: AccountStorage = AccountStorage()) -> Task<Void, Never>? {
@@ -27,7 +29,7 @@ struct SignOutPlan {
         for store in stores {
             store.forgetAccount(in: storage)
         }
-        clearRest()
+        clearMemoryState()
         return startCalls()
     }
 }
@@ -51,12 +53,32 @@ extension SignOutPlan {
     static let mailStores: [any AccountScoped.Type] = [MailCredentialStore.self, MailSettingsStore.self]
     #endif
 
-    static func school(_ app: AppEnvironment) -> SignOutPlan {
-        let auth = app.authService
-        let tokens = app.authTokenManager
-        return SignOutPlan(
+    static func school(
+        auth: AuthService,
+        stopWork: @escaping () -> Void = {},
+        endBackendSession: @escaping () -> @MainActor () async -> Void = { {} },
+        clearMemoryState: @escaping () -> Void = {}
+    ) -> SignOutPlan {
+        SignOutPlan(
             session: auth.session,
             stores: schoolStores,
+            stopWork: stopWork,
+            endSession: {
+                auth.logout()
+                let calls = endBackendSession()
+                return { auth.startSignOutCalls(calls) }
+            },
+            clearMemoryState: {
+                LibraryService.schoolAccountDidSignOut()
+                clearMemoryState()
+            }
+        )
+    }
+
+    static func school(_ app: AppEnvironment) -> SignOutPlan {
+        let tokens = app.authTokenManager
+        return school(
+            auth: app.authService,
             stopWork: {
                 app.feed.stopPolling()
                 app.feed.lastKnownRevision = 0
@@ -68,22 +90,18 @@ extension SignOutPlan {
                 app.liveActivity.cancelRefreshes()
                 #endif
             },
-            endSession: {
-                auth.logout()
-                let backend = tokens.beginSignOut()
-                let ending = Task { await tokens.endSession(on: backend) }
+            endBackendSession: {
+                let departingBaseURL = tokens.beginSignOut()
+                let ending = Task { await tokens.endSession(on: departingBaseURL) }
                 return {
-                    auth.startSignOutCalls {
-                        await app.cloudSyncCoordinator.settleForSignOut()
-                        await tokens.unregisterDeparting(as: await ending.value) { await app.pushCoordinator.disable() }
-                        #if os(iOS)
-                        await app.liveActivity.coordinator.endAll()
-                        #endif
-                    }
+                    await app.cloudSyncCoordinator.settleForSignOut()
+                    await tokens.unregisterDeparting(as: await ending.value) { await app.pushCoordinator.disable() }
+                    #if os(iOS)
+                    await app.liveActivity.coordinator.endAll()
+                    #endif
                 }
             },
-            clearRest: {
-                LibraryService.schoolAccountDidSignOut()
+            clearMemoryState: {
                 ServerStatusTracker.shared.reset()
                 TigerDuckTheme.reload()
                 CourseStore.shared.noteChange()

@@ -34,7 +34,7 @@ struct StoredPasswordLatchRetryMigrationTests {
                 #expect(UserDefaults.standard.object(forKey: Self.latchKey) == nil)
                 SchoolPasswordPosts.noteStoredPasswordRefused(at: now)
                 #expect(SchoolPasswordPosts.storedPasswordRetryAt(now: now)
-                    == now.addingTimeInterval(StoredPasswordBackoff.retryInterval))
+                    == now.addingTimeInterval(StoredPasswordLockoutBackoff.retryInterval))
             }
         }
     }

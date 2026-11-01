@@ -49,13 +49,13 @@ final class AppEnvironment {
     var versionGate: APIVersionGate { .shared }
 
     init() {
-        let isFreshInstall = FreshInstallKeychainPurge.runIfFreshInstall()
-        if Defaults[.appHasBeenInstalled] { BareKeychainItemMoveMigration.runIfNeeded() }
+        let purge = FreshInstallKeychainPurge.runIfFreshInstall()
+        if purge != .itemsLeft { BareKeychainItemMoveMigration.runIfNeeded() }
 
         let authService = AuthService(session: .school)
         self.authService = authService
         let identity = PushIdentity.loadOrCreate()
-        let atm = AuthTokenManager(deviceUUID: identity.uuid, storedFor: authService.session.currentSignIn)
+        let atm = Self.tokenManager(after: purge, deviceUUID: identity.uuid, signIn: authService.session.currentSignIn)
         let pushCoordinator = PushCoordinator(identity: identity, authTokenManager: atm, signIns: authService.session.signIns)
         let cloudSync = CloudSyncCoordinator(
             pushCoordinator: pushCoordinator,
@@ -70,7 +70,7 @@ final class AppEnvironment {
         sync = AppSyncParts(app: self)
 
         #if os(iOS)
-        if isFreshInstall {
+        if purge.isFreshInstall {
             updateNotifyCoordinator.seedWhatsNewOnFreshInstall()
         }
         _ = liveActivity
@@ -79,6 +79,12 @@ final class AppEnvironment {
 
         runPendingMigrations()
         wire(atm)
+    }
+
+    private static func tokenManager(
+        after _: FreshInstallKeychainPurge.Outcome, deviceUUID: String, signIn: SignIn
+    ) -> AuthTokenManager {
+        AuthTokenManager(deviceUUID: deviceUUID, storedFor: signIn)
     }
 
     private func wire(_ atm: AuthTokenManager) {
@@ -101,7 +107,7 @@ final class AppEnvironment {
             onboarded: hasCompletedOnboarding, signedIn: authService.hasStoredCredentials,
             keptOn: atm.departingSessionBackends, backend: PushServerConfig.resolveServerURL()
         ) {
-            authService.startDepartingUnregisterRetry { [pushCoordinator] in
+            authService.backend.retryDepartingUnregisterBeforeSigningIn { [pushCoordinator] in
                 await atm.retryDepartingUnregister { await pushCoordinator.registration.unregisterDevice(at: $0) }
             }
         }
@@ -122,7 +128,7 @@ final class AppEnvironment {
             guard let self else { return }
             await SignOutPlan.school(self).run()?.value
         }
-        authService.forgetPages = { await AccountSignOutCleanup.forgetSchoolPages() }
+        authService.clearAllCachedPages = { await AccountSignOutCleanup.clearAllCachedPages() }
 
         cloudSyncPreference.onChange { [weak self] enabled in
             self?.cloudSyncEnabledDidChange(to: enabled)
