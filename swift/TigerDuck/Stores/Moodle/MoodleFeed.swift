@@ -115,7 +115,7 @@ extension AssignmentAnswers {
     static func persistRound(
         _ assignments: [SDAssignment],
         records: [MoodleAssignmentRecord],
-        closed: [String: Date],
+        closed: ClosedUnsubmittedAnswerTimes,
         answered: [Int: ContinuousClock.Instant],
         account: String,
         fetchedAt: Date,

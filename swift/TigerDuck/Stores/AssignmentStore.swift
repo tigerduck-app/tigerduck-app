@@ -69,7 +69,7 @@ final class AssignmentStore {
         return files.loadIgnoredAssignmentCourses()
     }
 
-    func loadClosedUnsubmittedAssignments() -> [String: Date] {
+    func loadClosedUnsubmittedAssignments() -> ClosedUnsubmittedAnswerTimes {
         observe()
         return files.loadClosedUnsubmittedAssignments()
     }
@@ -100,7 +100,7 @@ final class AssignmentStore {
         write(signIn) { $0.clearIgnoredAssignmentCourses(semester: semester) }
     }
 
-    func replaceClosedUnsubmittedAssignments(_ closed: [String: Date], for signIn: SignIn) {
+    func replaceClosedUnsubmittedAssignments(_ closed: ClosedUnsubmittedAnswerTimes, for signIn: SignIn) {
         write(signIn) { $0.replaceClosedUnsubmittedAssignments(closed) }
     }
 
