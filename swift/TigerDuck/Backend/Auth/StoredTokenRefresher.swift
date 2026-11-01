@@ -23,13 +23,13 @@ nonisolated struct StoredTokenRefresher: Sendable {
         }
 
         let backend = requests.baseURL()
-        guard signIn.isCurrent, manager.signOutsStarting.withLock({ $0 == 0 }),
+        guard holdsPair(of: signIn, manager), manager.signOutsStarting.withLock({ $0 == 0 }),
               manager.pair.refreshToken == refreshToken else { return nil }
         guard manager.pair.budget.allowsSend else {
             return await signedInAgain(as: signIn, of: manager) ? manager.pair.accessToken : nil
         }
         var send = await postCounted(refreshToken, after: manager.pair.budget, on: backend, of: manager)
-        if send.reply == nil, !send.uncounted, signIn.isCurrent, send.budget.allowsSend {
+        if send.reply == nil, !send.uncounted, holdsPair(of: signIn, manager), send.budget.allowsSend {
             send = await postCounted(refreshToken, after: send.budget, on: backend, of: manager)
         }
         if manager.pair.refreshToken == refreshToken { manager.pair.budget = send.budget }
@@ -46,7 +46,7 @@ nonisolated struct StoredTokenRefresher: Sendable {
                 noteOvertaken(signIn, sent: refreshToken, accessToken: nil, mayResend: mayResend, of: manager)
                 return nil
             }
-            guard signIn.isCurrent, manager.pair.refreshToken == refreshToken else {
+            guard holdsPair(of: signIn, manager), manager.pair.refreshToken == refreshToken else {
                 noteOvertaken(
                     signIn, sent: refreshToken, accessToken: result.access_token,
                     refreshToken: result.refresh_token, mayResend: false, of: manager
@@ -59,7 +59,7 @@ nonisolated struct StoredTokenRefresher: Sendable {
 
         await APIVersionGate.shared.note(statusCode: http.statusCode)
         let turnedDown = Self.turnsDown(http.statusCode)
-        guard signIn.isCurrent else {
+        guard holdsPair(of: signIn, manager) else {
             noteOvertaken(signIn, sent: refreshToken, accessToken: nil, mayResend: mayResend && !turnedDown, of: manager)
             return nil
         }
@@ -67,7 +67,7 @@ nonisolated struct StoredTokenRefresher: Sendable {
 
         if await signedInAgain(as: signIn, of: manager) { return manager.pair.accessToken }
         noteOvertaken(signIn, sent: refreshToken, accessToken: nil, mayResend: false, of: manager)
-        guard http.statusCode == 401, signIn.isCurrent, manager.pair.refreshToken == refreshToken else {
+        guard http.statusCode == 401, holdsPair(of: signIn, manager), manager.pair.refreshToken == refreshToken else {
             return nil
         }
         manager.pair.clear()
@@ -78,11 +78,17 @@ nonisolated struct StoredTokenRefresher: Sendable {
         (400...499).contains(statusCode) && ![410, 429].contains(statusCode)
     }
 
+    /// The rotated pair belongs to the stored session until `endSession` clears it, which a sign-out
+    /// does after its sign-in ended; a reply before then is stored, one after it is left for the sign-out.
+    private func holdsPair(of signIn: SignIn, _ manager: isolated AuthTokenManager) -> Bool {
+        manager.pair.signIn == signIn
+    }
+
     private func noteOvertaken(
         _ signIn: SignIn, sent: String, accessToken: String?, refreshToken: String? = nil,
         mayResend: Bool, of manager: isolated AuthTokenManager
     ) {
-        guard !signIn.isCurrent else { return }
+        guard !holdsPair(of: signIn, manager) else { return }
         manager.refreshes.late[sent] = (signIn, accessToken, refreshToken, mayResend)
     }
 
