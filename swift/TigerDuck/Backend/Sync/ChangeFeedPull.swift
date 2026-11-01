@@ -79,10 +79,10 @@ final class ChangeFeedPull {
         case .fullSync:
             await app.fullSync.sync()
         case .advance(let revision):
-            await app.fullSync.retryUnsentEdits()
+            await app.fullSync.retryUnsentEdits(for: signIn)
             advanceRevision(from: since, to: revision, for: signIn)
         case .reconcileSettings(let revision):
-            await app.fullSync.retryUnsentEdits()
+            await app.fullSync.retryUnsentEdits(for: signIn)
             await reconcileSettings(thenAdvanceFrom: since, to: revision, for: signIn)
             if lastKnownRevision == since { return .failed }
         }

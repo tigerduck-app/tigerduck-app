@@ -43,8 +43,8 @@ final class FullSyncRunner {
         error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
-    func retryUnsentEdits() async {
-        app.holidays.retryUnacknowledged()
+    func retryUnsentEdits(for signIn: SignIn) async {
+        app.holidays.retryUnacknowledged(for: signIn)
         #if os(iOS)
         app.notificationSettings.retryUnacknowledged()
         #endif
@@ -106,7 +106,7 @@ final class FullSyncRunner {
     private func run(for signIn: SignIn) async -> FullSyncOutcome {
         await app.authService.ensureBackendSignedIn()
         guard await app.authTokenManager.isLoggedIn, mayWrite(for: signIn) else { return .skipped }
-        await retryUnsentEdits()
+        await retryUnsentEdits(for: signIn)
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)

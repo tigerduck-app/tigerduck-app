@@ -113,15 +113,13 @@ final class NotificationSettingsSyncer {
         enqueuePush()
     }
 
-    func adoptSection(_ section: NotificationSettingsSync.OwnedSection) {
-        NotificationSettingsSync.sectionTurnedOn(
-            section, local: .init(from: preferences), for: AccountSession.school.currentSignIn
-        )
+    func adoptSection(_ section: NotificationSettingsSync.OwnedSection, for signIn: SignIn) {
+        NotificationSettingsSync.sectionTurnedOn(section, local: .init(from: preferences), for: signIn)
         reconcile()
     }
 
-    func deviceSwitchChanged(_ section: NotificationSettingsSync.OwnedSection, old: Bool, new: Bool) {
-        if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) { adoptSection(section) }
+    func deviceSwitchChanged(_ section: NotificationSettingsSync.OwnedSection, old: Bool, new: Bool, for signIn: SignIn) {
+        if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) { adoptSection(section, for: signIn) }
     }
 
     func cancelPushes() {
