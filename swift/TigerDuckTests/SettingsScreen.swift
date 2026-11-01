@@ -35,8 +35,20 @@ enum SettingsScreen {
         return (window, host)
     }
 
+    /// A node's elements and its subviews can overlap, so each object is walked once.
+    static func elements(in host: UIViewController) -> [NSObject] {
+        var seen = Set<ObjectIdentifier>()
+        func walk(_ node: NSObject) -> [NSObject] {
+            guard seen.insert(ObjectIdentifier(node)).inserted else { return [] }
+            return (node.isAccessibilityElement ? [node] : []) + accessibilityChildren(of: node).flatMap(walk)
+        }
+        return walk(host.view)
+    }
+
     static func texts(in host: UIViewController) -> [String] {
-        exposedAccessibilityTexts(in: host.view)
+        elements(in: host).map { node in
+            [node.accessibilityLabel, node.accessibilityValue].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+        }
     }
 
     static func shows(_ text: String, in host: UIViewController) -> Bool {
@@ -45,14 +57,13 @@ enum SettingsScreen {
 
     /// The row's element: the one carrying the gate's reason as its hint when the gate is closed.
     static func element(of row: SettingsRow, hint: String?, in host: UIViewController) -> NSObject? {
-        let elements = exposedAccessibilityElements(in: host.view)
-        let hinted = elements.filter { hint == nil || $0.accessibilityHint == hint }
+        let hinted = elements(in: host).filter { hint == nil || $0.accessibilityHint == hint }
         return hinted.first { ($0.accessibilityLabel ?? "").contains(row.label) } ?? (hint == nil ? nil : hinted.first)
     }
 
     /// A row that opens something, such as a page row on the Settings root, rather than its text.
     static func link(labeled label: String, in host: UIViewController) -> NSObject? {
-        exposedAccessibilityElements(in: host.view).first {
+        elements(in: host).first {
             $0.accessibilityLabel == label && $0.accessibilityTraits.contains(.button)
         }
     }

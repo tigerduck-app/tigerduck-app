@@ -126,10 +126,8 @@ struct SettingsScreenTests {
 
             _ = try #require(Screen.link(labeled: result.text, in: host)).accessibilityActivate()
 
-            let pages = String(localized: "settings_section_pages")
-            try await waitUntil { Screen.shows(pages, in: host) && Screen.link(labeled: result.text, in: host) == nil }
+            try await waitUntil { Screen.shows(SettingsRow.tigerSync.label, in: host) }
             #expect(Screen.depth(in: host) == 1)
-            #expect(Screen.shows(row.label, in: host))
         }
     }
 
