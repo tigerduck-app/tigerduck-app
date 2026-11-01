@@ -24,6 +24,7 @@ enum CourseSources {
                 session: NTUSTSessionManager.shared.session,
                 studentId: studentId,
                 password: password,
+                forceRefresh: false,
                 for: signIn
             ).report
             CourseFetch.record(.ok, for: .scoreSystem, round: signIn)
