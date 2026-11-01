@@ -4,23 +4,32 @@ import UIKit
 #endif
 
 struct LibrarySettingsView: View {
+    @Environment(AppPreferences.self) private var preferences
     @Environment(AppEnvironment.self) private var app
+    @Environment(\.settingsState) private var state
 
     var body: some View {
-        @Bindable var preferences = app.preferences
+        @Bindable var preferences = preferences
         List {
-            Section {
-                Toggle(
-                    String(localized: "settings_flip_to_library_title"),
-                    isOn: Self.flipSwitch($preferences.flipToLibraryEnabled, signedIn: app.library.isLoggedIn)
-                )
-                .disabled(!app.library.isLoggedIn)
-            } footer: {
-                Text(String(localized: "settings_flip_to_library_summary"))
+            if SettingsRow.flipToLibrary.isShown(in: state) {
+                Section {
+                    Toggle(
+                        SettingsRow.flipToLibrary.label,
+                        isOn: Self.flipSwitch($preferences.flipToLibraryEnabled, signedIn: state.library.isSignedIn)
+                    )
+                    .settingsRow(.flipToLibrary)
+                } footer: {
+                    Text(String(localized: "settings_flip_to_library_summary"))
+                }
+            }
+            if SettingsRow.librarySignOut.isShown(in: state) {
+                Section {
+                    Button(SettingsRow.librarySignOut.label, role: .destructive) {
+                        app.library.logout()
+                    }
+                }
             }
         }
-        .navigationTitle(String(localized: "settings_library_related_features"))
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     static func flipSwitch(_ enabled: Binding<Bool>, signedIn: Bool) -> Binding<Bool> {

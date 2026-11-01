@@ -4,14 +4,18 @@ struct SettingsAccountSection: View {
     let sheets: SettingsSheetState
 
     @Environment(AppEnvironment.self) private var app
+    @Environment(\.settingsState) private var state
 
     var body: some View {
         Section(String(localized: "settings_section_account")) {
             ntustAccountRow
+                .settingsRow(.schoolAccount)
             libraryAccountRow
+                .settingsRow(.libraryAccount)
             #if os(iOS)
-            if SchoolMailAvailability.isEnabled {
+            if SettingsRow.mailAccount.isShown(in: state) {
                 schoolMailAccountRow
+                    .settingsRow(.mailAccount)
             }
             #endif
         }
@@ -19,9 +23,8 @@ struct SettingsAccountSection: View {
 
     private var ntustAccountRow: some View {
         accountRow(
-            title: String(localized: "settings_account_ntust_system"),
-            isLoggedIn: app.authService.hasStoredCredentials,
-            detail: app.authService.storedStudentId,
+            title: SettingsRow.schoolAccount.label,
+            account: state.school,
             onLogin: { app.router.presentNTUSTLogin() },
             onLogout: {
                 Task {
@@ -39,9 +42,8 @@ struct SettingsAccountSection: View {
 
     private var libraryAccountRow: some View {
         accountRow(
-            title: String(localized: "settings_account_library_system"),
-            isLoggedIn: app.library.isLoggedIn,
-            detail: app.library.username,
+            title: SettingsRow.libraryAccount.label,
+            account: state.library,
             onLogin: { sheets.showLibraryLogin = true },
             onLogout: { app.library.logout() }
         )
@@ -49,13 +51,13 @@ struct SettingsAccountSection: View {
 
     #if os(iOS)
     private var schoolMailAccountRow: some View {
-        let mail = MailAccountManager.shared
+        var mail = state.mail
+        mail.isSignedIn = mail.isSignedIn && !state.mailSignInFailed
         return accountRow(
-            title: String(localized: "school_mail_account_title"),
-            isLoggedIn: mail.isLoggedIn && !mail.authFailed,
-            detail: mail.studentID,
+            title: SettingsRow.mailAccount.label,
+            account: mail,
             onLogin: { sheets.showSchoolMailLogin = true },
-            onLogout: { mail.logout() }
+            onLogout: { MailAccountManager.shared.logout() }
         )
     }
     #endif
@@ -63,11 +65,11 @@ struct SettingsAccountSection: View {
     @ViewBuilder
     private func accountRow(
         title: String,
-        isLoggedIn: Bool,
-        detail: String?,
+        account: SettingsState.Account,
         onLogin: @escaping () -> Void,
         onLogout: @escaping () -> Void
     ) -> some View {
+        let isLoggedIn = account.isSignedIn
         HStack {
             Circle()
                 .fill(isLoggedIn ? Color.green : Color.red)
@@ -75,7 +77,7 @@ struct SettingsAccountSection: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.body)
-                if isLoggedIn, let detail {
+                if isLoggedIn, let detail = account.name {
                     Text(detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)

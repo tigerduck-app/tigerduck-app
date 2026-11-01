@@ -51,29 +51,29 @@ final class AccentPreview {
 /// the raw pick, so the picker's handle stays where it is dragged while the app draws the
 /// readable version.
 struct CustomAccentPicker: View {
-    let app: AppEnvironment
+    let preferences: AppPreferences
     let size: CGFloat
 
     @State private var picked: Color
     @State private var picks: CustomColorPickDebouncer
     private let preview = AccentPreview.shared
 
-    init(app: AppEnvironment, size: CGFloat) {
-        self.app = app
+    init(preferences: AppPreferences, size: CGFloat) {
+        self.preferences = preferences
         self.size = size
-        _picked = State(initialValue: Self.openingColour(saved: app.preferences.accentColorHex))
+        _picked = State(initialValue: Self.openingColour(saved: preferences.accentColorHex))
         let preview = AccentPreview.shared
         _picks = State(initialValue: CustomColorPickDebouncer(
-            apply: { [weak app] hex in
-                if preview.takeForSaving(Int(hex)) { app?.preferences.accentColorHex = Int(hex) }
+            apply: { [weak preferences] hex in
+                if preview.takeForSaving(Int(hex)) { preferences?.accentColorHex = Int(hex) }
             },
-            appliedHex: { [weak app] in UInt32((app?.preferences.accentColorHex ?? 0) & 0xFFFFFF) },
+            appliedHex: { [weak preferences] in UInt32((preferences?.accentColorHex ?? 0) & 0xFFFFFF) },
             isCurrent: { true }
         ))
     }
 
     private var isSelected: Bool {
-        preview.isCustom(saved: app.preferences.accentColorHex)
+        preview.isCustom(saved: preferences.accentColorHex)
     }
 
     var body: some View {
@@ -90,7 +90,7 @@ struct CustomAccentPicker: View {
             }
             .accessibilityAddTraits(isSelected ? .isSelected : [])
             .onChange(of: picked) { _, colour in
-                if let hex = preview.preview(Int(colour.rgbHex), saved: app.preferences.accentColorHex) {
+                if let hex = preview.preview(Int(colour.rgbHex), saved: preferences.accentColorHex) {
                     picks.pick(UInt32(hex))
                 } else {
                     picks.cancel()
@@ -99,13 +99,13 @@ struct CustomAccentPicker: View {
             // A preset chosen meanwhile, the saved one included, which clears the preview but
             // saves nothing new, is where the picker opens next: opening it saves nothing, and
             // the last custom colour can be picked again.
-            .onChange(of: app.preferences.accentColorHex) { followPreset() }
+            .onChange(of: preferences.accentColorHex) { followPreset() }
             .onChange(of: preview.hex) { followPreset() }
             .onDisappear { picks.flush() }
     }
 
     private func followPreset() {
-        let saved = app.preferences.accentColorHex
+        let saved = preferences.accentColorHex
         guard preview.hex == nil, !preview.isCustom(saved: saved) else { return }
         picked = Self.openingColour(saved: saved)
     }

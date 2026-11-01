@@ -9,9 +9,9 @@ struct BulletinPushSection: View {
     let pushUpdateFailed: Bool
     let onEnable: () -> Void
     let onDisable: () -> Void
+    var enableClosedReason: LocalizedStringResource?
 
     var body: some View {
-
         if pushEnabled {
             Section {
                 LabeledContent {
@@ -65,6 +65,7 @@ struct BulletinPushSection: View {
                     }
                 }
                 .disabled(isAskingPermission)
+                .disabled(because: enableClosedReason)
 
                 if BulletinNotificationSettingsView.requiresSystemSettingsRoute(for: authStatus) {
                     Button {

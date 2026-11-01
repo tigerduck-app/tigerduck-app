@@ -2,6 +2,7 @@
 import SwiftUI
 
 struct MailSettingsView: View {
+    @Environment(\.settingsState) private var state
     @State private var draft = DisplayNameDraft(of: MailAccountManager.shared)
     private let account = MailAccountManager.shared
 
@@ -19,31 +20,29 @@ struct MailSettingsView: View {
         }
     }
 
-    static func displayNameIsEnabled(isLoggedIn: Bool) -> Bool {
-        isLoggedIn
-    }
-
     var body: some View {
         List {
             Section {
-                TextField(String(localized: "school_mail_settings_display_name"), text: $draft.name)
+                NavigationLink(SettingsRow.mailNotifications.label) { MailNotificationSettingsView() }
+                    .settingsRow(.mailNotifications)
+            }
+
+            Section {
+                TextField(SettingsRow.mailDisplayName.label, text: $draft.name)
                     .textContentType(.name)
                     .submitLabel(.done)
                     .onSubmit { draft.save(to: account) }
+                    .settingsRow(.mailDisplayName)
             } header: {
-                Text(String(localized: "school_mail_settings_display_name"))
+                Text(SettingsRow.mailDisplayName.label)
             } footer: {
                 Text(String(localized: "school_mail_settings_display_name_hint"))
             }
-            .disabled(!Self.displayNameIsEnabled(isLoggedIn: account.isLoggedIn))
 
-            Section {
-                NavigationLink(String(localized: "settings_storage_title")) { StorageSettingsView() }
-            }
+            StorageKindSection(kind: .mail)
         }
-        .navigationTitle(String(localized: "school_mail_account_title"))
         .onAppear { draft = DisplayNameDraft(of: account) }
-        .onDisappear { draft.save(to: account) }
+        .onDisappear { if SettingsGate.mailSignIn.isOpen(in: state) { draft.save(to: account) } }
     }
 }
 #endif

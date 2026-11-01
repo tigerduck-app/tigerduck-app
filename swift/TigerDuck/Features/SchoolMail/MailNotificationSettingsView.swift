@@ -3,7 +3,6 @@ import SwiftUI
 import UIKit
 import TigerDuckCore
 
-///
 struct MailNotificationSettingsView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -30,10 +29,6 @@ struct MailNotificationSettingsView: View {
     /// check either.
     static func notificationsToggleIsEnabled(isLoggedIn: Bool, authFailed: Bool) -> Bool {
         isLoggedIn && !authFailed
-    }
-
-    static func settingsRowIsEnabled(isLoggedIn: Bool) -> Bool {
-        isLoggedIn
     }
 
     @MainActor
@@ -139,7 +134,7 @@ struct MailNotificationSettingsView: View {
                 Self.save($0, in: account)
             }
         }
-        .navigationTitle(String(localized: "school_mail_notification_settings_title"))
+        .navigationTitle(SettingsRow.mailNotifications.label)
         .onAppear { records = account.prefs.diagnostics }
         .task { notificationsDenied = await MailNotificationPermission.isDenied() }
         .onChange(of: scenePhase) { _, phase in

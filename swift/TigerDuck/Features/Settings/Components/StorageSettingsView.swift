@@ -6,7 +6,6 @@ struct StorageSettingsView: View {
     @State private var sizes: StorageSizes?
     @State private var deleting = false
     @State private var confirming: StorageKind?
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         List {
@@ -35,6 +34,61 @@ struct StorageSettingsView: View {
     }
 
     private func row(_ kind: StorageKind) -> some View {
+        StorageRow(kind: kind, sizes: sizes, deleting: deleting) {
+            if kind.confirmsDelete { confirming = kind } else { delete(kind) }
+        }
+    }
+
+    private func delete(_ kind: StorageKind) {
+        deleting = true
+        Task {
+            sizes = await cleaner.delete(kind)
+            deleting = false
+        }
+    }
+}
+
+/// One kind's row, for a page that holds that kind's data.
+struct StorageKindSection: View {
+    let kind: StorageKind
+    var cleaner: StorageCleaner = .live
+
+    @State private var sizes: StorageSizes?
+    @State private var deleting = false
+    @State private var confirming = false
+
+    var body: some View {
+        Section(String(localized: "settings_storage_title")) {
+            StorageRow(kind: kind, sizes: sizes, deleting: deleting) {
+                if kind.confirmsDelete { confirming = true } else { delete() }
+            }
+            .alert(kind.deleteConfirmation?.title ?? "", isPresented: $confirming) {
+                Button(String(localized: "action_cancel"), role: .cancel) {}
+                Button(String(localized: "action_delete"), role: .destructive) { delete() }
+            } message: {
+                Text(kind.deleteConfirmation?.message ?? "")
+            }
+        }
+        .task { sizes = await cleaner.only(kind).measure() }
+    }
+
+    private func delete() {
+        deleting = true
+        Task {
+            sizes = await cleaner.only(kind).delete(kind)
+            deleting = false
+        }
+    }
+}
+
+private struct StorageRow: View {
+    let kind: StorageKind
+    let sizes: StorageSizes?
+    let deleting: Bool
+    let onDelete: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
         let size = sizes?.bytes[kind]
         // An unmeasured kind keeps its button, since it may still hold data.
         let canDelete = sizes != nil && !deleting && size != 0
@@ -42,7 +96,7 @@ struct StorageSettingsView: View {
         let texts = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
             : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.sm))
-        return HStack(spacing: TigerDuckTheme.Spacing.md) {
+        HStack(spacing: TigerDuckTheme.Spacing.md) {
             StorageIconTile(kind: kind)
             texts {
                 Text(kind.title)
@@ -52,9 +106,7 @@ struct StorageSettingsView: View {
                     .monospacedDigit()
                     .fixedSize()
             }
-            Button {
-                if kind.confirmsDelete { confirming = kind } else { delete(kind) }
-            } label: {
+            Button(action: onDelete) {
                 Image(systemName: "trash")
                     .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
                     .contentShape(Rectangle())
@@ -66,13 +118,11 @@ struct StorageSettingsView: View {
             .accessibilityLabel(String(format: String(localized: "settings_storage_delete_kind"), kind.title))
         }
     }
+}
 
-    private func delete(_ kind: StorageKind) {
-        deleting = true
-        Task {
-            sizes = await cleaner.delete(kind)
-            deleting = false
-        }
+private extension StorageCleaner {
+    func only(_ kind: StorageKind) -> StorageCleaner {
+        StorageCleaner(stores: stores.filter { $0.key == kind })
     }
 }
 

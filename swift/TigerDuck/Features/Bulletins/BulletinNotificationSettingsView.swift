@@ -40,7 +40,6 @@ struct BulletinNotificationSettingsView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle(String(localized: "bulletin_notifications_title"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             store.configure(authTokenManager: app.authTokenManager, for: await app.authService.session.startingSignIn)
