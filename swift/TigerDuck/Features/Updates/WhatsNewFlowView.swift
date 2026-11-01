@@ -11,6 +11,10 @@ struct WhatsNewFlowView: View {
     @State private var isRequesting = false
     @State private var requestTask: Task<Void, Never>?
 
+    private var pageTurn: Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.4)
+    }
+
     private var stepCount: Int {
         presentation.pages.count + (presentation.summary == nil ? 0 : 1)
     }
@@ -21,6 +25,7 @@ struct WhatsNewFlowView: View {
             pager
             footer
         }
+        .animation(pageTurn, value: index)
         .environment(\.whatsNewLanguage, presentation.language)
         .onDisappear { requestTask?.cancel() }
     }
@@ -48,26 +53,10 @@ struct WhatsNewFlowView: View {
     }
 
     private var pager: some View {
-        GeometryReader { proxy in
-            HStack(spacing: 0) {
-                ForEach(0..<stepCount, id: \.self) { step in
-                    Group {
-                        if abs(step - index) <= 1 {
-                            content(at: step)
-                        } else {
-                            Color.clear
-                        }
-                    }
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .accessibilityHidden(step != index)
-                }
-            }
-            // An RTL HStack lays steps out right to left, but SwiftUI
-            // mirrors `offset(x:)` under RTL as well, so the same
-            // negative offset brings the next step in either way.
-            .offset(x: -CGFloat(index) * proxy.size.width)
+        WhatsNewPager(count: stepCount, index: $index) { step in
+            content(at: step)
         }
-        .clipped()
+        .scrollDisabled(isRequesting)
     }
 
     private var footer: some View {
@@ -186,8 +175,38 @@ struct WhatsNewFlowView: View {
 
     private func go(to step: Int) {
         guard (0..<stepCount).contains(step) else { return }
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
+        withAnimation(pageTurn) {
             index = step
+        }
+    }
+}
+
+struct WhatsNewPager<Page: View>: View {
+    let count: Int
+    @Binding var index: Int
+    @ViewBuilder let page: (Int) -> Page
+
+    var body: some View {
+        GeometryReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(0..<count, id: \.self) { step in
+                        Group {
+                            if abs(step - index) <= 1 {
+                                page(step)
+                            } else {
+                                Color.clear
+                            }
+                        }
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .accessibilityHidden(step != index)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: Binding($index), anchor: .center)
+            .scrollIndicators(.hidden)
         }
     }
 }
