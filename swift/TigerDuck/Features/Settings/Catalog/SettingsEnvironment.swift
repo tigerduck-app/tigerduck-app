@@ -9,19 +9,23 @@ extension View {
 
 extension SettingsState {
     init(app: AppEnvironment, isCloudSyncOn: Bool) {
-        let mail = MailAccountManager.shared
+        self.init(school: app.authService, library: app.library, mail: .shared, isCloudSyncOn: isCloudSyncOn)
+        isChineseUI = !LanguageManager.isCurrentLanguageNonChinese(appLanguage: app.preferences.appLanguage)
+        usesEnglishClassroomNames = app.preferences.useEnglishClassroomAbbreviation
+        hasFlipToLibrary = LibrarySettingsView.isAvailable
+        hasSchoolMail = SchoolMailAvailability.isEnabled
+        hasWhatsNew = app.updateNotifyCoordinator.hasWhatsNewContent(in: app)
+        isCheckingForUpdate = app.updateNotifyCoordinator.isCheckingForUpdate
+    }
+
+    /// The accounts and TigerSync, which open and close the gates.
+    init(school: AuthService, library: LibraryAccountStatus, mail: MailAccountManager, isCloudSyncOn: Bool) {
         self.init(
-            school: Account(isSignedIn: app.authService.hasStoredCredentials, name: app.authService.storedStudentId),
-            library: Account(isSignedIn: app.library.isLoggedIn, name: app.library.username),
+            school: Account(isSignedIn: school.hasStoredCredentials, name: school.storedStudentId),
+            library: Account(isSignedIn: library.isLoggedIn, name: library.username),
             mail: Self.mailAccount(mail),
             mailSignInFailed: mail.authFailed,
-            isCloudSyncOn: isCloudSyncOn,
-            isChineseUI: !LanguageManager.isCurrentLanguageNonChinese(appLanguage: app.preferences.appLanguage),
-            usesEnglishClassroomNames: app.preferences.useEnglishClassroomAbbreviation,
-            hasFlipToLibrary: LibrarySettingsView.isAvailable,
-            hasSchoolMail: SchoolMailAvailability.isEnabled,
-            hasWhatsNew: app.updateNotifyCoordinator.hasWhatsNewContent(in: app),
-            isCheckingForUpdate: app.updateNotifyCoordinator.isCheckingForUpdate
+            isCloudSyncOn: isCloudSyncOn
         )
     }
 
