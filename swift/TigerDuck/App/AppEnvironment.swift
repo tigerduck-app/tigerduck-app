@@ -73,7 +73,7 @@ final class AppEnvironment {
         if purge.isFreshInstall {
             updateNotifyCoordinator.seedWhatsNewOnFreshInstall()
         }
-        _ = liveActivity
+        liveActivity.observePreferenceChanges()
         holidays.onChange = { [weak self] in self?.liveActivity.scheduleRefresh() }
         #endif
 

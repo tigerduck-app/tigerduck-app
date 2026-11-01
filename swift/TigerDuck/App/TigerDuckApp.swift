@@ -80,7 +80,7 @@ struct TigerDuckApp: App {
                     watch: { watchSync.pushCurrentState() },
                     liveActivity: { app.liveActivity.scheduleRefresh(after: .zero) }
                 ),
-                fingerprint: { DeviceSurfaceSyncer.fingerprint(of: app, nudges: $0) }
+                fingerprint: { DeviceSurfaceSyncer.fingerprint(of: app, unobserved: $0) }
             )
             return Built(
                 app: app, watchSync: watchSync, widgetSnapshotWriter: widgetSnapshotWriter,
@@ -193,7 +193,7 @@ struct TigerDuckApp: App {
                         writer.regenerate()
                         deviceSurfaces = DeviceSurfaceSyncer(
                             surfaces: .init(widgets: { writer.regenerate(forceReload: $0) }),
-                            fingerprint: { [app] in DeviceSurfaceSyncer.fingerprint(of: app, nudges: $0) }
+                            fingerprint: { [app] in DeviceSurfaceSyncer.fingerprint(of: app, unobserved: $0) }
                         )
                     }
                     TLSPinMismatchQueue.shared.isForeground = true

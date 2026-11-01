@@ -84,9 +84,7 @@ final class LiveActivityCoordinator {
         let realStaleDate = snapshot.countdownTarget.map(AppClock.realTime(forApp:))
         let content = ActivityContent(state: state, staleDate: realStaleDate)
 
-        if let matching = runningActivities.first(where: {
-            $0.attributes.activityId == targetId && !endedActivityIds.contains($0.id)
-        }) {
+        if let matching = updatableCopy(of: targetId, among: runningActivities) {
             if matching.content.state.snapshot != snapshot {
                 await matching.update(content)
             }
@@ -160,47 +158,6 @@ final class LiveActivityCoordinator {
         tasks.cancelAll(except: retainedTaskIds)
     }
 
-    typealias RunningActivityFacts = LiveActivityEndRules.RunningActivityFacts
-    typealias EndReason = LiveActivityEndRules.EndReason
-
-    nonisolated static func expiredInstanceIds(_ facts: [RunningActivityFacts], now: Date) -> [String] {
-        LiveActivityEndRules.expiredInstanceIds(facts, now: now)
-    }
-
-    nonisolated static func instanceIdsToEnd(
-        _ facts: [RunningActivityFacts], now: Date, isAvailable: Bool, isQuietDay: (Date) -> Bool = { _ in false },
-        isAssignmentOutstanding: (String) -> Bool? = { _ in nil }, isSkipped: (String) -> Bool = { _ in false }
-    ) -> [String] {
-        LiveActivityEndRules.instanceIdsToEnd(
-            facts, now: now, isAvailable: isAvailable, isQuietDay: isQuietDay,
-            isAssignmentOutstanding: isAssignmentOutstanding, isSkipped: isSkipped
-        )
-    }
-
-    nonisolated static func endReason(
-        for fact: RunningActivityFacts, now: Date, isAvailable: Bool, isQuietDay: (Date) -> Bool,
-        isAssignmentOutstanding: (String) -> Bool?, isSkipped: (String) -> Bool
-    ) -> EndReason? {
-        LiveActivityEndRules.endReason(
-            for: fact, now: now, isAvailable: isAvailable, isQuietDay: isQuietDay,
-            isAssignmentOutstanding: isAssignmentOutstanding, isSkipped: isSkipped
-        )
-    }
-
-    nonisolated static func canStart(
-        _ snapshot: LiveActivitySnapshot, isAvailable: Bool, isQuietDay: (Date) -> Bool,
-        isAssignmentOutstanding: (String) -> Bool?, isSkipped: (String) -> Bool
-    ) -> Bool {
-        LiveActivityEndRules.canStart(
-            snapshot, isAvailable: isAvailable, isQuietDay: isQuietDay,
-            isAssignmentOutstanding: isAssignmentOutstanding, isSkipped: isSkipped
-        )
-    }
-
-    nonisolated static func duplicateInstanceIdsToEnd(_ facts: [RunningActivityFacts]) -> [String] {
-        LiveActivityEndRules.duplicateInstanceIdsToEnd(facts)
-    }
-
     private func endDuplicateActivities() async {
         let listed = Activity<TigerDuckActivityAttributes>.activities
         let live = listed.filter {
@@ -221,8 +178,7 @@ final class LiveActivityCoordinator {
                 logger.info(
                     "Ending duplicate Live Activity id=\(activityId, privacy: .private) reason=already running"
                 )
-                endedActivityIds.insert(copy.id)
-                await copy.end(nil, dismissalPolicy: .immediate)
+                await recordAndEnd(copy)
             }
             tasks.cancelTokenWatch(activityId)
             tasks.watchToken(of: keeper)
@@ -239,12 +195,16 @@ final class LiveActivityCoordinator {
     private func endIfStillExpired(activityId: String, target: Date) async {
         tasks.endTimerFired(for: activityId)
         guard AppClock.now() >= target,
-              let activity = Activity<TigerDuckActivityAttributes>.activities.first(where: {
-                  $0.attributes.activityId == activityId && !endedActivityIds.contains($0.id)
-              }) else {
+              let activity = updatableCopy(of: activityId, among: Activity<TigerDuckActivityAttributes>.activities) else {
             return
         }
         await end(activity, reason: "automatic countdown end")
+    }
+
+    private func updatableCopy(
+        of activityId: String, among running: [Activity<TigerDuckActivityAttributes>]
+    ) -> Activity<TigerDuckActivityAttributes>? {
+        running.first { $0.attributes.activityId == activityId && !endedActivityIds.contains($0.id) }
     }
 
     private func end(
@@ -255,8 +215,12 @@ final class LiveActivityCoordinator {
         logger.info(
             "Ending Live Activity id=\(activityId, privacy: .private) reason=\(reason, privacy: .public)"
         )
+        await recordAndEnd(activity)
+        tasks.cancel(activityId)
+    }
+
+    private func recordAndEnd(_ activity: Activity<TigerDuckActivityAttributes>) async {
         endedActivityIds.insert(activity.id)
         await activity.end(nil, dismissalPolicy: .immediate)
-        tasks.cancel(activityId)
     }
 }
