@@ -22,7 +22,7 @@ struct CloudSyncCoordinatorTests {
     private static func makeCoordinator(
         _ backend: Backend,
         syncsAssignmentMarks: (@Sendable () -> Bool)? = { true },
-        syncsCourseOverrides: @escaping @Sendable (String) -> Bool = { _ in true },
+        syncsCourseOverrides: @escaping @Sendable (SyncCategory) -> Bool = { _ in true },
         authHeader: @escaping @Sendable () async -> String? = { "Bearer test" }
     ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
@@ -183,7 +183,7 @@ struct CloudSyncCoordinatorTests {
         let backend = Backend()
         backend.answer("sync/courses/client:1151:CS1/override", body: Self.colourReply)
         backend.answer("sync/courses/client:1151:EE2/override", body: Self.colourReply)
-        let pending = OSAllocatedUnfairLock<Set<String>>(initialState: ["course_colors"])
+        let pending = OSAllocatedUnfairLock<Set<SyncCategory>>(initialState: [.courseColors])
         let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { category in
             !pending.withLock { $0.contains(category) }
         })
@@ -197,7 +197,7 @@ struct CloudSyncCoordinatorTests {
         #expect(backend.requests("sync/courses/client:1151:EE2/override").count == 1)
         #expect(await coordinator.pendingCourseOverrides().colors == ["1151CS1"])
 
-        pending.withLock { $0 = ["course_names"] }
+        pending.withLock { $0 = [.courseNames] }
         await coordinator.syncTick()
         #expect(backend.requests("sync/courses/client:1151:CS1/override").count == 1)
         #expect(await coordinator.outbox.pendingCount() == 0)
@@ -218,7 +218,7 @@ struct CloudSyncCoordinatorTests {
 
         let answered = OSAllocatedUnfairLock(initialState: false)
         let useServer = Task {
-            await coordinator.discardEdits(of: ["course_colors"], courseIgnores: false)
+            await coordinator.discardEdits(of: [.courseColors], courseIgnores: false)
             answered.withLock { $0 = true }
         }
         try await Task.sleep(for: .milliseconds(300))
@@ -277,7 +277,7 @@ struct CloudSyncCoordinatorTests {
         let drain = Task { await coordinator.syncTick() }
         try await waitUntil { picked.withLock { $0 } }
 
-        let useServer = Task.immediate { await coordinator.discardEdits(of: ["course_colors"], courseIgnores: false) }
+        let useServer = Task.immediate { await coordinator.discardEdits(of: [.courseColors], courseIgnores: false) }
         release.signal()
         await useServer.value
         await drain.value
@@ -455,14 +455,14 @@ struct CloudSyncCoordinatorTests {
 
     @Test("A mark goes out with the Assignments switch on and its re-enable check settled")
     func marksGoOutWithTheSwitchOnAndNoCheckPending() {
-        func sends(assignments: Bool, pendingChecks: Set<String>) -> Bool {
+        func sends(assignments: Bool, pendingChecks: Set<SyncCategory>) -> Bool {
             SyncPolicy(
-                cloudSyncEnabled: true, switchedOn: assignments ? ["assignments"] : [], pendingChecks: pendingChecks
+                cloudSyncEnabled: true, switchedOn: assignments ? [.assignments] : [], pendingChecks: pendingChecks
             ).sendsAssignmentMarks
         }
-        #expect(sends(assignments: true, pendingChecks: ["courses"]))
+        #expect(sends(assignments: true, pendingChecks: [.courses]))
         #expect(!sends(assignments: false, pendingChecks: []))
-        #expect(!sends(assignments: true, pendingChecks: ["assignments"]))
+        #expect(!sends(assignments: true, pendingChecks: [.assignments]))
     }
 
     @Test("After a sign-out the next account's marks and course settings go out, though a re-enable check was pending")
@@ -476,16 +476,16 @@ struct CloudSyncCoordinatorTests {
             defer {
                 Defaults[.syncAssignments] = saved.0
                 Defaults[.syncCourses] = saved.1
-                Defaults[.pendingConflictCategories] = saved.2
-                Defaults[.assignmentMarksSyncedOnce] = saved.3
-                Defaults[.lastSeenCoursesResetAt] = saved.4
-                Defaults[.categoriesSyncedOnce] = saved.5
-                Defaults[.courseRowIdsSeen] = saved.6
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.2
+                Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = saved.3
+                Defaults[.lastSeenCoursesResetAt, for: testSignIn] = saved.4
+                Defaults[.categoriesSyncedOnce, for: testSignIn] = saved.5
+                Defaults[.courseRowIdsSeen, for: testSignIn] = saved.6
             }
             Defaults[.syncAssignments] = true
             Defaults[.syncCourses] = true
-            Defaults[.pendingConflictCategories] = ["assignments", "courses"]
-            Defaults[.assignmentMarksSyncedOnce] = true
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.assignments, .courses]
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = true
 
             SyncProgress.forget()
 
@@ -521,7 +521,7 @@ struct CloudSyncCoordinatorTests {
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
                                               moodleCourseId: nil, ignore: true)
 
-        await coordinator.discardEdits(of: ["assignments"], courseIgnores: false)
+        await coordinator.discardEdits(of: [.assignments], courseIgnores: false)
 
         #expect(await coordinator.pendingAssignmentOverrideIds().isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
@@ -539,17 +539,17 @@ struct CloudSyncCoordinatorTests {
                                               moodleCourseId: nil, ignore: true)
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE3")
 
-        await coordinator.discardEdits(of: ["courses"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.courses], courseIgnores: true)
         let afterCourses = await coordinator.pendingCourseOverrides()
         #expect(afterCourses.colors == ["1151CS1"])
         #expect(afterCourses.names == ["1151EE2"])
 
-        await coordinator.discardEdits(of: ["course_colors"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.courseColors], courseIgnores: true)
         let afterColours = await coordinator.pendingCourseOverrides()
         #expect(afterColours.colors.isEmpty)
         #expect(afterColours.names == ["1151EE2"])
 
-        await coordinator.discardEdits(of: ["course_names"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.courseNames], courseIgnores: true)
         #expect(await coordinator.pendingCourseOverrides().names.isEmpty)
         #expect(await coordinator.pendingAssignmentOverrideIds() == ["42"])
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
@@ -562,10 +562,10 @@ struct CloudSyncCoordinatorTests {
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
                                               moodleCourseId: nil, ignore: true)
 
-        await coordinator.discardEdits(of: ["courses", "course_colors", "course_names"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.courses, .courseColors, .courseNames], courseIgnores: true)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
 
-        await coordinator.discardEdits(of: ["assignments"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.assignments], courseIgnores: true)
         #expect(await coordinator.pendingCourseIgnoreKeys().isEmpty)
     }
 
@@ -575,13 +575,13 @@ struct CloudSyncCoordinatorTests {
             let saved = (Defaults[.syncAssignments], Defaults[.pendingConflictCategories])
             defer {
                 Defaults[.syncAssignments] = saved.0
-                Defaults[.pendingConflictCategories] = saved.1
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.1
             }
             Defaults[.syncAssignments] = true
-            Defaults[.pendingConflictCategories] = ["assignments", "course_colors"]
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.assignments, .courseColors]
             let shown = ShownReenableConflict()
             shown.conflict = SyncConflicts.ReenableConflict(
-                categories: ["assignments", "course_colors"], description: "",
+                categories: [.assignments, .courseColors], description: "",
                 serverIgnoredCourses: nil, serverMarkedAssignments: ["42"]
             )
             let isPresented = SyncConflicts.reenableAlertIsPresented(
@@ -595,7 +595,7 @@ struct CloudSyncCoordinatorTests {
             await coordinator.syncTick()
 
             #expect(!isPresented.wrappedValue)
-            #expect(Defaults[.pendingConflictCategories] == ["assignments", "course_colors"])
+            #expect(Defaults[.pendingConflictCategories] == [.assignments, .courseColors])
             #expect(backend.requests("sync/assignments/42/override").isEmpty)
             #expect(await coordinator.outbox.pendingCount() == 1)
         }

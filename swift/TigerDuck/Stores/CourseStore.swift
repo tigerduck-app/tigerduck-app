@@ -147,13 +147,11 @@ final class CourseStore {
     }
 
     func recordSemesterReset(_ semester: String, at date: Date = Date(), for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        files.recordSemesterReset(semester, at: date)
+        files.recordSemesterReset(semester, at: date, for: signIn)
     }
 
     func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = [], for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        files.clearSemesterResets(outlivedBy: fetchedAt, keeping: owned)
+        files.clearSemesterResets(outlivedBy: fetchedAt, keeping: owned, for: signIn)
     }
 
     /// Saves a term fetched with `display` from the start of the fetch at `token`. Dropped, and

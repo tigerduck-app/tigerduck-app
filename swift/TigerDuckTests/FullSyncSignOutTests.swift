@@ -30,19 +30,19 @@ struct ReenableCheckSignOutTests {
     @Test("A check that ends under the same sign-in leaves the categories switched back on while it ran")
     func sameSignInLeavesTheCategoriesMarkedSince() {
         let left = SyncConflicts.categoriesLeftToCheck(
-            pending: ["assignments", "courses"], checked: ["assignments"], signedOutSince: false
+            pending: [.assignments, .courses], checked: [.assignments], signedOutSince: false
         )
 
-        #expect(left == ["courses"])
+        #expect(left == [.courses])
     }
 
     @Test("A check the sign-out outlived leaves the next account's categories, though it compared the same ones")
     func signOutLeavesTheNextAccountsCategories() {
         let left = SyncConflicts.categoriesLeftToCheck(
-            pending: ["assignments"], checked: ["assignments"], signedOutSince: true
+            pending: [.assignments], checked: [.assignments], signedOutSince: true
         )
 
-        #expect(left == ["assignments"])
+        #expect(left == [.assignments])
     }
 
     @Test("A check the sign-out outlived checks nothing of the departing account's, so it raises no alert")
@@ -53,18 +53,18 @@ struct ReenableCheckSignOutTests {
                 Defaults[.lastSeenCoursesResetAt], Defaults[.categoriesSyncedOnce], Defaults[.courseRowIdsSeen]
             )
             defer {
-                Defaults[.pendingConflictCategories] = saved.0
-                Defaults[.assignmentMarksSyncedOnce] = saved.1
-                Defaults[.lastSeenCoursesResetAt] = saved.2
-                Defaults[.categoriesSyncedOnce] = saved.3
-                Defaults[.courseRowIdsSeen] = saved.4
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.0
+                Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = saved.1
+                Defaults[.lastSeenCoursesResetAt, for: testSignIn] = saved.2
+                Defaults[.categoriesSyncedOnce, for: testSignIn] = saved.3
+                Defaults[.courseRowIdsSeen, for: testSignIn] = saved.4
             }
-            Defaults[.pendingConflictCategories] = ["assignments", "courses"]
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.assignments, .courses]
 
             SyncProgress.forget()
 
             let left = SyncConflicts.categoriesLeftToCheck(
-                pending: Defaults[.pendingConflictCategories], checked: ["assignments"], signedOutSince: true
+                pending: Defaults[.pendingConflictCategories], checked: [.assignments], signedOutSince: true
             )
             #expect(left.isEmpty)
         }
@@ -82,7 +82,7 @@ struct ConflictCheckRetryTests {
 
     private static func isDue(
         _ retry: SyncConflicts.ConflictCheckRetry, after seconds: TimeInterval = 0,
-        pending: Set<String> = ["assignments"], checking: Bool = false, awaitingAnswer: Bool = false
+        pending: Set<SyncCategory> = [.assignments], checking: Bool = false, awaitingAnswer: Bool = false
     ) -> Bool {
         retry.isDue(
             pending: pending, checking: checking, awaitingAnswer: awaitingAnswer,
@@ -121,7 +121,7 @@ struct ConflictCheckRetryTests {
     func outcomesMoveWhatIsOwed() {
         var retry = SyncConflicts.ConflictCheckRetry()
 
-        retry.note(.clear(["assignments"]), at: Self.start, signIn: testSignIn)
+        retry.note(.clear([.assignments]), at: Self.start, signIn: testSignIn)
         #expect(!Self.isDue(retry, after: 3600))
         retry.note(.resolvedMeanwhile, at: Self.start, signIn: testSignIn)
         #expect(!Self.isDue(retry, after: 3600))
@@ -130,7 +130,7 @@ struct ConflictCheckRetryTests {
         #expect(!Self.isDue(retry, after: 1))
         #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay))
 
-        retry.note(.conflict(["assignments"]), at: Self.start, signIn: testSignIn)
+        retry.note(.conflict([.assignments]), at: Self.start, signIn: testSignIn)
         #expect(!Self.isDue(retry, after: 3600))
         retry.noteFailure(at: Self.start, signIn: testSignIn)
         #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay))
@@ -140,43 +140,43 @@ struct ConflictCheckRetryTests {
     func anAnswerOwesTheCategoriesMarkedDuringTheCheck() {
         var retry = SyncConflicts.ConflictCheckRetry()
 
-        retry.note(.conflict(["courses"]), at: Self.start, signIn: testSignIn)
-        #expect(!Self.isDue(retry, pending: ["assignments", "courses"], awaitingAnswer: true))
+        retry.note(.conflict([.courses]), at: Self.start, signIn: testSignIn)
+        #expect(!Self.isDue(retry, pending: [.assignments, .courses], awaitingAnswer: true))
 
-        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, signIn: testSignIn)
-        #expect(Self.isDue(retry, pending: ["assignments"]))
+        retry.noteAnswered(leaving: [.assignments], awaitingAnswer: false, signIn: testSignIn)
+        #expect(Self.isDue(retry, pending: [.assignments]))
     }
 
     @Test("An answer that leaves nothing pending owes no check")
     func anAnswerThatLeavesNothingOwesNothing() {
         var retry = SyncConflicts.ConflictCheckRetry()
-        retry.note(.conflict(["courses"]), at: Self.start, signIn: testSignIn)
+        retry.note(.conflict([.courses]), at: Self.start, signIn: testSignIn)
 
         retry.noteAnswered(leaving: [], awaitingAnswer: false, signIn: testSignIn)
 
-        #expect(!Self.isDue(retry, pending: ["assignments"]))
+        #expect(!Self.isDue(retry, pending: [.assignments]))
     }
 
     @Test("An answer that finds another dialog up owes no check of its own")
     func anAnswerWithAnotherDialogUpOwesNothing() {
         var retry = SyncConflicts.ConflictCheckRetry()
-        retry.note(.conflict(["courses"]), at: Self.start, signIn: testSignIn)
-        retry.note(.conflict(["assignments"]), at: Self.start, signIn: testSignIn)
+        retry.note(.conflict([.courses]), at: Self.start, signIn: testSignIn)
+        retry.note(.conflict([.assignments]), at: Self.start, signIn: testSignIn)
 
-        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: true, signIn: testSignIn)
+        retry.noteAnswered(leaving: [.assignments], awaitingAnswer: true, signIn: testSignIn)
 
-        #expect(!Self.isDue(retry, pending: ["assignments"]))
+        #expect(!Self.isDue(retry, pending: [.assignments]))
     }
 
     @Test("A check of the departing account that ends after the next account's verdict changes nothing")
     func anOlderAccountsLateResultIsDropped() {
         var retry = SyncConflicts.ConflictCheckRetry()
-        retry.note(.clear(["assignments"]), at: Self.start, signIn: Self.next)
+        retry.note(.clear([.assignments]), at: Self.start, signIn: Self.next)
         #expect(!Self.isDue(retry))
 
         retry.note(.dropped, at: Self.start, signIn: Self.departing)
         retry.noteFailure(at: Self.start, signIn: Self.departing)
-        retry.noteAnswered(leaving: ["assignments"], awaitingAnswer: false, at: Self.start, signIn: Self.departing)
+        retry.noteAnswered(leaving: [.assignments], awaitingAnswer: false, at: Self.start, signIn: Self.departing)
 
         #expect(!Self.isDue(retry))
     }
@@ -184,12 +184,12 @@ struct ConflictCheckRetryTests {
     @Test("An answer whose save failed is checked again only after the wait a failed check gets")
     func aFailedSaveWaitsBeforeAskingAgain() {
         var retry = SyncConflicts.ConflictCheckRetry()
-        retry.note(.conflict(["courses"]), at: Self.start, signIn: testSignIn)
+        retry.note(.conflict([.courses]), at: Self.start, signIn: testSignIn)
 
-        retry.noteAnswered(leaving: ["courses"], awaitingAnswer: false, saveFailed: true, at: Self.start, signIn: testSignIn)
+        retry.noteAnswered(leaving: [.courses], awaitingAnswer: false, saveFailed: true, at: Self.start, signIn: testSignIn)
 
-        #expect(!Self.isDue(retry, pending: ["courses"]))
-        #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay, pending: ["courses"]))
+        #expect(!Self.isDue(retry, pending: [.courses]))
+        #expect(Self.isDue(retry, after: SyncConflicts.ConflictCheckRetry.firstDelay, pending: [.courses]))
     }
 
     @Test("The next account starts as at launch, even after the departing account's check ends late")
@@ -213,51 +213,51 @@ struct ConflictCheckOutcomeTests {
     @Test("A sign-out, sync turned off or the lock screen since the check started drops its result")
     func overtakenResultsAreDropped() {
         #expect(SyncConflicts.conflictCheckOutcome(
-            mayWrite: false, checked: ["assignments"], stillPending: ["assignments"], foundDifference: true
+            mayWrite: false, checked: [.assignments], stillPending: [.assignments], foundDifference: true
         ) == .dropped)
     }
 
     @Test("A check whose categories were all answered while it ran reports nothing")
     func answeredMeanwhileReportsNothing() {
         #expect(SyncConflicts.conflictCheckOutcome(
-            mayWrite: true, checked: ["assignments"], stillPending: ["courses"], foundDifference: true
+            mayWrite: true, checked: [.assignments], stillPending: [.courses], foundDifference: true
         ) == .resolvedMeanwhile)
     }
 
     @Test("A check that compared what a Use Local answer still sends asks nothing about it")
     func whatUseLocalStillSendsIsNotAskedAgain() {
         let stillPending = SyncConflicts.categoriesToCheck(
-            pending: ["course_colors", "courses"], answering: ["course_colors"]
+            pending: [.courseColors, .courses], answering: [.courseColors]
         )
 
         #expect(SyncConflicts.conflictCheckOutcome(
-            mayWrite: true, checked: ["course_colors"], stillPending: stillPending, foundDifference: true
+            mayWrite: true, checked: [.courseColors], stillPending: stillPending, foundDifference: true
         ) == .resolvedMeanwhile)
         #expect(SyncConflicts.conflictCheckOutcome(
-            mayWrite: true, checked: ["course_colors", "courses"], stillPending: stillPending, foundDifference: true
-        ) == .conflict(["courses"]))
+            mayWrite: true, checked: [.courseColors, .courses], stillPending: stillPending, foundDifference: true
+        ) == .conflict([.courses]))
     }
 
     @Test("A difference asks about the categories still pending, and none clears them, which drains the outbox")
     func verdictsCoverTheCategoriesStillPending() {
         #expect(SyncConflicts.conflictCheckOutcome(
-            mayWrite: true, checked: ["assignments", "courses"], stillPending: ["assignments"], foundDifference: true
-        ) == .conflict(["assignments"]))
+            mayWrite: true, checked: [.assignments, .courses], stillPending: [.assignments], foundDifference: true
+        ) == .conflict([.assignments]))
         #expect(SyncConflicts.conflictCheckOutcome(
-            mayWrite: true, checked: ["assignments"], stillPending: ["assignments", "courses"], foundDifference: false
-        ) == .clear(["assignments"]))
+            mayWrite: true, checked: [.assignments], stillPending: [.assignments, .courses], foundDifference: false
+        ) == .clear([.assignments]))
     }
 }
 
 @MainActor
 struct ReenableMarkTests {
-    private static let categories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
-    private static let switches: [(category: String, key: Defaults.Key<Bool>)] = [
-        ("courses", .syncCourses), ("course_colors", .syncCourseColors),
-        ("course_names", .syncCourseNames), ("assignments", .syncAssignments),
+    private static let categories = Set(SyncCategory.allCases)
+    private static let switches: [(category: SyncCategory, key: Defaults.Key<Bool>)] = [
+        (.courses, .syncCourses), (.courseColors, .syncCourseColors),
+        (.courseNames, .syncCourseNames), (.assignments, .syncAssignments),
     ]
 
-    private static var synced: Set<String> { categories.filter { SyncConflicts.hasSynced($0) } }
+    private static var synced: Set<SyncCategory> { categories.filter { SyncConflicts.hasSynced($0) } }
 
     private static func withSyncProgress(_ body: () -> Void) async {
         await withExclusiveRealDefaults {
@@ -267,40 +267,40 @@ struct ReenableMarkTests {
             )
             let savedSwitches = switches.map { ($0.key, Defaults[$0.key]) }
             defer {
-                Defaults[.pendingConflictCategories] = saved.0
-                Defaults[.assignmentMarksSyncedOnce] = saved.1
-                Defaults[.lastSeenCoursesResetAt] = saved.2
-                Defaults[.categoriesSyncedOnce] = saved.3
-                Defaults[.courseRowIdsSeen] = saved.4
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.0
+                Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = saved.1
+                Defaults[.lastSeenCoursesResetAt, for: testSignIn] = saved.2
+                Defaults[.categoriesSyncedOnce, for: testSignIn] = saved.3
+                Defaults[.courseRowIdsSeen, for: testSignIn] = saved.4
                 for (key, value) in savedSwitches { Defaults[key] = value }
             }
-            Defaults[.pendingConflictCategories] = []
-            Defaults[.categoriesSyncedOnce] = []
+            Defaults[.pendingConflictCategories, for: testSignIn] = []
+            Defaults[.categoriesSyncedOnce, for: testSignIn] = []
             for entry in switches { Defaults[entry.key] = true }
             body()
         }
     }
 
     private static func recordSync(
-        pendingChecks: Set<String> = [], marksLeftFor reason: SyncPolicy.MarksLeftReason? = nil
+        pendingChecks: Set<SyncCategory> = [], marksLeftFor reason: SyncPolicy.MarksLeftReason? = nil
     ) {
         SyncProgress.recordFullSync(coursesReset: .distantPast, taken: SyncPolicy(cloudSyncEnabled: true, switchedOn: SyncConflicts.switchedOnCategories(), pendingChecks: pendingChecks).categoriesTaken(marksLeftFor: reason), for: testSignIn)
     }
 
     @Test("A full sync takes a category's data unless a pending check or an edit during the fetch holds it back")
     func takenCategoriesFollowTheSyncsSkips() {
-        let taken = { (pending: Set<String>, reason: SyncPolicy.MarksLeftReason?) in
+        let taken = { (pending: Set<SyncCategory>, reason: SyncPolicy.MarksLeftReason?) in
             SyncPolicy(cloudSyncEnabled: true, switchedOn: Self.categories, pendingChecks: pending).categoriesTaken(marksLeftFor: reason)
         }
         #expect(taken([], nil) == Self.categories)
-        #expect(taken(["course_names"], nil) == ["courses", "assignments"])
-        #expect(taken(["course_colors"], nil) == ["courses", "assignments"])
-        #expect(taken(["courses"], nil) == ["course_colors", "course_names", "assignments"])
-        #expect(taken([], .editedDuringFetch) == Self.categories.subtracting(["assignments"]))
-        #expect(taken(["assignments"], .conflictCheckPending) == Self.categories.subtracting(["assignments"]))
-        #expect(taken([], .switchedOff) == Self.categories.subtracting(["assignments"]))
+        #expect(taken([.courseNames], nil) == [.courses, .assignments])
+        #expect(taken([.courseColors], nil) == [.courses, .assignments])
+        #expect(taken([.courses], nil) == [.courseColors, .courseNames, .assignments])
+        #expect(taken([], .editedDuringFetch) == Self.categories.subtracting([.assignments]))
+        #expect(taken([.assignments], .conflictCheckPending) == Self.categories.subtracting([.assignments]))
+        #expect(taken([], .switchedOff) == Self.categories.subtracting([.assignments]))
         #expect(taken([], .uploadedLocalMarks) == Self.categories)
-        #expect(SyncPolicy(cloudSyncEnabled: true, switchedOn: ["courses"], pendingChecks: []).categoriesTaken(marksLeftFor: nil) == ["courses"])
+        #expect(SyncPolicy(cloudSyncEnabled: true, switchedOn: [.courses], pendingChecks: []).categoriesTaken(marksLeftFor: nil) == [.courses])
     }
 
     @Test("Use Local keeps every category it answers pending until it is done with it, and only a relaunch asks again")
@@ -313,7 +313,7 @@ struct ReenableMarkTests {
         #expect(pending == Self.categories)
         #expect(held == pending)
         #expect(SyncPolicy(cloudSyncEnabled: true, switchedOn: Self.categories, pendingChecks: pending).categoriesTaken(marksLeftFor: SyncPolicy.reasonToLeaveMarks(
-                syncsMarks: true, conflictCheckPending: pending.contains("assignments"),
+                syncsMarks: true, conflictCheckPending: pending.contains(.assignments),
                 uploadedLocalMarks: false, editedDuringFetch: false
             )).isEmpty)
         #expect(SyncConflicts.categoriesToCheck(pending: pending, answering: hold.held).isEmpty)
@@ -327,55 +327,55 @@ struct ReenableMarkTests {
 
     @Test("Use Server takes every answered category off the pending list at once and holds none")
     func useServerHoldsNothing() {
-        var pending: Set<String> = ["courses", "course_colors", "assignments"]
+        var pending: Set<SyncCategory> = [.courses, .courseColors, .assignments]
         var hold = SyncConflicts.UseLocalHold()
 
-        let held = hold.take(["course_colors", "assignments"], keepLocal: false, from: &pending)
+        let held = hold.take([.courseColors, .assignments], keepLocal: false, from: &pending)
 
         #expect(held.isEmpty)
-        #expect(pending == ["courses"])
+        #expect(pending == [.courses])
         #expect(hold.held.isEmpty)
     }
 
     @Test("A category switched off and on while Use Local sends it stays pending for its own check")
     func aReenableWhileUseLocalSendsItStaysPending() {
-        var pending: Set<String> = ["courses", "course_colors", "course_names"]
+        var pending: Set<SyncCategory> = [.courses, .courseColors, .courseNames]
         var hold = SyncConflicts.UseLocalHold()
-        let held = hold.take(["courses", "course_colors", "course_names"], keepLocal: true, from: &pending)
+        let held = hold.take([.courses, .courseColors, .courseNames], keepLocal: true, from: &pending)
 
-        pending.insert("course_colors")
-        hold.noteReenabled("course_colors")
-        hold.noteReenabled("assignments")
+        pending.insert(.courseColors)
+        hold.noteReenabled(.courseColors)
+        hold.noteReenabled(.assignments)
         hold.release(held, from: &pending)
 
-        #expect(pending == ["course_colors"])
+        #expect(pending == [.courseColors])
         #expect(hold == SyncConflicts.UseLocalHold())
     }
 
     @Test("Two Use Local answers each let go of only what they held")
     func eachAnswerReleasesOnlyItsOwn() {
-        var pending: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
+        var pending: Set<SyncCategory> = [.courses, .courseColors, .courseNames, .assignments]
         var hold = SyncConflicts.UseLocalHold()
-        let first = hold.take(["courses", "course_colors"], keepLocal: true, from: &pending)
-        let second = hold.take(["assignments"], keepLocal: true, from: &pending)
+        let first = hold.take([.courses, .courseColors], keepLocal: true, from: &pending)
+        let second = hold.take([.assignments], keepLocal: true, from: &pending)
 
         hold.release(second, from: &pending)
 
-        #expect(pending == ["courses", "course_colors", "course_names"])
+        #expect(pending == [.courses, .courseColors, .courseNames])
         #expect(hold.held == first)
     }
 
     @Test("Names a sync left for a pending colours check stay unrecorded, so switching them off and on checks nothing")
     func namesHeldForAColoursCheckAreNotRecorded() async {
         await Self.withSyncProgress {
-            Defaults[.categoriesSyncedOnce] = Self.categories.subtracting(["course_names"])
-            Defaults[.pendingConflictCategories] = ["course_colors"]
+            Defaults[.categoriesSyncedOnce, for: testSignIn] = Self.categories.subtracting([.courseNames])
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.courseColors]
 
             Self.recordSync(pendingChecks: Defaults[.pendingConflictCategories])
-            SyncConflicts.markForReenableCheck("course_names", signedIn: true, for: testSignIn)
+            SyncConflicts.markForReenableCheck(.courseNames, signedIn: true, for: testSignIn)
 
-            #expect(!SyncConflicts.hasSynced("course_names"))
-            #expect(Defaults[.pendingConflictCategories] == ["course_colors"])
+            #expect(!SyncConflicts.hasSynced(.courseNames))
+            #expect(Defaults[.pendingConflictCategories] == [.courseColors])
         }
     }
 
@@ -384,7 +384,7 @@ struct ReenableMarkTests {
         await Self.withSyncProgress {
             Self.recordSync(marksLeftFor: .editedDuringFetch)
 
-            #expect(Self.synced == Self.categories.subtracting(["assignments"]))
+            #expect(Self.synced == Self.categories.subtracting([.assignments]))
         }
     }
 
@@ -392,7 +392,7 @@ struct ReenableMarkTests {
     func aFullSyncRecordsItsCategoriesAndASignOutForgetsThem() async {
         await Self.withSyncProgress {
             Self.recordSync()
-            Defaults[.courseRowIdsSeen] = ["1151:CS1": 1]
+            Defaults[.courseRowIdsSeen, for: testSignIn] = ["1151:CS1": 1]
 
             #expect(Self.synced == Self.categories)
             #expect(Defaults[.lastSeenCoursesResetAt] == Date.distantPast)
@@ -405,8 +405,8 @@ struct ReenableMarkTests {
     }
 
     @Test("A full sync with a category's switch off takes none of its data, so switching it back on checks nothing for it",
-          arguments: ["courses", "course_colors", "course_names", "assignments"])
-    func aSyncWithASwitchOffLeavesItsCategoryUnchecked(category: String) async {
+          arguments: SyncCategory.allCases)
+    func aSyncWithASwitchOffLeavesItsCategoryUnchecked(category: SyncCategory) async {
         await Self.withSyncProgress {
             for entry in Self.switches where entry.category == category { Defaults[entry.key] = false }
             Self.recordSync(marksLeftFor: SyncPolicy.reasonToLeaveMarks(
@@ -425,14 +425,14 @@ struct ReenableMarkTests {
         await Self.withSyncProgress {
             Self.recordSync(marksLeftFor: .switchedOff)
 
-            #expect(Self.synced == Self.categories.subtracting(["assignments"]))
+            #expect(Self.synced == Self.categories.subtracting([.assignments]))
         }
     }
 
     @Test("After a sign-out and a sign-in, turning TigerSync on raises no check, and the first pull takes the server's marks")
     func turningSyncOnAfterASignInChecksNothing() async {
         await Self.withSyncProgress {
-            Defaults[.assignmentMarksSyncedOnce] = true
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = true
             Self.recordSync()
 
             SyncProgress.forget()
@@ -441,7 +441,7 @@ struct ReenableMarkTests {
             #expect(Defaults[.pendingConflictCategories].isEmpty)
             #expect(SyncPolicy.reasonToLeaveMarks(
                 syncsMarks: true,
-                conflictCheckPending: Defaults[.pendingConflictCategories].contains("assignments"),
+                conflictCheckPending: Defaults[.pendingConflictCategories].contains(.assignments),
                 uploadedLocalMarks: false,
                 editedDuringFetch: false
             ) == nil)
@@ -452,7 +452,7 @@ struct ReenableMarkTests {
           arguments: [true, false])
     func turningSyncBackOnAfterASyncChecksEveryCategory(marksSynced: Bool) async {
         await Self.withSyncProgress {
-            Defaults[.assignmentMarksSyncedOnce] = marksSynced
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = marksSynced
             Self.recordSync()
 
             for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: true, for: testSignIn) }
@@ -464,7 +464,7 @@ struct ReenableMarkTests {
     @Test("Switching a category back on while signed out marks nothing for whoever signs in next")
     func signedOutMarksNothing() async {
         await Self.withSyncProgress {
-            Defaults[.assignmentMarksSyncedOnce] = true
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = true
             Self.recordSync()
 
             for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: false, for: testSignIn) }

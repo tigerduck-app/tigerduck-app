@@ -67,13 +67,13 @@ struct SignOutCheck {
         var ignoredCourses = false
         var holidays = false
 
-        var categoriesNeeded: [(held: Bool, categories: Set<String>)] {
+        var categoriesNeeded: [(held: Bool, categories: Set<SyncCategory>)] {
             [
-                (courses, ["courses"]),
-                (courseNames, ["course_names"]),
-                (courseColors, ["course_colors"]),
-                (assignmentMarks, ["assignments"]),
-                (ignoredCourses, ["assignments", "courses"]),
+                (courses, [.courses]),
+                (courseNames, [.courseNames]),
+                (courseColors, [.courseColors]),
+                (assignmentMarks, [.assignments]),
+                (ignoredCourses, [.assignments, .courses]),
             ]
         }
     }
@@ -81,9 +81,9 @@ struct SignOutCheck {
     nonisolated static func signOutDeletesUnsyncedData(
         _ data: SignOutData,
         cloudSyncEnabled: Bool,
-        switchedOn: Set<String>,
-        synced: Set<String>,
-        pendingChecks: Set<String>,
+        switchedOn: Set<SyncCategory>,
+        synced: Set<SyncCategory>,
+        pendingChecks: Set<SyncCategory>,
         unsent: Bool
     ) -> Bool {
         let kept = cloudSyncEnabled ? switchedOn.intersection(synced).subtracting(pendingChecks) : []
@@ -94,9 +94,9 @@ struct SignOutCheck {
     nonisolated static func signOutLeavesSyncedData(
         _ data: SignOutData,
         cloudSyncEnabled: Bool,
-        switchedOn: Set<String>,
-        synced: Set<String>,
-        pendingChecks: Set<String>
+        switchedOn: Set<SyncCategory>,
+        synced: Set<SyncCategory>,
+        pendingChecks: Set<SyncCategory>
     ) -> Bool {
         guard cloudSyncEnabled else { return false }
         let kept = switchedOn.intersection(synced).subtracting(pendingChecks)

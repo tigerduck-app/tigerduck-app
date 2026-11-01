@@ -28,7 +28,7 @@ final class HomeViewModel {
     private func reloadFromCache() {
         let courses = CanonicalCourseProvider().currentCourses()
         let all = AssignmentStore.shared.loadAssignments()
-        TigerDuckTheme.ensureAssignments(courseNos: courses.map(\.courseNo), for: AccountSession.school.currentSignIn)
+        TigerDuckTheme.ensureAssignments(courses: courses, for: AccountSession.school.currentSignIn)
         allCourses = courses
         todayCourses = courses.coursesForToday()
         let currentCourseNos = Set(courses.map(\.courseNo))

@@ -3,7 +3,6 @@ import os
 
 @MainActor
 struct HolidayOverridesReconciler: CategoryReconciler {
-    static let category = "holidays"
     var calendar: AcademicCalendarStore = .shared
 
     init(app _: AppEnvironment) {}

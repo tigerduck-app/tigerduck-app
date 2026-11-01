@@ -11,7 +11,7 @@ enum ReenableDifferences {
     }
 
     static func find(
-        in json: [String: Any], checking pending: Set<String>, courseDeletes: Set<String>,
+        in json: [String: Any], checking pending: Set<SyncCategory>, courseDeletes: Set<String>,
         studentId: () -> String?
     ) -> Found {
         let coursesArray = json["courses"] as? [[String: Any]] ?? []
@@ -19,16 +19,16 @@ enum ReenableDifferences {
             json["course_overrides"] as? [[String: Any]] ?? [], syncsCourses: Defaults[.syncCourses]
         ))
 
-        if pending.contains("courses"),
+        if pending.contains(.courses),
            let line = courseLine(coursesArray, courseDeletes: courseDeletes, studentId: studentId()) {
             found.lines.append(line)
         }
 
-        if pending.contains("course_colors") || pending.contains("course_names") {
+        if pending.contains(.courseColors) || pending.contains(.courseNames) {
             found.lines += overrideLines(json, coursesArray: coursesArray, pending: pending)
         }
 
-        if pending.contains("assignments") {
+        if pending.contains(.assignments) {
             let (line, marked) = assignmentLine(json, coursesArray: coursesArray, serverIgnoredCourses: found.serverIgnoredCourses)
             found.serverMarkedAssignments = marked
             if let line { found.lines.append(line) }
@@ -74,7 +74,7 @@ enum ReenableDifferences {
     }
 
     private static func overrideLines(
-        _ json: [String: Any], coursesArray: [[String: Any]], pending: Set<String>
+        _ json: [String: Any], coursesArray: [[String: Any]], pending: Set<SyncCategory>
     ) -> [String] {
         var lines: [String] = []
         let overrides = json["course_overrides"] as? [[String: Any]] ?? []
@@ -87,7 +87,7 @@ enum ReenableDifferences {
         }
         AppLogger.sync.info("[reenable] overrides=\(overrides.count, privacy: .public) moodleIdMap=\(moodleIdToNo.count, privacy: .public)")
 
-        if pending.contains("course_colors") {
+        if pending.contains(.courseColors) {
             let localColorMap = TigerDuckTheme.courseColorMap
             var colorMismatches: [String] = []
             for o in overrides {
@@ -106,7 +106,7 @@ enum ReenableDifferences {
             }
         }
 
-        if pending.contains("course_names") {
+        if pending.contains(.courseNames) {
             let nameMismatches = courseNameMismatches(
                 overrides, courseNos: moodleIdToNo, local: CourseStore.shared.loadCourseCustomNames()
             )

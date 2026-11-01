@@ -3,15 +3,15 @@ import Foundation
 
 nonisolated struct SyncPolicy: Equatable, Sendable {
     let cloudSyncEnabled: Bool
-    let switchedOn: Set<String>
-    let pendingChecks: Set<String>
+    let switchedOn: Set<SyncCategory>
+    let pendingChecks: Set<SyncCategory>
 
     static var current: SyncPolicy {
-        var switchedOn: Set<String> = []
-        if Defaults[.syncCourses] { switchedOn.insert("courses") }
-        if Defaults[.syncCourseColors] { switchedOn.insert("course_colors") }
-        if Defaults[.syncCourseNames] { switchedOn.insert("course_names") }
-        if Defaults[.syncAssignments] { switchedOn.insert("assignments") }
+        var switchedOn: Set<SyncCategory> = []
+        if Defaults[.syncCourses] { switchedOn.insert(.courses) }
+        if Defaults[.syncCourseColors] { switchedOn.insert(.courseColors) }
+        if Defaults[.syncCourseNames] { switchedOn.insert(.courseNames) }
+        if Defaults[.syncAssignments] { switchedOn.insert(.assignments) }
         return SyncPolicy(
             cloudSyncEnabled: Defaults[.cloudSyncEnabled],
             switchedOn: switchedOn,
@@ -20,7 +20,7 @@ nonisolated struct SyncPolicy: Equatable, Sendable {
     }
 
     var uploadsCourses: Bool {
-        cloudSyncEnabled && (Self.backendRemindersNeedTheRoster || switchedOn.contains("courses"))
+        cloudSyncEnabled && (Self.backendRemindersNeedTheRoster || switchedOn.contains(.courses))
     }
 
     #if os(macOS)
@@ -30,24 +30,24 @@ nonisolated struct SyncPolicy: Equatable, Sendable {
     #endif
 
     var sendsAssignmentMarks: Bool {
-        switchedOn.contains("assignments") && !pendingChecks.contains("assignments")
+        switchedOn.contains(.assignments) && !pendingChecks.contains(.assignments)
     }
 
     var sendsCourseIgnores: Bool {
-        sendsAssignmentMarks && switchedOn.contains("courses")
+        sendsAssignmentMarks && switchedOn.contains(.courses)
     }
 
-    func sendsCourseOverride(_ category: String) -> Bool {
+    func sendsCourseOverride(_ category: SyncCategory) -> Bool {
         !pendingChecks.contains(category)
     }
 
-    func categoriesTaken(marksLeftFor reason: MarksLeftReason?) -> Set<String> {
-        let holdsCourseOverrides = pendingChecks.contains("course_colors") || pendingChecks.contains("course_names")
+    func categoriesTaken(marksLeftFor reason: MarksLeftReason?) -> Set<SyncCategory> {
+        let holdsCourseOverrides = pendingChecks.contains(.courseColors) || pendingChecks.contains(.courseNames)
         return switchedOn.filter { category in
             switch category {
-            case "assignments": reason == nil || reason == .uploadedLocalMarks
-            case "course_colors", "course_names": !holdsCourseOverrides
-            default: !pendingChecks.contains(category)
+            case .assignments: reason == nil || reason == .uploadedLocalMarks
+            case .courseColors, .courseNames: !holdsCourseOverrides
+            case .courses: !pendingChecks.contains(category)
             }
         }
     }

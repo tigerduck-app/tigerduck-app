@@ -14,7 +14,7 @@ struct CourseMoodleDestination: View {
     var body: some View {
         switch route {
         case .announcements:
-            MoodleAnnouncementsView(store: store) { path.append($0) }
+            MoodleAnnouncementsView(store: store, policy: app.preferences.visualStylePolicy) { path.append($0) }
         case .announcement(let discussion):
             MoodleAnnouncementView(store: store, discussion: discussion) { path.append($0) }
         case .materials:
@@ -28,7 +28,7 @@ struct CourseMoodleDestination: View {
         case .forums:
             MoodleForumsView(store: store) { path.append($0) }
         case .forum(let forum):
-            MoodleForumView(store: store, forum: forum) { path.append($0) }
+            MoodleForumView(store: store, forum: forum, policy: app.preferences.visualStylePolicy) { path.append($0) }
         case .discussion(let discussion, let forum):
             MoodleDiscussionView(store: store, discussion: discussion, forum: forum)
         case .assignments:

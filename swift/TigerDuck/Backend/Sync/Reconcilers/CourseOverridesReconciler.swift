@@ -3,19 +3,28 @@ import os
 
 @MainActor
 struct CourseOverridesReconciler: CategoryReconciler {
-    static let category = "course_overrides"
     unowned let app: AppEnvironment
 
     func reconcile(_ pass: FullSyncPass) -> Bool {
-        let colors = pass.taken.contains("course_colors")
-        let names = pass.taken.contains("course_names")
+        let colors = pass.taken.contains(.courseColors)
+        let names = pass.taken.contains(.courseNames)
         guard colors || names else {
             AppLogger.sync.info("[syncOverrides] skipping course overrides — switched off or conflict check pending")
             return false
         }
+        let late = colors ? Self.lateMoodleColors(
+            pass.courseOverrides, courses: pass.coursesArray, moved: CourseColorStore.shared.lateMoodleColors,
+            snapshot: pass.json
+        ) : (holding: [], sent: [])
+        let choices = colors ? Self.colorChoices(
+            pass.courseOverrides, courses: pass.coursesArray,
+            holding: pass.heldCourseOverrides.colors.union(late.holding), snapshot: pass.json
+        ) : []
+        CourseColorStore.shared.endMoodleWaits(late.sent.union(choices), for: pass.signIn)
         let changed = !pass.courseOverrides.isEmpty && applyCourseOverrides(
             pass.courseOverrides, coursesArray: pass.coursesArray, colors: colors, names: names,
-            holdingColors: pass.heldCourseOverrides.colors, holdingNames: pass.heldCourseOverrides.names, for: pass.signIn
+            holdingColors: pass.heldCourseOverrides.colors.union(late.holding),
+            holdingNames: pass.heldCourseOverrides.names, for: pass.signIn
         )
         if colors {
             let fills = Self.colorFills(
@@ -33,10 +42,7 @@ struct CourseOverridesReconciler: CategoryReconciler {
         _ overrides: [[String: Any]], courses: [[String: Any]], local: [String: UInt32],
         holding held: Set<String>, snapshot json: [String: Any]
     ) -> [CourseColorFill] {
-        let byIdentity = Dictionary(
-            overrides.compactMap { row in Self.overrideIdentity(row).map { ($0, row) } },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let byIdentity = overridesByIdentity(overrides)
         return courses.compactMap { row in
             guard let identity = Self.overrideIdentity(row), !held.contains(identity),
                   let semester = row["semester"] as? String, let courseNo = row["course_no"] as? String,
@@ -54,6 +60,53 @@ struct CourseOverridesReconciler: CategoryReconciler {
                 courseNo: courseNo, identity: identity, colorHex: String(format: "#%06X", hex), stamp: stamp
             )
         }
+    }
+
+    /// For the courses a late Moodle id moved here: `holding`, those whose backend colour is
+    /// still another automatic fill, which keep the move for `colorFills` to stamp just after it;
+    /// `sent`, those whose backend colour is the move or newer than a fill, which need no more.
+    static func lateMoodleColors(
+        _ overrides: [[String: Any]], courses: [[String: Any]], moved: [String: UInt32], snapshot json: [String: Any]
+    ) -> (holding: Set<String>, sent: Set<String>) {
+        let byIdentity = overridesByIdentity(overrides)
+        var late: (holding: Set<String>, sent: Set<String>) = ([], [])
+        for row in courses {
+            guard let identity = overrideIdentity(row), let semester = row["semester"] as? String,
+                  let courseNo = row["course_no"] as? String, let hex = moved[courseNo],
+                  let override = byIdentity[identity],
+                  let serverHex = (override["color_hex"] as? String).flatMap({ UInt32($0.dropFirst(), radix: 16) }),
+                  let clock = (override["color_hex_hlc"] as? NSNumber)?.int64Value else { continue }
+            let fill = deterministicFillStamp(serverHasColor: false, stampedAt: nil, snapshot: json, semester: semester)
+            if serverHex != hex && clock <= PushAPI.clock(of: fill) {
+                late.holding.insert(identity)
+            } else {
+                late.sent.insert(courseNo)
+            }
+        }
+        return late
+    }
+
+    /// The courses whose backend colour is stamped after an automatic fill, so a device chose it.
+    /// A fill of this device comes back on every pull and ends no wait.
+    static func colorChoices(
+        _ overrides: [[String: Any]], courses: [[String: Any]], holding held: Set<String>, snapshot json: [String: Any]
+    ) -> Set<String> {
+        let byIdentity = overridesByIdentity(overrides)
+        return Set(courses.compactMap { row in
+            guard let identity = overrideIdentity(row), !held.contains(identity),
+                  let semester = row["semester"] as? String, let courseNo = row["course_no"] as? String,
+                  let colorHex = byIdentity[identity]?["color_hex"] as? String, !colorHex.isEmpty,
+                  let clock = (byIdentity[identity]?["color_hex_hlc"] as? NSNumber)?.int64Value else { return nil }
+            let fill = deterministicFillStamp(serverHasColor: false, stampedAt: nil, snapshot: json, semester: semester)
+            return clock > PushAPI.clock(of: fill) ? courseNo : nil
+        })
+    }
+
+    private static func overridesByIdentity(_ overrides: [[String: Any]]) -> [String: [String: Any]] {
+        Dictionary(
+            overrides.compactMap { row in overrideIdentity(row).map { ($0, row) } },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     static func deterministicFillStamp(

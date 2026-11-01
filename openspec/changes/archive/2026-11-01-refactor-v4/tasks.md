@@ -74,7 +74,7 @@ last task's check passes and a read-only review finds nothing High or above.
 ## 8. Pull request
 
 - [x] 8.1 Merge `dev` into the branch and resolve. Check: every check above again.
-- [ ] 8.2 Open the pull request, with the owner's go-ahead to push. Check: GitHub CI green, and the bots' findings addressed.
+- [x] 8.2 Open the pull request, with the owner's go-ahead to push. Check: GitHub CI green, and the bots' findings addressed.
 
 ## 9. Writes bound to a sign-in
 

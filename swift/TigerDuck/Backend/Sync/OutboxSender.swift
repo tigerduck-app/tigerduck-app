@@ -117,14 +117,14 @@ struct KeptValues {
 
     func colorKept(_ hex: String?, courseNo: String, for signIn: SignIn) {
         let policy = policy()
-        guard policy.switchedOn.contains("course_colors"), policy.sendsCourseOverride("course_colors"),
+        guard policy.switchedOn.contains(.courseColors), policy.sendsCourseOverride(.courseColors),
               let hex, let value = UInt32(hex.dropFirst(), radix: 16) else { return }
         colors.applyColors([(courseNo, value)], palette: TigerDuckTheme.coursePaletteHexes, for: signIn)
     }
 
     func nameKept(_ name: String?, courseNo: String, locale: String, for signIn: SignIn) {
         let policy = policy()
-        guard policy.switchedOn.contains("course_names"), policy.sendsCourseOverride("course_names") else { return }
+        guard policy.switchedOn.contains(.courseNames), policy.sendsCourseOverride(.courseNames) else { return }
         let names = courses.loadCourseCustomNames()
         var updated = names
         var forCourse = updated[courseNo] ?? [:]

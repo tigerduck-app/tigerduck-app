@@ -106,7 +106,7 @@ extension BulletinListSessionTests {
     func lastSyncIsTheNewestPage() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
@@ -128,7 +128,7 @@ extension BulletinListSessionTests {
     func aSignOutForgetsTheLastSync() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
             stub.serve(Self.page([stub.id]))
@@ -152,7 +152,7 @@ extension BulletinListSessionTests {
     func aSignOutBeforeTheFetchBeganKeepsNothing() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
@@ -183,7 +183,7 @@ extension BulletinListSessionTests {
     func aRefreshAcrossASignOutWritesNothing() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
@@ -208,7 +208,7 @@ extension BulletinListSessionTests {
     func aFirstPageAcrossASignOutWritesNothing() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
@@ -235,7 +235,7 @@ extension BulletinListSessionTests {
     func aWalkAcrossASignOutWritesNothing() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
@@ -259,7 +259,7 @@ extension BulletinListSessionTests {
     func aPageAcrossASignOutWritesNothing() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
@@ -286,7 +286,7 @@ extension BulletinListSessionTests {
     func anEndpointChangeStartsTheListOver() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let (old, new) = (Stub(), Stub())
@@ -312,7 +312,7 @@ extension BulletinListSessionTests {
     func aVisitAfterASignOutStartsOver() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
@@ -337,7 +337,7 @@ extension BulletinListSessionTests {
     func aPullAfterASignOutStartsOver() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
@@ -363,7 +363,7 @@ extension BulletinListSessionTests {
     func aScrollAfterASignOutStartsOver() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()
@@ -413,7 +413,7 @@ extension BulletinListSessionTests {
     func aTapAcrossASignOutWritesNothing() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.bulletinsSyncedAt]
-            defer { Defaults[.bulletinsSyncedAt] = saved }
+            defer { Defaults[.bulletinsSyncedAt, for: testSignIn] = saved }
             BulletinsViewModel.forgetListSession()
             defer { BulletinsViewModel.forgetListSession() }
             let stub = Stub()

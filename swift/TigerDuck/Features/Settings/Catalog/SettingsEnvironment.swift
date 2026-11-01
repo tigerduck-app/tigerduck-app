@@ -1,4 +1,3 @@
-import Defaults
 import SwiftUI
 
 extension View {
@@ -34,7 +33,7 @@ extension SettingsState {
 private struct SettingsEnvironment: ViewModifier {
     @Environment(AppEnvironment.self) private var app: AppEnvironment?
     /// Observed: a bare `Defaults[...]` read is one SwiftUI never subscribes to.
-    @Default(.cloudSyncEnabled) private var cloudSyncEnabled
+    @AccountDefault(.cloudSyncEnabled) private var cloudSyncEnabled
 
     func body(content: Content) -> some View {
         if let app {

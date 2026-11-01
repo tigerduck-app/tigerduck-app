@@ -33,9 +33,6 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.browserAppearance,
         default: .automatic
     )
-    /// Each site's page zoom in percent, by host; a site at 100% has no entry.
-    static let browserZoom = Key<[String: Int]>(AppConstants.UserDefaultsKeys.browserZoom, default: [:])
-    static let browserDesktopSites = Key<[String]>(AppConstants.UserDefaultsKeys.browserDesktopSites, default: [])
     /// Mac-only. Default `.browser` because the iPad Moodle app isn't
     /// installed by default on Mac; sending the user there before they
     /// opt in would fail with "no app handles this URL".
@@ -133,46 +130,11 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.showInClassScenario,
         default: true
     )
-    static let ssoLoginTimestamp = Key<Double?>(AppConstants.UserDefaultsKeys.ssoLoginTimestamp)
-    static let schoolDataSyncedAt = Key<Date?>("schoolDataSyncedAt")
-    static let semesterResetAt = Key<[String: Date]>("semesterResetAt", default: [:])
-    static let bulletinsSyncedAt = Key<Date?>("bulletinsSyncedAt")
-    static let lastSeenCoursesResetAt = Key<Date?>("lastSeenCoursesResetAt")
-    static let classTableSelectedSemester = Key<String?>(
-        AppConstants.UserDefaultsKeys.classTableSelectedSemester
-    )
-    static let emptyClassroomBuilding = Key<String?>("emptyClassroomBuilding")
     static let homeAssignmentFilter = Key<String>(
         AppConstants.UserDefaultsKeys.homeAssignmentFilter,
         default: AssignmentFilter.incomplete.rawValue
     )
 
-    static let cloudSyncEnabled = Key<Bool>(
-        AppConstants.UserDefaultsKeys.cloudSyncEnabled,
-        default: true
-    )
-    static let notificationSettingsPushPending = Key<Bool>(
-        AppConstants.UserDefaultsKeys.notificationSettingsPushPending,
-        default: false
-    )
-    /// The notification settings as this device last synced them; a push sends only the fields
-    /// that differ. See docs/decisions/0002-notification-settings-json-merge.md.
-    static let notificationSettingsSyncedPreferences = Key<Data?>("notificationSettingsSyncedPreferences")
-    static let notificationSettingsPushSendsEveryField = Key<Bool>("notificationSettingsPushSendsEveryField", default: false)
-    /// The Keychain returns nil when the item is absent and when it cannot be read right now;
-    /// `SecureStore` cannot tell which, since Valet throws for both and `try?` flattens it.
-    /// So nil is not evidence of being signed out; treating it so sends a signed-in user to
-    /// the login prompt. UserDefaults stays readable when the Keychain is not, and the secret
-    /// itself lives only in the Keychain. Raised by login and any successful credential
-    /// read; lowered only by logout, the one time a nil read is authoritative.
-    static let ntustCredentialsPresent = Key<Bool>(
-        "ntustCredentialsPresent",
-        default: false
-    )
-    static let ntustStoredPasswordRefusals = Key<Int>("ntustStoredPasswordRefusals", default: 0)
-    static let ntustStoredPasswordRefusedAt = Key<Date?>("ntustStoredPasswordRefusedAt")
-    static let libraryStoredPasswordRefusals = Key<Int>("libraryStoredPasswordRefusals", default: 0)
-    static let libraryStoredPasswordRefusedAt = Key<Date?>("libraryStoredPasswordRefusedAt")
     static let syncCourses = Key<Bool>("syncCourses", default: true)
     static let syncCourseColors = Key<Bool>("syncCourseColors", default: true)
     static let syncCourseNames = Key<Bool>("syncCourseNames", default: true)
@@ -180,21 +142,11 @@ nonisolated extension Defaults.Keys {
     static let syncAssignmentReminders = Key<Bool>("syncAssignmentReminders", default: true)
     static let syncLiveActivity = Key<Bool>("syncLiveActivity", default: true)
     static let syncPreferencesPushPending = Key<Bool>("syncPreferencesPushPending", default: false)
-    static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
-    static let assignmentMarksSyncedOnce = Key<Bool>("assignmentMarksSyncedOnce", default: false)
-    static let categoriesSyncedOnce = Key<Set<String>>("categoriesSyncedOnce", default: [])
-    static let courseRowIdsSeen = Key<[String: Int]>("courseRowIdsSeen", default: [:])
 
     static let academicCalendarCache = Key<Data>("academicCalendarCache", default: Data())
     static let academicCalendarETag = Key<String>("academicCalendarETag", default: "")
     static let courseChangesCache = Key<Data>("courseChangesCache", default: Data())
     static let courseChangesETag = Key<String>("courseChangesETag", default: "")
-    static let holidayNotifyOverrides = Key<[Int]>("holidayNotifyOverrides", default: [])
-    /// When each holiday's setting last changed here, keyed by holiday id; its upload sends it.
-    static let holidayOverrideEditTimes = Key<[String: Date]>("holidayOverrideEditTimes", default: [:])
-    static let holidayOverridesAwaitingUpload = Key<[Int]>(
-        "holidayOverridesAwaitingUpload", default: []
-    )
 
     static let pushServerEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.pushServerEnabled,
@@ -256,4 +208,55 @@ nonisolated extension Defaults.Keys {
     static let lastShownWhatsNewVersion = Key<String?>(
         AppConstants.UserDefaultsKeys.lastShownWhatsNewVersion
     )
+}
+
+nonisolated extension AccountKeys {
+    static let assignmentMarksSyncedOnce = AccountKey<Bool>("assignmentMarksSyncedOnce", default: false)
+    static let browserDesktopSites = AccountKey<[String]>(AppConstants.UserDefaultsKeys.browserDesktopSites, default: [])
+    /// Each site's page zoom in percent, by host; a site at 100% has no entry.
+    static let browserZoom = AccountKey<[String: Int]>(AppConstants.UserDefaultsKeys.browserZoom, default: [:])
+    static let bulletinsSyncedAt = AccountKey<Date?>("bulletinsSyncedAt")
+    static let categoriesSyncedOnce = AccountKey<Set<SyncCategory>>("categoriesSyncedOnce", default: [])
+    static let classTableSelectedSemester = AccountKey<String?>(
+        AppConstants.UserDefaultsKeys.classTableSelectedSemester
+    )
+    static let cloudSyncEnabled = AccountKey<Bool>(
+        AppConstants.UserDefaultsKeys.cloudSyncEnabled,
+        default: true
+    )
+    static let courseRowIdsSeen = AccountKey<[String: Int]>("courseRowIdsSeen", default: [:])
+    static let emptyClassroomBuilding = AccountKey<String?>("emptyClassroomBuilding")
+    static let holidayNotifyOverrides = AccountKey<[Int]>("holidayNotifyOverrides", default: [])
+    /// When each holiday's setting last changed here, keyed by holiday id; its upload sends it.
+    static let holidayOverrideEditTimes = AccountKey<[String: Date]>("holidayOverrideEditTimes", default: [:])
+    static let holidayOverridesAwaitingUpload = AccountKey<[Int]>(
+        "holidayOverridesAwaitingUpload", default: []
+    )
+    static let lastSeenCoursesResetAt = AccountKey<Date?>("lastSeenCoursesResetAt")
+    static let libraryStoredPasswordRefusals = AccountKey<Int>("libraryStoredPasswordRefusals", default: 0)
+    static let libraryStoredPasswordRefusedAt = AccountKey<Date?>("libraryStoredPasswordRefusedAt")
+    static let notificationSettingsPushPending = AccountKey<Bool>(
+        AppConstants.UserDefaultsKeys.notificationSettingsPushPending,
+        default: false
+    )
+    static let notificationSettingsPushSendsEveryField = AccountKey<Bool>("notificationSettingsPushSendsEveryField", default: false)
+    /// The notification settings as this device last synced them; a push sends only the fields
+    /// that differ. See docs/decisions/0002-notification-settings-json-merge.md.
+    static let notificationSettingsSyncedPreferences = AccountKey<Data?>("notificationSettingsSyncedPreferences")
+    /// The Keychain returns nil when the item is absent and when it cannot be read right now;
+    /// `SecureStore` cannot tell which, since Valet throws for both and `try?` flattens it.
+    /// So nil is not evidence of being signed out; treating it so sends a signed-in user to
+    /// the login prompt. UserDefaults stays readable when the Keychain is not, and the secret
+    /// itself lives only in the Keychain. Raised by login and any successful credential
+    /// read; lowered only by logout, the one time a nil read is authoritative.
+    static let ntustCredentialsPresent = AccountKey<Bool>(
+        "ntustCredentialsPresent",
+        default: false
+    )
+    static let ntustStoredPasswordRefusals = AccountKey<Int>("ntustStoredPasswordRefusals", default: 0)
+    static let ntustStoredPasswordRefusedAt = AccountKey<Date?>("ntustStoredPasswordRefusedAt")
+    static let pendingConflictCategories = AccountKey<Set<SyncCategory>>("pendingConflictCategories", default: [])
+    static let schoolDataSyncedAt = AccountKey<Date?>("schoolDataSyncedAt")
+    static let semesterResetAt = AccountKey<[String: Date]>("semesterResetAt", default: [:])
+    static let ssoLoginTimestamp = AccountKey<Double?>(AppConstants.UserDefaultsKeys.ssoLoginTimestamp)
 }

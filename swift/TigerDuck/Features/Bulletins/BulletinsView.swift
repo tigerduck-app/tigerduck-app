@@ -7,7 +7,7 @@ struct BulletinsView: View {
     @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = BulletinsViewModel()
-    @Default(.bulletinsSyncedAt) private var bulletinsSyncedAt
+    @AccountDefault(.bulletinsSyncedAt) private var bulletinsSyncedAt
     private let taxonomy = BulletinTaxonomyStore.shared
     @State private var readState = BulletinReadStateStore()
     @State private var showNotificationSettings: Bool = false

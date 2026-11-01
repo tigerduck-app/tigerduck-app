@@ -372,15 +372,15 @@ struct EmptyClassroomViewModelTests {
     @Test("a picked building is kept for the next visit, and an account change forgets it")
     func pickedBuilding() {
         let saved = Defaults[.emptyClassroomBuilding]
-        defer { Defaults[.emptyClassroomBuilding] = saved }
-        Defaults[.emptyClassroomBuilding] = nil
+        defer { Defaults[.emptyClassroomBuilding, for: testSignIn] = saved }
+        Defaults[.emptyClassroomBuilding, for: testSignIn] = nil
         let harness = Harness(at: Self.time(14, 10, 5))
 
         harness.model.pick(building: "IB")
         #expect(harness.model.pickedBuilding == "IB")
         #expect(Harness(at: Self.time(14, 10, 5)).model.pickedBuilding == "IB")
 
-        Defaults[.emptyClassroomBuilding] = nil
+        Defaults[.emptyClassroomBuilding, for: testSignIn] = nil
         harness.model.accountChanged()
         #expect(harness.model.pickedBuilding == nil)
     }

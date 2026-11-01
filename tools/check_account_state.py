@@ -3,8 +3,10 @@
 
 `docs/account-state.md` lists every Keychain key, `Defaults` key and cache file
 the app declares, with its scope. Declarations are read where the v4 layout puts
-them: `Defaults` keys in any `Defaults.Keys` extension of the app target, cache
-files in any source under `Persistence/`. A row of the school or library account
+them: `Defaults` keys in any `Defaults.Keys` or `AccountKeys` extension of the app
+target, cache files in any source under `Persistence/`. A `Defaults` key of the
+school or library account is an `AccountKey`, whose writes take a `SignIn`, and a
+device key is not. A row of the school or library account
 names the function that clears it, and that function's body must mention it; a
 Keychain key of an account must also be in the fresh-install wipe,
 `FreshInstallKeychainPurge.keys`. A declaration with no row, or a row with nothing declared, is an
@@ -47,11 +49,16 @@ def declared(root: Path) -> set[tuple[str, str]]:
     for name in re.findall(r"static let (\w+Key) = \"", tokens):
         found.add(("keychain", name))
     for path in swift_files(root, APP):
-        for name in re.findall(r"static let (\w+) = Key<", path.read_text()):
+        for name in re.findall(r"static let (\w+) = (?:Account)?Key<", path.read_text()):
             found.add(("defaults", name))
     for path in swift_files(root, PERSISTENCE):
         found |= cache_files(path.read_text())
     return found
+
+
+def account_keys(root: Path) -> set[str]:
+    return {name for path in swift_files(root, APP)
+            for name in re.findall(r"static let (\w+) = AccountKey<", path.read_text())}
 
 
 def cache_files(source: str) -> set[tuple[str, str]]:
@@ -115,6 +122,12 @@ def problems(root: Path = ROOT, text: str | None = None) -> list[str]:
     errors = [f"{store} `{name}` has no row in docs/account-state.md" for store, name in sorted(found - rows.keys())]
     errors += [f"{store} `{name}` is listed but no longer declared" for store, name in sorted(rows.keys() - found)]
     errors += [f"`{name}` is AccountScoped but no list in {SIGN_OUT_PLAN} names it" for name in unlisted_stores(root)]
+    signed = account_keys(root)
+    for (store, name), (scope, _) in sorted(rows.items()):
+        if store != "defaults" or (store, name) not in found or (scope == "device") == (name not in signed):
+            continue
+        errors.append(f"defaults `{name}` belongs to an account; declare it as an `AccountKey` in `AccountKeys`"
+                      if scope != "device" else f"defaults `{name}` is a device key; declare it in `Defaults.Keys`")
     for (store, name), (scope, clearers) in sorted(rows.items()):
         if scope not in SCOPES:
             errors.append(f"{store} `{name}` has unknown scope {scope}")
