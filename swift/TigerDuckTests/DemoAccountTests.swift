@@ -112,16 +112,12 @@ struct DemoAccountTests {
         #endif
 
         await withExclusiveRealDefaults { () async -> Void in
-            let saved = (Defaults[.demoAccountSignedIn], Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent])
-            defer {
-                Defaults[.demoAccountSignedIn] = saved.0
-                Defaults[.ssoLoginTimestamp] = saved.1
-                Defaults[.ntustCredentialsPresent] = saved.2
-            }
+            let saved = (Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent])
+            defer { (Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent]) = saved }
             await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { () async -> Void in
                 #expect(await auth.login(studentId: Self.studentId.lowercased(), password: Self.schoolPassword))
                 #expect(auth.storedStudentId == Self.studentId)
-                #expect(Defaults[.demoAccountSignedIn])
+                #expect(auth.deps.demo.isKept)
             }
         }
 
@@ -160,11 +156,8 @@ struct DemoAccountTests {
         let semester = CourseSelectionService.currentSemesterCode()
 
         await withExclusiveRealDefaults {
-            let saved = (Defaults[.demoAccountSignedIn], Defaults[.ssoLoginTimestamp])
-            defer {
-                Defaults[.demoAccountSignedIn] = saved.0
-                Defaults[.ssoLoginTimestamp] = saved.1
-            }
+            let saved = Defaults[.ssoLoginTimestamp]
+            defer { Defaults[.ssoLoginTimestamp] = saved }
             Self.account(folder, statuses: statuses, calls: calls).enter(for: signIn)
         }
 
@@ -206,19 +199,41 @@ struct DemoAccountTests {
         #expect(!folder.cache.courses.loadCourses(semester: semester).isEmpty)
 
         session.endSignIn()
-        await withExclusiveRealDefaults {
-            let saved = Defaults[.demoAccountSignedIn]
-            defer { Defaults[.demoAccountSignedIn] = saved }
-            Defaults[.demoAccountSignedIn] = true
-            folder.cache.forgetAccount()
-            #expect(!Defaults[.demoAccountSignedIn])
-        }
+        await withExclusiveRealDefaults { folder.cache.forgetAccount() }
 
         #expect(!session.signIns.currentSignIn.isDemo)
         #expect(folder.cache.courses.loadCourses(semester: semester).isEmpty)
         #expect(folder.cache.assignments.loadAssignments(semester: semester).isEmpty)
         #expect(folder.cache.bulletins.loadBulletinSummaries().isEmpty)
         #expect(folder.cache.moodle.loadMoodleCourseIdMap().isEmpty)
+    }
+
+    @Test("the Keychain's demo credentials alone start the demo sign-in, at launch and once the Keychain opens")
+    func theKeptCredentialsStartTheDemo() async {
+        let folder = Folder()
+        let demo = Self.account(folder)
+        let auth = AuthService(
+            session: AccountSession(signIns: SignInSeries()), keychainHasCredentials: { false },
+            notificationCenter: NotificationCenter(), demo: demo
+        )
+        let launch = AccountSession(signIns: SignInSeries())
+        let semester = CourseSelectionService.currentSemesterCode()
+
+        await withExclusiveRealDefaults {
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
+                demo.resume(in: auth.session)
+                #expect(!auth.session.signIns.currentSignIn.isDemo)
+
+                KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: Self.studentId)
+                KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: Self.schoolPassword)
+                auth.revalidateStoredCredentials()
+                demo.resume(in: launch)
+            }
+        }
+
+        #expect(auth.session.signIns.currentSignIn.isDemo)
+        #expect(launch.signIns.currentSignIn.isDemo)
+        #expect(folder.cache.courses.loadCourses(semester: semester).count == 5)
     }
 
     @Test("push registration does not start for the demo account")

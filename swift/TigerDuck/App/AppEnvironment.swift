@@ -49,9 +49,9 @@ final class AppEnvironment {
     var versionGate: APIVersionGate { .shared }
 
     init() {
-        DemoAccount.resumeAtLaunch(in: .school)
         let purge = FreshInstallKeychainPurge.runIfFreshInstall()
         if purge != .itemsLeft { BareKeychainItemMoveMigration.runIfNeeded() }
+        DemoAccount.resumeAtLaunch(in: .school)
 
         let authService = AuthService(session: .school)
         self.authService = authService

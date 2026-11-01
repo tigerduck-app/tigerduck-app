@@ -16,11 +16,17 @@ struct DemoAccount {
         fixture?.matches(studentId: studentId, password: password) ?? false
     }
 
+    /// Whether the school account the Keychain keeps is this one, which makes its sign-in a demo one.
+    var isKept: Bool {
+        guard let studentId = KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
+              let password = KeychainManager.loadString(key: AppConstants.KeychainKeys.password) else { return false }
+        return matches(studentId: studentId, password: password)
+    }
+
     /// Once the sign-in kept the credentials: the file's data, its classmates' class tables and,
     /// when the file signs the library in and no library account is kept, the library.
     func enter(for signIn: SignIn) {
         guard let fixture, signIn.isDemo else { return }
-        SchoolAccountKeys.noteDemoSignedIn(for: signIn)
         NTUSTSessionManager.shared.markLoginSuccess(for: signIn)
         stores.turnOffSync(signIn)
         write(fixture, for: signIn)
@@ -30,12 +36,18 @@ struct DemoAccount {
         }
     }
 
-    /// At launch, before any request: the demo sign-in again, with the data written over in the
-    /// language the app now shows.
+    /// At launch, before any request.
     static func resumeAtLaunch(in session: AccountSession) {
         URLProtocol.registerClass(DemoRequestRefusal.self)
-        guard SchoolAccountKeys.demoIsSignedIn, let fixture = app.fixture else { return }
-        app.write(fixture, for: session.startDemoSignIn())
+        app.resume(in: session)
+    }
+
+    /// While the Keychain keeps this account, the sign-in is a demo one, with the data written over
+    /// in the language the app now shows. A launch behind the lock screen cannot read the Keychain,
+    /// so this runs again once it opens.
+    func resume(in session: AccountSession) {
+        guard let fixture, !session.signIns.currentSignIn.isDemo, isKept else { return }
+        write(fixture, for: session.startDemoSignIn())
     }
 
     func write(_ fixture: DemoFixture, for signIn: SignIn) {

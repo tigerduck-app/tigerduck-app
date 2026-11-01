@@ -88,7 +88,6 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `courseChangesCache` | device |  |
 | defaults | `courseChangesETag` | device |  |
 | defaults | `courseRowIdsSeen` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
-| defaults | `demoAccountSignedIn` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |
 | defaults | `emptyClassroomBuilding` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |
 | defaults | `flipToLibraryEnabled` | device |  |
 | defaults | `hasCompletedOnboarding` | device |  |
