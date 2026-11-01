@@ -166,17 +166,21 @@ final class EditSender {
     func reassignAllCourseColors(for signIn: SignIn) {
         let semester = CourseSelectionService.currentSemesterCode()
         let courses = CanonicalCourseProvider().currentCourses(semester: semester)
-        let before = TigerDuckTheme.snapshot()
         TigerDuckTheme.reassignAll(courses: courses, for: signIn)
         guard Defaults[.cloudSyncEnabled] else { return }
-        let colorMap = TigerDuckTheme.snapshot()
-        for course in courses {
-            guard let hex = colorMap[course.courseNo], hex != before[course.courseNo] else { continue }
-            syncCourseOverride(
-                moodleCourseId: Self.colorIdentity(of: course, semester: semester),
-                colorHex: String(format: "#%06X", hex), for: signIn
-            )
+        for override in Self.resetColorOverrides(courses, colors: TigerDuckTheme.snapshot(), semester: semester) {
+            syncCourseOverride(moodleCourseId: override.moodleId, colorHex: override.colorHex, for: signIn)
         }
+    }
+
+    /// Every course goes, its colour changed or not, so the other devices take the reset too.
+    static func resetColorOverrides(
+        _ courses: [SDCourse], colors: [String: UInt32], semester: String
+    ) -> [(moodleId: String, colorHex: String)] {
+        let ids = Dictionary(
+            courses.map { ($0.courseNo, colorIdentity(of: $0, semester: semester)) }, uniquingKeysWith: { first, _ in first }
+        )
+        return courseColorOverrides(colors.filter { ids[$0.key] != nil }, moodleIds: ids)
     }
 
     func syncColorPick(_ hex: UInt32, for picked: SDCourse, changed: [String: UInt32], signIn: SignIn) {

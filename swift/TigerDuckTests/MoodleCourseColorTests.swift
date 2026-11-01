@@ -54,8 +54,8 @@ struct MoodleCourseColorTests {
         #expect(courses.allSatisfy { with.store.map[$0.courseNo].map(Self.palette.contains) == true })
     }
 
-    @Test("Reassigning every colour gives Moodle's colours and keeps the colour the user picked")
-    func aPickedColourSurvivesAReassign() {
+    @Test("Reassigning every colour replaces a pick with Moodle's colour, and the rest with the app's")
+    func aResetReplacesAPick() {
         let folder = Folder()
         let courses = [Self.course("CS1"), Self.course("CS3"), Self.course("CS5", moodle: false)]
         folder.store.ensureAssignments(courses: courses, ids: [:], palette: Self.palette, for: testSignIn)
@@ -63,10 +63,21 @@ struct MoodleCourseColorTests {
 
         folder.store.reassignAll(courses: courses, ids: Self.ids, palette: Self.palette, for: testSignIn)
 
-        #expect(folder.store.map["CS1"] == 0x123456)
+        #expect(folder.store.map["CS1"] == Self.moodle[7])
         #expect(folder.store.map["CS3"] == Self.moodle[2])
         #expect(folder.store.map["CS5"].map(Self.palette.contains) == true)
-        #expect(folder.files.loadPickedCourseColors() == ["CS1"])
+        #expect(folder.files.loadPickedCourseColors().isEmpty)
+    }
+
+    @Test("A reset sends every course, its colour changed or not, and no course it did not reset")
+    func aResetSendsEveryCourse() {
+        let courses = [Self.course("CS1"), Self.course("CS5", moodle: false)]
+        let colors: [String: UInt32] = ["CS1": Self.moodle[7], "CS5": 0xFF6B6B, "CS9": 0x4ECDC4]
+
+        let sent = EditSender.resetColorOverrides(courses, colors: colors, semester: "1151")
+
+        #expect(sent.map(\.moodleId) == ["1151CS1", "1151CS5"])
+        #expect(sent.map(\.colorHex) == ["#AF8C4C", "#FF6B6B"])
     }
 
     @Test("Two courses whose Moodle ids end alike share Moodle's colour, here and from the server")

@@ -17,7 +17,8 @@ final class CourseColorStore {
             load: { files.loadCourseColorMapIfReadable() },
             save: { files.saveCourseColorMap($0) },
             notePick: { files.notePickedCourseColor($0) },
-            picks: { files.loadPickedCourseColors() }
+            picks: { files.loadPickedCourseColors() },
+            forgetPicks: { files.savePickedCourseColors([]) }
         )
     }
 
@@ -97,7 +98,7 @@ final class CourseColorStore {
         saving(signIn, unchanged: [:]) { $0.setColor(hex: hex, for: courseNo, palette: palette) }
     }
 
-    /// Fresh colours for every course the user did not pick a colour for.
+    /// Fresh colours for every course, forgetting the picks.
     func reassignAll(courses: [SDCourse], ids: [String: Int], palette: [UInt32], for signIn: SignIn) {
         let moodleColors = Self.moodleColors(of: courses, ids: ids)
         saving(signIn, unchanged: ()) {

@@ -156,6 +156,7 @@ final class ColorState: @unchecked Sendable {
         let save: @Sendable ([String: UInt32]) -> Void
         let notePick: @Sendable (String) -> Void
         let picks: @Sendable () -> Set<String>
+        let forgetPicks: @Sendable () -> Void
         let protectedDataAvailable: @Sendable () -> Bool
         let now: @Sendable () -> Date
     }
@@ -170,10 +171,11 @@ final class ColorState: @unchecked Sendable {
         save: @escaping @Sendable ([String: UInt32]) -> Void,
         notePick: @escaping @Sendable (String) -> Void,
         picks: @escaping @Sendable () -> Set<String>,
+        forgetPicks: @escaping @Sendable () -> Void,
         protectedDataAvailable: @escaping @Sendable () -> Bool = ColorState.isProtectedDataAvailable,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
-        io = IO(load: load, save: save, notePick: notePick, picks: picks,
+        io = IO(load: load, save: save, notePick: notePick, picks: picks, forgetPicks: forgetPicks,
                 protectedDataAvailable: protectedDataAvailable, now: now)
         self.map = read()
     }
@@ -323,13 +325,12 @@ final class ColorState: @unchecked Sendable {
     }
 
     func reassignAll(courseNos: [String], moodleColors: [String: UInt32] = [:], palette: [UInt32]) {
-        let picks = io.picks()
         let reassigned: Bool = lock.withLock {
-            guard let current = loadedMap() else { return false }
+            guard loadedMap() != nil else { return false }
             let shuffled = palette.shuffled()
-            var fresh = current.filter { picks.contains($0.key) }
-            var used = Set(fresh.values)
-            for courseNo in courseNos.sorted() where fresh[courseNo] == nil {
+            var fresh: [String: UInt32] = [:]
+            var used: Set<UInt32> = []
+            for courseNo in courseNos.sorted() {
                 let assigned = moodleColors[courseNo] ?? Self.pickUnusedHex(seed: courseNo, used: used, palette: shuffled)
                 fresh[courseNo] = assigned
                 used.insert(assigned)
@@ -337,7 +338,9 @@ final class ColorState: @unchecked Sendable {
             map = fresh
             return true
         }
-        if reassigned { persist() }
+        guard reassigned else { return }
+        persist()
+        io.forgetPicks()
     }
 
     private func persist() {

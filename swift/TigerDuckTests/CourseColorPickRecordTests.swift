@@ -13,6 +13,7 @@ struct CourseColorPickRecordTests {
         func read() -> [String: UInt32]? { lock.withLock { map } }
         func write(_ next: [String: UInt32]) { lock.withLock { map = next } }
         func notePick(_ courseNo: String) { lock.withLock { _ = picks.insert(courseNo) } }
+        func forgetPicks() { lock.withLock { picks = [] } }
         var picked: Set<String> { lock.withLock { picks } }
     }
 
@@ -21,7 +22,7 @@ struct CourseColorPickRecordTests {
     private static func makeState(_ store: Store) -> ColorState {
         ColorState(
             load: { store.read() }, save: { store.write($0) },
-            notePick: { store.notePick($0) }, picks: { store.picked },
+            notePick: { store.notePick($0) }, picks: { store.picked }, forgetPicks: { store.forgetPicks() },
             protectedDataAvailable: { true }
         )
     }
@@ -62,17 +63,16 @@ struct CourseColorPickRecordTests {
         #expect(store.picked.isEmpty)
     }
 
-    @Test("reassigning every colour keeps the picks and their colours")
-    func reassigningKeepsThePicks() {
-        let store = Store(map: ["CS1010001": 0x123456, "CS1010002": 0x123456])
+    @Test("reassigning every colour forgets the picks")
+    func reassigningForgetsThePicks() {
+        let store = Store(map: ["CS1010001": 0x123456])
         let state = Self.makeState(store)
         _ = state.setColor(hex: 0x654321, for: "CS1010001", palette: Self.palette)
-
-        state.reassignAll(courseNos: ["CS1010001", "CS1010002"], palette: Self.palette)
-
         #expect(store.picked == ["CS1010001"])
-        #expect(store.read()?["CS1010001"] == 0x654321)
-        #expect(store.read()?["CS1010002"].map(Self.palette.contains) == true)
+
+        state.reassignAll(courseNos: ["CS1010001"], palette: Self.palette)
+
+        #expect(store.picked.isEmpty)
     }
 
     @Test("the picks outlive a relaunch and go with the account's colours at a sign-out")
