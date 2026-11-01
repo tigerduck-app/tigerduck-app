@@ -24,7 +24,7 @@ final class BackendSignIn {
 
     @discardableResult
     func signIn(studentId: String, harvesting: Bool = false, for signIn: SignIn) async -> Bool {
-        guard let auth else { return false }
+        guard !signIn.isDemo, let auth else { return false }
         guard let authTokenManager = auth.authTokenManager else { return false }
         await departingUnregister?.value
         let moodleToken = harvesting ? await moodleToken() : await auth.deps.moodleTokens.currentToken()
@@ -49,7 +49,7 @@ final class BackendSignIn {
     }
 
     func relogin(replacing refused: String?, for signIn: SignIn) async -> Bool {
-        guard let auth else { return false }
+        guard !signIn.isDemo, let auth else { return false }
         guard let authTokenManager = auth.authTokenManager,
               Self.isDue(lastFailure: failedAt, now: Date()),
               let studentId = auth.storedStudentId else { return false }

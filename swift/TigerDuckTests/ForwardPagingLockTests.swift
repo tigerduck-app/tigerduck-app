@@ -32,19 +32,4 @@ struct ForwardPagingLockTests {
 
         window.isHidden = true
     }
-
-    /// A page-style `TabView` reverses under a right-to-left language, so
-    /// the same finger movement that advances in English goes back in
-    /// Arabic — and the app ships ar, fa, he and ur.
-    @Test(arguments: [
-        (dx: -40.0, isRTL: false, isForward: true),
-        (dx: 40.0, isRTL: false, isForward: false),
-        (dx: 40.0, isRTL: true, isForward: true),
-        (dx: -40.0, isRTL: true, isForward: false),
-    ])
-    func forwardDragMirrorsUnderRTL(dx: Double, isRTL: Bool, isForward: Bool) {
-        #expect(
-            ForwardPagingLock.isForwardDrag(translationX: CGFloat(dx), isRTL: isRTL) == isForward
-        )
-    }
 }

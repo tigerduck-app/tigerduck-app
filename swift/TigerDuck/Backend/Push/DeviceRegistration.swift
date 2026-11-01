@@ -18,6 +18,7 @@ nonisolated enum DeviceRegistration {
     }
 
     static func perform(on service: isolated PushRegistrationService) async {
+        guard !service.servesDemoAccount else { return }
         let requests = service.requests
         let pushTokens = requests.pushTokens(device: service.tokens.device, pts: service.tokens.pts)
         guard !pushTokens.isEmpty else { return }
@@ -70,6 +71,7 @@ nonisolated enum DeviceRegistration {
 
     #if os(macOS)
     static func registerPassive(on service: isolated PushRegistrationService) async {
+        guard !service.servesDemoAccount else { return }
         service.running.passive += 1
         defer {
             service.running.passive -= 1

@@ -8,11 +8,7 @@ enum SemesterCatalog {
         "https://querycourse.ntust.edu.tw/QueryCourse/api/semestersinfo"
     )
 
-    static let session = URLSession(
-        configuration: .ephemeral,
-        delegate: TLSPinningDelegate.shared,
-        delegateQueue: nil
-    )
+    static let session = SchoolSessions.pinned(.ephemeral)
 
     private nonisolated static let listKey = "semesterCatalog.semesters"
     private nonisolated static let selectionKey = "semesterCatalog.selectionSemester"

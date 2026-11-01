@@ -19,6 +19,7 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
     }
 
     func signIn(for signIn: SignIn) async -> Bool {
+        guard !signIn.isDemo else { return false }
         let resets = BrowserData.shared.storeResets
         let cookies = store.httpCookieStore
         let jars = [HTTPCookieStorage.shared, SchoolWeb.schoolCookies]

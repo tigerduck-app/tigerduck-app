@@ -13,7 +13,6 @@ struct ClassTableHeaderMenu: View {
     // this view's environment.
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.legibilityWeight) private var legibilityWeight
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
@@ -114,7 +113,6 @@ struct ClassTableHeaderMenu: View {
                 app: app,
                 colorScheme: colorScheme,
                 dynamicTypeSize: dynamicTypeSize,
-                layoutDirection: layoutDirection,
                 legibilityWeight: legibilityWeight,
                 differentiateWithoutColor: differentiateWithoutColor
             )

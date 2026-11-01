@@ -8,6 +8,7 @@ import os
 nonisolated struct SignIn: Hashable, Sendable {
     fileprivate let series: SignInSeries
     fileprivate let number: Int
+    let isDemo: Bool
 
     var isCurrent: Bool { series.holds(number) }
 
@@ -23,14 +24,23 @@ nonisolated struct SignIn: Hashable, Sendable {
 
 /// An account's sign-ins, one after another, readable from any actor.
 nonisolated final class SignInSeries: Sendable {
-    private let number = OSAllocatedUnfairLock(initialState: 0)
+    private struct Current {
+        var number = 0
+        var isDemo = false
+    }
 
-    var currentSignIn: SignIn { SignIn(series: self, number: number.withLock { $0 }) }
+    private let current = OSAllocatedUnfairLock(initialState: Current())
 
-    fileprivate func holds(_ number: Int) -> Bool { self.number.withLock { $0 == number } }
+    var currentSignIn: SignIn {
+        current.withLock { SignIn(series: self, number: $0.number, isDemo: $0.isDemo) }
+    }
+
+    fileprivate func holds(_ number: Int) -> Bool { current.withLock { $0.number == number } }
 
     /// The app ends a sign-in through `AccountSession.endSignIn`, which also stops its work.
-    func end() { number.withLock { $0 &+= 1 } }
+    func end() { current.withLock { $0 = Current(number: $0.number &+ 1) } }
+
+    func startDemo() { current.withLock { $0 = Current(number: $0.number &+ 1, isDemo: true) } }
 }
 
 @Observable
@@ -78,10 +88,15 @@ final class AccountSession {
 
     /// Ends the current sign-in and cancels its tasks; the sign-in it returns follows it.
     @discardableResult
-    func endSignIn() -> SignIn {
+    func endSignIn() -> SignIn { endSignIn { $0.end() } }
+
+    @discardableResult
+    func startDemoSignIn() -> SignIn { endSignIn { $0.startDemo() } }
+
+    private func endSignIn(_ startNext: (SignInSeries) -> Void) -> SignIn {
         let running = tasks.values
         tasks = [:]
-        signIns.end()
+        startNext(signIns)
         ended &+= 1
         running.forEach { $0.cancel() }
         return signIns.currentSignIn

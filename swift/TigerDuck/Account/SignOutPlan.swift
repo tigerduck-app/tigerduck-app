@@ -18,14 +18,15 @@ struct SignOutPlan {
     let session: AccountSession
     let stores: [any AccountScoped.Type]
     var stopWork: () -> Void = {}
-    var endSession: () -> StartSignOutCalls = { { nil } }
+    var endSession: (_ ended: SignIn) -> StartSignOutCalls = { _ in { nil } }
     var clearMemoryState: () -> Void = {}
 
     @discardableResult
     func run(in storage: AccountStorage = AccountStorage()) -> Task<Void, Never>? {
+        let ended = session.signIns.currentSignIn
         session.endSignIn()
         stopWork()
-        let startCalls = endSession()
+        let startCalls = endSession(ended)
         for store in stores {
             store.forgetAccount(in: storage)
         }
@@ -39,7 +40,7 @@ extension SignOutPlan {
         var stores: [any AccountScoped.Type] = [
             SchoolAccountKeys.self, CourseFiles.self, CourseColorFiles.self, AssignmentFiles.self,
             CalendarEventFiles.self, BulletinFiles.self, ScoreReportFiles.self, MoodleFiles.self,
-            ImportedClassTableStore.self, BulletinsViewModel.self, AcademicCalendarStore.self,
+            ImportedClassTableStore.self, BulletinsViewModel.self, AcademicCalendarStore.self, DemoAccount.self,
         ]
         #if os(iOS)
         stores.append(BrowserData.self)
@@ -63,8 +64,9 @@ extension SignOutPlan {
             session: auth.session,
             stores: schoolStores,
             stopWork: stopWork,
-            endSession: {
+            endSession: { ended in
                 auth.logout()
+                if ended.isDemo { auth.deps.demo.leave() }
                 let calls = endBackendSession()
                 return { auth.startSignOutCalls(calls) }
             },

@@ -109,6 +109,10 @@ final class ScoreViewModel {
             errorMessage = String(localized: "common_not_signed_in")
             return
         }
+        guard !signIn.isDemo else {
+            switchAccount(to: studentId)
+            return
+        }
         await refresh(
             for: studentId,
             signIn: signIn,

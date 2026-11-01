@@ -38,10 +38,11 @@ final class MoodleCourseStore {
         termCourseIds: [Int],
         courseCodes: [String] = [],
         context: MoodleCacheContext,
-        api: MoodleCourseAPI = .live,
+        api: MoodleCourseAPI? = nil,
         downloads: MoodleFileDownloads? = nil
     ) {
         self.courseId = courseId
+        let api = api ?? .serving(context.signIn)
         let source = Source(
             termCourseIds: Array(Set(termCourseIds).union([courseId])).sorted(),
             courseCodes: courseCodes, api: api, context: context, downloads: downloads ?? .shared

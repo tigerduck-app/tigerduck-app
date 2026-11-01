@@ -1799,6 +1799,29 @@ struct BackendSignInTests {
         #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
     }
 
+    @Test("the store-review account signs in to no backend, with a Moodle token at hand")
+    func theDemoAccountSignsInToNoBackend() async {
+        let signIns = SignInSeries()
+        signIns.startDemo()
+        let backend = BackendFixture(signedIn: false, signIn: signIns.currentSignIn)
+        let harvests = CallCount()
+        let auth = AuthService(
+            session: AccountSession(signIns: signIns), keychainHasCredentials: { false },
+            notificationCenter: NotificationCenter(), moodleTokens: .standIn(harvests: harvests)
+        )
+        auth.authTokenManager = backend.manager
+
+        let signedIn = await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            let first = await auth.backend.signIn(studentId: "B11000000", harvesting: true, for: signIns.currentSignIn)
+            let again = await auth.reloginToBackend(for: signIns.currentSignIn)
+            return first || again
+        }
+
+        #expect(!signedIn)
+        #expect(harvests.value == 0)
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+    }
+
     @Test("a sign-out during the Moodle step keeps the backend sign-in from going out")
     func aSignOutDuringTheMoodleStepStopsTheBackendSignIn() async throws {
         let signIns = SignInSeries()

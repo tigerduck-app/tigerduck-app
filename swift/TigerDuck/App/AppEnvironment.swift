@@ -51,6 +51,7 @@ final class AppEnvironment {
     init() {
         let purge = FreshInstallKeychainPurge.runIfFreshInstall()
         if purge != .itemsLeft { BareKeychainItemMoveMigration.runIfNeeded() }
+        DemoAccount.resumeAtLaunch(in: .school)
 
         let authService = AuthService(session: .school)
         self.authService = authService
@@ -181,6 +182,9 @@ final class AppEnvironment {
         DepartingSessionListMigration.runIfNeeded()
         if CustomAccentContrastMigration.runIfNeeded() {
             preferences.accentColorHex = Defaults[.accentColorHex]
+        }
+        if RemovedLanguageResetMigration.runIfNeeded() {
+            preferences.appLanguage = Defaults[.appLanguage]
         }
         #if os(iOS)
         BulletinPushOptOutMigration.runIfNeeded()

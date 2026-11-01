@@ -31,7 +31,12 @@ final class CloudSyncPreference {
 
     /// The sign-out turns TigerSync off for the sign-in that follows it.
     func setEnabled(_ enabled: Bool, for signIn: SignIn) {
-        Defaults[cloudSyncEnabled, for: signIn] = enabled
+        Defaults[cloudSyncEnabled, for: signIn] = enabled && !signIn.isDemo
+    }
+
+    static func turnOffForDemo(_ signIn: SignIn, key: AccountKey<Bool> = .cloudSyncEnabled) {
+        guard signIn.isDemo else { return }
+        Defaults[key, for: signIn] = false
     }
 
     func onChange(_ handler: @escaping (Bool) -> Void) {
