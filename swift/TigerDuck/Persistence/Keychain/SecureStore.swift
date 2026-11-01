@@ -143,7 +143,7 @@ nonisolated enum SecureStore {
         try? shared.removeObject(forKey: key)
         try? legacyShared.removeObject(forKey: key)
         try? legacySharedGroup.removeObject(forKey: key)
-        legacyDelete(key: key)
+        deleteUnmovedBareItems(key: key)
     }
 
     static func deleteReportingSuccess(key: String) -> Bool {
@@ -157,7 +157,7 @@ nonisolated enum SecureStore {
                 if !isMissing { ok = false }
             }
         }
-        return legacyDelete(key: key) && ok
+        return deleteUnmovedBareItems(key: key) && ok
     }
 
     static func removeAll(preserving preservedKeys: Set<String> = []) {
@@ -173,7 +173,7 @@ nonisolated enum SecureStore {
     }
 
     @discardableResult
-    private static func legacyDelete(key: String) -> Bool {
+    private static func deleteUnmovedBareItems(key: String) -> Bool {
         guard let items = legacyItems(key: key) else { return false }
         return items.map(deleteLegacyItem).allSatisfy { $0 }
     }
