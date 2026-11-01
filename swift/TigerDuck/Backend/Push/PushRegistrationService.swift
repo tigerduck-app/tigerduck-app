@@ -49,14 +49,21 @@ nonisolated enum PushDeviceClass {
         #if os(macOS)
         return "mac"
         #else
-        switch UIDevice.current.userInterfaceIdiom {
-        case .pad:   return "ipad"
-        case .mac:   return "mac"
-        case .phone: return "iphone"
-        default:     return "iphone"
-        }
+        return deviceClass(idiom: UIDevice.current.userInterfaceIdiom, isiOSAppOnMac: ProcessInfo.processInfo.isiOSAppOnMac)
         #endif
     }
+
+    #if !os(macOS)
+    /// An iPhone and iPad app running on a Mac reports the `.pad` idiom.
+    static func deviceClass(idiom: UIUserInterfaceIdiom, isiOSAppOnMac: Bool) -> String {
+        if isiOSAppOnMac { return "mac" }
+        switch idiom {
+        case .pad: return "ipad"
+        case .mac: return "mac"
+        default: return "iphone"
+        }
+    }
+    #endif
 
     static func platform(for deviceClass: String) -> String {
         switch deviceClass {
