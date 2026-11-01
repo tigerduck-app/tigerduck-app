@@ -22,7 +22,7 @@ struct CourseColorPickRecordTests {
     private static func makeState(_ store: Store) -> ColorState {
         ColorState(
             load: { store.read() }, save: { store.write($0) },
-            notePick: { store.notePick($0) }, picks: { store.picked }, forgetPicks: { store.forgetPicks() },
+            notePick: { store.notePick($0) }, forgetPicks: { store.forgetPicks() },
             protectedDataAvailable: { true }
         )
     }

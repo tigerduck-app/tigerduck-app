@@ -155,7 +155,6 @@ final class ColorState: @unchecked Sendable {
         let load: @Sendable () -> [String: UInt32]?
         let save: @Sendable ([String: UInt32]) -> Void
         let notePick: @Sendable (String) -> Void
-        let picks: @Sendable () -> Set<String>
         let forgetPicks: @Sendable () -> Void
         let protectedDataAvailable: @Sendable () -> Bool
         let now: @Sendable () -> Date
@@ -170,12 +169,11 @@ final class ColorState: @unchecked Sendable {
         load: @escaping @Sendable () -> [String: UInt32]?,
         save: @escaping @Sendable ([String: UInt32]) -> Void,
         notePick: @escaping @Sendable (String) -> Void,
-        picks: @escaping @Sendable () -> Set<String>,
         forgetPicks: @escaping @Sendable () -> Void,
         protectedDataAvailable: @escaping @Sendable () -> Bool = ColorState.isProtectedDataAvailable,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
-        io = IO(load: load, save: save, notePick: notePick, picks: picks, forgetPicks: forgetPicks,
+        io = IO(load: load, save: save, notePick: notePick, forgetPicks: forgetPicks,
                 protectedDataAvailable: protectedDataAvailable, now: now)
         self.map = read()
     }
@@ -277,20 +275,15 @@ final class ColorState: @unchecked Sendable {
         return didMutate
     }
 
-    /// Gives each course that has a colour and no pick the colour Moodle gives it, and returns
-    /// the courses whose colour changed.
-    func takeMoodleColors(_ colors: [String: UInt32]) -> [String: UInt32] {
-        let picks = io.picks()
-        let moved: [String: UInt32] = lock.withLock {
-            guard let current = loadedMap() else { return [:] }
-            let moving = colors.filter { courseNo, hex in
-                !picks.contains(courseNo) && current[courseNo].map { $0 != hex } == true
-            }
+    /// Gives each course that has a colour the colour Moodle gives it.
+    func takeMoodleColors(_ colors: [String: UInt32]) {
+        let didMutate: Bool = lock.withLock {
+            guard let current = loadedMap() else { return false }
+            let moving = colors.filter { courseNo, hex in current[courseNo].map { $0 != hex } == true }
             map = current.merging(moving) { $1 }
-            return moving
+            return !moving.isEmpty
         }
-        if !moved.isEmpty { persist() }
-        return moved
+        if didMutate { persist() }
     }
 
     /// Moodle gives two courses one colour when their ids end alike, so its colours stay shared.
@@ -324,7 +317,8 @@ final class ColorState: @unchecked Sendable {
         lock.withLock { map = read() }
     }
 
-    func reassignAll(courseNos: [String], moodleColors: [String: UInt32] = [:], palette: [UInt32]) {
+    @discardableResult
+    func reassignAll(courseNos: [String], moodleColors: [String: UInt32] = [:], palette: [UInt32]) -> Bool {
         let reassigned: Bool = lock.withLock {
             guard loadedMap() != nil else { return false }
             let shuffled = palette.shuffled()
@@ -338,9 +332,10 @@ final class ColorState: @unchecked Sendable {
             map = fresh
             return true
         }
-        guard reassigned else { return }
+        guard reassigned else { return false }
         persist()
         io.forgetPicks()
+        return true
     }
 
     private func persist() {

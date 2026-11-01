@@ -9,29 +9,23 @@ struct LateMoodleIdColorTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("LateMoodleIdColorTests-\(UUID().uuidString)", isDirectory: true)
         lazy var cache = TestCache(folders: CacheFolders(root: root))
-        lazy var colors = CourseColorStore(files: cache.colors)
+        lazy var colors = relaunch()
         var syncsAsked = 0
 
-        init(courses: [String]) {
-            cache.courses.saveCourses(courses.map { courseNo in
-                SDCourse(courseNo: courseNo, courseName: courseNo, moodleIdNumber: "\(Self.term)\(courseNo)", semester: Self.term)
-            }, semester: Self.term, for: testSignIn)
-            colors.onLateMoodleColors = { [unowned self] in self.syncsAsked += 1 }
+        func relaunch() -> CourseColorStore {
+            let store = CourseColorStore(files: cache.colors)
+            store.onLateMoodleColors = { [unowned self] in self.syncsAsked += 1 }
+            return store
         }
 
-        static let term = CourseSelectionService.currentSemesterCode()
-
-        func storeIds(_ ids: [String: Int], for signIn: SignIn = testSignIn) {
-            CourseLookup.replaceMoodleCourseIds(
-                ids.reduce(into: [:]) { $0["\(Self.term)\($1.key)"] = $1.value },
-                for: signIn, moodle: cache.moodle, courses: cache.courses, colors: colors
-            )
+        func storeIds(_ ids: [String: Int]) {
+            cache.moodle.replaceMoodleCourseIdMap(ids.reduce(into: [:]) { $0["1151\($1.key)"] = $1.value }, for: testSignIn)
         }
 
-        func giveColours() {
+        func giveColours(_ courseNos: [String], for signIn: SignIn = testSignIn) {
             colors.ensureAssignments(
-                courses: cache.courses.loadCourses(semester: Self.term), ids: cache.moodle.loadMoodleCourseIdMap(),
-                palette: TigerDuckTheme.coursePaletteHexes, for: testSignIn
+                courses: courseNos.map(LateMoodleIdColorTests.course), ids: cache.moodle.loadMoodleCourseIdMap(),
+                palette: TigerDuckTheme.coursePaletteHexes, for: signIn
             )
         }
 
@@ -40,16 +34,22 @@ struct LateMoodleIdColorTests {
 
     private static let moodle = TigerDuckTheme.moodleCourseColors
     private static let palette = TigerDuckTheme.coursePaletteHexes
+    private static let red: UInt32 = 0xFF6B6B
+    private static let teal: UInt32 = 0x4ECDC4
+
+    private static func course(_ courseNo: String) -> SDCourse {
+        SDCourse(courseNo: courseNo, courseName: courseNo, moodleIdNumber: "1151\(courseNo)", semester: "1151")
+    }
 
     @Test("A Moodle id that arrives after the course's colour moves it to Moodle's colour and asks for a sync")
     func aLateMoodleIdMovesAnAutomaticColour() throws {
-        let folder = Folder(courses: ["CS1", "CS2"])
+        let folder = Folder()
         folder.storeIds(["CS2": 5332])
-        folder.giveColours()
-        let before = try #require(folder.colors.map["CS1"])
-        #expect(Self.palette.contains(before))
+        folder.giveColours(["CS1", "CS2"])
+        #expect(Self.palette.contains(try #require(folder.colors.map["CS1"])))
 
         folder.storeIds(["CS1": 4127, "CS2": 5332])
+        folder.giveColours(["CS1", "CS2"])
 
         #expect(folder.colors.map == ["CS1": Self.moodle[7], "CS2": Self.moodle[2]])
         #expect(folder.colors.lateMoodleColors == ["CS1": Self.moodle[7]])
@@ -58,42 +58,71 @@ struct LateMoodleIdColorTests {
 
     @Test("A colour the user picked stays when the course's Moodle id arrives")
     func aPickedColourSurvivesALateMoodleId() {
-        let folder = Folder(courses: ["CS1"])
-        folder.storeIds([:])
-        folder.giveColours()
+        let folder = Folder()
+        folder.giveColours(["CS1"])
         folder.colors.pick(0x123456, courseNo: "CS1", palette: Self.palette, for: testSignIn)
 
         folder.storeIds(["CS1": 4127])
+        folder.giveColours(["CS1"])
 
         #expect(folder.colors.map == ["CS1": 0x123456])
         #expect(folder.colors.lateMoodleColors.isEmpty)
+    }
+
+    @Test("A colour pulled from another device stays when the course's Moodle id arrives")
+    func aPulledColourIsNotOverwrittenByALateId() {
+        let folder = Folder()
+        folder.giveColours(["CS1"])
+        folder.colors.applyColors([("CS1", 0x123456)], palette: Self.palette, for: testSignIn)
+
+        folder.storeIds(["CS1": 4127])
+        folder.giveColours(["CS1"])
+
+        #expect(folder.colors.map == ["CS1": 0x123456])
+        #expect(folder.colors.lateMoodleColors.isEmpty)
+    }
+
+    @Test("Courses coloured before an upgrade keep their colours though their Moodle ids are stored")
+    func anUpgradeWithAStoredMapMovesNothing() {
+        let folder = Folder()
+        folder.cache.colors.saveCourseColorMap(["CS1": Self.red, "CS2": Self.teal])
+        folder.storeIds(["CS1": 4127, "CS2": 5332])
+
+        folder.giveColours(["CS1", "CS2"])
+
+        #expect(folder.colors.map == ["CS1": Self.red, "CS2": Self.teal])
         #expect(folder.syncsAsked == 0)
     }
 
-    @Test("The first id map a sign-in stores moves no colour, as the colours it finds may be another device's")
-    func theFirstIdMapMovesNoColour() throws {
-        let folder = Folder(courses: ["CS1"])
-        folder.giveColours()
-        let before = try #require(folder.colors.map["CS1"])
-
+    @Test("An empty Moodle list and then a full one move only the courses awaiting their Moodle colour")
+    func anEmptyMapThenAFullOneMovesOnlyAwaitingCourses() {
+        let folder = Folder()
+        folder.cache.colors.saveCourseColorMap(["CS1": Self.red])
         folder.storeIds(["CS1": 4127])
+        folder.giveColours(["CS1", "CS2"])
 
-        #expect(folder.colors.map == ["CS1": before])
-        #expect(folder.colors.lateMoodleColors.isEmpty)
+        folder.storeIds([:])
+        folder.giveColours(["CS1", "CS2"])
+        folder.storeIds(["CS1": 4127, "CS2": 5332])
+        folder.giveColours(["CS1", "CS2"])
+
+        #expect(folder.colors.map == ["CS1": Self.red, "CS2": Self.moodle[2]])
+        #expect(folder.colors.lateMoodleColors == ["CS2": Self.moodle[2]])
     }
 
-    @Test("A Moodle id that arrives for a sign-in that has ended moves no colour")
+    @Test("A Moodle id that arrives for a sign-in that has ended moves no colour, and the course still awaits it")
     func aLateIdAfterTheSignInEndedIsDropped() throws {
-        let folder = Folder(courses: ["CS1"])
-        folder.storeIds([:])
-        folder.giveColours()
+        let folder = Folder()
+        folder.giveColours(["CS1"])
         let before = try #require(folder.colors.map["CS1"])
+        folder.storeIds(["CS1": 4127])
 
-        folder.storeIds(["CS1": 4127], for: endedTestSignIn)
-        folder.colors.takeMoodleColors(["CS1": Self.moodle[7]], for: endedTestSignIn)
-
+        folder.giveColours(["CS1"], for: endedTestSignIn)
         #expect(folder.colors.map == ["CS1": before])
         #expect(folder.colors.lateMoodleColors.isEmpty)
+
+        folder.giveColours(["CS1"])
+        #expect(folder.colors.map == ["CS1": Self.moodle[7]])
     }
 
     private static let resetClock = PushAPI.clock(of: Date(timeIntervalSince1970: 1_790_000_000))
@@ -101,38 +130,74 @@ struct LateMoodleIdColorTests {
     private static let courseRows: [[String: Any]] = [
         ["course_key": "client:1151:CS1", "semester": "1151", "course_no": "CS1", "moodle_id": "1151CS1"],
     ]
+    private static let automaticFillClock = PushAPI.clock(of: CourseOverridesReconciler.deterministicFillStamp(
+        serverHasColor: false, stampedAt: nil, snapshot: snapshot, semester: "1151"
+    ))
 
     private static func serverColour(_ hex: UInt32, at clock: Int64) -> [[String: Any]] {
         [["moodle_id": "1151CS1", "semester": "1151", "course_no": "CS1",
           "color_hex": String(format: "#%06X", hex), "color_hex_hlc": clock]]
     }
 
+    private static func late(_ server: [[String: Any]], _ moved: [String: UInt32]) -> (holding: Set<String>, sent: Set<String>) {
+        CourseOverridesReconciler.lateMoodleColors(server, courses: courseRows, moved: moved, snapshot: snapshot)
+    }
+
+    @Test("A move survives a relaunch before the sync, and the next sync sends it")
+    func aMoveSurvivesARelaunch() throws {
+        let folder = Folder()
+        folder.giveColours(["CS1"])
+        let automatic = try #require(folder.colors.map["CS1"])
+        folder.storeIds(["CS1": 4127])
+        folder.giveColours(["CS1"])
+
+        let relaunched = folder.relaunch()
+
+        #expect(relaunched.map == ["CS1": Self.moodle[7]])
+        #expect(relaunched.lateMoodleColors == ["CS1": Self.moodle[7]])
+        let server = Self.serverColour(automatic, at: Self.automaticFillClock)
+        #expect(Self.late(server, relaunched.lateMoodleColors).holding == ["1151CS1"])
+        let fills = CourseOverridesReconciler.colorFills(
+            server, courses: Self.courseRows, local: relaunched.map, holding: [], snapshot: Self.snapshot
+        )
+        #expect(fills.map(\.colorHex) == [String(format: "#%06X", Self.moodle[7])])
+    }
+
+    @Test("The move's mark goes once the backend holds the move or a newer colour, and stays while it holds none")
+    func theMarkIsDroppedAfterTheServerConfirms() {
+        let folder = Folder()
+        folder.giveColours(["CS1"])
+        folder.storeIds(["CS1": 4127])
+        folder.giveColours(["CS1"])
+        let moved = folder.colors.lateMoodleColors
+
+        #expect(Self.late([], moved).sent.isEmpty)
+        #expect(Self.late(Self.serverColour(0x123456, at: Self.resetClock + 60_000_000), moved).sent == ["CS1"])
+        let landed = Self.late(Self.serverColour(Self.moodle[7], at: Self.automaticFillClock + 1_000), moved)
+        #expect(landed.holding.isEmpty)
+        #expect(landed.sent == ["CS1"])
+        folder.colors.noteLateMoodleColorsSent(landed.sent, for: testSignIn)
+
+        #expect(folder.colors.lateMoodleColors.isEmpty)
+        #expect(folder.relaunch().lateMoodleColors.isEmpty)
+        #expect(folder.colors.map == ["CS1": Self.moodle[7]])
+    }
+
     @Test("A colour a late Moodle id gave goes out as an automatic one: over the backend's automatic colour, under any pick")
     func aLateMoodleColourIsSentAsAnAutomaticColour() throws {
         let local = ["CS1": Self.moodle[7]]
-        let automatic = try #require(CourseOverridesReconciler.colorFills(
-            [], courses: Self.courseRows, local: ["CS1": 0xFF6B6B], holding: [], snapshot: Self.snapshot
-        ).first)
-        let server = Self.serverColour(0xFF6B6B, at: PushAPI.clock(of: automatic.stamp))
+        let server = Self.serverColour(Self.red, at: Self.automaticFillClock)
 
-        let held = CourseOverridesReconciler.lateMoodleColors(
-            server, courses: Self.courseRows, moved: local, local: local, snapshot: Self.snapshot
-        )
+        let held = Self.late(server, local).holding
         #expect(held == ["1151CS1"])
         #expect(CourseOverridesReconciler.serverCourseColors(server, courseNos: [:], holding: held).isEmpty)
         let fill = try #require(CourseOverridesReconciler.colorFills(
             server, courses: Self.courseRows, local: local, holding: [], snapshot: Self.snapshot
         ).first)
         #expect(fill.colorHex == String(format: "#%06X", Self.moodle[7]))
-        #expect(PushAPI.clock(of: fill.stamp) > PushAPI.clock(of: automatic.stamp))
+        #expect(PushAPI.clock(of: fill.stamp) > Self.automaticFillClock)
         #expect(PushAPI.clock(of: fill.stamp) < Self.resetClock + 1_000_000)
 
-        let picked = Self.serverColour(0x123456, at: Self.resetClock + 60_000_000)
-        #expect(CourseOverridesReconciler.lateMoodleColors(
-            picked, courses: Self.courseRows, moved: local, local: local, snapshot: Self.snapshot
-        ).isEmpty)
-        #expect(CourseOverridesReconciler.lateMoodleColors(
-            server, courses: Self.courseRows, moved: local, local: ["CS1": 0x123456], snapshot: Self.snapshot
-        ).isEmpty)
+        #expect(Self.late(Self.serverColour(0x123456, at: Self.resetClock + 60_000_000), local).holding.isEmpty)
     }
 }

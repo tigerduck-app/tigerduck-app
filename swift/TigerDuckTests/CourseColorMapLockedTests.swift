@@ -33,7 +33,7 @@ struct CourseColorMapLockedTests {
 
     private static func makeState(_ disk: Disk, clock: TestClock, unlocked: Bool) -> ColorState {
         ColorState(
-            load: { disk.read() }, save: { disk.write($0) }, notePick: { _ in }, picks: { [] }, forgetPicks: {},
+            load: { disk.read() }, save: { disk.write($0) }, notePick: { _ in }, forgetPicks: {},
             protectedDataAvailable: { unlocked }, now: { clock.now }
         )
     }

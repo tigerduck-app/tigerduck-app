@@ -18,13 +18,9 @@ final class MoodleFiles: AccountScoped {
 
     /// Moodle Mobile's deep-link router honors only `?id=N` redirects reliably (the web accepts
     /// `?idnumber=`, the in-app handler does not), so deep links look the numeric id up here.
-    /// Returns the map it replaced, nil when none was stored.
-    @discardableResult
-    func replaceMoodleCourseIdMap(_ map: [String: Int], for signIn: SignIn) -> [String: Int]? {
-        guard signIn.isCurrent else { return nil }
-        let replaced: [String: Int]? = folders.persistentFiles.load("moodle_course_id_map.json")
+    func replaceMoodleCourseIdMap(_ map: [String: Int], for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         folders.persistentFiles.save(map, to: "moodle_course_id_map.json")
-        return replaced
     }
 
     func loadMoodleCourseIdMap() -> [String: Int] {

@@ -158,6 +158,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | cache | `locally_completed_assignments.json` | school | `swift/TigerDuck/Persistence/AssignmentFiles.swift` `forgetAccount` |
 | cache | `moodleDir` | school | `swift/TigerDuck/Persistence/MoodleFiles.swift` `forgetAccount` |
 | cache | `moodleFilesDir` | school | `swift/TigerDuck/Persistence/MoodleFiles.swift` `forgetAccount` |
+| cache | `moodle_color_waits.json` | school | `swift/TigerDuck/Persistence/CourseColorFiles.swift` `forgetAccount` |
 | cache | `moodle_course_id_map.json` | school | `swift/TigerDuck/Persistence/MoodleFiles.swift` `forgetAccount` |
 | cache | `picked_course_colors.json` | school | `swift/TigerDuck/Persistence/CourseColorFiles.swift` `forgetAccount` |
 | cache | `score_report_*` | school | `swift/TigerDuck/Persistence/ScoreReportFiles.swift` `forgetAccount` |

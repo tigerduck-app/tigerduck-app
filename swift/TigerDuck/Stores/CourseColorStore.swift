@@ -8,7 +8,6 @@ final class CourseColorStore {
     @ObservationIgnored let files: CourseColorFiles
     @ObservationIgnored let state: ColorState
     private(set) var revision = 0
-    @ObservationIgnored private var movedByLateIds = SignInBound<[String: UInt32]>(empty: [:])
     @ObservationIgnored var onLateMoodleColors: () -> Void = {}
 
     init(files: CourseColorFiles = CourseColorFiles()) {
@@ -17,7 +16,6 @@ final class CourseColorStore {
             load: { files.loadCourseColorMapIfReadable() },
             save: { files.saveCourseColorMap($0) },
             notePick: { files.notePickedCourseColor($0) },
-            picks: { files.loadPickedCourseColors() },
             forgetPicks: { files.savePickedCourseColors([]) }
         )
     }
@@ -35,6 +33,14 @@ final class CourseColorStore {
         return result
     }
 
+    private func changingWaits(_ signIn: SignIn, _ change: (inout MoodleColorWaits) -> Void) {
+        guard signIn.isCurrent else { return }
+        let waits = files.loadMoodleColorWaits()
+        var changed = waits
+        change(&changed)
+        if changed != waits { files.saveMoodleColorWaits(changed) }
+    }
+
     var map: [String: UInt32] {
         _ = revision
         return state.snapshot()
@@ -44,11 +50,25 @@ final class CourseColorStore {
         state.hex(for: courseNo, palette: palette)
     }
 
+    /// Gives each new course a colour and moves each course awaiting its Moodle colour whose id
+    /// `ids` now holds.
     func ensureAssignments(courses: [SDCourse], ids: [String: Int], palette: [UInt32], for signIn: SignIn) {
+        let before = state.snapshot()
+        let awaiting = files.loadMoodleColorWaits().awaiting
         let moodleColors = Self.moodleColors(of: courses, ids: ids)
+        let arrived = moodleColors.filter { awaiting.contains($0.key) }
         saving(signIn, unchanged: ()) {
             $0.ensureAssignments(courseNos: courses.map(\.courseNo), moodleColors: moodleColors, palette: palette)
+            $0.takeMoodleColors(arrived)
         }
+        let after = state.snapshot()
+        let given = courses.filter { before[$0.courseNo] == nil && after[$0.courseNo] != nil }
+        changingWaits(signIn) {
+            $0.awaiting.subtract(arrived.keys)
+            $0.awaiting.formUnion(Self.awaitingMoodleColors(given, moodleColors))
+            $0.unsent.formUnion(arrived.keys)
+        }
+        if !arrived.isEmpty, signIn.isCurrent { onLateMoodleColors() }
     }
 
     /// The colour Moodle gives each course whose Moodle id `ids` holds.
@@ -61,23 +81,31 @@ final class CourseColorStore {
         return colors
     }
 
-    /// Moves the courses whose Moodle id arrived after their colour to Moodle's colour, unless
-    /// the user picked one.
-    func takeMoodleColors(_ colors: [String: UInt32], for signIn: SignIn) {
-        let moved = saving(signIn, unchanged: [:]) { $0.takeMoodleColors(colors) }
-        guard !moved.isEmpty else { return }
-        movedByLateIds.set(movedByLateIds.value.merging(moved) { $1 }, for: signIn)
-        onLateMoodleColors()
+    private static func awaitingMoodleColors(_ courses: [SDCourse], _ moodleColors: [String: UInt32]) -> [String] {
+        courses.filter { moodleColors[$0.courseNo] == nil && $0.moodleIdNumber?.isEmpty == false }.map(\.courseNo)
     }
 
-    /// What `takeMoodleColors` moved in this sign-in, which the next full sync sends.
-    /// shortcut: kept in memory, so a move not sent before the app quits is lost; store it if that shows up.
-    var lateMoodleColors: [String: UInt32] { movedByLateIds.value }
+    /// The courses a late Moodle id moved, with their colour, until the backend is seen holding it.
+    var lateMoodleColors: [String: UInt32] {
+        let map = self.map
+        return files.loadMoodleColorWaits().unsent.reduce(into: [:]) { $0[$1] = map[$1] }
+    }
+
+    func noteLateMoodleColorsSent(_ courseNos: Set<String>, for signIn: SignIn) {
+        guard !courseNos.isEmpty else { return }
+        changingWaits(signIn) { $0.unsent.subtract(courseNos) }
+    }
 
     /// Colours another device picked, applied without counting as picks here.
     @discardableResult
     func applyColors(_ colors: [(courseNo: String, hex: UInt32)], palette: [UInt32], for signIn: SignIn) -> Bool {
-        saving(signIn, unchanged: false) { $0.applyColors(colors, palette: palette) }
+        let before = state.snapshot()
+        let changed = saving(signIn, unchanged: false) { $0.applyColors(colors, palette: palette) }
+        if changed {
+            let after = state.snapshot()
+            changingWaits(signIn) { $0.forget(colors.map(\.courseNo).filter { before[$0] != after[$0] }) }
+        }
+        return changed
     }
 
     func forgetColors(for signIn: SignIn) {
@@ -95,14 +123,18 @@ final class CourseColorStore {
     /// course whose colour changed.
     @discardableResult
     func pick(_ hex: UInt32, courseNo: String, palette: [UInt32], for signIn: SignIn) -> [String: UInt32] {
-        saving(signIn, unchanged: [:]) { $0.setColor(hex: hex, for: courseNo, palette: palette) }
+        let changed = saving(signIn, unchanged: [:]) { $0.setColor(hex: hex, for: courseNo, palette: palette) }
+        if !changed.isEmpty { changingWaits(signIn) { $0.forget([courseNo]) } }
+        return changed
     }
 
     /// Fresh colours for every course, forgetting the picks.
     func reassignAll(courses: [SDCourse], ids: [String: Int], palette: [UInt32], for signIn: SignIn) {
         let moodleColors = Self.moodleColors(of: courses, ids: ids)
-        saving(signIn, unchanged: ()) {
+        let reset = saving(signIn, unchanged: false) {
             $0.reassignAll(courseNos: courses.map(\.courseNo), moodleColors: moodleColors, palette: palette)
         }
+        guard reset else { return }
+        changingWaits(signIn) { $0 = MoodleColorWaits(awaiting: Set(Self.awaitingMoodleColors(courses, moodleColors))) }
     }
 }
