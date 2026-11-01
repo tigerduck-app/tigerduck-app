@@ -343,7 +343,7 @@ struct AccountSwitchTests {
                 case .school:
                     await Self.schoolSignOut(auth).run(in: device.storage)?.value
                 case .library:
-                    LibraryService.clearCredentials()
+                    LibraryService.signOutLibraryOnly()
                 #if os(iOS)
                 case .mail:
                     mail.logout()
