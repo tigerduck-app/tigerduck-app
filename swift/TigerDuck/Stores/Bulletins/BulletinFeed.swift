@@ -57,7 +57,7 @@ final class BulletinFeed {
         Defaults[.bulletinsSyncedAt] = Date()
     }
 
-    static func endpointDidChange() {
+    static func forgetPreviousEndpointBulletins() {
         BulletinFiles.shared.saveBulletinSummaries([])
         BulletinFiles.shared.clearBulletinDetails()
         forgetListSession()

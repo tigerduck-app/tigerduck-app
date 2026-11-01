@@ -54,7 +54,7 @@ final class BulletinsViewModel: AccountScoped {
     }
 
     static func endpointDidChange() {
-        BulletinFeed.endpointDidChange()
+        BulletinFeed.forgetPreviousEndpointBulletins()
     }
 
     func loadIfNeeded() async {
