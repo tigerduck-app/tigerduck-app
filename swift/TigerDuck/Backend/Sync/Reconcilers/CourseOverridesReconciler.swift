@@ -45,14 +45,22 @@ struct CourseOverridesReconciler: CategoryReconciler {
             let serverHex = (override?["color_hex"] as? String).flatMap { UInt32($0.dropFirst(), radix: 16) }
             let serverClock = (override?["color_hex_hlc"] as? NSNumber)?.int64Value
             guard serverHex != hex else { return nil }
-            let after = serverHex != nil ? (serverClock ?? 0) : (coveringReset(json, semester: semester) ?? 0)
-            let stamp = Date(timeIntervalSince1970: Double(after + fillStep) / 1_000_000)
+            let stamp = deterministicFillStamp(
+                serverHasColor: serverHex != nil, stampedAt: serverClock, snapshot: json, semester: semester
+            )
             guard serverClock.map({ $0 < PushAPI.clock(of: stamp) }) ?? true else { return nil }
             return CourseColorFill(
                 courseKey: row["course_key"] as? String ?? CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
                 courseNo: courseNo, identity: identity, colorHex: String(format: "#%06X", hex), stamp: stamp
             )
         }
+    }
+
+    static func deterministicFillStamp(
+        serverHasColor: Bool, stampedAt serverClock: Int64?, snapshot json: [String: Any], semester: String
+    ) -> Date {
+        let after = serverHasColor ? (serverClock ?? 0) : (coveringReset(json, semester: semester) ?? 0)
+        return Date(timeIntervalSince1970: Double(after + fillStep) / 1_000_000)
     }
 
     /// A millisecond: a microsecond could be lost on the way through `Date`'s seconds.
@@ -105,16 +113,10 @@ struct CourseOverridesReconciler: CategoryReconciler {
         for o in overrides {
             guard let mId = overrideIdentity(o), !held.contains(mId),
                   let courseNo = o["course_no"] as? String ?? courseNos[mId],
-                  let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty
+                  let serverNames = setOrClearedNames(in: o), !serverNames.isEmpty
             else { continue }
             var existing = names[courseNo] ?? [:]
-            for (locale, name) in serverNames {
-                if name.isEmpty {
-                    existing.removeValue(forKey: locale)
-                } else {
-                    existing[locale] = name
-                }
-            }
+            for (locale, name) in serverNames { existing[locale] = name }
             names[courseNo] = existing.isEmpty ? nil : existing
         }
         return names
@@ -137,6 +139,10 @@ struct CourseOverridesReconciler: CategoryReconciler {
             return (courseNo, hex, at)
         }
         return rows.sorted { ($0.at, $0.courseNo) < ($1.at, $1.courseNo) }.map { ($0.courseNo, $0.hex) }
+    }
+
+    nonisolated static func setOrClearedNames(in row: [String: Any]) -> [String: String?]? {
+        (row["custom_names"] as? [String: String])?.mapValues { $0.isEmpty ? nil : $0 }
     }
 
     nonisolated static func overrideIdentity(_ row: [String: Any]) -> String? {

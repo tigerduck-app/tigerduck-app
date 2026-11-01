@@ -122,7 +122,7 @@ enum ReenableDifferences {
     private static func assignmentLine(
         _ json: [String: Any], coursesArray: [[String: Any]],
         serverIgnoredCourses: [CourseIgnoresReconciler.ServerIgnoredCourse]?
-    ) -> (String?, Set<String>) {
+    ) -> (line: String?, serverMarked: Set<String>) {
         let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
         var serverArchivedIds = Set<String>()
         var serverCompletedIds = Set<String>()
@@ -173,7 +173,7 @@ enum ReenableDifferences {
         for o in overrides {
             guard let mId = CourseOverridesReconciler.overrideIdentity(o),
                   let courseNo = o["course_no"] as? String ?? courseNos[mId],
-                  let serverNames = (o["custom_names"] as? [String: String])?.filter({ !$0.value.isEmpty }),
+                  let serverNames = CourseOverridesReconciler.setOrClearedNames(in: o)?.compactMapValues({ $0 }),
                   !serverNames.isEmpty else { continue }
             serverNosWithNames.insert(courseNo)
             if (local[courseNo] ?? [:]) != serverNames {
