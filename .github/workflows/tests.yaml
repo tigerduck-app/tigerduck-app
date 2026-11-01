@@ -112,7 +112,8 @@ jobs:
       # A documentation-only change skips the steps below rather than the job: a skipped matrix
       # job never reports `unit-tests (phone)` to a required check. `test` is false on a push,
       # which only builds. A push compares against the commit it replaced, so a code commit
-      # followed by a documentation commit still builds.
+      # followed by a documentation commit still builds. The diff lists both sides of a rename,
+      # and non-ASCII paths unquoted, as every path check in this file does.
       - name: Changed paths
         id: changes
         env:
@@ -124,7 +125,7 @@ jobs:
           if [ "$EVENT" = push ] && [ -n "${BEFORE//0/}" ] && git fetch -q --depth=1 origin "$BEFORE"; then
             base=$BEFORE
           fi
-          files=$(git diff --name-only "$base" HEAD)
+          files=$(git -c core.quotePath=false diff --no-renames --name-only "$base" HEAD)
           if [ -n "$files" ] && ! printf '%s\n' "$files" \
               | grep -qvE '\.md$|^(docs|openspec|api-poc|\.claude|\.agents|\.greptile|\.github/ISSUE_TEMPLATE)/|^LICENSE'; then
             run=false
@@ -451,7 +452,7 @@ jobs:
           if [ "$EVENT" = push ] && [ -n "${BEFORE//0/}" ] && git fetch -q --depth=1 origin "$BEFORE"; then
             base=$BEFORE
           fi
-          files=$(git diff --name-only "$base" HEAD)
+          files=$(git -c core.quotePath=false diff --no-renames --name-only "$base" HEAD)
           if [ -n "$files" ] && ! printf '%s\n' "$files" \
               | grep -qvE '\.md$|^(docs|openspec|api-poc|\.claude|\.agents|\.greptile|\.github/ISSUE_TEMPLATE)/|^LICENSE'; then
             run=false
@@ -520,7 +521,7 @@ jobs:
         id: changes
         run: |
           run=true
-          files=$(git diff --name-only HEAD^1 HEAD)
+          files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
           if ! printf '%s\n' "$files" | grep -qE '^swift/Packages/SwiftMail/|^\.github/workflows/tests\.yaml$'; then
             run=false
             echo "No change under swift/Packages/SwiftMail/ or to tests.yaml: skipping the package tests."
@@ -554,7 +555,7 @@ jobs:
         id: changes
         run: |
           run=true
-          files=$(git diff --name-only HEAD^1 HEAD)
+          files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
           if ! printf '%s\n' "$files" | grep -qE '^swift/Packages/TigerDuckCore/|^\.github/workflows/tests\.yaml$'; then
             run=false
             echo "No change under swift/Packages/TigerDuckCore/ or to tests.yaml: skipping the package tests."
