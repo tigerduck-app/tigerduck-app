@@ -53,7 +53,7 @@ final class BackendUploads {
             for: signIn, while: wanted
         ) {
             try await client.uploadCourses(request, addedAt: stamp, for: signIn)
-        }
+        } == .sent
         if sent { onCoursesUploaded() }
         return sent
     }
@@ -69,7 +69,7 @@ final class BackendUploads {
             resend: .after(Self.unchangedUploadInterval), pausesAfterRefusal: true, for: signIn, while: wanted
         ) {
             try await client.uploadAssignments(request, for: signIn)
-        }
+        } == .sent
     }
 
     func forgetUploads(semester: String?) {
