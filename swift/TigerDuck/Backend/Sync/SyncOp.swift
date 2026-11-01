@@ -98,19 +98,44 @@ nonisolated enum SyncOp: Codable, Sendable {
         }
     }
 
-    var scopes: [String] {
+    var discardScopes: [DiscardScope] {
         switch self {
         case .courseOverride(_, _, let customName, let colorHex, _, _):
-            return (colorHex != nil ? ["course_colors"] : []) + (customName != nil ? ["course_names"] : [])
+            return (colorHex != nil ? [.courseColors] : []) + (customName != nil ? [.courseNames] : [])
         case .assignmentOverride:
-            return ["assignments"]
+            return [.assignmentMarks]
         case .courseIgnore:
-            return ["course_ignores"]
+            return [.courseIgnores]
         case .courseDelete(let semester, let courseNo, _):
-            return ["cd", "cd|\(semester)", "cd|" + CourseTombstone.key(semester: semester, courseNo: courseNo)]
-        case .courseAdd(let semester, let courseNo, _):
-            return ["ca", "ca|" + CourseTombstone.key(semester: semester, courseNo: courseNo)]
+            return [
+                .allCourseDeletes, .courseDeletes(term: semester),
+                .courseDelete(key: CourseTombstone.key(semester: semester, courseNo: courseNo)),
+            ]
+        case .courseAdd:
+            return [.allCourseAdds]
         }
+    }
+}
+
+nonisolated enum DiscardScope: Hashable, Sendable {
+    case assignmentMarks, courseColors, courseNames, courseIgnores
+    case allCourseAdds
+    case allCourseDeletes, courseDeletes(term: String), courseDelete(key: String)
+}
+
+nonisolated struct DiscardCutoffs: Sendable {
+    private var byScope: [DiscardScope: Date]
+
+    init(_ byScope: [DiscardScope: Date] = [:]) {
+        self.byScope = byScope
+    }
+
+    mutating func keep(_ cutoffs: [DiscardScope: Date], notAfter now: Date) {
+        byScope.merge(cutoffs.mapValues { min($0, now) }, uniquingKeysWith: max)
+    }
+
+    func cutsOff(_ op: SyncOp) -> Bool {
+        op.discardScopes.contains { scope in byScope[scope].map { op.stamp < $0 } ?? false }
     }
 }
 

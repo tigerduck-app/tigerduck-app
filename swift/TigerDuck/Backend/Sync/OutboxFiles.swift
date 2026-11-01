@@ -19,9 +19,14 @@ nonisolated struct OutboxFiles: Sendable {
             .appendingPathComponent("TigerDuckCloudSync", isDirectory: true)
     }
 
-    func load() -> (queued: [OutboxEntry], parked: [OutboxEntry])? {
-        guard let queued = loadEntries(Self.fileName), let parked = loadEntries(Self.parkedFileName) else { return nil }
-        return (queued, parked)
+    enum Load {
+        case read(queued: [OutboxEntry], parked: [OutboxEntry])
+        case unreadable
+    }
+
+    func load() -> Load {
+        guard let queued = loadEntries(Self.fileName), let parked = loadEntries(Self.parkedFileName) else { return .unreadable }
+        return .read(queued: queued, parked: parked)
     }
 
     func loadReadable() -> (queued: [OutboxEntry], parked: [OutboxEntry]) {

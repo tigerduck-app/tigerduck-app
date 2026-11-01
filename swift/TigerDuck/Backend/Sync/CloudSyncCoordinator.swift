@@ -193,7 +193,7 @@ final class CloudSyncCoordinator {
 
     @discardableResult
     func addCourse(semester: String, courseNo: String, for signIn: SignIn) -> Task<Void, Never> {
-        edits.addCourse(semester: semester, courseNo: courseNo, for: signIn) { await self.syncTick() }
+        edits.addCourse(semester: semester, courseNo: courseNo, for: signIn, afterEnqueued: { await self.syncTick() })
     }
 
     func courseAddKeys(unlandedAt date: Date) async -> Set<String> { await edits.courseAddKeys(unlandedAt: date) }
@@ -205,8 +205,8 @@ final class CloudSyncCoordinator {
         await edits.dropCourseEdits(madeBeforeReset: resetAt)
     }
 
-    func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil, madeBefore cutoff: Date) async {
-        await edits.discardCourseDeletes(semester: semester, courseKeys: courseKeys, madeBefore: cutoff)
+    func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil, madeBeforeAction cutoff: Date) async {
+        await edits.discardCourseDeletes(semester: semester, courseKeys: courseKeys, madeBeforeAction: cutoff)
     }
 
     func requeueParkedMarks() async {

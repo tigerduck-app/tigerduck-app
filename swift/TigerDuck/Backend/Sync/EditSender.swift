@@ -101,7 +101,7 @@ final class EditSender {
 
     func addCourses(_ keys: [String], semester: String, for signIn: SignIn) {
         let addedAt = Date()
-        Task { await coordinator.discardCourseDeletes(courseKeys: Set(keys), madeBefore: addedAt) }
+        Task { await coordinator.discardCourseDeletes(courseKeys: Set(keys), madeBeforeAction: addedAt) }
         guard SyncPolicy.current.uploadsCourses else { return }
         let prefix = CourseTombstone.serverKey(semester: semester, courseNo: "")
         for key in keys where key.hasPrefix(prefix) {
@@ -152,7 +152,7 @@ final class EditSender {
         let resetAt = Date()
         resetLocally()
         await coordinator.discardCourseIgnores(semester: semester)
-        await coordinator.discardCourseDeletes(semester: semester, madeBefore: resetAt)
+        await coordinator.discardCourseDeletes(semester: semester, madeBeforeAction: resetAt)
     }
 
     nonisolated static func courseColorsAfterCoursesChange(coursesNowOn: Bool) -> Bool {

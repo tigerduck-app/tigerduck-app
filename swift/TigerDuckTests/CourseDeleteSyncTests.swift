@@ -177,13 +177,13 @@ struct CourseDeleteSyncTests {
         await coordinator.enqueueCourseIgnore(semester: "1142", courseNo: "GE3", moodleId: "1142GE3",
                                               moodleCourseId: nil, ignore: true)
 
-        await coordinator.discardCourseDeletes(courseKeys: ["client:1142:GE3"], madeBefore: Date())
+        await coordinator.discardCourseDeletes(courseKeys: ["client:1142:GE3"], madeBeforeAction: Date())
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:CS1", "1151:EE2", "1142:CS1"])
 
-        await coordinator.discardCourseDeletes(semester: "1151", madeBefore: Date())
+        await coordinator.discardCourseDeletes(semester: "1151", madeBeforeAction: Date())
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1142:CS1"])
 
-        await coordinator.discardCourseDeletes(madeBefore: Date())
+        await coordinator.discardCourseDeletes(madeBeforeAction: Date())
         #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1142:GE3"])
     }
@@ -212,7 +212,7 @@ struct CourseDeleteSyncTests {
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: addedAt.addingTimeInterval(-60))
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "EE2", at: hiddenAfter)
 
-        await coordinator.discardCourseDeletes(courseKeys: ["client:1151:CS1", "client:1151:EE2", "client:1151:GE3"], madeBefore: addedAt)
+        await coordinator.discardCourseDeletes(courseKeys: ["client:1151:CS1", "client:1151:EE2", "client:1151:GE3"], madeBeforeAction: addedAt)
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE3", at: hiddenAfter)
 
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:EE2", "1151:GE3"])
