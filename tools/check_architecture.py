@@ -169,6 +169,9 @@ CORE_PATTERNS = (
     ("academic-term", r"\b1911\b", "the ROC year offset outside TigerDuckCore; use `AcademicTerm` in TigerDuckCore"),
 )
 STRING_OPEN = re.compile(r'(#*)("""|")')
+ON_SCREEN_TRIGGER = re.compile(r"\bmakeKeyAndVisible\b|\bbecomeFirstResponder\b|\bWKWebView\s*\(")
+# Test types that use a trigger and stay out of `on_screen_tests`.
+ON_SCREEN_ALLOWED: frozenset[str] = frozenset()
 LAYERS = ("School/", "Backend/", "Persistence/")
 
 # Swift parsing: comments and string contents are blanked first, so braces count only in code.
@@ -393,10 +396,14 @@ def base_name_findings(paths: list[str]) -> list[Finding]:
     return found
 
 
-def test_code(root: Path) -> str:
+def test_files(root: Path) -> dict[str, str]:
     tests = subprocess.run(["git", "-C", str(root), "ls-files", f"{TESTS_DIR}*.swift"],
                            capture_output=True, text=True, check=True).stdout.split("\n")
-    return "\n".join(strip_code((root / p).read_text(encoding="utf-8")) for p in tests if p)
+    return {p: strip_code((root / p).read_text(encoding="utf-8")) for p in tests if p}
+
+
+def test_code(root: Path) -> str:
+    return "\n".join(test_files(root).values())
 
 
 def on_screen_findings(workflow: str, code: str) -> list[Finding]:
@@ -421,6 +428,43 @@ def on_screen_findings(workflow: str, code: str) -> list[Finding]:
             elif function and function not in functions:
                 found.append(Finding(WORKFLOW.relative_to(ROOT).as_posix(), offset, "on-screen-test",
                                      f"no test function `{function}` in {TESTS_DIR}; rename or drop the entry"))
+    return found
+
+
+def on_screen_entries(workflow: str) -> set[str]:
+    """The test types the workflow's `on_screen_tests` lists, whole or by function."""
+    lines = workflow.split("\n")
+    entries: set[str] = set()
+    for no, line in enumerate(lines, 1):
+        if not line.strip().startswith("on_screen_tests: >-"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        for entry in lines[no:]:
+            if not entry.strip() or len(entry) - len(entry.lstrip()) <= indent:
+                break
+            parts = entry.strip().split("/")
+            if len(parts) > 1:
+                entries.add(parts[1])
+    return entries
+
+
+def unlisted_on_screen_findings(workflow: str, tests: dict[str, str]) -> list[Finding]:
+    """A suite that shows a window, takes first responder or creates a web view runs in the
+    on-screen step, so it must be listed there."""
+    listed = on_screen_entries(workflow) | ON_SCREEN_ALLOWED
+    found = []
+    for path, code in sorted(tests.items()):
+        suites = [d for d in declarations(path, code) if d.parent is None]
+        reported = set()
+        for m in ON_SCREEN_TRIGGER.finditer(code):
+            line = line_of(code, m.start())
+            suite = next((d.key for d in suites if d.start <= line <= d.end), "")
+            if suite in listed or suite in reported:
+                continue
+            reported.add(suite)
+            found.append(Finding(path, line, "on-screen-test",
+                                 f"`{suite or path}` uses `{m.group().strip()}` but is not in `on_screen_tests` of "
+                                 f"{WORKFLOW.relative_to(ROOT).as_posix()}; list it"))
     return found
 
 
@@ -563,6 +607,7 @@ def findings(root: Path = ROOT) -> list[Finding]:
     workflow = (root / WORKFLOW.relative_to(ROOT)).read_text(encoding="utf-8")
     return (pattern_findings(sources) + taipei_findings(others) + core_findings(sources + others)
             + base_name_findings(paths) + on_screen_findings(workflow, test_code(root))
+            + unlisted_on_screen_findings(workflow, test_files(root))
             + size_findings(sources) + layering_findings(sources) + sign_in_findings(sources)
             + account_store_findings(sources, (root / INVENTORY.relative_to(ROOT)).read_text(encoding="utf-8")))
 

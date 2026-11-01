@@ -86,6 +86,19 @@ class ArchitectureTests(unittest.TestCase):
         found = ca.on_screen_findings(workflow, code)
         self.assertEqual([(f.line, f.message.split("`")[1]) for f in found], [(5, "closes"), (6, "GoneTests")])
 
+    def test_a_suite_that_shows_a_window_must_be_in_the_on_screen_list(self) -> None:
+        workflow = ("          - leg: phone\n            on_screen_tests: >-\n"
+                    "              TigerDuckTests/ListedTests\n"
+                    "              TigerDuckTests/FuncTests/shows()\n")
+        window = "struct %s {\n    func shows() {\n        window.makeKeyAndVisible()\n    }\n}\n"
+        tests = {"A.swift": window % "ListedTests", "B.swift": window % "FuncTests",
+                 "C.swift": window % "MissingTests",
+                 "D.swift": "struct WebTests {\n    let view = WKWebView(frame: .zero)\n}\n",
+                 "E.swift": "struct PlainTests {\n    let view: WKWebView? = nil\n    // field.becomeFirstResponder()\n}\n"}
+        found = ca.unlisted_on_screen_findings(workflow, {k: ca.strip_code(v) for k, v in tests.items()})
+        self.assertEqual([(f.path, f.message.split("`")[1]) for f in found],
+                         [("C.swift", "MissingTests"), ("D.swift", "WebTests")])
+
     def test_a_type_counts_its_extensions_and_not_its_nested_types(self) -> None:
         main = "struct Store {\n" + body(200) + "    struct Row {\n" + body(100) + "    }\n}\n"
         ext = "extension Store {\n" + body(60) + "}\n"
