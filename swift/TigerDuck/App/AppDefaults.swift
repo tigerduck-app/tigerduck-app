@@ -225,6 +225,9 @@ nonisolated extension AccountKeys {
         default: true
     )
     static let courseRowIdsSeen = AccountKey<[String: Int]>("courseRowIdsSeen", default: [:])
+    /// The Keychain item that holds the school account does not read back behind the lock screen,
+    /// and UserDefaults does.
+    static let demoSignedIn = AccountKey<Bool>("demoSignedIn", default: false)
     static let emptyClassroomBuilding = AccountKey<String?>("emptyClassroomBuilding")
     static let holidayNotifyOverrides = AccountKey<[Int]>("holidayNotifyOverrides", default: [])
     /// When each holiday's setting last changed here, keyed by holiday id; its upload sends it.

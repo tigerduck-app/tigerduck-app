@@ -45,7 +45,8 @@ enum AssignmentFetch {
         authService: AuthService, recheckSubmissions: Bool = false,
         afterBackendPull: @escaping PullGate = { .completed }, for signIn: SignIn
     ) async -> [SDAssignment] {
-        await sharedRound(signIn: signIn, rechecks: recheckSubmissions, afterBackendPull: afterBackendPull) { firstCompletedPull in
+        guard !signIn.isDemo else { return AssignmentStore.shared.loadAssignments() }
+        return await sharedRound(signIn: signIn, rechecks: recheckSubmissions, afterBackendPull: afterBackendPull) { firstCompletedPull in
             await runAssignmentRound(
                 authService: authService, recheckSubmissions: recheckSubmissions, afterBackendPull: firstCompletedPull,
                 signIn: signIn

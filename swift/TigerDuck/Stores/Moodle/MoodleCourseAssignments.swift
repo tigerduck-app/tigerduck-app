@@ -98,7 +98,7 @@ final class MoodleCourseAssignments {
 }
 
 extension MoodleCourseStore {
-    static func forAssignment(_ id: String, context: MoodleCacheContext, api: MoodleCourseAPI = .live) -> MoodleCourseStore? {
+    static func forAssignment(_ id: String, context: MoodleCacheContext, api: MoodleCourseAPI? = nil) -> MoodleCourseStore? {
         guard let courseId = MoodleCourseAssignments.records(in: context).first(where: { String($0.assignId) == id })?.courseId
         else { return nil }
         return MoodleCourseStore(courseId: courseId, termCourseIds: [courseId], context: context, api: api)

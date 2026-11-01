@@ -5,6 +5,8 @@ nonisolated enum SchoolSessions {
     static let resourceTimeout: TimeInterval = 60
 
     static func pinned(_ configuration: URLSessionConfiguration) -> URLSession {
-        URLSession(configuration: configuration, delegate: TLSPinningDelegate.shared, delegateQueue: nil)
+        URLSession(
+            configuration: configuration.refusingDemoRequests(), delegate: TLSPinningDelegate.shared, delegateQueue: nil
+        )
     }
 }

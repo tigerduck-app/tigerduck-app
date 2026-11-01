@@ -409,6 +409,7 @@ MailServerConfig.swift
 # Mail/Demo — the School Mail demo/preview client; iOS-only, see
 # Features/SchoolMail above
 DemoMailClient.swift
+MailDemoFixture.swift
 
 # Mail/Rules — School Mail's IMAP/MIME parsing and sanitization
 # rules; iOS-only, see Features/SchoolMail above

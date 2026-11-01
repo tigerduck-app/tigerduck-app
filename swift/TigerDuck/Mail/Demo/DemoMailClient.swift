@@ -1,47 +1,6 @@
 #if os(iOS)
 import Foundation
 
-nonisolated struct MailDemoFixture: Decodable, Sendable {
-    struct Attachment: Decodable, Sendable {
-        var filename: String
-        var contentType: String
-        var base64: String
-    }
-
-    struct Entry: Decodable, Sendable {
-        var uid: UInt32
-        var fromName: String?
-        var fromAddress: String
-        var to: [String]
-        var subject: String
-        var date: Date
-        var seen: Bool
-        var text: String
-        var html: String?
-        var attachments: [Attachment]
-    }
-
-    var studentId: String
-    var password: String
-    var uidValidity: UInt32
-    var folders: [String: [Entry]]
-
-    static let shared: MailDemoFixture? = load(from: .main)
-
-    static func load(from bundle: Bundle) -> MailDemoFixture? {
-        guard let url = bundle.url(forResource: "mail-demo", withExtension: "json"),
-              let data = try? Data(contentsOf: url) else { return nil }
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(MailDemoFixture.self, from: data)
-    }
-
-    func matches(studentID: String, password: String) -> Bool {
-        studentID.caseInsensitiveCompare(studentId) == .orderedSame && password == self.password
-    }
-}
-
 actor DemoMailClient: MailClient {
     static let shared: DemoMailClient? = MailDemoFixture.shared.map { DemoMailClient(fixture: $0) }
 
@@ -66,8 +25,8 @@ actor DemoMailClient: MailClient {
         for (index, attachment) in entry.attachments.enumerated() {
             let part = MailBodyPart(section: "\(index + 2)", contentType: attachment.contentType, charset: nil,
                                     transferEncoding: "base64", filename: attachment.filename, contentID: nil,
-                                    size: attachment.base64.count * 3 / 4, isAttachment: true)
-            attachments[part] = Data(base64Encoded: attachment.base64) ?? Data()
+                                    size: attachment.size, isAttachment: true)
+            attachments[part] = Data()
         }
         let summary = MailSummary(
             uid: entry.uid, fromName: entry.fromName?.mailNonEmpty, fromAddress: entry.fromAddress, to: entry.to, cc: nil,
@@ -151,7 +110,10 @@ actor DemoMailClient: MailClient {
     func attachment(folder: String, uid: UInt32, part: MailBodyPart, expectedUIDValidity: UInt32?) async throws -> Data {
         try assertUIDValidity(expectedUIDValidity)
         let stored = try find(folder: folder, uid: uid)
-        return stored.attachments.first { $0.key.section == part.section }?.value ?? Data()
+        guard let data = stored.attachments.first(where: { $0.key.section == part.section })?.value, !data.isEmpty else {
+            throw MailClientError.unreachable
+        }
+        return data
     }
 
     func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {

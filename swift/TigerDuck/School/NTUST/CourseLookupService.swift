@@ -9,11 +9,7 @@ enum CourseLookupService {
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
         config.waitsForConnectivity = false
-        return URLSession(
-            configuration: config,
-            delegate: TLSPinningDelegate.shared,
-            delegateQueue: nil,
-        )
+        return SchoolSessions.pinned(config)
     }()
 
     static let lookupFreshness = FreshnessPolicy(lifetime: 30 * 60)

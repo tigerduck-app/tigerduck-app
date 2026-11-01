@@ -20,8 +20,14 @@ final class SceneActivation {
     }
 
     func becameActive() {
-        refreshCourseChanges()
         returnTask?.cancel()
+        guard !app.authService.session.currentSignIn.isDemo else {
+            #if os(iOS)
+            returnTask = Task { [app] in await app.liveActivity.refresh() }
+            #endif
+            return
+        }
+        refreshCourseChanges()
         returnTask = Task { [app] in
             #if os(iOS)
             await app.liveActivity.refresh()
@@ -49,7 +55,7 @@ final class SceneActivation {
     }
 
     func refresh(recheckSubmissions: Bool = false) {
-        guard app.hasCompletedOnboarding else { return }
+        guard app.hasCompletedOnboarding, !app.authService.session.currentSignIn.isDemo else { return }
         app.feed.startPolling(pollNow: false)
         refreshCourseChanges()
         refreshTask?.cancel()

@@ -109,11 +109,7 @@ final class NTUSTSessionManager {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9",
         ]
-        session = URLSession(
-            configuration: config,
-            delegate: TLSPinningDelegate.shared,
-            delegateQueue: nil,
-        )
+        session = SchoolSessions.pinned(config)
     }
 
     private static func isSSOCookie(_ cookie: HTTPCookie) -> Bool {

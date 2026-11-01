@@ -79,6 +79,7 @@ final class WatchLibraryCredentialBroadcaster {
     }
 
     private func send(_ payload: WatchLibraryCredentialPayload) {
+        guard !DemoFixture.isDemoLibrary(payload.username, payload.password) else { return }
         let json: String
         do {
             json = try payload.encodedJSON()
