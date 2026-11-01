@@ -988,3 +988,5 @@ FodyWeavers.xsd
 # Additional files built by Visual Studio
 
 # End of https://www.toptal.com/developers/gitignore/api/linux,macos,swift,xcode,kotlin,python,pycharm,windows,intellij,visualstudio,visualstudiocode
+
+.claude/settings.local.json

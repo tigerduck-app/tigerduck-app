@@ -2,7 +2,7 @@ name: Architecture
 
 # tools/check_architecture.py fails a shared rule written again outside its home, for the rules
 # of the refactor phases already done; tools/check_account_state.py fails stored state added
-# without saying whether a sign-out clears it.
+# without saying whether a sign-out clears it; tools/check_agent_files.py fails a tracked CLAUDE.md.
 
 on:
   pull_request:
@@ -23,3 +23,6 @@ jobs:
 
       - name: Check every stored key and file has a sign-out scope
         run: python3 tools/check_account_state.py
+
+      - name: Check no CLAUDE.md is tracked
+        run: python3 tools/check_agent_files.py
