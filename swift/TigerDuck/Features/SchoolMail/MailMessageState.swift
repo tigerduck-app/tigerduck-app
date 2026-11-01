@@ -29,7 +29,6 @@ nonisolated struct MailLinkTarget: Equatable, Sendable, Identifiable {
         return scheme.lowercased()
     }
 
-    /// The link a tap on `text` would follow, with what the link check finds wrong with it.
     static func target(text: String, href rawHref: String) -> MailLinkTarget {
         let trimmed = rawHref.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let canonical = MailHref.canonicalHref(trimmed) else {
@@ -49,8 +48,6 @@ nonisolated struct MailFormattedPages: Equatable, Sendable {
     var setsColors: Bool
 }
 
-/// The mail the screen shows: its detail once loaded, the summary the cache had before that, and
-/// the formatted, plain and warned-about forms of its body.
 struct MailMessageContent {
     var loadState: MailMessageViewModel.LoadState = .loading
     var detail: MailMessageDetail?
@@ -61,25 +58,17 @@ struct MailMessageContent {
     var plainText = ""
     var linkedPlainText = AttributedString()
     var warnings: [MailWarning] = []
-    /// Nothing this screen can render: no text body, no HTML body, no attachments, so it shows the
-    /// source with a banner. `LiveMailClient` parses the MIME itself when Mail2000 gets a
-    /// `BODYSTRUCTURE` wrong, so what is left is a mail that carries nothing, or one too large to
-    /// download whole for that parse (`MailConstants.maxLocalParseBytes`).
     var parseFailed = false
 }
 
-/// How the screen draws the mail.
 struct MailMessageDisplay {
     var mode: MailMessageViewModel.ViewMode = .formatted
     var viewsInLightMode = false
-    /// The light appearance draws every mail on the light page, so it offers no other.
     var appearsLight = false
     var allowRemoteImages = false
-    /// The page was picked once for this mail, so a later load keeps what the user chose.
     var hasPickedPage = false
 }
 
-/// The screen's work beside the mail: the source it fetches on demand, and its actions.
 struct MailMessageActivity {
     var source: String?
     var sourceLoadFailed = false
@@ -88,7 +77,6 @@ struct MailMessageActivity {
     var downloading: Set<String> = []
 }
 
-/// Where the screen keeps what it fetches, and the notifications a read mail clears.
 struct MailMessageStores {
     let cache: MailCache
     let prefs: any MailPreferences

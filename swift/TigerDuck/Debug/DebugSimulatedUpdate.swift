@@ -1,7 +1,6 @@
 #if DEBUG
 import Foundation
 
-/// The Debug trigger that makes the next update check surface a made-up newer version once.
 enum DebugSimulatedUpdate {
     private static let key = "debug.simulateUpdateOnNextLaunch"
 

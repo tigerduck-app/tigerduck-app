@@ -1,10 +1,8 @@
 import SwiftUI
 import TigerDuckCore
 
-/// The GPA and ranks of the chosen term under the chart, or of the latest one.
 struct GPATrendSummary: View {
     let point: GPATrendPoint?
-    /// Whether the user picked the term on the chart, which names it in the title.
     let isPicked: Bool
     let series: GPATrendSeries
     let primaryText: Color
@@ -64,7 +62,6 @@ struct GPATrendSummary: View {
     }
 }
 
-/// The chart's lines: published GPAs drawn solid, each provisional one dashed from the term before.
 struct GPATrendSeries {
     let points: [GPATrendPoint]
     let scope: ScoreViewModel.RankingScope

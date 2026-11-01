@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// A broken signal fails by leaving a waiter parked for ever, so each test carries a limit.
 @MainActor
 struct StateSignalTests {
     @Test(.timeLimit(.minutes(1)))

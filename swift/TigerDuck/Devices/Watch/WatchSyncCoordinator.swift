@@ -32,7 +32,6 @@ final class WatchSyncCoordinator: NSObject {
         var changes: CourseChanges = .empty
     }
 
-    /// The push waiting out its debounce, and the snapshot still owed to the watch.
     private struct Pending {
         var payload: Payload?
         var force = false
@@ -40,7 +39,6 @@ final class WatchSyncCoordinator: NSObject {
         var lastDelivered: WatchSnapshot?
     }
 
-    /// What waits for protected data to come back after a locked-device attempt.
     private struct Owed {
         var credentials = false
         var statePush = false
@@ -159,11 +157,6 @@ final class WatchSyncCoordinator: NSObject {
         deliver(snapshot(Date()))
     }
 
-    /// Attempt to deliver `snapshot` to the watch. If the watch isn't reachable
-    /// yet (session not activated, no paired watch, or app not installed), the
-    /// snapshot is held in `pending.snapshot` and flushed by the next activation
-    /// completion or `sessionWatchStateDidChange` callback. Delivery errors
-    /// also keep the snapshot pending so a later state change can retry.
     private func deliver(_ snapshot: WatchSnapshot) {
         guard session.isPaired, session.isWatchAppInstalled else {
             pending.snapshot = snapshot

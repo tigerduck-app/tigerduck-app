@@ -3,9 +3,8 @@ import Foundation
 import Network
 import Security
 
-/// Names the errors and TLS versions the probe reports.
 nonisolated enum DevMailProbeErrors {
-    /// the two cases worth reporting most loudly, 1.0 and 1.1, are the two the SDK deprecates
+    /// The two cases worth reporting most loudly, 1.0 and 1.1, are the two the SDK deprecates
     /// naming, and a diagnostic that cannot say "this server negotiated TLS 1.0" is no use. The
     /// numbers are the TLS `ProtocolVersion` values themselves and do not move.
     static func tlsVersionName(_ rawVersion: UInt16) -> String {
@@ -41,7 +40,7 @@ nonisolated enum DevMailProbeErrors {
         }
     }
 
-    /// enum bridges to a domain that is its own mangled type name and a code that is its case
+    /// An enum bridges to a domain that is its own mangled type name and a code that is its case
     /// index, which says nothing the description does not.
     static func carriesReadableCode(domain: String) -> Bool {
         [NSURLErrorDomain, NSPOSIXErrorDomain, NSOSStatusErrorDomain, "kCFErrorDomainCFNetwork"].contains(domain)

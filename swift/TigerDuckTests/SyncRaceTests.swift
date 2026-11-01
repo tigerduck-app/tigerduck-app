@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The interleavings of a send with an edit, a reply or a sign-out that once lost an edit, each
-/// driven here in the order that lost it.
 @MainActor
 struct SyncRaceTests {
     @MainActor
@@ -225,8 +223,6 @@ struct SyncRaceTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
         #expect(await coordinator.outbox.parkedSnapshot().map(\.op.dedupKey) == ["ci|1151|1151CS1"])
     }
-
-    // MARK: - Auto colours
 
     private static let resetClock = PushAPI.clock(of: Date(timeIntervalSince1970: 1_790_000_000))
 

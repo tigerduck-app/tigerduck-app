@@ -1,7 +1,6 @@
 import Foundation
 import os
 
-/// Course colours and names, each while its switch is on and no edit of it is queued here.
 @MainActor
 struct CourseOverridesReconciler: CategoryReconciler {
     static let category = "course_overrides"
@@ -30,11 +29,6 @@ struct CourseOverridesReconciler: CategoryReconciler {
         return changed
     }
 
-    /// The colours this device sends once a snapshot's are applied: its own for a course the
-    /// backend holds none for, and the one a course moved to here because a course applied after
-    /// it holds the same. Each goes stamped just after the term's latest reset or the colour it
-    /// replaces, a stamp every device reads alike from the snapshot, so the first to land wins
-    /// and the others take its colour back, while a pick, stamped when it was made, beats it.
     static func colorFills(
         _ overrides: [[String: Any]], courses: [[String: Any]], local: [String: UInt32],
         holding held: Set<String>, snapshot json: [String: Any]
@@ -64,7 +58,6 @@ struct CourseOverridesReconciler: CategoryReconciler {
     /// A millisecond: a microsecond could be lost on the way through `Date`'s seconds.
     static let fillStep: Int64 = 1_000
 
-    /// The later of the snapshot's full reset and the term's own, as a TigerSync clock value.
     static func coveringReset(_ json: [String: Any], semester: String) -> Int64? {
         let full = (json["courses_reset_hlc"] as? NSNumber)?.int64Value
         let term = ((json["term_resets"] as? [String: Any])?[semester] as? NSNumber)?.int64Value
@@ -146,8 +139,6 @@ struct CourseOverridesReconciler: CategoryReconciler {
         return rows.sorted { ($0.at, $0.courseNo) < ($1.at, $1.courseNo) }.map { ($0.courseNo, $0.hex) }
     }
 
-    /// How a snapshot's course or override row names its course, as this device's edits do: the
-    /// Moodle id number, or the term and the number when it has none.
     nonisolated static func overrideIdentity(_ row: [String: Any]) -> String? {
         if let moodleId = row["moodle_id"] as? String ?? (row["moodle_id"] as? Int).map(String.init), !moodleId.isEmpty {
             return moodleId
@@ -158,7 +149,6 @@ struct CourseOverridesReconciler: CategoryReconciler {
     }
 }
 
-/// A course colour a full sync sends with the stamp `CourseOverridesReconciler.colorFills` gave it.
 nonisolated struct CourseColorFill: Equatable, Sendable {
     let courseKey: String
     let courseNo: String

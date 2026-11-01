@@ -1,10 +1,8 @@
 import SwiftUI
 
-/// The onboarding page where the user agrees to the privacy policy and account deletion terms.
 struct OnboardingPrivacyPage: View {
     @Binding var agreedPrivacy: Bool
     @Binding var agreedDeletion: Bool
-    /// Whether this is the page on screen; only then does it hold the pager back.
     let isCurrent: Bool
     let onNext: () -> Void
 

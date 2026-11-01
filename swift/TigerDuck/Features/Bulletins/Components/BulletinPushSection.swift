@@ -1,7 +1,6 @@
 import SwiftUI
 import UserNotifications
 
-/// Bulletin push on or off, with the notification permission it needs.
 struct BulletinPushSection: View {
     let pushEnabled: Bool
     let authStatus: UNAuthorizationStatus

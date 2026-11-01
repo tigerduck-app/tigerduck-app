@@ -1,16 +1,12 @@
 #if os(iOS)
 import Foundation
 
-/// When the next pass of `MailIndexer` may start: a pass that got through holds off the next for
-/// `MailConstants.indexResyncInterval` unless mail arrived since, and each failed one waits
-/// longer before the retry.
 nonisolated struct MailIndexSchedule {
     private var completed: (at: Date, wipeCount: Int)?
     private var retryAt: Date?
     private var failedPasses = 0
     private(set) var arrivals = 0
 
-    /// Why no pass is due now, as a fixed label for the log; nil when one is.
     func notDueReason(now: Date, wipeCount: Int) -> String? {
         if isFresh(now: now, wipeCount: wipeCount) { return "fresh" }
         if let retryAt, now < retryAt {
@@ -24,12 +20,10 @@ nonisolated struct MailIndexSchedule {
         return now.timeIntervalSince(completed.at) < MailConstants.indexResyncInterval
     }
 
-    /// A pass the user asked for skips the wait after one that got through.
     mutating func skipFreshness() {
         completed = nil
     }
 
-    /// A pull also skips the wait after a failed one.
     mutating func skipRetryWait() {
         retryAt = nil
     }
@@ -39,7 +33,6 @@ nonisolated struct MailIndexSchedule {
         completed = nil
     }
 
-    /// Returns how long the next pass waits.
     mutating func passFailed(now: Date) -> TimeInterval {
         failedPasses += 1
         let delay = MailConstants.indexRetryDelay * Double(1 << min(failedPasses - 1, 4))
@@ -48,7 +41,6 @@ nonisolated struct MailIndexSchedule {
         return retryIn
     }
 
-    /// False when mail arrived during the pass, which then runs again at once.
     mutating func passCompleted(now: Date, wipeCount: Int, arrivalsAtStart: Int) -> Bool {
         failedPasses = 0
         retryAt = nil
@@ -64,9 +56,6 @@ nonisolated struct MailIndexSchedule {
     }
 }
 
-/// Mails of a batch whose answer would not parse: fetched one at a time from then on, and skipped
-/// after failing alone `failuresBeforeSkipping` times. Kept until the account changes, the cache
-/// is cleared or the app quits.
 nonisolated struct MailIndexStrikes {
     private struct MailKey: Hashable {
         var folder: String
@@ -82,7 +71,6 @@ nonisolated struct MailIndexStrikes {
         (strikes[MailKey(folder: folder, uidValidity: uidValidity, uid: uid)] ?? 0) >= Self.failuresBeforeSkipping
     }
 
-    /// Newest first; a mail with a strike goes alone, so the one that fails is found.
     func batches(of missing: [UInt32], folder: String, uidValidity: UInt32) -> [[UInt32]] {
         var batches: [[UInt32]] = []
         var current: [UInt32] = []

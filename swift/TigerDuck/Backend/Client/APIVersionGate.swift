@@ -5,8 +5,6 @@ import Foundation
 final class APIVersionGate {
     static let shared = APIVersionGate()
 
-    /// The `/v4` codes that retire this build. A 410 with no readable code retires it too: `/v4`
-    /// answers every other refusal with another status.
     static let retiringCodes: Set<String> = ["api_retired", "app_version_retired"]
 
     private(set) var isRetired = false

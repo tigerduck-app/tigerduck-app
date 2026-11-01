@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The settings list's About section: the version, the update and server checks, What's New and
-/// the links.
 struct SettingsAboutSection: View {
     let sheets: SettingsSheetState
 
@@ -66,8 +64,6 @@ struct SettingsAboutSection: View {
         .disabled(app.updateNotifyCoordinator.isCheckingForUpdate)
     }
 
-    /// "Check Server Status" row. It sits under Check for Updates because that row asks
-    /// whether this app is current, and this one whether the services behind it are up.
     private var serverStatusRow: some View {
         Button {
             openURL(AppURLs.serverStatus)

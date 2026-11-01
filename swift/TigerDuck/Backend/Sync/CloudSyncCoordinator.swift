@@ -95,8 +95,6 @@ final class CloudSyncCoordinator {
         await syncTick()
     }
 
-    /// TigerSync switched on counts before its enable transition has left `.disabled`, so an
-    /// edit made in between is queued and goes once the coordinator is active.
     private var takesEdits: Bool {
         state != .disabled || Defaults[.cloudSyncEnabled]
     }
@@ -150,8 +148,6 @@ final class CloudSyncCoordinator {
         edits.courseOverridesToHold(since: pending)
     }
 
-    /// Use Server for `categories`: drops this device's edits of them made so far, then waits out
-    /// a request the outbox has in flight, so the server's values read next include it.
     func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
         await edits.discardEdits(of: categories, courseIgnores: courseIgnores)
         await drain.awaitSending()
@@ -196,9 +192,6 @@ final class CloudSyncCoordinator {
 
     func courseAddKeys(unlandedAt date: Date) async -> Set<String> { await edits.courseAddKeys(unlandedAt: date) }
 
-    /// How far this device's clock may be off the server's when an edit stamped here is compared
-    /// with a server time. NTP keeps it within seconds; inside the margin the order cannot be told,
-    /// and the edit made here is kept.
     nonisolated static let clockSkewMargin: TimeInterval = 2 * 60
 
     @discardableResult
@@ -214,7 +207,6 @@ final class CloudSyncCoordinator {
         await outbox.requeueParked()
     }
 
-    /// A course upload has landed, so the colour and name edits parked for want of the course go again.
     func courseUploadLanded() {
         Task {
             await outbox.requeueParked()

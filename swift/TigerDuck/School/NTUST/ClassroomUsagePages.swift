@@ -1,11 +1,7 @@
 import Foundation
 
-/// The room booking site's pages for one read: the campus page, the postbacks that step its
-/// calendar and grid, and their parse.
 @MainActor
 struct ClassroomUsagePages {
-    /// Whether a read still applies: `check` throws and `isCurrent` turns false once a sign-out,
-    /// an account change or `ClassroomUsageService.forget()` ends it.
     struct Scope {
         let isCurrent: @MainActor () -> Bool
         let check: @MainActor () throws -> Void
@@ -37,8 +33,7 @@ struct ClassroomUsagePages {
             if monthSteps >= Self.maxMonthSteps { throw ClassroomUsageError.dateUnavailable }
         }
 
-        // A postback can answer with a later page first, so pages are read by number. A page
-        // read twice, one for another campus or more pages than the cap is no whole day.
+        // A postback can answer with a later page first, so pages are read by number.
         var rooms: [Int: [RoomUsage]] = [:]
         while true {
             guard let grid = page.grid, page.campus == Self.campus, rooms[grid.page] == nil else {

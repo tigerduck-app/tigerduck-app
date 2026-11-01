@@ -2,10 +2,8 @@
 import MarkdownUI
 import SwiftUI
 
-/// A bulletin opened in the Mac detail pane: its title, office, date, body and source link.
 struct MacBulletinDetail: View {
     let detail: BulletinAPI.BulletinDetail
-    /// The list's summary, shown when the bulletin has no body of its own.
     let fallback: String?
     let orgLabel: (String) -> String
 
@@ -57,7 +55,6 @@ struct MacBulletinDetail: View {
     }
 }
 
-/// A bulletin whose body failed to load: the error, a retry button and the list's summary.
 struct MacBulletinDetailError: View {
     let message: String
     let fallback: String?

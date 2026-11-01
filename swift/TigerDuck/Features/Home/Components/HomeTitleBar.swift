@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// Home's greeting with the sync dot and the menu that starts editing.
-///
-/// The edit page keeps the controls' space but hides them. The menu reads as an edit control,
-/// and the edit page's bar sits a navigation bar lower, below Done, so with a dot on both
-/// pages the cross-fade between them would show two.
 struct HomeTitleBar: View {
     var showsControls = true
     let onEdit: () -> Void

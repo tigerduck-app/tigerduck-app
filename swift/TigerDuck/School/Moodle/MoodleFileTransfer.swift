@@ -32,7 +32,6 @@ nonisolated enum MoodleFileTransfer {
         return request
     }
 
-    /// A POST carries the token, so its redirects go through `CredentialPostDelegate`.
     static func redirectGuard(for request: URLRequest) -> CredentialPostDelegate? {
         request.httpMethod == "POST" ? CredentialPostDelegate() : nil
     }

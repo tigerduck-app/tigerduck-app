@@ -2,8 +2,6 @@
 import SwiftUI
 import TigerDuckCore
 
-/// A term on the Mac score page: its GPA and rank in the chosen scope, then its courses with
-/// their credits and grades.
 struct MacScoreTermCard: View {
     let viewModel: ScoreViewModel
     let term: String

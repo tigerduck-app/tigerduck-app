@@ -1,8 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// The page title, with the status dot and the unread-only filter once signed in. Its height is
-/// matched against Home and Class table so the three titles sit at the same height.
 struct MailTitleBar: View {
     let viewModel: MailListViewModel
     let isLoggedIn: Bool
@@ -30,8 +28,6 @@ struct MailTitleBar: View {
         .padding(.top, TigerDuckTheme.Spacing.md)
     }
 
-    /// Its row counts the search index's mail until the index is complete; a failed server shows
-    /// its failure instead, since a pass ends at its next batch anyway.
     private var statusDot: some View {
         SyncStatusDot(
             status: viewModel.serverStatus,
@@ -43,8 +39,6 @@ struct MailTitleBar: View {
         )
     }
 
-    /// The unread-only filter in a capsule, the backing an iOS 26 toolbar gives its buttons.
-    /// The status dot stays outside it: it reports on the server, it does not act on the mailbox.
     /// The button is `.borderless` because the row is a `List` row: the default style there
     /// gives the whole row one tap target and drops the tint. `MailFolderChipBar` and
     /// `SyncStatusDot` take `.plain` in the same situation, for the same reason.
@@ -75,7 +69,7 @@ struct MailTitleBar: View {
 
 /// Search, in the list's own content rather than `.searchable`, which would put the field alone
 /// in the navigation bar of a page without a navigation title and push the header a bar lower
-/// than Home's. As a row it scrolls with the list and stays hidden until pulled down to.
+/// than Home's.
 struct MailSearchField: View {
     @Binding var text: String
     var isFocused: FocusState<Bool>.Binding
@@ -108,7 +102,6 @@ struct MailSearchField: View {
     }
 }
 
-/// Floats above the tab bar; the page hides it while the search field holds the keyboard.
 struct MailComposeButton: View {
     let accentColor: Color
     let action: () -> Void
@@ -141,8 +134,6 @@ struct MailComposeButton: View {
 }
 
 #if DEBUG
-/// The page itself has to say when it is not showing school mail. Its own row, not a suffix in
-/// the title bar, whose height must not change; it shows the whole effective configuration.
 struct MailDeveloperServerBanner: View {
     var body: some View {
         let config = MailServerConfig.effective

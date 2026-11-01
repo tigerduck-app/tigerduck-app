@@ -172,8 +172,6 @@ nonisolated enum SecureStore {
         }
     }
 
-    /// A sign-out or a reinstall's purge before `BareKeychainItemMoveMigration` has moved the bare
-    /// items deletes them too, or that migration would bring the departed account back.
     @discardableResult
     private static func legacyDelete(key: String) -> Bool {
         guard let items = legacyItems(key: key) else { return false }

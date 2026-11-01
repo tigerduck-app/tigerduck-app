@@ -1,8 +1,6 @@
 import Defaults
 import Foundation
 
-/// Home's assignments of the term: the filter picked, kept in `homeAssignmentFilter`, the rows
-/// it shows, and the user's marks on them.
 struct HomeAssignmentList {
     var all: [AssignmentStore.Assignment] = []
 

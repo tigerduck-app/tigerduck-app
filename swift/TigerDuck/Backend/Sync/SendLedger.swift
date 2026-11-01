@@ -1,9 +1,6 @@
 import CryptoKit
 import Foundation
 
-/// Whether an upload already went out: per channel, the fingerprint of the last body the backend
-/// took, and one send in flight. A newer body waits for the send before it and then goes, so an
-/// older body never lands after it; a newer one never cancels the one out.
 @MainActor
 final class SendLedger {
     nonisolated enum Channel {
@@ -13,15 +10,12 @@ final class SendLedger {
         static func courses(_ semester: String) -> String { "courses:\(semester)" }
     }
 
-    /// When an unchanged body goes again.
     nonisolated enum Resend: Equatable, Sendable {
         case always
         case never
         case after(TimeInterval)
     }
 
-    /// Every fetch, sync and push would send an upload the backend answered with an error again at
-    /// once, each answered the same way, so a channel that pauses holds the same body this long.
     nonisolated static let refusalPause: TimeInterval = 60
 
     var clock: () -> Date = { Date() }
@@ -53,8 +47,6 @@ final class SendLedger {
         }
     }
 
-    /// Sends `body` on `channel` unless the backend already took it; true when it went out. A
-    /// cancelled caller, as a sign-out's, stops its own send rather than waiting for it.
     func send(
         _ channel: String,
         fingerprint: String,
@@ -88,7 +80,6 @@ final class SendLedger {
     ) async throws -> Bool {
         let now = clock()
         if resend != .always, isHeldBack(channel, fingerprint: fingerprint, now: now) {
-            // An unchanged resend in between cleared the failure, and this body is still unsent.
             failed[channel] = fingerprint
             return false
         }
@@ -102,7 +93,6 @@ final class SendLedger {
         } catch {
             if !AppLogger.isCancellation(error), isCurrent(), started == forgets.of(channel) {
                 failed[channel] = fingerprint
-                // A 401 the client could not recover from holds nothing back: a sign-in sends again.
                 if pauses, case PushAPIError.httpStatus(let status, _, _) = error, status != 401 {
                     refused[channel] = (fingerprint, clock())
                 }
@@ -125,8 +115,6 @@ final class SendLedger {
         accepted[channel]?.fingerprint == fingerprint
     }
 
-    /// A channel under `prefix` holds a body the backend has not taken: one that failed, or one
-    /// still out. A failed body it took earlier, as an unchanged resend that failed, is not unsent.
     func holdsUnsent(prefix: String) -> Bool {
         failed.contains { $0.key.hasPrefix(prefix) && !accepts($0.key, fingerprint: $0.value) }
             || unfinished.contains { channel, fingerprints in
@@ -134,8 +122,6 @@ final class SendLedger {
             }
     }
 
-    /// Forgets what `channel` sent, or every channel's with nil, so the next body goes whatever it
-    /// holds; a send out meanwhile records nothing.
     func forget(_ channel: String?) {
         if let channel {
             forgets.byChannel[channel, default: 0] &+= 1
@@ -150,7 +136,6 @@ final class SendLedger {
         }
     }
 
-    /// Forgets every channel whose name starts with one of `prefixes`, as `forget(_:)` does one.
     func forget(prefixes: [String]) {
         let known = Set(accepted.keys).union(failed.keys).union(refused.keys).union(unfinished.keys)
         for channel in known where prefixes.contains(where: channel.hasPrefix) {
@@ -158,12 +143,10 @@ final class SendLedger {
         }
     }
 
-    /// Waits for the send out on `channel`, if any.
     func settle(_ channel: String) async {
         await lastSends[channel]?.value
     }
 
-    /// A SHA-256 of the body's JSON with sorted keys, the same in every launch.
     nonisolated static func fingerprint(of value: some Encodable) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]

@@ -1,13 +1,10 @@
 import Defaults
 import Foundation
 
-/// Home's sections and the shortcuts in them, in the order the user arranged, kept in
-/// `homeSectionLayoutData`.
 @Observable
 final class HomeLayout {
     var sections: [HomeSection] = []
 
-    /// Reads the saved layout once, adding any section a newer version brought.
     func loadIfEmpty() {
         guard sections.isEmpty else { return }
         if var saved = loadSectionLayout() {

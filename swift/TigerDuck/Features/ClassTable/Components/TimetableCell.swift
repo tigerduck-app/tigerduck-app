@@ -1,7 +1,6 @@
 import SwiftUI
 import TigerDuckCore
 
-/// One weekday's cell in a period row: empty, a course alone, or the start of a conflict.
 struct TimetableCell: View {
     let viewModel: ClassTableViewModel
     let role: ClassTableGrid.CellRole

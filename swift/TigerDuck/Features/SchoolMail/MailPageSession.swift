@@ -1,8 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// The mail page's one connection, opened on first use, shared by every command the page runs,
-/// and closed once it sits idle after the page lets it go.
 @MainActor
 final class MailPageSession {
     private let open: () async throws -> any MailClient
@@ -68,8 +66,7 @@ final class MailPageSession {
     /// best-effort: it must never fail a send that already succeeded (`SentCopyFiler`), so its
     /// `.authenticationFailed` is caught and turned into an outcome. NTUST locks the account (and
     /// its Wi-Fi) after repeated failures, so that caller reports here, reaching the same choke
-    /// point a thrown error would. Nothing else in `use(_:)`'s error path is skipped: an
-    /// authentication failure never drops the connection either way (`MailErrorClass`).
+    /// point a thrown error would.
     func reportAuthenticationRejection() {
         onAuthFailure()
     }

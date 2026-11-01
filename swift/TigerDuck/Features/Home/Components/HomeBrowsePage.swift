@@ -1,8 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// Home while browsing: one List, so each assignment row takes the system's `.swipeActions`
-/// (UpcomingAssignmentsView says why).
 struct HomeBrowsePage: View {
     let viewModel: HomeViewModel
     let sections: [HomeSection]

@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Courses that meet at once in a weekday's periods, and the sizes their cells are drawn at.
 struct ConflictCluster {
     let viewModel: ClassTableViewModel
     let showsAssignmentBadges: Bool
@@ -23,7 +22,6 @@ struct ConflictCluster {
     }
 }
 
-/// A conflict's cell: two courses as L shapes, more in lanes.
 struct ConflictClusterView: View {
     let cluster: ConflictCluster
     let differentiateWithoutColorOverride: Bool?

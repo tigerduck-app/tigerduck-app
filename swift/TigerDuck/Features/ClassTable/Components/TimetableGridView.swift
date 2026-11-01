@@ -178,7 +178,6 @@ struct TimetableGridView: View {
 
 }
 
-/// What a cell shows, so a change of course, room or meeting fades the cell over.
 enum TimetableCellKey {
     static func of(
         _ role: ClassTableGrid.CellRole, weekday: Int, periodId: String, meeting: CourseTimeSlot?, showsRooms: Bool

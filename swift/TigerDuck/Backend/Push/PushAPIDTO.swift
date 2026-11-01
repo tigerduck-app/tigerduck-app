@@ -44,7 +44,6 @@ enum PushAPI {
         let hlc: Int64
     }
 
-    /// `applied` is false when the backend kept a value stamped later than the one sent.
     nonisolated struct HolidayOverrideResponse: Decodable, Sendable {
         let notify: Bool
         let applied: Bool
@@ -175,7 +174,6 @@ enum PushAPI {
         }
     }
 
-    /// Every reply, a clear's too. `applied` is false when the backend kept a mark stamped later.
     nonisolated struct AssignmentOverrideResponse: Decodable, Sendable {
         let localStatus: String
         let applied: Bool
@@ -204,9 +202,6 @@ enum PushAPI {
         }
     }
 
-    /// The course's values as the backend holds them after the write. `applied` names the fields
-    /// sent that took (`color_hex`, `custom_name`, `ignore_assignments`); one left out kept a
-    /// value stamped later.
     nonisolated struct CourseOverrideResponse: Decodable, Sendable {
         let colorHex: String?
         let customNames: [String: String]
@@ -255,14 +250,9 @@ enum PushAPI {
         }
     }
 
-    /// Course colours do not travel here: `/v4` takes them only through the course override.
     nonisolated struct CourseUploadRequest: Encodable, Sendable {
         let courses: [CourseUploadEntry]
-        /// The courses added by hand; the backend files the rest of `courses` as the school's
-        /// roster.
         var adds: [CourseAdd]?
-        /// The terms whose listed courses are the school's whole roster; the backend drops the
-        /// school courses of those terms that the upload leaves out.
         var rosterTerms: [String]?
 
         enum CodingKeys: String, CodingKey {
@@ -272,8 +262,6 @@ enum PushAPI {
         }
     }
 
-    /// An add the backend applies only when `hlc` is later than the course's last add, hide and
-    /// reset.
     nonisolated struct CourseAdd: Encodable, Sendable {
         let courseKey: String
         let hlc: Int64
@@ -284,7 +272,6 @@ enum PushAPI {
         }
     }
 
-    /// The backend's TigerSync clock value for a time: whole microseconds since the Unix epoch.
     nonisolated static func clock(of date: Date) -> Int64 {
         Int64((date.timeIntervalSince1970 * 1_000_000).rounded(.down))
     }

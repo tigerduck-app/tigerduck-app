@@ -1,7 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// A course alone in its periods: its tile, the room or change line, its marks and its edit menu.
 struct TimetableSoloCell: View {
     let viewModel: ClassTableViewModel
     let course: CourseStore.Course
@@ -89,7 +88,6 @@ struct TimetableSoloCell: View {
             }
     }
 
-    /// The visible and spoken text of a meeting the school changed.
     private enum MeetingText {
         static func changedTime(_ meeting: CourseTimeSlot) -> String? {
             guard !meeting.isCancelled else { return nil }

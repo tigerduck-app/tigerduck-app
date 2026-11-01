@@ -2,7 +2,6 @@ import Defaults
 import SwiftUI
 
 struct CloudSyncSettingsView: View {
-    /// What the status section shows of this device's push registration.
     private struct RegistrationStatus {
         let isRegistered: Bool
         let lastError: String?

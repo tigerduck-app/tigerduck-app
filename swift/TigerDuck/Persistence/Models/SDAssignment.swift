@@ -15,8 +15,6 @@ final class SDAssignment {
     var moodleUrl: String?
     var cutoffDate: Date?
     var submittedAt: Date?
-    /// Moodle's due date for everyone. `dueDate` is the later of it and the student's extension,
-    /// which a round that does not ask Moodle about the assignment again takes from here.
     var originalDueDate: Date?
     var extensionDueDate: Date?
     @Transient var isIgnoredByCourse = false
@@ -54,7 +52,6 @@ final class SDAssignment {
         extend(to: extensionDueDate)
     }
 
-    /// Takes Moodle's latest word on the student's extension: a later, a shorter or no extension.
     func extend(to extensionDate: Date?) {
         let original = originalDueDate ?? dueDate
         extensionDueDate = extensionDate

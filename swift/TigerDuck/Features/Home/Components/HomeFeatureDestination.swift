@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The screen a Home shortcut opens.
 struct HomeFeatureDestination: View {
     let feature: AppFeature
 

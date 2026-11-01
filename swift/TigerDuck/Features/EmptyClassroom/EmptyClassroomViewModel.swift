@@ -18,7 +18,6 @@ final class EmptyClassroomViewModel {
         case failed(offline: Bool)
     }
 
-    /// Whether the screen has been opened, and whether it is on screen now.
     private enum Presence {
         case unopened
         case shown

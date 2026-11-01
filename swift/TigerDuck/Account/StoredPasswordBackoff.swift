@@ -1,9 +1,6 @@
 import Defaults
 import Foundation
 
-/// How long an automatic sign-in with a stored password waits after the school's or the
-/// library's last refusal of it: each refusal counts toward the account's lockout. A sign-in the
-/// user types is never held back. Each account keeps its count and time under its own keys.
 nonisolated struct StoredPasswordBackoff: Sendable {
     static var ntust: StoredPasswordBackoff {
         StoredPasswordBackoff(count: .ntustStoredPasswordRefusals, last: .ntustStoredPasswordRefusedAt)
@@ -51,7 +48,6 @@ nonisolated struct StoredPasswordBackoff: Sendable {
         retryAt(now: now).map { $0 <= now } ?? true
     }
 
-    /// Returns when the next post is due.
     @discardableResult
     func noteRefused(at now: Date) -> Date {
         let count = refusals.count + 1

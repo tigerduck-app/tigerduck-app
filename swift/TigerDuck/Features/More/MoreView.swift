@@ -94,8 +94,7 @@ struct MoreView: View {
 
 /// Chrome for a feature page pushed from More: no back chevron, so it reads like the same
 /// feature reached from the tab bar. Hiding the back button makes stock UIKit disable the edge
-/// swipe; it survives only because `UI/ViewHelpers/UINavigationController+Swipeback.swift` re-points
-/// the `interactivePopGestureRecognizer` delegate app-wide. Switch Control and VoiceOver users
+/// swipe. Switch Control and VoiceOver users
 /// do not go back with that swipe, so `.escape` (VoiceOver's two-finger scrub) is their way back.
 /// A wrapper view: `@Environment(\.dismiss)` read in `MoreView` resolves to MoreView, not the page.
 /// `dismiss()` rather than trimming `navigationPath`: features push their own destinations with

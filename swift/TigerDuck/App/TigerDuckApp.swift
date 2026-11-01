@@ -44,7 +44,7 @@ struct TigerDuckApp: App {
 
     init() {
         TLSPinEngine.installAppHooks()
-        // push or a Watch message can launch the app in the background, where no scene appears
+        // A push or a Watch message can launch the app in the background, where no scene appears
         // and `.onAppear` never runs.
         let launch = Self.makeLaunch(hasUnlocked: FirstUnlock.hasHappened(), center: .default)
         _launch = State(initialValue: launch)
@@ -272,7 +272,6 @@ struct TigerDuckApp: App {
 #endif
 
 extension TigerDuckApp {
-    /// The pin document is on the TigerDuck backend, which launch code reaches only after onboarding.
     private func fetchPinDocumentIfDue() {
         guard app.hasCompletedOnboarding else { return }
         Task { await TLSPinDocumentFetcher.shared.fetchIfDue() }

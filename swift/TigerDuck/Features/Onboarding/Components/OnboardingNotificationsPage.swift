@@ -1,7 +1,6 @@
 import SwiftUI
 import UserNotifications
 
-/// The onboarding page that asks for notification permission.
 struct OnboardingNotificationsPage: View {
     let status: UNAuthorizationStatus
     let isRequesting: Bool

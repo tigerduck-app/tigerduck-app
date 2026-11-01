@@ -1,8 +1,6 @@
 import Foundation
 import TigerDuckCore
 
-/// The rows the import's confirm screen shows for a share code: whose it is, its terms, how many
-/// courses and when it was shared.
 enum ClassTableImportSummary {
     struct Row: Equatable {
         let title: String

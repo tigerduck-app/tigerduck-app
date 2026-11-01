@@ -2,7 +2,6 @@ import CryptoKit
 import Foundation
 import os
 
-/// The signed document and this build's acceptances as `TLSPinEngine` keeps them in Defaults.
 nonisolated struct TLSPinStorage {
     private enum Key {
         static let document = "tlsPinDocumentEnvelope"
@@ -20,7 +19,6 @@ nonisolated struct TLSPinStorage {
         self.buildNumber = buildNumber
     }
 
-    /// Verified again because this build may trust other signing keys than the build that stored it.
     func storedDocument() -> TLSPinDocument? {
         guard let envelope = defaults.data(forKey: Key.document) else { return nil }
         let document = try? TLSPinDocument.verify(envelope: envelope, keys: keys)
@@ -31,7 +29,6 @@ nonisolated struct TLSPinStorage {
         return document
     }
 
-    /// This build's acceptances; those of another build are dropped from the store.
     func storedAcceptances() -> [TLSPinAcceptance] {
         guard let data = defaults.data(forKey: Key.acceptances),
               let stored = try? JSONDecoder().decode([TLSPinAcceptance].self, from: data) else { return [] }

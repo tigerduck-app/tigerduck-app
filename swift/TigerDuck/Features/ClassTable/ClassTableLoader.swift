@@ -1,7 +1,5 @@
 import Foundation
 
-/// Fills the class table: from the stores when it opens, and from the school on a pull, a
-/// change of term or a reset. What a fetch saves comes back through the stores.
 @MainActor
 @Observable
 final class ClassTableLoader {
@@ -117,8 +115,6 @@ final class ClassTableLoader {
         }
     }
 
-    /// The task keeps the view model alive to the end, so leaving the class table mid-refresh
-    /// still ends the loading state and refreshes the current term.
     func triggerRefresh(authService: AuthService, semester: String? = nil) {
         guard !refreshing.value, let table = owner else { return }
         refreshing.value = true
@@ -158,8 +154,6 @@ final class ClassTableLoader {
         showFetched(signedOutSince: !authService.session.isCurrent(ticket))
     }
 
-    /// Shows what a fetch saved, read back from the stores, so an edit or another device's change
-    /// that landed while it ran stays on screen.
     func showFetched(signedOutSince: Bool) {
         SchoolRefresh.end()
         guard !signedOutSince else { return }

@@ -58,12 +58,8 @@ enum AppStoreUpdateService {
         ))
     }
 
-    /// The store version without a leading `v`. App Store Connect takes the
-    /// version as free text and hands it back verbatim: 2.2.0 was entered
-    /// as "v2.2.0", which ``AppVersion`` rejects, so the check read every
-    /// installed build as current. Dropped here, where the string enters
-    /// the app, so the comparison, the prompt's text and the Skip / Later
-    /// markers all see the same bare number.
+    /// App Store Connect takes the version as free text and hands it back verbatim, a leading
+    /// `v` included.
     static func normalizedVersion(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let first = trimmed.first, first == "v" || first == "V" else { return trimmed }
@@ -81,8 +77,6 @@ enum AppStoreUpdateService {
     }
 }
 
-/// The App Store lookup the update check makes: one at a time, shared by every caller that asks
-/// while it runs.
 @MainActor
 final class AppStoreLookup {
     typealias ErrorReporter = @Sendable (any Error, [String: String]) -> Void
@@ -133,7 +127,6 @@ final class AppStoreLookup {
         return result
     }
 
-    /// The store page of whatever the lookup finds, unreported when it fails.
     func anyStoreLink() async -> URL? {
         guard case .found(let lookup)? = try? await AppStoreUpdateService.fetchLatest(
             bundleId: bundleId, session: session, country: AppConstants.appStoreLookupStorefront

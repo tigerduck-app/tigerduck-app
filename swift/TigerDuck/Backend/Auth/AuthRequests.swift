@@ -1,6 +1,5 @@
 import Foundation
 
-/// The auth endpoints' two requests `AuthTokenManager` sends: a sign-in and a token refresh.
 nonisolated struct AuthRequests: Sendable {
     let baseURL: @Sendable () -> URL
     let deviceUUID: String

@@ -247,7 +247,6 @@ actor DemoMailClient: MailClient {
 
 nonisolated enum MailClientFactory {
     #if DEBUG
-    /// Unit tests put a stand-in here that fails the test and connects to nothing; the app leaves it nil.
     nonisolated(unsafe) static var testStandIn: (@Sendable () -> any MailClient)?
     #endif
 

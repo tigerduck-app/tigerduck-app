@@ -1,7 +1,5 @@
 import Foundation
 
-/// What a launch, a return to the foreground and a sign-in start. Each runs one ordered refresh
-/// (`RefreshOrder`): school data is applied after the backend pull, and uploaded after that.
 @MainActor
 final class SceneActivation {
     private unowned let app: AppEnvironment
@@ -12,7 +10,6 @@ final class SceneActivation {
         self.app = app
     }
 
-    /// The first scene of a launch.
     func sceneAppeared() {
         refresh()
         startCloudSyncIfEnabled()
@@ -51,12 +48,9 @@ final class SceneActivation {
         }
     }
 
-    /// The full refresh of a launch, the end of onboarding and a sign-in: a full sync, and every
-    /// school source.
     func refresh(recheckSubmissions: Bool = false) {
         guard app.hasCompletedOnboarding else { return }
         app.feed.startPolling(pollNow: false)
-        // The first scene of a launch, and the end of onboarding, bring no scene-active refresh.
         Task { await CourseChangeStore.shared.refresh() }
         refreshTask?.cancel()
         refreshTask = Task { [app] in
@@ -83,7 +77,6 @@ final class SceneActivation {
         refreshTask = nil
     }
 
-    /// A return reads the revision, and the change feed or a full sync when it moved.
     private func refreshOnReturn() {
         guard app.hasCompletedOnboarding else {
             app.feed.startPolling()
@@ -129,9 +122,6 @@ final class SceneActivation {
     }
 }
 
-/// One refresh in order: the pull and the school fetch start together, the fetch applies its
-/// result once the pull and the outbox send after it are done, and its uploads go after that
-/// (`SyncTarget` holds them until this sign-in's first pull). A cancelled pull applies nothing.
 enum RefreshOrder {
     static func run(
         pull: @escaping @MainActor () async -> Void,

@@ -1,7 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// The plain text of a message appended to the demo mailbox, from its raw MIME.
 nonisolated enum DemoMailMIME {
     static func textBody(of message: Data) -> String {
         guard let firstBlank = message.range(of: Data("\r\n\r\n".utf8)) else { return "" }
@@ -42,9 +41,6 @@ nonisolated enum DemoMailMIME {
         }
     }
 
-    /// A minimal RFC 2045 quoted-printable decoder: `=XX` is a literal byte, a trailing `=` at
-    /// the end of a line is a soft break (dropped along with the CRLF that follows it),
-    /// everything else passes through unchanged.
     private static func decodeQuotedPrintable(_ data: Data) -> String {
         var output = [UInt8]()
         let bytes = Array(data)

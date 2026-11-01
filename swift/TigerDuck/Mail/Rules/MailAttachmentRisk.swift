@@ -1,7 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// Whether an attachment is risky to open, by its name, its declared type and the mail's text.
 nonisolated enum MailAttachmentRisk {
     static let dangerousExtensions: Set<String> = [
         "apk", "apks", "xapk", "aab", "exe", "msi", "msix", "appx", "bat", "cmd", "com", "scr", "pif", "cpl",
@@ -58,13 +57,8 @@ nonisolated enum MailAttachmentRisk {
         return neverRenderInApp.contains(ext)
     }
 
-    /// HTML/SVG, by extension or by content type, is only saved or handed to another app, never
-    /// opened in Quick Look, which renders it in-process with WebKit (JavaScript on, remote loads
-    /// allowed): what the locked-down message web view exists to prevent.
     static func neverRenderedInApp(filename: String, contentType: String?) -> Bool {
         if neverRenderedInApp(filename: filename) { return true }
-        // Real parts carry parameters (SwiftMail appends `; charset=...`), so the type is compared
-        // without them, or `text/html; charset=UTF-8` would reach Quick Look.
         let type = contentTypeWithoutParameters(contentType) ?? ""
         return type == "text/html" || type == "image/svg+xml"
     }

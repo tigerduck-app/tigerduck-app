@@ -1,7 +1,6 @@
 import SwiftUI
 
 extension View {
-    /// TigerSync's question when the two sides disagree on marks: keep the server's or this device's.
     func syncConflictAlert(_ app: AppEnvironment) -> some View {
         alert(
             String(localized: "sync_conflict_title"),

@@ -5,9 +5,6 @@ import os
 import UIKit
 #endif
 
-/// Reads `GET /sync/full` and hands the snapshot to one `CategoryReconciler` per category, in a
-/// fixed order: marks, course ignores, colours and names, holidays, the roster; then it stores
-/// the reset stamp and the revision.
 @MainActor
 final class FullSyncRunner {
     let gate = FullSyncGate()
@@ -31,7 +28,7 @@ final class FullSyncRunner {
         #if os(iOS)
         // A sync trigger can launch the app behind the lock screen, where the local marks,
         // courses and colours cannot be opened and read as empty, and a sync would write the
-        // server's view over them. Revision polling syncs at the next return to the app.
+        // server's view over them.
         guard UIApplication.shared.isProtectedDataAvailable else { return .skipped }
         #endif
         if gate.isRunning {
@@ -42,8 +39,6 @@ final class FullSyncRunner {
         }
     }
 
-    /// Whether a full sync's error is its own cancellation, as at the time limit of a sync trigger
-    /// push, which says nothing about the server. `URLSession` throws `URLError.cancelled` for it.
     nonisolated static func isCancellation(_ error: Error) -> Bool {
         error is CancellationError || (error as? URLError)?.code == .cancelled
     }
@@ -95,9 +90,6 @@ final class FullSyncRunner {
         )
     }
 
-    /// Applies a course reset made elsewhere before the snapshot's courses are reconciled, and
-    /// returns the deletes the reconcile still has to wait for, or nil when the full sync may no
-    /// longer write; the reset then stays unseen and the next full sync applies it.
     func settleQueuedCourseEdits(
         deleting: Set<String>, reset: (apply: Bool, remember: Date), ticket: AccountSession.Ticket
     ) async -> Set<String>? {
@@ -152,9 +144,6 @@ final class FullSyncRunner {
         }
     }
 
-    /// Reads the snapshot with what this device has queued around it, settles the queued course
-    /// edits a reset overtook and sends the local marks of a first sync; nil when a sign-out or a
-    /// switch turned off came in between.
     private func read(ticket: AccountSession.Ticket) async throws -> FullSyncPass? {
         let coordinator = app.cloudSyncCoordinator
         let preFetchProtected = await coordinator.pendingAssignmentOverrideIds()
@@ -222,9 +211,6 @@ final class FullSyncRunner {
         )
     }
 
-    /// Settles the queued course edits and reads the adds still on their way, then the policy, so
-    /// a switch turned off or a conflict check begun during those awaits holds for this pass. Nil
-    /// when the pass may no longer write.
     static func settle(
         _ deletes: Set<String>, takingCourses: Bool,
         settle: (Set<String>) async -> Set<String>?, adds: () async -> Set<String>,
@@ -241,7 +227,6 @@ final class FullSyncRunner {
     }
 }
 
-/// The assignment marks a snapshot holds, by Moodle assignment id.
 nonisolated struct ServerMarks: Sendable {
     let archived: Set<String>
     let completed: Set<String>
@@ -278,7 +263,6 @@ nonisolated struct ServerMarks: Sendable {
     }
 }
 
-/// One full sync's snapshot, with what this device held queued around reading it.
 struct FullSyncPass {
     let json: [String: Any]
     let ticket: AccountSession.Ticket
@@ -289,7 +273,6 @@ struct FullSyncPass {
     let serverIgnoredCourses: [CourseIgnoresReconciler.ServerIgnoredCourse]?
     let localArchived: Set<String>
     let localCompleted: Set<String>
-    /// Marks and course ignores queued or in flight here, which the snapshot does not hold yet.
     let protected: Set<String>
     let courseDeletes: Set<String>
     let courseAdds: Set<String>
@@ -302,7 +285,6 @@ struct FullSyncPass {
     var coursesArray: [[String: Any]] { json["courses"] as? [[String: Any]] ?? [] }
 }
 
-/// Applies one category of a full sync's snapshot; true when it changed what this device holds.
 @MainActor
 protocol CategoryReconciler {
     static var category: String { get }

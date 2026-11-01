@@ -1,20 +1,16 @@
 import Defaults
 import SwiftUI
 
-/// The display preferences the views bind to. Each one is read from its Defaults key once and
-/// written back on every change.
 @MainActor
 @Observable
 final class AppPreferences {
     @ObservationIgnored private var hooks = Hooks()
     private var toggles = AppDisplayToggles()
 
-    /// Runs before a language change is stored, so work fetched in the old language can stop.
     var onLanguageChange: () -> Void {
         get { hooks.languageChange }
         set { hooks.languageChange = newValue }
     }
-    /// Runs after a change to how course and classroom names are shown.
     var onCourseLabelsChange: () -> Void {
         get { hooks.courseLabelsChange }
         set { hooks.courseLabelsChange = newValue }
@@ -25,8 +21,6 @@ final class AppPreferences {
         var courseLabelsChange: () -> Void = {}
     }
 
-    /// The slider's stepped binding sets the font scale on every step of a drag, up to 16 across
-    /// its range; the coordinator folds those into one debounced WidgetKit reload.
     @ObservationIgnored private let widgetReloadCoordinator = WidgetReloadCoordinator()
 
     var accentColorHex: Int {
@@ -171,10 +165,7 @@ final class AppPreferences {
 
     var accentColor: Color { Self.accentColor(hex: accentColorHex) }
 
-    /// Orange, green and cyan read faintly on the light cards, so light mode draws an accent
-    /// at the tone that reads there; dark mode keeps it as saved.
     static func accentColor(hex: Int) -> Color {
-        // bitPattern: a corrupted negative value would trap in the Int to UInt conversion.
         let rgb = Int(UInt(bitPattern: hex) & 0xFFFFFF)
         return .adaptive(light: Color(hex: UInt(AccentContrast.readableOnLight(rgb))), dark: Color(hex: UInt(rgb)))
     }

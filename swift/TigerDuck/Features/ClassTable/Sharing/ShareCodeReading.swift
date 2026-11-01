@@ -1,8 +1,6 @@
 import Foundation
 import Vision
 
-/// What a scanned or pasted text holds for the class table import: no share code, a damaged one,
-/// one a newer app wrote, or a code. Also finds the QR codes in a picture.
 nonisolated enum ShareCodeReading: Equatable {
     case notShareCode
     case invalid
@@ -42,7 +40,6 @@ nonisolated enum ShareCodeReading: Equatable {
         return request.results?.compactMap(\.payloadStringValue) ?? []
     }
 
-    /// The file's bytes, or nil when it cannot be read, as for a file the app has lost access to.
     static func data(fileAt url: URL) async -> Data? {
         await Task.detached { () -> Data? in
             let scoped = url.startAccessingSecurityScopedResource()

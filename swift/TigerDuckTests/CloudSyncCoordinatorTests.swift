@@ -600,7 +600,6 @@ struct CloudSyncCoordinatorTests {
         }
     }
 
-    /// The course key the backend files the course of a Moodle id number like `1151CS1` under.
     private static func courseKey(_ moodleId: String) -> String {
         "client:\(moodleId.prefix(4)):\(moodleId.dropFirst(4))"
     }

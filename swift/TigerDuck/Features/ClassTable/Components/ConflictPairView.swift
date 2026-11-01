@@ -1,8 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// Two courses meeting at once, drawn as two interlocking L shapes; a tap opens the picker
-/// between them.
 struct ConflictPairView: View {
     let cluster: ConflictCluster
     let diffWithoutColor: Bool

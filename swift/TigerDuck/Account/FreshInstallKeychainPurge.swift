@@ -1,9 +1,7 @@
 import Defaults
 import Foundation
 
-/// On iOS, Keychain items survive a reinstall. They are deleted before `AuthTokenManager` is
-/// built: its init caches the v3 tokens, which it would write back on the next refresh, letting a
-/// different user sync the previous user's cloud data.
+/// On iOS, Keychain items survive a reinstall.
 @MainActor
 enum FreshInstallKeychainPurge {
     private static var keys: [String] {
@@ -24,8 +22,6 @@ enum FreshInstallKeychainPurge {
         ]
     }
 
-    /// Whether this launch is a fresh install. The install marker is set only once every item is
-    /// gone, so a failed delete is tried again on the next launch.
     static func runIfFreshInstall() -> Bool {
         guard !Defaults[.appHasBeenInstalled] else { return false }
         let allOk = keys

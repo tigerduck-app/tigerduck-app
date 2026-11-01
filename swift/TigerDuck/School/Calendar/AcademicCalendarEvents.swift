@@ -6,8 +6,6 @@ nonisolated extension AcademicCalendar {
     static let holidayEventPrefix = "holiday:"
 
     func calendarEvents(locale: Locale = .current) -> [SDCalendarEvent] {
-        // One row per day, as the school's multi-day events get, since the calendar lists a day's
-        // events; each row carries the holiday's one opt-in toggle.
         let holidayRows = holidays.flatMap { holiday in
             sequence(first: holiday.start) { Self.calendar.date(byAdding: .day, value: 1, to: $0) }
                 .prefix { $0 <= holiday.end }

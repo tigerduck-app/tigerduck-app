@@ -1,8 +1,5 @@
 import Foundation
 
-/// The two folders the JSON caches live in: `Caches/TigerDuckCache`, which the system may purge,
-/// and `Application Support/TigerDuckData`, which it keeps. Each file store of `Persistence/`
-/// reads and writes its own files by name in them; a test passes folders of its own.
 nonisolated struct CacheFolders: Sendable {
     static let app = CacheFolders(
         cache: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -26,7 +23,6 @@ nonisolated struct CacheFolders: Sendable {
         self.persistent = persistent
     }
 
-    /// `cache` and `persistent` under one folder, for a test.
     init(root: URL) {
         self.init(cache: root.appending(path: "cache/"), persistent: root.appending(path: "persistent/"))
     }
@@ -34,7 +30,6 @@ nonisolated struct CacheFolders: Sendable {
     var cacheFiles: JSONFiles { JSONFiles(directory: cache) }
     var persistentFiles: JSONFiles { JSONFiles(directory: persistent) }
 
-    /// Every file of both folders and the Moodle downloads, for the reset that erases the app.
     @MainActor
     func removeEverything() {
         for dir in [cache, persistent] {
@@ -46,7 +41,6 @@ nonisolated struct CacheFolders: Sendable {
         try? FileManager.default.removeItem(at: MoodleFiles(folders: self).moodleFilesDir)
     }
 
-    /// The cache folder's JSON files whose names match.
     func removeCacheFiles(where matches: (String) -> Bool) {
         let contents = (try? FileManager.default.contentsOfDirectory(at: cache, includingPropertiesForKeys: nil)) ?? []
         for url in contents where url.pathExtension == "json" && matches(url.lastPathComponent) {
@@ -93,7 +87,6 @@ nonisolated struct JSONFiles: Sendable {
         }
     }
 
-    /// Deletes the file, logging any failure but a missing file.
     func remove(_ filename: String) {
         do {
             try FileManager.default.removeItem(at: url(filename))

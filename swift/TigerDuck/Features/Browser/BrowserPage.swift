@@ -10,7 +10,6 @@ final class BrowserPage {
         case unreachable(host: String)
     }
 
-    /// What the web view last reported, which ``BrowserNavigator`` keeps current.
     let shown = BrowserShownPage()
     var failure: Failure?
     var outside: URL?
@@ -141,12 +140,10 @@ final class BrowserPage {
     func expandChrome() { shown.expandChrome() }
 }
 
-/// This browser's saved files, removed with it; `BrowserData.reset()` removes every browser's.
 @MainActor
 final class BrowserDownloads {
     let opener = MoodleFileOpener()
     nonisolated let folder = BrowserPage.downloadsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
-    /// The download that failed last, which Reload asks for again.
     var failed: URLRequest?
 
     deinit {

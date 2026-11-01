@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The bulletin list's toolbar: mark all read, the sync dot, the unread filter and, signed in,
-/// the notification settings.
 struct BulletinsToolbar: ToolbarContent {
     @Binding var unreadOnly: Bool
     @Binding var showNotificationSettings: Bool
@@ -20,7 +18,7 @@ struct BulletinsToolbar: ToolbarContent {
         }
         // The dot opts out of the shared toolbar background: that capsule spans
         // neighbouring items and stays while the dot fades on idle, leaving an
-        // empty pill. Bare also matches the pages that draw it in a plain header row.
+        // empty pill.
         if #available(iOS 26, *) {
             ToolbarItem(placement: .topBarTrailing) {
                 SyncStatusDot(servers: [.backend], lastSynced: .at(bulletinsSyncedAt))

@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The onboarding page that lists what TigerSync shares and lets the user turn it off.
 struct OnboardingCloudSyncPage: View {
     @Binding var syncEnabled: Bool
     let onNext: () -> Void

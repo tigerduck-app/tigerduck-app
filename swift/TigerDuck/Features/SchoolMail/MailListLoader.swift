@@ -1,16 +1,13 @@
 #if os(iOS)
 import Foundation
 
-/// The list's loads: the cached pages painted first, each folder's newest page merged in, the walk
-/// back past a newest window that holds only deleted mail, and the older pages the list's end asks for.
 @MainActor
 enum MailListLoader {
     typealias Fetched = (pages: [(String, MailFolderPage)], failure: MailClientError?)
 
     /// Paints each covered folder's cached page first, then merges the newest page of each from
     /// the server into what is loaded: one round trip per covered folder however far the list was
-    /// scrolled, since Mail2000 caps connections and answers "server busy" under load. A read flag
-    /// or removal made while the pages are in flight stays.
+    /// scrolled, since Mail2000 caps connections and answers "server busy" under load.
     static func load(list: MailListViewModel) async {
         var selection = list.selection
         let epoch = list.loads.accountEpoch
@@ -63,7 +60,6 @@ enum MailListLoader {
         }
     }
 
-    /// Merges and saves one fetched newest page; false when the list moved on meanwhile.
     private static func merge(
         _ fresh: MailFolderPage, folder: String, since token: EditToken, selection: MailFolderSelection, epoch: Int,
         list: MailListViewModel
@@ -104,8 +100,6 @@ enum MailListLoader {
         return painted
     }
 
-    /// A folder that fails leaves the others' pages; a lost connection, a busy server or a
-    /// rejected password stops at that folder, as each one after it would fail the same way.
     static func newestPages(of folders: [String], session: MailPageSession) async throws -> Fetched {
         let fetched = try await session.use { client -> Fetched in
             var pages: [(String, MailFolderPage)] = []
@@ -155,8 +149,6 @@ enum MailListLoader {
         return current
     }
 
-    /// Each covered folder's next older page, walking past windows of deleted mail for at most
-    /// `MailConstants.emptyWindowWalkbackPages` more pages.
     static func loadOlder(list: MailListViewModel) async {
         let selection = list.selection
         let epoch = list.loads.accountEpoch

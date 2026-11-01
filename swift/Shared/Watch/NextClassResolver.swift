@@ -22,13 +22,11 @@ public nonisolated enum NextClassResolver {
         return schedule.timeline.classes(on: now).filter { !$0.isCancelled }.map(schedule.course)
     }
 
-    /// The starts and ends after `now` of the classes held today and on the next `days - 1` days.
     public static func boundaries(courses: [WatchCourse], after now: Date, days: Int, quietDays: Set<String>) -> [Date] {
         WatchSchedule(courses: courses, quietDays: quietDays).timeline.boundaries(after: now, days: days)
     }
 }
 
-/// The phone's meetings as `ClassTimeline` meetings, each with the class it came from.
 private nonisolated struct WatchSchedule {
     let timeline: ClassTimeline
     private let sources: [(meeting: WatchCourse, changes: [(day: String, held: WatchCourse)])]

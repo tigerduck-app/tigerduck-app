@@ -1,8 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// The message screen's actions that reach past the mail on screen: moving or deleting it, and
-/// fetching its source or an attachment, each kept in the cache under the mail's UIDVALIDITY.
 @MainActor
 enum MailMessageActions {
     static func move(model: MailMessageViewModel, to target: String) async -> Bool {
@@ -68,9 +66,6 @@ enum MailMessageActions {
         }
     }
 
-    /// `BODY.PEEK[]`, which never marks the mail read. Cached like the body, so a visit does not
-    /// download the whole source again; without a cached page there is no UIDVALIDITY to key it
-    /// by, so it is fetched but not kept. `MailSourceTextView` lays out only what is on screen.
     static func loadSource(model: MailMessageViewModel) async {
         model.activity.sourceLoadFailed = false
         let cache = model.stores.cache

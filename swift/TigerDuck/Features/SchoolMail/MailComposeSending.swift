@@ -1,11 +1,8 @@
 #if os(iOS)
 import Foundation
 
-/// Compose's work on the connection once a mail is built: sending it, or saving it to Drafts,
-/// and then the mail it answers and the draft it replaces.
 @MainActor
 enum MailComposeSending {
-    /// The reopened draft a send or save replaces.
     struct ReplacedDraft {
         var uid: UInt32
         var pageUIDValidity: UInt32?
@@ -37,7 +34,6 @@ enum MailComposeSending {
         }
     }
 
-    /// The folder roles as they stand after Drafts was found or created.
     static func saveDraft(
         _ message: Data, roles: [MailFolderRole: String], replacing draft: ReplacedDraft?,
         session: MailPageSession, prefs: any MailPreferences
@@ -72,8 +68,6 @@ enum MailComposeSending {
             let result = try await MailMover.deletePermanently(uids: [draft.uid], in: folder, client: client, previouslyFlagged: owned)
             prefs.setOwnedDeleted(result.stillPending)
         } catch {
-            // The STORE may already have landed; an unclaimed `\Deleted` UID blocks every later
-            // EXPUNGE in Drafts for good, so the message screen's recovery applies here too.
             guard let claim = await MailMover.recoverAfterFailure(after: error, uid: draft.uid, previouslyFlagged: owned,
                                                                   client: client, wasAlreadyDeleted: draft.wasAlreadyDeleted) else {
                 return

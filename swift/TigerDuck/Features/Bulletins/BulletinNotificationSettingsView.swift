@@ -152,9 +152,7 @@ struct BulletinNotificationSettingsView: View {
     /// the enable button cannot move: iOS never re-prompts after a refusal, so
     /// `requestAuthorization` returns `false` silently and `enablePush()` stops at its guard. The
     /// on-state branch's status row and Settings button are unreachable from here, so this section
-    /// carries both. An unknown future status errs toward the route, matching
-    /// `NotificationPermissionSettingsView.notificationPermissionStatus(for:)`, which maps it to
-    /// `.notGranted`. `static` over a plain value so a test needs no view or `AppEnvironment`.
+    /// carries both.
     static func requiresSystemSettingsRoute(for status: UNAuthorizationStatus) -> Bool {
         switch status {
         case .denied: return true

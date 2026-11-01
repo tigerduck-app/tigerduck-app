@@ -1,14 +1,7 @@
 import UIKit
 import WebKit
 
-/// The page script behind ``BrowserFind``, in a script world of the app's own.
 enum BrowserFindScript {
-    /// The body `run` calls with `action` and its arguments: texts gives the text of every run it
-    /// searches, mark highlights the ranges found in them and gives how many matches it marked. A
-    /// run is the text nodes of one stretch of inline text, so a phrase split by `<b>` still
-    /// matches; a block, a line break or skipped content that shows ends it. Editable text, such
-    /// as a rich-text answer, and SVG are skipped. Highlights leave the page's text nodes whole,
-    /// so the page's own scripts can still update them while find is on.
     nonisolated static let source = """
     var marker = 'data-tigerduck-find';
     var all = 'tigerduck-find', shown = 'tigerduck-find-current';
@@ -114,9 +107,6 @@ enum BrowserFindScript {
       addEventListener('scroll', spotlight, true);
       addEventListener('resize', spotlight);
     }
-    // Centres the match in each scrolled box inside the page, vertically within what the browser's
-    // bars leave visible: `view` is that band's top and bottom, the view's width and its scroll
-    // offset, in points. The browser scrolls the page itself.
     function centre(range) {
       var scale = view[2] / innerWidth;
       var top = (view[0] + view[3]) / scale - scrollY, bottom = (view[1] + view[3]) / scale - scrollY;
@@ -152,9 +142,6 @@ enum BrowserFindScript {
 }
 
 extension WKWebView {
-    /// One call of ``BrowserFindScript/source``, with every argument the script reads present. A match it
-    /// selects is scrolled to the middle of the band the scroll view's insets leave, which the
-    /// browser sets to its bars, or to the find bar and the keyboard while it finds.
     func runFind(_ arguments: [String: Any]) async -> Any? {
         let inset = scrollView.adjustedContentInset
         let view = [inset.top, bounds.height - inset.bottom, bounds.width, scrollView.contentOffset.y]
@@ -165,8 +152,6 @@ extension WKWebView {
         return result
     }
 
-    /// `match` is `[left, top, right, bottom, innerWidth]` in the page's CSS pixels. Safari
-    /// centres the match it shows; across, the page only moves when the match is out of view.
     private func reveal(_ match: [Double]) {
         let scale = bounds.width / match[4]
         let inset = scrollView.adjustedContentInset

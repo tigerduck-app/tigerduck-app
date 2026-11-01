@@ -1,8 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// Where a link, a notification tap or a widget sends the user, held until the view that shows
-/// it reads and clears it.
 @MainActor
 @Observable
 final class AppRouter {
@@ -32,7 +30,6 @@ final class AppRouter {
         pendingWidgetDestination = nil
     }
 
-    /// A class table share link, a widget's link, or on iPhone a Live Activity's assignment link.
     func open(_ url: URL, signIn: AccountSession.Ticket) {
         if let text = ClassTableShareLink.codeText(url) {
             HeldShareLink.shared.arrived(text, signIn: signIn)

@@ -25,8 +25,6 @@ struct MailComposeView: View {
         mode = context.mode
     }
 
-    /// For a screen without a mailbox of its own: the folder roles and the sent-copy notice go to
-    /// the closures.
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String],
          onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void, onSentCopyNotice: @escaping (String) -> Void) {
         let events = MailboxEvents()

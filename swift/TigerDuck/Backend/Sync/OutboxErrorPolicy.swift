@@ -1,11 +1,6 @@
 import Foundation
 
-/// How the outbox treats an op's failed send: parked for the next course upload, kept for
-/// another try without spending an attempt, or counted.
 enum OutboxErrorPolicy {
-    /// A course's colour, name or ignore setting the backend cannot place yet, 404
-    /// `course_not_found` as the upload that adds the course has not landed, or a colour or name
-    /// whose course this device cannot name, waits parked for the next course upload.
     static func parksAtOnce(_ error: Error, for op: SyncOp) -> Bool {
         switch op {
         case .courseOverride where error is CourseKeyUnknownError:
@@ -20,8 +15,6 @@ enum OutboxErrorPolicy {
 
     static func keepsWithoutAttempt(_ error: Error, for op: SyncOp) -> Bool {
         if case .courseAdd = op, case PushAPIError.httpStatus(_, _, _) = error { return false }
-        // The backend answers a course delete 409 only for its stamp, so another code is not a
-        // refusal of the delete, which a later attempt may still land.
         if case .courseDelete = op, case PushAPIError.httpStatus(409, _, _) = error { return true }
         return keepsWithoutAttempt(error)
     }

@@ -38,7 +38,6 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
 
     static let empty = AcademicCalendar(revision: 0, terms: [], holidays: [])
 
-    /// The class table reads this for every cell, so it decodes only when the stored data changes.
     static var cached: AcademicCalendar {
         let data = Defaults[.academicCalendarCache]
         guard !data.isEmpty else { return .empty }

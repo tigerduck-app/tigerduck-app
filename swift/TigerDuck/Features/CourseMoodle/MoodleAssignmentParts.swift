@@ -2,7 +2,6 @@
 import MarkdownUI
 import SwiftUI
 
-/// A heading of the assignment page.
 struct MoodleAssignmentSectionTitle: View {
     let title: String
 
@@ -14,7 +13,6 @@ struct MoodleAssignmentSectionTitle: View {
     }
 }
 
-/// A label and its time side by side, stacked at the accessibility sizes.
 struct MoodleAssignmentTimeRow: View {
     let label: String
     let time: String?
@@ -40,7 +38,6 @@ struct MoodleAssignmentTimeRow: View {
     }
 }
 
-/// Moodle text on the assignment page, whose links open as Moodle links.
 struct MoodleAssignmentMarkdown: View {
     let text: String
     let accent: Color
@@ -60,7 +57,6 @@ struct MoodleAssignmentMarkdown: View {
     }
 }
 
-/// The files of one part of the assignment.
 struct MoodleAssignmentFileRows: View {
     let refs: [MoodleFileRef]
     let store: MoodleCourseStore

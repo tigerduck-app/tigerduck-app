@@ -1,7 +1,5 @@
 import Foundation
 
-/// The calendar's events: the Moodle rows rebuilt with each assignment round and the school's
-/// calendar feed.
 final class CalendarEventFiles: AccountScoped {
     private let cache: JSONFiles
 

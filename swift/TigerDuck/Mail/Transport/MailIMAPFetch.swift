@@ -2,16 +2,12 @@
 import Foundation
 import SwiftMail
 
-/// The multi-command fetches of one mail on a selected folder: its body, an attachment, and the
-/// text the search index keeps. `LiveMailClient` runs each inside one serialized command.
 nonisolated enum MailIMAPFetch {
-    /// The message screen's fetch: the summary attributes plus the full header section.
-    ///
     /// ENVELOPE has `In-Reply-To` but not `References`, which SwiftMail reads only from a fetched
     /// header section, so without one every reply loses its thread chain. Ask with `.fullHeader`
     /// (`BODY.PEEK[HEADER]`), never a field list: Mail2000 echoes `HEADER.FIELDS ("References")`
     /// back as `HEADER.FIELDS (""REFERENCES"")`, which NIOIMAP cannot decode. `HEADER` has no list
-    /// to mangle. `MailFetchSectionTests` pins the request and replays the echo through NIOIMAP.
+    /// to mangle.
     static let detailOptions: FetchMessageInfoOptions = LiveMailClient.summaryOptions.union(.fullHeader)
 
     static let detailHeaderFields: [String]? = nil
@@ -58,13 +54,7 @@ nonisolated enum MailIMAPFetch {
         )
     }
 
-    /// The detail fetch, best-effort about the header section that carries `References`.
-    ///
-    /// Threading is worth a header section, not the message. If that fetch fails with a protocol
-    /// error, an undecodable response included, this retries with the summary attributes the list
-    /// already fetches, and the message opens without its thread chain. Other failures are not
-    /// retried: a second fetch cannot fix them, and a partial message would hide them. A decode
-    /// failure makes SwiftMail recycle the connection, so the retry re-EXAMINEs first.
+    /// A decode failure makes SwiftMail recycle the connection, so the retry re-EXAMINEs first.
     private static func detailInfo(
         folder: String, uid: UInt32, expectedUIDValidity: UInt32?, imap: IMAPServer
     ) async throws -> MessageInfo? {
@@ -102,7 +92,6 @@ nonisolated enum MailIMAPFetch {
         return data
     }
 
-    /// The mail's first text part, plain before HTML, as the search index reads it.
     static func searchBody(
         of info: MessageInfo, folder: String, expectedUIDValidity: UInt32, imap: IMAPServer
     ) async throws -> String? {
@@ -117,8 +106,8 @@ nonisolated enum MailIMAPFetch {
                                           label: part.declaredCharset)
             return isHTML(part) ? MailHTMLSanitizer.plainText(fromHTML: text) : text
         } catch {
-            // A part that will not decode leaves the mail searched by sender and subject. SwiftMail
-            // recycles the connection after a decode failure, so the folder is selected again.
+            // SwiftMail recycles the connection after a decode failure, so the folder is selected
+            // again.
             guard case .protocolError = MailIMAPErrors.map(error) else { throw error }
             let selection = try await imap.examineMailbox(folder)
             try assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)

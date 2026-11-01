@@ -2,8 +2,7 @@
 import Foundation
 import TigerDuckCore
 
-/// Which new mail is left out of notifications. It only decides whether a notification is posted:
-/// the mail stays in the inbox, unread. Kept on the device only and reset at sign-out
+/// Kept on the device only and reset at sign-out
 /// (https://github.com/tigerduck-app/tigerduck-app/issues/613).
 nonisolated struct MailMuteSettings: Codable, Equatable, Sendable {
     var quietHours = MailQuietHours()
@@ -19,14 +18,11 @@ nonisolated struct MailMuteSettings: Codable, Equatable, Sendable {
 
 nonisolated struct MailQuietHours: Codable, Equatable, Sendable {
     var isEnabled = false
-    /// Minutes after midnight, Taipei time like the rest of the app's day math.
     var start = 23 * 60
     var end = 7 * 60
     /// `Calendar` weekday numbers, 1 being Sunday.
     var weekdays: Set<Int> = Set(1...7)
 
-    /// A window that ends on the next day belongs to the day it starts on. Equal start and end
-    /// make an empty window.
     func contains(_ date: Date, calendar: Calendar = TaipeiTime.calendar) -> Bool {
         guard isEnabled, start != end else { return false }
         let parts = calendar.dateComponents([.weekday, .hour, .minute], from: date)
@@ -44,7 +40,6 @@ nonisolated enum MailMutePreset: String, Codable, CaseIterable, Sendable {
 
     static let bulletinSender = "bulletin@mail.ntust.edu.tw"
     static let moodleSender = "noreply@mail.ntust.edu.tw"
-    /// The receipt's subject in Moodle's Chinese and English interfaces.
     static let moodleSubmissionSubjects = ["您已經繳交", "You have submitted your assignment submission"]
 
     func matches(_ mail: MailSummary) -> Bool {
@@ -74,7 +69,6 @@ nonisolated struct MailMuteRule: Codable, Equatable, Identifiable, Sendable {
     var op: Operator
     var value: String
 
-    /// Case is ignored. "is" compares only the address for From and To or Cc.
     func matches(_ mail: MailSummary) -> Bool {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return false }
@@ -100,7 +94,6 @@ nonisolated struct MailMuteRule: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-// Every field decodes with its default when missing, so a field added later keeps the stored rules.
 extension MailMuteSettings {
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -123,7 +116,6 @@ extension MailQuietHours {
 }
 
 extension MailMuteRule {
-    /// A rule without its text decodes with none, which matches no mail.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()

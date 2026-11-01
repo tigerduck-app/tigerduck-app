@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The settings list's accounts: NTUST, the library and School Mail, each with its sign-in or
-/// sign-out button.
 struct SettingsAccountSection: View {
     let sheets: SettingsSheetState
 

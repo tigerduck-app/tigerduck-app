@@ -14,14 +14,12 @@ nonisolated struct MailComposeContext: Identifiable, Sendable {
     var attachments: [MailBodyPart] = []
     var to: [MailAddress] = []
 
-    /// The mail this compose answers, forwards or reopens, when it names one.
     var message: (folder: String, uid: UInt32)? {
         guard let folder, let uid else { return nil }
         return (folder, uid)
     }
 }
 
-/// The mail being written.
 struct MailComposeDraft {
     var to = ""
     var cc = ""
@@ -42,7 +40,6 @@ struct MailComposeDraft {
     }
 }
 
-/// What compose shows about its loads and sends.
 struct MailComposeStatus {
     var isSending = false
     var isLoading = false
@@ -55,7 +52,6 @@ struct MailComposeStatus {
     var didFinish = false
     var sentCopy: SentCopy?
 
-    /// The draft's recipients, or nil with the error to show when one cannot be sent.
     mutating func takeRecipients(of draft: MailComposeDraft, requireOne: Bool) -> MailRecipients.Parsed? {
         error = nil
         invalidRecipients = []
@@ -87,14 +83,11 @@ enum MailComposeField {
     case to, cc, subject, body
 }
 
-/// The fields the user typed into, which a prefill that lands late leaves alone, what
-/// `hasChanges` compares against, and the mail compose started from.
 struct MailComposeTracking {
     var edited: Set<MailComposeField> = []
     var baseline = ""
     var prepareStarted = false
     var sourceLoaded = false
-    /// The UIDVALIDITY the reopened draft was read under, which removing it after a send expects.
     var draftPageUIDValidity: UInt32?
     var draftWasAlreadyDeleted = false
 }

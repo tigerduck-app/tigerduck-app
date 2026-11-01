@@ -1,8 +1,6 @@
 import Foundation
 import os
 
-/// The refresh of the stored pair's token. It runs isolated to the `AuthTokenManager` it is given,
-/// as the manager's own did, so every check reads the pair as it is after the await before it.
 nonisolated struct StoredTokenRefresher: Sendable {
     let requests: AuthRequests
     let beginBackgroundTask: @Sendable () async -> @Sendable () async -> Void
@@ -16,7 +14,6 @@ nonisolated struct StoredTokenRefresher: Sendable {
         return token
     }
 
-    /// Sends only the token it was started for, the one a sign-out counts a refresh still out against.
     private func refreshStoredToken(
         _ refreshToken: String, ticket: AccountSession.Ticket, of manager: isolated AuthTokenManager
     ) async -> String? {
@@ -26,8 +23,6 @@ nonisolated struct StoredTokenRefresher: Sendable {
             let expires_in: Int
         }
 
-        // Read before the check: a sign-out holds the tokens before it stores another endpoint.
-        // The resend goes where the first send went, whatever endpoint is stored meanwhile.
         let backend = requests.baseURL()
         guard manager.signIns.isCurrent(ticket), manager.signOutsStarting.withLock({ $0 == 0 }),
               manager.pair.refreshToken == refreshToken else { return nil }
@@ -41,7 +36,6 @@ nonisolated struct StoredTokenRefresher: Sendable {
         if manager.pair.refreshToken == refreshToken { manager.pair.budget = send.budget }
         let reply = send.reply
         let mayResend = send.budget.allowsSend
-        // A sign-in sends no refresh token, so a Keychain that refuses every count still leaves a session.
         if send.uncounted, await signedInAgain(since: ticket, of: manager) { return manager.pair.accessToken }
         guard let (data, http) = reply else {
             noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: mayResend, of: manager)
@@ -53,7 +47,6 @@ nonisolated struct StoredTokenRefresher: Sendable {
                 noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: mayResend, of: manager)
                 return nil
             }
-            // A sign-in that stored its pair meanwhile ended this token's session on the backend.
             guard manager.signIns.isCurrent(ticket), manager.pair.refreshToken == refreshToken else {
                 noteOvertaken(
                     ticket, sent: refreshToken, accessToken: result.access_token,
@@ -71,7 +64,6 @@ nonisolated struct StoredTokenRefresher: Sendable {
             noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: mayResend && !turnedDown, of: manager)
             return nil
         }
-        // A refusal of a token a sign-in has replaced says nothing of the sign-in's pair.
         guard turnedDown, manager.pair.refreshToken == refreshToken else { return nil }
 
         if await signedInAgain(since: ticket, of: manager) { return manager.pair.accessToken }
@@ -100,9 +92,6 @@ nonisolated struct StoredTokenRefresher: Sendable {
         return await relogin() && manager.signIns.isCurrent(ticket)
     }
 
-    /// `uncounted` when the Keychain refused the count, so nothing went out. A token a sign-in
-    /// replaced meanwhile is not sent either, but it is no longer this refresh's to sign in for.
-    /// The budget is counted before the send, so an app that ends during it still counts it.
     private func postCounted(
         _ refreshToken: String, after before: RefreshTokenUseBudget, on backend: URL,
         of manager: isolated AuthTokenManager

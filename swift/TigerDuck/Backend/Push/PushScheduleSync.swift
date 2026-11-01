@@ -5,8 +5,6 @@ import os
 import UIKit
 #endif
 
-/// Keeps the backend's copy of this device's reminder schedule, its Moodle credentials and its
-/// push switches up to date.
 @MainActor
 final class PushScheduleSync {
     private unowned let app: AppEnvironment
@@ -27,14 +25,11 @@ final class PushScheduleSync {
 
     #if os(iOS)
     /// A sync trigger's handler calls this after the sync and the widgets' reload, before it
-    /// answers the push: `requestSync` sends nothing in the background, and iOS may
-    /// suspend the app once the push is answered.
+    /// answers the push: iOS may suspend the app once the push is answered.
     func sendAfterSyncTrigger(_ outcome: FullSyncOutcome) async {
         guard Self.sendsScheduleAfterSyncTrigger(
             outcome: outcome, applicationState: UIApplication.shared.applicationState
         ) else { return }
-        // The sync queued a settings reconcile, which may take another device's lead times and
-        // scenarios; the background drops the schedule request a change there starts.
         await NotificationSettingsPushQueue.tail?.value
         await app.pushCoordinator.syncNow { self.pushScheduleInputs() }
     }

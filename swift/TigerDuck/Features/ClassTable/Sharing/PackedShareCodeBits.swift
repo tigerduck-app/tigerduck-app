@@ -19,15 +19,12 @@ nonisolated struct BitWriter {
         for shift in (0..<count).reversed() { bits.append(value >> shift & 1 == 1) }
     }
 
-    /// Elias gamma: one zero fewer than the bits of `value`, which is 1 or more, then `value`.
     mutating func gamma(_ value: Int) {
         let count = bitLength(value)
         put(0, count - 1)
         put(value, count)
     }
 
-    /// A sorted subset of `0..<n`: its size, then its rank among subsets of that size, the sum of
-    /// C(index, position + 1) (the combinatorial number system).
     mutating func subset(_ indices: [Int], of n: Int, nonEmpty: Bool) {
         gamma(indices.count + (nonEmpty ? 0 : 1))
         let rank = indices.enumerated().reduce(0) { $0 + binomial($1.element, $1.offset + 1) }
@@ -50,7 +47,6 @@ nonisolated struct BitReader {
         return value
     }
 
-    /// Refused past `limit` or more than 32 leading zeros.
     mutating func gamma(limit: Int = 1 << 32) throws -> Int {
         var zeros = 0
         while try get(1) == 0 {

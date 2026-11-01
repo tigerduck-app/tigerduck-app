@@ -2,9 +2,6 @@
 import Foundation
 import os
 
-/// The versioned envelope each School Mail cache file is written in, naming the account it holds,
-/// and the protected, unbacked-up writes behind it. A file of another version or account reads as
-/// missing and is deleted.
 nonisolated struct MailCacheFiles: Sendable {
     static let formatVersion = 1
 
@@ -60,7 +57,6 @@ nonisolated struct MailCacheFiles: Sendable {
         Self.excludeFromBackup(directory)
     }
 
-    /// The cache is a copy of the server's mail, so it stays out of the device's backups.
     static func excludeFromBackup(_ url: URL) {
         var values = URLResourceValues()
         values.isExcludedFromBackup = true

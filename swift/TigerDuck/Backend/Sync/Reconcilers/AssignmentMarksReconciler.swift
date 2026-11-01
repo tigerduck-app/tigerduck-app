@@ -1,8 +1,6 @@
 import Foundation
 import os
 
-/// The marks of a snapshot against this device's: a mark on one side only is taken, one queued
-/// here is kept, and one the two sides disagree on is asked about.
 @MainActor
 struct AssignmentMarksReconciler: CategoryReconciler {
     static let category = "assignments"
@@ -61,7 +59,6 @@ struct AssignmentMarksReconciler: CategoryReconciler {
         )
     }
 
-    /// The marks both sides hold and disagree on; a mark queued here is not one.
     static func conflicts(
         server: ServerMarks, localArchived: Set<String>, localCompleted: Set<String>,
         protected: Set<String>, titles: [String: String]
@@ -81,9 +78,6 @@ struct AssignmentMarksReconciler: CategoryReconciler {
         }
     }
 
-    /// Keeps the server's side of the marks the user was asked about. The backend is read again
-    /// first: another device may have changed a mark since the question was asked. A sign-out
-    /// meanwhile leaves the next account's marks alone.
     static func keepServerSide(
         read: () async throws -> ServerMarks,
         protected: () async -> Set<String>,

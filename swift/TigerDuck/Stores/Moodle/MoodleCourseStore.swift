@@ -17,7 +17,6 @@ final class MoodleCourseStore {
     let summary: MoodleFeed<MoodleCourseSummary>
     let assignments: MoodleCourseAssignments
 
-    /// Where the store's data comes from and where its files go.
     private struct Source {
         let termCourseIds: [Int]
         let courseCodes: [String]
@@ -101,8 +100,6 @@ final class MoodleCourseStore {
 
     var materialsFetchedAt: Date? { materials.fetchedAt }
 
-    /// A site that does not allow the call answers as if the course had no materials, which hides
-    /// their row. Copies of files Moodle has a newer version of go once the answer is in.
     func refreshMaterials() async {
         await materials.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleCourseContentsService.contentsFunction) else {
@@ -114,8 +111,6 @@ final class MoodleCourseStore {
         downloads.removeOutdated(fresh.fileRefs.map { ($0.file, location(of: $0.file, in: $0.owner)) })
     }
 
-    /// A file or link opened on screen, which Moodle logs as a view of its module when the site
-    /// allows the call. A failed call is not retried and shows nothing.
     @discardableResult
     func open(_ material: MoodleMaterial) -> Task<Void, Never> {
         Task { [api, context] in
@@ -148,8 +143,6 @@ final class MoodleCourseStore {
         downloads.cancel(location(of: file, in: owner))
     }
 
-    /// The course's grade items for the signed-in student. A site that does not allow the call
-    /// answers as if the course had none, which hides the row.
     func refreshGrades() async {
         await grades.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleGradeService.gradeItemsFunction) else {
@@ -188,10 +181,6 @@ final class MoodleCourseStore {
         return members.value?.members.first { $0.id == id }
     }
 
-    /// The whole list in one call, which the section counts and the screen groups and searches.
-    /// A site that does not allow the call, or a course that keeps its participants from the
-    /// account, answers as if the course had no members, which hides their row for good rather
-    /// than failing on every refresh.
     func refreshMembers() async {
         await members.refresh(membersFetch)
     }
@@ -213,13 +202,11 @@ final class MoodleCourseStore {
         (try? await api.functions())?.contains(MoodleProfilePictureService.updateFunction) == true
     }
 
-    /// Sets the account's picture, then fetches the members again for its new address.
     func updatePicture(_ jpeg: Data) async throws {
         try await api.updatePicture(jpeg) { @MainActor [context] in context.isCurrent() }
         await refetchMembers()
     }
 
-    /// Fetches the members after a change made on Moodle, which a fetch begun before it cannot answer.
     func refetchMembers() async {
         guard context.isCurrent() else { return }
         await members.refetch(membersFetch)
@@ -244,8 +231,6 @@ final class MoodleCourseStore {
         return value
     }
 
-    /// One call for this course. A site that does not allow it answers as if the course had no
-    /// summary, which shows nothing.
     func refreshSummary() async {
         await summary.refresh { [api, courseId] in
             guard try await api.functions().contains(MoodleCourseSummaryService.coursesFunction) else { return .empty }

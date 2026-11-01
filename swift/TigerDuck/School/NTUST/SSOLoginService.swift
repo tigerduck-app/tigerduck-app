@@ -28,10 +28,6 @@ enum SSOLoginService {
     private static var isLoginRunning = false
     private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
 
-    /// Runs `body` once every login started before it has finished. A login that meets the
-    /// SSO page clears the ssoam2 cookies, so two at once break each other. An automatic login
-    /// that waited then finds the session signed in and posts no password; one the user typed
-    /// still posts what was typed.
     static func oneAtATime<T>(_ body: () async throws -> T) async rethrows -> T {
         if isLoginRunning {
             await withCheckedContinuation { waitingLogins.append($0) }
@@ -74,13 +70,6 @@ enum SSOLoginService {
         }
     }
 
-    /// ``ensureServiceLogin`` for the retry of a refused stored password. A live session lets an
-    /// automatic sign-in through without a post, which says nothing about the password, so this
-    /// ends the session as a typed sign-in does and posts. A refusal is counted, but a yes leaves
-    /// the count to the caller, which forgets it once the rest of its retry went through. Once it
-    /// holds the SSO locks it posts nothing while no refusal is counted, as a sign-in it waited
-    /// behind may have settled it, nor while `mayPost` says no, as for a sign-in typed meanwhile,
-    /// nor while a refusal's wait holds; the session then stays as it is.
     static func signInAgain(
         session: URLSession,
         serviceURL: URL,
@@ -145,9 +134,6 @@ enum SSOLoginService {
         do {
             var (currentHTML, currentURL) = try await SSOForms.visit(serviceURL, session: session, isCurrent: isCurrent)
 
-            // Step 3: Check if we're on the SSO login page. A live session would let the password
-            // through unchecked, so a sign-in past it drops the service's cookies and goes on to
-            // step 4, which ends the SSO session: the visit after it reaches the form.
             if interactive || retry, !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
             } else if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
@@ -166,9 +152,7 @@ enum SSOLoginService {
 
             if !interactive, SchoolPasswordPosts.storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
 
-            // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
-            // device-change warnings. They are in the session's jar, the NTUST-private one:
-            // clearing `HTTPCookieStorage.shared` would miss them and only hurt unrelated callers.
+            // Keeping Moodle and service cookies avoids device-change warnings.
             let jar = session.configuration.httpCookieStorage
             jar?.cookies?
                 .filter { $0.domain.contains("ssoam2.ntust.edu.tw") }

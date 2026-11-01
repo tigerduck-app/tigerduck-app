@@ -62,7 +62,6 @@ extension ClassDay {
     }
 }
 
-/// The snapshot as `ClassTimeline` meetings, each with the course and the changes it came from.
 struct WidgetSchedule {
     let snapshot: WidgetSnapshot
     let timeline: ClassTimeline
@@ -102,7 +101,6 @@ struct WidgetSchedule {
         self.sources = sources
     }
 
-    /// The index in the snapshot's `courses` of the course that holds `item`.
     func courseIndex(of item: ScheduledClass) -> Int { sources[item.meeting].course }
 
     func row(_ item: ScheduledClass) -> WidgetTimelineDerivation.TodayRow {
@@ -125,7 +123,6 @@ enum WidgetTimelineDerivation {
 
         let schedule = WidgetSchedule(snapshot)
         let today = schedule.timeline.classes(on: date).filter { !$0.isCancelled }
-        // One card per course, in the snapshot's course order.
         var seen = Set<Int>()
         let ongoing = ClassTimeline.running(at: date, in: today)
             .filter { seen.insert(schedule.courseIndex(of: $0)).inserted }
@@ -177,7 +174,6 @@ enum WidgetTimelineDerivation {
         var isCancelled: Bool { change?.cancelled == true }
     }
 
-    /// Today's classes, cancelled ones included, by start and then by period.
     static func todayRows(snapshot: WidgetSnapshot, at date: Date) -> [TodayRow] {
         let schedule = WidgetSchedule(snapshot)
         let order = snapshot.periodOrder

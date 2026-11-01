@@ -1,11 +1,8 @@
 import Foundation
 import os
 
-/// Sends the outbox's edits through `OutboxSender`, one drain at a time, and the colour fills of
-/// a full sync; a sign-out stops both. `CloudSyncCoordinator` runs its ticks here.
 @MainActor
 final class OutboxDrain {
-    /// What this device may send, read at each drain.
     struct Policy {
         let syncsAssignmentMarks: @Sendable () -> Bool
         let syncsCourseIgnores: @Sendable () -> Bool
@@ -13,14 +10,11 @@ final class OutboxDrain {
         let isProtectedDataAvailable: @MainActor () -> Bool
     }
 
-    /// Sign-outs so far and the ones still settling: a drain or a fill begun before one, or while
-    /// one settles, sends nothing more.
     private struct SignOuts {
         var count = 0
         var settling = 0
     }
 
-    /// A tick asked for while one drains runs once more after it.
     private struct Tick {
         var inFlight = false
         var askedDuringFlight = false
@@ -57,8 +51,6 @@ final class OutboxDrain {
         } while tick.askedDuringFlight && isActive()
     }
 
-    /// A drain the timer, `scheduleTick` or an edit started runs in a task the sign-out does not
-    /// cancel, so its request is cancelled here.
     func beginSignOut() {
         signOuts.count += 1
         signOuts.settling += 1
@@ -101,9 +93,6 @@ final class OutboxDrain {
         }
     }
 
-    /// Sends the colours a full sync found missing or moved, and takes the colour the backend kept
-    /// when another device's landed first, unless a colour edit was queued here since. One that
-    /// fails goes at the next full sync, which finds it missing again.
     func sendColorFills(_ fills: [CourseColorFill]) async {
         let signOutsBefore = signOuts.count
         let editsBefore = edits.overrideEdits
@@ -126,7 +115,6 @@ final class OutboxDrain {
         }
     }
 
-    /// Refuses an op a discard dropped after the drain picked it, and one picked before a sign-out.
     private func execute(_ op: SyncOp, signOutsBefore: Int) async throws {
         guard signOuts.count == signOutsBefore, signOuts.settling == 0 else { throw CancellationError() }
         guard !SyncOutbox.isCutOff(op, by: edits.cutoffs) else { return }

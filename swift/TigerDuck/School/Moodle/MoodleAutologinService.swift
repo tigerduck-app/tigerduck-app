@@ -42,8 +42,7 @@ final class MoodleAutologinService {
         return Self.signedInURL(key, opening: url) ?? url
     }
 
-    /// Asks for a key in a task of its own, which runs to its end after the open that started it
-    /// stops waiting: Moodle starts ``keyInterval`` at the request, so a key that comes late counts.
+    /// Moodle starts ``keyInterval`` at the request, so a key that comes late counts.
     private func startKeyRequest(for ticket: AccountSession.Ticket) -> Task<Key?, Never> {
         isRequesting = true
         return Task {
@@ -100,9 +99,7 @@ final class MoodleAutologinService {
 
     private nonisolated static let moodleHost = AppConstants.moodleBaseURL.host?.lowercased()
 
-    /// Asks Moodle for a key under the stored token, which is renewed as for any Moodle call. The
-    /// private token goes in the POST body, since Moodle refuses one in the query, and is read
-    /// again inside because a renewed token comes with its own. Nil without a private token.
+    /// The private token goes in the POST body, since Moodle refuses one in the query.
     nonisolated static func requestKey(
         tokens: MoodleWebserviceClient.TokenSource = .keychain,
         privateToken: () -> String? = {

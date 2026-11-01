@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The onboarding page that signs in to the NTUST system.
 struct OnboardingLoginPage: View {
     enum Field { case studentId, password }
 

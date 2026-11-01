@@ -1,7 +1,6 @@
 import Foundation
 import os
 
-/// The holidays the user asked to be reminded on.
 @MainActor
 struct HolidayOverridesReconciler: CategoryReconciler {
     static let category = "holidays"

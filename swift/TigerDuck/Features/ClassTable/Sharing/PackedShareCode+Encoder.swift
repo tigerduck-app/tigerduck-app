@@ -3,9 +3,6 @@ import TigerDuckCore
 
 nonisolated extension PackedShareCode {
     enum Encoder {
-        /// `terms` as `ClassTableShareCode.encode` keeps them: distinct, each holding distinct course codes of NTUST's
-        /// shape. Only the newest 24 terms are written, which only sharing every term reaches; past
-        /// any other limit there is no code.
         static func encode(studentId: String, sharedAt: Date, terms: [Term]) -> String? {
             let seconds = sharedAt.timeIntervalSince(epoch)
             guard studentId.utf8.count <= maxStudentIdLength,
@@ -82,7 +79,6 @@ nonisolated extension PackedShareCode {
             }
         }
 
-        /// Returns the level the head's next leveled tail is written against.
         private static func writeTail(_ tail: String, level: Int?, into w: inout BitWriter) -> Int? {
             switch shape(of: tail) {
             case let .leveled(tailLevel, number, isSeven, serial):

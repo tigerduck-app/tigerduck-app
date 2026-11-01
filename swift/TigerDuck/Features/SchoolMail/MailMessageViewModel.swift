@@ -36,13 +36,9 @@ final class MailMessageViewModel {
     @ObservationIgnored let events: MailboxEvents
     @ObservationIgnored let session: MailPageSession
     @ObservationIgnored let stores: MailMessageStores
-    /// The UIDVALIDITY the mail was opened under, which every command on it expects.
     @ObservationIgnored private(set) var pageUIDValidity: UInt32?
     @ObservationIgnored private var htmlGeneration = 0
 
-    /// `cache` and `prefs` are injectable so a test can use throwaway storage. They default to nil
-    /// and resolve in this main-actor body: a default argument is type-checked nonisolated, where
-    /// naming the main-actor `MailAccountManager.shared` is an error in the Swift 6 language mode.
     init(
         route: MailMessageRoute,
         session: MailPageSession,
@@ -213,7 +209,6 @@ final class MailMessageViewModel {
         return isNeverRenderedInApp(part)
     }
 
-    /// Opening such a part always takes the share-sheet hand-off, never Quick Look.
     func isNeverRenderedInApp(_ part: MailBodyPart) -> Bool {
         MailAttachmentRisk.neverRenderedInApp(filename: part.filename ?? "", contentType: part.contentType)
     }
@@ -228,7 +223,6 @@ final class MailMessageViewModel {
         MailLinkTarget.target(text: url.absoluteString, href: url.absoluteString)
     }
 
-    /// Nil when a later render superseded this one.
     private func render(html: String?, textBody: String?, allowImages: Bool) async -> MailMessageRenderer.Rendered? {
         htmlGeneration += 1
         let generation = htmlGeneration

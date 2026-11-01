@@ -62,7 +62,7 @@ nonisolated struct MoodleMaterialSection: Codable, Sendable, Hashable, Identifia
     let id: Int
     let name: String
     let materials: [MoodleMaterial]
-    /// Moodle's section number, 0 for the general section; optional so materials cached without it still load.
+    /// Moodle's section number, 0 for the general section.
     var number: Int? = nil
 }
 
@@ -107,7 +107,6 @@ nonisolated struct MoodleCourseSummary: Codable, Sendable, Equatable {
     let html: String
     let text: String
     let names: [String]
-    /// The course format, such as `weeks` or `topics`, and its start date, which find the current week.
     var format: String? = nil
     var startDate: Date? = nil
 

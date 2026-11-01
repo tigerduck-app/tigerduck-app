@@ -1,9 +1,6 @@
 import Defaults
 import Foundation
 
-/// What this device sends to and applies from the backend, by category: TigerSync's switches and
-/// the conflict checks a switch turned back on still owes. Categories are the backend's names
-/// (`courses`, `course_colors`, `course_names`, `assignments`).
 nonisolated struct SyncPolicy: Equatable, Sendable {
     let cloudSyncEnabled: Bool
     let switchedOn: Set<String>
@@ -22,8 +19,6 @@ nonisolated struct SyncPolicy: Equatable, Sendable {
         )
     }
 
-    /// The school's roster goes up from iOS whenever TigerSync is on, as the backend's reminders
-    /// need it; the Mac sends it only with course sync on.
     var uploadsCourses: Bool {
         guard cloudSyncEnabled else { return false }
         #if os(macOS)
@@ -41,13 +36,10 @@ nonisolated struct SyncPolicy: Equatable, Sendable {
         sendsAssignmentMarks && switchedOn.contains("courses")
     }
 
-    /// A colour or name edit waits while that category's conflict check is owed.
     func sendsCourseOverride(_ category: String) -> Bool {
         !pendingChecks.contains(category)
     }
 
-    /// A full sync applies a switched-on category unless its conflict check is owed; marks also
-    /// wait for the reason given, unless the reason is that they just went up.
     func categoriesTaken(marksLeftFor reason: MarksLeftReason?) -> Set<String> {
         let holdsCourseOverrides = pendingChecks.contains("course_colors") || pendingChecks.contains("course_names")
         return switchedOn.filter { category in
@@ -59,7 +51,6 @@ nonisolated struct SyncPolicy: Equatable, Sendable {
         }
     }
 
-    /// Why a full sync leaves this device's marks as they are.
     nonisolated enum MarksLeftReason: String, Sendable {
         case switchedOff = "Assignments sync is off"
         case conflictCheckPending = "conflict check pending"

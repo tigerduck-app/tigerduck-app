@@ -1,9 +1,6 @@
 import Foundation
 import os
 
-/// The device register: a debounced attempt once a token arrives, its retries, and the passive
-/// register a Mac sends without a token. It runs isolated to the `PushRegistrationService` it is
-/// given, as the service's own did, so each step reads the service as it is after each await.
 nonisolated enum DeviceRegistration {
     static func registerIfReady(on service: isolated PushRegistrationService) {
         #if os(iOS)

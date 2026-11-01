@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The alerts for renaming and deleting the imported person on screen, and for looking their
-/// table up or saving it failing.
 struct ClassTablePersonDialogs: ViewModifier {
     @Bindable var people: ShownPersonModel
 

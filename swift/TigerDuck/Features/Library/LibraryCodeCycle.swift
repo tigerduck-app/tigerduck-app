@@ -1,8 +1,6 @@
 import Foundation
 import Observation
 
-/// When the library page asks for a new code: on a fixed interval while codes arrive, after a
-/// growing pause once requests fail, and the seconds the shown code has left.
 @Observable
 final class LibraryCodeCycle {
     var countdown = 30
@@ -16,7 +14,6 @@ final class LibraryCodeCycle {
 
     var isScheduled: Bool { refreshTimer != nil }
 
-    /// Runs `action` after `interval`, again every interval when `repeats`, in place of what was due.
     func schedule(after interval: TimeInterval, repeats: Bool = false, _ action: @escaping () -> Void) {
         refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: repeats) { _ in action() }
@@ -30,13 +27,11 @@ final class LibraryCodeCycle {
         consecutiveErrors = 0
     }
 
-    /// The pause before the next request, longer for each failure in a row.
     func noteFailure() -> TimeInterval {
         consecutiveErrors += 1
         return backoffSchedule[max(0, min(consecutiveErrors - 1, backoffSchedule.count - 1))]
     }
 
-    /// Counts the shown code down from `seconds` and calls `expired` once it reaches zero.
     func restartCountdown(from seconds: Int, expired: @escaping @MainActor () -> Void) {
         countdown = seconds
         countdownTimer?.invalidate()

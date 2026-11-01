@@ -14,7 +14,6 @@ nonisolated struct MailOriginal: Sendable {
 }
 
 extension MailOriginal {
-    /// The mail a reply or forward quotes, with `bodyText` as the screen shows it.
     init(detail: MailMessageDetail, bodyText: String) {
         let summary = detail.summary
         let address = summary.fromAddress?.mailNonEmpty
@@ -34,9 +33,6 @@ extension MailOriginal {
 }
 
 nonisolated enum MailReplyComposer {
-    /// RFC 5322 specials: a display name containing any of these must be quoted so the
-    /// formatted address round-trips through `MailAddress.parseList`. Matches Android's
-    /// `ComposeRules.formatOne`.
     private static let nameSpecials = CharacterSet(charactersIn: ",;\"<>():@\\")
 
     static func replySubject(_ subject: String) -> String {
@@ -63,11 +59,6 @@ nonisolated enum MailReplyComposer {
         return "\n\n\(block)\n\n\(normalizedLines(original.bodyText).joined(separator: "\n"))"
     }
 
-    /// "Name <address>" when a name is present, else the bare address, for the
-    /// human-readable From/To lines in a forward's header block (not a MIME header) and
-    /// for a compose recipient field. A name containing an RFC 5322 special is quoted with
-    /// `"` and has `\` and `"` backslash-escaped so it parses back through
-    /// `MailAddress.parseList`. Matches Android's `ComposeRules.formatOne`.
     static func formatted(_ address: MailAddress) -> String {
         guard let name = address.name?.mailNonEmpty else { return address.address }
         guard !address.address.isEmpty else { return name }

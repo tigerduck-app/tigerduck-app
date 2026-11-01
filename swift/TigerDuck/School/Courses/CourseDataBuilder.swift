@@ -1,7 +1,5 @@
 import Foundation
 
-/// A course's record from course query rows, or from Moodle and the grade list when the query has
-/// no row for it.
 enum CourseDataBuilder {
     nonisolated static func fallbackCourseData(
         courseNo: String,

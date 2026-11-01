@@ -3,8 +3,6 @@ import Foundation
 import os
 import TigerDuckCore
 
-/// Fetches a term's courses from course selection, the transcript, Moodle and the course query,
-/// and saves and uploads what it drew.
 enum CourseFetch {
 
 
@@ -52,9 +50,6 @@ enum CourseFetch {
         }
     }
 
-    /// Hands every term the answers fetched once for all of them, with the sign-in they were
-    /// fetched under: another account's answers must never pass a term's save check. Answers that
-    /// outlive a sign-out are dropped.
     static func warmTerms(
         _ semesters: [String],
         account: AccountSession,
@@ -88,7 +83,6 @@ enum CourseFetch {
         await SemesterCatalog.refreshIfStale()
         // The course-selection system serves one term and its list has no term
         // marker, so its numbers belong to the term the catalogue reports open.
-        // `currentSemesterCode()` lags: its month heuristic would misfile them for weeks.
         let servesSelectionSemester = semester == SemesterCatalog.selectionSemesterCode()
         let display = CourseStore.shared.display()
         let courseApiLanguage = display.language
@@ -168,7 +162,6 @@ enum CourseFetch {
             return (data, answered)
         }.compactMap { item in item.data.map { TermRoster.LookedUpCourse(course: $0.course(in: semester), answered: item.answered) } }
 
-        // The roster and the courses are applied once the backend's courses have been.
         guard await applyAfter() else { return CourseStore.shared.loadCourses(semester: semester) }
         if let roster = term.roster, !Task.isCancelled, authService.session.isCurrent(ticket) {
             CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster)

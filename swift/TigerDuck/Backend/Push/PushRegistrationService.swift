@@ -13,8 +13,7 @@ struct PushRegistrationSnapshot: Sendable {
     let lastRegisteredAt: Date?
 }
 
-/// Debug builds are issued sandbox tokens and TestFlight and App Store builds production ones;
-/// the backend picks the APNs host from the value uploaded.
+/// Debug builds are issued sandbox tokens and TestFlight and App Store builds production ones.
 nonisolated enum PushAPNsEnv {
     #if DEBUG
     static let resolvedForBuild = "development"
@@ -23,10 +22,6 @@ nonisolated enum PushAPNsEnv {
     #endif
 }
 
-/// The hardware model this device reports to the backend, for support work
-/// in the portal: the machine identifier ("iPhone17,3", "iPad16,3",
-/// "Mac15,3"). Apple exposes no marketing name. A simulator reports the
-/// identifier of the device it simulates.
 nonisolated enum PushDeviceModel {
     static let current: String? = {
         #if os(macOS)
@@ -49,16 +44,11 @@ nonisolated enum PushDeviceModel {
 }
 
 nonisolated enum PushDeviceClass {
-    // `@MainActor`: reading `UIDevice.current.userInterfaceIdiom` requires the
-    // main actor.
     @MainActor
     static var resolvedForBuild: String {
         #if os(macOS)
         return "mac"
         #else
-        // An iOS binary running on an Apple Silicon Mac ("Designed for iPad")
-        // reports `.mac`. Falling through to "iphone" there would mis-target
-        // operator pushes that filter on `device_class`.
         switch UIDevice.current.userInterfaceIdiom {
         case .pad:   return "ipad"
         case .mac:   return "mac"
@@ -79,7 +69,6 @@ nonisolated enum PushDeviceClass {
 
 
 actor PushRegistrationService {
-    // Internal for `DeviceRegistration` and `ActivityTokenRegistration`, which run isolated to this actor.
     let requests: PushDeviceRequests
     var tokens = HeldTokens()
     var lastAttempt: Task<Void, Never>?
@@ -101,9 +90,6 @@ actor PushRegistrationService {
         bundleId: String = "org.ntust.app.TigerDuck",
         attrsType: String = "TigerDuckActivityAttributes",
         apnsEnv: String = PushAPNsEnv.resolvedForBuild,
-        // No default: `PushDeviceClass.resolvedForBuild` is `@MainActor`, and
-        // an actor init evaluates default arguments in a nonisolated context.
-        // Callers pass it from their own main-actor context.
         deviceClass: String,
         debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
         retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
@@ -116,9 +102,6 @@ actor PushRegistrationService {
         self.retrySleep = retrySleep
     }
 
-    /// The language the app is rendering, not the device's region setting:
-    /// `preferredLocalizations` reflects what actually resolved against the
-    /// bundle, so the server's copy matches what the user sees on screen.
     static var currentLocaleTag: String {
         Bundle.main.preferredLocalizations.first ?? "en"
     }

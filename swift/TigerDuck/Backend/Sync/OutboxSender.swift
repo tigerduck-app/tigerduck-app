@@ -1,15 +1,10 @@
 import Defaults
 import Foundation
 
-/// A colour or name edit whose course this device cannot name by its key yet.
 nonisolated struct CourseKeyUnknownError: Error {}
 
-/// A backend without the course ignore setting answers 200 and drops it, so only an answer that
-/// names it settles the op.
 nonisolated struct CourseIgnoreNotStoredError: Error {}
 
-/// Sends one outbox edit with its own time, and gives a value the backend kept instead, an edit
-/// stamped later on another device, to the store that owns the field.
 @MainActor
 final class OutboxSender {
     private let push: PushCoordinator
@@ -39,11 +34,7 @@ final class OutboxSender {
         self.kept = kept ?? KeptValues()
     }
 
-    /// `newerQueued` tells whether an edit of the same field was queued after `op`; a value the
-    /// backend kept is applied only when none was.
     func send(_ op: SyncOp, newerQueued: @MainActor (SyncOp) async -> Bool) async throws {
-        // A sign-out during the waits clears the account's files; a value applied after it would
-        // write the departing account's back.
         let isCurrent = account.currentCheck()
         func applies() async -> Bool { !(await newerQueued(op)) && isCurrent() && !Task.isCancelled }
         switch op {
@@ -100,8 +91,6 @@ final class OutboxSender {
         }
     }
 
-    /// The course an edit names by its Moodle id number, or by its term and number when it has
-    /// none, in the edit's term first and then in any term this device holds.
     func courseKey(semester: String, identity: String) -> (key: String, courseNo: String)? {
         let terms = [semester] + SemesterCatalog.availableSemesters().filter { $0 != semester }
         for term in terms {
@@ -115,7 +104,6 @@ final class OutboxSender {
         return (CourseTombstone.serverKey(semester: term, courseNo: courseNo), courseNo)
     }
 
-    /// How an edit names its course: the Moodle id number, or the term and the number.
     nonisolated static func identity(semester: String, courseNo: String, moodleIdNumber: String?) -> String {
         moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 } ?? "\(semester)\(courseNo)"
     }
@@ -125,8 +113,6 @@ final class OutboxSender {
     }
 }
 
-/// Applies a value the backend kept over an edit this device sent, through the store that owns
-/// the field, while this device still syncs that category.
 @MainActor
 struct KeptValues {
     var policy: @MainActor () -> SyncPolicy = { .current }
@@ -134,7 +120,6 @@ struct KeptValues {
     var courses: CourseStore = .shared
     var assignments: AssignmentStore = .shared
 
-    /// The colour store hands any course that held the colour another one.
     func colorKept(_ hex: String?, courseNo: String) {
         let policy = policy()
         guard policy.switchedOn.contains("course_colors"), policy.sendsCourseOverride("course_colors"),

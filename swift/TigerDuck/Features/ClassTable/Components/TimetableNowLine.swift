@@ -1,7 +1,6 @@
 import SwiftUI
 import TigerDuckCore
 
-/// The line across today's column at the current time, and where it crosses the rows.
 struct TimetableNowLine: View {
     static let width: CGFloat = 1.5
     private static let dotSize: CGFloat = 7
@@ -20,8 +19,6 @@ struct TimetableNowLine: View {
             .accessibilityHidden(true)
     }
 
-    /// Where the current-time line crosses the rows, from the top of the first one: inside a period
-    /// by the share of it gone, between two shown periods in the middle of their gap.
     nonisolated static func offset(
         minute: Int, periods: [(start: Int, end: Int)], rowPitch: CGFloat, cellHeight: CGFloat
     ) -> CGFloat? {

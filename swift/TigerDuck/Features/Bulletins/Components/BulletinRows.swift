@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The bulletin list's rows: a loading, error or empty state, or the cards with their swipe
-/// action and, while the next page loads, a spinner under them.
 struct BulletinRows: View {
     let viewModel: BulletinsViewModel
     let taxonomy: BulletinTaxonomyStore
@@ -47,8 +45,7 @@ struct BulletinRows: View {
         } else {
             ForEach(displayedItems) { bulletin in
                 // A plain Button, not a NavigationLink, keeps the tap highlight without
-                // the trailing chevron. The push runs through the parent List's
-                // `.navigationDestination(item:)`.
+                // the trailing chevron.
                 Button {
                     detailingBulletin = bulletin
                 } label: {

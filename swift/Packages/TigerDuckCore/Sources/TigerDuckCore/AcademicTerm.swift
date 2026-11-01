@@ -84,8 +84,7 @@ public struct AcademicTerm: Hashable, Comparable, Sendable {
         return AcademicTerm(year: academicYear(at: date), season: (2...7).contains(month) ? .second : .first)
     }
 
-    /// `previousRegular` of a code. A summer code or one that is not a term comes back unchanged, which
-    /// is how the cached-term walks have always treated them.
+    /// `previousRegular` of a code. A summer code or one that is not a term comes back unchanged.
     public static func previousRegularCode(_ code: String) -> String {
         guard let term = AcademicTerm(code: code), term.season != .summer else { return code }
         return term.previousRegular.code

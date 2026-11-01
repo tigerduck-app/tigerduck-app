@@ -56,9 +56,6 @@ enum CourseLookupService {
 
     private static var syllabi: [LookupKey: Task<CourseSyllabus?, any Error>] = [:]
 
-    /// The course's syllabus, nil when the school has none. Kept for the app's run, since a
-    /// syllabus rarely changes within a term, and shared by callers while it loads; a failure is
-    /// not kept.
     static func syllabus(semester: String, courseNo: String, language: String) async throws -> CourseSyllabus? {
         let key = LookupKey(semester: semester, courseNo: courseNo, language: language)
         return try await keptSyllabus(key) {
@@ -117,8 +114,7 @@ enum CourseLookupService {
         guard let node, !node.isEmpty else { return [:] }
 
         // M-F = weekday 1..5; S/U = Sat/Sun; X is the legacy NTUST code for
-        // Saturday makeup classes (predates the S/U pair). Other letters get
-        // logged so unknown future codes don't silently disappear.
+        // Saturday makeup classes (predates the S/U pair).
         let dayMap: [Character: Int] = [
             "M": 1, "T": 2, "W": 3, "R": 4, "F": 5,
             "S": 6, "U": 7, "X": 6

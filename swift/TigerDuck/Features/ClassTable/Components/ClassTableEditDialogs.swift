@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The iPhone class table's sheets and alerts: the course sheet, the conflict picker, resetting
-/// the term, and the edits the Mac shares.
 struct ClassTableEditDialogs: ViewModifier {
     @Bindable var viewModel: ClassTableViewModel
     @Bindable var editor: ClassTableEditor

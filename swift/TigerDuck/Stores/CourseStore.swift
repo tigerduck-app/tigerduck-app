@@ -1,8 +1,6 @@
 import Foundation
 import Observation
 
-/// Moves on every user edit of a store. A fetch keeps the token it started with, and one that
-/// moved since tells it the user edited the data while it ran.
 nonisolated struct EditToken: Hashable, Comparable, Sendable {
     private var count = 0
 
@@ -13,36 +11,26 @@ nonisolated struct EditToken: Hashable, Comparable, Sendable {
     static func < (lhs: EditToken, rhs: EditToken) -> Bool { lhs.count < rhs.count }
 }
 
-/// A user's edit of the courses.
 enum CourseEdit {
-    /// A course added by hand to the term.
     case add(SDCourse, semester: String)
-    /// A course added by hand, taken off the term.
     case remove(courseNo: String, semester: String)
     /// Hides the course, or removes it when it was added by hand here.
     case delete(courseNo: String, semester: String)
-    /// Shows a hidden course again.
     case unhide(courseNo: String, semester: String)
-    /// The user's name for a course in one language; nil clears it.
     case rename(courseNo: String, name: String?, locale: String)
     /// Forgets the term's fetched courses and the hidden, added and renamed ones.
     case resetTerm(String)
 }
 
-/// The school account's courses, read and written through `CourseFiles`. Every write bumps
-/// `revision`, and every read observes it, so a view, a view model or `DeviceSurfaceSyncer`
-/// sees each change, whoever made it. User edits enter as `CourseEdit` values through `apply`.
 @Observable
 final class CourseStore {
     static let shared = CourseStore()
 
     typealias Display = CourseDetails.CourseDisplayPreferences
-    /// The course and hidden-course key types the store hands to screens.
     typealias Course = SDCourse
     typealias Tombstone = CourseTombstone
 
     @ObservationIgnored let files: CourseFiles
-    /// The language and labels course names are fetched in now.
     @ObservationIgnored let display: () -> Display
     private(set) var revision = 0
     private(set) var editToken = EditToken()
@@ -57,8 +45,6 @@ final class CourseStore {
         self.init(files: CourseFiles(folders: folders), display: display)
     }
 
-    /// Something outside the store changed the files, as a sign-out does, or the school's changes
-    /// that the course views draw moved on.
     func noteChange() {
         revision &+= 1
     }
@@ -71,8 +57,6 @@ final class CourseStore {
         body(files)
         revision &+= 1
     }
-
-    // MARK: - Reads
 
     func loadCourses(semester: String) -> [SDCourse] {
         observe()
@@ -122,8 +106,6 @@ final class CourseStore {
         files.loadSemesterResetAt()
     }
 
-    // MARK: - Writes of fetched and synced state
-
     func saveCourses(_ courses: [SDCourse], semester: String) { write { $0.saveCourses(courses, semester: semester) } }
     func clearCourses(semester: String) { write { $0.clearCourses(semester: semester) } }
     func removeCourses(_ courseNos: Set<String>, semester: String) { write { $0.removeCourses(courseNos, semester: semester) } }
@@ -148,8 +130,6 @@ final class CourseStore {
     func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = []) {
         files.clearSemesterResets(outlivedBy: fetchedAt, keeping: owned)
     }
-
-    // MARK: - Fetched courses
 
     /// Saves a term fetched with `display` from the start of the fetch at `token`. Dropped, and
     /// false, when the language or the labels changed meanwhile, as its names would be in the old
@@ -251,7 +231,6 @@ extension CourseStore {
 }
 
 extension SDCourse {
-    /// The course with details a lookup found, keeping its number, Moodle id and term.
     func updated(with data: CourseData) -> SDCourse {
         SDCourse(
             courseNo: courseNo,

@@ -1,7 +1,6 @@
 import Foundation
 import os
 
-/// The outbox's two files, `outbox.json` and `outbox-parked.json`, each a JSON array of entries.
 nonisolated struct OutboxFiles: Sendable {
     static let fileName = "outbox.json"
     static let parkedFileName = "outbox-parked.json"
@@ -20,13 +19,11 @@ nonisolated struct OutboxFiles: Sendable {
             .appendingPathComponent("TigerDuckCloudSync", isDirectory: true)
     }
 
-    /// Both lists, or nil while a file exists but cannot be read, as behind the lock screen.
     func load() -> (queued: [OutboxEntry], parked: [OutboxEntry])? {
         guard let queued = loadEntries(Self.fileName), let parked = loadEntries(Self.parkedFileName) else { return nil }
         return (queued, parked)
     }
 
-    /// What can be read of both, an unreadable file as empty, for giving up on them.
     func loadReadable() -> (queued: [OutboxEntry], parked: [OutboxEntry]) {
         (loadEntries(Self.fileName) ?? [], loadEntries(Self.parkedFileName) ?? [])
     }

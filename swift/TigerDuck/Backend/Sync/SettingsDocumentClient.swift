@@ -1,7 +1,6 @@
 import Foundation
 import os
 
-///
 actor SettingsDocumentClient {
     private let backend: BackendClient
 
@@ -19,14 +18,12 @@ actor SettingsDocumentClient {
         )
     }
 
-    /// nil when the backend 404s because the namespace was never written (`settings_docs.py:read_document`).
     func read(namespace: String) async throws -> (document: Data, revision: Int)? {
         var request = BackendRequest("GET", segments: ["settings", namespace])
         request.sendsWithoutSession = true
         request.accepting = [404]
         let response = try await backend.send(request)
         if response.status == 404 {
-            // A backend without the route answers `not_found`, which says nothing of the document.
             guard BackendClient.errorCode(in: response.data) != "not_found" else {
                 throw PushAPIError.httpStatus(404, body: String(decoding: response.data.prefix(512), as: UTF8.self))
             }
@@ -35,9 +32,6 @@ actor SettingsDocumentClient {
         return try Self.parseDocumentEnvelope(response.data)
     }
 
-    /// A nil `baseRevision` creates the document, any other compare-and-swaps on it. A 409 is
-    /// returned, not thrown: it carries the winning document and revision
-    /// (`settings_docs.py:_conflict_response`) for the caller to merge and retry.
     func write(namespace: String, document: Data, baseRevision: Int?) async throws -> SettingsWriteResult {
         let documentObject: Any
         do {

@@ -2,8 +2,6 @@ import Defaults
 import Foundation
 import os
 
-/// The device requests `PushRegistrationService` sends: the announce, the register and the
-/// unregister, a Live Activity's update token, and the device preference PATCHes.
 nonisolated struct PushDeviceRequests: Sendable {
     let identity: PushIdentity
     let apiClient: PushAPIClient

@@ -45,8 +45,6 @@ enum NotificationSettingsPushQueue {
         return task
     }
 
-    /// `reconcile` reports whether it deferred to a pending push; it runs again once a push lands
-    /// with nothing left to send, so the server's document is adopted right after.
     @discardableResult
     static func enqueueReconcile(_ reconcile: @escaping Link) -> Task<Void, Never> {
         enqueueGuarded { isCurrent in
@@ -54,7 +52,6 @@ enum NotificationSettingsPushQueue {
         }
     }
 
-    /// `push` reports whether it landed with nothing left to send.
     @discardableResult
     static func enqueuePush(_ push: @escaping Link) -> Task<Void, Never> {
         enqueueGuarded { isCurrent in

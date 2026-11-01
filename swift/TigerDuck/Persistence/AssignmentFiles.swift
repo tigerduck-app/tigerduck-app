@@ -1,8 +1,5 @@
 import Foundation
 
-/// The school account's assignment files: the Moodle assignments of the last round, the closed
-/// ones never submitted, and the user's marks (archived, done here, and the courses whose
-/// assignments are ignored). `Stores/AssignmentStore.swift` reads and writes them.
 final class AssignmentFiles: AccountScoped {
     private let cache: JSONFiles
     private let persistent: JSONFiles
@@ -47,8 +44,6 @@ final class AssignmentFiles: AccountScoped {
         cache.save(closed, to: "closed_unsubmitted_assignments.json")
     }
 
-    // MARK: - Courses whose assignments are ignored
-
     func loadIgnoredAssignmentCourses() -> Set<String> {
         let keys: [String] = persistent.load("ignored_courses.json") ?? []
         return Set(keys)
@@ -69,8 +64,6 @@ final class AssignmentFiles: AccountScoped {
         let prefix = CourseTombstone.key(semester: semester, courseNo: "")
         replaceIgnoredAssignmentCourses(loadIgnoredAssignmentCourses().filter { !$0.hasPrefix(prefix) })
     }
-
-    // MARK: - Marks
 
     func addArchivedAssignmentId(_ id: String) {
         replaceArchivedAssignmentIds(loadArchivedAssignmentIds().union([id]))

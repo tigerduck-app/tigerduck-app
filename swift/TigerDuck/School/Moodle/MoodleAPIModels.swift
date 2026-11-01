@@ -28,10 +28,6 @@ nonisolated enum MoodleWebserviceClient {
         )
     }
 
-    /// Runs `body` with the stored token, or a renewed one when none is stored. Once Moodle calls
-    /// that token invalid, a renewed one replaces it and `body` runs once more. A call that needs
-    /// the token's user id asks for it inside `body`, so a stale token there is renewed too.
-    ///
     /// An access error gets one more try with the same token: Moodle answers an expired token
     /// with `accessexception` once and deletes it, then answers `invalidtoken`. A function the
     /// site does not allow fails the same way twice and starts no renewal.
@@ -51,9 +47,9 @@ nonisolated enum MoodleWebserviceClient {
         }
     }
 
-    /// The answer is decoded off the main actor. A Moodle error body throws its case whatever
-    /// the HTTP status, since Moodle sends most errors with a 200. A 503 with `Retry-After` is
-    /// Moodle's CLI maintenance page, which an upgrade shows for every request.
+    /// A Moodle error body throws its case whatever the HTTP status, since Moodle sends most
+    /// errors with a 200. A 503 with `Retry-After` is Moodle's CLI maintenance page, which an
+    /// upgrade shows for every request.
     static func call<T: Decodable & Sendable>(
         _ function: String,
         params: [(String, String)] = [],
@@ -76,8 +72,6 @@ nonisolated enum MoodleWebserviceClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        // The token goes in the form, which Moodle reads as it reads the query, so it stays out of
-        // the URLs that server and proxy access logs keep.
         request.httpBody = Data(formBody([("wstoken", token)] + params).utf8)
 
         let data: Data

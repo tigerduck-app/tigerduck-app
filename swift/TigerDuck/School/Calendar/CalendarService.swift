@@ -12,9 +12,6 @@ enum CalendarService {
     private static let yearRegex = try! NSRegularExpression(pattern: "(\\d{3})")
 
     /// URLSession with browser-like User-Agent (NTUST server returns 403 without one).
-    /// Pinned because the backend's redirect and the ICS links on the page lead to
-    /// *.ntust.edu.tw hosts the pin set covers; api.tigerduck.app itself has no pin set
-    /// and gets system trust, so one session serves every host.
     private static let browserSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpAdditionalHeaders = [

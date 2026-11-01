@@ -23,18 +23,11 @@ nonisolated enum NotificationSettingsSync {
         }
     }
 
-    /// What a push compares the device's values with; nil sends every field. Only a push that
-    /// NotificationSettingsSyncedSeedMigration found pending gets nil: its edit is not on the
-    /// server yet, so compared with the device's own values it would send nothing and the next
-    /// reconcile would revert it. A signed-in device otherwise has a copy; without one nothing
-    /// counts as changed.
     @MainActor
     static func pushBase(local: LocalPreferences) -> LocalPreferences? {
         synced ?? (Defaults[.notificationSettingsPushSendsEveryField] ? nil : local)
     }
 
-    /// A sign-in starts the copy from the device's values, so what was edited while signed out
-    /// gives way to the account's document and an edit made after the sign-in goes up.
     @MainActor
     static func accountSignedIn(local: LocalPreferences) {
         guard synced == nil, !Defaults[.notificationSettingsPushSendsEveryField] else { return }
@@ -47,16 +40,12 @@ nonisolated enum NotificationSettingsSync {
         self.synced = synced.replacing(section, from: local)
     }
 
-    /// Takes into the copy only the fields the push sent, since the copy may have changed while
-    /// the request was out, for example a section switch turned back on.
     @MainActor
     static func recordPushed(_ sent: LocalPreferences, fields: [String: Any]) {
         synced = (synced ?? sent).taking(fields, from: sent)
         Defaults[.notificationSettingsPushSendsEveryField] = false
     }
 
-    /// Takes into the copy only the sections a reconcile synced, so a section turned on while its
-    /// write was out keeps the copy `sectionTurnedOn` gave it.
     @MainActor
     static func recordSynced(_ settled: LocalPreferences, sections: Set<OwnedSection>) {
         synced = sections.reduce(synced ?? settled) { $0.replacing($1, from: settled) }
@@ -75,9 +64,6 @@ nonisolated enum NotificationSettingsSync {
         return merged
     }
 
-    /// The fields of `updates` that differ from `synced` or that `existing` lacks, so a push keeps
-    /// every other field as the server holds it. A section `existing` lacks goes whole, and the
-    /// two offset lists, one mirroring the other, count as one field.
     static func changes(
         in updates: [String: Any],
         since synced: [String: Any],
@@ -121,9 +107,6 @@ nonisolated enum NotificationSettingsSync {
         return object
     }
 
-    /// Writes the fields `local` changed since `base` over the server's document; see
-    /// docs/decisions/0002-notification-settings-json-merge.md. Reports whether the write landed
-    /// while the account that started it is still signed in.
     @MainActor
     @discardableResult
     static func push(
@@ -156,8 +139,6 @@ nonisolated enum NotificationSettingsSync {
                 includeLiveActivity: syncLiveActivityEnabled
             )
             let merged = merging(updates, into: existing)
-            // A write that changes nothing still moves the revision, which sends every device to
-            // reconcile. The server already holds the changed fields, so they count as sent.
             if NSDictionary(dictionary: merged).isEqual(to: existing) {
                 recordSent(updates)
                 return isCurrent()

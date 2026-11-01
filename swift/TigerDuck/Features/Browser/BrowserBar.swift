@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The browser's chrome in glass over the page: the top bar and the toolbar under the page when
-/// the address bar is on top, else the one bottom bar.
 struct BrowserBar: View {
     enum Part { case top, toolbar, bottom }
 
@@ -17,9 +15,7 @@ struct BrowserBar: View {
     static let barHeight: CGFloat = 44
     private static let capsuleHeight: CGFloat = 30
     static let toolbarHeight: CGFloat = 56
-    /// From the screen's bottom edge: the home indicator takes about 13 points, and a small gap.
     private static let homeIndicatorClearance: CGFloat = 16
-    /// How far a button hidden by the collapse moves toward the address capsule as it fades.
     private static let toCapsule: CGFloat = 56
 
     private var collapsed: Bool { page.isCollapsed }
@@ -32,8 +28,6 @@ struct BrowserBar: View {
         }
     }
 
-
-    // MARK: - Top layout
 
     private var topBar: some View {
         HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
@@ -85,8 +79,6 @@ struct BrowserBar: View {
         .accessibilityLabel(label)
     }
 
-    // MARK: - Bottom layout
-
     private var bottomBar: some View {
         HStack(alignment: .bottom, spacing: TigerDuckTheme.Spacing.md) {
             closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.toCapsule, height: 24), moving: !reduceMotion)
@@ -124,14 +116,10 @@ struct BrowserBar: View {
         .ignoresSafeArea(.container, edges: collapsed ? .bottom : [])
     }
 
-    /// A button inside the address pill shrinks to nothing as the pill does, so it moves with its
-    /// own edge of the pill toward the host name and down, and leaves the pill its capsule height.
     private func intoCapsule(_ button: some View) -> some View {
         button.frame(width: collapsed ? 0 : 40, height: collapsed ? 0 : nil)
             .hiddenWhenCollapsed(collapsed, toward: CGSize(width: 0, height: 10), moving: !reduceMotion)
     }
-
-    // MARK: - Shared pieces
 
     private var closeButton: some View {
         circle {
@@ -149,8 +137,6 @@ struct BrowserBar: View {
             .browserGlass(in: Circle())
     }
 
-    /// The address pill, which shrinks into the host capsule while the chrome is collapsed. One
-    /// element, so the change morphs; with Reduce Motion a new identity cross-fades the two states.
     private func address(@ViewBuilder _ label: () -> some View) -> some View {
         Button {
             if collapsed { page.expandChrome() } else { sheet = .address }
@@ -198,7 +184,6 @@ private extension View {
     }
 }
 
-/// Safari's load bar, along the pill's bottom edge in the accent colour while a page loads.
 private struct BrowserLoadProgress: View {
     let page: BrowserPage
 
@@ -221,7 +206,6 @@ private struct BrowserLoadProgress: View {
     }
 }
 
-/// The address pill's menu: copy, share and the certificate.
 private struct BrowserAddressMenu: View {
     let page: BrowserPage
     @Binding var sheet: BrowserSheet?

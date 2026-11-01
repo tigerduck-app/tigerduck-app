@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 
-/// The app's SwiftData store, opened once per process.
 enum AppModelStore {
     /// `static` so the store is opened once per process: SwiftData expects one `ModelContainer`
     /// per on-disk store, and the open (disk and schema check) runs in front of the first frame.

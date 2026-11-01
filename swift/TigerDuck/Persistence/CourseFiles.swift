@@ -1,11 +1,6 @@
 import Defaults
 import Foundation
 
-/// The school account's course files: each term's fetched courses in every language, the courses
-/// added by hand, the hidden ones, the drops course selection and the server reported, and the
-/// user's course names. `Stores/CourseStore.swift` reads and writes them; nothing else should.
-///
-/// On the main actor: it hands back `SDCourse`, whose accessors are main-actor isolated.
 final class CourseFiles: AccountScoped {
     private let folders: CacheFolders
     private var cache: JSONFiles { folders.cacheFiles }
@@ -26,8 +21,6 @@ final class CourseFiles: AccountScoped {
         storage.folders.removeCacheFiles { $0.hasPrefix("courses_") }
     }
 
-    // MARK: - Courses (semester + language-scoped)
-
     /// The NTUST API returns `CourseName` and `CourseTeacher` in the request's language, so the
     /// file name holds the resolved course-API language, and switching the app language does not
     /// overwrite the other language's courses.
@@ -45,8 +38,6 @@ final class CourseFiles: AccountScoped {
         folders.removeCacheFiles { $0.hasPrefix("courses_\(semester)_") }
     }
 
-    /// Removes the courses from the term's cache in every language, or switching the language
-    /// would show one again.
     func removeCourses(_ courseNos: Set<String>, semester: String) {
         guard !courseNos.isEmpty else { return }
         let prefix = "courses_\(semester)_"
@@ -70,8 +61,6 @@ final class CourseFiles: AccountScoped {
         LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
     }
 
-    // MARK: - Term resets
-
     func loadSemesterResetAt() -> [String: Date] {
         (UserDefaults.standard.dictionary(forKey: Self.semesterResetAtKey) as? [String: Date]) ?? [:]
     }
@@ -82,8 +71,6 @@ final class CourseFiles: AccountScoped {
         UserDefaults.standard.set(all, forKey: Self.semesterResetAtKey)
     }
 
-    /// A term in `owned` still shows the tombstones of this device's reset, which stay this
-    /// device's for as long as they last (`CourseRosterReconciler.isOwnReset`).
     func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = []) {
         let all = loadSemesterResetAt()
         let kept = all.filter { owned.contains($0.key) || fetchedAt.timeIntervalSince($0.value) <= Self.semesterResetGrace }
@@ -94,8 +81,6 @@ final class CourseFiles: AccountScoped {
 
     private static let semesterResetAtKey = "semesterResetAt"
     private static let semesterResetGrace: TimeInterval = 60
-
-    // MARK: - Courses added by hand
 
     func saveUserAddedCourses(_ courses: [SDCourse]) {
         persistent.save(courses.map { CachedCourse(from: $0) }, to: "user_added_courses.json")
@@ -129,8 +114,6 @@ final class CourseFiles: AccountScoped {
         return course
     }
 
-    // MARK: - Drops
-
     func saveSelectionDroppedNos(_ dropped: [String: [String]]) {
         persistent.save(dropped, to: "selection_dropped.json")
     }
@@ -139,8 +122,6 @@ final class CourseFiles: AccountScoped {
         persistent.load("selection_dropped.json") ?? [:]
     }
 
-    /// The term's courses the last full sync found dropped on the server. A fetch course selection
-    /// did not answer leaves them out, as a running term's transcript may still list them.
     func saveServerDroppedNos(_ courseNos: Set<String>, semester: String) {
         var stored: [String: [String]] = persistent.load("server_dropped.json") ?? [:]
         guard Set(stored[semester] ?? []) != courseNos else { return }
@@ -153,10 +134,6 @@ final class CourseFiles: AccountScoped {
         return Set(stored[semester] ?? [])
     }
 
-    /// The roster comes from course selection or, for a past term, the transcript. A course in
-    /// `alsoListed`, which the term may hold on the server without this device having fetched it,
-    /// is dropped too when the roster leaves it out. A final roster, an ended term's, counts even
-    /// when empty; an empty course-selection answer may be a drifted page and records nothing.
     func recordSelectionRoster(semester: String, roster: [String], alsoListed: [String] = [], isFinal: Bool = false) {
         guard !roster.isEmpty || isFinal else { return }
         var stored = loadSelectionDroppedNos()
@@ -176,16 +153,10 @@ final class CourseFiles: AccountScoped {
         saveSelectionDroppedNos(stored)
     }
 
-    // MARK: - Hidden courses
-
     func saveDeletedCourseNos(_ courseNos: [String]) {
         persistent.save(courseNos, to: "deleted_courses.json")
     }
 
-    /// Hides the course unless it was added by hand here: one with no Moodle ID that the school
-    /// does not list for the term. That one is just removed, so the roster that lists it once the
-    /// student enrolls shows and uploads it. A course merged from another device's row carries a
-    /// Moodle ID and hides as before (docs/decisions/0005-course-tombstones.md).
     func deleteCourse(_ courseNo: String, semester: String) {
         let userAdded = loadUserAddedCourses()
         let isThisCourse = { (course: SDCourse) in
@@ -214,8 +185,6 @@ final class CourseFiles: AccountScoped {
         }
         return migrated
     }
-
-    // MARK: - Course names
 
     func saveCourseCustomNames(_ names: [String: [String: String]]) {
         persistent.save(names, to: "course_custom_names.json")

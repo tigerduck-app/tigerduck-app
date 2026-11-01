@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The term picker above the table, and whose table it is with its credits, which switches
-/// between the user's and imported people's tables once there are any.
 struct ClassTableSemesterBar: View {
     @Bindable var viewModel: ClassTableViewModel
 

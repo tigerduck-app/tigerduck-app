@@ -1,12 +1,10 @@
 #if os(iOS)
 import Foundation
 
-/// The folders the server lists, by role and the rest, the one the list shows and its filter.
 struct MailFolderChoice: Equatable {
     var roles: [MailFolderRole: String] = [:]
     var others: [String] = []
     var selection: MailFolderSelection = .real(MailConstants.inbox)
-    /// The user picked `selection`, so the list no longer opens on All mail by itself.
     var wasChosen = false
     var unreadOnly = false
 
@@ -17,7 +15,6 @@ struct MailFolderChoice: Equatable {
     }
 }
 
-/// What the list shows about its loads beside the rows.
 struct MailListStatus: Equatable {
     var loadState: MailListViewModel.LoadState = .idle
     var serverStatus: ServerStatus = .unknown
@@ -27,16 +24,11 @@ struct MailListStatus: Equatable {
     var sentCopyNotice: String?
 }
 
-/// Which loads still apply: a sign-out or a server change moves `accountEpoch`, and
-/// `loadingSelection` keeps a second load of the same selection from starting.
 struct MailListLoads {
     var accountEpoch = 0
     var loadingSelection: MailFolderSelection?
 }
 
-/// The mailbox the list shows: each folder's loaded page, and the read flags and removals the user
-/// made. A page fetched before such an edit does not undo it: each edit moves `editToken`, and a
-/// page merged in gets the edits made since the token its fetch started with.
 struct MailboxPages {
     private enum Edit {
         case seen(Bool)
@@ -49,9 +41,7 @@ struct MailboxPages {
     }
 
     private(set) var pages: [String: MailFolderPage] = [:]
-    /// The rows of the folders the list shows, kept by `rebuildRows`.
     private(set) var rows: [MailListRow] = []
-    /// Folders whose page came from the cache and has not been refreshed yet.
     var cachePainted: Set<String> = []
     private(set) var editToken = EditToken()
     private var edits: [MailKey: (token: EditToken, edit: Edit)] = [:]
@@ -61,7 +51,6 @@ struct MailboxPages {
         set { pages[folder] = newValue }
     }
 
-    /// Also forgets the edits: a load started after this has nothing older to undo.
     mutating func removeAll() {
         pages = [:]
         rows = []
@@ -69,7 +58,6 @@ struct MailboxPages {
         edits = [:]
     }
 
-    /// Forgets `folder`'s page and edits, as when the folder was recreated and its UIDs name other mail.
     mutating func drop(_ folder: String) {
         pages[folder] = nil
         edits = edits.filter { $0.key.folder != folder }
@@ -94,7 +82,6 @@ struct MailboxPages {
         edits[MailKey(folder: folder, uid: uid)] = (editToken, edit)
     }
 
-    /// `page` with the edits of its folder made after `token`.
     func applyingEdits(to page: MailFolderPage, since token: EditToken) -> MailFolderPage {
         var page = page
         for (key, entry) in edits where key.folder == page.folder && entry.token > token {
@@ -116,8 +103,6 @@ struct MailboxPages {
         return page
     }
 
-    /// Merges a fresh newest page into what is loaded: new mail is added, and mail the user
-    /// paginated to beyond this page is kept.
     mutating func mergeFresh(_ fresh: MailFolderPage, folder: String, since token: EditToken) -> MailFolderPage {
         let previous = pages[folder]
         let hadPreviousPage = previous != nil
@@ -161,7 +146,6 @@ struct MailboxPages {
         return merged
     }
 
-    /// The part of a page the cache keeps: its newest rows, with the cursor of the newest window.
     static func cachedCopy(of page: MailFolderPage) -> MailFolderPage {
         guard page.summaries.count > MailConstants.cachedPageRows else { return page }
         var copy = page
@@ -171,7 +155,6 @@ struct MailboxPages {
         return copy
     }
 
-    /// All mail interleaves its folders newest first; one folder keeps its page's order.
     mutating func rebuildRows(of folders: [String], newestFirst: Bool) {
         var collected: [MailListRow] = []
         for folder in folders {

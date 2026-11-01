@@ -1,8 +1,6 @@
 import Foundation
 import TigerDuckCore
 
-/// One run of consecutive timetable periods on a day. A new start or end moves the run as a
-/// whole; a cancellation or a room covers only its own periods.
 struct CourseMeeting {
     let course: SDCourse
     let date: Date
@@ -22,15 +20,11 @@ struct CourseMeeting {
         changes.first { $0.kind == .room && $0.covers(period) }?.room
     }
 
-    /// Its fragments, or the meeting whole when its new times leave none.
     func slots() -> [CourseTimeSlot] {
         let fragments = fragments()
         return fragments.isEmpty ? [Self.merged([self])].compactMap { $0 } : fragments
     }
 
-    /// Runs of periods alike in cancellation and room. Inner boundaries keep the timetable
-    /// times, clamped into the meeting; a run left empty is dropped, and the outer surviving
-    /// ones meet the meeting's own start and end.
     func fragments() -> [CourseTimeSlot] {
         var runs: [[String]] = []
         for period in periods {
@@ -79,8 +73,6 @@ struct CourseMeeting {
             var applied = dayChanges.filter { run.contains(where: $0.covers) }
             var start = changedTime(.start, in: applied, on: date) ?? timetableStart
             var end = changedTime(.end, in: applied, on: date) ?? timetableEnd
-            // A new start past the end, or a new end before the start, is a feed error; the
-            // meeting keeps its times and its other changes.
             if end <= start {
                 start = timetableStart
                 end = timetableEnd
@@ -93,7 +85,6 @@ struct CourseMeeting {
         }
     }
 
-    /// The meetings as one slot: their own start and end, and cancelled only when every period is.
     static func merged(_ meetings: [CourseMeeting]) -> CourseTimeSlot? {
         guard let first = meetings.first, let last = meetings.last else { return nil }
         let isCancelled = meetings.allSatisfy { meeting in meeting.periods.allSatisfy(meeting.isCancelled) }

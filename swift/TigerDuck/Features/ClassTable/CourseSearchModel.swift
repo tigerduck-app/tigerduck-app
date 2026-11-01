@@ -22,8 +22,6 @@ final class CourseSearchModel {
 
     var options: CourseCatalogStore.Options { catalog.options }
 
-    /// Moves when the sheet must search again for the same query and filters: the catalog
-    /// changed, or Enter retries a failed search.
     var revision: Int { retries &+ catalog.revision }
 
     /// Searches the catalog, once it is loaded, off the main thread. A blank query only clears.

@@ -3,7 +3,6 @@ import Foundation
 import UserNotifications
 #endif
 
-/// The sign-in steps and clocks `AuthService` runs on; tests pass their own.
 struct AuthServiceDependencies {
     let keychainHasCredentials: () -> Bool
     let moodleTokens: MoodleTokenService
@@ -20,7 +19,6 @@ struct AuthServiceDependencies {
     let retrySleep: @Sendable (Duration) async -> Void
 }
 
-/// What the sign-in screens show: a sign-in or a renewal under way, and the last error of each.
 struct AuthStatus {
     var isReauthenticating = false
     var reauthErrorMessage: String?
@@ -28,14 +26,11 @@ struct AuthStatus {
     var loginError: String?
 }
 
-/// Whether the keychain held the credentials when last read. `revision` moves on each change, so
-/// what reads the stored account reads it again.
 struct CredentialMirror {
     var revision = 0
     var lastKnown: Bool?
 }
 
-/// What the composition root plugs into `AuthService`.
 struct AuthServiceHooks {
     var authTokenManager: AuthTokenManager?
     var onV3SignedIn: (() -> Void)?
@@ -49,15 +44,11 @@ struct AuthServiceHooks {
     var forgetPages: @MainActor () async -> Void = {}
 }
 
-/// The sign-out calls under way, which the next sign-out and sign-in wait for, and the launch's
-/// retry of an unregister an earlier sign-out kept.
 struct SignOutTasks {
     var calls: Task<Void, Never>?
     var departingUnregisterRetry: Task<Void, Never>?
 }
 
-/// The school sign-in through NTUST SSO for the course selection service, whose session the
-/// school data pages share.
 enum SchoolSignIn {
     private static let ssoServiceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")
 

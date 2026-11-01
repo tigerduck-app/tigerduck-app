@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// One row of Home's assignment list: the title and course, then the status and due time.
 struct UpcomingAssignmentRow: View {
     let assignment: AssignmentStore.Assignment
     let course: CourseStore.Course?

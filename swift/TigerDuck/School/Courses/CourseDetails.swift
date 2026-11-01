@@ -1,7 +1,6 @@
 import Defaults
 import Foundation
 
-/// A course's details from the course query, in the labels the display settings ask for.
 enum CourseDetails {
 
     struct CourseDisplayPreferences: Equatable, Sendable {

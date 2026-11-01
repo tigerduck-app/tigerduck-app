@@ -1,8 +1,6 @@
 import Defaults
 import Foundation
 
-/// What a round or a status answer leaves behind: Moodle's submission statuses asked for, the
-/// assignments and their calendar events saved, and the list uploaded for reminders.
 enum AssignmentAnswers {
     static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
 

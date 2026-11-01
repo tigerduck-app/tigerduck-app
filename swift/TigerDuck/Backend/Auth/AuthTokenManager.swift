@@ -2,7 +2,6 @@ import Foundation
 import os
 
 actor AuthTokenManager {
-    // Internal for `StoredTokenRefresher` and `DepartingSessionKeeper`, which run isolated to this actor.
     var pair: AuthTokenPair
     var signIns = SignInCount()
     var refreshes = Refreshes()
@@ -13,7 +12,6 @@ actor AuthTokenManager {
     private let departingSessions: DepartingSessionKeeper
     private let refresher: StoredTokenRefresher
 
-    /// One sign-in at a time; the ones waiting resume in turn.
     private struct SignInTurns {
         var isSigningIn = false
         var waiting: [CheckedContinuation<Void, Never>] = []
@@ -21,8 +19,6 @@ actor AuthTokenManager {
 
     struct Refreshes {
         var task: Task<String?, Never>?
-        /// Keyed by the refresh token each sent: a refresh of a pair a sign-in replaced can end after the
-        /// next pair's, and a sign-out takes only the one of the token it ends.
         var late: [String: (ticket: AccountSession.Ticket, accessToken: String?, refreshToken: String?, mayResend: Bool)] = [:]
     }
 
@@ -55,8 +51,6 @@ actor AuthTokenManager {
 
     @TaskLocal static var departing: DepartingAccount?
 
-    /// A sign-out's account for its unregister: the token, the backend that issued it and the
-    /// session it kept there, which the unregister forgets once it lands.
     struct DepartingAccount: Sendable {
         let accessToken: String?
         var baseURL: URL?
@@ -84,7 +78,6 @@ actor AuthTokenManager {
         self.pair = AuthTokenPair(tokens: tokens)
     }
 
-    /// The bearer token for `BackendClient`, and its one recovery after a 401.
     nonisolated var backendAuth: BackendAuth {
         BackendAuth(
             header: { [weak self] in await self?.authorizationHeaderOfSignIn() },
@@ -92,11 +85,8 @@ actor AuthTokenManager {
         )
     }
 
-    /// The codes of a session the backend ended; a refresh would only spend a use of its token.
     static let endedSessionCodes: Set<String> = ["session_revoked", "session_user_mismatch"]
 
-    /// After a 401 for `refused`: true once another access token is ready for one replay. An
-    /// ended session signs in again; any other refusal takes a refresh, which the budget bounds.
     func recover(fromRejectionOf refused: String, code: String?, signIn: AccountSession.Ticket) async -> Bool {
         guard Self.departing == nil, pair.refreshToken != nil, signIns.isCurrent(signIn) else { return false }
         if let code, Self.endedSessionCodes.contains(code) {
@@ -137,7 +127,6 @@ actor AuthTokenManager {
         await authorizationHeaderOfSignIn()?.value
     }
 
-    /// A header read across a sign-out belongs to neither sign-in, so it is not handed out.
     func authorizationHeaderOfSignIn() async -> (value: String, signIn: AccountSession.Ticket?)? {
         let ticket = signIns.ticket
         guard let token = await validAccessToken(), signIns.isCurrent(ticket) else { return nil }
@@ -153,8 +142,8 @@ actor AuthTokenManager {
     }
 
     /// `refused` is the access token a request was turned away with. A sign-in for it that finds
-    /// another pair stored once its turn comes sends nothing and returns nil: the request was
-    /// refused for that pair's sign-in or refresh, and the caller retries with it.
+    /// another pair stored once its turn comes sends nothing and returns nil, and the caller retries
+    /// with that pair.
     @discardableResult
     func login(
         studentId: String,
@@ -163,8 +152,6 @@ actor AuthTokenManager {
         platform: String,
         replacing refused: String? = nil
     ) async throws -> LoginResult? {
-        // One at a time: a sign-in ends the device's older sessions, so the pair stored last has to be
-        // the one the backend issued last (https://github.com/tigerduck-app/tigerduck-backend/issues/48).
         let ticket = signIns.ticket
         if turns.isSigningIn {
             await withCheckedContinuation { turns.waiting.append($0) }
@@ -184,9 +171,7 @@ actor AuthTokenManager {
         let result = try await requests.send(login: request)
         guard signIns.isCurrent(ticket) else { throw CancellationError() }
         pair.store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
-        // A refresh still out is the replaced pair's, so neither a caller nor a sign-out waits on it.
         refreshes.task = nil
-        // A session kept on another backend still has the device there; the launch retry sends it.
         departingSessions.list.forgetAll(on: baseURL)
         return LoginResult(
             accessToken: result.access_token,
@@ -203,8 +188,7 @@ actor AuthTokenManager {
     }
 
     /// Holds back the session's tokens until `endSession(on:)` has ended it, and returns the backend in
-    /// use for its unregister. It runs at once on the caller's thread, so the tokens are held before
-    /// an API endpoint change can store its new endpoint.
+    /// use for its unregister.
     nonisolated func beginSignOut() -> URL {
         signOutsStarting.withLock { $0 += 1 }
         return requests.baseURL()
@@ -250,9 +234,6 @@ actor AuthTokenManager {
         return server(one) == server(other)
     }
 
-    /// Whether a launch sends the session kept on `kept`. While signed in, one on the backend in use
-    /// went to the new account with the device. One on a cleartext backend goes out only while that
-    /// backend is in use: on another network its private address may name another host.
     nonisolated static func retriesKeptSession(on kept: URL, signedIn: Bool, backend: URL) -> Bool {
         let inUse = isSameBackend(kept, backend)
         return (!signedIn || !inUse) && (kept.scheme?.lowercased() != "http" || inUse)

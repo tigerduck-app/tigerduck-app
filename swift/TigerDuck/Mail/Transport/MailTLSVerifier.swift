@@ -3,18 +3,13 @@ import Foundation
 import Security
 import os
 
-/// Certificate check for the School Mail IMAP and SMTP connections, by `TLSPinningDelegate`'s
-/// rules. A refused chain fails this connection at once; the next connect uses the pins the
-/// refresh it starts brings. The `SecTrust` evaluation is the connection's only validation: a
-/// custom NIOSSL callback replaces all of BoringSSL's checks, hostname included, and on Darwin
-/// also NIOSSL's Security.framework callback; `.fullVerification` in `MailTransportSecurity` only
-/// keeps it from being skipped. See docs/decisions/0025-remote-tls-pins.md.
+/// The `SecTrust` evaluation is the connection's only validation: a custom NIOSSL callback
+/// replaces all of BoringSSL's checks, hostname included, and on Darwin also NIOSSL's
+/// Security.framework callback; `.fullVerification` in `MailTransportSecurity` only keeps it
+/// from being skipped.
 nonisolated enum MailTLSVerifier {
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.TLS")
 
-    /// `now` is the trust evaluation's date; the pins' expiry follows the engine's clock. Runs
-    /// `SecTrustEvaluateWithError`, which can block; SwiftMail's custom verification callback,
-    /// the only production caller, invokes this on the connection's own NIO event loop.
     static func verify(
         derChain: [[UInt8]],
         host: String,

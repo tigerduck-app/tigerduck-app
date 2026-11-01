@@ -1,12 +1,10 @@
 #if os(iOS)
 import SwiftUI
 
-/// The message screen's reply menu and its menu of view modes and actions.
 struct MailMessageToolbar: ToolbarContent {
     @Bindable var viewModel: MailMessageViewModel
     let onCompose: (MailComposeMode) -> Void
     let onMove: () -> Void
-    /// Called with whether the delete is permanent, once the trash folder was looked for.
     let onDelete: (Bool) -> Void
 
     var body: some ToolbarContent {
@@ -64,7 +62,6 @@ struct MailMessageToolbar: ToolbarContent {
     }
 }
 
-/// The folders a mail can move to: the role folders, then the others, never its own.
 struct MailMoveSheet: View {
     let viewModel: MailMessageViewModel
     let otherFolders: [String]

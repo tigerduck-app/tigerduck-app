@@ -4,15 +4,12 @@ import Testing
 
 /// The backend settles a queued course add or hide against another device's re-add, hide or
 /// reset, and against its own retry, by the time each was made (tigerduck-app/tigerduck-app#689).
-/// These check that every attempt of a queued edit carries the time it was made, or the server's
-/// clock once the server finds that time ahead of it.
 @MainActor
 struct CourseMembershipStampTests {
     enum Edit: Sendable { case hide, add }
 
     struct Attempt: Sendable {
         let reply: SettingsAPIStub.StubResponse
-        /// The stamp the request this reply answers carries.
         let hlc: String
         var landed: Bool { reply.statusCode == 200 }
 

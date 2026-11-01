@@ -5,8 +5,6 @@ import UIKit
 import AppKit
 #endif
 
-/// The room and time cards at the top of a course's sheet, with the day's change when the school
-/// moved or cancelled the class.
 struct CourseDetailRoomAndTime: View {
     let course: CourseStore.Course
     let timeRange: String?
@@ -62,8 +60,6 @@ struct CourseDetailRoomAndTime: View {
     }
 }
 
-/// The rows under the cards: instructor, course code (a tap copies it), dimension, duration,
-/// required or elective, credits and enrolment.
 struct CourseDetailInfoRows: View {
     let course: CourseStore.Course
 
@@ -82,9 +78,6 @@ struct CourseDetailInfoRows: View {
                 copied: codeCopied,
                 onTap: copyCourseCode
             )
-            // Only general-education courses carry a dimension; for every
-            // other course the portal sends an empty string and the row
-            // would be a label with nothing beside it.
             if !course.dimension.isEmpty {
                 InfoRow(
                     label: String(localized: "course_detail_dimension_label"),
@@ -116,10 +109,6 @@ struct CourseDetailInfoRows: View {
         .sensoryFeedback(.success, trigger: copyFeedback)
     }
 
-    /// QueryCourse spells `AllYear` as "F" (spans the academic year) or "H"
-    /// (a single semester). Anything else — including the empty string a row
-    /// cached before this field existed carries — says nothing, so the row
-    /// is left out rather than shown blank.
     private var durationText: String? {
         switch course.allYear.uppercased() {
         case "F": return String(localized: "course_detail_duration_full_year")
@@ -128,8 +117,6 @@ struct CourseDetailInfoRows: View {
         }
     }
 
-    /// QueryCourse's `RequireOption`, "R" required or "E" elective. Anything else, such as the
-    /// empty string of a row merged from another device, says nothing, so the row is left out.
     static func requireOptionText(_ requireOption: String) -> String? {
         switch requireOption.uppercased() {
         case "R": return String(localized: "course_detail_require_option_required")
@@ -226,7 +213,7 @@ private struct InfoRow: View {
                 .multilineTextAlignment(.trailing)
         }
         // Without this the button only reacts on the label and value text,
-        // not on the gap between them — which is most of the row.
+        // not on the gap between them.
         .contentShape(Rectangle())
     }
 }

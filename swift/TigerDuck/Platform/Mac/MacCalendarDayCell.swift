@@ -2,7 +2,6 @@
 import SwiftUI
 import TigerDuckCore
 
-/// One day of the Mac calendar's month grid: the date and a dot for each source of its events.
 struct MacCalendarDayCell: View {
     let date: Date
     let isSelected: Bool

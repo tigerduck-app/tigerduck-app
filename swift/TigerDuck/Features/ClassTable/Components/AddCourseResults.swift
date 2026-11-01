@@ -1,9 +1,6 @@
 import Foundation
 
-/// The Add Course search's rows grouped into courses, one per course number, as the sheet
-/// lists them.
 enum AddCourseResults {
-    /// A course of the results, with its rows' meeting times and rooms merged.
     struct Course {
         let courseNo: String
         let primaryName: String
@@ -28,7 +25,6 @@ enum AddCourseResults {
             return "\(primaryName) (\(secondary))"
         }
 
-        /// The course to add to the term's table, named in the app's course language.
         func tableCourse(semester: String, name: String, instructor: String) -> CourseStore.Course {
             CourseStore.Course(
                 courseNo: courseNo,
@@ -54,7 +50,6 @@ enum AddCourseResults {
         let conflicts: [String]
     }
 
-    /// The courses the filters leave, with the table courses each clashes with.
     static func shown(
         _ results: [String: [CourseCatalogStore.Row]], language: String,
         table: [CourseSearchTableCourse], filters: CourseSearchFilters

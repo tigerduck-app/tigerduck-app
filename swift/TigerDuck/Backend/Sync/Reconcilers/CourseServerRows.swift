@@ -1,21 +1,13 @@
 import Foundation
 import TigerDuckCore
 
-/// A term's course rows on the server read against this device: the rows kept, the courses a
-/// roster dropped, and the courses built from a row.
 enum CourseServerRows {
-    /// The term's courses merged from the server that were dropped. One added by hand here has no
-    /// Moodle ID; one added on another device keeps its `user_added` row in `keptRows`.
     static func droppedMerges(_ userAdded: [SDCourse], semester: String, dropped: Set<String>) -> Set<String> {
         Set(userAdded.filter {
             $0.moodleIdNumber != nil && dropped.contains($0.courseNo) && CourseStore.userAddedCourse($0, belongsTo: semester)
         }.map(\.courseNo))
     }
 
-    /// The term's server rows, less those of courses course selection here dropped or a roster
-    /// dropped on the server. A course the user added by hand keeps its row, so a drop never takes
-    /// it out of the hand-added courses: one added here has no Moodle ID, which a row merged from the
-    /// server always has, and one added on another device is a `user_added` row.
     static func keptRows(
         _ rows: [[String: Any]], semester: String, dropped: Set<String>, userAdded: [SDCourse],
         liveAnswer: CourseSelectionService.LiveAnswer? = nil
@@ -31,9 +23,6 @@ enum CourseServerRows {
         }
     }
 
-    /// The courses a roster dropped on the server, less one course selection here listed live
-    /// after the drop: this device's roster puts it back. A row without `enrollment_status` counts
-    /// as enrolled, and an answer within the clock skew margin of the drop counts as older.
     static func droppedOnServer(
         _ rows: [[String: Any]], liveAnswer: CourseSelectionService.LiveAnswer? = nil
     ) -> Set<String> {
@@ -54,8 +43,6 @@ enum CourseServerRows {
         return prefix == semester.uppercased()
     }
 
-    /// A hand-added course without class times, filled in from its server row. It keeps its own
-    /// Moodle ID: a course added here has none, which tells it apart from one merged from the server.
     static func scheduled(_ existing: SDCourse, fromServerRow row: [String: Any]) -> SDCourse {
         let filled = course(fromServerRow: row, courseNo: existing.courseNo,
                             semester: existing.semester, name: existing.courseName,

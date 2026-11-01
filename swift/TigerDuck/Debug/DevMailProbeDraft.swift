@@ -1,7 +1,6 @@
 #if DEBUG && os(iOS)
 import Foundation
 
-/// Whether an override draft may be probed, and with which credentials.
 nonisolated enum DevMailProbeDraft {
     static func refusal(for draft: MailServerOverrideSettings) -> String? {
         guard draft.isEnabled else {

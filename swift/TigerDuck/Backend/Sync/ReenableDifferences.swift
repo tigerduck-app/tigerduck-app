@@ -2,8 +2,6 @@ import Defaults
 import Foundation
 import os
 
-/// What differs between this device and one full-sync answer in the categories switched back on:
-/// the lines the re-enable alert lists, and the server's side its answer needs.
 @MainActor
 enum ReenableDifferences {
     struct Found {
@@ -121,7 +119,6 @@ enum ReenableDifferences {
         return lines
     }
 
-    /// The line for the assignments, if they differ, and the assignments the server marks.
     private static func assignmentLine(
         _ json: [String: Any], coursesArray: [[String: Any]],
         serverIgnoredCourses: [CourseIgnoresReconciler.ServerIgnoredCourse]?
@@ -168,7 +165,6 @@ enum ReenableDifferences {
         return (String(localized: "sync_conflict_reenable_assignments_differ"), serverMarkedAssignments)
     }
 
-    /// A server name of `""` is a cleared one, as `courseNamesAfterPull` reads it.
     nonisolated static func courseNameMismatches(
         _ overrides: [[String: Any]], courseNos: [String: String], local: [String: [String: String]]
     ) -> [String] {

@@ -43,7 +43,6 @@ nonisolated struct BrowserSites: Equatable {
     }
 }
 
-/// The zoom and layout the page on screen has from its site's entry in ``BrowserSites``.
 nonisolated struct BrowserSiteSetting: Equatable {
     var zoom = BrowserZoom.standard
     var isDesktop = false

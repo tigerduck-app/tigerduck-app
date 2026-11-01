@@ -141,7 +141,6 @@ final class ColorState: @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock()
     private let io: IO
 
-    /// Where the map is kept and what is told of a pick, and the clock and lock state reads go by.
     private nonisolated struct IO {
         let load: @Sendable () -> [String: UInt32]?
         let save: @Sendable ([String: UInt32]) -> Void
@@ -154,7 +153,6 @@ final class ColorState: @unchecked Sendable {
     nonisolated static let unreadableReadLimit = 3
     nonisolated static let unreadableReadSpacing: TimeInterval = 10
 
-    /// How many times the map was saved, which `CourseColorStore` turns into its revision.
     nonisolated(unsafe) private(set) var saves = 0
 
     init(

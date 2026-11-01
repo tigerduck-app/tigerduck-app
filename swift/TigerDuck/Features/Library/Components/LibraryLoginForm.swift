@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The library page's sign-in form, shown while no library account is signed in.
 struct LibraryLoginForm: View {
     @Bindable var viewModel: LibraryViewModel
 

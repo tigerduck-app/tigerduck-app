@@ -2,15 +2,9 @@
 import Defaults
 import Foundation
 
-/// School Mail's settings in `UserDefaults`, read and written through on every access, so the
-/// foreground and the background checks share them from any thread.
 nonisolated final class MailSettingsStore: MailPreferences, @unchecked Sendable {
     static let shared = MailSettingsStore()
 
-    /// The Codable twin of `OwnedDeleted` used only for persistence. `OwnedDeleted` itself is
-    /// declared in `MailMover.swift` without `Codable`; Swift only synthesizes `Codable` for a
-    /// conformance declared in the same file as the type, so this store keeps its own record
-    /// shape and converts at the boundary instead of extending `OwnedDeleted` from here.
     private struct OwnedDeletedRecord: Codable, Equatable, Sendable {
         var folder: String
         var uidValidity: UInt32
@@ -150,7 +144,6 @@ nonisolated final class MailSettingsStore: MailPreferences, @unchecked Sendable 
 }
 
 extension MailSettingsStore: AccountScoped {
-    /// Resets the preferences School Mail was given, these or a test's.
     @MainActor static func forgetAccount(in storage: AccountStorage) {
         storage.mailPreferences.reset()
     }

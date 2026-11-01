@@ -30,10 +30,6 @@ nonisolated enum PackedShareCode {
     /// Two letters, then `3` and two letters, then `3` and one letter.
     static let headValueCount = 676 * 2 + 26
 
-    // MARK: Shared rules
-
-    /// A course code's tail shapes, in the order an encoder tries them; the last field is the
-    /// section's serial, from 1.
     enum Shape {
         case leveled(level: Int, number: Int, isSeven: Bool, serial: Int)
         case lettered(number: Int, isB: Bool, serial: Int)
@@ -60,8 +56,7 @@ nonisolated enum PackedShareCode {
         return .other
     }
 
-    /// The head is the first that fits of `3` and two letters, two letters, or `3` and one letter
-    /// (NTU and NTNU courses, such as `3N1004701`), as in `SchoolTerms.isCourseNo`.
+    /// `3` heads are NTU and NTNU courses, such as `3N1004701`.
     static func split(_ courseNo: String) -> (head: String, tail: String)? {
         guard let m = courseNo.wholeMatch(of: /(3[A-Z]{2}|[A-Z]{2}|3[A-Z])([A-Z0-9]{6,7})/) else { return nil }
         return (String(m.1), String(m.2))
@@ -74,7 +69,6 @@ nonisolated enum PackedShareCode {
         return (letter, number(m.2), number(m.3))
     }
 
-    /// ASCII digits only, which every caller has matched.
     static func number(_ digits: Substring) -> Int {
         digits.utf8.reduce(0) { $0 * 10 + Int($1) - Int(UInt8(ascii: "0")) }
     }
@@ -147,7 +141,6 @@ nonisolated enum PackedShareCode {
         return String(decoding: output, as: UTF8.self)
     }
 
-    /// Nil for a character outside `0-9A-Z` or a group too large for its bits.
     static func bits(fromBase36 text: ArraySlice<UInt8>) -> [Bool]? {
         var bits: [Bool] = []
         for start in stride(from: text.startIndex, to: text.endIndex, by: 6) {

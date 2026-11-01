@@ -73,8 +73,6 @@ nonisolated struct NotificationSettingsLocalPreferences: Equatable, Sendable, Co
         return copy
     }
 
-    /// This copy with each field a push sent, named by its document key in `fields`, taken
-    /// from `other`, the values the push started with.
     func taking(_ fields: [String: Any], from other: NotificationSettingsLocalPreferences) -> NotificationSettingsLocalPreferences {
         let sent = { (section: NotificationSettingsSync.OwnedSection) in
             Set((fields[section.rawValue] as? [String: Any] ?? [:]).keys)

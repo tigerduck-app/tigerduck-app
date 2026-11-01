@@ -1,21 +1,14 @@
 import Foundation
 import Observation
 
-/// One account's sign-in: the school account (NTUST, Moodle and the TigerDuck backend), the
-/// library or School Mail. Work for a sign-in takes its `ticket` before an `await` and writes what
-/// it fetched only while `isCurrent(_:)` holds. A sign-out cancels the sign-in's tasks and moves
-/// the session on, so a reply that lands afterwards is dropped
-/// (docs/decisions/0026-one-sign-out-path.md).
 @Observable
 final class AccountSession {
-    /// A sign-in of the account: two tickets are equal while the session did not move on between them.
     nonisolated struct Ticket: Hashable, Comparable, Sendable {
         fileprivate let count: Int
 
         static func < (lhs: Ticket, rhs: Ticket) -> Bool { lhs.count < rhs.count }
     }
 
-    /// NTUST, Moodle and the TigerDuck backend, which sign in and out together.
     static let school = AccountSession()
     static let library = AccountSession()
 
@@ -26,13 +19,11 @@ final class AccountSession {
 
     func isCurrent(_ ticket: Ticket) -> Bool { signIns.isCurrent(ticket) }
 
-    /// A check bound to the current sign-in, for work that writes what it fetched after an `await`.
     func currentCheck() -> () -> Bool {
         let ticket = ticket
         return { [weak self] in self?.isCurrent(ticket) ?? false }
     }
 
-    /// Runs `work` for the current sign-in, which `stopWork()` cancels.
     @discardableResult
     func task(_ work: @escaping @MainActor (Ticket) async -> Void) -> Task<Void, Never> {
         let id = UUID()
@@ -45,21 +36,17 @@ final class AccountSession {
         return task
     }
 
-    /// Cancels the departing sign-in's tasks, so work still waiting stops before it writes.
     func stopWork() {
         let running = tasks.values
         tasks = [:]
         running.forEach { $0.cancel() }
     }
 
-    /// Makes every ticket taken so far stale: work already past its last `await`, which cancelling
-    /// cannot stop, drops what it fetched at its ticket check.
     func moveOn() {
         signIns.moveOn()
     }
 }
 
-/// A value of one sign-in, which reads as `empty` once its session has moved on.
 struct SignInScoped<Value> {
     private let empty: Value
     private var held: (signIn: AccountSession.Ticket, value: Value)?
@@ -78,8 +65,6 @@ struct SignInScoped<Value> {
     }
 }
 
-/// The sign-ins of an actor that keeps its own count, as `AuthTokenManager` and
-/// `MoodleTokenService` do: their sign-outs run on the actor, after the session's.
 nonisolated struct SignInCount: Sendable {
     private(set) var ticket = AccountSession.Ticket(count: 0)
 

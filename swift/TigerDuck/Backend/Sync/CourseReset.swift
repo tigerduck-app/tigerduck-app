@@ -1,8 +1,6 @@
 import Foundation
 
-/// A course reset made on another device: whether a full sync applies it, and its apply.
 enum CourseReset {
-    /// Whether the server's reset is newer than the last one seen, and the time to remember.
     nonisolated static func decide(
         server: Date?, lastSeen: Date?, takesCourses: Bool
     ) -> (apply: Bool, remember: Date) {
@@ -11,11 +9,6 @@ enum CourseReset {
         return (takesCourses && server > lastSeen, server)
     }
 
-    /// Drops the course edits queued before a reset made elsewhere and wipes the hand-added and
-    /// hidden courses, but keeps those whose add or delete made after it still goes out, as the
-    /// add uploads its course from them. Returns the keys of the dropped deletes, or nil, with the
-    /// caches untouched, when `mayWrite` says no after the hops, as behind the lock screen, where
-    /// the protected course files read as empty.
     static func apply(
         at resetAt: Date, courses: CourseStore, on coordinator: CloudSyncCoordinator, mayWrite: () -> Bool
     ) async -> Set<String>? {

@@ -2,14 +2,11 @@
 import Foundation
 import Observation
 
-/// The list's search: its matches from the local index and the loaded mail, fetched a page at a
-/// time, and the matches a running index pass adds while the results are on screen.
 @MainActor
 @Observable
 final class MailListSearch {
     typealias Matches = (uidValidity: UInt32, uids: [UInt32])
 
-    /// The search under way moves `current`; `shown` is the one `results` shows.
     private struct Generations {
         var current = 0
         var shown = -1
@@ -18,13 +15,11 @@ final class MailListSearch {
     var text = ""
     private(set) var results: [MailListRow]?
     private(set) var usedLocalFallback = false
-    /// The query of the search under way or shown; empty when there is none.
     @ObservationIgnored private var query = ""
     @ObservationIgnored private var known = MailSearchKnown()
     @ObservationIgnored private var generations = Generations()
     @ObservationIgnored private var indexLookup: Task<Matches?, Never>?
     @ObservationIgnored let catchUp: MailSearchCatchUp
-    /// Weak: a catch-up task outlives the list it searched once the page closes.
     @ObservationIgnored private weak var list: MailListViewModel?
 
     init(list: MailListViewModel, catchUpDelay: @escaping @Sendable () async -> Void) {
@@ -92,8 +87,6 @@ final class MailListSearch {
         if list.targets.contains(where: { !list.background.indexer.isIndexed($0) }) { list.background.startIndexIfLoaded(for: .search) }
     }
 
-    /// `folder`'s mail that matches `query`, newest first: the index's, and the loaded mail's, which
-    /// may have arrived since the index last caught up. Nil when neither knows the folder.
     private func matchingUIDs(in folder: String, query: String) async -> Matches? {
         guard let list else { return nil }
         let lookup = Task.detached { [index = list.writer.cache.searchIndex] in index.search(folder: folder, query: query) }
@@ -106,8 +99,6 @@ final class MailListSearch {
         return (validity, matched.sorted(by: >))
     }
 
-    /// A pass that fills a folder the search covers adds its new matches to the results, at most
-    /// once per catch-up delay, so the last fill's are added after the pass ends.
     func indexDidFill(_ folder: String) {
         guard let list else { return }
         guard !query.isEmpty, list.targets.contains(folder) else { return }
@@ -115,7 +106,6 @@ final class MailListSearch {
         if generations.shown == generations.current { scheduleCatchUp() }
     }
 
-    /// The page reopening runs the catch-up a closed page left behind.
     func resumeCatchUp() {
         if catchUp.isBehind, generations.shown == generations.current { scheduleCatchUp() }
     }
@@ -134,10 +124,6 @@ final class MailListSearch {
         )
     }
 
-    /// Adds the matches the index gained since the search ran, leaving the listed rows in place:
-    /// a folder's matches newer than its oldest listed row are fetched now, with older ones only
-    /// to fill its first page, and the rest wait for the end of the list. False when it stopped
-    /// before the last folder.
     private func catchUpResults() async -> Bool {
         guard let list else { return false }
         let query = self.query
@@ -164,7 +150,6 @@ final class MailListSearch {
         return true
     }
 
-    /// Adds `batch` of `folder`'s matches to the results; false when the search stopped there.
     private func fetch(
         _ batch: [UInt32], folder: String, uidValidity: UInt32,
         selection: MailFolderSelection, epoch: Int, generation: Int
@@ -227,7 +212,6 @@ final class MailListSearch {
         usedLocalFallback = false
     }
 
-    /// Also stops the scan of the index under way, which holds the lock its download writes under.
     private func supersede() {
         generations.current += 1
         indexLookup?.cancel()
@@ -247,20 +231,15 @@ final class MailListSearch {
     }
 }
 
-/// Per folder, the matches not fetched yet, and those the server listed as deleted or no longer
-/// had, which the catch-ups leave out rather than fetch again.
 struct MailSearchKnown {
     var unfetched: [String: MailListSearch.Matches] = [:]
     var gone: [String: Set<UInt32>] = [:]
 
-    /// Records the `requested` mail the server answered as deleted or not at all.
     mutating func noteGone(_ requested: [UInt32], _ summaries: [MailSummary], folder: String) {
         let kept = Set(summaries.filter { !$0.isDeleted }.map(\.uid))
         gone[folder, default: []].formUnion(requested.filter { !kept.contains($0) })
     }
 
-    /// Keeps `folder`'s matches not listed or gone, and returns those to fetch now: the ones newer
-    /// than the oldest listed row, and older ones only to fill the folder's first page.
     mutating func nextBatch(of matched: MailListSearch.Matches, folder: String, listed: Set<UInt32>) -> [UInt32] {
         let skipped = listed.union(gone[folder] ?? [])
         let waiting = matched.uids.filter { !skipped.contains($0) }
@@ -277,11 +256,8 @@ private extension MailSummary {
     }
 }
 
-/// Adds an index pass's new matches to the results at most once per `delay`, so the last fill's
-/// are added after the pass ends.
 @MainActor
 final class MailSearchCatchUp {
-    /// The index holds matches the results do not show yet.
     var isBehind = false
     private let delay: @Sendable () async -> Void
     private var task: Task<Void, Never>?
@@ -290,8 +266,6 @@ final class MailSearchCatchUp {
         self.delay = delay
     }
 
-    /// `run` returns false when it stopped, which leaves the rest for the next fill or the page
-    /// reopening rather than a retry at once.
     func schedule(isCurrent: @escaping () -> Bool, run: @escaping () async -> Bool, stillCurrent: @escaping () -> Bool) {
         guard task == nil else { return }
         let delay = self.delay
@@ -310,8 +284,6 @@ final class MailSearchCatchUp {
         }
     }
 
-    /// A catch-up's fetch would open the connection again, so a closed page leaves it for its
-    /// reopening.
     func pause() {
         if task != nil { isBehind = true }
         cancel()

@@ -10,10 +10,7 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
     }
 
     let id: String
-    /// The course's number; the course itself is read from the store or the list the slot came
-    /// from, so a slot never holds an edited course's old copy.
     let courseKey: String
-    /// The course's name and teacher as the slot was built.
     let title: String
     let instructor: String
     let start: Date
@@ -25,7 +22,6 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
     /// The timetable's time, kept only when a change moved it.
     var originalStart: Date?
     var originalEnd: Date?
-    /// Whether the user skips the course on `date`.
     let isSkipped: Bool
     private let roomMap: [String: String]
     private let fallbackRoom: String
@@ -58,7 +54,6 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
     }
     var isSkippedOrCancelled: Bool { isCancelled || isSkipped }
 
-    /// The timetable's room of some of its periods.
     func timetableRoom(of periods: [String]) -> String {
         CourseBlockRoom.room(weekday: date.scheduleWeekday, periods: periods, map: roomMap, fallback: fallbackRoom)
     }

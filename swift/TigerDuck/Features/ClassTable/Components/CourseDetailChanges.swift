@@ -1,12 +1,9 @@
 import SwiftUI
 import TigerDuckCore
 
-/// The coming changes of a course on a current-term day's sheet, a day to a line.
 struct CourseDetailChanges: View {
     let course: CourseStore.Course
-    /// Nil for a sheet of another term, which lists no changes.
     let date: Date?
-    /// The meeting the cards show.
     let shown: CourseTimeSlot?
     let changes: SchoolCalendar.Changes
 
@@ -40,8 +37,6 @@ struct CourseDetailChanges: View {
         }
     }
 
-    /// At most eight days' changes in a line each. The room, time or cancellation of the meeting
-    /// the cards show is left to the cards; its notes stay, as the cards have no place for them.
     static func changeRows(
         _ days: [(day: Date, meetings: [CourseTimeSlot])], besides shown: CourseTimeSlot?
     ) -> [(day: Date, summary: String)] {

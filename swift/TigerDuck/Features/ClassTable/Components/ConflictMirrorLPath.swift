@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The outline of the conflict's second course: a tail down the left that turns into a bar along
-/// the bottom, the mirror of `ConflictLShape`'s top bar and right tail.
 enum ConflictMirrorLPath {
     static func path(
         w: CGFloat, h: CGFloat, r: CGFloat,

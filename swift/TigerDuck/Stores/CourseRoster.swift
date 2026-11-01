@@ -1,7 +1,5 @@
 import Foundation
 
-/// What the course list knows of a course the transcript names: its teacher, seats, room and
-/// meeting times.
 struct CourseRoster: Equatable {
     let instructor: String
     let enrolledCount: Int
@@ -9,7 +7,6 @@ struct CourseRoster: Equatable {
     let classroom: String
     let schedule: [Int: [String]]
 
-    /// The term's own course first, else one the user added for that term or for none.
     static func find(courseNo: String, term: String, in store: CourseStore = .shared) -> CourseRoster? {
         let course = store.loadCourses(semester: term).first { $0.courseNo == courseNo }
             ?? store.loadUserAddedCourses().first {

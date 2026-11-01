@@ -99,8 +99,6 @@ private struct TLSPinPromptHost: ViewModifier {
         }
     }
 
-    /// A change of prompt, holder, scene phase or notify sheet cancels a run at any point, so its
-    /// progress lives in `presentation` and `owner`.
     private func takeTurn() async {
         while !Task.isCancelled {
             guard let prompt = queue.prompt else {

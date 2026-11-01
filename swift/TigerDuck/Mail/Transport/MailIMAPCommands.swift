@@ -2,13 +2,11 @@
 import Foundation
 import SwiftMail
 
-/// The IMAP commands behind each `MailClient` call, on a connection `LiveMailClient` has made live
-/// and holds for the call. Mail2000 has no MOVE, UIDPLUS, IDLE or SPECIAL-USE.
 nonisolated enum MailIMAPCommands {
     static func status(folder: String, imap: IMAPServer) async throws -> MailboxStatusInfo {
         // EXAMINE, not STATUS: `IMAPServer.mailboxStatus` asks STATUS for UIDNEXT and
         // UIDVALIDITY only when the server advertises UIDPLUS, which Mail2000 does not, and
-        // EXAMINE's response always carries both, the same source `page(folder:...)` uses.
+        // EXAMINE's response always carries both.
         let selection = try await imap.examineMailbox(folder)
         return MailboxStatusInfo(uidValidity: selection.uidValidity.value, uidNext: selection.uidNext.value)
     }
@@ -73,8 +71,6 @@ nonisolated enum MailIMAPCommands {
         }
     }
 
-    /// One summary FETCH for the batch, then each mail's first text part, plain before HTML, with
-    /// `stepAside` letting through any command that queued meanwhile before each part.
     static func searchTexts(
         folder: String, uids: [UInt32], expectedUIDValidity: UInt32, imap: IMAPServer,
         stepAside: () async throws -> Void
@@ -117,18 +113,10 @@ nonisolated enum MailIMAPCommands {
 
     static func append(_ message: Data, to folder: String, flags: [MailFlag], imap: IMAPServer) async throws {
         // SwiftMail's IMAP `append` has no `Data` overload (IMAPServer+Append.swift).
-        // `MailMessageBuilder.build` returns `Data(string.utf8)`, UTF-8 but not always ASCII
-        // (addresses, In-Reply-To, References go out raw), so decoding it back is lossless.
         try await imap.append(rawMessage: String(decoding: message, as: UTF8.self), to: folder,
                               flags: flags.map(\.swiftMailFlag), internalDate: nil)
     }
 
-    /// Wrapped in the same `mapSearchError` as `undeletedUIDs(folder:)`, and for the same reason:
-    /// nothing in Mail2000's CAPABILITY banner promises `SEARCH HEADER "Message-ID"` is honoured,
-    /// so a server that refuses the key must come back as `.searchUnsupported`, the typed "this
-    /// server will not answer that", rather than as a raw `IMAPError` flattened into a generic
-    /// `.protocolError`. The sent-copy dedupe (`SentCopyFiler`) turns either into
-    /// `SentCopyProbe.unknown`, but only one of them says which of the two happened.
     static func containsMessageID(_ messageID: String, in folder: String, imap: IMAPServer) async throws -> Bool {
         do {
             _ = try await imap.examineMailbox(folder)
@@ -139,7 +127,6 @@ nonisolated enum MailIMAPCommands {
         }
     }
 
-    /// EXAMINE, read-only, failing with `.folderChanged` when the folder was recreated.
     static func examine(_ folder: String, expecting expectedUIDValidity: UInt32?, imap: IMAPServer) async throws {
         let selection = try await imap.examineMailbox(folder)
         try MailIMAPFetch.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
@@ -150,20 +137,11 @@ nonisolated enum MailIMAPCommands {
         try MailIMAPFetch.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
     }
 
-    /// The one place `IMAPServer.search(criteria:)` is called, and plain SEARCH is a choice.
-    /// Mail2000's measured banner, `IMAP4 IMAP4rev1 AUTH=LOGIN LITERAL+ ID NAMESPACE STARTTLS`,
-    /// has no ESEARCH, SORT or WITHIN: `search(..., sortCriteria:)` throws before sending, and
-    /// `extendedSearch(...)` would send SEARCH down a wire and parsing path never run against this
-    /// server, for no gain. `deletedUIDs` (the pre-EXPUNGE check), `undeletedUIDs` (the search
-    /// index) and `containsMessageID` (the sent-copy dedupe) are load-bearing. So the vendored copy
-    /// drops its deprecation (VENDORED.md entry 9). Revisit only if the server's CAPABILITY banner
-    /// changes.
     private static func rawSearch(criteria: [SearchCriteria], imap: IMAPServer) async throws -> MessageIdentifierSet<UID> {
         try await imap.search(criteria: criteria)
     }
 }
 
-/// One SMTP session per send, verified by `MailTLSVerifier` as the IMAP connection is.
 nonisolated enum MailSMTP {
     static func send(
         _ message: Data, from sender: String, to recipients: [String], studentID: String, password: String,

@@ -203,8 +203,6 @@ actor MailChecker {
             .filter { $0.uid >= marker }
         let mute = prefs.muteSettings
         let checkedAt = now()
-        // A muted mail is passed over like a notified one, also when a failure below it holds the
-        // marker and the settings change before the retry.
         let passedOver = cursor.passedOver(uidValidity: status.uidValidity)
         let unread = fetched.filter { !$0.isSeen && !$0.isDeleted }.sorted { $0.uid < $1.uid }
         let muted = Set(unread.filter {

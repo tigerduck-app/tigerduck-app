@@ -3,8 +3,6 @@ import ImageIO
 import Observation
 import UniformTypeIdentifiers
 
-/// The course members' pictures: the copy kept on the device, Moodle's newer one, and the large
-/// one Quick Look opens.
 @Observable
 @MainActor
 final class MoodleMemberPictures {
@@ -12,7 +10,6 @@ final class MoodleMemberPictures {
     private(set) var pictures: [URL: CGImage] = [:]
     @ObservationIgnored private var askedPictures: Set<URL> = []
     @ObservationIgnored private var picturesInFlight: Set<URL> = []
-    /// Shared because every course's store keeps an account's pictures in one folder.
     private static var placedRevisions: [URL: Int] = [:]
     @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
     @ObservationIgnored private var lastPictureRead: Task<CGImage?, Never>?
@@ -27,12 +24,8 @@ final class MoodleMemberPictures {
     }
 
 
-    /// The picture kept on the device shows first; Moodle's, asked for once a visit, replaces it
-    /// when it differs. A picture is kept by the member's student ID, so the address of a new upload
-    /// still finds the old picture to show until the new one lands.
     func loadPicture(of member: MoodleMember) async {
         guard let url = member.pictureURL else { return }
-        // A request still out may yet be cancelled with its row, which leaves this caller to ask.
         if picturesInFlight.contains(url) { _ = await lastPictureDownload?.value }
         guard !askedPictures.contains(url) else { return }
         let file = pictureFile(of: member, url: url)
@@ -44,7 +37,6 @@ final class MoodleMemberPictures {
         guard let data = await downloadInTurn(url) else { return }
         let read = readPictureFile
         let decode = decodePicture
-        // Another course's store may have kept these bytes since this one read the file.
         let isShown = pictures[url] != nil
         let changed = await Task.detached(priority: .userInitiated) { () -> (CGImage, URL?)? in
             let isNew = read(file) != data
@@ -53,7 +45,6 @@ final class MoodleMemberPictures {
             return Self.stage(data, for: file, revision: revision).map { (image, $0) }
         }.value
         guard case let (image, staged)? = changed else { return }
-        // An older revision's disk work can end after a newer one's, which it must not replace.
         guard context.isCurrent(), staged == nil || revision >= Self.placedRevisions[file, default: 0] else {
             if let staged { try? FileManager.default.removeItem(at: staged) }
             return
@@ -68,8 +59,7 @@ final class MoodleMemberPictures {
     /// The member's own picture as a file named for them, which Quick Look opens and its share
     /// menu saves: Moodle's 512 px size of this revision, downloaded on the first open and kept,
     /// else the 100 px one the list shows; nil while neither is on the device. Quick Look tells an
-    /// image by its extension, which the kept files have none of. Each open writes the copy again,
-    /// next to the kept files, so a sign-out deletes it too.
+    /// image by its extension, which the kept files have none of.
     func picturePreview(of member: MoodleMember) async -> URL? {
         guard let url = member.pictureURL, context.isCurrent() else { return nil }
         let kept = pictureFile(of: member, url: url)
@@ -123,8 +113,6 @@ final class MoodleMemberPictures {
         return await turn.value
     }
 
-    /// A visit asks for a picture once, failed or not, and a turn whose picture another row already
-    /// asked for asks nothing. A request its row cancelled learned nothing, so the row asks again.
     private func downloadInTurn(_ url: URL) async -> Data? {
         let previous = lastPictureDownload
         let turn = Task { [api] () -> Data? in
@@ -148,8 +136,6 @@ final class MoodleMemberPictures {
         return await withTaskCancellationHandler { await turn.value } onCancel: { turn.cancel() }
     }
 
-    /// Named for the member's student ID, or for a member without one, their Moodle user id and the
-    /// picture's revision. Either way the files that go with it are the name and a dash before more.
     private func pictureFile(of member: MoodleMember, url: URL) -> URL {
         let account = Self.folderName(context.account)
         let studentId = Self.folderName(member.studentId ?? "")
@@ -168,9 +154,6 @@ final class MoodleMemberPictures {
         folderName(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "rev" }?.value ?? "")
     }
 
-    /// Deletes the member's other files, which a new picture outdates, but not a newer revision's
-    /// or the preview folders Quick Look may have open, and writes the picture to a temporary file
-    /// for `place`.
     private nonisolated static func stage(_ data: Data, for file: URL, revision: Int) -> URL? {
         let files = FileManager.default
         let prefix = String(file.lastPathComponent.prefix { $0 != "-" }) + "-"
@@ -191,7 +174,6 @@ final class MoodleMemberPictures {
         }
     }
 
-    /// Runs on the main actor right after the account check, so no picture lands after a sign-out.
     private nonisolated static func place(_ staged: URL, at file: URL) {
         let files = FileManager.default
         try? files.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)

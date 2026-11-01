@@ -3,7 +3,6 @@ import TigerDuckCore
 
 nonisolated extension PackedShareCode {
     enum Decoder {
-        /// `code` is trimmed, upper-cased and starts with `prefix`.
         static func decode(_ code: String) throws -> ClassTableShareCode {
             let body = Array(code.utf8.dropFirst(prefix.utf8.count))
             if let version = body.first, (UInt8(ascii: "2")...UInt8(ascii: "9")).contains(version) {

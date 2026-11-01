@@ -2,8 +2,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Importing a class table on the Mac: from a picture file the user picks, or from a share link
-/// the app was opened with.
 struct MacClassTableImport: ViewModifier {
     @Binding var model: ClassTableImportModel?
     @Binding var showsPicker: Bool
@@ -38,8 +36,6 @@ struct MacClassTableImport: ViewModifier {
             .onChange(of: HeldShareLink.mayOpen(in: app)) { openHeldLink() }
     }
 
-    /// In the shown import's model, which closes an alert it shows before the link's own: a new
-    /// model's alert would replace it in one update, and the old job's buttons would stay.
     private func openHeldLink() {
         guard let text = HeldShareLink.shared.take(in: app) else { return }
         if let model, !model.isFinished {

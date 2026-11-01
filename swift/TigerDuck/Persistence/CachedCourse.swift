@@ -1,6 +1,5 @@
 import Foundation
 
-/// A course as the course files store it. Its fields and their names are the file format.
 struct CachedCourse: Codable {
     let courseNo: String
     let courseName: String

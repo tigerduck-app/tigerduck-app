@@ -29,9 +29,6 @@ final class StoreObservation {
     }
 }
 
-/// The revisions of the stores the course and assignment screens draw from: the courses, the
-/// assignments and the calendar's events, the colours, the school's course changes and the
-/// academic calendar. Reading it inside a `StoreObservation` or a view observes all of them.
 struct AppDataRevision: Equatable {
     let courses: Int
     let assignments: Int

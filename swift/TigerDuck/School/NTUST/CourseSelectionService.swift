@@ -24,8 +24,6 @@ enum CourseSelectionService {
     private static let courseSelectionRoot = URL.knownGood("https://courseselection.ntust.edu.tw/")
     private static let courseListURL = URL.knownGood("https://courseselection.ntust.edu.tw/ChooseList/D01/D01")
 
-    /// The enrolled course numbers, and whether they came from the school in this call rather than
-    /// from the day-long cache.
     static func fetchEnrolledCourseNos(
         session: URLSession,
         studentId: String,
@@ -148,7 +146,6 @@ enum CourseSelectionService {
         lastAnswer(studentId: studentId, semester: semester)?.courseNos
     }
 
-    /// The term's last live answer while the day-long cache keeps it.
     nonisolated static func lastAnswer(studentId: String, semester: String) -> LiveAnswer? {
         cacheLock.withLock {
             let dict = readCacheDict()

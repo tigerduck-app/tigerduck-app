@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 
-/// A user's choice of course colours.
 enum CourseColorEdit {
     /// The colour picked for a course; a course that held it gets another.
     case pick(UInt32, courseNo: String)
@@ -9,8 +8,6 @@ enum CourseColorEdit {
     case reassignAll(courseNos: [String])
 }
 
-/// The colour of each course, kept by `ColorState` in `CourseColorFiles`. `revision` moves each
-/// time the map is saved, which `DeviceSurfaceSyncer` and the course views observe.
 @Observable
 final class CourseColorStore {
     static let shared = CourseColorStore()
@@ -61,14 +58,12 @@ final class CourseColorStore {
         saving { $0.applyColors(colors, palette: palette) }
     }
 
-    /// Reads the map again, as after a sign-out cleared its file.
     func reload() {
         let before = state.snapshot()
         state.reload()
         if state.snapshot() != before { revision &+= 1 }
     }
 
-    /// The courses whose colour changed, the picked one among them.
     @discardableResult
     func apply(_ edit: CourseColorEdit, palette: [UInt32]) -> [String: UInt32] {
         switch edit {

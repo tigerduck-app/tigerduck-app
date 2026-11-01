@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Where the library page's sign-in stands.
 enum LibraryAccess: Equatable {
     case signedOut
     case signingIn
@@ -13,8 +12,6 @@ enum LibraryAccess: Equatable {
 
 @Observable
 final class LibraryViewModel {
-    /// The code on the page: its image and the text it encodes, when the school issued it, and
-    /// whether a request for a new one runs while none shows.
     private struct ShownCode {
         var image: UIImage?
         var payload: String?
@@ -49,7 +46,6 @@ final class LibraryViewModel {
     var backoffSchedule: [TimeInterval] { get { cycle.backoffSchedule } set { cycle.backoffSchedule = newValue } }
     var refreshInterval: TimeInterval { get { cycle.refreshInterval } set { cycle.refreshInterval = newValue } }
 
-    /// The wait after a failed code request, which the page lets the user cut short.
     var isWaitingToRetry: Bool { isLoggedIn && errorMessage != nil }
 
     init() {

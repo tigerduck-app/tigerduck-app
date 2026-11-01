@@ -1,7 +1,5 @@
 import Foundation
 
-/// The current term's classes for Today's classes above the table, whichever term the table
-/// shows: today's courses and the ones running now.
 @MainActor
 @Observable
 final class ClassTableToday {

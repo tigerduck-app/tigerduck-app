@@ -44,7 +44,6 @@ final class ClassTableImportModel: Identifiable {
 
     private let account: Account
 
-    /// Where an import is saved, whose sign-in it runs under, and how it looks courses up.
     private struct Account {
         let store: ImportedClassTableStore
         let signedInStudentId: () -> String?

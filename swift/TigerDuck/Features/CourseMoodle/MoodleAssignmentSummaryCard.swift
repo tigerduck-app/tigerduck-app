@@ -2,7 +2,6 @@
 import SwiftUI
 import TigerDuckCore
 
-/// The assignment's due date, with the time left or overdue, and the student's group.
 struct MoodleAssignmentSummaryCard: View {
     let due: Date?
     let isSubmitted: Bool?

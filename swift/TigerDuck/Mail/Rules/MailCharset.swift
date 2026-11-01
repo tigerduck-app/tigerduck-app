@@ -17,14 +17,8 @@ nonisolated enum MailCharset {
         }
     }
 
-    /// The labelled charset, else strict UTF-8, then the labelled charset leniently, then
-    /// Big5-HKSCS, then ISO-8859-1 (which never fails, so no byte is lost). Because
-    /// `String(data:encoding:)` is strict, a correctly labelled body with one truncated byte, an
-    /// everyday shape, would otherwise reach Big5-HKSCS, which accepts almost any bytes, and
-    /// render as mojibake. The lenient retry, like Android's `String(bytes, charset)`, substitutes
-    /// U+FFFD for a malformed byte. It runs after strict UTF-8 because Mail2000 constantly labels
-    /// UTF-8 parts `us-ascii`, which lenient ASCII would garble. Android, with no fallback after a
-    /// resolvable label, still garbles those; this side does not match it there.
+    /// The lenient retry runs after strict UTF-8 because Mail2000 constantly labels UTF-8 parts
+    /// `us-ascii`, which lenient ASCII would garble.
     static func decode(_ data: Data, label: String?) -> String {
         let labelled = encoding(forLabel: label)
         if let labelled, let text = String(data: data, encoding: labelled) { return text }
@@ -34,10 +28,9 @@ nonisolated enum MailCharset {
         return String(data: data, encoding: .isoLatin1) ?? ""
     }
 
-    /// `encoding` with malformed bytes replaced rather than rejected. Foundation offers no
-    /// lossy `String(data:encoding:)`, but its encoding *detector* does the same substitution
-    /// when it is restricted to a single candidate and allowed to convert lossily. Returns nil
-    /// only if even that fails, leaving the caller's fallback chain in charge.
+    /// Foundation offers no lossy `String(data:encoding:)`, but its encoding *detector* does
+    /// the same substitution when it is restricted to a single candidate and allowed to
+    /// convert lossily.
     private static func lossilyDecoded(_ data: Data, encoding: String.Encoding) -> String? {
         var converted: NSString?
         var usedLossyConversion: ObjCBool = false

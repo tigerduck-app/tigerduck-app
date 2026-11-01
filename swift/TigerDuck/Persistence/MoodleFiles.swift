@@ -1,7 +1,5 @@
 import Foundation
 
-/// The account's Moodle data: the course id map, the course pages' cached answers, and the files
-/// downloaded from Moodle.
 final class MoodleFiles: AccountScoped {
     static let shared = MoodleFiles()
 
@@ -18,14 +16,8 @@ final class MoodleFiles: AccountScoped {
         try? FileManager.default.removeItem(at: files.moodleFilesDir)
     }
 
-    // MARK: - Moodle course id map (idnumber to numeric id)
-
-    /// Saved by ``CourseFetch`` and ``AssignmentFetch`` whenever they fetch the user's enrolled
-    /// courses. Moodle Mobile's deep-link router honors only `?id=N` redirects reliably (the web
-    /// accepts `?idnumber=`, the in-app handler does not), so deep links look the numeric id up
-    /// here. Kept in the persistent folder to survive cache sweeps of localized course data. Always
-    /// overwrite the whole map with the fresh snapshot: merging would keep entries for courses the
-    /// user left or whose id was reissued, and `SDCourse.moodleDeepLink` would point at a dead course.
+    /// Moodle Mobile's deep-link router honors only `?id=N` redirects reliably (the web accepts
+    /// `?idnumber=`, the in-app handler does not), so deep links look the numeric id up here.
     func saveMoodleCourseIdMap(_ map: [String: Int]) {
         folders.persistentFiles.save(map, to: "moodle_course_id_map.json")
     }
@@ -36,12 +28,8 @@ final class MoodleFiles: AccountScoped {
 
     func lookupMoodleCourseId(idnumber: String) -> Int? {
         guard !idnumber.isEmpty else { return nil }
-        // Normalised on both sides: Moodle spells a summer term "114h" and
-        // NTUST "114H", and a course row can hold either spelling.
         return loadMoodleCourseIdMap()[SDCourse.normalizedMoodleId(idnumber)]
     }
-
-    // MARK: - Course pages
 
     func saveMoodleData<Value: Codable>(_ value: Value, fetchedAt: Date, name: String, account: String) {
         let url = moodleFileURL(name: name, account: account)
@@ -63,7 +51,6 @@ final class MoodleFiles: AccountScoped {
 
     private var moodleDir: URL { folders.cache.appendingPathComponent("moodle", isDirectory: true) }
 
-    /// Downloads live beside the cache folder, not in it.
     var moodleFilesDir: URL {
         folders.cache.deletingLastPathComponent().appendingPathComponent("Moodle", isDirectory: true)
     }

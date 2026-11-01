@@ -1,13 +1,9 @@
 import Defaults
 import Foundation
 
-/// The user's edits of their own class table: adding, hiding, renaming and recolouring courses,
-/// ignoring a course's assignments and resetting a term. Each edit goes to the stores and then
-/// to `sync`. The iPhone and Mac class tables share it through `ClassTableViewModel`.
 @MainActor
 @Observable
 final class ClassTableEditor {
-    /// The sheets and alerts an edit opens.
     struct Dialogs {
         var showAddCourse = false
         var showResetConfirm = false
@@ -37,15 +33,12 @@ final class ClassTableEditor {
         LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
     }
 
-    /// Reads the hidden courses, the user's names and the ignored courses back from the stores.
     func reloadMarks() {
         deletedCourseNos = Set(store.loadDeletedCourseNos())
         courseCustomNames = store.loadCourseCustomNames()
         ignoredAssignmentCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
     }
 
-    /// The user's own table is on screen. A late call once the class table is gone, such as the
-    /// colour picker's delayed pick, edits nothing.
     private var isEditable: Bool {
         owner.map { $0.shownPerson == nil } ?? false
     }
@@ -130,8 +123,6 @@ final class ClassTableEditor {
         sync.coursesChanged?(table.courses, semester)
     }
 
-    /// The task keeps the view model alive until the term is reset here too, so leaving the
-    /// class table while the backend delete runs still finishes the reset.
     func resetCourses(authService: AuthService) {
         guard let table = owner, table.shownPerson == nil else { return }
         let semester = table.currentSemester

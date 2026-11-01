@@ -13,12 +13,7 @@ nonisolated struct MailMoveResult: Equatable, Sendable {
 }
 
 /// Move and delete without UIDPLUS. EXPUNGE removes every `\Deleted` message in the folder,
-/// another client's included, so TigerDuck expunges only when every one is its own, checked fresh
-/// on the server; otherwise its flags wait, hidden from the list. Each step that changes mail
-/// carries `previouslyFlagged.uidValidity` to check against its own SELECT, since the 60 s poll
-/// can run between steps. A recreated folder means `.folderChanged`, which no caller retries.
-/// Started commands are never retried (`recoverAfterFailure` asks the server once). Another
-/// client can still act between the deleted-UID check and EXPUNGE.
+/// another client's included.
 /// See docs/decisions/0014-mail-delete-without-uidplus.md.
 nonisolated enum MailMover {
     static func move(

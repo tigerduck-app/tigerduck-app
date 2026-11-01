@@ -20,7 +20,6 @@ struct AccountSwitchTests {
         #endif
     }
 
-    /// Real `Defaults` keys the sign-outs clear, put back after each test.
     private struct SavedDefaults {
         private var restores: [() -> Void] = []
 
@@ -58,7 +57,6 @@ struct AccountSwitchTests {
         }
     }
 
-    /// Each account's stores, filled in folders of the test's own.
     @MainActor
     private struct Device {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -103,7 +101,6 @@ struct AccountSwitchTests {
                 .map(\.lastPathComponent)
         }
 
-        /// The school account's stores, the imported class tables among them without loading the store.
         func fillSchool() throws {
             cache.courses.saveCourses([], semester: semester)
             cache.courses.saveUserAddedCourses([])
@@ -237,7 +234,6 @@ struct AccountSwitchTests {
         return auth
     }
 
-    /// The school plan without what `AppEnvironment` adds, which these tests do not build.
     private static func schoolSignOut(_ auth: AuthService) -> SignOutPlan {
         SignOutPlan(session: auth.session, stores: SignOutPlan.schoolStores, endSession: {
             auth.logout()

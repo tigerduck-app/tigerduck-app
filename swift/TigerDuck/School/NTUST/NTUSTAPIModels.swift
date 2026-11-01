@@ -57,7 +57,6 @@ struct CourseSearchRequest: Codable, Equatable {
     }
 }
 
-/// The department and GE type lists of the Add Course filters, from the term's catalog.
 struct CourseSearchOptions: Codable, Equatable {
     struct Option: Codable, Hashable {
         let code: String
@@ -105,8 +104,6 @@ nonisolated extension CourseSyllabus {
         case Instruction_other
     }
 
-    /// Every field as text, a number as its digits and anything else as nil, so one field of an
-    /// unexpected type leaves the rest of the syllabus readable.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         func text(_ key: CodingKeys) -> String? {

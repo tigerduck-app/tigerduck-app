@@ -198,7 +198,6 @@ struct RoomDaySheet: View {
     }
 }
 
-/// The colours of the free and booked lanes.
 private struct RoomUseLegend: View {
     let policy: VisualStylePolicy
 

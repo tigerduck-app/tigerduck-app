@@ -1,7 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// The course sheet over the Mac class table, which a click on the backdrop or Escape closes.
 struct MacCourseDetailOverlay: View {
     let viewModel: ClassTableViewModel
     @Binding var moodlePath: [MoodleCourseRoute]
@@ -30,7 +29,7 @@ struct MacCourseDetailOverlay: View {
                 .onTapGesture { }
 
                 // Restore ESC dismissal: custom overlays don't inherit a sheet's automatic
-                // cancel handling. Hidden button keeps the shortcut active without affecting
+                // cancel handling.
                 Button("") {
                     if moodlePath.isEmpty {
                         viewModel.selection.course = nil

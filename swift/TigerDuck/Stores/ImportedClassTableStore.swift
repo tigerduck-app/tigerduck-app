@@ -200,7 +200,6 @@ final class ImportedClassTableStore: AccountScoped {
         if lines.isEmpty { signOut() } else { confirm(lines) }
     }
 
-    /// Deletes the file whether or not this process loaded it; `removeAll()` empties the store in memory.
     static func forgetAccount(in storage: AccountStorage) {
         ImportedClassTableFile.remove(at: storage.folders.persistent.appendingPathComponent(fileName))
     }

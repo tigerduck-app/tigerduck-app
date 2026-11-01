@@ -1,8 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// The Mac class table's toolbar: the term picker, adding a course or the imported person's
-/// actions, sharing, and importing a class table.
 struct MacClassTableToolbar: ToolbarContent {
     @Bindable var viewModel: ClassTableViewModel
     let importModel: ClassTableImportModel?

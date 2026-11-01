@@ -3,8 +3,6 @@ import Observation
 import os
 import SwiftUI
 
-/// The assignment marks this device and the backend disagree on, which the conflict alert asks
-/// about; `SyncConflicts` forwards its mark names here.
 @MainActor
 @Observable
 final class MarkConflicts {
@@ -47,7 +45,6 @@ final class MarkConflicts {
         }
     }
 
-    /// Whether the conflict alert shows; closing it unanswered leaves the marks as they are.
     var alertIsPresented: Binding<Bool> { Self.alertIsPresented(Bindable(self).items) }
 
     static func alertIsPresented(_ conflicts: Binding<[SyncConflicts.SyncConflictItem]>) -> Binding<Bool> {

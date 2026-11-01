@@ -480,8 +480,6 @@ extension BulletinListSessionTests {
     }
 }
 
-/// Answers a page request when the test releases it, and answers even after its task is
-/// cancelled, as a response already received does.
 @MainActor
 private final class HeldBulletinPages {
     private var waiting: [Int: CheckedContinuation<Void, Never>] = [:]

@@ -1,8 +1,6 @@
 import Foundation
 import os
 
-/// Carries out the user's answer to the re-enable alert: Keep Local sends this device's copies,
-/// Use Server drops them and pulls the server's.
 @MainActor
 enum ReenableAnswer {
     typealias Conflict = SyncConflicts.ReenableConflict

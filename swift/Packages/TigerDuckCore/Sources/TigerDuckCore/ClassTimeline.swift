@@ -1,7 +1,6 @@
 import Foundation
 
-/// A timetable's classes on each day, and which one is on now and which comes next. The app, the
-/// widgets and the Watch each convert their own course data into `ClassMeeting`s.
+/// A timetable's classes on each day, and which one is on now and which comes next.
 public struct ClassTimeline: Sendable {
     public let meetings: [ClassMeeting]
     /// Taipei day keys (`yyyy-MM-dd`) with no classes; `QuietDayCalendar` works them out.

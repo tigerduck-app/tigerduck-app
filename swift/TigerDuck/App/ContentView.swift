@@ -55,8 +55,6 @@ private struct ClassTableImportHost: ViewModifier {
                 notifySheetUp: app.updateNotifyCoordinator.activeNotifySheet != nil,
                 keyWindowChanges: keyWindowChanges
             )) {
-                // A change of the notify sheet or the key window starts this again; a sheet in a tab
-                // is waited out.
                 while !openHeldLink(), hostWindow.isPresenting, !Task.isCancelled {
                     await hostWindow.presentationsClosed()
                 }
@@ -74,9 +72,6 @@ private struct ClassTableImportHost: ViewModifier {
             .environment(\.hostWindow, hostWindow)
     }
 
-    /// False while the link waits: the import's sheet would close a sheet or alert open in a tab,
-    /// and would race a What's New or update sheet about to show. Only the window in front takes
-    /// it, so it never opens in another iPad window while this one has a sheet up.
     private func openHeldLink() -> Bool {
         // A link replaces what an open scanner, or an earlier link's import, shows, inside it.
         let inPlace: ClassTableImportModel? = if let importModel, !importModel.isFinished {

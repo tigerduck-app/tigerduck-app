@@ -1,7 +1,5 @@
 import Foundation
 
-/// The imported person whose class table is on screen, and the rename, delete and look-up-again
-/// of that person.
 @MainActor
 @Observable
 final class ShownPersonModel {
@@ -27,13 +25,11 @@ final class ShownPersonModel {
         displayedPerson = store.shownPerson
     }
 
-    /// The person shown, as the store holds them now, or nil for the user's own table.
     var shownPerson: ImportedPerson? {
         guard let displayedPerson else { return nil }
         return store.people.first { $0.id == displayedPerson.id } ?? displayedPerson
     }
 
-    /// Takes the person the store shows now.
     func showStoredPerson() {
         displayedPerson = store.shownPerson
     }
@@ -65,7 +61,6 @@ final class ShownPersonModel {
         if store.delete(personInAlert.id) == .failed { showsSaveFailed = true }
     }
 
-    /// Looks the shown term up again; true when the shown person's courses were saved anew.
     func refresh(semester: String) async -> Bool {
         guard !isRefreshing, let person = shownPerson,
               let term = person.terms.first(where: { $0.semester == semester }) else { return false }

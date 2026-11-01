@@ -1,7 +1,5 @@
 import Foundation
 
-/// Reads the SSO login form, the OIDC bridge form and the token link out of the pages the Moodle
-/// token harvest meets.
 nonisolated enum MoodleSSOPage {
     struct SSOLoginFields {
         let action: String

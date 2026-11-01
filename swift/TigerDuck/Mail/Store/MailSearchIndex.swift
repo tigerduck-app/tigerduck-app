@@ -3,12 +3,8 @@ import Foundation
 import os
 import SQLite3
 
-/// Each folder's mail as a search reads it, kept on the phone: Mail2000 answers a `SEARCH` in
-/// Chinese with `NO [BADCHARSET]`. One SQLite file in `MailCache`'s directory, which School Mail's
-/// sign-out deletes. See docs/decisions/0027-mail-local-search-index.md.
-///
-/// The index belongs to the account `MailCache` names: another account's next `prepare` empties
-/// it, and every write is refused once the cache was wiped after the `wipeCount` it was given.
+/// Mail2000 answers a `SEARCH` in Chinese with `NO [BADCHARSET]`.
+/// See docs/decisions/0027-mail-local-search-index.md.
 nonisolated final class MailSearchIndex: @unchecked Sendable {
     private static let schemaVersion: Int64 = 1
 
@@ -29,9 +25,6 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         sqlite3_close_v2(db)
     }
 
-    /// Opens `folder` at `uidValidity` for the account signed in now, emptying it when the account
-    /// or the UIDVALIDITY changed, and drops the mail no longer `onServer`. Returns the UIDs it
-    /// still holds, or nil when refused.
     func prepare(folder: String, uidValidity: UInt32, onServer: Set<UInt32>, wipeCount expected: Int) -> Set<UInt32>? {
         withFile {
             guard expected == wipeCount(), openLocked() else { return nil }
@@ -56,7 +49,6 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         }
     }
 
-    /// Adds `texts` by UID, unless `folder` is no longer the account's at `uidValidity`.
     func add(_ texts: [UInt32: String], folder: String, uidValidity: UInt32, wipeCount expected: Int) -> Bool {
         withFile {
             guard expected == wipeCount(), openLocked(), ownerLocked() == currentOwner,
@@ -71,9 +63,6 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         }
     }
 
-    /// The UIDs, newest first, of the mail in `folder` whose text holds `query`, with the
-    /// UIDVALIDITY they name mail under; nil for a folder not indexed for this account, or once
-    /// `shouldStop` says so mid-scan, which frees the lock the download's writes wait for.
     func search(
         folder: String, query: String, shouldStop: @escaping @Sendable () -> Bool = { Task.isCancelled }
     ) -> (uidValidity: UInt32, uids: [UInt32])? {
@@ -98,8 +87,6 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         }
     }
 
-    /// Closes the file and runs `remove`, for `MailCache.clearAll`, under the lock every open
-    /// takes, so no search reopens the file before `remove` has deleted it.
     func close(thenRemove remove: () -> Void) {
         lock.withLock {
             sqlite3_close_v2(db)
@@ -107,8 +94,6 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
             remove()
         }
     }
-
-    // MARK: SQLite
 
     private enum Value {
         case text(String)
@@ -126,8 +111,6 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
 
     private var currentOwner: String { account() ?? "" }
 
-    /// A table found damaged mid-query is dropped with its file once the call is done, and the
-    /// next call starts over.
     private func withFile<T>(_ body: () -> T) -> T {
         lock.withLock {
             let result = body()
@@ -145,8 +128,6 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         code & 0xFF == SQLITE_CORRUPT || code & 0xFF == SQLITE_NOTADB
     }
 
-    /// A file SQLite cannot read is only a copy of the server's mail: it is deleted, once, and
-    /// the index starts over.
     private func openLocked() -> Bool {
         guard db == nil else { return true }
         let result = openOnceLocked()
@@ -163,7 +144,6 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         }
     }
 
-    /// `SQLITE_OK`, or the primary result code that kept the file from opening.
     private func openOnceLocked() -> Int32 {
         let directory = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(
@@ -190,7 +170,6 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         return SQLITE_OK
     }
 
-    /// Only a copy of the server's mail: another layout starts over and downloads it again.
     private func migrateLocked() -> Bool {
         var version: Int64 = 0
         guard execute("PRAGMA user_version", row: { version = sqlite3_column_int64($0, 0) }) else { return false }

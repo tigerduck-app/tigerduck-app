@@ -1,8 +1,5 @@
 import Foundation
 
-/// The sessions a sign-out could not end on the backend yet: which ones the device keeps, a
-/// refresh of their tokens, and the unregister that ends each. Its async work runs isolated to
-/// the `AuthTokenManager` it is given, as the manager's own did, so its list changes in turn.
 nonisolated struct DepartingSessionKeeper: Sendable {
     let list: DepartingSessionList
     let requests: AuthRequests
@@ -11,8 +8,6 @@ nonisolated struct DepartingSessionKeeper: Sendable {
 
     var backends: [URL] { list.load().map(\.baseURL) }
 
-    /// While signed in, only a session kept on another backend is sent: one on this backend was
-    /// the device's, and the sign-in has given it to the new account.
     func keepsAlongside(_ session: DepartingSession, signedIn: Bool) -> Bool {
         !signedIn || !AuthTokenManager.isSameBackend(session.baseURL, requests.baseURL())
     }
@@ -26,8 +21,6 @@ nonisolated struct DepartingSessionKeeper: Sendable {
         list.forget(session)
     }
 
-    /// The access token a sign-out's unregister sends: the pair's own while it has time left, else
-    /// one a refresh still out brought back, else one from a refresh of the departing session.
     func signOutToken(
         for departing: DepartingSession, access: String?, expiry: Date, refreshOut: Task<String?, Never>?,
         ticket: AccountSession.Ticket, uses: Int, of manager: isolated AuthTokenManager
@@ -76,7 +69,6 @@ nonisolated struct DepartingSessionKeeper: Sendable {
         let send = await requests.postRefresh(session.refreshToken, on: session.baseURL)
         let status = send.reply?.1.statusCode
         if let status, status != 200 { await APIVersionGate.shared.note(statusCode: status) }
-        // `/auth/refresh` answers a dead token with 401; a proxy's 403 or 408 spent nothing.
         if status == 401 {
             forget(session)
             return nil

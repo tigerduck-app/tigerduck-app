@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The bulletin subscription rules, and the offer of the default rules while there are none.
 struct BulletinRulesSections: View {
     let store: BulletinSubscriptionsStore
     let taxonomy: BulletinTaxonomyStore

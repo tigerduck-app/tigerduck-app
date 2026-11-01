@@ -2,8 +2,6 @@ import Defaults
 import Foundation
 import os
 
-/// Pulls what changed on the backend since this launch last read it: the revision, then the change
-/// feed, or a full sync when the feed cannot tell.
 @MainActor
 final class ChangeFeedPull {
     var lastKnownRevision = 0
@@ -22,7 +20,6 @@ final class ChangeFeedPull {
         app.poller.start(pollNow: pollNow)
     }
 
-    /// Starts polling and returns once the poll it starts now, when one is due, has answered.
     func pollOnReturn() async {
         startPolling(pollNow: true)
         await app.poller.pollInFlight()
@@ -43,7 +40,6 @@ final class ChangeFeedPull {
             app.conflicts.retryOwedConflictCheck()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self.lastKnownRevision)")
             guard serverRevision > lastKnownRevision else {
-                // This launch applied the backend up to its revision, so nothing newer is there.
                 if lastKnownRevision > 0 { app.syncTarget.notePull(ticket) }
                 return .unchanged
             }

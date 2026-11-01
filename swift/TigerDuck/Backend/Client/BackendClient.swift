@@ -1,24 +1,19 @@
 import Foundation
 import os
 
-/// One request to the TigerDuck backend's API. `path` holds raw segments, each percent-encoded on
-/// its own, so a course key whose course number holds `/` stays one segment.
 nonisolated struct BackendRequest: Sendable {
     var method: String
     var path: [String]
     var query: [URLQueryItem] = []
     var body: Data?
     var authenticated = true
-    /// Goes without the bearer token when there is no session, instead of failing as not signed in.
     var sendsWithoutSession = false
-    /// Statuses besides 2xx that come back as a response instead of an error.
     var accepting: Set<Int> = []
     var acceptsEveryStatus = false
     var headers: [String: String] = [:]
     var timeout: TimeInterval?
     var cachePolicy: URLRequest.CachePolicy?
     var postsCredentials = false
-    /// The backend a sign-out's call goes to; nil takes the client's.
     var baseURL: URL?
 
     init(_ method: String, _ path: String...) {
@@ -48,7 +43,6 @@ nonisolated struct BackendResponse: Sendable {
 
     var status: Int { http.statusCode }
 
-    /// `X-TigerSync-Clock`, the backend's clock in microseconds, which every response carries.
     var serverClock: Int64? { http.value(forHTTPHeaderField: BackendClient.clockHeader).flatMap(Int64.init) }
 
     func decoded<Response: Decodable>(_ type: Response.Type) throws -> Response {
@@ -68,8 +62,7 @@ nonisolated struct BackendResponse: Sendable {
 }
 
 /// The bearer token for a request with the sign-in it was issued for, and what a 401 does:
-/// `recover` answers whether another token of that sign-in is ready for the one replay, so a
-/// refusal that lands after another account signed in never goes again as that account.
+/// `recover` answers whether another token of that sign-in is ready for the one replay.
 nonisolated struct BackendAuth: Sendable {
     let header: @Sendable () async -> (value: String, signIn: AccountSession.Ticket?)?
     let recover: @Sendable (_ refused: String, _ code: String?, _ signIn: AccountSession.Ticket) async -> Bool
@@ -81,12 +74,8 @@ nonisolated struct BackendAuth: Sendable {
     static let none = BackendAuth.header { nil }
 }
 
-/// A `clock_ahead` resend the caller's hold stopped; the edit waits for its next send.
 nonisolated struct ResendHeldError: Error {}
 
-/// Builds every request to the TigerDuck backend's `/v4`, adds the bearer token, maps the error
-/// envelope `{"error", "message", ...}` and owns the one refresh after a 401
-/// (https://github.com/tigerduck-app/tigerduck-backend/blob/dev/docs/api-v4.md).
 nonisolated final class BackendClient: Sendable {
     static let apiVersion = "v4"
     static let clockHeader = "X-TigerSync-Clock"
@@ -121,8 +110,6 @@ nonisolated final class BackendClient: Sendable {
         try await send(request).decoded(type)
     }
 
-    /// Asked before a `clock_ahead` resend: a conflict check owed since the first send went out,
-    /// as for a switch turned off and on meanwhile, holds the edit until the user answers it.
     @TaskLocal static var holdsResend: (@Sendable () -> Bool)?
 
     /// Sends an edit stamped with its own time. A 409 `clock_ahead` is answered once by stamping
@@ -138,7 +125,6 @@ nonisolated final class BackendClient: Sendable {
         }
     }
 
-    /// `replaying` is the sign-in a 401 was answered for; the replay goes only with its token.
     private func send(_ request: BackendRequest, replaying: AccountSession.Ticket?) async throws -> BackendResponse {
         var urlRequest = try makeURLRequest(request)
         var sent: String?
@@ -195,8 +181,6 @@ nonisolated final class BackendClient: Sendable {
         return urlRequest
     }
 
-    /// The `/v4` base of a backend: an endpoint set for `/v3`, as earlier builds stored it, names
-    /// the same server.
     static func apiBase(_ server: URL) -> URL {
         guard server.lastPathComponent == "v3" else { return server }
         return server.deletingLastPathComponent().appendingPathComponent(apiVersion)
@@ -219,18 +203,13 @@ nonisolated final class BackendClient: Sendable {
         return segment.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
     }
 
-    /// The `error` of a `/v4` error envelope.
     static func errorCode(in body: Data) -> String? {
         (try? JSONSerialization.jsonObject(with: body) as? [String: Any])?["error"] as? String
     }
 
     static let session: URLSession = makeSession(resourceTimeout: 30)
-    /// A term's course catalog can take longer than the other answers.
     static let catalogSession: URLSession = makeSession(resourceTimeout: 60)
-    /// Sign-in and refresh, each with its own timeout.
     static let authSession: URLSession = .shared
-    /// The signed TLS pin document's, with system trust only. A pinned handshake waits on the
-    /// refetch, so a server that trickles bytes must not hold it.
     static let pinDocumentSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 10

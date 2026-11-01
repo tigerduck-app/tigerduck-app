@@ -1,7 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// A page a notification tap or a Live Activity link opens.
 enum DeepLink: Equatable {
     case bulletin(Int)
     case schoolMail(folder: String, uid: UInt32?, uidValidity: UInt32? = nil)
@@ -49,8 +48,6 @@ extension DeepLink {
         return nil
     }
 
-    /// Decoded as `pushInteger(from:)` is; `UInt32(exactly:)` turns a negative or too large value
-    /// into nil instead of trapping.
     private static func schoolMailUID(from raw: Any?) -> UInt32? {
         if let n = raw as? Int { return UInt32(exactly: n) }
         if let n = raw as? NSNumber { return UInt32(exactly: n.int64Value) }

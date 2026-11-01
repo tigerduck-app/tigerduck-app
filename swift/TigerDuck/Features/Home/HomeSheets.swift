@@ -1,7 +1,5 @@
 import Foundation
 
-/// The course sheet and assignment page Home shows. An assignment opened from the course sheet
-/// waits for the sheet to close before its page opens.
 struct HomeSheets {
     var selectedCourse: CourseStore.Course?
     var selectedCourseSlot: CourseTimeSlot?

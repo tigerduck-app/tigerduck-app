@@ -1,8 +1,6 @@
 import Defaults
 import Foundation
 
-/// The courses the class table draws and where each one falls: the weekdays and periods shown,
-/// each cell's role, and the school's changes to the classes.
 @MainActor
 @Observable
 final class ClassTableGrid {
@@ -25,7 +23,6 @@ final class ClassTableGrid {
     @ObservationIgnored
     private nonisolated(unsafe) var periodVisibilityTask: Task<Void, Never>?
 
-    /// Called after the courses change, as their colours follow them.
     @ObservationIgnored var onCoursesChange: () -> Void = {}
 
     init() {
@@ -113,7 +110,6 @@ final class ClassTableGrid {
         return role
     }
 
-    /// The two courses already in a period the candidate meets in, which a third may not join.
     func tripleConflict(adding candidate: CourseStore.Course) -> TripleConflictError? {
         for (weekday, periodIds) in candidate.schedule {
             for pid in periodIds {

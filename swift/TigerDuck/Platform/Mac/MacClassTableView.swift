@@ -2,8 +2,6 @@
 import SwiftUI
 import TigerDuckCore
 
-/// The Mac class table: the shared `ClassTableViewModel` and its editor drawn as a glass grid,
-/// with the course sheet as an overlay.
 struct MacClassTableView: View {
     @Environment(AppEnvironment.self) private var app
 
@@ -73,8 +71,6 @@ struct MacClassTableView: View {
         return "\(course.courseNo)-\(selection.weekday ?? 0)-\(selection.periodId ?? "")"
     }
 
-    /// Fetches a term that has no stored courses yet, with a loading state meanwhile; a stored term
-    /// waits for a refresh.
     private func ensureSemesterFetched() async {
         let target = viewModel.currentSemester
         guard viewModel.shownPerson == nil, viewModel.courseStore.loadCourses(semester: target).isEmpty else { return }

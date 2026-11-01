@@ -6,9 +6,6 @@ import UIKit
 import AppKit
 #endif
 
-/// Owns the App Store "newer build?" check and the sheet flags it feeds. A child of ``AppEnvironment``
-/// so views observe `pendingUpdate` and `pendingWhatsNew` through `@Environment(AppEnvironment.self)`.
-///
 /// On the Mac the lookup answers with the universal purchase's one record and no Mac version.
 /// The Mac ships the same marketing version from the same target, so that version stands in,
 /// and Update Now opens the Mac App Store page. What's New is iPhone-only; the Mac shows an

@@ -1,6 +1,5 @@
 import Foundation
 
-/// The school's terms and course numbers, as the course screens offer and check them.
 nonisolated enum SchoolTerms {
     /// The term in session today, or the one the calendar estimates.
     static var current: String { CourseSelectionService.currentSemesterCode() }

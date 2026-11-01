@@ -2,7 +2,6 @@
 import SwiftUI
 import UIKit
 
-/// The sender, date, subject and recipients above the mail.
 struct MailMessageHeader: View {
     let summary: MailSummary
 
@@ -61,7 +60,6 @@ struct MailMessageHeader: View {
     }
 }
 
-/// The warnings, the blocked-images offer, the parse failure and the last action's error.
 struct MailMessageBanners: View {
     let viewModel: MailMessageViewModel
 
@@ -102,7 +100,6 @@ struct MailMessageBanners: View {
     }
 }
 
-/// The mail in the view mode picked: formatted, plain text or source.
 struct MailMessageContentView: View {
     let viewModel: MailMessageViewModel
     @Binding var webHeight: CGFloat

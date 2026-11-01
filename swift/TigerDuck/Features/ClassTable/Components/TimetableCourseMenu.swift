@@ -3,7 +3,6 @@ import SwiftUI
 import UIKit
 #endif
 
-/// What VoiceOver reads for a course's cell: its name, room and changes, then its assignment marks.
 func spokenCourse(
     _ course: CourseStore.Course, room: String? = nil, changes: [String] = [], hasAssignment: Bool, ignoresAssignments: Bool
 ) -> String {
@@ -21,7 +20,6 @@ extension Shape {
     }
 }
 
-/// The sizes the class table draws its cells at, which scale with Dynamic Type.
 struct TimetableCellMetrics {
     let cellHeight: CGFloat
     let rowSpacing: CGFloat
@@ -35,12 +33,9 @@ struct TimetableCellMetrics {
     }
 }
 
-/// The edit menu of a course's cell: rename, recolour, ignore its assignments and delete.
 struct TimetableCourseMenu: View {
     let course: CourseStore.Course
     let editor: ClassTableEditor
-    /// The colour row of a conflict's menu, which names each course in a section header and so
-    /// shows the course's colour on the row instead.
     var showsColorDot = false
 
     var body: some View {
@@ -81,8 +76,6 @@ struct TimetableCourseMenu: View {
         }
     }
 
-    /// A filled dot in the course's own colour, for use as a menu icon.
-    ///
     /// Drawn into a bitmap and marked `.alwaysOriginal` because UIKit retints
     /// template images, SF Symbols included, to the menu's own tint, so
     /// `Image(systemName: "circle.fill").foregroundStyle(...)` arrives grey.

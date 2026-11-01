@@ -4,8 +4,6 @@ nonisolated enum MoodleAssignmentService {
     static let commentsFunction = "core_comment_get_comments"
     static let groupsFunction = "core_group_get_course_user_groups"
 
-    // MARK: - mod_assign_get_assignments
-
     /// Asks only for the courses where the user can submit, so Moodle leaves out a course they
     /// are a TA in, whose assignments they grade
     /// (https://github.com/tigerduck-app/tigerduck-app/issues/209).
@@ -51,12 +49,7 @@ nonisolated enum MoodleAssignmentService {
     static let commentPageLimit = 10
 
     /// Moodle keeps a submission's comments on the assignment's module, under the submission's
-    /// record, and answers a page at a time, newest first, with the total in `count`. Paging ends
-    /// at the total, at a page that adds no comment (an empty one, or a site that ignores `page`)
-    /// or at ``commentPageLimit``. A total that drops while paging means a comment was deleted and
-    /// the later pages moved back by one, keeping the deleted one and missing the one moved onto a
-    /// page already read, so every page is read once more; a total that drops again throws, so the
-    /// page keeps the comments it showed. Oldest first, as a conversation reads.
+    /// record, and answers a page at a time, newest first, with the total in `count`.
     static func comments(
         cmid: Int,
         submissionId: Int,

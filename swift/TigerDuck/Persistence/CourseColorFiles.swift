@@ -1,8 +1,5 @@
 import Foundation
 
-/// The colour of each course and the courses whose colour the user picked. A map from before the
-/// colour picker, palette indexes in `course_custom_colors.json`, is read once and rewritten as
-/// colours.
 nonisolated final class CourseColorFiles: AccountScoped, Sendable {
     private let persistent: JSONFiles
 
@@ -75,7 +72,6 @@ nonisolated final class CourseColorFiles: AccountScoped, Sendable {
 extension CourseColorFiles {
     private static let hashMigrationKey = "color_hash_v2_migrated"
 
-    /// Colours assigned before the v2 course hash are dropped once, so each course gets one again.
     func dropColorsFromBeforeHashV2() {
         guard !UserDefaults.standard.bool(forKey: Self.hashMigrationKey) else { return }
         saveCourseColorMap([:])

@@ -1,25 +1,15 @@
 #if os(iOS)
 import Foundation
 
-/// The issues of a link a mail shows: plain HTTP, a punycode host, or text naming another host.
 nonisolated enum MailLinkCheck {
-    /// Delimiter-based, like Android's `EMAIL`: the local part, host and TLD each run to the next
-    /// delimiter, not over an ASCII allowlist. For Han characters before the `@`, a non-ASCII host
-    /// or a one-letter TLD, all of which warn on Android, an ASCII-only pattern matches nothing and
-    /// so warns of no display-name or `mailto:` mismatch.
-    ///
     /// The ASCII whitespace class is spelled out instead of `\s`: Java's `\s` is ASCII-only but
     /// ICU's, which `NSRegularExpression` uses, is Unicode-wide, so `\s` would end the match where
-    /// Android runs on. No `.caseInsensitive`: there are no letter ranges for it to fold.
+    /// Android runs on.
     private static let emailDelimiters = "\\x{20}\\x{09}\\x{0A}\\x{0B}\\x{0C}\\x{0D}@<>()\",;:"
     static let emailPattern = try! NSRegularExpression(
         pattern: "[^\(emailDelimiters)]+@[^\(emailDelimiters)]+\\.[^\(emailDelimiters)]+"
     )
 
-    /// The text a link claims to point at, for the link-mismatch warning. Unicode-aware
-    /// (`\p{L}`/`\p{N}`), like Android's `HOST_LIKE`, so a homograph host in another script is
-    /// still read as a host and checked against the real one. The caller strips `www.` afterwards.
-    ///
     /// ICU's `.` (`NSRegularExpression`) excludes more line terminators than Java's, among them
     /// U+000B and U+000C, and ICU's `\d` is Unicode-wide where Java's is ASCII. So this pattern and
     /// `plainHttpLinkPattern` spell out `[^\n\r\u0085\u2028\u2029]` for Java's `.`, as regex
@@ -33,14 +23,9 @@ nonisolated enum MailLinkCheck {
         pattern: "^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^/?#@]*@)?([^/?#:]+)", options: [.caseInsensitive]
     )
 
-    /// An href is a "plain" link, for the password-bait warning, only in the form browsers treat
-    /// as unambiguous: `http(s)://`, a host of ASCII letters, digits, `-` and `.`, an optional
-    /// `:port`, then the end or `/ ? #`. Anything else (userinfo, backslashes, missing or extra
-    /// slashes, percent-escapes or non-ASCII in the authority, whitespace) is an outside link.
     /// No `.caseInsensitive`: its Unicode case folding lets `[A-Za-z]` match lookalikes such as the
-    /// Kelvin sign U+212A, dotted and dotless I (U+0130, U+0131) and the long s U+017F, which can
-    /// pass inside `https`, letting a non-ASCII host or scheme pass as ASCII. The scheme is spelled
-    /// out per letter. The trailing `[/?#]` group spells out Java's `.` as in `shownHostPattern`.
+    /// Kelvin sign U+212A and the long s U+017F, which can pass inside `https`, letting a non-ASCII
+    /// host or scheme pass as ASCII.
     private static let plainHttpLinkPattern = try! NSRegularExpression(
         pattern: "^[Hh][Tt][Tt][Pp][Ss]?://([A-Za-z0-9.-]+)(?::[0-9]+)?(?:[/?#][^\\n\\r\\u0085\\u2028\\u2029]*)?$"
     )
@@ -72,10 +57,7 @@ nonisolated enum MailLinkCheck {
     /// All scanning here is on `unicodeScalars`, never on `String`'s default `Character`
     /// (extended grapheme cluster) view: a combining mark attaches to whatever scalar
     /// precedes it, so `Character`-based comparison of `/`, `\`, `?`, `#`, `@`, `[`, `]` or
-    /// `:` can silently merge one of those separators into a bogus, non-matching cluster,
-    /// e.g. `/` immediately followed by a combining mark stops being `"/"` as a `Character`,
-    /// letting the scan run straight past a real terminator or the true last `@` to a
-    /// forged one further along (spec A.4 rule 2 parity).
+    /// `:` can silently merge one of those separators into a bogus, non-matching cluster.
     private static func browserHostOf(_ href: String, authorityStart: String.Index) -> String? {
         let scalars = href.unicodeScalars
         var start = authorityStart

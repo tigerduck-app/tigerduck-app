@@ -9,7 +9,6 @@ import AppKit
 
 @Observable
 final class AuthService {
-    /// The school account's sign-in; a sign-out moves it on.
     let session: AccountSession
     private var credentials = CredentialMirror()
     var status = AuthStatus()
@@ -90,7 +89,6 @@ final class AuthService {
         credentials.revision &+= 1
     }
 
-    /// A school sign-in renewed the session, so what reads the stored account reads it again.
     func noteSchoolSignInRenewed() {
         credentials.revision &+= 1
     }
@@ -118,7 +116,6 @@ final class AuthService {
         let task = Task { @MainActor in
             let endBackgroundTask = await beginBackgroundTask()
             await previous?.value
-            // A sign-in waits for these calls, so the clearing cannot reach the next account's pages.
             await forgetPages()
             await calls()
             #if os(iOS)
@@ -130,8 +127,6 @@ final class AuthService {
         return task
     }
 
-    /// The launch's retry of a kept unregister is no sign-out: it clears nothing of an account,
-    /// and only a backend sign-in, whose device it could otherwise unregister, waits for it.
     func startDepartingUnregisterRetry(_ retry: @escaping @MainActor () async -> Void) {
         let beginBackgroundTask = beginSignOutBackgroundTask
         signOutTasks.departingUnregisterRetry = Task { @MainActor in
@@ -188,7 +183,6 @@ final class AuthService {
         studentId.trimmingCharacters(in: .whitespaces).uppercased()
     }
 
-    /// Signing in as another student signs the stored account out first, which deletes its data.
     nonisolated static func replacesStoredAccount(stored: String?, signingInAs studentId: String) -> Bool {
         stored.map { $0 != normalizedStudentId(studentId) } ?? false
     }

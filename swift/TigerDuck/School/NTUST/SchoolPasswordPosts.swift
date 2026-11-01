@@ -1,7 +1,5 @@
 import Foundation
 
-/// The automatic posts of the stored school password: their refusal count and wait, and the lock
-/// that runs them one at a time.
 nonisolated enum SchoolPasswordPosts {
     static var storedPasswordRefusals: (count: Int, last: Date?) {
         get { StoredPasswordBackoff.ntust.refusals }
@@ -43,11 +41,8 @@ nonisolated enum SchoolPasswordPosts {
         await storedPasswordPosts.waiterCount
     }
 
-    /// Runs `body` alone among the automatic posts of the stored password: the SSO sign-ins here
-    /// and `MoodleTokenService`'s token renewal. Two at once would each post a password the school
-    /// refused before either counted the refusal, and the school counts both toward the lockout.
-    /// `body` checks ``storedPasswordPostMustWait(now:)``, posts, reads the answer and counts a
-    /// refusal before it returns. A sign-in the user typed posts what was typed, so it does not wait.
+    /// Two automatic posts at once would each post a password the school refused before either
+    /// counted the refusal, and the school counts both toward the lockout.
     nonisolated(nonsending) static func postingStoredPassword<T>(
         _ body: nonisolated(nonsending) () async throws -> T
     ) async rethrows -> T {

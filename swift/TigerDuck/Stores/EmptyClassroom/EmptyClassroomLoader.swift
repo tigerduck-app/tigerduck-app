@@ -1,8 +1,6 @@
 import Foundation
 import Observation
 
-/// Reads a day's room use from the school's booking site for the empty-classroom screen, one
-/// read at a time, and keeps how the site last answered.
 @Observable
 @MainActor
 final class EmptyClassroomLoader {
@@ -92,7 +90,6 @@ final class EmptyClassroomLoader {
         }
     }
 
-    /// Waits for the read in progress, if any.
     func wait() async {
         await task?.value
     }

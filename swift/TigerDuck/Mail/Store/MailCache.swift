@@ -119,8 +119,6 @@ nonisolated final class MailCache: @unchecked Sendable {
         return folder.appendingPathComponent(Self.safeAttachmentName(filename))
     }
 
-    /// Writes nothing, and returns nil, once a wipe has run since `wipeCount` was read, so a
-    /// download that outlived a sign-out leaves no file of that account.
     func saveAttachment(_ data: Data, filename: String, wipeCount: Int) throws -> URL? {
         guard isCurrent(wipeCount) else { return nil }
         let url = try temporaryFileURL(filename: filename)

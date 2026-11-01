@@ -94,13 +94,8 @@ final class MailListViewModel {
         isRefreshing || (serverStatus == .ok && background.isDownloading)
     }
 
-    /// Paints each covered folder's cached page first, then merges the newest page of each from
-    /// the server into what is loaded; see `MailListLoader.load(list:)`.
     func load() async { await MailListLoader.load(list: self) }
 
-    /// A load the user asked for (the screen opening, a pull, Retry, the compose sheet closing).
-    /// The warm shares the one FIFO-locked connection, so it stops first and starts again once the
-    /// list is up; the 60 s poll calls `load()` alone, as re-warming each minute is not its job.
     func refresh(forcingIndex: Bool = false) async {
         background.cancelWarm()
         await load()

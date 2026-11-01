@@ -73,7 +73,6 @@ struct SchoolSignInStepsTests {
     }
 
     #if os(iOS)
-    /// Tests cannot construct `AppEnvironment`, so this checks only the service steps.
     @Test func aSchoolSignOutLeavesSchoolMailSignedIn() async throws {
         let calls = Calls()
         let mail = MailAccountManagerTests.harness()

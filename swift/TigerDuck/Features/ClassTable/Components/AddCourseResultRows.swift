@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The Add Course sheet's results, a course to a row, each with a button that adds the course or
-/// removes one added in this sheet.
 struct AddCourseResultRows: View {
     let shown: [AddCourseResults.Shown]
     let tableCourses: [CourseStore.Course]

@@ -2,8 +2,6 @@ import Defaults
 import Foundation
 import TigerDuckCore
 
-/// The class table on screen: the user's own term or an imported person's, the term picked, and
-/// the course sheet's selection. The iPhone and Mac class tables share it.
 @MainActor
 @Observable
 final class ClassTableViewModel {
@@ -31,8 +29,6 @@ final class ClassTableViewModel {
     )
     @ObservationIgnored private var storeObservation: StoreObservation?
 
-    /// The terms the picker offers for the user's own table, and whether the term changes because
-    /// the table follows the newest one rather than because the user picked it.
     private struct OwnTerms {
         var options: [String]
         var isFollowingNewest = false
@@ -80,7 +76,6 @@ final class ClassTableViewModel {
         terms.options = Self.semesterOptions(including: currentSemester)
     }
 
-    /// Moves to the newest term while the user has not picked one. True when the term changed.
     @discardableResult
     func followNewestSemesterIfUnpicked() -> Bool {
         guard shownPerson == nil,
@@ -191,14 +186,10 @@ final class ClassTableViewModel {
         selection.course = course
     }
 
-    /// The table shows the current term as a week from today once the changes feed has answered;
-    /// other terms, and every term before then, stay a plain timetable.
     var showsThisWeek: Bool {
         !grid.courseChanges.term.isEmpty && currentSemester == SchoolTerms.current
     }
 
-    /// The date a weekday column shows. The week runs from today, so on a Wednesday the Monday
-    /// and Tuesday columns are next week's.
     static func columnDate(weekday: Int, today: Date) -> Date {
         let calendar = TaipeiTime.calendar
         let start = calendar.startOfDay(for: today)

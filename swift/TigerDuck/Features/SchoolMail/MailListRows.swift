@@ -1,8 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// The list's rows, or in their place a spinner, the load failure or the empty state, with a
-/// spinner below the rows while the next page loads.
 struct MailListRowsSection: View {
     let viewModel: MailListViewModel
     let accentColor: Color
@@ -45,8 +43,6 @@ struct MailListRowsSection: View {
     }
 }
 
-/// One mail in the list: a tap opens it, or reopens a draft in compose, and a swipe flips its
-/// read flag. Its appearing as the last row asks for the next page.
 struct MailListRowButton: View {
     let row: MailListRow
     let viewModel: MailListViewModel
@@ -78,7 +74,6 @@ struct MailListRowButton: View {
     }
 }
 
-/// What the list shows in place of rows when the first load failed.
 struct MailListFailure: View {
     let message: String
     let onRetry: () -> Void

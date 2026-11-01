@@ -2,7 +2,6 @@ import Foundation
 import Testing
 import TigerDuckCore
 
-// CI runs in UTC, eight hours behind Taipei, so each case sits where the two zones disagree.
 struct TaipeiTimeTests {
     private let utc: Calendar = {
         var calendar = Calendar(identifier: .gregorian)

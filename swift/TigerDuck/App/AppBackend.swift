@@ -1,7 +1,5 @@
 import Foundation
 
-/// The backend side of the composition root: the session and push registration, cloud sync and
-/// the senders that take local edits and school data to the server.
 @MainActor
 struct AppBackend {
     let authTokenManager: AuthTokenManager
@@ -29,7 +27,6 @@ struct AppBackend {
     }
 }
 
-/// The parts of the composition root built on first use from the whole of it.
 @MainActor
 final class AppSyncParts {
     private unowned let app: AppEnvironment

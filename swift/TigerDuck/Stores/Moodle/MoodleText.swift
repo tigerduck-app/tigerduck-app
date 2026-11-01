@@ -1,6 +1,5 @@
 import Foundation
 
-/// Moodle's HTML as the screens show it.
 nonisolated enum MoodleText {
     static func markdown(fromHTML html: String) -> String {
         MoodleHTMLText.markdown(fromHTML: html)
@@ -11,7 +10,6 @@ nonisolated enum MoodleText {
     }
 }
 
-/// What a failed Moodle call tells the student.
 nonisolated enum MoodleFailure {
     static func isNetworkError(_ error: any Error) -> Bool {
         if case MoodleWebserviceError.transientNetwork = error { return true }

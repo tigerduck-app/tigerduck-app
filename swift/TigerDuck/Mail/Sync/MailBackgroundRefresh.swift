@@ -51,12 +51,10 @@ nonisolated enum MailBackgroundRefresh {
         }
     }
 
-    /// One background check. While stored data does not read back, as before the first unlock after
-    /// a restart or in a process that started then, the preferences read as signed out and a check
-    /// would schedule no next one, so it only schedules it
-    /// (https://github.com/tigerduck-app/tigerduck-app/issues/691). `prefs` is
-    /// `MailSettingsStore.shared`, not `MailAccountManager.shared`, which is @MainActor: this
-    /// callback isn't guaranteed to run on the main actor.
+    /// While stored data does not read back, as before the first unlock after a restart or in a
+    /// process that started then, the preferences read as signed out and a check would schedule
+    /// no next one, so it only schedules it
+    /// (https://github.com/tigerduck-app/tigerduck-app/issues/691).
     static func refresh(
         storedDataReadsBack: () -> Bool = { FirstUnlock.storedDataReadsBack() },
         prefs: any MailPreferences = MailSettingsStore.shared,

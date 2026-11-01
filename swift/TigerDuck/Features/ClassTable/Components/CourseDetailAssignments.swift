@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The course's unfinished assignments on its sheet; a tap opens one.
 struct CourseDetailAssignments: View {
     let assignments: [AssignmentStore.Assignment]
     let open: (AssignmentStore.Assignment) -> Void

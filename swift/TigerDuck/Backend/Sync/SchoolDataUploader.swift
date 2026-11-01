@@ -1,7 +1,6 @@
 import Foundation
 import os
 
-/// The backend calls that take what this device derived from school data.
 @MainActor
 protocol SchoolDataBackend: AnyObject {
     func uploadCoursesIfChanged(
@@ -15,8 +14,6 @@ protocol SchoolDataBackend: AnyObject {
 
 extension PushCoordinator: SchoolDataBackend {}
 
-/// Sends what this device derived from school data, its course and assignment uploads, once this
-/// sign-in's first pull has been applied (`SyncTarget`).
 @MainActor
 final class SchoolDataUploader {
     private let account: AccountSession
@@ -48,8 +45,6 @@ final class SchoolDataUploader {
         }
     }
 
-    /// The added course alone: sent with its stamp, the backend files every other course an upload
-    /// lists as the school's roster.
     static func addedCourseUpload(
         semester: String, courseNo: String, courses: CourseStore = .shared
     ) -> PushAPI.CourseUploadRequest? {
@@ -87,8 +82,6 @@ final class SchoolDataUploader {
         }
     }
 
-    /// The school's courses of `semester`. Their colours do not go here: `/v4` takes a colour
-    /// only through the course override.
     static func courseUploadRequest(
         _ courses: [SDCourse],
         semester: String,

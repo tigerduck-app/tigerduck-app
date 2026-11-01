@@ -1709,7 +1709,6 @@ struct BackendSignInTests {
                 notificationCenter: NotificationCenter(),
                 moodleTokens: MoodleTokenService(
                     storedCredentials: { nil },
-                    // A token that outlives the sign-out, so only the session stops the backend step.
                     tokens: .init(load: { "moodle-token" }, save: { _ in }, drop: {}),
                     harvest: { _, _ in
                         harvests.increment()

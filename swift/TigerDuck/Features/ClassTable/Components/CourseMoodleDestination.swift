@@ -1,7 +1,6 @@
 import SwiftUI
 import TigerDuckCore
 
-/// A Moodle screen pushed on a course's sheet.
 struct CourseMoodleDestination: View {
     let route: MoodleCourseRoute
     let store: MoodleCourseStore
@@ -50,8 +49,6 @@ struct CourseMoodleDestination: View {
         }
     }
 
-    /// The Moodle store of a course on the signed-in account, or nil for a course without a
-    /// Moodle course.
     static func store(for course: CourseStore.Course, authService: AuthService) -> MoodleCourseStore? {
         guard let idnumber = course.moodleIdNumber, !idnumber.isEmpty,
               let courseId = CourseLookup.moodleCourseId(idnumber: idnumber),

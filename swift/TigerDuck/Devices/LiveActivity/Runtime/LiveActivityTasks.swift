@@ -1,8 +1,6 @@
 import ActivityKit
 import Foundation
 
-/// The tasks `LiveActivityCoordinator` keeps per activity id: the end at its countdown, and the
-/// watch on its push token, which the backend needs to update the activity.
 @MainActor
 final class LiveActivityTasks {
     private var endTimers: [String: Task<Void, Never>] = [:]
@@ -19,7 +17,6 @@ final class LiveActivityTasks {
         }
     }
 
-    /// `expire` runs a second after the countdown's real end; an activity without one has no timer.
     func scheduleEnd(
         for activityId: String,
         snapshot: LiveActivitySnapshot,

@@ -1,7 +1,6 @@
 import UIKit
 import WebKit
 
-/// What the web view last reported of its page, which only ``BrowserNavigator`` writes.
 @MainActor
 @Observable
 final class BrowserShownPage {
@@ -12,7 +11,6 @@ final class BrowserShownPage {
     fileprivate(set) var isLoading = false
     fileprivate(set) var progress = 0.0
     fileprivate(set) var isCollapsed = false
-    /// The page the browser opened with, which the bars name until a page commits.
     fileprivate(set) var start: URL?
     @ObservationIgnored fileprivate(set) weak var webView: WKWebView?
     @ObservationIgnored private var collapse = BrowserChromeCollapse()
@@ -28,17 +26,13 @@ final class BrowserShownPage {
     }
 }
 
-/// The web view's delegate: routes each navigation, turns Moodle's sign-in page into a sign-in,
-/// applies the app's TLS pins and keeps ``BrowserPage`` current.
 @MainActor
 final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private let page: BrowserPage
     private var observations: [NSKeyValueObservation] = []
     private var refusedHosts: Set<String> = []
     private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
-    /// The Moodle page asked for last, which a sign-in its navigation ran into goes on to.
     private var lastRequested: URL?
-    /// How long the store keeps Moodle's session cookie on disk; Moodle's own timeout ends it sooner.
     private static let sessionKept: TimeInterval = 30 * 24 * 60 * 60
 
     init(page: BrowserPage) {
@@ -274,7 +268,6 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
 }
 
 extension BrowserPage.Failure {
-    /// What a failed main-frame load shows; nil for a load the browser itself stopped.
     nonisolated static func load(_ error: any Error, refusedHosts: Set<String>) -> Self? {
         let error = error as NSError
         let host = (error.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.host(percentEncoded: false) ?? ""
@@ -287,8 +280,6 @@ extension BrowserPage.Failure {
         return stopped ? nil : .unreachable(host: host)
     }
 
-    /// A refused certificate names the host that sent it, which a redirect may have changed;
-    /// anything else, a stop included, blames the host the download was asked of.
     nonisolated static func download(_ error: any Error, refusedHosts: Set<String>, requestedHost: String) -> Self {
         let failure = load(error, refusedHosts: refusedHosts)
         if case .certificate = failure, let failure { return failure }

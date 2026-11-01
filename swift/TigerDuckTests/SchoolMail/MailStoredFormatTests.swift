@@ -4,8 +4,6 @@ import SQLite3
 import Testing
 @testable import TigerDuck
 
-/// Cache and search index files in the layout released versions write read back, and what the app
-/// writes keeps that layout, so an upgrade keeps the mail it already downloaded.
 struct MailStoredFormatTests {
     static let account = "B10000000"
 

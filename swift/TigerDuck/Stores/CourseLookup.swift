@@ -1,7 +1,5 @@
 import Foundation
 
-/// One course's details beyond the class table: its syllabus, the school's meeting codes and
-/// its Moodle course.
 enum CourseLookup {
     typealias Syllabus = CourseSyllabus
 
@@ -9,7 +7,6 @@ enum CourseLookup {
         try await CourseLookupService.syllabus(semester: semester, courseNo: courseNo, language: language)
     }
 
-    /// The weekdays and periods of a catalog row's meeting codes.
     nonisolated static func schedule(of node: String?) -> [Int: [String]] {
         CourseLookupService.parseNodeToSchedule(node)
     }

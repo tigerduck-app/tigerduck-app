@@ -1,12 +1,9 @@
 #if os(iOS)
 import Foundation
 
-/// What compose starts from when it answers, forwards or reopens a mail: the fields, the
-/// attachments to carry over and, for a reopened draft, what removing it after a send needs.
 struct MailComposePrefill {
     enum Outcome {
         case prefill(MailComposePrefill)
-        /// A draft to reopen that the context does not name.
         case missingDraft
         case nothing
     }

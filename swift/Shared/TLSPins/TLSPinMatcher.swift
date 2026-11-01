@@ -1,14 +1,10 @@
 import Foundation
 import Security
 
-/// The pins in force for a host: the built-in table, a newer signed document over it and the
-/// user's acceptances, matched against host names.
 nonisolated struct TLSPinMatcher {
     let builtIn: [TLSPinSet]
     let baselineSerial: Int64
 
-    /// The sets the document replaces, when it is newer than the built-in table; a set it does not
-    /// list keeps the built-in pins, and an expiry it moves earlier is ignored.
     func effectiveSets(document: TLSPinDocument?, acceptances: [TLSPinAcceptance], at date: Date) -> [TLSPinSet] {
         let document = document.flatMap { $0.serial > baselineSerial && date < $0.expiresAt ? $0 : nil }
         return builtIn.map { local in
@@ -23,8 +19,6 @@ nonisolated struct TLSPinMatcher {
         }
     }
 
-    /// The most specific match wins. An exact name has every label of the host, so it beats any
-    /// suffix, and a longer suffix beats a shorter one.
     func policy(forHost host: String, document: TLSPinDocument?, acceptances: [TLSPinAcceptance],
                 at date: Date) -> TLSPinPolicy {
         var name = host.lowercased()
@@ -42,16 +36,11 @@ nonisolated struct TLSPinMatcher {
         return date >= set.expiresAt ? .expired(set) : .pinned(set)
     }
 
-    /// Only a chain whose anchor is in the valid document's `prompt_roots` may be continued past,
-    /// so a root installed on the device, as an MDM profile or a proxy does, never is.
     static func listsPromptRoot(_ anchor: String, document: TLSPinDocument?, at date: Date) -> Bool {
         guard let document, date < document.expiresAt else { return false }
         return document.promptRoots.contains(anchor)
     }
 
-    /// A chain of one certificate is its own anchor, so it never gets a prompt: an acceptance holds
-    /// no anchor. Nor does one whose leaf and intermediates have no key `TLSSPKI` reads, as
-    /// Continue would store nothing.
     func promptEligible(
         setID: String, host: String, chain: [SecCertificate], anchor: String?,
         document: TLSPinDocument?, acceptances: [TLSPinAcceptance], at date: Date

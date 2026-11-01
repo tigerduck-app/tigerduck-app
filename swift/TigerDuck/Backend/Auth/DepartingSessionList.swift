@@ -1,8 +1,5 @@
 import Foundation
 
-/// A session a sign-out could not unregister yet, one per backend. `id` names the sign-out that
-/// kept it, through its rotations, so a retry that a newer sign-out overtook writes nothing; a
-/// session an earlier version kept has none.
 nonisolated struct DepartingSession: Codable, Sendable {
     var refreshToken: String
     var uses: Int
@@ -24,7 +21,6 @@ nonisolated struct DepartingSession: Codable, Sendable {
     }
 }
 
-/// The departing sessions, stored as one Keychain item beside the tokens.
 nonisolated struct DepartingSessionList: Sendable {
     let tokens: AuthTokenManager.TokenStore
 
@@ -40,8 +36,6 @@ nonisolated struct DepartingSessionList: Sendable {
         return tokens.saveConfirmed(AuthTokenManager.departingSessionKey, String(decoding: data, as: UTF8.self))
     }
 
-    /// Replaces the stored version of `session` only while it is still the one stored, so a retry
-    /// a newer sign-out overtook writes nothing.
     @discardableResult
     func keep(_ session: DepartingSession) -> Bool {
         var sessions = load()
@@ -56,14 +50,12 @@ nonisolated struct DepartingSessionList: Sendable {
         store(sessions.filter { !$0.isSame(as: session) })
     }
 
-    /// Drops the ones kept on `backend`, as a sign-in there gave the device to the new account.
     func forgetAll(on backend: URL) {
         let kept = load()
         let elsewhere = kept.filter { !AuthTokenManager.isSameBackend($0.baseURL, backend) }
         if elsewhere.count != kept.count { store(elsewhere) }
     }
 
-    /// Keeps `session` as the one of its backend, in place of an earlier sign-out's.
     func add(_ session: DepartingSession) {
         store(load().filter { !AuthTokenManager.isSameBackend($0.baseURL, session.baseURL) } + [session])
     }

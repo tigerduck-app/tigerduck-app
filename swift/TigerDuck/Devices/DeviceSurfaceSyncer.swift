@@ -1,12 +1,8 @@
 import Foundation
 import Observation
 
-/// Refreshes the widgets, the Watch and the Live Activity from what they show. It observes the
-/// stores and the display inputs through one `Fingerprint`, waits out one debounce so a burst of
-/// changes refreshes once, and refreshes nothing while the fingerprint stays the same.
 @MainActor
 final class DeviceSurfaceSyncer {
-    /// What the device surfaces draw. Reading it inside an observation observes every part.
     struct Fingerprint: Equatable {
         var data: AppDataRevision
         var language: String
@@ -16,10 +12,7 @@ final class DeviceSurfaceSyncer {
         var nudges: Nudges
     }
 
-    /// Counts the changes no store observes. A new locale has its own count, as it reloads the
-    /// widgets even when their snapshot stays the same: their times follow the locale's format.
     struct Nudges: Equatable {
-        /// A holiday's reminder, a skipped class or the debug clock.
         var other = 0
         var locale = 0
     }
@@ -97,8 +90,6 @@ final class DeviceSurfaceSyncer {
         }
     }
 
-    /// The Watch shows the visual preset; the widgets and the Live Activity do not, so a change of
-    /// it alone refreshes only the Watch (swift/TigerDuck/AGENTS.md).
     private func refresh() {
         let now = fingerprint(nudges)
         let previous = last

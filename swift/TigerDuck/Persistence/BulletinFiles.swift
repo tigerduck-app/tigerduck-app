@@ -1,6 +1,5 @@
 import Foundation
 
-/// The bulletin list and the bulletins opened, as the backend served them to the account.
 final class BulletinFiles: AccountScoped {
     static let shared = BulletinFiles()
 

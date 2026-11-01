@@ -1,21 +1,13 @@
 import SwiftUI
 
 #if canImport(UIKit)
-/// Refuses forward drags on the page-style `TabView`'s own scroll view and leaves backward ones
-/// alone. `scrollDisabled` does not reach the page-style pager, hence the UIKit walk to find it.
-///
-/// `isScrollEnabled = false` while locked would freeze both directions, so a user who had not
-/// ticked the boxes could not swipe back to Welcome either. The tick gates only forward motion,
-/// so the pager stays scrollable and the forward drag is cancelled instead.
+/// `scrollDisabled` does not reach the page-style `TabView`'s pager, hence the UIKit walk to
+/// find it.
 struct PagingScrollLock: UIViewRepresentable {
     let isLocked: Bool
 
-    /// Whether a drag of `translationX` points at the *next* page.
-    ///
-    /// Pulled out of the gesture handler so the mirroring has a test: a
-    /// page-style `TabView` reverses under a right-to-left language, so the
-    /// same finger movement that advances in English goes back in Arabic,
-    /// and the app ships four right-to-left locales.
+    /// A page-style `TabView` reverses under a right-to-left language, so the
+    /// same finger movement that advances in English goes back in Arabic.
     static func isForwardDrag(translationX: CGFloat, isRTL: Bool) -> Bool {
         isRTL ? translationX > 0 : translationX < 0
     }

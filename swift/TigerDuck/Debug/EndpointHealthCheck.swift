@@ -31,8 +31,6 @@ nonisolated enum EndpointHealthCheck {
         return components.url
     }
 
-    /// A TigerDuck backend answers `/health` with status ok, and its `/version` names the `/v4`
-    /// base path the app calls; a server without `/v4` would answer every call 404.
     static func probe(_ base: URL, session: URLSession = .shared) async -> Result {
         guard let health = healthURL(for: base), let version = versionURL(for: base) else {
             return .unreachable(detail: String(localized: "settings_api_endpoint_error_malformed"))

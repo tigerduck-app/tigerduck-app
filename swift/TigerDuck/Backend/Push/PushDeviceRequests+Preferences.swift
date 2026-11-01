@@ -2,8 +2,6 @@ import Defaults
 import Foundation
 import os
 
-/// The device preference PATCHes. Each waits for the one before it of its kind, so the last
-/// choice is the one that lands.
 nonisolated extension PushDeviceRequests {
     func sendServerPushOptOut(_ optOut: Bool, deviceToken: String?, after predecessor: Task<Void, Error>?) async throws {
         _ = try? await predecessor?.value
@@ -38,9 +36,6 @@ nonisolated extension PushDeviceRequests {
             let response = try await apiClient.updateDevicePreferences(
                 deviceId: identity.uuid, bulletinPushEnabled: enabled
             )
-            // A backend without the column ignores the key and answers 200,
-            // so compare the echo. `DevicePreferencesResponse` stays tolerant
-            // of a missing field for other PATCHes; here missing means failed.
             guard response.bulletinPushEnabled == enabled else {
                 throw PushAPIError.invalidResponse
             }

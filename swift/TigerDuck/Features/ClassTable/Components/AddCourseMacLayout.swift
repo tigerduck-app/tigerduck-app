@@ -1,8 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// The Add Course sheet on the Mac: a search bar with the filters in a popover, the results and
-/// a Close button.
 struct AddCourseMacLayout: View {
     let model: CourseSearchModel
     @Binding var searchText: String
@@ -21,8 +19,7 @@ struct AddCourseMacLayout: View {
         searchText.trimmingCharacters(in: .whitespaces)
     }
 
-    // No `Form`: on macOS it makes the search field tiny. The frame stays modest so the
-    // sheet does not dwarf the window.
+    // No `Form`: on macOS it makes the search field tiny.
     var body: some View {
         VStack(spacing: 0) {
             macSearchBar

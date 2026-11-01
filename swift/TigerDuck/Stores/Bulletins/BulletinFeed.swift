@@ -3,9 +3,6 @@ import Foundation
 import Observation
 import os
 
-/// The bulletin list the backend serves page by page, the copy kept on disk, and the pages a
-/// visit walked, kept for the next one. A sign-out moves `listEpoch` on; work that began before
-/// it drops what it fetched.
 @MainActor
 @Observable
 final class BulletinFeed {
@@ -54,7 +51,6 @@ final class BulletinFeed {
         Defaults[.bulletinsSyncedAt] = nil
     }
 
-    /// Another backend numbers its bulletins apart, so the old rows cannot be merged with its pages.
     static func endpointDidChange() {
         BulletinFiles.shared.saveBulletinSummaries([])
         BulletinFiles.shared.clearBulletinDetails()
@@ -65,7 +61,6 @@ final class BulletinFeed {
         try await fetchPage(cursor, includeDeleted)
     }
 
-    /// Takes up the pages an earlier visit walked, when it listed the same rows.
     func resumeSession(showDeleted: Bool) -> Bool {
         guard let session = Self.listSession, session.showDeleted == showDeleted else { return false }
         items = Self.merge(existing: items, incoming: session.items)
@@ -74,7 +69,6 @@ final class BulletinFeed {
         return true
     }
 
-    /// Adds `page`'s rows; `movesCursor` false keeps the walk where it is.
     func add(_ page: Page, movesCursor: Bool = true) {
         items = Self.merge(existing: items, incoming: page.items)
         guard movesCursor else { return }
@@ -144,7 +138,6 @@ final class BulletinFeed {
 
     var isFromBeforeSignOut: Bool { itemsEpoch != Self.listEpoch }
 
-    /// Drops the departing account's list for the copy on disk, which the sign-out has emptied.
     func restartAfterSignOut() {
         items = Self.sortedUnique(BulletinFiles.shared.loadBulletinSummaries())
         nextCursor = nil
@@ -170,7 +163,6 @@ final class BulletinFeed {
     }
 }
 
-/// One bulletin's full text, as kept on disk and as the backend serves it.
 enum BulletinDetails {
     private static let apiClient = BulletinAPIClient()
 
@@ -178,7 +170,6 @@ enum BulletinDetails {
         BulletinFiles.shared.loadBulletinDetail(id: id)
     }
 
-    /// Fetches the bulletin and keeps the copy.
     static func fetch(id: Int) async throws -> BulletinAPI.BulletinDetail {
         let fresh = try await apiClient.getBulletin(id: id)
         BulletinFiles.shared.saveBulletinDetail(fresh)

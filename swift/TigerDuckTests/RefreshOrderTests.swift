@@ -33,7 +33,6 @@ struct RefreshOrderTests {
         }
     }
 
-    /// A pull the test lets finish.
     @MainActor
     private final class Gate {
         private var opened = false

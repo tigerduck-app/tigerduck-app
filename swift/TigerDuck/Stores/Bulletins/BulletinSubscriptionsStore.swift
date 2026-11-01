@@ -67,9 +67,6 @@ final class BulletinSubscriptionsStore {
         }
     }
 
-    /// One save goes out at a time. An edit made while one is out stays on screen and goes in the
-    /// next save, which starts once that reply is in; a reply replaces the rules only when no edit
-    /// came after what it saved.
     func save() async {
         saveAsked = true
         if let saving {

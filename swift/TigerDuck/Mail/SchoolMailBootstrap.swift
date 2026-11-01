@@ -3,14 +3,6 @@ import Foundation
 
 @MainActor
 enum SchoolMailBootstrap {
-    /// `account` and `notifier` are parameters so a test can install the hooks on its own
-    /// instances and run them. Asserting that the singleton's five closures are non-nil passes
-    /// with every hook body empty, and touches the app's real `UserDefaults` and cache directory.
-    ///
-    /// `account` defaults to `nil`, not `.shared`: a default argument is type-checked in a
-    /// nonisolated context, and naming the main-actor `MailAccountManager.shared` there is an
-    /// isolation error in Swift 6 mode. This `@MainActor` body resolves it instead, so a passed
-    /// instance is used and every other caller still gets the singleton.
     static func install(
         account: MailAccountManager? = nil,
         notifier: MailNotifier = MailChecker.shared.notifier

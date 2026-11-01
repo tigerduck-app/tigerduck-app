@@ -47,8 +47,7 @@ nonisolated enum MailWarnings {
         let address = MailTextCleaner.clean(input.fromAddress)
         let senderDomain = MailSchoolDomain.domain(ofAddress: address)
         // No domain means external unless `Return-Path: <>` marks a bounce, as Mail2000 sends its
-        // own failure notices from a bare `<MAILER-DAEMON>`. The password-bait gate still counts a
-        // forged bounce's outside links. See docs/decisions/0013-mail-bounce-detection.md.
+        // own failure notices from a bare `<MAILER-DAEMON>`.
         let bounce = MailSchoolDomain.isBounce(returnPath: input.returnPath)
         let external = senderDomain.isEmpty ? !bounce : !MailSchoolDomain.isSchoolDomain(senderDomain, config: config)
         if external, !address.isEmpty {

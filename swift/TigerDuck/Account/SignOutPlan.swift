@@ -1,12 +1,9 @@
 import Foundation
 
-/// A store of one account's data on this device. The account's sign-out deletes its files and keys
-/// by name, so a store this process never built is cleared too. docs/account-state.md lists each.
 protocol AccountScoped {
     static func forgetAccount(in storage: AccountStorage)
 }
 
-/// Where the account stores keep their data: the app's own, or a test's.
 struct AccountStorage {
     var folders: CacheFolders = .app
     #if os(iOS)
@@ -15,17 +12,11 @@ struct AccountStorage {
     #endif
 }
 
-/// One account's sign-out, in the order docs/decisions/0026-one-sign-out-path.md gives: stop the
-/// account's work, move its session on, clear every store it owns, then start the calls that need
-/// the departing session, which the account's next sign-in waits for. Each account has a plan of
-/// its own, so signing out of one leaves the other two alone.
 struct SignOutPlan {
     let session: AccountSession
     let stores: [any AccountScoped.Type]
     var stopWork: () -> Void = {}
-    /// Ends what the session holds outside the stores, and returns the calls that still need it.
     var endSession: () -> () -> Task<Void, Never>? = { { nil } }
-    /// Clears what the stores do not hold, such as state in memory, once they are empty.
     var clearRest: () -> Void = {}
 
     @discardableResult
@@ -61,7 +52,6 @@ extension SignOutPlan {
     static let mailStores: [any AccountScoped.Type] = [MailCredentialStore.self, MailSettingsStore.self]
     #endif
 
-    /// NTUST, Moodle and the TigerDuck backend, with what `AppEnvironment` keeps of them.
     static func school(_ app: AppEnvironment) -> SignOutPlan {
         let auth = app.authService
         let tokens = app.authTokenManager
@@ -81,7 +71,6 @@ extension SignOutPlan {
             },
             endSession: {
                 auth.logout()
-                // Before any await: an API endpoint change stores the new endpoint once this returns.
                 let backend = tokens.beginSignOut()
                 let ending = Task { await tokens.endSession(on: backend) }
                 return {

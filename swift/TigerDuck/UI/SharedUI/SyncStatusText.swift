@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The words, colours and glyphs the sync status dot shows for a status.
 enum SyncStatusText {
     static func summary(loadingState: LoadingState, statuses: [ServerStatus]) -> ServerStatus {
         if case .error = loadingState { return .failed }
@@ -58,8 +57,6 @@ enum SyncStatusText {
     }
 }
 
-/// The sync status dot's popover: each server's status, when the data was last updated, and the
-/// last error.
 struct SyncStatusDetails: View {
     let isLoading: Bool
     let sources: [SyncStatusDot.Source]

@@ -2,7 +2,6 @@ import Foundation
 import Testing
 import TigerDuckCore
 
-// 2026-11-02 is a Monday. Times are Taipei; CI runs in UTC, so each date is built in Taipei.
 struct ClassTimelineTests {
     private static let monday = "2026-11-02"
 

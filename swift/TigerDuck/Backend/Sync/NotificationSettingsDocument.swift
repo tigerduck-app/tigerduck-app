@@ -1,10 +1,5 @@
 import Foundation
 
-/// Codable mirror of the `notification` settings document, the `document`
-/// payload of `GET/PUT /v4/settings/notification`. `nonisolated` because the
-/// target defaults to `@MainActor`, and main-actor conformances used off it, as
-/// in the `SettingsDocumentClient` actor, warn in Swift 5 and fail in Swift 6.
-///
 /// Every section and every field must stay Optional: three clients write it
 /// unvalidated, and a required key one has not written fails every decode.
 /// See docs/decisions/0002-notification-settings-json-merge.md.
@@ -13,11 +8,6 @@ nonisolated struct NotificationSettingsDocument: Codable, Equatable, Sendable {
         var enabled: Bool?
         /// Whole-hour reminder offsets as integers, descending, for readers
         /// that predate `reminder_offsets_minutes` (an older Android build).
-        ///
-        /// Never write a fraction here. Android types this key as `List<Int>?`
-        /// (`push/NotificationSettingsDocument.kt`), and Gson throws on `0.5`,
-        /// failing its decode of the whole `notification` document. The backend
-        /// would accept one, but sub-hour offsets go in `reminderOffsetsMinutes`.
         var reminderOffsetsHours: [Int]?
         var reminderOffsetsMinutes: [Int]?
 
@@ -74,7 +64,6 @@ nonisolated extension NotificationSettingsDocument.Assignments {
     }
 }
 
-///
 private nonisolated struct WholeNumberElement: Decodable {
     let value: Int?
 
@@ -84,8 +73,6 @@ private nonisolated struct WholeNumberElement: Decodable {
     }
 }
 
-/// The whole numbers in the array at `key`, or `nil` when there is no JSON
-/// array there (an absent key, `null`, or a value of another type).
 /// Drops bad elements, not the array, like the backend's `_numbers`
 /// (`server/push/reminders.py`) and Android's `asValidatedIntListOrNull`: all
 /// three read `[30, "15"]` as the full set `[30]`, not as a reason to fall back

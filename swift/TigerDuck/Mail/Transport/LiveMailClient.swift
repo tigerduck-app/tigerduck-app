@@ -18,14 +18,6 @@ nonisolated enum SchoolMailCharsetHook {
     }
 }
 
-/// `MailClient` over SwiftMail for mail.ntust.edu.tw: one IMAP connection held for the actor's
-/// lifetime, SMTP per send, both verified by `MailTLSVerifier`. Host, port and transport come
-/// from `MailServerConfig` at `init`: the school's in Release, changeable in DEBUG (Settings →
-/// Developer → Email); the code assumes Mail2000 either way. Mail2000 has no MOVE, UIDPLUS,
-/// IDLE or SPECIAL-USE, so `MailMover` composes COPY/STORE/EXPUNGE itself. Commands are
-/// serialized and run once, to completion (`run(_:)`); `logout()` bypasses that queue. How long
-/// the connection stays open is up to the page session's owner, not this type.
-/// See docs/decisions/0015-mail-held-imap-connection.md.
 actor LiveMailClient: MailClient {
     nonisolated static let summaryOptions: FetchMessageInfoOptions = [.envelope, .internalDate, .flags, .size, .bodyStructure]
 
@@ -43,7 +35,7 @@ actor LiveMailClient: MailClient {
             port: config.imapPort,
             // `.custom` whatever the scheme: NIOSSL consults the callback only when there is a TLS
             // handler, so it is the pinning check on implicit-TLS and STARTTLS connections and is
-            // unreachable on plaintext. No branch here can drop the check from a TLS connection.
+            // unreachable on plaintext.
             transportSecurity: config.imapScheme.swiftMailTransportSecurity,
             certificateVerificationPolicy: .custom(MailTLSVerifier.swiftMailVerifier),
             minimumTLSVersion: .tlsv12
@@ -62,13 +54,6 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    /// Never waits on `commandLock`, so a long-running command cannot block logout. LOGOUT and the
-    /// disconnect still queue behind the command in flight at the SwiftMail level:
-    /// `IMAPConnection.executeCommand`, `.connect()`, `.done()` and `.disconnect()` all run through
-    /// that connection's single `commandQueue`. Bumps `connectionGeneration` and clears
-    /// `credentials` together, first, before any `await`: a reconnect in flight in another `run`
-    /// call sees the new generation at its next check (`ensureLiveConnection`) and closes what it
-    /// opened instead of leaving it authenticated under a session that has ended.
     func logout() async {
         connectionGeneration += 1
         credentials = nil
@@ -129,9 +114,6 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    /// This and `searchTexts` feed the search index and yield the connection to every other
-    /// command, so a mail the user opens waits for one fetch at most.
-    /// See docs/decisions/0027-mail-local-search-index.md.
     func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
         try await run(yielding: true) { try await MailIMAPCommands.undeletedUIDs(folder: folder, imap: self.imap) }
     }
@@ -146,8 +128,6 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    /// Called holding `commandLock` and returns holding it again, with the folder selected anew,
-    /// since the command let through may have selected another.
     private func stepAsideForWaitingCommands(folder: String, expectedUIDValidity: UInt32) async throws {
         guard await commandLock.hasNonYieldingWaiters else { return }
         await commandLock.release()
@@ -204,14 +184,6 @@ actor LiveMailClient: MailClient {
                                 password: credentials.password, config: config)
     }
 
-    /// Runs one command on the held IMAP connection, serialized by `commandLock` (behind every other
-    /// command when `yielding`). Probes liveness with a cheap NOOP (never a folder-reselecting
-    /// STATUS), reconnects and logs in once if that fails, then runs `body` once, to completion.
-    /// Never retried, since `body` may have sent a command that must not be sent twice (COPY, STORE,
-    /// APPEND, EXPUNGE, a streaming download), and never abandoned, since `MailMover.move` relies on
-    /// each step it starts finishing; the SwiftMail calls here ignore cancellation anyway. A network
-    /// or certificate failure closes the socket so the next call reconnects; other errors leave it. Not
-    /// `withLock`: `body` must keep the actor's isolation to read `imap`, `credentials` and the generation.
     @discardableResult
     private func run<T>(yielding: Bool = false, _ body: () async throws -> T) async throws -> T {
         await commandLock.acquire(yielding: yielding)
@@ -275,13 +247,6 @@ actor LiveMailClient: MailClient {
     }
 }
 
-/// The app's transport scheme in SwiftMail's own terms. Internal rather than private so
-/// `MailServerConfigTests` can pin the mapping, this is the one step between what the
-/// developer override says and what actually goes on the wire, and `.startTLS` mapping to
-/// SwiftMail's
-/// `.startTLS` (which resolves to `startTLSRequired`, not `startTLSIfAvailable`) is the part
-/// worth holding still: a server that does not advertise STARTTLS fails the connection instead
-/// of quietly continuing in the clear.
 extension MailTransportScheme {
     nonisolated var swiftMailTransportSecurity: MailTransportSecurity {
         switch self {

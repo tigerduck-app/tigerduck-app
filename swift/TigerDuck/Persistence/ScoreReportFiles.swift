@@ -1,6 +1,5 @@
 import Foundation
 
-/// The transcript of each student id signed in on this device, with the time it was fetched.
 final class ScoreReportFiles: AccountScoped {
     static let shared = ScoreReportFiles()
 

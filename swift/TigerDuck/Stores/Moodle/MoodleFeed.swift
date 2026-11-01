@@ -25,7 +25,6 @@ final class MoodleFeed<Value: Codable & Sendable> {
     private(set) var failure: (any Error)?
     private(set) var failureCount = 0
 
-    /// The feed's copy among the account's Moodle files.
     private struct Copy {
         let name: String
         let context: MoodleCacheContext
@@ -64,8 +63,6 @@ final class MoodleFeed<Value: Codable & Sendable> {
         if running == task { running = nil }
     }
 
-    /// Waits out a running fetch before starting one, since that fetch may predate a change the
-    /// caller just made on the site.
     func refetch(_ fetch: @escaping @Sendable () async throws -> Value) async {
         if let earlier = running {
             await earlier.value
@@ -74,7 +71,6 @@ final class MoodleFeed<Value: Codable & Sendable> {
         await refresh(fetch)
     }
 
-    /// A change worked out from what Moodle answered, such as a forum's counts from its list.
     func update(_ change: (inout Value) -> Void) {
         guard var changed = value, let fetchedAt, context.isCurrent() else { return }
         change(&changed)
@@ -82,8 +78,6 @@ final class MoodleFeed<Value: Codable & Sendable> {
         copy.save(changed, fetchedAt: fetchedAt)
     }
 
-    /// A change the user made, such as reading a discussion. A fetch under way answers from
-    /// before it, so its answer is dropped.
     func edit(_ change: (inout Value) -> Void) {
         guard value != nil, fetchedAt != nil, context.isCurrent() else { return }
         edits.move()

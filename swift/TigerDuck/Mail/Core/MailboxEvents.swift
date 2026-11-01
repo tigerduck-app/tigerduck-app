@@ -1,9 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// What the message and compose screens tell the mail list about the mailbox they share: a read
-/// flag changed, a mail left its folder, a folder was recreated, the folder roles moved, or the
-/// sent copy of a mail could not be filed.
 @MainActor
 final class MailboxEvents {
     enum Event: Equatable {

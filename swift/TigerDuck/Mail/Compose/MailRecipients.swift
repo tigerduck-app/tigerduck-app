@@ -1,8 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// The recipient fields compose sends: written out for a prefill, and read back token by token
-/// so a token that cannot be sent is reported, not dropped.
 nonisolated enum MailRecipients {
     struct Parsed {
         var to: [MailAddress]
@@ -26,10 +24,6 @@ nonisolated enum MailRecipients {
         }.joined(separator: ", ")
     }
 
-    /// Splits on top-level commas and semicolons like `MailAddress.parseList`, which drops a token
-    /// it cannot parse where compose needs it back to report it. A token is invalid when it is no
-    /// plausible address or its address is not ASCII: the school SMTP server has no SMTPUTF8, and
-    /// only compose rejects it, never the parser incoming mail uses to show a "From".
     static func parse(_ raw: String) -> (addresses: [MailAddress], invalid: [String]) {
         var addresses: [MailAddress] = []
         var invalid: [String] = []

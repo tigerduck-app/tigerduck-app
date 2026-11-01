@@ -1,7 +1,5 @@
 import Foundation
 
-/// The term's course catalog from the TigerDuck backend, in each course language: the stored copy
-/// first, then the backend asked once whether it changed. The Add Course sheet searches it.
 @Observable
 final class CourseCatalogStore {
     typealias Catalog = CourseCatalog
@@ -15,10 +13,8 @@ final class CourseCatalogStore {
     static let languages = ["zh", "en"]
 
     private(set) var options = CourseSearchOptions()
-    /// Moves when a newer catalog replaces one a search already ran on.
     private(set) var revision = 0
     @ObservationIgnored private(set) var catalogs: [String: CourseCatalog] = [:]
-    /// Why no catalog loaded, while none did.
     @ObservationIgnored private(set) var loadFailure: (any Error)?
     @ObservationIgnored private(set) var lacksLanguage = false
     @ObservationIgnored private let files: CourseCatalogFiles
@@ -30,13 +26,11 @@ final class CourseCatalogStore {
         self.files = files
     }
 
-    /// Asks the backend for the catalog with the account's sign-in.
     static func fetch(auth: BackendAuth) -> Fetch {
         let client = CourseCatalogClient(backend: BackendClient(session: BackendClient.catalogSession, auth: auth))
         return { @MainActor in try await client.fetch(semester: $0, language: $1, etag: $2) }
     }
 
-    /// Lets the next load ask the backend again, for a language that failed.
     func retry() {
         lacksLanguage = false
         revalidation = nil
@@ -109,22 +103,18 @@ final class CourseCatalogStore {
                 }
             }
         }
-        // All at once, so no search runs on one language while the other is still on its way.
         for (language, copy) in fresh {
             catalogs[language] = copy.catalog
             storedETags[language] = copy.etag
         }
         if !fresh.isEmpty {
             options = Self.options(catalogs)
-            // A search that ran on the stored catalog runs again; one that waited goes on by itself.
             if hadCatalog { revision &+= 1 }
         }
         if catalogs.isEmpty { loadFailure = firstError }
         lacksLanguage = catalogs.count < Self.languages.count
     }
 
-    /// The filter lists of the term, with each name in both languages. A list only one language
-    /// has keeps that language's names for both.
     static func options(_ catalogs: [String: CourseCatalog]) -> CourseSearchOptions {
         guard let zh = catalogs["zh"] ?? catalogs["en"] else { return CourseSearchOptions() }
         let en = catalogs["en"] ?? zh

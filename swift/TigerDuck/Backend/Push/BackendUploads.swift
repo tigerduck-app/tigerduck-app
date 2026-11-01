@@ -1,13 +1,10 @@
 import Foundation
 
-/// The uploads `SendLedger` keeps from going twice: the Moodle credentials and the course and
-/// assignment lists. `PushCoordinator` forwards its upload calls here.
 @MainActor
 final class BackendUploads {
     private let client: PushAPIClient
     private let ledger: SendLedger
 
-    /// Runs after each course upload the backend took, for the edits that waited for its courses.
     var onCoursesUploaded: @MainActor () -> Void = {}
 
     init(client: PushAPIClient, ledger: SendLedger) {
@@ -17,7 +14,6 @@ final class BackendUploads {
 
     static let unchangedCredentialsInterval: TimeInterval = 3600
 
-    /// Unchanged Moodle tokens go again after an hour, as the backend's copy may have expired.
     func updateCredentialsIfDue(moodleToken: String, moodlePrivateToken: String?) async throws {
         let client = client
         let ledger = ledger
@@ -39,7 +35,6 @@ final class BackendUploads {
 
     nonisolated static let unchangedUploadInterval: TimeInterval = 6 * 3600
 
-    /// An unchanged list goes again after six hours; an add or a resend goes whatever it holds.
     func uploadCoursesIfChanged(
         _ request: PushAPI.CourseUploadRequest,
         semester: String,
@@ -87,8 +82,6 @@ final class BackendUploads {
         ledger.holdsUnsent(prefix: SendLedger.Channel.courses(""))
     }
 
-    /// The order of the courses and the adds leave the fingerprint alone: an add goes whatever the
-    /// ledger holds, and once it lands the backend holds the list it carried.
     nonisolated static func fingerprint(of request: PushAPI.CourseUploadRequest) -> String {
         SendLedger.fingerprint(of: PushAPI.CourseUploadRequest(
             courses: request.courses.sorted { $0.courseNo < $1.courseNo },

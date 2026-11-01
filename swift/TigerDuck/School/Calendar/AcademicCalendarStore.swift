@@ -32,8 +32,6 @@ final class AcademicCalendarStore: AccountScoped {
         shared.forgetHolidayOverrides()
     }
 
-    /// The holiday's setting here and when it was made, which has no time for a setting made
-    /// before the time was kept.
     func holidayEdit(_ holidayID: Int) -> (notify: Bool, madeAt: Date?) {
         (optedInHolidayIDs.contains(holidayID), Defaults[.holidayOverrideEditTimes][String(holidayID)])
     }
@@ -152,8 +150,6 @@ final class AcademicCalendarStore: AccountScoped {
         return true
     }
 
-    /// The setting the backend kept over this device's, one another device made later; it counts
-    /// as synced, not as an edit here.
     func applyKeptNotify(_ notify: Bool, forHoliday holidayID: Int) {
         var ids = Set(Defaults[.holidayNotifyOverrides])
         if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }

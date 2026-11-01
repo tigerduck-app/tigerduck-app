@@ -1,8 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// The list's work while the page is on screen: the minute poll of the inbox, warming the other
-/// folders' caches, and the search index's passes. A closed page pauses all three.
 @MainActor
 final class MailListBackground {
     let indexer: MailIndexer
@@ -12,7 +10,6 @@ final class MailListBackground {
     private var warmTask: Task<Void, Never>?
     private var warmDone = false
     private let warmDelay: @Sendable () async -> Void
-    /// Weak: the poll and warm tasks outlive the list once the page closes or the account signs out.
     private weak var list: MailListViewModel?
 
     init(
@@ -56,7 +53,6 @@ final class MailListBackground {
         pollTask = nil
     }
 
-    /// Forgets the warm and the index of the account or server that changed.
     func reset() {
         cancelWarm()
         indexer.reset()
@@ -65,10 +61,8 @@ final class MailListBackground {
 
     func waitForWarm() async { await warmTask?.value }
 
-    /// A pass with mail to download.
     var isDownloading: Bool { indexer.isRunning && indexer.progress?.total != 0 }
 
-    /// An index that is already current shows nothing rather than spinning at 0/0.
     var isIndexBusy: Bool { !indexer.isComplete || isDownloading }
 
     func pollOnce() async {
@@ -149,11 +143,6 @@ final class MailListBackground {
         }
     }
 
-    /// Warms the folders the user is not looking at, so a chip tap paints from cache, not a
-    /// spinner: the role folders in chip order, minus what the selection shows, at
-    /// `MailConstants.warmPageSize` rows each, one at a time on the page's own connection, since
-    /// Mail2000 caps connections. It writes only the cache, never shortens a cache the user paged
-    /// further into, and stops at a lost connection: NTUST counts failed logins towards a lockout.
     private func startWarm() {
         guard let list else { return }
         warmTask?.cancel()
@@ -200,7 +189,6 @@ final class MailListBackground {
         startWarm()
     }
 
-    /// Inbox and Sent first: most searches look there.
     func startIndexIfLoaded(for request: MailIndexer.Request? = nil) {
         guard let list else { return }
         guard !isPaused, list.loadState == .loaded, list.serverStatus == .ok, !list.folderRoles.isEmpty else { return }

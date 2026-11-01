@@ -1,8 +1,6 @@
 import Defaults
 import Foundation
 
-/// What a sign-out would leave behind or lose: data only this device holds, or edits not sent yet,
-/// which the sign-out confirmation names.
 @MainActor
 struct SignOutCheck {
     let app: AppEnvironment
@@ -25,8 +23,6 @@ struct SignOutCheck {
         )
     }
 
-    /// Whether TigerSync's backend holds data of the account, which a sign-in at another endpoint
-    /// does not bring back.
     func leavesSyncedData() -> Bool {
         Self.signOutLeavesSyncedData(
             heldSignOutData(),
@@ -56,8 +52,6 @@ struct SignOutCheck {
         )
     }
 
-    /// A course name syncs under its course's Moodle ID, so a name on a course without one,
-    /// a hand-added course among them, stays on this device.
     static func holdsLocalOnlyCourseNames(_ names: [String: [String: String]], courses: [SDCourse]) -> Bool {
         let withMoodleId = Set(courses.filter { $0.moodleIdNumber != nil }.map(\.courseNo))
         let held = Set(courses.map(\.courseNo))
@@ -73,7 +67,6 @@ struct SignOutCheck {
         var ignoredCourses = false
         var holidays = false
 
-        /// The TigerSync categories each kind syncs under.
         var categoriesNeeded: [(held: Bool, categories: Set<String>)] {
             [
                 (courses, ["courses"]),

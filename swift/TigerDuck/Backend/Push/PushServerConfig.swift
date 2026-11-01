@@ -1,16 +1,13 @@
 import Defaults
 import Foundation
 
-///
 nonisolated enum PushServerConfig {
 
     static func resolveServerURL() -> URL {
-        // A sign-out's calls carry its session's token, so they go where that session was issued.
         if let departing = AuthTokenManager.departing?.baseURL { return departing }
         return resolveServerURL(candidates: [DebugEndpointStore.currentOverride()] + debugEndpoints())
     }
 
-    /// The endpoint in use once the user-set override is cleared.
     static func defaultServerURL() -> URL {
         resolveServerURL(candidates: debugEndpoints())
     }
@@ -71,8 +68,6 @@ nonisolated enum PushServerConfig {
     static func isPrivateOrLoopbackHost(_ host: String) -> Bool {
         let normalized = host.lowercased()
         if normalized == "localhost" || normalized.hasSuffix(".localhost") { return true }
-        // `URL.host` strips the brackets from `[::1]`, but callers that
-        // hand us a raw authority string may not have.
         let bare = normalized.hasPrefix("[") && normalized.hasSuffix("]")
             ? String(normalized.dropFirst().dropLast())
             : normalized
@@ -132,8 +127,6 @@ nonisolated enum PushServerConfig {
         return false
     }
 
-    /// Parses an IPv6 literal into 16 bytes via the system resolver, the
-    /// parser URLSession dials with, so a hand-rolled `::` expansion cannot classify differently.
     private static func parseIPv6(_ host: String) -> [UInt8]? {
         var address = in6_addr()
         guard host.withCString({ inet_pton(AF_INET6, $0, &address) }) == 1 else { return nil }
@@ -156,13 +149,6 @@ nonisolated enum PushServerConfig {
         }
     }
 
-    /// Crashes Debug builds at launch when the resolved server URL does not
-    /// match the APNs environment baked into the binary (or each other).
-    /// Empty in Release builds: `assert` is stripped under `-O`, but working out
-    /// its conditions would still read the Keychain twice before the first frame.
-    /// Guards against the regression where someone flips `PushAPNsEnv` or
-    /// `AppConstants.productionPushServerURL` without flipping the other,
-    /// or seeds a stale UserDefaults override pointing the wrong way.
     static func assertEnvConsistency() {
         #if DEBUG
         let resolved = resolveServerURL()

@@ -1,7 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// Whether a domain or an address is the school's, a typo of it, or a bounce's.
 nonisolated enum MailSchoolDomain {
     static func normalizedDomain(_ raw: String) -> String {
         var domain = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -27,12 +26,7 @@ nonisolated enum MailSchoolDomain {
     private static let maxDomainTypoEdits = 2
 
     /// RFC 5321 §4.5.5: a delivery status notification is sent with the null reverse-path, which
-    /// the receiving server records as `Return-Path: <>`. That header comes from our side of the
-    /// delivery, unlike the `From` display name ("Mail Deliver System"), which any sender can
-    /// type, so it is the only bounce marker worth trusting. Only the opened message has it, from
-    /// the full header `MailIMAPFetch.detailOptions` fetches; the list's ENVELOPE fetch lacks it,
-    /// so the list goes by a sender with no domain. Both call a forged bounce whose `From` names
-    /// an outside domain external, since a bounce is exempted only when it has no domain.
+    /// the receiving server records as `Return-Path: <>`.
     /// See docs/decisions/0013-mail-bounce-detection.md.
     static func isBounce(returnPath: String?) -> Bool {
         guard let returnPath else { return false }

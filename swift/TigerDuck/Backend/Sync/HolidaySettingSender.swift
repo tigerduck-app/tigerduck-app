@@ -2,10 +2,8 @@ import Defaults
 import Foundation
 import os
 
-/// Sends the holidays the user asked to be reminded on, one upload at a time.
 @MainActor
 final class HolidaySettingSender {
-    /// Runs after a holiday's setting changed here, before it is sent.
     var onChange: () -> Void = {}
     private let account: AccountSession
     private let push: PushCoordinator
@@ -54,9 +52,6 @@ final class HolidaySettingSender {
         }
     }
 
-    /// Sends the holiday's setting with the time it was made, so a retry is not a newer edit, and
-    /// acknowledges it only when no edit came after it while it was out. A setting another device
-    /// made later, which the backend kept, replaces it here.
     static func uploadHolidayOverride(
         _ holidayID: Int, from store: AcademicCalendarStore, via registration: PushRegistrationService
     ) async {

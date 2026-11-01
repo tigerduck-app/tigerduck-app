@@ -164,16 +164,14 @@ struct QRCaptureScanner: UIViewRepresentable {
     }
 }
 
-/// The torch of the camera a running scanner session uses. VisionKit keeps its session private,
-/// so this takes the camera from the session's start notification: locking any other camera for
-/// the torch freezes VisionKit's preview.
+/// VisionKit keeps its session private, so this takes the camera from the session's start
+/// notification: locking any other camera for the torch freezes VisionKit's preview.
 @Observable
 final class ScannerTorch {
     struct Control: Equatable {
         let isOn: Bool
         let isEnabled: Bool
 
-        /// Nil for a camera without a torch; one too hot to light keeps its toggle, disabled.
         init?(hasTorch: Bool, isAvailable: Bool, isActive: Bool) {
             guard hasTorch else { return nil }
             isOn = isActive
@@ -181,7 +179,6 @@ final class ScannerTorch {
         }
     }
 
-    /// Nil hides the toggle.
     private(set) var control: Control?
     @ObservationIgnored private var device: AVCaptureDevice?
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []

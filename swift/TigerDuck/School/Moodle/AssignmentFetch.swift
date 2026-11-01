@@ -1,8 +1,6 @@
 import Defaults
 import Foundation
 
-/// Returns once a fetch may apply what it got: true after the pull it waits on completed, false
-/// when that pull was cancelled.
 typealias PullGate = @MainActor () async -> Bool
 
 private final class AssignmentRound {
@@ -10,7 +8,6 @@ private final class AssignmentRound {
     let rechecks: Bool
     var task: Task<Void, Never>?
     var assignments: [SDAssignment] = []
-    /// The gates of the callers sharing the round, in the order they came.
     var gates: [PullGate] = []
 
     init(signIn: AccountSession.Ticket, rechecks: Bool) {
@@ -18,7 +15,6 @@ private final class AssignmentRound {
         self.rechecks = rechecks
     }
 
-    /// A caller's cancelled pull hands the wait on to the next caller's.
     func pulled() async -> Bool {
         var next = 0
         while next < gates.count {
@@ -36,10 +32,8 @@ final class AssignmentRounds {
     var statusAskedAt: [String: ContinuousClock.Instant] = [:]
 }
 
-/// Moodle assignment rounds: one at a time for every caller, saved and uploaded for reminders.
 enum AssignmentFetch {
 
-    /// The round applies what it fetched once `applyAfter` passes, as after a refresh's pull.
     static func fetchAssignments(
         authService: AuthService, recheckSubmissions: Bool = false,
         applyAfter: @escaping PullGate = { true }
@@ -57,8 +51,6 @@ enum AssignmentFetch {
         }
     }
 
-    /// `run` gets the gate of every caller that shares the round, so a caller that joins can
-    /// release a round whose starter's pull was cancelled.
     static func sharedRound(
         signIn: AccountSession.Ticket,
         rechecks: Bool,
@@ -193,7 +185,6 @@ enum AssignmentFetch {
                 try await MoodleAssignmentService.fetchSubmissionStatus(assignId: $0)
             }
             let statuses = answers.mapValues(\.status)
-            // The marks below, and what is saved, are read once the backend's have been applied.
             guard await applyAfter() else { return AssignmentStore.shared.loadAssignments() }
 
             let freshAssignments = AssignmentRecords.assignments(

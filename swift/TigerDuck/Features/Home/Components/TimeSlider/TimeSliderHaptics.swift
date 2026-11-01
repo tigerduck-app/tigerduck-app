@@ -1,7 +1,5 @@
 import UIKit
 
-/// A selection tick each time a drag of the slider crosses a step of
-/// `TimeSliderMetrics.dragHapticIntervalMinutes`.
 final class TimeSliderHaptics {
     private let generator = UISelectionFeedbackGenerator()
     private var lastStep = 0

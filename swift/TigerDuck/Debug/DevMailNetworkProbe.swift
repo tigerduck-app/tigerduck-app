@@ -3,7 +3,6 @@ import Foundation
 import Network
 import Security
 
-/// The probe's DNS and transport stages, and the timeout every stage runs under.
 nonisolated enum DevMailNetworkProbe {
     private static let queue = DispatchQueue(label: "org.ntust.app.TigerDuck.DevMailConnectionProbe")
 
@@ -30,9 +29,7 @@ nonisolated enum DevMailNetworkProbe {
     }
 
     /// `getaddrinfo` blocks and cannot be cancelled, so it runs on a global-queue thread rather
-    /// than a cooperative-pool one. A lookup that outlives the timeout finishes there with nobody
-    /// reading it, which is the price of asking the system resolver the same question the rest of
-    /// the app asks it.
+    /// than a cooperative-pool one.
     private static func resolveOffThread(host: String, port: Int) async -> Resolution {
         await withCheckedContinuation { (continuation: CheckedContinuation<Resolution, Never>) in
             let resumer = OneShotResumer(continuation)
@@ -168,11 +165,7 @@ nonisolated enum DevMailNetworkProbe {
         return parts.isEmpty ? "connected" : parts.joined(separator: ", ")
     }
 
-    /// Not a task group: a group does not return until every child has finished, and not waiting
-    /// for work that has not finished is the whole point here. SwiftMail's IMAP and SMTP commands
-    /// ignore task cancellation, and a filtered port is the case where a socket sits for a
-    /// minute or more, so the unfinished work is left to end on its own, with nobody reading it,
-    /// while the stage reports the hang. Every connection this probe opens is held by its caller
+    /// Not a task group: a group does not return until every child has finished.
     static func withTimeout<T: Sendable>(
         _ timeout: Duration,
         _ work: @escaping @Sendable () async -> T

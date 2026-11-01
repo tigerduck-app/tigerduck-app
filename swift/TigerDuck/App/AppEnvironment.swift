@@ -1,9 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// The composition root: the account, the backend sync and the app's preferences, built once per
-/// process. On iPhone it is built only once protected data can be read
-/// (docs/decisions/0024-launch-before-first-unlock.md).
 @MainActor
 @Observable
 final class AppEnvironment {
@@ -50,8 +47,6 @@ final class AppEnvironment {
 
     init() {
         let isFreshInstall = FreshInstallKeychainPurge.runIfFreshInstall()
-        // After the purge, which deletes a reinstall's bare items, and before AuthService reads them.
-        // A purge left for the next launch keeps them from moving.
         if Defaults[.appHasBeenInstalled] { BareKeychainItemMoveMigration.runIfNeeded() }
 
         let authService = AuthService(session: .school)
@@ -75,7 +70,6 @@ final class AppEnvironment {
         if isFreshInstall {
             updateNotifyCoordinator.seedWhatsNewOnFreshInstall()
         }
-        // Built before the migrations, so a preference they change reaches the Live Activity.
         _ = liveActivity
         holidays.onChange = { [weak self] in self?.liveActivity.scheduleRefresh() }
         #endif
@@ -140,8 +134,8 @@ final class AppEnvironment {
         poller.poll = { [weak self] in await self?.feed.pollRevision() ?? .unchanged }
         pushCoordinator.onCoursesUploaded = { [weak self] in self?.cloudSyncCoordinator.courseUploadLanded() }
 
-        // Apply a stored in-app language override at launch so lookups use it. Skip "system":
-        // apply() would remove AppleLanguages, wiping the per-app override iOS Settings writes there.
+        // Skip "system": apply() would remove AppleLanguages, wiping the per-app override iOS
+        // Settings writes there.
         if preferences.appLanguage != LanguageManager.system {
             LanguageManager.apply(preferences.appLanguage)
         }
@@ -161,7 +155,6 @@ final class AppEnvironment {
         return true
     }
 
-    /// Runs the one-time upgrades in `Migrations/`, once per launch.
     private func runPendingMigrations() {
         SemesterAttributionCacheMigration.runIfNeeded()
         SyncedAccountSeedMigration.runIfNeeded(signedIn: authService.hasStoredCredentials)

@@ -1,8 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// Fires once the page's connection has sat unused for `delay`, unless it is armed again or
-/// cancelled first.
 @MainActor
 final class MailIdleClose {
     private let delay: Duration
@@ -35,7 +33,6 @@ final class MailIdleClose {
     }
 }
 
-/// Runs `handler` on the main actor each time School Mail signs out, for as long as it is held.
 final class MailSignOutListener {
     private let center: NotificationCenter
     nonisolated(unsafe) private var token: (any NSObjectProtocol)?

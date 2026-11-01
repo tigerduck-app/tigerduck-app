@@ -132,7 +132,6 @@ final class SDCourse: Identifiable {
         _cachedSchedule = schedule
     }
 
-    /// The rooms of the day's periods in period order, or the course's room when the map has none.
     func classroom(for weekday: Int) -> String {
         CourseRoomList.rooms(of: schedule[weekday], weekday: weekday, map: classroomMap, fallback: Self.dedup(classroom))
     }
@@ -172,7 +171,7 @@ final class SDCourse: Identifiable {
 
     /// A Moodle `idnumber` with its term prefix normalised, so an id spelled
     /// by one system is found under a key written by the other:
-    /// `"114hGD3115301"` and `"114HGD3115301"` both become the latter. An id
+    /// `"114hGD3115301"` and `"114HGD3115301"` both become the latter.
     static func normalizedMoodleId(_ moodleId: String) -> String {
         guard let prefix = AcademicTerm.codePrefix(ofMoodleId: moodleId) else { return moodleId }
         return prefix + moodleId.dropFirst(4)
@@ -233,7 +232,6 @@ extension SDCourse {
     }
 
     var moodleDeepLink: URL? { MoodleCourseLink.deepLink(idnumber: moodleIdNumber) }
-    /// HTTPS equivalent of ``moodleDeepLink``, which a Mac opens in the browser.
     var moodleWebURL: URL? { MoodleCourseLink.webURL(idnumber: moodleIdNumber) }
     var moodleOpenURL: URL? { MoodleCourseLink.openURL(idnumber: moodleIdNumber) }
 }

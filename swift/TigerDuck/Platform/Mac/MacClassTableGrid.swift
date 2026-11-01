@@ -2,8 +2,6 @@
 import SwiftUI
 import TigerDuckCore
 
-/// The Mac class table's glass grid: a column per weekday and a row per period, courses spanning
-/// their periods and conflicting ones side by side.
 struct MacClassTableGrid: View {
     let viewModel: ClassTableViewModel
 

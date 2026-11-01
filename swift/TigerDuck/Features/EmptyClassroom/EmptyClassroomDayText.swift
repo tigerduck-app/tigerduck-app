@@ -1,7 +1,6 @@
 import Foundation
 import TigerDuckCore
 
-/// How the empty-classroom screen writes its days and periods.
 enum EmptyClassroomDayText {
     static func label(_ day: Date, today: Date) -> String {
         let calendar = TaipeiTime.calendar

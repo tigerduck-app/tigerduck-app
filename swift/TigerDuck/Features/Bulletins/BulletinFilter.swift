@@ -1,6 +1,5 @@
 import Foundation
 
-/// The bulletin list's department, tag and search filters.
 struct BulletinFilter {
     var orgs: Set<String> = []
     var tags: Set<String> = []

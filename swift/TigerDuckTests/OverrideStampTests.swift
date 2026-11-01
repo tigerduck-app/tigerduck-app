@@ -4,9 +4,6 @@ import os
 import Testing
 @testable import TigerDuck
 
-/// The backend settles a colour, a name, an ignore setting, a mark and a holiday setting by the
-/// time each was made, so a late send must not beat a newer edit from another device. These check
-/// that every attempt carries the time of its edit, or the server's clock when it is behind.
 @MainActor
 struct OverrideStampTests {
     enum Edit: String, Sendable, CaseIterable { case colour, name, ignore, mark }
@@ -14,7 +11,6 @@ struct OverrideStampTests {
     enum Attempts: String, Sendable, CaseIterable {
         case lands, lostReplyThenLands, refusedAsAheadThenLandsRestamped
 
-        /// Each reply with the stamp the request it answers carries.
         func replies(_ body: Data) -> [(SettingsAPIStub.StubResponse, hlc: Int64)] {
             let landed = SettingsAPIStub.StubResponse(statusCode: 200, body: body)
             switch self {
@@ -216,7 +212,6 @@ struct OverrideStampTests {
         return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
     }
 
-    /// `held` stands for a conflict check owed on every category, as a switch turned off and on.
     private static func makeCoordinator(
         _ baseURL: URL, held: @escaping @Sendable () -> Bool = { false }
     ) -> CloudSyncCoordinator {

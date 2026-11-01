@@ -810,8 +810,6 @@ extension MoodleCourseForumsTests {
     }
 }
 
-/// Holds one call of the site until the test lets it go; the site answers as it stands then,
-/// which still has the post unread.
 private final class HeldForumsCall: @unchecked Sendable {
     private let lock = NSLock()
     private let held: Int

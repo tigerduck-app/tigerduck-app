@@ -1,6 +1,3 @@
-// Live Activity refresh, and the notification permission that server-sent reminders and Live
-// Activity push updates need. iOS only, since ActivityKit has no macOS counterpart.
-
 #if os(iOS)
 import Defaults
 import Foundation
@@ -8,8 +5,6 @@ import os
 import TigerDuckCore
 import UserNotifications
 
-/// Decides when to refresh the Live Activity: after a data or settings change, and at the next
-/// scenario boundary while the app runs.
 @MainActor
 final class LiveActivityRefresher {
     let preferences = LiveActivityPreferencesStore()
@@ -66,7 +61,6 @@ final class LiveActivityRefresher {
         }
     }
 
-    /// Stops the refreshes this sign-in scheduled.
     func cancelRefreshes() {
         pendingRefreshTask?.cancel()
         pendingRefreshTask = nil
@@ -104,8 +98,6 @@ final class LiveActivityRefresher {
         )
     }
 
-    /// Refreshes again at the next scenario boundary, so the activity does not sit on a stale
-    /// scenario. iOS suspends the task in the background; a return to the foreground refreshes.
     private func scheduleBoundaryRefresh(
         snapshot: LiveActivitySnapshot?,
         courses: [SDCourse],

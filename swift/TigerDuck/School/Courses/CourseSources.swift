@@ -1,8 +1,6 @@
 import Foundation
 
-/// The answers a term's course list is drawn from, each recorded in the server status.
 enum CourseSources {
-    /// Nil lets a term fetch go on without Moodle, which only adds names and links.
     static func moodleCourses(authService: AuthService) async -> [MoodleEnrolledCourse]? {
         let ticket = authService.session.ticket
         do {
@@ -16,8 +14,6 @@ enum CourseSources {
         }
     }
 
-    /// A pull does not skip the day-long cache either, so a past term's refresh adds no
-    /// score-system sign-in.
     static func transcript(authService: AuthService) async -> ScoreReport? {
         let ticket = authService.session.ticket
         guard let studentId = authService.storedStudentId,
@@ -43,8 +39,6 @@ enum CourseSources {
         }
     }
 
-    /// Course selection's answer for the term it serves; nil when it failed, so the transcript
-    /// stands in.
     static func selectionCourseNos(
         authService: AuthService, studentId: String, password: String, semester: String,
         forceRefresh: Bool, ticket: AccountSession.Ticket

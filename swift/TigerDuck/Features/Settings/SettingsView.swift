@@ -9,9 +9,6 @@ struct SettingsView: View {
     /// rendering "On" after the switch inside `CloudSyncSettingsView` had
     /// already turned it off -- popping back does not re-evaluate a parent
     /// body on its own.
-    ///
-    /// The preference is the flag's only copy -- `app.cloudSyncEnabled`
-    /// reads it too, through `CloudSyncPreference` -- so either would do.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Environment(\.scenePhase) private var scenePhase
     @State private var sheets = SettingsSheetState()

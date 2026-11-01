@@ -18,9 +18,7 @@ enum ClassroomUsageError: LocalizedError, Equatable {
 /// run one at a time. Each read starts from a new campus page and keeps no page after it: a page
 /// left over would post the date it already shows, which the site's calendar may answer from
 /// that state (https://github.com/tigerduck-app/tigerduck-app/issues/513), and its state holds
-/// the grid, bookers' names included. Days are kept in memory only, fresh for 15 minutes today
-/// and 3 hours later on and shown while they reload for up to 12 hours, while the school session
-/// they came from lasts; sign-out drops them.
+/// the grid, bookers' names included.
 @MainActor
 final class ClassroomUsageService {
     static let queryURL = URL.knownGood(

@@ -1,7 +1,5 @@
 import Foundation
 
-/// The signed-in account's score report: the copy kept on the device, the fetch from the score
-/// system, and the loading indicator a fetch drives.
 struct ScoreReports {
     var indicator: any LoadingIndicator = NTUSTSessionManager.shared
 

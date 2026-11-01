@@ -1,14 +1,8 @@
 import Foundation
 import TigerDuckCore
 
-/// Server-driven semester list from the public `querycourse` catalogue. The month heuristic
-/// in `CourseSelectionService` lags when NTUST opens a term early. A walk-back from it then
-/// leaves the new term out of the picker, and course selection, which has already moved to
-/// that term and marks no term in its list HTML, gets its enrolments filed under the old one,
-/// rendering both terms into one grid.
-///
-/// `api/semestersinfo` also feeds the official course-query site's semester menu. Its
-/// `LoginEnable` marks the one term course selection serves, which the list scrape lacks.
+/// `api/semestersinfo` feeds the official course-query site's semester menu. Its `LoginEnable`
+/// marks the one term course selection serves, which the list scrape lacks.
 enum SemesterCatalog {
     private static let semestersAPI = URL.knownGood(
         "https://querycourse.ntust.edu.tw/QueryCourse/api/semestersinfo"
@@ -28,7 +22,6 @@ enum SemesterCatalog {
 
     private nonisolated static let pickerDepth = 6
 
-    // Capitalised to match the wire format, same as `CourseSearchResult`.
     // swiftlint:disable identifier_name
     struct SemesterInfo: Decodable {
         let Semester: String
@@ -51,14 +44,7 @@ enum SemesterCatalog {
         return terms(from: cached, admissionYear: admissionYear(studentId: studentId))
     }
 
-    /// Catalogue terms from the admission year onwards; the fixed depth when the id is
-    /// unknown. Compared numerically: the catalogue pads pre-100 years as `99 1`, which
-    /// sorts after `1131` as a string and would let every term back to 95-1 into the picker.
-    ///
-    /// Empty for a student admitted after the newest published term: every catalogue term
-    /// predates them, so offering (and warming) any of it is wrong.
-    /// `ClassTableViewModel.semesterOptions` keeps the heuristic term selectable until
-    /// NTUST publishes theirs.
+    /// The catalogue pads pre-100 years as `99 1`, which sorts after `1131` as a string.
     nonisolated static func terms(from catalogue: [String], admissionYear: Int?) -> [String] {
         guard let admissionYear else { return Array(catalogue.prefix(pickerDepth)) }
         return catalogue.filter { (AcademicTerm.year(of: $0) ?? -1) >= admissionYear }
@@ -91,9 +77,6 @@ enum SemesterCatalog {
         let defaults = AppUserDefaults.standard
         defaults.set(list.map(\.Semester), forKey: listKey)
         defaults.set(Date().timeIntervalSince1970, forKey: refreshedAtKey)
-        // Exactly one entry carries LoginEnable. If NTUST ever ships zero,
-        // keep the previous value rather than falling back to the heuristic
-        // that caused this bug in the first place.
         if let selection = openTerm(in: list) {
             defaults.set(selection, forKey: selectionKey)
         }

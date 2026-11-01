@@ -1,8 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// The assignment's submission: its state against the due date, the files and text handed in,
-/// and the comments on it.
 struct MoodleAssignmentSubmissionSection: View {
     let store: MoodleCourseStore
     let record: MoodleAssignmentRecord

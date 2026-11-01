@@ -1,6 +1,5 @@
 import Foundation
 
-/// One edit waiting in the outbox, with the time it was made, which the backend settles it by.
 nonisolated enum SyncOp: Codable, Sendable {
     case courseOverride(semester: String, moodleId: String, customName: String?, colorHex: String?, locale: String?, stamp: Date)
     case assignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String, stamp: Date)
@@ -99,8 +98,6 @@ nonisolated enum SyncOp: Codable, Sendable {
         }
     }
 
-    /// What a discard by time can cut this op off under: its kind or category, a delete's term,
-    /// and an add's or a delete's course.
     var scopes: [String] {
         switch self {
         case .courseOverride(_, _, let customName, let colorHex, _, _):

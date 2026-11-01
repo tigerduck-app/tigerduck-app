@@ -1,7 +1,6 @@
 import Foundation
 @testable import TigerDuck
 
-/// The file stores of a test's own cache folders, each built on the same two folders.
 @MainActor
 struct TestCache {
     let folders: CacheFolders
@@ -30,7 +29,6 @@ struct TestCache {
 
     var persistentDir: URL { folders.persistent }
 
-    /// Deletes what the school account's sign-out deletes from these folders.
     func forgetAccount() {
         for store in SignOutPlan.schoolStores {
             store.forgetAccount(in: AccountStorage(folders: folders))

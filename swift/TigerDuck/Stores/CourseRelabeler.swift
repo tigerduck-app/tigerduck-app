@@ -2,7 +2,6 @@ import Defaults
 import Foundation
 import TigerDuckCore
 
-/// Renames the cached courses when the course and classroom label settings change.
 @MainActor
 final class CourseRelabeler {
     private var relabelTask: Task<Void, Never>?

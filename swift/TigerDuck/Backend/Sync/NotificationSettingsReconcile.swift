@@ -2,8 +2,6 @@ import Foundation
 import Defaults
 import os
 
-/// Reads the settings document against this device's preferences: adopts the sections the
-/// server holds and seeds the ones it lacks.
 nonisolated enum NotificationSettingsReconcile {
     typealias LocalPreferences = NotificationSettingsSync.LocalPreferences
     typealias OwnedSection = NotificationSettingsSync.OwnedSection

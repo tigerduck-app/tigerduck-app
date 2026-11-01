@@ -1,7 +1,5 @@
 import Foundation
 
-/// The file of the class tables imported from share codes. Its types' fields and their names are
-/// the file format.
 struct ImportedClassTableFile {
     struct Contents: Codable {
         let owner: String?
@@ -25,7 +23,6 @@ struct ImportedClassTableFile {
 
     enum Loaded {
         case missing
-        /// The file is there but could not be read or decoded.
         case unreadable
         case contents(Contents)
     }
@@ -49,7 +46,6 @@ struct ImportedClassTableFile {
         }
     }
 
-    /// Replaces the file in one step, so a failed write leaves the old one.
     func save(_ contents: Contents) -> Bool {
         do {
             let manager = FileManager.default

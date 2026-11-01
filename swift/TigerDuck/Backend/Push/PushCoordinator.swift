@@ -31,7 +31,6 @@ struct PushDiagnostic: Sendable {
     let uuid: String
 }
 
-///
 @MainActor
 final class PushCoordinator {
     private let identity: PushIdentity
@@ -48,7 +47,6 @@ final class PushCoordinator {
 
     private var run = RunState()
 
-    /// Whether the push stack was started, and stopped by a sign-out since.
     private struct RunState {
         var isStarted = false
         var stoppedBySignOut = false
@@ -116,9 +114,6 @@ final class PushCoordinator {
                     .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
                 logger.info("notification authorization granted=\(granted, privacy: .public)")
             }
-            // `registerForRemoteNotifications` is safe in any permission state
-            // and yields a token only when authorized. Calling it on every enable
-            // lets a later grant reach token forwarding with no extra hook.
             #if os(iOS)
             UIApplication.shared.registerForRemoteNotifications()
             #elseif os(macOS)
@@ -205,8 +200,6 @@ final class PushCoordinator {
         try await apiClient.deleteCourse(courseKey: courseKey, madeAt: stamp)
     }
 
-    /// A new session or device registration may come to a server without this device's schedule,
-    /// so the next list goes up even when unchanged.
     func refreshRegistrationAfterAuth() {
         scheduleSync.forgetAcceptedList()
         if run.stoppedBySignOut {

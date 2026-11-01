@@ -1,7 +1,5 @@
 import Foundation
 
-/// Sets the account's Moodle picture: the image goes into a new draft area through
-/// `webservice/upload.php`, then `core_user_update_picture` makes that draft the picture.
 nonisolated enum MoodleProfilePictureService {
     static let updateFunction = "core_user_update_picture"
     static let uploadPath = "/webservice/upload.php"
@@ -28,7 +26,6 @@ nonisolated enum MoodleProfilePictureService {
         guard answer.success else { throw MoodleWebserviceError.malformedResponse(detail: "picture not updated") }
     }
 
-    /// The token goes in the form, not the URL, so it stays out of server logs.
     static func uploadRequest(jpeg: Data, token: String, siteURL: URL, boundary: String) -> URLRequest? {
         guard var components = URLComponents(url: siteURL, resolvingAgainstBaseURL: false) else { return nil }
         components.path = uploadPath

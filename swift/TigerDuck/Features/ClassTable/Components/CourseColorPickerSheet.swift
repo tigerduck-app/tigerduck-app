@@ -166,8 +166,7 @@ struct CourseColorPickerSheet: View {
 }
 
 /// Holds a custom colour back until the drag pauses. The `ColorPicker` reports every
-/// step of a drag, and each applied pick writes the colour map, which reloads Home, Class
-/// Table, Calendar and the Live Activity through `CourseColorStore`, and queues a sync.
+/// step of a drag.
 @MainActor
 final class CustomColorPickDebouncer {
     static let pause: Duration = .milliseconds(300)

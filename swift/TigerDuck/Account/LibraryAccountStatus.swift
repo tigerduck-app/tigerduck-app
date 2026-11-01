@@ -42,12 +42,9 @@ final class LibraryAccountStatus {
     }
 }
 
-/// The library account as the library page and Settings read and change it.
 @MainActor
 enum LibraryAccount {
-    /// Posted when the stored account changes or goes, on the main actor.
     static let didChange = LibraryService.accountDidChange
-    /// Posted when the stored account signs in again or its password is refused.
     static let signInDidChange = LibraryService.signInDidChange
 
     static var hasAccount: Bool { LibraryService.hasAccount }
@@ -55,7 +52,6 @@ enum LibraryAccount {
     static var isTokenValid: Bool { LibraryService.isTokenValid }
     static var canSignInWithStoredCredentials: Bool { LibraryService.canSignInWithStoredCredentials }
 
-    /// The ID the sign-in form offers: the library account's, else the school account's.
     static var suggestedUsername: String {
         LibraryService.storedUsername ?? KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId) ?? ""
     }

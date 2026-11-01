@@ -1,7 +1,5 @@
 import Foundation
 
-/// What a web page needs of the school sign-in: Moodle pages that open signed in, and the jar
-/// holding the school's SSO cookies.
 @MainActor
 enum SchoolWeb {
     nonisolated static func isMoodlePage(_ url: URL) -> Bool {

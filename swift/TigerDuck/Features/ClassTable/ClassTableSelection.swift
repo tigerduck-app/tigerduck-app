@@ -1,7 +1,5 @@
 import Foundation
 
-/// The class the course sheet opens on: the course, the cell's weekday and periods, and the day
-/// it falls on when the table shows this week.
 struct ClassTableSelection {
     struct ConflictPickerTarget: Identifiable {
         let id = UUID()
@@ -15,7 +13,6 @@ struct ClassTableSelection {
     var periodId: String?
     var coursePeriods: [String]?
     var date: Date?
-    /// The running class the Current class card opened, which can be one piece of its meeting.
     var slot: CourseTimeSlot?
     var conflictPickerTarget: ConflictPickerTarget?
 
@@ -25,7 +22,6 @@ struct ClassTableSelection {
         return course.timeRange(for: weekday)
     }
 
-    /// A course of Today's classes, which opens on today without a cell.
     mutating func select(today course: CourseStore.Course, now: Date) {
         coursePeriods = nil
         periodId = nil

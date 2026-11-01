@@ -1,8 +1,6 @@
 import Foundation
 import TigerDuckCore
 
-/// The slider's track: each class's lane among the classes it overlaps, and the x position of
-/// each class's start and end, with the gaps between classes compressed.
 struct TimeSliderLayout {
     private(set) var lanes: [String: TimeSliderLane] = [:]
     private var anchors: [(time: Date, x: CGFloat)] = []
@@ -142,7 +140,6 @@ struct TimeSliderLayout {
         return 0
     }
 
-    /// The time at `x`; `fallback` while the track has no classes.
     func time(for x: CGFloat, fallback: Date) -> Date {
         guard anchors.count >= 2 else { return fallback }
 

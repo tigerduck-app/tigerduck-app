@@ -3,7 +3,6 @@ import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Reads the files and photos the user attaches, refusing any larger than a mail may carry.
 enum MailComposeFiles {
     static func read(_ url: URL) async -> (data: Data, mimeType: String, filename: String)? {
         await Task.detached {
@@ -15,7 +14,6 @@ enum MailComposeFiles {
         }.value
     }
 
-    /// Adds each photo as it loads; true when one could not be loaded.
     static func loadPhotos(_ items: [PhotosPickerItem], add: (String, String, Data) -> Void) async -> Bool {
         var anyFailed = false
         for (index, item) in items.enumerated() {

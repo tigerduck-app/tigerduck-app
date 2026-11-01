@@ -2,8 +2,6 @@
 import SwiftUI
 import Defaults
 
-/// A course on the Mac class table: its name, teacher and room on the course's colour, with its
-/// edit menu.
 struct MacClassTableCourseCell: View {
     let viewModel: ClassTableViewModel
     let course: CourseStore.Course

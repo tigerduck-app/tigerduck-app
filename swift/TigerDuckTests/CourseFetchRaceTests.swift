@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// A course fetch applies what it found to the courses as they are when it ends, so an edit, a
-/// newer roster or a display change that lands while its lookups run is kept.
 @MainActor
 struct CourseFetchRaceTests {
     private static let semester = "1151"

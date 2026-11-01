@@ -1,8 +1,5 @@
 import Foundation
 
-/// The edits on their way into the outbox and the ones queued there, with the times a discard or
-/// another device's course reset dropped edits by; `CloudSyncCoordinator` forwards its edit
-/// questions here.
 @MainActor
 final class QueuedEdits {
     private let outbox: SyncOutbox
@@ -32,7 +29,6 @@ final class QueuedEdits {
         }
     }
 
-    /// The count of override edits when the last colour edit of `identity` was queued.
     func colorEdit(of identity: String) -> Int {
         lastColorEdit[identity, default: 0]
     }
@@ -73,7 +69,6 @@ final class QueuedEdits {
         return (pending.colors.union(edited.colors), pending.names.union(edited.names))
     }
 
-    /// Use Server for `categories`: drops this device's edits of them made so far.
     func discardEdits(of categories: Set<String>, courseIgnores: Bool) async {
         var scopes = categories.intersection(["assignments", "course_colors", "course_names"])
         if categories.contains("courses") { scopes.insert("ca") }
@@ -84,8 +79,6 @@ final class QueuedEdits {
         await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
     }
 
-    /// Discards by time in the outbox, and refuses those ops at `execute` too: a drain picks its
-    /// op on the outbox, so it can be on its way to `execute` with one the discard dropped.
     @discardableResult
     private func discard(madeBefore scopeCutoffs: [String: Date]) async -> [SyncOp] {
         let now = Date()
@@ -128,7 +121,6 @@ final class QueuedEdits {
         return keys
     }
 
-    /// `then` runs once the add is queued, in the same task.
     func addCourse(
         semester: String, courseNo: String, then: @escaping @MainActor () async -> Void
     ) -> Task<Void, Never> {
@@ -148,8 +140,6 @@ final class QueuedEdits {
         addTimes[key] = Date()
     }
 
-    /// Sampling the outbox misses an add that starts while it is read, so an add started or
-    /// landed since `date` counts by its time.
     func courseAddKeys(unlandedAt date: Date) async -> Set<String> {
         var keys = Set(addsEnqueuing.values)
         for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
@@ -160,9 +150,6 @@ final class QueuedEdits {
         return keys.union(addTimes.filter { $0.value >= date }.keys)
     }
 
-    /// Drops the course adds and deletes made here before another device's course reset at
-    /// `resetAt`, the server's `courses_reset_at`, and returns the keys of the deletes. One made
-    /// after the reset, or within the skew margin of it, stays.
     func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
         let cutoff = resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin)
         let dropped = await discard(madeBefore: ["ca": cutoff, "cd": cutoff])
@@ -172,8 +159,6 @@ final class QueuedEdits {
         })
     }
 
-    /// Drops the deletes queued before `cutoff`, the time of the re-add or reset, which a caller
-    /// takes before its task hop so a hide made after the action is kept.
     func discardCourseDeletes(semester: String?, courseKeys: Set<String>?, madeBefore cutoff: Date) async {
         let serverPrefix = CourseTombstone.serverKey(of: "")
         let scopes = courseKeys.map { keys in
@@ -198,13 +183,11 @@ final class QueuedEdits {
         })
     }
 
-    /// Nothing a discard or an add recorded carries over once the queue is cleared.
     func forgetDiscards() {
         cutoffs = [:]
         addTimes = [:]
     }
 
-    /// An edit of the same field queued after `op`, which a value the backend kept must not undo.
     func hasNewerEdit(than op: SyncOp) async -> Bool {
         let key = op.dedupKey
         let queued = await outbox.snapshot().map(\.op) + outbox.parkedSnapshot().map(\.op)

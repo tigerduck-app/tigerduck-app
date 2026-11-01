@@ -1,18 +1,11 @@
 import Foundation
 import os
 
-/// Signs the stored account in to the TigerDuck backend with its Moodle token: after a school
-/// sign-in, when the app returns without a backend session, and when the backend refuses a
-/// refresh. One sign-in runs at a time.
 @MainActor
 @Observable
 final class BackendSignIn {
     private(set) var isSigningIn = false
     @ObservationIgnored private var running: Task<Void, Never>?
-    /// When an automatic backend sign-in that had credentials to send last failed. The backend
-    /// takes five logins per student and per IP in 15 minutes (`auth_login_max_attempts` in
-    /// https://github.com/tigerduck-app/tigerduck-backend/blob/main/server/config.py), and a
-    /// campus network puts many students behind one IP, so the next automatic one waits ``pause``.
     @ObservationIgnored private var failedAt: Date?
     @ObservationIgnored private weak var auth: AuthService?
 
@@ -92,7 +85,6 @@ final class BackendSignIn {
         if running == task { running = nil }
     }
 
-    /// Waits out a sign-in under way, then signs in without the pause a failure set.
     func signInAgain() async {
         if let current = running {
             await current.value
@@ -140,8 +132,6 @@ final class BackendSignIn {
     }
 }
 
-/// Tries the stored password again once the school stops refusing it, after the wait
-/// `SSOLoginService` sets, and backs off further when a try finds the school still refusing.
 @MainActor
 final class StoredPasswordRetry {
     private(set) var task: Task<Void, Never>?
@@ -205,15 +195,12 @@ final class StoredPasswordRetry {
         guard !auth.isLoggingIn, let studentId = auth.storedStudentId, let password = auth.storedPassword else { return false }
         let session = auth.session
         let ticket = session.ticket
-        // A sign-in typed while the retry waited for the SSO lock posts what was typed instead.
         let posted = try? await auth.deps.retrySchoolSignIn(studentId, password, session.currentCheck()) { !auth.isLoggingIn }
         guard posted == true else { return false }
         auth.noteSchoolSignInRenewed()
         guard session.isCurrent(ticket) else { return false }
         auth.clearReauthError()
         guard (try? await auth.deps.moodleTokens.refreshTokenIfNeeded()) != nil, session.isCurrent(ticket) else { return false }
-        // Not at the school's yes: a refused Moodle token sign-in after it would count from one
-        // again, and the password would go out every ten seconds. The backend takes no password.
         SchoolPasswordPosts.forgetStoredPasswordRefusals()
         await auth.backend.signInAgain()
         return true

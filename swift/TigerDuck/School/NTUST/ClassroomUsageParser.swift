@@ -2,8 +2,6 @@ import Foundation
 import SwiftSoup
 import TigerDuckCore
 
-/// Reads cour01's room-use page, an ASP.NET WebForms page: the form state each postback sends
-/// back, the date calendar's links, the room grid and its pager.
 nonisolated enum ClassroomUsageParser {
     static let periodCount = 14
     static let campusField = "DropdownCampusListID"
@@ -64,8 +62,7 @@ nonisolated enum ClassroomUsageParser {
         return utc.dateComponents([.day], from: epoch, to: day).day ?? 0
     }
 
-    /// The postback that brings `day` closer: the day itself once the calendar links it, else
-    /// the month step toward it. The site answers a day it does not link with an error page.
+    /// The site answers a day it does not link with an error page.
     static func calendarStep(toward day: Int, days: Set<Int>, monthSteps: [Int]) -> Postback? {
         if days.contains(day) {
             return Postback(target: calendarTarget, argument: String(day))

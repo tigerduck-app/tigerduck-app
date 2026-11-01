@@ -5,7 +5,6 @@ import UIKit
 import AppKit
 #endif
 
-/// The school sign-in a user types and its renewal with the stored password.
 @MainActor
 enum SchoolAccountSignIn {
     static func login(studentId: String, password: String, auth: AuthService) async -> Bool {
@@ -110,9 +109,6 @@ enum SchoolAccountSignIn {
     }
 }
 
-/// Reads the keychain again when protected data becomes available and when the app activates,
-/// signs in to the backend again on either, and arms the stored-password retry when the school
-/// sets a wait.
 enum AuthServiceObservers {
     static func observe(_ center: NotificationCenter, for auth: AuthService) -> [any NSObjectProtocol] {
         var credentialObservers: [any NSObjectProtocol] = []

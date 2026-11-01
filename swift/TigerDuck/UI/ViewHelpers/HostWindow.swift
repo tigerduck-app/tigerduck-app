@@ -16,14 +16,11 @@ extension UIViewController {
     }
 }
 
-/// The window a tab view is shown in. A link closes the sheets of the window that opens its page, as
-/// with two iPad windows the first foreground one may be the other
-/// (https://github.com/tigerduck-app/tigerduck-app/issues/676).
+/// A link closes the sheets of the window that opens its page, as with two iPad windows the first
+/// foreground one may be the other (https://github.com/tigerduck-app/tigerduck-app/issues/676).
 final class HostWindow {
     weak var window: UIWindow?
 
-    /// Until the view first lands in its window, as on a cold launch, the foreground window's root,
-    /// so a sheet already up there is still seen.
     private var root: UIViewController? { (window ?? Self.foreground)?.rootViewController }
 
     var isPresenting: Bool { root?.presentedViewController != nil }
@@ -33,21 +30,17 @@ final class HostWindow {
         root.closePresentations(then: then)
     }
 
-    /// Returns once nothing is presented over the window's root, or the task is cancelled. It
-    /// wakes when the shown view moves in or out of a window, not on a timer.
     func presentationsClosed() async {
         while let shown = root?.presentedViewController, !Task.isCancelled {
             await WindowChangeProbe.nextChange(of: shown.view)
         }
     }
 
-    /// Whether this is the window in front; true while either window is unknown, as on a cold launch.
     var isForeground: Bool {
         guard let window, let foreground = Self.foreground else { return true }
         return window === foreground
     }
 
-    /// The key window of a foreground scene, else the first window of the first one.
     static var foreground: UIWindow? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             .filter { $0.activationState == .foregroundActive || $0.activationState == .foregroundInactive }
@@ -57,7 +50,6 @@ final class HostWindow {
     }
 }
 
-/// Reports the next time the view it is added to moves in or out of a window.
 private final class WindowChangeProbe: UIView {
     private var onChange: (() -> Void)?
     private weak var addedIn: UIWindow?

@@ -2,7 +2,6 @@
 import Foundation
 import SwiftMail
 
-/// SwiftMail's `MessageInfo` and `MessagePart` as the app's summaries, parts and details.
 nonisolated enum MailIMAPMessages {
     static func recoversByLocalParse(_ info: MessageInfo) -> Bool {
         guard info.bodyStructureUnusable else { return false }
@@ -52,8 +51,6 @@ nonisolated enum MailIMAPMessages {
 
     static func summary(from info: MessageInfo) -> MailSummary? {
         guard let uid = info.uid?.value else { return nil }
-        // `parseSender`, not `parseList().first`: a From with no domain, like every Mail2000 bounce
-        // (`<MAILER-DAEMON>`), keeps its name, with a `nil` address, so `isExternal` stays false.
         // ENVELOPE has no `Return-Path`; the opened message checks it (`MailSchoolDomain.isBounce`).
         let sender = info.from.flatMap { MailAddress.parseSender($0) }
         let fromAddress = sender.flatMap { MailTextCleaner.clean($0.address).mailNonEmpty }
@@ -76,9 +73,7 @@ nonisolated enum MailIMAPMessages {
         )
     }
 
-    /// `Return-Path` off the full header section `detailOptions` already fetches, nil when the
-    /// fetch fell back to the summary attributes (`detailInfo`), which carry no headers at all.
-    /// The first one, not the last. The final delivery agent prepends its `Return-Path`
+    /// The first `Return-Path`, not the last. The final delivery agent prepends its `Return-Path`
     /// above everything the sender wrote, so a message carrying extra copies lower down is one
     /// where the top line is the server's and the rest are the sender's. `additionalFields` is
     /// the same headers as a dictionary and keeps the *last* value for a repeated name, which is

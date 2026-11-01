@@ -1,7 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// Three or more courses meeting at once, each in a lane of its own.
 struct ConflictLanesView: View {
     let cluster: ConflictCluster
     let diffWithoutColor: Bool

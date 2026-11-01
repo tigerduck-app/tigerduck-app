@@ -1,18 +1,13 @@
 import Foundation
 
-/// Holds what this device derives from school data, its course and assignment uploads, until the
-/// sign-in's first pull from the backend has been applied in this launch. An upload computed
-/// before the device read the backend would otherwise leave the backend's merge rules to undo a
-/// stale state. A local edit does not wait here.
 @MainActor
 final class SyncTarget {
     private typealias Waiter = (id: UUID, ticket: AccountSession.Ticket, resume: CheckedContinuation<Bool, Never>)
 
     private let account: AccountSession
     private var pulledIn: AccountSession.Ticket?
-    /// In the order the uploads came, so one channel's held uploads go out oldest first.
     private var waiters: [Waiter] = []
-    /// Released uploads not yet resumed. One is resumed at a time and resumes the next once it
+    /// One is resumed at a time and resumes the next once it
     /// runs, as the executor may run tasks resumed together in another order.
     private var releasing: [(id: UUID, result: Bool, resume: CheckedContinuation<Bool, Never>)] = []
     private var resumed: UUID?
@@ -25,21 +20,17 @@ final class SyncTarget {
         pulledIn == ticket && account.isCurrent(ticket)
     }
 
-    /// A pull under `ticket` has been applied; the uploads waiting for it go.
     func notePull(_ ticket: AccountSession.Ticket) {
         guard account.isCurrent(ticket) else { return }
         pulledIn = ticket
         release { $0 == ticket }
     }
 
-    /// The sign-in ended: its waiting uploads are dropped, and the next sign-in pulls first.
     func signedOut() {
         pulledIn = nil
         release { _ in false }
     }
 
-    /// True once a pull under `ticket` has been applied; false when the sign-in ended first. An
-    /// upload that comes while released ones are still going on goes after them.
     func waitForPull(_ ticket: AccountSession.Ticket) async -> Bool {
         if hasPulled(ticket), releasing.isEmpty, resumed == nil { return true }
         guard account.isCurrent(ticket) else { return false }

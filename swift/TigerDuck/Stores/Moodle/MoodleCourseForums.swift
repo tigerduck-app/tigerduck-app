@@ -1,7 +1,5 @@
 import Foundation
 
-/// A course's forums: the term's forums, each forum's pages of discussions and each
-/// discussion's posts.
 @MainActor
 final class MoodleCourseForums {
     private let courseId: Int
@@ -40,9 +38,6 @@ final class MoodleCourseForums {
         courseForums.filter { !$0.isNews && $0.discussionCount > 0 }
     }
 
-    /// One call for every course of the term. A site that does not allow the forum calls answers
-    /// as if no course had a forum, which hides the announcements and the forums; one that does
-    /// not allow the posts call keeps only the announcements, as a discussion would show no reply.
     func refreshForums() async {
         await forums.refresh { [api, termCourseIds] in
             let functions = try await api.functions()
@@ -85,8 +80,6 @@ final class MoodleCourseForums {
         return feed
     }
 
-    /// A site that does not allow the posts call answers with none, which leaves the first post
-    /// as the discussion's list brought it.
     func refreshThread(of discussion: MoodleDiscussion) async {
         await thread(of: discussion).refresh { [api] in
             guard try await api.functions().contains(MoodleForumService.discussionPostsFunction) else {

@@ -2,7 +2,6 @@ import Defaults
 import Foundation
 import os
 
-/// The courses whose assignments the user hides, against the snapshot's.
 @MainActor
 struct CourseIgnoresReconciler: CategoryReconciler {
     static let category = "course_ignores"

@@ -3,8 +3,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Each file store reads the files the app writes today, built here byte by byte in today's
-/// format, from the same folders and names, and writes them back in that format.
 @MainActor
 @Suite(.serialized)
 struct PersistenceFormatTests {

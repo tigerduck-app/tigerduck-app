@@ -83,7 +83,6 @@ final class MailComposeViewModel {
         await runPrepare()
     }
 
-    /// A prefill fills only the fields the user has not typed into while it loaded.
     private func runPrepare() async {
         if !tracking.edited.contains(.to) { draft.to = MailRecipients.format(context.to) }
         guard context.mode != .new else {
@@ -217,8 +216,6 @@ final class MailComposeViewModel {
         }
     }
 
-    /// Marks the sheet as sending and builds the message off the main actor; nil, with sending
-    /// ended, when it comes out over the size limit.
     private func build(_ mail: OutgoingMail, messageID: String) async -> Data? {
         let date = services.now()
         status.isSending = true

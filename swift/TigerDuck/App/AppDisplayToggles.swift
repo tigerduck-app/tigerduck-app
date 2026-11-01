@@ -1,14 +1,13 @@
 import Defaults
 import Foundation
 
-/// The display preferences that only store their value, each written back to its Defaults key.
 struct AppDisplayToggles {
     var accentColorHex: Int = Defaults[.accentColorHex] {
         didSet { Defaults[.accentColorHex] = accentColorHex }
     }
 
-    /// Mac only: where the "open in Moodle" actions route to. The iPad Moodle app installed from
-    /// the Mac App Store registers `moodlemobile://` too, so its users can choose the deep link.
+    /// The iPad Moodle app installed from the Mac App Store registers `moodlemobile://` too, so its
+    /// users can choose the deep link.
     var macMoodleOpenTarget: MoodleOpenTarget = Defaults[.macMoodleOpenTarget] {
         didSet { Defaults[.macMoodleOpenTarget] = macMoodleOpenTarget }
     }

@@ -1,7 +1,5 @@
 import Foundation
 
-/// A value tasks wait on: `wait(until:deadline:)` returns once a change makes its test pass,
-/// instead of reading the value on a timer.
 @MainActor
 final class StateSignal<Value> {
     var value: Value {
@@ -22,8 +20,6 @@ final class StateSignal<Value> {
 
     var waiterCount: Int { waiters.count }
 
-    /// True once `isReady` holds for the value; false when `deadline` passes or the task is
-    /// cancelled first.
     @discardableResult
     func wait(until isReady: @escaping (Value) -> Bool, deadline: ContinuousClock.Instant? = nil) async -> Bool {
         if isReady(value) { return true }

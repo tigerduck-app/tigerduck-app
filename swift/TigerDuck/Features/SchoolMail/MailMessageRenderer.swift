@@ -1,8 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// Turns a mail's body into what the message screen shows, off the main actor: the sanitized and
-/// link-rewritten HTML, its pages on the app's colours and on light, and the plain text.
 nonisolated enum MailMessageRenderer {
     struct Rendered: Sendable {
         var sanitized: SanitizedHTML?
@@ -16,7 +14,6 @@ nonisolated enum MailMessageRenderer {
         return await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
     }
 
-    /// Nil when the task was cancelled part way.
     static func render(html: String?, textBody: String?, allowImages: Bool) async -> Rendered? {
         await detachedCancellably { () -> Rendered? in
             guard let html else { return Rendered(plainText: textBody ?? "") }

@@ -13,7 +13,6 @@ nonisolated enum HTMLParser {
         return looksLikeSSOLoginBody(html)
     }
 
-    /// Body-only signature for the SSO login form, ignoring the URL.
     /// Use this when an upstream service (e.g. stuinfosys / score
     /// portal) returns 200 with the SSO form rendered inline instead
     /// of redirecting to ssoam2, the URL-gated `isSSOLoginPage`
@@ -89,9 +88,6 @@ nonisolated enum HTMLParser {
         return nil
     }
 
-    /// The text of `nodes` and of what they hold, without the elements `skipped` names, and with a
-    /// space around each element `separates` names, which ends a word even where the HTML has no
-    /// space. It walks a stack instead of recursing, so HTML of any depth fits on a thread's stack.
     static func visibleText(of nodes: [Node], skipping skipped: Set<String>, separating separates: (String) -> Bool) -> String {
         var text = ""
         var stack = nodes.reversed().map { (node: $0, closes: false) }

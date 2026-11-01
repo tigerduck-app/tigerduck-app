@@ -1,7 +1,5 @@
 import Foundation
 
-/// The Moodle Mobile App's sign-in through the NTUST OIDC SSO that ends on the token triple; see
-/// `MoodleTokenService` for why it never posts to `/login/token.php`.
 nonisolated enum MoodleTokenHarvest {
     static let ssoBaseURL = URL(string: "https://ssoam2.ntust.edu.tw")!
     private static let service = "moodle_mobile_app"
@@ -12,12 +10,9 @@ nonisolated enum MoodleTokenHarvest {
         + "MoodleMobile 5.1.1 (51100)"
     )
 
-    /// The harvest's session. The shared cookie store keeps SSO anti-forgery and correlation
-    /// cookies across the launch.php -> login -> authorize redirects; a private jar on Apple's
-    /// URLSession stack drops them, and the credential POST bounces to /account/login as a false
-    /// rejection. A harvest holds the stored-password lock, so a request whose server trickles its
-    /// answer stops after a minute, as `NTUSTSessionManager`'s requests do, rather than the default
-    /// week, and the harvest as a whole after `MoodleTokenService.harvestDeadline`.
+    /// The shared cookie store keeps SSO anti-forgery and correlation cookies across the
+    /// launch.php -> login -> authorize redirects; a private jar on Apple's URLSession stack drops
+    /// them, and the credential POST bounces to /account/login as a false rejection.
     static func harvestConfiguration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
@@ -42,9 +37,6 @@ nonisolated enum MoodleTokenHarvest {
         let session = SchoolSessions.pinned(config)
         defer { session.invalidateAndCancel() }
 
-        // Step 1: GET launch.php; URLSession follows the 303s to the SSO login. The passport is
-        // an integer, matching how the Moodle Mobile App generates it: `String(Double)` can emit
-        // `1e-06` or a locale's `,`, either of which Moodle's `weblogin` may reject.
         let passport = Int(Double.random(in: 0..<1) * 1000)
         var launchComps = URLComponents(
             url: AppConstants.moodleBaseURL.appendingPathComponent("admin/tool/mobile/launch.php"),

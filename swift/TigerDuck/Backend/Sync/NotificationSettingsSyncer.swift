@@ -3,8 +3,6 @@ import Defaults
 import Foundation
 import os
 
-/// Sends and reconciles the notification settings document, one queued link at a time
-/// (`NotificationSettingsPushQueue`).
 @MainActor
 final class NotificationSettingsSyncer {
     private let authTokenManager: AuthTokenManager
@@ -16,7 +14,6 @@ final class NotificationSettingsSyncer {
     }
 
 
-    /// Whether the push landed and nothing changed here since, which leaves nothing to send.
     @discardableResult
     func push(isCurrent: @escaping @MainActor () -> Bool = { true }) async -> Bool {
         guard Defaults[.cloudSyncEnabled] else { return false }
@@ -120,14 +117,11 @@ final class NotificationSettingsSyncer {
         enqueuePush()
     }
 
-    /// A device switch turned back on takes the server's section: the section's values here become
-    /// the synced copy, so a push sends only what is edited after, and a reconcile adopts the rest.
     func adoptSection(_ section: NotificationSettingsSync.OwnedSection) {
         NotificationSettingsSync.sectionTurnedOn(section, local: .init(from: preferences))
         reconcile()
     }
 
-    /// Adopts the server's `section` when its device switch goes from `old` to a turned-on `new`.
     func deviceSwitchChanged(_ section: NotificationSettingsSync.OwnedSection, old: Bool, new: Bool) {
         if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) { adoptSection(section) }
     }

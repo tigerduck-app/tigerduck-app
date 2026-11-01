@@ -11,10 +11,8 @@ nonisolated struct CourseChange: Equatable, Sendable {
     let id: Int
     let courseNo: String
     let kind: Kind
-    /// Period codes the change covers; nil covers every period the course meets that day.
     let periods: [String]?
     let room: String?
-    /// The new time as `HH:mm`, Taipei time.
     let start: String?
     let end: String?
     let noteZh: String?
@@ -29,7 +27,6 @@ nonisolated struct CourseChange: Equatable, Sendable {
     }
 }
 
-/// The current term's course changes from `/v4/calendar/course-changes`, by course and class day.
 nonisolated struct CourseChanges: Equatable, Sendable {
     private struct Key: Hashable {
         let courseNo: String
@@ -53,7 +50,6 @@ nonisolated struct CourseChanges: Equatable, Sendable {
         changes(courseNo: courseNo, on: day).contains { $0.kind == .cancelled && $0.covers(period) }
     }
 
-    /// Every built class slot reads this, so it decodes only when the stored feed changes.
     static var cached: CourseChanges {
         let data = Defaults[.courseChangesCache]
         guard !data.isEmpty else { return .empty }
@@ -101,7 +97,6 @@ nonisolated extension CourseChanges {
 }
 
 private nonisolated extension CourseChange {
-    /// Nil for a kind this build does not know and for a row missing its kind's value.
     init?(row: CourseChangesDTO.Row) {
         guard let kind = Kind(rawValue: row.kind) else { return nil }
         let value: String? = switch kind {
@@ -131,7 +126,6 @@ private nonisolated extension CourseChange {
 final class CourseChangeStore {
     static let shared = CourseChangeStore()
 
-    /// Moves each time the stored feed changes, for the views and device surfaces that draw it.
     private(set) var revision = 0
 
     private let backend: BackendClient
@@ -150,14 +144,12 @@ final class CourseChangeStore {
 
     @discardableResult
     func refresh() async -> Bool {
-        // A fresh install reaches here from launch code before the user has seen a screen.
         guard hasCompletedOnboarding() else { return false }
         if let existing = refreshTask { return await existing.value }
         let generation = endpointGeneration
         let task = Task<Bool, Never> { [weak self] in
             guard let self else { return false }
             let changed = await self.performRefresh()
-            // A task an endpoint change replaced leaves its successor's slot alone.
             if self.endpointGeneration == generation { self.refreshTask = nil }
             return changed
         }
@@ -182,7 +174,6 @@ final class CourseChangeStore {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.accepting = [304]
         let tag = Defaults[.courseChangesETag]
-        // A stored feed this build cannot read is fetched again, not kept by a 304.
         if !tag.isEmpty, (try? CourseChanges(json: Defaults[.courseChangesCache])) != nil {
             request.headers["If-None-Match"] = tag
         }

@@ -48,7 +48,6 @@ enum LibraryService: AccountScoped {
         #endif
     }
 
-    /// The library account's sign-out, which keeps the school account and School Mail.
     @MainActor
     static func clearCredentials() {
         SignOutPlan(
@@ -81,8 +80,6 @@ enum LibraryService: AccountScoped {
         storedPasswordRefusals.count > 0 ? nil : storedPassword
     }
 
-    /// The library account stays through a school sign-out. Only a sign-in form that offered the
-    /// departing school account's student ID, shown while no library account is stored, empties.
     @MainActor
     static func schoolAccountDidSignOut() {
         if storedUsername == nil, !hasAccount { NotificationCenter.default.post(name: accountDidChange, object: nil) }
@@ -136,7 +133,6 @@ enum LibraryService: AccountScoped {
         try await LibraryRequests.requestToken(username: username, password: password, session: LibraryRequests.session)
     }
 
-    /// The library's count in ``StoredPasswordBackoff``, which saving or clearing credentials resets.
     static var storedPasswordRefusals: (count: Int, last: Date?) {
         get { StoredPasswordBackoff.library.refusals }
         set { StoredPasswordBackoff.library.refusals = newValue }

@@ -1,10 +1,7 @@
 import SwiftUI
 
-/// The class table's More menu: adding a course, sharing, importing, exporting a picture and
-/// resetting the term, or for an imported person's table, renaming and deleting them.
 struct ClassTableHeaderMenu: View {
     let viewModel: ClassTableViewModel
-    /// Whether the table, not the sign-in or empty page, is on screen, which a picture needs.
     let showsContent: Bool
     @Binding var export: ClassTableExportState
     @Binding var shareModel: ClassTableShareModel?
@@ -145,7 +142,6 @@ struct ClassTableHeaderMenu: View {
     }
 }
 
-/// A picture of the table being made, and the file it made for the share sheet.
 struct ClassTableExportState {
     struct File: Identifiable {
         let url: URL
@@ -158,8 +154,6 @@ struct ClassTableExportState {
 }
 
 extension View {
-    /// The share sheet for an exported picture, which deletes the file once closed, and the alert
-    /// for a picture that could not be made.
     func classTableExportSheets(_ export: Binding<ClassTableExportState>) -> some View {
         sheet(item: export.file) { file in
             ShareSheet(url: file.url)

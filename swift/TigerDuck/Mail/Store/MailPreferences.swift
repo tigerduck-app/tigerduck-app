@@ -8,7 +8,6 @@ nonisolated struct MailCheckRecord: Codable, Equatable, Sendable {
     var result: String
 }
 
-/// Inbox UIDs a mute setting passed over, kept while the marker is below them.
 nonisolated struct MailMutedUIDs: Codable, Equatable, Sendable {
     var uidValidity: UInt32
     var uids: Set<UInt32>

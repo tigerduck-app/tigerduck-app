@@ -3,8 +3,6 @@ import Foundation
 import os
 import SwiftUI
 
-/// The questions TigerSync asks the user: marks the two sides disagree on, and categories switched
-/// back on whose local and server copies differ.
 @MainActor
 @Observable
 final class SyncConflicts {
@@ -275,7 +273,6 @@ final class SyncConflicts {
         )
     }
 
-    /// Whether the re-enable alert shows; closing it unanswered drops the conflict.
     var reenableAlertIsPresented: Binding<Bool> {
         Self.reenableAlertIsPresented(Bindable(self).reenableConflict)
     }

@@ -67,7 +67,6 @@ actor FakeMailClient: MailClient {
         heldCommands.insert(command)
     }
 
-    /// Holds the next `command`, forgetting that an earlier one arrived.
     func holdNext(_ command: String) {
         arrivedCommands.remove(command)
         heldCommands.insert(command)

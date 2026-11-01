@@ -109,7 +109,6 @@ struct SyncOrderTests {
         ])
     }
 
-    /// The files as the 3.x app wrote them, one edit of each kind, with dates in seconds since 2001.
     private static let queuedFile = #"""
     [{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","attempts":2,"op":{"courseOverride":{"semester":"1151","moodleId":"1151CS1001301","colorHex":"#FF6B6B","stamp":815000000.5}}},
      {"id":"6F9619FF-8B86-D011-B42D-00C04FC964F1","attempts":0,"op":{"courseOverride":{"semester":"1151","moodleId":"1151CS1001301","customName":"Algorithms","locale":"zh","stamp":815000001}}},

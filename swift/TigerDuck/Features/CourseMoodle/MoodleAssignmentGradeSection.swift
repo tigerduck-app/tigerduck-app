@@ -1,7 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-/// The assignment's grade: the score over its maximum, when it was graded and the feedback.
 struct MoodleAssignmentGradeSection: View {
     let grade: MoodleAssignmentGrade
     let policy: VisualStylePolicy

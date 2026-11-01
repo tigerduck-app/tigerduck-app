@@ -15,7 +15,6 @@ final class BrowserFind {
     var mode = Mode.plain
     private(set) var count = 0
     private(set) var index = 0
-    /// Runs a call of ``BrowserFindScript/source`` in the page; set by the web view.
     @ObservationIgnored var run: (_ arguments: [String: Any]) async -> Any? = { _ in nil }
     @ObservationIgnored private var searches = 0
 

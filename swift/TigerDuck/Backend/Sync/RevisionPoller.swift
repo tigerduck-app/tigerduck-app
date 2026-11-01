@@ -4,7 +4,6 @@ nonisolated enum RevisionPollOutcome: Equatable, Sendable {
     case unchanged
     case changed
     case failed
-    /// `refused` is the access token the refused request sent, which the client could not replace.
     case unauthorized(refused: String?)
     case offline
 }
@@ -85,7 +84,6 @@ final class RevisionPoller {
 
     private let clock: Clock
 
-    /// The waits, the time and the spread of retries, which tests set.
     private struct Clock {
         let sleep: @Sendable (Duration) async -> Void
         let now: () -> Date
@@ -131,7 +129,6 @@ final class RevisionPoller {
         cancelWait()
     }
 
-    /// Returns once the poll in flight, if one is, has answered.
     func pollInFlight() async {
         await inFlight?.value
     }
@@ -169,7 +166,6 @@ final class RevisionPoller {
         case .failed:
             delay = schedule.delayAfterFailure(at: clock.now(), jitter: clock.jitter())
         case .unauthorized:
-            // `BackendClient` already refreshed or signed in again once; polling waits for a return.
             isSuspended = true
             return
         }

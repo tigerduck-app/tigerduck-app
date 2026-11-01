@@ -1,7 +1,6 @@
 import Foundation
 import os
 
-/// The SSO pages' forms: decoding a page, following the OIDC bridge forms and posting a form.
 enum SSOForms {
     /// Decode an HTML response respecting `Content-Type` charset. Older NTUST
     /// endpoints occasionally serve Big5 (or windows-1252 for ASCII-only
@@ -90,9 +89,6 @@ enum SSOForms {
         delegate: (any URLSessionTaskDelegate & Sendable)? = nil
     ) async throws -> (Data, URLResponse) {
         try SSOLoginService.checkSignedIn(isCurrent)
-        // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
-        // request takes `URLRequest`'s 60 s default and the configuration's 7-day resource
-        // timeout, so a stalled SSO server could hang the login Task indefinitely.
         var request = URLRequest(url: url, timeoutInterval: 15)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")

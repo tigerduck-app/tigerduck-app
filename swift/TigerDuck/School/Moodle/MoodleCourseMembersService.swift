@@ -38,8 +38,7 @@ nonisolated enum MoodleCourseMembersService {
     }
 
     /// The 512 px size of a member's own picture: Moodle names it `f3` where `profileimageurl`
-    /// names the 100 px `f1`, and sends `f1` for a picture uploaded before Moodle kept `f3`. Nil
-    /// for a URL that names another size.
+    /// names the 100 px `f1`, and sends `f1` for a picture uploaded before Moodle kept `f3`.
     static func largePicture(_ url: URL) -> URL? {
         guard url.lastPathComponent == "f1",
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }

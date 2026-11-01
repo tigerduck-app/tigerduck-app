@@ -1,7 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// The Mac calendar's card of the selected day's events.
 struct MacCalendarDayList: View {
     let date: Date
     let events: [AssignmentStore.CalendarEvent]

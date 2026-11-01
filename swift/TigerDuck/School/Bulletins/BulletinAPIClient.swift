@@ -1,7 +1,6 @@
 import Foundation
 import os
 
-/// The bulletin feed and the device's subscription rules, through `BackendClient`.
 final class BulletinAPIClient: Sendable {
     private let backend: BackendClient
 
@@ -47,7 +46,6 @@ final class BulletinAPIClient: Sendable {
         try await send(BackendRequest("GET", "bulletin-subscriptions"), authenticated: true)
     }
 
-    /// Replaces this device's rules: a rule keeps its row by its `client_id`.
     func putSubscriptions(
         rules: [BulletinAPI.SubscriptionRule]
     ) async throws -> BulletinAPI.SubscriptionsResponse {

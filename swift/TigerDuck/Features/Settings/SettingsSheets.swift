@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// What the settings list has open. The sheets and alerts hang on the list, not on the rows
-/// that open them, which a list may unload while one shows.
+/// The sheets and alerts hang on the list, not on the rows that open them, which a list may
+/// unload while one shows.
 @Observable
 final class SettingsSheetState {
     var showingTabEditor = false

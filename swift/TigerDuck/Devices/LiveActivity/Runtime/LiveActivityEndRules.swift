@@ -1,8 +1,6 @@
 import ActivityKit
 import Foundation
 
-/// Which running activities `LiveActivityCoordinator` ends and which snapshot it may start: the
-/// reasons swift/TigerDuck/Devices/LiveActivity/AGENTS.md lists, read from plain facts.
 nonisolated enum LiveActivityEndRules {
     nonisolated struct RunningActivityFacts: Equatable, Sendable {
         let instanceId: String
@@ -22,7 +20,6 @@ nonisolated enum LiveActivityEndRules {
         case assignmentDone = "assignment submitted, ignored or marked done"
     }
 
-    /// The app's answers the rules ask for, set once by the app.
     @MainActor
     struct Conditions {
         var isAvailable: () -> Bool = { true }

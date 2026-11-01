@@ -1,7 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// A link's href as a browser reads it: cleaned, its host in ASCII, its path percent-encoded.
 nonisolated enum MailHref {
     static let schemePattern = try! NSRegularExpression(pattern: "^([a-zA-Z][a-zA-Z0-9+.-]*):")
 
@@ -27,11 +26,6 @@ nonisolated enum MailHref {
         var fragment: String?
     }
 
-    /// Characters a path/query/fragment carries literally after canonicalization,
-    /// unreserved (RFC 3986) plus sub-delims and the structural characters `:@/?#`. Mirrors
-    /// Android's `PATH_SAFE` constant; anything else (space, control characters, quotes,
-    /// brackets, any non-ASCII byte) is percent-encoded the way a browser's own
-    /// canonicalization would.
     private static let pathSafeBytes: Set<UInt8> = {
         var set = Set<UInt8>()
         for scalar in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=:@/?#".unicodeScalars {

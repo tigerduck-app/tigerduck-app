@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// One Home section: the time slider, the assignment list with its filter, or a grid of shortcuts.
 struct HomeSectionView: View {
     let section: HomeSection
     let viewModel: HomeViewModel

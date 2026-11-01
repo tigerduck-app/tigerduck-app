@@ -1,13 +1,10 @@
 import Foundation
 
-/// The library sign-in's retry of the stored password once its wait ends.
 @MainActor
 enum LibraryPasswordRetry {
     private(set) static var task: Task<Void, Never>?
     private static var misses = 0
 
-    /// Posts the stored password again once its wait ends, as `AuthService` does for the school,
-    /// so a page left on the sign-in form signs in without a return to the app.
     static func arm(
         signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData,
         retrySleep: @escaping @Sendable (Duration) async -> Void

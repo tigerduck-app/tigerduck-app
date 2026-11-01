@@ -395,7 +395,6 @@ struct CourseDeleteSyncTests {
     }
 }
 
-/// A backend term delete that waits until the test lets it finish.
 @MainActor
 private final class ResetBackend {
     private(set) var entered = false

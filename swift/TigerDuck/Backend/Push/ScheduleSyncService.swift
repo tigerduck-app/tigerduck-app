@@ -45,8 +45,6 @@ final class ScheduleSyncService {
         self.horizonSeconds = horizonHours * 3600
     }
 
-    /// Sends the device's list unless the backend already holds it. A list waits for the one still
-    /// out, which it never cancels: a cancelled request may still reach the backend after it.
     func sync(inputs: Inputs, now: Date = AppClock.now()) {
         let end = now.addingTimeInterval(horizonSeconds)
         let events = Self.buildEvents(inputs: inputs, now: now, horizonEnd: end)
@@ -196,8 +194,6 @@ final class ScheduleSyncService {
         await pendingRequest?.value
     }
 
-    /// A new session or device registration may reach a backend without this device's list, so
-    /// the next list goes even when unchanged.
     func forgetAcceptedList() {
         ledger.forget(SendLedger.Channel.schedule)
     }

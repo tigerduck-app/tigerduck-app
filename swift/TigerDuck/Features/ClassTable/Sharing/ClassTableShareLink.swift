@@ -26,7 +26,6 @@ nonisolated enum ClassTableShareLink {
 
 /// A share link that came before its import could open, with no one signed in or onboarding not
 /// finished, held until both are done. It is kept in memory only, so quitting the app loses it.
-/// A newer link replaces it, and a sign-out, which moves the school `AccountSession` on, drops it.
 @Observable
 final class HeldShareLink {
     struct Link: Equatable {

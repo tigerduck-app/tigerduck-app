@@ -85,9 +85,8 @@ nonisolated enum MoodleHTMLText {
 
 private nonisolated struct MarkdownWriter {
     let baseURL: URL
-    /// The lists and quotes around what is written. MarkdownUI sizes a list item's content several
-    /// times, so layout time multiplies with each level, past three seconds at eight lists in the
-    /// simulator. A list or quote deeper than `maximumNesting` is written as the blocks it holds.
+    /// MarkdownUI sizes a list item's content several times, so layout time multiplies with each
+    /// level, past three seconds at eight lists in the simulator.
     var nesting = 0
     static let maximumNesting = 5
 

@@ -3,8 +3,6 @@ import Foundation
 import UIKit
 #endif
 
-/// When `CloudSyncCoordinator` ticks on its own while TigerSync is on: on a timer, and on each
-/// return to the app.
 @MainActor
 final class CloudSyncTicker {
     private var started = false

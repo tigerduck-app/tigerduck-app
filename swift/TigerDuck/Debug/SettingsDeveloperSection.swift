@@ -3,7 +3,6 @@ import Defaults
 import SwiftData
 import SwiftUI
 
-/// The settings list's Developer section, in Debug builds only.
 struct SettingsDeveloperSection: View {
     @Environment(AppEnvironment.self) private var app
     @Environment(\.modelContext) private var modelContext

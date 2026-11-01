@@ -1,7 +1,5 @@
 import Foundation
 
-/// Where the class table's edits go besides the stores: the TigerDuck backend's edit and upload
-/// queues. Empty in tests and previews, where an edit stays on the device.
 struct ClassTableSync {
     var courseIgnore: ((_ course: CourseStore.Course, _ semester: String, _ ignore: Bool) -> Void)?
     var courseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?

@@ -1,6 +1,5 @@
 import Foundation
 
-/// The library API's sign-in and QR code requests.
 enum LibraryRequests {
     private static let baseURL = "https://api.lib.ntust.edu.tw/v1"
 
@@ -56,8 +55,6 @@ enum LibraryRequests {
         }
         try validateHTTP(response)
         let decoded = try JSONDecoder().decode(LibraryLoginResponse.self, from: data)
-        // Treat missing `error` as success (the API omits it on the
-        // happy path); only fail when an explicit non-zero code is set.
         if let apiError = decoded.error, apiError.code != 0 {
             throw LibraryServiceError.loginFailed(apiError.message)
         }

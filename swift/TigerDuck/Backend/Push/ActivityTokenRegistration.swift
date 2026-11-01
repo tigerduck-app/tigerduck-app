@@ -2,8 +2,6 @@
 import Foundation
 import os
 
-/// A Live Activity's update token register and its retries. It runs isolated to the
-/// `PushRegistrationService` it is given, as the service's own did.
 nonisolated enum ActivityTokenRegistration {
     typealias Registrations = PushRegistrationService.ActivityRegistrations
 

@@ -2,8 +2,6 @@ import Defaults
 import Foundation
 import os
 
-/// Sends the user's own edits of marks, course ignores, colours, names and hides to the outbox at
-/// once; they never wait for a pull.
 @MainActor
 final class EditSender {
     private let coordinator: CloudSyncCoordinator
@@ -91,8 +89,6 @@ final class EditSender {
         return queued
     }
 
-    /// Courses added by hand, by server key: each goes to the outbox with its stamp, and a hide of
-    /// it queued before the add is dropped.
     func addCourses(_ keys: [String], semester: String) {
         let addedAt = Date()
         Task { await coordinator.discardCourseDeletes(courseKeys: Set(keys), madeBefore: addedAt) }
@@ -137,8 +133,6 @@ final class EditSender {
         }
     }
 
-    /// Resets the courses on the server, then clears them here and drops the deletes queued until
-    /// that moment, so a hide made during the request is gone from both and a later one kept in both.
     static func resetCourses(
         semester: String?, on coordinator: CloudSyncCoordinator,
         onServer reset: () async throws -> Void, thenLocally resetLocally: () -> Void
@@ -154,7 +148,6 @@ final class EditSender {
         coursesNowOn
     }
 
-    /// Whether the course colours sync once the courses switch is `coursesNowOn`.
     func syncsCourseColors(coursesNowOn: Bool) -> Bool {
         Self.courseColorsAfterCoursesChange(coursesNowOn: coursesNowOn)
     }
@@ -190,8 +183,6 @@ final class EditSender {
         }
     }
 
-    /// How a colour edit names each course, preferring a row with a Moodle id where one course
-    /// number has several.
     static func courseIdentities(
         picked: SDCourse,
         termCourses: [(semester: String, courses: [SDCourse])],
@@ -210,8 +201,6 @@ final class EditSender {
         return ids
     }
 
-    /// The Moodle id number, or the term and the number of a course without one; an empty term is
-    /// read as the current one.
     static func colorIdentity(of course: SDCourse, semester: String) -> String {
         OutboxSender.identity(
             semester: semester.isEmpty ? CourseSelectionService.currentSemesterCode() : semester,

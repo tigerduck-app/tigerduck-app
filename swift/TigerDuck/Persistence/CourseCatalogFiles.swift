@@ -1,8 +1,5 @@
 import Foundation
 
-/// Each term's course catalog in each language, the same for every account, so a sign-out keeps
-/// it. A body runs to a few megabytes, which the Add Course sheet reads and writes off the main
-/// thread, so this is not main-actor bound.
 nonisolated struct CourseCatalogFiles: Sendable {
     let folders: CacheFolders
 

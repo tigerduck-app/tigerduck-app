@@ -1,9 +1,6 @@
 #if os(iOS)
 import Foundation
 
-/// Writes the list's pages and prefetched bodies to `MailCache` off the main actor, one after the
-/// other in the order they were asked for, each against the `wipeCount` it was asked under so a
-/// write that outlived a sign-out lands nowhere.
 @MainActor
 final class MailListCacheWriter {
     let cache: MailCache
@@ -19,7 +16,6 @@ final class MailListCacheWriter {
         await chain { cache.savePage(stored, wipeCount: $0) }.value
     }
 
-    /// The same write, not waited for.
     func persist(_ page: MailFolderPage) {
         let cache = self.cache
         let stored = MailboxPages.cachedCopy(of: page)

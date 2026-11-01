@@ -30,8 +30,6 @@ extension AuthTokenManager {
     }
 }
 
-/// The signed-in session's tokens as `AuthTokenManager` holds them, kept in step with their
-/// Keychain items.
 nonisolated struct AuthTokenPair {
     let tokens: AuthTokenManager.TokenStore
     private(set) var accessToken: String?
@@ -71,8 +69,6 @@ nonisolated struct AuthTokenPair {
         if tokens.deleteConfirmed(AuthTokenManager.refreshTokenKey) { tokens.delete(AuthTokenManager.refreshTokenUsesKey) }
     }
 
-    /// Stores the count of `token`'s uses, and the token itself first when its save failed, so
-    /// the count never outlives the token it counts.
     mutating func saveBudget(_ budget: RefreshTokenUseBudget, of token: String) -> Bool {
         guard refreshToken == token else { return false }
         if !refreshTokenIsStored {

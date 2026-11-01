@@ -1,8 +1,6 @@
 import Foundation
 import os
 
-/// The push, device and sync endpoints of the TigerDuck backend, each one request through
-/// `BackendClient`.
 final class PushAPIClient: Sendable {
     let backend: BackendClient
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
@@ -113,8 +111,7 @@ final class PushAPIClient: Sendable {
         }.decoded(PushAPI.AssignmentOverrideResponse.self)
     }
 
-    /// `courseKey` is `client:{semester}:{course_no}`; the override row follows the course's, so
-    /// a 404 `course_not_found` lands once the upload that adds the course has.
+    /// `courseKey` is `client:{semester}:{course_no}`.
     func patchCourseOverride(
         courseKey: String,
         colorHex: String? = nil,
@@ -132,8 +129,6 @@ final class PushAPIClient: Sendable {
         }.decoded(PushAPI.CourseOverrideResponse.self)
     }
 
-    /// An upload with adds is stamped by its add; one the backend finds ahead of its clock goes
-    /// again stamped from that clock.
     func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil) async throws {
         guard let stamp, let adds = request.adds, !adds.isEmpty else {
             _ = try await backend.send(BackendRequest("POST", "sync", "courses", "upload").json(request))
@@ -155,8 +150,6 @@ final class PushAPIClient: Sendable {
         }
     }
 
-    /// The backend applies the delete only when `stamp` is later than the course's last add,
-    /// hide and reset.
     func deleteCourse(courseKey: String, madeAt stamp: Date) async throws {
         _ = try await backend.sendStamped(at: stamp) { hlc in
             var request = BackendRequest("DELETE", segments: ["sync", "courses", courseKey])
@@ -200,11 +193,8 @@ enum PushAPIError: Error, LocalizedError {
     case encodingFailed(Error)
     case decodingFailed(Error)
     case invalidResponse
-    /// `sent` is the access token the request carried, which a relogin after a 401 compares with the stored one.
     case httpStatus(Int, body: String, sent: SentToken? = nil)
     case syncRevisionExpired
-    /// 409 `clock_ahead`: a TigerSync stamp more than five seconds ahead of the backend's clock,
-    /// whose own clock the reply carries.
     case clockAhead(serverClock: Int64?)
     case notSignedIn
 
@@ -220,13 +210,11 @@ enum PushAPIError: Error, LocalizedError {
         }
     }
 
-    /// The `/v4` error code a refusal carried.
     var code: String? {
         guard case .httpStatus(_, let body, _) = self else { return nil }
         return BackendClient.errorCode(in: Data(body.utf8))
     }
 
-    /// Prints as stars, so a logged error does not carry the token.
     nonisolated struct SentToken: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
         let value: String
         var description: String { "***" }

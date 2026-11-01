@@ -2,7 +2,6 @@ import Foundation
 import os
 import TigerDuckCore
 
-/// The courses themselves: the newest school roster with the user's own adds and hides.
 @MainActor
 struct CourseRosterReconciler: CategoryReconciler {
     static let category = "courses"
@@ -139,16 +138,9 @@ struct CourseRosterReconciler: CategoryReconciler {
         let localCourses: [SDCourse]
         let left: Set<String>
         let unlisted: (hide: Set<String>, drop: Set<String>)
-        /// Whether the server holds no course of the term, so the courses fetched here go up again.
-        /// A course a roster dropped counts as held, or each sync would send them again.
         let serverHoldsNothing: Bool
     }
 
-    /// Reads one term of the snapshot against this device's courses. A course a roster dropped on
-    /// the server leaves the fetched courses in `courses` with no hide, so a later roster from here
-    /// can bring it back, and stays out of fetches without a roster until one does; a course
-    /// selection answer cached before the drop that lists one is forgotten, or the next fetch
-    /// would draw it again.
     static func readTerm(
         _ semester: String, rows termRows: [[String: Any]], tombstones: [[String: Any]],
         selectionDropped: Set<String>, userAdded: [SDCourse], hidden: Set<String>, adding: Set<String>,
@@ -181,10 +173,6 @@ struct CourseRosterReconciler: CategoryReconciler {
         )
     }
 
-    /// A reset tombstone of this device's own reset of the term, which leaves every tombstone of
-    /// the term stamped with it: the stamp is at or before the moment the reset landed here
-    /// (`CourseFiles.recordSemesterReset`). It binds no course here, as the roster this device
-    /// uploads next lifts it; a later reset made elsewhere still binds.
     nonisolated static func isOwnReset(_ tombstone: [String: Any], resetLandedAt: Date?) -> Bool {
         guard tombstone["kind"] as? String == "reset", let resetLandedAt,
               let hlc = (tombstone["hlc"] as? NSNumber)?.int64Value else { return false }
@@ -210,8 +198,6 @@ struct CourseRosterReconciler: CategoryReconciler {
             && !CourseTombstone.isHidden(courseNo, semester: semester, in: deleting)
     }
 
-    /// A hand-added course leaves once the server stops listing it. When the server lists none of
-    /// the term's, only one in `droppedMerges` does: any other may not have reached the server yet.
     nonisolated static func unlistedCourses(
         in semester: String,
         listed: Set<String>,
@@ -231,9 +217,6 @@ struct CourseRosterReconciler: CategoryReconciler {
         return (byTombstone.union(fetched.filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
     }
 
-    /// The term's courses on the server and here as turning sync back on compares them, read as the
-    /// reconcile reads them: a course a roster dropped is on neither side unless it was added by
-    /// hand here, as the next sync takes it out of the courses fetched here.
     static func reenableCourseNos(
         _ rows: [[String: Any]], semester: String, local: Set<String>, userAdded: [SDCourse],
         liveAnswer: CourseSelectionService.LiveAnswer?

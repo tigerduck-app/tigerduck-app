@@ -1,7 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// The settings list's customisation, display, address bar and abbreviation sections.
 struct SettingsDisplaySections: View {
     let sheets: SettingsSheetState
 

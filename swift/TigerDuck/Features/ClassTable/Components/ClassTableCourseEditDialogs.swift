@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The sheets and alerts of the user's edits of their own class table, on the iPhone and the Mac:
-/// adding a course, renaming one and picking its colour.
 struct ClassTableCourseEditDialogs: ViewModifier {
     let viewModel: ClassTableViewModel
     @Bindable var editor: ClassTableEditor

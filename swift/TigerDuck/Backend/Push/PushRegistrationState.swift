@@ -25,7 +25,6 @@ extension PushRegistrationService {
         }
     }
 
-    /// One chain per preference: each PATCH waits for the one before it.
     nonisolated struct PatchChains {
         var optOut: Task<Void, Error>?
         var bulletin: Task<Void, Error>?
@@ -44,7 +43,6 @@ extension PushRegistrationService {
         }
     }
 
-    /// The registrations running, which a cloud sync PATCH waits out.
     nonisolated struct RunningRegistrations {
         var inFlight = 0
         #if os(macOS)
@@ -123,7 +121,6 @@ extension PushRegistrationService {
     }
     #endif
 
-    /// Seconds before retry `attempt`: 30, then three times longer each time, at most 600.
     static func retryDelay(attempt: Int) -> Double {
         min(30 * pow(3.0, Double(attempt - 1)), 600)
     }

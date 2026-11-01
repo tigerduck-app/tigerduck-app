@@ -2,8 +2,6 @@ import Defaults
 import Foundation
 import TigerDuckCore
 
-/// The dates a course is skipped on, stored in `SDCourse.skippedDatesJSON` as a JSON array of
-/// `yyyy-MM-dd` days in Taipei time.
 enum CourseSkipDates {
     private static let isoFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -24,7 +22,6 @@ enum CourseSkipDates {
         return dates
     }
 
-    /// Nil when the dates do not encode, which leaves the stored ones as they were.
     static func encode(_ dates: [String]) -> String? {
         guard let data = try? JSONEncoder().encode(dates) else { return nil }
         return String(data: data, encoding: .utf8)
@@ -41,8 +38,6 @@ enum CourseSkipDates {
     }
 }
 
-/// A Moodle course page by the course's Moodle `idnumber`, once the course list mapped it to
-/// Moodle's numeric id.
 enum MoodleCourseLink {
     static func deepLink(idnumber: String?) -> URL? {
         numericId(idnumber).flatMap { AppConstants.moodleDeepLink(redirectingTo: "/course/view.php?id=\($0)") }

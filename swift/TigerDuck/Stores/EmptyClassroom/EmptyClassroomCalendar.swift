@@ -2,8 +2,6 @@ import Foundation
 import Observation
 import TigerDuckCore
 
-/// The days the empty-classroom screen offers and the account's classes on them: today by the
-/// clock, the term's holidays and teaching days, and the class table.
 @Observable
 @MainActor
 final class EmptyClassroomCalendar {
@@ -33,13 +31,11 @@ final class EmptyClassroomCalendar {
         minuteTicker = MinuteTicker(now: clock)
     }
 
-    /// The time, read again at each new minute by whoever observes it.
     var now: Date {
         _ = minuteTicker.tick
         return clock()
     }
 
-    /// The time without observing the minute.
     var instant: Date { clock() }
 
     func dayOff(_ day: Date) -> EmptyClassroomSchedule.DayOff? {

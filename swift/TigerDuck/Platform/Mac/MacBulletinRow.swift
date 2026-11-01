@@ -1,7 +1,6 @@
 #if os(macOS)
 import SwiftUI
 
-/// A bulletin in the Mac list: an unread dot, its title, office, date and summary.
 struct MacBulletinRow: View {
     let bulletin: BulletinAPI.BulletinSummary
     let isRead: Bool

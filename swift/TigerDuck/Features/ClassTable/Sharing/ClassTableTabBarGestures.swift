@@ -86,7 +86,6 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
     var requestImport: () -> Void = {}
 
     private(set) weak var bar: UIView?
-    /// What `attach(to:)` added to the bar, for `detach()` to take off.
     private var added: (menu: UIContextMenuInteraction, doubleTap: ClassTableTabDoubleTap)?
     private var hasLoggedMissingTab = false
     private var lastDoubleTap: ContinuousClock.Instant?
