@@ -195,10 +195,10 @@ struct MailComposeView: View {
     }
 
     private func addPhotos(_ items: [PhotosPickerItem]) async {
-        let anyFailed = await MailComposeFiles.loadPhotos(items) { filename, mimeType, data in
+        let unreadable = await MailComposeFiles.loadPhotos(items) { filename, mimeType, data in
             viewModel.addAttachment(filename: filename, mimeType: mimeType, data: data)
         }
-        if anyFailed { viewModel.attachmentReadFailed() }
+        if !unreadable.isEmpty { viewModel.attachmentReadFailed() }
         photoItems = []
     }
 }

@@ -14,7 +14,7 @@ struct MailComposePrefill {
     var body: String
     var showCcBcc: Bool
     var attachments: [MailComposeViewModel.Attachment]
-    var draft: (pageUIDValidity: UInt32?, wasAlreadyDeleted: Bool)?
+    var draft: MailComposeSending.ReplacedDraft?
 
     static func fetch(
         _ context: MailComposeContext, sender: MailAddress, session: MailPageSession, signIn: SignIn, cache: MailCache
@@ -78,7 +78,7 @@ struct MailComposePrefill {
             body: draft.textBody ?? "",
             showCcBcc: !(draft.summary.cc ?? []).isEmpty,
             attachments: downloaded,
-            draft: (pin, draft.summary.isDeleted)
+            draft: MailComposeSending.ReplacedDraft(uid: uid, pageUIDValidity: pin, wasAlreadyDeleted: draft.summary.isDeleted)
         )
     }
 

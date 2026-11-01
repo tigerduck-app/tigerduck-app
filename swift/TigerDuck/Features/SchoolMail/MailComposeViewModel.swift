@@ -73,7 +73,7 @@ final class MailComposeViewModel {
     var shouldClose: Bool { status.didFinish || status.signInEnded }
     var sentCopy: SentCopy? { status.sentCopy }
 
-    var hasChanges: Bool { draft.snapshot != tracking.baseline }
+    var hasChanges: Bool { draft.snapshot != tracking.unchangedSnapshot }
 
     func prepare() async {
         guard !tracking.prepareStarted else { return }
@@ -89,7 +89,7 @@ final class MailComposeViewModel {
     private func runPrepare() async {
         if !tracking.edited.contains(.to) { draft.to = MailRecipients.format(context.to) }
         guard context.mode != .new else {
-            tracking.baseline = draft.snapshot
+            tracking.unchangedSnapshot = draft.snapshot
             return
         }
         status.isLoading = true
@@ -102,13 +102,13 @@ final class MailComposeViewModel {
                 apply(prefill)
             case .missingDraft:
                 status.loadError = String(localized: "school_mail_error_generic")
-                tracking.baseline = draft.snapshot
+                tracking.unchangedSnapshot = draft.snapshot
             case .nothing:
-                tracking.baseline = draft.snapshot
+                tracking.unchangedSnapshot = draft.snapshot
             }
         } catch {
             status.loadError = MailAccountManager.LoginError(error).message
-            tracking.baseline = MailComposeDraft().snapshot
+            tracking.unchangedSnapshot = MailComposeDraft().snapshot
         }
     }
 
@@ -121,14 +121,11 @@ final class MailComposeViewModel {
         draft.showCcBcc = draft.showCcBcc || prefill.showCcBcc
         let existingIDs = Set(attachments.map(\.id))
         draft.attachments += prefill.attachments.filter { !existingIDs.contains($0.id) }
-        tracking.baseline = MailComposeDraft.snapshot(
+        tracking.unchangedSnapshot = MailComposeDraft.snapshot(
             to: prefill.to ?? "", cc: prefill.cc ?? "", bcc: "", subject: prefill.subject, body: prefill.body,
             attachmentIDs: prefill.attachments.map(\.id))
-        if let draft = prefill.draft {
-            tracking.draftPageUIDValidity = draft.pageUIDValidity
-            tracking.draftWasAlreadyDeleted = draft.wasAlreadyDeleted
-        }
-        tracking.sourceLoaded = true
+        if let draft = prefill.draft { tracking.replacedDraft = draft }
+        tracking.prefillApplied = true
     }
 
     func addAttachment(filename: String, mimeType: String, data: Data) {
@@ -160,7 +157,7 @@ final class MailComposeViewModel {
 
     private func validate() -> MailRecipients.Parsed? {
         let credentials = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError.credentials.message
-        guard checkAccount(credentials), let recipients = status.takeRecipients(of: draft, requireOne: true),
+        guard checkAccount(credentials), let recipients = status.recipientsReportingProblems(of: draft, requireOne: true),
               status.fitsSizeLimit(draft) else { return nil }
         return recipients
     }
@@ -177,15 +174,15 @@ final class MailComposeViewModel {
         let mail = outgoing(recipients, threading: threading)
         let messageID = MailMessageBuilder.makeMessageID()
         var replaced: (folder: String, draft: MailComposeSending.ReplacedDraft)?
-        if tracking.sourceLoaded, context.mode == .draft, let message = context.message {
-            replaced = (message.folder, replacedDraft(message.uid))
+        if context.mode == .draft, let folder = context.folder, let draft = tracking.replacedDraft {
+            replaced = (folder, draft)
         }
         guard let message = await beginSending(mail, messageID: messageID) else { return }
         defer { status.isSending = false }
         do {
             let filing = try await MailComposeSending.send(MailComposeSending.Send(
                 message: message, messageID: messageID, from: sender.address, recipients: mail.envelopeRecipients,
-                roles: folderRoles, answered: tracking.sourceLoaded && isReply ? context.message : nil, replaced: replaced
+                roles: folderRoles, answered: tracking.prefillApplied && isReply ? context.message : nil, replaced: replaced
             ), session: session, services: services, signIn: signIn)
             if let refreshedRoles = filing.roles { adoptFolderRoles(refreshedRoles) }
             status.sentCopy = filing.outcome
@@ -203,19 +200,19 @@ final class MailComposeViewModel {
     @discardableResult
     func saveDraft() async -> Bool {
         guard !isSending, checkSignIn(), checkAccount(MailAccountManager.LoginError.credentials.message),
-              let recipients = status.takeRecipients(of: draft, requireOne: false) else { return false }
+              let recipients = status.recipientsReportingProblems(of: draft, requireOne: false) else { return false }
         let mail = outgoing(recipients, threading: nil)
-        let savedBaseline = draft.snapshot
+        let savedSnapshot = draft.snapshot
         guard status.fitsSizeLimit(draft) else { return false }
-        let replacesDraft = tracking.sourceLoaded && context.mode == .draft && context.folder == folderRoles[.drafts]
-        let replaced = replacesDraft ? context.uid.map(replacedDraft) : nil
+        let replacesDraft = context.mode == .draft && context.folder == folderRoles[.drafts]
+        let replaced = replacesDraft ? tracking.replacedDraft : nil
         guard let message = await beginSending(mail, messageID: MailMessageBuilder.makeMessageID()) else { return false }
         defer { status.isSending = false }
         do {
             let refreshedRoles = try await MailComposeSending.saveDraft(message, roles: folderRoles, replacing: replaced,
                                                                         session: session, prefs: services.prefs, signIn: signIn)
             adoptFolderRoles(refreshedRoles)
-            tracking.baseline = savedBaseline
+            tracking.unchangedSnapshot = savedSnapshot
             return true
         } catch where !signIn.isCurrent {
             status.signInEnded = true
@@ -239,11 +236,6 @@ final class MailComposeViewModel {
             return nil
         }
         return message
-    }
-
-    private func replacedDraft(_ uid: UInt32) -> MailComposeSending.ReplacedDraft {
-        MailComposeSending.ReplacedDraft(uid: uid, pageUIDValidity: tracking.draftPageUIDValidity,
-                                         wasAlreadyDeleted: tracking.draftWasAlreadyDeleted)
     }
 
     private func adoptFolderRoles(_ roles: [MailFolderRole: String]) {

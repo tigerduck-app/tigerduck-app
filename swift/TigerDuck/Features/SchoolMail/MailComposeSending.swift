@@ -68,16 +68,11 @@ enum MailComposeSending {
     ) async {
         guard let pageUIDValidity = draft.pageUIDValidity else { return }
         let owned = prefs.ownedDeleted(folder: folder, uidValidity: pageUIDValidity)
-        do {
-            let result = try await MailMover.deletePermanently(uids: [draft.uid], in: folder, client: client, previouslyFlagged: owned)
-            prefs.change(for: signIn) { $0.setOwnedDeleted(result.stillPending) }
-        } catch {
-            guard let claim = await MailMover.recoverAfterFailure(after: error, uid: draft.uid, previouslyFlagged: owned,
-                                                                  client: client, wasAlreadyDeleted: draft.wasAlreadyDeleted) else {
-                return
-            }
-            prefs.change(for: signIn) { $0.setOwnedDeleted(claim) }
-        }
+        let attempt = await MailMover.attempt(
+            { try await MailMover.deletePermanently(uids: [draft.uid], in: folder, client: client, previouslyFlagged: owned) },
+            uid: draft.uid, previouslyFlagged: owned, wasAlreadyDeleted: draft.wasAlreadyDeleted
+        ) { recover in await recover(client) }
+        if let pending = attempt.pending { prefs.change(for: signIn) { $0.setOwnedDeleted(pending) } }
     }
 }
 #endif

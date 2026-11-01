@@ -14,18 +14,18 @@ enum MailComposeFiles {
         }.value
     }
 
-    static func loadPhotos(_ items: [PhotosPickerItem], add: (String, String, Data) -> Void) async -> Bool {
-        var anyFailed = false
+    static func loadPhotos(_ items: [PhotosPickerItem], add: (String, String, Data) -> Void) async -> [PhotosPickerItem] {
+        var unreadable: [PhotosPickerItem] = []
         for (index, item) in items.enumerated() {
             guard let data = try? await item.loadTransferable(type: Data.self) else {
-                anyFailed = true
+                unreadable.append(item)
                 continue
             }
             let type = item.supportedContentTypes.first
             let ext = type?.preferredFilenameExtension ?? "jpg"
             add("IMG_\(index + 1).\(ext)", type?.preferredMIMEType ?? "image/jpeg", data)
         }
-        return anyFailed
+        return unreadable
     }
 
     private nonisolated static func readBounded(_ url: URL) -> Data? {

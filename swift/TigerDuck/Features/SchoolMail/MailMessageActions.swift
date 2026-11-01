@@ -48,23 +48,20 @@ enum MailMessageActions {
         let prefs = model.stores.prefs
         let wasAlreadyDeleted = model.detail?.summary.isDeleted ?? false
         let owned = prefs.ownedDeleted(folder: folder, uidValidity: uidValidity)
-        do {
-            let result = try await model.session.use { client in try await operation(client, owned) }
-            prefs.change(for: signIn) { $0.setOwnedDeleted(result.stillPending) }
+        let attempt = await MailMover.attempt(
+            { try await model.session.use { client in try await operation(client, owned) } },
+            uid: uid, previouslyFlagged: owned, wasAlreadyDeleted: wasAlreadyDeleted
+        ) { recover in
+            (try? await model.session.use { client in await recover(client) }) ?? nil
+        }
+        if let pending = attempt.pending { prefs.change(for: signIn) { $0.setOwnedDeleted(pending) } }
+        guard let error = attempt.error else {
             model.events.post(.removed(folder: folder, uid: uid))
             return true
-        } catch {
-            if MailMover.shouldProbeAfterFailure(error) {
-                let recovered = try? await model.session.use { client in
-                    await MailMover.recoverAfterFailure(after: error, uid: uid, previouslyFlagged: owned,
-                                                        client: client, wasAlreadyDeleted: wasAlreadyDeleted)
-                }
-                if let claim = recovered ?? nil { prefs.change(for: signIn) { $0.setOwnedDeleted(claim) } }
-            }
-            model.activity.actionError = MailAccountManager.LoginError(error).message
-            if (error as? MailClientError) == .folderChanged { model.events.post(.folderChanged(folder)) }
-            return false
         }
+        model.activity.actionError = MailAccountManager.LoginError(error).message
+        if (error as? MailClientError) == .folderChanged { model.events.post(.folderChanged(folder)) }
+        return false
     }
 
     static func loadSource(model: MailMessageViewModel) async {

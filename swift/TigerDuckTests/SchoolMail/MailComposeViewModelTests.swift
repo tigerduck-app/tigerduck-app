@@ -202,6 +202,19 @@ struct MailComposeViewModelTests {
         #expect(await fake.folders[Self.drafts]?.map(\.summary.uid) == [2])
     }
 
+    @Test func aReplacedDraftWhoseDeleteFailedPartwayIsClaimed() async {
+        let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
+        let prefs = InMemoryMailPreferences()
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: Self.drafts, uidValidity: 1, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake, prefs: prefs, cache: cache)
+        await model.prepare()
+        model.body = "新內容"
+        await fake.update { $0.deletedUIDsError = .serverBusy }
+        #expect(await model.saveDraft())
+        #expect(prefs.ownedDeleted(folder: Self.drafts, uidValidity: 1).uids == [1])
+    }
+
     @Test func reopeningADraftRestoresItsAttachments() async {
         var draft = FakeMailClient.message(uid: 1, subject: "草稿", text: "附件在這")
         let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
