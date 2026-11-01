@@ -4,32 +4,31 @@ import SwiftUI
 struct UpcomingAssignmentsView: View {
     static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
 
-    let assignments: [SDAssignment]
-    var courses: [SDCourse] = []
+    let assignments: [AssignmentStore.Assignment]
+    var courses: [CourseStore.Course] = []
     var filter: AssignmentFilter = .incomplete
     var showAbsoluteTime: Bool = false
     var asListRows = false
     /// Where the rows report their tops, as rows of Home's section `scrollSectionID`.
     var scrollAnchor: HomeScrollAnchor? = nil
     var scrollSectionID = ""
-    var onArchive: ((SDAssignment) -> Void)? = nil
-    var onMarkComplete: ((SDAssignment) -> Void)? = nil
-    var onUnarchive: ((SDAssignment) -> Void)? = nil
-    var onUndoComplete: ((SDAssignment) -> Void)? = nil
-    var onOpen: (SDAssignment) -> Void = { _ in }
+    var onArchive: ((AssignmentStore.Assignment) -> Void)? = nil
+    var onMarkComplete: ((AssignmentStore.Assignment) -> Void)? = nil
+    var onUnarchive: ((AssignmentStore.Assignment) -> Void)? = nil
+    var onUndoComplete: ((AssignmentStore.Assignment) -> Void)? = nil
+    var onOpen: (AssignmentStore.Assignment) -> Void = { _ in }
 
-    @Environment(AppState.self) private var appState
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(AppEnvironment.self) private var app
     @State private var ticker = MinuteTicker(interval: 60)
 
-    private var courseByNo: [String: SDCourse] {
+    private var courseByNo: [String: CourseStore.Course] {
         Dictionary(courses.map { ($0.courseNo, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     var body: some View {
         let _ = ticker.tick
         let now = AppClock.now()
-        let policy = appState.visualStylePolicy
+        let policy = app.preferences.visualStylePolicy
         let rows = filter == .all
             ? assignments.partitionedByDueDate(now: now)
             : assignments
@@ -45,7 +44,7 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
-    private func listRows(_ rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
+    private func listRows(_ rows: [AssignmentStore.Assignment], policy: VisualStylePolicy, now: Date) -> some View {
         ForEach(Array(rows.enumerated()), id: \.element.assignmentId) { index, assignment in
             let isFirst = index == 0
             let isLast = index == rows.count - 1
@@ -87,7 +86,7 @@ struct UpcomingAssignmentsView: View {
     /// One row of the grouped style's rounded container. The container shape runs past the row's
     /// top and bottom edges where a neighbour continues it, and the row clips it there.
     private func groupedRow(
-        assignment: SDAssignment,
+        assignment: AssignmentStore.Assignment,
         now: Date,
         policy: VisualStylePolicy,
         isFirst: Bool,
@@ -120,7 +119,7 @@ struct UpcomingAssignmentsView: View {
         .tint(action.tint)
     }
 
-    private func cardLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
+    private func cardLayout(rows: [AssignmentStore.Assignment], policy: VisualStylePolicy, now: Date) -> some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             ForEach(rows, id: \.assignmentId) { assignment in
                 assignmentRow(assignment: assignment, now: now, policy: policy)
@@ -131,7 +130,7 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
-    private func groupedListLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
+    private func groupedListLayout(rows: [AssignmentStore.Assignment], policy: VisualStylePolicy, now: Date) -> some View {
         VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.assignmentId) { index, assignment in
                 assignmentRow(assignment: assignment, now: now, policy: policy)
@@ -149,7 +148,7 @@ struct UpcomingAssignmentsView: View {
     }
 
     func rowSwipeActions(
-        for assignment: SDAssignment,
+        for assignment: AssignmentStore.Assignment,
         now: Date
     ) -> (trailing: SwipeActionDescriptor?, leading: SwipeActionDescriptor?) {
         guard !assignment.isIgnoredByCourse else { return (nil, nil) }
@@ -182,133 +181,13 @@ struct UpcomingAssignmentsView: View {
 
         return (trailing, leading)
     }
-
-    @ViewBuilder
-    private func assignmentRow(assignment: SDAssignment, now: Date, policy: VisualStylePolicy) -> some View {
-        let status = assignment.status(now: now)
-        // Side by side at accessibility sizes, the title and the status squeeze each other to a few
-        // letters, so the status goes under the title, as in MoodleAssignmentsView.
-        let stacked = dynamicTypeSize.isAccessibilitySize
-        let layout = stacked
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
-            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            layout {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(assignment.displayTitle)
-                        .font(TigerDuckTheme.Typography.body)
-                        .foregroundStyle(policy.primaryTextColor)
-                        .lineLimit(stacked ? nil : 2)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(courseLineLabel(for: assignment))
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(policy.secondaryTextColor)
-                        .lineLimit(stacked ? nil : 1)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: stacked ? .infinity : nil, alignment: .leading)
-                if !stacked {
-                    Spacer(minLength: TigerDuckTheme.Spacing.xs)
-                }
-                trailingStatus(
-                    assignment: assignment,
-                    status: status,
-                    now: now,
-                    policy: policy,
-                    stacked: stacked
-                )
-            }
-
-            if policy.assignmentRowStyle == .groupedList {
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    private func courseLineLabel(for assignment: SDAssignment) -> String {
-        assignment.courseLineLabel(matching: courseByNo[assignment.courseNo])
-    }
-
-    @ViewBuilder
-    private func trailingStatus(
-        assignment: SDAssignment,
-        status: AssignmentStatus,
-        now: Date,
-        policy: VisualStylePolicy,
-        stacked: Bool
-    ) -> some View {
-        let lineLimit = stacked ? nil : 1
-        VStack(alignment: stacked ? .leading : .trailing, spacing: 2) {
-            if let extra = secondaryBadge(for: assignment, status: status, now: now) {
-                Text(extra.label)
-                    .font(statusFont(status: status))
-                    .foregroundStyle(extra.tint)
-                    .lineLimit(lineLimit)
-            }
-            if let label = status.badgeLabel {
-                Text(label)
-                    .font(statusFont(status: status))
-                    .foregroundStyle(status.tint)
-                    .lineLimit(lineLimit)
-            }
-            Text(timeLabel(for: assignment, now: now))
-                .font(timeFont(status: status))
-                .foregroundStyle(timeColor(status: status, policy: policy))
-                .lineLimit(lineLimit)
-        }
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func secondaryBadge(
-        for assignment: SDAssignment,
-        status: AssignmentStatus,
-        now: Date
-    ) -> (label: String, tint: Color)? {
-        if (status == .submitted || status == .submittedLate) && assignment.isLocallyCompleted {
-            return (AssignmentStatus.locallyCompleted.badgeLabel!, AssignmentStatus.locallyCompleted.tint)
-        }
-        if (status == .submitted || status == .submittedLate) && assignment.isArchived {
-            return (AssignmentStatus.archived.badgeLabel!, AssignmentStatus.archived.tint)
-        }
-        if status == .locallyCompleted || status == .archived {
-            guard assignment.dueDate < now else { return nil }
-            if let cutoff = assignment.cutoffDate, now > cutoff {
-                return (AssignmentStatus.overdueRejected.badgeLabel!, AssignmentStatus.overdueRejected.tint)
-            }
-            return (AssignmentStatus.overdueAcceptable.badgeLabel!, AssignmentStatus.overdueAcceptable.tint)
-        }
-        return nil
-    }
-
-    private func statusFont(status: AssignmentStatus) -> Font {
-        let base = TigerDuckTheme.Typography.caption
-        return status.usesEmphasis ? base.weight(.bold) : base.weight(.semibold)
-    }
-
-    private func timeFont(status: AssignmentStatus) -> Font {
-        let base = TigerDuckTheme.Typography.caption
-        return status.usesEmphasis ? base.weight(.bold) : base
-    }
-
-    private func timeColor(status: AssignmentStatus, policy: VisualStylePolicy) -> Color {
-        switch status {
-        case .overdueAcceptable, .overdueRejected:
-            return status.tint
-        case .archived, .locallyCompleted:
-            return .badgeRed
-        case .pending, .submitted, .submittedLate:
-            return policy.secondaryTextColor
-        }
-    }
-
-    private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
-        if showAbsoluteTime || assignment.dueDate < now {
-            return assignment.dueDate.absoluteTimeString
-        }
-        return assignment.dueDate.relativeTimeString(from: now)
+    private func assignmentRow(
+        assignment: AssignmentStore.Assignment, now: Date, policy: VisualStylePolicy
+    ) -> UpcomingAssignmentRow {
+        UpcomingAssignmentRow(
+            assignment: assignment, course: courseByNo[assignment.courseNo], now: now, policy: policy,
+            showAbsoluteTime: showAbsoluteTime
+        )
     }
 }
 

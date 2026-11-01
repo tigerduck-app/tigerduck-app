@@ -3,7 +3,7 @@ import Defaults
 import SwiftUI
 
 struct MacAppearanceSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Default(.appAppearance) private var appearance
     @State private var isConfirmingReassign = false
 
@@ -19,10 +19,10 @@ struct MacAppearanceSettingsView: View {
 
             Section(String(localized: "settings_accent_color")) {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                    ForEach(AppState.themeColors, id: \.hex) { entry in
+                    ForEach(AppPreferences.themeColors, id: \.hex) { entry in
                         accentSwatch(hex: entry.hex, nameKey: entry.nameKey)
                     }
-                    CustomAccentPicker(appState: appState, size: 32)
+                    CustomAccentPicker(app: app, size: 32)
                         .padding(4)
                 }
                 .padding(.vertical, 4)
@@ -42,7 +42,7 @@ struct MacAppearanceSettingsView: View {
             isPresented: $isConfirmingReassign
         ) {
             Button(String(localized: "action_confirm"), role: .destructive) {
-                appState.reassignAllCourseColors()
+                app.edits.reassignAllCourseColors(for: app.authService.session.currentSignIn)
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
@@ -50,12 +50,12 @@ struct MacAppearanceSettingsView: View {
         }
     }
 
-    private func accentSwatch(hex: Int, nameKey: String) -> some View {
+    private func accentSwatch(hex: Int, nameKey: LocalizedStringResource) -> some View {
         let color = Color(hex: UInt(bitPattern: Int(hex)))
-        let isSelected = AccentPreview.shared.shownHex(saved: appState.accentColorHex) == hex
+        let isSelected = AccentPreview.shared.shownHex(saved: app.preferences.accentColorHex) == hex
         return Button {
             AccentPreview.shared.clear()
-            appState.accentColorHex = hex
+            app.preferences.accentColorHex = hex
         } label: {
             ZStack {
                 Circle()
@@ -74,7 +74,7 @@ struct MacAppearanceSettingsView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(String(localized: String.LocalizationValue(nameKey))))
+        .accessibilityLabel(Text(nameKey))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

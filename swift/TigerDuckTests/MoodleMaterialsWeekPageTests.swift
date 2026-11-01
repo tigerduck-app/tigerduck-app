@@ -3,6 +3,7 @@ import Foundation
 import SwiftUI
 import Testing
 import UIKit
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -40,7 +41,7 @@ struct MoodleMaterialsWeekPageTests {
     /// falls in that week rather than in the eighth the start date gives.
     private nonisolated static func sectionName(week: Int, datedAsWeek: Int?) -> String {
         guard week > 0 else { return "General" }
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         guard let datedAsWeek,
               let day = calendar.date(byAdding: .day, value: 7 * (week - datedAsWeek), to: calendar.startOfDay(for: AppClock.now()))
         else { return "Week \(week)" }
@@ -60,18 +61,18 @@ struct MoodleMaterialsWeekPageTests {
     private static func weeklyCourseInItsEighthWeek(
         in root: URL, datedAsWeek: Int? = nil, materialsGate: FetchGate? = nil, summaryGate: FetchGate? = nil
     ) -> MoodleCourseStore {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let start = calendar.date(byAdding: .day, value: -7 * 7, to: calendar.startOfDay(for: AppClock.now()))
         let course = MoodleCourseSummary(html: "", text: "", names: [], format: "weeks", startDate: start)
         let materials = materials(datedAsWeek: datedAsWeek)
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
         return MoodleCourseStore(
             courseId: 20119,
             termCourseIds: [20119],
-            context: MoodleCacheContext(account: "B11399001", cache: cache, isCurrent: { true }),
+            context: MoodleCacheContext(account: "B11399001", cache: cache.moodle, signIn: testSignIn),
             api: MoodleCourseAPI(
                 functions: { [MoodleCourseContentsService.contentsFunction, MoodleCourseSummaryService.coursesFunction] },
                 forums: { _ in [] },

@@ -149,7 +149,7 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
                 }?.resume()
             }
             let timer = Task.detached {
-                try? await Task.sleep(until: deadline, clock: .continuous)
+                try? await AppClock.sleep(until: deadline)
                 stop()
             }
             Task {
@@ -176,7 +176,7 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         }
         let sync = Task { finish(await work()) }
         Task.detached {
-            try? await Task.sleep(for: limit)
+            try? await AppClock.sleep(until: ContinuousClock.now + limit)
             finish(.failed)
             if await !appIsActive() { sync.cancel() }
         }

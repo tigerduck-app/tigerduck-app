@@ -5,7 +5,7 @@ struct WhatsNewFlowView: View {
     let presentation: WhatsNewPresentation
     let onFinish: () -> Void
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var index = 0
     @State private var isRequesting = false
@@ -97,7 +97,7 @@ struct WhatsNewFlowView: View {
             WhatsNewPageContentView(
                 page: presentation.pages[step],
                 context: WhatsNewPageContext(
-                    appState: appState,
+                    app: app,
                     language: presentation.language,
                     advance: advance
                 )
@@ -120,7 +120,7 @@ struct WhatsNewFlowView: View {
             case .optIn(_, let confirm, let decline, let apply):
                 VStack(spacing: TigerDuckTheme.Spacing.sm) {
                     primaryButton(confirm.resolved(for: presentation.language)) {
-                        apply(appState)
+                        apply(app)
                         advance()
                     }
                     secondaryButton(decline.resolved(for: presentation.language), action: advance)
@@ -130,7 +130,7 @@ struct WhatsNewFlowView: View {
                     primaryButton(confirm.resolved(for: presentation.language), isBusy: isRequesting) {
                         isRequesting = true
                         requestTask = Task {
-                            await request(appState)
+                            await request(app)
                             isRequesting = false
                             requestTask = nil
                             guard !Task.isCancelled else { return }

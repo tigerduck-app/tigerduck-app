@@ -190,7 +190,7 @@ struct MoodleCourseContentsServiceTests {
             id: 9101, instance: 301, module: "resource", name: "Syllabus",
             content: .link(URL(string: "https://moodle-stub.invalid/mod/resource/view.php?id=9101")!)
         )
-        let current = OSAllocatedUnfairLock(initialState: true)
+        let current = TestSignIn()
         let gate = ManualSleeper()
         let renewing = MoodleWebserviceClient.TokenSource(
             stored: { nil },
@@ -201,18 +201,18 @@ struct MoodleCourseContentsServiceTests {
         )
         let event = Task {
             try await MoodleCourseAPI.logMaterialView(
-                material, isCurrent: { current.withLock { $0 } }, tokens: renewing, session: Self.session(), siteURL: Self.site
+                material, for: current.signIn, tokens: renewing, session: Self.session(), siteURL: Self.site
             )
         }
         try await gate.waitUntilArmed()
-        current.withLock { $0 = false }
+        current.signOut()
         await gate.fire()
 
         await #expect(throws: CancellationError.self) { try await event.value }
         #expect(SettingsAPIStub.requests(for: endpoint).isEmpty)
 
         try await MoodleCourseAPI.logMaterialView(
-            material, isCurrent: { true }, tokens: .init(stored: { token }, renew: { _ in token }),
+            material, for: testSignIn, tokens: .init(stored: { token }, renew: { _ in token }),
             session: Self.session(), siteURL: Self.site
         )
         #expect(SettingsAPIStub.requests(for: endpoint).count == 1)

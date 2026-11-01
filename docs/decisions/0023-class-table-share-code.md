@@ -244,7 +244,7 @@ The app also reads TAT's share code, versions 1 and 2, and writes version 2 for 
   stamps the new import time, keeping the nickname, the entry and its place in the list.
 - The person whose class table is shown is kept in memory only, so every launch opens on the
   user's own class table.
-- The store empties when the user signs out (`AppState.logoutNTUST()`) and when a student ID other
+- The store empties when the user signs out (`SignOutPlan.school(_:)`) and when a student ID other
   than the one the people were imported under signs in (`AuthService.login`). A session renewed
   in the background (`AuthService.ensureAuthenticated()`) and TigerSync turned off leave it alone.
 

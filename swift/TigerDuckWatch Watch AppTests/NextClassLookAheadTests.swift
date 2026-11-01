@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuckWatch_Watch_App
 
 struct NextClassLookAheadTests {
@@ -18,11 +19,11 @@ struct NextClassLookAheadTests {
     private func mondayAt(_ hhmm: String, dayOffset: Int = 0) -> Date {
         let parts = hhmm.split(separator: ":").compactMap { Int($0) }
         let day = DateComponents(year: 2026, month: 5, day: 11 + dayOffset, hour: parts[0], minute: parts[1])
-        return SharedTaipei.calendar.date(from: day)!
+        return TaipeiTime.calendar.date(from: day)!
     }
 
     private func dayKey(_ dayOffset: Int) -> String {
-        SharedTaipei.dayKey(for: mondayAt("12:00", dayOffset: dayOffset))
+        TaipeiTime.dayKey(for: mondayAt("12:00", dayOffset: dayOffset))
     }
 
     @Test func anEveningAfterTheLastClass_givesTomorrowsFirstClass() {

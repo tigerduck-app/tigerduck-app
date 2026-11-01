@@ -22,6 +22,13 @@ struct MailRecipientTokensTests {
         #expect(MailRecipientTokens.consume("<bob@x.com , ").finished.isEmpty)
     }
 
+    @Test(arguments: [#""Chen \"Duck\" Wang" <a@b.c>"#, #""Chen \"Duck, Jr\" Wang" <a@b.c>"#, #""Duck \" Chen" <a@b.c>"#])
+    func aQuotedNameWithEscapedQuotesStaysOneRecipient(name: String) {
+        #expect(MailRecipientTokens.tokens(of: name + ", b@c.d") == [name, "b@c.d"])
+        #expect(MailRecipientTokens.consume(name + ", b@c.d,") == ([name, "b@c.d"], ""))
+        #expect(MailRecipients.parse(name + ", b@c.d").addresses.map(\.address) == ["a@b.c", "b@c.d"])
+    }
+
     @Test func separatorsAloneFinishNothing() {
         #expect(MailRecipientTokens.consume(" ") == ([], ""))
         #expect(MailRecipientTokens.consume(",") == ([], ""))
@@ -41,9 +48,9 @@ struct MailRecipientTokensTests {
     }
 
     @Test func aBubbleIsMarkedByTheSameRuleTheSendUses() {
-        #expect(MailComposeViewModel.sendableAddress("a@x.com") != nil)
-        #expect(MailComposeViewModel.sendableAddress("not an address") == nil)
-        #expect(MailComposeViewModel.sendableAddress("王@例子.台灣") == nil)
+        #expect(MailRecipients.sendableAddress("a@x.com") != nil)
+        #expect(MailRecipients.sendableAddress("not an address") == nil)
+        #expect(MailRecipients.sendableAddress("王@例子.台灣") == nil)
     }
 
     @Test func aReadRecipientShowsAsText() {

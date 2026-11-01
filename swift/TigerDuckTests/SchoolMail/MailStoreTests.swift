@@ -4,19 +4,35 @@ import Testing
 @testable import TigerDuck
 
 struct MailStoreTests {
-    private static func isolatedPreferences() -> (prefs: DefaultsMailPreferences, cleanup: () -> Void) {
+    private static func isolatedPreferences() -> (prefs: MailSettingsStore, cleanup: () -> Void) {
         let suiteName = "MailStoreTests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
-        return (DefaultsMailPreferences(defaults: suite), { suite.removePersistentDomain(forName: suiteName) })
+        return (MailSettingsStore(defaults: suite), { suite.removePersistentDomain(forName: suiteName) })
     }
 
     @Test func credentialsRoundTripAndClear() throws {
         let store = MailCredentialStore(storage: InMemoryMailSecretStorage())
         #expect(store.password() == nil)
-        try store.savePassword("secret")
+        try store.savePassword("secret", for: testSignIn)
         #expect(store.password() == "secret")
         store.clear()
         #expect(store.password() == nil)
+    }
+
+    @Test func aMailWriteOfAnEndedSignInIsDropped() throws {
+        let (prefs, cleanup) = Self.isolatedPreferences()
+        defer { cleanup() }
+        let store = MailCredentialStore(storage: InMemoryMailSecretStorage())
+        try store.savePassword("secret", for: endedTestSignIn)
+        prefs.change(for: endedTestSignIn) {
+            $0.studentID = "B10000000"
+            $0.setOwnedDeleted(OwnedDeleted(folder: "INBOX", uidValidity: 7, uids: [3]))
+        }
+        #expect(store.password() == nil)
+        #expect(prefs.studentID == nil)
+        #expect(prefs.ownedDeleted(folder: "INBOX", uidValidity: 7).uids.isEmpty)
+        prefs.change(for: testSignIn) { $0.studentID = "B10000000" }
+        #expect(prefs.studentID == "B10000000")
     }
 
     @Test func valetStorageRoundTrips() throws {
@@ -55,6 +71,15 @@ struct MailStoreTests {
         #expect(prefs.ownedDeleted(folder: "INBOX", uidValidity: 7) == OwnedDeleted(folder: "INBOX", uidValidity: 7, uids: [1, 3]))
         prefs.reset()
         #expect(prefs.ownedDeleted(folder: "INBOX", uidValidity: 7).uids.isEmpty)
+    }
+
+    @Test func ownedDeletedInTheStoredLayoutReadsBack() {
+        let suiteName = "MailStoreTests.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        defer { suite.removePersistentDomain(forName: suiteName) }
+        suite.set(Data(#"[{"folder":"INBOX","uidValidity":7,"uids":[3]}]"#.utf8), forKey: "school_mail_owned_deleted")
+        let prefs = MailSettingsStore(defaults: suite)
+        #expect(prefs.ownedDeleted(folder: "INBOX", uidValidity: 7) == OwnedDeleted(folder: "INBOX", uidValidity: 7, uids: [3]))
     }
 
     @Test func ownedDeletedReturnsEmptyOnValidityMismatch() {
@@ -109,8 +134,8 @@ struct MailStoreTests {
         let suiteName = "MailStoreTests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
         defer { suite.removePersistentDomain(forName: suiteName) }
-        let prefsA = DefaultsMailPreferences(defaults: suite)
-        let prefsB = DefaultsMailPreferences(defaults: suite)
+        let prefsA = MailSettingsStore(defaults: suite)
+        let prefsB = MailSettingsStore(defaults: suite)
         let folderCount = 200
         DispatchQueue.concurrentPerform(iterations: folderCount) { index in
             let prefs = index.isMultiple(of: 2) ? prefsA : prefsB
@@ -256,9 +281,9 @@ struct MailStoreTests {
         let detail = MailMessageDetail(summary: SchoolMailTestDoubles.summary(uid: 2), messageID: nil, inReplyTo: nil,
                                        references: nil, parts: [], textBody: "body", htmlBody: nil, inlineImages: nil)
         let save = { (count: Int) in
-            cache.savePage(page, wipeCount: count)
-            cache.saveDetail(detail, folder: "INBOX", uidValidity: 1, wipeCount: count)
-            cache.saveSource("source", folder: "INBOX", uidValidity: 1, uid: 2, wipeCount: count)
+            cache.savePage(page, unlessWipedSince: count)
+            cache.saveDetail(detail, folder: "INBOX", uidValidity: 1, unlessWipedSince: count)
+            cache.saveSource("source", folder: "INBOX", uidValidity: 1, uid: 2, unlessWipedSince: count)
         }
         let before = cache.wipeCount
         cache.clearAll()
@@ -292,10 +317,10 @@ struct MailStoreTests {
         let before = cache.wipeCount
         cache.clearAll()
 
-        #expect(try cache.saveAttachment(Data("x".utf8), filename: "old.pdf", wipeCount: before) == nil)
+        #expect(try cache.saveAttachment(Data("x".utf8), filename: "old.pdf", unlessWipedSince: before) == nil)
         #expect(cache.totalBytes() == 0)
 
-        let saved = try #require(try cache.saveAttachment(Data("x".utf8), filename: "new.pdf", wipeCount: cache.wipeCount))
+        let saved = try #require(try cache.saveAttachment(Data("x".utf8), filename: "new.pdf", unlessWipedSince: cache.wipeCount))
         #expect(FileManager.default.fileExists(atPath: saved.path))
     }
 

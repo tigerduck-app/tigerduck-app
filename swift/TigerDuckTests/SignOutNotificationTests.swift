@@ -14,7 +14,7 @@ struct SignOutNotificationTests {
             ("new-mail", MailConstants.notificationThread),
         ])
 
-        await AuthService.removeAccountNotifications(from: center)
+        await AccountSignOutCleanup.removeAccountNotifications(from: center)
 
         #expect(center.delivered.map(\.identifier) == ["new-mail"])
     }
@@ -30,7 +30,7 @@ struct SignOutNotificationTests {
         cache.storeCachedResponse(CachedURLResponse(response: response, data: Data("<p>B11399001</p>".utf8)), for: request)
         try #require(cache.cachedResponse(for: request) != nil)
 
-        await AuthService.forgetSchoolPages(cache: cache, clearBrowser: {})
+        await AccountSignOutCleanup.clearAllCachedPages(cache: cache, clearBrowser: {})
 
         #expect(cache.cachedResponse(for: request) == nil)
     }
@@ -42,9 +42,10 @@ struct SignOutNotificationTests {
             notificationCenter: NotificationCenter(),
             moodleTokens: MoodleTokenService(
                 storedCredentials: { nil }, tokens: .init(load: { nil }, save: { _ in }, drop: {}),
-                harvest: { _, _ in throw CancellationError() }
+                harvest: { _, _ in throw CancellationError() },
+                signIns: SignInSeries()
             ),
-            schoolSignIn: { _, _ in false },
+            schoolSignIn: { _, _, _ in false },
             endSchoolSession: { _ in }
         )
         auth.accountNotifications = center

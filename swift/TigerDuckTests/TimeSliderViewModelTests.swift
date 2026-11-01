@@ -1,6 +1,7 @@
 import Defaults
 import Testing
 import Foundation
+import TigerDuckCore
 @testable import TigerDuck
 
 /// On the main actor, like `TimeSliderViewModel`, whose init prepares a `UIFeedbackGenerator`
@@ -10,9 +11,9 @@ import Foundation
 struct TimeSliderViewModelTests {
 
     @Test func dateFromTimeString_parsesCorrectly() {
-        let ref = AppConstants.taipeiCalendar.startOfDay(for: AppClock.now())
+        let ref = TaipeiTime.calendar.startOfDay(for: AppClock.now())
         let date = CourseTimeSlot.dateFromTimeString("10:20", on: ref)!
-        let comps = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: date)
+        let comps = TaipeiTime.calendar.dateComponents([.hour, .minute], from: date)
         #expect(comps.hour == 10)
         #expect(comps.minute == 20)
     }
@@ -68,8 +69,8 @@ struct TimeSliderViewModelTests {
         let viewModel = TimeSliderViewModel()
         viewModel.configure(courses: [skipped, kept])
 
-        #expect(viewModel.timeSlots.filter(onToday).map(\.course.courseNo) == ["TEST200"])
-        #expect(viewModel.timeSlots.contains { $0.course.courseNo == "TEST100" && !onToday($0) })
+        #expect(viewModel.timeSlots.filter(onToday).map(\.courseKey) == ["TEST200"])
+        #expect(viewModel.timeSlots.contains { $0.courseKey == "TEST100" && !onToday($0) })
     }
 
     @Test func skipToggle_rebuildsTheTimeline() async throws {
@@ -94,7 +95,7 @@ struct TimeSliderViewModelTests {
         let term = SemesterTerm(code: "1151", start: weekAgo, end: today)
         let store = try calendarStore(holding: AcademicCalendar(revision: 1, terms: [term], holidays: []))
 
-        let viewModel = TimeSliderViewModel(calendarStore: store)
+        let viewModel = TimeSliderViewModel(isQuietDay: { !store.isClassDay($0) })
         viewModel.configure(courses: [course])
 
         let days = Set(viewModel.timeSlots.map { AcademicCalendar.startOfDay($0.date) })
@@ -106,7 +107,7 @@ struct TimeSliderViewModelTests {
         let vm = TimeSliderViewModel()
         vm.configure(courses: [])
 
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let now = calendar.date(byAdding: .hour, value: 10, to: today)!
         vm.selectedTime = now
@@ -120,7 +121,7 @@ struct TimeSliderViewModelTests {
 
     @Test func xOffset_returnsCorrectPixels() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
 
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
@@ -143,7 +144,7 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_inClass() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let slot = makeMockSlot(
             courseNo: "MATH101",
@@ -155,7 +156,7 @@ struct TimeSliderViewModelTests {
         let during = calendar.date(byAdding: .hour, value: 11, to: today)!
         let state = vm.courseState(at: during)
         if case .inClass(let slots) = state {
-            #expect(slots.map(\.course.courseNo) == ["MATH101"])
+            #expect(slots.map(\.courseKey) == ["MATH101"])
         } else {
             Issue.record("Expected .inClass, got \(state)")
         }
@@ -163,7 +164,7 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_inClass_keepsEveryOverlappingCourse() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let earlier = makeMockSlot(
             courseNo: "MATH101",
@@ -182,11 +183,11 @@ struct TimeSliderViewModelTests {
             Issue.record("Expected .inClass, got \(vm.courseState(at: during))")
             return
         }
-        #expect(slots.map(\.course.courseNo) == ["MATH101", "PHYS101"])
+        #expect(slots.map(\.courseKey) == ["MATH101", "PHYS101"])
     }
 
     @Test func timelineResolver_inClass_ordersOverlapsAsGiven() {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let earlier = makeMockSlot(
             courseNo: "MATH101",
@@ -205,13 +206,13 @@ struct TimeSliderViewModelTests {
             Issue.record("Expected .inClass, got \(state)")
             return
         }
-        #expect(slots.map(\.course.courseNo) == ["MATH101", "PHYS101"])
-        #expect(slots.first?.course.courseNo == "MATH101")
+        #expect(slots.map(\.courseKey) == ["MATH101", "PHYS101"])
+        #expect(slots.first?.courseKey == "MATH101")
     }
 
     @Test func courseState_beforeFirst() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let slot = makeMockSlot(
             courseNo: "MATH101",
@@ -223,7 +224,7 @@ struct TimeSliderViewModelTests {
         let before = calendar.date(byAdding: .hour, value: 9, to: today)!
         let state = vm.courseState(at: before)
         if case .beforeFirst(let next) = state {
-            #expect(next.course.courseNo == "MATH101")
+            #expect(next.courseKey == "MATH101")
         } else {
             Issue.record("Expected .beforeFirst, got \(state)")
         }
@@ -231,7 +232,7 @@ struct TimeSliderViewModelTests {
 
     @Test func courseState_between() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         let slot1 = makeMockSlot(
             courseNo: "MATH101",
@@ -248,8 +249,8 @@ struct TimeSliderViewModelTests {
         let gap = calendar.date(byAdding: .hour, value: 11, to: today)!
         let state = vm.courseState(at: gap)
         if case .between(let prev, let next) = state {
-            #expect(prev?.course.courseNo == "MATH101")
-            #expect(next?.course.courseNo == "PHYS201")
+            #expect(prev?.courseKey == "MATH101")
+            #expect(next?.courseKey == "PHYS201")
         } else {
             Issue.record("Expected .between, got \(state)")
         }
@@ -257,7 +258,7 @@ struct TimeSliderViewModelTests {
 
     @Test func drag_advancesPastOverlappingCourses() {
         let vm = TimeSliderViewModel()
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
 
         let periods34 = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
@@ -289,7 +290,7 @@ struct TimeSliderViewModelTests {
     }
 
     @Test func clashingSlotsStackInLanes() {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         func at(_ hour: Int) -> Date { calendar.date(byAdding: .hour, value: hour, to: today)! }
         let vm = TimeSliderViewModel()
@@ -308,11 +309,11 @@ struct TimeSliderViewModelTests {
     }
 
     @Test func backToBackSlotsKeepTheFullHeight() {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let today = calendar.startOfDay(for: AppClock.now())
         func at(_ hour: Int) -> Date { calendar.date(byAdding: .hour, value: hour, to: today)! }
 
-        let lanes = TimeSliderViewModel.lanes(for: [
+        let lanes = TimeSliderLayout.lanes(for: [
             makeMockSlot(courseNo: "A", start: at(9), end: at(10)),
             makeMockSlot(courseNo: "B", start: at(10), end: at(11)),
         ])

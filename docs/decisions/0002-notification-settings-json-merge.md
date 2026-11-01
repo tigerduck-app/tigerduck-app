@@ -12,7 +12,7 @@ each writer learns new sections and fields at its own pace.
 This app owns the `assignments`, `live_activity` and `courses` sections, with the field mapping
 fixed in `NotificationSettingsSync.LocalPreferences`; any other section belongs to Android or a
 later build. Only the iOS build syncs the document: every synced field lives on
-`LiveActivityPreferencesStore`, which `AppState` creates only under `#if os(iOS)`.
+`LiveActivityPreferencesStore`, which `LiveActivityRefresher` creates only under `#if os(iOS)`.
 
 ## Decision
 
@@ -21,7 +21,7 @@ later build. Only the iOS build syncs the document: every synced field lives on
   `NotificationSettingsSync.apply` leaves the local value alone. A required property would make
   synthesized `Decodable` throw `keyNotFound` for any document another writer created first,
   which on the push path is an abort with only a log line, repeated on every push.
-- A push merges at the JSON level: `merging(_:into:)` in `AppState+NotificationSettings.swift`
+- A push merges at the JSON level: `merging(_:into:)` in `Backend/Sync/NotificationSettingsSync.swift`
   splices the app's sections over the document it read, key by key and recursively, so keys the
   app does not know survive at the top level and inside the sections it owns. Arrays are
   replaced whole, because each one is a complete set of user choices and a union could not

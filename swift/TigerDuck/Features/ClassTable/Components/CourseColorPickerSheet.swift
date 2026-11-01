@@ -3,7 +3,7 @@ import SwiftUI
 struct CourseColorPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let course: SDCourse
+    let course: CourseStore.Course
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 5)
 
@@ -11,14 +11,14 @@ struct CourseColorPickerSheet: View {
     @State private var suppressNextColorChange = false
     @State private var customPicks: CustomColorPickDebouncer
 
-    init(course: SDCourse, isCurrent: @escaping () -> Bool, onSelect: @escaping (UInt32) -> Void) {
+    init(course: CourseStore.Course, signIn: SignIn, onSelect: @escaping (UInt32) -> Void) {
         self.course = course
         _customColor = State(initialValue: Color(hex: UInt(TigerDuckTheme.assignedHex(for: course.courseNo))))
         let courseNo = course.courseNo
         _customPicks = State(initialValue: CustomColorPickDebouncer(
             apply: onSelect,
             appliedHex: { TigerDuckTheme.assignedHex(for: courseNo) },
-            isCurrent: isCurrent
+            isCurrent: { signIn.isCurrent }
         ))
     }
 
@@ -166,8 +166,7 @@ struct CourseColorPickerSheet: View {
 }
 
 /// Holds a custom colour back until the drag pauses. The `ColorPicker` reports every
-/// step of a drag, and each applied pick writes the colour map, posts `dataDidUpdate`,
-/// which reloads Home, Class Table, Calendar and the Live Activity, and queues a sync.
+/// step of a drag.
 @MainActor
 final class CustomColorPickDebouncer {
     static let pause: Duration = .milliseconds(300)
@@ -183,7 +182,7 @@ final class CustomColorPickDebouncer {
         apply: @escaping (UInt32) -> Void,
         appliedHex: @escaping () -> UInt32,
         isCurrent: @escaping () -> Bool,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.apply = apply
         self.appliedHex = appliedHex

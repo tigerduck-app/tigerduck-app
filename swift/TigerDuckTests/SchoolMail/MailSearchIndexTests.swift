@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import SQLite3
 import Testing
 @testable import TigerDuck
 
@@ -20,19 +21,19 @@ struct MailSearchIndexTests {
         return MailCache(directory: directory, account: { account.current })
     }
 
-    static func text(subject: String, body: String?, name: String? = nil, from: String = "office@mail.ntust.edu.tw") -> String {
+    static func text(subject: String, body: String?, name: String? = nil, from: String = "office@mail.ntust.edu.tw") -> MailSearchText {
         var summary = SchoolMailTestDoubles.summary(uid: 1)
         summary.subject = subject
         summary.fromName = name
         summary.fromAddress = from
-        return MailSearchIndex.text(of: summary, body: body)
+        return MailSearchText(of: summary, body: body)
     }
 
     @discardableResult
-    static func fill(_ cache: MailCache, folder: String = "INBOX", uidValidity: UInt32 = 1, _ texts: [UInt32: String]) -> Bool {
+    static func fill(_ cache: MailCache, folder: String = "INBOX", uidValidity: UInt32 = 1, _ texts: [UInt32: MailSearchText]) -> Bool {
         let index = cache.searchIndex
-        let held = index.prepare(folder: folder, uidValidity: uidValidity, onServer: Set(texts.keys), wipeCount: cache.wipeCount)
-        return held != nil && index.add(texts, folder: folder, uidValidity: uidValidity, wipeCount: cache.wipeCount)
+        let held = index.prepare(folder: folder, uidValidity: uidValidity, onServer: Set(texts.keys), unlessWipedSince: cache.wipeCount)
+        return held != nil && index.add(texts, folder: folder, uidValidity: uidValidity, unlessWipedSince: cache.wipeCount)
     }
 
     @Test func findsTheSenderSubjectAndBodyInChineseAndEnglishWhateverTheCase() {
@@ -71,7 +72,7 @@ struct MailSearchIndexTests {
         let cache = Self.cache()
         Self.fill(cache, [1: Self.text(subject: "公告 1", body: nil), 2: Self.text(subject: "公告 2", body: nil),
                           3: Self.text(subject: "公告 3", body: nil)])
-        let held = cache.searchIndex.prepare(folder: "INBOX", uidValidity: 1, onServer: [1, 3, 4], wipeCount: cache.wipeCount)
+        let held = cache.searchIndex.prepare(folder: "INBOX", uidValidity: 1, onServer: [1, 3, 4], unlessWipedSince: cache.wipeCount)
         #expect(held == [1, 3])
         #expect(cache.searchIndex.search(folder: "INBOX", query: "公告")?.uids == [3, 1])
     }
@@ -80,7 +81,7 @@ struct MailSearchIndexTests {
         let cache = Self.cache()
         Self.fill(cache, [1: Self.text(subject: "舊信", body: nil)])
         Self.fill(cache, folder: "Sent", [1: Self.text(subject: "舊信", body: nil)])
-        let held = cache.searchIndex.prepare(folder: "INBOX", uidValidity: 2, onServer: [1], wipeCount: cache.wipeCount)
+        let held = cache.searchIndex.prepare(folder: "INBOX", uidValidity: 2, onServer: [1], unlessWipedSince: cache.wipeCount)
         #expect(held == [])
         #expect(cache.searchIndex.search(folder: "INBOX", query: "舊信")?.uidValidity == 2)
         #expect(cache.searchIndex.search(folder: "INBOX", query: "舊信")?.uids == [])
@@ -90,8 +91,8 @@ struct MailSearchIndexTests {
     @Test func aWriteUnderAnOldUIDValidityIsRefused() {
         let cache = Self.cache()
         Self.fill(cache, [1: Self.text(subject: "舊信", body: nil)])
-        _ = cache.searchIndex.prepare(folder: "INBOX", uidValidity: 2, onServer: [], wipeCount: cache.wipeCount)
-        #expect(!cache.searchIndex.add([5: "舊信"], folder: "INBOX", uidValidity: 1, wipeCount: cache.wipeCount))
+        _ = cache.searchIndex.prepare(folder: "INBOX", uidValidity: 2, onServer: [], unlessWipedSince: cache.wipeCount)
+        #expect(!cache.searchIndex.add([5: MailSearchText(text: "舊信")], folder: "INBOX", uidValidity: 1, unlessWipedSince: cache.wipeCount))
         #expect(cache.searchIndex.search(folder: "INBOX", query: "舊信")?.uids == [])
     }
 
@@ -107,8 +108,8 @@ struct MailSearchIndexTests {
 
         #expect(!FileManager.default.fileExists(atPath: file.path))
         #expect(cache.searchIndex.search(folder: "INBOX", query: "成績單") == nil)
-        #expect(cache.searchIndex.prepare(folder: "INBOX", uidValidity: 1, onServer: [2], wipeCount: wipeCount) == nil)
-        #expect(!cache.searchIndex.add([2: "成績單"], folder: "INBOX", uidValidity: 1, wipeCount: wipeCount))
+        #expect(cache.searchIndex.prepare(folder: "INBOX", uidValidity: 1, onServer: [2], unlessWipedSince: wipeCount) == nil)
+        #expect(!cache.searchIndex.add([2: MailSearchText(text: "成績單")], folder: "INBOX", uidValidity: 1, unlessWipedSince: wipeCount))
         #expect(cache.searchIndex.search(folder: "INBOX", query: "成績單") == nil)
     }
 
@@ -120,8 +121,8 @@ struct MailSearchIndexTests {
         account.current = "B10000001"
 
         #expect(cache.searchIndex.search(folder: "INBOX", query: "成績單") == nil)
-        #expect(!cache.searchIndex.add([2: "成績單"], folder: "INBOX", uidValidity: 1, wipeCount: cache.wipeCount))
-        let held = cache.searchIndex.prepare(folder: "INBOX", uidValidity: 1, onServer: [1], wipeCount: cache.wipeCount)
+        #expect(!cache.searchIndex.add([2: MailSearchText(text: "成績單")], folder: "INBOX", uidValidity: 1, unlessWipedSince: cache.wipeCount))
+        let held = cache.searchIndex.prepare(folder: "INBOX", uidValidity: 1, onServer: [1], unlessWipedSince: cache.wipeCount)
         #expect(held == [])
         #expect(cache.searchIndex.search(folder: "INBOX", query: "成績單")?.uids == [])
     }
@@ -138,6 +139,25 @@ struct MailSearchIndexTests {
 
         #expect(Self.fill(cache, [1: Self.text(subject: "成績單", body: nil)]))
         #expect(cache.searchIndex.search(folder: "INBOX", query: "成績單")?.uids == [1])
+    }
+
+    @Test func anIndexInAnotherLayoutStartsOverEmpty() throws {
+        let cache = Self.cache()
+        let directory = Self.directory(of: cache)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var db: OpaquePointer?
+        try #require(sqlite3_open(directory.appendingPathComponent("search-index.sqlite").path, &db) == SQLITE_OK)
+        let older = """
+            CREATE TABLE mail (folder TEXT, uid INTEGER, body TEXT);
+            INSERT INTO mail VALUES ('INBOX', 1, '成績單');
+            PRAGMA user_version = 0;
+            """
+        #expect(sqlite3_exec(db, older, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+
+        #expect(cache.searchIndex.search(folder: "INBOX", query: "成績單") == nil)
+        #expect(Self.fill(cache, [2: Self.text(subject: "選課", body: nil)]))
+        #expect(cache.searchIndex.search(folder: "INBOX", query: "選課")?.uids == [2])
     }
 
     @Test func theIndexIsLeftOutOfBackupsEvenWhenItCreatesTheDirectory() throws {
@@ -241,8 +261,8 @@ struct MailSearchIndexTests {
     }
 
     @Test func theTextOfAMailIsCappedInLength() {
-        let text = Self.text(subject: "長信", body: String(repeating: "字", count: MailSearchIndex.maxTextLength * 2))
-        #expect(text.count == MailSearchIndex.maxTextLength)
+        let text = Self.text(subject: "長信", body: String(repeating: "字", count: MailSearchText.maxTextLength * 2))
+        #expect(text.text.count == MailSearchText.maxTextLength)
     }
 }
 #endif

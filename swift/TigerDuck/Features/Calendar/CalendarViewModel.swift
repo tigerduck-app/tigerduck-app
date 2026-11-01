@@ -1,10 +1,10 @@
-import SwiftUI
-import UIKit
+import Foundation
+import TigerDuckCore
 
 @MainActor
 @Observable
 final class CalendarViewModel {
-    var events: [SDCalendarEvent] = []
+    var events: [AssignmentStore.CalendarEvent] = []
     var selectedDate: Date = .now
     var displayedMonth: Date = .now {
         didSet { calendarDays = Self.buildCalendarDays(for: displayedMonth) }
@@ -13,62 +13,41 @@ final class CalendarViewModel {
     private(set) var calendarDays: [Date?] = CalendarViewModel.buildCalendarDays(for: .now)
 
     private var hasLoaded = false
-    // `nonisolated(unsafe)` lets `deinit`, nonisolated under Swift 6, read this to
-    // remove the observer. `@ObservationIgnored` is required: without it `@Observable`
-    // makes this a computed accessor, and the modifier has no effect (a warning).
-    @ObservationIgnored
-    private nonisolated(unsafe) var dataObserver: Any? = nil
+    @ObservationIgnored private var storeObservation: StoreObservation?
 
-    private var eventsByDay: [DateComponents: [SDCalendarEvent]] = [:]
+    private var eventsByDay: [DateComponents: [AssignmentStore.CalendarEvent]] = [:]
 
-    var eventsForSelectedDate: [SDCalendarEvent] {
+    var eventsForSelectedDate: [AssignmentStore.CalendarEvent] {
         events.filter { $0.date.isSameDay(as: selectedDate) }
             .sorted { $0.date < $1.date }
     }
 
-    func eventsOnDate(_ date: Date) -> [SDCalendarEvent] {
-        let key = AppConstants.taipeiCalendar.dateComponents([.year, .month, .day], from: date)
+    func eventsOnDate(_ date: Date) -> [AssignmentStore.CalendarEvent] {
+        let key = TaipeiTime.calendar.dateComponents([.year, .month, .day], from: date)
         return eventsByDay[key] ?? []
     }
 
     func previousMonth() {
-        displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: -1, to: displayedMonth)!
+        displayedMonth = TaipeiTime.calendar.date(byAdding: .month, value: -1, to: displayedMonth)!
     }
 
     func nextMonth() {
-        displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: 1, to: displayedMonth)!
+        displayedMonth = TaipeiTime.calendar.date(byAdding: .month, value: 1, to: displayedMonth)!
     }
 
     func goToToday() {
-        withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .smoothSpring) {
-            selectedDate = .now
-            displayedMonth = .now
-        }
+        selectedDate = .now
+        displayedMonth = .now
     }
 
     func load(authService: AuthService) {
         guard !hasLoaded else { return }
         hasLoaded = true
 
-        setEvents(DataCache.shared.loadCalendarEvents())
+        setEvents(AssignmentStore.shared.loadCalendarEvents())
 
-        dataObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.dataDidUpdate,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // Delivered on the main queue, but the closure crosses into this
-            // @MainActor class, so hop explicitly to make calling `setEvents` sound
-            // under Swift 6 strict concurrency.
-            Task { @MainActor [weak self] in
-                self?.setEvents(DataCache.shared.loadCalendarEvents())
-            }
-        }
-    }
-
-    deinit {
-        if let observer = dataObserver {
-            NotificationCenter.default.removeObserver(observer)
+        storeObservation = StoreObservation(read: { _ = AppDataRevision.current }) { [weak self] in
+            self?.setEvents(AssignmentStore.shared.loadCalendarEvents())
         }
     }
 
@@ -77,49 +56,27 @@ final class CalendarViewModel {
     func triggerRefresh(authService: AuthService) {
         guard !isRefreshing else { return }
         isRefreshing = true
+        let signIn = authService.session.currentSignIn
         Task {
-            await refresh(authService: authService)
+            await refresh(authService: authService, for: signIn)
             isRefreshing = false
         }
     }
 
-    func refresh(authService: AuthService) async {
-        let manager = NTUSTSessionManager.shared
-        let startGeneration = authService.loginGeneration
-        guard await NetworkMonitor.shared.isReachable() else {
-            await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
-            return
-        }
-        await MainActor.run { manager.loadingState = .loading }
-
-        MoodleEnrolledCoursesService.dropSharedAnswer()
-        async let moodleEvents = fetchMoodleEvents(authService: authService)
-        async let schoolEvents = fetchSchoolEvents()
+    func refresh(authService: AuthService, for signIn: SignIn) async {
+        guard await SchoolRefresh.begin() else { return }
+        SchoolRefresh.dropMoodleCourses()
+        async let moodleEvents = SchoolRefresh.moodleEvents(authService: authService, for: signIn)
+        async let schoolEvents = SchoolRefresh.schoolEvents()
         let (moodle, school) = await (moodleEvents, schoolEvents)
-
-        await MainActor.run {
-            guard authService.loginGeneration == startGeneration else {
-                manager.loadingState = .loaded
-                return
-            }
-            let updated = moodle + (school ?? events.filter { $0.source == .school })
-            setEvents(updated)
-            DataCache.shared.saveCalendarEvents(updated)
-            manager.loadingState = .loaded
-        }
+        defer { SchoolRefresh.end() }
+        let updated = moodle + (school ?? events.filter { $0.source == .school })
+        guard AssignmentStore.shared.saveCalendarEvents(updated, for: signIn) else { return }
+        setEvents(updated)
     }
 
-    private func fetchMoodleEvents(authService: AuthService) async -> [SDCalendarEvent] {
-        await AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
-            .map(AppServiceBridge.moodleCalendarEvent)
-    }
-
-    private func fetchSchoolEvents() async -> [SDCalendarEvent]? {
-        await CalendarService.fetchAndParseICS()
-    }
-
-    private static func buildCalendarDays(for month: Date) -> [Date?] {
-        let cal = AppConstants.taipeiCalendar
+    static func buildCalendarDays(for month: Date) -> [Date?] {
+        let cal = TaipeiTime.calendar
         let start = month.startOfMonth
         let daysInMonth = month.daysInMonth
         let firstWeekday = month.firstWeekdayOfMonth
@@ -134,11 +91,11 @@ final class CalendarViewModel {
         return days
     }
 
-    private func setEvents(_ newEvents: [SDCalendarEvent]) {
+    private func setEvents(_ newEvents: [AssignmentStore.CalendarEvent]) {
         let newEvents = newEvents.filter { $0.source != .holiday && $0.source != .semester }
-            + AcademicCalendarStore.shared.calendar.calendarEvents()
+            + SchoolCalendar.events()
         events = newEvents
-        let cal = AppConstants.taipeiCalendar
+        let cal = TaipeiTime.calendar
         eventsByDay = Dictionary(grouping: newEvents) { event in
             cal.dateComponents([.year, .month, .day], from: event.date)
         }

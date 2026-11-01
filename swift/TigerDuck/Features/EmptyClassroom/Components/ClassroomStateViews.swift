@@ -36,7 +36,7 @@ struct NextTeachingDayButton: View {
             onSelect(day)
         } label: {
             HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                Text(EmptyClassroomViewModel.dateText(day))
+                Text(EmptyClassroomDayText.date(day))
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.bold))
                     .accessibilityHidden(true)

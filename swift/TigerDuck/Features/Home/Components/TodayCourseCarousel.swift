@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 private let carouselEdgeInset = TigerDuckTheme.Spacing.lg
 
@@ -17,17 +18,17 @@ func carouselScrollTarget(isOngoing: [Bool], firstOngoingIndex: Int) -> CGFloat 
 }
 
 struct TodayCourseCarousel: View {
-    let courses: [SDCourse]
+    let courses: [CourseStore.Course]
     let hasAssignment: (String) -> Bool
     var showProgress: Bool = true
     var ongoing: [OngoingCourseInfo] = []
-    var onSelect: ((SDCourse) -> Void)? = nil
+    var onSelect: ((CourseStore.Course) -> Void)? = nil
     var onSelectOngoing: ((OngoingCourseInfo) -> Void)? = nil
 
     private static let periodTimeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         return f
     }()
 
@@ -125,31 +126,31 @@ struct TodayCourseCarousel: View {
 
     private var today: Int { AppClock.now().scheduleWeekday }
 
-    private var sortedCourses: [SDCourse] {
+    private var sortedCourses: [CourseStore.Course] {
         let t = today
         return courses.sorted { a, b in
             startTime(a, weekday: t) < startTime(b, weekday: t)
         }
     }
 
-    private func startTime(_ course: SDCourse, weekday: Int) -> String {
+    private func startTime(_ course: CourseStore.Course, weekday: Int) -> String {
         guard let periods = course.schedule[weekday]?.sortedByPeriodOrder(),
               let first = periods.first,
               let times = AppConstants.PeriodTimes.mapping[first] else { return "" }
         return times.start
     }
 
-    private func opacityForCourse(_ course: SDCourse) -> Double {
+    private func opacityForCourse(_ course: CourseStore.Course) -> Double {
         guard let progress = courseProgress(course) else { return 1.0 }
         if progress >= 1.0 { return 0.35 }
         if progress > 0 { return 1.0 - (progress * 0.6) }
         return 1.0
     }
 
-    private func courseProgress(_ course: SDCourse) -> Double? {
+    private func courseProgress(_ course: CourseStore.Course) -> Double? {
         guard let periods = course.schedule[today]?.sortedByPeriodOrder() else { return nil }
         let now = AppClock.now()
-        let cal = AppConstants.taipeiCalendar
+        let cal = TaipeiTime.calendar
         let formatter = Self.periodTimeFormatter
 
         guard let firstPeriod = periods.first,
@@ -173,7 +174,7 @@ struct TodayCourseCarousel: View {
 private struct TodayCourseCard: View {
     static let width: CGFloat = 140
 
-    let course: SDCourse
+    let course: CourseStore.Course
     var showBadge: Bool = false
     var progress: Double? = nil
 

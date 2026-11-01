@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -23,7 +24,7 @@ struct ScheduleSyncServiceTests {
         comps.hour = hour
         comps.minute = minute
         comps.second = 0
-        return AppConstants.taipeiCalendar.date(from: comps)!.addingTimeInterval(secondsFromNow)
+        return TaipeiTime.calendar.date(from: comps)!.addingTimeInterval(secondsFromNow)
     }
 
     private static func makeCourse(
@@ -280,7 +281,7 @@ struct ScheduleSyncServiceTests {
         let course = Self.makeCourse(courseNo: "CS401", name: "Networks", weekdayToPeriods: [1: ["3"]], context: ctx)
         var comps = DateComponents()
         (comps.year, comps.month, comps.day, comps.hour) = (2027, 1, 31, 20)
-        let sundayEvening = AppConstants.taipeiCalendar.date(from: comps)!
+        let sundayEvening = TaipeiTime.calendar.date(from: comps)!
         let events = { (term: String) in
             ScheduleSyncService.buildEvents(
                 inputs: Self.defaultInputs(courses: [course], term: term),

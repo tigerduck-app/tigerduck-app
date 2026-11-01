@@ -49,10 +49,13 @@ struct SettingsDocumentClientTests {
             for: url
         )
 
-        let result = try #require(try await client.read(namespace: "notification"))
+        guard case .stored(let stored, let revision) = try await client.read(namespace: "notification") else {
+            Issue.record("the document was not read")
+            return
+        }
 
-        #expect(result.revision == 7)
-        let parsed = try Self.object(result.document)
+        #expect(revision == 7)
+        let parsed = try Self.object(stored)
         #expect(Set(parsed.keys) == ["assignments"])
         let assignments = try #require(parsed["assignments"] as? [String: Any])
         #expect(assignments["reminder_offsets_hours"] as? [Int] == [24, 2])
@@ -62,16 +65,28 @@ struct SettingsDocumentClientTests {
         #expect(requests[0].url?.path.hasSuffix("/settings/notification") == true)
     }
 
-    @Test("read returns nil for 404 — a fresh account, not an error")
+    @Test("read answers neverWritten for a 404 settings_document_not_found, a fresh account")
     func readReturnsNilOn404() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"detail":"not found"}"#.utf8)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"error":"settings_document_not_found","message":"not found"}"#.utf8)), for: url)
 
         let result = try await client.read(namespace: "notification")
 
-        #expect(result == nil)
+        #expect(result == .neverWritten)
+    }
+
+    @Test("read throws for a 404 that names something other than the settings document")
+    func readThrowsOnOtherNotFound() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"error":"device_not_found","message":"No such device."}"#.utf8)), for: url)
+
+        await #expect(throws: PushAPIError.self) {
+            _ = try await client.read(namespace: "notification")
+        }
     }
 
     @Test("read throws httpStatus for a non-2xx that is not 404")
@@ -91,7 +106,7 @@ struct SettingsDocumentClientTests {
         let withAuthBase = SettingsAPIStub.uniqueBaseURL()
         let withAuthURL = Self.documentURL(withAuthBase)
         let authed = SettingsAPIStub.makeClient(baseURL: withAuthBase, authHeaderProvider: { "Bearer token-abc" })
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: withAuthURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"error":"settings_document_not_found","message":"No such settings document."}"#.utf8)), for: withAuthURL)
         _ = try await authed.read(namespace: "notification")
         #expect(
             SettingsAPIStub.requests(for: withAuthURL)[0]
@@ -101,7 +116,7 @@ struct SettingsDocumentClientTests {
         let anonBase = SettingsAPIStub.uniqueBaseURL()
         let anonURL = Self.documentURL(anonBase)
         let anonymous = SettingsAPIStub.makeClient(baseURL: anonBase, authHeaderProvider: { nil })
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: anonURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"error":"settings_document_not_found","message":"No such settings document."}"#.utf8)), for: anonURL)
         _ = try await anonymous.read(namespace: "notification")
         #expect(
             SettingsAPIStub.requests(for: anonURL)[0]
@@ -120,7 +135,7 @@ struct SettingsDocumentClientTests {
         )
 
         let document = Data(#"{"courses":{"enabled":true}}"#.utf8)
-        let result = try await client.write(namespace: "notification", document: document, baseRevision: nil)
+        let result = try await client.write(namespace: "notification", document: document, mode: .create)
 
         #expect(result == .written(revision: 1))
 
@@ -149,7 +164,7 @@ struct SettingsDocumentClientTests {
         let result = try await client.write(
             namespace: "notification",
             document: Data("{}".utf8),
-            baseRevision: 11
+            mode: .replace(revision: 11)
         )
 
         #expect(result == .written(revision: 12))
@@ -174,7 +189,7 @@ struct SettingsDocumentClientTests {
         let result = try await client.write(
             namespace: "notification",
             document: Data("{}".utf8),
-            baseRevision: 3
+            mode: .replace(revision: 3)
         )
 
         guard case .conflict(let document, let revision) = result else {
@@ -199,7 +214,7 @@ struct SettingsDocumentClientTests {
         )
 
         await #expect(throws: PushAPIError.self) {
-            _ = try await client.write(namespace: "notification", document: Data("{}".utf8), baseRevision: 1)
+            _ = try await client.write(namespace: "notification", document: Data("{}".utf8), mode: .replace(revision: 1))
         }
     }
 
@@ -241,7 +256,7 @@ struct SettingsDocumentClientTests {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"namespace":"notification"}"#.utf8)), for: url)
 
         await #expect(throws: PushAPIError.self) {
-            _ = try await client.write(namespace: "notification", document: Data("{}".utf8), baseRevision: nil)
+            _ = try await client.write(namespace: "notification", document: Data("{}".utf8), mode: .create)
         }
     }
 
@@ -254,14 +269,14 @@ struct SettingsDocumentClientTests {
         let quietBase = SettingsAPIStub.uniqueBaseURL()
         let quietURL = Self.documentURL(quietBase)
         let quiet = SettingsAPIStub.makeClient(baseURL: quietBase)
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: quietURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"error":"settings_document_not_found","message":"No such settings document."}"#.utf8)), for: quietURL)
         _ = try await quiet.read(namespace: "notification")
         #expect(APIVersionGate.shared.isRetired == false)
 
         let goneBase = SettingsAPIStub.uniqueBaseURL()
         let goneURL = Self.documentURL(goneBase)
         let gone = SettingsAPIStub.makeClient(baseURL: goneBase)
-        SettingsAPIStub.enqueue(.init(statusCode: 410, body: Data(#"{"detail":"gone"}"#.utf8)), for: goneURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 410, body: Data(#"{"error":"api_retired","message":"gone","current_api":"/v5"}"#.utf8)), for: goneURL)
         await #expect(throws: PushAPIError.self) {
             _ = try await gone.read(namespace: "notification")
         }

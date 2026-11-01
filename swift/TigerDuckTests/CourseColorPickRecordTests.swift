@@ -27,11 +27,15 @@ struct CourseColorPickRecordTests {
         )
     }
 
-    private static func makeCache(at root: URL) -> DataCache {
-        DataCache(
-            cacheDir: root.appendingPathComponent("cache", isDirectory: true),
-            persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
+    private static func folders(at root: URL) -> CacheFolders {
+        CacheFolders(
+            cache: root.appendingPathComponent("cache", isDirectory: true),
+            persistent: root.appendingPathComponent("persistent", isDirectory: true)
         )
+    }
+
+    private static func makeColors(at root: URL) -> CourseColorFiles {
+        CourseColorFiles(folders: folders(at: root))
     }
 
     @Test("a pick is noted for its course, not for the course it moves off that colour")
@@ -72,17 +76,18 @@ struct CourseColorPickRecordTests {
     }
 
     @Test("the picks outlive a relaunch and go with the account's colours at a sign-out")
+    @MainActor
     func thePicksFollowTheAccount() {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("CourseColorPickRecordTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        Self.makeCache(at: root).notePickedCourseColor("CS1010001")
-        Self.makeCache(at: root).notePickedCourseColor("CS1010002")
-        #expect(Self.makeCache(at: root).loadPickedCourseColors() == ["CS1010001", "CS1010002"])
+        Self.makeColors(at: root).notePickedCourseColor("CS1010001")
+        Self.makeColors(at: root).notePickedCourseColor("CS1010002")
+        #expect(Self.makeColors(at: root).loadPickedCourseColors() == ["CS1010001", "CS1010002"])
 
-        Self.makeCache(at: root).clearUserScopedData()
+        TestCache(folders: Self.folders(at: root)).forgetAccount()
 
-        #expect(Self.makeCache(at: root).loadPickedCourseColors().isEmpty)
+        #expect(Self.makeColors(at: root).loadPickedCourseColors().isEmpty)
     }
 
     @Test("a colour map emptied here leaves no picks")
@@ -90,14 +95,14 @@ struct CourseColorPickRecordTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("CourseColorPickRecordTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let cache = Self.makeCache(at: root)
-        cache.saveCourseColorMap(["CS1010001": 0x123456])
-        cache.notePickedCourseColor("CS1010001")
+        let colors = Self.makeColors(at: root)
+        colors.saveCourseColorMap(["CS1010001": 0x123456])
+        colors.notePickedCourseColor("CS1010001")
 
-        cache.saveCourseColorMap(["CS1010001": 0x654321])
-        #expect(cache.loadPickedCourseColors() == ["CS1010001"])
-        cache.saveCourseColorMap([:])
+        colors.saveCourseColorMap(["CS1010001": 0x654321])
+        #expect(colors.loadPickedCourseColors() == ["CS1010001"])
+        colors.saveCourseColorMap([:])
 
-        #expect(cache.loadPickedCourseColors().isEmpty)
+        #expect(colors.loadPickedCourseColors().isEmpty)
     }
 }

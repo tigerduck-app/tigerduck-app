@@ -66,7 +66,7 @@ struct TLSPinEnforcementTests {
         #expect(engine.isPromptable(mismatch))
     }
 
-    @Test("A mismatch whose anchor is not a listed root fails with no prompt")
+    @Test("A mismatch whose anchor is not a listed root, as one a profile installs on the device, fails with no prompt")
     func anUnlistedRootIsNotReported() async throws {
         let engine = engine(document: Self.movedPins(promptRoots: [F.unknownSPKI]))
         let reports = TLSPinReports()
@@ -222,13 +222,14 @@ struct TLSPinEnforcementTests {
 
     /// Sign-out clears the account's files and settings; acceptances are kept apart from both.
     @Test("Signing out keeps acceptances")
+    @MainActor
     func signOutKeepsAcceptances() throws {
         let defaults = F.defaults()
         F.engine(defaults: defaults, document: F.promptRootsDocument).accept(TLSPinMismatchQueueTests.mismatch())
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        DataCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
-            .clearUserScopedData()
+        TestCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
+            .forgetAccount()
         #expect(F.engine(defaults: defaults).acceptances.count == 1)
     }
 

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MoreView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var viewModel = MoreViewModel()
     @State private var showNotImplementedAlert = false
     @State private var navigationPath = NavigationPath()
@@ -65,12 +65,12 @@ struct MoreView: View {
                 MoreFeatureDestination { moreDestination(for: feature) }
             }
         }
-        .onChange(of: appState.pendingMoreDeepLink, initial: true) { _, new in
+        .onChange(of: app.router.pendingMoreDeepLink, initial: true) { _, new in
             guard let new else { return }
             var path = NavigationPath()
             path.append(new)
             navigationPath = path
-            appState.pendingMoreDeepLink = nil
+            app.router.pendingMoreDeepLink = nil
         }
     }
 
@@ -94,8 +94,7 @@ struct MoreView: View {
 
 /// Chrome for a feature page pushed from More: no back chevron, so it reads like the same
 /// feature reached from the tab bar. Hiding the back button makes stock UIKit disable the edge
-/// swipe; it survives only because `Extensions/UINavigationController+Swipeback.swift` re-points
-/// the `interactivePopGestureRecognizer` delegate app-wide. Switch Control and VoiceOver users
+/// swipe. Switch Control and VoiceOver users
 /// do not go back with that swipe, so `.escape` (VoiceOver's two-finger scrub) is their way back.
 /// A wrapper view: `@Environment(\.dismiss)` read in `MoreView` resolves to MoreView, not the page.
 /// `dismiss()` rather than trimming `navigationPath`: features push their own destinations with
@@ -111,7 +110,7 @@ private struct MoreFeatureDestination<Content: View>: View {
 
     var body: some View {
         content
-            .navigationBarBackButtonHidden(true)
+            .hidesBackButtonKeepingEdgeSwipe()
             .accessibilityAction(.escape) { dismiss() }
     }
 }

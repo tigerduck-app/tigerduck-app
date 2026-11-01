@@ -1,5 +1,6 @@
 import WidgetKit
 import Foundation
+import TigerDuckCore
 
 nonisolated struct NextClassEntry: TimelineEntry {
     let date: Date

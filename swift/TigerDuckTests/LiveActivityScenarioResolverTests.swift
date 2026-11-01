@@ -1,10 +1,11 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 enum LiveActivityScenarioCases {
     static func tuesday(_ hour: Int, _ minute: Int = 0, _ second: Int = 0) -> Date {
-        AppConstants.taipeiCalendar.date(from: DateComponents(
+        TaipeiTime.calendar.date(from: DateComponents(
             year: 2026, month: 9, day: 22, hour: hour, minute: minute, second: second
         ))!
     }

@@ -1,10 +1,11 @@
 import SwiftUI
+import TigerDuckCore
 
 struct TimeSliderSection: View {
-    let courses: [SDCourse]
+    let courses: [CourseStore.Course]
     var onSelectCourse: ((CourseTimeSlot) -> Void)? = nil
-    @Environment(AppState.self) private var appState
-    @State private var viewModel = TimeSliderViewModel(calendarStore: .shared)
+    @Environment(AppEnvironment.self) private var app
+    @State private var viewModel = TimeSliderViewModel(isQuietDay: { !SchoolCalendar.isClassDay($0) })
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -23,13 +24,13 @@ struct TimeSliderSection: View {
 
     @ViewBuilder
     private var contentArea: some View {
-        switch appState.ntustProtectedAccessState(isEmpty: !viewModel.hasCourses) {
+        switch NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: !viewModel.hasCourses) {
         case .loginRequired:
             LoginRequiredView(
                 layout: .section,
                 title: String(localized: "common_not_signed_in"),
                 message: String(localized: "home_time_slider_sign_in_required_message"),
-                onPrimary: { appState.presentNTUSTLogin() }
+                onPrimary: { app.router.presentNTUSTLogin() }
             )
         case .content:
             sliderContent
@@ -63,7 +64,7 @@ struct TimeSliderSection: View {
     }
 
     private var sliderContent: some View {
-        let policy = appState.visualStylePolicy
+        let policy = app.preferences.visualStylePolicy
         return TimelineView(.everyMinute) { context in
             VStack(spacing: 12) {
                 CourseTimeCard(
@@ -77,7 +78,7 @@ struct TimeSliderSection: View {
                         .accessibilityHidden(true)
                     FluidGlassTrackView(
                         viewModel: viewModel,
-                        invertDirection: appState.invertSliderDirection,
+                        invertDirection: app.preferences.invertSliderDirection,
                         policy: policy
                     )
                 }
@@ -102,7 +103,7 @@ struct TimeSliderSection: View {
     }
 
     private var timeLabelString: String {
-        let isToday = AppConstants.taipeiCalendar.isDateInToday(viewModel.selectedTime)
+        let isToday = TaipeiTime.calendar.isDateInToday(viewModel.selectedTime)
         if isToday {
             return Self.timeFormatter.string(from: viewModel.selectedTime)
         } else {
@@ -126,7 +127,7 @@ struct TimeSliderSection: View {
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         return f
     }()
 
@@ -134,7 +135,7 @@ struct TimeSliderSection: View {
         let f = DateFormatter()
         f.locale = .autoupdatingCurrent
         f.dateFormat = "M/d (EEEEE) HH:mm"
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         return f
     }()
 }

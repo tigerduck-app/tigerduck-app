@@ -13,9 +13,11 @@ struct UnchangedUploadTests {
         )
     }
 
-    private static func courses(_ entries: PushAPI.CourseUploadEntry..., forceKeys: [String] = [])
+    private static func courses(_ entries: PushAPI.CourseUploadEntry..., adds: [String] = [])
         -> PushAPI.CourseUploadRequest {
-        PushAPI.CourseUploadRequest(courses: entries, forceKeys: forceKeys)
+        PushAPI.CourseUploadRequest(
+            courses: entries, handAddedCourses: adds.isEmpty ? nil : adds.map { PushAPI.CourseAdd(courseKey: $0, hlc: 1) }
+        )
     }
 
     private struct Backend {
@@ -46,10 +48,17 @@ struct UnchangedUploadTests {
     @Test("A list the server took goes again only when it changes or six hours pass")
     func cadence() {
         let now = Date()
-        #expect(PushCoordinator.uploadIsDue(accepted: nil, fingerprint: 1, now: now))
-        #expect(PushCoordinator.uploadIsDue(accepted: (2, now - 60), fingerprint: 1, now: now))
-        #expect(!PushCoordinator.uploadIsDue(accepted: (1, now - 60), fingerprint: 1, now: now))
-        #expect(PushCoordinator.uploadIsDue(accepted: (1, now - 6 * 3600), fingerprint: 1, now: now))
+        let resend = SendLedger.Resend.after(PushCoordinator.unchangedUploadInterval)
+        #expect(SendLedger.isDue(accepted: nil, fingerprint: "a", resend: resend, now: now))
+        #expect(SendLedger.isDue(accepted: ("b", now - 60), fingerprint: "a", resend: resend, now: now))
+        #expect(!SendLedger.isDue(accepted: ("a", now - 60), fingerprint: "a", resend: resend, now: now))
+        #expect(SendLedger.isDue(accepted: ("a", now - 6 * 3600), fingerprint: "a", resend: resend, now: now))
+    }
+
+    @Test("A fingerprint is a SHA-256 of the body's JSON with sorted keys, the same in every launch")
+    func fingerprintIsStable() {
+        #expect(SendLedger.fingerprint(of: ["b": 1, "a": 2])
+            == "d3626ac30a87e6f7a6428233b3c68299976865fa5508e4267c5415c76af7a772")
     }
 
     @Test("The same courses in another order are the same list; a changed room is not")
@@ -61,11 +70,18 @@ struct UnchangedUploadTests {
         #expect(one != moved)
     }
 
+    @Test("The courses an upload adds by hand leave its list the same, as once it lands the backend holds that list")
+    func handAddsLeaveTheListAlone() {
+        let plain = PushCoordinator.fingerprint(of: Self.courses(Self.entry("CS1")))
+        let adding = PushCoordinator.fingerprint(of: Self.courses(Self.entry("CS1"), adds: ["client:1151:CS1"]))
+        #expect(plain == adding)
+    }
+
     @Test("A roster names its terms in roster_terms, and is another list than the same courses sent without")
     func rosterTermsGoUpAndCount() throws {
         let plain = Self.courses(Self.entry("CS1"))
         var roster = plain
-        roster.rosterTerms = ["1151"]
+        roster.completeRosterTerms = ["1151"]
 
         let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(roster)) as? [String: Any]
         let sentPlain = try JSONSerialization.jsonObject(with: JSONEncoder().encode(plain)) as? [String: Any]
@@ -80,37 +96,37 @@ struct UnchangedUploadTests {
         let backend = Backend()
         backend.answer(times: 2)
         let coordinator = backend.makeCoordinator()
-        let roster = AppState.courseUploadRequest(
-            [SDCourse(courseNo: "CS1", courseName: "CS1")], semester: "1151", forceKeys: [], rosterTerms: ["1151"],
-            colors: [:]
+        let roster = SchoolDataUploader.courseUploadRequest(
+            [SDCourse(courseNo: "CS1", courseName: "CS1")], semester: "1151", rosterTerms: ["1151"]
         )
 
-        #expect(try await coordinator.uploadCoursesIfChanged(roster, semester: "1151", isCurrent: { true }))
-        #expect(try await !coordinator.uploadCoursesIfChanged(roster, semester: "1151", isCurrent: { true }))
-        #expect(try await coordinator.uploadCoursesIfChanged(roster, semester: "1151", resend: true, isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(roster, semester: "1151", for: testSignIn))
+        #expect(try await !coordinator.uploadCoursesIfChanged(roster, semester: "1151", for: testSignIn))
+        #expect(try await coordinator.uploadCoursesIfChanged(roster, semester: "1151", resend: true, for: testSignIn))
         let sent = SettingsAPIStub.requests(for: backend.uploadURL).map { request in
             (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any]
         }
         #expect(sent.map { $0?["roster_terms"] as? [String] } == [["1151"], ["1151"]])
     }
 
-    @Test("An unchanged list is skipped; force keys, a resend, a reset and another term still go")
+    @Test("An unchanged list is skipped; an add, a resend, a reset and another term still go")
     func unchangedListIsSkipped() async throws {
         let backend = Backend()
         backend.answer(times: 5)
         let coordinator = backend.makeCoordinator()
         let list = Self.courses(Self.entry("CS1"))
 
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
-        #expect(try await !coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn))
+        #expect(try await !coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn))
         #expect(backend.uploads == 1)
 
         #expect(try await coordinator.uploadCoursesIfChanged(
-            Self.courses(Self.entry("CS1"), forceKeys: ["client:1151:CS1"]), semester: "1151", isCurrent: { true }))
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", resend: true, isCurrent: { true }))
+            Self.courses(Self.entry("CS1"), adds: ["client:1151:CS1"]), semester: "1151", addedAt: Date(),
+            for: testSignIn))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", resend: true, for: testSignIn))
         coordinator.forgetUploads(semester: "1151")
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1142", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1142", for: testSignIn))
         #expect(backend.uploads == 5)
     }
 
@@ -128,22 +144,22 @@ struct UnchangedUploadTests {
         backend.answer()
         let coordinator = backend.makeCoordinator()
         let clock = Clock()
-        coordinator.clock = { clock.now }
+        coordinator.ledger.clock = { clock.now }
         let list = Self.courses(Self.entry("CS1"))
 
         await #expect(throws: PushAPIError.self) {
-            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn)
         }
         clock.now += 59
-        #expect(try await !coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(try await !coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn))
         #expect(coordinator.holdsUnsentCourseUploads)
         clock.now += 1
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn))
 
         await #expect(throws: PushAPIError.self) {
-            try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS2")), semester: "1151", isCurrent: { true })
+            try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS2")), semester: "1151", for: testSignIn)
         }
-        #expect(try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS3")), semester: "1151", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS3")), semester: "1151", for: testSignIn))
         #expect(backend.uploads == 4)
     }
 
@@ -154,16 +170,16 @@ struct UnchangedUploadTests {
         backend.answer(status: 422)
         let coordinator = backend.makeCoordinator()
         let clock = Clock()
-        coordinator.clock = { clock.now }
+        coordinator.ledger.clock = { clock.now }
         let accepted = Self.courses(Self.entry("CS1"))
         let refused = Self.courses(Self.entry("CS2"))
 
-        #expect(try await coordinator.uploadCoursesIfChanged(accepted, semester: "1151", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(accepted, semester: "1151", for: testSignIn))
         await #expect(throws: PushAPIError.self) {
-            try await coordinator.uploadCoursesIfChanged(refused, semester: "1151", isCurrent: { true })
+            try await coordinator.uploadCoursesIfChanged(refused, semester: "1151", for: testSignIn)
         }
-        #expect(try await !coordinator.uploadCoursesIfChanged(accepted, semester: "1151", isCurrent: { true }))
-        #expect(try await !coordinator.uploadCoursesIfChanged(refused, semester: "1151", isCurrent: { true }))
+        #expect(try await !coordinator.uploadCoursesIfChanged(accepted, semester: "1151", for: testSignIn))
+        #expect(try await !coordinator.uploadCoursesIfChanged(refused, semester: "1151", for: testSignIn))
 
         #expect(coordinator.holdsUnsentCourseUploads)
         #expect(backend.uploads == 2)
@@ -176,54 +192,55 @@ struct UnchangedUploadTests {
         backend.answer()
         let coordinator = backend.makeCoordinator()
         let clock = Clock()
-        coordinator.clock = { clock.now }
+        coordinator.ledger.clock = { clock.now }
         let list = Self.courses(Self.entry("CS1"))
 
         await #expect(throws: PushAPIError.self) {
-            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn)
         }
         clock.now += 1
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn))
         #expect(backend.uploads == 2)
     }
 
-    @Test("A refused list still goes at once when resent, forced, after a reset, or when it never reached the server")
+    @Test("A refused list still goes at once when resent, with an add, after a reset, or when it never reached the server")
     func refusalHoldsOnlyAnAnsweredList() async throws {
         let backend = Backend()
         backend.answer(status: 422)
         backend.answer(status: 422)
         backend.answer(times: 2)
         let coordinator = backend.makeCoordinator()
-        coordinator.clock = { Date(timeIntervalSince1970: 1_800_000_000) }
+        coordinator.ledger.clock = { Date(timeIntervalSince1970: 1_800_000_000) }
         let list = Self.courses(Self.entry("CS1"))
 
         await #expect(throws: PushAPIError.self) {
-            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn)
         }
         await #expect(throws: PushAPIError.self) {
-            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", resend: true, isCurrent: { true })
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", resend: true, for: testSignIn)
         }
         #expect(try await coordinator.uploadCoursesIfChanged(
-            Self.courses(Self.entry("CS1"), forceKeys: ["client:1151:CS1"]), semester: "1151", isCurrent: { true }))
+            Self.courses(Self.entry("CS1"), adds: ["client:1151:CS1"]), semester: "1151", addedAt: Date(),
+            for: testSignIn))
         coordinator.forgetUploads(semester: "1151")
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn))
         #expect(backend.uploads == 4)
 
-        let key = UploadLedger.courses("1142")
-        _ = try? await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+        let key = SendLedger.Channel.courses("1142")
+        _ = try? await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {
             throw URLError(.notConnectedToInternet)
         }
-        #expect(try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {})
+        #expect(try await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {} == .sent)
     }
 
     @Test("Cancelling an upload's caller stops its send, or skips it while it waits its turn, and records no failure")
     func cancelledCallerStopsTheUpload() async throws {
         let coordinator = Backend().makeCoordinator()
-        let key = UploadLedger.courses("1151")
+        let key = SendLedger.Channel.courses("1151")
         let sent = OSAllocatedUnfairLock(initialState: [Int]())
         let release = ManualSleeper()
         let first = Task {
-            try await coordinator.uploadIfChanged(key, fingerprint: 1, always: true, isCurrent: { true }) {
+            try await coordinator.ledger.send(key, fingerprint: "1", resend: .always) {
                 sent.withLock { $0.append(1) }
                 await release.sleep(for: .zero)
                 try await Task.sleep(for: .seconds(30))
@@ -231,7 +248,7 @@ struct UnchangedUploadTests {
         }
         try await release.waitUntilArmed()
         let second = Task {
-            try await coordinator.uploadIfChanged(key, fingerprint: 2, always: true, isCurrent: { true }) {
+            try await coordinator.ledger.send(key, fingerprint: "2", resend: .always) {
                 sent.withLock { $0.append(2) }
             }
         }
@@ -262,20 +279,20 @@ struct UnchangedUploadTests {
         backend.answer(status: 503)
         let coordinator = backend.makeCoordinator()
         let clock = Clock()
-        coordinator.clock = { clock.now }
+        coordinator.ledger.clock = { clock.now }
         let list = Self.courses(Self.entry("CS1"))
         #expect(!coordinator.holdsUnsentCourseUploads)
 
         await #expect(throws: PushAPIError.self) {
-            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true })
+            try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn)
         }
         #expect(coordinator.holdsUnsentCourseUploads)
-        clock.now += UploadLedger.refusalPause
-        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", isCurrent: { true }))
+        clock.now += SendLedger.refusedBodyHoldInterval
+        #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn))
         #expect(!coordinator.holdsUnsentCourseUploads)
 
         await #expect(throws: PushAPIError.self) {
-            try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS2")), semester: "1151", isCurrent: { true })
+            try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS2")), semester: "1151", for: testSignIn)
         }
         coordinator.forgetUploads()
         #expect(!coordinator.holdsUnsentCourseUploads)
@@ -289,42 +306,39 @@ struct UnchangedUploadTests {
         let coordinator = backend.makeCoordinator()
         let taken = Self.courses(Self.entry("CS1"))
 
-        #expect(try await coordinator.uploadCoursesIfChanged(taken, semester: "1151", isCurrent: { true }))
+        #expect(try await coordinator.uploadCoursesIfChanged(taken, semester: "1151", for: testSignIn))
         await #expect(throws: PushAPIError.self) {
-            try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS2")), semester: "1151", isCurrent: { true })
+            try await coordinator.uploadCoursesIfChanged(Self.courses(Self.entry("CS2")), semester: "1151", for: testSignIn)
         }
         #expect(coordinator.holdsUnsentCourseUploads)
-        #expect(try await !coordinator.uploadCoursesIfChanged(taken, semester: "1151", isCurrent: { true }))
+        #expect(try await !coordinator.uploadCoursesIfChanged(taken, semester: "1151", for: testSignIn))
 
         #expect(!coordinator.holdsUnsentCourseUploads)
         #expect(backend.uploads == 2)
     }
 
-    @MainActor
-    private final class Account {
-        var isSignedIn = true
-    }
-
     @Test("A course upload cancelled, or failing after its account signed out, leaves nothing unsent")
     func cancelledOrSignedOutFailureIsNotUnsent() async {
         let coordinator = Backend().makeCoordinator()
-        let key = UploadLedger.courses("1151")
-        _ = try? await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+        let key = SendLedger.Channel.courses("1151")
+        _ = try? await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {
             throw CancellationError()
         }
-        _ = try? await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+        _ = try? await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {
             throw URLError(.cancelled)
         }
         #expect(!coordinator.holdsUnsentCourseUploads)
 
-        let account = Account()
-        _ = try? await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { account.isSignedIn }) {
-            account.isSignedIn = false
+        let account = AccountSession()
+        _ = try? await coordinator.ledger.send(
+            key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval), for: account.signIns.currentSignIn
+        ) {
+            account.endSignIn()
             throw URLError(.timedOut)
         }
         #expect(!coordinator.holdsUnsentCourseUploads)
 
-        _ = try? await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+        _ = try? await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {
             throw URLError(.timedOut)
         }
         #expect(coordinator.holdsUnsentCourseUploads)
@@ -334,21 +348,21 @@ struct UnchangedUploadTests {
     func unchangedResendInFlightIsNotUnsent() async throws {
         let coordinator = Backend().makeCoordinator()
         let sends = Sends()
-        let key = UploadLedger.courses("1151")
-        #expect(try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+        let key = SendLedger.Channel.courses("1151")
+        #expect(try await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {
             await sends.send(1)
-        })
+        } == .sent)
 
         sends.holds = true
         let resend = Task {
-            try await coordinator.uploadIfChanged(key, fingerprint: 1, always: true, isCurrent: { true }) {
+            try await coordinator.ledger.send(key, fingerprint: "1", resend: .always) {
                 await sends.send(1)
             }
         }
         try await waitUntil { sends.isParked }
         #expect(!coordinator.holdsUnsentCourseUploads)
         sends.release()
-        #expect(try await resend.value)
+        #expect(try await resend.value == .sent)
     }
 
     @Test("A course list counts as unsent while it is out, and an assignment list does not")
@@ -357,7 +371,7 @@ struct UnchangedUploadTests {
         let sends = Sends()
         sends.holds = true
         let assignments = Task {
-            try await coordinator.uploadIfChanged(UploadLedger.assignments, fingerprint: 1, always: false, isCurrent: { true }) {
+            try await coordinator.ledger.send(SendLedger.Channel.assignments, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {
                 await sends.send(1)
             }
         }
@@ -368,7 +382,7 @@ struct UnchangedUploadTests {
 
         sends.holds = true
         let courses = Task {
-            try await coordinator.uploadIfChanged(UploadLedger.courses("1151"), fingerprint: 2, always: false, isCurrent: { true }) {
+            try await coordinator.ledger.send(SendLedger.Channel.courses("1151"), fingerprint: "2", resend: .after(PushCoordinator.unchangedUploadInterval)) {
                 await sends.send(2)
             }
         }
@@ -380,39 +394,33 @@ struct UnchangedUploadTests {
     }
 
     @Test("An upload in flight across a reset records nothing, so the reset's refetch still goes")
-    func uploadAcrossAForgetRecordsNothing() {
-        var ledger = UploadLedger()
-        let key = UploadLedger.courses("1151")
-        let now = Date()
+    func uploadAcrossAForgetRecordsNothing() async throws {
+        let ledger = SendLedger()
+        let channel = SendLedger.Channel.courses("1151")
 
-        let started = ledger.generation(of: key)
-        ledger.forget(key)
-        ledger.record(key, fingerprint: 1, at: now, startedIn: started)
-        #expect(ledger.isDue(key, fingerprint: 1, now: now))
-
-        ledger.record(key, fingerprint: 1, at: now, startedIn: ledger.generation(of: key))
-        #expect(!ledger.isDue(key, fingerprint: 1, now: now))
+        #expect(try await ledger.send(channel, fingerprint: "1", resend: .never) {
+            ledger.forget(channel)
+        } == .sent)
+        #expect(!ledger.accepts(channel, fingerprint: "1"))
+        #expect(try await ledger.send(channel, fingerprint: "1", resend: .never) {} == .sent)
+        #expect(ledger.accepts(channel, fingerprint: "1"))
     }
 
     @Test("A reset of one term leaves other lists in flight free to record; a sign-out stops them all")
-    func forgetsReachOnlyTheirLists() {
-        var ledger = UploadLedger()
-        let reset = UploadLedger.courses("1151")
-        let other = UploadLedger.courses("1142")
-        let now = Date()
+    func forgetsReachOnlyTheirLists() async throws {
+        let ledger = SendLedger()
+        let reset = SendLedger.Channel.courses("1151")
+        let other = SendLedger.Channel.courses("1142")
 
-        let otherStarted = ledger.generation(of: other)
-        let assignmentsStarted = ledger.generation(of: UploadLedger.assignments)
-        ledger.forget(reset)
-        ledger.record(other, fingerprint: 1, at: now, startedIn: otherStarted)
-        ledger.record(UploadLedger.assignments, fingerprint: 2, at: now, startedIn: assignmentsStarted)
-        #expect(!ledger.isDue(other, fingerprint: 1, now: now))
-        #expect(!ledger.isDue(UploadLedger.assignments, fingerprint: 2, now: now))
+        _ = try await ledger.send(other, fingerprint: "1", resend: .never) { ledger.forget(reset) }
+        _ = try await ledger.send(SendLedger.Channel.assignments, fingerprint: "2", resend: .never) {
+            ledger.forget(reset)
+        }
+        #expect(ledger.accepts(other, fingerprint: "1"))
+        #expect(ledger.accepts(SendLedger.Channel.assignments, fingerprint: "2"))
 
-        let started = ledger.generation(of: other)
-        ledger.forget(nil)
-        ledger.record(other, fingerprint: 3, at: now, startedIn: started)
-        #expect(ledger.isDue(other, fingerprint: 3, now: now))
+        _ = try await ledger.send(other, fingerprint: "3", resend: .never) { ledger.forget(nil) }
+        #expect(!ledger.accepts(other, fingerprint: "3"))
     }
 
     @MainActor
@@ -441,20 +449,20 @@ struct UnchangedUploadTests {
     func undoneEditStillGoes() async throws {
         let coordinator = Backend().makeCoordinator()
         let sends = Sends()
-        let key = UploadLedger.courses("1151")
-        #expect(try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) { await sends.send(1) })
+        let key = SendLedger.Channel.courses("1151")
+        #expect(try await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) { await sends.send(1) } == .sent)
 
         sends.holds = true
-        let edit = Task { try await coordinator.uploadIfChanged(key, fingerprint: 2, always: false, isCurrent: { true }) { await sends.send(2) } }
+        let edit = Task { try await coordinator.ledger.send(key, fingerprint: "2", resend: .after(PushCoordinator.unchangedUploadInterval)) { await sends.send(2) } }
         try await waitUntil { sends.isParked }
-        let undo = Task { try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) { await sends.send(1) } }
+        let undo = Task { try await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) { await sends.send(1) } }
         for _ in 0..<50 { await Task.yield() }
         #expect(sends.isParked)
         #expect(coordinator.holdsUnsentCourseUploads)
         sends.release()
 
-        #expect(try await edit.value)
-        #expect(try await undo.value)
+        #expect(try await edit.value == .sent)
+        #expect(try await undo.value == .sent)
         #expect(sends.sent == [1, 2, 1])
         #expect(!coordinator.holdsUnsentCourseUploads)
     }
@@ -463,26 +471,27 @@ struct UnchangedUploadTests {
     func queuedUploadSkipsAfterSignOut() async throws {
         let coordinator = Backend().makeCoordinator()
         let sends = Sends()
-        let key = UploadLedger.assignments
-        var signedIn = true
+        let key = SendLedger.Channel.assignments
+        let account = AccountSession()
 
         sends.holds = true
         let first = Task {
-            try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false, isCurrent: { true }) {
+            try await coordinator.ledger.send(key, fingerprint: "1", resend: .after(PushCoordinator.unchangedUploadInterval)) {
                 await sends.send(1)
             }
         }
         try await waitUntil { sends.isParked }
+        let signIn = account.signIns.currentSignIn
         let queued = Task {
-            try await coordinator.uploadIfChanged(key, fingerprint: 2, always: true, isCurrent: { signedIn }) {
+            try await coordinator.ledger.send(key, fingerprint: "2", resend: .always, for: signIn) {
                 await sends.send(2)
             }
         }
-        signedIn = false
+        account.endSignIn()
         sends.release()
 
-        #expect(try await first.value)
-        #expect(try await !queued.value)
+        #expect(try await first.value == .sent)
+        #expect(try await queued.value == .skipped)
         #expect(sends.sent == [1])
     }
 }

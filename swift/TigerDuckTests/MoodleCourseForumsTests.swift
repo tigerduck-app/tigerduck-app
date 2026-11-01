@@ -123,7 +123,7 @@ struct MoodleCourseForumsTests {
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleCourseForumsTests-\(UUID().uuidString)", isDirectory: true)
-        lazy var cache = DataCache(
+        lazy var cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -135,7 +135,7 @@ struct MoodleCourseForumsTests {
         _ folder: Folder,
         site: Site,
         account: String = "B11399001",
-        signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true),
+        signedIn: TestSignIn = TestSignIn(),
         api: MoodleCourseAPI? = nil,
         now: @escaping () -> Date = { Date() }
     ) -> MoodleCourseStore {
@@ -143,7 +143,7 @@ struct MoodleCourseForumsTests {
             courseId: courseId,
             termCourseIds: [20103, courseId],
             context: MoodleCacheContext(
-                account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }, now: now
+                account: account, cache: folder.cache.moodle, signIn: signedIn.signIn, now: now
             ),
             api: api ?? site.api
         )
@@ -383,10 +383,10 @@ struct MoodleCourseForumsTests {
         #expect(again.discussions(of: Self.qanda).list?.discussions.map(\.id) == [801])
         #expect(again.discussions(of: Self.project).list?.discussions.map(\.id) == [811])
         #expect(again.thread(of: Self.discussion(801)).value?.posts.map(\.id) == [1801, 1802])
-        #expect(folder.cache.loadMoodleData(
+        #expect(folder.cache.moodle.loadMoodleData(
             MoodleDiscussionList.self, name: "courses/\(Self.courseId)/forums/502", account: "B11399001"
         ) != nil)
-        #expect(folder.cache.loadMoodleData(
+        #expect(folder.cache.moodle.loadMoodleData(
             MoodleDiscussionThread.self, name: "courses/\(Self.courseId)/discussions/801", account: "B11399001"
         ) != nil)
 
@@ -406,17 +406,17 @@ struct MoodleCourseForumsTests {
         await store.discussions(of: Self.qanda).refresh()
         await store.refreshThread(of: Self.discussion(801))
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
         let afterSignOut = Self.store(folder, site: Site())
         #expect(afterSignOut.discussions(of: Self.qanda).list == nil)
         #expect(afterSignOut.thread(of: Self.discussion(801)).value == nil)
 
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let late = Self.store(folder, site: site, signedIn: signedIn)
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await late.refreshThread(of: Self.discussion(801))
         #expect(late.thread(of: Self.discussion(801)).value == nil)
-        #expect(folder.cache.loadMoodleData(
+        #expect(folder.cache.moodle.loadMoodleData(
             MoodleDiscussionThread.self, name: "courses/\(Self.courseId)/discussions/801", account: "B11399001"
         ) == nil)
     }
@@ -491,7 +491,7 @@ struct MoodleCourseForumsTests {
         let fetched = Date(timeIntervalSince1970: 1_800_000_000)
         site.set(posts: [Self.post(1801), Self.post(1802, parent: 1801, unread: true)])
         await Self.store(folder, site: site, now: { fetched }).refreshThread(of: discussion)
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let clock = OSAllocatedUnfairLock(initialState: fetched)
         let gate = ManualSleeper()
         var api = site.api
@@ -505,7 +505,7 @@ struct MoodleCourseForumsTests {
         let opening = Task { await store.openThread(of: discussion, in: Self.qanda) }
         try await gate.waitUntilArmed()
         switch invalidation {
-        case .signOut: signedIn.withLock { $0 = false }
+        case .signOut: signedIn.signOut()
         case .cancel: opening.cancel()
         }
         await gate.fire()
@@ -549,7 +549,7 @@ struct MoodleCourseForumsTests {
     func invalidatedViewFunctions(invalidation: Invalidation) async throws {
         let folder = Folder()
         let site = Site()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let gate = ManualSleeper()
         var api = site.api
         api.functions = {
@@ -560,7 +560,7 @@ struct MoodleCourseForumsTests {
         let event = store.open(Self.discussion(801), in: nil)
         try await gate.waitUntilArmed()
         switch invalidation {
-        case .signOut: signedIn.withLock { $0 = false }
+        case .signOut: signedIn.signOut()
         case .cancel: event.cancel()
         }
         await gate.fire()
@@ -573,19 +573,19 @@ struct MoodleCourseForumsTests {
     func viewEventAsksTheStore() async throws {
         let folder = Folder()
         let site = Site()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let gate = ManualSleeper()
         let answers = OSAllocatedUnfairLock<[Bool]>(initialState: [])
         var api = site.api
-        api.markViewed = { _, isCurrent in
+        api.markViewed = { _, signIn in
             await gate.sleep(for: .seconds(1))
-            let answer = await isCurrent()
+            let answer = signIn.isCurrent
             answers.withLock { $0.append(answer) }
         }
         let store = Self.store(folder, site: site, signedIn: signedIn, api: api)
         let event = store.open(Self.discussion(801), in: nil)
         try await gate.waitUntilArmed()
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await gate.fire()
         await event.value
 
@@ -603,7 +603,7 @@ struct MoodleCourseForumsTests {
             return Self.allFunctions
         }
         let store = Self.store(
-            folder, site: site, signedIn: OSAllocatedUnfairLock(initialState: false), api: api
+            folder, site: site, signedIn: .ended(), api: api
         )
 
         await store.open(Self.discussion(801), in: nil).value
@@ -778,5 +778,73 @@ struct MoodleCourseForumsTests {
         #expect(forumCard.hasPrefix("\(String(localized: "bulletin_unread_dot_label")), \(String(localized: "course_forum_pinned")), "))
         #expect(MoodleDiscussionCard.accessibilityText(discussion: quiet, date: date, showsFooter: true).hasSuffix(", Tiger Duck"))
         #expect(!MoodleDiscussionCard.accessibilityText(discussion: replied, date: date, showsFooter: false).contains("Tiger Duck"))
+    }
+}
+
+extension MoodleCourseForumsTests {
+    @Test("a Moodle feed refresh does not restore an unread badge cleared during the fetch")
+    func readDuringARefreshStaysRead() async throws {
+        let folder = Folder()
+        let site = Site()
+        let unread = Self.discussion(801, unread: 2)
+        site.set(pages: [[unread]])
+        let held = HeldForumsCall(holding: 2)
+        var api = site.api
+        let forums = api.forums
+        api.forums = { courseIds in
+            await held.pass()
+            return try await forums(courseIds)
+        }
+        let store = Self.store(folder, site: site, api: api)
+        await store.refreshForums()
+        await store.discussions(of: Self.qanda).refresh()
+        #expect(Self.row(store)?.hasUnread == true)
+
+        let refresh = Task { await store.refreshForums() }
+        try await waitUntil { held.isHolding }
+        await store.open(unread, in: Self.qanda).value
+        held.release()
+        await refresh.value
+
+        #expect(Self.row(store)?.hasUnread == false)
+    }
+}
+
+private final class HeldForumsCall: @unchecked Sendable {
+    private let lock = NSLock()
+    private let held: Int
+    private var calls = 0
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var isReleased = false
+
+    init(holding call: Int) {
+        held = call
+    }
+
+    var isHolding: Bool { lock.withLock { waiting != nil } }
+
+    func pass() async {
+        let holds = lock.withLock {
+            calls += 1
+            return calls == held
+        }
+        guard holds else { return }
+        await withCheckedContinuation { continuation in
+            let goes = lock.withLock {
+                if isReleased { return true }
+                waiting = continuation
+                return false
+            }
+            if goes { continuation.resume() }
+        }
+    }
+
+    func release() {
+        let continuation = lock.withLock {
+            isReleased = true
+            defer { waiting = nil }
+            return waiting
+        }
+        continuation?.resume()
     }
 }

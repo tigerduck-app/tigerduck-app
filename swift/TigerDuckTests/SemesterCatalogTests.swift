@@ -27,7 +27,7 @@ struct SemesterCatalogTests {
     @Test("Decodes the catalogue newest-first, summer terms included")
     func decodesCatalogue() throws {
         let list = try SemesterCatalog.decodeSemesters(Self.payload)
-        #expect(list.map(\.Semester) == ["1152", "1151", "114H", "1142"])
+        #expect(list.map(\.semester) == ["1152", "1151", "114H", "1142"])
     }
 
     @Test("Open term comes from LoginEnable, not from list position")
@@ -55,15 +55,6 @@ struct SemesterCatalogTests {
             == ["1151", "114H", "1142", "1141", "113H", "1132", "1131"])
         #expect(SemesterCatalog.terms(from: catalogue, admissionYear: 99)
             == ["1151", "114H", "1142", "1141", "113H", "1132", "1131", "112H", "1001", "99 H", "99 2", "99 1"])
-    }
-
-    @Test("Academic year is everything before the term character, whitespace tolerant")
-    func parsesAcademicYear() {
-        #expect(SemesterCatalog.academicYear(of: "1151") == 115)
-        #expect(SemesterCatalog.academicYear(of: "114H") == 114)
-        #expect(SemesterCatalog.academicYear(of: "99 1") == 99)
-        #expect(SemesterCatalog.academicYear(of: "") == nil)
-        #expect(SemesterCatalog.academicYear(of: "H") == nil)
     }
 
     @Test("Unknown student id keeps the fixed depth")

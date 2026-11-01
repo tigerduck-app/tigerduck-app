@@ -1,5 +1,6 @@
 import SwiftUI
 import WidgetKit
+import TigerDuckCore
 
 struct NextClassView: View {
     let derived: WidgetDerivedState

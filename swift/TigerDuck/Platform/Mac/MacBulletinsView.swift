@@ -5,7 +5,7 @@ import MarkdownUI
 import os
 
 struct MacBulletinsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var viewModel = BulletinsViewModel()
     @Default(.bulletinsSyncedAt) private var bulletinsSyncedAt
     @State private var readStore = BulletinReadStateStore()
@@ -106,48 +106,10 @@ struct MacBulletinsView: View {
 
     private var bulletinList: some View {
         List(viewModel.filteredItems, selection: $selectedId) { bulletin in
-            bulletinRow(bulletin)
+            MacBulletinRow(bulletin: bulletin, isRead: readStore.isRead(bulletin.id), orgLabel: taxonomy.orgLabel(for:))
                 .tag(bulletin.id)
         }
         .listStyle(.inset)
-    }
-
-    private func bulletinRow(_ b: BulletinAPI.BulletinSummary) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(.tint.opacity(readStore.isRead(b.id) ? 0 : 1))
-                .frame(width: 8, height: 8)
-                .padding(.top, 6)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(b.displayTitle)
-                    .font(.system(.body, design: .default).weight(readStore.isRead(b.id) ? .regular : .semibold))
-                    .lineLimit(2)
-                HStack(spacing: 6) {
-                    if let org = b.canonicalOrg, !org.isEmpty {
-                        Text(taxonomy.orgLabel(for: org))
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(.quaternary)
-                            )
-                    }
-                    if let posted = b.postedAt {
-                        Text(posted, format: .dateTime.month().day())
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                if let summary = b.summary, !summary.isEmpty {
-                    Text(summary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            }
-        }
-        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -203,85 +165,16 @@ struct MacBulletinsView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let detail {
-            bulletinDetail(detail)
+            MacBulletinDetail(detail: detail, listSummary: summary(of: detail.id), orgLabel: taxonomy.orgLabel(for:))
         } else if let err = detailError {
-            detailErrorPane(message: err)
-        }
-    }
-
-    private func detailErrorPane(message: String) -> some View {
-        let fallback = viewModel.filteredItems.first(where: { $0.id == selectedId })?.summary
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-                Text(String(localized: "bulletin_body_load_failed"))
-                    .font(.headline)
-            }
-            Text(message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Button(String(localized: "action_retry")) {
+            MacBulletinDetailError(message: err, listSummary: selectedId.flatMap(summary(of:))) {
                 if let id = selectedId { Task { await loadDetail(id: id) } }
             }
-            if let fallback, !fallback.isEmpty {
-                Divider()
-                Markdown(BulletinBodyRenderer.normalize(fallback))
-                    .markdownTheme(.basic)
-            }
         }
-        .padding(28)
-        .frame(maxWidth: 720, alignment: .leading)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func bulletinDetail(_ d: BulletinAPI.BulletinDetail) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(d.displayTitle)
-                        .font(.title.bold())
-                    HStack(spacing: 8) {
-                        if let org = d.canonicalOrg, !org.isEmpty {
-                            Label(taxonomy.orgLabel(for: org), systemImage: "building.2")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        if let posted = d.postedAt {
-                            Label(posted.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                let fallback = viewModel.filteredItems
-                    .first(where: { $0.id == d.id })?.summary
-                let body = BulletinBodyRenderer.bodyMarkdown(
-                    for: d,
-                    fallbackSummary: fallback
-                )
-                if body.isEmpty {
-                    Text(String(localized: "desktop_bulletins_no_body"))
-                        .foregroundStyle(.secondary)
-                        .italic()
-                } else {
-                    Markdown(BulletinBodyRenderer.normalize(body))
-                        .markdownTheme(.basic)
-                        .textSelection(.enabled)
-                }
-
-                if let url = URL(string: d.sourceUrl) {
-                    Link(destination: url) {
-                        Label(String(localized: "bulletin_source_link_label"), systemImage: "arrow.up.right.square")
-                    }
-                    .padding(.top, 8)
-                }
-            }
-            .padding(28)
-            .frame(maxWidth: 720, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
+    private func summary(of id: Int) -> String? {
+        viewModel.filteredItems.first(where: { $0.id == id })?.summary
     }
 
     private func loadDetail(id: Int) async {

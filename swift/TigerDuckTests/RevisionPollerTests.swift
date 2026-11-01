@@ -98,12 +98,10 @@ struct RevisionPollerTests {
     private static func makePoller(
         _ poll: ScriptedPoll,
         sleeper: ManualSleeper,
-        clock: TestClock = TestClock(),
-        relogin: @escaping @MainActor (_ refused: String?) async -> Bool = { _ in false }
+        clock: TestClock = TestClock()
     ) -> RevisionPoller {
         let poller = RevisionPoller(sleep: { await sleeper.sleep(for: $0) }, now: { clock.now }, jitter: { 1 })
         poller.poll = { await poll.run() }
-        poller.relogin = relogin
         return poller
     }
 
@@ -187,45 +185,25 @@ struct RevisionPollerTests {
         #expect(await sleeper.armedCount == 0)
     }
 
-    @Test("A 401 gets one relogin for the token it refused, and a second 401 stops polling until the next return")
-    func secondUnauthorizedSuspendsUntilReturn() async throws {
+    @Test("A 401 the backend client could not recover from stops polling until the next return")
+    func unauthorizedSuspendsUntilReturn() async throws {
         let poll = ScriptedPoll()
-        poll.outcomes = [.unauthorized(refused: "A1"), .unauthorized(refused: "A2")]
+        poll.outcomes = [.unauthorized(refusedAccessToken: "A1")]
         let sleeper = ManualSleeper()
         let clock = TestClock()
-        var relogins: [String?] = []
-        let poller = Self.makePoller(poll, sleeper: sleeper, clock: clock) { refused in
-            relogins.append(refused)
-            return true
-        }
+        let poller = Self.makePoller(poll, sleeper: sleeper, clock: clock)
 
         poller.start(pollNow: true)
-        try await sleeper.waitUntilArmed()
-        #expect(relogins == ["A1"])
-        await sleeper.fire()
         try await waitUntil { poller.isSuspended && !poller.isPolling }
-        #expect(poll.calls == 2)
-        #expect(relogins == ["A1"])
-        #expect(await sleeper.armedCount == 1)
+        #expect(poll.calls == 1)
+        #expect(await sleeper.armedCount == 0)
 
         poller.noteActivity()
-        #expect(await sleeper.armedCount == 1)
+        #expect(await sleeper.armedCount == 0)
 
         clock.now += RevisionPollSchedule.activeInterval
         poller.start(pollNow: true)
-        try await waitUntil { poll.calls == 3 }
-    }
-
-    @Test("A failed relogin stops polling until the next return")
-    func failedReloginSuspendsUntilReturn() async throws {
-        let poll = ScriptedPoll()
-        poll.outcomes = [.unauthorized(refused: nil)]
-        let sleeper = ManualSleeper()
-        let poller = Self.makePoller(poll, sleeper: sleeper) { _ in false }
-
-        poller.start(pollNow: true)
-        try await waitUntil { poller.isSuspended && !poller.isPolling }
-        #expect(await sleeper.armedCount == 0)
+        try await waitUntil { poll.calls == 2 }
     }
 
     @Test("Failed polls wait longer each time")

@@ -94,7 +94,7 @@ extension SSOServiceLoginTests {
         let (outcome, refusals) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
             let outcome = await Self.result { try await renewal.refreshTokenIfNeeded() }
             if case .failure = outcome { _ = try? await renewal.refreshTokenIfNeeded() }
-            return (outcome, SSOLoginService.storedPasswordRefusals.count)
+            return (outcome, SchoolPasswordPosts.storedPasswordRefusals.count)
         }
         return (outcome, refusals, await log.calls)
     }
@@ -254,7 +254,7 @@ extension SSOServiceLoginTests {
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: login)
         await #expect(throws: (any Error).self) {
-            try await LibraryService.requestToken(username: "B00000000", password: "unused", session: SSOServerStub.session())
+            try await LibraryRequests.requestToken(username: "B00000000", password: "unused", session: SSOServerStub.session())
         }
         #expect(requests(to: login).map(\.method) == ["POST"])
         #expect(requests(to: elsewhere).isEmpty)
@@ -262,8 +262,8 @@ extension SSOServiceLoginTests {
 
     @Test("the backend sign-in stops at a 307 or a 308 rather than send the Moodle token on", arguments: [307, 308])
     func backendSignInStopsAtARedirect(status: Int) async throws {
-        let base = try #require(URL(string: "https://backend.stub.invalid/v3"))
-        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/v3/auth/login"))
+        let base = try #require(URL(string: "https://backend.stub.invalid/v4"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/v4/auth/login"))
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: base.appendingPathComponent("auth/login"))
         let manager = AuthTokenManager(
@@ -272,7 +272,7 @@ extension SSOServiceLoginTests {
         )
         await #expect(throws: AuthTokenManager.AuthError.loginFailed) {
             _ = try await manager.login(
-                studentId: "B00000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+                studentId: "B00000000", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios", for: testSignIn
             )
         }
         #expect(requests(to: elsewhere).isEmpty)
@@ -285,7 +285,7 @@ extension SSOServiceLoginTests {
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: generate)
         await #expect(throws: (any Error).self) {
-            try await LibraryService.requestQRCode(token: "library-token", session: SSOServerStub.session())
+            try await LibraryRequests.requestQRCode(token: "library-token", session: SSOServerStub.session())
         }
         #expect(requests(to: generate).map(\.method) == ["POST"])
         #expect(requests(to: elsewhere).isEmpty)
@@ -331,9 +331,9 @@ extension SSOServiceLoginTests {
 
     @Test("a backend refresh stops at a 307 or a 308 rather than send the refresh token on", arguments: [307, 308])
     func backendRefreshStopsAtARedirect(status: Int) async throws {
-        let base = try #require(URL(string: "https://backend.stub.invalid/v3"))
+        let base = try #require(URL(string: "https://backend.stub.invalid/v4"))
         let refresh = base.appendingPathComponent("auth/refresh")
-        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/v3/auth/refresh"))
+        let elsewhere = try #require(URL(string: "https://elsewhere.stub.invalid/v4/auth/refresh"))
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: refresh)
         let stored = [AuthTokenManager.refreshTokenKey: "R0", AuthTokenManager.expiresAtKey: "0"]

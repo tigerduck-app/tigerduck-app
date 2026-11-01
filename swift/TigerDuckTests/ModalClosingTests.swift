@@ -254,10 +254,78 @@ struct ModalClosingTests {
         try await waitUntil { keyRoot.presentedViewController == nil }
     }
 
+    @Test("A wait for the window's sheets ends once the last one has closed, and at once with none up")
+    func presentationsClosedWaitsForTheSheets() async throws {
+        let sheets = Sheets()
+        let host = HostWindow()
+        let window = try Self.show(sheets, host: host)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        try await waitUntil { host.window === window }
+        await host.presentationsClosed()
+
+        sheets.course = true
+        try await waitUntil { root.presentedViewController.map { !$0.isBeingPresented } == true }
+        let told = Told()
+        let waiting = Task {
+            await host.presentationsClosed()
+            told.closedAll = root.presentedViewController == nil
+        }
+        for _ in 0..<50 { await Task.yield() }
+        #expect(told.closedAll == nil)
+
+        sheets.course = false
+        await waiting.value
+        #expect(told.closedAll == true)
+    }
+
+    @Test("Before the view has seen its window, as on a cold launch, the sheet up in the foreground window is closed")
+    func unseenWindowFallsBackToTheForegroundOne() async throws {
+        let sheets = Sheets()
+        let window = try Self.show(sheets)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        sheets.course = true
+        try await waitUntil { root.presentedViewController.map { !$0.isBeingPresented } == true }
+
+        let host = HostWindow()
+        window.makeKey()
+        #expect(host.isPresenting)
+        let told = Told()
+        host.closePresentations { told.closedAll = $0 }
+
+        try await waitUntil(timeout: .seconds(10)) { told.closedAll != nil }
+        #expect(told.closedAll == true)
+        #expect(root.presentedViewController == nil)
+        #expect(!sheets.course)
+    }
+
+    @Test("Only the window in front takes a held link, and a view that has not seen its window counts as in front")
+    func onlyTheForegroundWindowTakesALink() async throws {
+        let front = HostWindow()
+        let window = try Self.show(Sheets(), host: front)
+        defer { window.isHidden = true }
+        let back = HostWindow()
+        let other = UIWindow(windowScene: try #require(window.windowScene))
+        other.frame = window.frame
+        other.rootViewController = UIHostingController(rootView: Color.clear.readsHostWindow(into: back))
+        other.isHidden = false
+        defer { other.isHidden = true }
+        try await waitUntil { front.window === window && back.window === other }
+
+        window.makeKey()
+        #expect(front.mayBeForeground)
+        #expect(!back.mayBeForeground)
+        #expect(HostWindow().mayBeForeground)
+        other.makeKey()
+        #expect(!front.mayBeForeground)
+        #expect(back.mayBeForeground)
+    }
+
     enum Link: String, CaseIterable {
         case bulletin, schoolMail
 
-        var deepLink: AppState.DeepLink {
+        var deepLink: DeepLink {
             switch self {
             case .bulletin: .bulletin(4821)
             case .schoolMail: .schoolMail(folder: "INBOX", uid: 7)

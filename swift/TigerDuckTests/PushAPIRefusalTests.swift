@@ -13,7 +13,7 @@ struct PushAPIRefusalTests {
             baseURLProvider: { baseURL }, session: URLSession(configuration: config), authHeaderProvider: { "Bearer B1" }
         )
         SettingsAPIStub.enqueue(
-            .init(statusCode: 401, body: Data(#"{"detail":"session_revoked"}"#.utf8)),
+            .init(statusCode: 401, body: Data(#"{"error":"session_revoked","message":"revoked"}"#.utf8)),
             for: baseURL.appendingPathComponent("sync/revision")
         )
 
@@ -25,5 +25,23 @@ struct PushAPIRefusalTests {
         }
         #expect(sent?.value == "B1")
         #expect(!String(reflecting: error as Any).contains("B1"))
+    }
+
+    @Test("a request built for no sign-in is refused a header that names one, and sent with one that names none")
+    func anUnboundRequestIsRefusedASignInsHeader() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("sync/revision")
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let session = URLSession(configuration: config)
+        let bound = BackendClient(baseURL: { baseURL }, session: session, auth: .signedIn { "Bearer B1" })
+        let unbound = BackendClient(baseURL: { baseURL }, session: session, auth: .unbound { "Bearer C1" })
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"revision":1}"#.utf8)), for: url)
+
+        await #expect(throws: PushAPIError.self) { _ = try await bound.send(BackendRequest("GET", "sync", "revision")) }
+        #expect(SettingsAPIStub.requests(for: url).isEmpty)
+
+        _ = try await unbound.send(BackendRequest("GET", "sync", "revision"))
+        #expect(SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "Authorization") } == ["Bearer C1"])
     }
 }

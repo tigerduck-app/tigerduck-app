@@ -2,6 +2,7 @@
 import SwiftUI
 import Testing
 import UIKit
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -47,8 +48,9 @@ struct MailMuteSettingsScreenTests {
         try await withAccessibilityAutomation {
             let h = MailAccountManagerTests.harness()
             await h.manager.login(studentID: "B10000000", password: "pw")
-            h.manager.muteSettings.quietHours.isEnabled = true
-            h.manager.muteSettings.rules = [MailMuteRule(field: .from, op: .contains, value: "newsletter")]
+            let mute = MailNotificationSettingsView.muteBinding(for: h.manager)
+            mute.wrappedValue.quietHours.isEnabled = true
+            mute.wrappedValue.rules = [MailMuteRule(field: .from, op: .contains, value: "newsletter")]
             let window = try show(h.manager)
             defer { window.isHidden = true }
             let root = try #require(window.rootViewController?.view)
@@ -75,7 +77,7 @@ struct MailMuteSettingsScreenTests {
         try await withAccessibilityAutomation {
             let h = MailAccountManagerTests.harness()
             await h.manager.login(studentID: "B10000000", password: "pw")
-            h.manager.muteSettings.quietHours.isEnabled = true
+            MailNotificationSettingsView.muteBinding(for: h.manager).wrappedValue.quietHours.isEnabled = true
             let window = try show(h.manager, timeZone: try #require(TimeZone(identifier: "America/New_York")))
             defer { window.isHidden = true }
             let root = try #require(window.rootViewController?.view)
@@ -85,8 +87,8 @@ struct MailMuteSettingsScreenTests {
             let formatter = DateFormatter()
             formatter.dateStyle = .none
             formatter.timeStyle = .short
-            formatter.timeZone = AppConstants.taipeiTimeZone
-            let eleven = try #require(AppConstants.taipeiCalendar.date(from: DateComponents(year: 2026, month: 1, day: 1, hour: 23)))
+            formatter.timeZone = TaipeiTime.timeZone
+            let eleven = try #require(TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 1, day: 1, hour: 23)))
             let texts = exposedAccessibilityTexts(in: root)
             #expect(texts.contains { $0.contains(formatter.string(from: eleven)) }, "\(texts)")
         }
@@ -97,7 +99,7 @@ struct MailMuteSettingsScreenTests {
         try await withAccessibilityAutomation {
             let h = MailAccountManagerTests.harness()
             await h.manager.login(studentID: "B10000000", password: "pw")
-            h.manager.notificationsEnabled = false
+            MailNotificationSettingsView.notificationsBinding(for: h.manager).wrappedValue = false
             let window = try show(h.manager)
             defer { window.isHidden = true }
             let root = try #require(window.rootViewController?.view)

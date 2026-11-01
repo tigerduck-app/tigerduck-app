@@ -46,7 +46,7 @@ struct MoodleAssignmentsView: View {
         }
     }
 
-    static func shownStatus(of assignment: SDAssignment, now: Date) -> AssignmentStatus? {
+    static func shownStatus(of assignment: AssignmentStore.Assignment, now: Date) -> AssignmentStatus? {
         switch assignment.moodleStatus(now: now) {
         case .submitted: .submitted
         case .submittedLate: .submittedLate

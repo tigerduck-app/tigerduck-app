@@ -134,7 +134,7 @@ struct MoodleWebserviceClientTests {
     @Test("the stored token is used as it is")
     func storedTokenIsUsed() async throws {
         let log = TokenLog()
-        let used = try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { $0 }
+        let used = try await MoodleWebserviceClient.withRenewingToken(Self.tokens(stored: "old", renewed: "new", log: log)) { $0 }
         #expect(used == "old")
         #expect(await log.events.isEmpty)
     }
@@ -143,7 +143,7 @@ struct MoodleWebserviceClientTests {
     func invalidTokenIsRenewedOnce() async throws {
         let log = TokenLog()
         var tried: [String] = []
-        let used = try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { token in
+        let used = try await MoodleWebserviceClient.withRenewingToken(Self.tokens(stored: "old", renewed: "new", log: log)) { token in
             tried.append(token)
             if token == "old" { throw MoodleWebserviceError.invalidToken }
             return token
@@ -154,7 +154,7 @@ struct MoodleWebserviceClientTests {
 
         var attempts = 0
         await #expect(throws: MoodleWebserviceError.invalidToken) {
-            try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { _ -> String in
+            try await MoodleWebserviceClient.withRenewingToken(Self.tokens(stored: "old", renewed: "new", log: log)) { _ -> String in
                 attempts += 1
                 throw MoodleWebserviceError.invalidToken
             }
@@ -167,7 +167,7 @@ struct MoodleWebserviceClientTests {
         let log = TokenLog()
         var tried: [String] = []
         await #expect(throws: MoodleWebserviceError.accessDenied) {
-            try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { token -> String in
+            try await MoodleWebserviceClient.withRenewingToken(Self.tokens(stored: "old", renewed: "new", log: log)) { token -> String in
                 tried.append(token)
                 throw MoodleWebserviceError.accessDenied
             }
@@ -180,7 +180,7 @@ struct MoodleWebserviceClientTests {
     func expiredTokenIsRenewed() async throws {
         let log = TokenLog()
         var answers: [MoodleWebserviceError] = [.accessDenied, .invalidToken]
-        let used = try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { token in
+        let used = try await MoodleWebserviceClient.withRenewingToken(Self.tokens(stored: "old", renewed: "new", log: log)) { token in
             if !answers.isEmpty { throw answers.removeFirst() }
             return token
         }
@@ -193,7 +193,7 @@ struct MoodleWebserviceClientTests {
         let log = TokenLog()
         var answers: [MoodleWebserviceError] = [.invalidToken, .accessDenied]
         await #expect(throws: MoodleWebserviceError.accessDenied) {
-            try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { _ -> String in
+            try await MoodleWebserviceClient.withRenewingToken(Self.tokens(stored: "old", renewed: "new", log: log)) { _ -> String in
                 throw answers.removeFirst()
             }
         }
@@ -206,7 +206,7 @@ struct MoodleWebserviceClientTests {
         let log = TokenLog()
         var attempts = 0
         await #expect(throws: MoodleWebserviceError.httpStatus(code: 503)) {
-            try await MoodleWebserviceClient.withToken(Self.tokens(stored: "old", renewed: "new", log: log)) { _ -> String in
+            try await MoodleWebserviceClient.withRenewingToken(Self.tokens(stored: "old", renewed: "new", log: log)) { _ -> String in
                 attempts += 1
                 throw MoodleWebserviceError.httpStatus(code: 503)
             }
@@ -214,7 +214,7 @@ struct MoodleWebserviceClientTests {
         #expect(attempts == 1)
         #expect(await log.events.isEmpty)
 
-        let used = try await MoodleWebserviceClient.withToken(Self.tokens(stored: nil, renewed: "new", log: log)) { $0 }
+        let used = try await MoodleWebserviceClient.withRenewingToken(Self.tokens(stored: nil, renewed: "new", log: log)) { $0 }
         #expect(used == "new")
         #expect(await log.events == ["renew none"])
     }

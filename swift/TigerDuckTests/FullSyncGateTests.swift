@@ -199,9 +199,9 @@ struct FullSyncGateTests {
 
     @Test("A sync cancelled at a sync trigger's time limit counts as no result, and a network failure as a failure")
     func cancellationIsNoResult() {
-        #expect(AppState.isCancellation(CancellationError()))
-        #expect(AppState.isCancellation(URLError(.cancelled)))
-        #expect(!AppState.isCancellation(URLError(.timedOut)))
-        #expect(!AppState.isCancellation(PushAPIError.httpStatus(503, body: "")))
+        #expect(FullSyncRunner.isCancellation(CancellationError()))
+        #expect(FullSyncRunner.isCancellation(URLError(.cancelled)))
+        #expect(!FullSyncRunner.isCancellation(URLError(.timedOut)))
+        #expect(!FullSyncRunner.isCancellation(PushAPIError.httpStatus(503, body: "")))
     }
 }

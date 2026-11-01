@@ -21,7 +21,7 @@ struct NotificationSettingsSeedMigrationTests {
         var work: Task<Void, Never>?
         NotificationSettingsSeedMigration.runIfNeeded { onSettled in
             work = Task { @MainActor in
-                let outcome = try? await NotificationSettingsSync.reconcile(
+                let outcome = try? await NotificationSettingsReconcile.reconcile(
                     store: store,
                     client: client,
                     cloudSyncEnabled: true,

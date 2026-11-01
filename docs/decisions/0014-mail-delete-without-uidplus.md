@@ -13,7 +13,7 @@ name a different message.
 
 ## Decision
 
-- `MailMover` (`swift/TigerDuck/Services/Mail/Transport/MailMover.swift`) expunges only when every
+- `MailMover` (`swift/TigerDuck/Mail/Transport/MailMover.swift`) expunges only when every
   `\Deleted` message in the folder is one TigerDuck flagged (`shouldExpunge`), going by a fresh
   server-side search right before EXPUNGE, never by cached flags. Otherwise its flags wait, hidden
   from the list, and the caller persists `MailMoveResult.stillPending` for a later safe EXPUNGE.

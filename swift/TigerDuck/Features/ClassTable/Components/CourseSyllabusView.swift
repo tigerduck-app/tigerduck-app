@@ -2,14 +2,14 @@ import SwiftUI
 
 /// Takes the copy the detail sheet fetched to decide on its button, so it opens without a wait.
 struct CourseSyllabusView: View {
-    let syllabus: CourseSyllabus
+    let syllabus: CourseLookup.Syllabus
     let policy: VisualStylePolicy
     private let gradingParts: [CourseSyllabusBreakdown.Part]?
     private let teachingParts: [CourseSyllabusBreakdown.Part]?
 
     @Environment(\.openMoodleLink) private var openMoodleLink
 
-    init(syllabus: CourseSyllabus, policy: VisualStylePolicy) {
+    init(syllabus: CourseLookup.Syllabus, policy: VisualStylePolicy) {
         self.syllabus = syllabus
         self.policy = policy
         gradingParts = syllabus.grading.flatMap(CourseSyllabusBreakdown.grading)

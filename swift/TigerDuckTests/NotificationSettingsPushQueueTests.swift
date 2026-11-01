@@ -132,7 +132,7 @@ struct NotificationSettingsPushQueueTests {
     }
 
     private final class WriteLog {
-        var wrote: Bool?
+        var wrote: NotificationSettingsSync.PushResult?
     }
 
     @Test("a logout between queueing a read of the document and running it drops the read")
@@ -148,7 +148,7 @@ struct NotificationSettingsPushQueueTests {
 
             let task = NotificationSettingsPushQueue.enqueueReconcile { isCurrent in
                 ran.append("accountA")
-                _ = try? await NotificationSettingsSync.reconcile(
+                _ = try? await NotificationSettingsReconcile.reconcile(
                     store: store,
                     client: client,
                     cloudSyncEnabled: true,
@@ -157,7 +157,7 @@ struct NotificationSettingsPushQueueTests {
                     isPushPending: { false },
                     isCurrent: isCurrent
                 )
-                return false
+                return .finished
             }
             NotificationSettingsPushQueue.cancelAll()
             await task.value
@@ -191,7 +191,7 @@ struct NotificationSettingsPushQueueTests {
             let log = OutcomeLog()
 
             let task = NotificationSettingsPushQueue.enqueueReconcile { isCurrent in
-                log.outcome = try? await NotificationSettingsSync.reconcile(
+                log.outcome = try? await NotificationSettingsReconcile.reconcile(
                     store: store,
                     client: client,
                     cloudSyncEnabled: true,
@@ -200,7 +200,7 @@ struct NotificationSettingsPushQueueTests {
                     isPushPending: { false },
                     isCurrent: isCurrent
                 )
-                return false
+                return .finished
             }
             let behind = NotificationSettingsPushQueue.enqueue {}
             await task.value
@@ -237,18 +237,18 @@ struct NotificationSettingsPushQueueTests {
             let task = NotificationSettingsPushQueue.enqueuePush { isCurrent in
                 log.wrote = try? await NotificationSettingsSync.push(
                     local: .init(from: store),
-                    base: .init(from: store),
+                    base: .since(.init(from: store)),
                     client: client,
                     cloudSyncEnabled: true,
                     isCurrent: isCurrent
                 )
-                return false
+                return .unsettled
             }
             let behind = NotificationSettingsPushQueue.enqueue {}
             await task.value
             await behind.value
 
-            #expect(log.wrote == false)
+            #expect(log.wrote == .skipped)
             #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
         }
     }
@@ -276,19 +276,19 @@ struct NotificationSettingsPushQueueTests {
             let task = NotificationSettingsPushQueue.enqueuePush { isCurrent in
                 log.wrote = try? await NotificationSettingsSync.push(
                     local: .init(from: store),
-                    base: .init(from: store),
+                    base: .since(.init(from: store)),
                     client: client,
                     cloudSyncEnabled: true,
                     isCurrent: isCurrent
                 )
-                return false
+                return .unsettled
             }
             let behind = NotificationSettingsPushQueue.enqueue {}
             await task.value
             await behind.value
 
             #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
-            #expect(log.wrote == false)
+            #expect(log.wrote == .skipped)
         }
     }
 
@@ -300,11 +300,11 @@ struct NotificationSettingsPushQueueTests {
 
         NotificationSettingsPushQueue.enqueueReconcile { _ in
             ran.append("reconcile")
-            return ran.values.count == 1
+            return ran.values.count == 1 ? .deferredToPendingPush : .finished
         }
-        NotificationSettingsPushQueue.enqueuePush { _ in ran.append("push failed"); return false }
-        NotificationSettingsPushQueue.enqueuePush { _ in ran.append("push landed"); return true }
-        await NotificationSettingsPushQueue.enqueuePush { _ in ran.append("push landed"); return true }.value
+        NotificationSettingsPushQueue.enqueuePush { _ in ran.append("push failed"); return .unsettled }
+        NotificationSettingsPushQueue.enqueuePush { _ in ran.append("push landed"); return .landedWithNothingLeft }
+        await NotificationSettingsPushQueue.enqueuePush { _ in ran.append("push landed"); return .landedWithNothingLeft }.value
         await NotificationSettingsPushQueue.tail?.value
 
         #expect(ran.values == ["reconcile", "push failed", "push landed", "push landed", "reconcile"])
@@ -316,9 +316,9 @@ struct NotificationSettingsPushQueueTests {
         defer { Self.resetQueue() }
         let ran = RanLog()
 
-        await NotificationSettingsPushQueue.enqueueReconcile { _ in ran.append("reconcile"); return true }.value
+        await NotificationSettingsPushQueue.enqueueReconcile { _ in ran.append("reconcile"); return .deferredToPendingPush }.value
         NotificationSettingsPushQueue.cancelAll()
-        await NotificationSettingsPushQueue.enqueuePush { _ in ran.append("push"); return true }.value
+        await NotificationSettingsPushQueue.enqueuePush { _ in ran.append("push"); return .landedWithNothingLeft }.value
         await NotificationSettingsPushQueue.tail?.value
 
         #expect(ran.values == ["reconcile", "push"])
@@ -341,7 +341,7 @@ struct NotificationSettingsPushQueueTests {
         store: LiveActivityPreferencesStore, client: SettingsDocumentClient, log: SwitchOnLog
     ) {
         NotificationSettingsPushQueue.enqueueReconcile { isCurrent in
-            let outcome = try? await NotificationSettingsSync.reconcile(
+            let outcome = try? await NotificationSettingsReconcile.reconcile(
                 store: store,
                 client: client,
                 cloudSyncEnabled: true,
@@ -351,7 +351,7 @@ struct NotificationSettingsPushQueueTests {
                 isCurrent: isCurrent
             )
             log.outcomes.append(outcome)
-            return outcome == .deferredToPendingPush
+            return outcome == .deferredToPendingPush ? .deferredToPendingPush : .finished
         }
     }
 
@@ -381,14 +381,14 @@ struct NotificationSettingsPushQueueTests {
             Self.enqueueReconcile(store: store, client: client, log: log)
             let push = NotificationSettingsPushQueue.enqueuePush { isCurrent in
                 let wrote = (try? await NotificationSettingsSync.push(
-                    local: .init(from: store), base: synced, client: client, cloudSyncEnabled: true, isCurrent: isCurrent
-                )) ?? false
-                guard wrote, let sent = try? NotificationSettingsFixtures.sentDocument(SettingsAPIStub.requests(for: url)[1]),
+                    local: .init(from: store), base: .since(synced), client: client, cloudSyncEnabled: true, isCurrent: isCurrent
+                )) ?? .skipped
+                guard wrote == .landed, let sent = try? NotificationSettingsFixtures.sentDocument(SettingsAPIStub.requests(for: url)[1]),
                       let afterPush = try? NotificationSettingsFixtures.found(sent, revision: 3)
-                else { return false }
+                else { return .unsettled }
                 SettingsAPIStub.enqueue(afterPush, for: url)
                 log.pending = false
-                return true
+                return .landedWithNothingLeft
             }
             await push.value
             await NotificationSettingsPushQueue.tail?.value
@@ -438,13 +438,13 @@ struct NotificationSettingsPushQueueTests {
         defer { Self.resetQueue() }
         let before = NotificationSettingsPushQueue.finishedLinks
 
-        if case .read = NotificationSettingsPushQueue.source(.snapshot(nil), linksBeforeSnapshot: before) {
+        if case .read = NotificationSettingsPushQueue.source(.snapshot(.neverWritten), linksBeforeSnapshot: before) {
             Issue.record("nothing ran since the fetch, so the copy is current")
         }
 
         await NotificationSettingsPushQueue.enqueue {}.value
 
-        guard case .read = NotificationSettingsPushQueue.source(.snapshot(nil), linksBeforeSnapshot: before) else {
+        guard case .read = NotificationSettingsPushQueue.source(.snapshot(.neverWritten), linksBeforeSnapshot: before) else {
             Issue.record("a push that finished after the fetch may have written past the copy")
             return
         }

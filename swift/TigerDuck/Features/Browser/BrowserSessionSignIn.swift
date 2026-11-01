@@ -18,17 +18,18 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
         self.host = host
     }
 
-    func signIn() async -> Bool {
-        let generation = Self.accountGeneration()
+    func signIn(for signIn: SignIn) async -> Bool {
+        let resets = BrowserData.shared.storeResets
         let cookies = store.httpCookieStore
-        let jars = [HTTPCookieStorage.shared, NTUSTSessionManager.shared.cookieStorage]
+        let jars = [HTTPCookieStorage.shared, SchoolWeb.schoolCookies]
         for cookie in Self.sessionCookies(in: jars.map { $0.cookies ?? [] }) {
             await cookies.setCookie(cookie)
         }
         guard await runSignInPage() else { return false }
         let signedIn = await cookies.allCookies()
-        // A sign-out since the start purged the jar, which must not get the departing account's cookies back.
-        guard !Task.isCancelled, Self.accountGeneration() == generation else { return false }
+        // A sign-out or a Settings › Storage reset since the start purged the jar, which must not get
+        // the cookies it held back.
+        guard !Task.isCancelled, signIn.isCurrent, BrowserData.shared.storeResets == resets else { return false }
         signedIn.filter(BrowserRouting.isSharedCookie).forEach(HTTPCookieStorage.shared.setCookie)
         return BrowserRouting.hasMoodleSession(signedIn)
     }
@@ -38,10 +39,6 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
     /// keeps alive, comes after the shared one, which holds what the last Moodle token harvest left.
     nonisolated static func sessionCookies(in jars: [[HTTPCookie]]) -> [HTTPCookie] {
         jars.joined().filter(BrowserRouting.isSharedCookie)
-    }
-
-    private static func accountGeneration() -> [Int] {
-        [NTUSTSessionManager.shared.generation, BrowserData.shared.generation]
     }
 
     private func runSignInPage() async -> Bool {
@@ -56,7 +53,7 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
             page.removeFromSuperview()
         }
         let deadline = Task {
-            try? await Task.sleep(for: Self.deadline)
+            try? await AppClock.sleep(until: ContinuousClock.now + Self.deadline)
             finish?(false)
         }
         defer { deadline.cancel() }

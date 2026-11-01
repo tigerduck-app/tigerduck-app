@@ -24,11 +24,11 @@ struct MoodleCourseSectionTests {
             courseCodes: ["1141CS3105301", "CS3105301"],
             context: MoodleCacheContext(
                 account: "B11399001",
-                cache: DataCache(
+                cache: TestCache(
                     cacheDir: root.appendingPathComponent("cache", isDirectory: true),
                     persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
-                ),
-                isCurrent: { true }
+                ).moodle,
+                signIn: testSignIn
             ),
             api: MoodleCourseAPI(
                 functions: {

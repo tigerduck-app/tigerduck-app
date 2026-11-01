@@ -51,6 +51,8 @@ struct PushRegistrationServiceTests {
           "sync_course_colors": true,
           "sync_course_names": true,
           "sync_assignments": true,
+          "sync_assignment_reminders": true,
+          "sync_live_activity": true,
           "cloud_sync_enabled": true\(echo)
         }
         """.utf8)
@@ -69,7 +71,7 @@ struct PushRegistrationServiceTests {
     private static func expectRefusedAttempt(_ baseURL: URL) {
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: announceURL(baseURL))
         SettingsAPIStub.enqueue(
-            .init(statusCode: 401, body: Data(#"{"detail":"session_revoked"}"#.utf8)),
+            .init(statusCode: 401, body: Data(#"{"error":"session_revoked","message":"session_revoked"}"#.utf8)),
             for: registerURL(baseURL)
         )
     }
@@ -221,7 +223,7 @@ struct PushRegistrationServiceTests {
             let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             #expect(appVersion != nil)
             #expect(registration["app_version"] as? String == appVersion)
-            #expect(registration["locale"] as? String == PushRegistrationService.currentLocaleTag)
+            #expect(registration["locale"] as? String == PushRegistrationService.renderedLanguageTag)
             #expect(registration["cloud_sync_enabled"] as? Bool == Defaults[.cloudSyncEnabled])
 
             #expect(registration["bulletin_push_enabled"] as? Bool == false)
@@ -370,6 +372,32 @@ struct PushRegistrationServiceTests {
         }.last
     }
 
+    @Test("a TigerSync switch PATCH waits for the one before it, so turning it off and on at once leaves the server on")
+    func quickOffThenOnLeavesTheServerOn() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let service = Self.makeService(baseURL: baseURL)
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let reply = Self.preferencesBody(bulletinPushEnabled: true)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: reply, gate: gate), for: Self.preferencesURL(baseURL))
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: reply), for: Self.preferencesURL(baseURL))
+
+        let off = Task { await service.updateCloudSyncEnabled(false) }
+        try await waitUntil { SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).count == 1 }
+        let on = Task { await service.updateCloudSyncEnabled(true) }
+        while await service.cloudSyncPatchesInLine < 2,
+              SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).count < 2 {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).count == 1)
+        gate.open()
+        await off.value
+        await on.value
+
+        #expect(try Self.serverCloudSyncEnabled(baseURL) == true)
+        #expect(SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).count == 2)
+    }
+
     @Test("turning TigerSync off while a registration is out leaves the server off")
     func switchTurnedOffDuringARegistrationEndsOff() async throws {
         try await Self.withSyncPreferences {
@@ -494,7 +522,7 @@ struct PushRegistrationServiceTests {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let service = Self.makeService(baseURL: baseURL)
             SettingsAPIStub.enqueue(
-                .init(statusCode: 500, body: Data(#"{"detail":"internal_error"}"#.utf8)),
+                .init(statusCode: 500, body: Data(#"{"error":"internal_error","message":"internal_error"}"#.utf8)),
                 for: Self.preferencesURL(baseURL)
             )
 
@@ -522,7 +550,7 @@ struct PushRegistrationServiceTests {
         }
     }
 
-    @Test("a 200 that does not come back carrying the new value is not treated as success")
+    @Test("a 200 without the bulletin switch is not treated as success")
     func unconfirmedBulletinPatchDoesNotPersist() async throws {
         await Self.withBulletinPreference(startingAt: true) {
             let baseURL = SettingsAPIStub.uniqueBaseURL()

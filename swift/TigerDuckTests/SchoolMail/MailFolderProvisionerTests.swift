@@ -298,7 +298,7 @@ struct MailFolderProvisionerTests {
         let model = MailComposeViewModel(
             context: MailComposeContext(mode: mode),
             session: MailPageSession(idleClose: .milliseconds(10), open: { fake },
-                                     onAuthFailure: { prefs.authFailed = true }),
+                                     onAuthFailure: { _ in prefs.authFailed = true }),
             sender: MailComposeViewModelTests.me,
             folderRoles: roles,
             prefs: prefs,
@@ -306,7 +306,7 @@ struct MailFolderProvisionerTests {
             sleep: { _ in }
         )
         let reported = Reported()
-        model.onFolderRolesChanged = { reported.record($0) }
+        model.events.observe { if case let .folderRoles(roles) = $0 { reported.record(roles) } }
         return ComposeHarness(model: model, fake: fake, reportedRoles: reported)
     }
 
@@ -331,7 +331,7 @@ struct MailFolderProvisionerTests {
             cache: cache, prefs: prefs, notifier: MailNotifier(center: RecordingNotificationCenter())
         )
         let reported = Reported()
-        model.onFolderRolesChanged = { reported.record($0) }
+        model.events.observe { if case let .folderRoles(roles) = $0 { reported.record(roles) } }
         return MessageHarness(model: model, fake: fake, reportedRoles: reported)
     }
 }

@@ -160,7 +160,7 @@ struct CourseSearchTests {
 
     @Test("the filter lists come from the catalog, with each name in both languages")
     func optionsFromCatalog() throws {
-        let options = CourseSearch.options(try ["zh": Self.catalog("zh"), "en": Self.catalog("en")])
+        let options = CourseCatalogStore.options(try ["zh": Self.catalog("zh"), "en": Self.catalog("en")])
         #expect(options == CourseSearchOptions(
             colleges: [.init(name: "電資學院", englishName: "College of EECS", departments: [
                 .init(code: "CS", name: "資訊工程系", englishName: "Computer Science"),
@@ -168,7 +168,7 @@ struct CourseSearchTests {
             ])],
             dimensions: [.init(code: "A", name: "人文素養(A)", englishName: "Humanities and Thinking(A)")]
         ))
-        #expect(CourseSearch.options([:]) == CourseSearchOptions())
+        #expect(CourseCatalogStore.options([:]) == CourseSearchOptions())
     }
 
     // MARK: Filters
@@ -357,9 +357,9 @@ struct CourseSearchTests {
 
     // MARK: Model
 
-    private static func cache() -> DataCache {
+    private static func cache() -> TestCache {
         let root = FileManager.default.temporaryDirectory.appending(path: "CourseSearchTests-\(UUID().uuidString)")
-        return DataCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
+        return TestCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
     }
 
     private static func stored(_ language: String, etag: String, rows: [Row]? = nil) throws -> StoredCourseCatalog {
@@ -384,8 +384,8 @@ struct CourseSearchTests {
     func storedCatalogFirst() async throws {
         let cache = Self.cache()
         let storedZh = try Self.stored("zh", etag: #"W/"zh1""#)
-        cache.saveCourseCatalog(storedZh, semester: "1151", language: "zh")
-        cache.saveCourseCatalog(try Self.stored("en", etag: #"W/"en1""#), semester: "1151", language: "en")
+        cache.catalog.saveCourseCatalog(storedZh, semester: "1151", language: "zh")
+        cache.catalog.saveCourseCatalog(try Self.stored("en", etag: #"W/"en1""#), semester: "1151", language: "en")
         let renamed = Self.rows("en").map { row in
             var row = row
             if row.courseNo == "CS1001301" { row.name = "Computing 101" }
@@ -395,7 +395,7 @@ struct CourseSearchTests {
         let sent = Box<[String]>([])
         let gate = Gate()
         let fetch = Self.backend(sent, gate: gate) { $0 == "zh" ? .notModified : .changed(freshEn) }
-        let model = CourseSearchModel(cache: cache)
+        let model = CourseSearchModel(catalog: cache.catalog)
 
         await model.search("CS10", semester: "1151", fetch: fetch)
         #expect(model.results["zh"]?.map(\.CourseNo) == ["CS1001301", "CS1002301"])
@@ -403,24 +403,24 @@ struct CourseSearchTests {
         #expect(model.options.dimensions.map(\.code) == ["A"])
         #expect(!model.isSearching)
 
-        let revision = model.revision
+        let revision = model.searchAgainCount
         for _ in 0..<10_000 where sent.value.count < 2 {
             await Task.yield()
         }
         #expect(Set(sent.value) == [#"zh W/"zh1""#, #"en W/"en1""#])
         gate.open()
-        for _ in 0..<10_000 where model.revision == revision {
+        for _ in 0..<10_000 where model.searchAgainCount == revision {
             await Task.yield()
         }
-        #expect(model.revision != revision)
-        #expect(cache.loadCourseCatalog(semester: "1151", language: "zh") == storedZh)
-        #expect(cache.loadCourseCatalog(semester: "1151", language: "en") == freshEn)
+        #expect(model.searchAgainCount != revision)
+        #expect(cache.catalog.loadCourseCatalog(semester: "1151", language: "zh") == storedZh)
+        #expect(cache.catalog.loadCourseCatalog(semester: "1151", language: "en") == freshEn)
 
         await model.search("computing", semester: "1151", fetch: fetch)
         #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1001301"]])
         #expect(sent.value.count == 2)
 
-        let nextSheet = CourseSearchModel(cache: cache)
+        let nextSheet = CourseSearchModel(catalog: cache.catalog)
         let nextSent = Box<[String]>([])
         await nextSheet.search("CS", semester: "1151", fetch: Self.backend(nextSent) { _ in .notModified })
         for _ in 0..<10_000 where nextSent.value.count < 2 {
@@ -434,7 +434,7 @@ struct CourseSearchTests {
         let cache = Self.cache()
         let sent = Box<[String]>([])
         let gate = Gate()
-        let model = CourseSearchModel(cache: cache)
+        let model = CourseSearchModel(catalog: cache.catalog)
         let fetch = Self.backend(sent, gate: gate) { .changed(try Self.stored($0, etag: #"W/"\#($0)""#)) }
 
         let search = Task { await model.search("data", semester: "1151", fetch: fetch) }
@@ -444,15 +444,15 @@ struct CourseSearchTests {
         #expect(model.isSearching)
         #expect(model.failure == nil)
         model.submit()
-        #expect(model.revision == 0)
+        #expect(model.searchAgainCount == 0)
 
         gate.open()
         await search.value
         #expect(!model.isSearching)
         #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1002301"]])
-        #expect(model.revision == 0)
-        #expect(cache.loadCourseCatalog(semester: "1151", language: "zh")?.etag == #"W/"zh""#)
-        #expect(cache.loadCourseCatalog(semester: "1151", language: "en")?.etag == #"W/"en""#)
+        #expect(model.searchAgainCount == 0)
+        #expect(cache.catalog.loadCourseCatalog(semester: "1151", language: "zh")?.etag == #"W/"zh""#)
+        #expect(cache.catalog.loadCourseCatalog(semester: "1151", language: "en")?.etag == #"W/"en""#)
 
         #expect(model.appLanguageRow(of: "CS1002301", language: "zh")?.CourseName == "資料結構")
         #expect(model.appLanguageRow(of: "CS9999301", language: "zh") == nil)
@@ -465,7 +465,7 @@ struct CourseSearchTests {
         PushAPIError.notSignedIn,
     ])
     func noCatalog(error: any Error) async {
-        let model = CourseSearchModel(cache: Self.cache())
+        let model = CourseSearchModel(catalog: Self.cache().catalog)
         let fetch = Self.backend(Box<[String]>([])) { _ in throw error }
 
         await model.search("CS", semester: "1151", fetch: fetch)
@@ -482,7 +482,7 @@ struct CourseSearchTests {
     func enterRetriesOnlyAFailure() async throws {
         let sent = Box<[String]>([])
         let online = Box(false)
-        let model = CourseSearchModel(cache: Self.cache())
+        let model = CourseSearchModel(catalog: Self.cache().catalog)
         let fetch = Self.backend(sent) { language in
             guard online.value else { throw URLError(.notConnectedToInternet) }
             return .changed(try Self.stored(language, etag: #"W/"1""#))
@@ -495,14 +495,14 @@ struct CourseSearchTests {
 
         online.value = true
         model.submit()
-        #expect(model.revision == 1)
+        #expect(model.searchAgainCount == 1)
         await model.search("CS1", semester: "1151", fetch: fetch)
         #expect(model.failure == nil)
         #expect(model.results["zh"]?.map(\.CourseNo) == ["CS1001301", "CS1002301"])
         #expect(sent.value.count == 4)
 
         model.submit()
-        #expect(model.revision == 1)
+        #expect(model.searchAgainCount == 1)
         #expect(sent.value.count == 4)
     }
 
@@ -510,7 +510,7 @@ struct CourseSearchTests {
     func enterRetriesAMissingLanguage() async throws {
         let sent = Box<[String]>([])
         let online = Box(false)
-        let model = CourseSearchModel(cache: Self.cache())
+        let model = CourseSearchModel(catalog: Self.cache().catalog)
         let fetch = Self.backend(sent) { language in
             guard language == "zh" || online.value else { throw URLError(.notConnectedToInternet) }
             return .changed(try Self.stored(language, etag: #"W/"1""#))
@@ -522,9 +522,9 @@ struct CourseSearchTests {
 
         online.value = true
         model.submit()
-        #expect(model.revision == 1)
+        #expect(model.searchAgainCount == 1)
         await model.search("data", semester: "1151", fetch: fetch)
-        for _ in 0..<10_000 where model.revision == 1 {
+        for _ in 0..<10_000 where model.searchAgainCount == 1 {
             await Task.yield()
         }
         await model.search("data", semester: "1151", fetch: fetch)
@@ -532,21 +532,21 @@ struct CourseSearchTests {
         #expect(Set(sent.value.dropFirst(2)) == [#"zh W/"1""#, "en -"])
 
         model.submit()
-        #expect(model.revision == 2)
+        #expect(model.searchAgainCount == 2)
     }
 
     @Test("with nothing stored, a search started after one language answered waits for the other")
     func searchBetweenAnswers() async throws {
         let cache = Self.cache()
         let enAnswer = Gate()
-        let model = CourseSearchModel(cache: cache)
+        let model = CourseSearchModel(catalog: cache.catalog)
         let fetch: CourseSearchModel.FetchCatalog = { @MainActor _, language, _ in
             if language == "en" { await enAnswer.wait() }
             return .changed(try Self.stored(language, etag: #"W/"1""#))
         }
 
         let first = Task { await model.search("dat", semester: "1151", fetch: fetch) }
-        for _ in 0..<10_000 where cache.loadCourseCatalog(semester: "1151", language: "zh") == nil {
+        for _ in 0..<10_000 where cache.catalog.loadCourseCatalog(semester: "1151", language: "zh") == nil {
             await Task.yield()
         }
         for _ in 0..<100 {
@@ -562,7 +562,7 @@ struct CourseSearchTests {
         enAnswer.open()
         await second.value
         #expect(model.results.mapValues { $0.map(\.CourseNo) } == ["en": ["CS1002301"]])
-        #expect(model.revision == 0)
+        #expect(model.searchAgainCount == 0)
     }
 
     @Test("each row mark looks and reads differently, and only a course already in the table is dimmed")

@@ -1,6 +1,7 @@
 import Defaults
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -8,8 +9,8 @@ struct EmptyClassroomViewModelTests {
     private typealias Pages = ClassroomPageFixtures
 
     @MainActor
-    private final class SignIn {
-        var isCurrent = true
+    private final class Account {
+        let signIn = TestSignIn()
         var reads = 0
     }
 
@@ -32,7 +33,7 @@ struct EmptyClassroomViewModelTests {
     @MainActor
     private struct Harness {
         let url = URL(string: "https://cour01.stub.invalid/\(UUID().uuidString)/classroom_usecondition.aspx")!
-        let signIn = SignIn()
+        let signIn = Account()
         let classTable = ClassTable()
         let now: Now
         let service: ClassroomUsageService
@@ -47,8 +48,7 @@ struct EmptyClassroomViewModelTests {
             service = ClassroomUsageService(
                 session: URLSession(configuration: config),
                 queryURL: url,
-                sessionGeneration: { 1 },
-                signIn: { _, _, _ in true },
+                signIn: { _, _ in true },
                 timeouts: (600, 600)
             )
             let classTable = classTable
@@ -56,26 +56,26 @@ struct EmptyClassroomViewModelTests {
             let service = service
             newScreen = {
                 let model = EmptyClassroomViewModel(
-                    service: service,
-                    clock: { now.date },
-                    holidays: { day in holiday.map { $0.contains(day) ? [$0] : [] } ?? [] },
-                    isInSession: isInSession,
-                    isClassDay: { _ in true },
-                    courses: { classTable.courses },
-                    rawRoom: { $0 }
+                    calendar: EmptyClassroomCalendar(
+                        clock: { now.date },
+                        holidays: { day in holiday.map { $0.contains(day) ? [$0] : [] } ?? [] },
+                        isInSession: isInSession,
+                        isClassDay: { _ in true },
+                        courses: { classTable.courses },
+                        rawRoom: { $0 }
+                    ),
+                    loader: EmptyClassroomLoader(service: service)
                 )
-                model.reader = {
+                model.loader.reader = {
                     signIn.reads += 1
-                    return .init(credentials: Self.credentials, isCurrent: { signIn.isCurrent })
+                    return .init(credentials: .init(
+                        studentId: "B00000000", password: "not-a-password", signIn: signIn.signIn.signIn
+                    ))
                 }
                 return model
             }
             model = newScreen()
         }
-
-        static let credentials = ClassroomUsageService.Credentials(
-            studentId: "B00000000", password: "not-a-password", generation: 1
-        )
 
         func serve(_ html: String, gate: SettingsAPIStub.ReplyGate? = nil) {
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(html.utf8), gate: gate), for: url)
@@ -91,7 +91,7 @@ struct EmptyClassroomViewModelTests {
     }
 
     private static func time(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
-        AppConstants.taipeiCalendar.date(
+        TaipeiTime.calendar.date(
             from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute)
         ) ?? .distantPast
     }
@@ -155,11 +155,11 @@ struct EmptyClassroomViewModelTests {
         harness.model.appear()
         try await waitUntil { harness.model.usage != nil }
 
-        harness.model.dataDidUpdate()
+        harness.model.storesDidChange()
         #expect(harness.model.usage?.rooms.map(\.room) == ["IB-508"])
 
         term.isInSession = false
-        harness.model.dataDidUpdate()
+        harness.model.storesDidChange()
         #expect(harness.model.content == .noData)
     }
 
@@ -345,7 +345,7 @@ struct EmptyClassroomViewModelTests {
     @Test("an answer that arrives after the account changed is not shown")
     func anotherAccount() async {
         let harness = Harness(at: Self.time(14, 10, 5))
-        harness.signIn.isCurrent = false
+        harness.signIn.signIn.signOut()
         harness.serveDay([Pages.row("IB-508", "..............")])
 
         await harness.model.refresh()
@@ -630,10 +630,10 @@ struct EmptyClassroomViewModelTests {
     func dayLabels() {
         let harness = Harness(at: Self.time(14, 10, 5))
         let model = harness.model
-        #expect(model.dayLabel(Self.day(14)) == "\(String(localized: "calendar_today")) \(EmptyClassroomViewModel.dateText(Self.day(14)))")
-        #expect(model.dayLabel(Self.day(15)) == "\(String(localized: "widget_tomorrow")) \(EmptyClassroomViewModel.dateText(Self.day(15)))")
-        #expect(model.dayLabel(Self.day(16)) == EmptyClassroomViewModel.dateText(Self.day(16)))
+        #expect(model.dayLabel(Self.day(14)) == "\(String(localized: "calendar_today")) \(EmptyClassroomDayText.date(Self.day(14)))")
+        #expect(model.dayLabel(Self.day(15)) == "\(String(localized: "widget_tomorrow")) \(EmptyClassroomDayText.date(Self.day(15)))")
+        #expect(model.dayLabel(Self.day(16)) == EmptyClassroomDayText.date(Self.day(16)))
         #expect(model.days.count == 14)
-        #expect(EmptyClassroomViewModel.timeRange(of: 2) == "10:20–11:10")
+        #expect(EmptyClassroomDayText.timeRange(of: 2) == "10:20–11:10")
     }
 }

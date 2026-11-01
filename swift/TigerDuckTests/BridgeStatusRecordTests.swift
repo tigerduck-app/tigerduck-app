@@ -12,8 +12,10 @@ struct BridgeStatusRecordTests {
     @Test func aRoundFromBeforeASignOutRecordsNothing() {
         let auth = Self.signedOutAuth()
         let tracker = ServerStatusTracker()
+        let departed = auth.session.signIns.currentSignIn
+        auth.session.endSignIn()
 
-        AppServiceBridge.record(.failed, for: .moodle, round: auth.loginGeneration &- 1, authService: auth, tracker: tracker)
+        CourseFetch.record(.failed, for: .moodle, round: departed, tracker: tracker)
 
         #expect(tracker.status(for: .moodle) == .unknown)
     }
@@ -22,11 +24,11 @@ struct BridgeStatusRecordTests {
     @Test("a Moodle round a sign-out overtook leaves the shared status as it was")
     func aMoodleRoundASignOutOvertookRecordsNothing() async {
         await withExclusiveRealDefaults {
-            let saved = (Defaults[.ntustCredentialsPresent], SSOLoginService.storedPasswordRefusals)
+            let saved = (Defaults[.ntustCredentialsPresent], SchoolPasswordPosts.storedPasswordRefusals)
             let savedStatus = ServerStatusTracker.shared.status(for: .moodle)
             defer {
                 Defaults[.ntustCredentialsPresent] = saved.0
-                SSOLoginService.storedPasswordRefusals = saved.1
+                SchoolPasswordPosts.storedPasswordRefusals = saved.1
                 ServerStatusTracker.shared.set(savedStatus, for: .moodle)
             }
             let auth = AuthService(
@@ -34,7 +36,8 @@ struct BridgeStatusRecordTests {
                 notificationCenter: NotificationCenter(),
                 moodleTokens: MoodleTokenService(
                     storedCredentials: { nil }, tokens: .init(load: { nil }, save: { _ in }, drop: {}),
-                    harvest: { _, _ in throw CancellationError() }
+                    harvest: { _, _ in throw CancellationError() },
+                    signIns: SignInSeries()
                 ),
                 endSchoolSession: { _ in }
             )
@@ -43,12 +46,17 @@ struct BridgeStatusRecordTests {
             #endif
             let simulator = ServerFailureSimulator()
             simulator.failures[.moodle] = .timeout
-            simulator.sleep = { _ in await MainActor.run { auth.logout() } }
+            simulator.sleep = { _ in
+                await MainActor.run {
+                    auth.session.endSignIn()
+                    auth.logout()
+                }
+            }
             ServerStatusTracker.shared.set(.ok, for: .moodle)
 
             await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
                 await ServerFailureSimulator.$sharedForTesting.withValue(simulator) {
-                    _ = await AppServiceBridge.fetchAssignments(authService: auth)
+                    _ = await AssignmentFetch.fetchAssignments(authService: auth, for: auth.session.signIns.currentSignIn)
                 }
             }
 
@@ -61,7 +69,7 @@ struct BridgeStatusRecordTests {
         let auth = Self.signedOutAuth()
         let tracker = ServerStatusTracker()
 
-        AppServiceBridge.record(.failed, for: .courseSelection, round: auth.loginGeneration, authService: auth, tracker: tracker)
+        CourseFetch.record(.failed, for: .courseSelection, round: auth.session.signIns.currentSignIn, tracker: tracker)
 
         #expect(tracker.status(for: .courseSelection) == .failed)
     }

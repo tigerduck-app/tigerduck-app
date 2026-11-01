@@ -14,7 +14,7 @@ struct SchoolNetworkGuardTests {
         let configurations = [
             URLSessionConfiguration.default,
             URLSessionConfiguration.ephemeral,
-            MoodleTokenService.harvestConfiguration(),
+            MoodleTokenHarvest.harvestConfiguration(),
             NTUSTSessionManager.shared.session.configuration,
             MoodleWebserviceClient.session.configuration,
             SemesterCatalog.session.configuration,
@@ -44,7 +44,7 @@ struct SchoolNetworkGuardTests {
         await withExclusiveRealDefaults { () async -> Void in
             let blocked = await SchoolNetworkGuard.capturing {
                 _ = await #expect(throws: (any Error).self) {
-                    try await MoodleTokenService.shared.obtainToken(studentId: "B11000000", password: "password")
+                    try await MoodleTokenService.shared.obtainToken(studentId: "B11000000", password: "password", for: testSignIn)
                 }
             }
 
@@ -90,7 +90,7 @@ struct SchoolNetworkGuardTests {
             var signedIn = true
             let blocked = await SchoolNetworkGuard.capturing {
                 signedIn = await SecureStore.$sharedForTesting.withValue(keychain) { () async -> Bool in
-                    await auth.ensureAuthenticated()
+                    await auth.ensureAuthenticated(for: testSignIn)
                 }
             }
 

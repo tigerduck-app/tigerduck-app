@@ -35,9 +35,9 @@ struct EnrolledCourseNosTests {
             ("1142", "EE1001301", "電路學", "A", ""),
         ])
 
-        let term = try #require(AppServiceBridge.termCourseNos(
+        let term = try #require(TermRoster.termCourseNos(
             selection: nil,
-            transcript: AppServiceBridge.classRows(of: report, term: "1141").map(\.code),
+            transcript: TermRoster.classRows(of: report, term: "1141").map(\.code),
             cached: []
         ))
 
@@ -46,19 +46,19 @@ struct EnrolledCourseNosTests {
 
     @Test("A transcript only adds: a term it lists late or in part keeps its cached courses and records no drops")
     func transcriptNeverShrinksATerm() throws {
-        let term = try #require(AppServiceBridge.termCourseNos(
+        let term = try #require(TermRoster.termCourseNos(
             selection: nil, transcript: ["CS1001301", "PE1001301"], cached: ["EE2005301", "CS1001301"]
         ))
 
         #expect(term.courseNos == ["CS1001301", "PE1001301", "EE2005301"])
-        #expect(term.roster == nil)
+        #expect(term.selectionRoster == nil)
     }
 
     @Test("A fetch saves no course dropped on the server unless a live answer or a final transcript lists it")
     func savedCoursesSkipServerDrops() {
         let courses = ["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }
         let saved = { (pastTerm: Bool, live: Bool, dropped: Set<String>) in
-            AppServiceBridge.savedCourses(courses, pastTerm: pastTerm, live: live, dropped: dropped)?.map(\.courseNo)
+            Self.saved(TermRoster.savedCourses(courses, pastTerm: pastTerm, live: live, dropped: dropped))
         }
 
         #expect(saved(false, false, ["MA1010003"]) == ["CS1001301"])
@@ -69,8 +69,13 @@ struct EnrolledCourseNosTests {
 
     @Test("A fetch that drew nothing keeps the cache, unless a past term's final transcript lists no class")
     func emptyDrawKeepsTheCache() {
-        #expect(AppServiceBridge.savedCourses([], pastTerm: false, live: false, dropped: []) == nil)
-        #expect(AppServiceBridge.savedCourses([], pastTerm: true, live: false, dropped: [])?.isEmpty == true)
+        #expect(Self.saved(TermRoster.savedCourses([], pastTerm: false, live: false, dropped: [])) == nil)
+        #expect(Self.saved(TermRoster.savedCourses([], pastTerm: true, live: false, dropped: [])) == [])
+    }
+
+    private static func saved(_ save: TermRoster.TermSave) -> [String]? {
+        guard case .save(let courses) = save else { return nil }
+        return courses.map(\.courseNo)
     }
 
     @Test("A class the transcript adds joins its term only with class times; course selection's and cached ones stay")
@@ -82,8 +87,8 @@ struct EnrolledCourseNosTests {
             SDCourse(courseNo: "EE2005301", courseName: "Cached", semester: "1141"),
         ]
 
-        let fromTranscript = AppServiceBridge.drawnCourses(courses, fromSelection: false, cached: ["EE2005301"])
-        let fromSelection = AppServiceBridge.drawnCourses(courses, fromSelection: true, cached: [])
+        let fromTranscript = TermRoster.drawnCourses(courses, fromSelection: false, cached: ["EE2005301"])
+        let fromSelection = TermRoster.drawnCourses(courses, fromSelection: true, cached: [])
 
         #expect(fromTranscript.map(\.courseNo) == ["CS1001301", "EE2005301"])
         #expect(fromSelection.map(\.courseNo) == ["CS1001301", "GE1001301", "MA1001301", "EE2005301"])
@@ -97,55 +102,55 @@ struct EnrolledCourseNosTests {
                 grade: "通過", status: .passed, remark: "", geDimension: nil, distanceLearning: false
             )
         }
-        #expect(AppServiceBridge.isEnglishProficiencyTest(row("CC1011301", "校定英文能力檢測")))
-        #expect(AppServiceBridge.isEnglishProficiencyTest(row("CC1011301", "English Proficiency Test")))
-        #expect(AppServiceBridge.isEnglishProficiencyTest(row("CC1019301", " 校定英文能力檢測 ")))
-        #expect(!AppServiceBridge.isEnglishProficiencyTest(row("FL2001301", "English Proficiency Test Preparation")))
-        #expect(!AppServiceBridge.isEnglishProficiencyTest(row("FL2002301", "校定英文能力檢測輔導")))
+        #expect(TermRoster.isEnglishProficiencyTest(row("CC1011301", "校定英文能力檢測")))
+        #expect(TermRoster.isEnglishProficiencyTest(row("CC1011301", "English Proficiency Test")))
+        #expect(TermRoster.isEnglishProficiencyTest(row("CC1019301", " 校定英文能力檢測 ")))
+        #expect(!TermRoster.isEnglishProficiencyTest(row("FL2001301", "English Proficiency Test Preparation")))
+        #expect(!TermRoster.isEnglishProficiencyTest(row("FL2002301", "校定英文能力檢測輔導")))
     }
 
     @Test("A past term whose transcript cannot be fetched, or lists nothing for it, keeps its cached courses")
     func noTranscriptKeepsTheCache() {
-        #expect(AppServiceBridge.termCourseNos(selection: nil, transcript: nil, cached: ["CS1"]) == nil)
-        #expect(AppServiceBridge.termCourseNos(selection: nil, transcript: [], cached: ["CS1"]) == nil)
+        #expect(TermRoster.termCourseNos(selection: nil, transcript: nil, cached: ["CS1"]) == nil)
+        #expect(TermRoster.termCourseNos(selection: nil, transcript: [], cached: ["CS1"]) == nil)
     }
 
     @Test("Course selection answered: it owns the latest term and is its roster, so a stale transcript adds nothing")
     func selectionIsAuthoritative() throws {
-        let term = try #require(AppServiceBridge.termCourseNos(
+        let term = try #require(TermRoster.termCourseNos(
             selection: ["CS1", "CS2", "CS1"], transcript: ["CS1", "DROPPED"], cached: ["CS1", "OLD"]
         ))
         #expect(term.courseNos == ["CS1", "CS2"])
-        #expect(term.roster == ["CS1", "CS2"])
+        #expect(term.selectionRoster == ["CS1", "CS2"])
     }
 
     @Test("Course selection unreachable or empty: the latest term falls back to the transcript")
     func latestTermFallsBackToTheTranscript() {
-        let unreachable = AppServiceBridge.termCourseNos(selection: nil, transcript: ["CS3", "", "CS3", "PE9"], cached: [])
+        let unreachable = TermRoster.termCourseNos(selection: nil, transcript: ["CS3", "", "CS3", "PE9"], cached: [])
         #expect(unreachable?.courseNos == ["CS3", "PE9"])
-        #expect(AppServiceBridge.termCourseNos(selection: [], transcript: ["PE9"], cached: [])?.courseNos == ["PE9"])
+        #expect(TermRoster.termCourseNos(selection: [], transcript: ["PE9"], cached: [])?.courseNos == ["PE9"])
     }
 }
 
 struct SelectionDropsTests {
     @Test("A course the answer no longer names is recorded as dropped")
     func dropIsWitnessed() {
-        #expect(AppServiceBridge.selectionDrops(
-            previous: [], localPortalNos: ["A", "B", "C"], roster: ["A", "B"]
+        #expect(TermRoster.selectionDrops(
+            previous: [], localPortalNos: ["A", "B", "C"], roster: .courseSelection(["A", "B"])
         ) == ["C"])
     }
 
     @Test("A course this device never held is not a drop — that is how a manual course from another device survives")
     func unknownCourseIsNotADrop() {
-        #expect(AppServiceBridge.selectionDrops(
-            previous: [], localPortalNos: ["A"], roster: ["A"]
+        #expect(TermRoster.selectionDrops(
+            previous: [], localPortalNos: ["A"], roster: .courseSelection(["A"])
         ).isEmpty)
     }
 
     @Test("A course the answer names again is cleared, so a re-add comes straight back")
     func readdClears() {
-        #expect(AppServiceBridge.selectionDrops(
-            previous: ["C", "D"], localPortalNos: ["A"], roster: ["A", "C"]
+        #expect(TermRoster.selectionDrops(
+            previous: ["C", "D"], localPortalNos: ["A"], roster: .courseSelection(["A", "C"])
         ) == ["D"])
     }
 
@@ -163,13 +168,13 @@ struct SelectionDropsTests {
             SDCourse(courseNo: "EE2005301", courseName: "Merged", moodleIdNumber: "1151EE2005301", semester: "1151"),
         ]
 
-        let kept = AppState.keptRows(
+        let kept = CourseServerRows.keptRows(
             rows, semester: "1151", dropped: ["GE1010001", "EE2005301", "PE1001301"], userAdded: userAdded
         )
         let listed = Set(kept.compactMap { $0["course_no"] as? String })
 
         #expect(listed == ["CS1001301", "GE1010001", "PE1001301"])
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: listed, tombstoned: [], fetched: ["CS1001301"],
             handAdded: ["GE1010001", "EE2005301"], droppedMerges: [], hidden: [], adding: []
         )
@@ -197,10 +202,10 @@ struct SelectionDropsTests {
     @Test("A row a roster dropped is not merged and takes its merged copy along; a hand-add here stays")
     @MainActor
     func serverDropLeavesLikeASelectionDrop() {
-        let listed = Set(AppState.keptRows(
+        let listed = Set(CourseServerRows.keptRows(
             Self.rowsAfterARoster, semester: "1151", dropped: [], userAdded: Self.addedAndMerged
         ).compactMap { $0["course_no"] as? String })
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: listed, tombstoned: [], fetched: ["CS1001301"],
             handAdded: ["GE1010001", "EE2005301"], droppedMerges: [], hidden: [], adding: []
         )
@@ -210,15 +215,15 @@ struct SelectionDropsTests {
     }
 
     @MainActor
-    private static func makeCache(fetched: [String], userAdded: [SDCourse]) -> DataCache {
+    private static func makeCache(fetched: [String], userAdded: [SDCourse]) -> TestCache {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SelectionDropsTests-\(UUID().uuidString)", isDirectory: true)
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
-        cache.saveCourses(fetched.map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
-        cache.saveUserAddedCourses(userAdded)
+        cache.courses.saveCourses(fetched.map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151", for: testSignIn)
+        cache.courses.saveUserAddedCourses(userAdded, for: testSignIn)
         return cache
     }
 
@@ -233,22 +238,25 @@ struct SelectionDropsTests {
         let cache = Self.makeCache(fetched: ["CS1001301", "MA1010003"], userAdded: Self.addedAndMerged)
         var forgotten = 0
 
-        let term = AppState.readTerm(
+        let term = CourseRosterReconciler.readTerm(
             "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: Self.addedAndMerged, hidden: [],
             adding: [], liveAnswer: offset.map { (courseNos: ["CS1001301", "MA1010003"], at: droppedAt + $0) },
-            cache: cache, forgetAnswer: { forgotten += 1 }
+            courses: cache.courses
         )
+        CourseRosterReconciler.recordServerDrops(of: term, semester: "1151", courses: cache.courses, for: testSignIn) {
+            forgotten += 1
+        }
 
         let keptLive = offset == 3600
         #expect(term.left == (keptLive ? [] : ["MA1010003"]))
-        #expect(cache.loadCourses(semester: "1151").map(\.courseNo) == (keptLive ? ["CS1001301", "MA1010003"] : ["CS1001301"]))
+        #expect(cache.courses.loadCourses(semester: "1151").map(\.courseNo) == (keptLive ? ["CS1001301", "MA1010003"] : ["CS1001301"]))
         #expect(term.serverNos.contains("MA1010003") == keptLive)
         #expect(forgotten == (offset == -3600 ? 1 : 0))
         #expect(term.unlisted.hide.isEmpty)
         #expect(term.unlisted.drop == ["EE2005301"])
-        #expect(cache.loadDeletedCourseNos().isEmpty)
+        #expect(cache.courses.loadDeletedCourseNos().isEmpty)
         let alsoDropped: Set<String> = ["GE1010001", "EE2005301", "PH1010004"]
-        #expect(cache.loadServerDroppedNos(semester: "1151") == alsoDropped.union(keptLive ? [] : ["MA1010003"]))
+        #expect(cache.courses.loadServerDroppedNos(semester: "1151") == alsoDropped.union(keptLive ? [] : ["MA1010003"]))
     }
 
     @Test("A course dropped on the server leaves the term's cached courses in every language")
@@ -257,20 +265,20 @@ struct SelectionDropsTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("ServerDropTests-\(UUID().uuidString)", isDirectory: true)
         let cacheDir = root.appendingPathComponent("cache", isDirectory: true)
-        let cache = DataCache(cacheDir: cacheDir, persistentDir: root.appendingPathComponent("persistent", isDirectory: true))
-        cache.saveCourses(["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151")
+        let cache = TestCache(cacheDir: cacheDir, persistentDir: root.appendingPathComponent("persistent", isDirectory: true))
+        cache.courses.saveCourses(["CS1001301", "MA1010003"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }, semester: "1151", for: testSignIn)
         let files = FileManager.default
         let current = try #require(try files.contentsOfDirectory(atPath: cacheDir.path).first { $0.hasPrefix("courses_1151_") })
         let other = cacheDir.appendingPathComponent("courses_1151_other.json")
         try files.copyItem(at: cacheDir.appendingPathComponent(current), to: other)
 
-        cache.removeCourses(["MA1010003"], semester: "1151")
-        let currentLeft = cache.loadCourses(semester: "1151").map(\.courseNo)
+        cache.courses.removeCourses(["MA1010003"], semester: "1151", for: testSignIn)
+        let currentLeft = cache.courses.loadCourses(semester: "1151").map(\.courseNo)
         try files.removeItem(at: cacheDir.appendingPathComponent(current))
         try files.moveItem(at: other, to: cacheDir.appendingPathComponent(current))
 
         #expect(currentLeft == ["CS1001301"])
-        #expect(cache.loadCourses(semester: "1151").map(\.courseNo) == ["CS1001301"])
+        #expect(cache.courses.loadCourses(semester: "1151").map(\.courseNo) == ["CS1001301"])
     }
 
     @Test("A course selection answer older than a drop is forgotten even when this language's cache lacks the course")
@@ -282,12 +290,15 @@ struct SelectionDropsTests {
             "updated_at": TigerDuckDateFormatters.withFractional.string(from: droppedAt),
         ]]
         var forgotten = 0
+        let courses = Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses
 
-        let term = AppState.readTerm(
+        let term = CourseRosterReconciler.readTerm(
             "1151", rows: rows, tombstones: [], selectionDropped: [], userAdded: [], hidden: [], adding: [],
-            liveAnswer: (courseNos: ["CS1001301", "MA1010003"], at: droppedAt - 3600),
-            cache: Self.makeCache(fetched: ["CS1001301"], userAdded: []), forgetAnswer: { forgotten += 1 }
+            liveAnswer: (courseNos: ["CS1001301", "MA1010003"], at: droppedAt - 3600), courses: courses
         )
+        CourseRosterReconciler.recordServerDrops(of: term, semester: "1151", courses: courses, for: testSignIn) {
+            forgotten += 1
+        }
 
         #expect(term.left.isEmpty)
         #expect(forgotten == 1)
@@ -297,9 +308,9 @@ struct SelectionDropsTests {
     @MainActor
     func termOfDroppedRowsIsNotEmpty() {
         let read = { (rows: [[String: Any]]) in
-            AppState.readTerm(
+            CourseRosterReconciler.readTerm(
                 "1151", rows: rows, tombstones: [], selectionDropped: ["EE2005301"], userAdded: [], hidden: [], adding: [],
-                liveAnswer: nil, cache: Self.makeCache(fetched: ["CS1001301"], userAdded: []), forgetAnswer: {}
+                liveAnswer: nil, courses: Self.makeCache(fetched: ["CS1001301"], userAdded: []).courses
             )
         }
         let dropped: [[String: Any]] = [["course_no": "MA1010003", "enrollment_status": "dropped"]]
@@ -314,11 +325,11 @@ struct SelectionDropsTests {
     func serverDropEmptyingATermTakesMergedCopies() {
         let rows = Self.rowsAfterARoster.filter { $0["course_no"] as? String != "GE1010001" }
             .map { $0.merging(["enrollment_status": "dropped"]) { _, dropped in dropped } }
-        let droppedOnServer = AppState.droppedOnServer(rows)
-        let kept = AppState.keptRows(rows, semester: "1151", dropped: [], userAdded: Self.addedAndMerged)
-        let unlisted = AppState.unlistedCourses(
+        let droppedOnServer = CourseServerRows.droppedOnServer(rows)
+        let kept = CourseServerRows.keptRows(rows, semester: "1151", dropped: [], userAdded: Self.addedAndMerged)
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: [], tombstoned: [], fetched: [], handAdded: ["GE1010001", "EE2005301"],
-            droppedMerges: AppState.droppedMerges(Self.addedAndMerged, semester: "1151", dropped: droppedOnServer),
+            droppedMerges: CourseServerRows.droppedMerges(Self.addedAndMerged, semester: "1151", dropped: droppedOnServer),
             hidden: [], adding: []
         )
 
@@ -326,10 +337,59 @@ struct SelectionDropsTests {
         #expect(unlisted.drop == ["EE2005301"])
     }
 
+    @Test("A pull between this device's term reset and the roster after it hides none of the term's courses")
+    @MainActor
+    func ownResetBindsNothingBeforeTheRoster() {
+        let resetMadeAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let resetLandedAt = resetMadeAt.addingTimeInterval(0.4)
+        let fetched: Set<String> = ["CS1001301", "MA1010003"]
+        let tombstones = { (kind: String, stamped: Date) -> [[String: Any]] in
+            fetched.sorted().map {
+                ["course_key": "client:1151:\($0)", "course_no": $0, "semester": "1151", "kind": kind,
+                 "hlc": PushAPI.clock(of: stamped)]
+            }
+        }
+        let read = { (tombstones: [[String: Any]], landedAt: Date?) in
+            CourseRosterReconciler.readTerm(
+                "1151", rows: [], tombstones: tombstones, selectionDropped: [], userAdded: [], hidden: [], adding: [],
+                resetLandedAt: landedAt, liveAnswer: nil,
+                courses: Self.makeCache(fetched: fetched.sorted(), userAdded: []).courses
+            )
+        }
+
+        let own = read(tombstones("reset", resetMadeAt), resetLandedAt)
+        #expect(own.unlisted.hide.isEmpty)
+        #expect(own.serverHoldsNothing)
+        #expect(own.localCourses.map(\.courseNo) == fetched.sorted())
+        #expect(read(tombstones("reset", resetLandedAt.addingTimeInterval(30)), resetLandedAt).unlisted.hide == fetched)
+        #expect(read(tombstones("reset", resetMadeAt), nil).unlisted.hide == fetched)
+        #expect(read(tombstones("remove", resetMadeAt), resetLandedAt).unlisted.hide == fetched)
+    }
+
+    @Test("This device's term reset is remembered past its grace while the snapshot shows its tombstones")
+    @MainActor
+    func ownResetOutlivesItsGrace() async {
+        await withExclusiveRealDefaults {
+            let courses = Self.makeCache(fetched: [], userAdded: []).courses
+            let (owned, other) = ("own-\(UUID().uuidString)", "other-\(UUID().uuidString)")
+            let landedAt = Date()
+            courses.recordSemesterReset(owned, at: landedAt, for: testSignIn)
+            courses.recordSemesterReset(other, at: landedAt, for: testSignIn)
+
+            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), keeping: [owned], for: testSignIn)
+            let left = courses.loadSemesterResetAt()
+            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), for: testSignIn)
+
+            #expect(left[owned] == landedAt)
+            #expect(left[other] == nil)
+            #expect(courses.loadSemesterResetAt()[owned] == nil)
+        }
+    }
+
     @Test("An empty answer records nothing and clears nothing: parser drift is not a mass drop")
     func emptyAnswerIsInert() {
-        #expect(AppServiceBridge.selectionDrops(
-            previous: ["C"], localPortalNos: ["A", "B"], roster: []
+        #expect(TermRoster.selectionDrops(
+            previous: ["C"], localPortalNos: ["A", "B"], roster: .courseSelection([])
         ) == ["C"])
     }
 }
@@ -343,13 +403,13 @@ struct PastTermRebuildTests {
         )
     }
 
-    private static func looked(_ courseNo: String, times: Bool = true, answered: Bool = true) -> AppServiceBridge.LookedUpCourse {
-        AppServiceBridge.LookedUpCourse(course: course(courseNo, times: times), answered: answered)
+    private static func looked(_ courseNo: String, times: Bool = true, answered: Bool = true) -> TermRoster.LookedUpCourse {
+        TermRoster.LookedUpCourse(course: course(courseNo, times: times), lookup: answered ? .found : .fallback)
     }
 
     @Test("A past term keeps only the transcript's classes with class times; cached junk, Moodle sites and other rows are dropped")
     func junkLeavesAPastTerm() {
-        let rebuilt = AppServiceBridge.rebuiltPastTerm(
+        let rebuilt = TermRoster.rebuiltPastTerm(
             [Self.looked("CS1001301"), Self.looked("GE1001301", times: false)], unreadable: [],
             cached: ["CS1001301", "GE1001301", "EC9999301"].map { Self.course($0) },
             others: ["PE9999301", "CC1011301", "CS1001301", "GE1001301"],
@@ -358,26 +418,26 @@ struct PastTermRebuildTests {
 
         #expect(rebuilt.courses.map(\.courseNo) == ["CS1001301"])
         #expect(rebuilt.roster == ["CS1001301"])
-        #expect(AppServiceBridge.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster)
+        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: .finalTranscript(rebuilt.roster, alsoListed: []))
             == ["GE1001301", "EC9999301", "PE9999301", "CC1011301"])
     }
 
     @Test("A class whose lookup failed keeps its cached copy and is never dropped; one with no copy waits for a later fetch")
     func failedLookupKeepsTheCachedCourse() {
-        let rebuilt = AppServiceBridge.rebuiltPastTerm(
+        let rebuilt = TermRoster.rebuiltPastTerm(
             [Self.looked("CS1001301", times: false, answered: false), Self.looked("MA1001301", times: false, answered: false)],
             unreadable: [], cached: [Self.course("CS1001301")], others: [], userAdded: []
         )
 
         #expect(rebuilt.courses.map(\.courseNo) == ["CS1001301"])
-        #expect(AppServiceBridge.selectionDrops(previous: [], localPortalNos: ["CS1001301", "MA1001301"], roster: rebuilt.roster)
+        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: ["CS1001301", "MA1001301"], roster: .finalTranscript(rebuilt.roster, alsoListed: []))
             .isEmpty)
     }
 
     @Test("A failed transcript fetch, or one that lists nothing for the term, leaves a past term untouched")
     func noTranscriptTouchesNothing() {
-        #expect(AppServiceBridge.termCourseNos(selection: nil, transcript: nil, cached: []) == nil)
-        #expect(AppServiceBridge.termCourseNos(selection: nil, transcript: [], cached: []) == nil)
+        #expect(TermRoster.termCourseNos(selection: nil, transcript: nil, cached: []) == nil)
+        #expect(TermRoster.termCourseNos(selection: nil, transcript: [], cached: []) == nil)
     }
 
     @Test("A course added by hand stays through a rebuild and the reconcile; junk merged from the server does not come back")
@@ -387,22 +447,22 @@ struct PastTermRebuildTests {
             Self.course("PE1001301", moodleId: "1141PE1001301"),
             Self.course("EC9999301", moodleId: "1141EC9999301"),
         ]
-        let rebuilt = AppServiceBridge.rebuiltPastTerm(
+        let rebuilt = TermRoster.rebuiltPastTerm(
             [Self.looked("CS1001301")], unreadable: [], cached: [Self.course("CS1001301")],
             others: ["GE1010001", "EC9999301"], userAdded: userAdded
         )
         #expect(!rebuilt.dropping.contains("GE1010001"))
 
-        let dropped = AppServiceBridge.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster)
+        let dropped = TermRoster.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: .finalTranscript(rebuilt.roster, alsoListed: []))
         let rows: [[String: Any]] = [
             ["course_no": "CS1001301", "source": "ntust_portal"],
             ["course_no": "GE1010001", "source": "ntust_portal"],
             ["course_no": "PE1001301", "source": "user_added"],
             ["course_no": "EC9999301", "source": "ntust_portal"],
         ]
-        let listed = Set(AppState.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
+        let listed = Set(CourseServerRows.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
             .compactMap { $0["course_no"] as? String })
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1141", listed: listed, tombstoned: [], fetched: Set(rebuilt.courses.map(\.courseNo)),
             handAdded: Set(userAdded.map(\.courseNo)), droppedMerges: [], hidden: [], adding: []
         )
@@ -417,11 +477,11 @@ struct PastTermRebuildTests {
         let dropped: Set<String> = ["GE1010001", "EC9999301"]
         let rows: [[String: Any]] = [["course_no": "EC9999301", "source": "ntust_portal"]]
 
-        let listed = Set(AppState.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
+        let listed = Set(CourseServerRows.keptRows(rows, semester: "1141", dropped: dropped, userAdded: userAdded)
             .compactMap { $0["course_no"] as? String })
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1141", listed: listed, tombstoned: [], fetched: [], handAdded: Set(userAdded.map(\.courseNo)),
-            droppedMerges: AppState.droppedMerges(userAdded, semester: "1141", dropped: dropped),
+            droppedMerges: CourseServerRows.droppedMerges(userAdded, semester: "1141", dropped: dropped),
             hidden: [], adding: []
         )
 
@@ -440,7 +500,7 @@ struct PastTermRebuildTests {
 
     @Test("The newest term the transcript lists only adds: a just-ended term listed in part, or one still running")
     func newestListedTermOnlyAdds() {
-        let rebuilds = AppServiceBridge.rebuildsFromTranscript
+        let rebuilds = TermRoster.rebuildsFromTranscript
         let justEnded = Self.report([("1141", "CS1001301", .graded), ("1142", "MA1001301", .pending)])
         #expect(!rebuilds(justEnded, "1142", false))
         #expect(rebuilds(justEnded, "1141", false))
@@ -454,7 +514,7 @@ struct PastTermRebuildTests {
 
     @Test("A summer term follows its year's second term: a running one only adds, an ended one is rebuilt")
     func summerTermFollowsTheSecondTerm() {
-        let rebuilds = AppServiceBridge.rebuildsFromTranscript
+        let rebuilds = TermRoster.rebuildsFromTranscript
         let running = Self.report([("1141", "CS1001301", .graded), ("1142", "MA1001301", .graded), ("114H", "PE1001301", .unknown)])
         #expect(!rebuilds(running, "114H", false))
         #expect(rebuilds(running, "1142", false))
@@ -472,8 +532,8 @@ struct PastTermRebuildTests {
         let report = Self.report([
             ("1141", "CS1001301", .graded), ("1141", "NTU-CSIE-101", .graded), ("1141", "MA1001301", .withdrew),
         ])
-        let unreadable = AppServiceBridge.unreadableClassRows(of: report, term: "1141").map(\.code)
-        let rebuilt = AppServiceBridge.rebuiltPastTerm(
+        let unreadable = TermRoster.unreadableClassRows(of: report, term: "1141").map(\.code)
+        let rebuilt = TermRoster.rebuiltPastTerm(
             [Self.looked("CS1001301")], unreadable: unreadable,
             cached: ["CS1001301", "NTU-CSIE-101", "MA1001301", "EC9999301"].map { Self.course($0) },
             others: report.courses.map(\.code), userAdded: []
@@ -481,7 +541,7 @@ struct PastTermRebuildTests {
 
         #expect(unreadable == ["NTU-CSIE-101"])
         #expect(rebuilt.courses.map(\.courseNo) == ["CS1001301", "NTU-CSIE-101"])
-        #expect(AppServiceBridge.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster)
+        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: .finalTranscript(rebuilt.roster, alsoListed: []))
             == ["MA1001301", "EC9999301"])
     }
 
@@ -490,25 +550,25 @@ struct PastTermRebuildTests {
         let report = Self.report([
             ("1141", "TH9001301", .graded), ("1141", "MA1001301", .withdrew), ("1142", "CS1001301", .graded),
         ])
-        #expect(AppServiceBridge.rebuildsFromTranscript(report, term: "1141", servedBySelection: false))
+        #expect(TermRoster.rebuildsFromTranscript(report, term: "1141", servedBySelection: false))
 
-        let rebuilt = AppServiceBridge.rebuiltPastTerm(
+        let rebuilt = TermRoster.rebuiltPastTerm(
             [Self.looked("TH9001301", times: false)], unreadable: [], cached: [Self.course("EE2005301")],
             others: ["TH9001301", "MA1001301"], userAdded: []
         )
 
         #expect(rebuilt.courses.isEmpty)
         #expect(rebuilt.roster.isEmpty)
-        #expect(AppServiceBridge.selectionDrops(
-            previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster, isFinal: true
+        #expect(TermRoster.selectionDrops(
+            previous: [], localPortalNos: rebuilt.dropping, roster: .finalTranscript(rebuilt.roster, alsoListed: [])
         ) == ["EE2005301", "TH9001301", "MA1001301"])
-        #expect(AppServiceBridge.selectionDrops(previous: [], localPortalNos: ["EE2005301"], roster: []).isEmpty)
+        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: ["EE2005301"], roster: .courseSelection([])).isEmpty)
     }
 
     @Test("A term the transcript lists only through exempted rows is not rebuilt")
     func exemptedOnlyTermIsNotRebuilt() {
         let report = Self.report([("1141", "GE1001301", .exempted), ("1142", "CS1001301", .graded)])
-        #expect(!AppServiceBridge.rebuildsFromTranscript(report, term: "1141", servedBySelection: false))
+        #expect(!TermRoster.rebuildsFromTranscript(report, term: "1141", servedBySelection: false))
     }
 
     @Test("A hand-added course filled in from its server row keeps having no Moodle ID")
@@ -518,7 +578,7 @@ struct PastTermRebuildTests {
             "course_no": "GE1010001", "moodle_id": "1141GE1010001", "schedule_json": ["2": ["3", "4"]],
         ]
 
-        let filled = AppState.scheduled(added, fromServerRow: row)
+        let filled = CourseServerRows.scheduled(added, fromServerRow: row)
 
         #expect(filled.schedule == [2: ["3", "4"]])
         #expect(filled.moodleIdNumber == nil)
@@ -527,28 +587,25 @@ struct PastTermRebuildTests {
 
 @MainActor
 struct WarmTermsTests {
-    @MainActor
-    private final class Account {
-        var generation = 1
-    }
-
-    @Test("Shared answers that outlive a sign-out reach no term; the terms save under the generation they were fetched in")
+    @Test("Shared answers that outlive a sign-out reach no term; the terms save under the sign-in they were fetched in")
     func answersFromAnotherAccountReachNoTerm() async {
-        let account = Account()
-        let calls = OSAllocatedUnfairLock(initialState: [String: Int]())
-        let fetch: @Sendable (String, Int, [MoodleEnrolledCourse]?, ScoreReport?) async -> Void = { semester, generation, _, _ in
-            calls.withLock { $0[semester] = generation }
+        let account = AccountSession()
+        let calls = OSAllocatedUnfairLock(initialState: [String: SignIn]())
+        let fetch: @Sendable (String, CourseFetch.TermAnswers) async -> Void = { semester, answers in
+            calls.withLock { $0[semester] = answers.signIn }
         }
 
-        await AppServiceBridge.warmTerms(["1141", "1142"], generation: { account.generation }, shared: {
-            account.generation += 1
-            return (nil, nil)
+        await CourseFetch.warmTerms(["1141", "1142"], shared: {
+            let departing = account.signIns.currentSignIn
+            account.endSignIn()
+            return CourseFetch.TermAnswers(signIn: departing, moodle: nil, transcript: nil)
         }, fetch: fetch)
         #expect(calls.withLock { $0 }.isEmpty)
 
-        await AppServiceBridge.warmTerms(
-            ["1141", "1142"], generation: { account.generation }, shared: { (nil, nil) }, fetch: fetch
-        )
-        #expect(calls.withLock { $0 } == ["1141": 2, "1142": 2])
+        let signIn = account.signIns.currentSignIn
+        await CourseFetch.warmTerms(["1141", "1142"], shared: {
+            CourseFetch.TermAnswers(signIn: signIn, moodle: nil, transcript: nil)
+        }, fetch: fetch)
+        #expect(calls.withLock { $0 } == ["1141": signIn, "1142": signIn])
     }
 }

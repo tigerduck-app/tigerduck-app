@@ -1,0 +1,95 @@
+#if os(iOS)
+import Foundation
+
+nonisolated struct MailOriginal: Sendable {
+    var from: MailAddress?
+    var to: [MailAddress]
+    var cc: [MailAddress]
+    var subject: String
+    var date: Date?
+    var messageID: String?
+    var references: [String]
+    var bodyText: String
+    var replyTo: [MailAddress]? = nil
+}
+
+extension MailOriginal {
+    init(detail: MailMessageDetail, bodyText: String) {
+        let summary = detail.summary
+        let address = summary.fromAddress?.mailNonEmpty
+        let name = summary.fromName?.mailNonEmpty
+        self.init(
+            from: address != nil || name != nil ? MailAddress(name: name, address: address ?? "") : nil,
+            to: (summary.to ?? []).flatMap(MailAddress.parseList),
+            cc: (summary.cc ?? []).flatMap(MailAddress.parseList),
+            subject: summary.subject ?? "",
+            date: summary.date,
+            messageID: detail.messageID,
+            references: detail.references ?? [],
+            bodyText: bodyText,
+            replyTo: detail.replyTo.map(MailAddress.parseList)
+        )
+    }
+}
+
+nonisolated enum MailReplyComposer {
+    static func replySubject(_ subject: String) -> String {
+        hasPrefix(subject, ["re:"]) ? subject : "Re: \(subject)"
+    }
+
+    static func forwardSubject(_ subject: String) -> String {
+        hasPrefix(subject, ["fwd:", "fw:"]) ? subject : "Fwd: \(subject)"
+    }
+
+    static func quotedBody(of original: MailOriginal, dateText: String) -> String {
+        let quoted = normalizedLines(original.bodyText).map { "> \($0)" }.joined(separator: "\n")
+        return "\n\n\(header(original, dateText: dateText))\n\(quoted)"
+    }
+
+    static func forwardBody(of original: MailOriginal, dateText: String) -> String {
+        let block = [
+            String(localized: "school_mail_forwarded_header"),
+            String(format: String(localized: "school_mail_forward_from"), original.from.map(MailRecipients.format) ?? ""),
+            String(format: String(localized: "school_mail_forward_date"), dateText),
+            String(format: String(localized: "school_mail_forward_subject"), original.subject),
+            String(format: String(localized: "school_mail_details_to"), MailRecipients.format(original.to)),
+        ].joined(separator: "\n")
+        return "\n\n\(block)\n\n\(normalizedLines(original.bodyText).joined(separator: "\n"))"
+    }
+
+    static func replyRecipients(
+        to original: MailOriginal,
+        replyTo: [MailAddress],
+        me: String,
+        replyAll: Bool
+    ) -> (to: [MailAddress], cc: [MailAddress]) {
+        let from = original.from.map { [$0] } ?? []
+        let primary = (!replyTo.isEmpty ? replyTo : from).filter { !$0.address.isEmpty }
+        var seen = Set(primary.map { $0.address.lowercased() })
+        seen.insert(me.lowercased())
+        guard replyAll else { return (primary, []) }
+        let cc = (original.to + original.cc)
+            .filter { !$0.address.isEmpty }
+            .filter { seen.insert($0.address.lowercased()).inserted }
+        return (primary, cc)
+    }
+
+    static func threadingHeaders(for original: MailOriginal) -> (inReplyTo: String?, references: [String]) {
+        guard let id = original.messageID else { return (nil, original.references) }
+        return (id, original.references + [id])
+    }
+
+    private static func header(_ original: MailOriginal, dateText: String) -> String {
+        String(format: String(localized: "school_mail_quote_header"), dateText, original.from?.displayName ?? "")
+    }
+
+    private static func normalizedLines(_ text: String) -> [String] {
+        text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+    }
+
+    private static func hasPrefix(_ subject: String, _ prefixes: [String]) -> Bool {
+        let lowered = subject.trimmingCharacters(in: .whitespaces).lowercased()
+        return prefixes.contains { lowered.hasPrefix($0) }
+    }
+}
+#endif

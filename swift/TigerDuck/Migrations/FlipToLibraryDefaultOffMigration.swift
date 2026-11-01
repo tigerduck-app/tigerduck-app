@@ -1,0 +1,27 @@
+import Defaults
+import Foundation
+
+enum FlipToLibraryDefaultOffMigration {
+    private static let doneKey = "FlipToLibraryDefaultOffMigration.v1.done"
+
+    @discardableResult
+    static func runIfNeeded() -> Bool {
+        guard !AppUserDefaults.standard.bool(forKey: doneKey) else { return false }
+        defer { AppUserDefaults.standard.set(true, forKey: doneKey) }
+        if hasStoredSwitch() {
+            FirstTriggerPromptCenter.shared.markSeen(.flipToLibrary)
+            return false
+        }
+        guard FirstTriggerPromptCenter.shared.hasSeen(.flipToLibrary) else { return false }
+        Defaults[.flipToLibraryEnabled] = true
+        return true
+    }
+
+    /// Whether the switch was ever written. `Defaults` registers each key's default, which
+    /// `object(forKey:)` returns too, so this reads the app's persistent domain alone.
+    private static func hasStoredSwitch() -> Bool {
+        let key = Defaults.Key<Bool>.flipToLibraryEnabled
+        guard let domain = Bundle.main.bundleIdentifier else { return false }
+        return key.suite.persistentDomain(forName: domain)?[key.name] != nil
+    }
+}

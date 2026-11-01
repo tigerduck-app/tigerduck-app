@@ -1,11 +1,12 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
 struct CalendarServiceTests {
     private static func taipeiDate(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 0) -> Date {
-        AppConstants.taipeiCalendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+        TaipeiTime.calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
     }
 
     private static let ics = """
@@ -76,14 +77,6 @@ struct CalendarServiceTests {
             #expect(formatter.calendar.identifier == .gregorian)
             #expect(formatter.locale.identifier == "en_US_POSIX")
         }
-    }
-
-    @Test("the academic year turns over on the first of August, Taipei time")
-    func academicYear() {
-        #expect(CalendarService.rocAcademicYear(at: Self.taipeiDate(2026, 7, 31, 23)) == 114)
-        #expect(CalendarService.rocAcademicYear(at: Self.taipeiDate(2026, 8, 1)) == 115)
-        #expect(CalendarService.rocAcademicYear(at: Self.taipeiDate(2027, 1, 15)) == 115)
-        #expect(CalendarService.rocAcademicYear(at: Self.taipeiDate(2025, 12, 31, 23)) == 114)
     }
 
     private struct Answers {

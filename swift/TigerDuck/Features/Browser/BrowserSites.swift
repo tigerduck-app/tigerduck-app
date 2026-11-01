@@ -35,10 +35,23 @@ nonisolated struct BrowserSites: Equatable {
     private func key(_ host: String) -> String { host.lowercased() }
 
     static var stored: BrowserSites {
-        get { BrowserSites(zoom: Defaults[.browserZoom], desktop: Set(Defaults[.browserDesktopSites])) }
-        set {
-            Defaults[.browserZoom] = newValue.zoom
-            Defaults[.browserDesktopSites] = newValue.desktop.sorted()
-        }
+        BrowserSites(zoom: Defaults[.browserZoom], desktop: Set(Defaults[.browserDesktopSites]))
     }
+
+    static func change(for signIn: SignIn, _ body: (inout BrowserSites) -> Void) {
+        guard signIn.isCurrent else { return }
+        var sites = stored
+        body(&sites)
+        Defaults[.browserZoom] = sites.zoom
+        Defaults[.browserDesktopSites] = sites.desktop.sorted()
+    }
+
+    static func forget() {
+        Defaults.reset(.browserZoom, .browserDesktopSites)
+    }
+}
+
+nonisolated struct BrowserSiteSetting: Equatable {
+    var zoom = BrowserZoom.standard
+    var isDesktop = false
 }

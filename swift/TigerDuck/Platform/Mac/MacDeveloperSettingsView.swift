@@ -3,7 +3,7 @@ import SwiftUI
 
 #if DEBUG
 struct MacDeveloperSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var viewModel = MacDebugClockViewModel()
     @State private var snapshot: PushDiagnostic?
     @State private var refreshTimer: Timer?
@@ -113,7 +113,7 @@ struct MacDeveloperSettingsView: View {
     }
 
     private func refreshSnapshot() async {
-        snapshot = await appState.pushCoordinator.currentSnapshot()
+        snapshot = await app.pushCoordinator.currentSnapshot()
     }
 }
 
@@ -136,7 +136,7 @@ private final class MacDebugClockViewModel {
     func observeEffectiveNow() async {
         effectiveNow = AppClock.now()
         while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(1))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1))
             effectiveNow = AppClock.now()
         }
     }

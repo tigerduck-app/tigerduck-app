@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import SwiftUI
 import Testing
 @testable import TigerDuck
 
@@ -37,25 +38,36 @@ struct MailAccountManagerTests {
                 return fake
             }
         )
-        manager.onSignedIn = { hooks.signedIn += 1 }
-        manager.onSignedOut = { hooks.signedOut += 1 }
-        manager.onAuthFailed = { hooks.authFailed += 1 }
-        manager.onNotificationsEnabled = { hooks.enabled += 1 }
-        manager.onNotificationsDisabled = { hooks.disabled += 1 }
+        manager.listeners.signedIn = { hooks.signedIn += 1 }
+        manager.listeners.signedOut = { hooks.signedOut += 1 }
+        manager.listeners.authFailed = { hooks.authFailed += 1 }
+        manager.listeners.notificationsEnabled = { hooks.enabled += 1 }
+        manager.listeners.notificationsDisabled = { hooks.disabled += 1 }
         return Harness(manager: manager, prefs: prefs, secrets: secrets, cache: cache, fake: fake, hooks: hooks)
     }
 
     @Test func theAuthFailedBannerStaysClosedUntilTheNextFailure() async {
         let h = Self.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")
-        h.manager.handleAuthFailure()
+        h.manager.handleAuthFailure(for: h.manager.session.signIns.currentSignIn)
         #expect(h.manager.showsAuthFailedBanner)
         h.manager.authBannerDismissed = true
         #expect(!h.manager.showsAuthFailedBanner)
         await h.manager.login(studentID: "B10000000", password: "pw")
         #expect(!h.manager.showsAuthFailedBanner)
-        h.manager.handleAuthFailure()
+        h.manager.handleAuthFailure(for: h.manager.session.signIns.currentSignIn)
         #expect(h.manager.showsAuthFailedBanner)
+    }
+
+    @Test func aRejectedPasswordOfAnEndedSignInIsNotRecorded() async {
+        let h = Self.harness()
+        await h.manager.login(studentID: "B10000000", password: "pw")
+        let signIn = h.manager.session.signIns.currentSignIn
+        h.manager.session.endSignIn()
+        h.manager.handleAuthFailure(for: signIn)
+        #expect(!h.prefs.authFailed)
+        #expect(!h.manager.showsAuthFailedBanner)
+        #expect(h.hooks.authFailed == 0)
     }
 
     @Test func aSuccessfulLoginStoresEverythingAndSetsTheBaseline() async {
@@ -155,7 +167,7 @@ struct MailAccountManagerTests {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
         let h = Self.harness(prefs: prefs)
-        try MailCredentialStore(storage: h.secrets).savePassword("pw")
+        try MailCredentialStore(storage: h.secrets).savePassword("pw", for: testSignIn)
         await h.fake.update { $0.acceptedPassword = "changed" }
         await h.fake.hold("login")
         let session = Task { try await h.manager.openSession() }
@@ -168,6 +180,35 @@ struct MailAccountManagerTests {
         #expect(!h.manager.authFailed)
         #expect(!h.prefs.authFailed)
         #expect(h.hooks.authFailed == 0)
+    }
+
+    @Test func aRejectionOfTheReplacedPasswordLeavesTheNextSignInAlone() async throws {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        let secrets = InMemoryMailSecretStorage()
+        try MailCredentialStore(storage: secrets).savePassword("old", for: testSignIn)
+        let stale = FakeMailClient()
+        await stale.update { $0.acceptedPassword = "new" }
+        await stale.hold("login")
+        let fresh = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 1)]])
+        var clients: [FakeMailClient] = [stale, fresh]
+        let manager = MailAccountManager(
+            prefs: prefs,
+            credentials: MailCredentialStore(storage: secrets),
+            cache: SchoolMailTestDoubles.temporaryCache(),
+            isDemoLogin: { _, _ in false },
+            makeClient: { _ in clients.removeFirst() }
+        )
+        let session = Task { try await manager.openSession() }
+        await stale.waitForArrival("login")
+
+        await manager.login(studentID: "B10000001", password: "new")
+        #expect(manager.studentID == "B10000001")
+        await stale.release("login")
+        await #expect(throws: MailClientError.authenticationFailed) { _ = try await session.value }
+
+        #expect(!manager.authFailed)
+        #expect(!prefs.authFailed)
     }
 
     @Test func logoutClearsEverything() async throws {
@@ -293,11 +334,12 @@ struct MailAccountManagerTests {
 
     @Test func theNotificationToggleCallsItsHooksOnlyWhenSignedIn() async {
         let h = Self.harness()
-        h.manager.notificationsEnabled = false
+        let isOn = MailNotificationSettingsView.notificationsBinding(for: h.manager)
+        isOn.wrappedValue = false
         #expect(h.hooks.disabled == 0)
         await h.manager.login(studentID: "B10000000", password: "pw")
-        h.manager.notificationsEnabled = true
-        h.manager.notificationsEnabled = false
+        isOn.wrappedValue = true
+        isOn.wrappedValue = false
         #expect(h.hooks.enabled == 1)
         #expect(h.hooks.disabled == 1)
         #expect(h.prefs.notificationsEnabled == false)

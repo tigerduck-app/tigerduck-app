@@ -12,7 +12,7 @@ struct SyncedAccountSeedMigrationTests {
         .syncCourses, .syncCourseColors, .syncCourseNames, .syncAssignments,
     ]
 
-    private static var synced: Set<String> { categories.filter { AppState.hasSynced($0) } }
+    private static var synced: Set<String> { categories.filter { SyncConflicts.hasSynced($0) } }
 
     private static func withUpdatedInstall(_ body: () -> Void) async {
         await withExclusiveRealDefaults {
@@ -85,7 +85,7 @@ struct SyncedAccountSeedMigrationTests {
 
             #expect(Defaults[.pendingConflictCategories] == ["courses"])
 
-            for category in Self.categories { AppState.markForReenableCheck(category, signedIn: true) }
+            for category in Self.categories { SyncConflicts.markForReenableCheck(category, signedIn: true, for: testSignIn) }
 
             #expect(Defaults[.pendingConflictCategories] == Self.categories)
         }

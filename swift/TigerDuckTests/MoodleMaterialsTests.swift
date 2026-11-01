@@ -72,8 +72,8 @@ struct MoodleMaterialsTests {
                         return self._materials
                     }
                 },
-                markMaterialViewed: { material, isCurrent in
-                    guard await isCurrent() else { throw CancellationError() }
+                markMaterialViewed: { material, signIn in
+                    guard signIn.isCurrent else { throw CancellationError() }
                     self.lock.withLock { self._viewed.append(material.id) }
                 },
                 download: { file, progress in
@@ -92,7 +92,7 @@ struct MoodleMaterialsTests {
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleMaterialsTests-\(UUID().uuidString)", isDirectory: true)
-        lazy var cache = DataCache(
+        lazy var cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -105,14 +105,14 @@ struct MoodleMaterialsTests {
         _ folder: Folder,
         site: Site,
         account: String = "B11399001",
-        signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true),
+        signedIn: TestSignIn = TestSignIn(),
         beforeMaterials: @escaping @Sendable () async -> Void = {},
         beforeDownload: @escaping @Sendable (_ file: MoodleFile, _ progress: @escaping @Sendable (Double) -> Void) async throws -> Void = { _, _ in }
     ) -> MoodleCourseStore {
         MoodleCourseStore(
             courseId: courseId,
             termCourseIds: [courseId],
-            context: MoodleCacheContext(account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }),
+            context: MoodleCacheContext(account: account, cache: folder.cache.moodle, signIn: signedIn.signIn),
             api: site.api(beforeMaterials: beforeMaterials, beforeDownload: beforeDownload),
             downloads: folder.downloads
         )
@@ -197,14 +197,14 @@ struct MoodleMaterialsTests {
     @Test("an answer that lands after a sign-out is neither shown nor kept")
     func signOutWhileFetching() async {
         let folder = Folder()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let store = Self.store(folder, site: Site(), signedIn: signedIn)
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
 
         await store.refreshMaterials()
 
         #expect(store.materials.value == nil)
-        #expect(folder.cache.loadMoodleData(MoodleCourseMaterials.self, name: "courses/20119/materials", account: "B11399001") == nil)
+        #expect(folder.cache.moodle.loadMoodleData(MoodleCourseMaterials.self, name: "courses/20119/materials", account: "B11399001") == nil)
     }
 
     @Test("signing out deletes the cached materials and every downloaded file")
@@ -215,10 +215,10 @@ struct MoodleMaterialsTests {
         let copy = try #require(await store.download(Self.syllabusRef.file, in: Self.syllabusRef.owner))
         #expect(FileManager.default.fileExists(atPath: copy.path))
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
 
         #expect(!FileManager.default.fileExists(atPath: folder.cache.moodleFilesDir.path))
-        #expect(folder.cache.loadMoodleData(MoodleCourseMaterials.self, name: "courses/20119/materials", account: "B11399001") == nil)
+        #expect(folder.cache.moodle.loadMoodleData(MoodleCourseMaterials.self, name: "courses/20119/materials", account: "B11399001") == nil)
         #expect(store.downloadState(of: Self.syllabusRef.file, in: Self.syllabusRef.owner) == .notDownloaded)
     }
 
@@ -228,9 +228,9 @@ struct MoodleMaterialsTests {
         let site = Site()
         let store = Self.store(folder, site: site)
 
-        await store.open(Self.syllabus).value
-        await store.open(Self.reading).value
-        await store.open(Self.lab).value
+        await store.logView(of: Self.syllabus).value
+        await store.logView(of: Self.reading).value
+        await store.logView(of: Self.lab).value
 
         #expect(site.viewed == [9101, 9201])
     }
@@ -239,10 +239,10 @@ struct MoodleMaterialsTests {
     func noViewEventAfterSignOut() async {
         let folder = Folder()
         let site = Site()
-        let signedIn = OSAllocatedUnfairLock(initialState: false)
+        let signedIn = TestSignIn.ended()
         let store = Self.store(folder, site: site, signedIn: signedIn)
 
-        await store.open(Self.syllabus).value
+        await store.logView(of: Self.syllabus).value
 
         #expect(site.viewed.isEmpty)
     }
@@ -323,14 +323,14 @@ struct MoodleMaterialsTests {
     @Test("a download that ends after a sign-out writes nothing and shows no failure")
     func downloadAfterSignOut() async throws {
         let folder = Folder()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let gate = ManualSleeper()
         let store = Self.store(folder, site: Site(), signedIn: signedIn, beforeDownload: { _, _ in await gate.sleep(for: .zero) })
         let file = Self.syllabusRef.file
 
         let download = Task { await store.download(file, in: .module(9101)) }
         try await gate.waitUntilArmed()
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await gate.fire()
 
         #expect(await download.value == nil)

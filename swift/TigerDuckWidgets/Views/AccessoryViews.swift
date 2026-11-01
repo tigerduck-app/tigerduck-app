@@ -1,5 +1,6 @@
 import SwiftUI
 import WidgetKit
+import TigerDuckCore
 
 struct AccessoryInlineView: View {
     let derived: WidgetDerivedState

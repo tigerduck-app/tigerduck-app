@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct MacLoginView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
 
     let showsSkipButton: Bool
@@ -76,7 +76,7 @@ struct MacLoginView: View {
                 .screenCaptureProtected(isPasswordVisible)
             }
 
-            if let error = appState.authService.loginError, !error.isEmpty {
+            if let error = app.authService.loginError, !error.isEmpty {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
                     .foregroundStyle(.red)
@@ -88,7 +88,7 @@ struct MacLoginView: View {
                 Task { await attemptLogin() }
             } label: {
                 LoadingButtonLabel(
-                    isLoading: appState.authService.isLoggingIn,
+                    isLoading: app.authService.isLoggingIn,
                     tint: .white
                 ) {
                     Text(String(localized: "action_sign_in"))
@@ -103,7 +103,7 @@ struct MacLoginView: View {
             VStack(spacing: 4) {
                 Toggle(
                     String(localized: "settings_sync_toggle_label"),
-                    isOn: Bindable(appState).cloudSyncEnabled
+                    isOn: app.cloudSyncSwitch
                 )
                 .toggleStyle(.switch)
                 .frame(maxWidth: 280)
@@ -123,11 +123,11 @@ struct MacLoginView: View {
 
             if showsSkipButton {
                 Button(String(localized: "onboarding_skip_for_now")) {
-                    appState.didSkipMacLogin = true
+                    app.didSkipMacLogin = true
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
-                .disabled(appState.authService.isLoggingIn)
+                .disabled(app.authService.isLoggingIn)
             }
 
             Spacer(minLength: 0)
@@ -147,7 +147,7 @@ struct MacLoginView: View {
             Text(switchLines.joined(separator: "\n"))
         }
         .onAppear {
-            if studentId.isEmpty, let stored = appState.authService.storedStudentId { studentId = stored }
+            if studentId.isEmpty, let stored = app.authService.storedStudentId { studentId = stored }
             focused = studentId.isEmpty ? .studentId : .password
         }
         .screenCaptureProtected()
@@ -156,7 +156,7 @@ struct MacLoginView: View {
     private var canSubmit: Bool {
         !studentId.trimmingCharacters(in: .whitespaces).isEmpty &&
         !password.isEmpty &&
-        !appState.authService.isLoggingIn &&
+        !app.authService.isLoggingIn &&
         !isSigningIn
     }
 
@@ -165,9 +165,9 @@ struct MacLoginView: View {
         isSigningIn = true
         defer { isSigningIn = false }
         guard AuthService.replacesStoredAccount(
-            stored: appState.authService.storedStudentId, signingInAs: studentId
+            stored: app.authService.storedStudentId, signingInAs: studentId
         ) else { return await logIn() }
-        let unsynced = await appState.signOutDeletesUnsyncedData()
+        let unsynced = await app.signOutCheck.deletesUnsyncedData()
         ImportedClassTableStore.shared.requestSignOut(
             unsyncedData: unsynced,
             confirm: { switchLines = $0; confirmsSwitch = true },
@@ -176,12 +176,12 @@ struct MacLoginView: View {
     }
 
     private func logIn() async {
-        let ok = await appState.authService.login(
+        let ok = await app.authService.login(
             studentId: studentId,
             password: password
         )
         if ok {
-            appState.completeOnboarding()
+            app.completeOnboarding()
             onSignedIn()
         }
     }

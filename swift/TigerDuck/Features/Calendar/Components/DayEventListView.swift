@@ -1,8 +1,9 @@
 import SwiftUI
+import TigerDuckCore
 
 struct DayEventListView: View {
     let date: Date
-    let events: [SDCalendarEvent]
+    let events: [AssignmentStore.CalendarEvent]
 
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
@@ -26,7 +27,7 @@ struct DayEventListView: View {
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.setLocalizedDateFormatFromTemplate("MMMd")
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         return f
     }()
 

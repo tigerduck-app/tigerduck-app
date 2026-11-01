@@ -2,10 +2,10 @@ import Defaults
 import SwiftUI
 
 struct EventRowView: View {
-    let event: SDCalendarEvent
+    let event: AssignmentStore.CalendarEvent
 
     #if os(iOS)
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     #endif
 
     #if os(iOS)
@@ -42,7 +42,7 @@ struct EventRowView: View {
                     "",
                     isOn: Binding(
                         get: { holidayOverrides.contains(holidayID) },
-                        set: { appState.setHolidayNotify($0, holidayID: holidayID) }
+                        set: { app.holidays.setHolidayNotify($0, holidayID: holidayID, for: app.authService.session.currentSignIn) }
                     )
                 )
                 .labelsHidden()
@@ -67,10 +67,10 @@ struct EventRowView: View {
     }
 
     private var holidayID: Int? {
-        AcademicCalendar.holidayID(for: event)
+        SchoolCalendar.holidayID(for: event)
     }
 
-    static func showsTime(of event: SDCalendarEvent) -> Bool {
+    static func showsTime(of event: AssignmentStore.CalendarEvent) -> Bool {
         !event.isAllDay
     }
 }

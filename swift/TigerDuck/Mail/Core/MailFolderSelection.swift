@@ -1,0 +1,37 @@
+#if os(iOS)
+import Foundation
+
+nonisolated enum MailFolderSelection: Hashable, Sendable {
+    case real(String)
+
+    case allMail
+
+    static let mergedRoles: [MailFolderRole] = [.inbox, .sent, .drafts]
+
+    var realFolder: String? {
+        if case .real(let name) = self { return name }
+        return nil
+    }
+
+    func targets(roles: [MailFolderRole: String], others: [String]) -> [String] {
+        switch self {
+        case .real(let name): [name]
+        case .allMail: Self.mergedRoles.compactMap { roles[$0] } + others
+        }
+    }
+}
+
+nonisolated struct MailListRow: Identifiable, Hashable, Sendable {
+    struct ID: Hashable, Sendable {
+        var folder: String
+        var uid: UInt32
+    }
+
+    var folder: String
+    var summary: MailSummary
+
+    var uid: UInt32 { summary.uid }
+
+    var id: ID { ID(folder: folder, uid: summary.uid) }
+}
+#endif

@@ -15,7 +15,7 @@ The mail page shares one IMAP connection, whose `AsyncSerialLock` was strictly f
 
 ## Decision
 
-- `MailSearchIndex` (`swift/TigerDuck/Services/Mail/Store/MailSearchIndex.swift`) is one SQLite
+- `MailSearchIndex` (`swift/TigerDuck/Mail/Store/MailSearchIndex.swift`) is one SQLite
   file in `MailCache`'s directory, left out of backups. Each row is a mail's UID and its text:
   sender name and address, subject and the first text part (plain before HTML, at most 32,000
   characters), lowercased.
@@ -23,7 +23,7 @@ The mail page shares one IMAP connection, whose `AsyncSerialLock` was strictly f
   UIDVALIDITY empties it. It has the protection class of the other mail caches.
 - `MailCache.clearAll()`, which School Mail's sign-out and Clear Cache run, closes and deletes it.
   Every write is refused once `MailCache.wipeCount` has moved since the download began.
-- `MailIndexer` (`swift/TigerDuck/Services/Mail/Sync/MailIndexer.swift`) downloads while the mail
+- `MailIndexer` (`swift/TigerDuck/Mail/Sync/MailIndexer.swift`) downloads while the mail
   page is on screen and the app is active: Inbox and Sent first, then the other folders. A pass
   first lists every folder's undeleted UIDs and drops the mail the server no longer has, then
   fetches what is missing, newest first, 20 mails per command. A pass that got through holds off

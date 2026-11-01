@@ -64,7 +64,7 @@ None.
 - Backend (`tigerduck-backend`): `server/routes/sync/uploads.py`, `server/syncjobs/assignments.py`,
   tests under `server/tests/`, `MIGRATE.md`, `server/AGENTS.md`. The held branch
   `fix/retire-dropped-roster-courses` is reworked to this rule.
-- iOS: `Services/Push/PushAPIDTO.swift` (`CourseUploadRequest`), `Bridge/AppServiceBridge.swift`
+- iOS: `Backend/Push/PushAPIDTO.swift` (`CourseUploadRequest`), `Bridge/AppServiceBridge.swift`
   (the roster fetch and its upload), `App/AppState+BackendSync.swift` (`uploadCourses`),
   `App/AppState+CourseReconcile.swift` (the merge of server rows), tests in `swift/TigerDuckTests/`.
 - Android (`tigerduck-app-android`): its fetch upload, its server-row merge and its add path; its

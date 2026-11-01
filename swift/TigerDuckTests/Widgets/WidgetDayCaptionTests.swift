@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import TigerDuck
+import TigerDuckCore
 
 /// English names a day the same with the caption and the short keys, so these read zh-Hant,
 /// where the two differ.

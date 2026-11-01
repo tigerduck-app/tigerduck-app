@@ -29,14 +29,14 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 1.1 perf(Sync): back off revision polling and poll once on return（#238、android#154、backend#32）
 
-- **現況**：前景每 10 秒固定打一次 `/sync/revision`，離線、5xx、429、401 都照打，也不擋重疊的請求（`swift/TigerDuck/App/AppState+RevisionPolling.swift:16-66`）；只有 scene 進背景、登出或關閉同步才停（`swift/TigerDuck/TigerDuckApp.swift:166,173`）。後端每次 poll 都 commit 一次 `last_seen_at`（`backend:server/routes/sync/snapshot.py:36-49`），前景一小時就是 360 次。後端的 `poll_tracker` 只記在行程記憶體裡，推播流程沒有讀它，所以拉長間隔不會影響推播。
+- **現況**：前景每 10 秒固定打一次 `/sync/revision`，離線、5xx、429、401 都照打，也不擋重疊的請求（`swift/TigerDuck/App/AppState+RevisionPolling.swift:16-66`）；只有 scene 進背景、登出或關閉同步才停（`swift/TigerDuck/App/TigerDuckApp.swift:166,173`）。後端每次 poll 都 commit 一次 `last_seen_at`（`backend:server/routes/sync/snapshot.py:36-49`），前景一小時就是 360 次。後端的 `poll_tracker` 只記在行程記憶體裡，推播流程沒有讀它，所以拉長間隔不會影響推播。
 - **建議**：回到前景時立刻 poll 一次；有變動或本機剛編輯後的一分鐘內維持 10 秒，之後倍增到 60 秒（Mac 120 秒）；出錯時指數退避到 300 秒並加 jitter；`NetworkMonitor` 判斷離線時暫停；401 時重新登入一次，再失敗就停到下次回前景；上一個請求還沒回來就跳過。
 - **評估**：效益高（後端負載、耗電）；成本 S；風險低。iPhone 上，作業標記、課程覆寫與伺服器的 Moodle 同步會送 silent push（`sync_trigger`）補上，但通知設定文件、假日例外與停課日不會；Mac 也收不到 silent push（`backend:server/push/pipeline.py:475`），所以上限不宜拉太長。配合：Android 也是固定 10 秒的迴圈（`android:…/ui/screen/home/HomeViewModel.kt:534-560`），可以一起改。信心高。
 
 ### 1.2 perf(CloudSync): stop fetching and discarding /sync/full on every outbox tick（#239、backend#24）
 
-- **現況**：`CloudSyncCoordinator.syncTick` 每次都先呼叫 `pullFullSync()`，抓一份完整的 `/sync/full` 再丟掉（`swift/TigerDuck/Services/CloudSync/CloudSyncCoordinator.swift:185-191,287-289`）。tick 每 5 分鐘一次、每次 `didBecomeActive` 一次（關掉控制中心也算），本機每次編輯後 1 秒也一次；scene 進背景也不會停，所以 Mac 開著就整天跑（:320-331、:357-361）。後端每次 `/sync/full` 都會寫一筆 sync log、取消這台裝置排隊中的 sync trigger，並把伺服器自己的 Moodle 同步延後 2 小時（`backend:server/routes/sync/snapshot.py:103-118`、`backend:server/routes/sync/_shared.py:97`）。Mac 一直開著時，伺服器端的 Moodle 同步可能一直輪不到，2.1 也就更容易發生。
-- **建議**：刪掉 `pullFullSync()` 和它的兩個呼叫點。outbox drain 遇到 `URLError` 和 401 本來就會保留項目（`swift/TigerDuck/Services/CloudSync/SyncOutbox.swift:160-176`），重試行為不變。後端只在上傳路由延後同步工作，並改成 `greatest(run_after, now + 2h)`。
+- **現況**：`CloudSyncCoordinator.syncTick` 每次都先呼叫 `pullFullSync()`，抓一份完整的 `/sync/full` 再丟掉（`swift/TigerDuck/Backend/Sync/CloudSyncCoordinator.swift:185-191,287-289`）。tick 每 5 分鐘一次、每次 `didBecomeActive` 一次（關掉控制中心也算），本機每次編輯後 1 秒也一次；scene 進背景也不會停，所以 Mac 開著就整天跑（:320-331、:357-361）。後端每次 `/sync/full` 都會寫一筆 sync log、取消這台裝置排隊中的 sync trigger，並把伺服器自己的 Moodle 同步延後 2 小時（`backend:server/routes/sync/snapshot.py:103-118`、`backend:server/routes/sync/_shared.py:97`）。Mac 一直開著時，伺服器端的 Moodle 同步可能一直輪不到，2.1 也就更容易發生。
+- **建議**：刪掉 `pullFullSync()` 和它的兩個呼叫點。outbox drain 遇到 `URLError` 和 401 本來就會保留項目（`swift/TigerDuck/Backend/Sync/SyncOutbox.swift:160-176`），重試行為不變。後端只在上傳路由延後同步工作，並改成 `greatest(run_after, now + 2h)`。
 - **評估**：效益高；成本 S；風險低；配合：後端（延後邏輯，可以晚點做）；信心：App 端高，「伺服器同步一直被延後」中。
 
 ### 1.3 perf(Sync): skip course and assignment uploads whose content did not change（#240）
@@ -53,13 +53,13 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 - **現況**：revision 一變就抓整份 `/sync/full`，在 main actor 上解析、重寫快取、發 `dataDidUpdate`，接著再另外 GET 一次通知設定文件（`swift/TigerDuck/App/AppState+BackendSync.swift:15-215`）。後端其實已經有增量 API：`GET /sync?since_revision=` 回傳每筆變動的 `revision`、`entity_type`、`entity_id`、`operation`、`payload` 與 `has_more`；資料被壓縮掉（30 天）之後回 410 `sync_revision_expired`（`backend:server/routes/sync/snapshot.py:52-89`）。
 - **建議**：revision 變動時先讀 feed。只有 `assignment` 與 `bulletin_*` 類的變動就略過（伺服器每次軟刪除暫存列或更新繳交狀態都會寫一筆）；只有 `settings_document` 就只跑通知設定的 reconcile；其他情況照舊 full sync；最後把 watermark 推到 `returned_until_revision`。
-- **陷阱**：`PushAPIClient` 會把所有非 2xx 回報給 `APIVersionGate`（`swift/TigerDuck/Services/Push/PushAPIClient.swift:350-357`），而 gate 收到任何 410 就永久鎖成「需要更新」（`swift/TigerDuck/Services/API/APIVersionGate.swift:26-29`）。feed 的 410 一定要在那之前處理掉。
+- **陷阱**：`PushAPIClient` 會把所有非 2xx 回報給 `APIVersionGate`（`swift/TigerDuck/Backend/Push/PushAPIClient.swift:350-357`），而 gate 收到任何 410 就永久鎖成「需要更新」（`swift/TigerDuck/Backend/Client/APIVersionGate.swift:26-29`）。feed 的 410 一定要在那之前處理掉。
 - **後端可以加的**：每筆 feed 帶 `by_this_device`（changelog 已經存了 `device_id`）。現在每台裝置在自己編輯後約 10 秒，都會因為自己的回音再做一次 full sync。
 - **評估**：效益中高（多數 revision 變動不必 full sync）；成本 App M、後端 S；風險中：分類錯了會漏同步，要有測試；配合：後端（`by_this_device`，可選），Android 可以共用同一套規則；信心：API 盤點高，效益估計中。
 
 ### 1.5 chore(Logging): record where a lapsed service session lands（#242）
 
-- **現況**：#237 假設服務 session 過期時頁面會導到學校入口 `i.ntust.edu.tw`，所以課表和成績抓取遇到「最後的主機不是自己」就清掉該服務的 cookie 再登入一次（`swift/TigerDuck/Services/API/NTUST/CourseSelectionService.swift:56-79`、`swift/TigerDuck/Services/API/NTUST/NTUSTScoreService.swift:114-135`）。這兩個分支什麼都沒記錄，`AppLogger` 也只有 `captureError`（`swift/TigerDuck/Services/Logging/AppLogger.swift:48`），恢復成功的 bounce 完全看不到。
+- **現況**：#237 假設服務 session 過期時頁面會導到學校入口 `i.ntust.edu.tw`，所以課表和成績抓取遇到「最後的主機不是自己」就清掉該服務的 cookie 再登入一次（`swift/TigerDuck/School/NTUST/CourseSelectionService.swift:56-79`、`swift/TigerDuck/School/NTUST/NTUSTScoreService.swift:114-135`）。這兩個分支什麼都沒記錄，`AppLogger` 也只有 `captureError`（`swift/TigerDuck/Support/Logging/AppLogger.swift:48`），恢復成功的 bounce 完全看不到。
 - **建議**：加一個約 5 行的 `AppLogger.captureMessage`，bounce 時送一筆 info 事件，tag 帶 `service`、`landedHost`（分桶：ssoam2／ssoam／i.ntust.edu.tw／other）、`ssoBody`、`outcome`（recovered／bouncedAgain），只送主機，不送路徑與 query；`redirectedToSSO` 也帶上主機。一週的資料就能證實或推翻這個假設，不需要用測試帳號登入。前置：Sentry 目前沒有啟用，要先做 7.1。
 - **評估**：效益中（確認 #237 的修法夠不夠）；成本 S；風險無（不含個資）；配合：Android 要不要做同樣的 bounce 處理，可以等資料出來再決定；信心高。
 
@@ -81,14 +81,14 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 2.3 fix(CloudSync): keep edits through server errors instead of dropping them after five（#244）
 
-- **現況**：outbox 最多試 5 次；只有 `URLError`、取消與 401 會保留且不扣次數，5xx、429、404 和解碼失敗都扣一次，滿 5 次就丟掉，只留一行 `os` log（`swift/TigerDuck/Services/CloudSync/SyncOutbox.swift:94,160-185`）。丟掉之後，下一次成功的 pull 會用伺服器狀態蓋掉本機標記（`swift/TigerDuck/App/AppState+BackendSync.swift:128-141`）。後端故障期間每回到前景就 drain 一次，回來五次，這段時間做的標記就沒了。
+- **現況**：outbox 最多試 5 次；只有 `URLError`、取消與 401 會保留且不扣次數，5xx、429、404 和解碼失敗都扣一次，滿 5 次就丟掉，只留一行 `os` log（`swift/TigerDuck/Backend/Sync/SyncOutbox.swift:94,160-185`）。丟掉之後，下一次成功的 pull 會用伺服器狀態蓋掉本機標記（`swift/TigerDuck/App/AppState+BackendSync.swift:128-141`）。後端故障期間每回到前景就 drain 一次，回來五次，這段時間做的標記就沒了。
 - **建議**：5xx、408、429 比照 `URLError` 保留；真的要丟時，像假日例外的 `unacknowledgedHolidayIDs` 一樣保護本機狀態，並用 `AppLogger.captureError` 回報。
 - **評估**：效益高；成本 S；風險低；配合：不需要；信心高。
 
 ### 2.4 fix(CloudSync): accept the server's reply to clearing an assignment mark（#245）
 
-- **現況**：取消作業標記（`local_status: "none"`）時，後端回 `{"deleted": true}`（`backend:server/routes/overrides.py:95-127`），App 卻用必填 `id`、`local_status`、`updated_at` 的 `AssignmentOverrideResponse` 解碼（`swift/TigerDuck/Services/Push/PushAPIDTO.swift:259-269`、`swift/TigerDuck/Services/Push/PushAPIClient.swift:160-170`），每次都失敗，outbox 於是重送 5 次。刪除在第一次就成功了，但每次重送都會讓後端多寫一筆 changelog 與 log，並排一次 sync trigger，讓其他裝置多做 full sync。
-- **建議**：呼叫端都沒有用到回應（`swift/TigerDuck/Services/CloudSync/CloudSyncCoordinator.swift:300,307` 是 `_ =`），改成不解碼回應內容。
+- **現況**：取消作業標記（`local_status: "none"`）時，後端回 `{"deleted": true}`（`backend:server/routes/overrides.py:95-127`），App 卻用必填 `id`、`local_status`、`updated_at` 的 `AssignmentOverrideResponse` 解碼（`swift/TigerDuck/Backend/Push/PushAPIDTO.swift:259-269`、`swift/TigerDuck/Backend/Push/PushAPIClient.swift:160-170`），每次都失敗，outbox 於是重送 5 次。刪除在第一次就成功了，但每次重送都會讓後端多寫一筆 changelog 與 log，並排一次 sync trigger，讓其他裝置多做 full sync。
+- **建議**：呼叫端都沒有用到回應（`swift/TigerDuck/Backend/Sync/CloudSyncCoordinator.swift:300,307` 是 `_ =`），改成不解碼回應內容。
 - **評估**：效益中高；成本 S；風險低；配合：不需要（Android 只看 HTTP 狀態）；信心高。
 
 ### 2.5 fix(Sync): drop a full sync that a sign-out overtook（#246）
@@ -118,14 +118,14 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 2.9 fix(Sync): honour the Assignments sync switch（#249、backend#30）
 
-- **現況**：「同步作業」開關只在偏好設定的 PATCH 和重新開啟時的檢查用到（`swift/TigerDuck/Services/Push/PushRegistrationService.swift:427`）。作業清單上傳只看 `cloudSyncEnabled`（`swift/TigerDuck/Bridge/AppServiceBridge+Assignments.swift:256-282`），標記的上傳與拉取也不看這個開關。所有裝置都關掉時後端會清掉作業資料（`backend:server/routes/user_devices.py:550-566`），這台裝置下一輪又傳回去。
+- **現況**：「同步作業」開關只在偏好設定的 PATCH 和重新開啟時的檢查用到（`swift/TigerDuck/Backend/Push/PushRegistrationService.swift:427`）。作業清單上傳只看 `cloudSyncEnabled`（`swift/TigerDuck/Bridge/AppServiceBridge+Assignments.swift:256-282`），標記的上傳與拉取也不看這個開關。所有裝置都關掉時後端會清掉作業資料（`backend:server/routes/user_devices.py:550-566`），這台裝置下一輪又傳回去。
 - **已決定**：這個開關只管「標記為完成」與「標記為忽略」。
 - **建議**：標記的推送與拉取依開關決定；作業清單照常上傳，因為後端的作業提醒用的是它。後端在所有裝置都關掉時，連作業清單一起刪除，改成只刪標記（backend#30）。
 - **評估**：效益中；成本 S；風險低；配合：後端（只刪標記，App 端可以先做）；信心高。
 
 ### 2.10 perf(Sync): reuse what the full sync fetched and write only what changed（#250）
 
-- **現況**：每次 full sync 之後，`reconcileNotificationSettings()` 會再 GET 一次 `/sync/full` 已經帶回的設定文件（`swift/TigerDuck/App/AppState+BackendSync.swift:212`）。不論有沒有變，都重寫標記檔並發 `dataDidUpdate`（:140-141、:205），連帶觸發各頁重讀、手錶 payload、widget snapshot、Live Activity 與 `/schedule/sync`，全都在 main actor 上。另外每個 `PushAPIClient` 都建立自己的 ephemeral `URLSession`（`swift/TigerDuck/Services/Push/PushAPIClient.swift:364-373`），bridge 每次上傳都 new 一個，連線沒辦法重用。
+- **現況**：每次 full sync 之後，`reconcileNotificationSettings()` 會再 GET 一次 `/sync/full` 已經帶回的設定文件（`swift/TigerDuck/App/AppState+BackendSync.swift:212`）。不論有沒有變，都重寫標記檔並發 `dataDidUpdate`（:140-141、:205），連帶觸發各頁重讀、手錶 payload、widget snapshot、Live Activity 與 `/schedule/sync`，全都在 main actor 上。另外每個 `PushAPIClient` 都建立自己的 ephemeral `URLSession`（`swift/TigerDuck/Backend/Push/PushAPIClient.swift:364-373`），bridge 每次上傳都 new 一個，連線沒辦法重用。
 - **建議**：直接用 snapshot 帶回的設定文件；寫入前先比較，有變才發通知；上傳共用 `pushCoordinator` 的 client。
 - **評估**：效益中；成本 S；風險低；配合：不需要；信心高。
 
@@ -137,7 +137,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 2.12 fix(Sync): sync the course a colour pick displaces（#252）
 
-- **現況**：挑顏色時，`setColor` 會把原本用這個顏色的課換成別的顏色（`swift/TigerDuck/Theme/TigerDuckTheme.swift:197-215`），但只 PATCH 被挑的那門課（`swift/TigerDuck/Features/ClassTable/ClassTableViewModel+Editing.swift:261-270`），伺服器上就有兩門課同色。之後套用伺服器顏色時，依伺服器回傳的順序逐筆 `setColor`，每次同步都可能把這兩門課的顏色換來換去。
+- **現況**：挑顏色時，`setColor` 會把原本用這個顏色的課換成別的顏色（`swift/TigerDuck/UI/Theme/TigerDuckTheme.swift:197-215`），但只 PATCH 被挑的那門課（`swift/TigerDuck/Features/ClassTable/ClassTableViewModel+Editing.swift:261-270`），伺服器上就有兩門課同色。之後套用伺服器顏色時，依伺服器回傳的順序逐筆 `setColor`，每次同步都可能把這兩門課的顏色換來換去。
 - **建議**：依 `color_hex_updated_at` 排序後一次套用所有伺服器顏色；挑色之後，連被換掉顏色的課一起 PATCH。
 - **評估**：效益低中；成本 S–M；風險低；配合：不需要；信心中。
 
@@ -151,19 +151,19 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 3.2 fix(Auth): stop silent SSO retries once the school rejects the password（#254、android#163）
 
-- **現況**：SSO 登入被拒時只丟 `.loginFailed`，不讀頁面上的原因，畫面一律顯示請使用者確認帳號密碼（`swift/TigerDuck/Services/API/NTUST/SSOLoginService.swift:185-200`）。用已存密碼的背景登入分散在 `AuthService`、課表、成績與 Moodle token 更新，沒有一條會在密碼被拒後停手。使用者在學校改了密碼後，舊密碼會在每次啟動、下拉課表、看成績和更新 Moodle token 時一再送出；帳號被鎖或出現驗證碼時，使用者看到的也還是「請確認帳號密碼」。School Mail 已經有同類保護：密碼被拒後，背景檢查就不再登入（`swift/TigerDuck/Services/Mail/Sync/MailChecker.swift:155`）。
+- **現況**：SSO 登入被拒時只丟 `.loginFailed`，不讀頁面上的原因，畫面一律顯示請使用者確認帳號密碼（`swift/TigerDuck/School/NTUST/SSOLoginService.swift:185-200`）。用已存密碼的背景登入分散在 `AuthService`、課表、成績與 Moodle token 更新，沒有一條會在密碼被拒後停手。使用者在學校改了密碼後，舊密碼會在每次啟動、下拉課表、看成績和更新 Moodle token 時一再送出；帳號被鎖或出現驗證碼時，使用者看到的也還是「請確認帳號密碼」。School Mail 已經有同類保護：密碼被拒後，背景檢查就不再登入（`swift/TigerDuck/Mail/Sync/MailChecker.swift:155`）。
 - **建議**：加一個持久化的「密碼被拒」旗標：背景登入被拒時設定、每次背景 POST 前檢查、使用者手動登入成功才清除。把 `MoodleTokenService.extractLoginError` 移到 `HTMLParser`，讓錯誤訊息帶出學校頁面上的說明（使用者看得到的文案，要先審）。
 - **評估**：效益高；成本 S；風險低；配合：Android 值得檢查同樣的情況；信心中高（SSO 的鎖定門檻沒有驗證）。
 
 ### 3.3 fix(Auth): require a live SSO session before calling a sign-in successful（#255）
 
-- **現況**：`ensureServiceLogin` 打開服務頁後，只要不是 ssoam2 的登入表單就當作已登入（`swift/TigerDuck/Services/API/NTUST/SSOLoginService.swift:124-128`），不看 HTTP 狀態，也不確認 session；判斷登入頁時只認 `ssoam2.ntust.edu.tw`（`swift/TigerDuck/Services/Core/HTMLParser.swift:16-33`）。第一頁若是維護頁、503、學校入口，或 Android PR #131 提到的另一台 SSO 主機 `ssoam.ntust.edu.tw`（NetIQ 表單，帶 invisible reCAPTCHA），互動式登入會在沒有送出密碼的情況下「成功」，打錯的密碼也照樣存進 Keychain（`swift/TigerDuck/Services/Auth/AuthService.swift:163-165`），之後再接上 3.2 的重試。
+- **現況**：`ensureServiceLogin` 打開服務頁後，只要不是 ssoam2 的登入表單就當作已登入（`swift/TigerDuck/School/NTUST/SSOLoginService.swift:124-128`），不看 HTTP 狀態，也不確認 session；判斷登入頁時只認 `ssoam2.ntust.edu.tw`（`swift/TigerDuck/School/HTMLParser.swift:16-33`）。第一頁若是維護頁、503、學校入口，或 Android PR #131 提到的另一台 SSO 主機 `ssoam.ntust.edu.tw`（NetIQ 表單，帶 invisible reCAPTCHA），互動式登入會在沒有送出密碼的情況下「成功」，打錯的密碼也照樣存進 Keychain（`swift/TigerDuck/Account/AuthService.swift:163-165`），之後再接上 3.2 的重試。
 - **建議**：回傳成功前呼叫一次 `NTUSTSessionManager.shared.probeCookiesValid()`。讓 `HTMLParser` 認得 ssoam 的頁面，遇到時丟新的 `.interactiveLoginRequired`，不要當成成功。送出帳密的主機白名單維持只有 ssoam2。
 - **評估**：效益中高；成本 S；風險低；配合：Android PR #131 已處理兩台主機的判斷；信心：程式路徑高，實際觸發的頻率要看學校伺服器。
 
 ### 3.4 fix(Calendar): parse the school calendar in the Gregorian calendar and keep it on failure（#256）
 
-- **現況**：`currentROCYear` 用 `Calendar.current` 取年份再減 1911（`swift/TigerDuck/Services/API/Calendar/CalendarService.swift:66-74`）。手機設成民國曆時，取到的年份已經是 115，減完是 -1796，找不到 ICS，學校行事曆整個空白。ICS 的 `DateFormatter` 沒有指定 locale 和曆法（:171-187），在民國曆下 `20250901` 會被解成西元 3936 年。以上兩點用 Swift script 實際驗證過。另外，抓取失敗時回傳 `[]`（:77-91），兩個呼叫端都直接拿它取代快取裡的學校行程（`swift/TigerDuck/App/AppState+RevisionPolling.swift:112-118`、`swift/TigerDuck/Features/Calendar/CalendarViewModel.swift:124-132`）。同一個 repo 的 `CourseSelectionService.swift:181-186` 已經處理過一樣的民國曆問題。
+- **現況**：`currentROCYear` 用 `Calendar.current` 取年份再減 1911（`swift/TigerDuck/School/Calendar/CalendarService.swift:66-74`）。手機設成民國曆時，取到的年份已經是 115，減完是 -1796，找不到 ICS，學校行事曆整個空白。ICS 的 `DateFormatter` 沒有指定 locale 和曆法（:171-187），在民國曆下 `20250901` 會被解成西元 3936 年。以上兩點用 Swift script 實際驗證過。另外，抓取失敗時回傳 `[]`（:77-91），兩個呼叫端都直接拿它取代快取裡的學校行程（`swift/TigerDuck/App/AppState+RevisionPolling.swift:112-118`、`swift/TigerDuck/Features/Calendar/CalendarViewModel.swift:124-132`）。同一個 repo 的 `CourseSelectionService.swift:181-186` 已經處理過一樣的民國曆問題。
 - **建議**：年份改用 Gregorian 曆與 `AppClock.now()`；formatter 設 `en_US_POSIX` 與 Gregorian；失敗時回傳 nil 並保留快取；補一個民國曆 locale 的 `parseICS` 測試（這個檔案目前沒有測試）。
 - **評估**：效益高；成本 S；風險低；配合：不需要；信心高。
 
@@ -181,19 +181,19 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 3.7 fix(Security): fetch the semester catalogue through the pinned session（#259）
 
-- **現況**：學期清單用 `URLSession.shared` 打 `querycourse.ntust.edu.tw`（`swift/TigerDuck/Services/API/NTUST/SemesterCatalog.swift:12-14,134-138`），沒有 TLS pinning；同一台主機的課程查詢卻有 pin（`swift/TigerDuck/Services/API/NTUST/CourseLookupService.swift:10-20`）。這是唯一沒有 pin 的 NTUST 請求，它的結果又決定課程歸在哪個學期，而且 `URLSession.shared` 會帶上共用 cookie jar 裡 `.ntust.edu.tw` 網域的 cookie。
+- **現況**：學期清單用 `URLSession.shared` 打 `querycourse.ntust.edu.tw`（`swift/TigerDuck/School/NTUST/SemesterCatalog.swift:12-14,134-138`），沒有 TLS pinning；同一台主機的課程查詢卻有 pin（`swift/TigerDuck/School/NTUST/CourseLookupService.swift:10-20`）。這是唯一沒有 pin 的 NTUST 請求，它的結果又決定課程歸在哪個學期，而且 `URLSession.shared` 會帶上共用 cookie jar 裡 `.ntust.edu.tw` 網域的 cookie。
 - **建議**：改用和 `CourseLookupService` 一樣有 pin 的 ephemeral session。
 - **評估**：效益中；成本 S；風險低；配合：不需要；信心：沒有 pin 高，帶到哪些 cookie 中。
 
 ### 3.8 refactor(Moodle): add one webservice call helper before #212 and #162（#260）
 
-- **現況**：組請求與 `.invalidToken` 重試各複製了三份（`MoodleAssignmentService.swift`、`MoodleEnrolledCoursesService.swift`、`MoodleSiteInfoService.swift`，都在 `swift/TigerDuck/Services/API/Moodle/`），Moodle 網址散在四個常數。`.invalidToken` 的處理是先 `clearToken()` 再更新（`MoodleAssignmentService.swift:12-15,63-68`），而 `clearToken()` 會刪掉 token 並清掉 ssoam2 與 moodle2 的 cookie（`MoodleTokenService.swift:157-173`）：更新失敗（例如 Moodle 維護中）時就完全沒有 token；harvest 進行中又碰到 `.invalidToken` 時，可能清掉 harvest 正在用的 cookie。`accessexception` 也被當成 token 失效（`MoodleWebserviceError.swift:60`），#212 一呼叫網站沒開放的函式就會觸發重新登入；維護狀態也沒有對應的錯誤。
+- **現況**：組請求與 `.invalidToken` 重試各複製了三份（`MoodleAssignmentService.swift`、`MoodleEnrolledCoursesService.swift`、`MoodleSiteInfoService.swift`，都在 `swift/TigerDuck/School/Moodle/`），Moodle 網址散在四個常數。`.invalidToken` 的處理是先 `clearToken()` 再更新（`MoodleAssignmentService.swift:12-15,63-68`），而 `clearToken()` 會刪掉 token 並清掉 ssoam2 與 moodle2 的 cookie（`MoodleTokenService.swift:157-173`）：更新失敗（例如 Moodle 維護中）時就完全沒有 token；harvest 進行中又碰到 `.invalidToken` 時，可能清掉 harvest 正在用的 cookie。`accessexception` 也被當成 token 失效（`MoodleWebserviceError.swift:60`），#212 一呼叫網站沒開放的函式就會觸發重新登入；維護狀態也沒有對應的錯誤。
 - **建議**：做一個 `MoodleWebserviceClient.call(_:params:as:)`，負責 token 與更新（拿到新 token 後才替換，cookie 只在登出時清）、錯誤對應（區分「函式不允許」與「token 失效」，補上維護狀態）、在 main actor 之外解碼，以及單一的 `MoodleSite.current`。
 - **評估**：效益中（#212、#162 的前置）；成本 S–M；風險中低（動到 token 流程要仔細測）；配合：不需要；信心：重複程式高，cookie 競態中。
 
 ### 3.9 perf(Parsing): check for the SSO form without parsing the whole page on the main actor（#261）
 
-- **現況**：`HTMLParser` 在預設 MainActor 的 app target 裡（`swift/TigerDuck.xcodeproj/project.pbxproj:1249`），每次判斷是不是 SSO 頁面都用 SwiftSoup 解析整頁（`swift/TigerDuck/Services/Core/HTMLParser.swift:27-33`），所以課表頁和成績頁都會在 main actor 上完整解析一次；成績頁的主要解析當初已經特地移到背景。
+- **現況**：`HTMLParser` 在預設 MainActor 的 app target 裡（`swift/TigerDuck.xcodeproj/project.pbxproj:1249`），每次判斷是不是 SSO 頁面都用 SwiftSoup 解析整頁（`swift/TigerDuck/School/HTMLParser.swift:27-33`），所以課表頁和成績頁都會在 main actor 上完整解析一次；成績頁的主要解析當初已經特地移到背景。
 - **建議**：先用 `html.contains("loginForm") || html.contains("Username")` 篩，命中才用 SwiftSoup；`HTMLParser` 標成 `nonisolated`。
 - **評估**：效益低中；成本 S；風險低；配合：不需要；信心高。
 
@@ -201,7 +201,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 4.1 fix(Push): open the bulletin when a subscription bulletin notification is tapped（#262）
 
-- **現況**：推播點擊只處理 `custom_push_bulletin`（`swift/TigerDuck/TigerDuckApp.swift:197`）。一般訂閱公告的推播 `kind` 是 `bulletin`，也帶 `bulletin_id`（`backend:server/bulletins/user_dispatch.py:178-185`、`backend:server/bulletins/dispatcher.py:341-351`），點了只會打開 App、停在上次的分頁。Android 會直接打開那則公告。
+- **現況**：推播點擊只處理 `custom_push_bulletin`（`swift/TigerDuck/App/TigerDuckApp.swift:197`）。一般訂閱公告的推播 `kind` 是 `bulletin`，也帶 `bulletin_id`（`backend:server/bulletins/user_dispatch.py:178-185`、`backend:server/bulletins/dispatcher.py:341-351`），點了只會打開 App、停在上次的分頁。Android 會直接打開那則公告。
 - **建議**：`case "custom_push_bulletin", "bulletin":`。
 - **評估**：效益高；成本 S；風險低；配合：不需要；信心高。
 
@@ -213,14 +213,14 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 4.3 fix(LiveActivity): skip ignored and locally completed assignments in "due soon"（#264、android#156）
 
-- **現況**：「作業快到期」只排除 Moodle 上已繳交的作業（`swift/TigerDuck/LiveActivity/Resolvers/LiveActivityScenarioResolver.swift:163`），使用者標記忽略或自行標記完成的（`isArchived`、`isLocallyCompleted`）照樣會啟動 Live Activity。送給後端排 push-to-start 的清單（`swift/TigerDuck/Services/Push/ScheduleSyncService.swift:149`）和 `swift/TigerDuck/App/AppState+LiveActivity.swift:108` 也是同樣的條件。後端的作業提醒已經排除這兩種狀態（`backend:server/push/reminders.py:51`）。
+- **現況**：「作業快到期」只排除 Moodle 上已繳交的作業（`swift/TigerDuck/Devices/LiveActivity/Resolvers/LiveActivityScenarioResolver.swift:163`），使用者標記忽略或自行標記完成的（`isArchived`、`isLocallyCompleted`）照樣會啟動 Live Activity。送給後端排 push-to-start 的清單（`swift/TigerDuck/Backend/Push/ScheduleSyncService.swift:149`）和 `swift/TigerDuck/App/AppState+LiveActivity.swift:108` 也是同樣的條件。後端的作業提醒已經排除這兩種狀態（`backend:server/push/reminders.py:51`）。
 - **已決定**：忽略與自行標記完成的作業都不觸發「作業快到期」，和後端的作業提醒一致。
 - **建議**：三處都加上 `!isArchived && !isLocallyCompleted`。
 - **評估**：效益高；成本 S；風險低；配合：Android 的 resolver 條件相同（`android:…/liveactivity/LiveActivityResolver.kt:59`），兩邊一起改。這也是 #210、#209 的前置。信心中高。
 
 ### 4.4 fix(App): open the class table from a widget when its tab is not pinned（#265）
 
-- **現況**：從 widget 打開課表時，直接設 `selectedTab = .classTable`（`swift/TigerDuck/ContentView.swift:201-202`）。課表沒有釘在 tab 上時，就是同一個函式裡圖書館分支註解所說的情況：選了一個沒有對應 Tab 的值，會讓 TabView 壞掉（:188-190）。
+- **現況**：從 widget 打開課表時，直接設 `selectedTab = .classTable`（`swift/TigerDuck/App/ContentView.swift:201-202`）。課表沒有釘在 tab 上時，就是同一個函式裡圖書館分支註解所說的情況：選了一個沒有對應 Tab 的值，會讓 TabView 壞掉（:188-190）。
 - **建議**：比照圖書館分支，未釘選時經由「更多」頁開啟；也確認所有 tab 都被移除時會退回 `.more`。
 - **評估**：效益中；成本 S；風險低；配合：不需要；信心高。
 
@@ -244,7 +244,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 4.8 perf(UI): redraw on minute changes and tick the time slider once a minute（#269）
 
-- **現況**：`MinuteTicker` 不管分鐘有沒有變，每 5 秒都更新一次 `tick`（`swift/TigerDuck/Clock/MinuteTicker.swift:17-27`）；課表頁讀了它，所以整頁 body 每分鐘重算 12 次。每次重算會讀好幾次 `hasStoredCredentials`，而每次讀都是兩次沒有快取的 Keychain 讀取（`swift/TigerDuck/Services/Auth/AuthService.swift:104-106`）。首頁時光機用 `TimelineView(.periodic(from: .now, by: 1))` 每秒重畫（`swift/TigerDuck/Features/Home/Components/TimeSlider/TimeSliderSection.swift:78`），但軌道每分鐘只移動約 0.9 pt，標籤也只顯示到分鐘。
+- **現況**：`MinuteTicker` 不管分鐘有沒有變，每 5 秒都更新一次 `tick`（`swift/TigerDuck/Support/Clock/MinuteTicker.swift:17-27`）；課表頁讀了它，所以整頁 body 每分鐘重算 12 次。每次重算會讀好幾次 `hasStoredCredentials`，而每次讀都是兩次沒有快取的 Keychain 讀取（`swift/TigerDuck/Account/AuthService.swift:104-106`）。首頁時光機用 `TimelineView(.periodic(from: .now, by: 1))` 每秒重畫（`swift/TigerDuck/Features/Home/Components/TimeSlider/TimeSliderSection.swift:78`），但軌道每分鐘只移動約 0.9 pt，標籤也只顯示到分鐘。
 - **建議**：`MinuteTicker` 只在分鐘改變時發佈（保留 5 秒的偵測延遲）；時光機改用 `.everyMinute`；`AuthService` 快取「憑證是否存在」，只在 `revalidateStoredCredentials()` 時重讀。
 - **評估**：效益中（耗電與捲動順暢度，沒有量測）；成本 S；風險低；配合：不需要；信心中。
 
@@ -253,7 +253,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 - **現況**：
   - 作業列的完成、忽略與復原只能用自訂的拖曳手勢（`swift/TigerDuck/Features/Home/Components/UpcomingAssignmentsView.swift:295-404`），沒有 `accessibilityActions`，VoiceOver、Voice Control 和鍵盤使用者都無法操作。
   - 課表格子的 VoiceOver 標籤把「週一」代進 `"週%1$@ 第%2$@節：%3$@"`，中文會唸成「週週一 第3節」（`swift/TigerDuck/Features/ClassTable/Components/TimetableGridView.swift:13-30`）；formatter 也只在第一次建立時抓 locale，切換 App 語言後不會變。
-  - 同步狀態點只用紅綠色區分（`swift/TigerDuck/SharedUI/SyncStatusDot.swift`）；主題色與課程顏色的色票沒有標籤；作業 badge 對 VoiceOver 隱藏；月曆日期數字固定 32 pt，大字級時會被截斷；幾處動畫沒有遵守「減少動態效果」。
+  - 同步狀態點只用紅綠色區分（`swift/TigerDuck/UI/SharedUI/SyncStatusDot.swift`）；主題色與課程顏色的色票沒有標籤；作業 badge 對 VoiceOver 隱藏；月曆日期數字固定 32 pt，大字級時會被截斷；幾處動畫沒有遵守「減少動態效果」。
 - **建議**：作業列加 `.accessibilityActions`；課表標籤改用現有的星期字串；其餘逐項補上標籤、圖示與 Reduce Motion 判斷。
 - **評估**：效益中；成本各 S；風險低；配合：不需要；信心：前兩項高，其餘中。
 
@@ -273,7 +273,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 5.1 fix(App): wire push, Watch and widget setup at launch, not in ContentView.onAppear（#273）
 
-- **現況**：綁定 silent push 的處理、啟動 `WCSession`、建立 widget snapshot writer，都寫在 `ContentView.onAppear`（`swift/TigerDuck/TigerDuckApp.swift:93-118`）。App 被系統在背景喚醒時沒有 scene，這些都不會執行：`sync_trigger` 到達時 `onSyncTrigger` 還是 nil，等於什麼都沒做，卻回報 `.newData`（`swift/TigerDuck/App/PushAppDelegate.swift:98-110`、`swift/TigerDuck/App/AppState+PushServer.swift:16-21`）；手錶發出的同步或圖書館 QR 請求喚醒 iPhone 時，也沒有 session 接收，只能等逾時後改由手錶自己抓。
+- **現況**：綁定 silent push 的處理、啟動 `WCSession`、建立 widget snapshot writer，都寫在 `ContentView.onAppear`（`swift/TigerDuck/App/TigerDuckApp.swift:93-118`）。App 被系統在背景喚醒時沒有 scene，這些都不會執行：`sync_trigger` 到達時 `onSyncTrigger` 還是 nil，等於什麼都沒做，卻回報 `.newData`（`swift/TigerDuck/App/PushAppDelegate.swift:98-110`、`swift/TigerDuck/App/AppState+PushServer.swift:16-21`）；手錶發出的同步或圖書館 QR 請求喚醒 iPhone 時，也沒有 session 接收，只能等逾時後改由手錶自己抓。
 - **建議**：在 `PushAppDelegate.didFinishLaunching` 綁定 sync trigger 並啟動 `WCSession`；手錶的同步請求由 coordinator 自己回應，不經過 view。
 - **評估**：效益中高（App 沒開著時，silent push 與手錶也能運作）；成本 S–M；風險中低（啟動順序要配合 `hasCompletedOnboarding`）；配合：不需要；信心中（依程式推論，沒有在裝置上測）。
 
@@ -291,7 +291,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 5.4 fix(LiveActivity): end a running class activity when the user skips that class（#276）
 
-- **現況**：Live Activity 只在「不可用、倒數結束、當天不上課」三種情況下結束（`swift/TigerDuck/LiveActivity/Runtime/LiveActivityCoordinator.swift:325-346`），標記停課只會擋掉新的啟動。課前提醒（最多提前 4 小時）或上課中的 activity 顯示時標記停課，它會一直留在鎖定畫面上，直到倒數結束。
+- **現況**：Live Activity 只在「不可用、倒數結束、當天不上課」三種情況下結束（`swift/TigerDuck/Devices/LiveActivity/Runtime/LiveActivityCoordinator.swift:325-346`），標記停課只會擋掉新的啟動。課前提醒（最多提前 4 小時）或上課中的 activity 顯示時標記停課，它會一直留在鎖定畫面上，直到倒數結束。
 - **建議**：新增「已停課」的結束原因，做法和現有的 quiet day 一樣（`source_id` 是 `courseNo_yyyyMMdd_period`，可以取出課號與日期），也加進 `canStart`。ADR 0010 允許新增原因，記得更新裡面的清單。
 - **評估**：效益中；成本 S–M；風險低；配合：不需要；信心高。
 
@@ -309,13 +309,13 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 5.7 perf(Widgets): skip the write and reload when the snapshot did not change（#279）
 
-- **現況**：`WidgetSnapshotWriter.regenerate()` 每次都寫檔並 `reloadAllTimelines()`（`swift/TigerDuck/Widgets/WidgetSnapshotWriter.swift:80-100`），每次回前景、每次 `dataDidUpdate`（包含跟 widget 無關的作業同步）都會跑。
+- **現況**：`WidgetSnapshotWriter.regenerate()` 每次都寫檔並 `reloadAllTimelines()`（`swift/TigerDuck/Devices/Widgets/WidgetSnapshotWriter.swift:80-100`），每次回前景、每次 `dataDidUpdate`（包含跟 widget 無關的作業同步）都會跑。
 - **建議**：先和已存的 snapshot 比較，相同就不寫也不 reload。
 - **評估**：效益中（省 widget 的 reload 額度）；成本 S；風險低；配合：不需要；信心高。
 
 ### 5.8 perf(Watch): stop re-sending the library password and an unchanged schedule（#280）
 
-- **現況**：每次 `dataDidUpdate` 都會推一次資料給手錶，而且每次都呼叫 `republishIfCredentialed()`（`swift/TigerDuck/Services/Watch/WatchSyncBridge.swift:33-36,72-76`），排進一個含圖書館密碼的 `transferUserInfo`，也不檢查有沒有配對的手錶；推送內容用 `Date()` 當時間戳，所以內容相同也一定會重送。
+- **現況**：每次 `dataDidUpdate` 都會推一次資料給手錶，而且每次都呼叫 `republishIfCredentialed()`（`swift/TigerDuck/Devices/Watch/WatchSyncBridge.swift:33-36,72-76`），排進一個含圖書館密碼的 `transferUserInfo`，也不檢查有沒有配對的手錶；推送內容用 `Date()` 當時間戳，所以內容相同也一定會重送。
 - **建議**：只在手錶要求同步或 epoch 改變時重送憑證；內容沒變就不推；先確認有配對手錶而且已經安裝 App。
 - **評估**：效益中；成本 S；風險低；配合：不需要；信心高。
 
@@ -327,7 +327,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 5.10 perf(Mac): load class table and calendar data once per change, not per cell（#282）
 
-- **現況**：Mac 課表的 `courses` 是 computed property，每次存取都從磁碟讀四個 JSON 再合併（`swift/TigerDuck/Platform/Mac/MacClassTableView.swift:93-107`；`DataCache` 沒有記憶體快取，見 `swift/TigerDuck/Services/Core/DataCache.swift:621-640`），而每一格都會讀它（`swift/TigerDuck/Platform/Mac/MacClassTableView+Grid.swift:95-108`），重畫一次就是上百次讀檔，點任何一門課都會重畫。Mac 行事曆的 `allEvents` 與 `eventsByDay` 也是每個日期格各解碼一次（`swift/TigerDuck/Platform/Mac/MacCalendarView.swift:38-50,252`）。iOS 版兩者都有快取。
+- **現況**：Mac 課表的 `courses` 是 computed property，每次存取都從磁碟讀四個 JSON 再合併（`swift/TigerDuck/Platform/Mac/MacClassTableView.swift:93-107`；`DataCache` 沒有記憶體快取，見 `swift/TigerDuck/Persistence/DataCache.swift:621-640`），而每一格都會讀它（`swift/TigerDuck/Platform/Mac/MacClassTableView+Grid.swift:95-108`），重畫一次就是上百次讀檔，點任何一門課都會重畫。Mac 行事曆的 `allEvents` 與 `eventsByDay` 也是每個日期格各解碼一次（`swift/TigerDuck/Platform/Mac/MacCalendarView.swift:38-50,252`）。iOS 版兩者都有快取。
 - **建議**：資料放進 `@State`，在 `.task(id:)` 裡依學期與現有的 `cacheRevision` 重建。
 - **評估**：效益中（Mac 點擊延遲）；成本 S–M；風險低；配合：不需要；信心高。
 
@@ -339,7 +339,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 5.12 refactor(LiveActivity): delete the write-only SharedSnapshotStore（#285）
 
-- **現況**：Live Activity coordinator 會寫入 `SharedSnapshotStore`，但 `readSnapshot()` 在這個檔案以外沒有任何呼叫者（`swift/TigerDuck/LiveActivity/Runtime/SharedSnapshotStore.swift:56`），extension 用的是 `context.state.snapshot`。
+- **現況**：Live Activity coordinator 會寫入 `SharedSnapshotStore`，但 `readSnapshot()` 在這個檔案以外沒有任何呼叫者（`swift/TigerDuck/Devices/LiveActivity/Runtime/SharedSnapshotStore.swift:56`），extension 用的是 `context.state.snapshot`。
 - **建議**：刪掉這個 store、各個寫入點、`project.pbxproj` 裡的項目，以及 App Group entitlement 測試中的那一行。
 - **評估**：效益低；成本 S；風險低；配合：不需要；信心高。
 
@@ -347,13 +347,13 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 6.1 fix(Mail): reload the open list when the inbox grew（#286）
 
-- **現況**：回到 App 時，信箱頁只重新開始 polling，不會重新載入（`swift/TigerDuck/Features/SchoolMail/SchoolMailView.swift:337-340`），而且 polling 會先等 60 秒（`swift/TigerDuck/Features/SchoolMail/MailListViewModel.swift:505-518`）。頁面 poll 要不要重載，看的是和前景、背景檢查共用的 `inboxNextUID`（`swift/TigerDuck/Services/Mail/Sync/MailChecker.swift:244`）。通知開著時，回到 App 會先跑一次前景檢查，推一則 App 內的 banner，再把 marker 往前推（`swift/TigerDuck/Services/Mail/Sync/MailBackgroundRefresh.swift:93-103`、`MailChecker.swift:255-271`）；接著頁面 poll 得到 `.noNewMail`，列表就一直看不到那封信，直到使用者下拉、切換資料夾或收到下一封新信。背景檢查之後也一樣。
+- **現況**：回到 App 時，信箱頁只重新開始 polling，不會重新載入（`swift/TigerDuck/Features/SchoolMail/SchoolMailView.swift:337-340`），而且 polling 會先等 60 秒（`swift/TigerDuck/Features/SchoolMail/MailListViewModel.swift:505-518`）。頁面 poll 要不要重載，看的是和前景、背景檢查共用的 `inboxNextUID`（`swift/TigerDuck/Mail/Sync/MailChecker.swift:244`）。通知開著時，回到 App 會先跑一次前景檢查，推一則 App 內的 banner，再把 marker 往前推（`swift/TigerDuck/Mail/Sync/MailBackgroundRefresh.swift:93-103`、`MailChecker.swift:255-271`）；接著頁面 poll 得到 `.noNewMail`，列表就一直看不到那封信，直到使用者下拉、切換資料夾或收到下一封新信。背景檢查之後也一樣。
 - **建議**：`pollOnce` 改成拿 inbox 的 `uidNext` 和列表自己最新的 UID 比較，大於最新 UID 加一就重載（最後一封 UID 是 100 的信箱，`uidNext` 是 101），否則 marker 只往前推；`.active` 時立刻 poll 一次。這是 Android 的做法（`android:…/ui/screen/mail/SchoolMailListViewModel.kt:468-480`）。做完可以拿掉 `.page` trigger 與 `existing:` 參數。另外，頁面 poll 也會寫進只有 10 筆的診斷紀錄（`MailChecker.swift:165`），在信箱頁待 10 分鐘，背景檢查的紀錄就全被擠掉，可以一起處理。
 - **評估**：效益高；成本 S；風險低；配合：Android 已經這樣做；信心高。
 
 ### 6.2 fix(Mail): stop SwiftMail's fixed IMAP deadlines failing large transfers（#287）
 
-- **現況**：vendored SwiftMail 的 IMAP 指令逾時從送出時開始計算，有進度也不會重置（`swift/Packages/SwiftMail/Sources/SwiftMail/IMAP/IMAPConnection+CommandExecution.swift:110-118`）：抓整封原始信 10 秒、抓單一 part 60 秒、APPEND 30 秒（`swift/Packages/SwiftMail/Sources/SwiftMail/IMAP/IMAP/Commands/FetchCommands.swift:105,151`、`AppendCommand.swift:16`）。逾時被對應成「連不上伺服器」（`swift/TigerDuck/Services/Mail/Transport/LiveMailClient.swift:627`），但 App 本身預期要處理最大 50 MB 的信（`swift/TigerDuck/Services/Mail/Core/MailConstants.swift:24-34`）。估算在約 3 Mbps 的連線下：20 MB 的附件會在 60 秒時失敗並斷線；檢視原始碼與超過數 MB 的信在 10 秒失敗；約 12 MB 的寄件備份或大草稿在 30 秒時存不進去。SMTP 本身的逾時沒有問題。
+- **現況**：vendored SwiftMail 的 IMAP 指令逾時從送出時開始計算，有進度也不會重置（`swift/Packages/SwiftMail/Sources/SwiftMail/IMAP/IMAPConnection+CommandExecution.swift:110-118`）：抓整封原始信 10 秒、抓單一 part 60 秒、APPEND 30 秒（`swift/Packages/SwiftMail/Sources/SwiftMail/IMAP/IMAP/Commands/FetchCommands.swift:105,151`、`AppendCommand.swift:16`）。逾時被對應成「連不上伺服器」（`swift/TigerDuck/Mail/Transport/LiveMailClient.swift:627`），但 App 本身預期要處理最大 50 MB 的信（`swift/TigerDuck/Mail/Core/MailConstants.swift:24-34`）。估算在約 3 Mbps 的連線下：20 MB 的附件會在 60 秒時失敗並斷線；檢視原始碼與超過數 MB 的信在 10 秒失敗；約 12 MB 的寄件備份或大草稿在 30 秒時存不進去。SMTP 本身的逾時沒有問題。
 - **建議**：在 vendored 套件打一個 patch（`VENDORED.md` 加一條並附測試），把這三個上限拉到約 300 秒，或改成有進度就重置。Android 是有進度就重置。
 - **評估**：效益高；成本 S；風險低（卡住的傳輸會佔住指令鎖比較久，ADR 0015 已經接受這個取捨）；配合：不需要；信心：程式路徑高，實際網速的影響中。
 
@@ -365,22 +365,22 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 6.4 feat(Mail): show attachment download progress, ignore repeat taps, prune opened files（#289）
 
-- **現況**：點附件後沒有任何進度狀態；整個檔案先放在記憶體裡，再寫成一個新的暫存檔（`swift/TigerDuck/Features/SchoolMail/MailMessageViewModel.swift:489-510`）。這些檔案只有登出或清快取時才刪（`swift/TigerDuck/Services/Mail/Store/MailCache.swift:149`），也不算進 20 MB 的快取上限。最多一分鐘沒有任何回饋，多點一次就多排一次完整下載（polling 也要排在後面），磁碟上也多一份。
+- **現況**：點附件後沒有任何進度狀態；整個檔案先放在記憶體裡，再寫成一個新的暫存檔（`swift/TigerDuck/Features/SchoolMail/MailMessageViewModel.swift:489-510`）。這些檔案只有登出或清快取時才刪（`swift/TigerDuck/Mail/Store/MailCache.swift:149`），也不算進 20 MB 的快取上限。最多一分鐘沒有任何回饋，多點一次就多排一次完整下載（polling 也要排在後面），磁碟上也多一份。
 - **建議**：view model 加一個 `downloading` 集合，顯示 spinner，重複點擊直接 return；開過的附件檔超過一天就清掉。Android 三項都有。
 - **評估**：效益中高；成本 S；風險低；配合：不需要；信心高。
 
 ### 6.5 perf(Mail): trim each check: no STATUS, text-only prefetch, no base64 round trip（#290）
 
 - **現況**：
-  - 每次檢查（頁面 poll、背景、前景、移動信件）都多送一個 STATUS，只為了填一個沒有人讀的 `unseen`（`swift/TigerDuck/Services/Mail/Transport/LiveMailClient.swift:125-144`、`swift/TigerDuck/Services/Mail/Core/MailModels.swift:221`）。
+  - 每次檢查（頁面 poll、背景、前景、移動信件）都多送一個 STATUS，只為了填一個沒有人讀的 `unseen`（`swift/TigerDuck/Mail/Transport/LiveMailClient.swift:125-144`、`swift/TigerDuck/Mail/Core/MailModels.swift:221`）。
   - 預先抓信件內文時，連每張 5 MB 以內的內嵌圖片都抓，而且沒有總量上限（`LiveMailClient.swift:228-239`）。背景用行動網路下載了幾 MB 的海報圖，結果超過 10 MB 又不快取。
-  - 寄信時附件的 base64 先切行再接回去，結果完全一樣，白白多出大量字串配置（`swift/TigerDuck/Services/Mail/Compose/MailMessageBuilder.swift:80-86`）。
+  - 寄信時附件的 base64 先切行再接回去，結果完全一樣，白白多出大量字串配置（`swift/TigerDuck/Mail/Compose/MailMessageBuilder.swift:80-86`）。
 - **建議**：`status()` 只用 EXAMINE；預先抓取只抓文字部分（打開信時本來就會重抓）；拿掉 `components(separatedBy:)` 和 `joined`。
 - **評估**：效益中；成本 S；風險低；配合：不需要；信心高。
 
 ### 6.6 fix(Mail): skip checks while notification permission is denied（#291）
 
-- **現況**：前景與背景檢查只看 App 內的通知開關（`swift/TigerDuck/Services/Mail/Sync/MailChecker.swift:157`）。使用者在系統裡拒絕通知後，每次喚醒和回到 App 仍然會做一次 TLS 連線加 LOGIN。
+- **現況**：前景與背景檢查只看 App 內的通知開關（`swift/TigerDuck/Mail/Sync/MailChecker.swift:157`）。使用者在系統裡拒絕通知後，每次喚醒和回到 App 仍然會做一次 TLS 連線加 LOGIN。
 - **建議**：加一個 `MailNotificationPermission.isDenied()` 判斷，拒絕時不檢查，也不重新排背景工作。
 - **評估**：效益低中；成本 S；風險低；配合：不需要；信心高。
 
@@ -393,27 +393,27 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 ### 6.8 fix(Mail): use Button-based taps in the recipient rows（#293）
 
 - **現況**：寫信畫面的收件人列用了 plain `.onTapGesture`（`swift/TigerDuck/Features/SchoolMail/Components/MailRecipientTokenField.swift:105,154`、`swift/TigerDuck/Features/SchoolMail/Components/MailRecipientRow.swift:80`），而它們位在 Form 或 ScrollView 裡，違反 `swift/TigerDuck/AGENTS.md` 的 iOS 18 手勢規則，可能要點兩次才有反應。
-- **建議**：改用 `swift/TigerDuck/Extensions/View+ScrollSafeGesture.swift` 的 helper。
+- **建議**：改用 `swift/TigerDuck/UI/ViewHelpers/View+ScrollSafeGesture.swift` 的 helper。
 - **評估**：效益低；成本 S；風險低；配合：不需要；信心低中（沒有在裝置上確認）。
 
 ## 七、測試、CI 與維護
 
 ### 7.1 fix(Logging): give release builds a Sentry DSN, or remove Sentry（#294）
 
-- **現況**：`AppLogger.start()` 從 Info.plist 讀 `SENTRY_DSN`，空的就傳 nil（`swift/TigerDuck/Services/Logging/AppLogger.swift:17-31`）。唯一的來源是 `INFOPLIST_KEY_SENTRY_DSN = "";`（`swift/TigerDuck.xcodeproj/project.pbxproj:1224,1476`），值本身就是空字串；本機 build 和封存的 1.5.2–1.7.0 版 Info.plist 裡都沒有 `SENTRY_DSN`，Xcode Cloud 的建置流程也沒有另外帶入。也就是說，從 2026-04-18 導入至今，所有 `AppLogger.captureError` 和 crash 回報都沒有送出去。另外 `AppState()` 在 `AppLogger.start()` 之前就建立了（`swift/TigerDuck/TigerDuckApp.swift:11,22`），`AppState.init` 裡發生的錯誤無論如何都送不出去。
+- **現況**：`AppLogger.start()` 從 Info.plist 讀 `SENTRY_DSN`，空的就傳 nil（`swift/TigerDuck/Support/Logging/AppLogger.swift:17-31`）。唯一的來源是 `INFOPLIST_KEY_SENTRY_DSN = "";`（`swift/TigerDuck.xcodeproj/project.pbxproj:1224,1476`），值本身就是空字串；本機 build 和封存的 1.5.2–1.7.0 版 Info.plist 裡都沒有 `SENTRY_DSN`，Xcode Cloud 的建置流程也沒有另外帶入。也就是說，從 2026-04-18 導入至今，所有 `AppLogger.captureError` 和 crash 回報都沒有送出去。另外 `AppState()` 在 `AppLogger.start()` 之前就建立了（`swift/TigerDuck/App/TigerDuckApp.swift:11,22`），`AppState.init` 裡發生的錯誤無論如何都送不出去。
 - **打開前要先補的遮蔽**（依 sentry-cocoa 原始碼，信心中）：
   - Moodle REST 網址都帶 `wstoken=`，HTTP breadcrumb 會把 query 存進 `data["http.query"]`，目前沒有 `beforeBreadcrumb`。
   - 預設開啟的 failed-request 事件把 token 放在 `request.query_string`，但 `beforeSend` 只清 `request.url`（`AppLogger.swift:26-31`）。
-  - `NSError` 的 userInfo 與 `error.description` 沒有遮蔽，例如會帶完整網址的 `unexpected OIDC page: <url>`（`swift/TigerDuck/Services/API/Moodle/MoodleTokenService.swift:441`）。
+  - `NSError` 的 userInfo 與 `error.description` 沒有遮蔽，例如會帶完整網址的 `unexpected OIDC page: <url>`（`swift/TigerDuck/School/Moodle/MoodleTokenService.swift:441`）。
   - Debug build 的 `environment` 也是 production。
 - **建議**：二選一。
   - 保留：DSN 由 Xcode Cloud 的 secret 經 `SENTRY_DSN = $(SENTRY_DSN)` 帶進 Info.plist；補上 breadcrumb、query string 與 exception value 的遮蔽；依 configuration 設 `environment`；`failedRequestTargets` 只留後端；`AppLogger.start()` 移到 `AppState()` 之前；替 `scrubSensitive` 補測試。
-  - 移除：拿掉套件、`AppLogger.start()` 和授權條目，並修正 `docs/third-party-migration-plan.md` 與 `swift/TigerDuck/Services/AGENTS.md` 的描述。
+  - 移除：拿掉套件、`AppLogger.start()` 和授權條目，並修正 `docs/third-party-migration-plan.md` 與 `swift/TigerDuck/AGENTS.md` 的描述。
 - **評估**：效益高（線上目前完全沒有錯誤資料，1.5 也依賴它）；成本 S–M；風險：沒補遮蔽就打開，會把 token 送上 Sentry；配合：不需要；信心高。
 
 ### 7.2 fix(Launch): delete the real SQLite sidecars when the iOS store is reset（#295）
 
-- **現況**：iOS 版重設 SwiftData store 時，用 `appendingPathExtension` 刪 `default.store.wal` 和 `.shm`（`swift/TigerDuck/TigerDuckApp.swift:56-62`），但實際的 sidecar 是 `default.store-wal`。Mac 版已經在 68787031 修好（:276-290），那個 commit 說的正是「壞掉的 sidecar 沒刪，重試又讀到同一份資料」。iOS 若遇到 store 打不開，重試可能再次失敗，之後每次啟動都退回記憶體中的 store。
+- **現況**：iOS 版重設 SwiftData store 時，用 `appendingPathExtension` 刪 `default.store.wal` 和 `.shm`（`swift/TigerDuck/App/TigerDuckApp.swift:56-62`），但實際的 sidecar 是 `default.store-wal`。Mac 版已經在 68787031 修好（:276-290），那個 commit 說的正是「壞掉的 sidecar 沒刪，重試又讀到同一份資料」。iOS 若遇到 store 打不開，重試可能再次失敗，之後每次啟動都退回記憶體中的 store。
 - **建議**：兩個平台共用一個 `makeModelContainer()`，順便刪掉約 35 行重複程式。
 - **評估**：效益中（罕見但嚴重）；成本 S；風險低；配合：不需要；信心高。
 
@@ -425,13 +425,13 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 7.4 test(SSO): fixture tests for HTMLParser, the Moodle token decoder and error mapping（#297）
 
-- **現況**：`HTMLParser`（`swift/TigerDuck/Services/Core/HTMLParser.swift`）決定每一次 SSO 登入的成敗，也決定課表與成績的 bounce 判斷，卻沒有任何測試或 HTML fixture；`MoodleTokenService.decodeTokenTriple` 和 `MoodleWebserviceError.from(jsonData:)` 都是純函式，同樣沒有測試。#233 之後 Dependabot 會定期升級 SwiftSoup，但沒有測試會用到它。
+- **現況**：`HTMLParser`（`swift/TigerDuck/School/HTMLParser.swift`）決定每一次 SSO 登入的成敗，也決定課表與成績的 bounce 判斷，卻沒有任何測試或 HTML fixture；`MoodleTokenService.decodeTokenTriple` 和 `MoodleWebserviceError.from(jsonData:)` 都是純函式，同樣沒有測試。#233 之後 Dependabot 會定期升級 SwiftSoup，但沒有測試會用到它。
 - **建議**：用手工製作或去識別化的頁面當 fixture，涵蓋 ssoam2 表單、OIDC bridge、維護頁與 ssoam 頁。
 - **評估**：效益高；成本 S；風險低；配合：不需要；信心高。
 
 ### 7.5 test(LiveActivity): pin which scenario the Live Activity shows（#298）
 
-- **現況**：`LiveActivityScenarioResolver.resolve`（`swift/TigerDuck/LiveActivity/Resolvers/LiveActivityScenarioResolver.swift:19-79`）決定顯示哪一種情境：作業優先於上課中、上課中優先於課前，假日擋課程但不擋截止日，還有停課與提前時間的邊界。它是純函式，但目前只有雲端同步開關有測試（`swift/TigerDuckTests/LiveActivitySyncGateTests.swift`）。4.3 和 5.4 都會改到這裡。
+- **現況**：`LiveActivityScenarioResolver.resolve`（`swift/TigerDuck/Devices/LiveActivity/Resolvers/LiveActivityScenarioResolver.swift:19-79`）決定顯示哪一種情境：作業優先於上課中、上課中優先於課前，假日擋課程但不擋截止日，還有停課與提前時間的邊界。它是純函式，但目前只有雲端同步開關有測試（`swift/TigerDuckTests/LiveActivitySyncGateTests.swift`）。4.3 和 5.4 都會改到這裡。
 - **建議**：先補表格式的測試，再做 4.3 與 5.4。
 - **評估**：效益中高；成本 S；風險低；配合：不需要；信心高。
 
@@ -443,13 +443,13 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 7.7 perf(Launch): cut main-thread Keychain reads before the first frame（#300）
 
-- **現況**：第一個畫面出來之前，Release build 會在 main thread 同步讀約 8 次 Keychain：`AuthService.init` 讀學號和密碼（密碼只為了判斷存不存在）、`PushIdentity.loadOrCreate` 1 次、`AuthTokenManager.init` 3 次，`PushCoordinator.assertEnvConsistency` 2 次（只給 `assert` 用，Release 根本不檢查）。`DebugEndpointStore.currentOverride` 每次呼叫都讀 Keychain，`PushAPIClient` 每個請求都會讀，包括 10 秒一次的 polling。第一次 `onAppear` 也同步建立並寫入 widget snapshot（`swift/TigerDuck/TigerDuckApp.swift:115-118`）。
+- **現況**：第一個畫面出來之前，Release build 會在 main thread 同步讀約 8 次 Keychain：`AuthService.init` 讀學號和密碼（密碼只為了判斷存不存在）、`PushIdentity.loadOrCreate` 1 次、`AuthTokenManager.init` 3 次，`PushCoordinator.assertEnvConsistency` 2 次（只給 `assert` 用，Release 根本不檢查）。`DebugEndpointStore.currentOverride` 每次呼叫都讀 Keychain，`PushAPIClient` 每個請求都會讀，包括 10 秒一次的 polling。第一次 `onAppear` 也同步建立並寫入 widget snapshot（`swift/TigerDuck/App/TigerDuckApp.swift:115-118`）。
 - **建議**：`assertEnvConsistency` 整段包進 `#if DEBUG`；`currentOverride` 加記憶體快取，設定或清除時失效；`hasStoredCredentials` 改用快取（同 4.8）；widget snapshot 延到第一個畫面之後。改動前後用 Instruments 的 App Launch 量測。
 - **評估**：效益中（沒有量測）；成本各 S；風險低；配合：不需要；信心中。
 
 ### 7.8 chore(Migrations): delete the four migrations shipped before 1.7.1（#301）
 
-- **現況**：`MoodleTokenMigration`、`HomeSectionTitleMigration`（2026-04-21）、`ClassroomAbbrCacheMigration`（05-01）、`CustomNameCacheMigration`（05-15）都已經上線五到六個月，依 `swift/TigerDuck/Services/Migrations/AGENTS.md` 的生命週期可以刪了。`SemesterAttributionCacheMigration`（08-20）可以下一版再刪；09-12 加的三個依各自的說明，要等最低支援版本超過 2.1.0；`DefaultTabsPinMigration`（10-05）保留。遷移資料夾以外，`DataCache.absorbLegacyCourseCache()` 每次啟動都會列一次快取目錄（`swift/TigerDuck/Services/Core/DataCache.swift:41`），也是 v1.3.x 時代的相容程式。
+- **現況**：`MoodleTokenMigration`、`HomeSectionTitleMigration`（2026-04-21）、`ClassroomAbbrCacheMigration`（05-01）、`CustomNameCacheMigration`（05-15）都已經上線五到六個月，依 `swift/TigerDuck/Migrations/AGENTS.md` 的生命週期可以刪了。`SemesterAttributionCacheMigration`（08-20）可以下一版再刪；09-12 加的三個依各自的說明，要等最低支援版本超過 2.1.0；`DefaultTabsPinMigration`（10-05）保留。遷移資料夾以外，`DataCache.absorbLegacyCourseCache()` 每次啟動都會列一次快取目錄（`swift/TigerDuck/Persistence/DataCache.swift:41`），也是 v1.3.x 時代的相容程式。
 - **建議**：刪掉這四個檔案、它們在 `runPendingMigrations()` 裡的呼叫和 `moodleTokenMigrationDone` key，連同 `absorbLegacyCourseCache()`。
 - **評估**：效益低中；成本 S；風險：還停在 1.7.0 以前、直接跳到新版的使用者會略過這些遷移（`MoodleTokenService` 自己會補拿 token，其餘都只是快取）；配合：不需要；信心：日期高，風險評估中。
 
@@ -487,13 +487,13 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 8.2 feat(Notifications): let users turn class reminders off and choose the lead time（#306）
 
-- **現況**：上課提醒是後端推播，只送 iPhone 和 iPad（`backend:server/push/course_reminders.py:194`），預設開啟、上課前 10 分鐘（:160、`backend:server/config.py:202-204`）。App 對通知設定文件的 `courses` 區段只做原樣轉傳（`swift/TigerDuck/Services/Sync/NotificationSettingsDocument.swift:39-49`），沒有任何設定畫面；iOS 也沒有依類型關閉通知的系統開關，想關掉只能關掉全部通知。Android 的上課提醒跟著課前 Live Update 的開關，以及 5 分鐘到 4 小時的提前時間。
+- **現況**：上課提醒是後端推播，只送 iPhone 和 iPad（`backend:server/push/course_reminders.py:194`），預設開啟、上課前 10 分鐘（:160、`backend:server/config.py:202-204`）。App 對通知設定文件的 `courses` 區段只做原樣轉傳（`swift/TigerDuck/Backend/Sync/NotificationSettingsDocument.swift:39-49`），沒有任何設定畫面；iOS 也沒有依類型關閉通知的系統開關，想關掉只能關掉全部通知。Android 的上課提醒跟著課前 Live Update 的開關，以及 5 分鐘到 4 小時的提前時間。
 - **建議**：通知設定加入「上課提醒」開關與提前時間，寫進 `courses.enabled` 與 `courses.reminder_offsets_minutes`；後端已經會讀這兩個欄位，不必改。
 - **評估**：效益高；成本 S（含要審的文案）；風險低；配合：不需要；信心高。
 
 ### 8.3 feat(Push): open the assignment when a reminder is tapped（#307）
 
-- **現況**：作業提醒的 payload（`kind: "assignment_reminder"`）已經帶了 `moodle_assignment_id` 與 `moodle_course_id`，後端註解也寫明由 client 依此 deep link（`backend:server/push/reminders.py:296-308`），但 iOS 的點擊路由沒有處理這個 kind（`swift/TigerDuck/TigerDuckApp.swift:189-215`）。
+- **現況**：作業提醒的 payload（`kind: "assignment_reminder"`）已經帶了 `moodle_assignment_id` 與 `moodle_course_id`，後端註解也寫明由 client 依此 deep link（`backend:server/push/reminders.py:296-308`），但 iOS 的點擊路由沒有處理這個 kind（`swift/TigerDuck/App/TigerDuckApp.swift:189-215`）。
 - **建議**：比照 4.1 加一個 case，打開首頁並捲到那份作業，或直接開 Moodle 頁面（搭配 4.5 的備援）。
 - **評估**：效益中；成本 S；風險低；配合：不需要；信心高。
 
@@ -518,7 +518,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 | feat(Score): add a GPA what-if | 讓學生替還沒出分的課選預期成績，沿用 `NTUSTGradePoints.gpa(of:)` 算出預估的學期與累計 GPA，只在本機計算。 | S–M |
 | feat(More): build the empty-classroom finder | 「空教室」目前是 placeholder。可以移植 `api-poc/api/ntust/classroom.py`，但要照 `api-poc/api/AGENTS.md` 處理表單步驟的順序，並記得「空表格不代表全部空著」。 | M–L |
 | feat(InfoSystem): list the Information System portal links | Android PR #131（draft）把 `i.ntust.edu.tw/student` 的連結整理成六類。只列連結是 S；要在 App 內帶著登入狀態打開，需要 WKWebView 與 cookie 橋接，並先做 3.3 與 `cardsystem.ntust.edu.tw` 的 pin。 | M–L |
-| feat(Theme): add Light and System appearance | App 強制深色（`swift/TigerDuck/TigerDuckApp.swift:90`），顏色 token 都是固定的深色值，約 288 處使用；widget 已支援兩種外觀。Android 有系統、深色、淺色三種。 | L |
+| feat(Theme): add Light and System appearance | App 強制深色（`swift/TigerDuck/App/TigerDuckApp.swift:90`），顏色 token 都是固定的深色值，約 288 處使用；widget 已支援兩種外觀。Android 有系統、深色、淺色三種。 | L |
 | feat(Reminders): remind once about homework marked done but not submitted | Android 對「自己標記完成、Moodle 上仍未繳交」的作業，會在最後一個提醒時間再提醒一次；後端提醒目前排除這些作業，需要後端配合。 | S–M |
 | feat(Privacy): add a switch for diagnostics reports | 7.1 決定保留 Sentry 之後，在設定裡加一個開關；Android 的分析功能要使用者同意才開。 | S |
 
@@ -527,7 +527,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 ### #236 bug(Sync): courses_reset_at never parses
 
 - **現況**：仍然成立。`ISO8601DateFormatter()` 預設不接受小數秒（`swift/TigerDuck/App/AppState+BackendSync.swift:178-188`），後端用 `isoformat()` 送出含微秒的時間。比對對象 `lastCourseSyncAt` 是裝置時鐘，每次同步都會更新（:204），登出也不會清。全 App 掃過一遍後，其他後端時間欄位不是用已經支援小數秒的解碼方式，就是保留為字串，所以這是唯一壞掉的解析。
-- **建議**：issue 的兩個選項中，傾向「保留，但改成比對這台裝置上次套用過的 `courses_reset_at`（每個帳號記一份）」，因為 Android 和舊版仍會做全量重設，後端也還依賴這個欄位。解析方式比照 `JSONDecoder.DateDecodingStrategy.iso8601WithFractionalSecondsFallback`（`swift/TigerDuck/Extensions/JSONDecoder+ISO8601.swift:11`），有沒有小數秒都能解。
+- **建議**：issue 的兩個選項中，傾向「保留，但改成比對這台裝置上次套用過的 `courses_reset_at`（每個帳號記一份）」，因為 Android 和舊版仍會做全量重設，後端也還依賴這個欄位。解析方式比照 `JSONDecoder.DateDecodingStrategy.iso8601WithFractionalSecondsFallback`（`swift/TigerDuck/Support/Extensions/JSONDecoder+ISO8601.swift:11`），有沒有小數秒都能解。
 - **評估**：成本 S；配合：不需要；信心高。
 
 ### #230 bug(Sync): choosing Use Local brings deleted courses back
@@ -542,13 +542,13 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### #211 bug(Widget): 完整課表大小的 Widget，教室地點顯示錯誤
 
-- **根因**：Widget 的 snapshot 用的是 `course.classroom`（`swift/TigerDuck/Widgets/WidgetSnapshotBuilder.swift:33`），這個字串是把課程所有教室用逗號接起來的（`swift/TigerDuck/Bridge/AppServiceBridge.swift:624`），週課表格子再用 `lineLimit(1)` 顯示（`swift/TigerDuckWidgets/Views/WeekGridView.swift:205-209`），就變成截圖裡的「TR-313, ...」。下一堂課、今日與鎖定畫面的 widget 也用同一個字串（`NextClassView.swift:111,142`、`TodayListView.swift:144`、`AccessoryViews.swift:73,86`）。App 的課表則是依節次用 `CourseRoomHint.room(for:weekday:periodId:)` 挑一間（`swift/TigerDuck/Features/ClassTable/Components/TimetableGridView.swift:149`），手錶也已經依區段挑選（`swift/TigerDuck/Services/Watch/WatchPayloadEncoder.swift:104-122`）。
-- **建議**：`SnapshotCourse` 加上 `classroomMap`（解碼時給預設值，不必改版本）；週課表依格子的節次挑教室，下一堂課與今日依該段的第一節；把 `classroomForRun` 移到共用的 helper。Live Activity 與 Mac 下一堂課卡片用的 `classroom(for: weekday)`（`swift/TigerDuck/Models/SwiftData/SDCourse.swift:160-178`），在同一天上兩次課時也會接成兩間教室，一起改；伺服器推送的 activity 會經由 `ScheduleSyncService` 一起修好。
+- **根因**：Widget 的 snapshot 用的是 `course.classroom`（`swift/TigerDuck/Devices/Widgets/WidgetSnapshotBuilder.swift:33`），這個字串是把課程所有教室用逗號接起來的（`swift/TigerDuck/Bridge/AppServiceBridge.swift:624`），週課表格子再用 `lineLimit(1)` 顯示（`swift/TigerDuckWidgets/Views/WeekGridView.swift:205-209`），就變成截圖裡的「TR-313, ...」。下一堂課、今日與鎖定畫面的 widget 也用同一個字串（`NextClassView.swift:111,142`、`TodayListView.swift:144`、`AccessoryViews.swift:73,86`）。App 的課表則是依節次用 `CourseRoomHint.room(for:weekday:periodId:)` 挑一間（`swift/TigerDuck/Features/ClassTable/Components/TimetableGridView.swift:149`），手錶也已經依區段挑選（`swift/TigerDuck/Devices/Watch/WatchPayloadEncoder.swift:104-122`）。
+- **建議**：`SnapshotCourse` 加上 `classroomMap`（解碼時給預設值，不必改版本）；週課表依格子的節次挑教室，下一堂課與今日依該段的第一節；把 `classroomForRun` 移到共用的 helper。Live Activity 與 Mac 下一堂課卡片用的 `classroom(for: weekday)`（`swift/TigerDuck/Persistence/Models/SDCourse.swift:160-178`），在同一天上兩次課時也會接成兩間教室，一起改；伺服器推送的 activity 會經由 `ScheduleSyncService` 一起修好。
 - **評估**：成本 S–M；配合：不需要；信心高。
 
 ### #209 bug(Homework): 課堂助教不應該跳出作業與作業未完成通知（backend#27、android#160）
 
-- **現況**：作業清單向 Moodle 要的是所有選課的作業（`swift/TigerDuck/Services/API/Moodle/MoodleAssignmentService.swift`），不分身分；Live Activity、首頁和送給後端的清單都讀同一份快取。iOS 從 2.1.0 起，作業提醒全部由後端送出，而後端自己的 Moodle 同步（`backend:server/syncjobs/moodle_client.py`）同樣不分身分。
+- **現況**：作業清單向 Moodle 要的是所有選課的作業（`swift/TigerDuck/School/Moodle/MoodleAssignmentService.swift`），不分身分；Live Activity、首頁和送給後端的清單都讀同一份快取。iOS 從 2.1.0 起，作業提醒全部由後端送出，而後端自己的 Moodle 同步（`backend:server/syncjobs/moodle_client.py`）同樣不分身分。
 - **建議**（依 PoC 順序）：
   1. 成本最低：`mod_assign_get_assignments` 加 `capabilities[0]=mod/assign:submit`，Moodle 會排除使用者沒有繳交權限的課（助教與教師角色沒有這個權限）。
   2. submission status 沒有 `lastattempt` 也是一個訊號。
@@ -569,7 +569,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### #208 feat(ClassTable): 課表頁面的額外功能與最佳化（android#161）
 
-- **現況**：課程查詢的回應已經有 `RequireOption`（`swift/TigerDuck/Services/API/NTUST/NTUSTAPIModels.swift:12`），但沒有對應到任何地方；`SDCourse` 只帶了 `dimension` 與 `allYear`。Android 也解碼了，但沒有使用。
+- **現況**：課程查詢的回應已經有 `RequireOption`（`swift/TigerDuck/School/NTUST/NTUSTAPIModels.swift:12`），但沒有對應到任何地方；`SDCourse` 只帶了 `dimension` 與 `allYear`。Android 也解碼了，但沒有使用。
 - **建議**：照 69c530ad（加入 `dimension`、`allYear` 的 commit）的路線加 `requireOption`：`SDCourse`、`CourseData`、bridge 的查詢、`DataCache` 的 `CachedCourse`、Add Course 與 reconcile。接著在課程詳細頁加一列，課表格子加 `strokeBorder`，設定預設開啟。開始前先用 `course_lookup` probe 確認代碼值。
 - **評估**：成本 S–M；配合：Android；信心：模型高，代碼值中。
 
@@ -595,7 +595,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### #168 feat(Notification): custom ring sound（backend#29）
 
-- **現況**：App 唯一的本機通知是 School Mail（`swift/TigerDuck/Services/Mail/Sync/MailNotifier.swift:137` 用 `.default`）；上課、作業、公告都是遠端推播，後端把 `aps.sound` 寫死成 `"default"`（`backend:server/push/job_payloads.py:235`、`backend:server/push/payload.py:165,271`）。專案裡沒有 Notification Service Extension。
+- **現況**：App 唯一的本機通知是 School Mail（`swift/TigerDuck/Mail/Sync/MailNotifier.swift:137` 用 `.default`）；上課、作業、公告都是遠端推播，後端把 `aps.sound` 寫死成 `"default"`（`backend:server/push/job_payloads.py:235`、`backend:server/push/payload.py:165,271`）。專案裡沒有 Notification Service Extension。
 - **建議**：先在通知設定文件加上「各類通知是否響鈴」，後端在關閉時省略 `aps.sound`（後端已經在讀這份文件）。之後要自訂鈴聲，可以把 `.caf` 打包進 App、由後端送檔名；或加一個 Notification Service Extension，依 App Group 裡的偏好改寫聲音（不必改後端，但多一個 target）。
 - **評估**：成本 S 起；配合：後端；信心高。
 
@@ -647,7 +647,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### #213 feat(Library): 圖書館系統新功能與最佳化
 
-- **現況**：目前只有登入與輪替的入館 QR（`swift/TigerDuck/Services/API/Library/LibraryService.swift`），「討論小間」和「講座」在「更多」裡是即將推出的 placeholder；api-poc 沒有館藏查詢或借用的 probe，Android 也還沒有。
+- **現況**：目前只有登入與輪替的入館 QR（`swift/TigerDuck/School/Library/LibraryService.swift`），「討論小間」和「講座」在「更多」裡是即將推出的 placeholder；api-poc 沒有館藏查詢或借用的 probe，Android 也還沒有。
 - **建議**：先把 placeholder 改成用 `InAppBrowserView` 開圖書館自己的頁面，借用的入口註明需要校內網路（S）；原生版本要先寫 probe（L）。借用需要校內網路，而 `NetworkMonitor` 偵測不到，所以要有自己的錯誤訊息。
 - **評估**：成本 S 或 L；配合：不需要；信心中。
 

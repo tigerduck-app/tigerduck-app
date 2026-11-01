@@ -14,6 +14,7 @@ struct MailMessageViewModelTests {
         let center: RecordingNotificationCenter
         let cache: MailCache
         let session: MailPageSession
+        let account: AccountSession
         let folder: String
 
         @MainActor
@@ -38,14 +39,31 @@ struct MailMessageViewModelTests {
         let prefs = InMemoryMailPreferences()
         prefs.inboxUIDValidity = 1
         let center = RecordingNotificationCenter()
-        let session = MailPageSession(idleClose: .milliseconds(10), open: { fake })
+        let account = AccountSession()
+        let session = MailPageSession(idleClose: .milliseconds(10), open: { fake }, account: account)
         let model = MailMessageViewModel(
             route: MailMessageRoute(folder: folder, uid: message.summary.uid),
             session: session,
             folderRoles: [.inbox: "INBOX", .trash: Self.trash],
             cache: cache, prefs: prefs, notifier: MailNotifier(center: center)
         )
-        return Harness(model: model, fake: fake, prefs: prefs, center: center, cache: cache, session: session, folder: folder)
+        return Harness(model: model, fake: fake, prefs: prefs, center: center, cache: cache, session: session,
+                       account: account, folder: folder)
+    }
+
+    @Test func aMailOpenedAcrossASignOutIsNotCached() async {
+        let kept = Self.harness(FakeMailClient.message(uid: 5, text: "hello"))
+        await kept.model.load()
+        #expect(kept.cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5) != nil)
+
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "hello"))
+        await h.fake.hold("detail")
+        let load = Task { await h.model.load() }
+        await h.fake.waitForArrival("detail")
+        h.account.endSignIn()
+        await h.fake.release("detail")
+        await load.value
+        #expect(h.cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
     }
 
     @Test func loadsSanitizedHTMLAndWarnings() async {
@@ -207,9 +225,9 @@ struct MailMessageViewModelTests {
         #expect(h.model.formattedHTML == ##"<p style="color: #959595">Hi <img src="https://x.example/a.png" /></p>"##)
     }
 
-    @Test func cancellingTheCallerCancelsTheDetachedWork() async {
+    @Test func cancellingTheCallerCancelsTheDetachedWork() async throws {
         let caller = Task {
-            await MailMessageViewModel.detachedCancellably { () -> Bool in
+            try await MailMessageRenderer.detachedCancellably { () -> Bool in
                 for _ in 0..<5_000 {
                     if Task.isCancelled { return true }
                     usleep(1_000)
@@ -218,7 +236,7 @@ struct MailMessageViewModelTests {
             }
         }
         caller.cancel()
-        #expect(await caller.value)
+        #expect(try await caller.value)
     }
 
     @Test func aCancelledLoadAppliesNothing() async throws {
@@ -235,14 +253,14 @@ struct MailMessageViewModelTests {
     @Test func unreadableMailFallsBackToSource() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: nil))
         await h.model.load()
-        #expect(h.model.parseFailed)
+        #expect(h.model.hasNothingRenderable)
         #expect(h.model.mode == .source)
     }
 
     @Test func openingUnreadMailMarksItReadAndClearsItsNotification() async {
         let h = Self.harness(FakeMailClient.message(uid: 7, seen: false))
         var seenChanges: [(String, UInt32, Bool)] = []
-        h.model.onSeenChanged = { seenChanges.append(($0, $1, $2)) }
+        h.model.events.observe { if case let .seen(folder, uid, isSeen) = $0 { seenChanges.append((folder, uid, isSeen)) } }
         await h.model.load()
         #expect(await h.fake.calls.contains("setFlag seen true [7]"))
         #expect(seenChanges.map(\.0) == ["INBOX"])
@@ -340,7 +358,7 @@ struct MailMessageViewModelTests {
     @Test func movingToTrashRemovesItFromTheList() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         var removed: [(String, UInt32)] = []
-        h.model.onRemoved = { removed.append(($0, $1)) }
+        h.model.events.observe { if case let .removed(folder, uid) = $0 { removed.append((folder, uid)) } }
         await h.model.load()
         #expect(!h.model.deleteIsPermanent)
         #expect(await h.model.delete())
@@ -417,8 +435,8 @@ struct MailMessageViewModelTests {
         await h.fake.update { $0.uidValidity["INBOX"] = 2 }
         var removed: [(String, UInt32)] = []
         var changedFolders: [String] = []
-        h.model.onRemoved = { removed.append(($0, $1)) }
-        h.model.onFolderChanged = { changedFolders.append($0) }
+        h.model.events.observe { if case let .removed(folder, uid) = $0 { removed.append((folder, uid)) } }
+        h.model.events.observe { if case let .folderChanged(folder) = $0 { changedFolders.append(folder) } }
         #expect(await h.model.move(to: Self.trash) == false)
         #expect(h.model.actionError != nil)
         #expect(removed.isEmpty)
@@ -430,7 +448,7 @@ struct MailMessageViewModelTests {
         await h.model.load()
         await h.fake.update { $0.setFlagError = .folderChanged }
         var changedFolders: [String] = []
-        h.model.onFolderChanged = { changedFolders.append($0) }
+        h.model.events.observe { if case let .folderChanged(folder) = $0 { changedFolders.append(folder) } }
         await h.model.toggleSeen()
         #expect(h.model.actionError != nil)
         #expect(changedFolders == ["INBOX"])
@@ -439,7 +457,7 @@ struct MailMessageViewModelTests {
     @Test func loadFolderChangedFromMarkAsSeenNotifiesTheListToRecover() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, seen: false))
         var changedFolders: [String] = []
-        h.model.onFolderChanged = { changedFolders.append($0) }
+        h.model.events.observe { if case let .folderChanged(folder) = $0 { changedFolders.append(folder) } }
         await h.fake.update { $0.setFlagError = .folderChanged }
         await h.model.load()
         #expect(changedFolders == ["INBOX"])
@@ -450,7 +468,7 @@ struct MailMessageViewModelTests {
     @Test func aDetailFetchAfterAFolderRecreationRecoversInsteadOfShowingAnotherMessage() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, subject: "原信"))
         var changedFolders: [String] = []
-        h.model.onFolderChanged = { changedFolders.append($0) }
+        h.model.events.observe { if case let .folderChanged(folder) = $0 { changedFolders.append(folder) } }
         await h.fake.update { $0.uidValidity["INBOX"] = 2 }
         await h.model.load()
 
@@ -773,25 +791,25 @@ struct MailMessageViewModelTests {
     }
 
     @Test func aNamedSenderGetsTwoLines() {
-        let lines = MailMessageView.senderLines(name: "教務處", address: "office@mail.ntust.edu.tw")
+        let lines = MailMessageHeader.senderLines(name: "教務處", address: "office@mail.ntust.edu.tw")
         #expect(lines.primary == "教務處")
         #expect(lines.secondary == "office@mail.ntust.edu.tw")
     }
 
     @Test func aSenderWithNoNameShowsTheAddressOnce() {
-        let lines = MailMessageView.senderLines(name: nil, address: "someone@gmail.com")
+        let lines = MailMessageHeader.senderLines(name: nil, address: "someone@gmail.com")
         #expect(lines.primary == "someone@gmail.com")
         #expect(lines.secondary == nil)
-        let blank = MailMessageView.senderLines(name: "   ", address: "someone@gmail.com")
+        let blank = MailMessageHeader.senderLines(name: "   ", address: "someone@gmail.com")
         #expect(blank.primary == "someone@gmail.com")
         #expect(blank.secondary == nil)
     }
 
     @Test func aMissingAddressLeavesNoEmptyLine() {
-        let bounce = MailMessageView.senderLines(name: "Mail Deliver System", address: "")
+        let bounce = MailMessageHeader.senderLines(name: "Mail Deliver System", address: "")
         #expect(bounce.primary == "Mail Deliver System")
         #expect(bounce.secondary == nil)
-        let nothing = MailMessageView.senderLines(name: nil, address: " ")
+        let nothing = MailMessageHeader.senderLines(name: nil, address: " ")
         #expect(nothing.primary == nil)
         #expect(nothing.secondary == nil)
     }
@@ -817,9 +835,9 @@ struct MailMessageViewModelTests {
     }
 
     @Test func theFieldLabelIsTheLocalizedPrefix() {
-        #expect(MailMessageView.fieldLabel("school_mail_details_to")
+        #expect(MailMessageHeader.fieldLabel("school_mail_details_to")
             == String(format: String(localized: "school_mail_details_to"), "").trimmingCharacters(in: .whitespaces))
-        #expect(!MailMessageView.fieldLabel("school_mail_details_cc").contains("%"))
+        #expect(!MailMessageHeader.fieldLabel("school_mail_details_cc").contains("%"))
     }
 
     @Test func linkIndexParsingAcceptsOnlyTheExactSyntheticForm() {

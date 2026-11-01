@@ -5,7 +5,7 @@ import AppKit
 struct MacAssignmentsList: View {
     var courses: [SDCourse] = []
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     private var courseByNo: [String: SDCourse] {
         Dictionary(courses.map { ($0.courseNo, $0) }, uniquingKeysWith: { first, _ in first })
@@ -18,7 +18,7 @@ struct MacAssignmentsList: View {
     }
 
     private func content(now: Date) -> some View {
-        let store = AssignmentStore.shared
+        let store = MacAssignmentListModel.shared
         let filter = store.filter
         let visible = store.visibleAssignments(filter: filter, now: now)
 
@@ -118,30 +118,30 @@ struct MacAssignmentsList: View {
         switch status {
         case .pending, .overdueAcceptable, .overdueRejected:
             Button {
-                AssignmentStore.shared.markComplete(assignment)
-                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "locally_completed")
+                MacAssignmentListModel.shared.markComplete(assignment)
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "locally_completed", for: app.authService.session.currentSignIn)
             } label: {
                 Label(String(localized: "desktop_assignment_mark_complete"), systemImage: "checkmark.circle.fill")
             }
             Button {
-                AssignmentStore.shared.archive(assignment)
-                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "archived")
+                MacAssignmentListModel.shared.archive(assignment)
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "archived", for: app.authService.session.currentSignIn)
             } label: {
                 Label(String(localized: "assignment_ignore"), systemImage: "archivebox.fill")
             }
 
         case .locallyCompleted:
             Button {
-                AssignmentStore.shared.undoComplete(assignment)
-                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
+                MacAssignmentListModel.shared.undoComplete(assignment)
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none", for: app.authService.session.currentSignIn)
             } label: {
                 Label(String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward")
             }
 
         case .archived:
             Button {
-                AssignmentStore.shared.unarchive(assignment)
-                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
+                MacAssignmentListModel.shared.unarchive(assignment)
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none", for: app.authService.session.currentSignIn)
             } label: {
                 Label(String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward")
             }
@@ -158,7 +158,7 @@ struct MacAssignmentsList: View {
     }
 
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
-        if appState.showAbsoluteAssignmentTime || assignment.dueDate < now {
+        if app.preferences.showAbsoluteAssignmentTime || assignment.dueDate < now {
             return assignment.dueDate.absoluteTimeString
         }
         return assignment.dueDate.relativeTimeString(from: now)
@@ -204,8 +204,8 @@ struct MacAssignmentsList: View {
 
 @MainActor
 @Observable
-final class AssignmentStore {
-    static let shared = AssignmentStore()
+final class MacAssignmentListModel {
+    static let shared = MacAssignmentListModel()
 
     var filter: AssignmentFilter = .incomplete
     private(set) var version: Int = 0
@@ -214,7 +214,7 @@ final class AssignmentStore {
 
     func visibleAssignments(filter: AssignmentFilter, now: Date) -> [SDAssignment] {
         _ = version
-        let all = DataCache.shared.loadAssignments()
+        let all = AssignmentStore.shared.loadAssignments()
         switch filter {
         case .incomplete:
             return all
@@ -230,22 +230,22 @@ final class AssignmentStore {
     }
 
     func archive(_ assignment: SDAssignment) {
-        DataCache.shared.addArchivedAssignmentId(assignment.assignmentId)
+        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, true), for: AccountSession.school.currentSignIn)
         bump()
     }
 
     func unarchive(_ assignment: SDAssignment) {
-        DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
+        AssignmentStore.shared.apply(.setArchived(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
         bump()
     }
 
     func markComplete(_ assignment: SDAssignment) {
-        DataCache.shared.addLocallyCompletedAssignmentId(assignment.assignmentId)
+        AssignmentStore.shared.apply(.setLocallyCompleted(id: assignment.assignmentId, true), for: AccountSession.school.currentSignIn)
         bump()
     }
 
     func undoComplete(_ assignment: SDAssignment) {
-        DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
+        AssignmentStore.shared.apply(.setLocallyCompleted(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
         bump()
     }
 

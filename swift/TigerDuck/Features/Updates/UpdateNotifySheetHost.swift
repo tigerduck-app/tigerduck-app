@@ -10,10 +10,10 @@ import SwiftUI
 /// also behind the App Store), and the loser never presents or runs `onDismiss`, so its seen-marker
 /// never advances. What's New goes first; any dismissal acknowledges it, then the prompt shows.
 private struct UpdateNotifySheetHost: ViewModifier {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     func body(content: Content) -> some View {
-        let coordinator = appState.updateNotifyCoordinator
+        let coordinator = app.updateNotifyCoordinator
         return content.sheet(
             item: Binding<NotifySheet?>(
                 get: { coordinator.activeNotifySheet },

@@ -1,504 +1,215 @@
 import Defaults
-import SwiftUI
+import Foundation
+import TigerDuckCore
 
 @MainActor
 @Observable
 final class ClassTableViewModel {
-    var courses: [SDCourse] = [] {
-        didSet { rebuildLookup() }
-    }
-    var assignments: [SDAssignment] = []
-    var selectedCourse: SDCourse? = nil
-
-    var selectedWeekday: Int? = nil
-    var selectedPeriodId: String? = nil
-    var selectedCoursePeriods: [String]? = nil
-    var selectedDate: Date? = nil
-    /// The running class the Current class card opened, which can be one piece of its meeting.
-    var selectedSlot: CourseTimeSlot? = nil
-    var courseChanges: CourseChanges = .cached
-
-    var currentSemester: String = SemesterCatalog.selectedSemester(
-        storedPick: Defaults[.classTableSelectedSemester]
-    ) {
+    private(set) var currentSemester: String = SchoolTerms.selected(storedPick: Defaults[.classTableSelectedSemester]) {
         didSet {
             guard currentSemester != oldValue else { return }
-            if !isFollowingNewestSemester, shownPerson == nil {
-                Defaults[.classTableSelectedSemester] = currentSemester
-            }
             reloadFromCache()
         }
     }
 
-    private var isFollowingNewestSemester = false
+    /// The user's own table keeps the term picked on it; someone else's shown table does not.
+    func pickSemester(_ semester: String, for signIn: SignIn) {
+        guard semester != currentSemester else { return }
+        if shownPerson == nil { SchoolAccountKeys.pickSemester(semester, for: signIn) }
+        currentSemester = semester
+    }
 
-    private(set) var ownSemesters: [String] = ClassTableViewModel.semesterOptions(
-        including: SemesterCatalog.selectedSemester(
-            storedPick: Defaults[.classTableSelectedSemester]
+    var assignments: [AssignmentStore.Assignment] = []
+    var selection = ClassTableSelection()
+    let grid = ClassTableGrid()
+    let today: ClassTableToday
+    let people: ShownPersonModel
+    let editor: ClassTableEditor
+    let loader = ClassTableLoader()
+    private var terms = OwnTerms(
+        options: ClassTableViewModel.semesterOptions(
+            including: SchoolTerms.selected(storedPick: Defaults[.classTableSelectedSemester])
         )
     )
+    @ObservationIgnored private var storeObservation: StoreObservation?
 
-    var availableSemesters: [String] {
-        shownPerson?.semesters ?? ownSemesters
+    private struct OwnTerms {
+        var options: [String]
     }
 
-    var shownPerson: ImportedPerson? {
-        guard let displayedPerson else { return nil }
-        return importedTables.people.first { $0.id == displayedPerson.id } ?? displayedPerson
+    init(
+        isClassDay: @escaping (Date) -> Bool = { _ in true },
+        courses: CourseStore = .shared,
+        importedTables: ImportedClassTableStore = .shared,
+        lookUpImportedTerm: @escaping ShownPersonModel.TermLookup = {
+            await SchoolRefresh.importedTerm(semester: $0, courseNos: $1, current: $2)
+        }
+    ) {
+        today = ClassTableToday(isClassDay: isClassDay)
+        people = ShownPersonModel(store: importedTables, lookUpTerm: lookUpImportedTerm)
+        editor = ClassTableEditor(store: courses)
+        editor.owner = self
+        loader.owner = self
+        grid.onCoursesChange = { [weak self] in self?.refreshCourseColors() }
+        storeObservation = StoreObservation(read: { _ = AppDataRevision.current }) { [weak self] in
+            self?.reloadFromCache()
+        }
     }
 
-    private var displayedPerson: ImportedPerson?
+    var courseStore: CourseStore { editor.store }
 
-    @ObservationIgnored let importedTables: ImportedClassTableStore
+    var courses: [CourseStore.Course] {
+        get { grid.courses }
+        set { grid.courses = newValue }
+    }
 
-    typealias ImportedTermLookup = @MainActor (
-        _ semester: String, _ courseNos: [String], _ current: [SDCourse]
-    ) async -> [SDCourse]?
-
-    @ObservationIgnored private let lookUpImportedTerm: ImportedTermLookup
+    var shownPerson: ImportedPerson? { people.shownPerson }
+    var shownTable: ImportedClassTableStore.ShownTable { people.store.shownTable }
+    var availableSemesters: [String] { shownPerson?.semesters ?? terms.options }
 
     /// Keeps the persisted selection selectable even after it ages out of the
     /// catalogue window — a `Picker` whose tag matches no option renders blank.
     static func semesterOptions(including selected: String) -> [String] {
-        let options = SemesterCatalog.availableSemesters()
+        let options = SchoolTerms.available()
         return options.contains(selected) ? options : options + [selected]
     }
 
+    func refreshSemesterOptions() {
+        guard shownPerson == nil else { return }
+        terms.options = Self.semesterOptions(including: currentSemester)
+    }
+
     @discardableResult
-    private func followNewestSemesterIfUnpicked() -> Bool {
+    func followNewestSemesterIfUnpicked() -> Bool {
         guard shownPerson == nil,
               Defaults[.classTableSelectedSemester] == nil,
-              let newest = SemesterCatalog.availableSemesters().first,
+              let newest = SchoolTerms.available().first,
               newest != currentSemester else { return false }
-        isFollowingNewestSemester = true
-        currentSemester = newest
-        isFollowingNewestSemester = false
+        follow(newest)
         return true
     }
 
+    private func follow(_ semester: String) {
+        currentSemester = semester
+    }
+
     func displayLabel(for code: String) -> String {
-        guard code.count >= 2, let last = code.last else { return code }
-        return String(code.dropLast()) + "-" + String(last)
+        AcademicTerm.label(of: code)
     }
 
-    private var hasWarmedCaches = false
-
-    func warmCachesIfNeeded(authService: AuthService) async {
-        guard !hasWarmedCaches else { return }
-        hasWarmedCaches = true
-        await AppServiceBridge.warmAllSemesterCaches(authService: authService)
-        await MainActor.run { [weak self] in
-            guard let self else { return }
-            self.followNewestSemesterIfUnpicked()
-            if self.shownPerson == nil {
-                self.ownSemesters = Self.semesterOptions(including: self.currentSemester)
-            }
-            self.reloadCurrentSemesterCourses()
-        }
-    }
-
-    func refreshSelectedSemester(authService: AuthService) async {
-        guard shownPerson == nil else { return }
-        let target = currentSemester
-        let fresh = await AppServiceBridge.fetchCourses(
-            authService: authService,
-            semester: target
-        )
-        await MainActor.run { [weak self] in
-            guard let self, self.currentSemester == target else { return }
-            let userAdded = DataCache.shared.loadUserAddedCourses(semester: target)
-            let merged = self.buildCourseList(fresh, userAdded)
-            if self.shownPerson == nil, Self.showsChange(merged, over: self.courses) {
-                self.courses = merged
-            }
-            if target == CourseSelectionService.currentSemesterCode() {
-                self.currentSemesterCourses = merged
-                self.refreshCourseColors()
-            }
-        }
-    }
-
-    static func showsChange(_ fresh: [SDCourse], over shown: [SDCourse]) -> Bool {
-        func drawn(_ courses: [SDCourse]) -> [DrawnCourse] {
-            courses.sorted { $0.courseNo < $1.courseNo }.map(DrawnCourse.init)
-        }
-        return drawn(fresh) != drawn(shown)
-    }
-
-    private struct DrawnCourse: Equatable {
-        let courseNo, name, customName, instructor, classroom: String
-        let credits: Double
-        let enrolledCount, maxCount: Int
-        let schedule: [Int: [String]]
-        let classroomMap: [String: String]
-        let moodleIdNumber: String?
-        let dimension, allYear, requireOption: String
-
-        init(_ course: SDCourse) {
-            courseNo = course.courseNo
-            name = course.courseName
-            customName = course.customName ?? ""
-            instructor = course.instructor
-            classroom = course.classroom
-            credits = course.credits
-            enrolledCount = course.enrolledCount
-            maxCount = course.maxCount
-            schedule = course.schedule
-            classroomMap = course.classroomMap
-            moodleIdNumber = course.moodleIdNumber
-            dimension = course.dimension
-            allYear = course.allYear
-            requireOption = course.requireOption
-        }
-    }
-
-    var showAddCourse = false
-    var showResetConfirm = false
-    var showResetFailedAlert = false
-    var courseToRename: SDCourse? = nil
-    var renameText: String = ""
-    var showRenameAlert = false
-
-    var courseToRecolor: SDCourse? = nil
-
-    var deletedCourseNos: Set<String> = []
-    var courseCustomNames: [String: [String: String]] = [:]
-    var ignoredAssignmentCourses: Set<String> = []
-
-    var currentLocale: String {
-        LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
-    }
-
-    private var courseLookup: [Int: [String: [SDCourse]]] = [:]
-
-    var conflictPickerTarget: ConflictPickerTarget? = nil
-
-    var tripleConflictError: TripleConflictError? = nil
-
-    var hasLoaded = false
-    var isUpdatingFromNetwork = false
-    // `nonisolated(unsafe)` lets `deinit`, nonisolated even on a `@MainActor`
-    // class, read these to remove the observers. Without `@ObservationIgnored`
-    // the `@Observable` macro makes the storage computed and strips the modifier.
-    @ObservationIgnored
-    private nonisolated(unsafe) var dataObserver: Any?
-    @ObservationIgnored
-    private nonisolated(unsafe) var languageObserver: Any?
-    @ObservationIgnored
-    private nonisolated(unsafe) var holidayObserver: Any?
-    private var classDayRevision = 0
-
-    private(set) var showsAllPeriods: Bool = Defaults[.alwaysShowAllPeriods]
-    @ObservationIgnored
-    private nonisolated(unsafe) var periodVisibilityTask: Task<Void, Never>?
-
-    var isRefreshing = false
-    var resettingSemesters: Set<String> = []
-    var currentSemesterCourses: [SDCourse] = []
-    private let courseProvider = CanonicalCourseProvider()
-    private let isClassDay: (Date) -> Bool
-
-    init(
-        isClassDay: @escaping (Date) -> Bool = { _ in true },
-        importedTables: ImportedClassTableStore = .shared,
-        lookUpImportedTerm: @escaping ImportedTermLookup = {
-            await AppServiceBridge.refreshImportedCourses(semester: $0, courseNos: $1, current: $2)
-        }
-    ) {
-        self.isClassDay = isClassDay
-        self.importedTables = importedTables
-        self.lookUpImportedTerm = lookUpImportedTerm
-        displayedPerson = importedTables.shownPerson
-        deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
-        courseCustomNames = DataCache.shared.loadCourseCustomNames()
-        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
-
-        dataObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.dataDidUpdate,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // Delivered on the main queue, but the closure is `@Sendable`; hop to
-            // the main actor explicitly so touching `isUpdatingFromNetwork` and
-            // calling `reloadFromCache` is sound under strict concurrency.
-            Task { @MainActor [weak self] in
-                guard let self, !self.isUpdatingFromNetwork else { return }
-                self.reloadFromCache()
-            }
-        }
-
-        periodVisibilityTask = Task { [weak self] in
-            for await value in Defaults.updates(.alwaysShowAllPeriods, initial: true) {
-                guard let self else { return }
-                guard value != self.showsAllPeriods else { continue }
-                self.showsAllPeriods = value
-                self.invalidateCellRoleCache()
-            }
-        }
-
-        holidayObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.holidayNotifyDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.classDayRevision &+= 1 }
-        }
-
-        languageObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.languageDidChange,
-            object: nil,
-            queue: .main
-        ) { _ in
-            AppServiceBridge.handleLanguageChange()
-        }
-    }
-
-    deinit {
-        periodVisibilityTask?.cancel()
-        if let observer = dataObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = languageObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = holidayObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-    }
-
-    func mergeWithUserAdded(_ primary: [SDCourse], _ userAdded: [SDCourse]) -> [SDCourse] {
+    func buildCourseList(_ primary: [CourseStore.Course], _ userAdded: [CourseStore.Course]) -> [CourseStore.Course] {
         var merged = primary
-        for course in userAdded {
-            if !merged.contains(where: { $0.courseNo == course.courseNo }) {
-                merged.append(course)
-            }
+        for course in userAdded where !merged.contains(where: { $0.courseNo == course.courseNo }) {
+            merged.append(course)
         }
-        return merged
-    }
-
-    func buildCourseList(_ primary: [SDCourse], _ userAdded: [SDCourse]) -> [SDCourse] {
-        var merged = mergeWithUserAdded(primary, userAdded)
-        applyCustomizations(&merged)
+        editor.applyCustomizations(&merged)
         return merged
     }
 
     func reloadFromCache() {
         if let shownPerson {
-            reloadCurrentSemesterCourses()
+            today.reload()
             courses = shownPerson.courses(in: currentSemester)
-            courseChanges = .cached
+            grid.courseChanges = SchoolCalendar.changes
             return
         }
         guard !followNewestSemesterIfUnpicked() else { return }
-        ownSemesters = Self.semesterOptions(including: currentSemester)
-        deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
-        courseCustomNames = DataCache.shared.loadCourseCustomNames()
-        ignoredAssignmentCourses = DataCache.shared.loadIgnoredAssignmentCourses()
+        terms.options = Self.semesterOptions(including: currentSemester)
+        editor.reloadMarks()
         TigerDuckTheme.reload()
-        reloadCurrentSemesterCourses()
+        today.reload()
         courses = buildCourseList(
-            DataCache.shared.loadCourses(semester: currentSemester),
-            DataCache.shared.loadUserAddedCourses(semester: currentSemester)
+            courseStore.loadCourses(semester: currentSemester),
+            courseStore.loadUserAddedCourses(semester: currentSemester)
         )
-        assignments = DataCache.shared.loadAssignments()
-        courseChanges = .cached
-    }
-
-    var shownTable: ImportedClassTableStore.ShownTable { importedTables.shownTable }
-
-    func closeOwnEdits() {
-        showAddCourse = false
-        showResetConfirm = false
-        showRenameAlert = false
-        courseToRename = nil
-        courseToRecolor = nil
+        assignments = AssignmentStore.shared.loadAssignments()
+        grid.courseChanges = SchoolCalendar.changes
     }
 
     func showShownTable() {
-        displayedPerson = importedTables.shownPerson
-        if shownPerson != nil { closeOwnEdits() }
+        people.showStoredPerson()
+        if shownPerson != nil { editor.closeDialogs() }
         let semester = shownPerson?.semester(keeping: currentSemester)
-            ?? SemesterCatalog.selectedSemester(storedPick: Defaults[.classTableSelectedSemester])
+            ?? SchoolTerms.selected(storedPick: Defaults[.classTableSelectedSemester])
         guard semester != currentSemester else {
             reloadFromCache()
             return
         }
-        isFollowingNewestSemester = true
-        currentSemester = semester
-        isFollowingNewestSemester = false
-    }
-
-    var isRenamingPerson = false
-    var nicknameDraft = ""
-    var isDeletingPerson = false
-    private(set) var personInAlert: ImportedPerson?
-    var showsLookupFailed = false
-    var showsSaveFailed = false
-    private(set) var isRefreshingShownPerson = false
-
-    var canSaveNickname: Bool {
-        !nicknameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    func startRenamingPerson() {
-        guard let shownPerson else { return }
-        personInAlert = shownPerson
-        nicknameDraft = shownPerson.nickname
-        isRenamingPerson = true
-    }
-
-    func saveNickname() {
-        guard let personInAlert else { return }
-        if importedTables.rename(personInAlert.id, to: nicknameDraft) == .failed { showsSaveFailed = true }
-    }
-
-    func startDeletingPerson() {
-        guard let shownPerson else { return }
-        personInAlert = shownPerson
-        isDeletingPerson = true
-    }
-
-    func deletePersonInAlert() {
-        guard let personInAlert else { return }
-        if importedTables.delete(personInAlert.id) == .failed { showsSaveFailed = true }
+        follow(semester)
     }
 
     func refreshShownPerson() async {
-        guard !isRefreshingShownPerson, let person = shownPerson,
-              let term = person.terms.first(where: { $0.semester == currentSemester }) else { return }
-        isRefreshingShownPerson = true
-        defer { isRefreshingShownPerson = false }
-        guard let refreshed = await lookUpImportedTerm(term.semester, term.courseNos, term.courses) else {
-            showsLookupFailed = true
-            return
-        }
-        let change = importedTables.updateCourses(
-            person.id, semester: term.semester, courseNos: term.courseNos, courses: refreshed,
-            importedAt: person.importedAt
-        )
-        if change == .failed { showsSaveFailed = true }
-        if shownPerson?.id == person.id { reloadFromCache() }
-    }
-
-    func rebuildLookup() {
-        var lookup: [Int: [String: [SDCourse]]] = [:]
-        for course in courses {
-            for (weekday, periods) in course.schedule {
-                for period in periods {
-                    lookup[weekday, default: [:]][period, default: []].append(course)
-                }
-            }
-        }
-        courseLookup = lookup
-        cellRoleCache.removeAll(keepingCapacity: true)
-        refreshCourseColors()
-    }
-
-    func invalidateCellRoleCache() {
-        cellRoleCache.removeAll(keepingCapacity: true)
-    }
-
-    @ObservationIgnored
-    var cellRoleCache: [CellRoleKey: CellRole] = [:]
-
-    struct CellRoleKey: Hashable {
-        let weekday: Int
-        let periodIndex: Int
-    }
-
-    func reloadCurrentSemesterCourses() {
-        currentSemesterCourses = courseProvider.currentCourses()
+        if await people.refresh(semester: currentSemester) == .lookedUpWhileShown { reloadFromCache() }
     }
 
     func refreshCourseColors() {
         let shown = shownPerson == nil ? courses.map(\.courseNo) : []
-        let courseNos = Set(shown).union(currentSemesterCourses.map(\.courseNo))
-        TigerDuckTheme.ensureAssignments(courseNos: Array(courseNos))
+        let courseNos = Set(shown).union(today.courses.map(\.courseNo))
+        TigerDuckTheme.ensureAssignments(courseNos: Array(courseNos), for: AccountSession.school.currentSignIn)
     }
 
-    var totalCredits: Double {
-        courses.reduce(0) { $0 + $1.credits }
-    }
-
-    var selectedCourseTimeRange: String? {
-        if let periods = selectedCoursePeriods { return SDCourse.timeRange(periods: periods) }
-        guard let course = selectedCourse, let weekday = selectedWeekday else { return nil }
-        return course.timeRange(for: weekday)
-    }
-
-    var todayCourses: [SDCourse] {
-        guard shownPerson == nil else { return [] }
-        _ = AppClockState.shared.version
-        _ = minuteTicker.tick
-        _ = classDayRevision
-        guard isClassDay(AppClock.now()) else { return [] }
-        return currentSemesterCourses.coursesForToday()
+    var todayCourses: [CourseStore.Course] {
+        shownPerson == nil ? today.todayCourses : []
     }
 
     var ongoingCourses: [OngoingCourseInfo] {
-        _ = AppClockState.shared.version
-        _ = minuteTicker.tick
-        return currentSemesterCourses.ongoingCourses(at: AppClock.now(), changes: courseChanges)
-    }
-
-    @ObservationIgnored
-    private let minuteTicker = MinuteTicker()
-
-    var activeWeekdays: [Int] {
-        var days = Set<Int>()
-        for course in courses {
-            for day in course.schedule.keys { days.insert(day) }
-        }
-        var result = Array(1...5)
-        if days.contains(6) { result.append(6) }
-        if days.contains(7) { result.append(7) }
-        return result.sorted()
-    }
-
-    var activePeriods: [TimetablePeriod] {
-        var periodIds = Set(AppConstants.Periods.defaultVisible)
-        if showsAllPeriods {
-            periodIds.formUnion(AppConstants.Periods.chronologicalOrder)
-        }
-        for course in courses {
-            for periods in course.schedule.values {
-                for p in periods { periodIds.insert(p) }
-            }
-        }
-        let order = AppConstants.Periods.chronologicalOrder
-        return order.filter { periodIds.contains($0) }.compactMap { TimetablePeriod.byId[$0] }
-    }
-
-    func course(for weekday: Int, period: String) -> SDCourse? {
-        courseLookup[weekday]?[period]?.first
-    }
-
-    func courses(for weekday: Int, period: String) -> [SDCourse] {
-        courseLookup[weekday]?[period] ?? []
+        today.ongoingCourses(changes: grid.courseChanges)
     }
 
     func hasAssignment(for courseNo: String) -> Bool {
         shownPerson == nil && assignments.hasUnfinished(for: courseNo)
     }
 
-    func assignmentsFor(courseNo: String) -> [SDAssignment] {
+    func assignmentsFor(courseNo: String) -> [AssignmentStore.Assignment] {
         shownPerson == nil ? assignments.unfinished(for: courseNo) : []
     }
 
-    func ignoresAssignments(of courseNo: String) -> Bool {
-        shownPerson == nil
-            && ignoredAssignmentCourses.contains(CourseTombstone.key(semester: currentSemester, courseNo: courseNo))
+    func presentConflictPicker(courseA: CourseStore.Course, courseB: CourseStore.Course, weekday: Int, periodId: String) {
+        selection.conflictPickerTarget = .init(courses: [courseA, courseB], weekday: weekday, periodId: periodId)
     }
 
-    var offersIgnoreAssignments: Bool {
-        shownPerson == nil && currentSemester == CourseSelectionService.currentSemesterCode()
+    func pickFromConflict(_ course: CourseStore.Course) {
+        guard let target = selection.conflictPickerTarget else { return }
+        selection.conflictPickerTarget = nil
+        selectCourse(course, weekday: target.weekday, periodId: target.periodId)
     }
 
-    var onSyncCourseIgnore: ((_ course: SDCourse, _ semester: String, _ ignore: Bool) -> Void)?
-    var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
-    var onSyncColorPick: ((_ hex: UInt32, _ course: SDCourse, _ changed: [String: UInt32]) -> Void)?
-    var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
-    var onCourseAdded: ((_ courses: [SDCourse], _ semester: String, _ addedCourseNo: String) -> Void)?
-    var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?
-    var onResetBackendCourses: ((_ semester: String, _ resetLocally: @MainActor () -> Void) async -> Bool)?
+    func selectOngoing(_ info: OngoingCourseInfo) {
+        selection.select(ongoing: info, now: AppClock.now())
+    }
+
+    func selectCourse(_ course: CourseStore.Course, weekday: Int, periodId: String) {
+        selection.weekday = weekday
+        selection.periodId = periodId
+        selection.coursePeriods = course.block(weekday: weekday, at: periodId, in: grid.activePeriods.map(\.id))
+        selection.date = showsThisWeek ? Self.nextDate(onWeekday: weekday, from: AppClock.now()) : nil
+        selection.currentClassSlot = nil
+        selection.course = course
+    }
+
+    var showsThisWeek: Bool {
+        grid.courseChanges.hasAnswered && currentSemester == SchoolTerms.current
+    }
+
+    static func nextDate(onWeekday weekday: Int, from today: Date) -> Date {
+        let calendar = TaipeiTime.calendar
+        let start = calendar.startOfDay(for: today)
+        let ahead = (weekday - today.scheduleWeekday + 7) % 7
+        return calendar.date(byAdding: .day, value: ahead, to: start) ?? start
+    }
+
+    func changedMeeting(of course: CourseStore.Course, weekday: Int, at periodId: String, today: Date) -> CourseTimeSlot? {
+        guard showsThisWeek else { return nil }
+        let date = Self.nextDate(onWeekday: weekday, from: today)
+        let changes = grid.courseChanges
+        guard !changes.changes(courseNo: course.courseNo, on: date).isEmpty,
+              let block = course.block(weekday: weekday, at: periodId, in: grid.activePeriods.map(\.id))
+        else { return nil }
+        return CourseTimeSlot.meeting(of: course, periods: block, on: date, changes: changes)
+            .flatMap { $0.changes.isEmpty ? nil : $0 }
+    }
+}
+
+extension SchoolCalendar.Changes {
+    var hasAnswered: Bool { !term.isEmpty }
 }

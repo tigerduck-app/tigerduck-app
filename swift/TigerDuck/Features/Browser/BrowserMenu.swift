@@ -114,7 +114,7 @@ final class BrowserZoomPeek {
         showsCopy = true
         end?.cancel()
         end = Task {
-            try? await Task.sleep(for: Self.duration)
+            try? await AppClock.sleep(until: ContinuousClock.now + Self.duration)
             if !Task.isCancelled { isPeeking = false }
         }
     }

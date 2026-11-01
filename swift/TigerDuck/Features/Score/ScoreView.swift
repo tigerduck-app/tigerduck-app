@@ -3,7 +3,7 @@ import SwiftUI
 struct ScoreView: View {
     var embedded = false
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = ScoreViewModel()
     @State private var selectedCourse: CourseGrade?
@@ -11,12 +11,12 @@ struct ScoreView: View {
     var body: some View {
         if embedded {
             content
-                .onAppear { viewModel.load(authService: appState.authService) }
-                .onChange(of: appState.authService.loginGeneration) { viewModel.load(authService: appState.authService) }
+                .onAppear { viewModel.load(authService: app.authService) }
+                .onChange(of: app.authService.session.currentSignIn) { viewModel.load(authService: app.authService) }
         } else {
             NavigationStack { content }
-                .onAppear { viewModel.load(authService: appState.authService) }
-                .onChange(of: appState.authService.loginGeneration) { viewModel.load(authService: appState.authService) }
+                .onAppear { viewModel.load(authService: app.authService) }
+                .onChange(of: app.authService.session.currentSignIn) { viewModel.load(authService: app.authService) }
         }
     }
 
@@ -25,14 +25,14 @@ struct ScoreView: View {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 titleBar
 
-                if let reauthError = appState.ntustReauthErrorMessage {
+                if let reauthError = app.authService.reauthErrorMessage {
                     NTUSTReauthErrorBanner(
                         message: reauthError,
                         onRetry: {
-                            appState.clearNTUSTReauthError()
-                            appState.presentNTUSTLogin()
+                            app.authService.clearReauthError()
+                            app.router.presentNTUSTLogin()
                         },
-                        onDismiss: { appState.clearNTUSTReauthError() }
+                        onDismiss: { app.authService.clearReauthError() }
                     )
                 }
 
@@ -42,7 +42,7 @@ struct ScoreView: View {
                         layout: .page,
                         title: String(localized: "common_not_signed_in"),
                         message: String(localized: "score_sign_in_required_message"),
-                        onPrimary: { appState.presentNTUSTLogin() }
+                        onPrimary: { app.router.presentNTUSTLogin() }
                     )
                 case .empty:
                     EmptyStateView(
@@ -61,7 +61,7 @@ struct ScoreView: View {
         .background(Color.backgroundPrimary)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .refreshable {
-            viewModel.triggerRefresh(authService: appState.authService)
+            viewModel.triggerRefresh(authService: app.authService)
         }
         .sheet(item: $selectedCourse) { course in
             ScoreCourseDetailSheet(course: course)
@@ -70,7 +70,7 @@ struct ScoreView: View {
     }
 
     private var pageAccessState: NTUSTProtectedAccessState {
-        appState.ntustProtectedAccessState(isEmpty: !viewModel.hasContent)
+        NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: !viewModel.hasContent)
     }
 
     private var titleBar: some View {

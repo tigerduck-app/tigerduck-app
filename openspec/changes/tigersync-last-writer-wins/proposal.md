@@ -71,7 +71,7 @@ None. No existing spec covers sync.
   `server/routes/sync/{courses,uploads,snapshot}.py`, `server/routes/holiday_overrides.py`,
   `server/sync/serializers.py`, `server/main.py`, `server/sync/models/courses.py`, one Alembic
   migration, tests under `server/tests/`.
-- iOS: `swift/TigerDuck/Services/CloudSync/`, `Services/Push/PushAPIClient.swift`,
+- iOS: `swift/TigerDuck/Backend/Sync/`, `Backend/Push/PushAPIClient.swift`,
   `App/AppState+BackendSync.swift`, `+Conflicts.swift`, `+CourseReconcile.swift`,
   `+RevisionPolling.swift`, the refresh entry points (`HomeView`, `TigerDuckApp`, `MacRootView`),
   settings views that host the prompts, tests in `swift/TigerDuckTests/`.

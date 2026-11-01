@@ -44,7 +44,7 @@ struct LibrarySignInTests {
         let url = URL(string: "https://api.lib.ntust.edu.tw/v1/passport/login")!
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
         do {
-            _ = try LibraryService.loginAnswer(response, data: Data())
+            _ = try LibraryRequests.loginAnswer(response, data: Data())
             return false
         } catch LibraryServiceError.loginFailed {
             return true
@@ -91,7 +91,7 @@ struct LibrarySignInTests {
             }
             #expect(calls.count == 1)
 
-            let firstWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
+            let firstWait = StoredPasswordLockoutBackoff.retryDelay(afterRefusals: 1)
             LibraryService.storedPasswordRefusals = (1, Date().addingTimeInterval(-firstWait))
             let token = try? await LibraryService.ensureToken { _, _ in
                 calls.count += 1
@@ -109,8 +109,8 @@ struct LibrarySignInTests {
     @Test func afterTheQuickRetriesARefusalWaitsSixHours() async throws {
         let calls = Calls()
         try await Self.withStoredAccount { _ in
-            let quickTries = SSOLoginService.storedPasswordQuickRetries.count
-            let lastQuickWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries)
+            let quickTries = StoredPasswordLockoutBackoff.quickRetries.count
+            let lastQuickWait = StoredPasswordLockoutBackoff.retryDelay(afterRefusals: quickTries)
             LibraryService.storedPasswordRefusals = (quickTries, Date().addingTimeInterval(-lastQuickWait))
             _ = try? await LibraryService.ensureToken { _, _ in
                 calls.count += 1
@@ -147,7 +147,7 @@ struct LibrarySignInTests {
     @Test func aSignOutWhileARetryWaitsEndsTheWait() async throws {
         try await Self.withStoredAccount { _ in
             LibraryService.storedPasswordRefusals = (1, Date())
-            LibraryService.clearCredentials()
+            LibraryService.signOutLibraryOnly()
             #expect(LibraryService.storedPasswordRefusals.count == 0)
             #expect(LibraryService.storedPasswordRefusals.last == nil)
         }
@@ -210,7 +210,7 @@ struct LibrarySignInTests {
                 }
             }
             try await waitUntil { calls.count == 1 }
-            LibraryService.clearCredentials()
+            LibraryService.signOutLibraryOnly()
             calls.isOpen = true
 
             await #expect(throws: LibraryServiceError.self) { try await signingIn.value }
@@ -266,7 +266,7 @@ struct LibrarySignInTests {
                 })
             }
             try await waitUntil { calls.count == 1 }
-            LibraryService.clearCredentials()
+            LibraryService.signOutLibraryOnly()
             calls.isOpen = true
 
             await #expect(throws: LibraryServiceError.self) { try await signingIn.value }
@@ -560,7 +560,7 @@ struct LibrarySignInTests {
     }
 
     private static func refusedOnceAndDue() {
-        let firstWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
+        let firstWait = StoredPasswordLockoutBackoff.retryDelay(afterRefusals: 1)
         LibraryService.storedPasswordRefusals = (1, Date().addingTimeInterval(-firstWait))
     }
 
@@ -682,7 +682,7 @@ struct LibrarySignInTests {
             await sleeper.fire()
             try await sleeper.waitUntilArmed(atLeast: 2)
             #expect(calls.count == 2)
-            #expect(await sleeper.requestedDurations.last == .seconds(SSOLoginService.storedPasswordRetryDelay(afterRefusals: 2)))
+            #expect(await sleeper.requestedDurations.last == .seconds(StoredPasswordLockoutBackoff.retryDelay(afterRefusals: 2)))
 
             let waiting = try #require(LibraryService.storedPasswordRetry)
             await sleeper.fire()
@@ -761,7 +761,7 @@ struct LibrarySignInTests {
             case .savedCredentials:
                 LibraryService.saveCredentials(username: username, password: "new")
             case .signOut:
-                LibraryService.clearCredentials()
+                LibraryService.signOutLibraryOnly()
             case .typedSignIn:
                 _ = try? await LibraryService.login(username: username, password: "typed", request: { _, _ in
                     throw LibraryServiceError.loginFailed("wrong password")

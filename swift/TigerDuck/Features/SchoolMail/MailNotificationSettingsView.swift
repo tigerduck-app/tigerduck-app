@@ -1,6 +1,7 @@
 #if os(iOS)
 import SwiftUI
 import UIKit
+import TigerDuckCore
 
 ///
 struct MailNotificationSettingsView: View {
@@ -37,17 +38,24 @@ struct MailNotificationSettingsView: View {
 
     @MainActor
     static func notificationsBinding(for account: MailAccountManager) -> Binding<Bool> {
-        @Bindable var account = account
-        return $account.notificationsEnabled
+        Binding(
+            get: { account.notificationsEnabled },
+            set: { account.setNotificationsEnabled($0, for: account.session.currentSignIn) }
+        )
+    }
+
+    @MainActor
+    static func muteBinding(for account: MailAccountManager) -> Binding<MailMuteSettings> {
+        Binding(get: { account.muteSettings }, set: { account.setMuteSettings($0, for: account.session.currentSignIn) })
     }
 
     /// The pickers edit a time of day; a fixed January day keeps a daylight saving change out of it.
-    static func pickerDate(minutes: Int, calendar: Calendar = AppConstants.taipeiCalendar) -> Date {
+    static func pickerDate(minutes: Int, calendar: Calendar = TaipeiTime.calendar) -> Date {
         let day = calendar.startOfDay(for: Date(timeIntervalSinceReferenceDate: 0))
         return calendar.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: day) ?? day
     }
 
-    static func minutes(of date: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Int {
+    static func minutes(of date: Date, calendar: Calendar = TaipeiTime.calendar) -> Int {
         let parts = calendar.dateComponents([.hour, .minute], from: date)
         return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
     }
@@ -67,15 +75,16 @@ struct MailNotificationSettingsView: View {
 
     @MainActor
     static func save(_ rule: MailMuteRule, in account: MailAccountManager) {
-        if let index = account.muteSettings.rules.firstIndex(where: { $0.id == rule.id }) {
-            account.muteSettings.rules[index] = rule
+        let mute = muteBinding(for: account)
+        if let index = mute.wrappedValue.rules.firstIndex(where: { $0.id == rule.id }) {
+            mute.wrappedValue.rules[index] = rule
         } else {
-            account.muteSettings.rules.append(rule)
+            mute.wrappedValue.rules.append(rule)
         }
     }
 
     var body: some View {
-        @Bindable var account = self.account
+        let mute = Self.muteBinding(for: account)
         List {
             Section {
                 Toggle(
@@ -99,10 +108,10 @@ struct MailNotificationSettingsView: View {
             }
 
             Group {
-                quietHoursSection(quietHours: $account.muteSettings.quietHours)
+                quietHoursSection(quietHours: mute.quietHours)
                 Section(String(localized: "school_mail_filters")) {
                     ForEach(MailMutePreset.allCases, id: \.self) { preset in
-                        Toggle(preset.title, isOn: Self.presetBinding(preset, in: $account.muteSettings.presets))
+                        Toggle(preset.title, isOn: Self.presetBinding(preset, in: mute.presets))
                     }
                 }
                 customRulesSection
@@ -144,11 +153,11 @@ struct MailNotificationSettingsView: View {
             Toggle(String(localized: "school_mail_quiet_hours"), isOn: quietHours.isEnabled)
             if quietHours.wrappedValue.isEnabled {
                 DatePicker(String(localized: "school_mail_quiet_hours_start"),
-                           selection: Self.timeBinding(quietHours.start), displayedComponents: .hourAndMinute)
-                    .environment(\.timeZone, AppConstants.taipeiTimeZone)
+                           selection: Self.timeBinding(quietHours.startMinute), displayedComponents: .hourAndMinute)
+                    .environment(\.timeZone, TaipeiTime.timeZone)
                 DatePicker(String(localized: "school_mail_quiet_hours_end"),
-                           selection: Self.timeBinding(quietHours.end), displayedComponents: .hourAndMinute)
-                    .environment(\.timeZone, AppConstants.taipeiTimeZone)
+                           selection: Self.timeBinding(quietHours.endMinute), displayedComponents: .hourAndMinute)
+                    .environment(\.timeZone, TaipeiTime.timeZone)
                 NavigationLink {
                     MailQuietDaysView(weekdays: quietHours.weekdays)
                 } label: {
@@ -164,7 +173,7 @@ struct MailNotificationSettingsView: View {
             ForEach(account.muteSettings.rules) { rule in
                 Button { editingRule = rule } label: { MailMuteRuleRow(rule: rule) }
             }
-            .onDelete { account.muteSettings.rules.remove(atOffsets: $0) }
+            .onDelete { Self.muteBinding(for: account).wrappedValue.rules.remove(atOffsets: $0) }
             Button(String(localized: "school_mail_filter_add")) {
                 editingRule = MailMuteRule(field: .from, op: .contains, value: "")
             }

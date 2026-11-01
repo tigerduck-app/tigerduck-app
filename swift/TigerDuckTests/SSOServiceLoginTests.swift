@@ -36,9 +36,9 @@ struct SSOServiceLoginTests {
 
     func withRefusals<T>(_ count: Int, last: Date? = nil, _ body: () async -> T) async -> T {
         await withExclusiveRealDefaults {
-            let saved = (SSOLoginService.storedPasswordRefusals, Defaults[.ssoLoginTimestamp])
-            SSOLoginService.storedPasswordRefusals = (count, last)
-            defer { (SSOLoginService.storedPasswordRefusals, Defaults[.ssoLoginTimestamp]) = saved }
+            let saved = (SchoolPasswordPosts.storedPasswordRefusals, Defaults[.ssoLoginTimestamp])
+            SchoolPasswordPosts.storedPasswordRefusals = (count, last)
+            defer { (SchoolPasswordPosts.storedPasswordRefusals, Defaults[.ssoLoginTimestamp]) = saved }
             return await body()
         }
     }
@@ -59,15 +59,14 @@ struct SSOServiceLoginTests {
                     session: SSOServerStub.session(),
                     serviceURL: serviceURL,
                     studentId: "B00000000",
-                    password: "unused",
-                    generation: NTUSTSessionManager.shared.generation,
+                    password: "unused", for: testSignIn,
                     interactive: interactive,
                     now: { Self.now }
                 ))
             } catch {
                 result = .failure(error)
             }
-            return Outcome(result: result, refusals: SSOLoginService.storedPasswordRefusals)
+            return Outcome(result: result, refusals: SchoolPasswordPosts.storedPasswordRefusals)
         }
     }
 
@@ -227,7 +226,7 @@ struct SSOServiceLoginTests {
     @Test("once a refusal's wait is over, a sign-in the user did not start posts again, and its success clears the refusals")
     func silentSignInPostsAgainAfterTheWait() async {
         let service = Self.serviceURL()
-        let wait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)
+        let wait = StoredPasswordLockoutBackoff.retryDelay(afterRefusals: 1)
         let outcome = await signIn(service, refusals: 1, lastRefusal: Self.now.addingTimeInterval(-wait)) {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
@@ -245,8 +244,8 @@ struct SSOServiceLoginTests {
     @Test("a refusal after the three quick tries is counted on, so the next waits six hours")
     func refusalAfterTheQuickTriesCountsOn() async {
         let service = Self.serviceURL()
-        let quickTries = SSOLoginService.storedPasswordQuickRetries.count
-        let wait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries)
+        let quickTries = StoredPasswordLockoutBackoff.quickRetries.count
+        let wait = StoredPasswordLockoutBackoff.retryDelay(afterRefusals: quickTries)
         let outcome = await signIn(service, refusals: quickTries, lastRefusal: Self.now.addingTimeInterval(-wait)) {
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
@@ -257,7 +256,7 @@ struct SSOServiceLoginTests {
             return
         }
         #expect(outcome.refusals.count == quickTries + 1)
-        #expect(SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries + 1) == 6 * 60 * 60)
+        #expect(StoredPasswordLockoutBackoff.retryDelay(afterRefusals: quickTries + 1) == 6 * 60 * 60)
     }
 
     @Test("a sign-in the user did not start that a live session lets through leaves the refusals")
@@ -300,11 +299,11 @@ struct SSOServiceLoginTests {
 
     static func retry(
         _ service: URL, on session: URLSession, mayPost: () -> Bool = { true }
-    ) async -> Result<Bool, Error> {
+    ) async -> Result<SSOLoginService.SignInAgainOutcome, Error> {
         await result {
             try await SSOLoginService.signInAgain(
                 session: session, serviceURL: service, studentId: "B00000000", password: "unused",
-                generation: NTUSTSessionManager.shared.generation, now: { Self.now }, mayPost: mayPost
+                for: testSignIn, now: { Self.now }, mayPost: mayPost
             )
         }
     }
@@ -322,8 +321,8 @@ struct SSOServiceLoginTests {
         Self.enqueueLiveSessionThenSignIn(for: service)
         let typed = TypedSignIn()
 
-        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<Bool, Error> in
-            let retrying = await SSOLoginService.postingStoredPassword {
+        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<SSOLoginService.SignInAgainOutcome, Error> in
+            let retrying = await SchoolPasswordPosts.postingStoredPassword {
                 let retrying = Task { await Self.retry(service, on: session) { !typed.isUnderWay } }
                 await Self.waitForAQueuedPost()
                 typed.isUnderWay = true
@@ -332,7 +331,7 @@ struct SSOServiceLoginTests {
             return await retrying.value
         }
 
-        guard case .success(false) = outcome else {
+        guard case .success(.heldBack) = outcome else {
             Issue.record("expected no sign-in, got \(outcome)")
             return
         }
@@ -346,11 +345,11 @@ struct SSOServiceLoginTests {
         let (session, jar) = try Self.sessionSignedInToSSO()
         Self.enqueueLiveSessionThenSignIn(for: service)
 
-        let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<Bool, Error>, Int) in
-            (await Self.retry(service, on: session), SSOLoginService.storedPasswordRefusals.count)
+        let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<SSOLoginService.SignInAgainOutcome, Error>, Int) in
+            (await Self.retry(service, on: session), SchoolPasswordPosts.storedPasswordRefusals.count)
         }
 
-        guard case .success(true) = outcome else {
+        guard case .success(.signedIn) = outcome else {
             Issue.record("expected a sign-in, got \(outcome)")
             return
         }
@@ -367,11 +366,11 @@ struct SSOServiceLoginTests {
         let service = Self.serviceURL()
         let (session, _) = try Self.sessionSignedInToSSO()
         Self.enqueueLiveSessionThenSignIn(for: service, posts: 3)
-        let device = StoredPasswordRetryTests.Device(harvests: .init(refusing: 4)) { studentId, password, generation, mayPost in
+        let device = StoredPasswordRetryTests.Device(harvests: .init(refusing: 4)) { studentId, password, signIn, mayPost in
             try await SSOLoginService.signInAgain(
-                session: session, serviceURL: service, studentId: studentId, password: password, generation: generation,
+                session: session, serviceURL: service, studentId: studentId, password: password, for: signIn,
                 mayPost: mayPost
-            )
+            ).leavesSchoolSignedIn
         }
 
         try await StoredPasswordRetryTests.signedIn(refusals: 0, last: nil) { _ in
@@ -386,7 +385,7 @@ struct SSOServiceLoginTests {
             }
             device.handOnTheWait()
             try await device.sleeper.waitUntilArmed(atLeast: 4)
-            #expect(SSOLoginService.storedPasswordRefusals.count == 4)
+            #expect(SchoolPasswordPosts.storedPasswordRefusals.count == 4)
         }
 
         #expect(await device.sleeper.requestedDurations == [.seconds(10), .seconds(60), .seconds(300), .seconds(6 * 60 * 60)])
@@ -401,17 +400,17 @@ struct SSOServiceLoginTests {
         let (session, jar) = try Self.sessionSignedInToSSO()
         Self.enqueueLiveSessionThenSignIn(for: service)
 
-        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<Bool, Error> in
-            let retrying = await SSOLoginService.postingStoredPassword {
+        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<SSOLoginService.SignInAgainOutcome, Error> in
+            let retrying = await SchoolPasswordPosts.postingStoredPassword {
                 let retrying = Task { await Self.retry(service, on: session) }
                 await Self.waitForAQueuedPost()
-                SSOLoginService.forgetStoredPasswordRefusals()
+                SchoolPasswordPosts.forgetStoredPasswordRefusals()
                 return retrying
             }
             return await retrying.value
         }
 
-        guard case .success(true) = outcome else {
+        guard case .success(.refusalSettledMeanwhile) = outcome else {
             Issue.record("expected a sign-in, got \(outcome)")
             return
         }
@@ -426,11 +425,11 @@ struct SSOServiceLoginTests {
         let (session, jar) = try Self.sessionSignedInToSSO()
         Self.enqueueLiveSessionThenSignIn(for: service)
 
-        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<Bool, Error> in
-            let retrying = await SSOLoginService.postingStoredPassword {
+        let outcome = await withRefusals(1, last: .distantPast) { () async -> Result<SSOLoginService.SignInAgainOutcome, Error> in
+            let retrying = await SchoolPasswordPosts.postingStoredPassword {
                 let retrying = Task { await Self.retry(service, on: session) }
                 await Self.waitForAQueuedPost()
-                SSOLoginService.noteStoredPasswordRefused(at: Self.now)
+                SchoolPasswordPosts.noteStoredPasswordRefused(at: Self.now)
                 return retrying
             }
             return await retrying.value
@@ -544,7 +543,7 @@ struct SSOServiceLoginTests {
             await Self.result {
                 try await SSOLoginService.ensureServiceLogin(
                     session: SSOServerStub.session(), serviceURL: service, studentId: "B00000000",
-                    password: "unused", generation: NTUSTSessionManager.shared.generation,
+                    password: "unused", for: testSignIn,
                     logFailure: { log.errors.append($0) }
                 )
             }
@@ -587,6 +586,7 @@ struct SSOServiceLoginTests {
         stored: StoredPassword = StoredPassword("unused"),
         token: OSAllocatedUnfairLock<String?> = OSAllocatedUnfairLock(initialState: nil),
         now: @escaping @Sendable () -> Date = { Date() },
+        signIns: SignInSeries = SignInSeries(),
         duringHarvest: @escaping @Sendable () async -> Void = {}
     ) -> MoodleTokenService {
         MoodleTokenService(
@@ -602,7 +602,8 @@ struct SSOServiceLoginTests {
                 if let failure { throw failure }
                 return MoodleTokenService.TokenTriple(signature: "", wstoken: "new", privatetoken: nil, postedPassword: posted)
             },
-            now: now
+            now: now,
+            signIns: signIns
         )
     }
 
@@ -618,18 +619,18 @@ struct SSOServiceLoginTests {
             await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: "帳號或密碼錯誤")) {
                 try await service.refreshTokenIfNeeded()
             }
-            clock.withLock { $0 += SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1) - 1 }
+            clock.withLock { $0 += StoredPasswordLockoutBackoff.retryDelay(afterRefusals: 1) - 1 }
             await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: nil)) {
                 try await service.refreshTokenIfNeeded()
             }
             #expect(await log.calls == 1)
             clock.withLock { $0 += 1 }
             _ = try? await service.refreshTokenIfNeeded()
-            return SSOLoginService.storedPasswordRefusals
+            return SchoolPasswordPosts.storedPasswordRefusals
         }
         #expect(await log.calls == 2)
         #expect(refusals.count == 2)
-        #expect(refusals.last == start.addingTimeInterval(SSOLoginService.storedPasswordRetryDelay(afterRefusals: 1)))
+        #expect(refusals.last == start.addingTimeInterval(StoredPasswordLockoutBackoff.retryDelay(afterRefusals: 1)))
     }
 
     @Test("after the three quick tries were refused, a renewal waits six hours")
@@ -638,8 +639,8 @@ struct SSOServiceLoginTests {
         let start = Date(timeIntervalSince1970: 1_000_000)
         let clock = OSAllocatedUnfairLock(initialState: start)
         let service = tokenService(log: log, failure: .ssoLoginRejected(reason: nil), now: { clock.withLock { $0 } })
-        let quickTries = SSOLoginService.storedPasswordQuickRetries.count
-        let lastQuickWait = SSOLoginService.storedPasswordRetryDelay(afterRefusals: quickTries)
+        let quickTries = StoredPasswordLockoutBackoff.quickRetries.count
+        let lastQuickWait = StoredPasswordLockoutBackoff.retryDelay(afterRefusals: quickTries)
         let refusals = await withRefusals(quickTries, last: start.addingTimeInterval(-lastQuickWait)) {
             () async -> (count: Int, last: Date?) in
             _ = try? await service.refreshTokenIfNeeded()
@@ -648,7 +649,7 @@ struct SSOServiceLoginTests {
             #expect(await log.calls == 1)
             clock.withLock { $0 += 1 }
             _ = try? await service.refreshTokenIfNeeded()
-            return SSOLoginService.storedPasswordRefusals
+            return SchoolPasswordPosts.storedPasswordRefusals
         }
         #expect(await log.calls == 2)
         #expect(refusals.count == quickTries + 2)
@@ -660,7 +661,7 @@ struct SSOServiceLoginTests {
         let service = tokenService(log: log, failure: nil)
         let (token, refusals) = await withRefusals(2, last: .distantPast) {
             () async -> (String?, (count: Int, last: Date?)) in
-            (try? await service.refreshTokenIfNeeded(), SSOLoginService.storedPasswordRefusals)
+            (try? await service.refreshTokenIfNeeded(), SchoolPasswordPosts.storedPasswordRefusals)
         }
         #expect(token == "new")
         #expect(refusals.count == 0)
@@ -678,7 +679,7 @@ struct SSOServiceLoginTests {
             await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: nil)) {
                 try await service.refreshTokenIfNeeded()
             }
-            return SSOLoginService.storedPasswordRefusals.count
+            return SchoolPasswordPosts.storedPasswordRefusals.count
         }
         #expect(refusals == 0)
     }
@@ -697,7 +698,7 @@ struct SSOServiceLoginTests {
             #expect(await log.calls == 1)
             clock.withLock { $0 += MoodleTokenService.harvestPause }
             _ = try? await service.refreshTokenIfNeeded()
-            return SSOLoginService.storedPasswordRefusals.count
+            return SchoolPasswordPosts.storedPasswordRefusals.count
         }
         #expect(refusals == 0)
         #expect(await log.calls == 2)
@@ -709,7 +710,7 @@ struct SSOServiceLoginTests {
         let service = tokenService(log: log, failure: .transientNetwork(underlying: "offline"))
         let refusals = await withRefusals(0) {
             for _ in 0..<2 { _ = try? await service.refreshTokenIfNeeded() }
-            return SSOLoginService.storedPasswordRefusals.count
+            return SchoolPasswordPosts.storedPasswordRefusals.count
         }
         #expect(refusals == 0)
         #expect(await log.calls == 2)
@@ -751,7 +752,7 @@ struct SSOServiceLoginTests {
 
     @Test("a harvest gives up on a server that trickles its answer after a minute")
     func harvestTimesOut() {
-        let config = MoodleTokenService.harvestConfiguration()
+        let config = MoodleTokenHarvest.harvestConfiguration()
         #expect(config.timeoutIntervalForResource == 60)
         #expect(config.timeoutIntervalForRequest == 20)
         #expect(config.httpCookieStorage === HTTPCookieStorage.shared)
@@ -766,7 +767,8 @@ struct SSOServiceLoginTests {
                 try await Task.sleep(for: .seconds(5))
                 return MoodleTokenService.TokenTriple(signature: "", wstoken: "late", privatetoken: nil)
             },
-            harvestDeadline: .milliseconds(100)
+            harvestDeadline: .milliseconds(100),
+            signIns: SignInSeries()
         )
         _ = await withRefusals(0) {
             let started = ContinuousClock.now
@@ -800,7 +802,7 @@ struct SSOServiceLoginTests {
     }
 
     private static func waitForAQueuedPost() async {
-        while await SSOLoginService.storedPasswordPostsWaiting() == 0 {
+        while await SchoolPasswordPosts.storedPasswordPostsWaiting() == 0 {
             try? await Task.sleep(for: .milliseconds(5))
         }
     }
@@ -811,8 +813,7 @@ struct SSOServiceLoginTests {
                 session: SSOServerStub.session(),
                 serviceURL: serviceURL,
                 studentId: "B00000000",
-                password: "unused",
-                generation: NTUSTSessionManager.shared.generation,
+                password: "unused", for: testSignIn,
                 now: { Self.now }
             )
         }
@@ -837,7 +838,7 @@ struct SSOServiceLoginTests {
             for _ in 0..<100 where posts.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }
             answered.withLock { $0 = true }
             _ = await renewing
-            return (await signingIn, SSOLoginService.storedPasswordRefusals.count)
+            return (await signingIn, SchoolPasswordPosts.storedPasswordRefusals.count)
         }
         guard case .failure(SSOLoginError.loginFailed) = signIn else {
             Issue.record("expected loginFailed, got \(signIn)")
@@ -853,10 +854,10 @@ struct SSOServiceLoginTests {
         let log = HarvestLog()
         let renewal = tokenService(log: log, failure: nil, now: { Self.now })
         let (outcome, harvests) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
-            let renewing = await SSOLoginService.postingStoredPassword {
+            let renewing = await SchoolPasswordPosts.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
                 await Self.waitForAQueuedPost()
-                SSOLoginService.storedPasswordRefusals = (1, Self.now)
+                SchoolPasswordPosts.storedPasswordRefusals = (1, Self.now)
                 return renewing
             }
             return (await renewing.value, await log.calls)
@@ -871,11 +872,13 @@ struct SSOServiceLoginTests {
     @Test("a renewal that a sign-out overtook while it waited for the lock harvests nothing", .timeLimit(.minutes(1)))
     func renewalASignOutOvertookHarvestsNothing() async {
         let log = HarvestLog()
-        let renewal = tokenService(log: log, failure: nil)
+        let signIns = SignInSeries()
+        let renewal = tokenService(log: log, failure: nil, signIns: signIns)
         let (outcome, harvests) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
-            let renewing = await SSOLoginService.postingStoredPassword {
+            let renewing = await SchoolPasswordPosts.postingStoredPassword {
                 let renewing = Task { await Self.result { try await renewal.refreshTokenIfNeeded() } }
                 await Self.waitForAQueuedPost()
+                signIns.end()
                 await renewal.signOut()
                 return renewing
             }
@@ -899,18 +902,17 @@ struct SSOServiceLoginTests {
         let log = HarvestLog()
         let tokens = tokenService(log: log, failure: nil)
         let (signedIn, token) = await withRefusals(0) { () async -> (Result<Bool, Error>, String?) in
-            await SSOLoginService.postingStoredPassword {
+            await SchoolPasswordPosts.postingStoredPassword {
                 let signedIn = await Self.result {
                     try await SSOLoginService.ensureServiceLogin(
                         session: SSOServerStub.session(),
                         serviceURL: service,
                         studentId: "B00000000",
-                        password: "typed",
-                        generation: NTUSTSessionManager.shared.generation,
+                        password: "typed", for: testSignIn,
                         interactive: true
                     )
                 }
-                return (signedIn, try? await tokens.obtainToken(studentId: "B00000000", password: "typed"))
+                return (signedIn, try? await tokens.obtainToken(studentId: "B00000000", password: "typed", for: testSignIn))
             }
         }
         guard case .success(true) = signedIn else {
@@ -926,7 +928,7 @@ struct SSOServiceLoginTests {
             tokens: .init(load: { nil }, save: { _ in }, drop: {}),
             harvest: { studentId, password in
                 await log.record()
-                return try await MoodleTokenService.resolveTokenTriple(
+                return try await MoodleTokenHarvest.resolveTokenTriple(
                     session: SSOServerStub.session(),
                     data: Data(page.utf8),
                     responseURL: url,
@@ -934,7 +936,8 @@ struct SSOServiceLoginTests {
                     password: password,
                     remainingSteps: 6
                 )
-            }
+            },
+            signIns: SignInSeries()
         )
     }
 
@@ -946,7 +949,7 @@ struct SSOServiceLoginTests {
         let (first, refusals) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
             let first = await Self.result { try await renewal.refreshTokenIfNeeded() }
             _ = try? await renewal.refreshTokenIfNeeded()
-            return (first, SSOLoginService.storedPasswordRefusals.count)
+            return (first, SchoolPasswordPosts.storedPasswordRefusals.count)
         }
         guard case .failure(MoodleWebserviceError.malformedResponse) = first else {
             Issue.record("expected malformedResponse, got \(first)")
@@ -964,7 +967,7 @@ struct SSOServiceLoginTests {
         let log = HarvestLog()
         let renewal = pageWalk(log: log, from: Pages.ssoam2Login, at: Self.loginURL)
         let (outcome, refusals) = await withRefusals(0) { () async -> (Result<String, Error>, Int) in
-            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRefusals.count)
+            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SchoolPasswordPosts.storedPasswordRefusals.count)
         }
         guard case .failure(MoodleWebserviceError.ssoLoginRejected(let reason)) = outcome else {
             Issue.record("expected ssoLoginRejected, got \(outcome)")
@@ -987,7 +990,7 @@ struct SSOServiceLoginTests {
         let launch = try #require(URL(string: "https://moodle.stub.invalid/admin/tool/mobile/launch.php"))
         let renewal = pageWalk(log: log, from: Self.tokenPage("live-session-token"), at: launch)
         let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<String, Error>, Int) in
-            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRefusals.count)
+            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SchoolPasswordPosts.storedPasswordRefusals.count)
         }
         guard case .success("live-session-token") = outcome else {
             Issue.record("expected the token, got \(outcome)")
@@ -1004,7 +1007,7 @@ struct SSOServiceLoginTests {
         let log = HarvestLog()
         let renewal = pageWalk(log: log, from: Pages.ssoam2Login, at: Self.loginURL)
         let (outcome, refusals) = await withRefusals(1, last: .distantPast) { () async -> (Result<String, Error>, Int) in
-            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SSOLoginService.storedPasswordRefusals.count)
+            (await Self.result { try await renewal.refreshTokenIfNeeded() }, SchoolPasswordPosts.storedPasswordRefusals.count)
         }
         guard case .success("posted-token") = outcome else {
             Issue.record("expected the token, got \(outcome)")

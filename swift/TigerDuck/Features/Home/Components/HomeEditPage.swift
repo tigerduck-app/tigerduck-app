@@ -34,7 +34,7 @@ struct HomeEditPage<Header: View>: View {
                     containerID: sectionDragContainerID,
                     activePayload: $activeSectionDrag,
                     didReorder: $didReorderSection,
-                    onPersist: viewModel.saveSectionLayout
+                    onPersist: viewModel.layout.saveSectionLayout
                 )
             )
             .contentShape(Rectangle())
@@ -44,7 +44,7 @@ struct HomeEditPage<Header: View>: View {
             ReorderDropSupport.finalizeDrop(
                 activePayload: $activeSectionDrag,
                 didReorder: $didReorderSection,
-                onPersist: viewModel.saveSectionLayout
+                onPersist: viewModel.layout.saveSectionLayout
             )
         }
     }
@@ -59,7 +59,7 @@ struct HomeEditPage<Header: View>: View {
         .overlay(alignment: .topTrailing) {
             Button {
                 withAnimation(reduceMotion ? nil : .smoothSpring) {
-                    viewModel.removeSection(section)
+                    viewModel.layout.removeSection(section)
                 }
             } label: {
                 Image(systemName: "xmark.circle.fill")
@@ -83,11 +83,11 @@ struct HomeEditPage<Header: View>: View {
                 containerID: sectionDragContainerID,
                 activePayload: $activeSectionDrag,
                 didReorder: $didReorderSection,
-                currentIDs: { viewModel.sections.map(\.id) },
+                currentIDs: { viewModel.layout.sections.map(\.id) },
                 moveAction: { fromOffsets, destination in
-                    viewModel.sections.move(fromOffsets: fromOffsets, toOffset: destination)
+                    viewModel.layout.sections.move(fromOffsets: fromOffsets, toOffset: destination)
                 },
-                onPersist: viewModel.saveSectionLayout
+                onPersist: viewModel.layout.saveSectionLayout
             )
         )
     }
@@ -102,10 +102,10 @@ struct HomeEditPage<Header: View>: View {
                 SectionHeader(title: section.title)
                 WidgetGridView(
                     widgets: Binding(
-                        get: { viewModel.sections.first { $0.id == section.id }?.widgets ?? [] },
+                        get: { viewModel.layout.sections.first { $0.id == section.id }?.widgets ?? [] },
                         set: { newWidgets in
-                            if let index = viewModel.sections.firstIndex(where: { $0.id == section.id }) {
-                                viewModel.sections[index].widgets = newWidgets
+                            if let index = viewModel.layout.sections.firstIndex(where: { $0.id == section.id }) {
+                                viewModel.layout.sections[index].widgets = newWidgets
                             }
                         }
                     ),
@@ -113,10 +113,10 @@ struct HomeEditPage<Header: View>: View {
                     dragContainerID: section.id,
                     onRemove: { widget in
                         withAnimation(reduceMotion ? nil : .smoothSpring) {
-                            viewModel.removeWidget(from: section.id, widget: widget)
+                            viewModel.layout.removeWidget(from: section.id, widget: widget)
                         }
                     },
-                    onReorder: viewModel.saveSectionLayout
+                    onReorder: viewModel.layout.saveSectionLayout
                 )
             }
         }

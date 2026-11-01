@@ -16,11 +16,11 @@ struct CourseRefreshUploadTests {
         _ courseNos: [String], roster: [String]?, hidden: Set<String> = [], resendingRoster: Bool = false
     ) -> [Upload] {
         var uploads: [Upload] = []
-        AppServiceBridge.uploadVisibleCourses(
+        CourseUpload.uploadVisibleCourses(
             courseNos.map { SDCourse(courseNo: $0, courseName: $0) }, semester: "1151", hidden: hidden,
-            roster: roster, resendingRoster: resendingRoster
-        ) { courses, _, asRoster, resend in
-            uploads.append(Upload(courses: courses.map(\.courseNo), asRoster: asRoster, resend: resend))
+            roster: roster, resendingRoster: resendingRoster, for: testSignIn
+        ) { courses, _, kind, _ in
+            uploads.append(Upload(courses: courses.map(\.courseNo), asRoster: kind.asRoster, resend: kind.resend))
         }
         return uploads
     }
@@ -29,8 +29,8 @@ struct CourseRefreshUploadTests {
     func hiddenCoursesStayOutOfTheUpload() {
         var uploads: [(courses: [String], semester: String)] = []
 
-        AppServiceBridge.uploadVisibleCourses(
-            Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"]
+        CourseUpload.uploadVisibleCourses(
+            Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"], for: testSignIn
         ) { courses, semester, _, _ in uploads.append((courses.map(\.courseNo), semester)) }
 
         #expect(uploads.map(\.courses) == [["CS1"]])
@@ -41,8 +41,9 @@ struct CourseRefreshUploadTests {
     func aTermHiddenWholeUploadsNothing() {
         var uploads = 0
 
-        AppServiceBridge.uploadVisibleCourses(
-            Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"], roster: ["CS1", "CS2", "CS3"]
+        CourseUpload.uploadVisibleCourses(
+            Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"], roster: ["CS1", "CS2", "CS3"],
+            for: testSignIn
         ) { _, _, _, _ in uploads += 1 }
 
         #expect(uploads == 0)
@@ -51,10 +52,10 @@ struct CourseRefreshUploadTests {
     @Test("Course selection's answer goes up as its term's roster only when this fetch got it from the school",
           arguments: [true, false])
     func selectionAnswerIsARosterWhenLive(live: Bool) throws {
-        let term = try #require(AppServiceBridge.termCourseNos(
+        let term = try #require(TermRoster.termCourseNos(
             selection: ["CS1", "CS2"], transcript: ["CS3"], cached: ["CS4"]
         ))
-        let roster = AppServiceBridge.uploadedRoster(selection: term.roster, live: live, pastTerm: nil)
+        let roster = TermRoster.uploadedRoster(selection: term.selectionRoster, live: live, pastTerm: nil)
 
         #expect(Self.uploads(term.courseNos, roster: roster) == [Upload(courses: ["CS1", "CS2"], asRoster: live)])
     }
@@ -62,11 +63,11 @@ struct CourseRefreshUploadTests {
     @Test("A running term's transcript and the cache, or what an empty or failed answer falls back to, are no roster",
           arguments: [nil, [String]()])
     func fallbackIsNoRoster(selection: [String]?) throws {
-        let term = try #require(AppServiceBridge.termCourseNos(
+        let term = try #require(TermRoster.termCourseNos(
             selection: selection, transcript: ["CS1"], cached: ["CS2"]
         ))
 
-        #expect(Self.uploads(term.courseNos, roster: term.roster) == [Upload(courses: ["CS1", "CS2"], asRoster: false)])
+        #expect(Self.uploads(term.courseNos, roster: term.selectionRoster) == [Upload(courses: ["CS1", "CS2"], asRoster: false)])
     }
 
     @Test("A past term rebuilt from the final transcript goes up as its roster, once every class's lookup answered")
@@ -74,16 +75,16 @@ struct CourseRefreshUploadTests {
         let course = { (courseNo: String) in
             SDCourse(courseNo: courseNo, courseName: courseNo, schedule: [2: ["3", "4"]], semester: "1141")
         }
-        let answered = AppServiceBridge.rebuiltPastTerm(
-            [.init(course: course("CS1"), answered: true)], unreadable: [], cached: [], others: [], userAdded: []
+        let answered = TermRoster.rebuiltPastTerm(
+            [.init(course: course("CS1"), lookup: .found)], unreadable: [], cached: [], others: [], userAdded: []
         )
-        let waiting = AppServiceBridge.rebuiltPastTerm(
-            [.init(course: course("CS1"), answered: true), .init(course: course("CS2"), answered: false)],
+        let waiting = TermRoster.rebuiltPastTerm(
+            [.init(course: course("CS1"), lookup: .found), .init(course: course("CS2"), lookup: .fallback)],
             unreadable: [], cached: [], others: [], userAdded: []
         )
 
         let roster = { (pastTerm: [String]) in
-            AppServiceBridge.uploadedRoster(selection: nil, live: false, pastTerm: pastTerm)
+            TermRoster.uploadedRoster(selection: nil, live: false, pastTerm: pastTerm)
         }
 
         #expect(Self.uploads(answered.courses.map(\.courseNo), roster: roster(answered.roster)).map(\.asRoster) == [true])
@@ -109,13 +110,17 @@ struct CourseRefreshUploadTests {
     @Test("A roster request goes to the school once, then again only after an hour or a new sign-in")
     func rosterRequestRetriesAfterAnHour() {
         var log = RosterRequestLog()
+        let signIns = SignInSeries()
+        let first = signIns.currentSignIn
         let now = Date()
         let snapshot: [String: Any] = ["roster_requests": ["1151", "1151"]]
 
-        #expect(log.termsToAsk(in: [:], generation: 1, now: now).isEmpty)
-        #expect(log.termsToAsk(in: snapshot, generation: 1, now: now) == ["1151"])
-        #expect(log.termsToAsk(in: snapshot, generation: 1, now: now + 3599).isEmpty)
-        #expect(log.termsToAsk(in: snapshot, generation: 2, now: now + 3599) == ["1151"])
-        #expect(log.termsToAsk(in: snapshot, generation: 2, now: now + 3599 + 3600) == ["1151"])
+        #expect(log.termsToAsk(in: [:], signIn: first, now: now).isEmpty)
+        #expect(log.termsToAsk(in: snapshot, signIn: first, now: now) == ["1151"])
+        #expect(log.termsToAsk(in: snapshot, signIn: first, now: now + 3599).isEmpty)
+        signIns.end()
+        let second = signIns.currentSignIn
+        #expect(log.termsToAsk(in: snapshot, signIn: second, now: now + 3599) == ["1151"])
+        #expect(log.termsToAsk(in: snapshot, signIn: second, now: now + 3599 + 3600) == ["1151"])
     }
 }

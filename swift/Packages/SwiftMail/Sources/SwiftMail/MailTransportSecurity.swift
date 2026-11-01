@@ -1,3 +1,4 @@
+import Dispatch
 import NIO
 import NIOSSL
 
@@ -169,16 +170,21 @@ enum MailTLSConfiguration {
 
     /// Converts the peer chain to DER and asks the verifier. A certificate that cannot be
     /// serialized fails the connection rather than being silently dropped from the chain.
+    /// NIOSSL invokes this on the event loop, where nothing may block, so the verifier, which
+    /// may evaluate trust over the network, runs on a global queue and completes the promise there.
     static func customVerificationCallback(
         verifier: MailCertificateVerifier,
         host: String
     ) -> NIOSSLCustomVerificationCallback {
         { certificates, promise in
             let derChain = certificates.compactMap { try? $0.toDERBytes() }
-            let accepted = !derChain.isEmpty
-                && derChain.count == certificates.count
-                && verifier.verify(derChain, host)
-            promise.succeed(accepted ? .certificateVerified : .failed)
+            guard !derChain.isEmpty, derChain.count == certificates.count else {
+                promise.succeed(.failed)
+                return
+            }
+            DispatchQueue.global(qos: .userInitiated).async {
+                promise.succeed(verifier.verify(derChain, host) ? .certificateVerified : .failed)
+            }
         }
     }
 }

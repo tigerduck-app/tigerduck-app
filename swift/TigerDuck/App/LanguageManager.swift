@@ -43,22 +43,8 @@ nonisolated enum LanguageManager {
         return chineseLanguageCodes.contains(code) ? "zh" : "en"
     }
 
-    /// `tools/localization/sync_localizations.py` surfaces each generated lproj as
-    /// a top-level symlink under the synchronized group, so Xcode copies them to
-    /// the bundle root (`<App>.app/<lang>.lproj`), not into a `Localization/`
-    /// subfolder. We enumerate the resource URL directly.
     static func supportedLocaleTags() -> [String] {
-        guard let resourceURL = Bundle.main.resourceURL else { return [] }
-        let urls = (try? FileManager.default.contentsOfDirectory(
-            at: resourceURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        return urls
-            .filter { $0.pathExtension == "lproj" }
-            .map { $0.deletingPathExtension().lastPathComponent }
-            .filter { $0 != "Base" }
-            .sorted()
+        Bundle.main.localizations.filter { $0 != "Base" }.sorted()
     }
 
     static func displayName(for tag: String) -> String {
@@ -71,7 +57,7 @@ nonisolated enum LanguageManager {
 
     static func apply(_ appLanguage: String) {
         if appLanguage == system {
-            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            AppUserDefaults.standard.removeObject(forKey: "AppleLanguages")
         } else {
             let appleTag: String
             switch appLanguage {
@@ -79,7 +65,7 @@ nonisolated enum LanguageManager {
             case zhHans: appleTag = "zh-Hans-CN"
             default: appleTag = appLanguage
             }
-            UserDefaults.standard.set([appleTag], forKey: "AppleLanguages")
+            AppUserDefaults.standard.set([appleTag], forKey: "AppleLanguages")
         }
     }
 }

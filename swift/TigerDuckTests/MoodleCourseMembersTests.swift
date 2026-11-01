@@ -100,7 +100,7 @@ struct MoodleCourseMembersTests {
     private final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleCourseMembersTests-\(UUID().uuidString)", isDirectory: true)
-        lazy var cache = DataCache(
+        lazy var cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -112,7 +112,7 @@ struct MoodleCourseMembersTests {
         _ folder: Folder,
         site: Site,
         account: String = "B11399001",
-        signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true),
+        signedIn: TestSignIn = TestSignIn(),
         before: @escaping @Sendable () async throws -> Void = {},
         now: @escaping () -> Date = { Date() }
     ) -> MoodleCourseStore {
@@ -120,14 +120,14 @@ struct MoodleCourseMembersTests {
             courseId: courseId,
             termCourseIds: [courseId],
             context: MoodleCacheContext(
-                account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }, now: now
+                account: account, cache: folder.cache.moodle, signIn: signedIn.signIn, now: now
             ),
             api: site.api(before: before)
         )
     }
 
     private func cached(_ folder: Folder, account: String = "B11399001") -> MoodleMemberList? {
-        folder.cache.loadMoodleData(MoodleMemberList.self, name: "courses/\(Self.courseId)/members", account: account)?.value
+        folder.cache.moodle.loadMoodleData(MoodleMemberList.self, name: "courses/\(Self.courseId)/members", account: account)?.value
     }
 
     @Test("the members a refresh brings show from the cache the next time, for that account only")
@@ -146,14 +146,14 @@ struct MoodleCourseMembersTests {
     @Test("an answer that lands after a sign-out is neither shown nor kept")
     func signOutWhileFetching() async throws {
         let folder = Folder()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let answer = ManualSleeper()
         let store = Self.store(folder, site: Site(), signedIn: signedIn) { await answer.sleep(for: .zero) }
 
         let refresh = Task { await store.refreshMembers() }
         try await answer.waitUntilArmed()
         #expect(store.members.isRefreshing)
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await answer.fire()
         await refresh.value
 
@@ -180,7 +180,7 @@ struct MoodleCourseMembersTests {
         await Self.store(folder, site: Site()).refreshMembers()
         #expect(cached(folder) != nil)
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
 
         #expect(cached(folder) == nil)
         #expect(Self.store(folder, site: Site()).sectionRows.isEmpty)
@@ -576,10 +576,10 @@ struct MoodleCourseMembersTests {
         let site = Site()
         let member = Self.withPicture(Self.classmate, rev: 5)
         await Self.store(folder, site: site).loadPicture(of: member)
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let reopened = Self.store(folder, site: site, signedIn: signedIn)
         reopened.readPictureFile = { file in
-            signedIn.withLock { $0 = false }
+            signedIn.signOut()
             return try? Data(contentsOf: file)
         }
 
@@ -655,12 +655,12 @@ struct MoodleCourseMembersTests {
         await failing.loadPicture(of: member)
         #expect(failing.pictures[url] == nil)
 
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let answer = ManualSleeper()
         let late = Self.store(folder, site: Site(), signedIn: signedIn) { await answer.sleep(for: .zero) }
         let load = Task { await late.loadPicture(of: member) }
         try await answer.waitUntilArmed()
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await answer.fire()
         await load.value
         #expect(late.pictures[url] == nil)
@@ -707,7 +707,7 @@ struct MoodleCourseMembersTests {
         let preview = try #require(await store.picturePreview(of: member))
         #expect(!pictures(folder).isEmpty)
 
-        folder.cache.clearUserScopedData()
+        folder.cache.forgetAccount()
 
         #expect(!FileManager.default.fileExists(atPath: folder.cache.moodleFilesDir.path))
         #expect(!FileManager.default.fileExists(atPath: preview.path))
@@ -717,7 +717,7 @@ struct MoodleCourseMembersTests {
     func picturePreview() async throws {
         let folder = Folder()
         let site = Site()
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let store = Self.store(folder, site: site, signedIn: signedIn)
         let member = Self.withPicture(Self.classmate, rev: 5)
         await store.loadPicture(of: member)
@@ -726,12 +726,12 @@ struct MoodleCourseMembersTests {
 
         #expect(preview.lastPathComponent == "Duck Tiger.png")
         #expect(await store.picturePreview(of: Self.classmate) == nil)
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         #expect(await store.picturePreview(of: member) == nil)
-        signedIn.withLock { $0 = true }
 
+        let next = Self.store(folder, site: site)
         site.set(picture: Self.largePNG)
-        await store.loadPicture(of: Self.withPicture(Self.classmate, rev: 6))
+        await next.loadPicture(of: Self.withPicture(Self.classmate, rev: 6))
         #expect(pictures(folder) == ["B11399002", "B11399002-preview"])
         #expect(FileManager.default.fileExists(atPath: preview.path))
     }
@@ -776,13 +776,13 @@ struct MoodleCourseMembersTests {
         let folder = Folder()
         let member = Self.withPicture(Self.classmate, rev: 5)
         await Self.store(folder, site: Site()).loadPicture(of: member)
-        let signedIn = OSAllocatedUnfairLock(initialState: true)
+        let signedIn = TestSignIn()
         let answer = ManualSleeper()
         let store = Self.store(folder, site: Site(), signedIn: signedIn) { await answer.sleep(for: .zero) }
 
         let open = Task { await store.picturePreview(of: member) }
         try await answer.waitUntilArmed()
-        signedIn.withLock { $0 = false }
+        signedIn.signOut()
         await answer.fire()
 
         #expect(await open.value == nil)

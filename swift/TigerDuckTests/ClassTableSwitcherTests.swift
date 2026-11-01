@@ -34,8 +34,8 @@ struct ClassTableSwitcherTests {
 
     private static func people(_ folder: Folder) throws -> People {
         let store = ImportedClassTableStore(fileURL: folder.file, signedInStudentId: { "B11300000" })
-        let ming = try #require(store.add(code("B11300001"), nickname: "Ming", courses: [:]))
-        let hua = try #require(store.add(code("B11300002"), nickname: "Hua", courses: [:]))
+        let ming = try #require(store.add(code("B11300001"), nickname: "Ming", courses: [:], for: testSignIn))
+        let hua = try #require(store.add(code("B11300002"), nickname: "Hua", courses: [:], for: testSignIn))
         return People(store: store, ming: ming, hua: hua)
     }
 

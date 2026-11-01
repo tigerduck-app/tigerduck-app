@@ -68,20 +68,20 @@ struct ChangeFeedPlanTests {
 struct ChangeFeedWatermarkTests {
     @Test("A read that nothing overtook may move the watermark")
     func readNothingOvertookMayAdvance() {
-        #expect(AppState.feedMayAdvanceRevision(
-            readAfter: 10, watermark: 10, startedIn: 4, current: 4, cloudSyncEnabled: true))
+        #expect(ChangeFeedPull.feedMayAdvanceRevision(
+            readAfter: 10, watermark: 10, signedOutSince: false, cloudSyncEnabled: true))
     }
 
     @Test("A sign-out, a full sync that set its own watermark, or sync switched off keeps it")
     func overtakenReadKeepsTheWatermark() {
-        #expect(!AppState.feedMayAdvanceRevision(
-            readAfter: 10, watermark: 0, startedIn: 4, current: 5, cloudSyncEnabled: true))
-        #expect(!AppState.feedMayAdvanceRevision(
-            readAfter: 10, watermark: 10, startedIn: 4, current: 6, cloudSyncEnabled: true))
-        #expect(!AppState.feedMayAdvanceRevision(
-            readAfter: 10, watermark: 13, startedIn: 4, current: 4, cloudSyncEnabled: true))
-        #expect(!AppState.feedMayAdvanceRevision(
-            readAfter: 10, watermark: 10, startedIn: 4, current: 4, cloudSyncEnabled: false))
+        #expect(!ChangeFeedPull.feedMayAdvanceRevision(
+            readAfter: 10, watermark: 0, signedOutSince: true, cloudSyncEnabled: true))
+        #expect(!ChangeFeedPull.feedMayAdvanceRevision(
+            readAfter: 10, watermark: 10, signedOutSince: true, cloudSyncEnabled: true))
+        #expect(!ChangeFeedPull.feedMayAdvanceRevision(
+            readAfter: 10, watermark: 13, signedOutSince: false, cloudSyncEnabled: true))
+        #expect(!ChangeFeedPull.feedMayAdvanceRevision(
+            readAfter: 10, watermark: 10, signedOutSince: false, cloudSyncEnabled: false))
     }
 }
 
@@ -137,13 +137,13 @@ struct ChangeFeedClientTests {
         #expect(SettingsAPIStub.requests(for: backend.feedURL(since: 40)).map(\.httpMethod) == ["GET"])
     }
 
-    @Test("Compacted changes throw as expired and leave the version gate alone; another 410 latches it")
+    @Test("Compacted changes, a 409, throw as expired and leave the version gate alone; only a retired API's 410 latches it")
     func expiredRevisionSkipsTheVersionGate() async {
         let backend = Backend()
         let client = backend.makeClient()
-        backend.answer(backend.feedURL(since: 5), status: 410, """
-            {"error": "sync_revision_expired", "min_available_revision": 90, "current_revision": 120,
-             "full_sync_required": true}
+        backend.answer(backend.feedURL(since: 5), status: 409, """
+            {"error": "sync_revision_expired", "message": "expired", "min_available_revision": 90,
+             "current_revision": 120, "full_sync_required": true}
             """)
 
         let error = await #expect(throws: PushAPIError.self) {
@@ -155,10 +155,14 @@ struct ChangeFeedClientTests {
         }
         #expect(!backend.gate.isRetired)
 
-        backend.answer(backend.feedURL(since: 6), status: 410, """
-            {"detail": "This API version has been retired.", "current_api": "/v4"}
-            """)
+        backend.answer(backend.feedURL(since: 6), status: 410, #"{"error": "something_else", "message": "gone"}"#)
         await #expect(throws: PushAPIError.self) { _ = try await client.fetchChanges(sinceRevision: 6) }
+        #expect(!backend.gate.isRetired)
+
+        backend.answer(backend.feedURL(since: 7), status: 410, """
+            {"error": "api_retired", "message": "This API version has been retired.", "current_api": "/v5"}
+            """)
+        await #expect(throws: PushAPIError.self) { _ = try await client.fetchChanges(sinceRevision: 7) }
         #expect(backend.gate.isRetired)
     }
 

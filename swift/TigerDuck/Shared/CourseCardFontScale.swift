@@ -40,7 +40,7 @@ nonisolated final class CourseCardFontScaleStore {
     init(appGroupIdentifier: String = CourseCardFontScaleStore.appGroupIdentifier) {
         let requiresSharedContainer = appGroupIdentifier == Self.appGroupIdentifier
         if !requiresSharedContainer || Self.isAppGroupAvailable(appGroupIdentifier),
-           let suite = UserDefaults(suiteName: appGroupIdentifier) {
+           let suite = AppUserDefaults.suite(appGroupIdentifier) {
             self.defaults = suite
         } else {
             assertionFailure(

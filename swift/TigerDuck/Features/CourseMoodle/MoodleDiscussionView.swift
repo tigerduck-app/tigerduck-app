@@ -1,12 +1,13 @@
 import MarkdownUI
 import SwiftUI
+import TigerDuckCore
 
 struct MoodleDiscussionView: View {
     let store: MoodleCourseStore
     let discussion: MoodleDiscussion
     let forum: MoodleForum
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var unreadAtOpening: Set<Int>?
     @State private var isOpening = false
     @State private var files = MoodleFileOpener()
@@ -20,7 +21,7 @@ struct MoodleDiscussionView: View {
                     MoodlePostCard(
                         entry: entry,
                         isUnread: unreadAtOpening?.contains(entry.post.id) ?? entry.post.isUnread,
-                        policy: appState.visualStylePolicy,
+                        policy: app.preferences.visualStylePolicy,
                         store: store,
                         discussion: discussion,
                         files: files
@@ -167,7 +168,7 @@ private struct MoodlePostCard: View {
     let files: MoodleFileOpener
     var now: Date = AppClock.now()
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
     @Environment(\.openMoodleLink) private var openMoodleLink
 
@@ -272,13 +273,13 @@ private struct MoodlePostCard: View {
     @ViewBuilder
     private var message: some View {
         if post.isDeleted {
-            Text(MoodleHTMLText.plainText(fromHTML: post.message))
+            Text(MoodleText.plainText(fromHTML: post.message))
                 .font(TigerDuckTheme.Typography.body)
                 .italic()
                 .foregroundStyle(Color.textSecondary)
         } else {
-            Markdown(BulletinBodyRenderer.normalize(MoodleHTMLText.markdown(fromHTML: post.message)))
-                .markdownTheme(.bulletin(accent: appState.accentColor))
+            Markdown(BulletinBodyRenderer.normalize(MoodleText.markdown(fromHTML: post.message)))
+                .markdownTheme(.bulletin(accent: app.preferences.accentColor))
                 .environment(\.openURL, OpenURLAction { url in
                     files.forgetPendingOpen()
                     openMoodleLink(url)
@@ -290,7 +291,7 @@ private struct MoodlePostCard: View {
 
     private var headerAccessibilityText: String {
         var style = Date.FormatStyle(date: .long, time: .shortened)
-        style.timeZone = AppConstants.taipeiTimeZone
+        style.timeZone = TaipeiTime.timeZone
         var parts: [String] = []
         if let authorName { parts.append(authorName) }
         if isUnread { parts.append(String(localized: "bulletin_unread_dot_label")) }

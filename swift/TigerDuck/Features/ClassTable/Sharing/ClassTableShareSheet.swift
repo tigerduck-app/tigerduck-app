@@ -137,14 +137,14 @@ private struct CopyLinkButton: View {
         .disabled(link == nil)
         .onChange(of: link) { isCopied = false }
         .task(id: copies) {
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.5))
             if !Task.isCancelled { isCopied = false }
         }
     }
 }
 
 extension View {
-    func classTableShareSheet(model: Binding<ClassTableShareModel?>, loginGeneration: Int) -> some View {
+    func classTableShareSheet(model: Binding<ClassTableShareModel?>, signIn: SignIn) -> some View {
         sheet(item: model) { model in
             #if os(iOS)
             ClassTableShareSheet(model: model)
@@ -153,6 +153,6 @@ extension View {
             ClassTableShareSheet(model: model)
             #endif
         }
-        .onChange(of: loginGeneration) { model.wrappedValue = nil }
+        .onChange(of: signIn) { model.wrappedValue = nil }
     }
 }

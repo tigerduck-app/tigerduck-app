@@ -46,7 +46,7 @@ struct BrowserSitesTests {
     @MainActor
     @Test func aResetForgetsEverySitesZoomAndDesktopChoice() {
         defer { Defaults.reset(.browserZoom, .browserDesktopSites) }
-        BrowserSites.stored = BrowserSites(zoom: ["moodle2.ntust.edu.tw": 150], desktop: ["moodle2.ntust.edu.tw"])
+        BrowserSites.change(for: testSignIn) { $0 = BrowserSites(zoom: ["moodle2.ntust.edu.tw": 150], desktop: ["moodle2.ntust.edu.tw"]) }
         let data = BrowserData(loadState: { .empty }, saveState: { _ in }, remove: { true }, clear: {})
 
         data.reset()
@@ -58,13 +58,13 @@ struct BrowserSitesTests {
     @Test func clearingFromStorageKeepsEverySitesZoomAndDesktopChoice() {
         defer { Defaults.reset(.browserZoom, .browserDesktopSites) }
         let choices = BrowserSites(zoom: ["moodle2.ntust.edu.tw": 150], desktop: ["moodle2.ntust.edu.tw"])
-        BrowserSites.stored = choices
+        BrowserSites.change(for: testSignIn) { $0 = choices }
         let data = BrowserData(loadState: { .empty }, saveState: { _ in }, remove: { true }, clear: {})
 
         data.reset(keepingSiteChoices: true)
 
         #expect(BrowserSites.stored == choices)
-        #expect(data.generation == 1)
+        #expect(data.storeResets == 1)
     }
 }
 

@@ -18,10 +18,8 @@ struct MailMessageView: View {
     @State private var shareItem: MailFileItem?
     @State private var riskyAttachment: RiskyAttachment?
     @State private var showMoveSheet = false
-    @State private var pendingDelete: PendingDelete?
+    @State private var pendingDelete: MailDeleteConfirmation?
     @State private var compose: MailComposeContext?
-
-    private enum PendingDelete { case toTrash, permanent }
 
     private struct RiskyAttachment: Identifiable {
         let part: MailBodyPart
@@ -34,17 +32,9 @@ struct MailMessageView: View {
         session: MailPageSession,
         folderRoles: [MailFolderRole: String],
         otherFolders: [String],
-        onSeenChanged: @escaping (String, UInt32, Bool) -> Void,
-        onRemoved: @escaping (String, UInt32) -> Void,
-        onFolderChanged: @escaping (String) -> Void,
-        onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void
+        events: MailboxEvents
     ) {
-        let model = MailMessageViewModel(route: route, session: session, folderRoles: folderRoles)
-        model.onSeenChanged = onSeenChanged
-        model.onRemoved = onRemoved
-        model.onFolderChanged = onFolderChanged
-        model.onFolderRolesChanged = onFolderRolesChanged
-        _viewModel = State(initialValue: model)
+        _viewModel = State(initialValue: MailMessageViewModel(route: route, session: session, folderRoles: folderRoles, events: events))
         self.session = session
         self.otherFolders = otherFolders
     }
@@ -54,7 +44,10 @@ struct MailMessageView: View {
         .background(Color.backgroundPrimary)
         .onChange(of: colorScheme, initial: true) { _, scheme in viewModel.appearsLight = scheme == .light }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { toolbarContent }
+        .toolbar {
+            MailMessageToolbar(viewModel: viewModel, onCompose: startCompose, onMove: { showMoveSheet = true },
+                               onDelete: { pendingDelete = $0 })
+        }
         .environment(\.openURL, OpenURLAction { url in
             pendingLinkTarget = viewModel.linkTarget(forPlainText: url)
             return .handled
@@ -72,7 +65,9 @@ struct MailMessageView: View {
         }
         .sheet(item: $shareItem) { item in ShareSheet(url: item.url).presentationDetents([.medium, .large]) }
         .quickLookPreview($previewURL)
-        .sheet(isPresented: $showMoveSheet) { moveSheet }
+        .sheet(isPresented: $showMoveSheet) {
+            MailMoveSheet(viewModel: viewModel, otherFolders: otherFolders, onMove: move, onCancel: { showMoveSheet = false })
+        }
         .sheet(item: $compose) { context in
             MailComposeView(context: context, session: session, folderRoles: viewModel.folderRoles,
                             onFolderRolesChanged: { viewModel.adoptFolderRoles($0) },
@@ -114,7 +109,7 @@ struct MailMessageView: View {
         }
     }
 
-    private func confirming(_ kind: PendingDelete) -> Binding<Bool> {
+    private func confirming(_ kind: MailDeleteConfirmation) -> Binding<Bool> {
         Binding(get: { pendingDelete == kind }, set: { if !$0 { pendingDelete = nil } })
     }
 
@@ -131,10 +126,11 @@ struct MailMessageView: View {
 
     private var sections: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
-            header
-            banners
+            if let summary = viewModel.summary { MailMessageHeader(summary: summary) }
+            MailMessageBanners(viewModel: viewModel)
             Divider().background(Color.textSecondary)
-            bodyContent
+            MailMessageContentView(viewModel: viewModel, webHeight: $webHeight, webLoaded: $webLoaded,
+                                   pendingLinkTarget: $pendingLinkTarget)
             if !showsSource, let attachments = viewModel.detail?.attachments, !attachments.isEmpty {
                 MailAttachmentList(parts: attachments, downloading: viewModel.downloading, isRisky: viewModel.isRisky,
                                    onOpen: open, onShare: share)
@@ -144,234 +140,6 @@ struct MailMessageView: View {
         .padding(.top, TigerDuckTheme.Spacing.xl)
         .padding(.bottom, showsSource ? TigerDuckTheme.Spacing.lg : TigerDuckTheme.Spacing.xxl)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private var header: some View {
-        if let summary = viewModel.summary {
-            let sender = Self.senderLines(name: summary.fromName, address: summary.fromAddress)
-            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-                HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.sm) {
-                    Text(sender.primary ?? String(localized: "school_mail_no_sender"))
-                        .font(TigerDuckTheme.Typography.headline)
-                        .foregroundStyle(.tint)
-                    if summary.isExternal {
-                        Text(String(localized: "school_mail_external_badge"))
-                            .font(TigerDuckTheme.Typography.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.18), in: Capsule())
-                            .foregroundStyle(Color.orange)
-                    }
-                    Spacer(minLength: 0)
-                    if let date = summary.date {
-                        Text(MailDateFormatter.detailString(for: date))
-                            .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(Color.textSecondary)
-                    }
-                }
-                if let address = sender.secondary {
-                    Text(address)
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(Color.textSecondary)
-                        .textSelection(.enabled)
-                }
-                Text(summary.subject?.mailNonEmpty ?? String(localized: "school_mail_no_subject"))
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(Color.textPrimary)
-                let own = MailAccountManager.shared.address
-                let to = MailRecipient.parse(summary.to, ownAddress: own)
-                let cc = MailRecipient.parse(summary.cc, ownAddress: own)
-                if !to.isEmpty {
-                    MailRecipientRow(label: Self.fieldLabel("school_mail_details_to"), recipients: to)
-                }
-                if !cc.isEmpty {
-                    MailRecipientRow(label: Self.fieldLabel("school_mail_details_cc"), recipients: cc)
-                }
-            }
-        }
-    }
-
-    nonisolated static func senderLines(name: String?, address: String?) -> (primary: String?, secondary: String?) {
-        let name = name?.mailNonEmpty
-        let address = address?.mailNonEmpty
-        guard let name else { return (address, nil) }
-        return (name, address)
-    }
-
-    static func fieldLabel(_ key: String.LocalizationValue) -> String {
-        String(format: String(localized: key), "").trimmingCharacters(in: .whitespaces)
-    }
-
-    @ViewBuilder
-    private var banners: some View {
-        ForEach(Array(viewModel.warnings.enumerated()), id: \.offset) { _, warning in
-            MailWarningBanner(message: Self.text(for: warning))
-        }
-        if let blocked = viewModel.sanitized?.blockedRemoteImages, blocked > 0, viewModel.mode == .formatted {
-            MailWarningBanner(
-                message: String(localized: "school_mail_remote_images_blocked"),
-                systemImage: "photo",
-                actionTitle: String(localized: "school_mail_load_images"),
-                action: { Task { await viewModel.loadImages() } }
-            )
-        }
-        if viewModel.parseFailed {
-            MailWarningBanner(message: String(localized: "school_mail_parse_failed"), systemImage: "doc.text.magnifyingglass")
-        }
-        if let error = viewModel.actionError {
-            MailWarningBanner(message: error, systemImage: "xmark.octagon.fill")
-        }
-    }
-
-    @ViewBuilder
-    private var bodyContent: some View {
-        if viewModel.detail == nil {
-            switch viewModel.loadState {
-            case .failed(let message):
-                MailWarningBanner(message: message, systemImage: "exclamationmark.triangle",
-                                  actionTitle: String(localized: "action_retry"),
-                                  action: { Task { await viewModel.load() } })
-            default:
-                ProgressView().frame(maxWidth: .infinity).padding(.vertical, 60)
-            }
-        } else {
-            switch viewModel.mode {
-            case .formatted:
-                if let linked = viewModel.linkedDocument, let html = viewModel.formattedHTML {
-                    MailHTMLView(
-                        html: html,
-                        linkCount: linked.links.count,
-                        inlineImages: viewModel.detail?.inlineImages ?? [:],
-                        allowRemoteImages: viewModel.allowRemoteImages,
-                        theme: viewModel.htmlTheme,
-                        contentHeight: $webHeight,
-                        onLinkTap: { index in
-                            if let target = viewModel.linkTarget(forIndex: index) { pendingLinkTarget = target }
-                        },
-                        onLoadedChange: { webLoaded = $0 }
-                    )
-                    .frame(height: webHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
-                    // The page is blank until its rules compile and it first loads.
-                    if !webLoaded {
-                        ProgressView().frame(maxWidth: .infinity).padding(.vertical, 60)
-                    }
-                } else {
-                    plainBody
-                }
-            case .plain:
-                plainBody
-            case .source:
-                if let source = viewModel.source {
-                    VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-                        Button(String(localized: "school_mail_copy_all")) { UIPasteboard.general.string = source }
-                            .font(.caption.weight(.semibold))
-                        MailSourceTextView(text: source)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    }
-                } else if viewModel.sourceLoadFailed {
-                    MailWarningBanner(
-                        message: String(localized: "school_mail_source_failed"),
-                        systemImage: "exclamationmark.triangle",
-                        actionTitle: String(localized: "action_retry"),
-                        action: { Task { await viewModel.loadSource() } }
-                    )
-                } else {
-                    ProgressView().frame(maxWidth: .infinity)
-                }
-            }
-        }
-    }
-
-    private var plainBody: some View {
-        Text(viewModel.linkedPlainText)
-            .font(TigerDuckTheme.Typography.body)
-            .foregroundStyle(Color.textPrimary)
-            .textSelection(.enabled)
-    }
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Button { startCompose(.reply) } label: { Label(String(localized: "school_mail_reply"), systemImage: "arrowshape.turn.up.left") }
-                Button { startCompose(.replyAll) } label: { Label(String(localized: "school_mail_reply_all"), systemImage: "arrowshape.turn.up.left.2") }
-                Button { startCompose(.forward) } label: { Label(String(localized: "school_mail_forward"), systemImage: "arrowshape.turn.up.right") }
-            } label: {
-                Image(systemName: "arrowshape.turn.up.left")
-                    .accessibilityLabel(String(localized: "school_mail_reply_menu"))
-            }
-            .disabled(viewModel.detail == nil)
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Section {
-                    Picker(String(localized: "school_mail_view_mode"), selection: $viewModel.mode) {
-                        ForEach(viewModel.availableModes) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-                }
-                if viewModel.offersLightMode {
-                    Section {
-                        Toggle(isOn: $viewModel.viewsInLightMode) {
-                            Label(String(localized: "school_mail_view_light_mode"), systemImage: "sun.max")
-                        }
-                    }
-                }
-                Section {
-                    Button { Task { await viewModel.toggleSeen() } } label: {
-                        let seen = viewModel.detail?.summary.isSeen ?? true
-                        Label(seen ? String(localized: "school_mail_mark_unread") : String(localized: "school_mail_mark_read"),
-                              systemImage: seen ? "envelope.badge" : "envelope.open")
-                    }
-                    Button { showMoveSheet = true } label: {
-                        Label(String(localized: "school_mail_move_to"), systemImage: "folder")
-                    }
-                    .disabled(viewModel.isMoving)
-                }
-                Section {
-                    Button(role: .destructive) {
-                        Task {
-                            let isPermanent = await viewModel.prepareDelete()
-                            pendingDelete = isPermanent ? .permanent : .toTrash
-                        }
-                    } label: {
-                        Label(String(localized: "school_mail_delete"), systemImage: "trash")
-                    }
-                    .disabled(viewModel.isMoving)
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .accessibilityLabel(String(localized: "school_mail_message_actions"))
-            }
-        }
-    }
-
-    private var moveSheet: some View {
-        NavigationStack {
-            List {
-                ForEach(MailFolderRole.allCases.filter {
-                    viewModel.folderRoles[$0] != nil && viewModel.folderRoles[$0] != viewModel.route.folder
-                }, id: \.self) { role in
-                    Button(role.title) { move(to: viewModel.folderRoles[role]!) }
-                        .disabled(viewModel.isMoving)
-                }
-                ForEach(otherFolders.filter { $0 != viewModel.route.folder }, id: \.self) { folder in
-                    Button(ModifiedUTF7.decode(folder)) { move(to: folder) }
-                        .disabled(viewModel.isMoving)
-                }
-            }
-            .navigationTitle(String(localized: "school_mail_move_to"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "action_cancel")) { showMoveSheet = false }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
     }
 
     private func move(to folder: String) {
@@ -423,20 +191,5 @@ struct MailMessageView: View {
         }
     }
 
-    static func text(for warning: MailWarning) -> String {
-        switch warning {
-        case .externalSender(let address): appending(address, to: "school_mail_warning_external")
-        case .displayNameMismatch(let address): appending(address, to: "school_mail_warning_display_name")
-        case .passwordBait: String(localized: "school_mail_warning_password")
-        case .riskyAttachment(let filename, _): String(format: String(localized: "school_mail_warning_attachment"), filename)
-        case .mistypedRecipient: String(localized: "school_mail_bounce_warning")
-        }
-    }
-
-    private static func appending(_ address: String, to key: String.LocalizationValue) -> String {
-        let title = String(localized: key)
-        guard let address = address.mailNonEmpty else { return title }
-        return "\(title) \(address)"
-    }
 }
 #endif

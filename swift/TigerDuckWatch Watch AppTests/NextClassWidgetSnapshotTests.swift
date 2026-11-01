@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 @testable import TigerDuckWatch_Watch_App
+import TigerDuckCore
 
 final class NextClassWidgetSnapshotTests: XCTestCase {
 

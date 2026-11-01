@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct WeekGridView: View {
     let snapshot: WidgetSnapshot
@@ -33,7 +34,7 @@ struct WeekGridView: View {
     private var grid: some View {
         let weekdays = snapshot.activeWeekdays
         let periods = snapshot.activePeriodIds
-        let todayWeekday = WidgetTimelineDerivation.weekdayFor(now)
+        let todayWeekday = ClassTimeline.weekday(of: now)
 
         GeometryReader { geom in
             let totalRowSpacing = CGFloat(max(0, periods.count - 1)) * rowSpacing
@@ -76,7 +77,7 @@ struct WeekGridView: View {
             Color.clear.frame(width: periodWidth, height: headerHeight)
             ForEach(weekdays, id: \.self) { weekday in
                 VStack(spacing: 1) {
-                    Text(String(localized: String.LocalizationValue(weekdayKey(weekday))))
+                    Text(weekdayKey(weekday))
                         .font(.system(size: 7 * fontScale, weight: .bold))
                         .foregroundStyle(palette.onSurfaceVariant)
                     Rectangle()
@@ -165,8 +166,8 @@ struct WeekGridView: View {
 
     /// The week runs from today, as the app's class table does, so each column has one date.
     private func dayKey(of weekday: Int) -> String {
-        let ahead = (weekday - WidgetTimelineDerivation.weekdayFor(now) + 7) % 7
-        let day = WidgetTaipei.calendar.date(byAdding: .day, value: ahead, to: now) ?? now
+        let ahead = (weekday - ClassTimeline.weekday(of: now) + 7) % 7
+        let day = TaipeiTime.calendar.date(byAdding: .day, value: ahead, to: now) ?? now
         return WidgetTimelineDerivation.dateKey(for: day)
     }
 
@@ -286,7 +287,7 @@ struct WeekGridView: View {
             }
     }
 
-    private func weekdayKey(_ weekday: Int) -> String {
+    private func weekdayKey(_ weekday: Int) -> LocalizedStringResource {
         switch weekday {
         case 1: return "weekday_mon_short"
         case 2: return "weekday_tue_short"

@@ -1,0 +1,250 @@
+#if os(iOS)
+import Foundation
+
+nonisolated enum MailCheckTrigger: String, Codable, Sendable {
+    case page
+    case foreground, backgroundTask
+
+    var displayText: String {
+        switch self {
+        case .page: String(localized: "school_mail_check_trigger_page")
+        case .foreground: String(localized: "school_mail_check_trigger_foreground")
+        case .backgroundTask: String(localized: "school_mail_check_trigger_background")
+        }
+    }
+
+    static func displayText(forStored raw: String) -> String {
+        MailCheckTrigger(rawValue: raw)?.displayText ?? raw
+    }
+}
+
+nonisolated enum MailCheckOutcome: Equatable, Sendable {
+    case skippedBusy, skippedSignedOut, skippedDisabled, skippedAuthFailed
+    case baselineReset, noNewMail
+    case newMail(Int)
+    case authFailed
+    case failed(MailClientError)
+
+    var isSuccess: Bool {
+        switch self {
+        case .authFailed, .failed: false
+        default: true
+        }
+    }
+
+    var diagnosticText: String {
+        switch self {
+        case .skippedBusy: "skipped: another check running"
+        case .skippedSignedOut: "skipped: signed out"
+        case .skippedDisabled: "skipped: notifications off"
+        case .skippedAuthFailed: "skipped: sign-in failed"
+        case .baselineReset: "baseline reset"
+        case .noNewMail: "no new mail"
+        case .newMail(let count): "\(count)\(Self.newMailSuffix)"
+        case .authFailed: "sign-in failed"
+        case .failed(let error): "\(Self.failurePrefix)\(error)"
+        }
+    }
+
+    static let failurePrefix = "failed: "
+    static let newMailSuffix = " new"
+
+    var displayText: String {
+        switch self {
+        case .skippedBusy: String(localized: "school_mail_check_skipped_busy")
+        case .skippedSignedOut: String(localized: "school_mail_check_skipped_signed_out")
+        case .skippedDisabled: String(localized: "school_mail_check_skipped_disabled")
+        case .skippedAuthFailed: String(localized: "school_mail_check_skipped_auth_failed")
+        case .baselineReset: String(localized: "school_mail_check_baseline_reset")
+        case .noNewMail: String(localized: "school_mail_check_no_new_mail")
+        case .newMail(let count): String(format: String(localized: "school_mail_new_mail_count"), String(count))
+        case .authFailed: String(localized: "school_mail_check_sign_in_failed")
+        case .failed(let error): String(format: String(localized: "school_mail_check_failed"), "\(error)")
+        }
+    }
+
+    static func displayText(forStored stored: String) -> String {
+        if let known = valuelessCases.first(where: { $0.diagnosticText == stored }) {
+            return known.displayText
+        }
+        if stored.hasPrefix(failurePrefix) {
+            return String(format: String(localized: "school_mail_check_failed"),
+                          String(stored.dropFirst(failurePrefix.count)))
+        }
+        if stored.hasSuffix(newMailSuffix), let count = Int(stored.dropLast(newMailSuffix.count)) {
+            return String(format: String(localized: "school_mail_new_mail_count"), String(count))
+        }
+        return stored
+    }
+
+    private static let valuelessCases: [MailCheckOutcome] = [
+        .skippedBusy, .skippedSignedOut, .skippedDisabled, .skippedAuthFailed,
+        .baselineReset, .noNewMail, .authFailed,
+    ]
+}
+
+actor MailChecker {
+    static let shared = MailChecker(
+        prefs: MailSettingsStore.shared,
+        session: .mail,
+        notifier: MailNotifier(center: SystemMailNotificationCenter()),
+        openSession: { try await MailAccountManager.shared.openSession() },
+        onAuthFailure: { await MailAccountManager.shared.handleAuthFailure(for: $0) },
+        cache: .shared,
+        notificationsDenied: { await MailNotificationPermission.isDenied() }
+    )
+
+    nonisolated let notifier: MailNotifier
+    private let prefs: any MailPreferences
+    private let session: AccountSession
+    private let openSession: @Sendable () async throws -> any MailClient
+    private let onAuthFailure: @Sendable (SignIn) async -> Void
+    private let now: @Sendable () -> Date
+    private let cache: MailCache?
+    private let notificationsDenied: @Sendable () async -> Bool
+    private var isRunning = false
+
+    init(
+        prefs: any MailPreferences,
+        session: AccountSession,
+        notifier: MailNotifier,
+        openSession: @escaping @Sendable () async throws -> any MailClient,
+        onAuthFailure: @escaping @Sendable (SignIn) async -> Void,
+        now: @escaping @Sendable () -> Date = { Date() },
+        cache: MailCache? = nil,
+        notificationsDenied: @escaping @Sendable () async -> Bool = { false }
+    ) {
+        self.prefs = prefs
+        self.session = session
+        self.notifier = notifier
+        self.openSession = openSession
+        self.onAuthFailure = onAuthFailure
+        self.now = now
+        self.cache = cache
+        self.notificationsDenied = notificationsDenied
+    }
+
+    func check(trigger: MailCheckTrigger) async -> MailCheckOutcome {
+        let signIn = await session.startingSignIn
+        guard !isRunning else { return .skippedBusy }
+        guard prefs.studentID != nil else { return .skippedSignedOut }
+        guard !prefs.authFailed else { return .skippedAuthFailed }
+        guard prefs.notificationsEnabled else { return .skippedDisabled }
+        isRunning = true
+        defer { isRunning = false }
+        if await notificationsDenied() { return .skippedDisabled }
+        guard signIn.isCurrent else { return .skippedSignedOut }
+        let startedAt = now()
+        prefs.change(for: signIn) { $0.lastCheckAt = startedAt }
+        let outcome = await run(for: signIn)
+        guard let outcome, signIn.isCurrent else { return .skippedSignedOut }
+        record(trigger: trigger, outcome: outcome, for: signIn)
+        return outcome
+    }
+
+    func noteSeenByPage(_ status: MailboxStatusInfo, for signIn: SignIn) {
+        guard prefs.studentID != nil else { return }
+        MailInboxCursor(prefs: prefs).noteSeen(status, for: signIn)
+    }
+
+    private func run(for signIn: SignIn) async -> MailCheckOutcome? {
+        let client: any MailClient
+        do {
+            client = try await openSession()
+        } catch MailClientError.authenticationFailed {
+            await reportAuthFailure(for: signIn)
+            return .authFailed
+        } catch {
+            return .failed(error as? MailClientError ?? .unreachable)
+        }
+
+        let outcome: MailCheckOutcome?
+        do {
+            let result = try await checkInbox(for: signIn, client: client)
+            outcome = result?.outcome
+            if let result {
+                await prefetchBodies(for: signIn, client: client, uidValidity: result.uidValidity, uids: result.notified)
+            }
+        } catch MailClientError.authenticationFailed {
+            await reportAuthFailure(for: signIn)
+            outcome = .authFailed
+        } catch {
+            outcome = .failed(error as? MailClientError ?? .unreachable)
+        }
+        await client.logout()
+        return outcome
+    }
+
+    private func reportAuthFailure(for signIn: SignIn) async {
+        guard signIn.isCurrent else { return }
+        await onAuthFailure(signIn)
+    }
+
+    private struct InboxCheck {
+        var outcome: MailCheckOutcome
+        var uidValidity: UInt32
+        var notified: [UInt32] = []
+    }
+
+    private func checkInbox(for signIn: SignIn, client: any MailClient) async throws -> InboxCheck? {
+        let cursor = MailInboxCursor(prefs: prefs)
+        let status = try await client.status(folder: MailConstants.inbox)
+        guard signIn.isCurrent else { return nil }
+        guard let marker = cursor.marker(for: status) else {
+            cursor.reset(to: status, for: signIn)
+            return InboxCheck(outcome: .baselineReset, uidValidity: status.uidValidity)
+        }
+        guard status.uidNext > marker else { return InboxCheck(outcome: .noNewMail, uidValidity: status.uidValidity) }
+
+        // `marker:*` always includes the last message, even when its UID is below marker.
+        let fetched = try await client.summaries(folder: MailConstants.inbox, fromUID: marker)
+            .filter { $0.uid >= marker }
+        let mute = prefs.muteSettings
+        let checkedAt = now()
+        let passedOver = cursor.passedOver(uidValidity: status.uidValidity)
+        let unread = fetched.filter { !$0.isSeen && !$0.isDeleted }.sorted { $0.uid < $1.uid }
+        let muted = MailInboxCursor.toPassOver(unread, passedOver: passedOver) {
+            mute.mutes($0, arrivedAt: $0.arrivedAt ?? checkedAt)
+        }
+        let fresh = unread.filter { !muted.contains($0.uid) }
+        guard signIn.isCurrent else { return nil }
+        guard prefs.notificationsEnabled else { return InboxCheck(outcome: .skippedDisabled, uidValidity: status.uidValidity) }
+        let unnotified = await notifier.notify(fresh, uidValidity: status.uidValidity)
+        if !signIn.isCurrent || !prefs.notificationsEnabled { await notifier.removeAll() }
+        let ceiling = fetched.map(\.uid).max().map { $0 + 1 } ?? status.uidNext
+        guard signIn.isCurrent else { return nil }
+        let advanced = unnotified.min().map { min($0, ceiling) } ?? ceiling
+        cursor.advance(to: advanced, uidValidity: status.uidValidity, passedOver: passedOver.union(muted), for: signIn)
+        return InboxCheck(
+            outcome: fresh.isEmpty ? .noNewMail : .newMail(fresh.count),
+            uidValidity: status.uidValidity,
+            notified: fresh.map(\.uid)
+        )
+    }
+
+    private func prefetchBodies(for signIn: SignIn, client: any MailClient, uidValidity: UInt32, uids: [UInt32]) async {
+        guard let cache else { return }
+        let wipeCount = cache.wipeCount
+        for uid in uids.sorted(by: >).prefix(MailConstants.bodyPrefetchLimit) {
+            guard !Task.isCancelled, signIn.isCurrent else { return }
+            if cache.loadDetail(folder: MailConstants.inbox, uidValidity: uidValidity, uid: uid) != nil { continue }
+            do {
+                let detail = try await client.detail(folder: MailConstants.inbox, uid: uid, expectedUIDValidity: uidValidity,
+                                                     inlineImages: false)
+                guard !Task.isCancelled, signIn.isCurrent else { return }
+                cache.saveDetail(detail, folder: MailConstants.inbox, uidValidity: uidValidity, unlessWipedSince: wipeCount)
+            } catch let error as MailClientError where MailErrorClass(error).endsTheRun {
+                return
+            } catch {
+                continue
+            }
+        }
+    }
+
+    private func record(trigger: MailCheckTrigger, outcome: MailCheckOutcome, for signIn: SignIn) {
+        var records = prefs.diagnostics
+        records.insert(MailCheckRecord(date: now(), trigger: trigger.rawValue, result: outcome.diagnosticText), at: 0)
+        prefs.change(for: signIn) { $0.diagnostics = Array(records.prefix(MailConstants.diagnosticsLimit)) }
+    }
+}
+#endif

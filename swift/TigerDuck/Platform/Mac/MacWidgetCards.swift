@@ -1,5 +1,6 @@
 #if os(macOS)
 import SwiftUI
+import TigerDuckCore
 
 /// macOS desktop widgets would need pbxproj changes to `TigerDuckWidgetsExtension`, whose
 /// `SUPPORTED_PLATFORMS` is `"iphoneos iphonesimulator"`. Until that target supports Mac,
@@ -29,7 +30,7 @@ struct MacHomeWidgetsRow: View {
     }
 
     private func upcomingSlots(for now: Date) -> [CourseTimeSlot] {
-        let calendar = AppConstants.taipeiCalendar
+        let calendar = TaipeiTime.calendar
         let start = calendar.startOfDay(for: now)
         let changes = CourseChanges.cached
         var slots: [CourseTimeSlot] = []
@@ -67,9 +68,9 @@ private struct TodayScheduleWidgetCard: View {
     }
 
     private func scheduleRow(_ slot: CourseTimeSlot) -> some View {
-        let color = TigerDuckTheme.courseColor(for: slot.course.courseNo)
+        let color = TigerDuckTheme.courseColor(for: slot.courseKey)
         let isPast = slot.end < now
-        let isLive = slot.start <= now && now < slot.end
+        let isLive = slot.isOn(at: now)
         let primary: Color = isLive ? .white : .primary
         let secondary: Color = isLive ? Color.white.opacity(0.85) : .secondary
         return HStack(spacing: 10) {
@@ -80,7 +81,7 @@ private struct TodayScheduleWidgetCard: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(secondary)
                 .frame(width: 48, alignment: .leading)
-            Text(slot.course.displayName)
+            Text(slot.title)
                 .font(.callout)
                 .foregroundStyle(primary)
                 .lineLimit(1)
@@ -112,7 +113,7 @@ private struct NextClassWidgetCard: View {
         widgetCard(title: String(localized: "widget_next_class"), systemImage: "arrow.right.circle") {
             if let target = nextOrCurrent {
                 let primary = target.slots[0]
-                let color = TigerDuckTheme.courseColor(for: primary.course.courseNo)
+                let color = TigerDuckTheme.courseColor(for: primary.courseKey)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("\(primary.start.timeString) - \(primary.end.timeString)")
@@ -130,14 +131,14 @@ private struct NextClassWidgetCard: View {
                     }
                     if target.slots.count >= 2 {
                         VStack(alignment: .leading, spacing: 2) {
-                            ForEach(target.slots, id: \.course.courseNo) { slot in
-                                Text(slot.course.displayName)
+                            ForEach(target.slots, id: \.courseKey) { slot in
+                                Text(slot.title)
                                     .font(.title3.bold())
                                     .lineLimit(1)
                             }
                         }
                     } else {
-                        Text(primary.course.displayName)
+                        Text(primary.title)
                             .font(.title3.bold())
                             .lineLimit(2)
                         let classroom = primary.room
@@ -162,13 +163,12 @@ private struct NextClassWidgetCard: View {
     }
 
     private var nextOrCurrent: NextClassTarget? {
-        let liveSlots = slots.filter { $0.start <= now && now < $0.end }
+        let liveSlots = ClassTimeline.running(at: now, in: slots)
         if let targetStart = liveSlots.map(\.start).max() {
             let tiedLive = liveSlots.filter { $0.start == targetStart }
             return NextClassTarget(slots: tiedLive, kind: .live)
         }
-        guard let earliestNext = slots.filter({ $0.start > now }).min(by: { $0.start < $1.start })
-        else { return nil }
+        guard let earliestNext = ClassTimeline.next(after: now, in: slots) else { return nil }
         let tied = slots.filter { $0.start == earliestNext.start }
         return NextClassTarget(slots: tied, kind: .upcoming)
     }

@@ -45,8 +45,7 @@ struct SSOLoginQueueTests {
                 session: URLSession(configuration: config),
                 serviceURL: serviceURL,
                 studentId: "B00000000",
-                password: "unused",
-                generation: NTUSTSessionManager.shared.generation &- 1
+                password: "unused", for: endedTestSignIn
             )
         }
         #expect(SettingsAPIStub.requests(for: serviceURL).isEmpty)

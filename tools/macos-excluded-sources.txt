@@ -1,14 +1,12 @@
-# Sources the TigerDuck app target deliberately does NOT compile for macOS.
+# Sources the TigerDuck app target does not compile for macOS.
 #
-# Checked by tools/check_macos_sources.py. This is not the mechanism that
-# excludes them — project.pbxproj does that, by listing everything macOS *does*
-# get in INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]. This file records that each
-# absence was a decision rather than an oversight, so a newly added file that
-# is in neither list fails CI instead of silently vanishing from the Mac build.
+# The INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*] arrays in project.pbxproj (Debug
+# and Release) are every app-target Swift file minus this list. After editing
+# it, or adding, moving or deleting an app-target Swift file, run
+#   python3 tools/check_macos_sources.py --write
+# to regenerate them; CI fails while they differ.
 #
-# Adding a file here means: macOS genuinely must not compile it. If macOS needs
-# it, add it to BOTH INCLUDED_SOURCE_FILE_NAMES arrays in project.pbxproj
-# (Debug and Release) instead.
+# A file goes here only when macOS must not compile it.
 #
 # One filename per line; comments after '#'. Grouped by origin, and the group
 # headings are the justification — keep new entries under a heading that
@@ -23,7 +21,7 @@ FlipToLibraryCoordinator.swift
 NTUSTLoginSheetHost.swift
 PushAppDelegate.swift
 
-# ContentView.swift — iOS-only
+# App/ContentView.swift — iOS-only
 ContentView.swift
 
 # Debug — iOS-only debug surfaces
@@ -31,61 +29,84 @@ DebugServerFailureView.swift
 DebugSettingsView.swift
 DebugSettingsViewModel.swift
 DevMailConnectionProbe.swift
+DevMailNetworkProbe.swift
+DevMailProbeDraft.swift
+DevMailProbeErrors.swift
 DevMailServerOverride.swift
+DevMailServerSections.swift
 DevMailServerView.swift
+SettingsDeveloperSection.swift
 TigerSyncStatusView.swift
 TriggersDebugView.swift
 WhatsNewSampleFlow.swift
 
-# Extensions — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
+# UI/ViewHelpers — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
 UIApplication+Keyboard.swift
-UIApplication+Modals.swift
+HostWindow.swift
 UINavigationController+Swipeback.swift
 View+ScrollSafeGesture.swift
 
-# Features/Bulletins — iOS bulletin surfaces
+# Features/Bulletins and Stores/Bulletins — iOS bulletin surfaces
 BulletinNotificationSettingsView.swift
 BulletinSubscriptionsStore.swift
 BulletinsView.swift
 BulletinCardView.swift
 BulletinDetailView.swift
 BulletinFilterBar.swift
+BulletinPushSection.swift
+BulletinRows.swift
+BulletinRulesSections.swift
+BulletinsToolbar.swift
 BulletinTaxonomyPickerView.swift
 SubscriptionRuleEditorView.swift
 
 # Features/Calendar — iOS calendar surfaces
 CalendarTabView.swift
-CalendarViewModel.swift
 DayEventListView.swift
 EventRowView.swift
 MonthCalendarView.swift
 
 # Features/ClassTable — UIKit-dependent timetable interactions; macOS uses Platform/Mac/MacClassTableView
 ClassTableView.swift
-ClassTableViewModel.swift
-ClassTableViewModel+Grid.swift
-ClassTableViewModel+Editing.swift
-ClassTableViewModel+Loading.swift
+ClassTableEditDialogs.swift
+ClassTableHeaderMenu.swift
+ClassTableSemesterBar.swift
 ClassTableTabBarGestures.swift
 ConflictCoursePickerSheet.swift
 ClassTableExportView.swift
 ClassTableImportScannerView.swift  # camera scanner; the Mac reads an image file instead
 ConflictLShape.swift
+ConflictMirrorLPath.swift
+ConflictClusterView.swift
+ConflictLanesView.swift
+ConflictPairView.swift
 TimetableGridView.swift
+TimetableCell.swift
+TimetableCourseMenu.swift
+TimetableNowLine.swift
+TimetableSoloCell.swift
 
 # Features/CourseMoodle — the assignment page; the Mac opens an assignment on Moodle instead
+MoodleAssignmentDetails.swift
+MoodleAssignmentGradeSection.swift
+MoodleAssignmentParts.swift
+MoodleAssignmentSubmissionSection.swift
+MoodleAssignmentSummaryCard.swift
 MoodleAssignmentView.swift
-MoodleAssignmentView+Status.swift
 
 # Features/CourseMoodle — the crop screen for a new profile picture, which only the phone changes
 MoodlePictureCropView.swift
 
-# Features/EmptyClassroom — the iOS finder screen and the ranking it shows; macOS hides
-# the feature (MacFeatureFiltering.swift) and keeps only its cour01 client
+# Features/EmptyClassroom and Stores/EmptyClassroom — the iOS finder screen, the ranking it
+# shows and what it reads; macOS hides the feature (MacFeatureFiltering.swift) and keeps only
+# its cour01 client
 AvailabilityBar.swift
 BuildingDirectory.swift
 BuildingSection.swift
 ClassroomStateViews.swift
+EmptyClassroomCalendar.swift
+EmptyClassroomDayText.swift
+EmptyClassroomLoader.swift
 EmptyClassroomSchedule.swift
 EmptyClassroomView.swift
 EmptyClassroomViewModel.swift
@@ -105,15 +126,27 @@ FluidGlassTrackView.swift
 TimeSliderMetrics.swift
 TimeSliderSection.swift
 TimeSliderViewModel.swift
+TimeSliderHaptics.swift
+TimeSliderLayout.swift
 TodayCourseCarousel.swift
 UpcomingAssignmentsView.swift
+UpcomingAssignmentRow.swift
 WidgetGridView.swift
 HomeView.swift
 HomeViewModel.swift
+HomeAssignmentList.swift
+HomeBrowsePage.swift
+HomeFeatureDestination.swift
+HomeLayout.swift
+HomeSectionView.swift
+HomeSheets.swift
+HomeTitleBar.swift
 
 # Features/Library — iOS library QR + brightness control (UIScreen)
 HDRQRCodeImage.swift
 LibraryBrightnessCoordinator.swift
+LibraryLoginForm.swift
+LibraryPageLifecycle.swift
 LibraryQRCodeView.swift
 LibraryQRImageCache.swift
 LibraryQRRenderer.swift
@@ -127,8 +160,13 @@ MoreView.swift
 MoreViewModel.swift
 
 # Features/Onboarding — iOS onboarding flow; macOS enters through MacLoginView
+OnboardingCloudSyncPage.swift
+OnboardingLoginPage.swift
+OnboardingNotificationsPage.swift
 OnboardingPageView.swift
+OnboardingPrivacyPage.swift
 OnboardingView.swift
+ForwardPagingLock.swift
 
 # Features/Score — iOS score surfaces
 CreditSummaryBento.swift
@@ -158,6 +196,10 @@ StorageSettingsView.swift  # School Mail and the TigerDuck browser are iOS only;
 StorageUsage.swift
 SyncContentSettingsView.swift
 TabEditorView.swift
+SettingsAboutSection.swift
+SettingsAccountSection.swift
+SettingsDisplaySections.swift
+SettingsSheets.swift
 SettingsView.swift
 
 # Features/Updates — the iPhone's update and What's New sheets; the Mac answers
@@ -172,26 +214,28 @@ WhatsNewCoursePages.swift
 WhatsNewSummaryView.swift
 WhatsNewTabBarMock.swift
 
-# LiveActivity/Models — ActivityKit — iOS only
+# Devices/LiveActivity/Models — ActivityKit — iOS only
 AssignmentReminderOffset.swift
 
-# LiveActivity/Preferences — ActivityKit — iOS only
+# Devices/LiveActivity/Preferences — ActivityKit — iOS only
 LiveActivityPreferencesStore.swift
 
-# LiveActivity/Runtime — ActivityKit — iOS only
+# Devices/LiveActivity/Runtime — ActivityKit — iOS only
 LiveActivityCoordinator.swift
+LiveActivityEndRules.swift
+LiveActivityTasks.swift
 TigerDuckActivityAttributes.swift
 
-# LiveActivity/Scheduling — ActivityKit — iOS only
+# Devices/LiveActivity/Scheduling — ActivityKit — iOS only
 
-# Services/Logging — DEBUG-only scaffolding for the iOS Library freeze. Its one
+# Support/Logging — DEBUG-only scaffolding for the iOS Library freeze. Its one
 # caller is TigerDuckApp's init, and that whole struct sits inside #if os(iOS).
 MainThreadWatchdog.swift
 
-# Services/Watch — WatchConnectivity — a paired Apple Watch is an iOS-only relationship
+# Devices/Watch — WatchConnectivity — a paired Apple Watch is an iOS-only relationship
 WatchLibraryCredentialBroadcaster.swift
 WatchPayloadEncoder.swift
-WatchSyncBridge.swift
+WatchPayloadSource.swift
 WatchSyncCoordinator.swift
 TLSPinWatchBroadcaster.swift
 
@@ -201,7 +245,7 @@ FirstTriggerPrompt.swift
 # Shared/Components — iOS-only shared UI and helpers
 PasswordField.swift
 
-# SharedUI — iOS-only shared components
+# UI/SharedUI — iOS-only shared components
 EmptyStateView.swift
 GlassTextButtonModifier.swift
 HeaderMenuButton.swift
@@ -230,35 +274,30 @@ WatchWireFormat.swift
 # Shared/Sensors — CoreMotion face-down detection, iOS hardware only
 FlipDetector.swift
 
-# Shared — used only by the iOS-side surfaces above
-TaipeiCalendar.swift
+# LiveActivityRefresher.swift — when to refresh the Live Activity. ActivityKit has
+# no macOS counterpart, and the whole file sits inside #if os(iOS); listed here
+# so that adding a cross-platform member to it is a decision someone has to make.
+LiveActivityRefresher.swift
 
-# App — AppState extensions that are entirely iOS-only
-# ActivityKit has no macOS counterpart; the whole file body sits inside
-# #if os(iOS), so compiling it on the Mac would only produce an empty
-# extension. Listed here rather than allowlisted so that adding a
-# cross-platform member to it is a decision someone has to make.
-AppState+LiveActivity.swift
+# DeepLink.swift — custom-push tap targets (DeepLink, ServerPopupPayload). The
+# router's matching properties are iOS-gated, and this file's whole body sits
+# inside #if os(iOS): there is nothing to route to on macOS.
+DeepLink.swift
 
-# AppState+PushRouting.swift — custom-push tap routing (DeepLink,
-# ServerPopupPayload, popup shown/seen bookkeeping). The paired stored
-# properties (pendingDeepLink, pendingServerPopup) are iOS-gated on
-# AppState itself, and this file's whole body sits inside #if os(iOS)
-# for the same reason: there is nothing to route to on macOS.
-AppState+PushRouting.swift
+# NotificationSettingsSync.swift, NotificationSettingsSyncer.swift and the files
+# split from them — the `notification` settings-document sync (assignment-due
+# reminders, Live Activity), a feature macOS does not have. They read and write
+# `LiveActivityPreferencesStore` (excluded above under
+# Devices/LiveActivity/Preferences), which does not exist on a macOS build.
+NotificationSettingsLocalPreferences.swift
+NotificationSettingsPushQueue.swift
+NotificationSettingsReconcile.swift
+NotificationSettingsSync.swift
+NotificationSettingsSyncer.swift
 
-# AppState+NotificationSettings.swift — the `notification` settings-document
-# sync (assignment-due reminders, Live Activity). Its `#if os(iOS)`-gated
-# `AppState` methods serve a feature macOS does not have; the un-gated
-# `NotificationSettingsPushQueue` / `NotificationSettingsSync` below them in
-# the same file read and write `LiveActivityPreferencesStore` (excluded
-# above under LiveActivity/Preferences), which does not exist on a macOS
-# build — so this file cannot compile there as it stands.
-AppState+NotificationSettings.swift
-
-# Services/Migrations — one-shot migrations behind the notification-settings
+# Migrations — one-shot migrations behind the notification-settings
 # cloud sync (spec §4.6), both called only from the `#if os(iOS)` block in
-# `AppState+Lifecycle.swift`'s `runPendingMigrations()`: one seeds
+# `AppEnvironment.runPendingMigrations()`: one seeds
 # `assignments` + `live_activity` from `LiveActivityPreferencesStore`
 # (iOS-only); the other purges local notification requests scheduled by the
 # deleted, iOS-only `AssignmentReminderScheduler` — macOS never scheduled
@@ -308,11 +347,11 @@ FlipToLibraryDefaultOffMigration.swift
 # class, which `MoodleFileDownloads` sets only there.
 MoodleDownloadProtectMigration.swift
 
-# Services/Sync — the `notification` settings-document model and its client.
+# Backend/Sync — the `notification` settings-document model and its client.
 # Both sections `NotificationSettingsDocument` carries (`assignments`,
 # `live_activity`) describe local reminder scheduling and Live Activity
 # state, neither of which macOS has; `SettingsDocumentClient` has no caller
-# outside `AppState+NotificationSettings.swift`, itself excluded above.
+# outside `NotificationSettingsSyncer.swift`, itself excluded above.
 NotificationSettingsDocument.swift
 SettingsDocumentClient.swift
 
@@ -348,17 +387,17 @@ MailSourceTextView.swift
 MailWarningBanner.swift
 MailWebViewFactory.swift
 
-# Services/Mail/Account — School Mail's credential/session management;
+# Mail/Account — School Mail's credential/session management;
 # iOS-only, see Features/SchoolMail above
 MailAccountManager.swift
 
-# Services/Mail/Compose — School Mail's outgoing-message building; iOS-only,
+# Mail/Compose — School Mail's outgoing-message building; iOS-only,
 # see Features/SchoolMail above
 MailMessageBuilder.swift
 MailReplyComposer.swift
 MailSentCopy.swift
 
-# Services/Mail/Core — School Mail's client protocol, constants and models;
+# Mail/Core — School Mail's client protocol, constants and models;
 # iOS-only, see Features/SchoolMail above
 MailClient.swift
 MailConstants.swift
@@ -367,11 +406,11 @@ MailFolderSelection.swift
 MailModels.swift
 MailServerConfig.swift
 
-# Services/Mail/Demo — the School Mail demo/preview client; iOS-only, see
+# Mail/Demo — the School Mail demo/preview client; iOS-only, see
 # Features/SchoolMail above
 DemoMailClient.swift
 
-# Services/Mail/Rules — School Mail's IMAP/MIME parsing and sanitization
+# Mail/Rules — School Mail's IMAP/MIME parsing and sanitization
 # rules; iOS-only, see Features/SchoolMail above
 MailCSSFilter.swift
 MailCharset.swift
@@ -384,37 +423,40 @@ MailTextLinkifier.swift
 MailWarnings.swift
 ModifiedUTF7.swift
 
-# Services/Mail — School Mail's startup wiring; iOS-only, see
+# Mail — School Mail's startup wiring; iOS-only, see
 # Features/SchoolMail above
 SchoolMailBootstrap.swift
 
-# Services/Mail/Store — School Mail's local cache, credential and preference
+# Mail/Store — School Mail's local cache, credential and preference
 # storage; iOS-only, see Features/SchoolMail above
 MailCache.swift
 MailCredentialStore.swift
 MailPreferences.swift
 MailSearchIndex.swift
 
-# Services/Mail/Sync — School Mail's background refresh, new-mail
+# Mail/Sync — School Mail's background refresh, new-mail
 # notification and search index download; iOS-only, see Features/SchoolMail above
 MailBackgroundRefresh.swift
 MailChecker.swift
 MailIndexer.swift
 MailNotifier.swift
 
-# Services/Mail/Transport — School Mail's IMAP/SMTP transport; iOS-only, see
+# Mail/Transport — School Mail's IMAP/SMTP transport; iOS-only, see
 # Features/SchoolMail above
 LiveMailClient.swift
 MailMover.swift
 MailTLSVerifier.swift
 
 # Features/Browser — the TigerDuck browser is iOS only; the Mac opens links in its default browser
+BrowserBar.swift
 BrowserCertificate.swift
 BrowserChromeCollapse.swift
 BrowserData.swift
 BrowserFind.swift
 BrowserFindBar.swift
+BrowserFindScript.swift
 BrowserMenu.swift
+BrowserNavigator.swift
 BrowserPage.swift
 BrowserPageScripts.swift
 BrowserRouting.swift

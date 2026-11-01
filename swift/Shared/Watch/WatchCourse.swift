@@ -47,12 +47,6 @@ public nonisolated struct WatchCourse: Codable, Hashable, Identifiable, Sendable
         self.changes = changes
         self.dayChange = dayChange
     }
-
-    /// The classes this meeting holds on a day, leaving out the ones the school cancelled.
-    public func on(_ dayKey: String) -> [WatchCourse] {
-        guard let classes = changes?[dayKey] else { return [self] }
-        return classes.filter { $0.dayChange?.cancelled != true }
-    }
 }
 
 /// One day's change to a class; nil fields keep the timetable's value.

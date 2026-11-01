@@ -35,7 +35,7 @@ final class FirstTriggerPromptCenter {
     private init() {}
 
     func hasSeen(_ key: FirstTriggerPromptKey) -> Bool {
-        UserDefaults.standard.bool(forKey: Self.storageKey(key))
+        AppUserDefaults.standard.bool(forKey: Self.storageKey(key))
     }
 
     func requestIfFirstTime(
@@ -58,11 +58,11 @@ final class FirstTriggerPromptCenter {
     }
 
     func markSeen(_ key: FirstTriggerPromptKey) {
-        UserDefaults.standard.set(true, forKey: Self.storageKey(key))
+        AppUserDefaults.standard.set(true, forKey: Self.storageKey(key))
     }
 
     func reset(_ key: FirstTriggerPromptKey) {
-        UserDefaults.standard.removeObject(forKey: Self.storageKey(key))
+        AppUserDefaults.standard.removeObject(forKey: Self.storageKey(key))
     }
 
     private static func storageKey(_ key: FirstTriggerPromptKey) -> String {

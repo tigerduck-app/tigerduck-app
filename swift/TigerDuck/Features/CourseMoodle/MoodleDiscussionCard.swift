@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct MoodleDiscussionCard: View {
     let discussion: MoodleDiscussion
@@ -130,7 +131,7 @@ struct MoodleDiscussionCard: View {
 
     static func accessibilityText(discussion: MoodleDiscussion, date: Date, showsFooter: Bool) -> String {
         var style = Date.FormatStyle(date: .long, time: .shortened)
-        style.timeZone = AppConstants.taipeiTimeZone
+        style.timeZone = TaipeiTime.timeZone
         var parts: [String] = []
         if discussion.unreadCount > 0 { parts.append(String(localized: "bulletin_unread_dot_label")) }
         if discussion.isPinned { parts.append(String(localized: "course_forum_pinned")) }

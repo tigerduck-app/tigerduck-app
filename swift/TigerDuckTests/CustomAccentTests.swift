@@ -40,13 +40,13 @@ struct CustomAccentTests {
     }
 
     @Test("A preset reads on the light cards in light mode and keeps its tone in dark mode",
-          arguments: AppState.themeColors.map(\.hex))
+          arguments: AppPreferences.themeColors.map(\.hex))
     func presetReadsInBothModes(hex: Int) {
         var environment = EnvironmentValues()
         environment.colorScheme = .light
-        let light = Int(Color(AppState.accentColor(hex: hex).resolve(in: environment)).rgbHex)
+        let light = Int(Color(AppPreferences.accentColor(hex: hex).resolve(in: environment)).rgbHex)
         environment.colorScheme = .dark
-        let dark = Int(Color(AppState.accentColor(hex: hex).resolve(in: environment)).rgbHex)
+        let dark = Int(Color(AppPreferences.accentColor(hex: hex).resolve(in: environment)).rgbHex)
 
         #expect(Self.contrast(light, AccentContrast.lightCardHex) >= 3)
         #expect(dark == hex)
@@ -55,7 +55,7 @@ struct CustomAccentTests {
 
     @Test(
         "A colour's hex survives the trip through Color",
-        arguments: TigerDuckTheme.coursePaletteHexes + AppState.themeColors.map { UInt32($0.hex) } + [0x5856D6]
+        arguments: TigerDuckTheme.coursePaletteHexes + AppPreferences.themeColors.map { UInt32($0.hex) } + [0x5856D6]
     )
     func hexRoundTrip(hex: UInt32) {
         #expect(Color(hex: UInt(hex)).rgbHex == hex)
@@ -70,7 +70,7 @@ struct CustomAccentTests {
     }
 
     @Test("Opening the picker on a preset saves nothing, a pale one included",
-          arguments: AppState.themeColors.map(\.hex))
+          arguments: AppPreferences.themeColors.map(\.hex))
     func openingOnAPresetSavesNothing(hex: Int) {
         let preview = AccentPreview()
         let opening = Int(CustomAccentPicker.openingColour(saved: hex).rgbHex)

@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 struct OngoingCourseInfo: Identifiable {
     let course: SDCourse
@@ -12,12 +13,12 @@ struct OngoingCourseInfo: Identifiable {
 
     var id: String { "\(course.courseNo)-\(weekday)-\(firstPeriodId)" }
 
-    init(slot: CourseTimeSlot) {
+    init(slot: CourseTimeSlot, course: SDCourse) {
         func minute(_ date: Date) -> Int {
-            let parts = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: date)
+            let parts = TaipeiTime.calendar.dateComponents([.hour, .minute], from: date)
             return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
         }
-        course = slot.course
+        self.course = course
         weekday = slot.date.scheduleWeekday
         firstPeriodId = slot.periods.first ?? ""
         periods = slot.periods
@@ -36,8 +37,9 @@ struct OngoingCourseInfo: Identifiable {
 extension Array where Element == SDCourse {
     /// The classes running at `date` as the school changed them; a cancelled one is not running.
     func ongoingCourses(at date: Date, changes: CourseChanges = .cached) -> [OngoingCourseInfo] {
-        CourseTimeSlot.buildSlots(from: self, weekday: date.scheduleWeekday, on: date, changes: changes)
-            .filter { !$0.isCancelled && $0.start <= date && date < $0.end }
-            .map(OngoingCourseInfo.init(slot:))
+        let slots = CourseTimeSlot.buildSlots(from: self, weekday: date.scheduleWeekday, on: date, changes: changes)
+        return ClassTimeline.running(at: date, in: slots.filter { !$0.isCancelled }).compactMap { slot in
+            slot.course(in: self).map { OngoingCourseInfo(slot: slot, course: $0) }
+        }
     }
 }

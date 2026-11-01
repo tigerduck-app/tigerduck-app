@@ -13,14 +13,14 @@ struct ClassTableTodayCoursesTests {
 
     @Test func classDay_showsTodaysCourses() {
         let viewModel = ClassTableViewModel(isClassDay: { _ in true })
-        viewModel.currentSemesterCourses = [Self.everyDay]
+        viewModel.today.courses = [Self.everyDay]
 
         #expect(viewModel.todayCourses.map(\.courseNo) == ["TEST100"])
     }
 
     @Test func dayWithoutClasses_showsNothing() {
         let viewModel = ClassTableViewModel(isClassDay: { _ in false })
-        viewModel.currentSemesterCourses = [Self.everyDay]
+        viewModel.today.courses = [Self.everyDay]
 
         #expect(viewModel.todayCourses.isEmpty)
     }

@@ -93,7 +93,7 @@ struct MoodleAssignmentPageStateTests {
         answer.grade = MoodleAssignmentGrade(
             grade: "85.00 / 100.00", gradedAt: due + 86_400, feedback: "<p>Case 7 misses the empty tree.</p>"
         )
-        let late = MoodleAssignmentView.Badge.late(4_380).text
+        let late = MoodleAssignmentDetails.Badge.late(4_380).text
 
         let texts = try await Self.spoken(Self.record(due: due, attachments: [Self.spec]), answer: answer, once: late)
 
@@ -103,10 +103,10 @@ struct MoodleAssignmentPageStateTests {
             .exactly(Self.key("assignment_detail_description")), .holding("binary search tree"),
             .exactly(Self.key("school_mail_attachments")), .holding("spec.pdf"),
             .exactly(Self.key("assignment_detail_submission")), .exactly(late),
-            .row(Self.key("assignment_detail_submitted_at"), MoodleAssignmentView.timeText(submittedAt)), .holding("hw.pdf"),
+            .row(Self.key("assignment_detail_submitted_at"), MoodleAssignmentDetails.timeText(submittedAt)), .holding("hw.pdf"),
             .exactly(Self.key("assignment_detail_comments")), .holding("The fifth answer"), .holding("Noted."),
-            .exactly(Self.key("assignment_detail_grade")), .exactly(MoodleAssignmentView.Score(value: "85", max: "100").spoken),
-            .row(Self.key("assignment_detail_graded_at"), MoodleAssignmentView.timeText(due + 86_400)),
+            .exactly(Self.key("assignment_detail_grade")), .exactly(MoodleAssignmentDetails.Score(value: "85", max: "100").spoken),
+            .row(Self.key("assignment_detail_graded_at"), MoodleAssignmentDetails.timeText(due + 86_400)),
             .exactly(Self.key("assignment_detail_feedback")), .holding("Case 7"),
             .exactly(Self.key("assignment_detail_submit_on_moodle")),
         ]
@@ -124,10 +124,10 @@ struct MoodleAssignmentPageStateTests {
 
         let texts = try await Self.spoken(Self.record(due: AppClock.now() + left), answer: answer, once: notSubmitted)
 
-        let timeLeft = MoodleAssignmentView.Deadline.left(86_400 + 4 * 3_600, urgent: true).text
+        let timeLeft = MoodleAssignmentDetails.Deadline.left(86_400 + 4 * 3_600, urgent: true).text
         let found = Self.order(of: [
             .row(Self.key("assignment_detail_due"), timeLeft), .exactly(notSubmitted),
-            .row(Self.key("assignment_detail_draft"), MoodleAssignmentView.timeText(draftedAt)), .holding("hw.pdf"),
+            .row(Self.key("assignment_detail_draft"), MoodleAssignmentDetails.timeText(draftedAt)), .holding("hw.pdf"),
         ], in: texts)
         #expect(found.allSatisfy { $0 != nil }, "\(texts)")
         #expect(found.compactMap { $0 } == found.compactMap { $0 }.sorted(), "\(texts)")
@@ -148,15 +148,15 @@ struct MoodleAssignmentPageStateTests {
         )
         answer.groupName = "Project team A"
         answer.comments = [Self.comment(1, "This is the final draft.")]
-        let early = MoodleAssignmentView.Badge.early(10 * 86_400 + 12 * 3_600).text
+        let early = MoodleAssignmentDetails.Badge.early(10 * 86_400 + 12 * 3_600).text
 
         let texts = try await Self.spoken(Self.record(due: due), answer: answer, once: early)
 
         let parts: [Read] = [
-            .row(Self.key("assignment_detail_due"), MoodleAssignmentView.Deadline.left(9 * 86_400 + 2 * 3_600, urgent: false).text),
+            .row(Self.key("assignment_detail_due"), MoodleAssignmentDetails.Deadline.left(9 * 86_400 + 2 * 3_600, urgent: false).text),
             .row(Self.key("assignment_detail_group"), "Project team A"),
             .exactly(early),
-            .row(Self.key("assignment_detail_submitted_at"), MoodleAssignmentView.timeText(submittedAt)), .holding("work split"),
+            .row(Self.key("assignment_detail_submitted_at"), MoodleAssignmentDetails.timeText(submittedAt)), .holding("work split"),
             .exactly(Self.key("assignment_detail_comments")), .holding("final draft"),
         ]
         let found = Self.order(of: parts, in: texts)
@@ -172,7 +172,7 @@ struct MoodleAssignmentPageStateTests {
 
         let texts = try await Self.spoken(Self.record(due: AppClock.now() - late), once: notSubmitted)
 
-        let overdueBy = MoodleAssignmentView.Deadline.overdue(86_400 + 20 * 3_600).text
+        let overdueBy = MoodleAssignmentDetails.Deadline.overdue(86_400 + 20 * 3_600).text
         #expect(texts.contains(where: Read.row(Self.key("assignment_detail_due"), overdueBy).matches), "\(texts)")
         for absent in [
             Self.key("assignment_detail_submitted_at"), Self.key("assignment_detail_draft"),
@@ -234,7 +234,7 @@ struct MoodleAssignmentPageStateTests {
             Self.record(due: due, noSubmissions: true), once: Self.key("assignment_detail_due")
         )
 
-        let timeLeft = MoodleAssignmentView.Deadline.left(3 * 86_400 + 5 * 3_600, urgent: false).text
+        let timeLeft = MoodleAssignmentDetails.Deadline.left(3 * 86_400 + 5 * 3_600, urgent: false).text
         #expect(texts.contains(where: Read.row(Self.key("assignment_detail_due"), timeLeft).matches), "\(texts)")
         for absent in [
             Self.key("assignment_detail_submission"), Self.key("assignment_detail_not_submitted"),
