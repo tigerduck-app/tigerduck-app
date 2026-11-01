@@ -64,7 +64,7 @@ struct BrowserSitesTests {
         data.reset(keepingSiteChoices: true)
 
         #expect(BrowserSites.stored == choices)
-        #expect(data.epoch == 1)
+        #expect(data.storeResets == 1)
     }
 }
 

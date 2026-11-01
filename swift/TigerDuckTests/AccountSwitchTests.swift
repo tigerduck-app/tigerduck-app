@@ -118,8 +118,8 @@ struct AccountSwitchTests {
                 SDCalendarEvent(eventId: "moodle-1", title: "Quiz", date: Date(), source: .moodle),
             ], for: testSignIn)
             cache.bulletins.saveBulletinSummaries([])
-            cache.moodle.saveMoodleCourseIdMap(["1141CS1001": 7])
-            cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: first)
+            cache.moodle.saveMoodleCourseIdMap(["1141CS1001": 7], for: testSignIn)
+            cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: first, for: testSignIn)
             try FileManager.default.createDirectory(at: cache.moodleFilesDir, withIntermediateDirectories: true)
             try Data("pdf".utf8).write(to: cache.moodleFilesDir.appendingPathComponent("slides.pdf"))
             try Data("{}".utf8).write(to: cache.persistentDir.appendingPathComponent("imported_class_tables.json"))
@@ -260,7 +260,7 @@ struct AccountSwitchTests {
                 try device.fillSchool()
                 #expect(device.schoolIsKept())
                 #if os(iOS)
-                let browserEpoch = BrowserData.shared.epoch
+                let browserResets = BrowserData.shared.storeResets
                 #endif
 
                 #expect(await auth.login(studentId: Self.second, password: "second-password"))
@@ -274,7 +274,7 @@ struct AccountSwitchTests {
                 #if os(iOS)
                 #expect((auth.accountNotifications as? DeliveredNotificationsStub)?.delivered.isEmpty == true)
                 // Dropped at the sign-out and again at the sign-in.
-                #expect(BrowserData.shared.epoch >= browserEpoch + 2)
+                #expect(BrowserData.shared.storeResets >= browserResets + 2)
                 #endif
             }
         }

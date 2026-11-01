@@ -11,7 +11,8 @@ final class BrowserData: AccountScoped {
 
     nonisolated static let storeID = UUID(uuidString: "6F1D5B0E-7A44-4C2B-9E3D-2B8C0A51D7F4")!
 
-    private(set) var epoch = 0
+    /// Counts the store's resets: a sign-in's, a sign-out's and Settings › Storage's.
+    private(set) var storeResets = 0
     @ObservationIgnored private var current: WKWebsiteDataStore?
     @ObservationIgnored private var opens = 0
     @ObservationIgnored private let loadState: () -> BrowserDataState
@@ -41,9 +42,9 @@ final class BrowserData: AccountScoped {
     /// Runs before a browser loads anything: what a reset could not remove goes first.
     func prepare() async {
         opens += 1
-        let epoch = epoch
+        let resets = storeResets
         if loadState() == .stale { await clear() }
-        if self.epoch == epoch { saveState(.used) }
+        if storeResets == resets { saveState(.used) }
     }
 
     static func forgetAccount(in storage: AccountStorage) {
@@ -54,7 +55,7 @@ final class BrowserData: AccountScoped {
     /// desktop choice, which a sign-in or a sign-out forgets with the account.
     @discardableResult
     func reset(keepingSiteChoices: Bool = false) -> Task<Void, Never>? {
-        epoch += 1
+        storeResets += 1
         current = nil
         try? FileManager.default.removeItem(at: BrowserPage.downloadsRoot)
         if !keepingSiteChoices { BrowserSites.forget() }

@@ -63,7 +63,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         page.find.run = { [weak webView] in await webView?.runFind($0) }
         Task {
             await BrowserData.shared.prepare()
-            guard BrowserData.shared.epoch == page.epoch else { return }
+            guard BrowserData.shared.storeResets == page.storeResets else { return }
             // Until asked for its records, the store answers with no cookies, not those on disk.
             _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
             await BrowserPageScripts.install(in: configuration.userContentController)
@@ -209,7 +209,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         let cookies = page.store.httpCookieStore
         let expiry = Date.now.addingTimeInterval(Self.sessionKept)
         let lasting = await cookies.allCookies().compactMap { BrowserRouting.lastingSession($0, until: expiry) }
-        guard BrowserData.shared.epoch == page.epoch else { return }
+        guard BrowserData.shared.storeResets == page.storeResets else { return }
         for cookie in lasting { await cookies.setCookie(cookie) }
     }
 

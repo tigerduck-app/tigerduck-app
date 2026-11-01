@@ -38,7 +38,7 @@ struct BrowserDataTests {
         let disk = Disk(.empty)
         let data = disk.data()
         #expect(data.reset() == nil)
-        #expect(data.epoch == 1)
+        #expect(data.storeResets == 1)
         #expect(disk.removes == 0 && disk.state == .empty)
     }
 
