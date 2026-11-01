@@ -75,7 +75,6 @@ final class AuthService {
     var isSigningInToBackend: Bool { backend.isSigningIn }
 
     func revalidateStoredCredentials() {
-        deps.demo.resume(in: session)
         let current = deps.keychainHasCredentials()
         if current { Defaults[.ntustCredentialsPresent, for: session.currentSignIn] = true }
         guard current != credentials.lastKnown else { return }

@@ -19,7 +19,7 @@ enum SchoolAccountSignIn {
             await auth.signOutCalls?.value
             try Task.checkCancellation()
             if AuthService.replacesStoredAccount(stored: auth.storedStudentId, signingInAs: normalizedId)
-                || (demo.isKept && !isDemo) {
+                || (auth.session.signIns.currentSignIn.isDemo && !isDemo) {
                 await auth.signOutStoredAccount?()
                 try Task.checkCancellation()
             }

@@ -93,7 +93,7 @@ final class MailAccountManager {
         cache: MailCache = .shared,
         isDemoLogin: @escaping (String, String) -> Bool = { MailDemoFixture.shared?.matches(studentID: $0, password: $1) ?? false },
         makeClient: @escaping (Bool) -> any MailClient = { MailClientFactory.make(demo: $0) },
-        schoolIsDemo: @escaping () -> Bool = { DemoAccount.app.isKept },
+        schoolIsDemo: @escaping () -> Bool = { AccountSession.schoolSignIns.currentSignIn.isDemo },
         clearCache: (@Sendable () async -> Void)? = nil,
         signOutEvents: NotificationCenter = NotificationCenter(),
         session: AccountSession = AccountSession()

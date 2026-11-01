@@ -1,9 +1,8 @@
+import Defaults
 import Foundation
 import TigerDuckCore
 
-/// The store-review account. Its credentials, from `demo.json`, start a demo sign-in
-/// (`SignIn.isDemo`), for which every request fails before it leaves the device
-/// (`DemoRequestRefusal`) and the file's student goes into the stores the fetches fill.
+/// The account App Store review signs in with: `demo.json`'s made-up student, whom no server knows.
 struct DemoAccount {
     let fixture: DemoFixture?
     var stores = DemoStores()
@@ -16,17 +15,9 @@ struct DemoAccount {
         fixture?.matches(studentId: studentId, password: password) ?? false
     }
 
-    /// Whether the school account the Keychain keeps is this one, which makes its sign-in a demo one.
-    var isKept: Bool {
-        guard let studentId = KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
-              let password = KeychainManager.loadString(key: AppConstants.KeychainKeys.password) else { return false }
-        return matches(studentId: studentId, password: password)
-    }
-
-    /// Once the sign-in kept the credentials: the file's data, its classmates' class tables and,
-    /// when the file signs the library in and no library account is kept, the library.
     func enter(for signIn: SignIn) {
         guard let fixture, signIn.isDemo else { return }
+        Defaults[stores.demoSignedIn, for: signIn] = true
         NTUSTSessionManager.shared.markLoginSuccess(for: signIn)
         stores.turnOffSync(signIn)
         write(fixture, for: signIn)
@@ -36,24 +27,20 @@ struct DemoAccount {
         }
     }
 
-    /// At launch, before any request.
     static func resumeAtLaunch(in session: AccountSession) {
         URLProtocol.registerClass(DemoRequestRefusal.self)
         app.resume(in: session)
     }
 
-    /// While the Keychain keeps this account, the sign-in is a demo one, with the data written over
-    /// in the language the app now shows. A launch behind the lock screen cannot read the Keychain,
-    /// so this runs again once it opens.
     func resume(in session: AccountSession) {
-        guard let fixture, !session.signIns.currentSignIn.isDemo, isKept else { return }
+        guard let fixture, Defaults[stores.demoSignedIn], !session.signIns.currentSignIn.isDemo else { return }
         let signIn = session.startDemoSignIn()
         stores.turnOffSync(signIn)
         write(fixture, for: signIn)
     }
 
-    /// Leaving the demo signs out the library and the mailbox it let the reviewer into.
-    static func signOutItsLibraryAndMailbox() {
+    func leave() {
+        Defaults.reset(stores.demoSignedIn)
         if LibraryService.keepsDemoLibrary { LibraryService.signOutLibraryOnly() }
         #if os(iOS)
         if MailAccountManager.shared.isDemo { MailAccountManager.shared.logout() }
@@ -96,7 +83,6 @@ struct DemoAccount {
         context.cache.replaceMoodleCourseIdMap(kept.merging(ids, uniquingKeysWith: { _, demo in demo }), for: signIn)
     }
 
-    /// Only at sign-in, so a classmate the reviewer removed stays removed.
     private func importClassmates(of fixture: DemoFixture, for signIn: SignIn) {
         let language = language()
         let semester = CourseSelectionService.currentSemesterCode()
@@ -115,13 +101,13 @@ struct DemoAccount {
     }
 }
 
-/// Where the demo account's data goes: the app's stores, or a test's.
 struct DemoStores {
     var courses: CourseStore = .shared
     var colors: CourseColorStore = .shared
     var rounds: AssignmentRounds = .shared
     var classmates: ImportedClassTableStore = .shared
     var statuses: ServerStatusTracker = .shared
+    var demoSignedIn: AccountKey<Bool> = .demoSignedIn
     var moodle: (_ account: String, _ signIn: SignIn) -> MoodleCacheContext = {
         MoodleCacheContext(account: $0, cache: .shared, signIn: $1)
     }

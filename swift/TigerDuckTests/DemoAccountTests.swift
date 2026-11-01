@@ -27,8 +27,13 @@ struct DemoAccountTests {
         lazy var classmates = ImportedClassTableStore(
             fileURL: root.appendingPathComponent("imported.json"), signedInStudentId: { DemoAccountTests.studentId }
         )
+        let suiteName = "DemoAccountTests-\(UUID().uuidString)"
+        lazy var demoSignedIn = AccountKey<Bool>("demoSignedIn", default: false, suite: UserDefaults(suiteName: suiteName)!)
 
-        deinit { try? FileManager.default.removeItem(at: root) }
+        deinit {
+            try? FileManager.default.removeItem(at: root)
+            UserDefaults().removePersistentDomain(forName: suiteName)
+        }
     }
 
     private static func demoSignIn() -> SignIn {
@@ -42,7 +47,7 @@ struct DemoAccountTests {
         let cache = folder.cache
         let stores = DemoStores(
             courses: cache.courses, colors: CourseColorStore(files: cache.colors), rounds: AssignmentRounds(),
-            classmates: folder.classmates, statuses: statuses,
+            classmates: folder.classmates, statuses: statuses, demoSignedIn: folder.demoSignedIn,
             moodle: { MoodleCacheContext(account: $0, cache: cache.moodle, assignments: cache.assignments, signIn: $1) },
             keepBulletins: { BulletinFeed.keep($0, files: cache.bulletins, for: $1) },
             turnOffSync: { _ in calls.syncTurnedOff += 1 },
@@ -120,7 +125,7 @@ struct DemoAccountTests {
             await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { () async -> Void in
                 #expect(await auth.login(studentId: Self.studentId.lowercased(), password: Self.schoolPassword))
                 #expect(auth.storedStudentId == Self.studentId)
-                #expect(auth.deps.demo.isKept)
+                #expect(Defaults[auth.deps.demo.stores.demoSignedIn])
             }
         }
 
@@ -211,8 +216,8 @@ struct DemoAccountTests {
         #expect(folder.cache.moodle.loadMoodleCourseIdMap().isEmpty)
     }
 
-    @Test("the Keychain's demo credentials alone start the demo sign-in, at launch and once the Keychain opens")
-    func theKeptCredentialsStartTheDemo() async {
+    @Test("a launch behind the lock screen resumes the demo sign-in, and a classmate removed stays removed")
+    func aLockedLaunchResumesTheDemo() async throws {
         let folder = Folder()
         let calls = Calls()
         let demo = Self.account(folder, calls: calls)
@@ -220,28 +225,32 @@ struct DemoAccountTests {
             session: AccountSession(signIns: SignInSeries()), keychainHasCredentials: { false },
             notificationCenter: NotificationCenter(), demo: demo
         )
+        #if os(iOS)
+        auth.accountNotifications = DeliveredNotificationsStub()
+        #endif
         let launch = AccountSession(signIns: SignInSeries())
-        let semester = CourseSelectionService.currentSemesterCode()
 
-        await withExclusiveRealDefaults {
-            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
-                demo.resume(in: auth.session)
-                #expect(!auth.session.signIns.currentSignIn.isDemo)
-
-                KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: Self.studentId)
-                KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: Self.schoolPassword)
-                auth.revalidateStoredCredentials()
-                demo.resume(in: launch)
+        await withExclusiveRealDefaults { () async -> Void in
+            let saved = (Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent])
+            defer {
+                Defaults[.ssoLoginTimestamp, for: testSignIn] = saved.0
+                Defaults[.ntustCredentialsPresent, for: testSignIn] = saved.1
+            }
+            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { () async -> Void in
+                #expect(await auth.login(studentId: Self.studentId, password: Self.schoolPassword))
             }
         }
+        let classmate = try #require(folder.classmates.people.first)
+        folder.classmates.delete(classmate.id, for: auth.session.signIns.currentSignIn)
+        SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { demo.resume(in: launch) }
 
-        #expect(auth.session.signIns.currentSignIn.isDemo)
         #expect(launch.signIns.currentSignIn.isDemo)
-        #expect(folder.cache.courses.loadCourses(semester: semester).count == 5)
+        #expect(folder.cache.courses.loadCourses(semester: CourseSelectionService.currentSemesterCode()).count == 5)
+        #expect(folder.classmates.people.isEmpty)
         #expect(calls.syncTurnedOff == 2)
     }
 
-    @Test("signing out of the demo signs out the library it signed in")
+    @Test("signing out of the demo signs out the library it signed in, and the next launch is no demo")
     func signingOutOfTheDemoSignsOutItsLibrary() async {
         let folder = Folder()
         let auth = AuthService(
@@ -267,8 +276,12 @@ struct DemoAccountTests {
             }
         }
 
+        let launch = AccountSession(signIns: SignInSeries())
+        auth.deps.demo.resume(in: launch)
+
         #expect(library == nil)
         #expect(!auth.session.signIns.currentSignIn.isDemo)
+        #expect(!launch.signIns.currentSignIn.isDemo)
     }
 
     @Test("push registration does not start for the demo account")
