@@ -95,6 +95,40 @@ struct CourseMembershipStampTests {
         #expect(await coordinator.outbox.pendingCount() == (example.attempts.last?.landed == true ? 0 : 1))
     }
 
+    enum Hold: Sendable, CaseIterable { case courseSyncOff, dataLocked }
+
+    @MainActor
+    private final class Switch {
+        var on = false
+    }
+
+    @Test("An add refused as ahead waits when course sync turns off or data locks during its first send",
+          arguments: Hold.allCases)
+    func aheadAddWaitsForAHoldStartedDuringTheSend(_ hold: Hold) async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("sync/courses/upload")
+        var refused = Attempt.refusedAsAhead.reply
+        let gate = SettingsAPIStub.ReplyGate()
+        refused.gate = gate
+        SettingsAPIStub.enqueue(refused, for: url)
+        let held = Switch()
+        let coordinator = Self.makeCoordinator(
+            baseURL,
+            uploadsCourses: { !(hold == .courseSyncOff && held.on) },
+            isProtectedDataAvailable: { !(hold == .dataLocked && held.on) }
+        )
+        await coordinator.outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE1010001", stamp: Self.madeAt))
+
+        let tick = Task { await coordinator.syncTick() }
+        try await waitUntil { !SettingsAPIStub.requests(for: url).isEmpty }
+        held.on = true
+        gate.open()
+        await tick.value
+
+        #expect(SettingsAPIStub.requests(for: url).count == 1)
+        #expect(await coordinator.outbox.snapshot().map(\.attempts) == [0])
+    }
+
     private static func expectAdd(_ request: URLRequest, hlc: String) throws {
         let body = try #require(SettingsAPIStub.bodyData(from: request))
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -106,7 +140,11 @@ struct CourseMembershipStampTests {
         #expect((adds?.first?["hlc"] as? NSNumber)?.int64Value == Int64(hlc))
     }
 
-    private static func makeCoordinator(_ baseURL: URL) -> CloudSyncCoordinator {
+    private static func makeCoordinator(
+        _ baseURL: URL,
+        uploadsCourses: @escaping @MainActor () -> Bool = { true },
+        isProtectedDataAvailable: @escaping @MainActor () -> Bool = { true }
+    ) -> CloudSyncCoordinator {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("CourseMembershipStampTests-\(UUID().uuidString)", isDirectory: true)
         let cache = TestCache(
@@ -127,7 +165,8 @@ struct CourseMembershipStampTests {
             outbox: SyncOutbox(directory: root.appendingPathComponent("outbox", isDirectory: true)), isEnabled: true,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
             addedCourseUpload: { SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses) },
-            uploadsCourses: { true }, isProtectedDataAvailable: { true }, account: AccountSession(signIns: testSignIns)
+            uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
+            account: AccountSession(signIns: testSignIns)
         )
     }
 }

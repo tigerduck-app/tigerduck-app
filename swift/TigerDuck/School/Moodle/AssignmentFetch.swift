@@ -34,8 +34,13 @@ final class AssignmentRounds {
     var statusAskedAt: [String: ContinuousClock.Instant] = [:]
 }
 
+/// The one writer of the cached Moodle assignments: a round from `fetchAssignments`, or a status
+/// the assignment page fetched through `takeSubmissionStatus`.
 enum AssignmentFetch {
 
+    /// Runs one round at a time for every caller. A round rebuilds the calendar's Moodle rows and
+    /// stamps `schoolDataSyncedAt`, which the sync status popup shows. Only a pull, or Refresh on
+    /// the Mac, passes `recheckSubmissions: true`.
     static func fetchAssignments(
         authService: AuthService, recheckSubmissions: Bool = false,
         afterBackendPull: @escaping PullGate = { .completed }, for signIn: SignIn
@@ -231,6 +236,8 @@ enum AssignmentFetch {
         }
     }
 
+    /// Waits out a running round, keeps the newest answer by `askedAt` and leaves
+    /// `schoolDataSyncedAt` alone.
     @discardableResult
     static func takeSubmissionStatus(
         _ status: MoodleSubmissionStatus,

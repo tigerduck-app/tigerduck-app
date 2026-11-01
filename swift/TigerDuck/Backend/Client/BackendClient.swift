@@ -120,7 +120,7 @@ nonisolated final class BackendClient: Sendable {
         try await send(request).decoded(type)
     }
 
-    @TaskLocal static var holdsResend: (@Sendable () -> Bool)?
+    @TaskLocal static var holdsResend: (@Sendable () async -> Bool)?
 
     /// Sends an edit stamped with its own time. A 409 `clock_ahead` is answered once by stamping
     /// it again from the backend's clock, which that reply carries, unless `holdsResend` holds it.
@@ -130,7 +130,7 @@ nonisolated final class BackendClient: Sendable {
         do {
             return try await send(make(PushAPI.clock(of: stamp)))
         } catch PushAPIError.clockAhead(let serverClock?) {
-            if Self.holdsResend?() == true { throw ResendHeldError() }
+            if await Self.holdsResend?() == true { throw ResendHeldError() }
             return try await send(make(serverClock))
         }
     }

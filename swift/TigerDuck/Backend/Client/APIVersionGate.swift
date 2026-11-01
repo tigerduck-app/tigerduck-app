@@ -1,5 +1,8 @@
 import Foundation
 
+/// Latches for good once a TigerDuck backend response retires this app, and the app then asks
+/// the user to update. Only backend responses are noted: a 410 from the school's servers means
+/// a page moved.
 @MainActor
 @Observable
 final class APIVersionGate {

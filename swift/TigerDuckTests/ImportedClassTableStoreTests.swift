@@ -28,6 +28,16 @@ struct ImportedClassTableStoreTests {
     private static let fall = Term(semester: "1151", courseNos: ["CS1010001", "MA1010001"])
     private static let spring = Term(semester: "1142", courseNos: ["EE1010002"])
 
+    @Test("a person's terms list newest first, a padded year before 100 last")
+    func termsNewestFirst() {
+        let person = ImportedPerson(
+            id: UUID(), studentId: nil, nickname: "Hua", importedAt: Date(), sharedAt: nil,
+            terms: ["99 1", "1001", "100H"].map { ImportedPerson.Term(semester: $0, courseNos: [], courses: []) }
+        )
+
+        #expect(person.semesters == ["100H", "1001", "99 1"])
+    }
+
     @Test("people stay in the order they were imported")
     func importOrder() {
         let folder = Folder()

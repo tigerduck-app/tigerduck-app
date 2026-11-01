@@ -92,7 +92,7 @@ final class TimeSliderViewModel {
     }
 
     func courseState(at time: Date) -> CourseState {
-        ClassTimeline.state(at: time, in: timeSlots, includingEnd: true)
+        ClassTimeline.state(at: time, in: timeSlots)
     }
 
     var currentCourseState: CourseState {

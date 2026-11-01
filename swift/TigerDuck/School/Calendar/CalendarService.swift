@@ -53,7 +53,7 @@ enum CalendarService {
     }
 
     static func fetchAndParseICS() async -> [SDCalendarEvent]? {
-        await fetchAndParseICS(session: browserSession, pageURL: calendarPageURL, now: AppClock.now())
+        await fetchAndParseICS(session: browserSession, pageURL: calendarPageURL, now: Date())
     }
 
     static func fetchAndParseICS(session: URLSession, pageURL: URL, now: Date) async -> [SDCalendarEvent]? {

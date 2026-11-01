@@ -53,6 +53,10 @@ RULES = {r.name: r for r in (
     Rule("taipei-zone", 0),
     Rule("duplicate-base-name", 0),
     Rule("on-screen-test", 0),
+    Rule("migration", 0),
+    Rule("calendar-current", 0),
+    Rule("timezone-current", 0),
+    Rule("print", 0),
     Rule("academic-term", 1),
     Rule("login-generation", 2),
     Rule("data-did-update", 3),
@@ -169,6 +173,23 @@ CORE_PATTERNS = (
     ("academic-term", r"\b1911\b", "the ROC year offset outside TigerDuckCore; use `AcademicTerm` in TigerDuckCore"),
 )
 STRING_OPEN = re.compile(r'(#*)("""|")')
+# (rule, pattern on code, path prefixes it may appear under, message) for every shipping target.
+# The timezone observer compares the device's zone with Taipei's, which is its job.
+SHIPPING_PATTERNS = (
+    ("calendar-current", r"\bCalendar\.current\b", (),
+     "`Calendar.current` follows the device; use `TaipeiTime.calendar` in TigerDuckCore"),
+    ("timezone-current", r"\bTimeZone\.current\b", (APP + "Support/Clock/TimezoneObserver.swift",),
+     "`TimeZone.current` follows the device; use `TaipeiTime.timeZone` in TigerDuckCore"),
+    ("print", r"(?<![\w.])(?<!func )print\(|(?<![\w.])Swift\.print\(", (),
+     "`print(` writes to no log; use `AppLogger` (`WatchAppLogger` on the watch)"),
+)
+ON_SCREEN_TRIGGER = re.compile(r"\bmakeKeyAndVisible\b|\bbecomeFirstResponder\b|\bWKWebView\s*\(")
+# Test types that use a trigger and stay out of `on_screen_tests`.
+ON_SCREEN_ALLOWED: frozenset[str] = frozenset()
+MIGRATIONS = APP + "Migrations/"
+MIGRATION_NAME = re.compile(r"[A-Z][A-Za-z0-9]*Migration")
+# The one file outside Migrations/ that runs them (swift/TigerDuck/Migrations/AGENTS.md).
+MIGRATION_RUNNER = APP + "App/AppEnvironment.swift"
 LAYERS = ("School/", "Backend/", "Persistence/")
 
 # Swift parsing: comments and string contents are blanked first, so braces count only in code.
@@ -363,6 +384,13 @@ def core_findings(sources: list[Source]) -> list[Finding]:
             for rule, pattern, message in CORE_PATTERNS for m in re.finditer(pattern, src.code)]
 
 
+def shipping_findings(sources: list[Source]) -> list[Finding]:
+    return [Finding(src.path, line_of(src.code, m.start()), rule, message)
+            for src in sources if not src.path.startswith(CORE)
+            for rule, pattern, allowed, message in SHIPPING_PATTERNS if not src.path.startswith(allowed)
+            for m in re.finditer(pattern, src.code)]
+
+
 def other_target_paths(root: Path, known: list[str]) -> list[str]:
     listed = subprocess.run(["git", "-C", str(root), "ls-files", *(f"{d}*.swift" for d in OTHER_TARGET_FOLDERS)],
                             capture_output=True, text=True, check=True).stdout.split("\n")
@@ -393,10 +421,14 @@ def base_name_findings(paths: list[str]) -> list[Finding]:
     return found
 
 
-def test_code(root: Path) -> str:
+def test_files(root: Path) -> dict[str, str]:
     tests = subprocess.run(["git", "-C", str(root), "ls-files", f"{TESTS_DIR}*.swift"],
                            capture_output=True, text=True, check=True).stdout.split("\n")
-    return "\n".join(strip_code((root / p).read_text(encoding="utf-8")) for p in tests if p)
+    return {p: strip_code((root / p).read_text(encoding="utf-8")) for p in tests if p}
+
+
+def test_code(root: Path) -> str:
+    return "\n".join(test_files(root).values())
 
 
 def on_screen_findings(workflow: str, code: str) -> list[Finding]:
@@ -424,6 +456,99 @@ def on_screen_findings(workflow: str, code: str) -> list[Finding]:
     return found
 
 
+def on_screen_entries(workflow: str) -> set[tuple[str, str | None]]:
+    """The (test type, function or None for the whole type) pairs `on_screen_tests` lists."""
+    lines = workflow.split("\n")
+    entries: set[tuple[str, str | None]] = set()
+    for no, line in enumerate(lines, 1):
+        if not line.strip().startswith("on_screen_tests: >-"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        for entry in lines[no:]:
+            if not entry.strip() or len(entry) - len(entry.lstrip()) <= indent:
+                break
+            parts = entry.strip().split("/")
+            if len(parts) > 1:
+                entries.add((parts[1], parts[2].split("(")[0] if len(parts) > 2 else None))
+    return entries
+
+
+def function_at(code: str, line: int) -> str | None:
+    """The innermost function whose body holds the 1-based `line`."""
+    best = None
+    for m in re.finditer(r"\bfunc\s+([A-Za-z_]\w*)[^{;]*\{", code):
+        start = line_of(code, m.start())
+        end = line_of(code, block_end(code, m.end() - 1))
+        if start <= line <= end and (best is None or start >= best[0]):
+            best = (start, m.group(1))
+    return best[1] if best else None
+
+
+def unlisted_on_screen_findings(workflow: str, tests: dict[str, str]) -> list[Finding]:
+    """A function that shows a window, takes first responder or creates a web view runs in the
+    on-screen step, so it or its whole suite must be listed there."""
+    listed = on_screen_entries(workflow)
+    found = []
+    for path, code in sorted(tests.items()):
+        suites = [d for d in declarations(path, code) if d.parent is None]
+        reported = set()
+        for m in ON_SCREEN_TRIGGER.finditer(code):
+            line = line_of(code, m.start())
+            suite = next((d.key for d in suites if d.start <= line <= d.end), "")
+            function = function_at(code, line)
+            if suite in ON_SCREEN_ALLOWED or (suite, None) in listed or (suite, function) in listed:
+                continue
+            if (suite, function) in reported:
+                continue
+            reported.add((suite, function))
+            where = f"{suite or path}/{function}" if function else (suite or path)
+            found.append(Finding(path, line, "on-screen-test",
+                                 f"`{where}` uses `{m.group().strip()}` but is not in `on_screen_tests` of "
+                                 f"{WORKFLOW.relative_to(ROOT).as_posix()}; list it"))
+    return found
+
+
+def migration_findings(sources: list[Source]) -> list[Finding]:
+    """Migrations/ keeps one migration per file, named for its type, with its own done flag and
+    entry point; none refers to another, and only the runner outside the folder refers to any."""
+    stems = {Path(src.path).stem: src for src in sources if src.path.startswith(MIGRATIONS)}
+    declared = {stem: re.findall(rf"\b(?:enum|struct|class|actor)\s+({MIGRATION_NAME.pattern})\b", src.code)
+                for stem, src in stems.items()}
+    names = {name for types in declared.values() for name in types} | stems.keys()
+    found = []
+    for stem, src in sorted(stems.items()):
+        def add(message: str) -> None:
+            found.append(Finding(src.path, 1, "migration", message))
+        if not MIGRATION_NAME.fullmatch(stem):
+            add("name the file `<Subject><Action>Migration.swift`")
+            continue
+        if stem not in declared[stem]:
+            add(f"declare `{stem}`, the type the file is named for")
+        if set(declared[stem]) - {stem}:
+            add(f"declare only `{stem}`; keep one migration per file")
+        done = f'"{stem}.v1.done"'
+        flag = re.compile(rf'private\s+static\s+let\s+\w+\s*=\s*{re.escape(done)}')
+        if not any(src.code.startswith("private", m.start()) for m in flag.finditer(src.text)):
+            add(f'declare `private static let doneKey = {done}` in code')
+        if not re.search(r"\bstatic\s+func\s+runIfNeeded\b", src.code):
+            add("declare a static `runIfNeeded` entry point")
+        others = sorted(names - set(declared[stem]) - {stem})
+        if others:
+            found += [Finding(src.path, line_of(src.code, m.start()), "migration",
+                              f"refers to `{m.group()}`; migrations do not refer to each other")
+                      for m in re.finditer(rf"\b(?:{'|'.join(others)})\b", src.code)]
+    if not names:
+        return found
+    pattern = re.compile(rf"\b(?:{'|'.join(sorted(names))})\b")
+    for src in sources:
+        if src.path.startswith(MIGRATIONS) or src.path == MIGRATION_RUNNER:
+            continue
+        found += [Finding(src.path, line_of(src.code, m.start()), "migration",
+                          f"refers to `{m.group()}` outside Migrations/; only `AppEnvironment` runs a migration")
+                  for m in pattern.finditer(src.code)]
+    return found
+
+
 def size_findings(sources: list[Source]) -> list[Finding]:
     found = []
     decls = [d for src in sources for d in declarations(src.path, src.code)]
@@ -441,7 +566,7 @@ def size_findings(sources: list[Source]) -> list[Finding]:
             what = "view" if view else main.kind
             found.append(Finding(main.path, main.start, "type-size",
                                  f"{what} `{key}` is {lines} lines with its extensions, over {limit}; split it by "
-                                 "responsibility (swift/TigerDuck/AGENTS.md, Size)"))
+                                 "responsibility (docs/decisions/0028-v4-layout.md)"))
         if main.kind in ("class", "actor") and main.stored > STORED_PROPERTIES and not main.model:
             found.append(Finding(main.path, main.start, "stored-properties",
                                  f"{main.kind} `{key}` holds {main.stored} stored properties, over "
@@ -562,7 +687,9 @@ def findings(root: Path = ROOT) -> list[Finding]:
     others = load(root, other_target_paths(root, paths))
     workflow = (root / WORKFLOW.relative_to(ROOT)).read_text(encoding="utf-8")
     return (pattern_findings(sources) + taipei_findings(others) + core_findings(sources + others)
+            + shipping_findings(sources + others)
             + base_name_findings(paths) + on_screen_findings(workflow, test_code(root))
+            + unlisted_on_screen_findings(workflow, test_files(root)) + migration_findings(sources)
             + size_findings(sources) + layering_findings(sources) + sign_in_findings(sources)
             + account_store_findings(sources, (root / INVENTORY.relative_to(ROOT)).read_text(encoding="utf-8")))
 

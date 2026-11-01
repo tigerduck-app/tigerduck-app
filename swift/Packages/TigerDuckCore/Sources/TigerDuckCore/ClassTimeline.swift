@@ -71,9 +71,9 @@ public struct ClassTimeline: Sendable {
 }
 
 extension ClassTimeline {
-    /// The classes on at `time`: begun and not yet over, or not past their end with `includingEnd`.
-    public static func running<C: TimedClass>(at time: Date, in classes: [C], includingEnd: Bool = false) -> [C] {
-        classes.filter { $0.isOn(at: time, includingEnd: includingEnd) }
+    /// The classes on at `time`.
+    public static func running<C: TimedClass>(at time: Date, in classes: [C]) -> [C] {
+        classes.filter { $0.isOn(at: time) }
     }
 
     /// The class that starts soonest after `time`, the first listed of several that start together.
@@ -82,8 +82,8 @@ extension ClassTimeline {
     }
 
     /// Where `time` falls among `classes`, which are sorted by start.
-    public static func state<C: TimedClass>(at time: Date, in classes: [C], includingEnd: Bool = false) -> ClassState<C> {
-        let active = running(at: time, in: classes, includingEnd: includingEnd)
+    public static func state<C: TimedClass>(at time: Date, in classes: [C]) -> ClassState<C> {
+        let active = running(at: time, in: classes)
         if !active.isEmpty { return .inClass(active) }
         let previous = classes.last { $0.end <= time }
         let next = classes.first { $0.start > time }
