@@ -72,6 +72,12 @@ nonisolated struct DemoFixture: Decodable, Sendable {
 
     static let bundled: DemoFixture? = load(from: .main)
 
+    /// The store-review account's library, whose QR code is the file's and which its server never sees.
+    static func isDemoLibrary(_ username: String?, _ password: String?) -> Bool {
+        guard let username, let password, let bundled else { return false }
+        return bundled.matchesLibrary(username: username, password: password)
+    }
+
     static func load(from bundle: Bundle) -> DemoFixture? {
         guard let url = bundle.url(forResource: "demo", withExtension: "json") else { return nil }
         do {

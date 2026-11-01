@@ -90,8 +90,8 @@ struct DemoAccountTests {
         #expect(!fixture.matches(studentId: "B11000000", password: Self.schoolPassword))
         #expect(fixture.matchesLibrary(username: Self.studentId.lowercased(), password: Self.libraryPassword))
         #expect(!fixture.matchesLibrary(username: Self.studentId, password: "password"))
-        #expect(LibraryService.isDemoLibrary(Self.studentId, Self.libraryPassword))
-        #expect(!LibraryService.isDemoLibrary(Self.studentId, nil))
+        #expect(DemoFixture.isDemoLibrary(Self.studentId, Self.libraryPassword))
+        #expect(!DemoFixture.isDemoLibrary(Self.studentId, nil))
     }
 
     @Test("signing in with the demo credentials starts a demo sign-in and never asks the school")
@@ -113,7 +113,10 @@ struct DemoAccountTests {
 
         await withExclusiveRealDefaults { () async -> Void in
             let saved = (Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent])
-            defer { (Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent]) = saved }
+            defer {
+                Defaults[.ssoLoginTimestamp, for: testSignIn] = saved.0
+                Defaults[.ntustCredentialsPresent, for: testSignIn] = saved.1
+            }
             await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { () async -> Void in
                 #expect(await auth.login(studentId: Self.studentId.lowercased(), password: Self.schoolPassword))
                 #expect(auth.storedStudentId == Self.studentId)
@@ -157,7 +160,7 @@ struct DemoAccountTests {
 
         await withExclusiveRealDefaults {
             let saved = Defaults[.ssoLoginTimestamp]
-            defer { Defaults[.ssoLoginTimestamp] = saved }
+            defer { Defaults[.ssoLoginTimestamp, for: testSignIn] = saved }
             Self.account(folder, statuses: statuses, calls: calls).enter(for: signIn)
         }
 
@@ -250,7 +253,10 @@ struct DemoAccountTests {
 
         let library = await withExclusiveRealDefaults { () async -> String? in
             let saved = (Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent])
-            defer { (Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent]) = saved }
+            defer {
+                Defaults[.ssoLoginTimestamp, for: testSignIn] = saved.0
+                Defaults[.ntustCredentialsPresent, for: testSignIn] = saved.1
+            }
             return await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { () async -> String? in
                 #expect(await auth.login(studentId: Self.studentId, password: Self.schoolPassword))
                 LibraryService.saveCredentials(username: Self.studentId, password: Self.libraryPassword)
@@ -279,7 +285,7 @@ struct DemoAccountTests {
         let suiteName = "DemoAccountTests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
         defer { suite.removePersistentDomain(forName: suiteName) }
-        let key = Defaults.Key<Bool>("cloudSyncEnabled", default: true, suite: suite)
+        let key = AccountKey<Bool>("cloudSyncEnabled", default: true, suite: suite)
         let preference = CloudSyncPreference(key: key)
         let signIn = Self.demoSignIn()
 

@@ -34,7 +34,7 @@ enum LibraryService: AccountScoped {
         }
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
-        storedPasswordRefusals = (0, nil)
+        setStoredPasswordRefusals((0, nil), for: AccountSession.library.currentSignIn)
         cancelStoredPasswordRetry()
         if accountChanged {
             LibraryQRCache.shared.clear()
@@ -72,13 +72,7 @@ enum LibraryService: AccountScoped {
         clearToken()
     }
 
-    /// The store-review account's library, whose QR code is `demo.json`'s and which its server never sees.
-    nonisolated static func isDemoLibrary(_ username: String?, _ password: String?) -> Bool {
-        guard let username, let password, let fixture = DemoFixture.bundled else { return false }
-        return fixture.matchesLibrary(username: username, password: password)
-    }
-
-    static var keepsDemoLibrary: Bool { isDemoLibrary(storedUsername, storedPassword) }
+    static var keepsDemoLibrary: Bool { DemoFixture.isDemoLibrary(storedUsername, storedPassword) }
 
     private static var storedPassword: String? {
         KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryPassword)
@@ -131,7 +125,7 @@ enum LibraryService: AccountScoped {
     ) async throws -> String {
         cancelStoredPasswordRetry()
         typedSignIns &+= 1
-        if isDemoLibrary(username, password) {
+        if DemoFixture.isDemoLibrary(username, password) {
             saveCredentials(username: username, password: password)
             return ""
         }
@@ -149,9 +143,10 @@ enum LibraryService: AccountScoped {
         try await LibraryRequests.requestToken(username: username, password: password, session: LibraryRequests.session)
     }
 
-    static var storedPasswordRefusals: (count: Int, last: Date?) {
-        get { StoredPasswordLockoutBackoff.library.refusals }
-        set { StoredPasswordLockoutBackoff.library.refusals = newValue }
+    static var storedPasswordRefusals: (count: Int, last: Date?) { StoredPasswordLockoutBackoff.library.refusals }
+
+    static func setStoredPasswordRefusals(_ refusals: (count: Int, last: Date?), for signIn: SignIn) {
+        StoredPasswordLockoutBackoff.library.setRefusals(refusals, for: signIn)
     }
 
     static func storedPasswordPostIsDue(now: Date) -> Bool {
@@ -226,7 +221,7 @@ enum LibraryService: AccountScoped {
             } catch {
                 if librarySignIn.isCurrent, storedPassword == password {
                     if case LibraryServiceError.loginFailed = error {
-                        StoredPasswordLockoutBackoff.library.recordRefusalAndNextPost(at: Date())
+                        StoredPasswordLockoutBackoff.library.recordRefusalAndNextPost(at: Date(), for: librarySignIn)
                         if typedSignIns == typedSignInsBefore {
                             LibraryPasswordRetry.retryStoredPasswordWhenWaitEnds(signIn: signIn, retrySleep: retrySleep)
                         }
@@ -244,7 +239,7 @@ enum LibraryService: AccountScoped {
             saveToken(answer.token, expirationMs: answer.expirationTimeStamp)
             storedSignInFailedAt = nil
             if storedPasswordRefusals.count > 0, storedPassword == password {
-                storedPasswordRefusals = (0, nil)
+                setStoredPasswordRefusals((0, nil), for: librarySignIn)
                 #if os(iOS)
                 WatchLibraryCredentialBroadcaster.shared.broadcastSet(username: username, password: password)
                 #endif

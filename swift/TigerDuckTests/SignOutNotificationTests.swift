@@ -52,7 +52,7 @@ struct SignOutNotificationTests {
 
         try await withExclusiveRealDefaults {
             let saved = Defaults[.ntustCredentialsPresent]
-            defer { Defaults[.ntustCredentialsPresent] = saved }
+            defer { Defaults[.ntustCredentialsPresent, for: testSignIn] = saved }
             try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
                 auth.logout()
                 try await waitUntil { center.delivered.isEmpty }

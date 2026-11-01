@@ -136,7 +136,7 @@ actor MoodleTokenService {
             guard signIn.isCurrent else { throw CancellationError() }
             tokens.save(triple)
             lastHarvestFailure = nil
-            if triple.postedPassword { SchoolPasswordPosts.forgetStoredPasswordRefusals() }
+            if triple.postedPassword { SchoolPasswordPosts.forgetStoredPasswordRefusals(for: signIn) }
             return triple.wstoken
         }
         inFlightRefreshTask = task
@@ -162,7 +162,7 @@ actor MoodleTokenService {
         } catch {
             if case MoodleWebserviceError.ssoLoginRejected = error {
                 if signIn.isCurrent, storedCredentials()?.password == creds.password {
-                    SchoolPasswordPosts.noteStoredPasswordRefused(at: now())
+                    SchoolPasswordPosts.noteStoredPasswordRefused(at: now(), for: signIn)
                 }
             } else if signIn.isCurrent, !Self.isNetworkFailure(error) {
                 lastHarvestFailure = (now(), error)

@@ -25,14 +25,14 @@ nonisolated enum NotificationSettingsSync {
     static let mirroredOffsetKeys: Set<String> = ["reminder_offsets_minutes", "reminder_offsets_hours"]
 
     @MainActor
-    static private(set) var lastSyncedPreferences: LocalPreferences? {
-        get {
-            Defaults[.notificationSettingsSyncedPreferences]
-                .flatMap { try? JSONDecoder().decode(LocalPreferences.self, from: $0) }
-        }
-        set {
-            Defaults[.notificationSettingsSyncedPreferences] = newValue.flatMap { try? JSONEncoder().encode($0) }
-        }
+    static var lastSyncedPreferences: LocalPreferences? {
+        Defaults[.notificationSettingsSyncedPreferences]
+            .flatMap { try? JSONDecoder().decode(LocalPreferences.self, from: $0) }
+    }
+
+    @MainActor
+    private static func setLastSyncedPreferences(_ preferences: LocalPreferences, for signIn: SignIn) {
+        Defaults[.notificationSettingsSyncedPreferences, for: signIn] = try? JSONEncoder().encode(preferences)
     }
 
     @MainActor
@@ -43,45 +43,44 @@ nonisolated enum NotificationSettingsSync {
 
     @MainActor
     static func seedSyncedCopyOnSignIn(from local: LocalPreferences, for signIn: SignIn) {
-        guard signIn.isCurrent, lastSyncedPreferences == nil, !Defaults[.notificationSettingsPushSendsEveryField] else { return }
-        lastSyncedPreferences = local
+        guard lastSyncedPreferences == nil, !Defaults[.notificationSettingsPushSendsEveryField] else { return }
+        setLastSyncedPreferences(local, for: signIn)
     }
 
     /// The upgrade's seed of the copy, from Migrations/NotificationSettingsSyncedSeedMigration.swift: a
     /// push left pending sends every field, since its edit is not on the server yet.
     @MainActor
     static func seedOnUpgrade(local: LocalPreferences, pushPending: Bool, for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
         if pushPending {
-            Defaults[.notificationSettingsPushSendsEveryField] = true
+            Defaults[.notificationSettingsPushSendsEveryField, for: signIn] = true
         } else if lastSyncedPreferences == nil {
-            lastSyncedPreferences = local
+            setLastSyncedPreferences(local, for: signIn)
         }
     }
 
     @MainActor
     static func sectionTurnedOn(_ section: OwnedSection, local: LocalPreferences, for signIn: SignIn) {
-        guard signIn.isCurrent, let lastSyncedPreferences else { return }
-        self.lastSyncedPreferences = lastSyncedPreferences.replacing(section, from: local)
+        guard let lastSyncedPreferences else { return }
+        setLastSyncedPreferences(lastSyncedPreferences.replacing(section, from: local), for: signIn)
     }
 
     @MainActor
     static func mergeSentFields(_ fields: [String: Any], of sent: LocalPreferences, for signIn: SignIn) {
         guard signIn.isCurrent else { return }
-        lastSyncedPreferences = (lastSyncedPreferences ?? sent).mergeSentFields(fields, of: sent)
-        Defaults[.notificationSettingsPushSendsEveryField] = false
+        setLastSyncedPreferences((lastSyncedPreferences ?? sent).mergeSentFields(fields, of: sent), for: signIn)
+        Defaults[.notificationSettingsPushSendsEveryField, for: signIn] = false
     }
 
     @MainActor
     static func recordSyncedSections(_ sections: Set<OwnedSection>, of settled: LocalPreferences, for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        lastSyncedPreferences = sections.reduce(lastSyncedPreferences ?? settled) { $0.replacing($1, from: settled) }
+        setLastSyncedPreferences(
+            sections.reduce(lastSyncedPreferences ?? settled) { $0.replacing($1, from: settled) }, for: signIn
+        )
     }
 
     @MainActor
     static func forget() {
-        Defaults[.notificationSettingsSyncedPreferences] = nil
-        Defaults[.notificationSettingsPushSendsEveryField] = false
+        Defaults.reset(.notificationSettingsSyncedPreferences, .notificationSettingsPushSendsEveryField)
     }
 
     static func merging(_ updates: [String: Any], into existing: [String: Any]) -> [String: Any] {

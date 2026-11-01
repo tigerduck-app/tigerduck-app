@@ -119,7 +119,7 @@ enum SSOLoginService {
                 signIn: signIn, interactive: interactive, retry: false, now: now,
                 logFailure: logFailure
             )
-            if interactive { SchoolPasswordPosts.forgetStoredPasswordRefusals() }
+            if interactive { SchoolPasswordPosts.forgetStoredPasswordRefusals(for: signIn) }
             return true
         }
     }
@@ -162,7 +162,7 @@ enum SSOLoginService {
                 html: html, url: url, studentId: studentId, password: password, visit: visit,
                 interactive: interactive, now: now
             )
-            if !interactive, !retry { SchoolPasswordPosts.forgetStoredPasswordRefusals() }
+            if !interactive, !retry { SchoolPasswordPosts.forgetStoredPasswordRefusals(for: signIn) }
         } catch SSOLoginError.loginFailed(let reason) {
             throw SSOLoginError.loginFailed(reason: reason)
         } catch {
@@ -210,7 +210,7 @@ enum SSOLoginService {
 
         if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
             if !interactive, signIn.isCurrent {
-                SchoolPasswordPosts.noteStoredPasswordRefused(at: now())
+                SchoolPasswordPosts.noteStoredPasswordRefused(at: now(), for: signIn)
             }
             throw SSOLoginError.loginFailed(reason: HTMLParser.loginErrorMessage(in: currentHTML))
         }

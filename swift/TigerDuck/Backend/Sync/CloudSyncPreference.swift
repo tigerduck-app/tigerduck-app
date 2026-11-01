@@ -5,11 +5,11 @@ import Observation
 @MainActor
 @Observable
 final class CloudSyncPreference {
-    private let cloudSyncEnabled: Defaults.Key<Bool>
+    private let cloudSyncEnabled: AccountKey<Bool>
     @ObservationIgnored private var handler: ((Bool) -> Void)?
     @ObservationIgnored private var observation: (any Defaults.Observation)?
 
-    init(key cloudSyncEnabled: Defaults.Key<Bool> = .cloudSyncEnabled) {
+    init(key cloudSyncEnabled: AccountKey<Bool> = .cloudSyncEnabled) {
         self.cloudSyncEnabled = cloudSyncEnabled
         observation = Defaults.observe(cloudSyncEnabled, options: []) { [weak self] change in
             let enabled = change.newValue
@@ -29,20 +29,15 @@ final class CloudSyncPreference {
         return Defaults[cloudSyncEnabled]
     }
 
-    /// The store-review account has no backend account, so TigerSync stays off for it.
+    /// The sign-out turns TigerSync off for the sign-in that follows it. The store-review account has
+    /// no backend account, so TigerSync stays off for it.
     func setEnabled(_ enabled: Bool, for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        Defaults[cloudSyncEnabled] = enabled && !signIn.isDemo
+        Defaults[cloudSyncEnabled, for: signIn] = enabled && !signIn.isDemo
     }
 
-    static func turnOffForDemo(_ signIn: SignIn, key: Defaults.Key<Bool> = .cloudSyncEnabled) {
-        guard signIn.isCurrent, signIn.isDemo else { return }
-        Defaults[key] = false
-    }
-
-    /// The sign-out turns TigerSync off after its sign-in has ended.
-    func turnOff() {
-        Defaults[cloudSyncEnabled] = false
+    static func turnOffForDemo(_ signIn: SignIn, key: AccountKey<Bool> = .cloudSyncEnabled) {
+        guard signIn.isDemo else { return }
+        Defaults[key, for: signIn] = false
     }
 
     func onChange(_ handler: @escaping (Bool) -> Void) {

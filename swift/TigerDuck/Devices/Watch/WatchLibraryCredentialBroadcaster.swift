@@ -80,7 +80,7 @@ final class WatchLibraryCredentialBroadcaster {
 
     /// The Watch would sign the demo library in at the library's server.
     private func send(_ payload: WatchLibraryCredentialPayload) {
-        guard !LibraryService.isDemoLibrary(payload.username, payload.password) else { return }
+        guard !DemoFixture.isDemoLibrary(payload.username, payload.password) else { return }
         let json: String
         do {
             json = try payload.encodedJSON()

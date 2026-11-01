@@ -66,15 +66,15 @@ final class CourseFiles: AccountScoped {
         Defaults[.semesterResetAt]
     }
 
-    func recordSemesterReset(_ semester: String, at date: Date = Date()) {
-        Defaults[.semesterResetAt][semester] = date
+    func recordSemesterReset(_ semester: String, at date: Date = Date(), for signIn: SignIn) {
+        Defaults[.semesterResetAt, for: signIn][semester] = date
     }
 
-    func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = []) {
+    func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = [], for signIn: SignIn) {
         let all = loadSemesterResetAt()
         let kept = all.filter { owned.contains($0.key) || fetchedAt.timeIntervalSince($0.value) <= Self.semesterResetGrace }
         if kept.count != all.count {
-            Defaults[.semesterResetAt] = kept
+            Defaults[.semesterResetAt, for: signIn] = kept
         }
     }
 

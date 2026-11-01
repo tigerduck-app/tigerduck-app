@@ -1828,8 +1828,8 @@ struct BackendSignInTests {
         try await withExclusiveRealDefaults {
             let saved = (Defaults[.ntustCredentialsPresent], SchoolPasswordPosts.storedPasswordRefusals)
             defer {
-                Defaults[.ntustCredentialsPresent] = saved.0
-                SchoolPasswordPosts.storedPasswordRefusals = saved.1
+                Defaults[.ntustCredentialsPresent, for: testSignIn] = saved.0
+                SchoolPasswordPosts.setStoredPasswordRefusals(saved.1, for: testSignIn)
             }
             let backend = BackendFixture(signedIn: false, signIn: signIns.currentSignIn)
             let signingIn = SheetSignIn()
@@ -1870,7 +1870,7 @@ struct BackendSignInTests {
     func signInCancelledAfterTheSchoolStepFinishes() async throws {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.ntustCredentialsPresent]
-            defer { Defaults[.ntustCredentialsPresent] = saved }
+            defer { Defaults[.ntustCredentialsPresent, for: testSignIn] = saved }
             let backend = BackendFixture(signedIn: false)
             SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
             let sheet = SheetSignIn()
@@ -2594,8 +2594,8 @@ private func withNoSyncPreferencesPending<T>(_ body: () async throws -> T) async
 private func withNoPasswordRefusals<T>(_ body: () async throws -> T) async rethrows -> T {
     try await withExclusiveRealDefaults {
         let saved = SchoolPasswordPosts.storedPasswordRefusals
-        SchoolPasswordPosts.forgetStoredPasswordRefusals()
-        defer { SchoolPasswordPosts.storedPasswordRefusals = saved }
+        SchoolPasswordPosts.forgetStoredPasswordRefusals(for: testSignIn)
+        defer { SchoolPasswordPosts.setStoredPasswordRefusals(saved, for: testSignIn) }
         return try await body()
     }
 }
