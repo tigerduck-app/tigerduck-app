@@ -12,7 +12,8 @@ own AGENTS.md. Read it before editing files in that directory.
 ## Agent files
 
 - AGENTS.md files are the only rule files. Do not add a `CLAUDE.md`, `.claude/CLAUDE.md` or
-  `CLAUDE.local.md`: with one present, Claude Code skips every AGENTS.md.
+  `CLAUDE.local.md`: with one present, Claude Code skips every AGENTS.md. Claude Code reads
+  AGENTS.md from v2.1.277.
 - Hand-written skills live in `.agents/skills/<name>/`, with a relative symlink to each in
   `.claude/skills/`. OpenSpec writes its own `openspec-*` copies into both folders.
 
@@ -58,7 +59,9 @@ the same build folder.
 - Label issues and pull requests as `docs/issue-triage.md` says.
 - Localized strings come from the `app-translation` submodule, which takes its own pull requests.
   Each Apple target's build generates its `.lproj` bundles, so `swift/` holds no `*.lproj` folder
-  or `.strings` file.
+  or `.strings` file. What's New feature pages are the exception: their zh-Hant and English copy
+  is written in Swift, in `swift/TigerDuck/Features/Updates/` (`WhatsNewCatalog.swift` and its
+  page files).
 - A function, property or table that hands out a localization key returns or holds a
   `LocalizedStringResource`; `tools/localization/check_keys.py` does not read a key held in a
   plain `String`.
