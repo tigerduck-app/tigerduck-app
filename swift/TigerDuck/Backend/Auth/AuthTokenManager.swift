@@ -87,8 +87,8 @@ actor AuthTokenManager {
     /// The bearer token for `BackendClient`, and its one recovery after a 401.
     nonisolated var backendAuth: BackendAuth {
         BackendAuth(
-            header: { [weak self] in await self?.authorizationHeader() },
-            recover: { [weak self] refused, code in await self?.recover(fromRejectionOf: refused, code: code) ?? false }
+            header: { [weak self] in await self?.authorizationHeaderOfSignIn() },
+            recover: { [weak self] in await self?.recover(fromRejectionOf: $0, code: $1, signIn: $2) ?? false }
         )
     }
 
@@ -97,16 +97,16 @@ actor AuthTokenManager {
 
     /// After a 401 for `refused`: true once another access token is ready for one replay. An
     /// ended session signs in again; any other refusal takes a refresh, which the budget bounds.
-    func recover(fromRejectionOf refused: String, code: String?) async -> Bool {
-        guard Self.departing == nil, pair.refreshToken != nil else { return false }
+    func recover(fromRejectionOf refused: String, code: String?, signIn: AccountSession.Ticket) async -> Bool {
+        guard Self.departing == nil, pair.refreshToken != nil, signIns.isCurrent(signIn) else { return false }
         if let code, Self.endedSessionCodes.contains(code) {
             guard let onRejected = handlers.rejected, await onRejected(refused) else { return false }
-            return pair.accessToken.map { $0 != refused } ?? false
+            return (pair.accessToken.map { $0 != refused } ?? false) && signIns.isCurrent(signIn)
         }
         if let stored = pair.accessToken, stored != refused { return true }
         pair.expiresAt = .distantPast
         guard let token = await validAccessToken() else { return false }
-        return token != refused
+        return token != refused && signIns.isCurrent(signIn)
     }
 
     var isLoggedIn: Bool { pair.refreshToken != nil }
@@ -134,8 +134,14 @@ actor AuthTokenManager {
     }
 
     func authorizationHeader() async -> String? {
-        guard let token = await validAccessToken() else { return nil }
-        return "Bearer \(token)"
+        await authorizationHeaderOfSignIn()?.value
+    }
+
+    /// A header read across a sign-out belongs to neither sign-in, so it is not handed out.
+    func authorizationHeaderOfSignIn() async -> (value: String, signIn: AccountSession.Ticket?)? {
+        let ticket = signIns.ticket
+        guard let token = await validAccessToken(), signIns.isCurrent(ticket) else { return nil }
+        return ("Bearer \(token)", ticket)
     }
 
     struct LoginResult: Sendable {

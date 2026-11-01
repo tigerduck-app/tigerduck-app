@@ -67,14 +67,15 @@ nonisolated struct BackendResponse: Sendable {
     }
 }
 
-/// The bearer token for a request, and what a 401 does: `recover` answers whether another token
-/// is ready for the one replay.
+/// The bearer token for a request with the sign-in it was issued for, and what a 401 does:
+/// `recover` answers whether another token of that sign-in is ready for the one replay, so a
+/// refusal that lands after another account signed in never goes again as that account.
 nonisolated struct BackendAuth: Sendable {
-    let header: @Sendable () async -> String?
-    let recover: @Sendable (_ refused: String, _ code: String?) async -> Bool
+    let header: @Sendable () async -> (value: String, signIn: AccountSession.Ticket?)?
+    let recover: @Sendable (_ refused: String, _ code: String?, _ signIn: AccountSession.Ticket) async -> Bool
 
     static func header(_ provider: @escaping @Sendable () async -> String?) -> BackendAuth {
-        BackendAuth(header: provider, recover: { _, _ in false })
+        BackendAuth(header: { await provider().map { ($0, nil) } }, recover: { _, _, _ in false })
     }
 
     static let none = BackendAuth.header { nil }
@@ -113,7 +114,7 @@ nonisolated final class BackendClient: Sendable {
     }
 
     func send(_ request: BackendRequest) async throws -> BackendResponse {
-        try await send(request, replayed: false)
+        try await send(request, replaying: nil)
     }
 
     func send<Response: Decodable>(_ request: BackendRequest, as type: Response.Type) async throws -> Response {
@@ -137,13 +138,17 @@ nonisolated final class BackendClient: Sendable {
         }
     }
 
-    private func send(_ request: BackendRequest, replayed: Bool) async throws -> BackendResponse {
+    /// `replaying` is the sign-in a 401 was answered for; the replay goes only with its token.
+    private func send(_ request: BackendRequest, replaying: AccountSession.Ticket?) async throws -> BackendResponse {
         var urlRequest = try makeURLRequest(request)
         var sent: String?
+        var signIn: AccountSession.Ticket?
         if request.authenticated {
-            if let header = await auth.header(), !header.isEmpty {
-                urlRequest.setValue(header, forHTTPHeaderField: "Authorization")
-                sent = header.split(separator: " ").last.map(String.init)
+            if let header = await auth.header(), !header.value.isEmpty {
+                if let replaying, header.signIn != replaying { throw PushAPIError.notSignedIn }
+                urlRequest.setValue(header.value, forHTTPHeaderField: "Authorization")
+                sent = header.value.split(separator: " ").last.map(String.init)
+                signIn = header.signIn
             } else if !request.sendsWithoutSession {
                 throw PushAPIError.notSignedIn
             }
@@ -155,9 +160,9 @@ nonisolated final class BackendClient: Sendable {
         let answer = BackendResponse(data: data, http: http)
         if (200..<300).contains(http.statusCode) || request.acceptsEveryStatus { return answer }
         let code = Self.errorCode(in: data)
-        if http.statusCode == 401, request.authenticated, !replayed, let sent,
-           await auth.recover(sent, code) {
-            return try await send(request, replayed: true)
+        if http.statusCode == 401, request.authenticated, replaying == nil, let sent, let signIn,
+           await auth.recover(sent, code, signIn) {
+            return try await send(request, replaying: signIn)
         }
         if http.statusCode == 409, code == "clock_ahead" { throw PushAPIError.clockAhead(serverClock: answer.serverClock) }
         if http.statusCode == 409, code == "sync_revision_expired" { throw PushAPIError.syncRevisionExpired }

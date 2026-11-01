@@ -103,6 +103,32 @@ struct BackendClientTests {
         #expect(SettingsAPIStub.requests(for: url).count == 1)
     }
 
+    @Test("A 401 that lands after a sign-out and another account's sign-in does not go again as that account")
+    func aRefusalAfterAnotherSignInIsNotReplayed() async throws {
+        let backend = BackendFixture(accessTokenExpiry: Date().addingTimeInterval(3600))
+        let url = backend.baseURL.appendingPathComponent("sync/revision")
+        let refusal = SettingsAPIStub.ReplyGate()
+        var held = Self.invalidToken
+        held.gate = refusal
+        SettingsAPIStub.enqueue(held, for: url)
+        SettingsAPIStub.enqueue(Self.revision, for: url)
+        let client = PushAPIClient(
+            backend: BackendClient(baseURL: { backend.baseURL }, session: Self.stubSession(), auth: backend.manager.backendAuth)
+        )
+
+        let fetch = Task { try await client.fetchRevision() }
+        try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
+        await backend.manager.logout()
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "B1", refresh: "BR1"), for: backend.loginURL)
+        _ = try await backend.manager.login(
+            studentId: "B11000001", moodleToken: "moodle-token", moodlePrivateToken: nil, platform: "ios"
+        )
+        refusal.open()
+
+        await #expect(throws: PushAPIError.self) { try await fetch.value }
+        #expect(SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "Authorization") } == ["Bearer A0"])
+    }
+
     @Test("A session the backend ended signs in again without spending a refresh")
     func endedSessionSignsInAgain() async throws {
         let backend = BackendFixture(accessTokenExpiry: Date().addingTimeInterval(3600))
