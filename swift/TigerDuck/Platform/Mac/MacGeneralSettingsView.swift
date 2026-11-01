@@ -1,11 +1,9 @@
 #if os(macOS)
 import SwiftUI
 import AppKit
-import Defaults
 
 struct MacGeneralSettingsView: View {
     @Environment(AppEnvironment.self) private var app
-    @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
     private static let languageTags: [String] = LanguageManager.supportedLocaleTags()
         .sorted {
@@ -45,26 +43,15 @@ struct MacGeneralSettingsView: View {
                 .buttonStyle(.plain)
             }
 
-            Section(String(localized: "settings_section_display")) {
-                Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $preferences.showAbsoluteAssignmentTime)
-                Toggle(
-                    String(localized: "settings_show_classroom_on_class_table"),
-                    isOn: $preferences.showClassroomInClassTable
-                )
-                Toggle(String(localized: "settings_outline_required_courses"), isOn: $outlineRequiredCourses)
-                Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $preferences.alwaysShowAllPeriods)
+            Section(String(localized: PageSettings.home.titleKey)) {
+                HomeDisplayToggles(preferences: preferences)
             }
 
-            Section(String(localized: "settings_section_abbreviation")) {
-                Toggle(String(localized: "settings_use_english_course_abbreviation"), isOn: $preferences.useEnglishCourseAbbreviation)
-                Toggle(String(localized: "settings_use_english_classroom_abbreviation"), isOn: $preferences.useEnglishClassroomAbbreviation)
-                Picker(String(localized: "settings_classroom_mandarin_display"), selection: $preferences.classroomMandarinDisplay) {
-                    Text(String(localized: "settings_classroom_mandarin_display_original")).tag("original")
-                    Text(String(localized: "settings_classroom_mandarin_display_pinyin")).tag("pinyin")
-                    Text(String(localized: "settings_classroom_mandarin_display_translated")).tag("translated")
-                }
-                .pickerStyle(.menu)
+            Section(String(localized: PageSettings.classTable.titleKey)) {
+                ClassTableDisplayToggles(preferences: preferences)
             }
+
+            CourseAbbreviationSection(preferences: preferences)
 
             Section(String(localized: "desktop_settings_section_links")) {
                 Picker(String(localized: "desktop_settings_moodle_open_in"), selection: $preferences.macMoodleOpenTarget) {
