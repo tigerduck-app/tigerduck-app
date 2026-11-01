@@ -67,28 +67,28 @@ struct MailSettingsTests {
         #expect(h.manager.displayName == "王大明")
     }
 
-    @Test func bothScreensFollowTheSignedInState() async {
+    @Test func theMailPageGateFollowsTheSignedInState() async {
         let h = MailAccountManagerTests.harness()
-        #expect(!h.manager.isLoggedIn)
-        #expect(!MailNotificationSettingsView.settingsRowIsEnabled(isLoggedIn: h.manager.isLoggedIn))
-        #expect(!MailSettingsView.displayNameIsEnabled(isLoggedIn: h.manager.isLoggedIn))
+        #expect(!Self.gateIsOpen(for: h.manager))
 
         await h.manager.login(studentID: "B99999999", password: "tigerduck-review")
         #expect(h.manager.isDemo)
-        #expect(MailNotificationSettingsView.settingsRowIsEnabled(isLoggedIn: h.manager.isLoggedIn))
-        #expect(MailSettingsView.displayNameIsEnabled(isLoggedIn: h.manager.isLoggedIn))
+        #expect(Self.gateIsOpen(for: h.manager))
 
         h.manager.logout()
-        #expect(!MailNotificationSettingsView.settingsRowIsEnabled(isLoggedIn: h.manager.isLoggedIn))
-        #expect(!MailSettingsView.displayNameIsEnabled(isLoggedIn: h.manager.isLoggedIn))
+        #expect(!Self.gateIsOpen(for: h.manager))
     }
 
     @Test func thereIsNoWayToTheSwitchWhileSignedOut() {
         for authFailed in [true, false] {
-            #expect(!MailNotificationSettingsView.settingsRowIsEnabled(isLoggedIn: false))
+            #expect(!SettingsGate.mailSignIn.isOpen(in: SettingsState()))
             #expect(!MailNotificationSettingsView.notificationsToggleIsEnabled(
                 isLoggedIn: false, authFailed: authFailed))
         }
+    }
+
+    private static func gateIsOpen(for manager: MailAccountManager) -> Bool {
+        SettingsGate.mailSignIn.isOpen(in: SettingsState(mail: SettingsState.mailAccount(manager)))
     }
 
     @Test func eachLoginErrorHasItsOwnCopy() {

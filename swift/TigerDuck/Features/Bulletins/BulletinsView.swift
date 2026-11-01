@@ -127,6 +127,7 @@ struct BulletinsView: View {
         }
         .navigationDestination(isPresented: $showNotificationSettings) {
             BulletinNotificationSettingsView(taxonomy: taxonomy)
+                .navigationTitle(String(localized: "bulletin_notifications_title"))
         }
         .navigationDestination(item: $detailingBulletin) { row in
             BulletinDetailView(

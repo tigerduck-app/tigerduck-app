@@ -85,6 +85,8 @@ jobs:
               TigerDuckTests/PasswordFieldAutoFillTests
               TigerDuckTests/PullToRevealSearchTests
               TigerDuckTests/ScrollPositionOriginTests
+              TigerDuckTests/SettingsScreenTests
+              TigerDuckTests/SettingsSnapshotTests
               TigerDuckTests/StorageSettingsScreenTests
               TigerDuckTests/SyncStatusDotDetailsTests
               TigerDuckTests/TigerSyncLinksSectionTests

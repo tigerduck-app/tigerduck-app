@@ -5,7 +5,6 @@ import SwiftUI
 struct MacAppearanceSettingsView: View {
     @Environment(AppEnvironment.self) private var app
     @Default(.appAppearance) private var appearance
-    @State private var isConfirmingReassign = false
 
     var body: some View {
         Form {
@@ -22,32 +21,19 @@ struct MacAppearanceSettingsView: View {
                     ForEach(AppPreferences.themeColors, id: \.hex) { entry in
                         accentSwatch(hex: entry.hex, nameKey: entry.nameKey)
                     }
-                    CustomAccentPicker(app: app, size: 32)
+                    CustomAccentPicker(preferences: app.preferences, size: 32)
                         .padding(4)
                 }
                 .padding(.vertical, 4)
             }
 
             Section {
-                Button(String(localized: "settings_reset_course_colors")) {
-                    isConfirmingReassign = true
-                }
+                ReassignCourseColorsButton()
             }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .alert(
-            String(localized: "settings_reset_course_colors_confirm_title"),
-            isPresented: $isConfirmingReassign
-        ) {
-            Button(String(localized: "action_confirm"), role: .destructive) {
-                app.edits.reassignAllCourseColors(for: app.authService.session.currentSignIn)
-            }
-            Button(String(localized: "action_cancel"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "settings_reset_course_colors_confirm_message"))
-        }
     }
 
     private func accentSwatch(hex: Int, nameKey: LocalizedStringResource) -> some View {

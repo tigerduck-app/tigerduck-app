@@ -45,7 +45,7 @@ func exposedAccessibilityElements(in node: NSObject) -> [NSObject] {
 }
 
 @MainActor
-private func accessibilityChildren(of node: NSObject) -> [NSObject] {
+func accessibilityChildren(of node: NSObject) -> [NSObject] {
     var children = node.accessibilityElements ?? []
     let count = node.accessibilityElementCount()
     if children.isEmpty, count != NSNotFound, count > 0 {

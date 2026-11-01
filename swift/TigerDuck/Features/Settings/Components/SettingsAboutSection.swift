@@ -3,8 +3,9 @@ import SwiftUI
 struct SettingsAboutSection: View {
     let sheets: SettingsSheetState
 
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @Environment(\.openURL) private var openURL
+    @Environment(\.settingsState) private var state
 
     private static let websiteURL = AppURLs.website
 
@@ -16,17 +17,23 @@ struct SettingsAboutSection: View {
 
     var body: some View {
         Section(String(localized: "settings_section_about")) {
-            LabeledContent(String(localized: "settings_version"), value: appVersion)
+            LabeledContent(SettingsRow.version.label, value: appVersion)
+                .settingsRow(.version)
             #if os(iOS)
             checkForUpdatesRow
+                .settingsRow(.checkForUpdates)
             serverStatusRow
-            whatsNewRow
+                .settingsRow(.serverStatus)
+            if SettingsRow.whatsNew.isShown(in: state) {
+                whatsNewRow
+                    .settingsRow(.whatsNew)
+            }
             #endif
             Button {
                 openURL(Self.websiteURL)
             } label: {
                 HStack {
-                    Text(String(localized: "settings_official_website"))
+                    Text(SettingsRow.website.label)
                         .foregroundStyle(.primary)
                     Spacer()
                     Image(systemName: "arrow.up.right.square")
@@ -34,9 +41,11 @@ struct SettingsAboutSection: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            NavigationLink(String(localized: "settings_about_others")) {
+            .settingsRow(.website)
+            NavigationLink(SettingsRow.aboutOthers.label) {
                 AboutOthersView()
             }
+            .settingsRow(.aboutOthers)
         }
     }
 
@@ -44,6 +53,7 @@ struct SettingsAboutSection: View {
     @ViewBuilder
     private var checkForUpdatesRow: some View {
         Button {
+            guard let app else { return }
             Task {
                 await app.updateNotifyCoordinator.checkManually()
                 let result = app.updateNotifyCoordinator.lastManualCheckResult
@@ -52,16 +62,16 @@ struct SettingsAboutSection: View {
             }
         } label: {
             HStack {
-                Text(String(localized: "settings_check_for_updates"))
+                Text(SettingsRow.checkForUpdates.label)
                     .foregroundStyle(.primary)
                 Spacer()
-                if app.updateNotifyCoordinator.isCheckingForUpdate {
+                if state.isCheckingForUpdate {
                     ProgressView()
                         .controlSize(.small)
                 }
             }
         }
-        .disabled(app.updateNotifyCoordinator.isCheckingForUpdate)
+        .disabled(state.isCheckingForUpdate)
     }
 
     private var serverStatusRow: some View {
@@ -69,7 +79,7 @@ struct SettingsAboutSection: View {
             openURL(AppURLs.serverStatus)
         } label: {
             HStack {
-                Text(String(localized: "settings_check_server_status"))
+                Text(SettingsRow.serverStatus.label)
                     .foregroundStyle(.primary)
                 Spacer()
                 Image(systemName: "arrow.up.right.square")
@@ -79,20 +89,17 @@ struct SettingsAboutSection: View {
         }
     }
 
-    @ViewBuilder
     private var whatsNewRow: some View {
-        if app.updateNotifyCoordinator.hasWhatsNewContent(in: app) {
-            Button {
-                sheets.manualWhatsNewItem = app.updateNotifyCoordinator.latestWhatsNew(in: app)
-            } label: {
-                HStack {
-                    Text(String(localized: "settings_whats_new"))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+        Button {
+            sheets.manualWhatsNewItem = app.flatMap { $0.updateNotifyCoordinator.latestWhatsNew(in: $0) }
+        } label: {
+            HStack {
+                Text(SettingsRow.whatsNew.label)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
