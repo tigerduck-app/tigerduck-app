@@ -79,7 +79,7 @@ struct DemoAccount: AccountScoped {
     func write(_ fixture: DemoFixture, for signIn: SignIn) {
         let language = language()
         let semester = CourseSelectionService.currentSemesterCode()
-        let moodle = fixture.moodle?.courses(in: language) ?? DemoMoodleCourses(ownMemberId: 0, courses: [])
+        let moodle = fixture.moodle?.courses(in: language) ?? DemoMoodleCourses(ownMemberId: 0, courses: [], files: [:])
         writeCourses(fixture.courses ?? [], on: moodle, semester: semester, for: signIn)
         let assignments = (fixture.assignments ?? []).compactMap { $0.assignment(in: language) }
         let context = stores.moodle(fixture.normalizedStudentId, signIn)

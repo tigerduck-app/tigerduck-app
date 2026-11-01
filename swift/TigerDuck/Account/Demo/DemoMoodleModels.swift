@@ -2,15 +2,19 @@ import Foundation
 
 nonisolated extension DemoMoodle {
     func courses(in language: DemoLanguage) -> DemoMoodleCourses {
-        DemoMoodleCourses(
-            ownMemberId: ownMemberId ?? 0,
-            courses: (courses ?? []).map { DemoMoodleReader(language: language).course($0) }
-        )
+        let reader = DemoMoodleReader(language: language)
+        let read = (courses ?? []).map(reader.course)
+        return DemoMoodleCourses(ownMemberId: ownMemberId ?? 0, courses: read, files: reader.files)
     }
 }
 
-private nonisolated struct DemoMoodleReader {
+private nonisolated final class DemoMoodleReader {
     let language: DemoLanguage
+    private(set) var files: [String: Data] = [:]
+
+    init(language: DemoLanguage) {
+        self.language = language
+    }
 
     private func text(_ field: DemoText?) -> String { field?.text(in: language) ?? "" }
 
@@ -39,9 +43,10 @@ private nonisolated struct DemoMoodleReader {
     }
 
     private func file(_ file: DemoMoodle.File, area: String, created: Date? = nil) -> MoodleFile {
-        MoodleFile(
-            name: file.name, size: file.size ?? 0,
-            url: "\(AppConstants.moodleBaseURL.absoluteString)/webservice/pluginfile.php/0/\(area)/\(file.name)",
+        let url = "\(AppConstants.moodleBaseURL.absoluteString)/webservice/pluginfile.php/0/\(area)/\(file.name)"
+        if let content = file.base64 { files[url] = content }
+        return MoodleFile(
+            name: file.name, size: file.size ?? 0, url: url,
             mimeType: file.mime, modified: DemoTime.date(file.modified) ?? created, path: "/"
         )
     }
