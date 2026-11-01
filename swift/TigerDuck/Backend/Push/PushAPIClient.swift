@@ -36,7 +36,7 @@ final class PushAPIClient: Sendable {
 
     func unregisterDevice(deviceId: String, at baseURL: URL? = nil) async throws {
         var request = BackendRequest("DELETE", segments: ["devices", deviceId])
-        request.baseURL = baseURL
+        request.baseURLOverride = baseURL
         _ = try await backend.send(request)
     }
 
@@ -147,13 +147,13 @@ final class PushAPIClient: Sendable {
     }
 
     func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil, for signIn: SignIn) async throws {
-        guard let stamp, let adds = request.adds, !adds.isEmpty else {
+        guard let stamp, let adds = request.handAddedCourses, !adds.isEmpty else {
             _ = try await backend.send(BackendRequest("POST", "sync", "courses", "upload").json(request).sent(for: signIn))
             return
         }
         _ = try await backend.sendStamped(at: stamp) { hlc in
             var stamped = request
-            stamped.adds = adds.map { PushAPI.CourseAdd(courseKey: $0.courseKey, hlc: hlc) }
+            stamped.handAddedCourses = adds.map { PushAPI.CourseAdd(courseKey: $0.courseKey, hlc: hlc) }
             return try BackendRequest("POST", "sync", "courses", "upload").json(stamped).sent(for: signIn)
         }
     }
@@ -211,7 +211,7 @@ enum PushAPIError: Error, LocalizedError {
     case encodingFailed(Error)
     case decodingFailed(Error)
     case invalidResponse
-    case httpStatus(Int, body: String, sent: SentToken? = nil)
+    case httpStatus(Int, body: String, accessToken: RedactedToken? = nil)
     case syncRevisionExpired
     case clockAhead(serverClock: Int64?)
     case courseNotFound
@@ -235,7 +235,7 @@ enum PushAPIError: Error, LocalizedError {
         return BackendClient.errorCode(in: Data(body.utf8))
     }
 
-    nonisolated struct SentToken: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    nonisolated struct RedactedToken: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
         let value: String
         var description: String { "***" }
         var debugDescription: String { "***" }

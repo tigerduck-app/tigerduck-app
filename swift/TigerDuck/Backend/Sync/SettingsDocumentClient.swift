@@ -19,7 +19,7 @@ actor SettingsDocumentClient {
     func read(namespace: String) async throws -> SettingsDocument {
         var request = BackendRequest("GET", segments: ["settings", namespace]).sent(for: signIn)
         request.sendsWithoutSession = true
-        request.accepting = [404]
+        request.returnedStatuses = [404]
         let response = try await backend.send(request)
         if response.status == 404 {
             guard BackendClient.errorCode(in: response.data) == "settings_document_not_found" else {
@@ -58,7 +58,7 @@ actor SettingsDocumentClient {
         var request = BackendRequest("PUT", segments: ["settings", namespace]).sent(for: signIn)
         request.sendsWithoutSession = true
         request.body = body
-        request.accepting = [409]
+        request.returnedStatuses = [409]
         let response = try await backend.send(request)
         if response.status == 409 {
             return try Self.parseConflict(response.data)

@@ -3,28 +3,28 @@ import os
 
 nonisolated struct BackendRequest: Sendable {
     var method: String
-    var path: [String]
+    var segments: [String]
     var query: [URLQueryItem] = []
     var body: Data?
     var authenticated = true
     var sendsWithoutSession = false
-    var accepting: Set<Int> = []
+    var returnedStatuses: Set<Int> = []
     var acceptsEveryStatus = false
     var headers: [String: String] = [:]
     var timeout: TimeInterval?
     var cachePolicy: URLRequest.CachePolicy?
     var postsCredentials = false
-    var baseURL: URL?
+    var baseURLOverride: URL?
     var signIn: SignIn?
 
     init(_ method: String, _ path: String...) {
         self.method = method
-        self.path = path.flatMap { $0.split(separator: "/").map(String.init) }
+        self.segments = path.flatMap { $0.split(separator: "/").map(String.init) }
     }
 
     init(_ method: String, segments: [String]) {
         self.method = method
-        self.path = segments
+        self.segments = segments
     }
 
     func sent(for signIn: SignIn) -> BackendRequest {
@@ -113,7 +113,7 @@ nonisolated final class BackendClient: Sendable {
     }
 
     func send(_ request: BackendRequest) async throws -> BackendResponse {
-        try await send(request, replaying: nil)
+        try await send(request, as: .first)
     }
 
     func send<Response: Decodable>(_ request: BackendRequest, as type: Response.Type) async throws -> Response {
@@ -135,14 +135,26 @@ nonisolated final class BackendClient: Sendable {
         }
     }
 
-    private func send(_ request: BackendRequest, replaying: SignIn?) async throws -> BackendResponse {
+    private enum Attempt {
+        case first
+        case replay(after401For: SignIn)
+
+        func signIn(of request: BackendRequest) -> SignIn? {
+            switch self {
+            case .first: request.signIn
+            case .replay(let signIn): signIn
+            }
+        }
+    }
+
+    private func send(_ request: BackendRequest, as attempt: Attempt) async throws -> BackendResponse {
         var urlRequest = try makeURLRequest(request)
         var sent: String?
         var signIn: SignIn?
         if request.signIn?.isCurrent == false { throw PushAPIError.notSignedIn }
         if request.authenticated {
             if let header = await auth.header(), !header.value.isEmpty {
-                if header.signIn != (replaying ?? request.signIn) { throw PushAPIError.notSignedIn }
+                if header.signIn != attempt.signIn(of: request) { throw PushAPIError.notSignedIn }
                 urlRequest.setValue(header.value, forHTTPHeaderField: "Authorization")
                 sent = header.value.split(separator: " ").last.map(String.init)
                 signIn = header.signIn
@@ -157,18 +169,18 @@ nonisolated final class BackendClient: Sendable {
         let answer = BackendResponse(data: data, http: http)
         if (200..<300).contains(http.statusCode) || request.acceptsEveryStatus { return answer }
         let code = Self.errorCode(in: data)
-        if http.statusCode == 401, request.authenticated, replaying == nil, let sent, let signIn,
+        if http.statusCode == 401, request.authenticated, case .first = attempt, let sent, let signIn,
            await auth.recover(sent, code, signIn) {
-            return try await send(request, replaying: signIn)
+            return try await send(request, as: .replay(after401For: signIn))
         }
         if http.statusCode == 409, code == "clock_ahead" { throw PushAPIError.clockAhead(serverClock: answer.serverClock) }
         if http.statusCode == 409, code == "sync_revision_expired" { throw PushAPIError.syncRevisionExpired }
-        if request.accepting.contains(http.statusCode) { return answer }
+        if request.returnedStatuses.contains(http.statusCode) { return answer }
         let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
         let path = urlRequest.url?.path ?? ""
         logger.error("\(http.statusCode, privacy: .public) \(path, privacy: .private): \(snippet, privacy: .private)")
         await noteVersion(http.statusCode, code: code)
-        throw PushAPIError.httpStatus(http.statusCode, body: snippet, sent: sent.map { .init(value: $0) })
+        throw PushAPIError.httpStatus(http.statusCode, body: snippet, accessToken: sent.map { .init(value: $0) })
     }
 
     @MainActor private func noteVersion(_ statusCode: Int, code: String?) {
@@ -176,7 +188,7 @@ nonisolated final class BackendClient: Sendable {
     }
 
     private func makeURLRequest(_ request: BackendRequest) throws -> URLRequest {
-        guard let url = Self.url(base: request.baseURL ?? baseURL(), path: request.path, query: request.query) else {
+        guard let url = Self.url(base: request.baseURLOverride ?? baseURL(), path: request.segments, query: request.query) else {
             throw PushAPIError.invalidResponse
         }
         var urlRequest = URLRequest(url: url)
@@ -220,7 +232,6 @@ nonisolated final class BackendClient: Sendable {
 
     static let session: URLSession = makeSession(resourceTimeout: 30)
     static let catalogSession: URLSession = makeSession(resourceTimeout: 60)
-    static let authSession: URLSession = .shared
     static let pinDocumentSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 10

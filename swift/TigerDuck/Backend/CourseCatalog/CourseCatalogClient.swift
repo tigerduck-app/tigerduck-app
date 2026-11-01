@@ -101,7 +101,7 @@ struct CourseCatalogClient {
         // The ETag is ours to send; URLCache would answer the revalidation itself and hide the 304.
         request.cachePolicy = .reloadIgnoringLocalCacheData
         if let etag { request.headers["If-None-Match"] = etag }
-        request.accepting = [304, 404]
+        request.returnedStatuses = [304, 404]
         let response = try await backend.send(request)
         switch response.status {
         case 304:
