@@ -95,7 +95,7 @@ final class AuthService {
 
     var isNTUSTAuthenticated: Bool {
         _ = credentials.revision
-        return NTUSTSessionManager.shared.cookiesValid && storedStudentId != nil
+        return NTUSTSessionManager.shared.ssoLoginStampIsFresh && storedStudentId != nil
     }
 
     static func resolveHasCredentials(keychainSaysPresent: Bool, mirrorSaysPresent: Bool) -> Bool {

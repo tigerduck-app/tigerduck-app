@@ -48,12 +48,12 @@ final class NTUSTSessionManager {
 
     /// The identifier must be an App Group in `TigerDuck.entitlements`. Any other gives a store
     /// kept only in memory, which loses the SSO session on every relaunch.
-    let cookieStorage: HTTPCookieStorage = HTTPCookieStorage
+    let ntustCookieJar: HTTPCookieStorage = HTTPCookieStorage
         .sharedCookieStorage(forGroupContainerIdentifier: "group.org.ntust.app.TigerDuck")
 
     private static let cookieFreshness = FreshnessPolicy(lifetime: 3600)
 
-    var cookiesValid: Bool {
+    var ssoLoginStampIsFresh: Bool {
         guard let timestamp = Defaults[.ssoLoginTimestamp] else {
             return false
         }
@@ -95,15 +95,15 @@ final class NTUSTSessionManager {
         // A service keeps its server session behind a cookie that ends with the app, and a visit
         // with only its persisted sign-in cookie signs the account out of SSO. Dropping those at
         // launch lets the next visit sign the service in again through the SSO session.
-        for cookie in cookieStorage.cookies ?? [] where !Self.isSSOCookie(cookie) {
-            cookieStorage.deleteCookie(cookie)
+        for cookie in ntustCookieJar.cookies ?? [] where !Self.isSSOCookie(cookie) {
+            ntustCookieJar.deleteCookie(cookie)
         }
         let config = URLSessionConfiguration.default
-        config.httpCookieStorage = cookieStorage
+        config.httpCookieStorage = ntustCookieJar
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 60
+        config.timeoutIntervalForRequest = SchoolSessions.requestTimeout
+        config.timeoutIntervalForResource = SchoolSessions.resourceTimeout
         config.httpAdditionalHeaders = [
             "User-Agent": Self.browserUserAgent,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -122,9 +122,9 @@ final class NTUSTSessionManager {
     }
 
     func dropServiceCookies(for url: URL) {
-        for cookie in cookieStorage.cookies ?? []
+        for cookie in ntustCookieJar.cookies ?? []
         where cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == url.host {
-            cookieStorage.deleteCookie(cookie)
+            ntustCookieJar.deleteCookie(cookie)
         }
     }
 
@@ -133,22 +133,28 @@ final class NTUSTSessionManager {
         Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
     }
 
-    func invalidateSession() {
+    func cancelTasksAndForgetSignIn() {
         // Flows keep this session, and a request on an invalidated one ends the app with an
         // exception, so its tasks are cancelled instead.
-        Self.cancelTasks(of: session, thenEmpty: cookieStorage)
+        Self.cancelTasks(of: session, thenEmpty: ntustCookieJar)
         Defaults[.ssoLoginTimestamp] = nil
     }
 
     nonisolated static func cancelTasks(of session: URLSession, thenEmpty jar: HTTPCookieStorage) {
-        jar.cookies?.forEach { jar.deleteCookie($0) }
+        empty(jar)
         session.getAllTasks { tasks in
             tasks.forEach { $0.cancel() }
-            jar.cookies?.forEach { jar.deleteCookie($0) }
+            empty(jar)
         }
+    }
+
+    private nonisolated static func empty(_ jar: HTTPCookieStorage) {
+        jar.cookies?.forEach { jar.deleteCookie($0) }
     }
 }
 
+/// Answers the server-trust challenge itself, as `CredentialPostDelegate` does, so the probe keeps
+/// the pin check whichever way URLSession routes a task delegate's challenges.
 private final class NoRedirectSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(
         _ session: URLSession,

@@ -89,7 +89,7 @@ enum SSOForms {
         delegate: (any URLSessionTaskDelegate & Sendable)? = nil
     ) async throws -> (Data, URLResponse) {
         try SSOLoginService.checkSignedIn(signIn)
-        var request = URLRequest(url: url, timeoutInterval: 15)
+        var request = URLRequest(url: url, timeoutInterval: SchoolSessions.requestTimeout)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data(formBody(fields).utf8)
