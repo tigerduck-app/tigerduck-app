@@ -15,7 +15,7 @@ struct MailSettingsView: View {
                 TextField(String(localized: "school_mail_settings_display_name"), text: $displayNameDraft)
                     .textContentType(.name)
                     .submitLabel(.done)
-                    .onSubmit { account.displayName = displayNameDraft.mailNonEmpty }
+                    .onSubmit { saveDisplayName() }
             } header: {
                 Text(String(localized: "school_mail_settings_display_name"))
             } footer: {
@@ -29,7 +29,11 @@ struct MailSettingsView: View {
         }
         .navigationTitle(String(localized: "school_mail_account_title"))
         .onAppear { displayNameDraft = account.displayName ?? "" }
-        .onDisappear { account.displayName = displayNameDraft.mailNonEmpty }
+        .onDisappear { saveDisplayName() }
+    }
+
+    private func saveDisplayName() {
+        account.setDisplayName(displayNameDraft.mailNonEmpty, for: account.session.currentSignIn)
     }
 }
 #endif

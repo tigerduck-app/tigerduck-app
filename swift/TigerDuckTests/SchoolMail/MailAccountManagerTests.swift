@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import SwiftUI
 import Testing
 @testable import TigerDuck
 
@@ -333,11 +334,12 @@ struct MailAccountManagerTests {
 
     @Test func theNotificationToggleCallsItsHooksOnlyWhenSignedIn() async {
         let h = Self.harness()
-        h.manager.notificationsEnabled = false
+        let isOn = MailNotificationSettingsView.notificationsBinding(for: h.manager)
+        isOn.wrappedValue = false
         #expect(h.hooks.disabled == 0)
         await h.manager.login(studentID: "B10000000", password: "pw")
-        h.manager.notificationsEnabled = true
-        h.manager.notificationsEnabled = false
+        isOn.wrappedValue = true
+        isOn.wrappedValue = false
         #expect(h.hooks.enabled == 1)
         #expect(h.hooks.disabled == 1)
         #expect(h.prefs.notificationsEnabled == false)

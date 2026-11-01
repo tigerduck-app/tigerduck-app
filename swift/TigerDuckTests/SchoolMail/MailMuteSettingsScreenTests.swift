@@ -48,8 +48,9 @@ struct MailMuteSettingsScreenTests {
         try await withAccessibilityAutomation {
             let h = MailAccountManagerTests.harness()
             await h.manager.login(studentID: "B10000000", password: "pw")
-            h.manager.muteSettings.quietHours.isEnabled = true
-            h.manager.muteSettings.rules = [MailMuteRule(field: .from, op: .contains, value: "newsletter")]
+            let mute = MailNotificationSettingsView.muteBinding(for: h.manager)
+            mute.wrappedValue.quietHours.isEnabled = true
+            mute.wrappedValue.rules = [MailMuteRule(field: .from, op: .contains, value: "newsletter")]
             let window = try show(h.manager)
             defer { window.isHidden = true }
             let root = try #require(window.rootViewController?.view)
@@ -76,7 +77,7 @@ struct MailMuteSettingsScreenTests {
         try await withAccessibilityAutomation {
             let h = MailAccountManagerTests.harness()
             await h.manager.login(studentID: "B10000000", password: "pw")
-            h.manager.muteSettings.quietHours.isEnabled = true
+            MailNotificationSettingsView.muteBinding(for: h.manager).wrappedValue.quietHours.isEnabled = true
             let window = try show(h.manager, timeZone: try #require(TimeZone(identifier: "America/New_York")))
             defer { window.isHidden = true }
             let root = try #require(window.rootViewController?.view)
@@ -98,7 +99,7 @@ struct MailMuteSettingsScreenTests {
         try await withAccessibilityAutomation {
             let h = MailAccountManagerTests.harness()
             await h.manager.login(studentID: "B10000000", password: "pw")
-            h.manager.notificationsEnabled = false
+            MailNotificationSettingsView.notificationsBinding(for: h.manager).wrappedValue = false
             let window = try show(h.manager)
             defer { window.isHidden = true }
             let root = try #require(window.rootViewController?.view)

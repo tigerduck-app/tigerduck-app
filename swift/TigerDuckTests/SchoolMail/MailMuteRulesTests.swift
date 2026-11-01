@@ -245,7 +245,7 @@ struct MailMuteRulesTests {
     @MainActor @Test func signingOutForgetsTheRules() async {
         let h = MailAccountManagerTests.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")
-        h.manager.muteSettings.presets = [.bulletin]
+        MailNotificationSettingsView.muteBinding(for: h.manager).wrappedValue.presets = [.bulletin]
         #expect(h.prefs.muteSettings.presets == [.bulletin])
         h.manager.logout()
         #expect(h.manager.muteSettings == MailMuteSettings())

@@ -57,32 +57,28 @@ final class MailAccountManager {
     }
     var showsAuthFailedBanner: Bool { authFailed && !authBannerDismissed }
 
-    var displayName: String? {
-        get { settings.displayName }
-        set {
-            settings.displayName = newValue
-            prefs.change(for: session.currentSignIn) { $0.displayName = newValue?.mailNonEmpty }
-        }
+    var displayName: String? { settings.displayName }
+    var notificationsEnabled: Bool { settings.notificationsEnabled }
+    var muteSettings: MailMuteSettings { settings.muteSettings }
+
+    func setDisplayName(_ name: String?, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        settings.displayName = name
+        prefs.change(for: signIn) { $0.displayName = name?.mailNonEmpty }
     }
 
-    var notificationsEnabled: Bool {
-        get { settings.notificationsEnabled }
-        set {
-            let changed = newValue != settings.notificationsEnabled
-            settings.notificationsEnabled = newValue
-            guard changed else { return }
-            prefs.change(for: session.currentSignIn) { $0.notificationsEnabled = newValue }
-            guard isLoggedIn else { return }
-            if newValue { listeners.notificationsEnabled?() } else { listeners.notificationsDisabled?() }
-        }
+    func setNotificationsEnabled(_ enabled: Bool, for signIn: SignIn) {
+        guard signIn.isCurrent, enabled != settings.notificationsEnabled else { return }
+        settings.notificationsEnabled = enabled
+        prefs.change(for: signIn) { $0.notificationsEnabled = enabled }
+        guard isLoggedIn else { return }
+        if enabled { listeners.notificationsEnabled?() } else { listeners.notificationsDisabled?() }
     }
 
-    var muteSettings: MailMuteSettings {
-        get { settings.muteSettings }
-        set {
-            settings.muteSettings = newValue
-            prefs.change(for: session.currentSignIn) { $0.muteSettings = newValue }
-        }
+    func setMuteSettings(_ mute: MailMuteSettings, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        settings.muteSettings = mute
+        prefs.change(for: signIn) { $0.muteSettings = mute }
     }
 
     var isLoggedIn: Bool { studentID != nil }
@@ -130,7 +126,7 @@ final class MailAccountManager {
         await establishBaseline(client: client.client, for: signedIn)
         if prefs.displayName == nil {
             let discovered = await discoverDisplayName(client: client.client, address: MailConstants.address(forStudentID: id))
-            if signedIn.isCurrent { displayName = discovered }
+            setDisplayName(discovered, for: signedIn)
         }
         await client.client.logout()
 
@@ -209,9 +205,9 @@ final class MailAccountManager {
             studentID = nil
             signInStatus.error = nil
             authFailed = false
-            displayName = nil
-            notificationsEnabled = prefs.notificationsEnabled
-            muteSettings = prefs.muteSettings
+            settings = MailAccountSettings(
+                displayName: nil, notificationsEnabled: prefs.notificationsEnabled, muteSettings: prefs.muteSettings
+            )
             listeners.signOutEvents.post(name: Self.didSignOut, object: nil)
             listeners.signedOut?()
         }).run(in: AccountStorage(mailPreferences: prefs, mailCredentials: signIn.credentials))
