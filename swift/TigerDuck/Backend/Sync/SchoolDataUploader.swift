@@ -16,12 +16,12 @@ extension PushCoordinator: SchoolDataBackend {}
 
 @MainActor
 final class SchoolDataUploader {
-    private let target: SyncTarget
+    private let target: FirstPullGate
     private let backend: any SchoolDataBackend
     private let policy: () -> SyncPolicy
 
     init(
-        target: SyncTarget, backend: any SchoolDataBackend,
+        target: FirstPullGate, backend: any SchoolDataBackend,
         policy: @escaping () -> SyncPolicy = { .current }
     ) {
         self.target = target
@@ -68,7 +68,7 @@ final class SchoolDataUploader {
         _ send: (_ wanted: @escaping @MainActor () -> Bool) async throws -> Bool
     ) async {
         let wanted: @MainActor () -> Bool = { [weak self] in self?.policy().cloudSyncEnabled == true }
-        guard signIn.isCurrent, wanted(), await target.waitForPull(signIn), wanted() else { return }
+        guard signIn.isCurrent, wanted(), await target.waitForPull(signIn) == .pulled, wanted() else { return }
         do {
             let sent = try await send(wanted)
             AppLogger.sync.info("\(label, privacy: .public): \(sent ? "sent" : "skipped", privacy: .public)")

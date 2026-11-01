@@ -43,7 +43,7 @@ final class ChangeFeedPull {
             app.conflicts.retryOwedConflictCheck()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self.lastKnownRevision)")
             guard serverRevision > lastKnownRevision else {
-                if lastKnownRevision > 0 { app.syncTarget.notePull(signIn) }
+                if lastKnownRevision > 0 { app.firstPullGate.notePull(signIn) }
                 return .unchanged
             }
             let outcome = await syncChanges(for: signIn)
@@ -104,7 +104,7 @@ final class ChangeFeedPull {
     private func advanceRevision(from since: Int, to revision: Int, for signIn: SignIn) {
         guard mayAdvanceRevision(from: since, for: signIn) else { return }
         lastKnownRevision = revision
-        app.syncTarget.notePull(signIn)
+        app.firstPullGate.notePull(signIn)
         ServerStatusTracker.shared.noteSyncResult(true)
     }
 

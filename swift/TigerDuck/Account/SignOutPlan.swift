@@ -91,7 +91,7 @@ extension SignOutPlan {
                 ImportedClassTableStore.shared.removeAll()
                 app.didSkipMacLogin = false
                 app.conflicts.syncConflicts = []
-                app.syncTarget.signedOut()
+                app.firstPullGate.signedOut()
                 app.conflicts.reenableConflict = nil
                 app.pushCoordinator.forgetUploads()
                 #if os(iOS)

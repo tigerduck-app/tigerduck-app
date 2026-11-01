@@ -19,7 +19,7 @@ final class AppEnvironment {
     var pushCoordinator: PushCoordinator { backend.pushCoordinator }
     var cloudSyncCoordinator: CloudSyncCoordinator { backend.cloudSyncCoordinator }
     var cloudSyncPreference: CloudSyncPreference { backend.cloudSyncPreference }
-    var syncTarget: SyncTarget { backend.syncTarget }
+    var firstPullGate: FirstPullGate { backend.firstPullGate }
     var localEdits: LocalEdits { backend.localEdits }
     var poller: RevisionPoller { backend.poller }
     var edits: EditSender { backend.edits }

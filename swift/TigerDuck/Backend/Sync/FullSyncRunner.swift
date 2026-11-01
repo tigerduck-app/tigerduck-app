@@ -128,7 +128,7 @@ final class FullSyncRunner {
                let revision = pass.json["current_revision"] as? Int {
                 app.feed.lastKnownRevision = revision
             }
-            app.syncTarget.notePull(signIn)
+            app.firstPullGate.notePull(signIn)
             ServerStatusTracker.shared.noteSyncResult(true)
             app.conflicts.retryOwedConflictCheck()
             #if os(iOS)
