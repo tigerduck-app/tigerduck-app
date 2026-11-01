@@ -85,6 +85,16 @@ struct SettingsView: View {
                 }
                 #endif
 
+                NavigationLink(String(localized: "moodle_notification_settings_title")) {
+                    MoodleNotificationSettingsView(settings: MoodleNotificationSettings(
+                        signIn: app.authService.session.currentSignIn,
+                        api: .live(chinese: !LanguageManager.isCurrentLanguageNonChinese(
+                            appLanguage: app.preferences.appLanguage
+                        ))
+                    ))
+                }
+                .disabled(!app.authService.hasStoredCredentials)
+
                 NavigationLink(String(localized: "notification_permission_settings_nav_title")) {
                     NotificationPermissionSettingsView()
                 }
