@@ -8,10 +8,15 @@ struct MacClassTableToolbar: ToolbarContent {
     let shareAvailability: ClassTableShareModel.AvailabilityMemo
     let share: () -> Void
     let requestImport: () -> Void
+    let pickSemester: (String) -> Void
+
+    private var semester: Binding<String> {
+        Binding(get: { viewModel.currentSemester }, set: pickSemester)
+    }
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .automatic) {
-            Picker(String(localized: "class_table_semester_picker_label"), selection: $viewModel.currentSemester) {
+            Picker(String(localized: "class_table_semester_picker_label"), selection: semester) {
                 ForEach(viewModel.availableSemesters, id: \.self) { code in
                     Text(viewModel.displayLabel(for: code)).tag(code)
                 }

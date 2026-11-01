@@ -223,10 +223,10 @@ struct ClassTableIgnoredCourseTests {
         defer { Defaults[.classTableSelectedSemester] = storedPick }
         let viewModel = ClassTableViewModel()
 
-        viewModel.currentSemester = CourseSelectionService.currentSemesterCode()
+        viewModel.pickSemester(CourseSelectionService.currentSemesterCode(), for: AccountSession.school.currentSignIn)
         #expect(viewModel.editor.offersIgnoreAssignments)
 
-        viewModel.currentSemester = "1001"
+        viewModel.pickSemester("1001", for: AccountSession.school.currentSignIn)
         #expect(!viewModel.editor.offersIgnoreAssignments)
     }
 }

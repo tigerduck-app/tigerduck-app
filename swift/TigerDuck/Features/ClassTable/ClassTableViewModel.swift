@@ -5,14 +5,18 @@ import TigerDuckCore
 @MainActor
 @Observable
 final class ClassTableViewModel {
-    var currentSemester: String = SchoolTerms.selected(storedPick: Defaults[.classTableSelectedSemester]) {
+    private(set) var currentSemester: String = SchoolTerms.selected(storedPick: Defaults[.classTableSelectedSemester]) {
         didSet {
             guard currentSemester != oldValue else { return }
-            if !terms.isFollowingNewest, shownPerson == nil {
-                SchoolAccountKeys.pickSemester(currentSemester, for: AccountSession.school.currentSignIn)
-            }
             reloadFromCache()
         }
+    }
+
+    /// The user's own table keeps the term picked on it; someone else's shown table does not.
+    func pickSemester(_ semester: String, for signIn: SignIn) {
+        guard semester != currentSemester else { return }
+        if shownPerson == nil { SchoolAccountKeys.pickSemester(semester, for: signIn) }
+        currentSemester = semester
     }
 
     var assignments: [AssignmentStore.Assignment] = []
@@ -31,7 +35,6 @@ final class ClassTableViewModel {
 
     private struct OwnTerms {
         var options: [String]
-        var isFollowingNewest = false
     }
 
     init(
@@ -87,9 +90,7 @@ final class ClassTableViewModel {
     }
 
     private func follow(_ semester: String) {
-        terms.isFollowingNewest = true
         currentSemester = semester
-        terms.isFollowingNewest = false
     }
 
     func displayLabel(for code: String) -> String {

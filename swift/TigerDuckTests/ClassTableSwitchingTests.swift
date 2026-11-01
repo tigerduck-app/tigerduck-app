@@ -150,7 +150,7 @@ struct ClassTableSwitchingTests {
             let viewModel = ClassTableViewModel(importedTables: people.store)
             Self.show(people.hua.id, in: people, on: viewModel)
 
-            viewModel.currentSemester = "1141"
+            viewModel.pickSemester("1141", for: AccountSession.school.currentSignIn)
 
             #expect(viewModel.courses.map(\.courseNo) == ["MA1010001"])
             #expect(Defaults[.classTableSelectedSemester] == "1142")
@@ -341,7 +341,7 @@ struct ClassTableSwitchingTests {
             case .none: break
             case .signOut: signedOut = true
             case .switchToSomeoneElse: Self.show(people.hua.id, in: people, on: viewModel)
-            case .otherTerm: viewModel.currentSemester = "1141"
+            case .otherTerm: viewModel.pickSemester("1141", for: AccountSession.school.currentSignIn)
             }
             let onScreen = viewModel.courses.map(\.courseNo)
             let saved = CourseStore.shared.loadCourses(semester: "1142")
@@ -482,7 +482,7 @@ struct ClassTableSwitchingTests {
             [Self.course("CS1010001", "Updated", semester: "1151")]
         }
         Self.show(people.ming.id, in: people, on: viewModel)
-        viewModel.currentSemester = "1151"
+        viewModel.pickSemester("1151", for: await AccountSession.school.startingSignIn)
         let before = try Data(contentsOf: folder.file)
         let shown = people.store.shownTable
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.url.path)
@@ -523,7 +523,7 @@ struct ClassTableSwitchingTests {
             return [Self.course("CS1010001", "Older lookup", semester: semester)]
         }
         Self.show(people.ming.id, in: people, on: viewModel)
-        viewModel.currentSemester = "1151"
+        viewModel.pickSemester("1151", for: await AccountSession.school.startingSignIn)
 
         await viewModel.refreshShownPerson()
 

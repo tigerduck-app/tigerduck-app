@@ -32,7 +32,8 @@ struct MacClassTableView: View {
         .toolbar {
             MacClassTableToolbar(
                 viewModel: viewModel, importModel: importModel, studentId: app.authService.storedStudentId,
-                shareAvailability: shareAvailability, share: openShareSheet, requestImport: requestImport
+                shareAvailability: shareAvailability, share: openShareSheet, requestImport: requestImport,
+                pickSemester: { viewModel.pickSemester($0, for: app.authService.session.currentSignIn) }
             )
         }
         .modifier(MacClassTableImport(model: $importModel, showsPicker: $showImportPicker, request: requestImport))
