@@ -37,9 +37,11 @@ nonisolated struct AuthTokenPair {
     var expiresAt: Date = .distantPast
     var budget = RefreshTokenUseBudget()
     private(set) var refreshTokenIsStored = true
+    private(set) var signIn: SignIn?
 
-    init(tokens: AuthTokenManager.TokenStore) {
+    init(tokens: AuthTokenManager.TokenStore, signIn: SignIn) {
         self.tokens = tokens
+        self.signIn = signIn
         accessToken = tokens.load(AuthTokenManager.accessTokenKey)
         refreshToken = tokens.load(AuthTokenManager.refreshTokenKey)
         if let raw = tokens.load(AuthTokenManager.expiresAtKey),
@@ -49,7 +51,12 @@ nonisolated struct AuthTokenPair {
         budget = RefreshTokenUseBudget(stored: tokens.load(AuthTokenManager.refreshTokenUsesKey))
     }
 
-    mutating func store(access: String, refresh: String, expiresIn: Int) {
+    func holds(_ signIn: SignIn) -> Bool {
+        signIn.isCurrent && self.signIn == signIn
+    }
+
+    mutating func store(access: String, refresh: String, expiresIn: Int, for signIn: SignIn) {
+        self.signIn = signIn
         accessToken = access
         refreshToken = refresh
         budget = RefreshTokenUseBudget()
@@ -61,6 +68,7 @@ nonisolated struct AuthTokenPair {
     }
 
     mutating func clear() {
+        signIn = nil
         accessToken = nil
         refreshToken = nil
         expiresAt = .distantPast

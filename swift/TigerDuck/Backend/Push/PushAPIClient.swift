@@ -37,10 +37,12 @@ final class PushAPIClient: Sendable {
         _ = try await backend.send(request)
     }
 
-    func putHolidayOverride(holidayID: Int, notify: Bool, madeAt stamp: Date) async throws -> PushAPI.HolidayOverrideResponse {
+    func putHolidayOverride(
+        holidayID: Int, notify: Bool, madeAt stamp: Date, for signIn: SignIn
+    ) async throws -> PushAPI.HolidayOverrideResponse {
         try await backend.sendStamped(at: stamp) { hlc in
             try BackendRequest("PUT", segments: ["sync", "holiday-overrides", String(holidayID)])
-                .json(PushAPI.HolidayOverrideRequest(notify: notify, hlc: hlc))
+                .json(PushAPI.HolidayOverrideRequest(notify: notify, hlc: hlc)).sent(for: signIn)
         }.decoded(PushAPI.HolidayOverrideResponse.self)
     }
 
@@ -92,22 +94,25 @@ final class PushAPIClient: Sendable {
 
     func updateCredentials(
         moodleToken: String,
-        moodlePrivateToken: String?
+        moodlePrivateToken: String?,
+        for signIn: SignIn
     ) async throws -> PushAPI.UpdateCredentialsResponse {
         let body = PushAPI.UpdateCredentialsRequest(moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken)
         return try await backend.send(
-            BackendRequest("PATCH", "auth", "credentials").json(body), as: PushAPI.UpdateCredentialsResponse.self
+            BackendRequest("PATCH", "auth", "credentials").json(body).sent(for: signIn),
+            as: PushAPI.UpdateCredentialsResponse.self
         )
     }
 
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String,
-        madeAt stamp: Date
+        madeAt stamp: Date,
+        for signIn: SignIn
     ) async throws -> PushAPI.AssignmentOverrideResponse {
         try await backend.sendStamped(at: stamp) { hlc in
             try BackendRequest("PATCH", segments: ["sync", "assignments", moodleAssignmentId, "override"])
-                .json(PushAPI.AssignmentOverrideRequest(localStatus: localStatus, hlc: hlc))
+                .json(PushAPI.AssignmentOverrideRequest(localStatus: localStatus, hlc: hlc)).sent(for: signIn)
         }.decoded(PushAPI.AssignmentOverrideResponse.self)
     }
 
@@ -119,47 +124,48 @@ final class PushAPIClient: Sendable {
         locale: String? = nil,
         ignoreAssignments: Bool? = nil,
         moodleCourseId: Int? = nil,
-        madeAt stamp: Date
+        madeAt stamp: Date,
+        for signIn: SignIn
     ) async throws -> PushAPI.CourseOverrideResponse {
         try await backend.sendStamped(at: stamp) { hlc in
             try BackendRequest("PATCH", segments: ["sync", "courses", courseKey, "override"]).json(PushAPI.CourseOverrideRequest(
                 colorHex: colorHex, customName: customName, locale: locale,
                 ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, hlc: hlc
-            ))
+            )).sent(for: signIn)
         }.decoded(PushAPI.CourseOverrideResponse.self)
     }
 
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil) async throws {
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil, for signIn: SignIn) async throws {
         guard let stamp, let adds = request.adds, !adds.isEmpty else {
-            _ = try await backend.send(BackendRequest("POST", "sync", "courses", "upload").json(request))
+            _ = try await backend.send(BackendRequest("POST", "sync", "courses", "upload").json(request).sent(for: signIn))
             return
         }
         _ = try await backend.sendStamped(at: stamp) { hlc in
             var stamped = request
             stamped.adds = adds.map { PushAPI.CourseAdd(courseKey: $0.courseKey, hlc: hlc) }
-            return try BackendRequest("POST", "sync", "courses", "upload").json(stamped)
+            return try BackendRequest("POST", "sync", "courses", "upload").json(stamped).sent(for: signIn)
         }
     }
 
-    func deleteAllCourses(semester: String? = nil, madeAt stamp: Date) async throws {
+    func deleteAllCourses(semester: String? = nil, madeAt stamp: Date, for signIn: SignIn) async throws {
         _ = try await backend.sendStamped(at: stamp) { hlc in
-            var request = BackendRequest("DELETE", "sync", "courses")
+            var request = BackendRequest("DELETE", "sync", "courses").sent(for: signIn)
             request.query = (semester.map { [URLQueryItem(name: "semester", value: $0)] } ?? [])
                 + [URLQueryItem(name: "hlc", value: String(hlc))]
             return request
         }
     }
 
-    func deleteCourse(courseKey: String, madeAt stamp: Date) async throws {
+    func deleteCourse(courseKey: String, madeAt stamp: Date, for signIn: SignIn) async throws {
         _ = try await backend.sendStamped(at: stamp) { hlc in
-            var request = BackendRequest("DELETE", segments: ["sync", "courses", courseKey])
+            var request = BackendRequest("DELETE", segments: ["sync", "courses", courseKey]).sent(for: signIn)
             request.query = [URLQueryItem(name: "hlc", value: String(hlc))]
             return request
         }
     }
 
-    func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) async throws {
-        _ = try await backend.send(BackendRequest("POST", "sync", "assignments", "upload").json(request))
+    func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest, for signIn: SignIn) async throws {
+        _ = try await backend.send(BackendRequest("POST", "sync", "assignments", "upload").json(request).sent(for: signIn))
     }
 
     func fetchRevision() async throws -> Int {

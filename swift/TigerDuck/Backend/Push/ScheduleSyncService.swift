@@ -55,7 +55,7 @@ final class ScheduleSyncService {
             await previous?.value
             do {
                 let sent = try await ledger.send(
-                    SendLedger.Channel.schedule, fingerprint: fingerprint, resend: .never, isCurrent: { true }
+                    SendLedger.Channel.schedule, fingerprint: fingerprint, resend: .never
                 ) {
                     let response = try await apiClient.syncSchedule(request)
                     logger.info(

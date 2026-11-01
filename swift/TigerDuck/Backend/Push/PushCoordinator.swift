@@ -124,8 +124,8 @@ final class PushCoordinator {
 
     static let unchangedCredentialsInterval = BackendUploads.unchangedCredentialsInterval
 
-    func updateCredentialsIfDue(moodleToken: String, moodlePrivateToken: String?) async throws {
-        try await uploads.updateCredentialsIfDue(moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken)
+    func updateCredentialsIfDue(moodleToken: String, moodlePrivateToken: String?, for signIn: SignIn) async throws {
+        try await uploads.updateCredentialsIfDue(moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken, for: signIn)
     }
 
     func fetchRevision() async throws -> Int {
@@ -141,23 +141,25 @@ final class PushCoordinator {
     }
 
     func patchAssignmentOverride(
-        moodleAssignmentId: String, localStatus: String, madeAt stamp: Date
+        moodleAssignmentId: String, localStatus: String, madeAt stamp: Date, for signIn: SignIn
     ) async throws -> PushAPI.AssignmentOverrideResponse {
-        try await apiClient.patchAssignmentOverride(moodleAssignmentId: moodleAssignmentId, localStatus: localStatus, madeAt: stamp)
+        try await apiClient.patchAssignmentOverride(
+            moodleAssignmentId: moodleAssignmentId, localStatus: localStatus, madeAt: stamp, for: signIn
+        )
     }
 
     func patchCourseOverride(
         courseKey: String, colorHex: String? = nil, customName: String? = nil, locale: String? = nil,
-        ignoreAssignments: Bool? = nil, moodleCourseId: Int? = nil, madeAt stamp: Date
+        ignoreAssignments: Bool? = nil, moodleCourseId: Int? = nil, madeAt stamp: Date, for signIn: SignIn
     ) async throws -> PushAPI.CourseOverrideResponse {
         try await apiClient.patchCourseOverride(
             courseKey: courseKey, colorHex: colorHex, customName: customName, locale: locale,
-            ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, madeAt: stamp
+            ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, madeAt: stamp, for: signIn
         )
     }
 
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil) async throws {
-        try await apiClient.uploadCourses(request, addedAt: stamp)
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil, for signIn: SignIn) async throws {
+        try await apiClient.uploadCourses(request, addedAt: stamp, for: signIn)
     }
 
     nonisolated static let unchangedUploadInterval = BackendUploads.unchangedUploadInterval
@@ -169,17 +171,18 @@ final class PushCoordinator {
 
     func uploadCoursesIfChanged(
         _ request: PushAPI.CourseUploadRequest, semester: String, resend: Bool = false, addedAt stamp: Date? = nil,
-        isCurrent: @escaping @MainActor () -> Bool
+        for signIn: SignIn, while wanted: @escaping @MainActor () -> Bool = { true }
     ) async throws -> Bool {
         try await uploads.uploadCoursesIfChanged(
-            request, semester: semester, resend: resend, addedAt: stamp, isCurrent: isCurrent
+            request, semester: semester, resend: resend, addedAt: stamp, for: signIn, while: wanted
         )
     }
 
     func uploadAssignmentsIfChanged(
-        _ request: PushAPI.AssignmentUploadRequest, isCurrent: @escaping @MainActor () -> Bool
+        _ request: PushAPI.AssignmentUploadRequest, for signIn: SignIn,
+        while wanted: @escaping @MainActor () -> Bool = { true }
     ) async throws -> Bool {
-        try await uploads.uploadAssignmentsIfChanged(request, isCurrent: isCurrent)
+        try await uploads.uploadAssignmentsIfChanged(request, for: signIn, while: wanted)
     }
 
     func forgetUploads(semester: String? = nil) {
@@ -192,12 +195,12 @@ final class PushCoordinator {
         BackendUploads.fingerprint(of: request)
     }
 
-    func deleteAllCourses(semester: String? = nil, madeAt stamp: Date) async throws {
-        try await apiClient.deleteAllCourses(semester: semester, madeAt: stamp)
+    func deleteAllCourses(semester: String? = nil, madeAt stamp: Date, for signIn: SignIn) async throws {
+        try await apiClient.deleteAllCourses(semester: semester, madeAt: stamp, for: signIn)
     }
 
-    func deleteCourse(courseKey: String, madeAt stamp: Date) async throws {
-        try await apiClient.deleteCourse(courseKey: courseKey, madeAt: stamp)
+    func deleteCourse(courseKey: String, madeAt stamp: Date, for signIn: SignIn) async throws {
+        try await apiClient.deleteCourse(courseKey: courseKey, madeAt: stamp, for: signIn)
     }
 
     func refreshRegistrationAfterAuth() {

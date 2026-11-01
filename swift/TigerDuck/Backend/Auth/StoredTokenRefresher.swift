@@ -6,16 +6,15 @@ nonisolated struct StoredTokenRefresher: Sendable {
     let beginBackgroundTask: @Sendable () async -> @Sendable () async -> Void
 
     func refresh(of manager: isolated AuthTokenManager) async -> String? {
-        guard let refreshToken = manager.pair.refreshToken else { return nil }
-        let ticket = manager.signIns.ticket
+        guard let refreshToken = manager.pair.refreshToken, let signIn = manager.pair.signIn else { return nil }
         let endBackgroundTask = await beginBackgroundTask()
-        let token = await refreshStoredToken(refreshToken, ticket: ticket, of: manager)
+        let token = await refreshStoredToken(refreshToken, signIn: signIn, of: manager)
         await endBackgroundTask()
         return token
     }
 
     private func refreshStoredToken(
-        _ refreshToken: String, ticket: AccountSession.Ticket, of manager: isolated AuthTokenManager
+        _ refreshToken: String, signIn: SignIn, of manager: isolated AuthTokenManager
     ) async -> String? {
         struct RefreshResponse: Decodable {
             let access_token: String
@@ -24,51 +23,51 @@ nonisolated struct StoredTokenRefresher: Sendable {
         }
 
         let backend = requests.baseURL()
-        guard manager.signIns.isCurrent(ticket), manager.signOutsStarting.withLock({ $0 == 0 }),
+        guard signIn.isCurrent, manager.signOutsStarting.withLock({ $0 == 0 }),
               manager.pair.refreshToken == refreshToken else { return nil }
         guard manager.pair.budget.allowsSend else {
-            return await signedInAgain(since: ticket, of: manager) ? manager.pair.accessToken : nil
+            return await signedInAgain(as: signIn, of: manager) ? manager.pair.accessToken : nil
         }
         var send = await postCounted(refreshToken, after: manager.pair.budget, on: backend, of: manager)
-        if send.reply == nil, !send.uncounted, manager.signIns.isCurrent(ticket), send.budget.allowsSend {
+        if send.reply == nil, !send.uncounted, signIn.isCurrent, send.budget.allowsSend {
             send = await postCounted(refreshToken, after: send.budget, on: backend, of: manager)
         }
         if manager.pair.refreshToken == refreshToken { manager.pair.budget = send.budget }
         let reply = send.reply
         let mayResend = send.budget.allowsSend
-        if send.uncounted, await signedInAgain(since: ticket, of: manager) { return manager.pair.accessToken }
+        if send.uncounted, await signedInAgain(as: signIn, of: manager) { return manager.pair.accessToken }
         guard let (data, http) = reply else {
-            noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: mayResend, of: manager)
+            noteOvertaken(signIn, sent: refreshToken, accessToken: nil, mayResend: mayResend, of: manager)
             return nil
         }
 
         if http.statusCode == 200 {
             guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data) else {
-                noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: mayResend, of: manager)
+                noteOvertaken(signIn, sent: refreshToken, accessToken: nil, mayResend: mayResend, of: manager)
                 return nil
             }
-            guard manager.signIns.isCurrent(ticket), manager.pair.refreshToken == refreshToken else {
+            guard signIn.isCurrent, manager.pair.refreshToken == refreshToken else {
                 noteOvertaken(
-                    ticket, sent: refreshToken, accessToken: result.access_token,
+                    signIn, sent: refreshToken, accessToken: result.access_token,
                     refreshToken: result.refresh_token, mayResend: false, of: manager
                 )
                 return nil
             }
-            manager.pair.store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
+            manager.pair.store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in, for: signIn)
             return result.access_token
         }
 
         await APIVersionGate.shared.note(statusCode: http.statusCode)
         let turnedDown = Self.turnsDown(http.statusCode)
-        guard manager.signIns.isCurrent(ticket) else {
-            noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: mayResend && !turnedDown, of: manager)
+        guard signIn.isCurrent else {
+            noteOvertaken(signIn, sent: refreshToken, accessToken: nil, mayResend: mayResend && !turnedDown, of: manager)
             return nil
         }
         guard turnedDown, manager.pair.refreshToken == refreshToken else { return nil }
 
-        if await signedInAgain(since: ticket, of: manager) { return manager.pair.accessToken }
-        noteOvertaken(ticket, sent: refreshToken, accessToken: nil, mayResend: false, of: manager)
-        guard http.statusCode == 401, manager.signIns.isCurrent(ticket), manager.pair.refreshToken == refreshToken else {
+        if await signedInAgain(as: signIn, of: manager) { return manager.pair.accessToken }
+        noteOvertaken(signIn, sent: refreshToken, accessToken: nil, mayResend: false, of: manager)
+        guard http.statusCode == 401, signIn.isCurrent, manager.pair.refreshToken == refreshToken else {
             return nil
         }
         manager.pair.clear()
@@ -80,16 +79,16 @@ nonisolated struct StoredTokenRefresher: Sendable {
     }
 
     private func noteOvertaken(
-        _ ticket: AccountSession.Ticket, sent: String, accessToken: String?, refreshToken: String? = nil,
+        _ signIn: SignIn, sent: String, accessToken: String?, refreshToken: String? = nil,
         mayResend: Bool, of manager: isolated AuthTokenManager
     ) {
-        guard !manager.signIns.isCurrent(ticket) else { return }
-        manager.refreshes.late[sent] = (ticket, accessToken, refreshToken, mayResend)
+        guard !signIn.isCurrent else { return }
+        manager.refreshes.late[sent] = (signIn, accessToken, refreshToken, mayResend)
     }
 
-    private func signedInAgain(since ticket: AccountSession.Ticket, of manager: isolated AuthTokenManager) async -> Bool {
+    private func signedInAgain(as signIn: SignIn, of manager: isolated AuthTokenManager) async -> Bool {
         guard let relogin = manager.handlers.refreshFailed else { return false }
-        return await relogin() && manager.signIns.isCurrent(ticket)
+        return await relogin(signIn) && signIn.isCurrent
     }
 
     private func postCounted(

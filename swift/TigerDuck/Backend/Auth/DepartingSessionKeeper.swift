@@ -23,12 +23,12 @@ nonisolated struct DepartingSessionKeeper: Sendable {
 
     func signOutToken(
         for departing: DepartingSession, access: String?, expiry: Date, refreshOut: Task<String?, Never>?,
-        ticket: AccountSession.Ticket, uses: Int, of manager: isolated AuthTokenManager
+        signIn: SignIn?, uses: Int, of manager: isolated AuthTokenManager
     ) async -> String? {
         if let access, Date.now < expiry.addingTimeInterval(-AuthTokenManager.signOutCallsWindow) { return access }
         if let refreshOut {
             _ = await refreshOut.value
-            let late = manager.refreshes.late[departing.refreshToken].flatMap { $0.ticket == ticket ? $0 : nil }
+            let late = manager.refreshes.late[departing.refreshToken].flatMap { $0.signIn == signIn ? $0 : nil }
             manager.refreshes.late = [:]
             if let late, let token = late.accessToken {
                 if let next = late.refreshToken { keep(departing.rotated(to: next), signedIn: manager.isLoggedIn) }

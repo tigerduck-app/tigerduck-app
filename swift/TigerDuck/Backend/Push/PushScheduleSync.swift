@@ -94,7 +94,7 @@ final class PushScheduleSync {
         requestSync()
     }
 
-    func refreshMoodleCredentials() async {
+    func refreshMoodleCredentials(for signIn: SignIn) async {
         guard await app.authTokenManager.isLoggedIn else { return }
         guard let token = await MoodleTokenService.shared.currentToken(),
               !token.isEmpty else { return }
@@ -104,7 +104,8 @@ final class PushScheduleSync {
         do {
             try await app.pushCoordinator.updateCredentialsIfDue(
                 moodleToken: token,
-                moodlePrivateToken: privateToken
+                moodlePrivateToken: privateToken,
+                for: signIn
             )
         } catch {
         }

@@ -3,7 +3,6 @@ import os
 
 actor AuthTokenManager {
     var pair: AuthTokenPair
-    var signIns = SignInCount()
     var refreshes = Refreshes()
     var handlers = Handlers()
     let signOutsStarting = OSAllocatedUnfairLock(initialState: 0)
@@ -19,21 +18,21 @@ actor AuthTokenManager {
 
     struct Refreshes {
         var task: Task<String?, Never>?
-        var late: [String: (ticket: AccountSession.Ticket, accessToken: String?, refreshToken: String?, mayResend: Bool)] = [:]
+        var late: [String: (signIn: SignIn, accessToken: String?, refreshToken: String?, mayResend: Bool)] = [:]
     }
 
     struct Handlers {
-        var refreshFailed: (() async -> Bool)?
-        var rejected: ((_ refused: String) async -> Bool)?
+        var refreshFailed: ((SignIn) async -> Bool)?
+        var rejected: ((_ refused: String, _ signIn: SignIn) async -> Bool)?
         var noSession: (() async -> Void)?
     }
 
-    func setRefreshFailedHandler(_ handler: @escaping () async -> Bool) {
+    func setRefreshFailedHandler(_ handler: @escaping (SignIn) async -> Bool) {
         handlers.refreshFailed = handler
     }
 
     /// Signs in again after the backend ended the session a request carried.
-    func setSignInAgainHandler(_ handler: @escaping (_ refused: String) async -> Bool) {
+    func setSignInAgainHandler(_ handler: @escaping (_ refused: String, _ signIn: SignIn) async -> Bool) {
         handlers.rejected = handler
     }
 
@@ -64,6 +63,7 @@ actor AuthTokenManager {
         deviceUUID: String,
         session: URLSession = .shared,
         tokens: TokenStore = .keychain,
+        storedFor signIn: SignIn = SignInSeries().currentSignIn,
         refreshTimeout: TimeInterval = AuthTokenManager.refreshTimeout,
         beginBackgroundTask: @escaping @Sendable () async -> @Sendable () async -> Void
             = AuthTokenManager.beginRefreshBackgroundTask
@@ -75,7 +75,7 @@ actor AuthTokenManager {
         self.requests = requests
         self.departingSessions = DepartingSessionKeeper(list: DepartingSessionList(tokens: tokens), requests: requests)
         self.refresher = StoredTokenRefresher(requests: requests, beginBackgroundTask: beginBackgroundTask)
-        self.pair = AuthTokenPair(tokens: tokens)
+        self.pair = AuthTokenPair(tokens: tokens, signIn: signIn)
     }
 
     nonisolated var backendAuth: BackendAuth {
@@ -87,16 +87,16 @@ actor AuthTokenManager {
 
     static let endedSessionCodes: Set<String> = ["session_revoked", "session_user_mismatch"]
 
-    func recover(fromRejectionOf refused: String, code: String?, signIn: AccountSession.Ticket) async -> Bool {
-        guard Self.departing == nil, pair.refreshToken != nil, signIns.isCurrent(signIn) else { return false }
+    func recover(fromRejectionOf refused: String, code: String?, signIn: SignIn) async -> Bool {
+        guard Self.departing == nil, pair.refreshToken != nil, pair.holds(signIn) else { return false }
         if let code, Self.endedSessionCodes.contains(code) {
-            guard let onRejected = handlers.rejected, await onRejected(refused) else { return false }
-            return (pair.accessToken.map { $0 != refused } ?? false) && signIns.isCurrent(signIn)
+            guard let onRejected = handlers.rejected, await onRejected(refused, signIn) else { return false }
+            return (pair.accessToken.map { $0 != refused } ?? false) && pair.holds(signIn)
         }
         if let stored = pair.accessToken, stored != refused { return true }
         pair.expiresAt = .distantPast
         guard let token = await validAccessToken() else { return false }
-        return token != refused && signIns.isCurrent(signIn)
+        return token != refused && pair.holds(signIn)
     }
 
     var isLoggedIn: Bool { pair.refreshToken != nil }
@@ -127,10 +127,10 @@ actor AuthTokenManager {
         await authorizationHeaderOfSignIn()?.value
     }
 
-    func authorizationHeaderOfSignIn() async -> (value: String, signIn: AccountSession.Ticket?)? {
-        let ticket = signIns.ticket
-        guard let token = await validAccessToken(), signIns.isCurrent(ticket) else { return nil }
-        return ("Bearer \(token)", ticket)
+    func authorizationHeaderOfSignIn() async -> (value: String, signIn: SignIn?)? {
+        if let departing = Self.departing { return departing.accessToken.map { ("Bearer \($0)", nil) } }
+        guard let signIn = pair.signIn, let token = await validAccessToken(), pair.holds(signIn) else { return nil }
+        return ("Bearer \(token)", signIn)
     }
 
     struct LoginResult: Sendable {
@@ -150,9 +150,9 @@ actor AuthTokenManager {
         moodleToken: String?,
         moodlePrivateToken: String?,
         platform: String,
+        for signIn: SignIn,
         replacing refused: String? = nil
     ) async throws -> LoginResult? {
-        let ticket = signIns.ticket
         if turns.isSigningIn {
             await withCheckedContinuation { turns.waiting.append($0) }
         } else {
@@ -167,10 +167,10 @@ actor AuthTokenManager {
             studentId: studentId, moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken,
             platform: platform, to: baseURL
         )
-        guard signIns.isCurrent(ticket) else { throw CancellationError() }
+        guard signIn.isCurrent else { throw CancellationError() }
         let result = try await requests.send(login: request)
-        guard signIns.isCurrent(ticket) else { throw CancellationError() }
-        pair.store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
+        guard signIn.isCurrent else { throw CancellationError() }
+        pair.store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in, for: signIn)
         refreshes.task = nil
         departingSessions.list.forgetAll(on: baseURL)
         return LoginResult(
@@ -183,7 +183,6 @@ actor AuthTokenManager {
     }
 
     func logout() {
-        signIns.moveOn()
         pair.clear()
     }
 
@@ -197,7 +196,7 @@ actor AuthTokenManager {
     func endSession(on backend: URL? = nil) async -> DepartingAccount {
         let baseURL = backend ?? requests.baseURL()
         let access = pair.accessToken, refresh = pair.refreshToken, expiry = pair.expiresAt
-        let refreshOut = refreshes.task, ticket = signIns.ticket, uses = pair.budget.uses
+        let refreshOut = refreshes.task, signIn = pair.signIn, uses = pair.budget.uses
         logout()
         signOutsStarting.withLock { $0 = max($0 - 1, 0) }
         guard let refresh else { return DepartingAccount(accessToken: nil, baseURL: baseURL) }
@@ -206,7 +205,7 @@ actor AuthTokenManager {
         )
         departingSessions.list.add(departing)
         let token = await departingSessions.signOutToken(
-            for: departing, access: access, expiry: expiry, refreshOut: refreshOut, ticket: ticket, uses: uses, of: self
+            for: departing, access: access, expiry: expiry, refreshOut: refreshOut, signIn: signIn, uses: uses, of: self
         )
         return DepartingAccount(accessToken: token, baseURL: baseURL, sessionID: departing.id)
     }

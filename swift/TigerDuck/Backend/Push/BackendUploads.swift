@@ -14,17 +14,17 @@ final class BackendUploads {
 
     static let unchangedCredentialsInterval: TimeInterval = 3600
 
-    func updateCredentialsIfDue(moodleToken: String, moodlePrivateToken: String?) async throws {
+    func updateCredentialsIfDue(moodleToken: String, moodlePrivateToken: String?, for signIn: SignIn) async throws {
         let client = client
         let ledger = ledger
         let fingerprint = SendLedger.fingerprint(of: [moodleToken, moodlePrivateToken ?? ""])
         do {
             _ = try await ledger.send(
                 SendLedger.Channel.credentials, fingerprint: fingerprint,
-                resend: .after(Self.unchangedCredentialsInterval), isCurrent: { true }
+                resend: .after(Self.unchangedCredentialsInterval), for: signIn
             ) {
                 let response = try await client.updateCredentials(
-                    moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken
+                    moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken, for: signIn
                 )
                 if !response.updated { throw CredentialsNotUpdatedError() }
             }
@@ -40,7 +40,8 @@ final class BackendUploads {
         semester: String,
         resend: Bool,
         addedAt stamp: Date?,
-        isCurrent: @escaping @MainActor () -> Bool
+        for signIn: SignIn,
+        while wanted: @escaping @MainActor () -> Bool
     ) async throws -> Bool {
         let client = client
         let always = resend || request.adds?.isEmpty == false
@@ -49,9 +50,9 @@ final class BackendUploads {
             fingerprint: Self.fingerprint(of: request),
             resend: always ? .always : .after(Self.unchangedUploadInterval),
             pausesAfterRefusal: true,
-            isCurrent: isCurrent
+            for: signIn, while: wanted
         ) {
-            try await client.uploadCourses(request, addedAt: stamp)
+            try await client.uploadCourses(request, addedAt: stamp, for: signIn)
         }
         if sent { onCoursesUploaded() }
         return sent
@@ -59,14 +60,15 @@ final class BackendUploads {
 
     func uploadAssignmentsIfChanged(
         _ request: PushAPI.AssignmentUploadRequest,
-        isCurrent: @escaping @MainActor () -> Bool
+        for signIn: SignIn,
+        while wanted: @escaping @MainActor () -> Bool
     ) async throws -> Bool {
         let client = client
         return try await ledger.send(
             SendLedger.Channel.assignments, fingerprint: Self.fingerprint(of: request),
-            resend: .after(Self.unchangedUploadInterval), pausesAfterRefusal: true, isCurrent: isCurrent
+            resend: .after(Self.unchangedUploadInterval), pausesAfterRefusal: true, for: signIn, while: wanted
         ) {
-            try await client.uploadAssignments(request)
+            try await client.uploadAssignments(request, for: signIn)
         }
     }
 

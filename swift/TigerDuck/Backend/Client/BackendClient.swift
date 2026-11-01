@@ -15,6 +15,7 @@ nonisolated struct BackendRequest: Sendable {
     var cachePolicy: URLRequest.CachePolicy?
     var postsCredentials = false
     var baseURL: URL?
+    var signIn: SignIn?
 
     init(_ method: String, _ path: String...) {
         self.method = method
@@ -24,6 +25,12 @@ nonisolated struct BackendRequest: Sendable {
     init(_ method: String, segments: [String]) {
         self.method = method
         self.path = segments
+    }
+
+    func sent(for signIn: SignIn) -> BackendRequest {
+        var request = self
+        request.signIn = signIn
+        return request
     }
 
     func json(_ body: some Encodable, encoder: JSONEncoder = BackendClient.encoder) throws -> BackendRequest {
@@ -64,8 +71,8 @@ nonisolated struct BackendResponse: Sendable {
 /// The bearer token for a request with the sign-in it was issued for, and what a 401 does:
 /// `recover` answers whether another token of that sign-in is ready for the one replay.
 nonisolated struct BackendAuth: Sendable {
-    let header: @Sendable () async -> (value: String, signIn: AccountSession.Ticket?)?
-    let recover: @Sendable (_ refused: String, _ code: String?, _ signIn: AccountSession.Ticket) async -> Bool
+    let header: @Sendable () async -> (value: String, signIn: SignIn?)?
+    let recover: @Sendable (_ refused: String, _ code: String?, _ signIn: SignIn) async -> Bool
 
     static func header(_ provider: @escaping @Sendable () async -> String?) -> BackendAuth {
         BackendAuth(header: { await provider().map { ($0, nil) } }, recover: { _, _, _ in false })
@@ -125,13 +132,16 @@ nonisolated final class BackendClient: Sendable {
         }
     }
 
-    private func send(_ request: BackendRequest, replaying: AccountSession.Ticket?) async throws -> BackendResponse {
+    private func send(_ request: BackendRequest, replaying: SignIn?) async throws -> BackendResponse {
         var urlRequest = try makeURLRequest(request)
         var sent: String?
-        var signIn: AccountSession.Ticket?
+        var signIn: SignIn?
+        if request.signIn?.isCurrent == false { throw PushAPIError.notSignedIn }
         if request.authenticated {
             if let header = await auth.header(), !header.value.isEmpty {
-                if let replaying, header.signIn != replaying { throw PushAPIError.notSignedIn }
+                if let bound = replaying ?? request.signIn, let held = header.signIn, held != bound {
+                    throw PushAPIError.notSignedIn
+                }
                 urlRequest.setValue(header.value, forHTTPHeaderField: "Authorization")
                 sent = header.value.split(separator: " ").last.map(String.init)
                 signIn = header.signIn
