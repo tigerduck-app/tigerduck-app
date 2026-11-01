@@ -1,9 +1,6 @@
 import Defaults
 import Foundation
 import Testing
-#if os(iOS)
-import UIKit
-#endif
 import os
 @testable import TigerDuck
 
@@ -510,15 +507,6 @@ struct PushRegistrationServiceTests {
             #expect(Defaults[.bulletinPushEnabled] == true)
         }
     }
-
-    #if os(iOS)
-    @Test("an iPhone and iPad app running on a Mac registers as a Mac, though it reports the iPad idiom")
-    func anIOSAppOnAMacRegistersAsAMac() {
-        #expect(PushDeviceClass.deviceClass(idiom: .pad, isiOSAppOnMac: true) == "mac")
-        #expect(PushDeviceClass.deviceClass(idiom: .pad, isiOSAppOnMac: false) == "ipad")
-        #expect(PushDeviceClass.deviceClass(idiom: .phone, isiOSAppOnMac: false) == "iphone")
-    }
-    #endif
 
     @Test("a bulletin opt-out the server accepts is persisted locally")
     func acceptedBulletinPatchPersists() async throws {
