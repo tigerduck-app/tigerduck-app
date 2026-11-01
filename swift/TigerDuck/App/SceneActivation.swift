@@ -19,9 +19,16 @@ final class SceneActivation {
         app.updateNotifyCoordinator.checkInBackground()
     }
 
+    /// The store-review account sends nothing, so only its Live Activity follows the clock.
     func becameActive() {
-        refreshCourseChanges()
         returnTask?.cancel()
+        guard !app.authService.session.currentSignIn.isDemo else {
+            #if os(iOS)
+            returnTask = Task { [app] in await app.liveActivity.refresh() }
+            #endif
+            return
+        }
+        refreshCourseChanges()
         returnTask = Task { [app] in
             #if os(iOS)
             await app.liveActivity.refresh()
@@ -86,7 +93,6 @@ final class SceneActivation {
     }
 
     private func refreshOnReturn() {
-        guard !app.authService.session.currentSignIn.isDemo else { return }
         guard app.hasCompletedOnboarding else {
             app.feed.startPolling()
             return
