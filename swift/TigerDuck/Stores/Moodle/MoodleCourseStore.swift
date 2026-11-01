@@ -117,7 +117,7 @@ final class MoodleCourseStore {
             guard let call = MoodleCourseContentsService.viewCalls[material.module],
                   (try? await api.functions())?.contains(call.function) == true else { return }
             do {
-                try await api.markMaterialViewed(material) { @MainActor in context.isCurrent() }
+                try await api.markMaterialViewed(material, context.signIn)
             } catch is CancellationError {
                 return
             } catch {
@@ -136,7 +136,7 @@ final class MoodleCourseStore {
 
     @discardableResult
     func download(_ file: MoodleFile, in owner: MoodleFileOwner) async -> URL? {
-        await downloads.download(file, to: location(of: file, in: owner), fetch: api.download, isCurrent: context.isCurrent)
+        await downloads.download(file, to: location(of: file, in: owner), fetch: api.download, for: context.signIn)
     }
 
     func cancelDownload(of file: MoodleFile, in owner: MoodleFileOwner) {
@@ -203,12 +203,12 @@ final class MoodleCourseStore {
     }
 
     func updatePicture(_ jpeg: Data) async throws {
-        try await api.updatePicture(jpeg) { @MainActor [context] in context.isCurrent() }
+        try await api.updatePicture(jpeg, context.signIn)
         await refetchMembers()
     }
 
     func refetchMembers() async {
-        guard context.isCurrent() else { return }
+        guard context.signIn.isCurrent else { return }
         await members.refetch(membersFetch)
     }
 

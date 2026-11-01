@@ -29,7 +29,7 @@ enum CourseSelectionService {
         studentId: String,
         password: String,
         forceRefresh: Bool = false,
-        persistGuard: (@Sendable () -> Bool)? = nil
+        for signIn: SignIn
     ) async throws -> (courseNos: [String], live: Bool) {
         // The D01 page returns whichever term course selection is open for, which runs ahead
         // of the term in session, so cache under that term, not the month heuristic's guess.
@@ -38,14 +38,13 @@ enum CourseSelectionService {
             return (cached, false)
         }
 
-        let isCurrent = AccountSession.school.currentCheck()
-        if !(await NTUSTSessionManager.shared.probeCookiesValid()) {
+        if !(await NTUSTSessionManager.shared.probeCookiesValid(for: signIn)) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,
                 studentId: studentId,
                 password: password,
-                isCurrent: isCurrent
+                for: signIn
             )
             guard loggedIn else { throw CourseServiceError.notAuthenticated }
         }
@@ -72,7 +71,7 @@ enum CourseSelectionService {
                 serviceURL: courseSelectionRoot,
                 studentId: studentId,
                 password: password,
-                isCurrent: isCurrent
+                for: signIn
             )
             guard loggedIn else { throw CourseServiceError.notAuthenticated }
 
@@ -89,14 +88,14 @@ enum CourseSelectionService {
             }
             outcome = .recovered
             let retryCourseNos = courseNos(inListPage: retryHTML)
-            if persistGuard?() ?? true {
+            if signIn.isCurrent {
                 saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: retryCourseNos)
             }
             return (retryCourseNos, true)
         }
 
         let courseNos = courseNos(inListPage: html)
-        if persistGuard?() ?? true {
+        if signIn.isCurrent {
             saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: courseNos)
         }
         return (courseNos, true)

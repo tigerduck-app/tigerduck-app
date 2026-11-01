@@ -4,14 +4,21 @@ import os
 import TigerDuckCore
 
 enum CourseFetch {
-
+    /// The Moodle and transcript answers every term of a warm-up shares, with the sign-in they
+    /// were read for.
+    struct TermAnswers: Sendable {
+        let signIn: SignIn
+        let moodle: [MoodleEnrolledCourse]?
+        let transcript: ScoreReport?
+    }
 
     static func fetchCourses(
         authService: AuthService,
         semester: String = CourseSelectionService.currentSemesterCode(),
         forceRefresh: Bool = false,
         resendingRoster: Bool = false,
-        applyAfter: PullGate = { true }
+        applyAfter: PullGate = { true },
+        for signIn: SignIn
     ) async -> [SDCourse] {
         await fetchCourses(
             authService: authService,
@@ -19,9 +26,9 @@ enum CourseFetch {
             forceRefresh: forceRefresh,
             resendingRoster: resendingRoster,
             applyAfter: applyAfter,
-            ticket: authService.session.ticket,
-            moodle: { await CourseSources.moodleCourses(authService: authService) },
-            transcript: { await CourseSources.transcript(authService: authService) }
+            signIn: signIn,
+            moodle: { await CourseSources.moodleCourses(for: signIn) },
+            transcript: { await CourseSources.transcript(authService: authService, for: signIn) }
         )
     }
 
@@ -29,43 +36,40 @@ enum CourseFetch {
         NameAbbrService.shared.clearRawNameCache()
     }
 
-    static func warmAllSemesterCaches(authService: AuthService) async {
+    static func warmAllSemesterCaches(authService: AuthService, for signIn: SignIn) async {
         await SemesterCatalog.refreshIfStale()
         let semesters = SemesterCatalog.availableSemesters().filter {
             CourseStore.shared.loadCourses(semester: $0).isEmpty
         }
-        await warmTerms(
-            semesters,
-            account: authService.session,
-            shared: { (await CourseSources.moodleCourses(authService: authService), await CourseSources.transcript(authService: authService)) }
-        ) { semester, ticket, moodle, transcript in
+        await warmTerms(semesters) {
+            TermAnswers(
+                signIn: signIn,
+                moodle: await CourseSources.moodleCourses(for: signIn),
+                transcript: await CourseSources.transcript(authService: authService, for: signIn)
+            )
+        } fetch: { semester, answers in
             _ = await fetchCourses(
                 authService: authService,
                 semester: semester,
                 forceRefresh: false,
-                ticket: ticket,
-                moodle: { moodle },
-                transcript: { transcript }
+                signIn: answers.signIn,
+                moodle: { answers.moodle },
+                transcript: { answers.transcript }
             )
         }
     }
 
     static func warmTerms(
         _ semesters: [String],
-        account: AccountSession,
-        shared: () async -> (moodle: [MoodleEnrolledCourse]?, transcript: ScoreReport?),
-        fetch: @escaping @Sendable (
-            _ semester: String, _ ticket: AccountSession.Ticket, _ moodle: [MoodleEnrolledCourse]?,
-            _ transcript: ScoreReport?
-        ) async -> Void
+        shared: () async -> TermAnswers,
+        fetch: @escaping @Sendable (_ semester: String, _ answers: TermAnswers) async -> Void
     ) async {
         guard !semesters.isEmpty else { return }
-        let ticket = account.ticket
         let answers = await shared()
-        guard account.isCurrent(ticket) else { return }
+        guard answers.signIn.isCurrent else { return }
         await withTaskGroup(of: Void.self) { group in
             for semester in semesters {
-                group.addTask { await fetch(semester, ticket, answers.moodle, answers.transcript) }
+                group.addTask { await fetch(semester, answers) }
             }
         }
     }
@@ -76,7 +80,7 @@ enum CourseFetch {
         forceRefresh: Bool,
         resendingRoster: Bool = false,
         applyAfter: PullGate = { true },
-        ticket: AccountSession.Ticket,
+        signIn: SignIn,
         moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
     ) async -> [SDCourse] {
@@ -97,14 +101,14 @@ enum CourseFetch {
 
         let selection = servesSelectionSemester
             ? await CourseSources.selectionCourseNos(authService: authService, studentId: studentId, password: password,
-                                                     semester: semester, forceRefresh: forceRefresh, ticket: ticket)
+                                                     semester: semester, forceRefresh: forceRefresh, for: signIn)
             : nil
         let courseSelectionNos = selection?.courseNos
         let selectionIsLive = selection?.live ?? false
 
         let selectionAnswered = courseSelectionNos?.isEmpty == false
         let report = selectionAnswered
-            ? ScoreReportFiles.shared.loadScoreReport(studentId: studentId)?.report
+            ? NTUSTScoreService.cachedScoreReport(studentId: studentId)?.report
             : await transcript()
         let scoreCoursesForSemester = report.map { TermRoster.classRows(of: $0, term: semester) }
         let cachedCourses = CourseStore.shared.loadCourses(semester: semester)
@@ -120,8 +124,8 @@ enum CourseFetch {
 
         let moodleAll = await moodle()
         // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
-        if let moodleAll, !Task.isCancelled, authService.session.isCurrent(ticket) {
-            MoodleFiles.shared.saveMoodleCourseIdMap(AssignmentRecords.moodleCourseIdMap(moodleAll))
+        if let moodleAll, !Task.isCancelled {
+            CourseLookup.saveMoodleCourseIds(AssignmentRecords.moodleCourseIdMap(moodleAll), for: signIn)
         }
 
         let moodleByNo = Dictionary(
@@ -163,11 +167,11 @@ enum CourseFetch {
         }.compactMap { item in item.data.map { TermRoster.LookedUpCourse(course: $0.course(in: semester), answered: item.answered) } }
 
         guard await applyAfter() else { return CourseStore.shared.loadCourses(semester: semester) }
-        if let roster = term.roster, !Task.isCancelled, authService.session.isCurrent(ticket) {
-            CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster)
+        if let roster = term.roster, !Task.isCancelled {
+            CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster, for: signIn)
             if selectionIsLive {
                 let stillDropped = CourseStore.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
-                CourseStore.shared.saveServerDroppedNos(stillDropped, semester: semester)
+                CourseStore.shared.saveServerDroppedNos(stillDropped, semester: semester, for: signIn)
             }
         }
 
@@ -181,7 +185,7 @@ enum CourseFetch {
             looked.map(\.course), fromSelection: term.roster != nil, cached: Set(cachedByNo.keys)
         )
 
-        guard !Task.isCancelled, authService.session.isCurrent(ticket) else {
+        guard !Task.isCancelled, signIn.isCurrent else {
             return CourseStore.shared.loadCourses(semester: semester)
         }
         guard let courses = TermRoster.savedCourses(
@@ -190,16 +194,18 @@ enum CourseFetch {
         ) else { return cachedCourses }
         if let pastTerm {
             CourseStore.shared.recordSelectionRoster(
-                semester: semester, roster: pastTerm.roster, alsoListed: pastTerm.dropping, isFinal: true
+                semester: semester, roster: pastTerm.roster, alsoListed: pastTerm.dropping, isFinal: true, for: signIn
             )
         }
-        guard CourseStore.shared.saveFetchedCourses(courses, semester: semester, display: display, since: editToken) else {
+        guard CourseStore.shared.saveFetchedCourses(
+            courses, semester: semester, display: display, since: editToken, for: signIn
+        ) else {
             return CourseStore.shared.loadCourses(semester: semester)
         }
         CourseUpload.uploadVisibleCourses(
             courses, semester: semester, hidden: Set(CourseStore.shared.loadDeletedCourseNos()),
             roster: TermRoster.uploadedRoster(selection: term.roster, live: selectionIsLive, pastTerm: pastTerm?.roster),
-            resendingRoster: resendingRoster, to: CourseUpload.courseUploader
+            resendingRoster: resendingRoster, for: signIn, to: CourseUpload.courseUploader
         )
         return courses
     }
@@ -208,11 +214,10 @@ enum CourseFetch {
         _ status: ServerStatus,
         for server: ServerKind,
         note: String? = nil,
-        round ticket: AccountSession.Ticket,
-        authService: AuthService,
+        round signIn: SignIn,
         tracker: ServerStatusTracker = .shared
     ) {
-        guard authService.session.isCurrent(ticket) else { return }
+        guard signIn.isCurrent else { return }
         tracker.set(status, for: server, note: note)
     }
 }

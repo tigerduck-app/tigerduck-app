@@ -4,13 +4,13 @@ import Foundation
 typealias PullGate = @MainActor () async -> Bool
 
 private final class AssignmentRound {
-    let signIn: AccountSession.Ticket
+    let signIn: SignIn
     let rechecks: Bool
     var task: Task<Void, Never>?
     var assignments: [SDAssignment] = []
     var gates: [PullGate] = []
 
-    init(signIn: AccountSession.Ticket, rechecks: Bool) {
+    init(signIn: SignIn, rechecks: Bool) {
         self.signIn = signIn
         self.rechecks = rechecks
     }
@@ -36,48 +36,41 @@ enum AssignmentFetch {
 
     static func fetchAssignments(
         authService: AuthService, recheckSubmissions: Bool = false,
-        applyAfter: @escaping PullGate = { true }
+        applyAfter: @escaping PullGate = { true }, for signIn: SignIn
     ) async -> [SDAssignment] {
-        let ticket = authService.session.ticket
-        return await sharedRound(
-            signIn: ticket,
-            rechecks: recheckSubmissions,
-            isCurrent: { authService.session.isCurrent(ticket) },
-            applyAfter: applyAfter
-        ) { pulled in
+        await sharedRound(signIn: signIn, rechecks: recheckSubmissions, applyAfter: applyAfter) { pulled in
             await runAssignmentRound(
-                authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: pulled
+                authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: pulled, signIn: signIn
             )
         }
     }
 
     static func sharedRound(
-        signIn: AccountSession.Ticket,
+        signIn: SignIn,
         rechecks: Bool,
-        isCurrent: @MainActor () -> Bool,
         rounds: AssignmentRounds = .shared,
         applyAfter: @escaping PullGate = { true },
         run: @escaping @MainActor (_ pulled: @escaping PullGate) async -> [SDAssignment]
     ) async -> [SDAssignment] {
         var waitedFor: AssignmentRound?
-        while let round = rounds.running, round.signIn == signIn, round !== waitedFor {
+        while let round = rounds.running, round.signIn.isCurrent, signIn.isCurrent, round !== waitedFor {
             round.gates.append(applyAfter)
             await round.task?.value
-            if round.rechecks || !rechecks { return answer(round, isCurrent: isCurrent) }
+            if round.rechecks || !rechecks { return answer(round, for: signIn) }
             waitedFor = round
         }
-        guard isCurrent() else { return AssignmentStore.shared.loadAssignments() }
+        guard signIn.isCurrent else { return AssignmentStore.shared.loadAssignments() }
         let round = AssignmentRound(signIn: signIn, rechecks: rechecks)
         round.gates = [applyAfter]
         round.task = Task { round.assignments = await run { await round.pulled() } }
         rounds.running = round
         await round.task?.value
         if rounds.running === round { rounds.running = nil }
-        return answer(round, isCurrent: isCurrent)
+        return answer(round, for: signIn)
     }
 
-    private static func answer(_ round: AssignmentRound, isCurrent: @MainActor () -> Bool) -> [SDAssignment] {
-        isCurrent() ? round.assignments : AssignmentStore.shared.loadAssignments()
+    private static func answer(_ round: AssignmentRound, for signIn: SignIn) -> [SDAssignment] {
+        signIn.isCurrent ? round.assignments : AssignmentStore.shared.loadAssignments()
     }
 
     static let foregroundRefreshInterval: TimeInterval = 60
@@ -93,7 +86,7 @@ enum AssignmentFetch {
     }
 
     static func refreshAssignmentsIfDue(
-        authService: AuthService, applyAfter: @escaping PullGate = { true }
+        authService: AuthService, applyAfter: @escaping PullGate = { true }, for signIn: SignIn
     ) async {
         let now = Date()
         guard authService.storedStudentId != nil,
@@ -106,7 +99,7 @@ enum AssignmentFetch {
         let showsProgress = manager.loadingState == .idle || manager.loadingState == .loaded
         if showsProgress { manager.loadingState = .loading }
         let starts = manager.loadingStarts
-        _ = await fetchAssignments(authService: authService, applyAfter: applyAfter)
+        _ = await fetchAssignments(authService: authService, applyAfter: applyAfter, for: signIn)
         if showsProgress, manager.loadingStarts == starts { manager.loadingState = .loaded }
     }
 
@@ -116,9 +109,8 @@ enum AssignmentFetch {
     }
 
     private static func runAssignmentRound(
-        authService: AuthService, recheckSubmissions: Bool, applyAfter: PullGate
+        authService: AuthService, recheckSubmissions: Bool, applyAfter: PullGate, signIn: SignIn
     ) async -> [SDAssignment] {
-        let ticket = authService.session.ticket
         guard let account = authService.storedStudentId,
               authService.storedPassword != nil else {
             return AssignmentStore.shared.loadAssignments()
@@ -133,9 +125,8 @@ enum AssignmentFetch {
 
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
             let moodleIdMapForAssignments = AssignmentRecords.moodleCourseIdMap(moodleEnrolled)
-            if !Task.isCancelled,
-               authService.session.isCurrent(ticket) {
-                MoodleFiles.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
+            if !Task.isCancelled {
+                CourseLookup.saveMoodleCourseIds(moodleIdMapForAssignments, for: signIn)
             }
 
             let localCourseNos = Set(currentCourses.map(\.courseNo)).union(
@@ -156,9 +147,7 @@ enum AssignmentFetch {
             }
             let relevantMoodleCourseIds = relevantCourses.map(\.id)
             guard !relevantMoodleCourseIds.isEmpty else {
-                if !moodleEnrolled.isEmpty, authService.session.isCurrent(ticket) {
-                    Defaults[.schoolDataSyncedAt] = Date()
-                }
+                if !moodleEnrolled.isEmpty { SchoolAccountKeys.noteSchoolDataSynced(for: signIn) }
                 return AssignmentStore.shared.loadAssignments()
             }
 
@@ -220,20 +209,18 @@ enum AssignmentFetch {
                 fetchedAt: askedAt,
                 assignments: .shared,
                 moodle: .shared,
-                isCurrent: { authService.session.isCurrent(ticket) }
+                for: signIn
             )
             if persisted {
-                if statuses.count == recordsToAsk.count {
-                    Defaults[.schoolDataSyncedAt] = Date()
-                }
-                AssignmentAnswers.uploadForReminders(assignmentsToPersist)
+                if statuses.count == recordsToAsk.count { SchoolAccountKeys.noteSchoolDataSynced(for: signIn) }
+                AssignmentAnswers.uploadForReminders(assignmentsToPersist, for: signIn)
             }
-            await MainActor.run { CourseFetch.record(.ok, for: .moodle, round: ticket, authService: authService) }
+            await MainActor.run { CourseFetch.record(.ok, for: .moodle, round: signIn) }
             return assignmentsToPersist
         } catch {
             await MainActor.run {
                 let note = (error as? MoodleWebserviceError) == .siteMaintenance ? error.localizedDescription : nil
-                CourseFetch.record(.failed, for: .moodle, note: note, round: ticket, authService: authService)
+                CourseFetch.record(.failed, for: .moodle, note: note, round: signIn)
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return AssignmentStore.shared.loadAssignments()
@@ -246,7 +233,7 @@ enum AssignmentFetch {
         askedAt: ContinuousClock.Instant,
         assignments cache: AssignmentStore,
         rounds: AssignmentRounds = .shared,
-        isCurrent: () -> Bool
+        for signIn: SignIn
     ) async -> Bool {
         var waitedFor: AssignmentRound?
         while let round = rounds.running, round !== waitedFor {
@@ -254,7 +241,7 @@ enum AssignmentFetch {
             waitedFor = round
         }
         let id = String(status.assignId)
-        guard !Task.isCancelled, isCurrent(), rounds.statusAskedAt[id].map({ $0 < askedAt }) ?? true else { return false }
+        guard !Task.isCancelled, signIn.isCurrent, rounds.statusAskedAt[id].map({ $0 < askedAt }) ?? true else { return false }
         rounds.statusAskedAt[id] = askedAt
         let assignments = cache.loadAssignments()
         guard let assignment = assignments.first(where: { $0.assignmentId == id }) else { return false }
@@ -265,14 +252,16 @@ enum AssignmentFetch {
             || assignment.dueDate != dueBefore || assignment.extensionDueDate != extensionBefore else { return false }
         assignment.isCompleted = status.isSubmitted
         assignment.submittedAt = status.submittedAt
-        cache.saveAssignments(assignments)
-        if assignment.dueDate != dueBefore { AssignmentAnswers.saveMoodleCalendarEvents(of: assignments, in: cache) }
+        guard cache.saveAssignments(assignments, for: signIn) else { return false }
+        if assignment.dueDate != dueBefore {
+            AssignmentAnswers.saveMoodleCalendarEvents(of: assignments, in: cache, for: signIn)
+        }
         // An extension ahead takes submissions past the cutoff, so rounds ask about it again.
         if let extended = status.extensionDueDate, extended > Date() {
             var closed = cache.loadClosedUnsubmittedAssignments()
-            if closed.removeValue(forKey: id) != nil { cache.replaceClosedUnsubmittedAssignments(closed) }
+            if closed.removeValue(forKey: id) != nil { cache.replaceClosedUnsubmittedAssignments(closed, for: signIn) }
         }
-        AssignmentAnswers.uploadForReminders(assignments)
+        AssignmentAnswers.uploadForReminders(assignments, for: signIn)
         return true
     }
 }

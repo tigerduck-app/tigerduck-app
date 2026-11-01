@@ -5,11 +5,11 @@ nonisolated struct MoodleCourseAPI: Sendable {
     var forums: @Sendable (_ courseIds: [Int]) async throws -> [MoodleForum]
     var discussions: @Sendable (_ forumId: Int, _ page: Int) async throws -> [MoodleDiscussion]
     var posts: @Sendable (_ discussionId: Int) async throws -> [MoodlePost] = { _ in [] }
-    var markViewed: @Sendable (_ discussionId: Int, _ isCurrent: @escaping @MainActor @Sendable () -> Bool) async throws -> Void
+    var markViewed: @Sendable (_ discussionId: Int, _ signIn: SignIn) async throws -> Void
     var materials: @Sendable (_ courseId: Int) async throws -> MoodleCourseMaterials = { _ in
         MoodleCourseMaterials(sections: [])
     }
-    var markMaterialViewed: @Sendable (_ material: MoodleMaterial, _ isCurrent: @escaping @MainActor @Sendable () -> Bool) async throws -> Void = { _, _ in }
+    var markMaterialViewed: @Sendable (_ material: MoodleMaterial, _ signIn: SignIn) async throws -> Void = { _, _ in }
     var download: @Sendable (_ file: MoodleFile, _ progress: @escaping @Sendable (Double) -> Void) async throws -> URL = { _, _ in
         throw CancellationError()
     }
@@ -17,7 +17,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
         MoodleMemberList(ownId: nil, members: [])
     }
     var picture: @Sendable (_ url: URL) async throws -> Data = { _ in Data() }
-    var updatePicture: @Sendable (_ jpeg: Data, _ isCurrent: @escaping @MainActor @Sendable () -> Bool) async throws -> Void = { _, _ in
+    var updatePicture: @Sendable (_ jpeg: Data, _ signIn: SignIn) async throws -> Void = { _, _ in
         throw CancellationError()
     }
     var gradeItems: @Sendable (_ courseId: Int) async throws -> [MoodleGradeItem] = { _ in [] }
@@ -48,16 +48,16 @@ nonisolated struct MoodleCourseAPI: Sendable {
                 try await MoodleForumService.posts(discussionId: discussionId, token: $0)
             }
         },
-        markViewed: { discussionId, isCurrent in
-            try await markDiscussionViewed(discussionId, isCurrent: isCurrent)
+        markViewed: { discussionId, signIn in
+            try await markDiscussionViewed(discussionId, for: signIn)
         },
         materials: { courseId in
             try await MoodleWebserviceClient.withToken {
                 try await MoodleCourseContentsService.materials(courseId: courseId, token: $0)
             }
         },
-        markMaterialViewed: { material, isCurrent in
-            try await logMaterialView(material, isCurrent: isCurrent)
+        markMaterialViewed: { material, signIn in
+            try await logMaterialView(material, for: signIn)
         },
         download: { file, progress in
             try await MoodleWebserviceClient.withToken { token in
@@ -83,8 +83,8 @@ nonisolated struct MoodleCourseAPI: Sendable {
                 return try await MoodleCourseMembersService.picture(url, accessKey: key, token: token)
             }
         },
-        updatePicture: { jpeg, isCurrent in
-            try await updatePicture(jpeg, isCurrent: isCurrent)
+        updatePicture: { jpeg, signIn in
+            try await updatePicture(jpeg, for: signIn)
         },
         gradeItems: { courseId in
             try await MoodleWebserviceClient.withToken { token in
@@ -114,7 +114,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
         submissionFetched: { status, askedAt, context in
             Task {
                 await AssignmentFetch.takeSubmissionStatus(
-                    status, askedAt: askedAt, assignments: context.assignments, isCurrent: context.isCurrent
+                    status, askedAt: askedAt, assignments: context.assignments, for: context.signIn
                 )
             }
         }
@@ -122,13 +122,13 @@ nonisolated struct MoodleCourseAPI: Sendable {
 
     static func markDiscussionViewed(
         _ discussionId: Int,
-        isCurrent: @escaping @MainActor @Sendable () -> Bool,
+        for signIn: SignIn,
         tokens: MoodleWebserviceClient.TokenSource = .keychain,
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws {
         try await MoodleWebserviceClient.withToken(tokens) { token in
-            guard await isCurrent(), !Task.isCancelled else { throw CancellationError() }
+            guard signIn.isCurrent, !Task.isCancelled else { throw CancellationError() }
             try await MoodleForumService.markViewed(
                 discussionId: discussionId, token: token, session: session, siteURL: siteURL
             )
@@ -137,27 +137,27 @@ nonisolated struct MoodleCourseAPI: Sendable {
 
     static func updatePicture(
         _ jpeg: Data,
-        isCurrent: @escaping @MainActor @Sendable () -> Bool,
+        for signIn: SignIn,
         tokens: MoodleWebserviceClient.TokenSource = .keychain,
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws {
         try await MoodleWebserviceClient.withToken(tokens) { token in
             try await MoodleProfilePictureService.update(
-                jpeg: jpeg, token: token, isCurrent: isCurrent, session: session, siteURL: siteURL
+                jpeg: jpeg, token: token, for: signIn, session: session, siteURL: siteURL
             )
         }
     }
 
     static func logMaterialView(
         _ material: MoodleMaterial,
-        isCurrent: @escaping @MainActor @Sendable () -> Bool,
+        for signIn: SignIn,
         tokens: MoodleWebserviceClient.TokenSource = .keychain,
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws {
         try await MoodleWebserviceClient.withToken(tokens) { token in
-            guard await isCurrent(), !Task.isCancelled else { throw CancellationError() }
+            guard signIn.isCurrent, !Task.isCancelled else { throw CancellationError() }
             try await MoodleCourseContentsService.markViewed(material, token: token, session: session, siteURL: siteURL)
         }
     }

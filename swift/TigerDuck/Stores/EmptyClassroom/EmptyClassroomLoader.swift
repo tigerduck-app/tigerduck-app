@@ -6,7 +6,6 @@ import Observation
 final class EmptyClassroomLoader {
     struct Reader {
         let credentials: ClassroomUsageService.Credentials
-        let isCurrent: @MainActor () -> Bool
     }
 
     struct Read: Equatable {
@@ -25,18 +24,6 @@ final class EmptyClassroomLoader {
 
     init(service: ClassroomUsageService? = nil) {
         self.service = service ?? .shared
-    }
-
-    func connect(_ authService: AuthService) {
-        reader = { [weak authService] in
-            guard let authService,
-                  let studentId = authService.storedStudentId,
-                  let password = authService.storedPassword else { return nil }
-            return Reader(
-                credentials: .init(studentId: studentId, password: password, signIn: AccountSession.school.ticket),
-                isCurrent: authService.session.currentCheck()
-            )
-        }
     }
 
     func isReading(_ day: Date) -> Bool {
@@ -85,7 +72,7 @@ final class EmptyClassroomLoader {
                 isReading = false
             }
             siteStatus = service.siteStatus
-            guard !Task.isCancelled, isWanted(), reader.isCurrent() else { return }
+            guard !Task.isCancelled, isWanted(), reader.credentials.signIn.isCurrent else { return }
             finish(outcome)
         }
     }

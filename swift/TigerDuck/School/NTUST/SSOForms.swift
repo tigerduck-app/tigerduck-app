@@ -26,14 +26,14 @@ enum SSOForms {
         return String(data: data, encoding: big5)
     }
 
-    static func visit(_ url: URL, session: URLSession, isCurrent: @escaping @MainActor () -> Bool) async throws -> (String, URL) {
+    static func visit(_ url: URL, session: URLSession, signIn: SignIn) async throws -> (String, URL) {
         let (data, response) = try await session.data(from: url)
         guard let httpResp = response as? HTTPURLResponse,
               let html = decodeHTML(data, response: httpResp) else {
             throw SSOLoginError.invalidResponse
         }
         return try await resolveOIDCBridgeForms(
-            session: session, html: html, baseURL: httpResp.url ?? url, isCurrent: isCurrent
+            session: session, html: html, baseURL: httpResp.url ?? url, signIn: signIn
         )
     }
 
@@ -41,7 +41,7 @@ enum SSOForms {
         session: URLSession,
         html: String,
         baseURL: URL,
-        isCurrent: @escaping @MainActor () -> Bool,
+        signIn: SignIn,
         maxSteps: Int = 3
     ) async throws -> (String, URL) {
         var currentHTML = html
@@ -64,7 +64,7 @@ enum SSOForms {
                 throw SSOLoginError.invalidResponse
             }
             let (data, response) = try await postForm(
-                session: session, url: actionURL, fields: form.inputs, isCurrent: isCurrent,
+                session: session, url: actionURL, fields: form.inputs, signIn: signIn,
                 delegate: CredentialPostDelegate()
             )
             if let resp = response as? HTTPURLResponse, (300..<400).contains(resp.statusCode) {
@@ -85,10 +85,10 @@ enum SSOForms {
         session: URLSession,
         url: URL,
         fields: [(name: String, value: String)],
-        isCurrent: @escaping @MainActor () -> Bool,
+        signIn: SignIn,
         delegate: (any URLSessionTaskDelegate & Sendable)? = nil
     ) async throws -> (Data, URLResponse) {
-        try SSOLoginService.checkSignedIn(isCurrent)
+        try SSOLoginService.checkSignedIn(signIn)
         var request = URLRequest(url: url, timeoutInterval: 15)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")

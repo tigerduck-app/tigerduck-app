@@ -2,17 +2,21 @@ import Foundation
 import os
 
 enum CourseUpload {
-    typealias CourseUploader = (_ courses: [SDCourse], _ semester: String, _ asRoster: Bool, _ resend: Bool) -> Void
+    typealias CourseUploader = (
+        _ courses: [SDCourse], _ semester: String, _ asRoster: Bool, _ resend: Bool, _ signIn: SignIn
+    ) -> Void
 
     static var courseUploader: CourseUploader?
     static var rosterRequests = RosterRequestLog()
 
-    static func answerRosterRequests(in snapshot: [String: Any], authService: AuthService) {
+    static func answerRosterRequests(in snapshot: [String: Any], authService: AuthService, for signIn: SignIn) {
         guard SyncPolicy.current.uploadsCourses else { return }
-        for term in rosterRequests.termsToAsk(in: snapshot, signIn: authService.session.ticket, now: Date()) {
+        for term in rosterRequests.termsToAsk(in: snapshot, signIn: signIn, now: Date()) {
             AppLogger.sync.info("[sync] roster requested for \(term, privacy: .public)")
             Task {
-                _ = await CourseFetch.fetchCourses(authService: authService, semester: term, forceRefresh: true, resendingRoster: true)
+                _ = await CourseFetch.fetchCourses(
+                    authService: authService, semester: term, forceRefresh: true, resendingRoster: true, for: signIn
+                )
             }
         }
     }
@@ -23,6 +27,7 @@ enum CourseUpload {
         hidden: Set<String>,
         roster: [String]? = nil,
         resendingRoster: Bool = false,
+        for signIn: SignIn,
         to upload: CourseUploader?
     ) {
         let isHidden = { (courseNo: String) in CourseTombstone.isHidden(courseNo, semester: semester, in: hidden) }
@@ -30,6 +35,6 @@ enum CourseUpload {
         guard !visible.isEmpty else { return }
         let listed = Set(visible.map(\.courseNo))
         let asRoster = roster?.allSatisfy { listed.contains($0) || isHidden($0) } ?? false
-        upload?(visible, semester, asRoster, resendingRoster && asRoster)
+        upload?(visible, semester, asRoster, resendingRoster && asRoster, signIn)
     }
 }

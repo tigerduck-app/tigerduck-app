@@ -37,13 +37,14 @@ final class MoodleAutologinService {
 
     func url(for url: URL) async -> URL {
         guard Self.isMoodlePage(url), !isRequesting, isKeyDue() else { return url }
-        let ticket = account.ticket
-        guard let key = await answer(of: startKeyRequest(for: ticket)), account.isCurrent(ticket) else { return url }
-        return Self.signedInURL(key, opening: url) ?? url
+        return await account.withSignIn { signIn in
+            guard let key = await answer(of: startKeyRequest(for: signIn)), signIn.isCurrent else { return url }
+            return Self.signedInURL(key, opening: url) ?? url
+        }
     }
 
     /// Moodle starts ``keyInterval`` at the request, so a key that comes late counts.
-    private func startKeyRequest(for ticket: AccountSession.Ticket) -> Task<Key?, Never> {
+    private func startKeyRequest(for signIn: SignIn) -> Task<Key?, Never> {
         isRequesting = true
         return Task {
             defer { isRequesting = false }
@@ -54,7 +55,7 @@ final class MoodleAutologinService {
                 AppLogger.breadcrumb("autologin key unavailable: \(error)", category: "moodle")
                 return nil
             }
-            guard let key, !key.value.isEmpty, account.isCurrent(ticket) else { return nil }
+            guard let key, !key.value.isEmpty, signIn.isCurrent else { return nil }
             lastKeyAt = now()
             return key
         }

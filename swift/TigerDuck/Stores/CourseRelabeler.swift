@@ -6,7 +6,7 @@ import TigerDuckCore
 final class CourseRelabeler {
     private var relabelTask: Task<Void, Never>?
 
-    func relabelAll() {
+    func relabelAll(for signIn: SignIn) {
         relabelTask?.cancel()
         relabelTask = Task.detached(priority: .userInitiated) {
             let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
@@ -28,7 +28,7 @@ final class CourseRelabeler {
                         classroomMandarinDisplay: classroomMandarinDisplay
                     )
                     if changed && !Task.isCancelled {
-                        CourseStore.shared.saveCourses(courses, semester: semesterCode)
+                        CourseStore.shared.saveCourses(courses, semester: semesterCode, for: signIn)
                     }
                     return (changed, false)
                 }
@@ -52,7 +52,7 @@ final class CourseRelabeler {
                     classroomMandarinDisplay: classroomMandarinDisplay
                 )
                 if changed && !Task.isCancelled {
-                    CourseStore.shared.saveUserAddedCourses(userAdded)
+                    CourseStore.shared.saveUserAddedCourses(userAdded, for: signIn)
                 }
             }
         }

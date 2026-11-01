@@ -8,14 +8,14 @@ struct ScoreReports {
     }
 
     func fetch(
-        studentId: String, password: String, force: Bool, persistGuard: @escaping @Sendable () -> Bool
+        studentId: String, password: String, force: Bool, for signIn: SignIn
     ) async throws -> (report: ScoreReport, cachedAt: Date) {
         try await NTUSTScoreService.fetchScoreReport(
             session: NTUSTSessionManager.shared.session,
             studentId: studentId,
             password: password,
             forceRefresh: force,
-            persistGuard: persistGuard
+            for: signIn
         )
     }
 }

@@ -58,7 +58,7 @@ final class MoodleCourseAssignments {
     func refreshSubmission(of record: MoodleAssignmentRecord) async {
         guard !record.noSubmissions else { return }
         let context = context
-        let isCurrent: @MainActor @Sendable () -> Bool = { context.isCurrent() }
+        let signIn = context.signIn
         let fetched: @MainActor @Sendable (MoodleSubmissionStatus, ContinuousClock.Instant) -> Void = { [api] in
             api.submissionFetched($0, $1, context)
         }
@@ -68,12 +68,12 @@ final class MoodleCourseAssignments {
             var submission = try await api.submission(record.assignId)
             if let id = submission.id, submission.takesComments,
                functions.contains(MoodleAssignmentService.commentsFunction) {
-                guard await isCurrent() else { throw CancellationError() }
+                guard signIn.isCurrent else { throw CancellationError() }
                 submission.comments = try await Self.unlessRefused { try await api.comments(record.cmId, id) }
             }
             if record.teamSubmission, let group = submission.groupId,
                functions.contains(MoodleAssignmentService.groupsFunction) {
-                guard await isCurrent() else { throw CancellationError() }
+                guard signIn.isCurrent else { throw CancellationError() }
                 submission.groupName = try await Self.unlessRefused { try await api.groups(record.courseId) }?[group]
             }
             await fetched(MoodleSubmissionStatus(

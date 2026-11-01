@@ -49,7 +49,7 @@ enum SSOLoginService {
         serviceURL: URL,
         studentId: String,
         password: String,
-        isCurrent: @escaping @MainActor () -> Bool,
+        for signIn: SignIn,
         interactive: Bool = false,
         now: () -> Date = { Date() },
         logFailure: @escaping @MainActor (any Error) -> Void = {
@@ -57,15 +57,15 @@ enum SSOLoginService {
         }
     ) async throws -> Bool {
         guard !interactive else {
-            return try await signIn(
+            return try await Self.signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                isCurrent: isCurrent, interactive: true, now: now, logFailure: logFailure
+                signIn: signIn, interactive: true, now: now, logFailure: logFailure
             )
         }
         return try await SchoolPasswordPosts.postingStoredPassword {
-            try await signIn(
+            try await Self.signIn(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                isCurrent: isCurrent, interactive: false, now: now, logFailure: logFailure
+                signIn: signIn, interactive: false, now: now, logFailure: logFailure
             )
         }
     }
@@ -75,19 +75,19 @@ enum SSOLoginService {
         serviceURL: URL,
         studentId: String,
         password: String,
-        isCurrent: @escaping @MainActor () -> Bool,
+        for signIn: SignIn,
         now: () -> Date = { Date() },
         mayPost: () -> Bool
     ) async throws -> Bool {
         try await SchoolPasswordPosts.postingStoredPassword {
             try await oneAtATime {
-                try checkSignedIn(isCurrent)
+                try checkSignedIn(signIn)
                 guard SchoolPasswordPosts.storedPasswordRefusals.count > 0 else { return true }
                 guard mayPost() else { return false }
                 if SchoolPasswordPosts.storedPasswordPostMustWait(now: now()) { throw SSOLoginError.loginFailed(reason: nil) }
                 return try await performServiceLogin(
                     session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                    isCurrent: isCurrent, interactive: false, retry: true, now: now,
+                    signIn: signIn, interactive: false, retry: true, now: now,
                     logFailure: { AppLogger.captureError($0, context: ["service": "ssoSignInAgain"]) }
                 )
             }
@@ -99,16 +99,16 @@ enum SSOLoginService {
         serviceURL: URL,
         studentId: String,
         password: String,
-        isCurrent: @escaping @MainActor () -> Bool,
+        signIn: SignIn,
         interactive: Bool,
         now: () -> Date,
         logFailure: @escaping @MainActor (any Error) -> Void
     ) async throws -> Bool {
         try await oneAtATime {
-            try checkSignedIn(isCurrent)
+            try checkSignedIn(signIn)
             let signedIn = try await performServiceLogin(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                isCurrent: isCurrent, interactive: interactive, retry: false, now: now,
+                signIn: signIn, interactive: interactive, retry: false, now: now,
                 logFailure: logFailure
             )
             if interactive, signedIn { SchoolPasswordPosts.forgetStoredPasswordRefusals() }
@@ -116,8 +116,8 @@ enum SSOLoginService {
         }
     }
 
-    static func checkSignedIn(_ isCurrent: @MainActor () -> Bool) throws {
-        if !isCurrent() { throw CancellationError() }
+    static func checkSignedIn(_ signIn: SignIn) throws {
+        if !signIn.isCurrent { throw CancellationError() }
     }
 
     private static func performServiceLogin(
@@ -125,25 +125,25 @@ enum SSOLoginService {
         serviceURL: URL,
         studentId: String,
         password: String,
-        isCurrent: @escaping @MainActor () -> Bool,
+        signIn: SignIn,
         interactive: Bool,
         retry: Bool,
         now: () -> Date,
         logFailure: @MainActor (any Error) -> Void
     ) async throws -> Bool {
         do {
-            var (currentHTML, currentURL) = try await SSOForms.visit(serviceURL, session: session, isCurrent: isCurrent)
+            var (currentHTML, currentURL) = try await SSOForms.visit(serviceURL, session: session, signIn: signIn)
 
             if interactive || retry, !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
             } else if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
-                if try await isSignedIn(html: currentHTML, url: currentURL, session: session) { return true }
+                if try await isSignedIn(html: currentHTML, url: currentURL, session: session, signIn: signIn) { return true }
                 // A service whose own session lapsed sends the visit to the campus portal, not to
                 // the sign-in form; without its cookies the next visit goes through SSO.
                 NTUSTSessionManager.shared.dropServiceCookies(for: serviceURL)
-                (currentHTML, currentURL) = try await SSOForms.visit(serviceURL, session: session, isCurrent: isCurrent)
+                (currentHTML, currentURL) = try await SSOForms.visit(serviceURL, session: session, signIn: signIn)
                 if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
-                    guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
+                    guard try await isSignedIn(html: currentHTML, url: currentURL, session: session, signIn: signIn) else {
                         throw SSOLoginError.loginFormNotFound
                     }
                     return true
@@ -168,9 +168,9 @@ enum SSOLoginService {
 
             if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 (currentHTML, currentURL) = try await SSOForms.resolveOIDCBridgeForms(
-                    session: session, html: currentHTML, baseURL: currentURL, isCurrent: isCurrent
+                    session: session, html: currentHTML, baseURL: currentURL, signIn: signIn
                 )
-                guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
+                guard try await isSignedIn(html: currentHTML, url: currentURL, session: session, signIn: signIn) else {
                     throw SSOLoginError.loginFormNotFound
                 }
                 return true
@@ -195,7 +195,7 @@ enum SSOLoginService {
                 throw SSOLoginError.invalidResponse
             }
             let (loginData, loginResponse) = try await SSOForms.postForm(
-                session: session, url: actionURL, fields: payload, isCurrent: isCurrent,
+                session: session, url: actionURL, fields: payload, signIn: signIn,
                 delegate: CredentialPostDelegate()
             )
             guard let loginResp = loginResponse as? HTTPURLResponse,
@@ -207,17 +207,17 @@ enum SSOLoginService {
             currentHTML = loginHTML
 
             (currentHTML, currentURL) = try await SSOForms.resolveOIDCBridgeForms(
-                session: session, html: currentHTML, baseURL: currentURL, isCurrent: isCurrent
+                session: session, html: currentHTML, baseURL: currentURL, signIn: signIn
             )
 
             if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
-                if !interactive, isCurrent() {
+                if !interactive, signIn.isCurrent {
                     SchoolPasswordPosts.noteStoredPasswordRefused(at: now())
                 }
                 throw SSOLoginError.loginFailed(reason: HTMLParser.loginErrorMessage(in: currentHTML))
             }
 
-            guard try await isSignedIn(html: currentHTML, url: currentURL, session: session) else {
+            guard try await isSignedIn(html: currentHTML, url: currentURL, session: session, signIn: signIn) else {
                 throw SSOLoginError.invalidResponse
             }
             if !interactive, !retry { SchoolPasswordPosts.forgetStoredPasswordRefusals() }
@@ -230,12 +230,12 @@ enum SSOLoginService {
         }
     }
 
-    private static func isSignedIn(html: String, url: URL, session: URLSession) async throws -> Bool {
+    private static func isSignedIn(html: String, url: URL, session: URLSession, signIn: SignIn) async throws -> Bool {
         if HTMLParser.isNetIQLoginPage(html: html, url: url) {
             throw SSOLoginError.interactiveLoginRequired
         }
-        guard await NTUSTSessionManager.shared.probeCookiesValid(using: session) else { return false }
-        NTUSTSessionManager.shared.markLoginSuccess()
+        guard await NTUSTSessionManager.shared.probeCookiesValid(using: session, for: signIn) else { return false }
+        NTUSTSessionManager.shared.markLoginSuccess(for: signIn)
         return true
     }
 }

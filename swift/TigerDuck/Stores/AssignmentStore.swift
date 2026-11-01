@@ -36,9 +36,12 @@ final class AssignmentStore {
         _ = revision
     }
 
-    private func write(_ body: (AssignmentFiles) -> Void) {
+    @discardableResult
+    private func write(_ signIn: SignIn, _ body: (AssignmentFiles) -> Void) -> Bool {
+        guard signIn.isCurrent else { return false }
         body(files)
         revision &+= 1
+        return true
     }
 
     func loadAssignments(semester: String = CourseSelectionService.currentSemesterCode()) -> [SDAssignment] {
@@ -76,29 +79,47 @@ final class AssignmentStore {
         return events.loadCalendarEvents()
     }
 
-    func saveAssignments(_ assignments: [SDAssignment]) { write { $0.saveAssignments(assignments) } }
-    func replaceArchivedAssignmentIds(_ ids: Set<String>) { write { $0.replaceArchivedAssignmentIds(ids) } }
-    func replaceLocallyCompletedAssignmentIds(_ ids: Set<String>) { write { $0.replaceLocallyCompletedAssignmentIds(ids) } }
-    func replaceIgnoredAssignmentCourses(_ keys: Set<String>) { write { $0.replaceIgnoredAssignmentCourses(keys) } }
-    func clearIgnoredAssignmentCourses(semester: String) { write { $0.clearIgnoredAssignmentCourses(semester: semester) } }
-
-    func replaceClosedUnsubmittedAssignments(_ closed: [String: Date]) {
-        write { $0.replaceClosedUnsubmittedAssignments(closed) }
+    @discardableResult
+    func saveAssignments(_ assignments: [SDAssignment], for signIn: SignIn) -> Bool {
+        write(signIn) { $0.saveAssignments(assignments) }
     }
 
-    func saveCalendarEvents(_ calendarEvents: [SDCalendarEvent]) {
+    func replaceArchivedAssignmentIds(_ ids: Set<String>, for signIn: SignIn) {
+        write(signIn) { $0.replaceArchivedAssignmentIds(ids) }
+    }
+
+    func replaceLocallyCompletedAssignmentIds(_ ids: Set<String>, for signIn: SignIn) {
+        write(signIn) { $0.replaceLocallyCompletedAssignmentIds(ids) }
+    }
+
+    func replaceIgnoredAssignmentCourses(_ keys: Set<String>, for signIn: SignIn) {
+        write(signIn) { $0.replaceIgnoredAssignmentCourses(keys) }
+    }
+
+    func clearIgnoredAssignmentCourses(semester: String, for signIn: SignIn) {
+        write(signIn) { $0.clearIgnoredAssignmentCourses(semester: semester) }
+    }
+
+    func replaceClosedUnsubmittedAssignments(_ closed: [String: Date], for signIn: SignIn) {
+        write(signIn) { $0.replaceClosedUnsubmittedAssignments(closed) }
+    }
+
+    @discardableResult
+    func saveCalendarEvents(_ calendarEvents: [SDCalendarEvent], for signIn: SignIn) -> Bool {
+        guard signIn.isCurrent else { return false }
         events.saveCalendarEvents(calendarEvents)
         revision &+= 1
+        return true
     }
 
-    func apply(_ edit: AssignmentEdit) {
+    func apply(_ edit: AssignmentEdit, for signIn: SignIn) {
         switch edit {
         case let .setArchived(id, archived):
-            write { archived ? $0.addArchivedAssignmentId(id) : $0.removeArchivedAssignmentId(id) }
+            write(signIn) { archived ? $0.addArchivedAssignmentId(id) : $0.removeArchivedAssignmentId(id) }
         case let .setCompleted(id, completed):
-            write { completed ? $0.addLocallyCompletedAssignmentId(id) : $0.removeLocallyCompletedAssignmentId(id) }
+            write(signIn) { completed ? $0.addLocallyCompletedAssignmentId(id) : $0.removeLocallyCompletedAssignmentId(id) }
         case let .ignoreCourse(courseNo, semester, ignored):
-            write { $0.setAssignmentsIgnored(ignored, semester: semester, courseNo: courseNo) }
+            write(signIn) { $0.setAssignmentsIgnored(ignored, semester: semester, courseNo: courseNo) }
         }
     }
 }

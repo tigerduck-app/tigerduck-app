@@ -127,12 +127,11 @@ enum CourseDetails {
     }
 
     static func refreshUserAddedCourses(
-        semester: String, authService: AuthService, courses: CourseStore = .shared,
+        semester: String, for signIn: SignIn, courses: CourseStore = .shared,
         lookup: @escaping @MainActor @Sendable (_ semester: String, _ courseNo: String, _ language: String, _ fresh: Bool) async throws -> [CourseSearchResult] = {
             try await CourseLookupService.lookupCourse(semester: $0, courseNo: $1, language: $2, fresh: $3)
         }
     ) async -> [SDCourse] {
-        let ticket = authService.session.ticket
         let targets = courses.loadUserAddedCourses(semester: semester)
         guard !targets.isEmpty else { return [] }
         let display = courses.display()
@@ -148,8 +147,8 @@ enum CourseDetails {
             ))
         }
         let refreshed = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
-        guard authService.session.isCurrent(ticket) else { return [] }
-        courses.applyLookedUp(refreshed, semester: semester, enrolled: false, display: display)
+        guard courses.applyLookedUp(refreshed, semester: semester, enrolled: false, display: display, for: signIn)
+            || signIn.isCurrent else { return [] }
         return courses.loadUserAddedCourses(semester: semester)
     }
 
@@ -197,12 +196,11 @@ enum CourseDetails {
     }
 
     static func refreshCoursesMissingClassroom(
-        semester: String, authService: AuthService, courses: CourseStore = .shared,
+        semester: String, for signIn: SignIn, courses: CourseStore = .shared,
         lookup: @escaping @MainActor @Sendable (_ semester: String, _ courseNo: String, _ language: String, _ fresh: Bool) async throws -> [CourseSearchResult] = {
             try await CourseLookupService.lookupCourse(semester: $0, courseNo: $1, language: $2, fresh: $3)
         }
     ) async -> Bool {
-        let ticket = authService.session.ticket
         let seeds = (courses.loadCourses(semester: semester) + courses.loadUserAddedCourses(semester: semester))
             .filter { $0.classroom.isEmpty }
             .map { ($0.courseNo, $0.moodleIdNumber) }
@@ -220,7 +218,6 @@ enum CourseDetails {
             return data.classroom.isEmpty ? nil : (courseNo, data)
         }
         let found = Dictionary(lookups.compactMap { $0 }, uniquingKeysWith: { _, last in last })
-        guard authService.session.isCurrent(ticket) else { return false }
-        return courses.applyLookedUp(found, semester: semester, enrolled: true, display: display)
+        return courses.applyLookedUp(found, semester: semester, enrolled: true, display: display, for: signIn)
     }
 }

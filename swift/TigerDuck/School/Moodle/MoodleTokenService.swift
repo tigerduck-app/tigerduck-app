@@ -13,7 +13,8 @@ actor MoodleTokenService {
             return (studentId, password)
         },
         tokens: .keychain,
-        harvest: { try await MoodleTokenHarvest.performOidcLogin(studentId: $0, password: $1) }
+        harvest: { try await MoodleTokenHarvest.performOidcLogin(studentId: $0, password: $1) },
+        signIns: AccountSession.schoolSignIns
     )
 
     private let storedCredentials: @Sendable () -> (studentId: String, password: String)?
@@ -49,7 +50,7 @@ actor MoodleTokenService {
     }
     private var inFlightTokenTask: (key: ObtainKey, task: Task<String, Error>)?
     private var inFlightRefreshTask: Task<String, Error>?
-    private var signIns = SignInCount()
+    private let signIns: SignInSeries
     private var lastHarvestFailure: (at: Date, error: any Error)?
     nonisolated static let harvestPause: TimeInterval = 5 * 60
 
@@ -58,8 +59,10 @@ actor MoodleTokenService {
         tokens: TokenStore,
         harvest: @escaping @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple,
         now: @escaping @Sendable () -> Date = { Date() },
-        harvestDeadline: Duration = MoodleTokenService.harvestDeadline
+        harvestDeadline: Duration = MoodleTokenService.harvestDeadline,
+        signIns: SignInSeries
     ) {
+        self.signIns = signIns
         self.storedCredentials = storedCredentials
         self.tokens = tokens
         self.harvest = { studentId, password in
@@ -85,7 +88,7 @@ actor MoodleTokenService {
         }
     }
 
-    func obtainToken(studentId: String, password: String) async throws -> String {
+    func obtainToken(studentId: String, password: String, for signIn: SignIn) async throws -> String {
         let normalizedId = studentId
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
@@ -96,10 +99,9 @@ actor MoodleTokenService {
             }
             _ = try? await existing.task.value
         }
-        let ticket = signIns.ticket
         let task = Task<String, Error> {
             let triple = try await harvest(normalizedId, password)
-            guard signIns.isCurrent(ticket) else { throw CancellationError() }
+            guard signIn.isCurrent else { throw CancellationError() }
             tokens.save(triple)
             lastHarvestFailure = nil
             return triple.wstoken
@@ -126,12 +128,12 @@ actor MoodleTokenService {
            case let age = now().timeIntervalSince(failure.at), age >= 0, age < Self.harvestPause {
             throw failure.error
         }
-        let ticket = signIns.ticket
+        let signIn = signIns.currentSignIn
         let task = Task<String, Error> {
             let triple = try await SchoolPasswordPosts.postingStoredPassword {
-                try await harvestWithStoredCredentials(ticket: ticket)
+                try await harvestWithStoredCredentials(for: signIn)
             }
-            guard signIns.isCurrent(ticket) else { throw CancellationError() }
+            guard signIn.isCurrent else { throw CancellationError() }
             tokens.save(triple)
             lastHarvestFailure = nil
             if triple.postedPassword { SchoolPasswordPosts.forgetStoredPasswordRefusals() }
@@ -144,8 +146,8 @@ actor MoodleTokenService {
         return try await task.value
     }
 
-    private func harvestWithStoredCredentials(ticket: AccountSession.Ticket) async throws -> TokenTriple {
-        guard signIns.isCurrent(ticket) else { throw CancellationError() }
+    private func harvestWithStoredCredentials(for signIn: SignIn) async throws -> TokenTriple {
+        guard signIn.isCurrent else { throw CancellationError() }
         guard !SchoolPasswordPosts.storedPasswordPostMustWait(now: now()) else {
             throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
         }
@@ -159,10 +161,10 @@ actor MoodleTokenService {
             return try await harvest(normalizedId, creds.password)
         } catch {
             if case MoodleWebserviceError.ssoLoginRejected = error {
-                if signIns.isCurrent(ticket), storedCredentials()?.password == creds.password {
+                if signIn.isCurrent, storedCredentials()?.password == creds.password {
                     SchoolPasswordPosts.noteStoredPasswordRefused(at: now())
                 }
-            } else if signIns.isCurrent(ticket), !Self.isNetworkFailure(error) {
+            } else if signIn.isCurrent, !Self.isNetworkFailure(error) {
                 lastHarvestFailure = (now(), error)
             }
             throw error
@@ -175,7 +177,6 @@ actor MoodleTokenService {
     }
 
     func signOut() async {
-        signIns.moveOn()
         lastHarvestFailure = nil
         inFlightTokenTask?.task.cancel()
         inFlightTokenTask = nil

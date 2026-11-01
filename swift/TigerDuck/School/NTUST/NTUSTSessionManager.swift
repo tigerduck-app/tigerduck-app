@@ -63,11 +63,11 @@ final class NTUSTSessionManager {
     /// GET `ssoam2.ntust.edu.tw/` and look for a `302 Location: /Home/Index`, which only happens
     /// while the cookie jar still authenticates the user. Any other response (302 to
     /// `/account/login`, 200 with the login page, a network error) counts as expired.
-    func probeCookiesValid() async -> Bool {
-        await probeCookiesValid(using: session)
+    func probeCookiesValid(for signIn: SignIn) async -> Bool {
+        await probeCookiesValid(using: session, for: signIn)
     }
 
-    func probeCookiesValid(using session: URLSession) async -> Bool {
+    func probeCookiesValid(using session: URLSession, for signIn: SignIn) async -> Bool {
         var req = URLRequest(url: URL.knownGood("https://ssoam2.ntust.edu.tw/"))
         req.httpMethod = "GET"
         req.timeoutInterval = 8
@@ -84,9 +84,7 @@ final class NTUSTSessionManager {
                 return false
             }
             let valid = location.contains("/Home/Index")
-            if valid {
-                Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
-            }
+            if valid { markLoginSuccess(for: signIn) }
             return valid
         } catch {
             return false
@@ -130,7 +128,8 @@ final class NTUSTSessionManager {
         }
     }
 
-    func markLoginSuccess() {
+    func markLoginSuccess(for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
     }
 

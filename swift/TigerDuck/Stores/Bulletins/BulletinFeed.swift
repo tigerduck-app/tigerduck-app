@@ -14,23 +14,26 @@ final class BulletinFeed {
     private(set) var hasMore = true
     @ObservationIgnored private let fetchPage: (_ cursor: Int?, _ includeDeleted: Bool) async throws -> Page
     @ObservationIgnored private let fetchDetail: (_ id: Int) async throws -> BulletinAPI.BulletinDetail
-    @ObservationIgnored private var itemsEpoch = BulletinFeed.listEpoch
+    @ObservationIgnored private var itemsSignIn: SignIn
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.VM")
 
-    convenience init(apiClient: BulletinAPIClient? = nil) {
+    convenience init(apiClient: BulletinAPIClient? = nil, for signIn: SignIn) {
         let apiClient = apiClient ?? BulletinAPIClient()
         self.init(
             page: { try await apiClient.listBulletins(limit: 30, cursor: $0, includeDeleted: $1) },
-            detail: { try await apiClient.getBulletin(id: $0) }
+            detail: { try await apiClient.getBulletin(id: $0) },
+            for: signIn
         )
     }
 
     init(
         page: @escaping (_ cursor: Int?, _ includeDeleted: Bool) async throws -> Page,
-        detail: @escaping (_ id: Int) async throws -> BulletinAPI.BulletinDetail
+        detail: @escaping (_ id: Int) async throws -> BulletinAPI.BulletinDetail,
+        for signIn: SignIn
     ) {
         fetchPage = page
         fetchDetail = detail
+        itemsSignIn = signIn
         let cached = BulletinFiles.shared.loadBulletinSummaries()
         if !cached.isEmpty { items = Self.sortedUnique(cached) }
     }
@@ -43,12 +46,15 @@ final class BulletinFeed {
     }
 
     private static var listSession: ListSession?
-    private(set) static var listEpoch = 0
 
     static func forgetListSession() {
         listSession = nil
-        listEpoch &+= 1
         Defaults[.bulletinsSyncedAt] = nil
+    }
+
+    func noteSynced(for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        Defaults[.bulletinsSyncedAt] = Date()
     }
 
     static func endpointDidChange() {
@@ -131,18 +137,19 @@ final class BulletinFeed {
         BulletinFiles.shared.loadBulletinSummaries().first { $0.id == id }
     }
 
-    func persist(showDeleted: Bool) {
+    func persist(showDeleted: Bool, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         BulletinFiles.shared.saveBulletinSummaries(items)
         Self.listSession = ListSession(items: items, nextCursor: nextCursor, hasMore: hasMore, showDeleted: showDeleted)
     }
 
-    var isFromBeforeSignOut: Bool { itemsEpoch != Self.listEpoch }
+    var isFromBeforeSignOut: Bool { !itemsSignIn.isCurrent }
 
-    func restartAfterSignOut() {
+    func restartAfterSignOut(for signIn: SignIn) {
         items = Self.sortedUnique(BulletinFiles.shared.loadBulletinSummaries())
         nextCursor = nil
         hasMore = true
-        itemsEpoch = Self.listEpoch
+        itemsSignIn = signIn
     }
 
     private static func merge(existing: [Summary], incoming: [Summary]) -> [Summary] {
@@ -170,9 +177,9 @@ enum BulletinDetails {
         BulletinFiles.shared.loadBulletinDetail(id: id)
     }
 
-    static func fetch(id: Int) async throws -> BulletinAPI.BulletinDetail {
+    static func fetch(id: Int, for signIn: SignIn) async throws -> BulletinAPI.BulletinDetail {
         let fresh = try await apiClient.getBulletin(id: id)
-        BulletinFiles.shared.saveBulletinDetail(fresh)
+        if signIn.isCurrent { BulletinFiles.shared.saveBulletinDetail(fresh) }
         return fresh
     }
 }

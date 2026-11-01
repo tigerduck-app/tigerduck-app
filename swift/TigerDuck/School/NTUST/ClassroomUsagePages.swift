@@ -3,7 +3,6 @@ import Foundation
 @MainActor
 struct ClassroomUsagePages {
     struct Scope {
-        let isCurrent: @MainActor () -> Bool
         let check: @MainActor () throws -> Void
     }
 
@@ -13,8 +12,7 @@ struct ClassroomUsagePages {
 
     let session: URLSession
     let queryURL: URL
-    let account: AccountSession
-    let signIn: ClassroomUsageService.SignIn
+    let signIn: ClassroomUsageService.ServiceSignIn
     let timeouts: (load: TimeInterval, post: TimeInterval)
 
     func read(_ day: Int, credentials: ClassroomUsageService.Credentials, scope: Scope) async throws -> CampusUsage {
@@ -51,7 +49,7 @@ struct ClassroomUsagePages {
         var html = try await load(URLRequest(url: queryURL, timeoutInterval: timeouts.load))
         if html.map(ClassroomUsageParser.isQueryPage) != true {
             try scope.check()
-            guard try await signIn(queryURL, credentials, scope.isCurrent) else {
+            guard try await signIn(queryURL, credentials) else {
                 throw ClassroomUsageError.notSignedIn
             }
             html = try await load(URLRequest(url: queryURL, timeoutInterval: timeouts.load))

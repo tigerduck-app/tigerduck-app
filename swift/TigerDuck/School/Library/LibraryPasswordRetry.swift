@@ -21,9 +21,9 @@ enum LibraryPasswordRetry {
         retrySleep: @escaping @Sendable (Duration) async -> Void
     ) {
         cancel()
-        task = AccountSession.library.task { ticket in
+        task = AccountSession.library.task { librarySignIn in
             await retrySleep(.seconds(wait))
-            guard !Task.isCancelled, AccountSession.library.isCurrent(ticket) else { return }
+            guard !Task.isCancelled, librarySignIn.isCurrent else { return }
             guard LibraryService.storedPasswordPostIsDue(now: Date()) else {
                 task = nil
                 return arm(signIn: signIn, retrySleep: retrySleep)
@@ -32,7 +32,7 @@ enum LibraryPasswordRetry {
             let signedIn = (try? await LibraryService.ensureToken(signIn: signIn, retrySleep: retrySleep)) != nil
             guard !Task.isCancelled else { return }
             task = nil
-            guard !signedIn, AccountSession.library.isCurrent(ticket), refusals > 0,
+            guard !signedIn, librarySignIn.isCurrent, refusals > 0,
                   LibraryService.storedPasswordRefusals.count == refusals else { return }
             misses += 1
             start(

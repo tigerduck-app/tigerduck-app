@@ -86,10 +86,11 @@ final class ImportedClassTableStore: AccountScoped {
         _ code: ClassTableShareCode,
         nickname: String,
         courses: [String: [SDCourse]],
-        importedAt: Date = Date()
+        importedAt: Date = Date(),
+        for signIn: SignIn
     ) -> ImportedPerson? {
         let account = signedInStudentId()
-        if let account { accountDidSignIn(studentId: account) }
+        if let account { accountDidSignIn(studentId: account, for: signIn) }
         let terms = code.terms.map {
             ImportedPerson.Term(semester: $0.semester, courseNos: $0.courseNos, courses: courses[$0.semester] ?? [])
         }
@@ -113,7 +114,7 @@ final class ImportedClassTableStore: AccountScoped {
             updated.append(person)
         }
         let newOwner = account ?? owner
-        guard save(people: updated, owner: newOwner) else { return nil }
+        guard save(people: updated, owner: newOwner, for: signIn) else { return nil }
         people = updated
         owner = newOwner
         return person
@@ -122,7 +123,7 @@ final class ImportedClassTableStore: AccountScoped {
     enum Change: Equatable { case saved, skipped, failed }
 
     @discardableResult
-    func rename(_ id: UUID, to nickname: String) -> Change {
+    func rename(_ id: UUID, to nickname: String, for signIn: SignIn) -> Change {
         let name = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, let index = people.firstIndex(where: { $0.id == id }) else { return .skipped }
         let old = people[index]
@@ -131,14 +132,14 @@ final class ImportedClassTableStore: AccountScoped {
             id: old.id, studentId: old.studentId, nickname: name,
             importedAt: old.importedAt, sharedAt: old.sharedAt, terms: old.terms
         )
-        guard save(people: updated, owner: owner) else { return .failed }
+        guard save(people: updated, owner: owner, for: signIn) else { return .failed }
         people = updated
         return .saved
     }
 
     @discardableResult
     func updateCourses(
-        _ id: UUID, semester: String, courseNos: [String], courses: [SDCourse], importedAt: Date
+        _ id: UUID, semester: String, courseNos: [String], courses: [SDCourse], importedAt: Date, for signIn: SignIn
     ) -> Change {
         guard let index = people.firstIndex(where: { $0.id == id }), people[index].importedAt == importedAt,
               people[index].terms.contains(where: { $0.semester == semester && $0.courseNos == courseNos })
@@ -154,7 +155,7 @@ final class ImportedClassTableStore: AccountScoped {
             id: old.id, studentId: old.studentId, nickname: old.nickname,
             importedAt: old.importedAt, sharedAt: old.sharedAt, terms: terms
         )
-        guard save(people: updated, owner: owner) else { return .failed }
+        guard save(people: updated, owner: owner, for: signIn) else { return .failed }
         people = updated
         lookups += 1
         return .saved
@@ -176,11 +177,11 @@ final class ImportedClassTableStore: AccountScoped {
     }
 
     @discardableResult
-    func delete(_ id: UUID) -> Change {
+    func delete(_ id: UUID, for signIn: SignIn) -> Change {
         guard people.contains(where: { $0.id == id }) else { return .skipped }
         let updated = people.filter { $0.id != id }
         let newOwner = updated.isEmpty ? nil : owner
-        guard save(people: updated, owner: newOwner) else { return .failed }
+        guard save(people: updated, owner: newOwner, for: signIn) else { return .failed }
         people = updated
         owner = newOwner
         if shownPersonID == id { shownPersonID = nil }
@@ -213,13 +214,13 @@ final class ImportedClassTableStore: AccountScoped {
         ImportedClassTableFile.remove(at: file.url)
     }
 
-    func accountDidSignIn(studentId: String) {
+    func accountDidSignIn(studentId: String, for signIn: SignIn) {
         guard !people.isEmpty else { return }
         if let owner, owner != studentId {
             removeAll()
         } else if owner == nil {
             owner = studentId
-            save(people: people, owner: owner)
+            save(people: people, owner: owner, for: signIn)
         }
     }
 
@@ -236,8 +237,8 @@ final class ImportedClassTableStore: AccountScoped {
     }
 
     @discardableResult
-    private func save(people: [ImportedPerson], owner: String?) -> Bool {
-        guard mayWrite else { return false }
+    private func save(people: [ImportedPerson], owner: String?, for signIn: SignIn) -> Bool {
+        guard mayWrite, signIn.isCurrent else { return false }
         return file.save(.init(owner: owner, people: people.map(\.stored)))
     }
 }

@@ -67,7 +67,7 @@ final class MoodleFileDownloads {
     }
 
     @discardableResult
-    func download(_ file: MoodleFile, to location: URL, fetch: @escaping Fetch, isCurrent: @escaping () -> Bool) async -> URL? {
+    func download(_ file: MoodleFile, to location: URL, fetch: @escaping Fetch, for signIn: SignIn) async -> URL? {
         if Self.hasCopy(of: file, at: location) { return location }
         if let current = running[location] {
             if Self.isSameVersion(current.version, file.modified) { return await current.task.value }
@@ -76,7 +76,7 @@ final class MoodleFileDownloads {
         failures[location] = nil
         progress[location] = 0
         let attempt = UUID()
-        let task = Task { await self.transfer(file, to: location, attempt: attempt, fetch: fetch, isCurrent: isCurrent) }
+        let task = Task { await self.transfer(file, to: location, attempt: attempt, fetch: fetch, signIn: signIn) }
         running[location] = Running(version: file.modified, attempt: attempt, task: task)
         let copy = await task.value
         if running[location]?.task == task {
@@ -150,20 +150,20 @@ final class MoodleFileDownloads {
         to location: URL,
         attempt: UUID,
         fetch: Fetch,
-        isCurrent: () -> Bool
+        signIn: SignIn
     ) async -> URL? {
         do {
             let temporary = try await fetch(file) { share in
                 Task { @MainActor in self.report(share, for: location, attempt: attempt) }
             }
             defer { try? FileManager.default.removeItem(at: temporary) }
-            guard !Task.isCancelled, isCurrent() else { return nil }
+            guard !Task.isCancelled, signIn.isCurrent else { return nil }
             try Self.place(temporary, at: location, modified: file.modified)
             return location
         } catch is CancellationError {
             return nil
         } catch {
-            guard !Task.isCancelled, isCurrent() else { return nil }
+            guard !Task.isCancelled, signIn.isCurrent else { return nil }
             failures[location] = MoodleFailure.message(for: error)
             AppLogger.breadcrumb("moodle file download failed: \(error)", category: "moodle")
             return nil

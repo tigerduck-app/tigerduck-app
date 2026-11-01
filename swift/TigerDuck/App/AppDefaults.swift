@@ -135,6 +135,7 @@ nonisolated extension Defaults.Keys {
     )
     static let ssoLoginTimestamp = Key<Double?>(AppConstants.UserDefaultsKeys.ssoLoginTimestamp)
     static let schoolDataSyncedAt = Key<Date?>("schoolDataSyncedAt")
+    static let semesterResetAt = Key<[String: Date]>("semesterResetAt", default: [:])
     static let bulletinsSyncedAt = Key<Date?>("bulletinsSyncedAt")
     static let lastSeenCoursesResetAt = Key<Date?>("lastSeenCoursesResetAt")
     static let classTableSelectedSemester = Key<String?>(

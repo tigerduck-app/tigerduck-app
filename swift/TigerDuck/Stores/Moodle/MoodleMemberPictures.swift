@@ -10,7 +10,7 @@ final class MoodleMemberPictures {
     private(set) var pictures: [URL: CGImage] = [:]
     @ObservationIgnored private var askedPictures: Set<URL> = []
     @ObservationIgnored private var picturesInFlight: Set<URL> = []
-    private static var placedRevisions: [URL: Int] = [:]
+    private static var placedRevisions = SignInBound<[URL: Int]>(empty: [:])
     @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
     @ObservationIgnored private var lastPictureRead: Task<CGImage?, Never>?
     @ObservationIgnored var readPictureFile: @Sendable (URL) -> Data? = { try? Data(contentsOf: $0) }
@@ -31,7 +31,7 @@ final class MoodleMemberPictures {
         let file = pictureFile(of: member, url: url)
         let revision = Int(Self.revision(of: url)) ?? 0
         if pictures[url] == nil, let kept = await readInTurn(file) {
-            guard context.isCurrent() else { return }
+            guard context.signIn.isCurrent else { return }
             pictures[url] = kept
         }
         guard let data = await downloadInTurn(url) else { return }
@@ -45,12 +45,14 @@ final class MoodleMemberPictures {
             return Self.stage(data, for: file, revision: revision).map { (image, $0) }
         }.value
         guard case let (image, staged)? = changed else { return }
-        guard context.isCurrent(), staged == nil || revision >= Self.placedRevisions[file, default: 0] else {
+        var placed = Self.placedRevisions.value
+        guard context.signIn.isCurrent, staged == nil || revision >= placed[file, default: 0] else {
             if let staged { try? FileManager.default.removeItem(at: staged) }
             return
         }
         if let staged {
-            Self.placedRevisions[file] = revision
+            placed[file] = revision
+            Self.placedRevisions.set(placed, for: context.signIn)
             Self.place(staged, at: file)
         }
         pictures[url] = image
@@ -61,12 +63,12 @@ final class MoodleMemberPictures {
     /// else the 100 px one the list shows; nil while neither is on the device. Quick Look tells an
     /// image by its extension, which the kept files have none of.
     func picturePreview(of member: MoodleMember) async -> URL? {
-        guard let url = member.pictureURL, context.isCurrent() else { return nil }
+        guard let url = member.pictureURL, context.signIn.isCurrent else { return nil }
         let kept = pictureFile(of: member, url: url)
         let large = kept.deletingLastPathComponent()
             .appendingPathComponent("\(kept.lastPathComponent)-\(Self.revision(of: url))-f3")
         guard let data = await largePicture(of: url, keptAt: large) ?? (try? Data(contentsOf: kept)),
-              context.isCurrent(), let fileExtension = Self.fileExtension(of: data) else { return nil }
+              context.signIn.isCurrent, let fileExtension = Self.fileExtension(of: data) else { return nil }
         let preview = kept.deletingLastPathComponent()
             .appendingPathComponent(kept.lastPathComponent + "-preview", isDirectory: true)
             .appendingPathComponent(MoodleFileDownloads.safeName(member.name))
@@ -86,7 +88,7 @@ final class MoodleMemberPictures {
         guard let large = MoodleCourseMembersService.largePicture(url) else { return nil }
         do {
             let data = try await api.picture(large)
-            guard Self.fileExtension(of: data) != nil, context.isCurrent() else { return nil }
+            guard Self.fileExtension(of: data) != nil, context.signIn.isCurrent else { return nil }
             try? data.write(to: file, options: [.atomic, .completeFileProtectionUnlessOpen])
             return data
         } catch {

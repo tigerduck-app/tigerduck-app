@@ -5,12 +5,17 @@ struct MoodleCacheContext {
     let account: String
     let cache: MoodleFiles
     var assignments: AssignmentStore = .shared
-    let isCurrent: () -> Bool
+    let signIn: SignIn
     var now: () -> Date = { Date() }
 
-    static func signedIn(_ authService: AuthService, cache: MoodleFiles = .shared) -> MoodleCacheContext? {
+    static func signedIn(_ authService: AuthService, for signIn: SignIn, cache: MoodleFiles = .shared) -> MoodleCacheContext? {
         guard let account = authService.storedStudentId else { return nil }
-        return MoodleCacheContext(account: account, cache: cache, isCurrent: authService.session.currentCheck())
+        return MoodleCacheContext(account: account, cache: cache, signIn: signIn)
+    }
+
+    func save<Value: Codable>(_ value: Value, fetchedAt: Date, name: String) {
+        guard signIn.isCurrent else { return }
+        cache.saveMoodleData(value, fetchedAt: fetchedAt, name: name, account: account)
     }
 }
 
@@ -30,7 +35,7 @@ final class MoodleFeed<Value: Codable & Sendable> {
         let context: MoodleCacheContext
 
         func save(_ value: Value, fetchedAt: Date) {
-            context.cache.saveMoodleData(value, fetchedAt: fetchedAt, name: name, account: context.account)
+            context.save(value, fetchedAt: fetchedAt, name: name)
         }
     }
 
@@ -72,14 +77,14 @@ final class MoodleFeed<Value: Codable & Sendable> {
     }
 
     func update(_ change: (inout Value) -> Void) {
-        guard var changed = value, let fetchedAt, context.isCurrent() else { return }
+        guard var changed = value, let fetchedAt, context.signIn.isCurrent else { return }
         change(&changed)
         value = changed
         copy.save(changed, fetchedAt: fetchedAt)
     }
 
     func edit(_ change: (inout Value) -> Void) {
-        guard value != nil, fetchedAt != nil, context.isCurrent() else { return }
+        guard value != nil, fetchedAt != nil, context.signIn.isCurrent else { return }
         edits.move()
         update(change)
     }
@@ -90,7 +95,7 @@ final class MoodleFeed<Value: Codable & Sendable> {
         let started = edits
         do {
             let fresh = try await fetch()
-            guard context.isCurrent() else { return }
+            guard context.signIn.isCurrent else { return }
             status = .ok
             failure = nil
             guard edits == started else { return }
@@ -99,10 +104,33 @@ final class MoodleFeed<Value: Codable & Sendable> {
             fetchedAt = now
             copy.save(fresh, fetchedAt: now)
         } catch {
-            guard context.isCurrent() else { return }
+            guard context.signIn.isCurrent else { return }
             status = .failed
             failure = error
             failureCount += 1
         }
+    }
+}
+
+extension AssignmentAnswers {
+    static func persistRound(
+        _ assignments: [SDAssignment],
+        records: [MoodleAssignmentRecord],
+        closed: [String: Date],
+        answered: [Int: ContinuousClock.Instant],
+        account: String,
+        fetchedAt: Date,
+        assignments store: AssignmentStore,
+        moodle: MoodleFiles,
+        rounds: AssignmentRounds = .shared,
+        for signIn: SignIn
+    ) -> Bool {
+        guard !Task.isCancelled, store.saveAssignments(assignments, for: signIn) else { return false }
+        MoodleCacheContext(account: account, cache: moodle, assignments: store, signIn: signIn)
+            .save(records, fetchedAt: fetchedAt, name: MoodleAssignmentRecord.cacheName)
+        store.replaceClosedUnsubmittedAssignments(closed, for: signIn)
+        saveMoodleCalendarEvents(of: assignments, in: store, for: signIn)
+        for (id, askedAt) in answered { rounds.statusAskedAt[String(id)] = askedAt }
+        return true
     }
 }

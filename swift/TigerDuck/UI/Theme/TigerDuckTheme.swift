@@ -83,8 +83,8 @@ enum TigerDuckTheme {
         store.state.snapshot()
     }
 
-    static func ensureAssignments(courseNos: [String]) {
-        store.ensureAssignments(courseNos: courseNos, palette: coursePaletteHexes)
+    static func ensureAssignments(courseNos: [String], for signIn: SignIn) {
+        store.ensureAssignments(courseNos: courseNos, palette: coursePaletteHexes, for: signIn)
     }
 
     static func courseColor(for courseNo: String) -> Color {
@@ -101,13 +101,13 @@ enum TigerDuckTheme {
     }
 
     @discardableResult
-    static func setColor(hex: UInt32, for courseNo: String) -> [String: UInt32] {
-        store.apply(.pick(hex & 0xFFFFFF, courseNo: courseNo), palette: coursePaletteHexes)
+    static func setColor(hex: UInt32, for courseNo: String, signIn: SignIn) -> [String: UInt32] {
+        store.apply(.pick(hex & 0xFFFFFF, courseNo: courseNo), palette: coursePaletteHexes, for: signIn)
     }
 
     @discardableResult
-    static func applyColors(_ colors: [(courseNo: String, hex: UInt32)]) -> Bool {
-        store.applyColors(colors, palette: coursePaletteHexes)
+    static func applyColors(_ colors: [(courseNo: String, hex: UInt32)], for signIn: SignIn) -> Bool {
+        store.applyColors(colors, palette: coursePaletteHexes, for: signIn)
     }
 
     nonisolated static func assigning(
@@ -127,8 +127,8 @@ enum TigerDuckTheme {
         store.reload()
     }
 
-    static func reassignAll(courseNos: [String]) {
-        store.apply(.reassignAll(courseNos: courseNos), palette: coursePaletteHexes)
+    static func reassignAll(courseNos: [String], for signIn: SignIn) {
+        store.apply(.reassignAll(courseNos: courseNos), palette: coursePaletteHexes, for: signIn)
     }
 }
 

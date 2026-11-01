@@ -53,9 +53,12 @@ final class CourseStore {
         _ = revision
     }
 
-    private func write(_ body: (CourseFiles) -> Void) {
+    @discardableResult
+    private func write(_ signIn: SignIn, _ body: (CourseFiles) -> Void) -> Bool {
+        guard signIn.isCurrent else { return false }
         body(files)
         revision &+= 1
+        return true
     }
 
     func loadCourses(semester: String) -> [SDCourse] {
@@ -106,28 +109,46 @@ final class CourseStore {
         files.loadSemesterResetAt()
     }
 
-    func saveCourses(_ courses: [SDCourse], semester: String) { write { $0.saveCourses(courses, semester: semester) } }
-    func clearCourses(semester: String) { write { $0.clearCourses(semester: semester) } }
-    func removeCourses(_ courseNos: Set<String>, semester: String) { write { $0.removeCourses(courseNos, semester: semester) } }
-    func clearCourseCaches() { write { $0.clearCourseCaches() } }
-    func saveUserAddedCourses(_ courses: [SDCourse]) { write { $0.saveUserAddedCourses(courses) } }
-    func saveDeletedCourseNos(_ courseNos: [String]) { write { $0.saveDeletedCourseNos(courseNos) } }
-    func saveCourseCustomNames(_ names: [String: [String: String]]) { write { $0.saveCourseCustomNames(names) } }
-    func saveSelectionDroppedNos(_ dropped: [String: [String]]) { write { $0.saveSelectionDroppedNos(dropped) } }
-
-    func saveServerDroppedNos(_ courseNos: Set<String>, semester: String) {
-        write { $0.saveServerDroppedNos(courseNos, semester: semester) }
+    @discardableResult
+    func saveCourses(_ courses: [SDCourse], semester: String, for signIn: SignIn) -> Bool {
+        write(signIn) { $0.saveCourses(courses, semester: semester) }
     }
 
-    func recordSelectionRoster(semester: String, roster: [String], alsoListed: [String] = [], isFinal: Bool = false) {
-        write { $0.recordSelectionRoster(semester: semester, roster: roster, alsoListed: alsoListed, isFinal: isFinal) }
+    func clearCourses(semester: String, for signIn: SignIn) { write(signIn) { $0.clearCourses(semester: semester) } }
+
+    func removeCourses(_ courseNos: Set<String>, semester: String, for signIn: SignIn) {
+        write(signIn) { $0.removeCourses(courseNos, semester: semester) }
     }
 
-    func recordSemesterReset(_ semester: String, at date: Date = Date()) {
+    func clearCourseCaches(for signIn: SignIn) { write(signIn) { $0.clearCourseCaches() } }
+    func saveUserAddedCourses(_ courses: [SDCourse], for signIn: SignIn) { write(signIn) { $0.saveUserAddedCourses(courses) } }
+    func saveDeletedCourseNos(_ courseNos: [String], for signIn: SignIn) { write(signIn) { $0.saveDeletedCourseNos(courseNos) } }
+
+    func saveCourseCustomNames(_ names: [String: [String: String]], for signIn: SignIn) {
+        write(signIn) { $0.saveCourseCustomNames(names) }
+    }
+
+    func saveSelectionDroppedNos(_ dropped: [String: [String]], for signIn: SignIn) {
+        write(signIn) { $0.saveSelectionDroppedNos(dropped) }
+    }
+
+    func saveServerDroppedNos(_ courseNos: Set<String>, semester: String, for signIn: SignIn) {
+        write(signIn) { $0.saveServerDroppedNos(courseNos, semester: semester) }
+    }
+
+    func recordSelectionRoster(
+        semester: String, roster: [String], alsoListed: [String] = [], isFinal: Bool = false, for signIn: SignIn
+    ) {
+        write(signIn) { $0.recordSelectionRoster(semester: semester, roster: roster, alsoListed: alsoListed, isFinal: isFinal) }
+    }
+
+    func recordSemesterReset(_ semester: String, at date: Date = Date(), for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         files.recordSemesterReset(semester, at: date)
     }
 
-    func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = []) {
+    func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = [], for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         files.clearSemesterResets(outlivedBy: fetchedAt, keeping: owned)
     }
 
@@ -136,11 +157,10 @@ final class CourseStore {
     /// ones, or when the user reset the term since.
     @discardableResult
     func saveFetchedCourses(
-        _ courses: [SDCourse], semester: String, display: Display, since token: EditToken
+        _ courses: [SDCourse], semester: String, display: Display, since token: EditToken, for signIn: SignIn
     ) -> Bool {
         guard display == self.display(), !termWasReset(semester, since: token) else { return false }
-        saveCourses(courses, semester: semester)
-        return true
+        return saveCourses(courses, semester: semester, for: signIn)
     }
 
     func termWasReset(_ semester: String, since token: EditToken) -> Bool {
@@ -152,13 +172,13 @@ final class CourseStore {
     /// matched, or the language or labels changed since the lookups started with `display`.
     @discardableResult
     func applyLookedUp(
-        _ found: [String: CourseData], semester: String, enrolled: Bool, display: Display
+        _ found: [String: CourseData], semester: String, enrolled: Bool, display: Display, for signIn: SignIn
     ) -> Bool {
-        guard !found.isEmpty, display == self.display() else { return false }
+        guard !found.isEmpty, display == self.display(), signIn.isCurrent else { return false }
         var applied = false
         let current = files.loadCourses(semester: semester)
         if enrolled, current.contains(where: { found[$0.courseNo] != nil }) {
-            saveCourses(current.map { course in found[course.courseNo].map(course.updated) ?? course }, semester: semester)
+            saveCourses(current.map { course in found[course.courseNo].map(course.updated) ?? course }, semester: semester, for: signIn)
             applied = true
         }
         let userAdded = files.loadUserAddedCourses()
@@ -167,7 +187,7 @@ final class CourseStore {
             saveUserAddedCourses(userAdded.map { course in
                 guard isHere(course), let data = found[course.courseNo] else { return course }
                 return course.updated(with: data)
-            })
+            }, for: signIn)
             applied = true
         }
         return applied
@@ -177,56 +197,57 @@ final class CourseStore {
 extension CourseStore {
     /// Applies a user's edit to the files as they are now. True when it changed something.
     @discardableResult
-    func apply(_ edit: CourseEdit) -> Bool {
+    func apply(_ edit: CourseEdit, for signIn: SignIn) -> Bool {
+        guard signIn.isCurrent else { return false }
         editToken.move()
         switch edit {
         case let .add(course, semester):
             if course.semester.isEmpty { course.semester = semester }
             var userAdded = files.loadUserAddedCourses()
             userAdded.removeAll { $0.courseNo == course.courseNo && Self.userAddedCourse($0, belongsTo: semester) }
-            saveUserAddedCourses(userAdded + [course])
+            saveUserAddedCourses(userAdded + [course], for: signIn)
             return true
         case let .remove(courseNo, semester):
             let userAdded = files.loadUserAddedCourses()
             let kept = userAdded.filter { !($0.courseNo == courseNo && Self.userAddedCourse($0, belongsTo: semester)) }
             guard kept.count != userAdded.count else { return false }
-            saveUserAddedCourses(kept)
+            saveUserAddedCourses(kept, for: signIn)
             return true
         case let .delete(courseNo, semester):
-            write { $0.deleteCourse(courseNo, semester: semester) }
+            write(signIn) { $0.deleteCourse(courseNo, semester: semester) }
             return true
         case let .unhide(courseNo, semester):
-            return unhide(courseNo, semester: semester)
+            return unhide(courseNo, semester: semester, for: signIn)
         case let .rename(courseNo, name, locale):
             var names = files.loadCourseCustomNames()
             names[courseNo, default: [:]][locale] = name
             if names[courseNo]?.isEmpty == true { names.removeValue(forKey: courseNo) }
-            saveCourseCustomNames(names)
+            saveCourseCustomNames(names, for: signIn)
             return true
         case let .resetTerm(semester):
-            resetTerm(semester)
+            resetTerm(semester, for: signIn)
             return true
         }
     }
 
-    private func unhide(_ courseNo: String, semester: String) -> Bool {
+    private func unhide(_ courseNo: String, semester: String, for signIn: SignIn) -> Bool {
         var deleted = Set(files.loadDeletedCourseNos())
         guard CourseTombstone.unhide(courseNo, semester: semester, from: &deleted) else { return false }
-        saveDeletedCourseNos(Array(deleted))
+        saveDeletedCourseNos(Array(deleted), for: signIn)
         return true
     }
 
-    private func resetTerm(_ semester: String) {
+    private func resetTerm(_ semester: String, for signIn: SignIn) {
         lastReset[semester] = editToken
         let deleted = Set(files.loadDeletedCourseNos())
-        saveDeletedCourseNos(Array(deleted.subtracting(CourseTombstone.entries(resetting: semester, in: deleted))))
-        saveUserAddedCourses(files.loadUserAddedCourses().filter { !Self.userAddedCourse($0, belongsTo: semester) })
+        saveDeletedCourseNos(Array(deleted.subtracting(CourseTombstone.entries(resetting: semester, in: deleted))), for: signIn)
+        saveUserAddedCourses(files.loadUserAddedCourses().filter { !Self.userAddedCourse($0, belongsTo: semester) }, for: signIn)
         var names = files.loadCourseCustomNames()
         for courseNo in files.loadCourses(semester: semester).map(\.courseNo) {
             names.removeValue(forKey: courseNo)
         }
-        saveCourseCustomNames(names)
-        clearCourses(semester: semester)
+        saveCourseCustomNames(names, for: signIn)
+        clearCourses(semester: semester, for: signIn)
     }
 }
 

@@ -91,7 +91,7 @@ final class MoodleCourseForums {
 
     @discardableResult
     func open(_ discussion: MoodleDiscussion, in forum: MoodleForum?) -> Task<Void, Never> {
-        guard context.isCurrent(), !Task.isCancelled else { return Task {} }
+        guard context.signIn.isCurrent, !Task.isCancelled else { return Task {} }
         if let forum { discussions(of: forum).markRead(discussion.id) }
         if let thread = threads[discussion.id], thread.value?.posts.contains(where: \.isUnread) == true {
             thread.edit { value in
@@ -99,11 +99,11 @@ final class MoodleCourseForums {
             }
         }
         return Task { [api, context] in
-            guard context.isCurrent(), !Task.isCancelled else { return }
+            guard context.signIn.isCurrent, !Task.isCancelled else { return }
             guard (try? await api.functions())?.contains(MoodleForumService.viewDiscussionFunction) == true else { return }
-            guard context.isCurrent(), !Task.isCancelled else { return }
+            guard context.signIn.isCurrent, !Task.isCancelled else { return }
             do {
-                try await api.markViewed(discussion.id) { @MainActor in context.isCurrent() }
+                try await api.markViewed(discussion.id, context.signIn)
             } catch is CancellationError {
                 return
             } catch {
@@ -126,10 +126,10 @@ final class MoodleCourseForums {
     func openThread(
         of discussion: MoodleDiscussion, in forum: MoodleForum, isShown: () -> Bool = { true }
     ) async -> Set<Int>? {
-        guard context.isCurrent(), !Task.isCancelled else { return nil }
+        guard context.signIn.isCurrent, !Task.isCancelled else { return nil }
         let feed = thread(of: discussion)
         await refreshThread(of: discussion)
-        guard context.isCurrent(), !Task.isCancelled, isShown(),
+        guard context.signIn.isCurrent, !Task.isCancelled, isShown(),
               feed.status == .ok, let posts = feed.value?.posts else {
             return nil
         }

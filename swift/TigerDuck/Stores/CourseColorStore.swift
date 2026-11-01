@@ -32,7 +32,8 @@ final class CourseColorStore {
         self.state = state
     }
 
-    private func saving<Result>(_ body: (ColorState) -> Result) -> Result {
+    private func saving<Result>(_ signIn: SignIn, unchanged: Result, _ body: (ColorState) -> Result) -> Result {
+        guard signIn.isCurrent else { return unchanged }
         let saves = state.saves
         let result = body(state)
         if state.saves != saves { revision &+= 1 }
@@ -48,14 +49,19 @@ final class CourseColorStore {
         state.hex(for: courseNo, palette: palette)
     }
 
-    func ensureAssignments(courseNos: [String], palette: [UInt32]) {
-        saving { $0.ensureAssignments(courseNos: courseNos, palette: palette) }
+    func ensureAssignments(courseNos: [String], palette: [UInt32], for signIn: SignIn) {
+        saving(signIn, unchanged: ()) { $0.ensureAssignments(courseNos: courseNos, palette: palette) }
     }
 
     /// Colours another device picked, applied without counting as picks here.
     @discardableResult
-    func applyColors(_ colors: [(courseNo: String, hex: UInt32)], palette: [UInt32]) -> Bool {
-        saving { $0.applyColors(colors, palette: palette) }
+    func applyColors(_ colors: [(courseNo: String, hex: UInt32)], palette: [UInt32], for signIn: SignIn) -> Bool {
+        saving(signIn, unchanged: false) { $0.applyColors(colors, palette: palette) }
+    }
+
+    func forgetColors(for signIn: SignIn) {
+        saving(signIn, unchanged: ()) { _ in files.saveCourseColorMap([:]) }
+        reload()
     }
 
     func reload() {
@@ -65,12 +71,12 @@ final class CourseColorStore {
     }
 
     @discardableResult
-    func apply(_ edit: CourseColorEdit, palette: [UInt32]) -> [String: UInt32] {
+    func apply(_ edit: CourseColorEdit, palette: [UInt32], for signIn: SignIn) -> [String: UInt32] {
         switch edit {
         case let .pick(hex, courseNo):
-            return saving { $0.setColor(hex: hex, for: courseNo, palette: palette) }
+            return saving(signIn, unchanged: [:]) { $0.setColor(hex: hex, for: courseNo, palette: palette) }
         case let .reassignAll(courseNos):
-            saving { $0.reassignAll(courseNos: courseNos, palette: palette) }
+            saving(signIn, unchanged: ()) { $0.reassignAll(courseNos: courseNos, palette: palette) }
             return [:]
         }
     }

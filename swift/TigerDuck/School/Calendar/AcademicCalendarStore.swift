@@ -43,7 +43,8 @@ final class AcademicCalendarStore: AccountScoped {
         lastHolidayEditAt = .distantPast
     }
 
-    func setHolidayAcknowledged(_ acknowledged: Bool, holidayID: Int) {
+    func setHolidayAcknowledged(_ acknowledged: Bool, holidayID: Int, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         var ids = unacknowledgedHolidayIDs
         if acknowledged { ids.remove(holidayID) } else { ids.insert(holidayID) }
         Defaults[.holidayOverridesAwaitingUpload] = ids.sorted()
@@ -106,7 +107,8 @@ final class AcademicCalendarStore: AccountScoped {
     }
 
     @discardableResult
-    func setNotify(_ notify: Bool, forHoliday holidayID: Int) -> Bool {
+    func setNotify(_ notify: Bool, forHoliday holidayID: Int, for signIn: SignIn) -> Bool {
+        guard signIn.isCurrent else { return false }
         var ids = Set(Defaults[.holidayNotifyOverrides])
         let before = ids
         if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }
@@ -132,7 +134,8 @@ final class AcademicCalendarStore: AccountScoped {
     }
 
     @discardableResult
-    func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date) -> Bool {
+    func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date, for signIn: SignIn) -> Bool {
+        guard signIn.isCurrent else { return false }
         guard pendingHolidayUploads == 0, fetchedAt > lastHolidayEditAt else {
             logger.info("holiday overrides from sync ignored — a local toggle is newer")
             return false
@@ -150,7 +153,8 @@ final class AcademicCalendarStore: AccountScoped {
         return true
     }
 
-    func applyKeptNotify(_ notify: Bool, forHoliday holidayID: Int) {
+    func applyKeptNotify(_ notify: Bool, forHoliday holidayID: Int, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         var ids = Set(Defaults[.holidayNotifyOverrides])
         if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }
         Defaults[.holidayOverrideEditTimes][String(holidayID)] = nil

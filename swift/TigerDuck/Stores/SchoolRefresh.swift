@@ -24,12 +24,12 @@ enum SchoolRefresh {
     }
 
     @discardableResult
-    static func assignments(authService: AuthService) async -> [SDAssignment] {
-        await AssignmentFetch.fetchAssignments(authService: authService, recheckSubmissions: true)
+    static func assignments(authService: AuthService, for signIn: SignIn) async -> [SDAssignment] {
+        await AssignmentFetch.fetchAssignments(authService: authService, recheckSubmissions: true, for: signIn)
     }
 
-    static func moodleEvents(authService: AuthService) async -> [SDCalendarEvent] {
-        await assignments(authService: authService).map(AssignmentRecords.moodleCalendarEvent)
+    static func moodleEvents(authService: AuthService, for signIn: SignIn) async -> [SDCalendarEvent] {
+        await assignments(authService: authService, for: signIn).map(AssignmentRecords.moodleCalendarEvent)
     }
 
     /// The school calendar's events; nil when the fetch fails.
@@ -37,20 +37,20 @@ enum SchoolRefresh {
         await CalendarService.fetchAndParseICS()
     }
 
-    static func courses(_ semester: String, authService: AuthService, force: Bool = false) async {
-        _ = await CourseFetch.fetchCourses(authService: authService, semester: semester, forceRefresh: force)
+    static func courses(_ semester: String, authService: AuthService, force: Bool = false, for signIn: SignIn) async {
+        _ = await CourseFetch.fetchCourses(authService: authService, semester: semester, forceRefresh: force, for: signIn)
     }
 
-    static func allTerms(authService: AuthService) async {
-        await CourseFetch.warmAllSemesterCaches(authService: authService)
+    static func allTerms(authService: AuthService, for signIn: SignIn) async {
+        await CourseFetch.warmAllSemesterCaches(authService: authService, for: signIn)
     }
 
-    static func userAddedCourses(_ semester: String, authService: AuthService) async {
-        _ = await CourseDetails.refreshUserAddedCourses(semester: semester, authService: authService)
+    static func userAddedCourses(_ semester: String, for signIn: SignIn) async {
+        _ = await CourseDetails.refreshUserAddedCourses(semester: semester, for: signIn)
     }
 
-    static func coursesMissingClassroom(_ semester: String, authService: AuthService) async {
-        _ = await CourseDetails.refreshCoursesMissingClassroom(semester: semester, authService: authService)
+    static func coursesMissingClassroom(_ semester: String, for signIn: SignIn) async {
+        _ = await CourseDetails.refreshCoursesMissingClassroom(semester: semester, for: signIn)
     }
 
     static func courseChanges() async {

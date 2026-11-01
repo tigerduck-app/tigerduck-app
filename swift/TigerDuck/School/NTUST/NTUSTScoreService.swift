@@ -29,7 +29,7 @@ enum NTUSTScoreService {
         studentId: String,
         password: String,
         forceRefresh: Bool = false,
-        persistGuard: (@Sendable () -> Bool)? = nil
+        for signIn: SignIn
     ) async throws -> (report: ScoreReport, cachedAt: Date) {
         if !forceRefresh,
            let cached = ScoreReportFiles.shared.loadScoreReport(studentId: studentId),
@@ -37,21 +37,18 @@ enum NTUSTScoreService {
             return cached
         }
 
-        let isCurrent = AccountSession.school.currentCheck()
-        if !(await NTUSTSessionManager.shared.probeCookiesValid(using: session)) {
+        if !(await NTUSTSessionManager.shared.probeCookiesValid(using: session, for: signIn)) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: scoreRootURL,
                 studentId: studentId,
                 password: password,
-                isCurrent: isCurrent
+                for: signIn
             )
             guard loggedIn else { throw NTUSTScoreServiceError.notAuthenticated }
         }
 
-        let html = try await fetchHTML(
-            session: session, studentId: studentId, password: password, isCurrent: isCurrent
-        )
+        let html = try await fetchHTML(session: session, studentId: studentId, password: password, signIn: signIn)
         let report = await Task.detached(priority: .userInitiated) {
             NTUSTScoreParser.parse(html: html)
         }.value
@@ -60,7 +57,7 @@ enum NTUSTScoreService {
             throw NTUSTScoreServiceError.parseFailed
         }
 
-        if persistGuard?() ?? true {
+        if signIn.isCurrent {
             ScoreReportFiles.shared.saveScoreReport(report, studentId: studentId)
         }
         return (report, Date())
@@ -78,7 +75,7 @@ enum NTUSTScoreService {
         session: URLSession,
         studentId: String,
         password: String,
-        isCurrent: @escaping @MainActor () -> Bool
+        signIn: SignIn
     ) async throws -> String {
         let (data, response) = try await session.data(from: scoreDisplayURL)
         guard let html = String(data: data, encoding: .utf8) else {
@@ -102,7 +99,7 @@ enum NTUSTScoreService {
                 serviceURL: scoreRootURL,
                 studentId: studentId,
                 password: password,
-                isCurrent: isCurrent
+                for: signIn
             )
             guard loggedIn else { throw NTUSTScoreServiceError.notAuthenticated }
 

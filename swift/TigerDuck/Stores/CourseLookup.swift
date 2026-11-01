@@ -19,4 +19,9 @@ enum CourseLookup {
     static func moodleCourseIds() -> [String: Int] {
         MoodleFiles.shared.loadMoodleCourseIdMap()
     }
+
+    static func saveMoodleCourseIds(_ ids: [String: Int], for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        MoodleFiles.shared.saveMoodleCourseIdMap(ids)
+    }
 }

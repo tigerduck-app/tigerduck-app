@@ -2,34 +2,13 @@ import Defaults
 import Foundation
 
 enum AssignmentAnswers {
-    static var assignmentUploader: ((PushAPI.AssignmentUploadRequest) -> Void)?
+    static var assignmentUploader: ((PushAPI.AssignmentUploadRequest, SignIn) -> Void)?
 
-    static func persistRound(
-        _ assignments: [SDAssignment],
-        records: [MoodleAssignmentRecord],
-        closed: [String: Date],
-        answered: [Int: ContinuousClock.Instant],
-        account: String,
-        fetchedAt: Date,
-        assignments store: AssignmentStore,
-        moodle: MoodleFiles,
-        rounds: AssignmentRounds = .shared,
-        isCurrent: () -> Bool
-    ) -> Bool {
-        guard !Task.isCancelled, isCurrent() else { return false }
-        store.saveAssignments(assignments)
-        moodle.saveMoodleData(records, fetchedAt: fetchedAt, name: MoodleAssignmentRecord.cacheName, account: account)
-        store.replaceClosedUnsubmittedAssignments(closed)
-        saveMoodleCalendarEvents(of: assignments, in: store)
-        for (id, askedAt) in answered { rounds.statusAskedAt[String(id)] = askedAt }
-        return true
-    }
-
-    static func saveMoodleCalendarEvents(of assignments: [SDAssignment], in cache: AssignmentStore) {
+    static func saveMoodleCalendarEvents(of assignments: [SDAssignment], in cache: AssignmentStore, for signIn: SignIn) {
         var calendarEvents = cache.loadCalendarEvents()
         calendarEvents.removeAll { $0.source == .moodle }
         calendarEvents.append(contentsOf: assignments.map(AssignmentRecords.moodleCalendarEvent))
-        cache.saveCalendarEvents(calendarEvents)
+        cache.saveCalendarEvents(calendarEvents, for: signIn)
     }
 
     static func askStatuses(
@@ -49,7 +28,7 @@ enum AssignmentAnswers {
         )
     }
 
-    static func uploadForReminders(_ assignments: [SDAssignment]) {
+    static func uploadForReminders(_ assignments: [SDAssignment], for signIn: SignIn) {
         #if os(iOS)
         guard let upload = assignmentUploader, Defaults[.cloudSyncEnabled] else { return }
         let iso = ISO8601DateFormatter()
@@ -67,7 +46,7 @@ enum AssignmentAnswers {
                 grade: nil
             )
         }
-        upload(PushAPI.AssignmentUploadRequest(assignments: entries))
+        upload(PushAPI.AssignmentUploadRequest(assignments: entries), signIn)
         #endif
     }
 }

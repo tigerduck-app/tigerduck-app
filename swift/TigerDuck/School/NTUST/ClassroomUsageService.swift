@@ -28,14 +28,13 @@ final class ClassroomUsageService {
     static let shared = ClassroomUsageService(
         session: NTUSTSessionManager.shared.session,
         queryURL: queryURL,
-        account: .school,
-        signIn: { url, credentials, isCurrent in
+        signIn: { url, credentials in
             try await SSOLoginService.ensureServiceLogin(
                 session: NTUSTSessionManager.shared.session,
                 serviceURL: url,
                 studentId: credentials.studentId,
                 password: credentials.password,
-                isCurrent: isCurrent
+                for: credentials.signIn
             )
         }
     )
@@ -54,21 +53,17 @@ final class ClassroomUsageService {
     struct Credentials: Sendable {
         let studentId: String
         let password: String
-        let signIn: AccountSession.Ticket
+        let signIn: SignIn
     }
 
-    typealias SignIn = @MainActor (
-        _ serviceURL: URL, _ credentials: Credentials, _ isCurrent: @escaping @MainActor () -> Bool
-    ) async throws -> Bool
+    typealias ServiceSignIn = @MainActor (_ serviceURL: URL, _ credentials: Credentials) async throws -> Bool
     typealias LogFailure = @MainActor (any Error) -> Void
 
     private let pages: ClassroomUsagePages
     private let now: @MainActor () -> Date
     private let logFailure: LogFailure
 
-    private var kept: [Int: KeptUsage] = [:]
-    private(set) var siteStatus = ServerStatus.unknown
-    private var stateSignIn: AccountSession.Ticket?
+    private var reads = SignInBound(empty: Reads())
     private var epoch = 0
     private var isFetching = false
     private var waiting: [CheckedContinuation<Void, Never>] = []
@@ -76,92 +71,89 @@ final class ClassroomUsageService {
     init(
         session: URLSession,
         queryURL: URL,
-        account: AccountSession,
-        signIn: @escaping SignIn,
+        signIn: @escaping ServiceSignIn,
         timeouts: (load: TimeInterval, post: TimeInterval) = (60, 15),
         now: @escaping @MainActor () -> Date = { Date() },
         logFailure: @escaping LogFailure = { AppLogger.captureError($0, context: ["service": "classroomUsage"]) }
     ) {
-        pages = ClassroomUsagePages(session: session, queryURL: queryURL, account: account, signIn: signIn, timeouts: timeouts)
+        pages = ClassroomUsagePages(session: session, queryURL: queryURL, signIn: signIn, timeouts: timeouts)
         self.now = now
         self.logFailure = logFailure
     }
 
+    var siteStatus: ServerStatus { reads.value.siteStatus }
+
     func keptUsage(on day: Date) -> KeptUsage? {
-        adoptSession()
-        guard let entry = kept[ClassroomUsageParser.dayNumber(of: day)],
+        guard let entry = reads.value.kept[ClassroomUsageParser.dayNumber(of: day)],
               Self.keptLimit.isFresh(storedAt: entry.fetchedAt, now: now()) else { return nil }
         return entry
     }
 
     func usage(on day: Date, isToday: Bool, force: Bool, credentials: Credentials) async throws -> KeptUsage {
         let number = ClassroomUsageParser.dayNumber(of: day)
-        adoptSession()
-        let ticket = Ticket(signIn: credentials.signIn, epoch: epoch)
-        try check(ticket)
+        let attempt = Attempt(signIn: credentials.signIn, epoch: epoch)
+        try check(attempt)
         if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
         return try await oneAtATime {
-            try check(ticket)
+            try check(attempt)
             if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
             let usage: CampusUsage
             do {
-                usage = try await fetch(number, credentials: credentials, ticket: ticket)
-                try check(ticket)
+                usage = try await fetch(number, credentials: credentials, attempt: attempt)
+                try check(attempt)
             } catch {
-                noteFailure(error, for: ticket)
+                noteFailure(error, for: attempt)
                 throw error
             }
-            siteStatus = .ok
             let read = KeptUsage(usage: usage, fetchedAt: now())
-            kept[number] = read
+            var updated = reads.value
+            updated.siteStatus = .ok
+            updated.kept[number] = read
+            reads.set(updated, for: attempt.signIn)
             return read
         }
     }
 
     func forget() {
-        kept = [:]
-        siteStatus = .unknown
+        reads = SignInBound(empty: Reads())
         epoch &+= 1
     }
 
-    private struct Ticket {
-        let signIn: AccountSession.Ticket
+    private struct Reads {
+        var kept: [Int: KeptUsage] = [:]
+        var siteStatus = ServerStatus.unknown
+    }
+
+    private struct Attempt {
+        let signIn: SignIn
         let epoch: Int
     }
 
-    private var account: AccountSession { pages.account }
-
-    private func adoptSession() {
-        let signIn = account.ticket
-        guard stateSignIn != signIn else { return }
-        kept = [:]
-        siteStatus = .unknown
-        stateSignIn = signIn
+    private func noteFailure(_ error: any Error, for attempt: Attempt) {
+        guard Self.isWorthLogging(error), (try? check(attempt)) != nil else { return }
+        var updated = reads.value
+        updated.siteStatus = .failed
+        reads.set(updated, for: attempt.signIn)
     }
 
-    private func noteFailure(_ error: any Error, for ticket: Ticket) {
-        guard Self.isWorthLogging(error), (try? check(ticket)) != nil else { return }
-        siteStatus = .failed
-    }
-
-    private func check(_ ticket: Ticket) throws {
-        guard account.isCurrent(ticket.signIn), ticket.epoch == epoch else { throw CancellationError() }
+    private func check(_ attempt: Attempt) throws {
+        guard attempt.signIn.isCurrent, attempt.epoch == epoch else { throw CancellationError() }
     }
 
     private func freshUsage(_ day: Int, isToday: Bool) -> KeptUsage? {
-        guard let entry = kept[day] else { return nil }
+        guard let entry = reads.value.kept[day] else { return nil }
         let freshness = isToday ? Self.todayFreshness : Self.laterFreshness
         return freshness.isFresh(storedAt: entry.fetchedAt, now: now()) ? entry : nil
     }
 
-    private func fetch(_ day: Int, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
+    private func fetch(_ day: Int, credentials: Credentials, attempt: Attempt) async throws -> CampusUsage {
         do {
-            return try await read(day, credentials: credentials, ticket: ticket)
+            return try await read(day, credentials: credentials, attempt: attempt)
         } catch ClassroomUsageError.unreadable {
-            try check(ticket)
+            try check(attempt)
             NTUSTSessionManager.shared.dropServiceCookies(for: pages.queryURL)
             do {
-                return try await read(day, credentials: credentials, ticket: ticket)
+                return try await read(day, credentials: credentials, attempt: attempt)
             } catch {
                 if Self.isWorthLogging(error) { logFailure(error) }
                 throw error
@@ -173,11 +165,8 @@ final class ClassroomUsageService {
         !AppLogger.isCancellation(error)
     }
 
-    private func read(_ day: Int, credentials: Credentials, ticket: Ticket) async throws -> CampusUsage {
-        let scope = ClassroomUsagePages.Scope(
-            isCurrent: { [account] in account.isCurrent(ticket.signIn) },
-            check: { try self.check(ticket) }
-        )
+    private func read(_ day: Int, credentials: Credentials, attempt: Attempt) async throws -> CampusUsage {
+        let scope = ClassroomUsagePages.Scope(check: { try self.check(attempt) })
         return try await pages.read(day, credentials: credentials, scope: scope)
     }
 

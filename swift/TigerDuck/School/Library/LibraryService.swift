@@ -30,7 +30,7 @@ enum LibraryService: AccountScoped {
     static func saveCredentials(username: String, password: String) {
         let accountChanged = storedUsername != username
         if accountChanged {
-            AccountSession.library.moveOn()
+            AccountSession.library.endSignIn()
         }
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
@@ -119,9 +119,9 @@ enum LibraryService: AccountScoped {
     ) async throws -> String {
         cancelStoredPasswordRetry()
         typedSignIns &+= 1
-        let ticket = AccountSession.library.ticket
+        let signIn = AccountSession.library.signIns.currentSignIn
         let answer = try await request(username, password)
-        guard AccountSession.library.isCurrent(ticket), stillCurrent() else {
+        guard signIn.isCurrent, stillCurrent() else {
             throw LibraryServiceError.credentialsNotFound
         }
         saveCredentials(username: username, password: password)
@@ -201,14 +201,14 @@ enum LibraryService: AccountScoped {
             return try await pending.value
         }
 
-        let ticket = AccountSession.library.ticket
+        let librarySignIn = AccountSession.library.signIns.currentSignIn
         let typedSignInsBefore = typedSignIns
         let attempt = Task {
             let answer: LibraryLoginData
             do {
                 answer = try await signIn(username, password)
             } catch {
-                if AccountSession.library.isCurrent(ticket), storedPassword == password {
+                if librarySignIn.isCurrent, storedPassword == password {
                     if case LibraryServiceError.loginFailed = error {
                         StoredPasswordBackoff.library.noteRefused(at: Date())
                         if typedSignIns == typedSignInsBefore {
@@ -224,7 +224,7 @@ enum LibraryService: AccountScoped {
                 }
                 throw error
             }
-            guard AccountSession.library.isCurrent(ticket) else { throw LibraryServiceError.credentialsNotFound }
+            guard librarySignIn.isCurrent else { throw LibraryServiceError.credentialsNotFound }
             saveToken(answer.token, expirationMs: answer.expirationTimeStamp)
             storedSignInFailedAt = nil
             if storedPasswordRefusals.count > 0, storedPassword == password {
