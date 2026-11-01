@@ -359,15 +359,29 @@ struct MailAccountManagerTests {
         #expect(bait.htmlBody?.contains("ntust-mail-verify.com") == true)
         let withAttachment = try await demo.detail(folder: "INBOX", uid: 2, expectedUIDValidity: page.uidValidity)
         let part = try #require(withAttachment.attachments.first)
-        #expect((part.size ?? 0) > 0)
-        await #expect(throws: MailClientError.unreachable) {
-            try await demo.attachment(folder: "INBOX", uid: 2, part: part, expectedUIDValidity: page.uidValidity)
-        }
+        let pdf = try await demo.attachment(folder: "INBOX", uid: 2, part: part, expectedUIDValidity: page.uidValidity)
+        #expect(pdf.starts(with: Data("%PDF-".utf8)))
+        #expect(pdf.count == part.size)
         let drafts = try await demo.page(folder: MailFolderRole.drafts.imapName, olderThanSequence: nil, pageSize: 50)
         let sent = try await demo.page(folder: MailFolderRole.sent.imapName, olderThanSequence: nil, pageSize: 50)
         #expect(drafts.summaries.count == 1)
         #expect(sent.summaries.count == 1)
         #expect(!(try await demo.rawSource(folder: "INBOX", uid: 4, expectedUIDValidity: nil)).isEmpty)
+    }
+
+    @Test func aDemoAttachmentWithoutContentIsUnreachable() async throws {
+        let entry = MailDemoFixture.Entry(
+            uid: 1, fromName: nil, fromAddress: "a@mail.ntust.edu.tw", to: [], subject: "", date: Date(), seen: false,
+            text: "", html: nil,
+            attachments: [MailDemoFixture.Attachment(filename: "a.pdf", contentType: "application/pdf", size: 1)]
+        )
+        let demo = DemoMailClient(fixture: MailDemoFixture(studentId: "B99999999", password: "pw", uidValidity: 1,
+                                                           folders: ["INBOX": [entry]]))
+        let detail = try await demo.detail(folder: "INBOX", uid: 1, expectedUIDValidity: 1)
+        let part = try #require(detail.attachments.first)
+        await #expect(throws: MailClientError.unreachable) {
+            try await demo.attachment(folder: "INBOX", uid: 1, part: part, expectedUIDValidity: 1)
+        }
     }
 
     @Test func aRealMailboxStaysClosedWhileTheSchoolAccountIsTheDemo() async {
