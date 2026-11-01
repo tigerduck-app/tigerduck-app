@@ -162,6 +162,7 @@ final class MailAccountManager {
         return (client, demo)
     }
 
+    // RFC 5321 §2.3.11 lets a server treat an address's local part as case-sensitive.
     static func normalizedUsername(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.contains("@") ? trimmed : trimmed.uppercased()

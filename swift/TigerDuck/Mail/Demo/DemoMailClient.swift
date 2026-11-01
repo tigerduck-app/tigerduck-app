@@ -221,7 +221,7 @@ actor DemoMailClient: MailClient {
         let to = MailRawHeaders.value(named: "To", in: message).map { MailAddress.parseList($0).map(\.address) }
         let cc = MailRawHeaders.value(named: "Cc", in: message).map { MailAddress.parseList($0).map(\.address) }
         let summary = MailSummary(
-            uid: uid, fromName: from?.name, fromAddress: from?.address.mailNonEmpty, to: to, cc: cc,
+            uid: uid, fromName: from?.name, fromAddress: from?.address, to: to, cc: cc,
             subject: MailRawHeaders.value(named: "Subject", in: message), date: Date(),
             isSeen: flags.contains(.seen), isAnswered: false, isDeleted: false, size: message.count,
             hasAttachments: false, isExternal: false

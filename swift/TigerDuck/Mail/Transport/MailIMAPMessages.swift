@@ -53,7 +53,7 @@ nonisolated enum MailIMAPMessages {
         guard let uid = info.uid?.value else { return nil }
         // ENVELOPE has no `Return-Path`; the opened message checks it (`MailSchoolDomain.isBounce`).
         let sender = info.from.flatMap { MailAddress.parseSender($0) }
-        let fromAddress = sender.flatMap { MailTextCleaner.clean($0.address).mailNonEmpty }
+        let fromAddress = sender?.address.flatMap { MailTextCleaner.clean($0).mailNonEmpty }
         let clean: (String) -> String = { MailTextCleaner.clean(RFC2047.decode($0)) }
         return MailSummary(
             uid: uid,

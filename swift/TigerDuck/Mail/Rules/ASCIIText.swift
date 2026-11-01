@@ -16,7 +16,7 @@ nonisolated enum ASCIIText {
     static func hasASCIICaseInsensitivePrefix(_ text: String, _ prefix: String) -> Bool {
         var iterator = text.unicodeScalars.makeIterator()
         for expected in prefix.unicodeScalars {
-            guard let next = iterator.next(), asciiLowercased(next) == expected else { return false }
+            guard let next = iterator.next(), asciiLowercased(next) == asciiLowercased(expected) else { return false }
         }
         return true
     }
@@ -25,7 +25,7 @@ nonisolated enum ASCIIText {
         let textScalars = Array(text.unicodeScalars)
         let otherScalars = Array(other.unicodeScalars)
         guard textScalars.count == otherScalars.count else { return false }
-        return zip(textScalars, otherScalars).allSatisfy { asciiLowercased($0) == $1 }
+        return zip(textScalars, otherScalars).allSatisfy { asciiLowercased($0) == asciiLowercased($1) }
     }
 }
 #endif

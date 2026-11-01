@@ -198,7 +198,13 @@ struct MailServerConfigTests {
 
     @Test func aUsernameThatIsAlreadyAnAddressIsLeftAlone() {
         #expect(MailConstants.address(forStudentID: " Me@Example.com ") == "me@example.com")
+    }
+
+    @Test func aStudentIDSignsInUpperCased() {
         #expect(MailAccountManager.normalizedUsername(" b10000000 ") == "B10000000")
+    }
+
+    @Test func anAddressSignsInWithTheCaseItWasTypedIn() {
         #expect(MailAccountManager.normalizedUsername(" Me@Example.com ") == "Me@Example.com")
     }
 

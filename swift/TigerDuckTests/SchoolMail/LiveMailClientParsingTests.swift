@@ -56,11 +56,7 @@ struct LiveMailClientParsingTests {
         #expect(from == "\"Mail Deliver System\" <MAILER-DAEMON>")
         #expect(MailAddress.parseList(from).isEmpty)
 
-        let sender = try #require(MailAddress.parseSender(from))
-        #expect(sender.name == "Mail Deliver System")
-        #expect(sender.address.isEmpty)
-        #expect(!sender.isPlausible)
-        #expect(sender.displayName == "Mail Deliver System")
+        #expect(MailAddress.parseSender(from) == MailSender(name: "Mail Deliver System", address: nil))
     }
 
     @Test func readsTheNullReversePathOfAMail2000Bounce() throws {
