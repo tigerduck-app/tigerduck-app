@@ -30,10 +30,10 @@ struct MacTigerSyncSettingsView: View {
                 Toggle(String(localized: "sync_courses_toggle"), isOn: app.cloudSyncSwitch)
                     .onChange(of: state.cloudSyncEnabled) { old, newValue in
                         if newValue && !old {
-                            if syncCourses { app.conflicts.markCategoryReenabled("courses") }
-                            if syncCourseColors { app.conflicts.markCategoryReenabled("course_colors") }
-                            if syncCourseNames { app.conflicts.markCategoryReenabled("course_names") }
-                            if syncAssignments { app.conflicts.markCategoryReenabled("assignments") }
+                            if syncCourses { app.conflicts.markCategoryReenabled(.courses) }
+                            if syncCourseColors { app.conflicts.markCategoryReenabled(.courseColors) }
+                            if syncCourseNames { app.conflicts.markCategoryReenabled(.courseNames) }
+                            if syncAssignments { app.conflicts.markCategoryReenabled(.assignments) }
                             app.conflicts.checkPendingConflicts()
                         }
                     }
@@ -167,18 +167,18 @@ struct MacTigerSyncSettingsView: View {
     }
 
     private func setCourses(_ on: Bool) {
-        if on && !syncCourses { app.conflicts.markCategoryReenabled("courses") }
+        if on && !syncCourses { app.conflicts.markCategoryReenabled(.courses) }
         syncCourses = on
         setCourseColors(EditSender.courseColorsAfterCoursesChange(coursesNowOn: on))
     }
 
     private func setCourseColors(_ on: Bool) {
-        if on && !syncCourseColors { app.conflicts.markCategoryReenabled("course_colors") }
+        if on && !syncCourseColors { app.conflicts.markCategoryReenabled(.courseColors) }
         syncCourseColors = on
     }
 
     private func setCourseNames(_ on: Bool) {
-        if on && !syncCourseNames { app.conflicts.markCategoryReenabled("course_names") }
+        if on && !syncCourseNames { app.conflicts.markCategoryReenabled(.courseNames) }
         syncCourseNames = on
     }
 

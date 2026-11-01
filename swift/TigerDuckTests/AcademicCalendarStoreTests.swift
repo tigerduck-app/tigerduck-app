@@ -74,13 +74,13 @@ struct AcademicCalendarStoreTests {
         let savedAwaiting = Defaults[.holidayOverridesAwaitingUpload]
         let savedTimes = Defaults[.holidayOverrideEditTimes]
         defer {
-            Defaults[.holidayNotifyOverrides] = savedOverrides
-            Defaults[.holidayOverridesAwaitingUpload] = savedAwaiting
-            Defaults[.holidayOverrideEditTimes] = savedTimes
+            Defaults[.holidayNotifyOverrides, for: testSignIn] = savedOverrides
+            Defaults[.holidayOverridesAwaitingUpload, for: testSignIn] = savedAwaiting
+            Defaults[.holidayOverrideEditTimes, for: testSignIn] = savedTimes
         }
-        Defaults[.holidayNotifyOverrides] = []
-        Defaults[.holidayOverridesAwaitingUpload] = []
-        Defaults[.holidayOverrideEditTimes] = [:]
+        Defaults[.holidayNotifyOverrides, for: testSignIn] = []
+        Defaults[.holidayOverridesAwaitingUpload, for: testSignIn] = []
+        Defaults[.holidayOverrideEditTimes, for: testSignIn] = [:]
         body()
     }
 

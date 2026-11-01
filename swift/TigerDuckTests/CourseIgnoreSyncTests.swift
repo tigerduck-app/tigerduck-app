@@ -229,14 +229,14 @@ struct CourseIgnoreCoordinatorTests {
 
     @Test("A setting goes out only with both switches on and the re-enabled Assignments switch's check settled")
     func settingsGoOutWithBothSwitchesOnAndNoCheckPending() {
-        func sends(assignments: Bool, courses: Bool, pendingChecks: Set<String>) -> Bool {
-            let on = [assignments ? "assignments" : nil, courses ? "courses" : nil].compactMap { $0 }
+        func sends(assignments: Bool, courses: Bool, pendingChecks: Set<SyncCategory>) -> Bool {
+            let on: [SyncCategory] = [assignments ? .assignments : nil, courses ? .courses : nil].compactMap { $0 }
             return SyncPolicy(cloudSyncEnabled: true, switchedOn: Set(on), pendingChecks: pendingChecks).sendsCourseIgnores
         }
-        #expect(sends(assignments: true, courses: true, pendingChecks: ["courses"]))
+        #expect(sends(assignments: true, courses: true, pendingChecks: [.courses]))
         #expect(!sends(assignments: true, courses: false, pendingChecks: []))
         #expect(!sends(assignments: false, courses: true, pendingChecks: []))
-        #expect(!sends(assignments: true, courses: true, pendingChecks: ["assignments"]))
+        #expect(!sends(assignments: true, courses: true, pendingChecks: [.assignments]))
     }
 
     @Test("A setting still on its way up counts as pending, parked or not; a lone id does not")

@@ -39,12 +39,12 @@ struct SyncRaceTests {
         return cache
     }
 
-    private static func policy(_ switchedOn: Set<String>) -> @MainActor () -> SyncPolicy {
+    private static func policy(_ switchedOn: Set<SyncCategory>) -> @MainActor () -> SyncPolicy {
         { SyncPolicy(cloudSyncEnabled: true, switchedOn: switchedOn, pendingChecks: []) }
     }
 
     private static func sender(
-        _ baseURL: URL, cache: TestCache, colors: CourseColorStore, switchedOn: Set<String>,
+        _ baseURL: URL, cache: TestCache, colors: CourseColorStore, switchedOn: Set<SyncCategory>,
         signIns: SignInSeries = testSignIns
     ) -> OutboxSender {
         OutboxSender(
@@ -81,7 +81,7 @@ struct SyncRaceTests {
         colors.applyColors([("CS1", Self.teal), ("CS2", Self.red)], palette: TigerDuckTheme.coursePaletteHexes, for: testSignIn)
         Self.keptRed(baseURL)
 
-        try await Self.sender(baseURL, cache: cache, colors: colors, switchedOn: ["courses", "course_colors"])
+        try await Self.sender(baseURL, cache: cache, colors: colors, switchedOn: [.courses, .courseColors])
             .send(Self.colourEdit, for: testSignIn, hasNewerQueuedEdit: { _ in false })
 
         #expect(colors.map["CS1"] == Self.red)
@@ -91,7 +91,7 @@ struct SyncRaceTests {
 
     @Test("A kept colour is not applied over a newer edit queued here, or with colour sync off")
     func keptColourYieldsToANewerEditAndTheSwitch() async throws {
-        for (newer, switchedOn) in [(true, Set(["courses", "course_colors"])), (false, Set(["courses"]))] {
+        for (newer, switchedOn) in [(true, Set<SyncCategory>([.courses, .courseColors])), (false, [.courses])] {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let cache = Self.cache()
             let colors = CourseColorStore(files: cache.colors)
@@ -118,7 +118,7 @@ struct SyncRaceTests {
             moodleCourseId: 7, moodleAssignmentId: 42, localStatus: "ignored", stamp: Date(timeIntervalSince1970: 1_790_000_000)
         )
 
-        try await Self.sender(baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"])
+        try await Self.sender(baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: [.assignments])
             .send(op, for: testSignIn, hasNewerQueuedEdit: { _ in false })
 
         #expect(cache.assignments.loadArchivedAssignmentIds().isEmpty)
@@ -140,7 +140,7 @@ struct SyncRaceTests {
         let session = AccountSession()
 
         try await Self.sender(
-            baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"],
+            baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: [.assignments],
             signIns: session.signIns
         ).send(op, for: session.signIns.currentSignIn, hasNewerQueuedEdit: { _ in
             session.endSignIn()
@@ -285,7 +285,7 @@ struct SyncRaceTests {
             pushCoordinator: Self.push(baseURL),
             outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
             isEnabled: true, syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
-            kept: KeptValues(policy: Self.policy(["courses", "course_colors"]), colors: colors,
+            kept: KeptValues(policy: Self.policy([.courses, .courseColors]), colors: colors,
                              courses: cache.courses, assignments: cache.assignments)
         )
         let fill = try #require(Self.fills(local: colors.map)["CS1"])

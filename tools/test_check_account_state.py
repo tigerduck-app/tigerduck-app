@@ -36,6 +36,17 @@ class AccountStateTests(unittest.TestCase):
                   '    static let lastViewedCourse = Key<String?>("lastViewedCourse")\n    static let schoolDataSyncedAt')
         self.assertIn("defaults `lastViewedCourse` has no row in docs/account-state.md", cas.problems(self.root))
 
+    def test_an_account_key_declared_as_a_device_key_fails(self) -> None:
+        self.edit("swift/TigerDuck/App/AppDefaults.swift", "static let schoolDataSyncedAt = AccountKey<",
+                  "static let schoolDataSyncedAt = Key<")
+        self.assertEqual(cas.problems(self.root), [
+            "defaults `schoolDataSyncedAt` belongs to an account; declare it as an `AccountKey` in `AccountKeys`"])
+
+    def test_a_device_key_declared_as_an_account_key_fails(self) -> None:
+        self.edit("swift/TigerDuck/App/AppDefaults.swift", "static let visualPreset = Key<",
+                  "static let visualPreset = AccountKey<")
+        self.assertEqual(cas.problems(self.root), ["defaults `visualPreset` is a device key; declare it in `Defaults.Keys`"])
+
     def test_a_new_cache_file_without_a_row_fails(self) -> None:
         self.edit("swift/TigerDuck/Persistence/AssignmentFiles.swift", '"assignments.json"', '"exam_seats.json"')
         self.assertIn("cache `exam_seats.json` has no row in docs/account-state.md", cas.problems(self.root))
@@ -56,7 +67,7 @@ class AccountStateTests(unittest.TestCase):
         self.assertIn("keychain `deviceSecretKey` has no row in docs/account-state.md", cas.problems(self.root))
 
     def test_an_account_key_the_sign_out_stops_clearing_fails(self) -> None:
-        self.edit("swift/TigerDuck/Account/SchoolAccountKeys.swift", "Defaults[.schoolDataSyncedAt] = nil\n", "")
+        self.edit("swift/TigerDuck/Account/SchoolAccountKeys.swift", "Defaults.reset(.schoolDataSyncedAt, ", "Defaults.reset(")
         self.assertIn("defaults `schoolDataSyncedAt`: `forgetAccount` in swift/TigerDuck/Account/SchoolAccountKeys.swift"
                       " does not clear it", cas.problems(self.root))
 

@@ -9,7 +9,7 @@ struct SettingsView: View {
     /// rendering "On" after the switch inside `CloudSyncSettingsView` had
     /// already turned it off -- popping back does not re-evaluate a parent
     /// body on its own.
-    @Default(.cloudSyncEnabled) private var cloudSyncEnabled
+    @AccountDefault(.cloudSyncEnabled) private var cloudSyncEnabled
     @Environment(\.scenePhase) private var scenePhase
     @State private var sheets = SettingsSheetState()
     @State private var notificationsAuthorized: Bool = true

@@ -53,7 +53,7 @@ struct RefreshOrderTests {
     private static func uploader(_ target: FirstPullGate, _ log: Log) -> SchoolDataUploader {
         SchoolDataUploader(
             target: target, backend: Backend(log: log),
-            policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: ["courses"], pendingChecks: []) }
+            policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: [.courses], pendingChecks: []) }
         )
     }
 

@@ -55,36 +55,34 @@ final class SyncConflicts {
     }
 
     struct ReenableConflict {
-        let categories: [String]
+        let categories: [SyncCategory]
         let description: String
         var serverIgnoredCourses: [CourseIgnoresReconciler.ServerIgnoredCourse]?
         let serverMarkedAssignments: Set<String>
     }
 
-    func markCategoryReenabled(_ category: String) {
+    func markCategoryReenabled(_ category: SyncCategory) {
         app.pushCoordinator.forgetUploads()
         let signIn = app.authService.session.currentSignIn
         Self.markForReenableCheck(category, signedIn: app.authService.hasStoredCredentials, for: signIn)
         useLocalHold.noteReenabled(category)
     }
 
-    static func markForReenableCheck(_ category: String, signedIn: Bool, for signIn: SignIn) {
+    static func markForReenableCheck(_ category: SyncCategory, signedIn: Bool, for signIn: SignIn) {
         let synced = hasSynced(category)
         guard signedIn, synced else {
-            AppLogger.sync.info("[reenable] not marked: \(category, privacy: .public), signedIn=\(signedIn, privacy: .public) synced=\(synced, privacy: .public)")
+            AppLogger.sync.info("[reenable] not marked: \(category.rawValue, privacy: .public), signedIn=\(signedIn, privacy: .public) synced=\(synced, privacy: .public)")
             return
         }
         SyncProgress.changePendingConflicts(for: signIn) { $0.insert(category) }
-        AppLogger.sync.info("[reenable] marked category: \(category, privacy: .public), pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public)")
+        AppLogger.sync.info("[reenable] marked category: \(category.rawValue, privacy: .public), pending=\(Defaults[.pendingConflictCategories].logged, privacy: .public)")
     }
 
-    static func hasSynced(_ category: String) -> Bool {
+    static func hasSynced(_ category: SyncCategory) -> Bool {
         Defaults[.categoriesSyncedOnce].contains(category)
     }
 
-    static let reenableCategories: Set<String> = ["courses", "course_colors", "course_names", "assignments"]
-
-    static func switchedOnCategories() -> Set<String> {
+    static func switchedOnCategories() -> Set<SyncCategory> {
         SyncPolicy.current.switchedOn
     }
 
@@ -94,7 +92,7 @@ final class SyncConflicts {
         )
         let signIn = app.authService.session.currentSignIn
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
-            AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
+            AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].logged, privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
             return
         }
         guard !isCheckingConflicts else {
@@ -102,7 +100,7 @@ final class SyncConflicts {
             return
         }
         isCheckingConflicts = true
-        AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.sorted(), privacy: .public)")
+        AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.logged, privacy: .public)")
         Task {
             defer {
                 Task { @MainActor in self.endConflictCheck(checked: pending, startedIn: signIn) }
@@ -160,7 +158,7 @@ final class SyncConflicts {
         ReenableDifferences.coursesOnOneSide(server: server, local: local, semester: semester, deleting: deleting)
     }
 
-    private func endConflictCheck(checked pending: Set<String>, startedIn signIn: SignIn) {
+    private func endConflictCheck(checked pending: Set<SyncCategory>, startedIn signIn: SignIn) {
         isCheckingConflicts = false
         let unchecked = Self.categoriesLeftToCheck(
             pending: Defaults[.pendingConflictCategories], checked: pending,
@@ -197,7 +195,7 @@ final class SyncConflicts {
 
         private var attempts = SignInBound(empty: Attempts())
 
-        func isDue(pending: Set<String>, checking: Bool, awaitingAnswer: Bool, now: Date) -> Bool {
+        func isDue(pending: Set<SyncCategory>, checking: Bool, awaitingAnswer: Bool, now: Date) -> Bool {
             let state = attempts.value
             return state.owed && !pending.isEmpty && !checking && !awaitingAnswer
                 && (state.notBefore.map { now >= $0 } ?? true)
@@ -221,7 +219,7 @@ final class SyncConflicts {
         }
 
         mutating func noteAnswered(
-            leaving pending: Set<String>, awaitingAnswer: Bool, saveFailed: Bool = false, at now: Date = Date(),
+            leaving pending: Set<SyncCategory>, awaitingAnswer: Bool, saveFailed: Bool = false, at now: Date = Date(),
             signIn: SignIn
         ) {
             change(for: signIn) { state in
@@ -240,12 +238,12 @@ final class SyncConflicts {
     nonisolated enum ConflictCheckOutcome: Equatable, Sendable {
         case dropped
         case resolvedMeanwhile
-        case conflict(Set<String>)
-        case clear(Set<String>)
+        case conflict(Set<SyncCategory>)
+        case clear(Set<SyncCategory>)
     }
 
     nonisolated static func conflictCheckOutcome(
-        mayWrite: Bool, checked: Set<String>, stillPending: Set<String>, foundDifference: Bool
+        mayWrite: Bool, checked: Set<SyncCategory>, stillPending: Set<SyncCategory>, foundDifference: Bool
     ) -> ConflictCheckOutcome {
         guard mayWrite else { return .dropped }
         let stillChecked = checked.intersection(stillPending)
@@ -254,8 +252,8 @@ final class SyncConflicts {
     }
 
     nonisolated static func categoriesLeftToCheck(
-        pending: Set<String>, checked: Set<String>, signedOutSince: Bool
-    ) -> Set<String> {
+        pending: Set<SyncCategory>, checked: Set<SyncCategory>, signedOutSince: Bool
+    ) -> Set<SyncCategory> {
         signedOutSince ? pending : pending.subtracting(checked)
     }
 
@@ -276,7 +274,7 @@ final class SyncConflicts {
 
     func resolveReenableConflict(keepLocal: Bool) {
         guard let conflict = reenableConflict else { return }
-        AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
+        AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories.map(\.rawValue), privacy: .public)")
         reenableConflict = nil
         let signIn = app.authService.session.currentSignIn
         let effects = ReenableAnswerEffects(
@@ -298,7 +296,7 @@ final class SyncConflicts {
                     localEdits: self.app.localEdits, push: self.app.pushCoordinator, for: signIn
                 )
             },
-            markCoursesForCheck: { self.markCategoryReenabled("courses") },
+            markCoursesForCheck: { self.markCategoryReenabled(.courses) },
             queueEdits: { ReenableAnswer.queueLocalEdits(of: conflict, edits: self.app.edits, for: signIn) },
             dropLocalCopies: { Self.dropLocalCopies(for: conflict, signIn: signIn) },
             syncFromServer: { await self.app.fullSync.sync(followUpIfBusy: $0) },
@@ -321,15 +319,15 @@ final class SyncConflicts {
         await ReenableAnswer.answer(conflict, keepLocal: keepLocal, effects: effects)
     }
 
-    nonisolated static func categoriesToCheck(pending: Set<String>, answering: Set<String>) -> Set<String> {
+    nonisolated static func categoriesToCheck(pending: Set<SyncCategory>, answering: Set<SyncCategory>) -> Set<SyncCategory> {
         pending.subtracting(answering)
     }
 
     nonisolated struct UseLocalHold: Equatable, Sendable {
-        private(set) var held: Set<String> = []
-        private var reenabled: Set<String> = []
+        private(set) var held: Set<SyncCategory> = []
+        private var reenabled: Set<SyncCategory> = []
 
-        mutating func take(_ categories: [String], keepLocal: Bool, from pending: inout Set<String>) -> Set<String> {
+        mutating func take(_ categories: [SyncCategory], keepLocal: Bool, from pending: inout Set<SyncCategory>) -> Set<SyncCategory> {
             guard keepLocal else {
                 pending.subtract(categories)
                 return []
@@ -338,16 +336,16 @@ final class SyncConflicts {
             return Set(categories)
         }
 
-        mutating func noteReenabled(_ category: String) {
+        mutating func noteReenabled(_ category: SyncCategory) {
             if held.contains(category) { reenabled.insert(category) }
         }
 
-        mutating func release(_ kept: Set<String>, from pending: inout Set<String>) {
+        mutating func release(_ kept: Set<SyncCategory>, from pending: inout Set<SyncCategory>) {
             pending.subtract(kept.subtracting(reenabled))
             end(kept)
         }
 
-        mutating func end(_ kept: Set<String>) {
+        mutating func end(_ kept: Set<SyncCategory>) {
             held.subtract(kept)
             reenabled.subtract(kept)
         }

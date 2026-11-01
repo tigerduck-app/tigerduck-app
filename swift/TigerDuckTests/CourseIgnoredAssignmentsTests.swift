@@ -220,7 +220,7 @@ struct ClassTableIgnoredCourseTests {
     @Test("Only the term assignments are fetched for offers the long-press items")
     func onlyTheAssignmentTermOffersTheItems() {
         let storedPick = Defaults[.classTableSelectedSemester]
-        defer { Defaults[.classTableSelectedSemester] = storedPick }
+        defer { Defaults[.classTableSelectedSemester, for: testSignIn] = storedPick }
         let viewModel = ClassTableViewModel()
 
         viewModel.pickSemester(CourseSelectionService.currentSemesterCode(), for: AccountSession.school.currentSignIn)

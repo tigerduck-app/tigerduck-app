@@ -34,7 +34,7 @@ enum LibraryService: AccountScoped {
         }
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
-        storedPasswordRefusals = (0, nil)
+        setStoredPasswordRefusals((0, nil), for: AccountSession.library.currentSignIn)
         cancelStoredPasswordRetry()
         if accountChanged {
             LibraryQRCache.shared.clear()
@@ -137,9 +137,10 @@ enum LibraryService: AccountScoped {
         try await LibraryRequests.requestToken(username: username, password: password, session: LibraryRequests.session)
     }
 
-    static var storedPasswordRefusals: (count: Int, last: Date?) {
-        get { StoredPasswordLockoutBackoff.library.refusals }
-        set { StoredPasswordLockoutBackoff.library.refusals = newValue }
+    static var storedPasswordRefusals: (count: Int, last: Date?) { StoredPasswordLockoutBackoff.library.refusals }
+
+    static func setStoredPasswordRefusals(_ refusals: (count: Int, last: Date?), for signIn: SignIn) {
+        StoredPasswordLockoutBackoff.library.setRefusals(refusals, for: signIn)
     }
 
     static func storedPasswordPostIsDue(now: Date) -> Bool {
@@ -214,7 +215,7 @@ enum LibraryService: AccountScoped {
             } catch {
                 if librarySignIn.isCurrent, storedPassword == password {
                     if case LibraryServiceError.loginFailed = error {
-                        StoredPasswordLockoutBackoff.library.recordRefusalAndNextPost(at: Date())
+                        StoredPasswordLockoutBackoff.library.recordRefusalAndNextPost(at: Date(), for: librarySignIn)
                         if typedSignIns == typedSignInsBefore {
                             LibraryPasswordRetry.retryStoredPasswordWhenWaitEnds(signIn: signIn, retrySleep: retrySleep)
                         }
@@ -232,7 +233,7 @@ enum LibraryService: AccountScoped {
             saveToken(answer.token, expirationMs: answer.expirationTimeStamp)
             storedSignInFailedAt = nil
             if storedPasswordRefusals.count > 0, storedPassword == password {
-                storedPasswordRefusals = (0, nil)
+                setStoredPasswordRefusals((0, nil), for: librarySignIn)
                 #if os(iOS)
                 WatchLibraryCredentialBroadcaster.shared.broadcastSet(username: username, password: password)
                 #endif

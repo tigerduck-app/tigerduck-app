@@ -85,12 +85,12 @@ struct StaleWriteTests {
         await withExclusiveRealDefaults {
             let saved = (Defaults[.schoolDataSyncedAt], Defaults[.assignmentMarksSyncedOnce], Defaults[.browserZoom])
             defer {
-                Defaults[.schoolDataSyncedAt] = saved.0
-                Defaults[.assignmentMarksSyncedOnce] = saved.1
-                Defaults[.browserZoom] = saved.2
+                Defaults[.schoolDataSyncedAt, for: testSignIn] = saved.0
+                Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = saved.1
+                Defaults[.browserZoom, for: testSignIn] = saved.2
                 NotificationSettingsSync.forget()
             }
-            Defaults[.schoolDataSyncedAt] = nil
+            Defaults[.schoolDataSyncedAt, for: testSignIn] = nil
             SyncProgress.forget()
             BrowserSites.forget()
             NotificationSettingsSync.forget()

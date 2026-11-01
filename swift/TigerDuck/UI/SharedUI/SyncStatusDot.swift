@@ -48,8 +48,8 @@ struct SyncStatusDot: View {
     /// SwiftUI never subscribes to -- so switching sync off left the row on
     /// whatever word it already had until something unrelated forced a
     /// redraw, which is the opposite of what `isMinimal` is for.
-    @Default(.cloudSyncEnabled) private var cloudSyncEnabled
-    @Default(.schoolDataSyncedAt) private var schoolDataSyncedAt
+    @AccountDefault(.cloudSyncEnabled) private var cloudSyncEnabled
+    @AccountDefault(.schoolDataSyncedAt) private var schoolDataSyncedAt
     @State private var showDetails = false
     @State private var spinning = false
     @State private var dimmed = false

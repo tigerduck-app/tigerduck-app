@@ -9,7 +9,7 @@ struct SyncOrderTests {
         var value: FirstPullGate.Release?
         var entered = 0
         var order: [Int] = []
-        var pendingChecks: Set<String> = []
+        var pendingChecks: Set<SyncCategory> = []
     }
 
     @Test("What this device derives from school data waits for the sign-in's first pull, and goes once it is applied")
@@ -86,18 +86,18 @@ struct SyncOrderTests {
         let settled = try await FullSyncRunner.settleCourseEditsThenReadPolicy(
             ["1151|CS1"], takingCourses: true,
             settle: { deletes in
-                state.pendingChecks.insert("assignments")
+                state.pendingChecks.insert(.assignments)
                 return deletes
             },
             adds: {
-                state.pendingChecks.insert("courses")
+                state.pendingChecks.insert(.courses)
                 return ["1151|CS2"]
             },
             mayWrite: { true },
-            policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: ["assignments"], pendingChecks: state.pendingChecks) }
+            policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: [.assignments], pendingChecks: state.pendingChecks) }
         )
 
-        #expect(settled.policy.pendingChecks == ["assignments", "courses"])
+        #expect(settled.policy.pendingChecks == [.assignments, .courses])
         #expect(settled.deletes == ["1151|CS1"])
         #expect(settled.adds == ["1151|CS2"])
     }
@@ -114,9 +114,11 @@ struct SyncOrderTests {
 
     @Test("A full sync applies marks, course ignores, colours and names, holidays and then the roster")
     func categoryOrder() {
-        #expect(FullSyncRunner.reconcilers.map { $0.category } == [
-            "assignments", "course_ignores", "course_overrides", "holidays", "courses",
-        ])
+        let order: [any CategoryReconciler.Type] = [
+            AssignmentMarksReconciler.self, CourseIgnoresReconciler.self, CourseOverridesReconciler.self,
+            HolidayOverridesReconciler.self, CourseRosterReconciler.self,
+        ]
+        #expect(FullSyncRunner.reconcilers.map { ObjectIdentifier($0) } == order.map { ObjectIdentifier($0) })
     }
 
     private static let queuedFileFrom3x = #"""

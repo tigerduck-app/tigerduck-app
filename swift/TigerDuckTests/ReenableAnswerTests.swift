@@ -5,7 +5,7 @@ import Testing
 @MainActor
 struct ReenableAnswerTests {
     private static func conflict(
-        _ categories: [String], serverIgnoredCourses: [CourseIgnoresReconciler.ServerIgnoredCourse]? = nil
+        _ categories: [SyncCategory], serverIgnoredCourses: [CourseIgnoresReconciler.ServerIgnoredCourse]? = nil
     ) -> SyncConflicts.ReenableConflict {
         SyncConflicts.ReenableConflict(
             categories: categories, description: "", serverIgnoredCourses: serverIgnoredCourses,
@@ -15,7 +15,7 @@ struct ReenableAnswerTests {
 
     @Test("Use Local lets go of what it holds only once each edit it queued is in the outbox")
     func useLocalReleasesOnceItsEditsAreQueued() async {
-        let app = AnswerProbe(pending: ["course_colors", "assignments"])
+        let app = AnswerProbe(pending: [.courseColors, .assignments])
         app.queueEdits = {
             ["colour", "mark"].map { edit in
                 Task {
@@ -26,7 +26,7 @@ struct ReenableAnswerTests {
         }
 
         await SyncConflicts.answerReenableConflict(
-            Self.conflict(["course_colors", "assignments"]), keepLocal: true, effects: app.effects
+            Self.conflict([.courseColors, .assignments]), keepLocal: true, effects: app.effects
         )
 
         #expect(Set(app.events.prefix(2)) == ["queued colour", "queued mark"])
@@ -37,10 +37,10 @@ struct ReenableAnswerTests {
 
     @Test("Use Local for courses keeps them pending until its course requests are done")
     func useLocalKeepsCoursesPendingUntilTheirRequestsAreDone() async {
-        let app = AnswerProbe(pending: ["courses"])
-        app.sendCourses = { app.events.append("courses sent, pending: \(app.pending.sorted())") }
+        let app = AnswerProbe(pending: [.courses])
+        app.sendCourses = { app.events.append("courses sent, pending: \(app.pending.logged)") }
 
-        await SyncConflicts.answerReenableConflict(Self.conflict(["courses"]), keepLocal: true, effects: app.effects)
+        await SyncConflicts.answerReenableConflict(Self.conflict([.courses]), keepLocal: true, effects: app.effects)
 
         #expect(app.events == [#"courses sent, pending: ["courses"]"#, "release", "end", "answered"])
         #expect(app.pending.isEmpty)
@@ -48,35 +48,35 @@ struct ReenableAnswerTests {
 
     @Test("Course requests that fail keep the courses pending, and the rest is let go of")
     func failedCourseRequestsKeepTheCoursesPending() async {
-        let app = AnswerProbe(pending: ["courses", "course_names"])
+        let app = AnswerProbe(pending: [.courses, .courseNames])
         app.sendCourses = { throw URLError(.notConnectedToInternet) }
 
         await SyncConflicts.answerReenableConflict(
-            Self.conflict(["courses", "course_names"]), keepLocal: true, effects: app.effects
+            Self.conflict([.courses, .courseNames]), keepLocal: true, effects: app.effects
         )
 
         #expect(app.events == ["marked courses", "release", "end", "answered after a failed save"])
-        #expect(app.pending == ["courses"])
+        #expect(app.pending == [.courses])
         #expect(app.hold == SyncConflicts.UseLocalHold())
     }
 
     @Test("A sign-out while Use Local queues its edits ends the hold and lets go of nothing of the next account's")
     func signOutWhileQueueingLetsGoOfNothing() async {
-        let app = AnswerProbe(pending: ["course_colors"])
-        app.queueEdits = { [Task { app.signOut(nextAccountPending: ["course_colors"]) }] }
+        let app = AnswerProbe(pending: [.courseColors])
+        app.queueEdits = { [Task { app.signOut(nextAccountPending: [.courseColors]) }] }
 
-        await SyncConflicts.answerReenableConflict(Self.conflict(["course_colors"]), keepLocal: true, effects: app.effects)
+        await SyncConflicts.answerReenableConflict(Self.conflict([.courseColors]), keepLocal: true, effects: app.effects)
 
         #expect(app.events == ["end"])
-        #expect(app.pending == ["course_colors"])
+        #expect(app.pending == [.courseColors])
         #expect(app.hold == SyncConflicts.UseLocalHold())
     }
 
     @Test("A sign-out during the course requests queues nothing, marks nothing and lets go of nothing")
     func signOutDuringTheCourseRequestsStopsTheAnswer() async {
-        let app = AnswerProbe(pending: ["courses", "assignments"])
+        let app = AnswerProbe(pending: [.courses, .assignments])
         app.sendCourses = {
-            app.signOut(nextAccountPending: ["assignments"])
+            app.signOut(nextAccountPending: [.assignments])
             throw CancellationError()
         }
         app.queueEdits = {
@@ -85,23 +85,23 @@ struct ReenableAnswerTests {
         }
 
         await SyncConflicts.answerReenableConflict(
-            Self.conflict(["courses", "assignments"]), keepLocal: true, effects: app.effects
+            Self.conflict([.courses, .assignments]), keepLocal: true, effects: app.effects
         )
 
         #expect(app.events == ["end"])
-        #expect(app.pending == ["assignments"])
+        #expect(app.pending == [.assignments])
         #expect(app.hold == SyncConflicts.UseLocalHold())
     }
 
     @Test("Use Server drops the queued edits of what it answers before it takes them off the pending list and the server's data")
     func useServerDropsTheQueuedEditsFirst() async {
-        let app = AnswerProbe(pending: ["course_colors", "assignments", "courses"])
+        let app = AnswerProbe(pending: [.courseColors, .assignments, .courses])
         app.dropQueuedEdits = { categories, courseIgnores in
-            app.events.append("dropped \(categories.sorted()) courseIgnores: \(courseIgnores) pending: \(app.pending.sorted())")
+            app.events.append("dropped \(categories.logged) courseIgnores: \(courseIgnores) pending: \(app.pending.logged)")
         }
 
         await SyncConflicts.answerReenableConflict(
-            Self.conflict(["course_colors", "assignments"], serverIgnoredCourses: []), keepLocal: false,
+            Self.conflict([.courseColors, .assignments], serverIgnoredCourses: []), keepLocal: false,
             effects: app.effects
         )
 
@@ -109,36 +109,36 @@ struct ReenableAnswerTests {
             #"dropped ["assignments", "course_colors"] courseIgnores: true pending: ["assignments", "course_colors", "courses"]"#,
             "local copies dropped", "server sync, after one running: true", "answered",
         ])
-        #expect(app.pending == ["courses"])
+        #expect(app.pending == [.courses])
     }
 
     @Test("Use Server on a check that compared no course settings leaves the queued ones")
     func useServerKeepsCourseSettingsTheCheckDidNotCompare() async {
-        let app = AnswerProbe(pending: ["assignments"])
+        let app = AnswerProbe(pending: [.assignments])
         app.dropQueuedEdits = { _, courseIgnores in app.events.append("courseIgnores: \(courseIgnores)") }
 
-        await SyncConflicts.answerReenableConflict(Self.conflict(["assignments"]), keepLocal: false, effects: app.effects)
+        await SyncConflicts.answerReenableConflict(Self.conflict([.assignments]), keepLocal: false, effects: app.effects)
 
         #expect(app.events.first == "courseIgnores: false")
     }
 
     @Test("A sign-out while Use Server drops the queued edits writes nothing more")
     func signOutWhileUseServerDropsWritesNothing() async {
-        let app = AnswerProbe(pending: ["course_names"])
-        app.dropQueuedEdits = { _, _ in app.signOut(nextAccountPending: ["course_names"]) }
+        let app = AnswerProbe(pending: [.courseNames])
+        app.dropQueuedEdits = { _, _ in app.signOut(nextAccountPending: [.courseNames]) }
 
-        await SyncConflicts.answerReenableConflict(Self.conflict(["course_names"]), keepLocal: false, effects: app.effects)
+        await SyncConflicts.answerReenableConflict(Self.conflict([.courseNames]), keepLocal: false, effects: app.effects)
 
         #expect(app.events.isEmpty)
-        #expect(app.pending == ["course_names"])
+        #expect(app.pending == [.courseNames])
     }
 
     @Test("A sign-out during Use Server's sync leaves the check's retry to the next account")
     func signOutDuringUseServersSyncSettlesNothing() async {
-        let app = AnswerProbe(pending: ["course_names"])
+        let app = AnswerProbe(pending: [.courseNames])
         app.syncFromServer = { app.signOut(nextAccountPending: []) }
 
-        await SyncConflicts.answerReenableConflict(Self.conflict(["course_names"]), keepLocal: false, effects: app.effects)
+        await SyncConflicts.answerReenableConflict(Self.conflict([.courseNames]), keepLocal: false, effects: app.effects)
 
         #expect(app.events == ["local copies dropped", "server sync, after one running: true"])
     }
@@ -146,22 +146,22 @@ struct ReenableAnswerTests {
 
 @MainActor
 private final class AnswerProbe {
-    var pending: Set<String>
+    var pending: Set<SyncCategory>
     var hold = SyncConflicts.UseLocalHold()
     var events: [String] = []
     var sendCourses: () async throws -> Void = {}
     var queueEdits: () -> [Task<Void, Never>] = { [] }
-    var dropQueuedEdits: (Set<String>, Bool) async -> Void = { _, _ in }
+    var dropQueuedEdits: (Set<SyncCategory>, Bool) async -> Void = { _, _ in }
     var syncFromServer: () async -> Void = {}
     private let session = AccountSession()
     private let signIn: SignIn
 
-    init(pending: Set<String>) {
+    init(pending: Set<SyncCategory>) {
         self.pending = pending
         signIn = session.signIns.currentSignIn
     }
 
-    func signOut(nextAccountPending: Set<String>) {
+    func signOut(nextAccountPending: Set<SyncCategory>) {
         session.endSignIn()
         pending = nextAccountPending
     }
@@ -182,8 +182,8 @@ private final class AnswerProbe {
             sendCourses: { try await self.sendCourses() },
             markCoursesForCheck: {
                 self.events.append("marked courses")
-                self.pending.insert("courses")
-                self.hold.noteReenabled("courses")
+                self.pending.insert(.courses)
+                self.hold.noteReenabled(.courses)
             },
             queueEdits: { self.queueEdits() },
             dropLocalCopies: { self.events.append("local copies dropped") },
