@@ -88,7 +88,9 @@ nonisolated extension CourseChanges {
     init(json: Data) throws {
         let dto = try JSONDecoder().decode(CourseChangesDTO.self, from: json)
         var index: [Key: [CourseChange]] = [:]
-        for row in dto.changes {
+        // Newest first, so of two rows of a kind the newest wins, as the backend's class pushes do:
+        // https://github.com/tigerduck-app/tigerduck-backend/blob/dev/server/academic_calendar/changes.py
+        for row in dto.changes.sorted(by: { $0.id > $1.id }) {
             guard let change = CourseChange(row: row) else { continue }
             for day in (row.class_days ?? []).compactMap(AcademicCalendar.day(from:)) {
                 index[Key(courseNo: change.courseNo, day: day), default: []].append(change)

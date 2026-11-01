@@ -89,10 +89,15 @@ final class OutboxDrain {
         }
         await outbox.drain(for: signIn, holding: isHeld) { [weak self] op, madeIn in
             guard let self else { throw CancellationError() }
-            try await BackendClient.$holdsResend.withValue({ isHeld(op) }) {
+            try await BackendClient.$holdsResend.withValue({ await self.holdsResend(op, isHeld) }) {
                 try await self.execute(op, for: madeIn)
             }
         }
+    }
+
+    private func holdsResend(_ op: SyncOp, _ isHeld: @Sendable (SyncOp) -> Bool) -> Bool {
+        if case .courseAdd = op { return !sender.sendsCourseAdds }
+        return isHeld(op)
     }
 
     func sendColorFills(_ fills: [CourseColorFill], for signIn: SignIn) async {

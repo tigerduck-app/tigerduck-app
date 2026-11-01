@@ -120,6 +120,26 @@ struct ScoreViewModelAccountTests {
         #expect(model.cachedAt == readAt)
     }
 
+    @Test func termsListNewestFirstWithAPaddedYearBefore100LastAndOnlyTheNewestOpen() async {
+        let model = ScoreViewModel()
+        let studentId = Self.testStudentId()
+        let school = School()
+        var report = Self.report(for: studentId)
+        var older = report.courses[0]
+        older.term = "99 1"
+        report.courses.append(older)
+        let fetched = report
+
+        await model.refresh(
+            for: studentId, signIn: testSignIn,
+            isReachable: { await school.probe() },
+            fetch: { await school.fetch(fetched) }
+        )
+
+        #expect(model.groupedCourses.map(\.term) == ["1151", "1142", "99 1"])
+        #expect(model.collapsedTerms == ["1142", "99 1"])
+    }
+
     @Test func theDayLongCacheAnswersWithTheTimeItWasRead() async throws {
         try await Self.withCachedReport { studentId in
             let cached = try #require(ScoreReportFiles.shared.loadScoreReport(studentId: studentId))

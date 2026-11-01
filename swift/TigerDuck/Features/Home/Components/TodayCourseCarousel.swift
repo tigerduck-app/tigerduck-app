@@ -134,7 +134,7 @@ struct TodayCourseCarousel: View {
     }
 
     private func startTime(_ course: CourseStore.Course, weekday: Int) -> String {
-        guard let periods = course.schedule[weekday]?.sortedByPeriodOrder(),
+        guard let periods = course.schedule[weekday]?.timedPeriodsInOrder(),
               let first = periods.first,
               let times = AppConstants.PeriodTimes.mapping[first] else { return "" }
         return times.start
@@ -148,7 +148,7 @@ struct TodayCourseCarousel: View {
     }
 
     private func courseProgress(_ course: CourseStore.Course) -> Double? {
-        guard let periods = course.schedule[today]?.sortedByPeriodOrder() else { return nil }
+        guard let periods = course.schedule[today]?.timedPeriodsInOrder() else { return nil }
         let now = AppClock.now()
         let cal = TaipeiTime.calendar
         let formatter = Self.periodTimeFormatter

@@ -35,7 +35,7 @@ struct FluidGlassTrackView: View {
                     let segCenterX = centerX + rtlFactor * (startOffset + endOffset) / 2
 
                     if segCenterX + segWidth / 2 > -50 && segCenterX - segWidth / 2 < width + 50 {
-                        let isActive = viewModel.selectedTime >= slot.start && viewModel.selectedTime <= slot.end
+                        let isActive = slot.isOn(at: viewModel.selectedTime)
                         let segOpacity = isActive
                             ? policy.timeSliderActiveSegmentOpacity
                             : policy.timeSliderInactiveSegmentOpacity

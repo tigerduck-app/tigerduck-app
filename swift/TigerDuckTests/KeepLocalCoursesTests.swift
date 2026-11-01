@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -94,6 +95,65 @@ struct KeepLocalCoursesTests {
         }
 
         #expect(server.rows == ["client:1142:CS9"])
+    }
+
+    @Test("Use Local holds a reset refused as ahead once cloud sync turns off during its first send")
+    func aheadResetWaitsOnceSyncTurnsOff() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.cloudSyncEnabled]
+            defer { Defaults[.cloudSyncEnabled, for: testSignIn] = saved }
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
+            let server = StampedCourseServer()
+            let reset = server.baseURL.appendingPathComponent("sync/courses").appending(queryItems: [
+                URLQueryItem(name: "semester", value: "1151"),
+                URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: StampedCourseServer.madeAt))),
+            ])
+            let gate = SettingsAPIStub.ReplyGate()
+            SettingsAPIStub.enqueue(.init(
+                statusCode: 409, body: Data(#"{"error":"clock_ahead","message":"ahead"}"#.utf8),
+                headerFields: ["X-TigerSync-Clock": "1789999000000000"], gate: gate
+            ), for: reset)
+
+            let answer = Task {
+                try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"))], hiding: [], on: server, for: testSignIn)
+            }
+            try await waitUntil { !SettingsAPIStub.requests(for: reset).isEmpty }
+            Defaults[.cloudSyncEnabled, for: testSignIn] = false
+            gate.open()
+
+            await #expect(throws: ResendHeldError.self) { try await answer.value }
+            #expect(SettingsAPIStub.requests(under: server.baseURL).count == 1)
+        }
+    }
+}
+
+/// Sends through the real client, every edit stamped with `madeAt`, so a test can stub its URL.
+@MainActor
+private final class StampedCourseServer: CourseSyncBackend {
+    static let madeAt = Date(timeIntervalSince1970: 1_790_000_000)
+    let baseURL: URL
+    private let client: PushAPIClient
+
+    init() {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        self.baseURL = baseURL
+        client = PushAPIClient(
+            baseURLProvider: { baseURL }, session: URLSession(configuration: config), authHeaderProvider: { "Bearer test" }
+        )
+    }
+
+    func deleteAllCourses(semester: String?, madeAt: Date, for signIn: SignIn) async throws {
+        try await client.deleteAllCourses(semester: semester, madeAt: Self.madeAt, for: signIn)
+    }
+
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?, for signIn: SignIn) async throws {
+        try await client.uploadCourses(request, addedAt: addedAt, for: signIn)
+    }
+
+    func deleteCourse(courseKey: String, madeAt: Date, for signIn: SignIn) async throws {
+        try await client.deleteCourse(courseKey: courseKey, madeAt: Self.madeAt, for: signIn)
     }
 }
 

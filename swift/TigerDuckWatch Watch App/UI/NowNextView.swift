@@ -9,7 +9,7 @@ struct NowNextView: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { _ in
+        TimelineView(.everyMinute) { _ in
             ScrollView {
                 VStack(spacing: 12) {
                     if let snapshot = store.snapshot, !snapshot.courses.isEmpty {

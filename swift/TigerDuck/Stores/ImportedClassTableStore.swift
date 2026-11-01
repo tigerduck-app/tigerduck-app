@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TigerDuckCore
 
 struct ImportedPerson: Identifiable {
     struct Term {
@@ -15,7 +16,7 @@ struct ImportedPerson: Identifiable {
     let sharedAt: Date?
     let terms: [Term]
 
-    var semesters: [String] { terms.map(\.semester).sorted(by: >) }
+    var semesters: [String] { terms.map(\.semester).sorted { AcademicTerm.precedes($1, $0) } }
 
     func semester(keeping current: String) -> String {
         semesters.contains(current) ? current : semesters.first ?? current
