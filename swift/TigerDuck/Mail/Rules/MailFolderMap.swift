@@ -6,6 +6,8 @@ import Foundation
 nonisolated enum MailFolderRole: String, CaseIterable, Sendable {
     case inbox, sent, drafts, junk, trash
 
+    static let listOrder: [MailFolderRole] = [.inbox, .sent, .drafts, .junk, .trash]
+
     var imapName: String {
         switch self {
         case .inbox: "INBOX"

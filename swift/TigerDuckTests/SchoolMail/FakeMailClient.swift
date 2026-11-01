@@ -235,15 +235,15 @@ actor FakeMailClient: MailClient {
         return ((folders[folder] ?? []).map(\.summary).filter { !$0.isDeleted }.map(\.uid), uidValidity[folder] ?? 1)
     }
 
-    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: String] {
+    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: MailSearchText] {
         calls.append("searchTexts \(folder) \(uids)")
         await gate("searchTexts")
         if let searchTextsError { throw searchTextsError }
         if !searchTextsFailingUIDs.isDisjoint(with: uids) { throw MailClientError.protocolError("unreadable") }
         try assertUIDValidity(expectedUIDValidity, folder: folder)
-        var texts: [UInt32: String] = [:]
+        var texts: [UInt32: MailSearchText] = [:]
         for message in folders[folder] ?? [] where uids.contains(message.summary.uid) && !message.summary.isDeleted {
-            texts[message.summary.uid] = MailSearchText.text(of: message.summary, body: message.detail?.textBody)
+            texts[message.summary.uid] = MailSearchText(of: message.summary, body: message.detail?.textBody)
         }
         return texts
     }

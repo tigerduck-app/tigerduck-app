@@ -87,7 +87,7 @@ enum MailMessageActions {
             let text = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
             model.activity.source = text
             if let validity, signIn.isCurrent {
-                await Task.detached { cache.saveSource(text, folder: folder, uidValidity: validity, uid: uid, wipeCount: wipeCount) }.value
+                await Task.detached { cache.saveSource(text, folder: folder, uidValidity: validity, uid: uid, unlessWipedSince: wipeCount) }.value
             }
         } catch {
             model.activity.actionError = MailAccountManager.LoginError(error).message
@@ -110,7 +110,7 @@ enum MailMessageActions {
             }
             let filename = MailAttachmentRisk.displayFilename(part.filename ?? "attachment")
             return try await Task.detached {
-                try cache.saveAttachment(data, filename: filename, wipeCount: wipeCount)
+                try cache.saveAttachment(data, filename: filename, unlessWipedSince: wipeCount)
             }.value
         } catch {
             model.activity.actionError = MailAccountManager.LoginError(error).message

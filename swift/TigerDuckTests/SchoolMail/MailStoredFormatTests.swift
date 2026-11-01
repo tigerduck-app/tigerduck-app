@@ -36,7 +36,7 @@ struct MailStoredFormatTests {
         #expect(page.summaries.first?.subject == "Exam")
         #expect(page.summaries.first?.isSeen == true)
 
-        cache.savePage(page, wipeCount: cache.wipeCount)
+        cache.savePage(page, unlessWipedSince: cache.wipeCount)
         let written = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         #expect(Set(written.keys) == ["version", "account", "payload"])
         #expect(written["version"] as? Int == 1)
@@ -76,8 +76,8 @@ struct MailStoredFormatTests {
         #expect(found?.uids == [42])
 
         let index = cache.searchIndex
-        #expect(index.prepare(folder: "INBOX", uidValidity: 7, onServer: [41, 42, 43], wipeCount: cache.wipeCount) != nil)
-        #expect(index.add([43: "Library Hours"], folder: "INBOX", uidValidity: 7, wipeCount: cache.wipeCount))
+        #expect(index.prepare(folder: "INBOX", uidValidity: 7, onServer: [41, 42, 43], unlessWipedSince: cache.wipeCount) != nil)
+        #expect(index.add([43: MailSearchText(text: "Library Hours")], folder: "INBOX", uidValidity: 7, unlessWipedSince: cache.wipeCount))
         try #require(sqlite3_open(url.path, &db) == SQLITE_OK)
         defer { sqlite3_close(db) }
         var version: Int64 = 0

@@ -158,11 +158,11 @@ actor DemoMailClient: MailClient {
         ((folders[folder] ?? []).filter { !$0.summary.isDeleted }.map(\.summary.uid), fixture.uidValidity)
     }
 
-    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: String] {
+    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: MailSearchText] {
         try assertUIDValidity(expectedUIDValidity)
-        var texts: [UInt32: String] = [:]
+        var texts: [UInt32: MailSearchText] = [:]
         for stored in folders[folder] ?? [] where uids.contains(stored.summary.uid) {
-            texts[stored.summary.uid] = MailSearchText.text(of: stored.summary, body: stored.text)
+            texts[stored.summary.uid] = MailSearchText(of: stored.summary, body: stored.text)
         }
         return texts
     }

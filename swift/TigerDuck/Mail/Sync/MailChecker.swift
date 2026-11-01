@@ -203,9 +203,9 @@ actor MailChecker {
         let checkedAt = now()
         let passedOver = cursor.passedOver(uidValidity: status.uidValidity)
         let unread = fetched.filter { !$0.isSeen && !$0.isDeleted }.sorted { $0.uid < $1.uid }
-        let muted = Set(unread.filter {
-            passedOver.contains($0.uid) || mute.mutes($0, arrivedAt: $0.arrivedAt ?? checkedAt)
-        }.map(\.uid))
+        let muted = MailInboxCursor.toPassOver(unread, passedOver: passedOver) {
+            mute.mutes($0, arrivedAt: $0.arrivedAt ?? checkedAt)
+        }
         let fresh = unread.filter { !muted.contains($0.uid) }
         guard signIn.isCurrent else { return nil }
         guard prefs.notificationsEnabled else { return InboxCheck(outcome: .skippedDisabled, uidValidity: status.uidValidity) }
@@ -232,7 +232,7 @@ actor MailChecker {
                 let detail = try await client.detail(folder: MailConstants.inbox, uid: uid, expectedUIDValidity: uidValidity,
                                                      inlineImages: false)
                 guard !Task.isCancelled, signIn.isCurrent else { return }
-                cache.saveDetail(detail, folder: MailConstants.inbox, uidValidity: uidValidity, wipeCount: wipeCount)
+                cache.saveDetail(detail, folder: MailConstants.inbox, uidValidity: uidValidity, unlessWipedSince: wipeCount)
             } catch let error as MailClientError where MailErrorClass(error).endsTheRun {
                 return
             } catch {

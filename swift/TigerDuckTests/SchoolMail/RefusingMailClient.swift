@@ -34,7 +34,7 @@ actor RefusingMailClient: MailClient {
     func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) { throw refuse() }
     func searchTexts(
         folder: String, uids: [UInt32], expectedUIDValidity: UInt32
-    ) async throws -> [UInt32: String] { throw refuse() }
+    ) async throws -> [UInt32: MailSearchText] { throw refuse() }
     func setFlag(
         _ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?
     ) async throws { throw refuse() }

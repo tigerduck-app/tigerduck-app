@@ -43,7 +43,7 @@ nonisolated final class MailCache: @unchecked Sendable {
         lock.withLock { read(MailFolderPage.self, at: pageURL(folder: folder)) }
     }
 
-    func savePage(_ page: MailFolderPage, wipeCount: Int) {
+    func savePage(_ page: MailFolderPage, unlessWipedSince wipeCount: Int) {
         lock.withLock {
             guard isCurrent(wipeCount) else { return }
             write(page, to: pageURL(folder: page.folder))
@@ -67,7 +67,7 @@ nonisolated final class MailCache: @unchecked Sendable {
         }
     }
 
-    func saveDetail(_ detail: MailMessageDetail, folder: String, uidValidity: UInt32, wipeCount: Int) {
+    func saveDetail(_ detail: MailMessageDetail, folder: String, uidValidity: UInt32, unlessWipedSince wipeCount: Int) {
         lock.withLock {
             guard isCurrent(wipeCount) else { return }
             writeBounded(detail, to: bodyURL(folder: folder, uidValidity: uidValidity, uid: detail.summary.uid))
@@ -93,7 +93,7 @@ nonisolated final class MailCache: @unchecked Sendable {
         }
     }
 
-    func saveSource(_ source: String, folder: String, uidValidity: UInt32, uid: UInt32, wipeCount: Int) {
+    func saveSource(_ source: String, folder: String, uidValidity: UInt32, uid: UInt32, unlessWipedSince wipeCount: Int) {
         lock.withLock {
             guard isCurrent(wipeCount) else { return }
             writeBounded(source, to: sourceURL(folder: folder, uidValidity: uidValidity, uid: uid))
@@ -119,7 +119,7 @@ nonisolated final class MailCache: @unchecked Sendable {
         return folder.appendingPathComponent(Self.safeAttachmentName(filename))
     }
 
-    func saveAttachment(_ data: Data, filename: String, wipeCount: Int) throws -> URL? {
+    func saveAttachment(_ data: Data, filename: String, unlessWipedSince wipeCount: Int) throws -> URL? {
         guard isCurrent(wipeCount) else { return nil }
         let url = try temporaryFileURL(filename: filename)
         return try lock.withLock {

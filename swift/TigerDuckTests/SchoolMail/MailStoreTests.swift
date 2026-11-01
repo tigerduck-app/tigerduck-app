@@ -73,6 +73,15 @@ struct MailStoreTests {
         #expect(prefs.ownedDeleted(folder: "INBOX", uidValidity: 7).uids.isEmpty)
     }
 
+    @Test func ownedDeletedInTheStoredLayoutReadsBack() {
+        let suiteName = "MailStoreTests.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        defer { suite.removePersistentDomain(forName: suiteName) }
+        suite.set(Data(#"[{"folder":"INBOX","uidValidity":7,"uids":[3]}]"#.utf8), forKey: "school_mail_owned_deleted")
+        let prefs = MailSettingsStore(defaults: suite)
+        #expect(prefs.ownedDeleted(folder: "INBOX", uidValidity: 7) == OwnedDeleted(folder: "INBOX", uidValidity: 7, uids: [3]))
+    }
+
     @Test func ownedDeletedReturnsEmptyOnValidityMismatch() {
         let (prefs, cleanup) = Self.isolatedPreferences()
         defer { cleanup() }
@@ -272,9 +281,9 @@ struct MailStoreTests {
         let detail = MailMessageDetail(summary: SchoolMailTestDoubles.summary(uid: 2), messageID: nil, inReplyTo: nil,
                                        references: nil, parts: [], textBody: "body", htmlBody: nil, inlineImages: nil)
         let save = { (count: Int) in
-            cache.savePage(page, wipeCount: count)
-            cache.saveDetail(detail, folder: "INBOX", uidValidity: 1, wipeCount: count)
-            cache.saveSource("source", folder: "INBOX", uidValidity: 1, uid: 2, wipeCount: count)
+            cache.savePage(page, unlessWipedSince: count)
+            cache.saveDetail(detail, folder: "INBOX", uidValidity: 1, unlessWipedSince: count)
+            cache.saveSource("source", folder: "INBOX", uidValidity: 1, uid: 2, unlessWipedSince: count)
         }
         let before = cache.wipeCount
         cache.clearAll()
@@ -308,10 +317,10 @@ struct MailStoreTests {
         let before = cache.wipeCount
         cache.clearAll()
 
-        #expect(try cache.saveAttachment(Data("x".utf8), filename: "old.pdf", wipeCount: before) == nil)
+        #expect(try cache.saveAttachment(Data("x".utf8), filename: "old.pdf", unlessWipedSince: before) == nil)
         #expect(cache.totalBytes() == 0)
 
-        let saved = try #require(try cache.saveAttachment(Data("x".utf8), filename: "new.pdf", wipeCount: cache.wipeCount))
+        let saved = try #require(try cache.saveAttachment(Data("x".utf8), filename: "new.pdf", unlessWipedSince: cache.wipeCount))
         #expect(FileManager.default.fileExists(atPath: saved.path))
     }
 

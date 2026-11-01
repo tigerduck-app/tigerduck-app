@@ -131,7 +131,7 @@ final class MailMessageViewModel {
             }
             await apply(fresh)
             if let validity, signIn.isCurrent {
-                await Task.detached { cache.saveDetail(fresh, folder: folder, uidValidity: validity, wipeCount: wipeCount) }.value
+                await Task.detached { cache.saveDetail(fresh, folder: folder, uidValidity: validity, unlessWipedSince: wipeCount) }.value
             }
             if !fresh.summary.isSeen {
                 try await session.use { client in

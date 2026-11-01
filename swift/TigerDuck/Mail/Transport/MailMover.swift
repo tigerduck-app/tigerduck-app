@@ -1,10 +1,15 @@
 #if os(iOS)
 import Foundation
 
-nonisolated struct OwnedDeleted: Sendable, Equatable {
+nonisolated struct OwnedDeleted: Codable, Equatable, Sendable {
     var folder: String
     var uidValidity: UInt32
     var uids: Set<UInt32>
+}
+
+nonisolated struct MailMoveAttempt {
+    var pending: OwnedDeleted?
+    var error: (any Error)?
 }
 
 nonisolated struct MailMoveResult: Equatable, Sendable {
@@ -33,6 +38,23 @@ nonisolated enum MailMover {
         guard !uids.isEmpty else { return MailMoveResult(expunged: false, stillPending: previouslyFlagged) }
         try await assertFolderUnchanged(folder: folder, previouslyFlagged: previouslyFlagged, client: client)
         return try await flagAndMaybeExpunge(uids: uids, in: folder, client: client, previouslyFlagged: previouslyFlagged)
+    }
+
+    static func attempt(
+        _ operation: () async throws -> MailMoveResult,
+        uid: UInt32, previouslyFlagged: OwnedDeleted, wasAlreadyDeleted: Bool,
+        probe: ((any MailClient) async -> OwnedDeleted?) async -> OwnedDeleted?
+    ) async -> MailMoveAttempt {
+        do {
+            return MailMoveAttempt(pending: try await operation().stillPending)
+        } catch {
+            guard shouldProbeAfterFailure(error) else { return MailMoveAttempt(error: error) }
+            let claim = await probe { client in
+                await recoverAfterFailure(after: error, uid: uid, previouslyFlagged: previouslyFlagged,
+                                          client: client, wasAlreadyDeleted: wasAlreadyDeleted)
+            }
+            return MailMoveAttempt(pending: claim, error: error)
+        }
     }
 
     static func shouldExpunge(deleted: Set<UInt32>, ours: Set<UInt32>) -> Bool {

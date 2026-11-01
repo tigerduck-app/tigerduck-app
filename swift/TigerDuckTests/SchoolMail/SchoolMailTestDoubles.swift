@@ -117,15 +117,15 @@ final class InMemoryMailSecretStorage: MailSecretStorage, @unchecked Sendable {
 
 extension MailCache {
     func savePage(_ page: MailFolderPage) {
-        savePage(page, wipeCount: wipeCount)
+        savePage(page, unlessWipedSince: wipeCount)
     }
 
     func saveDetail(_ detail: MailMessageDetail, folder: String, uidValidity: UInt32) {
-        saveDetail(detail, folder: folder, uidValidity: uidValidity, wipeCount: wipeCount)
+        saveDetail(detail, folder: folder, uidValidity: uidValidity, unlessWipedSince: wipeCount)
     }
 
     func saveSource(_ source: String, folder: String, uidValidity: UInt32, uid: UInt32) {
-        saveSource(source, folder: folder, uidValidity: uidValidity, uid: uid, wipeCount: wipeCount)
+        saveSource(source, folder: folder, uidValidity: uidValidity, uid: uid, unlessWipedSince: wipeCount)
     }
 }
 

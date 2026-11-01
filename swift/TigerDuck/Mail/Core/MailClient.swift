@@ -36,7 +36,7 @@ protocol MailClient: Actor {
     func rawSource(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> Data
     func attachment(folder: String, uid: UInt32, part: MailBodyPart, expectedUIDValidity: UInt32?) async throws -> Data
     func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32)
-    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: String]
+    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: MailSearchText]
     func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws
     func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws
     func deletedUIDs(folder: String, expectedUIDValidity: UInt32) async throws -> Set<UInt32>

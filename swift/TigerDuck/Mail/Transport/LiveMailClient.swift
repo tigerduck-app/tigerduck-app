@@ -55,10 +55,14 @@ actor LiveMailClient: MailClient {
     }
 
     func logout() async {
-        connectionGeneration += 1
-        credentials = nil
+        endSession()
         try? await imap.logout()
         try? await imap.disconnect()
+    }
+
+    private func endSession() {
+        connectionGeneration += 1
+        credentials = nil
     }
 
     func listFolders() async throws -> [String] {
@@ -115,20 +119,20 @@ actor LiveMailClient: MailClient {
     }
 
     func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
-        try await run(yielding: true) { try await MailIMAPCommands.undeletedUIDs(folder: folder, imap: self.imap) }
+        try await run(behindOtherCommands: true) { try await MailIMAPCommands.undeletedUIDs(folder: folder, imap: self.imap) }
     }
 
-    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: String] {
+    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: MailSearchText] {
         guard !uids.isEmpty else { return [:] }
-        return try await run(yielding: true) {
+        return try await run(behindOtherCommands: true) {
             try await MailIMAPCommands.searchTexts(folder: folder, uids: uids, expectedUIDValidity: expectedUIDValidity,
                                                    imap: self.imap) {
-                try await self.stepAsideForWaitingCommands(folder: folder, expectedUIDValidity: expectedUIDValidity)
+                try await self.letWaitingCommandsThroughAndReexamine(folder: folder, expectedUIDValidity: expectedUIDValidity)
             }
         }
     }
 
-    private func stepAsideForWaitingCommands(folder: String, expectedUIDValidity: UInt32) async throws {
+    private func letWaitingCommandsThroughAndReexamine(folder: String, expectedUIDValidity: UInt32) async throws {
         guard await commandLock.hasNonYieldingWaiters else { return }
         await commandLock.release()
         await commandLock.acquire(yielding: true)
@@ -185,8 +189,8 @@ actor LiveMailClient: MailClient {
     }
 
     @discardableResult
-    private func run<T>(yielding: Bool = false, _ body: () async throws -> T) async throws -> T {
-        await commandLock.acquire(yielding: yielding)
+    private func run<T>(behindOtherCommands: Bool = false, _ body: () async throws -> T) async throws -> T {
+        await commandLock.acquire(yielding: behindOtherCommands)
         do {
             try await ensureLiveConnection()
             let result = try await body()
@@ -254,10 +258,6 @@ extension MailTransportScheme {
         case .startTLS: .startTLS
         case .plaintext: .plainText
         }
-    }
-
-    nonisolated var swiftMailTransportSecurityName: String {
-        String(describing: swiftMailTransportSecurity)
     }
 }
 
