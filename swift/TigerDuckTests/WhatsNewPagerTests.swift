@@ -9,17 +9,59 @@ import UIKit
 struct WhatsNewPagerTests {
     @Observable final class Pager {
         var index = 0
-        var position = ScrollPosition(idType: Int.self)
+        var position = WhatsNewPagerPosition()
+        var farthest: CGFloat = 0
     }
 
     struct Host: View {
         @Bindable var pager: Pager
-        var locksForward = false
+        var lockedPages: Set<Int> = []
 
         var body: some View {
-            WhatsNewPager(count: 3, index: $pager.index, position: $pager.position, locksForward: locksForward) { _ in
+            WhatsNewPager(count: 3, index: $pager.index, position: $pager.position, lockedPages: lockedPages) { _ in
                 Color.clear
             }
+            .onScrollGeometryChange(for: CGFloat.self) { $0.visibleRect.minX } action: { _, minX in
+                pager.farthest = max(pager.farthest, minX)
+            }
+        }
+    }
+
+    /// A finger's drag reaches the scroll view as a frame-by-frame offset between the delegate
+    /// calls that begin and end it.
+    @MainActor final class Finger {
+        let scrollView: UIScrollView
+        private(set) var page: Double
+
+        init(_ scrollView: UIScrollView, on page: Double = 0) {
+            self.scrollView = scrollView
+            self.page = page
+        }
+
+        func offset(_ page: Double) -> CGPoint {
+            CGPoint(x: page * scrollView.bounds.width, y: 0)
+        }
+
+        func isResting(on page: Double) -> Bool {
+            abs(scrollView.contentOffset.x - offset(page).x) < 0.5
+        }
+
+        func touchDown() {
+            scrollView.delegate?.scrollViewWillBeginDragging?(scrollView)
+        }
+
+        func move(to end: Double) async throws {
+            while abs(end - page) > 0.001 {
+                page += max(-0.1, min(0.1, end - page))
+                scrollView.setContentOffset(offset(page), animated: false)
+                try await Task.sleep(for: .milliseconds(16))
+            }
+        }
+
+        func lift() {
+            var target = scrollView.contentOffset
+            scrollView.delegate?.scrollViewWillEndDragging?(scrollView, withVelocity: .zero, targetContentOffset: &target)
+            scrollView.delegate?.scrollViewDidEndDragging?(scrollView, willDecelerate: false)
         }
     }
 
@@ -44,15 +86,54 @@ struct WhatsNewPagerTests {
         }
     }
 
+    @Test func aSwipeIntoALockedPageLandsThereAndGoesNoFurther() async throws {
+        let pager = Pager()
+        let (window, scrollView) = try await host(Host(pager: pager, lockedPages: [1]))
+        defer { window.isHidden = true }
+        let lock = try await forwardLock(in: window)
+        let finger = Finger(scrollView)
+
+        finger.touchDown()
+        try await finger.move(to: 0.6)
+        try await waitUntil { pager.index == 1 }
+        try await finger.move(to: 0.9)
+        #expect(!lock.isLocked, "a drag that started on an open page is not cut off")
+        try await finger.move(to: 1)
+        finger.lift()
+        try await waitUntil { lock.isLocked }
+
+        finger.touchDown()
+        try await finger.move(to: 1.6)
+        finger.lift()
+        try await waitUntil { finger.isResting(on: 1) && pager.index == 1 }
+    }
+
+    @Test func aScrollThatIsNotADragStopsAtALockedPage() async throws {
+        try await withAccessibilityAutomation {
+            let pager = Pager()
+            let (window, scrollView) = try await host(Host(pager: pager, lockedPages: [1]))
+            defer { window.isHidden = true }
+            let finger = Finger(scrollView)
+
+            pager.position.go(to: 1)
+            try await waitUntil { finger.isResting(on: 1) && pager.index == 1 }
+
+            let width = scrollView.bounds.width
+            scrollView.setContentOffset(finger.offset(2), animated: true)
+            try await waitUntil { pager.farthest > 1.1 * width }
+            try await waitUntil { finger.isResting(on: 1) && pager.index == 1 }
+
+            pager.position.go(to: 2)
+            try await waitUntil { finger.isResting(on: 2) && pager.index == 2 }
+        }
+    }
+
     @Test(arguments: [false, true])
     func theLockHoldsTheWhatsNewPager(locksForward: Bool) async throws {
-        let (window, scrollView) = try await host(Host(pager: Pager(), locksForward: locksForward))
+        let (window, scrollView) = try await host(Host(pager: Pager(), lockedPages: locksForward ? [0] : []))
         defer { window.isHidden = true }
 
-        try await waitUntil {
-            window.descendants(ofType: ForwardPagingLock.LockView.self).first?.attachedPager != nil
-        }
-        let lock = try #require(window.descendants(ofType: ForwardPagingLock.LockView.self).first)
+        let lock = try await forwardLock(in: window)
         #expect(lock.attachedPager === scrollView)
         #expect(lock.isLocked == locksForward)
     }
@@ -64,39 +145,32 @@ struct WhatsNewPagerTests {
         #expect(!WhatsNewPage.mailInBottomBar.locksForwardSwipe)
     }
 
-    /// A finger's drag reaches the scroll view as a frame-by-frame offset between the delegate
-    /// calls that begin and end it.
     private func swipeAndPress() async throws {
         let pager = Pager()
         let (window, scrollView) = try await host(Host(pager: pager))
         defer { window.isHidden = true }
+        let finger = Finger(scrollView)
 
-        let delegate = try #require(scrollView.delegate)
-        let offset = { (page: Double) in CGPoint(x: page * scrollView.bounds.width, y: 0) }
-        var page = 0.0
-        func drag(to end: Double) async throws {
-            while abs(end - page) > 0.001 {
-                page += max(-0.1, min(0.1, end - page))
-                scrollView.setContentOffset(offset(page), animated: false)
-                try await Task.sleep(for: .milliseconds(16))
-            }
-        }
-
-        delegate.scrollViewWillBeginDragging?(scrollView)
-        try await drag(to: 0.6)
+        finger.touchDown()
+        try await finger.move(to: 0.6)
         try await waitUntil { pager.index == 1 }
-        try await drag(to: 0.4)
+        try await finger.move(to: 0.4)
         try await waitUntil { pager.index == 0 }
-        try await drag(to: 1)
+        try await finger.move(to: 1)
         try await waitUntil { pager.index == 1 }
-        var target = offset(1)
-        delegate.scrollViewWillEndDragging?(scrollView, withVelocity: .zero, targetContentOffset: &target)
-        delegate.scrollViewDidEndDragging?(scrollView, willDecelerate: false)
+        finger.lift()
 
-        pager.position.scrollTo(id: 0)
-        try await waitUntil { abs(scrollView.contentOffset.x) < 0.5 && pager.index == 0 }
-        pager.position.scrollTo(id: 2)
-        try await waitUntil { abs(scrollView.contentOffset.x - offset(2).x) < 0.5 && pager.index == 2 }
+        pager.position.go(to: 0)
+        try await waitUntil { finger.isResting(on: 0) && pager.index == 0 }
+        pager.position.go(to: 2)
+        try await waitUntil { finger.isResting(on: 2) && pager.index == 2 }
+    }
+
+    private func forwardLock(in window: UIWindow) async throws -> ForwardPagingLock.LockView {
+        try await waitUntil {
+            window.descendants(ofType: ForwardPagingLock.LockView.self).first?.attachedPager != nil
+        }
+        return try #require(window.descendants(ofType: ForwardPagingLock.LockView.self).first)
     }
 
     /// Without a scene the host builds no `UIScrollView`.

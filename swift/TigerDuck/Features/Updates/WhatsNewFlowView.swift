@@ -10,7 +10,7 @@ struct WhatsNewFlowView: View {
     @State private var index = 0
     @State private var isRequesting = false
     @State private var requestTask: Task<Void, Never>?
-    @State private var position = ScrollPosition(idType: Int.self)
+    @State private var position = WhatsNewPagerPosition()
 
     private var pageTurn: Animation? {
         reduceMotion ? nil : .smooth(duration: 0.4)
@@ -54,14 +54,14 @@ struct WhatsNewFlowView: View {
     }
 
     private var pager: some View {
-        WhatsNewPager(count: stepCount, index: $index, position: $position, locksForward: locksForward) { step in
+        WhatsNewPager(count: stepCount, index: $index, position: $position, lockedPages: lockedPages) { step in
             content(at: step)
         }
         .scrollDisabled(isRequesting)
     }
 
-    private var locksForward: Bool {
-        index < presentation.pages.count && presentation.pages[index].locksForwardSwipe
+    private var lockedPages: Set<Int> {
+        Set(presentation.pages.indices.filter { presentation.pages[$0].locksForwardSwipe })
     }
 
     private var footer: some View {
@@ -181,17 +181,33 @@ struct WhatsNewFlowView: View {
     private func go(to step: Int) {
         guard (0..<stepCount).contains(step) else { return }
         withAnimation(pageTurn) {
-            position.scrollTo(id: step)
+            position.go(to: step)
         }
+    }
+}
+
+/// `settledPage` is the page the pager rests on, or the one `go(to:)` sends it to.
+struct WhatsNewPagerPosition {
+    var scroll = ScrollPosition(idType: Int.self)
+    var settledPage = 0
+
+    mutating func go(to step: Int) {
+        settledPage = step
+        scroll.scrollTo(id: step)
     }
 }
 
 struct WhatsNewPager<Page: View>: View {
     let count: Int
     @Binding var index: Int
-    @Binding var position: ScrollPosition
-    let locksForward: Bool
+    @Binding var position: WhatsNewPagerPosition
+    let lockedPages: Set<Int>
     @ViewBuilder let page: (Int) -> Page
+
+    private struct Spot: Equatable {
+        let step: Int
+        let restingPage: Int?
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -210,22 +226,44 @@ struct WhatsNewPager<Page: View>: View {
                     }
                 }
                 .scrollTargetLayout()
-                .background(ForwardPagingLock(isLocked: locksForward))
+                .background(ForwardPagingLock(isLocked: lockedPages.contains(position.settledPage)))
             }
             .scrollTargetBehavior(.paging)
-            .scrollPosition($position)
+            .scrollPosition($position.scroll)
             // The scroll position's view identity follows only a drag, not VoiceOver's
             // three-finger swipe; the visible rect follows every scroll.
-            .onScrollGeometryChange(for: Int.self, of: Self.step(in:)) { _, step in
-                index = min(max(step, 0), count - 1)
+            .onScrollGeometryChange(for: Spot.self, of: Self.spot(in:)) { _, spot in
+                follow(spot)
             }
             .scrollIndicators(.hidden)
         }
     }
 
-    private static func step(in geometry: ScrollGeometry) -> Int {
-        guard geometry.containerSize.width > 0 else { return 0 }
-        return Int((geometry.visibleRect.midX / geometry.containerSize.width).rounded(.down))
+    /// VoiceOver's three-finger swipe moves the pager without the pan gesture that
+    /// `ForwardPagingLock` watches, so a scroll past a locked page is sent back to it.
+    private func follow(_ spot: Spot) {
+        let settled = position.settledPage
+        let step = min(max(spot.step, 0), count - 1)
+        if lockedPages.contains(settled), step > settled {
+            index = settled
+            position.scroll.scrollTo(id: settled)
+            return
+        }
+        index = step
+        if let page = spot.restingPage, page != settled {
+            position.settledPage = page
+        }
+    }
+
+    private static func spot(in geometry: ScrollGeometry) -> Spot {
+        let width = geometry.containerSize.width
+        guard width > 0 else { return Spot(step: 0, restingPage: nil) }
+        let offset = geometry.visibleRect.minX
+        let nearest = (offset / width).rounded()
+        return Spot(
+            step: Int((geometry.visibleRect.midX / width).rounded(.down)),
+            restingPage: abs(offset - nearest * width) < 0.5 ? Int(nearest) : nil
+        )
     }
 }
 
