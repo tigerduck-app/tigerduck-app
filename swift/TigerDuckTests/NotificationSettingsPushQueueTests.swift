@@ -438,13 +438,13 @@ struct NotificationSettingsPushQueueTests {
         defer { Self.resetQueue() }
         let before = NotificationSettingsPushQueue.finishedLinks
 
-        if case .read = NotificationSettingsPushQueue.source(.snapshot(nil), linksBeforeSnapshot: before) {
+        if case .read = NotificationSettingsPushQueue.source(.snapshot(.neverWritten), linksBeforeSnapshot: before) {
             Issue.record("nothing ran since the fetch, so the copy is current")
         }
 
         await NotificationSettingsPushQueue.enqueue {}.value
 
-        guard case .read = NotificationSettingsPushQueue.source(.snapshot(nil), linksBeforeSnapshot: before) else {
+        guard case .read = NotificationSettingsPushQueue.source(.snapshot(.neverWritten), linksBeforeSnapshot: before) else {
             Issue.record("a push that finished after the fetch may have written past the copy")
             return
         }

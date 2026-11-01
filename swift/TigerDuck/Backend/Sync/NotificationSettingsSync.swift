@@ -154,11 +154,11 @@ nonisolated enum NotificationSettingsSync {
         guard cloudSyncEnabled else { return .skipped }
 
         var existing: [String: Any] = [:]
-        var baseRevision: Int?
+        var mode = SettingsWriteMode.create
 
-        if let (data, revision) = try await client.read(namespace: namespace) {
+        if case .stored(let data, let revision) = try await client.read(namespace: namespace) {
             existing = Self.object(from: data)
-            baseRevision = revision
+            mode = .replace(revision: revision)
         }
 
         var attempt = 0
@@ -176,7 +176,7 @@ nonisolated enum NotificationSettingsSync {
                 return isCurrent() ? .landed : .skipped
             }
             let body = try JSONSerialization.data(withJSONObject: merged, options: [.sortedKeys])
-            let result = try await client.write(namespace: namespace, document: body, baseRevision: baseRevision)
+            let result = try await client.write(namespace: namespace, document: body, mode: mode)
 
             switch result {
             case .written:
@@ -188,7 +188,7 @@ nonisolated enum NotificationSettingsSync {
                     throw SyncError.conflictNotResolved
                 }
                 existing = Self.object(from: serverDocument)
-                baseRevision = serverRevision
+                mode = .replace(revision: serverRevision)
             }
         }
     }
@@ -223,7 +223,7 @@ nonisolated enum NotificationSettingsSync {
 
     enum DocumentSource: Sendable {
         case read
-        case snapshot((document: Data, revision: Int)?)
+        case snapshot(SettingsDocument)
     }
 
     enum ReconcileOutcome: Equatable, Sendable {

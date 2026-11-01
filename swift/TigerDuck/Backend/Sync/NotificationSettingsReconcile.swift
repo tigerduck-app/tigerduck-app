@@ -11,13 +11,13 @@ nonisolated enum NotificationSettingsReconcile {
     static func documentSource(fromSnapshot json: [String: Any]) -> DocumentSource {
         guard let entries = json["settings_documents"] as? [[String: Any]] else { return .read }
         guard let entry = entries.first(where: { $0["namespace"] as? String == NotificationSettingsSync.namespace }) else {
-            return .snapshot(nil)
+            return .snapshot(.neverWritten)
         }
         guard let revision = entry["revision"] as? Int,
               let object = entry["document"], JSONSerialization.isValidJSONObject(object),
               let data = try? JSONSerialization.data(withJSONObject: object)
         else { return .read }
-        return .snapshot((document: data, revision: revision))
+        return .snapshot(.stored(document: data, revision: revision))
     }
 
     @MainActor
@@ -39,13 +39,17 @@ nonisolated enum NotificationSettingsReconcile {
         guard !isPushPending() else { return .deferredToPendingPush }
 
         var expected = LocalPreferences(from: store)
-        let stored: (document: Data, revision: Int)?
+        let stored: SettingsDocument
         switch source {
         case .read: stored = try await client.read(namespace: NotificationSettingsSync.namespace)
         case .snapshot(let document): stored = document
         }
-        var existing = stored.map { NotificationSettingsSync.object(from: $0.document) } ?? [:]
-        var baseRevision = stored?.revision
+        var existing: [String: Any] = [:]
+        var mode = SettingsWriteMode.create
+        if case .stored(let document, let revision) = stored {
+            existing = NotificationSettingsSync.object(from: document)
+            mode = .replace(revision: revision)
+        }
         var adopted: Set<OwnedSection> = []
         var attempt = 0
 
@@ -77,7 +81,7 @@ nonisolated enum NotificationSettingsReconcile {
                 withJSONObject: NotificationSettingsSync.merging(updates, into: existing),
                 options: [.sortedKeys]
             )
-            switch try await client.write(namespace: NotificationSettingsSync.namespace, document: body, baseRevision: baseRevision) {
+            switch try await client.write(namespace: NotificationSettingsSync.namespace, document: body, mode: mode) {
             case .written:
                 if isCurrent() { recordSynced(expected, synced) }
                 return .settled(adopted: adopted, seeded: missing)
@@ -85,7 +89,7 @@ nonisolated enum NotificationSettingsReconcile {
                 attempt += 1
                 guard attempt <= 1 else { throw NotificationSettingsSync.SyncError.conflictNotResolved }
                 existing = NotificationSettingsSync.object(from: serverDocument)
-                baseRevision = serverRevision
+                mode = .replace(revision: serverRevision)
             }
         }
     }

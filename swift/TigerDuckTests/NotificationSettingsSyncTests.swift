@@ -244,7 +244,7 @@ struct NotificationSettingsSyncTests {
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
 
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"error":"settings_document_not_found","message":"No such settings document."}"#.utf8)), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 1)), for: url)
 
         try await NotificationSettingsSync.push(local: Self.local(), base: .since(Self.local()), client: client, cloudSyncEnabled: true)
@@ -312,7 +312,7 @@ struct NotificationSettingsSyncTests {
             liveActivity: nil
         )
 
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"error":"settings_document_not_found","message":"No such settings document."}"#.utf8)), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 409, body: try Self.conflictEnvelope(document: doc, revision: 2)), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 409, body: try Self.conflictEnvelope(document: doc, revision: 3)), for: url)
 
@@ -467,7 +467,7 @@ struct NotificationSettingsSyncTests {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data(#"{"error":"settings_document_not_found","message":"No such settings document."}"#.utf8)), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 1)), for: url)
 
         let written = try await NotificationSettingsSync.push(
