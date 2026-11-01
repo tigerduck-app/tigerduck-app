@@ -28,7 +28,7 @@ final class AssignmentStore {
         self.init(files: AssignmentFiles(folders: folders), events: CalendarEventFiles(folders: folders))
     }
 
-    func noteChange() {
+    func filesChangedElsewhere() {
         revision &+= 1
     }
 

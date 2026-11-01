@@ -93,14 +93,18 @@ enum TermRoster {
             || row.name.trimmingCharacters(in: .whitespacesAndNewlines) == englishProficiencyTestName
     }
 
-    static func selectionDrops(
-        previous: Set<String>,
-        localPortalNos: [String],
-        roster: [String],
-        isFinal: Bool = false
-    ) -> Set<String> {
-        guard !roster.isEmpty || isFinal else { return previous }
-        let enrolled = Set(roster)
-        return previous.union(localPortalNos).subtracting(enrolled)
+    enum RosterSource {
+        case courseSelection([String])
+        case finalTranscript([String], alsoListed: [String])
+    }
+
+    static func selectionDrops(previous: Set<String>, localPortalNos: [String], roster source: RosterSource) -> Set<String> {
+        switch source {
+        case .courseSelection(let roster):
+            guard !roster.isEmpty else { return previous }
+            return previous.union(localPortalNos).subtracting(roster)
+        case let .finalTranscript(roster, alsoListed):
+            return previous.union(localPortalNos + alsoListed).subtracting(roster)
+        }
     }
 }

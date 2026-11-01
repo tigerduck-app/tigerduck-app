@@ -99,7 +99,7 @@ final class ClassTableEditor {
         course.customName = courseCustomNames[course.courseNo]?[currentLocale]
 
         table.courses.append(course)
-        store.apply(.add(course, semester: semester), for: AccountSession.school.currentSignIn)
+        store.apply(.addByHand(course, semester: semester), for: AccountSession.school.currentSignIn)
         if sync.courseAdded != nil {
             sync.courseAdded?(table.courses, semester, course.courseNo)
         } else {
@@ -160,7 +160,7 @@ final class ClassTableEditor {
               course.moodleIdNumber == nil
         else { return }
         table.courses.removeAll { $0.courseNo == courseNo }
-        store.apply(.remove(courseNo: courseNo, semester: table.currentSemester), for: AccountSession.school.currentSignIn)
+        store.apply(.removeAddedByHand(courseNo: courseNo, semester: table.currentSemester), for: AccountSession.school.currentSignIn)
         sync.courseDeleted?(courseNo, table.currentSemester)
     }
 

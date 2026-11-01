@@ -46,8 +46,8 @@ struct CourseFetchRaceTests {
         let kept = await CourseDetails.refreshUserAddedCourses(
             semester: Self.semester, for: testSignIn, courses: store
         ) { _, courseNo, _, _ in
-            store.apply(.remove(courseNo: "BB2", semester: Self.semester), for: testSignIn)
-            store.apply(.add(Self.course("CC3"), semester: Self.semester), for: testSignIn)
+            store.apply(.removeAddedByHand(courseNo: "BB2", semester: Self.semester), for: testSignIn)
+            store.apply(.addByHand(Self.course("CC3"), semester: Self.semester), for: testSignIn)
             return [Self.result(courseNo, name: "New")]
         }
 
@@ -68,7 +68,7 @@ struct CourseFetchRaceTests {
             semester: Self.semester, for: testSignIn, courses: store
         ) { _, courseNo, _, _ in
             store.saveCourses([Self.course("EN1"), Self.course("EN3")], semester: Self.semester, for: testSignIn)
-            store.apply(.remove(courseNo: "UA2", semester: Self.semester), for: testSignIn)
+            store.apply(.removeAddedByHand(courseNo: "UA2", semester: Self.semester), for: testSignIn)
             return [Self.result(courseNo, name: "New")]
         }
 

@@ -106,7 +106,7 @@ struct AccountSwitchTests {
             cache.courses.saveUserAddedCourses([], for: testSignIn)
             cache.courses.saveDeletedCourseNos(["CS1001"], for: testSignIn)
             cache.courses.saveSelectionDroppedNos([semester: ["CS1002"]], for: testSignIn)
-            cache.courses.recordSelectionRoster(semester: semester, roster: ["CS1003"], for: testSignIn)
+            cache.courses.recordRoster(.courseSelection(["CS1003"]), semester: semester, for: testSignIn)
             cache.courses.saveCourseCustomNames([semester: ["CS1001": "Mine"]], for: testSignIn)
             cache.colors.saveCourseColorMap(["CS1001": 0xFF0000])
             cache.colors.savePickedCourseColors(["CS1001"])

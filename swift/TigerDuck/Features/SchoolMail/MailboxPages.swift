@@ -81,7 +81,7 @@ struct MailboxPages {
     }
 
     private mutating func record(_ edit: Edit, folder: String, uid: UInt32) {
-        editToken.move()
+        editToken.recordUserEdit()
         edits[MailKey(folder: folder, uid: uid)] = (editToken, edit)
     }
 

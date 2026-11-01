@@ -84,7 +84,7 @@ final class MoodleFeed<Value: Codable & Sendable> {
 
     func edit(_ change: (inout Value) -> Void) {
         guard value != nil, fetchedAt != nil, context.signIn.isCurrent else { return }
-        edits.move()
+        edits.recordUserEdit()
         update(change)
     }
 
@@ -97,7 +97,7 @@ final class MoodleFeed<Value: Codable & Sendable> {
             guard context.signIn.isCurrent else { return }
             status = .ok
             failure = nil
-            guard edits == started else { return }
+            guard !edits.editedSince(started) else { return }
             let now = context.now()
             value = fresh
             fetchedAt = now

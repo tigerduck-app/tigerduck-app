@@ -88,7 +88,7 @@ enum CourseFetch {
         // The course-selection system serves one term and its list has no term
         // marker, so its numbers belong to the term the catalogue reports open.
         let servesSelectionSemester = semester == SemesterCatalog.selectionSemesterCode()
-        let display = CourseStore.shared.display()
+        let display = CourseStore.shared.currentDisplay()
         let courseApiLanguage = display.language
         let editToken = CourseStore.shared.editToken
 
@@ -172,11 +172,8 @@ enum CourseFetch {
 
         guard await afterBackendPull() == .completed else { return CourseStore.shared.loadCourses(semester: semester) }
         if let roster = term.selectionRoster, !Task.isCancelled {
-            CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster, for: signIn)
-            if selectionIsLive {
-                let stillDropped = CourseStore.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
-                CourseStore.shared.saveServerDroppedNos(stillDropped, semester: semester, for: signIn)
-            }
+            CourseStore.shared.recordRoster(.courseSelection(roster), semester: semester, for: signIn)
+            if selectionIsLive { CourseStore.shared.forgetServerDrops(listedIn: roster, semester: semester, for: signIn) }
         }
 
         let pastTerm = !rebuilds ? nil : TermRoster.rebuiltPastTerm(
@@ -197,8 +194,8 @@ enum CourseFetch {
             dropped: CourseStore.shared.loadServerDroppedNos(semester: semester)
         ) else { return cachedCourses }
         if let pastTerm {
-            CourseStore.shared.recordSelectionRoster(
-                semester: semester, roster: pastTerm.roster, alsoListed: pastTerm.dropping, isFinal: true, for: signIn
+            CourseStore.shared.recordRoster(
+                .finalTranscript(pastTerm.roster, alsoListed: pastTerm.dropping), semester: semester, for: signIn
             )
         }
         guard CourseStore.shared.saveFetchedCourses(

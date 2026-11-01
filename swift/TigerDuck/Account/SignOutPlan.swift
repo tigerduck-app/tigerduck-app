@@ -86,8 +86,8 @@ extension SignOutPlan {
                 LibraryService.schoolAccountDidSignOut()
                 ServerStatusTracker.shared.reset()
                 TigerDuckTheme.reload()
-                CourseStore.shared.noteChange()
-                AssignmentStore.shared.noteChange()
+                CourseStore.shared.filesChangedElsewhere()
+                AssignmentStore.shared.filesChangedElsewhere()
                 ImportedClassTableStore.shared.removeAll()
                 app.didSkipMacLogin = false
                 app.conflicts.syncConflicts = []

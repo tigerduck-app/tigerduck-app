@@ -136,21 +136,21 @@ struct SelectionDropsTests {
     @Test("A course the answer no longer names is recorded as dropped")
     func dropIsWitnessed() {
         #expect(TermRoster.selectionDrops(
-            previous: [], localPortalNos: ["A", "B", "C"], roster: ["A", "B"]
+            previous: [], localPortalNos: ["A", "B", "C"], roster: .courseSelection(["A", "B"])
         ) == ["C"])
     }
 
     @Test("A course this device never held is not a drop — that is how a manual course from another device survives")
     func unknownCourseIsNotADrop() {
         #expect(TermRoster.selectionDrops(
-            previous: [], localPortalNos: ["A"], roster: ["A"]
+            previous: [], localPortalNos: ["A"], roster: .courseSelection(["A"])
         ).isEmpty)
     }
 
     @Test("A course the answer names again is cleared, so a re-add comes straight back")
     func readdClears() {
         #expect(TermRoster.selectionDrops(
-            previous: ["C", "D"], localPortalNos: ["A"], roster: ["A", "C"]
+            previous: ["C", "D"], localPortalNos: ["A"], roster: .courseSelection(["A", "C"])
         ) == ["D"])
     }
 
@@ -383,7 +383,7 @@ struct SelectionDropsTests {
     @Test("An empty answer records nothing and clears nothing: parser drift is not a mass drop")
     func emptyAnswerIsInert() {
         #expect(TermRoster.selectionDrops(
-            previous: ["C"], localPortalNos: ["A", "B"], roster: []
+            previous: ["C"], localPortalNos: ["A", "B"], roster: .courseSelection([])
         ) == ["C"])
     }
 }
@@ -412,7 +412,7 @@ struct PastTermRebuildTests {
 
         #expect(rebuilt.courses.map(\.courseNo) == ["CS1001301"])
         #expect(rebuilt.roster == ["CS1001301"])
-        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster)
+        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: .finalTranscript(rebuilt.roster, alsoListed: []))
             == ["GE1001301", "EC9999301", "PE9999301", "CC1011301"])
     }
 
@@ -424,7 +424,7 @@ struct PastTermRebuildTests {
         )
 
         #expect(rebuilt.courses.map(\.courseNo) == ["CS1001301"])
-        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: ["CS1001301", "MA1001301"], roster: rebuilt.roster)
+        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: ["CS1001301", "MA1001301"], roster: .finalTranscript(rebuilt.roster, alsoListed: []))
             .isEmpty)
     }
 
@@ -447,7 +447,7 @@ struct PastTermRebuildTests {
         )
         #expect(!rebuilt.dropping.contains("GE1010001"))
 
-        let dropped = TermRoster.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster)
+        let dropped = TermRoster.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: .finalTranscript(rebuilt.roster, alsoListed: []))
         let rows: [[String: Any]] = [
             ["course_no": "CS1001301", "source": "ntust_portal"],
             ["course_no": "GE1010001", "source": "ntust_portal"],
@@ -535,7 +535,7 @@ struct PastTermRebuildTests {
 
         #expect(unreadable == ["NTU-CSIE-101"])
         #expect(rebuilt.courses.map(\.courseNo) == ["CS1001301", "NTU-CSIE-101"])
-        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster)
+        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: rebuilt.dropping, roster: .finalTranscript(rebuilt.roster, alsoListed: []))
             == ["MA1001301", "EC9999301"])
     }
 
@@ -554,9 +554,9 @@ struct PastTermRebuildTests {
         #expect(rebuilt.courses.isEmpty)
         #expect(rebuilt.roster.isEmpty)
         #expect(TermRoster.selectionDrops(
-            previous: [], localPortalNos: rebuilt.dropping, roster: rebuilt.roster, isFinal: true
+            previous: [], localPortalNos: rebuilt.dropping, roster: .finalTranscript(rebuilt.roster, alsoListed: [])
         ) == ["EE2005301", "TH9001301", "MA1001301"])
-        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: ["EE2005301"], roster: []).isEmpty)
+        #expect(TermRoster.selectionDrops(previous: [], localPortalNos: ["EE2005301"], roster: .courseSelection([])).isEmpty)
     }
 
     @Test("A term the transcript lists only through exempted rows is not rebuilt")

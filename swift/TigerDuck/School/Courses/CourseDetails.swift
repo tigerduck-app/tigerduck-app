@@ -134,7 +134,7 @@ enum CourseDetails {
     ) async -> [SDCourse] {
         let targets = courses.loadUserAddedCourses(semester: semester)
         guard !targets.isEmpty else { return [] }
-        let display = courses.display()
+        let display = courses.currentDisplay()
         let seeds = targets.map { ($0.courseNo, $0.moodleIdNumber, $0.semester.isEmpty ? semester : $0.semester) }
 
         let lookups = await concurrentMap(seeds) { @MainActor seed -> (String, CourseData)? in
@@ -205,7 +205,7 @@ enum CourseDetails {
             .filter { $0.classroom.isEmpty }
             .map { ($0.courseNo, $0.moodleIdNumber) }
         guard !seeds.isEmpty else { return false }
-        let display = courses.display()
+        let display = courses.currentDisplay()
 
         let lookups = await concurrentMap(seeds) { @MainActor seed -> (String, CourseData)? in
             let (courseNo, moodleId) = seed
