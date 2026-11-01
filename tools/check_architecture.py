@@ -35,7 +35,7 @@ EXTENSION_FOLDERS = ("swift/TigerDuckWidgets/", "swift/TigerDuckLiveActivity/", 
 # Sources of the other shipping targets; only the Taipei rule applies to them.
 OTHER_TARGET_FOLDERS = EXTENSION_FOLDERS + ("swift/TigerDuckWatch Watch App/", "swift/Shared/")
 
-ENFORCED_PHASE = 7
+ENFORCED_PHASE = 8
 
 TYPE_LINES = 250
 VIEW_LINES = 200
@@ -64,6 +64,9 @@ RULES = {r.name: r for r in (
     Rule("file-size", 6),
     Rule("feature-layering", 6),
     Rule("task-sleep", 7),
+    Rule("sign-in-read", 8),
+    Rule("sign-in-compare", 8),
+    Rule("account-store-write", 8),
 )}
 
 
@@ -97,6 +100,38 @@ PATTERNS = (
      "`Task.sleep` outside Support/Clock/ and Support/Concurrency/; wait with `AppClock.sleep(until:)` "
      "or `StateSignal`"),
 )
+# Where account work starts and so may read the sign-in it runs for; every other layer is handed
+# one (docs/decisions/0029-account-bound-writes.md).
+SIGN_IN_HOMES = tuple(APP + p for p in (
+    "Account/", "App/", "Features/", "Platform/", "Debug/", "Devices/", "Backend/Auth/", "Backend/Sync/",
+    "Mail/Account/", "School/Library/", "School/Moodle/MoodleTokenService.swift",
+    "School/Moodle/MoodleAutologinService.swift", "Migrations/",
+))
+# Where one sign-in may be compared with another: `SignIn` itself, the backend client and the tokens.
+SIGN_IN_COMPARE_HOMES = (APP + "Account/", APP + "Backend/Client/", APP + "Backend/Auth/")
+SIGN_IN_PATTERNS = (
+    ("sign-in-read", re.compile(r"\b(?:currentSignIn|startingSignIn|withSignIn)\b"), SIGN_IN_HOMES,
+     "a sign-in read outside the places account work starts; take the `SignIn` the work was started for"),
+    ("sign-in-compare", re.compile(
+        r"\.ticket\b|\bcurrentCheck\b|\bSignInCount\b|\bSignInScoped\b|\bTicket\b|\bmoveOn\(|\bSignInSeries\(|\bsignIns\.end\("
+        r"|\b\w*[sS]ignIn\s*[!=]==?(?!=)(?!\s*(?:\.|nil\b))|[!=]==?\s*(?:\w+\.)*\w*[sS]ignIn\b(?![.\w(])"),
+        SIGN_IN_COMPARE_HOMES,
+     "a sign-in checked by hand; ask the `SignIn` (`isCurrent`) or hold the value in `SignInBound`"),
+)
+# The persistence types of an account and the stores that write them (docs/account-state.md).
+ACCOUNT_FILES = {
+    "CourseFiles": ("Stores/CourseStore.swift",),
+    "AssignmentFiles": ("Stores/AssignmentStore.swift",),
+    "CalendarEventFiles": ("Stores/AssignmentStore.swift",),
+    "CourseColorFiles": ("Stores/CourseColorStore.swift",),
+    "BulletinFiles": ("Stores/Bulletins/BulletinFeed.swift",),
+    "ScoreReportFiles": ("School/NTUST/NTUSTScoreService.swift",),
+    "MoodleFiles": ("Stores/CourseLookup.swift", "Stores/Moodle/"),
+}
+# Persistence/ defines them, the sign-out deletes them, and a migration runs before any sign-in work.
+ACCOUNT_FILE_HOMES = (APP + "Persistence/", APP + "Account/SignOutPlan.swift", APP + "Migrations/")
+INVENTORY = ROOT / "docs" / "account-state.md"
+ACCOUNT_KEY_ROW = re.compile(r"^\|\s*defaults\s*\|\s*`(\w+)`\s*\|\s*(?:school|library)\s*\|\s*`([^`]+\.swift)`")
 TAIPEI = re.compile(r'"Asia/Taipei"')
 # (rule, pattern on code with comments and strings blanked, message) for rules whose only home is
 # TigerDuckCore; like the Taipei rule they read every shipping target.
@@ -414,6 +449,50 @@ def layering_findings(sources: list[Source]) -> list[Finding]:
     return found
 
 
+def sign_in_findings(sources: list[Source]) -> list[Finding]:
+    found = []
+    for src in sources:
+        if not src.path.startswith(APP):
+            continue
+        for rule, pattern, homes, message in SIGN_IN_PATTERNS:
+            if src.path.startswith(homes):
+                continue
+            found += [Finding(src.path, line_of(src.code, m.start()), rule, message) for m in pattern.finditer(src.code)]
+    return found
+
+
+def account_keys(inventory: str) -> dict[str, str]:
+    """Each account-scoped `Defaults` key and the file that clears it, which is its one writer."""
+    return {m.group(1): m.group(2) for line in inventory.split("\n") if (m := ACCOUNT_KEY_ROW.match(line))}
+
+
+def key_write(key: str) -> re.Pattern[str]:
+    item = rf"Defaults\[\.{key}\]"
+    return re.compile(rf"&{item}|{item}(?:\[[^\]]*\])?\s*(?:[-+]?=(?!=)|\.(?:formUnion|formIntersection|insert|"
+                      rf"remove\w*|subtract|append\w*|update\w*)\b)|Defaults\.reset\([^)]*\.{key}\b")
+
+
+def account_store_findings(sources: list[Source], inventory: str) -> list[Finding]:
+    files = re.compile(r"\b(" + "|".join(ACCOUNT_FILES) + r")\b")
+    keys = {key: (path, key_write(key)) for key, path in account_keys(inventory).items()}
+    found = []
+    for src in sources:
+        if not src.path.startswith(APP) or src.path.startswith(ACCOUNT_FILE_HOMES):
+            continue
+        for m in files.finditer(src.code):
+            stores = ACCOUNT_FILES[m.group(1)]
+            if not src.path.startswith(tuple(APP + s for s in stores)):
+                found.append(Finding(src.path, line_of(src.code, m.start()), "account-store-write",
+                                     f"`{m.group(1)}` outside its store; read and write through {', '.join(stores)}"))
+        for key, (home, write) in keys.items():
+            if src.path == home:
+                continue
+            found += [Finding(src.path, line_of(src.code, m.start()), "account-store-write",
+                              f"`{key}` written outside {home}; write it through that store with a `SignIn`")
+                      for m in write.finditer(src.code)]
+    return found
+
+
 def findings(root: Path = ROOT) -> list[Finding]:
     paths = scope_paths(root)
     sources = load(root, paths)
@@ -421,7 +500,8 @@ def findings(root: Path = ROOT) -> list[Finding]:
     workflow = (root / WORKFLOW.relative_to(ROOT)).read_text(encoding="utf-8")
     return (pattern_findings(sources) + taipei_findings(others) + core_findings(sources + others)
             + base_name_findings(paths) + on_screen_findings(workflow, test_code(root))
-            + size_findings(sources) + layering_findings(sources))
+            + size_findings(sources) + layering_findings(sources) + sign_in_findings(sources)
+            + account_store_findings(sources, (root / INVENTORY.relative_to(ROOT)).read_text(encoding="utf-8")))
 
 
 def enforced(found: list[Finding]) -> list[Finding]:

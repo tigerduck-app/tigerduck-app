@@ -126,6 +126,40 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual([(f.path, f.line, f.rule) for f in found],
                          [(APP + "Features/Score/View.swift", 1, "feature-layering")])
 
+    def test_a_sign_in_read_outside_where_account_work_starts_fails(self) -> None:
+        text = "let signIn = AccountSession.school.currentSignIn\nawait session.withSignIn { _ in }\n"
+        found = ca.sign_in_findings([source(APP + "Features/Home/X.swift", text),
+                                     source(APP + "Stores/X.swift", text)])
+        self.assertEqual([(f.path, f.line, f.rule) for f in found],
+                         [(APP + "Stores/X.swift", 1, "sign-in-read"), (APP + "Stores/X.swift", 2, "sign-in-read")])
+
+    def test_a_sign_in_compared_by_hand_fails_outside_the_account_layer(self) -> None:
+        text = ("if signIn == other.signIn {}\nlet t = session.ticket\nvar count = SignInCount()\n"
+                "if signIn.isCurrent {}\nif phase.signIn == .idle {}\nif signIn != nil {}\nlet a = x == y.signIn.phase\n")
+        found = ca.sign_in_findings([source(APP + "Backend/Sync/X.swift", text),
+                                     source(APP + "Account/X.swift", text)])
+        self.assertEqual([(f.path, f.line, f.rule) for f in found],
+                         [(APP + "Backend/Sync/X.swift", 1, "sign-in-compare"),
+                          (APP + "Backend/Sync/X.swift", 2, "sign-in-compare"),
+                          (APP + "Backend/Sync/X.swift", 3, "sign-in-compare")])
+
+    def test_an_account_file_type_outside_its_store_fails(self) -> None:
+        text = "let id = MoodleFiles.shared.lookupMoodleCourseId(idnumber: n)\n"
+        found = ca.account_store_findings([source(APP + "Backend/Sync/X.swift", text),
+                                           source(APP + "Stores/Moodle/X.swift", text),
+                                           source(APP + "Migrations/X.swift", text)], "")
+        self.assertEqual([(f.path, f.rule) for f in found], [(APP + "Backend/Sync/X.swift", "account-store-write")])
+
+    def test_an_account_key_written_outside_the_file_that_clears_it_fails(self) -> None:
+        inventory = ("| defaults | `syncedOnce` | school | `swift/TigerDuck/Backend/Sync/Progress.swift` `forget` |\n"
+                     "| defaults | `theme` | device |  |\n")
+        text = ("let seen = Defaults[.syncedOnce]\nDefaults[.syncedOnce] = true\nDefaults[.syncedOnce].insert(x)\n"
+                "Defaults.reset(.syncedOnce)\nchange(&Defaults[.syncedOnce])\nDefaults[.theme] = 1\n")
+        found = ca.account_store_findings([source(APP + "Backend/Sync/FullSync.swift", text),
+                                           source(APP + "Backend/Sync/Progress.swift", text)], inventory)
+        self.assertEqual([(f.path, f.line, f.rule) for f in found],
+                         [(APP + "Backend/Sync/FullSync.swift", n, "account-store-write") for n in (2, 3, 4, 5)])
+
 
 if __name__ == "__main__":
     unittest.main()
