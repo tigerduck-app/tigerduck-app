@@ -45,6 +45,32 @@ struct SettingsScreenTests {
         }
     }
 
+    @Test("a finger's tap on a closed row shows the reason and leaves the control as it was",
+          arguments: [SettingsRow.flipToLibrary, .assignmentReminders])
+    func aTapOnAClosedRowShowsWhy(row: SettingsRow) async throws {
+        try await withAccessibilityAutomation {
+            guard case .page(let page) = row.place else { throw GateOutsideAPage() }
+            let preferences = AppPreferences()
+            let flip = preferences.flipToLibraryEnabled
+            let (window, host) = try Screen.show(page.view, state: Screen.closed, preferences: preferences, height: 874)
+            defer { window.isHidden = true }
+            let reason = String(localized: try #require(row.closedReason(in: Screen.closed)))
+            try await waitUntil { Screen.element(of: row, hint: reason, in: host) != nil }
+            let element = try #require(Screen.element(of: row, hint: reason, in: host))
+            let value = element.accessibilityValue
+            let depth = Screen.depth(in: host)
+            #expect(accessibilityElement(labeled: reason, in: host.view) == nil)
+
+            let point = window.convert(element.accessibilityActivationPoint, from: window.screen.coordinateSpace)
+            try await fingerTap(at: point, in: window)
+
+            try await waitUntil { accessibilityElement(labeled: reason, in: host.view) != nil }
+            #expect(Screen.element(of: row, hint: reason, in: host)?.accessibilityValue == value)
+            #expect(preferences.flipToLibraryEnabled == flip)
+            #expect(Screen.depth(in: host) == depth)
+        }
+    }
+
     @Test("a toast shows its message over the page and goes away")
     func aToastShowsAndGoesAway() async throws {
         try await withAccessibilityAutomation {
