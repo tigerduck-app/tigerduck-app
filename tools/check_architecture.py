@@ -121,6 +121,8 @@ SIGN_IN_COMPARE_HOMES = (APP + "Account/", APP + "Backend/Client/", APP + "Backe
 SIGN_IN_READ = re.compile(r"\b(?:currentSignIn|startingSignIn|withSignIn)\b")
 # A name ending in `signIn` that is not a flag such as `needsSignIn`.
 SIGN_IN_NAME = r"\b(?!(?:is|has|needs|did|should|can|was|will|shows|asks)[A-Z])\w*[sS]ignIn\b"
+# `Route.signIn` and `.signIn` name an enum case or a static member, so the sign-in rules skip them.
+SIGN_IN_CASE = re.compile(rf"(?:\b[A-Z]\w*|(?<![\w)\]?!]))\.{SIGN_IN_NAME}")
 SIGN_IN_PATTERNS = (
     ("sign-in-read", SIGN_IN_READ, SIGN_IN_HOMES,
      "a sign-in read outside the places account work starts; take the `SignIn` the work was started for"),
@@ -155,7 +157,7 @@ ACCOUNT_FILE_HOMES = (APP + "Persistence/", APP + "Account/SignOutPlan.swift", A
 # School Mail's stored fields change only through `MailPreferences.change(for:_:)`; the shared store
 # is typed read-only, so a writable one comes only from a cast, a conformance or a new store.
 MAIL_FIELDS_WRITE = re.compile(
-    r"\bas\s*[?!]?\s*(?:any\s+)?MailPreferenceFields\b|\bMailSettingsStore\s*\("
+    r"\bas\s*[?!]?\s*(?:any\s+)?(?:MailPreferenceFields|MailSettingsStore)\b|\bMailSettingsStore\s*\("
     r"|\b(?:class|struct|actor|extension)\s+\w+[^{]*:[^{]*\bMailPreferenceFields\b")
 MAIL_STORE = APP + "Mail/Store/"
 INVENTORY = ROOT / "docs" / "account-state.md"
@@ -509,10 +511,11 @@ def sign_in_findings(sources: list[Source]) -> list[Finding]:
         if not src.path.startswith(APP):
             continue
         found += setter_findings(src)
+        code = SIGN_IN_CASE.sub(lambda m: " " * len(m.group()), src.code)
         for rule, pattern, homes, message in SIGN_IN_PATTERNS:
             if src.path.startswith(homes):
                 continue
-            found += [Finding(src.path, line_of(src.code, m.start()), rule, message) for m in pattern.finditer(src.code)]
+            found += [Finding(src.path, line_of(code, m.start()), rule, message) for m in pattern.finditer(code)]
     return found
 
 
@@ -540,7 +543,7 @@ def key_write(key: str) -> re.Pattern[str]:
 def default_wrapper_writes(key: str, code: str) -> list[int]:
     """Offsets where a `@Default(.key)` property of the file is assigned, mutated or bound."""
     found = []
-    for wrapper in re.finditer(rf"@Default\(\s*{key_name(key)}\s*\)[^\n]*?\bvar\s+(\w+)", code):
+    for wrapper in re.finditer(rf"@Default\(\s*{key_name(key)}\s*\)[^{{}}=;]*?\bvar\s+(\w+)", code):
         name = wrapper.group(1)
         write = re.compile(rf"\${name}\b|&{name}\b|(?<![.\w$])(?:self\.)?{name}{WRITE_TAIL}")
         found += [m.start() for m in write.finditer(code)]

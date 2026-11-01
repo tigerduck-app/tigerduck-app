@@ -137,15 +137,16 @@ class ArchitectureTests(unittest.TestCase):
         text = ("if signIn == other.signIn {}\nlet s = SignInSeries()\nsignIns.end()\n"
                 "if signIn.isCurrent {}\nif phase.signIn == .idle {}\nif signIn != nil {}\nlet a = x == y.signIn.phase\n"
                 "if [first, signIn].contains(x) {}\nif seen.contains(task.signIn) {}\nvar ended: Set<SignIn> = []\n"
-                "var byRun: [SignIn: Int] = [:]\n")
+                "var byRun: [SignIn: Int] = [:]\nif self.pair.signIn == held {}\n")
         found = ca.sign_in_findings([source(APP + "Backend/Sync/X.swift", text),
                                      source(APP + "Account/X.swift", text)])
         self.assertEqual([(f.path, f.line, f.rule) for f in found],
-                         [(APP + "Backend/Sync/X.swift", n, "sign-in-compare") for n in (1, 2, 3, 8, 9, 10, 11)])
+                         [(APP + "Backend/Sync/X.swift", n, "sign-in-compare") for n in (1, 2, 3, 8, 9, 10, 11, 12)])
 
     def test_a_flag_or_a_type_named_like_a_sign_in_is_not_a_comparison(self) -> None:
         text = ("if needsSignIn == true {}\nif false != didSignIn {}\nlet ticket = Ticket(seat: 3)\n"
-                "let t = session.ticket\nif isSigningIn == false {}\n")
+                "let t = session.ticket\nif isSigningIn == false {}\nif route == Route.signIn {}\n"
+                "if Route.signIn != route {}\nif (.signIn == step) {}\nif step == .signIn {}\n")
         self.assertEqual(ca.sign_in_findings([source(APP + "Backend/Sync/X.swift", text)]), [])
 
     def test_a_setter_that_reads_the_current_sign_in_fails_everywhere(self) -> None:
@@ -191,15 +192,22 @@ class ArchitectureTests(unittest.TestCase):
         found = ca.account_store_findings([source(APP + "Features/V.swift", text)], inventory)
         self.assertEqual([f.line for f in found], [4, 5, 6])
 
+    def test_a_default_wrapper_on_its_own_line_is_still_seen(self) -> None:
+        inventory = "| defaults | `syncOn` | school | `swift/TigerDuck/Backend/Sync/Preference.swift` `turnOff` |\n"
+        text = ("struct V: View {\n    @Default(.syncOn)\n    private var on\n    var count = 0\n"
+                "    func a() { on = true; count = 1 }\n}\n")
+        found = ca.account_store_findings([source(APP + "Features/V.swift", text)], inventory)
+        self.assertEqual([f.line for f in found], [5])
+
     def test_a_writable_mail_store_outside_the_mail_store_fails(self) -> None:
         text = ("let store = MailSettingsStore(defaults: suite)\nlet fields = prefs as? MailPreferenceFields\n"
                 "final class Fake: MailPreferenceFields {}\nif MailSettingsStore.shared.studentID == id {}\n"
                 "prefs.change(for: signIn) { (fields: any MailPreferenceFields) in fields.studentID = id }\n"
-                "let name = MailSettingsStore.shared.displayName\n")
+                "let name = MailSettingsStore.shared.displayName\nlet s = MailSettingsStore.shared as? MailSettingsStore\n")
         found = ca.account_store_findings([source(APP + "Mail/Sync/X.swift", text),
                                            source(APP + "Mail/Store/X.swift", text)], "")
         self.assertEqual([(f.path, f.line, f.rule) for f in found],
-                         [(APP + "Mail/Sync/X.swift", n, "account-store-write") for n in (1, 2, 3)])
+                         [(APP + "Mail/Sync/X.swift", n, "account-store-write") for n in (1, 2, 3, 7)])
 
 
 if __name__ == "__main__":
