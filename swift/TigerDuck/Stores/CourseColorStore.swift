@@ -72,7 +72,6 @@ final class CourseColorStore {
         if !arrived.isEmpty, signIn.isCurrent { onLateMoodleColors() }
     }
 
-    /// The colour Moodle gives each course whose Moodle id `ids` holds.
     static func moodleColors(of courses: [SDCourse], ids: [String: Int]) -> [String: UInt32] {
         var colors: [String: UInt32] = [:]
         for course in courses {
@@ -92,7 +91,6 @@ final class CourseColorStore {
         return files.loadMoodleColorWaits().unsent.reduce(into: [:]) { $0[$1] = map[$1] }
     }
 
-    /// Ends the courses' waits for their Moodle colour, and their unsent marks.
     func endMoodleWaits(_ courseNos: Set<String>, for signIn: SignIn) {
         guard !courseNos.isEmpty else { return }
         changingWaits(signIn) { $0.forget(Array(courseNos)) }
