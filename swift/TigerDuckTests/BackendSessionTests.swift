@@ -1936,20 +1936,20 @@ struct BackendSignInTests {
         auth.authTokenManager = backend.manager
         auth.beginSignOutBackgroundTask = { {} }
         let (unregistered, unregister) = AsyncStream<Void>.makeStream()
-        let loginsDuringTheRetry = OSAllocatedUnfairLock<Int?>(initialState: nil)
         auth.backend.retryDepartingUnregisterBeforeSigningIn {
             for await _ in unregistered {}
-            loginsDuringTheRetry.withLock { $0 = SettingsAPIStub.requests(for: backend.loginURL).count }
         }
 
         try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
             async let signIn: Void = auth.ensureBackendSignedIn()
             try await waitUntil { auth.isSigningInToBackend }
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+
             unregister.finish()
             await signIn
         }
 
-        #expect(loginsDuringTheRetry.withLock { $0 } == 0)
         #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
     }
 
