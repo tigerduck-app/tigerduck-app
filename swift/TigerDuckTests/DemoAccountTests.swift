@@ -160,13 +160,14 @@ struct DemoAccountTests {
         let folder = Folder()
         let statuses = ServerStatusTracker()
         let calls = Calls()
-        let signIn = Self.demoSignIn()
+        let account = Self.account(folder, statuses: statuses, calls: calls)
+        let signIn = account.startSignIn(in: AccountSession(signIns: SignInSeries()))
         let semester = CourseSelectionService.currentSemesterCode()
 
         await withExclusiveRealDefaults {
             let saved = Defaults[.ssoLoginTimestamp]
             defer { Defaults[.ssoLoginTimestamp, for: testSignIn] = saved }
-            Self.account(folder, statuses: statuses, calls: calls).enter(for: signIn)
+            account.enter(for: signIn)
         }
 
         let cache = folder.cache
@@ -228,7 +229,9 @@ struct DemoAccountTests {
         #if os(iOS)
         auth.accountNotifications = DeliveredNotificationsStub()
         #endif
-        let launch = AccountSession(signIns: SignInSeries())
+        let keychain = LockablePhoneKeychain()
+        let locked = AccountSession(signIns: SignInSeries())
+        let unlocked = AccountSession(signIns: SignInSeries())
 
         await withExclusiveRealDefaults { () async -> Void in
             let saved = (Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent])
@@ -236,18 +239,60 @@ struct DemoAccountTests {
                 Defaults[.ssoLoginTimestamp, for: testSignIn] = saved.0
                 Defaults[.ntustCredentialsPresent, for: testSignIn] = saved.1
             }
-            await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { () async -> Void in
+            await SecureStore.$sharedForTesting.withValue(keychain) { () async -> Void in
                 #expect(await auth.login(studentId: Self.studentId, password: Self.schoolPassword))
             }
         }
         let classmate = try #require(folder.classmates.people.first)
         folder.classmates.delete(classmate.id, for: auth.session.signIns.currentSignIn)
-        SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { demo.resume(in: launch) }
+        keychain.isLocked = true
+        SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: locked) }
+        keychain.isLocked = false
+        SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: unlocked) }
 
-        #expect(launch.signIns.currentSignIn.isDemo)
+        #expect(locked.signIns.currentSignIn.isDemo)
+        #expect(unlocked.signIns.currentSignIn.isDemo)
         #expect(folder.cache.courses.loadCourses(semester: CourseSelectionService.currentSemesterCode()).count == 5)
         #expect(folder.classmates.people.isEmpty)
-        #expect(calls.syncTurnedOff == 2)
+        #expect(calls.syncTurnedOff == 3)
+    }
+
+    @Test("demo credentials kept without the key start the demo once the Keychain reads back")
+    func keptCredentialsWithoutTheKeyStartTheDemo() throws {
+        let folder = Folder()
+        let demo = Self.account(folder)
+        let keychain = LockablePhoneKeychain()
+        try keychain.setObject(Data(Self.studentId.utf8), forKey: AppConstants.KeychainKeys.studentId)
+        try keychain.setObject(Data(Self.schoolPassword.utf8), forKey: AppConstants.KeychainKeys.password)
+        let launch = AccountSession(signIns: SignInSeries())
+
+        keychain.isLocked = true
+        SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
+        #expect(!launch.signIns.currentSignIn.isDemo)
+
+        keychain.isLocked = false
+        SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
+        #expect(launch.signIns.currentSignIn.isDemo)
+        #expect(Defaults[folder.demoSignedIn])
+        #expect(folder.cache.courses.loadCourses(semester: CourseSelectionService.currentSemesterCode()).count == 5)
+    }
+
+    @Test("the key kept without demo credentials ends the demo once the Keychain reads back")
+    func theKeyWithoutCredentialsEndsTheDemo() {
+        let folder = Folder()
+        let demo = Self.account(folder)
+        demo.startSignIn(in: AccountSession(signIns: SignInSeries()))
+        let keychain = LockablePhoneKeychain(absentReadsFailWhileLocked: true)
+        let launch = AccountSession(signIns: SignInSeries())
+
+        keychain.isLocked = true
+        SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
+        #expect(launch.signIns.currentSignIn.isDemo)
+
+        keychain.isLocked = false
+        SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
+        #expect(!launch.signIns.currentSignIn.isDemo)
+        #expect(!Defaults[folder.demoSignedIn])
     }
 
     @Test("the demo timetable is there in either course language, each in its own")
@@ -294,7 +339,9 @@ struct DemoAccountTests {
         }
 
         let launch = AccountSession(signIns: SignInSeries())
-        auth.deps.demo.resume(in: launch)
+        let locked = LockablePhoneKeychain(absentReadsFailWhileLocked: true)
+        locked.isLocked = true
+        SecureStore.$sharedForTesting.withValue(locked) { auth.deps.demo.resume(in: launch) }
 
         #expect(library == nil)
         #expect(!auth.session.signIns.currentSignIn.isDemo)

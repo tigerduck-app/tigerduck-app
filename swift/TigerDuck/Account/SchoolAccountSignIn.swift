@@ -33,7 +33,7 @@ enum SchoolAccountSignIn {
             }
 
             if success {
-                let signIn = isDemo ? auth.session.startDemoSignIn() : attempt
+                let signIn = isDemo ? demo.startSignIn(in: auth.session) : attempt
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)

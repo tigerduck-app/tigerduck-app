@@ -15,11 +15,17 @@ struct DemoAccount {
         fixture?.matches(studentId: studentId, password: password) ?? false
     }
 
+    @discardableResult
+    func startSignIn(in session: AccountSession) -> SignIn {
+        let signIn = session.startDemoSignIn()
+        Defaults[stores.demoSignedIn, for: signIn] = true
+        stores.turnOffSync(signIn)
+        return signIn
+    }
+
     func enter(for signIn: SignIn) {
         guard let fixture, signIn.isDemo else { return }
-        Defaults[stores.demoSignedIn, for: signIn] = true
         NTUSTSessionManager.shared.markLoginSuccess(for: signIn)
-        stores.turnOffSync(signIn)
         write(fixture, for: signIn)
         importClassmates(of: fixture, for: signIn)
         if fixture.libraryQr?.fakeLoggedIn == true, !stores.libraryIsKept() {
@@ -33,10 +39,29 @@ struct DemoAccount {
     }
 
     func resume(in session: AccountSession) {
-        guard let fixture, Defaults[stores.demoSignedIn], !session.signIns.currentSignIn.isDemo else { return }
-        let signIn = session.startDemoSignIn()
-        stores.turnOffSync(signIn)
-        write(fixture, for: signIn)
+        guard let fixture else { return }
+        let current = session.signIns.currentSignIn
+        guard let kept = storedAccountIsDemoIfReadable() else {
+            if Defaults[stores.demoSignedIn], !current.isDemo { startSignIn(in: session) }
+            return
+        }
+        if kept, !current.isDemo {
+            write(fixture, for: startSignIn(in: session))
+        } else if !kept {
+            if Defaults[stores.demoSignedIn] { Defaults.reset(stores.demoSignedIn) }
+            if current.isDemo { session.endSignIn() }
+        }
+    }
+
+    private func storedAccountIsDemoIfReadable() -> Bool? {
+        do {
+            guard let studentId = try KeychainManager.loadStringIfReadable(key: AppConstants.KeychainKeys.studentId),
+                  let password = try KeychainManager.loadStringIfReadable(key: AppConstants.KeychainKeys.password)
+            else { return false }
+            return matches(studentId: studentId, password: password)
+        } catch {
+            return nil
+        }
     }
 
     func leave() {
