@@ -10,6 +10,7 @@ struct WhatsNewFlowView: View {
     @State private var index = 0
     @State private var isRequesting = false
     @State private var requestTask: Task<Void, Never>?
+    @State private var position = ScrollPosition(idType: Int.self)
 
     private var pageTurn: Animation? {
         reduceMotion ? nil : .smooth(duration: 0.4)
@@ -53,7 +54,7 @@ struct WhatsNewFlowView: View {
     }
 
     private var pager: some View {
-        WhatsNewPager(count: stepCount, index: $index) { step in
+        WhatsNewPager(count: stepCount, index: $index, position: $position) { step in
             content(at: step)
         }
         .scrollDisabled(isRequesting)
@@ -176,7 +177,7 @@ struct WhatsNewFlowView: View {
     private func go(to step: Int) {
         guard (0..<stepCount).contains(step) else { return }
         withAnimation(pageTurn) {
-            index = step
+            position.scrollTo(id: step)
         }
     }
 }
@@ -184,6 +185,7 @@ struct WhatsNewFlowView: View {
 struct WhatsNewPager<Page: View>: View {
     let count: Int
     @Binding var index: Int
+    @Binding var position: ScrollPosition
     @ViewBuilder let page: (Int) -> Page
 
     var body: some View {
@@ -205,9 +207,19 @@ struct WhatsNewPager<Page: View>: View {
                 .scrollTargetLayout()
             }
             .scrollTargetBehavior(.paging)
-            .scrollPosition(id: Binding($index), anchor: .center)
+            .scrollPosition($position)
+            // The scroll position's view identity follows only a drag, not VoiceOver's
+            // three-finger swipe; the visible rect follows every scroll.
+            .onScrollGeometryChange(for: Int.self, of: Self.step(in:)) { _, step in
+                index = min(max(step, 0), count - 1)
+            }
             .scrollIndicators(.hidden)
         }
+    }
+
+    private static func step(in geometry: ScrollGeometry) -> Int {
+        guard geometry.containerSize.width > 0 else { return 0 }
+        return Int((geometry.visibleRect.midX / geometry.containerSize.width).rounded(.down))
     }
 }
 
