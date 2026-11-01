@@ -34,7 +34,7 @@ struct MoodleNotificationSettingsScreenTests {
                     if let element = accessibilityElement(labeled: label, in: host.view) { traits[label] = element.accessibilityTraits }
                 }
                 #expect(list.contentSize.width <= list.bounds.width + 0.5)
-                Self.save(window, as: "\(name)-\(page)")
+                window.saveSnapshot(as: "\(name)-\(page)")
                 let end = list.contentSize.height + list.adjustedContentInset.bottom - list.bounds.height
                 let next = min(list.contentOffset.y + list.bounds.height * 0.8, end)
                 guard next > list.contentOffset.y + 1 else { break }
@@ -58,7 +58,7 @@ struct MoodleNotificationSettingsScreenTests {
             try await waitUntil { accessibilityElement(labeled: String(localized: "action_retry"), in: host.view) != nil }
 
             #expect(host.view.descendants(ofType: UICollectionView.self).isEmpty)
-            Self.save(window, as: "moodle-notifications-load-failure")
+            window.saveSnapshot(as: "moodle-notifications-load-failure")
         }
     }
 
@@ -115,17 +115,6 @@ struct MoodleNotificationSettingsScreenTests {
         window.rootViewController = host
         window.isHidden = false
         return (window, host)
-    }
-
-    private static func save(_ window: UIWindow, as name: String, file: String = #filePath) {
-        let out = URL(filePath: file).deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().appending(path: ".out")
-        // CI's checkout has no `.out` folder, so only a local run keeps the picture for a person to look at.
-        guard FileManager.default.fileExists(atPath: out.path(percentEncoded: false)) else { return }
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }
-        try? image.pngData()?.write(to: out.appending(path: "\(name).png"))
     }
 }
 #endif

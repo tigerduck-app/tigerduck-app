@@ -10,6 +10,11 @@ struct MoodleMaterialsView: View {
     @State private var files = MoodleFileOpener()
     @State private var isLaidOut = false
     @State private var hasScrolledToWeek = false
+    @State private var query = ""
+    @FocusState private var isSearchFocused: Bool
+    #if os(iOS)
+    @State private var isSearchRevealed = false
+    #endif
 
     var body: some View {
         let currentWeek = currentWeekSectionId
@@ -18,8 +23,14 @@ struct MoodleMaterialsView: View {
             // the file under the finger.
             ScrollView {
                 if let materials = store.materials.value {
+                    searchRow
+                    let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let sections = materials.sections(matching: needle)
+                    if sections.isEmpty, !needle.isEmpty {
+                        ContentUnavailableView.search(text: needle)
+                    }
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(materials.sections.enumerated()), id: \.element.id) { index, section in
+                        ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
                             sectionView(section, isFirst: index == 0, isCurrentWeek: section.id == currentWeek)
                                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                                 .padding(.vertical, TigerDuckTheme.Spacing.xs)
@@ -35,6 +46,9 @@ struct MoodleMaterialsView: View {
             // A scrollTo before the scroll view's first layout does nothing, and a summary still
             // loading can change the week: its format decides how the week is found.
             .onGeometryChange(for: Bool.self, of: { $0.size.height > 0 }) { isLaidOut = $0 }
+            #if os(iOS)
+            .pullToRevealSearch(isRevealed: $isSearchRevealed, isActive: isSearchFocused || !query.isEmpty)
+            #endif
             .onChange(of: isLaidOut && !store.summary.isRefreshing ? currentWeek : nil, initial: true) { _, section in
                 guard let section, !hasScrolledToWeek else { return }
                 hasScrolledToWeek = true
@@ -54,6 +68,20 @@ struct MoodleMaterialsView: View {
             await store.refreshMaterials()
         }
         .moodleFilePresentation(files)
+    }
+
+    @ViewBuilder
+    private var searchRow: some View {
+        #if os(iOS)
+        let isShown = isSearchRevealed || !query.isEmpty
+        #else
+        let isShown = true
+        #endif
+        if isShown {
+            MoodleSearchField(query: $query, isFocused: $isSearchFocused)
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                .padding(.vertical, TigerDuckTheme.Spacing.xs)
+        }
     }
 
     /// The course's details come from the summary call, which the course page keeps fresh.
@@ -127,6 +155,34 @@ struct MoodleMaterialsView: View {
     private func open(_ page: MoodlePage) {
         files.forgetPendingOpen()
         Task { await openURL(page) }
+    }
+}
+
+nonisolated extension MoodleCourseMaterials {
+    func sections(matching query: String) -> [MoodleMaterialSection] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return sections }
+        return sections.compactMap { section in
+            if section.name.localizedStandardContains(needle) { return section }
+            let materials = section.materials.compactMap { $0.matching(needle) }
+            return materials.isEmpty
+                ? nil : MoodleMaterialSection(id: section.id, name: section.name, materials: materials, number: section.number)
+        }
+    }
+}
+
+private nonisolated extension MoodleMaterial {
+    func matching(_ needle: String) -> MoodleMaterial? {
+        if name.localizedStandardContains(needle) { return self }
+        switch content {
+        case .file(let file):
+            return file.name.localizedStandardContains(needle) ? self : nil
+        case .folder(let files):
+            let shown = files.filter { $0.name.localizedStandardContains(needle) }
+            return shown.isEmpty ? nil : MoodleMaterial(id: id, instance: instance, module: module, name: name, content: .folder(shown))
+        case .link:
+            return nil
+        }
     }
 }
 

@@ -244,6 +244,38 @@ struct MoodleFirstLoadView: View {
     static func message(for error: any Error) -> String { MoodleFailure.message(for: error) }
 }
 
+struct MoodleSearchField: View {
+    @Binding var query: String
+    var isFocused: FocusState<Bool>.Binding
+
+    var body: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Color.textSecondary)
+                .accessibilityHidden(true)
+            TextField(String(localized: "action_search"), text: $query)
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                #endif
+                .submitLabel(.search)
+                .focused(isFocused)
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "action_clear_text"))
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.md)
+        .padding(.vertical, TigerDuckTheme.Spacing.sm)
+        .background(Capsule().fill(.fill.tertiary))
+    }
+}
+
 struct MoodleOpenCapsule: View {
     let page: MoodlePage
     var willOpen: () -> Void = {}
