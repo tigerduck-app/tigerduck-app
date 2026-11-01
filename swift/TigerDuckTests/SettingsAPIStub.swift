@@ -43,7 +43,8 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         return SettingsDocumentClient(
             baseURLProvider: { baseURL },
             session: URLSession(configuration: config),
-            auth: .signedIn(authHeaderProvider)
+            auth: .signedIn(authHeaderProvider),
+            for: testSignIn
         )
     }
 

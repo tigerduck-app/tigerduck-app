@@ -87,6 +87,7 @@ actor PushRegistrationService {
     init(
         identity: PushIdentity,
         apiClient: PushAPIClient,
+        signIns: SignInSeries,
         bundleId: String = "org.ntust.app.TigerDuck",
         attrsType: String = "TigerDuckActivityAttributes",
         apnsEnv: String = PushAPNsEnv.resolvedForBuild,
@@ -95,7 +96,7 @@ actor PushRegistrationService {
         retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.requests = PushDeviceRequests(
-            identity: identity, apiClient: apiClient, bundleId: bundleId,
+            identity: identity, apiClient: apiClient, signIns: signIns, bundleId: bundleId,
             attrsType: attrsType, apnsEnv: apnsEnv, deviceClass: deviceClass
         )
         self.debounceSleep = debounceSleep
@@ -153,8 +154,9 @@ actor PushRegistrationService {
 
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         let requests = self.requests, predecessor = chains.optOut, tokenHex = tokens.device
+        let signIn = requests.signIns.currentSignIn
         let task = Task<Void, Error> {
-            try await requests.sendServerPushOptOut(optOut, deviceToken: tokenHex, after: predecessor)
+            try await requests.sendServerPushOptOut(optOut, deviceToken: tokenHex, after: predecessor, for: signIn)
         }
         chains.optOut = task
         defer {
@@ -164,8 +166,8 @@ actor PushRegistrationService {
     }
 
     func updateBulletinPushEnabled(_ enabled: Bool) async throws {
-        let requests = self.requests, predecessor = chains.bulletin
-        let task = Task<Void, Error> { try await requests.sendBulletinPushEnabled(enabled, after: predecessor) }
+        let requests = self.requests, predecessor = chains.bulletin, signIn = requests.signIns.currentSignIn
+        let task = Task<Void, Error> { try await requests.sendBulletinPushEnabled(enabled, after: predecessor, for: signIn) }
         chains.bulletin = task
         defer {
             if chains.bulletin == task { chains.bulletin = nil }
@@ -174,10 +176,11 @@ actor PushRegistrationService {
     }
 
     func updateCloudSyncEnabled(_ enabled: Bool) async {
+        let signIn = requests.signIns.currentSignIn
         if running.isRegistering {
             await withCheckedContinuation { running.cloudSyncPatchesWaiting.append($0) }
         }
-        await requests.sendCloudSyncEnabled(enabled)
+        await requests.sendCloudSyncEnabled(enabled, for: signIn)
         #if os(iOS)
         if enabled, status.lastError != nil { await registerAgain() }
         #endif

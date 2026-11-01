@@ -70,12 +70,13 @@ nonisolated struct BackendResponse: Sendable {
 
 /// The bearer token for a request with the sign-in it was issued for, and what a 401 does:
 /// `recover` answers whether another token of that sign-in is ready for the one replay.
+/// `BackendClient` sends a request only with a header of the sign-in it was built for, so a
+/// request built for none is refused a header that names one.
 nonisolated struct BackendAuth: Sendable {
     let header: @Sendable () async -> (value: String, signIn: SignIn?)?
     let recover: @Sendable (_ refused: String, _ code: String?, _ signIn: SignIn) async -> Bool
 
-    /// A header that names no sign-in, for a client whose requests carry no account data, such as
-    /// the course catalog; `BackendClient` refuses to send a request bound to a sign-in with it.
+    /// A header that names no sign-in, for a client whose requests carry no account data.
     static func unbound(_ provider: @escaping @Sendable () async -> String?) -> BackendAuth {
         BackendAuth(header: { await provider().map { ($0, nil) } }, recover: { _, _, _ in false })
     }
@@ -141,9 +142,7 @@ nonisolated final class BackendClient: Sendable {
         if request.signIn?.isCurrent == false { throw PushAPIError.notSignedIn }
         if request.authenticated {
             if let header = await auth.header(), !header.value.isEmpty {
-                if let bound = replaying ?? request.signIn, header.signIn != bound {
-                    throw PushAPIError.notSignedIn
-                }
+                if header.signIn != (replaying ?? request.signIn) { throw PushAPIError.notSignedIn }
                 urlRequest.setValue(header.value, forHTTPHeaderField: "Authorization")
                 sent = header.value.split(separator: " ").last.map(String.init)
                 signIn = header.signIn

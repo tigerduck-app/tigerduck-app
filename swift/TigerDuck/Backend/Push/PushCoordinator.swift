@@ -58,7 +58,8 @@ final class PushCoordinator {
         apiClient: PushAPIClient? = nil,
         authTokenManager: AuthTokenManager? = nil,
         ledger: SendLedger? = nil,
-        isProtectedDataAvailable: (@MainActor () -> Bool)? = nil
+        isProtectedDataAvailable: (@MainActor () -> Bool)? = nil,
+        signIns: SignInSeries
     ) {
         self.ledger = ledger ?? SendLedger()
         self.identity = identity
@@ -74,6 +75,7 @@ final class PushCoordinator {
         self.registration = PushRegistrationService(
             identity: identity,
             apiClient: resolvedClient,
+            signIns: signIns,
             deviceClass: PushDeviceClass.resolvedForBuild
         )
         #if os(iOS)
@@ -82,6 +84,7 @@ final class PushCoordinator {
         self.scheduleSync = ScheduleSyncService(
             identity: identity,
             apiClient: resolvedClient,
+            signIns: signIns,
             ledger: self.ledger
         )
     }
@@ -128,16 +131,16 @@ final class PushCoordinator {
         try await uploads.updateCredentialsIfDue(moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken, for: signIn)
     }
 
-    func fetchRevision() async throws -> Int {
-        try await apiClient.fetchRevision()
+    func fetchRevision(for signIn: SignIn) async throws -> Int {
+        try await apiClient.fetchRevision(for: signIn)
     }
 
-    func fetchFullSync() async throws -> [String: Any] {
-        try await apiClient.fetchFullSync()
+    func fetchFullSync(for signIn: SignIn) async throws -> [String: Any] {
+        try await apiClient.fetchFullSync(for: signIn)
     }
 
-    func fetchChanges(sinceRevision: Int) async throws -> PushAPI.SyncChangesPage {
-        try await apiClient.fetchChanges(sinceRevision: sinceRevision)
+    func fetchChanges(sinceRevision: Int, for signIn: SignIn) async throws -> PushAPI.SyncChangesPage {
+        try await apiClient.fetchChanges(sinceRevision: sinceRevision, for: signIn)
     }
 
     func patchAssignmentOverride(
@@ -269,7 +272,7 @@ final class PushCoordinator {
     func syncNow(inputsBuilder: @MainActor () -> ScheduleSyncService.Inputs) async {
         guard await apiClient.hasAuthSession(), run.isStarted else { return }
         guard isProtectedDataAvailable() else { return }
-        scheduleSync.sync(inputs: inputsBuilder())
+        scheduleSync.sync(building: inputsBuilder)
         await scheduleSync.awaitInflight()
     }
 

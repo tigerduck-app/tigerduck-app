@@ -2,9 +2,11 @@ import Defaults
 import Foundation
 import os
 
+/// A request goes out for the sign-in current when it was asked for or its body was read.
 nonisolated struct PushDeviceRequests: Sendable {
     let identity: PushIdentity
     let apiClient: PushAPIClient
+    let signIns: SignInSeries
     let bundleId: String
     let attrsType: String
     let apnsEnv: String
@@ -56,11 +58,12 @@ nonisolated struct PushDeviceRequests: Sendable {
 
     func register(_ tokens: [PushAPI.PushTokenIn]) async throws {
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let signIn = signIns.currentSignIn
         let cloudSync = Defaults[.cloudSyncEnabled]
         logger.info("[register] cloud_sync_enabled=\(cloudSync, privacy: .public)")
         for token in tokens {
             let request = registerRequest(pushToken: token, appVersion: appVersion, cloudSync: cloudSync)
-            let response = try await apiClient.registerDevice(request)
+            let response = try await apiClient.registerDevice(request, for: signIn)
             logger.info("registered device (\(token.token_kind, privacy: .public)) device_id=\(response.device_id, privacy: .private)")
         }
     }
@@ -68,8 +71,9 @@ nonisolated struct PushDeviceRequests: Sendable {
     #if os(macOS)
     func registerPassive() async throws {
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let signIn = signIns.currentSignIn
         let request = registerRequest(pushToken: nil, appVersion: appVersion, cloudSync: Defaults[.cloudSyncEnabled])
-        let response = try await apiClient.registerDevice(request)
+        let response = try await apiClient.registerDevice(request, for: signIn)
         logger.info("registered passive macOS device device_id=\(response.device_id, privacy: .private)")
     }
     #endif
@@ -126,7 +130,7 @@ nonisolated struct PushDeviceRequests: Sendable {
             bundle_id: bundleId,
             environment: apnsEnv
         )
-        let response = try await apiClient.registerLiveActivityToken(request)
+        let response = try await apiClient.registerLiveActivityToken(request, for: signIns.currentSignIn)
         logger.info(
             "registered live activity token id=\(response.tokenId, privacy: .private)"
         )

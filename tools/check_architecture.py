@@ -105,9 +105,12 @@ PATTERNS = (
      "takes `AuthTokenManager.backendAuth`"),
 )
 # Where account work starts and so may read the sign-in it runs for; every other layer is handed
-# one (docs/decisions/0029-account-bound-writes.md).
+# one (docs/decisions/0029-account-bound-writes.md). The push files build the device's
+# registration and the schedule list, each for the sign-in current when it is read.
 SIGN_IN_HOMES = tuple(APP + p for p in (
     "Account/", "App/", "Features/", "Platform/", "Debug/", "Devices/", "Backend/Auth/", "Backend/Sync/",
+    "Backend/Push/PushDeviceRequests", "Backend/Push/PushRegistrationService.swift",
+    "Backend/Push/ScheduleSyncService.swift",
     "Mail/Account/", "Mail/Sync/MailChecker.swift", "School/Library/", "School/Moodle/MoodleTokenService.swift",
     "School/Moodle/MoodleAutologinService.swift", "Migrations/",
 ))

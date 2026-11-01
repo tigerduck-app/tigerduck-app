@@ -56,7 +56,7 @@ extension BulletinAPIClient {
         session: URLSession?,
         authHeaderProvider: @escaping @Sendable () async -> String?
     ) {
-        self.init(baseURLProvider: baseURLProvider, session: session, auth: .signedIn(authHeaderProvider))
+        self.init(baseURLProvider: baseURLProvider, session: session, auth: .signedIn(authHeaderProvider), for: testSignIn)
     }
 }
 
@@ -110,4 +110,46 @@ extension CloudSyncCoordinator {
     func addCourse(semester: String, courseNo: String) -> Task<Void, Never> {
         addCourse(semester: semester, courseNo: courseNo, for: testSignIn)
     }
+}
+
+extension PushAPIClient {
+    func fetchRevision() async throws -> Int { try await fetchRevision(for: testSignIn) }
+
+    func fetchChanges(sinceRevision: Int) async throws -> PushAPI.SyncChangesPage {
+        try await fetchChanges(sinceRevision: sinceRevision, for: testSignIn)
+    }
+}
+
+extension PushCoordinator {
+    convenience init(
+        identity: PushIdentity = .loadOrCreate(),
+        apiClient: PushAPIClient? = nil,
+        authTokenManager: AuthTokenManager? = nil,
+        ledger: SendLedger? = nil,
+        isProtectedDataAvailable: (@MainActor () -> Bool)? = nil
+    ) {
+        self.init(
+            identity: identity, apiClient: apiClient, authTokenManager: authTokenManager, ledger: ledger,
+            isProtectedDataAvailable: isProtectedDataAvailable, signIns: testSignIns
+        )
+    }
+}
+
+extension PushRegistrationService {
+    init(
+        identity: PushIdentity,
+        apiClient: PushAPIClient,
+        deviceClass: String,
+        debounceSleep: @escaping @Sendable (Duration) async -> Void,
+        retrySleep: @escaping @Sendable (Duration) async -> Void
+    ) {
+        self.init(
+            identity: identity, apiClient: apiClient, signIns: testSignIns, deviceClass: deviceClass,
+            debounceSleep: debounceSleep, retrySleep: retrySleep
+        )
+    }
+}
+
+extension ScheduleSyncService {
+    func sync(inputs: Inputs) { sync(inputs: inputs, for: testSignIn) }
 }

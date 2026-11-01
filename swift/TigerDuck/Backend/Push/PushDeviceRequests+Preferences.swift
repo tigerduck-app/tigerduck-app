@@ -3,7 +3,9 @@ import Foundation
 import os
 
 nonisolated extension PushDeviceRequests {
-    func sendServerPushOptOut(_ optOut: Bool, deviceToken: String?, after predecessor: Task<Void, Error>?) async throws {
+    func sendServerPushOptOut(
+        _ optOut: Bool, deviceToken: String?, after predecessor: Task<Void, Error>?, for signIn: SignIn
+    ) async throws {
         _ = try? await predecessor?.value
         let uuid = identity.uuid
         do {
@@ -19,7 +21,7 @@ nonisolated extension PushDeviceRequests {
             )
             if await apiClient.hasAuthSession() {
                 _ = try await apiClient.updateDevicePreferences(
-                    deviceId: uuid, serverPushEnabled: !optOut
+                    deviceId: uuid, serverPushEnabled: !optOut, for: signIn
                 )
             }
             await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
@@ -30,11 +32,11 @@ nonisolated extension PushDeviceRequests {
         }
     }
 
-    func sendBulletinPushEnabled(_ enabled: Bool, after predecessor: Task<Void, Error>?) async throws {
+    func sendBulletinPushEnabled(_ enabled: Bool, after predecessor: Task<Void, Error>?, for signIn: SignIn) async throws {
         _ = try? await predecessor?.value
         do {
             let response = try await apiClient.updateDevicePreferences(
-                deviceId: identity.uuid, bulletinPushEnabled: enabled
+                deviceId: identity.uuid, bulletinPushEnabled: enabled, for: signIn
             )
             guard response.bulletinPushEnabled == enabled else {
                 throw PushAPIError.invalidResponse
@@ -47,11 +49,12 @@ nonisolated extension PushDeviceRequests {
         }
     }
 
-    func sendCloudSyncEnabled(_ enabled: Bool) async {
+    func sendCloudSyncEnabled(_ enabled: Bool, for signIn: SignIn) async {
         do {
             _ = try await apiClient.updateDevicePreferences(
                 deviceId: identity.uuid,
-                cloudSyncEnabled: enabled
+                cloudSyncEnabled: enabled,
+                for: signIn
             )
             logger.info("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH succeeded")
         } catch {
@@ -61,7 +64,7 @@ nonisolated extension PushDeviceRequests {
 
     func sendSyncPreferences(after predecessor: Task<Void, Never>?) async {
         await predecessor?.value
-        let sent = SyncPreferences.current
+        let sent = SyncPreferences.current, signIn = signIns.currentSignIn
         Defaults[.syncPreferencesPushPending] = true
         do {
             _ = try await apiClient.updateDevicePreferences(
@@ -71,7 +74,8 @@ nonisolated extension PushDeviceRequests {
                 syncCourseNames: sent.courseNames,
                 syncAssignments: sent.assignments,
                 syncAssignmentReminders: sent.assignmentReminders,
-                syncLiveActivity: sent.liveActivity
+                syncLiveActivity: sent.liveActivity,
+                for: signIn
             )
             if SyncPreferences.current == sent {
                 Defaults[.syncPreferencesPushPending] = false

@@ -150,7 +150,7 @@ final class FullSyncRunner {
         let editGenerationAtFetch = app.localEdits.overrideEditGeneration
         let fetchedAt = Date()
         let (json, fetchedDeletes) = try await coordinator.courseDeletes(around: {
-            try await app.pushCoordinator.fetchFullSync()
+            try await app.pushCoordinator.fetchFullSync(for: signIn)
         })
         guard mayWrite(for: signIn) else { return nil }
         let marks = ServerMarks(json)

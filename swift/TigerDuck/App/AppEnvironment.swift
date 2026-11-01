@@ -53,7 +53,7 @@ final class AppEnvironment {
         self.authService = authService
         let identity = PushIdentity.loadOrCreate()
         let atm = AuthTokenManager(deviceUUID: identity.uuid, storedFor: authService.session.currentSignIn)
-        let pushCoordinator = PushCoordinator(identity: identity, authTokenManager: atm)
+        let pushCoordinator = PushCoordinator(identity: identity, authTokenManager: atm, signIns: authService.session.signIns)
         let cloudSync = CloudSyncCoordinator(
             pushCoordinator: pushCoordinator,
             addedCourseUpload: { SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1) },

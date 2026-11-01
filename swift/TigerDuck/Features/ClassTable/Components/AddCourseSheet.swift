@@ -47,7 +47,7 @@ struct AddCourseSheet: View {
     }
 
     private var fetchCatalog: CourseSearchModel.FetchCatalog {
-        CourseCatalogStore.fetch(auth: app.authTokenManager.backendAuth)
+        CourseCatalogStore.fetch(auth: app.authTokenManager.backendAuth, for: app.authService.session.currentSignIn)
     }
 
     private var trimmedQuery: String {

@@ -1,23 +1,23 @@
 import Foundation
 import os
 
+/// Reads and writes the settings documents of the sign-in it was made for.
 actor SettingsDocumentClient {
     private let backend: BackendClient
-
-    init(backend: BackendClient) {
-        self.backend = backend
-    }
+    private let signIn: SignIn
 
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        auth: BackendAuth = .none
+        auth: BackendAuth,
+        for signIn: SignIn
     ) {
         backend = BackendClient(baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: auth)
+        self.signIn = signIn
     }
 
     func read(namespace: String) async throws -> (document: Data, revision: Int)? {
-        var request = BackendRequest("GET", segments: ["settings", namespace])
+        var request = BackendRequest("GET", segments: ["settings", namespace]).sent(for: signIn)
         request.sendsWithoutSession = true
         request.accepting = [404]
         let response = try await backend.send(request)
@@ -55,7 +55,7 @@ actor SettingsDocumentClient {
             throw PushAPIError.encodingFailed(error)
         }
 
-        var request = BackendRequest("PUT", segments: ["settings", namespace])
+        var request = BackendRequest("PUT", segments: ["settings", namespace]).sent(for: signIn)
         request.sendsWithoutSession = true
         request.body = body
         request.accepting = [409]

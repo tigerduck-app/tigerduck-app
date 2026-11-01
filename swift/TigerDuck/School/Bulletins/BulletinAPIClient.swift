@@ -1,19 +1,25 @@
 import Foundation
 import os
 
+/// The subscriptions it reads and writes are those of the sign-in it was made for.
 final class BulletinAPIClient: Sendable {
     private let backend: BackendClient
+    private let signIn: SignIn?
 
-    init(backend: BackendClient) {
+    init(backend: BackendClient, for signIn: SignIn? = nil) {
         self.backend = backend
+        self.signIn = signIn
     }
 
     convenience init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        auth: BackendAuth = .none
+        auth: BackendAuth = .none,
+        for signIn: SignIn? = nil
     ) {
-        self.init(backend: BackendClient(baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: auth))
+        self.init(
+            backend: BackendClient(baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: auth), for: signIn
+        )
     }
 
     func getTaxonomy() async throws -> BulletinAPI.TaxonomyResponse {
@@ -62,6 +68,7 @@ final class BulletinAPIClient: Sendable {
     ) async throws -> Response {
         var request = request
         request.authenticated = authenticated
+        if authenticated { request.signIn = signIn }
         request.sendsWithoutSession = true
         do {
             return try await backend.send(request, as: Response.self)

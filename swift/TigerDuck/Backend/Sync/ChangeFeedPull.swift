@@ -39,7 +39,7 @@ final class ChangeFeedPull {
         await app.authService.ensureBackendSignedIn()
         guard await app.authTokenManager.isLoggedIn else { return .unchanged }
         do {
-            let serverRevision = try await app.pushCoordinator.fetchRevision()
+            let serverRevision = try await app.pushCoordinator.fetchRevision(for: signIn)
             app.conflicts.retryOwedConflictCheck()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self.lastKnownRevision)")
             guard serverRevision > lastKnownRevision else {
@@ -65,7 +65,7 @@ final class ChangeFeedPull {
         }
         let page: PushAPI.SyncChangesPage?
         do {
-            page = try await app.pushCoordinator.fetchChanges(sinceRevision: since)
+            page = try await app.pushCoordinator.fetchChanges(sinceRevision: since, for: signIn)
         } catch {
             AppLogger.sync.info("[feed] read failed: \(error, privacy: .private)")
             page = nil

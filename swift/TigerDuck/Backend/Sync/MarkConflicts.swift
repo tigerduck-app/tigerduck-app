@@ -34,7 +34,7 @@ final class MarkConflicts {
             let push = app.pushCoordinator
             Task { [weak self] in
                 await AssignmentMarksReconciler.keepServerSide(
-                    read: { ServerMarks(try await push.fetchFullSync()) },
+                    read: { ServerMarks(try await push.fetchFullSync(for: signIn)) },
                     protected: { [weak self] in
                         await coordinator.pendingAssignmentOverrideIds().union(self?.app?.localEdits.pendingOverrides ?? [])
                     },

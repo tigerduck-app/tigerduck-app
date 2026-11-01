@@ -20,7 +20,7 @@ final class NotificationSettingsSyncer {
         let signIn = await AccountSession.school.startingSignIn
         guard await authTokenManager.isLoggedIn, stillQueued() else { return false }
 
-        let client = SettingsDocumentClient(auth: authTokenManager.backendAuth)
+        let client = SettingsDocumentClient(auth: authTokenManager.backendAuth, for: signIn)
         let local = NotificationSettingsSync.LocalPreferences(from: preferences)
         var sent: [String: Any] = [:]
         do {
@@ -63,7 +63,7 @@ final class NotificationSettingsSyncer {
             let signIn = await AccountSession.school.startingSignIn
             guard await self.authTokenManager.isLoggedIn, stillQueued() else { return false }
 
-            let client = SettingsDocumentClient(auth: self.authTokenManager.backendAuth)
+            let client = SettingsDocumentClient(auth: self.authTokenManager.backendAuth, for: signIn)
             do {
                 let outcome = try await NotificationSettingsReconcile.reconcile(
                     store: self.preferences,

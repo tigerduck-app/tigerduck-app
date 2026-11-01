@@ -40,9 +40,9 @@ final class BulletinSubscriptionsStore {
         self.retryDelay = retryDelay
     }
 
-    func configure(authTokenManager: AuthTokenManager) {
+    func configure(authTokenManager: AuthTokenManager, for signIn: SignIn) {
         guard !usesInjectedClient else { return }
-        apiClient = BulletinAPIClient(backend: BackendClient(auth: authTokenManager.backendAuth))
+        apiClient = BulletinAPIClient(backend: BackendClient(auth: authTokenManager.backendAuth), for: signIn)
     }
 
     func load() async {

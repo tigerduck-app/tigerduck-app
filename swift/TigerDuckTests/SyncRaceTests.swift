@@ -22,7 +22,7 @@ struct SyncRaceTests {
     private static func push(_ baseURL: URL, signIns: SignInSeries = testSignIns) -> PushCoordinator {
         let client = PushAPIClient(baseURLProvider: { baseURL }, session: stubSession(), authHeaderProvider: { "Bearer test" },
                                    signIns: signIns)
-        return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
+        return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client, signIns: signIns)
     }
 
     private static func cache() -> TestCache {
@@ -369,6 +369,29 @@ struct SyncRaceTests {
             assignmentLeadTime: 3600, showClassPreparing: false, showInClass: false, showAssignmentScenario: true,
             liveActivityAvailable: true, term: "1151"
         )
+    }
+
+    @Test("A schedule built before its account signed out is not sent once the next account signs in")
+    func aScheduleOfAnEndedSignInIsNotSent() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("schedule/sync")
+        let held = SettingsAPIStub.ReplyGate()
+        let ok = Data(#"{"pending":1,"replaced":0}"#.utf8)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: ok, gate: held), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: ok), for: url)
+        let signIns = SignInSeries()
+        let push = Self.push(baseURL, signIns: signIns)
+        let older = Self.inputs(dueIn: 3, id: "a-\(UUID().uuidString)")
+        let signedOut = Self.inputs(dueIn: 4, id: "a-\(UUID().uuidString)")
+
+        push.scheduleSync.sync(inputs: older, for: signIns.currentSignIn)
+        try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
+        push.scheduleSync.sync(building: { signedOut })
+        signIns.end()
+        held.open()
+        await push.scheduleSync.awaitInflight()
+
+        #expect(SettingsAPIStub.requests(for: url).count == 1)
     }
 
     @Test("A newer schedule waits for the one still out, which it does not cancel, so the newer one lands last")

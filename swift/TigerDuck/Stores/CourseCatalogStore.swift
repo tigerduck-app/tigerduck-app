@@ -26,8 +26,8 @@ final class CourseCatalogStore {
         self.files = files
     }
 
-    static func fetch(auth: BackendAuth) -> Fetch {
-        let client = CourseCatalogClient(backend: BackendClient(session: BackendClient.catalogSession, auth: auth))
+    static func fetch(auth: BackendAuth, for signIn: SignIn) -> Fetch {
+        let client = CourseCatalogClient(backend: BackendClient(session: BackendClient.catalogSession, auth: auth), for: signIn)
         return { @MainActor in try await client.fetch(semester: $0, language: $1, etag: $2) }
     }
 

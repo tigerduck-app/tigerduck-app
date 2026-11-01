@@ -109,7 +109,7 @@ final class SyncConflicts {
             }
             do {
                 let (json, courseDeletes) = try await app.cloudSyncCoordinator.courseDeletes(around: {
-                    try await app.pushCoordinator.fetchFullSync()
+                    try await app.pushCoordinator.fetchFullSync(for: signIn)
                 })
                 let found = ReenableDifferences.find(
                     in: json, checking: pending, courseDeletes: courseDeletes,
