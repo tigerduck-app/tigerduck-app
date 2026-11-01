@@ -43,11 +43,6 @@ struct WhatsNewPage: Identifiable {
     }
 
     static let alwaysApplicable: @MainActor (AppEnvironment) -> Bool = { _ in true }
-
-    var locksForwardSwipe: Bool {
-        if case .custom(false, _) = kind { return true }
-        return false
-    }
 }
 
 struct WhatsNewPageContext {

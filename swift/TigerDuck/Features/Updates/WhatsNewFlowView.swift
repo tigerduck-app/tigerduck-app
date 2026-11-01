@@ -229,6 +229,13 @@ struct WhatsNewPager<Page: View>: View {
     }
 }
 
+extension WhatsNewPage {
+    var locksForwardSwipe: Bool {
+        if case .custom(false, _) = kind { return true }
+        return false
+    }
+}
+
 extension View {
     func whatsNewSheetPresentation() -> some View {
         presentationDetents([.large])
