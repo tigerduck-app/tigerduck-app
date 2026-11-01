@@ -111,7 +111,7 @@ final class MoodleAutologinService {
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> Key? {
         guard privateToken() != nil else { return nil }
-        return try await MoodleWebserviceClient.withToken(tokens) { token in
+        return try await MoodleWebserviceClient.withRenewingToken(tokens) { token in
             guard let privateToken = privateToken() else { return nil }
             let userId = try await userId(token)
             let answer = try await MoodleWebserviceClient.call(
