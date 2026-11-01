@@ -95,7 +95,7 @@ final class CloudSyncCoordinator {
         await syncTick()
     }
 
-    private var takesEdits: Bool {
+    private var isOnOrTurningOn: Bool {
         state != .disabled || Defaults[.cloudSyncEnabled]
     }
 
@@ -107,7 +107,7 @@ final class CloudSyncCoordinator {
     func enqueueCourseColorOverride(
         moodleId: String, semester: String, colorHex: String, for signIn: SignIn
     ) -> Task<Void, Never>? {
-        guard takesEdits else { return nil }
+        guard isOnOrTurningOn else { return nil }
         return edits.enqueueOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
             customName: nil, colorHex: colorHex, locale: nil, stamp: Date()), for: signIn)
@@ -117,7 +117,7 @@ final class CloudSyncCoordinator {
     func enqueueCourseNameOverride(
         moodleId: String, semester: String, customName: String, locale: String?, for signIn: SignIn
     ) -> Task<Void, Never>? {
-        guard takesEdits else { return nil }
+        guard isOnOrTurningOn else { return nil }
         return edits.enqueueOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
             customName: customName, colorHex: nil, locale: locale, stamp: Date()), for: signIn)
@@ -126,7 +126,7 @@ final class CloudSyncCoordinator {
     func enqueueAssignmentOverride(
         moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String, for signIn: SignIn
     ) async {
-        guard takesEdits else { return }
+        guard isOnOrTurningOn else { return }
         let op = SyncOp.assignmentOverride(
             moodleCourseId: moodleCourseId,
             moodleAssignmentId: moodleAssignmentId,
@@ -160,7 +160,7 @@ final class CloudSyncCoordinator {
     func enqueueCourseIgnore(
         semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?, for signIn: SignIn
     ) async {
-        guard takesEdits else { return }
+        guard isOnOrTurningOn else { return }
         await outbox.enqueue(.courseIgnore(
             semester: semester, courseNo: courseNo, moodleId: moodleId,
             moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()), for: signIn)
@@ -173,7 +173,7 @@ final class CloudSyncCoordinator {
     func pendingCourseIgnoreKeys() async -> Set<String> { await edits.pendingCourseIgnoreKeys() }
 
     func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date = Date(), for signIn: SignIn) async {
-        guard takesEdits else { return }
+        guard isOnOrTurningOn else { return }
         await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp), for: signIn)
     }
 

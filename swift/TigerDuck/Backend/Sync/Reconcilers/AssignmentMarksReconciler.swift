@@ -79,12 +79,12 @@ struct AssignmentMarksReconciler: CategoryReconciler {
     }
 
     static func keepServerSide(
-        read: () async throws -> ServerMarks,
+        rereadServer: () async throws -> ServerMarks,
         protected: () async -> Set<String>,
         for signIn: SignIn,
         assignments: AssignmentStore
     ) async {
-        guard let server = try? await read() else {
+        guard let server = try? await rereadServer() else {
             AppLogger.sync.info("[syncConflicts] server marks unreadable; marks left as they are")
             return
         }

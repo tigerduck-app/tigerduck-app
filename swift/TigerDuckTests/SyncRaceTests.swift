@@ -429,14 +429,14 @@ struct SyncRaceTests {
         cache.assignments.replaceLocallyCompletedAssignmentIds([], for: testSignIn)
 
         await AssignmentMarksReconciler.keepServerSide(
-            read: { ServerMarks(archived: [], completed: ["2"]) }, protected: { [] }, for: testSignIn,
+            rereadServer: { ServerMarks(archived: [], completed: ["2"]) }, protected: { [] }, for: testSignIn,
             assignments: cache.assignments
         )
         #expect(cache.assignments.loadArchivedAssignmentIds().isEmpty)
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["2"])
 
         await AssignmentMarksReconciler.keepServerSide(
-            read: { ServerMarks(archived: ["3"], completed: []) }, protected: { [] }, for: endedTestSignIn,
+            rereadServer: { ServerMarks(archived: ["3"], completed: []) }, protected: { [] }, for: endedTestSignIn,
             assignments: cache.assignments
         )
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["2"])

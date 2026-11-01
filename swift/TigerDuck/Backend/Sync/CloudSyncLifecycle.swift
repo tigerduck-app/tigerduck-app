@@ -13,7 +13,7 @@ final class CloudSyncLifecycle {
     @ObservationIgnored private let drain: OutboxDrain
     @ObservationIgnored private let ticker = CloudSyncTicker()
 
-    @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
+    @ObservationIgnored private var transitionChain: Task<Void, Never>?
 
     init(push: PushCoordinator, outbox: SyncOutbox, edits: QueuedEdits, drain: OutboxDrain, isEnabled: Bool) {
         self.push = push
@@ -57,12 +57,12 @@ final class CloudSyncLifecycle {
     private func enqueueTransition(
         _ transition: @escaping @MainActor () async -> Void
     ) -> Task<Void, Never> {
-        let previous = lifecycleTask
+        let previous = transitionChain
         let task = Task { @MainActor in
             await previous?.value
             await transition()
         }
-        lifecycleTask = task
+        transitionChain = task
         return task
     }
 

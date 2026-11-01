@@ -20,13 +20,14 @@ nonisolated struct SyncPolicy: Equatable, Sendable {
     }
 
     var uploadsCourses: Bool {
-        guard cloudSyncEnabled else { return false }
-        #if os(macOS)
-        return switchedOn.contains("courses")
-        #else
-        return true
-        #endif
+        cloudSyncEnabled && (Self.backendRemindersNeedTheRoster || switchedOn.contains("courses"))
     }
+
+    #if os(macOS)
+    private static let backendRemindersNeedTheRoster = false
+    #else
+    private static let backendRemindersNeedTheRoster = true
+    #endif
 
     var sendsAssignmentMarks: Bool {
         switchedOn.contains("assignments") && !pendingChecks.contains("assignments")

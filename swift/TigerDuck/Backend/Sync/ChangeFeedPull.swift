@@ -22,7 +22,7 @@ final class ChangeFeedPull {
 
     func pollOnReturn() async {
         startPolling(pollNow: true)
-        await app.poller.pollInFlight()
+        await app.poller.waitForPollInFlight()
     }
 
     func stopPolling() {
@@ -50,7 +50,7 @@ final class ChangeFeedPull {
             await app.cloudSyncCoordinator.onRevisionChanged()
             return outcome
         } catch PushAPIError.httpStatus(401, _, let sent) {
-            return .unauthorized(refused: sent?.value)
+            return .unauthorized(refusedAccessToken: sent?.value)
         } catch {
             AppLogger.sync.info("[poll] tick failed: \(error, privacy: .private)")
             return .failed
