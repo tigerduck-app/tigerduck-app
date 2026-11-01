@@ -66,6 +66,7 @@ RULES = {r.name: r for r in (
     Rule("task-sleep", 7),
     Rule("sign-in-read", 8),
     Rule("sign-in-compare", 8),
+    Rule("sign-in-in-setter", 8),
     Rule("account-store-write", 8),
     Rule("unbound-backend-auth", 8),
 )}
@@ -116,15 +117,24 @@ SIGN_IN_HOMES = tuple(APP + p for p in (
 ))
 # Where one sign-in may be compared with another: `SignIn` itself, the backend client and the tokens.
 SIGN_IN_COMPARE_HOMES = (APP + "Account/", APP + "Backend/Client/", APP + "Backend/Auth/")
+SIGN_IN_READ = re.compile(r"\b(?:currentSignIn|startingSignIn|withSignIn)\b")
+# A name ending in `signIn` that is not a flag such as `needsSignIn`.
+SIGN_IN_NAME = r"\b(?!(?:is|has|needs|did|should|can|was|will|shows|asks)[A-Z])\w*[sS]ignIn\b"
 SIGN_IN_PATTERNS = (
-    ("sign-in-read", re.compile(r"\b(?:currentSignIn|startingSignIn|withSignIn)\b"), SIGN_IN_HOMES,
+    ("sign-in-read", SIGN_IN_READ, SIGN_IN_HOMES,
      "a sign-in read outside the places account work starts; take the `SignIn` the work was started for"),
     ("sign-in-compare", re.compile(
-        r"\.ticket\b|\bcurrentCheck\b|\bSignInCount\b|\bSignInScoped\b|\bTicket\b|\bmoveOn\(|\bSignInSeries\(|\bsignIns\.end\("
-        r"|\b\w*[sS]ignIn\s*[!=]==?(?!=)(?!\s*(?:\.|nil\b))|[!=]==?\s*(?:\w+\.)*\w*[sS]ignIn\b(?![.\w(])"),
+        r"\bSignInSeries\(|\bsignIns\.end\(|\bSet\s*<\s*SignIn\s*>|\[\s*SignIn\s*:|\bDictionary\s*<\s*SignIn\b"
+        rf"|{SIGN_IN_NAME}\s*[!=]==?(?!=)(?!\s*(?:\.|nil\b|true\b|false\b))"
+        rf"|(?<!\btrue)(?<!\bfalse)\s[!=]==?\s*(?:\w+\.)*{SIGN_IN_NAME}(?![.\w(])"
+        rf"|\[[^\[\]]*{SIGN_IN_NAME}[^\[\]]*\]\s*\.(?:contains|firstIndex|lastIndex)\b"
+        rf"|\.(?:contains|firstIndex|lastIndex)\(\s*(?:of:\s*)?(?:\w+\.)*{SIGN_IN_NAME}\s*\)"),
         SIGN_IN_COMPARE_HOMES,
      "a sign-in checked by hand; ask the `SignIn` (`isCurrent`) or hold the value in `SignInBound`"),
 )
+# A property accessor runs whenever it is used, after an await too, so one that reads the
+# current sign-in writes for whichever sign-in is current then (docs/decisions/0029-account-bound-writes.md).
+ACCESSOR = re.compile(r"\b(?:set|didSet|willSet)\s*(?:\(\s*\w+\s*\))?\s*\{")
 # The persistence types of an account and the stores that write them (docs/account-state.md).
 ACCOUNT_FILES = {
     "CourseFiles": ("Stores/CourseStore.swift",),
@@ -137,8 +147,11 @@ ACCOUNT_FILES = {
 }
 # Persistence/ defines them, the sign-out deletes them, and a migration runs before any sign-in work.
 ACCOUNT_FILE_HOMES = (APP + "Persistence/", APP + "Account/SignOutPlan.swift", APP + "Migrations/")
-# School Mail's stored fields change only through `MailPreferences.change(for:_:)`.
-MAIL_FIELDS_WRITE = re.compile(r"\bMailPreferenceFields\b|\bMailSettingsStore\.shared\.\w+\s*=(?!=)")
+# School Mail's stored fields change only through `MailPreferences.change(for:_:)`; the shared store
+# is typed read-only, so a writable one comes only from a cast, a conformance or a new store.
+MAIL_FIELDS_WRITE = re.compile(
+    r"\bas\s*[?!]?\s*(?:any\s+)?MailPreferenceFields\b|\bMailSettingsStore\s*\("
+    r"|\b(?:class|struct|actor|extension)\s+\w+[^{]*:[^{]*\bMailPreferenceFields\b")
 MAIL_STORE = APP + "Mail/Store/"
 INVENTORY = ROOT / "docs" / "account-state.md"
 ACCOUNT_KEY_ROW = re.compile(r"^\|\s*defaults\s*\|\s*`(\w+)`\s*\|\s*(?:school|library)\s*\|\s*`([^`]+\.swift)`")
@@ -459,11 +472,32 @@ def layering_findings(sources: list[Source]) -> list[Finding]:
     return found
 
 
+def block_end(code: str, opening: int) -> int:
+    depth = 0
+    for i in range(opening, len(code)):
+        depth += {"{": 1, "}": -1}.get(code[i], 0)
+        if depth == 0:
+            return i
+    return len(code)
+
+
+def setter_findings(src: Source) -> list[Finding]:
+    found = []
+    for accessor in ACCESSOR.finditer(src.code):
+        start = accessor.end() - 1
+        body = src.code[start:block_end(src.code, start)]
+        found += [Finding(src.path, line_of(src.code, start + m.start()), "sign-in-in-setter",
+                          "a setter that reads the current sign-in; make the write a method that takes its `SignIn`")
+                  for m in SIGN_IN_READ.finditer(body)]
+    return found
+
+
 def sign_in_findings(sources: list[Source]) -> list[Finding]:
     found = []
     for src in sources:
         if not src.path.startswith(APP):
             continue
+        found += setter_findings(src)
         for rule, pattern, homes, message in SIGN_IN_PATTERNS:
             if src.path.startswith(homes):
                 continue
@@ -476,10 +510,30 @@ def account_keys(inventory: str) -> dict[str, str]:
     return {m.group(1): m.group(2) for line in inventory.split("\n") if (m := ACCOUNT_KEY_ROW.match(line))}
 
 
+MUTATING = (r"(?:formUnion|formIntersection|formSymmetricDifference|insert|remove\w*|subtract|append\w*|update\w*|"
+            r"pop\w*|sort|reverse|shuffle|merge|swapAt|toggle)")
+# What follows a stored value when it is written: an assignment, possibly through members and
+# subscripts, or a mutating call.
+WRITE_TAIL = rf"(?:\??\.\w+|\??\[[^\[\]]*\])*\s*(?:[-+*/]?=(?!=)|\.{MUTATING}\b)"
+
+
+def key_name(key: str) -> str:
+    return rf"(?:(?:Defaults\.)?Keys)?\.{key}\b"
+
+
 def key_write(key: str) -> re.Pattern[str]:
-    item = rf"Defaults\[\.{key}\]"
-    return re.compile(rf"&{item}|{item}(?:\[[^\]]*\])?\s*(?:[-+]?=(?!=)|\.(?:formUnion|formIntersection|insert|"
-                      rf"remove\w*|subtract|append\w*|update\w*)\b)|Defaults\.reset\([^)]*\.{key}\b")
+    item = rf"Defaults\[\s*{key_name(key)}\s*\]"
+    return re.compile(rf"&{item}|{item}{WRITE_TAIL}|Defaults\.reset\([^)]*\.{key}\b")
+
+
+def default_wrapper_writes(key: str, code: str) -> list[int]:
+    """Offsets where a `@Default(.key)` property of the file is assigned, mutated or bound."""
+    found = []
+    for wrapper in re.finditer(rf"@Default\(\s*{key_name(key)}\s*\)[^\n]*?\bvar\s+(\w+)", code):
+        name = wrapper.group(1)
+        write = re.compile(rf"\${name}\b|&{name}\b|(?<![.\w$])(?:self\.)?{name}{WRITE_TAIL}")
+        found += [m.start() for m in write.finditer(code)]
+    return found
 
 
 def account_store_findings(sources: list[Source], inventory: str) -> list[Finding]:
@@ -501,9 +555,10 @@ def account_store_findings(sources: list[Source], inventory: str) -> list[Findin
         for key, (home, write) in keys.items():
             if src.path == home:
                 continue
-            found += [Finding(src.path, line_of(src.code, m.start()), "account-store-write",
+            offsets = [m.start() for m in write.finditer(src.code)] + default_wrapper_writes(key, src.code)
+            found += [Finding(src.path, line_of(src.code, at), "account-store-write",
                               f"`{key}` written outside {home}; write it through that store with a `SignIn`")
-                      for m in write.finditer(src.code)]
+                      for at in sorted(offsets)]
     return found
 
 

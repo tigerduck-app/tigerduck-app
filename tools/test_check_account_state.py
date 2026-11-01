@@ -7,7 +7,7 @@ from pathlib import Path
 import check_account_state as cas
 
 SOURCES = sorted({path for _, (_, clearers) in cas.inventory(cas.INVENTORY.read_text()).items() for path, _ in clearers}
-                 | {cas.FRESH_INSTALL_WIPE[0], *cas.KEYCHAIN_SOURCES, "swift/TigerDuck/App/AppDefaults.swift",
+                 | {cas.FRESH_INSTALL_WIPE[0], *cas.KEYCHAIN_SOURCES, cas.SIGN_OUT_PLAN, "swift/TigerDuck/App/AppDefaults.swift",
                     *(p.relative_to(cas.ROOT).as_posix() for p in cas.swift_files(cas.ROOT, cas.PERSISTENCE))})
 
 
