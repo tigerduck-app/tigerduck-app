@@ -101,7 +101,7 @@ struct MoodleCourseSectionTests {
         #expect(store.announcementPages == nil)
         #expect(store.forumsFetchedAt != nil)
         #expect(hasSpinner(MoodleFirstLoadView(failure: nil, retry: {})))
-        #expect(!hasSpinner(MoodleAnnouncementsView(store: store) { _ in }))
+        #expect(!hasSpinner(MoodleAnnouncementsView(store: store, policy: Self.policy) { _ in }))
     }
 
     private func hasSpinner(_ view: some View) -> Bool {
