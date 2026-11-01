@@ -34,18 +34,18 @@ struct SettingsList: View {
         ScrollViewReader { proxy in
             List {
                 if query.allSatisfy(\.isWhitespace) {
-                    sections
+                    Group { sections }
+                        .onAppear {
+                            guard let row = revealed else { return }
+                            revealed = nil
+                            proxy.scrollTo(row, anchor: .center)
+                        }
                 } else {
                     SettingsSearchResults(query: query, state: state) { row in
                         (query, isSearching) = ("", false)
                         revealed = row
                     }
                 }
-            }
-            .onChange(of: revealed) { _, row in
-                guard let row else { return }
-                revealed = nil
-                Task { proxy.scrollTo(row, anchor: .center) }
             }
         }
         .searchable(text: $query, isPresented: $isSearching, placement: .navigationBarDrawer(displayMode: .automatic))
