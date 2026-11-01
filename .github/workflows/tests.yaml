@@ -7,8 +7,8 @@ name: Tests
 on:
   pull_request:
     branches: [main, dev]
-  # What lands on dev and main is tested too, and those runs are the only
-  # ones that save the build caches pull requests start from.
+  # A push to dev or main only builds, to save the build caches pull requests start from; the
+  # pull request already ran the tests. A documentation-only push builds nothing.
   push:
     branches: [main, dev]
 
@@ -106,26 +106,35 @@ jobs:
           # Without the submodule the build fails there rather than on anything this workflow is
           # meant to catch.
           submodules: true
-          # Two commits on a pull request, the merge and its base, for the path check below.
-          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+          # Two commits, the merge and its first parent, for the path check below.
+          fetch-depth: 2
 
-      # A documentation-only pull request skips the steps below rather than the job: a skipped
-      # matrix job never reports `unit-tests (phone)` to a required check.
+      # A documentation-only change skips the steps below rather than the job: a skipped matrix
+      # job never reports `unit-tests (phone)` to a required check. `test` is false on a push,
+      # which only builds. A push compares against the commit it replaced, so a code commit
+      # followed by a documentation commit still builds. The diff lists both sides of a rename,
+      # and non-ASCII paths unquoted, as every path check in this file does.
       - name: Changed paths
         id: changes
         env:
           EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
         run: |
           run=true
-          if [ "$EVENT" = pull_request ]; then
-            files=$(git diff --name-only HEAD^1 HEAD)
-            if [ -n "$files" ] && ! printf '%s\n' "$files" \
-                | grep -qvE '\.md$|^(docs|openspec|\.claude|\.agents|\.greptile)/'; then
-              run=false
-              echo "Documentation-only change: skipping the build and tests."
-            fi
+          base=HEAD^1
+          if [ "$EVENT" = push ] && [ -n "${BEFORE//0/}" ] && git fetch -q --depth=1 origin "$BEFORE"; then
+            base=$BEFORE
           fi
+          files=$(git -c core.quotePath=false diff --no-renames --name-only "$base" HEAD)
+          if [ -n "$files" ] && ! printf '%s\n' "$files" \
+              | grep -qvE '\.md$|^(docs|openspec|api-poc|\.claude|\.agents|\.greptile|\.github/ISSUE_TEMPLATE)/|^LICENSE'; then
+            run=false
+            echo "Documentation-only change: skipping the build and tests."
+          fi
+          test=$run
+          if [ "$EVENT" != pull_request ]; then test=false; fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "test=$test" >> "$GITHUB_OUTPUT"
 
       # The core count is what the test timings below have to be read
       # against: Swift Testing runs tests side by side, so a suite a dev Mac
@@ -257,7 +266,7 @@ jobs:
       # download from about 70 MB/s to 4, and during the build it cost xcodebuild 68 to 171 s of
       # start-up and 33 to 96 s of package graph. bootstatus prints a line a second.
       - name: Boot the simulator
-        if: steps.changes.outputs.run == 'true'
+        if: steps.changes.outputs.test == 'true'
         env:
           UDID: ${{ steps.sim.outputs.udid }}
         run: |
@@ -271,7 +280,7 @@ jobs:
       # lists the tests that started and did not end, samples the test host, keeps both with the
       # simulator's log in hang/ and fails.
       - name: Unit tests (${{ matrix.leg }})
-        if: steps.changes.outputs.run == 'true'
+        if: steps.changes.outputs.test == 'true'
         id: tests
         env:
           UDID: ${{ steps.sim.outputs.udid }}
@@ -357,7 +366,7 @@ jobs:
       # count and the failure messages. "Ran for" is a bundle's own run; its test step minus it is
       # install, launch and teardown. Tests queue for the main actor, so per-test times mislead.
       - name: Test summary
-        if: always() && steps.changes.outputs.run == 'true'
+        if: always() && steps.changes.outputs.test == 'true'
         # `set +e`: the job's verdict is the test step's, not this step's. It
         # reads a JSON shape Apple reshuffles between Xcode releases, and a
         # green run must not turn red because jq could not find a key.
@@ -428,22 +437,26 @@ jobs:
         with:
           # app-translation's generator writes the localizations the build copies into each bundle.
           submodules: true
-          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+          fetch-depth: 2
 
-      # Skips the steps, not the job, for the documentation-only pull requests `unit-tests` skips.
+      # Skips the steps, not the job, for the documentation-only changes `unit-tests` skips,
+      # comparing a push the same way.
       - name: Changed paths
         id: changes
         env:
           EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
         run: |
           run=true
-          if [ "$EVENT" = pull_request ]; then
-            files=$(git diff --name-only HEAD^1 HEAD)
-            if [ -n "$files" ] && ! printf '%s\n' "$files" \
-                | grep -qvE '\.md$|^(docs|openspec|\.claude|\.agents|\.greptile)/'; then
-              run=false
-              echo "Documentation-only change: skipping the build."
-            fi
+          base=HEAD^1
+          if [ "$EVENT" = push ] && [ -n "${BEFORE//0/}" ] && git fetch -q --depth=1 origin "$BEFORE"; then
+            base=$BEFORE
+          fi
+          files=$(git -c core.quotePath=false diff --no-renames --name-only "$base" HEAD)
+          if [ -n "$files" ] && ! printf '%s\n' "$files" \
+              | grep -qvE '\.md$|^(docs|openspec|api-poc|\.claude|\.agents|\.greptile|\.github/ISSUE_TEMPLATE)/|^LICENSE'; then
+            run=false
+            echo "Documentation-only change: skipping the build."
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
@@ -494,28 +507,24 @@ jobs:
   # and no timezone: they run against a loopback IMAP and SMTP server.
   vendored-package:
     name: vendored SwiftMail
+    if: github.event_name == 'pull_request'
     runs-on: macos-26
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         # No submodules: this package does not read app-translation.
         with:
-          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+          fetch-depth: 2
 
-      # On a pull request the package tests run only for a change to the package or to this
-      # file; pushes always run them.
+      # The package tests run only for a change to the package or to this file.
       - name: Changed paths
         id: changes
-        env:
-          EVENT: ${{ github.event_name }}
         run: |
           run=true
-          if [ "$EVENT" = pull_request ]; then
-            files=$(git diff --name-only HEAD^1 HEAD)
-            if ! printf '%s\n' "$files" | grep -qE '^swift/Packages/SwiftMail/|^\.github/workflows/tests\.yaml$'; then
-              run=false
-              echo "No change under swift/Packages/SwiftMail/ or to tests.yaml: skipping the package tests."
-            fi
+          files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
+          if ! printf '%s\n' "$files" | grep -qE '^swift/Packages/SwiftMail/|^\.github/workflows/tests\.yaml$'; then
+            run=false
+            echo "No change under swift/Packages/SwiftMail/ or to tests.yaml: skipping the package tests."
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
@@ -532,17 +541,32 @@ jobs:
   # are in no Xcode scheme, so only this job runs them.
   core-package:
     name: TigerDuckCore
+    if: github.event_name == 'pull_request'
     runs-on: macos-26
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         # No submodules: this package does not read app-translation.
         with:
-          fetch-depth: 1
+          fetch-depth: 2
+
+      # The package tests run only for a change to the package or to this file.
+      - name: Changed paths
+        id: changes
+        run: |
+          run=true
+          files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
+          if ! printf '%s\n' "$files" | grep -qE '^swift/Packages/TigerDuckCore/|^\.github/workflows/tests\.yaml$'; then
+            run=false
+            echo "No change under swift/Packages/TigerDuckCore/ or to tests.yaml: skipping the package tests."
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
 
       - name: Xcode version
+        if: steps.changes.outputs.run == 'true'
         run: xcodebuild -version
 
       - name: Package tests
+        if: steps.changes.outputs.run == 'true'
         working-directory: swift/Packages/TigerDuckCore
         run: swift test
