@@ -1,6 +1,8 @@
 import CryptoKit
 import Foundation
 
+/// One send in flight per channel: a newer send waits for the running one instead of cancelling
+/// it, and a body whose fingerprint the backend already accepted is skipped.
 @MainActor
 final class SendLedger {
     nonisolated enum Channel {

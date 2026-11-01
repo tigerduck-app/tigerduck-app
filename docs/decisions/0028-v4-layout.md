@@ -75,7 +75,7 @@ and the macOS build's source list was kept by hand in two copies.
 - A new file goes into the folder of its responsibility, and `check_macos_sources.py --write`
   decides its Mac membership with the exclusion list.
 - Writing a shared rule again outside its home fails CI once its phase is enforced; the message
-  names the home. `ENFORCED_PHASE` reaches 7 with the last phase, and every rule fails from then.
+  names the home. `ENFORCED_PHASE` reaches 8 with the last phase, and every rule fails from then.
 - Adding or removing a locale in app-translation means regenerating the output list with
   `build_apple_lproj.sh --list`; the build fails until it is.
 - Code the Watch app shares with the phone that is not a pure rule, such as the Watch wire format,
