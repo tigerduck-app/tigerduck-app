@@ -55,7 +55,7 @@ enum TermRoster {
 
     static func rebuildsFromTranscript(_ report: ScoreReport?, term: String, servedBySelection: Bool) -> Bool {
         guard !servedBySelection, let report else { return false }
-        let listed = report.courses.filter(countsTowardTerm)
+        let listed = report.courses.filter { countsTowardTerm($0) }
         guard listed.contains(where: { $0.term == term }), let current = AcademicTerm(code: term) else { return false }
         return listed.contains { AcademicTerm(code: $0.term).map { $0 > current } ?? false }
     }

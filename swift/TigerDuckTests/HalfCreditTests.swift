@@ -24,8 +24,8 @@ struct HalfCreditTests {
     @Test("a page with no part of a transcript, as a sign-in page served with a 200, is no transcript")
     func aSignInPageIsNoTranscript() {
         let signIn = #"<html><body><form id="loginForm"><input name="Username"></form></body></html>"#
-        #expect(NTUSTScoreParser.transcript(in: signIn) == nil)
-        #expect(NTUSTScoreParser.transcript(in: Self.transcriptHTML(credits: "3")) != nil)
+        #expect(!NTUSTScoreParser.parse(html: signIn).holdsAnyTranscriptPart)
+        #expect(NTUSTScoreParser.parse(html: Self.transcriptHTML(credits: "3")).holdsAnyTranscriptPart)
     }
 
     @Test("a half credit survives the transcript parser")

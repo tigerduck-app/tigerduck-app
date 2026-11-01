@@ -22,13 +22,6 @@ nonisolated enum NTUSTScoreParser {
         try? Regex(#"期末評量時間\s*(\d{4})"#)
     }()
 
-    /// Nil for a page with no part of a transcript, such as a sign-in page the score site serves
-    /// with a 200.
-    static func transcript(in html: String) -> ScoreReport? {
-        let report = parse(html: html)
-        return report == .empty ? nil : report
-    }
-
     static func parse(html: String) -> ScoreReport {
         guard let doc = try? SwiftSoup.parse(html) else {
             return .empty
@@ -227,4 +220,10 @@ nonisolated enum NTUSTScoreParser {
             return cells.isEmpty ? nil : cells
         }
     }
+}
+
+extension ScoreReport {
+    /// False for a page with no part of a transcript, such as a sign-in page the score site serves
+    /// with a 200.
+    var holdsAnyTranscriptPart: Bool { self != .empty }
 }

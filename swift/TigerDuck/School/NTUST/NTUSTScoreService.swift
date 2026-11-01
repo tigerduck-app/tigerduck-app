@@ -49,10 +49,10 @@ enum NTUSTScoreService {
         }
 
         let html = try await fetchHTML(session: session, studentId: studentId, password: password, signIn: signIn)
-        let transcript = await Task.detached(priority: .userInitiated) {
-            NTUSTScoreParser.transcript(in: html)
+        let report = await Task.detached(priority: .userInitiated) {
+            NTUSTScoreParser.parse(html: html)
         }.value
-        guard let report = transcript else { throw NTUSTScoreServiceError.parseFailed }
+        guard report.holdsAnyTranscriptPart else { throw NTUSTScoreServiceError.parseFailed }
 
         if signIn.isCurrent {
             ScoreReportFiles.shared.saveScoreReport(report, studentId: studentId)
