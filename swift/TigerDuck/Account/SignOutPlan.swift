@@ -64,7 +64,9 @@ extension SignOutPlan {
             stores: schoolStores,
             stopWork: stopWork,
             endSession: {
+                let leavesDemo = auth.deps.demo.isKept
                 auth.logout()
+                if leavesDemo { DemoAccount.signOutItsLibraryAndMailbox() }
                 let calls = endBackendSession()
                 return { auth.startSignOutCalls(calls) }
             },

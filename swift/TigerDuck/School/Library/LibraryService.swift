@@ -72,12 +72,13 @@ enum LibraryService: AccountScoped {
         clearToken()
     }
 
-    /// The store-review account's library, whose QR code is `demo.json`'s and which the
-    /// library's server never sees.
+    /// The store-review account's library, whose QR code is `demo.json`'s and which its server never sees.
     nonisolated static func isDemoLibrary(_ username: String?, _ password: String?) -> Bool {
         guard let username, let password, let fixture = DemoFixture.bundled else { return false }
         return fixture.matchesLibrary(username: username, password: password)
     }
+
+    static var keepsDemoLibrary: Bool { isDemoLibrary(storedUsername, storedPassword) }
 
     private static var storedPassword: String? {
         KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryPassword)
@@ -180,8 +181,7 @@ enum LibraryService: AccountScoped {
         signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData = requestToken(username:password:),
         retrySleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) async -> Bool {
-        guard !isTokenValid, storedUsername != nil, storedPassword != nil,
-              !isDemoLibrary(storedUsername, storedPassword) else { return false }
+        guard !isTokenValid, storedUsername != nil, storedPassword != nil, !keepsDemoLibrary else { return false }
         guard storedPasswordPostIsDue(now: Date()) else {
             LibraryPasswordRetry.retryStoredPasswordWhenWaitEnds(signIn: signIn, retrySleep: retrySleep)
             return false
@@ -258,7 +258,7 @@ enum LibraryService: AccountScoped {
     }
 
     static func generateQRCode() async throws -> String {
-        if isDemoLibrary(storedUsername, storedPassword), let demo = DemoFixture.bundled?.libraryQr?.content { return demo }
+        if keepsDemoLibrary, let demo = DemoFixture.bundled?.libraryQr?.content { return demo }
         do {
             return try await LibraryRequests.requestQRCode(token: try await ensureToken(), session: LibraryRequests.session)
         } catch {

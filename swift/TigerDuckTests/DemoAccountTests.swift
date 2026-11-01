@@ -236,6 +236,33 @@ struct DemoAccountTests {
         #expect(folder.cache.courses.loadCourses(semester: semester).count == 5)
     }
 
+    @Test("signing out of the demo signs out the library it signed in")
+    func signingOutOfTheDemoSignsOutItsLibrary() async {
+        let folder = Folder()
+        let auth = AuthService(
+            session: AccountSession(signIns: SignInSeries()), keychainHasCredentials: { false },
+            notificationCenter: NotificationCenter(), endSchoolSession: { _ in }, demo: Self.account(folder)
+        )
+        #if os(iOS)
+        auth.accountNotifications = DeliveredNotificationsStub()
+        #endif
+        auth.beginSignOutBackgroundTask = { {} }
+
+        let library = await withExclusiveRealDefaults { () async -> String? in
+            let saved = (Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent])
+            defer { (Defaults[.ssoLoginTimestamp], Defaults[.ntustCredentialsPresent]) = saved }
+            return await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { () async -> String? in
+                #expect(await auth.login(studentId: Self.studentId, password: Self.schoolPassword))
+                LibraryService.saveCredentials(username: Self.studentId, password: Self.libraryPassword)
+                await SignOutPlan.school(auth: auth).run(in: AccountStorage(folders: folder.cache.folders))?.value
+                return LibraryService.storedUsername
+            }
+        }
+
+        #expect(library == nil)
+        #expect(!auth.session.signIns.currentSignIn.isDemo)
+    }
+
     @Test("push registration does not start for the demo account")
     func pushDoesNotStart() async {
         let signIns = SignInSeries()

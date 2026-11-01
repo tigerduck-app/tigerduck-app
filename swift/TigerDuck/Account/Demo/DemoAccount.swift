@@ -50,6 +50,14 @@ struct DemoAccount {
         write(fixture, for: session.startDemoSignIn())
     }
 
+    /// Leaving the demo signs out the library and the mailbox it let the reviewer into.
+    static func signOutItsLibraryAndMailbox() {
+        if LibraryService.keepsDemoLibrary { LibraryService.signOutLibraryOnly() }
+        #if os(iOS)
+        if MailAccountManager.shared.isDemo { MailAccountManager.shared.logout() }
+        #endif
+    }
+
     func write(_ fixture: DemoFixture, for signIn: SignIn) {
         let language = language()
         let semester = CourseSelectionService.currentSemesterCode()
