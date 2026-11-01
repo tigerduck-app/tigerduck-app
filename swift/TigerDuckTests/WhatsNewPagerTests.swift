@@ -15,9 +15,10 @@ struct WhatsNewPagerTests {
 
     struct Host: View {
         @Bindable var pager: Pager
+        var locksForward = false
 
         var body: some View {
-            WhatsNewPager(count: 3, index: $pager.index, position: $pager.position) { step in
+            WhatsNewPager(count: 3, index: $pager.index, position: $pager.position, locksForward: locksForward) { step in
                 Color.clear.onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minX } action: {
                     pager.pageMinX[step] = $0
                 }
@@ -46,6 +47,28 @@ struct WhatsNewPagerTests {
             scrollView.setContentOffset(CGPoint(x: pageTwo, y: 0), animated: true)
             try await waitUntil { pager.index == 2 }
         }
+    }
+
+    @Test(arguments: [LayoutDirection.leftToRight, .rightToLeft], [false, true])
+    func theLockHoldsTheWhatsNewPager(direction: LayoutDirection, locksForward: Bool) async throws {
+        let (window, scrollView) = try await host(Host(pager: Pager(), locksForward: locksForward), direction)
+        defer { window.isHidden = true }
+
+        try await waitUntil {
+            window.descendants(ofType: ForwardPagingLock.LockView.self).first?.attachedPager != nil
+        }
+        let lock = try #require(window.descendants(ofType: ForwardPagingLock.LockView.self).first)
+        #expect(lock.attachedPager === scrollView)
+        #expect(lock.isLocked == locksForward)
+        let layout: UIUserInterfaceLayoutDirection = direction == .rightToLeft ? .rightToLeft : .leftToRight
+        #expect(scrollView.effectiveUserInterfaceLayoutDirection == layout)
+    }
+
+    @Test func onlyACustomPageWithoutNextLocksTheForwardSwipe() {
+        #expect(WhatsNewPage.custom(id: "no-next", showsNextButton: false) { _ in EmptyView() }.locksForwardSwipe)
+        #expect(!WhatsNewPage.custom(id: "next") { _ in EmptyView() }.locksForwardSwipe)
+        #expect(!WhatsNewPage.schoolMail.locksForwardSwipe)
+        #expect(!WhatsNewPage.mailInBottomBar.locksForwardSwipe)
     }
 
     /// A finger's drag reaches the scroll view as a frame-by-frame offset between the delegate

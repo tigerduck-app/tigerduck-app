@@ -54,10 +54,14 @@ struct WhatsNewFlowView: View {
     }
 
     private var pager: some View {
-        WhatsNewPager(count: stepCount, index: $index, position: $position) { step in
+        WhatsNewPager(count: stepCount, index: $index, position: $position, locksForward: locksForward) { step in
             content(at: step)
         }
         .scrollDisabled(isRequesting)
+    }
+
+    private var locksForward: Bool {
+        index < presentation.pages.count && presentation.pages[index].locksForwardSwipe
     }
 
     private var footer: some View {
@@ -186,6 +190,7 @@ struct WhatsNewPager<Page: View>: View {
     let count: Int
     @Binding var index: Int
     @Binding var position: ScrollPosition
+    let locksForward: Bool
     @ViewBuilder let page: (Int) -> Page
 
     var body: some View {
@@ -205,6 +210,7 @@ struct WhatsNewPager<Page: View>: View {
                     }
                 }
                 .scrollTargetLayout()
+                .background(ForwardPagingLock(isLocked: locksForward))
             }
             .scrollTargetBehavior(.paging)
             .scrollPosition($position)
