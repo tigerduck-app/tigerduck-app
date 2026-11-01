@@ -236,7 +236,7 @@ nonisolated final class BackendClient: Sendable {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 10
         config.timeoutIntervalForResource = 15
-        return URLSession(configuration: config)
+        return URLSession(configuration: config.refusingDemoRequests())
     }()
 
     private static func makeSession(resourceTimeout: TimeInterval) -> URLSession {
@@ -247,7 +247,7 @@ nonisolated final class BackendClient: Sendable {
         config.httpAdditionalHeaders = [
             "User-Agent": "TigerDuck-iOS/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")"
         ]
-        return URLSession(configuration: config)
+        return URLSession(configuration: config.refusingDemoRequests())
     }
 
     static let encoder: JSONEncoder = {

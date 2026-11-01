@@ -9,7 +9,7 @@ import Testing
 @Suite("School network guard", .serialized)
 @MainActor
 struct SchoolNetworkGuardTests {
-    @Test("every configuration the app builds its sessions from starts with the guard")
+    @Test("every configuration the app builds its sessions from starts with the guard, after the demo refusal")
     func sessionsStartWithTheGuard() {
         let configurations = [
             URLSessionConfiguration.default,
@@ -20,8 +20,10 @@ struct SchoolNetworkGuardTests {
             SemesterCatalog.session.configuration,
         ]
 
+        let refusal = ObjectIdentifier(DemoRequestRefusal.self)
         for configuration in configurations {
-            #expect(configuration.protocolClasses?.first == SchoolNetworkGuard.self)
+            let asked = configuration.protocolClasses?.drop { ObjectIdentifier($0) == refusal }
+            #expect(asked?.first == SchoolNetworkGuard.self)
         }
     }
 
@@ -82,7 +84,8 @@ struct SchoolNetworkGuardTests {
 
     @Test("the SSO probe and the automatic SSO sign-in stop at the guard")
     func ssoProbeAndAutomaticSignIn() async throws {
-        try #require(NTUSTSessionManager.shared.session.configuration.protocolClasses?.first == SchoolNetworkGuard.self)
+        let asked = NTUSTSessionManager.shared.session.configuration.protocolClasses?.dropFirst()
+        try #require(asked?.first == SchoolNetworkGuard.self)
         let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
         let keychain = MemoryKeychain.signedIn()
 
