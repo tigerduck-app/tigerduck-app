@@ -46,31 +46,6 @@ nonisolated final class CourseColorFiles: AccountScoped, Sendable {
     }
 
     func loadCourseColorMap() -> [String: UInt32] {
-        persistent.load("course_color_map.json") ?? movePaletteIndexesToColorMap()
-    }
-
-    private func movePaletteIndexesToColorMap() -> [String: UInt32] {
-        let indexes: [String: Int] = persistent.load("course_custom_colors.json") ?? [:]
-        let palette = Self.paletteBeforeColorMap
-        let map = indexes.compactMapValues { palette.indices.contains($0) ? palette[$0] : nil }
-        if !map.isEmpty { saveCourseColorMap(map) }
-        return map
-    }
-
-    private static let paletteBeforeColorMap: [UInt32] = [
-        0xFF6B6B, 0x4ECDC4, 0x45B7D1, 0xF39C12, 0xDDA0DD,
-        0x2ECC71, 0xE74C3C, 0x3498DB, 0xF7DC6F, 0x9B59B6,
-        0x1ABC9C, 0xE67E22, 0x85C1E9, 0xD35400, 0x27AE60,
-        0xC0392B, 0x8E44AD, 0x16A085, 0xF1C40F, 0x2980B9,
-    ]
-}
-
-extension CourseColorFiles {
-    private static let hashMigrationKey = "color_hash_v2_migrated"
-
-    func dropColorsFromBeforeHashV2() {
-        guard !UserDefaults.standard.bool(forKey: Self.hashMigrationKey) else { return }
-        saveCourseColorMap([:])
-        UserDefaults.standard.set(true, forKey: Self.hashMigrationKey)
+        persistent.load("course_color_map.json") ?? [:]
     }
 }

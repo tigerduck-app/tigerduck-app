@@ -11,7 +11,6 @@ final class CourseColorStore {
 
     init(files: CourseColorFiles = CourseColorFiles()) {
         self.files = files
-        files.dropColorsFromBeforeHashV2()
         state = ColorState(
             load: { files.loadCourseColorMapIfReadable() },
             save: { files.saveCourseColorMap($0) },
