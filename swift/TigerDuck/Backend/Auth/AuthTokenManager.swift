@@ -129,7 +129,8 @@ actor AuthTokenManager {
 
     func authorizationHeaderOfSignIn() async -> (value: String, signIn: SignIn?)? {
         if let departing = Self.departing { return departing.accessToken.map { ("Bearer \($0)", nil) } }
-        guard let signIn = pair.signIn, let token = await validAccessToken(), pair.holds(signIn) else { return nil }
+        guard let token = await validAccessToken(), token == pair.accessToken, let signIn = pair.signIn,
+              pair.holds(signIn) else { return nil }
         return ("Bearer \(token)", signIn)
     }
 
