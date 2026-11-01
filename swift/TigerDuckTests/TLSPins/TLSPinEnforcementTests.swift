@@ -66,7 +66,7 @@ struct TLSPinEnforcementTests {
         #expect(engine.isPromptable(mismatch))
     }
 
-    @Test("A mismatch whose anchor is not a listed root fails with no prompt")
+    @Test("A mismatch whose anchor is not a listed root, as one a profile installs on the device, fails with no prompt")
     func anUnlistedRootIsNotReported() async throws {
         let engine = engine(document: Self.movedPins(promptRoots: [F.unknownSPKI]))
         let reports = TLSPinReports()

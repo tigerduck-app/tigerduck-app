@@ -232,7 +232,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
     }
 
     private func load() -> State {
-        State(document: storage.storedDocument(), acceptances: storage.storedAcceptances())
+        State(document: storage.reverifiedStoredDocument(), acceptances: storage.currentBuildAcceptances())
     }
 
     /// A refetch the server answered counts for the launch. After one that failed, as in a network
