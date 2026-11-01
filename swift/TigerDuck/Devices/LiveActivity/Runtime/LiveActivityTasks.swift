@@ -8,6 +8,8 @@ final class LiveActivityTasks {
     var tokenHandler: (@Sendable (LiveActivityUpdateTokenRegistration) async -> Void)?
     var isAvailable: () -> Bool = { true }
 
+    static let endGrace: TimeInterval = 1
+
     deinit {
         for task in endTimers.values {
             task.cancel()
@@ -30,7 +32,7 @@ final class LiveActivityTasks {
         }
 
         let realTarget = AppClock.realTime(forApp: target)
-        let delay = max(0, realTarget.timeIntervalSinceNow) + 1
+        let delay = max(0, realTarget.timeIntervalSinceNow) + Self.endGrace
         endTimers[activityId] = Task { @MainActor in
             try? await AppClock.sleep(until: ContinuousClock.now + .seconds(delay))
             guard !Task.isCancelled else { return }

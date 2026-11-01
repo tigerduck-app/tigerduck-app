@@ -62,28 +62,24 @@ nonisolated enum MailIMAPCommands {
     }
 
     static func undeletedUIDs(folder: String, imap: IMAPServer) async throws -> (uids: [UInt32], uidValidity: UInt32) {
-        do {
-            let selection = try await imap.examineMailbox(folder)
-            let found = try await rawSearch(criteria: [.undeleted], imap: imap)
-            return (found.toArray().map(\.value), selection.uidValidity.value)
-        } catch let error as IMAPError {
-            throw MailIMAPErrors.mapSearchError(error)
-        }
+        let selection = try await imap.examineMailbox(folder)
+        let found = try await rawSearch(criteria: [.undeleted], imap: imap)
+        return (found.toArray().map(\.value), selection.uidValidity.value)
     }
 
     static func searchTexts(
         folder: String, uids: [UInt32], expectedUIDValidity: UInt32, imap: IMAPServer,
         stepAside: () async throws -> Void
-    ) async throws -> [UInt32: String] {
+    ) async throws -> [UInt32: MailSearchText] {
         try await examine(folder, expecting: expectedUIDValidity, imap: imap)
         let infos = try await imap.fetchMessageInfosBulk(using: MailIMAPFetch.uidSet(uids), options: LiveMailClient.summaryOptions)
-        var texts: [UInt32: String] = [:]
+        var texts: [UInt32: MailSearchText] = [:]
         for info in infos {
             guard let summary = MailIMAPMessages.summary(from: info), !summary.isDeleted else { continue }
             try await stepAside()
             let body = try await MailIMAPFetch.searchBody(of: info, folder: folder, expectedUIDValidity: expectedUIDValidity,
                                                           imap: imap)
-            texts[summary.uid] = MailSearchText.text(of: summary, body: body)
+            texts[summary.uid] = MailSearchText(of: summary, body: body)
         }
         return texts
     }
@@ -118,13 +114,9 @@ nonisolated enum MailIMAPCommands {
     }
 
     static func containsMessageID(_ messageID: String, in folder: String, imap: IMAPServer) async throws -> Bool {
-        do {
-            _ = try await imap.examineMailbox(folder)
-            let found = try await rawSearch(criteria: [.header("Message-ID", messageID)], imap: imap)
-            return !found.isEmpty
-        } catch let error as IMAPError {
-            throw MailIMAPErrors.mapSearchError(error)
-        }
+        _ = try await imap.examineMailbox(folder)
+        let found = try await rawSearch(criteria: [.header("Message-ID", messageID)], imap: imap)
+        return !found.isEmpty
     }
 
     static func examine(_ folder: String, expecting expectedUIDValidity: UInt32?, imap: IMAPServer) async throws {
@@ -138,7 +130,11 @@ nonisolated enum MailIMAPCommands {
     }
 
     private static func rawSearch(criteria: [SearchCriteria], imap: IMAPServer) async throws -> MessageIdentifierSet<UID> {
-        try await imap.search(criteria: criteria)
+        do {
+            return try await imap.search(criteria: criteria)
+        } catch let error as IMAPError {
+            throw MailIMAPErrors.mapSearchError(error)
+        }
     }
 }
 

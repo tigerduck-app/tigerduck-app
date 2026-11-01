@@ -39,7 +39,7 @@ final class WatchSyncCoordinator: NSObject {
         var lastDelivered: WatchSnapshot?
     }
 
-    private struct Owed {
+    private struct OwedAfterUnlock {
         var credentials = false
         var statePush = false
     }
@@ -57,7 +57,7 @@ final class WatchSyncCoordinator: NSObject {
     private var isActivated = false
     private let debounceInterval: Duration = .milliseconds(500)
     private let deps: Dependencies
-    private var owed = Owed()
+    private var owed = OwedAfterUnlock()
     private let notificationCenter: NotificationCenter
     private var observers: [NSObjectProtocol] = []
 
@@ -154,10 +154,10 @@ final class WatchSyncCoordinator: NSObject {
         if !force, pending.snapshot == nil, let last = pending.lastDelivered, snapshot(last.syncedAt) == last {
             return
         }
-        deliver(snapshot(Date()))
+        deliverOrHold(snapshot(Date()))
     }
 
-    private func deliver(_ snapshot: WatchSnapshot) {
+    private func deliverOrHold(_ snapshot: WatchSnapshot) {
         guard session.isPaired, session.isWatchAppInstalled else {
             pending.snapshot = snapshot
             return
@@ -175,7 +175,7 @@ final class WatchSyncCoordinator: NSObject {
 
     private func flushPendingIfReady() {
         guard let snapshot = pending.snapshot else { return }
-        deliver(snapshot)
+        deliverOrHold(snapshot)
     }
 
     func scheduleDebouncedPush(_ payload: Payload, force: Bool = false) {

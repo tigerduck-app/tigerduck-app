@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -23,6 +24,28 @@ struct SyncOutboxTests {
         for _ in 0..<times {
             await outbox.drain { _ in throw error }
         }
+    }
+
+    @Test("An edit made in a sign-in that has ended is not queued")
+    func anEditOfAnEndedSignInIsNotQueued() async {
+        let outbox = Self.makeOutbox()
+        await outbox.enqueue(Self.mark, for: endedTestSignIn)
+        #expect(await outbox.pendingCount() == 0)
+    }
+
+    @Test("A drain sends each edit for the sign-in it was made in, and one read from disk for its own")
+    func aDrainSendsEachEditForItsOwnSignIn() async {
+        let directory = Self.freshDirectory()
+        await Self.makeOutbox(directory: directory).enqueue(Self.mark, for: testSignIn)
+        let outbox = Self.makeOutbox(directory: directory)
+        let made = TestSignIn()
+        await outbox.enqueue(Self.colour, for: made.signIn)
+        let drained = TestSignIn()
+        let sent = OSAllocatedUnfairLock<[SignIn]>(initialState: [])
+
+        await outbox.drain(for: drained.signIn) { _, signIn in sent.withLock { $0.append(signIn) } }
+
+        #expect(sent.withLock { $0 } == [drained.signIn, made.signIn])
     }
 
     @Test("A server error, timeout or rate limit keeps the edit without counting an attempt",
@@ -122,7 +145,7 @@ struct SyncOutboxTests {
         await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE3", stamp: cutoff.addingTimeInterval(60)))
         await outbox.enqueue(Self.mark)
 
-        let dropped = await outbox.discard(madeBefore: ["ca": cutoff, "cd|1151:PE7": Date().addingTimeInterval(3600)])
+        let dropped = await outbox.discard(madeBefore: [.allCourseAdds: cutoff, .courseDelete(key: "1151:PE7"): Date().addingTimeInterval(3600)])
         await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE4", stamp: older))
         await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE5", stamp: Date()))
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "GE6", stamp: older))
@@ -161,7 +184,7 @@ struct SyncOutboxTests {
         let outbox = Self.makeOutbox()
         let earlier = SyncOp.assignmentOverride(
             moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored", stamp: Date().addingTimeInterval(-60))
-        await outbox.discard(madeBefore: ["assignments": Date()])
+        await outbox.discard(madeBefore: [.assignmentMarks: Date()])
 
         await outbox.clearAll()
         await outbox.enqueue(earlier)

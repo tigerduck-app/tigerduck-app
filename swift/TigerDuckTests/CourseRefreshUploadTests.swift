@@ -19,8 +19,8 @@ struct CourseRefreshUploadTests {
         CourseUpload.uploadVisibleCourses(
             courseNos.map { SDCourse(courseNo: $0, courseName: $0) }, semester: "1151", hidden: hidden,
             roster: roster, resendingRoster: resendingRoster, for: testSignIn
-        ) { courses, _, asRoster, resend, _ in
-            uploads.append(Upload(courses: courses.map(\.courseNo), asRoster: asRoster, resend: resend))
+        ) { courses, _, kind, _ in
+            uploads.append(Upload(courses: courses.map(\.courseNo), asRoster: kind.asRoster, resend: kind.resend))
         }
         return uploads
     }
@@ -31,7 +31,7 @@ struct CourseRefreshUploadTests {
 
         CourseUpload.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS2", "CS3", "1142:CS1"], for: testSignIn
-        ) { courses, semester, _, _, _ in uploads.append((courses.map(\.courseNo), semester)) }
+        ) { courses, semester, _, _ in uploads.append((courses.map(\.courseNo), semester)) }
 
         #expect(uploads.map(\.courses) == [["CS1"]])
         #expect(uploads.map(\.semester) == ["1151"])
@@ -44,7 +44,7 @@ struct CourseRefreshUploadTests {
         CourseUpload.uploadVisibleCourses(
             Self.courses, semester: "1151", hidden: ["1151:CS1", "1151:CS2", "1151:CS3"], roster: ["CS1", "CS2", "CS3"],
             for: testSignIn
-        ) { _, _, _, _, _ in uploads += 1 }
+        ) { _, _, _, _ in uploads += 1 }
 
         #expect(uploads == 0)
     }
@@ -55,7 +55,7 @@ struct CourseRefreshUploadTests {
         let term = try #require(TermRoster.termCourseNos(
             selection: ["CS1", "CS2"], transcript: ["CS3"], cached: ["CS4"]
         ))
-        let roster = TermRoster.uploadedRoster(selection: term.roster, live: live, pastTerm: nil)
+        let roster = TermRoster.uploadedRoster(selection: term.selectionRoster, live: live, pastTerm: nil)
 
         #expect(Self.uploads(term.courseNos, roster: roster) == [Upload(courses: ["CS1", "CS2"], asRoster: live)])
     }
@@ -67,7 +67,7 @@ struct CourseRefreshUploadTests {
             selection: selection, transcript: ["CS1"], cached: ["CS2"]
         ))
 
-        #expect(Self.uploads(term.courseNos, roster: term.roster) == [Upload(courses: ["CS1", "CS2"], asRoster: false)])
+        #expect(Self.uploads(term.courseNos, roster: term.selectionRoster) == [Upload(courses: ["CS1", "CS2"], asRoster: false)])
     }
 
     @Test("A past term rebuilt from the final transcript goes up as its roster, once every class's lookup answered")
@@ -76,10 +76,10 @@ struct CourseRefreshUploadTests {
             SDCourse(courseNo: courseNo, courseName: courseNo, schedule: [2: ["3", "4"]], semester: "1141")
         }
         let answered = TermRoster.rebuiltPastTerm(
-            [.init(course: course("CS1"), answered: true)], unreadable: [], cached: [], others: [], userAdded: []
+            [.init(course: course("CS1"), lookup: .found)], unreadable: [], cached: [], others: [], userAdded: []
         )
         let waiting = TermRoster.rebuiltPastTerm(
-            [.init(course: course("CS1"), answered: true), .init(course: course("CS2"), answered: false)],
+            [.init(course: course("CS1"), lookup: .found), .init(course: course("CS2"), lookup: .fallback)],
             unreadable: [], cached: [], others: [], userAdded: []
         )
 

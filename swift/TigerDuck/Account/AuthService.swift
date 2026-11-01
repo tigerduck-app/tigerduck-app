@@ -14,7 +14,7 @@ final class AuthService {
     var status = AuthStatus()
     @ObservationIgnored let deps: AuthServiceDependencies
     @ObservationIgnored private var hooks = AuthServiceHooks()
-    @ObservationIgnored private var signOutTasks = SignOutTasks()
+    @ObservationIgnored private(set) var signOutCalls: Task<Void, Never>?
     @ObservationIgnored private(set) var backend: BackendSignIn!
     @ObservationIgnored private(set) var passwordRetry: StoredPasswordRetry!
     @ObservationIgnored private var credentialObservers: [any NSObjectProtocol] = []
@@ -68,9 +68,7 @@ final class AuthService {
     var accountNotifications: any DeliveredNotificationCenter { get { hooks.accountNotifications } set { hooks.accountNotifications = newValue } }
     #endif
     var beginSignOutBackgroundTask: @Sendable () async -> @Sendable () async -> Void { get { hooks.beginSignOutBackgroundTask } set { hooks.beginSignOutBackgroundTask = newValue } }
-    var forgetPages: @MainActor () async -> Void { get { hooks.forgetPages } set { hooks.forgetPages = newValue } }
-    var signOutCalls: Task<Void, Never>? { signOutTasks.calls }
-    var departingUnregisterRetry: Task<Void, Never>? { signOutTasks.departingUnregisterRetry }
+    var clearAllCachedPages: @MainActor () async -> Void { get { hooks.clearAllCachedPages } set { hooks.clearAllCachedPages = newValue } }
     var storedPasswordRetry: Task<Void, Never>? { passwordRetry.task }
     var isSigningInToBackend: Bool { backend.isSigningIn }
 
@@ -79,23 +77,22 @@ final class AuthService {
         if current { Defaults[.ntustCredentialsPresent] = true }
         guard current != credentials.lastKnown else { return }
         credentials.lastKnown = current
-        credentials.revision &+= 1
+        credentials.revision.moveOn()
     }
 
     func markCredentialsChanged() {
         let present = deps.keychainHasCredentials()
         Defaults[.ntustCredentialsPresent] = present
         credentials.lastKnown = present
-        credentials.revision &+= 1
+        credentials.revision.moveOn()
     }
 
     func noteSchoolSignInRenewed() {
-        credentials.revision &+= 1
+        credentials.revision.moveOn()
     }
 
     var isNTUSTAuthenticated: Bool {
-        _ = credentials.revision
-        return NTUSTSessionManager.shared.cookiesValid && storedStudentId != nil
+        credentials.revision.read { NTUSTSessionManager.shared.ssoLoginStampIsFresh && storedStudentId != nil }
     }
 
     static func resolveHasCredentials(keychainSaysPresent: Bool, mirrorSaysPresent: Bool) -> Bool {
@@ -103,40 +100,28 @@ final class AuthService {
     }
 
     var hasStoredCredentials: Bool {
-        _ = credentials.revision
-        return Self.resolveHasCredentials(
+        Self.resolveHasCredentials(
             keychainSaysPresent: credentials.lastKnown ?? false,
             mirrorSaysPresent: Defaults[.ntustCredentialsPresent]
         )
     }
 
     func startSignOutCalls(_ calls: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
-        let previous = signOutTasks.calls
+        let previous = signOutCalls
         let beginBackgroundTask = beginSignOutBackgroundTask
         let task = Task { @MainActor in
             let endBackgroundTask = await beginBackgroundTask()
             await previous?.value
-            await forgetPages()
+            await clearAllCachedPages()
             await calls()
             #if os(iOS)
             await AccountSignOutCleanup.removeAccountNotifications(from: accountNotifications)
             #endif
             await endBackgroundTask()
         }
-        signOutTasks.calls = task
+        signOutCalls = task
         return task
     }
-
-    func startDepartingUnregisterRetry(_ retry: @escaping @MainActor () async -> Void) {
-        let beginBackgroundTask = beginSignOutBackgroundTask
-        signOutTasks.departingUnregisterRetry = Task { @MainActor in
-            let endBackgroundTask = await beginBackgroundTask()
-            await retry()
-            await endBackgroundTask()
-        }
-    }
-
-    nonisolated static let backendSignInPause = BackendSignIn.pause
 
     nonisolated static func backendSignInIsDue(lastFailure: Date?, now: Date) -> Bool {
         BackendSignIn.isDue(lastFailure: lastFailure, now: now)
@@ -165,13 +150,11 @@ final class AuthService {
     }
 
     var storedStudentId: String? {
-        _ = credentials.revision
-        return KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId)
+        credentials.revision.read { KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId) }
     }
 
     var storedPassword: String? {
-        _ = credentials.revision
-        return KeychainManager.loadString(key: AppConstants.KeychainKeys.password)
+        credentials.revision.read { KeychainManager.loadString(key: AppConstants.KeychainKeys.password) }
     }
 
     nonisolated static func readKeychainHasCredentials() -> Bool {

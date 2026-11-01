@@ -106,11 +106,7 @@ nonisolated extension CourseSyllabus {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        func text(_ key: CodingKeys) -> String? {
-            if let text = try? container.decode(String.self, forKey: key) { return text }
-            if let number = try? container.decode(Int.self, forKey: key) { return String(number) }
-            return (try? container.decode(Double.self, forKey: key)).map { String($0) }
-        }
+        let text = container.lenientText(forKey:)
         self.init(
             CourseGrading: text(.CourseGrading), CourseObject: text(.CourseObject),
             CourseContent: text(.CourseContent), CourseTextbook: text(.CourseTextbook),
@@ -120,5 +116,13 @@ nonisolated extension CourseSyllabus {
             Instruction_3: text(.Instruction_3), Instruction_4: text(.Instruction_4),
             Instruction_other: text(.Instruction_other)
         )
+    }
+}
+
+private nonisolated extension KeyedDecodingContainer {
+    func lenientText(forKey key: Key) -> String? {
+        if let text = try? decode(String.self, forKey: key) { return text }
+        if let number = try? decode(Int.self, forKey: key) { return String(number) }
+        return (try? decode(Double.self, forKey: key)).map { String($0) }
     }
 }

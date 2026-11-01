@@ -46,35 +46,6 @@ nonisolated final class CourseColorFiles: AccountScoped, Sendable {
     }
 
     func loadCourseColorMap() -> [String: UInt32] {
-        if let map: [String: UInt32] = persistent.load("course_color_map.json") {
-            return map
-        }
-        let legacy: [String: Int] = persistent.load("course_custom_colors.json") ?? [:]
-        guard !legacy.isEmpty else { return [:] }
-        let migrated = legacy.compactMapValues { idx -> UInt32? in
-            guard Self.legacyPaletteHex.indices.contains(idx) else { return nil }
-            return Self.legacyPaletteHex[idx]
-        }
-        if !migrated.isEmpty {
-            saveCourseColorMap(migrated)
-        }
-        return migrated
-    }
-
-    private static let legacyPaletteHex: [UInt32] = [
-        0xFF6B6B, 0x4ECDC4, 0x45B7D1, 0xF39C12, 0xDDA0DD,
-        0x2ECC71, 0xE74C3C, 0x3498DB, 0xF7DC6F, 0x9B59B6,
-        0x1ABC9C, 0xE67E22, 0x85C1E9, 0xD35400, 0x27AE60,
-        0xC0392B, 0x8E44AD, 0x16A085, 0xF1C40F, 0x2980B9,
-    ]
-}
-
-extension CourseColorFiles {
-    private static let hashMigrationKey = "color_hash_v2_migrated"
-
-    func dropColorsFromBeforeHashV2() {
-        guard !UserDefaults.standard.bool(forKey: Self.hashMigrationKey) else { return }
-        saveCourseColorMap([:])
-        UserDefaults.standard.set(true, forKey: Self.hashMigrationKey)
+        persistent.load("course_color_map.json") ?? [:]
     }
 }

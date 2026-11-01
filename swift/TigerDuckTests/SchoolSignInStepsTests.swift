@@ -83,8 +83,11 @@ struct SchoolSignInStepsTests {
             let auth = Self.auth(recording: calls)
             #expect(await auth.login(studentId: Self.student, password: "school"))
 
-            auth.logout()
-            LibraryService.schoolAccountDidSignOut()
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let folders = CacheFolders(cache: root.appendingPathComponent("cache"), persistent: root.appendingPathComponent("data"))
+            auth.beginSignOutBackgroundTask = { {} }
+            await SignOutPlan.school(auth: auth).run(in: AccountStorage(folders: folders))?.value
 
             #expect(mail.manager.isLoggedIn)
             #expect(mail.manager.studentID == Self.student)

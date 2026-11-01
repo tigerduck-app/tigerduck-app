@@ -25,9 +25,9 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         sqlite3_close_v2(db)
     }
 
-    func prepare(folder: String, uidValidity: UInt32, onServer: Set<UInt32>, wipeCount expected: Int) -> Set<UInt32>? {
-        withFile {
-            guard expected == wipeCount(), openLocked() else { return nil }
+    func prepare(folder: String, uidValidity: UInt32, onServer: Set<UInt32>, unlessWipedSince expected: Int) -> Set<UInt32>? {
+        withFileDroppedIfDamaged {
+            guard expected == wipeCount(), openOrRecreateLocked() else { return nil }
             return transactionLocked { () -> Set<UInt32>? in
                 guard adoptOwnerLocked() else { return nil }
                 if validityLocked(folder) != uidValidity {
@@ -49,14 +49,14 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         }
     }
 
-    func add(_ texts: [UInt32: String], folder: String, uidValidity: UInt32, wipeCount expected: Int) -> Bool {
-        withFile {
-            guard expected == wipeCount(), openLocked(), ownerLocked() == currentOwner,
+    func add(_ texts: [UInt32: MailSearchText], folder: String, uidValidity: UInt32, unlessWipedSince expected: Int) -> Bool {
+        withFileDroppedIfDamaged {
+            guard expected == wipeCount(), openOrRecreateLocked(), ownerLocked() == currentOwner,
                   validityLocked(folder) == uidValidity else { return false }
             return transactionLocked { () -> Bool? in
                 for (uid, text) in texts {
                     guard execute("INSERT OR REPLACE INTO mail (folder, uid, text) VALUES (?, ?, ?)",
-                                  [.text(folder), .int(Int64(uid)), .text(MailSearchText.folded(text))]) else { return nil }
+                                  [.text(folder), .int(Int64(uid)), .text(MailSearchText.folded(text.text))]) else { return nil }
                 }
                 return true
             } ?? false
@@ -67,8 +67,8 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         folder: String, query: String, shouldStop: @escaping @Sendable () -> Bool = { Task.isCancelled }
     ) -> (uidValidity: UInt32, uids: [UInt32])? {
         let needle = MailSearchText.folded(MailTextCleaner.clean(query))
-        return withFile {
-            guard !needle.isEmpty, openLocked(), ownerLocked() == currentOwner,
+        return withFileDroppedIfDamaged {
+            guard !needle.isEmpty, openOrRecreateLocked(), ownerLocked() == currentOwner,
                   let validity = validityLocked(folder) else { return nil }
             var uids: [UInt32] = []
             let check = StopCheck(shouldStop)
@@ -111,7 +111,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
 
     private var currentOwner: String { account() ?? "" }
 
-    private func withFile<T>(_ body: () -> T) -> T {
+    private func withFileDroppedIfDamaged<T>(_ body: () -> T) -> T {
         lock.withLock {
             let result = body()
             if isDamaged {
@@ -128,7 +128,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         code & 0xFF == SQLITE_CORRUPT || code & 0xFF == SQLITE_NOTADB
     }
 
-    private func openLocked() -> Bool {
+    private func openOrRecreateLocked() -> Bool {
         guard db == nil else { return true }
         let result = openOnceLocked()
         guard Self.isDamage(result) else { return result == SQLITE_OK }
@@ -160,7 +160,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
             return opened & 0xFF
         }
         db = handle
-        guard migrateLocked() else {
+        guard resetIfSchemaChangedLocked() else {
             let code = sqlite3_errcode(handle) & 0xFF
             sqlite3_close_v2(handle)
             db = nil
@@ -170,7 +170,7 @@ nonisolated final class MailSearchIndex: @unchecked Sendable {
         return SQLITE_OK
     }
 
-    private func migrateLocked() -> Bool {
+    private func resetIfSchemaChangedLocked() -> Bool {
         var version: Int64 = 0
         guard execute("PRAGMA user_version", row: { version = sqlite3_column_int64($0, 0) }) else { return false }
         guard version != Self.schemaVersion else { return true }

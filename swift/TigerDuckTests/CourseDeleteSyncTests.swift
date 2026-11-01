@@ -42,12 +42,13 @@ struct CourseDeleteSyncTests {
         let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: Self.freshDirectory()), isEnabled: isEnabled,
-            syncsAssignmentMarks: { true }, syncsCourseIgnores: syncsCourseIgnores, syncsCourseOverrides: { _ in true }
+            syncsAssignmentMarks: { true }, syncsCourseIgnores: syncsCourseIgnores, syncsCourseOverrides: { _ in true },
+            account: AccountSession(signIns: testSignIns)
         )
     }
 
     private static let colourReply = Data(
-        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"##.utf8
+        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"ignore_assignments":false,"updated_at":"2026-10-12T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"##.utf8
     )
 
     @Test("Deleting a course drops its own settings still queued, and queues its delete and sends it")
@@ -176,13 +177,13 @@ struct CourseDeleteSyncTests {
         await coordinator.enqueueCourseIgnore(semester: "1142", courseNo: "GE3", moodleId: "1142GE3",
                                               moodleCourseId: nil, ignore: true)
 
-        await coordinator.discardCourseDeletes(courseKeys: ["client:1142:GE3"], madeBefore: Date())
+        await coordinator.discardCourseDeletes(courseKeys: ["client:1142:GE3"], madeBeforeAction: Date())
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:CS1", "1151:EE2", "1142:CS1"])
 
-        await coordinator.discardCourseDeletes(semester: "1151", madeBefore: Date())
+        await coordinator.discardCourseDeletes(semester: "1151", madeBeforeAction: Date())
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1142:CS1"])
 
-        await coordinator.discardCourseDeletes(madeBefore: Date())
+        await coordinator.discardCourseDeletes(madeBeforeAction: Date())
         #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1142:GE3"])
     }
@@ -211,7 +212,7 @@ struct CourseDeleteSyncTests {
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: addedAt.addingTimeInterval(-60))
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "EE2", at: hiddenAfter)
 
-        await coordinator.discardCourseDeletes(courseKeys: ["client:1151:CS1", "client:1151:EE2", "client:1151:GE3"], madeBefore: addedAt)
+        await coordinator.discardCourseDeletes(courseKeys: ["client:1151:CS1", "client:1151:EE2", "client:1151:GE3"], madeBeforeAction: addedAt)
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE3", at: hiddenAfter)
 
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:EE2", "1151:GE3"])
@@ -328,7 +329,7 @@ struct CourseDeleteSyncTests {
         let editor = try #require(viewModel?.editor)
         let semester = try #require(viewModel?.currentSemester)
         let added = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: semester)
-        courses.apply(.add(added, semester: semester), for: testSignIn)
+        courses.apply(.addByHand(added, semester: semester), for: testSignIn)
         let backend = ResetBackend()
         editor.sync.resetBackendCourses = { _, resetLocally in
             await backend.delete()

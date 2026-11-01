@@ -31,10 +31,10 @@ struct DeviceSurfaceSyncerTests {
                 watch: { [calls] in calls.watch += 1 },
                 liveActivity: { [calls] in calls.liveActivity += 1 }
             ),
-            fingerprint: { [inputs] nudges in
+            fingerprint: { [inputs] unobserved in
                 .init(
                     data: data, language: "zh", accentHex: inputs.accent, visualPreset: inputs.preset,
-                    signedIn: true, nudges: nudges
+                    signedIn: true, unobserved: unobserved
                 )
             },
             center: center,

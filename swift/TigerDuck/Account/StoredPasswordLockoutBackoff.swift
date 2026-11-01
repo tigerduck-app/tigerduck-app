@@ -1,13 +1,13 @@
 import Defaults
 import Foundation
 
-nonisolated struct StoredPasswordBackoff: Sendable {
-    static var ntust: StoredPasswordBackoff {
-        StoredPasswordBackoff(count: .ntustStoredPasswordRefusals, last: .ntustStoredPasswordRefusedAt)
+nonisolated struct StoredPasswordLockoutBackoff: Sendable {
+    static var ntust: StoredPasswordLockoutBackoff {
+        StoredPasswordLockoutBackoff(count: .ntustStoredPasswordRefusals, last: .ntustStoredPasswordRefusedAt)
     }
 
-    static var library: StoredPasswordBackoff {
-        StoredPasswordBackoff(count: .libraryStoredPasswordRefusals, last: .libraryStoredPasswordRefusedAt)
+    static var library: StoredPasswordLockoutBackoff {
+        StoredPasswordLockoutBackoff(count: .libraryStoredPasswordRefusals, last: .libraryStoredPasswordRefusedAt)
     }
 
     static let quickRetries: [TimeInterval] = [10, 60, 5 * 60]
@@ -49,7 +49,7 @@ nonisolated struct StoredPasswordBackoff: Sendable {
     }
 
     @discardableResult
-    func noteRefused(at now: Date) -> Date {
+    func recordRefusalAndNextPost(at now: Date) -> Date {
         let count = refusals.count + 1
         refusals = (count, now)
         return now.addingTimeInterval(Self.retryDelay(afterRefusals: count))

@@ -16,7 +16,7 @@ nonisolated enum MoodleTokenHarvest {
     static func harvestConfiguration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
-        config.timeoutIntervalForResource = 60
+        config.timeoutIntervalForResource = SchoolSessions.resourceTimeout
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
         config.httpCookieStorage = HTTPCookieStorage.shared
@@ -37,7 +37,7 @@ nonisolated enum MoodleTokenHarvest {
         let session = SchoolSessions.pinned(config)
         defer { session.invalidateAndCancel() }
 
-        let passport = Int(Double.random(in: 0..<1) * 1000)
+        let passport = Int.random(in: 0..<1000)
         var launchComps = URLComponents(
             url: AppConstants.moodleBaseURL.appendingPathComponent("admin/tool/mobile/launch.php"),
             resolvingAgainstBaseURL: false,

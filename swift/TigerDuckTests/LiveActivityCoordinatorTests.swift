@@ -15,7 +15,7 @@ struct LiveActivityCoordinatorTests {
         sourceId: String = "TEST100_20260925_3",
         hasPushToken: Bool = false,
         isLive: Bool = true
-    ) -> LiveActivityCoordinator.RunningActivityFacts {
+    ) -> LiveActivityEndRules.RunningActivityFacts {
         .init(
             instanceId: instanceId,
             activityId: activityId,
@@ -40,7 +40,7 @@ struct LiveActivityCoordinatorTests {
             countdownTarget: Self.now.addingTimeInterval(7200)
         )
 
-        let ended = LiveActivityCoordinator.expiredInstanceIds(
+        let ended = LiveActivityEndRules.expiredInstanceIds(
             [running, prelaunched],
             now: Self.now
         )
@@ -61,7 +61,7 @@ struct LiveActivityCoordinatorTests {
             countdownTarget: Self.now.addingTimeInterval(600)
         )
 
-        let ended = LiveActivityCoordinator.expiredInstanceIds(
+        let ended = LiveActivityEndRules.expiredInstanceIds(
             [expired, live],
             now: Self.now
         )
@@ -77,7 +77,7 @@ struct LiveActivityCoordinatorTests {
             countdownTarget: Self.now
         )
 
-        let ended = LiveActivityCoordinator.expiredInstanceIds(
+        let ended = LiveActivityEndRules.expiredInstanceIds(
             [boundary],
             now: Self.now
         )
@@ -93,7 +93,7 @@ struct LiveActivityCoordinatorTests {
             countdownTarget: nil
         )
 
-        let ended = LiveActivityCoordinator.expiredInstanceIds(
+        let ended = LiveActivityEndRules.expiredInstanceIds(
             [noTarget],
             now: Self.now
         )
@@ -116,7 +116,7 @@ struct LiveActivityCoordinatorTests {
             hasPushToken: false
         )
 
-        let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd(
+        let ended = LiveActivityEndRules.duplicateInstanceIdsToEnd(
             [withoutToken, withToken]
         )
 
@@ -136,7 +136,7 @@ struct LiveActivityCoordinatorTests {
             countdownTarget: Self.now.addingTimeInterval(600)
         )
 
-        let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd([b, a])
+        let ended = LiveActivityEndRules.duplicateInstanceIdsToEnd([b, a])
 
         #expect(ended == ["i2"])
     }
@@ -155,7 +155,7 @@ struct LiveActivityCoordinatorTests {
             isLive: false
         )
 
-        let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd(
+        let ended = LiveActivityEndRules.duplicateInstanceIdsToEnd(
             [live, dismissed]
         )
 
@@ -175,7 +175,7 @@ struct LiveActivityCoordinatorTests {
             countdownTarget: Self.now.addingTimeInterval(7200)
         )
 
-        let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd([a, b])
+        let ended = LiveActivityEndRules.duplicateInstanceIdsToEnd([a, b])
 
         #expect(ended.isEmpty)
     }
@@ -200,9 +200,9 @@ struct LiveActivityCoordinatorTests {
         )
         let all = [prelaunched, running, untimed]
 
-        #expect(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
+        #expect(LiveActivityEndRules.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
         #expect(
-            Set(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: false))
+            Set(LiveActivityEndRules.instanceIdsToEnd(all, now: Self.now, isAvailable: false))
                 == ["i1", "i2", "i3"]
         )
     }
@@ -235,9 +235,9 @@ struct LiveActivityCoordinatorTests {
         )
         let all = [preparing, inClass, assignment, untimed]
 
-        #expect(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
+        #expect(LiveActivityEndRules.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
         #expect(
-            Set(LiveActivityCoordinator.instanceIdsToEnd(
+            Set(LiveActivityEndRules.instanceIdsToEnd(
                 all, now: Self.now, isAvailable: true, isQuietDay: { _ in true }
             )) == ["i1", "i2"]
         )
@@ -269,7 +269,7 @@ struct LiveActivityCoordinatorTests {
     private static func assignmentFacts(
         instanceId: String,
         assignmentId: String
-    ) -> LiveActivityCoordinator.RunningActivityFacts {
+    ) -> LiveActivityEndRules.RunningActivityFacts {
         facts(
             instanceId: instanceId,
             activityId: "assignmentUrgent::\(assignmentId)",
@@ -284,9 +284,9 @@ struct LiveActivityCoordinatorTests {
             Self.assignmentFacts(instanceId: "i\(index + 1)", assignmentId: id)
         }
 
-        #expect(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
+        #expect(LiveActivityEndRules.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
         #expect(
-            Set(LiveActivityCoordinator.instanceIdsToEnd(
+            Set(LiveActivityEndRules.instanceIdsToEnd(
                 all, now: Self.now, isAvailable: true, isAssignmentOutstanding: Self.isOutstanding
             )) == ["i1", "i2", "i3"]
         )
@@ -308,20 +308,20 @@ struct LiveActivityCoordinatorTests {
         let assignment = Self.assignmentFacts(instanceId: "i3", assignmentId: "904")
         let all = [preparing, inClass, assignment]
 
-        #expect(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
+        #expect(LiveActivityEndRules.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
         #expect(
-            LiveActivityCoordinator.instanceIdsToEnd(
+            LiveActivityEndRules.instanceIdsToEnd(
                 all, now: Self.now, isAvailable: true, isSkipped: { $0 == "TEST100_20260925_3" }
             ) == ["i1"]
         )
         #expect(
-            Set(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: true, isSkipped: { _ in true }))
+            Set(LiveActivityEndRules.instanceIdsToEnd(all, now: Self.now, isAvailable: true, isSkipped: { _ in true }))
                 == ["i1", "i2"]
         )
     }
 
     @Test func skippedClassIsEndedNotKept() {
-        let reason = LiveActivityCoordinator.endReason(
+        let reason = LiveActivityEndRules.endReason(
             for: Self.facts(
                 instanceId: "i1",
                 activityId: "classPreparing::TEST100_20260925_3",
@@ -340,7 +340,7 @@ struct LiveActivityCoordinatorTests {
 
     @Test func skippedClassStopsTheStart() {
         func canStart(_ scenario: LiveActivityScenarioKind, sourceId: String, isSkipped: (String) -> Bool) -> Bool {
-            LiveActivityCoordinator.canStart(
+            LiveActivityEndRules.canStart(
                 Self.snapshot(scenario, countdownTarget: Self.now.addingTimeInterval(1800), sourceId: sourceId),
                 isAvailable: true,
                 isQuietDay: { _ in false },
@@ -358,8 +358,8 @@ struct LiveActivityCoordinatorTests {
     @Test("新出現的不上課日子課堂活動會被結束，不會留下來註冊 token")
     func quietDayClassIsEndedNotKept() {
         let holidayEnds = Self.now.addingTimeInterval(12 * 3600)
-        func reason(_ fact: LiveActivityCoordinator.RunningActivityFacts) -> LiveActivityCoordinator.EndReason? {
-            LiveActivityCoordinator.endReason(
+        func reason(_ fact: LiveActivityEndRules.RunningActivityFacts) -> LiveActivityEndRules.EndReason? {
+            LiveActivityEndRules.endReason(
                 for: fact,
                 now: Self.now,
                 isAvailable: true,
@@ -394,8 +394,8 @@ struct LiveActivityCoordinatorTests {
     }
 
     @Test func doneAssignmentIsEndedNotKept() {
-        func reason(_ fact: LiveActivityCoordinator.RunningActivityFacts) -> LiveActivityCoordinator.EndReason? {
-            LiveActivityCoordinator.endReason(
+        func reason(_ fact: LiveActivityEndRules.RunningActivityFacts) -> LiveActivityEndRules.EndReason? {
+            LiveActivityEndRules.endReason(
                 for: fact,
                 now: Self.now,
                 isAvailable: true,
@@ -424,7 +424,7 @@ struct LiveActivityCoordinatorTests {
             scenario: .inClass
         )
         let reason = { (available: Bool) in
-            LiveActivityCoordinator.endReason(
+            LiveActivityEndRules.endReason(
                 for: expiredClass,
                 now: Self.now,
                 isAvailable: available,
@@ -467,7 +467,7 @@ struct LiveActivityCoordinatorTests {
             available: Bool = true,
             isQuietDay: (Date) -> Bool
         ) -> Bool {
-            LiveActivityCoordinator.canStart(
+            LiveActivityEndRules.canStart(
                 Self.snapshot(scenario, countdownTarget: target),
                 isAvailable: available,
                 isQuietDay: isQuietDay,
@@ -485,7 +485,7 @@ struct LiveActivityCoordinatorTests {
 
     @Test func doneAssignmentStopsTheStart() {
         func canStart(_ assignmentId: String) -> Bool {
-            LiveActivityCoordinator.canStart(
+            LiveActivityEndRules.canStart(
                 Self.snapshot(
                     .assignmentUrgent,
                     countdownTarget: Self.now.addingTimeInterval(3600),
@@ -520,7 +520,7 @@ struct LiveActivityCoordinatorTests {
         let holidayEnds = Self.now.addingTimeInterval(12 * 3600)
 
         #expect(
-            LiveActivityCoordinator.instanceIdsToEnd(
+            LiveActivityEndRules.instanceIdsToEnd(
                 [onHoliday, onSchoolDay],
                 now: Self.now,
                 isAvailable: true,

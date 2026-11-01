@@ -125,7 +125,7 @@ struct HomeView: View {
 
     private var editingPage: some View {
         HomeEditPage(viewModel: viewModel, sections: visibleSections, scrollAnchor: scrollAnchor) {
-            HomeTitleBar(showsControls: false) { setEditing(true) }
+            HomeTitleBar(controls: .spaceOnly) { setEditing(true) }
                 .padding(.top, TigerDuckTheme.Spacing.md)
         }
     }

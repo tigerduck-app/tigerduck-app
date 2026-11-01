@@ -44,7 +44,7 @@ struct BulletinDetailView: View {
                 .padding(.trailing, TigerDuckTheme.Spacing.lg)
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
-        .navigationBarBackButtonHidden(true)
+        .hidesBackButtonKeepingEdgeSwipe()
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .task(id: bulletin.id) {

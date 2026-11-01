@@ -289,6 +289,7 @@ struct ClassroomUsageServiceTests {
 
         let read = Task { try await harness.usage(on: Self.day(10, 15)) }
         try await waitUntil { harness.requests.count == 5 }
+        harness.account.session.endSignIn()
         harness.service.forget()
         gate.open()
 
@@ -315,6 +316,7 @@ struct ClassroomUsageServiceTests {
 
         let read = Task { try await harness.usage(on: Self.day(10, 15)) }
         try await waitUntil { harness.requests.count == 7 }
+        harness.account.session.endSignIn()
         harness.service.forget()
         gate.open()
 
@@ -425,6 +427,7 @@ struct ClassroomUsageServiceTests {
 
         let read = Task { try await harness.usage(on: Self.day(10, 14)) }
         try await waitUntil { harness.requests.count == 3 }
+        harness.account.session.endSignIn()
         harness.service.forget()
         gate.open()
 

@@ -21,22 +21,22 @@ extension UIViewController {
 final class HostWindow {
     weak var window: UIWindow?
 
-    private var root: UIViewController? { (window ?? Self.foreground)?.rootViewController }
+    private var rootOrForegroundRoot: UIViewController? { (window ?? Self.foreground)?.rootViewController }
 
-    var isPresenting: Bool { root?.presentedViewController != nil }
+    var isPresenting: Bool { rootOrForegroundRoot?.presentedViewController != nil }
 
     func closePresentations(then: @escaping (_ closedAll: Bool) -> Void) {
-        guard let root else { return then(true) }
+        guard let root = rootOrForegroundRoot else { return then(true) }
         root.closePresentations(then: then)
     }
 
     func presentationsClosed() async {
-        while let shown = root?.presentedViewController, !Task.isCancelled {
+        while let shown = rootOrForegroundRoot?.presentedViewController, !Task.isCancelled {
             await WindowChangeProbe.nextChange(of: shown.view)
         }
     }
 
-    var isForeground: Bool {
+    var mayBeForeground: Bool {
         guard let window, let foreground = Self.foreground else { return true }
         return window === foreground
     }

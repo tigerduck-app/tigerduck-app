@@ -23,10 +23,6 @@ nonisolated struct CacheFolders: Sendable {
         self.persistent = persistent
     }
 
-    init(root: URL) {
-        self.init(cache: root.appending(path: "cache/"), persistent: root.appending(path: "persistent/"))
-    }
-
     var cacheFiles: JSONFiles { JSONFiles(directory: cache) }
     var persistentFiles: JSONFiles { JSONFiles(directory: persistent) }
 

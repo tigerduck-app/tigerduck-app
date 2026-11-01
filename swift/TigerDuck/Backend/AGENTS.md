@@ -26,4 +26,4 @@ push registration, the course catalog and `APIVersionGate`.
   readable code, latches `Client/APIVersionGate.swift` for good, and the app asks the user to
   update. Only `BackendClient` reports to it; a 410 from the school's servers means a page moved.
 - Nothing derived from school data, the course and assignment uploads, goes before the
-  sign-in's first pull from the backend is applied (`Sync/SyncTarget.swift`).
+  sign-in's first pull from the backend is applied (`Sync/FirstPullGate.swift`).

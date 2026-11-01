@@ -16,18 +16,23 @@ final class SendLedger {
         case after(TimeInterval)
     }
 
-    nonisolated static let refusalPause: TimeInterval = 60
+    nonisolated enum Outcome: Equatable, Sendable {
+        case sent
+        case skipped
+    }
+
+    nonisolated static let refusedBodyHoldInterval: TimeInterval = 60
 
     var clock: () -> Date = { Date() }
 
     private var accepted: [String: (fingerprint: String, at: Date)] = [:]
     private var failed: [String: String] = [:]
     private var refused: [String: (fingerprint: String, at: Date)] = [:]
-    private var forgets = Forgets()
+    private var forgetGeneration = ForgetGeneration()
     private var lastSends: [String: Task<Void, Never>] = [:]
     private var unfinished: [String: [String]] = [:]
 
-    private struct Forgets: Equatable {
+    private struct ForgetGeneration: Equatable {
         var all = 0
         var byChannel: [String: Int] = [:]
 
@@ -55,13 +60,13 @@ final class SendLedger {
         for signIn: SignIn? = nil,
         while wanted: @escaping @MainActor () -> Bool = { true },
         _ body: @escaping @MainActor () async throws -> Void
-    ) async throws -> Bool {
+    ) async throws -> Outcome {
         let applies = { @MainActor in signIn?.isCurrent != false && wanted() }
         let previous = lastSends[channel]
-        let send = Task { @MainActor [weak self] () async throws -> Bool in
+        let send = Task { @MainActor [weak self] () async throws -> Outcome in
             await previous?.value
             try Task.checkCancellation()
-            guard let self, applies() else { return false }
+            guard let self, applies() else { return .skipped }
             return try await self.sendIfDue(
                 channel, fingerprint: fingerprint, resend: resend, pauses: pausesAfterRefusal, applies: applies, body
             )
@@ -79,38 +84,45 @@ final class SendLedger {
     private func sendIfDue(
         _ channel: String, fingerprint: String, resend: Resend, pauses: Bool,
         applies: @MainActor () -> Bool, _ body: @MainActor () async throws -> Void
-    ) async throws -> Bool {
+    ) async throws -> Outcome {
         let now = clock()
         if resend != .always, isHeldBack(channel, fingerprint: fingerprint, now: now) {
-            failed[channel] = fingerprint
-            return false
+            markStillUnsent(channel, fingerprint: fingerprint)
+            return .skipped
         }
         guard Self.isDue(accepted: accepted[channel], fingerprint: fingerprint, resend: resend, now: now) else {
             failed[channel] = nil
-            return false
+            return .skipped
         }
-        let started = forgets.of(channel)
+        let started = forgetGeneration.of(channel)
         do {
             try await body()
         } catch {
-            if !AppLogger.isCancellation(error), applies(), started == forgets.of(channel) {
-                failed[channel] = fingerprint
-                if pauses, case PushAPIError.httpStatus(let status, _, _) = error, status != 401 {
-                    refused[channel] = (fingerprint, clock())
-                }
+            if !AppLogger.isCancellation(error), applies(), started == forgetGeneration.of(channel) {
+                markStillUnsent(channel, fingerprint: fingerprint)
+                if pauses, Self.refusesBody(error) { refused[channel] = (fingerprint, clock()) }
             }
             throw error
         }
-        guard started == forgets.of(channel) else { return true }
+        guard started == forgetGeneration.of(channel) else { return .sent }
         accepted[channel] = (fingerprint, now)
         failed[channel] = nil
         refused[channel] = nil
-        return true
+        return .sent
+    }
+
+    private func markStillUnsent(_ channel: String, fingerprint: String) {
+        failed[channel] = fingerprint
+    }
+
+    private nonisolated static func refusesBody(_ error: Error) -> Bool {
+        guard case PushAPIError.httpStatus(let status, _, _) = error else { return false }
+        return status != 401
     }
 
     private func isHeldBack(_ channel: String, fingerprint: String, now: Date) -> Bool {
         guard let refusal = refused[channel], refusal.fingerprint == fingerprint else { return false }
-        return (0..<Self.refusalPause).contains(now.timeIntervalSince(refusal.at))
+        return (0..<Self.refusedBodyHoldInterval).contains(now.timeIntervalSince(refusal.at))
     }
 
     func accepts(_ channel: String, fingerprint: String) -> Bool {
@@ -126,12 +138,12 @@ final class SendLedger {
 
     func forget(_ channel: String?) {
         if let channel {
-            forgets.byChannel[channel, default: 0] &+= 1
+            forgetGeneration.byChannel[channel, default: 0] &+= 1
             accepted[channel] = nil
             failed[channel] = nil
             refused[channel] = nil
         } else {
-            forgets.all &+= 1
+            forgetGeneration.all &+= 1
             accepted = [:]
             failed = [:]
             refused = [:]

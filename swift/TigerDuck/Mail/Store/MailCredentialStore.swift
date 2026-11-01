@@ -36,7 +36,10 @@ nonisolated struct MailCredentialStore: Sendable {
         self.storage = storage
     }
 
-    func savePassword(_ password: String) throws { try storage.save(password, forKey: Self.passwordKey) }
+    func savePassword(_ password: String, for signIn: SignIn) throws {
+        guard signIn.isCurrent else { return }
+        try storage.save(password, forKey: Self.passwordKey)
+    }
     func password() -> String? { storage.load(forKey: Self.passwordKey) }
     func clear() { storage.deleteAll() }
 }

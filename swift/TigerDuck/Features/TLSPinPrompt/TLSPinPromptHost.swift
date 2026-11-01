@@ -138,7 +138,7 @@ private struct TLSPinPromptHost: ViewModifier {
         }
         guard let requestedAt = presentation.requestedAt else { return }
         let shown = await presentation.onScreen.wait(until: { $0 }, deadline: requestedAt + Self.presentTimeout)
-        if !shown, Task.isCancelled { return }
+        if shown != .ready, Task.isCancelled { return }
         presentation.requestedAt = nil
         if !presentation.onScreen.value {
             presentation.prompt = nil

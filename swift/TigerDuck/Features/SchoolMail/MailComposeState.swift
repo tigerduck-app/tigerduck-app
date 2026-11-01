@@ -50,9 +50,10 @@ struct MailComposeStatus {
     var loadError: String?
     var invalidRecipients: [String] = []
     var didFinish = false
+    var signInEnded = false
     var sentCopy: SentCopy?
 
-    mutating func takeRecipients(of draft: MailComposeDraft, requireOne: Bool) -> MailRecipients.Parsed? {
+    mutating func recipientsReportingProblems(of draft: MailComposeDraft, requireOne: Bool) -> MailRecipients.Parsed? {
         error = nil
         invalidRecipients = []
         let recipients = MailRecipients.parse(to: draft.to, cc: draft.cc, bcc: draft.bcc)
@@ -85,11 +86,10 @@ enum MailComposeField {
 
 struct MailComposeTracking {
     var edited: Set<MailComposeField> = []
-    var baseline = ""
+    var unchangedSnapshot = ""
     var prepareStarted = false
-    var sourceLoaded = false
-    var draftPageUIDValidity: UInt32?
-    var draftWasAlreadyDeleted = false
+    var prefillApplied = false
+    var replacedDraft: MailComposeSending.ReplacedDraft?
 }
 
 struct MailComposeServices {

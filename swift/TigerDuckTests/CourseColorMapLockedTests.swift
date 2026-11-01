@@ -153,7 +153,7 @@ struct CourseColorMapLockedTests {
         #expect(colors.loadCourseColorMapIfReadable() == nil)
     }
 
-    @Test func aMapThatDoesNotDecodeFallsBackToTheEarlierColours() throws {
+    @Test func aMapThatDoesNotDecodeReadsAsEmptyWithoutRevivingOldColours() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("CourseColorMapLockedTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -164,6 +164,6 @@ struct CourseColorMapLockedTests {
         try Data("not json".utf8).write(to: persistent.appendingPathComponent("course_color_map.json"))
         try Data(#"{"CS1010001":1}"#.utf8).write(to: persistent.appendingPathComponent("course_custom_colors.json"))
 
-        #expect(colors.loadCourseColorMapIfReadable() == ["CS1010001": 0x4ECDC4])
+        #expect(colors.loadCourseColorMapIfReadable() == [:])
     }
 }

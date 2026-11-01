@@ -49,7 +49,7 @@ enum NotificationSettingsFixtures {
     }
 
     static func notFound() -> SettingsAPIStub.StubResponse {
-        .init(statusCode: 404, body: Data())
+        .init(statusCode: 404, body: Data(#"{"error":"settings_document_not_found","message":"No such settings document."}"#.utf8))
     }
 
     static func found(_ document: [String: Any], revision: Int) throws -> SettingsAPIStub.StubResponse {

@@ -1,11 +1,42 @@
 import Foundation
 import TigerDuckCore
 
+enum UserAddedOrigin {
+    case addedHere
+    case mergedFromServer
+}
+
+extension SDCourse {
+    var userAddedOrigin: UserAddedOrigin { moodleIdNumber == nil ? .addedHere : .mergedFromServer }
+}
+
+nonisolated struct ServerTombstone {
+    let courseNo: String?
+    let isReset: Bool
+    let hlc: Int64?
+
+    init(_ row: [String: Any]) {
+        courseNo = row["course_no"] as? String
+        isReset = row["kind"] as? String == "reset"
+        hlc = (row["hlc"] as? NSNumber)?.int64Value
+    }
+
+    func isOwnReset(landedAt resetLandedAt: Date?) -> Bool {
+        guard isReset, let resetLandedAt, let hlc else { return false }
+        return hlc <= PushAPI.clock(of: resetLandedAt)
+    }
+}
+
 enum CourseServerRows {
     static func droppedMerges(_ userAdded: [SDCourse], semester: String, dropped: Set<String>) -> Set<String> {
         Set(userAdded.filter {
-            $0.moodleIdNumber != nil && dropped.contains($0.courseNo) && CourseStore.userAddedCourse($0, belongsTo: semester)
+            $0.userAddedOrigin == .mergedFromServer && dropped.contains($0.courseNo)
+                && CourseStore.userAddedCourse($0, belongsTo: semester)
         }.map(\.courseNo))
+    }
+
+    static func holdsAnyCourse(_ rows: [[String: Any]], listing listed: Set<String>) -> Bool {
+        !listed.isEmpty || !droppedOnServer(rows).isEmpty
     }
 
     static func keptRows(
@@ -13,7 +44,7 @@ enum CourseServerRows {
         liveAnswer: CourseSelectionService.LiveAnswer? = nil
     ) -> [[String: Any]] {
         let addedHere = Set(userAdded.filter {
-            $0.moodleIdNumber == nil && CourseStore.userAddedCourse($0, belongsTo: semester)
+            $0.userAddedOrigin == .addedHere && CourseStore.userAddedCourse($0, belongsTo: semester)
         }.map(\.courseNo))
         let dropped = dropped.union(droppedOnServer(rows, liveAnswer: liveAnswer))
         return rows.filter { row in
@@ -27,13 +58,18 @@ enum CourseServerRows {
         _ rows: [[String: Any]], liveAnswer: CourseSelectionService.LiveAnswer? = nil
     ) -> Set<String> {
         Set(rows.compactMap { row in
-            guard row["enrollment_status"] as? String == "dropped", let courseNo = row["course_no"] as? String
+            guard row["enrollment_status"] as? String == "dropped", let courseNo = row["course_no"] as? String,
+                  !liveAnswerOutranksDrop(liveAnswer, of: courseNo, droppedAt: FullSyncRunner.backendDate(row["updated_at"]))
             else { return nil }
-            guard let liveAnswer, liveAnswer.courseNos.contains(courseNo), let droppedAt = FullSyncRunner.backendDate(row["updated_at"]),
-                  liveAnswer.at > droppedAt.addingTimeInterval(CloudSyncCoordinator.clockSkewMargin)
-            else { return courseNo }
-            return nil
+            return courseNo
         })
+    }
+
+    static func liveAnswerOutranksDrop(
+        _ liveAnswer: CourseSelectionService.LiveAnswer?, of courseNo: String, droppedAt: Date?
+    ) -> Bool {
+        guard let liveAnswer, liveAnswer.courseNos.contains(courseNo), let droppedAt else { return false }
+        return liveAnswer.at > droppedAt.addingTimeInterval(CloudSyncCoordinator.clockSkewMargin)
     }
 
     static func isFiled(_ row: [String: Any], under semester: String) -> Bool {

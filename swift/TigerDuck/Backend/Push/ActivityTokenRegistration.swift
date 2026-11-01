@@ -52,7 +52,7 @@ nonisolated enum ActivityTokenRegistration {
         let delay = PushRegistrationService.retryDelay(attempt: attempt)
         service.activities.retryTasks[activityId]?.cancel()
         service.activities.retryTasks[activityId] = Task { [weak service] in
-            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(delay))
+            try? await AppClock.sleep(until: ContinuousClock.now + delay)
             if Task.isCancelled { return }
             guard let service else { return }
             await retry(registration, on: service)

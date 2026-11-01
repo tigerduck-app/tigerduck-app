@@ -20,7 +20,7 @@ final class SceneActivation {
     }
 
     func becameActive() {
-        Task { await CourseChangeStore.shared.refresh() }
+        refreshCourseChanges()
         returnTask?.cancel()
         returnTask = Task { [app] in
             #if os(iOS)
@@ -51,7 +51,7 @@ final class SceneActivation {
     func refresh(recheckSubmissions: Bool = false) {
         guard app.hasCompletedOnboarding else { return }
         app.feed.startPolling(pollNow: false)
-        Task { await CourseChangeStore.shared.refresh() }
+        refreshCourseChanges()
         refreshTask?.cancel()
         let signIn = app.authService.session.currentSignIn
         refreshTask = Task { [app] in
@@ -67,12 +67,16 @@ final class SceneActivation {
                 pull: { await app.fullSync.sync(followUpIfBusy: true) },
                 pushOutbox: { await app.cloudSyncCoordinator.syncTick() },
                 fetchSchool: {
-                    await Self.fetchSchoolData(app.authService, recheckSubmissions, applyAfter: $0, for: signIn)
+                    await Self.fetchSchoolData(app.authService, recheckSubmissions, afterBackendPull: $0, for: signIn)
                 }
             )
             guard !Task.isCancelled else { return }
             NTUSTSessionManager.shared.loadingState = .loaded
         }
+    }
+
+    private func refreshCourseChanges() {
+        Task { await CourseChangeStore.shared.refresh() }
     }
 
     func cancelRefresh() {
@@ -91,20 +95,20 @@ final class SceneActivation {
                 pull: { await app.feed.pollOnReturn() },
                 pushOutbox: { await app.cloudSyncCoordinator.syncTick() },
                 fetchSchool: {
-                    await AssignmentFetch.refreshAssignmentsIfDue(authService: app.authService, applyAfter: $0, for: signIn)
+                    await AssignmentFetch.refreshAssignmentsIfDue(authService: app.authService, afterBackendPull: $0, for: signIn)
                 }
             )
         }
     }
 
     private static func fetchSchoolData(
-        _ authService: AuthService, _ recheckSubmissions: Bool, applyAfter: @escaping PullGate, for signIn: SignIn
+        _ authService: AuthService, _ recheckSubmissions: Bool, afterBackendPull: @escaping PullGate, for signIn: SignIn
     ) async {
         _ = await AssignmentFetch.fetchAssignments(
-            authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: applyAfter, for: signIn
+            authService: authService, recheckSubmissions: recheckSubmissions, afterBackendPull: afterBackendPull, for: signIn
         )
         async let schoolEvents = CalendarService.fetchAndParseICS()
-        async let courses: Void = fetchCurrentTerm(authService, applyAfter: applyAfter, for: signIn)
+        async let courses: Void = fetchCurrentTerm(authService, afterBackendPull: afterBackendPull, for: signIn)
         let fetchedSchoolEvents = await schoolEvents
         await courses
         guard !Task.isCancelled, let fetchedSchoolEvents else { return }
@@ -115,7 +119,7 @@ final class SceneActivation {
     }
 
     private static func fetchCurrentTerm(
-        _ authService: AuthService, applyAfter: @escaping PullGate, for signIn: SignIn
+        _ authService: AuthService, afterBackendPull: @escaping PullGate, for signIn: SignIn
     ) async {
         guard let studentId = authService.storedStudentId else { return }
         let semester = CourseSelectionService.currentSemesterCode()
@@ -124,7 +128,7 @@ final class SceneActivation {
         } else {
             await authService.ensureBackendSignedIn()
         }
-        _ = await CourseFetch.fetchCourses(authService: authService, semester: semester, applyAfter: applyAfter, for: signIn)
+        _ = await CourseFetch.fetchCourses(authService: authService, semester: semester, afterBackendPull: afterBackendPull, for: signIn)
     }
 }
 
@@ -132,19 +136,19 @@ enum RefreshOrder {
     static func run(
         pull: @escaping @MainActor () async -> Void,
         pushOutbox: @escaping @MainActor () async -> Void,
-        fetchSchool: @MainActor (_ applyAfter: @escaping PullGate) async -> Void
+        fetchSchool: @MainActor (_ afterBackendPull: @escaping PullGate) async -> Void
     ) async {
-        let pulled = Task { @MainActor () -> Bool in
+        let pullThenOutbox = Task { @MainActor () -> PullOutcome in
             await pull()
-            let completed = !Task.isCancelled
+            let outcome: PullOutcome = Task.isCancelled ? .cancelled : .completed
             await pushOutbox()
-            return completed
+            return outcome
         }
         await withTaskCancellationHandler {
-            await fetchSchool { await pulled.value }
-            await pulled.value
+            await fetchSchool { await pullThenOutbox.value }
+            await pullThenOutbox.value
         } onCancel: {
-            pulled.cancel()
+            pullThenOutbox.cancel()
         }
     }
 }

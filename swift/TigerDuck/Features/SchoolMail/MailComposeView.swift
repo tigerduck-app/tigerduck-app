@@ -160,8 +160,8 @@ struct MailComposeView: View {
                     pendingPicks -= 1
                 }
             }
-            .onChange(of: viewModel.didFinish) { _, finished in
-                if finished { dismiss() }
+            .onChange(of: viewModel.shouldClose) { _, closes in
+                if closes { dismiss() }
             }
             .task { await viewModel.prepare() }
             .interactiveDismissDisabled(viewModel.hasChanges || viewModel.isSending)
@@ -195,10 +195,10 @@ struct MailComposeView: View {
     }
 
     private func addPhotos(_ items: [PhotosPickerItem]) async {
-        let anyFailed = await MailComposeFiles.loadPhotos(items) { filename, mimeType, data in
+        let unreadable = await MailComposeFiles.loadPhotos(items) { filename, mimeType, data in
             viewModel.addAttachment(filename: filename, mimeType: mimeType, data: data)
         }
-        if anyFailed { viewModel.attachmentReadFailed() }
+        if !unreadable.isEmpty { viewModel.attachmentReadFailed() }
         photoItems = []
     }
 }

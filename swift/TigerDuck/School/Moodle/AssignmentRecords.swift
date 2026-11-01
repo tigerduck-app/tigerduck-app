@@ -69,7 +69,7 @@ enum AssignmentRecords {
     static func recordsToAskAbout(
         _ records: [MoodleAssignmentRecord],
         confirmed: [String: Date],
-        closed: [String: Date]
+        closed: ClosedUnsubmittedAnswerTimes
     ) -> [MoodleAssignmentRecord] {
         records.filter { record in
             let id = String(record.assignId)
@@ -82,9 +82,9 @@ enum AssignmentRecords {
         records: [MoodleAssignmentRecord],
         statuses: [Int: MoodleSubmissionStatus],
         askedAt: Date,
-        kept: [String: Date]
-    ) -> [String: Date] {
-        var closed: [String: Date] = [:]
+        kept: ClosedUnsubmittedAnswerTimes
+    ) -> ClosedUnsubmittedAnswerTimes {
+        var closed: ClosedUnsubmittedAnswerTimes = [:]
         for record in records {
             let id = String(record.assignId)
             if let status = statuses[record.assignId] {

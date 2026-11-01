@@ -109,7 +109,7 @@ final class SyncConflicts {
             }
             do {
                 let (json, courseDeletes) = try await app.cloudSyncCoordinator.courseDeletes(around: {
-                    try await app.pushCoordinator.fetchFullSync()
+                    try await app.pushCoordinator.fetchFullSync(for: signIn)
                 })
                 let found = ReenableDifferences.find(
                     in: json, checking: pending, courseDeletes: courseDeletes,
@@ -299,7 +299,7 @@ final class SyncConflicts {
                 )
             },
             markCoursesForCheck: { self.markCategoryReenabled("courses") },
-            queueEdits: { ReenableAnswer.queueLocalEdits(of: conflict, edits: self.app.edits) },
+            queueEdits: { ReenableAnswer.queueLocalEdits(of: conflict, edits: self.app.edits, for: signIn) },
             dropLocalCopies: { Self.dropLocalCopies(for: conflict, signIn: signIn) },
             syncFromServer: { await self.app.fullSync.sync(followUpIfBusy: $0) },
             noteAnswered: { saveFailed in

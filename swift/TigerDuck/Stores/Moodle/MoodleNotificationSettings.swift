@@ -13,14 +13,14 @@ nonisolated struct MoodleNotificationAPI: Sendable {
     ) -> MoodleNotificationAPI {
         MoodleNotificationAPI(
             load: {
-                try await MoodleWebserviceClient.withToken(tokens) {
+                try await MoodleWebserviceClient.withRenewingToken(tokens) {
                     try await MoodleNotificationPreferencesService.preferences(
                         chinese: chinese, token: $0, session: session, siteURL: siteURL
                     )
                 }
             },
             save: { preference, signIn in
-                try await MoodleWebserviceClient.withToken(tokens) {
+                try await MoodleWebserviceClient.withRenewingToken(tokens) {
                     try await MoodleNotificationPreferencesService.save(
                         preference, chinese: chinese, token: $0, for: signIn, session: session, siteURL: siteURL
                     )

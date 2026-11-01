@@ -11,7 +11,7 @@ struct SignOutCheck {
 
     func deletesUnsyncedData() async -> Bool {
         let unsent = await app.cloudSyncCoordinator.holdsUnsentEdits() || app.pushCoordinator.holdsUnsentCourseUploads
-            || !app.localEdits.pendingOverrides.isEmpty
+            || !app.localEdits.marksAndIgnoresEnqueuing.isEmpty
             || !AcademicCalendarStore.shared.unacknowledgedHolidayIDs.isEmpty
         return Self.signOutDeletesUnsyncedData(
             heldSignOutData(),
@@ -23,7 +23,7 @@ struct SignOutCheck {
         )
     }
 
-    func leavesSyncedData() -> Bool {
+    func leavesSyncedDataOnThisEndpoint() -> Bool {
         Self.signOutLeavesSyncedData(
             heldSignOutData(),
             cloudSyncEnabled: app.cloudSyncEnabled,
@@ -53,9 +53,9 @@ struct SignOutCheck {
     }
 
     static func holdsLocalOnlyCourseNames(_ names: [String: [String: String]], courses: [SDCourse]) -> Bool {
-        let withMoodleId = Set(courses.filter { $0.moodleIdNumber != nil }.map(\.courseNo))
+        let syncingNames = Set(courses.filter(\.syncsCourseName).map(\.courseNo))
         let held = Set(courses.map(\.courseNo))
-        return names.contains { !$0.value.isEmpty && held.contains($0.key) && !withMoodleId.contains($0.key) }
+        return names.contains { !$0.value.isEmpty && held.contains($0.key) && !syncingNames.contains($0.key) }
     }
 
     nonisolated struct SignOutData {
@@ -102,4 +102,8 @@ struct SignOutCheck {
         let kept = switchedOn.intersection(synced).subtracting(pendingChecks)
         return data.holidays || data.categoriesNeeded.contains { $0.held && $0.categories.isSubset(of: kept) }
     }
+}
+
+extension SDCourse {
+    var syncsCourseName: Bool { moodleIdNumber != nil }
 }

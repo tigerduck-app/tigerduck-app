@@ -165,9 +165,9 @@ struct MacBulletinsView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let detail {
-            MacBulletinDetail(detail: detail, fallback: summary(of: detail.id), orgLabel: taxonomy.orgLabel(for:))
+            MacBulletinDetail(detail: detail, listSummary: summary(of: detail.id), orgLabel: taxonomy.orgLabel(for:))
         } else if let err = detailError {
-            MacBulletinDetailError(message: err, fallback: selectedId.flatMap(summary(of:))) {
+            MacBulletinDetailError(message: err, listSummary: selectedId.flatMap(summary(of:))) {
                 if let id = selectedId { Task { await loadDetail(id: id) } }
             }
         }

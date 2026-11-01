@@ -52,10 +52,7 @@ enum NTUSTScoreService {
         let report = await Task.detached(priority: .userInitiated) {
             NTUSTScoreParser.parse(html: html)
         }.value
-
-        if report == .empty {
-            throw NTUSTScoreServiceError.parseFailed
-        }
+        guard report.holdsAnyTranscriptPart else { throw NTUSTScoreServiceError.parseFailed }
 
         if signIn.isCurrent {
             ScoreReportFiles.shared.saveScoreReport(report, studentId: studentId)

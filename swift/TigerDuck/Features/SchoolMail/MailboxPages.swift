@@ -5,7 +5,7 @@ struct MailFolderChoice: Equatable {
     var roles: [MailFolderRole: String] = [:]
     var others: [String] = []
     var selection: MailFolderSelection = .real(MailConstants.inbox)
-    var wasChosen = false
+    var pickedByUser = false
     var unreadOnly = false
 
     var targets: [String] { selection.targets(roles: roles, others: others) }
@@ -25,8 +25,13 @@ struct MailListStatus: Equatable {
 }
 
 struct MailListLoads {
+    struct InFlight {
+        var selection: MailFolderSelection
+        let id = UUID()
+    }
+
     let account: AccountSession
-    var loadingSelection: MailFolderSelection?
+    var inFlight: InFlight?
 }
 
 struct MailboxPages {
@@ -42,8 +47,8 @@ struct MailboxPages {
 
     private(set) var pages: [String: MailFolderPage] = [:]
     private(set) var rows: [MailListRow] = []
-    var cachePainted: Set<String> = []
-    private(set) var editToken = EditToken()
+    var cachedNotRefreshed: Set<String> = []
+    private(set) var lastEdit = EditToken()
     private var edits: [MailKey: (token: EditToken, edit: Edit)] = [:]
 
     subscript(folder: String) -> MailFolderPage? {
@@ -54,7 +59,7 @@ struct MailboxPages {
     mutating func removeAll() {
         pages = [:]
         rows = []
-        cachePainted = []
+        cachedNotRefreshed = []
         edits = [:]
     }
 
@@ -78,11 +83,11 @@ struct MailboxPages {
     }
 
     private mutating func record(_ edit: Edit, folder: String, uid: UInt32) {
-        editToken.move()
-        edits[MailKey(folder: folder, uid: uid)] = (editToken, edit)
+        lastEdit.recordUserEdit()
+        edits[MailKey(folder: folder, uid: uid)] = (lastEdit, edit)
     }
 
-    func applyingEdits(to page: MailFolderPage, since token: EditToken) -> MailFolderPage {
+    func replayingEdits(onto page: MailFolderPage, madeAfter token: EditToken) -> MailFolderPage {
         var page = page
         for (key, entry) in edits where key.folder == page.folder && entry.token > token {
             switch entry.edit {
@@ -95,6 +100,12 @@ struct MailboxPages {
         return page
     }
 
+    private static func pagingCursor(after fresh: MailFolderPage, over fetched: MailFolderPage?, keepsOlder: Bool) -> Int? {
+        guard let fetched else { return fresh.oldestLoadedSequence }
+        if fresh.summaries.isEmpty, !keepsOlder { return fresh.oldestLoadedSequence }
+        return fetched.oldestLoadedSequence
+    }
+
     private static func removing(_ uid: UInt32, from page: MailFolderPage) -> MailFolderPage {
         var page = page
         let removed = page.summaries.contains { $0.uid == uid }
@@ -105,8 +116,7 @@ struct MailboxPages {
 
     mutating func mergeFresh(_ fresh: MailFolderPage, folder: String, since token: EditToken) -> MailFolderPage {
         let previous = pages[folder]
-        let hadPreviousPage = previous != nil
-        let fromCache = cachePainted.remove(folder) != nil
+        let fromCache = cachedNotRefreshed.remove(folder) != nil
         let existing = previous?.summaries ?? []
         let windowHidEverything = fresh.summaries.isEmpty && fresh.messageCount > 0
         let windowFloor = fresh.windowUIDs?.lowerBound ?? fresh.summaries.last?.uid
@@ -117,21 +127,13 @@ struct MailboxPages {
             keptExisting = windowFloor.map { floor in existing.filter { $0.uid < floor } } ?? []
         }
         let merged = (fresh.summaries + keptExisting).sorted { $0.uid > $1.uid }
-        let oldestLoadedSequence: Int?
-        if windowHidEverything, hadPreviousPage, !fromCache, !keptExisting.isEmpty {
-            oldestLoadedSequence = previous?.oldestLoadedSequence
-        } else if fresh.summaries.isEmpty {
-            oldestLoadedSequence = fresh.oldestLoadedSequence
-        } else if hadPreviousPage, !fromCache {
-            oldestLoadedSequence = previous?.oldestLoadedSequence
-        } else {
-            oldestLoadedSequence = fresh.oldestLoadedSequence
-        }
-        let mergedPage = applyingEdits(to: MailFolderPage(
+        let oldestLoadedSequence = Self.pagingCursor(after: fresh, over: fromCache ? nil : previous,
+                                                     keepsOlder: windowHidEverything && !keptExisting.isEmpty)
+        let mergedPage = replayingEdits(onto: MailFolderPage(
             folder: folder, uidValidity: fresh.uidValidity, messageCount: fresh.messageCount,
             summaries: merged, oldestLoadedSequence: oldestLoadedSequence, uidNext: fresh.uidNext,
             fetchedAt: fresh.fetchedAt
-        ), since: token)
+        ), madeAfter: token)
         pages[folder] = mergedPage
         return mergedPage
     }

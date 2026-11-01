@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ClassTableHeaderMenu: View {
     let viewModel: ClassTableViewModel
-    let showsContent: Bool
+    let canExportPicture: Bool
     @Binding var export: ClassTableExportState
     @Binding var shareModel: ClassTableShareModel?
 
@@ -103,7 +103,7 @@ struct ClassTableHeaderMenu: View {
         } label: {
             Label(String(localized: "class_table_export_screenshot"), systemImage: "square.and.arrow.up")
         }
-        .disabled(!showsContent || export.isExporting)
+        .disabled(!canExportPicture || export.isExporting)
     }
 
     private func exportScreenshot() {

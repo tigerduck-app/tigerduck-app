@@ -58,6 +58,46 @@ struct PersistenceFormatTests {
         let saved = try #require(try json("cache/courses_1151_\(language).json") as? [[String: Any]]).first
         #expect(saved?["scheduleJSON"] as? String == #"{"1":["3","4"]}"#)
         #expect(saved?["semester"] as? String == "1151" && saved?["moodleIdNumber"] as? String == "1151CS1001301")
+        #expect(saved.map { Set($0.keys) } == Self.courseFields)
+    }
+
+    private static let courseFields: Set<String> = [
+        "courseNo", "courseName", "instructor", "credits", "classroom", "enrolledCount", "maxCount", "scheduleJSON",
+        "moodleIdNumber", "semester", "classroomMapJSON", "skippedDatesJSON", "dimension", "allYear", "requireOption",
+    ]
+
+    @Test("the imported class table file reads back its owner, people and terms, and saves the same field names")
+    func importedClassTableFileReadsTodaysFormat() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let path = "persistent/imported_class_tables.json"
+        try write(#"""
+            {"owner":"B11000001","people":[{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","studentId":"B11000002",
+            "nickname":"Amy","importedAt":800000000,"sharedAt":null,
+            "terms":[{"semester":"1151","courseNos":["CS1001301"],"courses":[\#(Self.course)]}]}]}
+            """#, path)
+        let file = ImportedClassTableFile(url: root.appending(path: path))
+
+        guard case .contents(let contents) = file.load() else {
+            Issue.record("the imported class table file did not read")
+            return
+        }
+        let person = try #require(contents.people.first)
+        #expect(contents.owner == "B11000001" && person.studentId == "B11000002" && person.nickname == "Amy")
+        #expect(person.id == UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF") && person.sharedAt == nil)
+        #expect(person.importedAt == Date(timeIntervalSinceReferenceDate: 800_000_000))
+        let term = try #require(person.terms.first)
+        #expect(term.semester == "1151" && term.courseNos == ["CS1001301"])
+        #expect(term.courses.first?.toSDCourse().schedule == [1: ["3", "4"]])
+
+        #expect(file.save(contents))
+        let saved = try #require(try json(path) as? [String: Any])
+        let savedPerson = try #require((saved["people"] as? [[String: Any]])?.first)
+        let savedTerm = try #require((savedPerson["terms"] as? [[String: Any]])?.first)
+        #expect(saved["owner"] as? String == "B11000001")
+        #expect(Set(savedPerson.keys) == ["id", "studentId", "nickname", "importedAt", "terms"])
+        #expect(savedPerson["importedAt"] as? Double == 800_000_000)
+        #expect(Set(savedTerm.keys) == ["semester", "courseNos", "courses"])
+        #expect((savedTerm["courses"] as? [[String: Any]])?.first.map { Set($0.keys) } == Self.courseFields)
     }
 
     @Test("a course name map from before names per language is read as the current language's")

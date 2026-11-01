@@ -129,7 +129,7 @@ struct ClassTableView: View {
                 HStack(spacing: TigerDuckTheme.Spacing.lg) {
                     SyncStatusDot(servers: ServerKind.classTableSources, lastSynced: .schoolData)
                     ClassTableHeaderMenu(
-                        viewModel: viewModel, showsContent: pageAccessState == .content,
+                        viewModel: viewModel, canExportPicture: pageAccessState == .content,
                         export: $export, shareModel: $shareModel
                     )
                 }

@@ -3,7 +3,13 @@ import Foundation
 
 @MainActor
 enum MailListLoader {
-    typealias Fetched = (pages: [(String, MailFolderPage)], failure: MailClientError?)
+    struct Fetched: MailCaughtRejection {
+        var pages: [(String, MailFolderPage)]
+        var failure: MailClientError?
+        var rejectedPassword: Bool { failure == .authenticationFailed }
+    }
+
+    private enum Merge { case merged, superseded }
 
     /// Paints each covered folder's cached page first, then merges the newest page of each from
     /// the server into what is loaded: one round trip per covered folder however far the list was
@@ -11,12 +17,13 @@ enum MailListLoader {
     static func load(list: MailListViewModel) async {
         var selection = list.selection
         let signIn = await list.account.startingSignIn
-        guard list.loads.loadingSelection != selection else { return }
-        list.loads.loadingSelection = selection
+        guard list.loads.inFlight?.selection != selection else { return }
+        let load = MailListLoads.InFlight(selection: selection)
+        list.loads.inFlight = load
         defer {
-            if signIn.isCurrent, list.loads.loadingSelection == selection { list.loads.loadingSelection = nil }
+            if list.loads.inFlight?.id == load.id { list.loads.inFlight = nil }
         }
-        let token = list.mailbox.editToken
+        let token = list.mailbox.lastEdit
         if await paintFromCache(list: list) {
             list.status.loadState = .loaded
         } else if list.rows.isEmpty {
@@ -24,7 +31,7 @@ enum MailListLoader {
         }
         list.status.isRefreshing = true
         defer {
-            if list.isCurrent(selection, signIn), list.loads.loadingSelection == selection { list.status.isRefreshing = false }
+            if list.loads.inFlight?.id == load.id, selection == list.selection { list.status.isRefreshing = false }
         }
         do {
             if list.folders.roles.isEmpty {
@@ -35,18 +42,16 @@ enum MailListLoader {
                 guard list.isCurrent(selection, signIn) else { return }
                 if adoptDefaultSelection(list: list) {
                     selection = list.selection
-                    list.loads.loadingSelection = selection
+                    list.loads.inFlight?.selection = selection
                 }
                 if await paintFromCache(list: list) { list.status.loadState = .loaded }
             }
             guard list.isCurrent(selection, signIn) else { return }
             let fetched = try await newestPages(of: list.targets, session: list.session)
-            if fetched.failure == .authenticationFailed, signIn.isCurrent {
-                list.session.reportAuthenticationRejection()
-            }
             guard list.isCurrent(selection, signIn) else { return }
             for (folder, page) in fetched.pages {
-                guard await merge(page, folder: folder, since: token, selection: selection, signIn: signIn, list: list) else { return }
+                let merge = await merge(page, folder: folder, since: token, selection: selection, signIn: signIn, list: list)
+                guard merge == .merged else { return }
             }
             list.rebuildRows()
             if let failure = fetched.failure { throw failure }
@@ -63,26 +68,26 @@ enum MailListLoader {
     private static func merge(
         _ fresh: MailFolderPage, folder: String, since token: EditToken, selection: MailFolderSelection, signIn: SignIn,
         list: MailListViewModel
-    ) async -> Bool {
+    ) async -> Merge {
         if list.mailbox[folder]?.uidNext != fresh.uidNext { list.background.indexer.noteNewMail() }
         if let previous = list.mailbox[folder], previous.uidValidity != fresh.uidValidity {
             await list.writer.dropFolder(folder)
             list.mailbox.drop(folder)
-            guard list.isCurrent(selection, signIn) else { return false }
+            guard list.isCurrent(selection, signIn) else { return .superseded }
         }
         var merged = list.mailbox.mergeFresh(fresh, folder: folder, since: token)
         list.rebuildRows()
         if merged.summaries.isEmpty, merged.messageCount > 0 {
-            merged = list.mailbox.applyingEdits(to: await walkBack(from: merged, folder: folder, since: token, list: list),
-                                                since: token)
+            merged = list.mailbox.replayingEdits(onto: await walkBack(from: merged, folder: folder, since: token, list: list),
+                                                madeAfter: token)
         }
-        guard list.isCurrent(selection, signIn) else { return false }
-        await list.writer.save(merged)
-        return true
+        guard list.isCurrent(selection, signIn) else { return .superseded }
+        await list.writer.save(merged).value
+        return .merged
     }
 
     private static func adoptDefaultSelection(list: MailListViewModel) -> Bool {
-        guard !list.folders.wasChosen, list.selection != .allMail, list.showsAllMailChip else { return false }
+        guard !list.folders.pickedByUser, list.selection != .allMail, list.showsAllMailChip else { return false }
         list.folders.selection = .allMail
         return true
     }
@@ -92,7 +97,7 @@ enum MailListLoader {
         for folder in list.targets where list.mailbox[folder] == nil {
             if let cached = await list.writer.cachedPage(folder: folder) {
                 list.mailbox[folder] = cached
-                list.mailbox.cachePainted.insert(folder)
+                list.mailbox.cachedNotRefreshed.insert(folder)
                 painted = true
             }
         }
@@ -113,7 +118,7 @@ enum MailListLoader {
                     if MailErrorClass(error).endsTheRun { break }
                 }
             }
-            return (pages, failure)
+            return Fetched(pages: pages, failure: failure)
         }
         let fetchedAt = Date()
         let pages = fetched.pages.map { folder, page in
@@ -121,7 +126,7 @@ enum MailListLoader {
             fresh.fetchedAt = fetchedAt
             return (folder, fresh)
         }
-        return (pages, fetched.failure)
+        return Fetched(pages: pages, failure: fetched.failure)
     }
 
     static func walkBack(
@@ -138,12 +143,12 @@ enum MailListLoader {
                 try await client.page(folder: folder, olderThanSequence: cursor, pageSize: MailConstants.pageSize)
             }) else { break }
             guard list.isCurrent(selection, signIn), older.uidValidity == current.uidValidity else { break }
-            current = list.mailbox.applyingEdits(to: MailFolderPage(
+            current = list.mailbox.replayingEdits(onto: MailFolderPage(
                 folder: current.folder, uidValidity: current.uidValidity, messageCount: current.messageCount,
                 summaries: older.summaries.sorted { $0.uid > $1.uid },
                 oldestLoadedSequence: older.oldestLoadedSequence, uidNext: current.uidNext,
                 fetchedAt: current.fetchedAt
-            ), since: token)
+            ), madeAfter: token)
             list.setPage(current, folder: folder)
         }
         return current
@@ -152,7 +157,7 @@ enum MailListLoader {
     static func loadOlder(list: MailListViewModel) async {
         let selection = list.selection
         let signIn = await list.account.startingSignIn
-        let token = list.mailbox.editToken
+        let token = list.mailbox.lastEdit
         let cursors = list.targets.compactMap { folder in list.mailbox[folder]?.oldestLoadedSequence.map { (folder, $0) } }
         guard !cursors.isEmpty else { return }
         list.status.isPaginating = true
@@ -172,7 +177,7 @@ enum MailListLoader {
                     }
                     let lowest = page.summaries.map(\.uid).min()
                     let merged = MailboxPages.mergeOlder(next, into: page)
-                    list.setPage(list.mailbox.applyingEdits(to: merged, since: token), folder: folder)
+                    list.setPage(list.mailbox.replayingEdits(onto: merged, madeAfter: token), folder: folder)
                     let addedOlder = lowest.map { lowest in merged.summaries.contains { $0.uid < lowest } } ?? !merged.summaries.isEmpty
                     if addedOlder || extraPages == MailConstants.emptyWindowWalkbackPages {
                         cursor = nil

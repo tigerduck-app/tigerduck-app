@@ -22,19 +22,19 @@ final class EditSender {
     }
 
     @discardableResult
-    func syncAssignmentOverride(moodleId: String, status: String) -> Task<Void, Never>? {
+    func syncAssignmentOverride(moodleId: String, status: String, for signIn: SignIn) -> Task<Void, Never>? {
         guard Defaults[.cloudSyncEnabled], Defaults[.syncAssignments] else { return nil }
         AppLogger.sync.debug("override enqueue: \(moodleId, privacy: .private) → \(status, privacy: .public)")
         guard let moodleAssignmentId = Int(moodleId) else { return nil }
         localEdits.overrideEditGeneration &+= 1
-        localEdits.pendingOverrides.insert(moodleId)
+        localEdits.marksAndIgnoresEnqueuing.insert(moodleId)
         let queued = Task { [weak self] in
             guard let self else { return }
             await coordinator.enqueueAssignmentOverride(
                 moodleCourseId: 0,
                 moodleAssignmentId: moodleAssignmentId,
-                localStatus: status)
-            localEdits.pendingOverrides.remove(moodleId)
+                localStatus: status, for: signIn)
+            localEdits.marksAndIgnoresEnqueuing.remove(moodleId)
         }
         coordinator.scheduleTick(after: 1)
         poller.noteActivity()
@@ -42,19 +42,21 @@ final class EditSender {
     }
 
     @discardableResult
-    func syncCourseIgnore(semester: String, courseNo: String, moodleIdNumber: String?, ignore: Bool) -> Task<Void, Never>? {
+    func syncCourseIgnore(
+        semester: String, courseNo: String, moodleIdNumber: String?, ignore: Bool, for signIn: SignIn
+    ) -> Task<Void, Never>? {
         guard Defaults[.cloudSyncEnabled] else { return nil }
         let moodleId = moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 } ?? "\(semester)\(courseNo)"
         let moodleCourseId = CourseLookup.moodleCourseId(idnumber: moodleId)
         let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
         localEdits.overrideEditGeneration &+= 1
-        localEdits.pendingOverrides.insert(key)
+        localEdits.marksAndIgnoresEnqueuing.insert(key)
         let queued = Task { [weak self] in
             guard let self else { return }
             await coordinator.enqueueCourseIgnore(
                 semester: semester, courseNo: courseNo, moodleId: moodleId,
-                moodleCourseId: moodleCourseId, ignore: ignore)
-            localEdits.pendingOverrides.remove(key)
+                moodleCourseId: moodleCourseId, ignore: ignore, for: signIn)
+            localEdits.marksAndIgnoresEnqueuing.remove(key)
         }
         coordinator.scheduleTick(after: 1)
         poller.noteActivity()
@@ -62,12 +64,14 @@ final class EditSender {
     }
 
     @discardableResult
-    func syncCourseIgnores(_ keys: Set<String>) -> [Task<Void, Never>?] {
+    func syncCourseIgnores(_ keys: Set<String>, for signIn: SignIn) -> [Task<Void, Never>?] {
         keys.sorted().map { key in
             guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { return nil }
             let course = (CourseStore.shared.loadCourses(semester: semester)
                 + CourseStore.shared.loadUserAddedCourses(semester: semester)).first { $0.courseNo == courseNo }
-            return syncCourseIgnore(semester: semester, courseNo: courseNo, moodleIdNumber: course?.moodleIdNumber, ignore: true)
+            return syncCourseIgnore(
+                semester: semester, courseNo: courseNo, moodleIdNumber: course?.moodleIdNumber, ignore: true, for: signIn
+            )
         }
     }
 
@@ -76,17 +80,18 @@ final class EditSender {
         moodleCourseId: String,
         colorHex: String? = nil,
         customName: String? = nil,
-        locale: String? = nil
+        locale: String? = nil,
+        for signIn: SignIn
     ) -> [Task<Void, Never>?] {
         guard Defaults[.cloudSyncEnabled] else { return [] }
         let semester = CourseSelectionService.currentSemesterCode()
         let queued = [
             colorHex.flatMap {
-                coordinator.enqueueCourseColorOverride(moodleId: moodleCourseId, semester: semester, colorHex: $0)
+                coordinator.enqueueCourseColorOverride(moodleId: moodleCourseId, semester: semester, colorHex: $0, for: signIn)
             },
             customName.flatMap {
                 coordinator.enqueueCourseNameOverride(
-                    moodleId: moodleCourseId, semester: semester, customName: $0, locale: locale)
+                    moodleId: moodleCourseId, semester: semester, customName: $0, locale: locale, for: signIn)
             },
         ]
         coordinator.scheduleTick(after: 1)
@@ -94,22 +99,22 @@ final class EditSender {
         return queued
     }
 
-    func addCourses(_ keys: [String], semester: String) {
+    func addCourses(_ serverKeys: [String], semester: String, for signIn: SignIn) {
         let addedAt = Date()
-        Task { await coordinator.discardCourseDeletes(courseKeys: Set(keys), madeBefore: addedAt) }
+        Task { await coordinator.discardCourseDeletes(courseKeys: Set(serverKeys), madeBeforeAction: addedAt) }
         guard SyncPolicy.current.uploadsCourses else { return }
         let prefix = CourseTombstone.serverKey(semester: semester, courseNo: "")
-        for key in keys where key.hasPrefix(prefix) {
-            coordinator.addCourse(semester: semester, courseNo: String(key.dropFirst(prefix.count)))
+        for key in serverKeys where key.hasPrefix(prefix) {
+            coordinator.addCourse(semester: semester, courseNo: String(key.dropFirst(prefix.count)), for: signIn)
         }
     }
 
-    func deleteBackendCourse(courseNo: String, semester: String) {
+    func deleteBackendCourse(courseNo: String, semester: String, for signIn: SignIn) {
         guard Defaults[.cloudSyncEnabled] else { return }
         let hiddenAt = Date()
-        localEdits.recentCourseDeletions[courseNo] = hiddenAt
+        localEdits.setRecentCourseDeletions(localEdits.recentCourseDeletions.merging([courseNo: hiddenAt]) { $1 }, for: signIn)
         poller.noteActivity()
-        Task { await coordinator.deleteCourse(semester: semester, courseNo: courseNo, at: hiddenAt) }
+        Task { await coordinator.deleteCourse(semester: semester, courseNo: courseNo, at: hiddenAt, for: signIn) }
     }
 
     @discardableResult
@@ -144,10 +149,10 @@ final class EditSender {
         onServer reset: () async throws -> Void, thenLocally resetLocally: () -> Void
     ) async throws {
         try await reset()
-        let resetAt = Date()
+        let serverResetLandedAt = Date()
         resetLocally()
         await coordinator.discardCourseIgnores(semester: semester)
-        await coordinator.discardCourseDeletes(semester: semester, madeBefore: resetAt)
+        await coordinator.discardCourseDeletes(semester: semester, madeBeforeAction: serverResetLandedAt)
     }
 
     nonisolated static func courseColorsAfterCoursesChange(coursesNowOn: Bool) -> Bool {
@@ -158,22 +163,22 @@ final class EditSender {
         Self.courseColorsAfterCoursesChange(coursesNowOn: coursesNowOn)
     }
 
-    func reassignAllCourseColors() {
+    func reassignAllCourseColors(for signIn: SignIn) {
         let semester = CourseSelectionService.currentSemesterCode()
         let courses = CanonicalCourseProvider().currentCourses(semester: semester)
-        TigerDuckTheme.reassignAll(courseNos: courses.map(\.courseNo), for: account.currentSignIn)
+        TigerDuckTheme.reassignAll(courseNos: courses.map(\.courseNo), for: signIn)
         guard Defaults[.cloudSyncEnabled] else { return }
         let colorMap = TigerDuckTheme.snapshot()
         for course in courses {
             guard let hex = colorMap[course.courseNo] else { continue }
             syncCourseOverride(
                 moodleCourseId: Self.colorIdentity(of: course, semester: semester),
-                colorHex: String(format: "#%06X", hex)
+                colorHex: String(format: "#%06X", hex), for: signIn
             )
         }
     }
 
-    func syncColorPick(_ hex: UInt32, for picked: SDCourse, changed: [String: UInt32]) {
+    func syncColorPick(_ hex: UInt32, for picked: SDCourse, changed: [String: UInt32], signIn: SignIn) {
         guard Defaults[.cloudSyncEnabled] else { return }
         var colors = changed
         colors[picked.courseNo] = hex & 0xFFFFFF
@@ -185,7 +190,7 @@ final class EditSender {
             userAdded: others ? CourseStore.shared.loadUserAddedCourses() : []
         )
         for override in Self.courseColorOverrides(colors, moodleIds: identities) {
-            syncCourseOverride(moodleCourseId: override.moodleId, colorHex: override.colorHex)
+            syncCourseOverride(moodleCourseId: override.moodleId, colorHex: override.colorHex, for: signIn)
         }
     }
 

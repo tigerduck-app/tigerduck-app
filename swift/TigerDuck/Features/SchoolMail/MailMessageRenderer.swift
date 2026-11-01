@@ -9,27 +9,28 @@ nonisolated enum MailMessageRenderer {
         var pages: MailFormattedPages?
     }
 
-    static func detachedCancellably<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+    static func detachedCancellably<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
         let task = Task.detached(operation: work)
-        return await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+        return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
     }
 
-    static func render(html: String?, textBody: String?, allowImages: Bool) async -> Rendered? {
-        await detachedCancellably { () -> Rendered? in
+    static func render(html: String?, textBody: String?, allowImages: Bool) async throws -> Rendered {
+        try await detachedCancellably { () throws -> Rendered in
             guard let html else { return Rendered(plainText: textBody ?? "") }
             let sanitized = MailHTMLSanitizer.sanitize(html, allowRemoteImages: allowImages)
-            guard !Task.isCancelled else { return nil }
+            try Task.checkCancellation()
             let linked = MailHTMLSanitizer.rewriteLinks(sanitized.html)
-            guard !Task.isCancelled else { return nil }
+            try Task.checkCancellation()
             let readable = MailReadableHTML(linked.html)
             let pages = MailFormattedPages(
                 app: readable.html(on: .app),
                 light: readable.html(on: .light),
                 setsColors: readable.setsColors
             )
-            guard !Task.isCancelled else { return nil }
+            try Task.checkCancellation()
             let plain = textBody ?? MailHTMLSanitizer.plainText(fromHTML: sanitized.html)
-            return Task.isCancelled ? nil : Rendered(sanitized: sanitized, linked: linked, plainText: plain, pages: pages)
+            try Task.checkCancellation()
+            return Rendered(sanitized: sanitized, linked: linked, plainText: plain, pages: pages)
         }
     }
 

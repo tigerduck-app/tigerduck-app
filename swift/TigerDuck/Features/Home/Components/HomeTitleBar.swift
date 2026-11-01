@@ -1,7 +1,12 @@
 import SwiftUI
 
 struct HomeTitleBar: View {
-    var showsControls = true
+    enum Controls {
+        case shown
+        case spaceOnly
+    }
+
+    var controls: Controls = .shown
     let onEdit: () -> Void
 
     var body: some View {
@@ -10,7 +15,7 @@ struct HomeTitleBar: View {
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
-            let controls = HStack(spacing: TigerDuckTheme.Spacing.lg) {
+            let controlsRow = HStack(spacing: TigerDuckTheme.Spacing.lg) {
                 SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
                 HeaderMenuButton(accessibilityLabel: String(localized: "home_more_actions")) {
                     Button { onEdit() } label: {
@@ -18,7 +23,10 @@ struct HomeTitleBar: View {
                     }
                 }
             }
-            if showsControls { controls } else { controls.hidden() }
+            switch controls {
+            case .shown: controlsRow
+            case .spaceOnly: controlsRow.hidden()
+            }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }

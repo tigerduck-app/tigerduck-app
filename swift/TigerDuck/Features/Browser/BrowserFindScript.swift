@@ -1,6 +1,22 @@
 import UIKit
 import WebKit
 
+enum BrowserFindAction: Equatable {
+    case texts
+    case mark(ranges: [[Int]])
+    case select(index: Int)
+    case clear
+
+    fileprivate var arguments: [String: Any] {
+        switch self {
+        case .texts: ["action": "texts"]
+        case .mark(let ranges): ["action": "mark", "ranges": ranges]
+        case .select(let index): ["action": "select", "index": index]
+        case .clear: ["action": "clear"]
+        }
+    }
+}
+
 enum BrowserFindScript {
     nonisolated static let source = """
     var marker = 'data-tigerduck-find';
@@ -108,8 +124,8 @@ enum BrowserFindScript {
       addEventListener('resize', spotlight);
     }
     function centre(range) {
-      var scale = view[2] / innerWidth;
-      var top = (view[0] + view[3]) / scale - scrollY, bottom = (view[1] + view[3]) / scale - scrollY;
+      var scale = view.width / innerWidth;
+      var top = (view.top + view.scrollY) / scale - scrollY, bottom = (view.bottom + view.scrollY) / scale - scrollY;
       for (var box = range.startContainer.parentElement; box; box = box.parentElement) {
         if (box === document.scrollingElement) continue;
         var style = getComputedStyle(box), m = range.getBoundingClientRect(), b = box.getBoundingClientRect();
@@ -132,7 +148,8 @@ enum BrowserFindScript {
       spotlight();
       if (!pieces.length) return null;
       var r = pieces[0].getBoundingClientRect();
-      return [r.left + scrollX, r.top + scrollY, r.right + scrollX, r.bottom + scrollY, innerWidth];
+      return { left: r.left + scrollX, top: r.top + scrollY, right: r.right + scrollX, bottom: r.bottom + scrollY,
+               pageWidth: innerWidth };
     }
     if (action === 'texts') return texts();
     if (action === 'mark') return mark();
@@ -141,27 +158,45 @@ enum BrowserFindScript {
     """
 }
 
+private struct BrowserFindMatch {
+    var left: Double
+    var top: Double
+    var right: Double
+    var bottom: Double
+    var pageWidth: Double
+
+    init?(_ result: Any?) {
+        guard let box = result as? [String: Double], let left = box["left"], let top = box["top"],
+              let right = box["right"], let bottom = box["bottom"], let pageWidth = box["pageWidth"], pageWidth > 0
+        else { return nil }
+        (self.left, self.top, self.right, self.bottom, self.pageWidth) = (left, top, right, bottom, pageWidth)
+    }
+}
+
 extension WKWebView {
-    func runFind(_ arguments: [String: Any]) async -> Any? {
+    func runFind(_ action: BrowserFindAction) async -> Any? {
         let inset = scrollView.adjustedContentInset
-        let view = [inset.top, bounds.height - inset.bottom, bounds.width, scrollView.contentOffset.y]
-        let all: [String: Any] = ["action": "clear", "ranges": [[Int]](), "index": 0, "view": view]
-            .merging(arguments) { $1 }
-        let result = try? await callAsyncJavaScript(BrowserFindScript.source, arguments: all, in: nil, contentWorld: .defaultClient)
-        if let match = result as? [Double], match.count == 5, match[4] > 0 { reveal(match) }
+        let view: [String: Double] = [
+            "top": inset.top, "bottom": bounds.height - inset.bottom, "width": bounds.width, "scrollY": scrollView.contentOffset.y,
+        ]
+        let arguments: [String: Any] = ["action": "clear", "ranges": [[Int]](), "index": 0, "view": view]
+            .merging(action.arguments) { $1 }
+        let result = try? await callAsyncJavaScript(BrowserFindScript.source, arguments: arguments, in: nil,
+                                                    contentWorld: .defaultClient)
+        if case .select = action, let match = BrowserFindMatch(result) { reveal(match) }
         return result
     }
 
-    private func reveal(_ match: [Double]) {
-        let scale = bounds.width / match[4]
+    private func reveal(_ match: BrowserFindMatch) {
+        let scale = bounds.width / match.pageWidth
         let inset = scrollView.adjustedContentInset
         let size = scrollView.bounds.size, content = scrollView.contentSize
         var offset = scrollView.contentOffset
-        let middle = (match[1] + match[3]) / 2 * scale
+        let middle = (match.top + match.bottom) / 2 * scale
         offset.y = min(max(middle - (inset.top + size.height - inset.bottom) / 2, -inset.top),
                        max(content.height + inset.bottom - size.height, -inset.top))
-        if match[0] * scale < offset.x + inset.left || match[2] * scale > offset.x + size.width - inset.right {
-            offset.x = min(max((match[0] + match[2]) / 2 * scale - size.width / 2, -inset.left),
+        if match.left * scale < offset.x + inset.left || match.right * scale > offset.x + size.width - inset.right {
+            offset.x = min(max((match.left + match.right) / 2 * scale - size.width / 2, -inset.left),
                            max(content.width + inset.right - size.width, -inset.left))
         }
         scrollView.setContentOffset(offset, animated: !UIAccessibility.isReduceMotionEnabled)

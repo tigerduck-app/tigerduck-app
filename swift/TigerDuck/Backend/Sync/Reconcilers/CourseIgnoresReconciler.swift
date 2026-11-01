@@ -13,7 +13,7 @@ struct CourseIgnoresReconciler: CategoryReconciler {
         }
         return applyIgnoredCourses(
             server, decided: Self.serverDecidedCourses(pass.courseOverrides),
-            coursesArray: pass.coursesArray, protected: pass.protected, deleting: pass.courseDeletes,
+            coursesArray: pass.coursesArray, protected: pass.queuedMarkAndIgnoreKeys, deleting: pass.courseDeletes,
             fetchedAt: pass.fetchedAt, for: pass.signIn
         )
     }
@@ -196,7 +196,7 @@ struct CourseIgnoresReconciler: CategoryReconciler {
             Task { [coordinator = app.cloudSyncCoordinator] in
                 await coordinator.enqueueCourseIgnore(
                     semester: course.semester, courseNo: course.courseNo, moodleId: moodleId,
-                    moodleCourseId: moodleCourseId, ignore: nil)
+                    moodleCourseId: moodleCourseId, ignore: nil, for: signIn)
             }
         }
         if !missingIds.isEmpty { app.cloudSyncCoordinator.scheduleTick(after: 1) }
@@ -211,7 +211,7 @@ struct CourseIgnoresReconciler: CategoryReconciler {
         )
         if !resend.isEmpty {
             AppLogger.sync.info("[syncOverrides] sending \(resend.count, privacy: .public) course settings the server lost again")
-            app.edits.syncCourseIgnores(resend)
+            app.edits.syncCourseIgnores(resend, for: signIn)
         }
         guard merged != current else { return false }
         AssignmentStore.shared.replaceIgnoredAssignmentCourses(merged, for: signIn)

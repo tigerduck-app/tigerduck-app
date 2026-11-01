@@ -39,7 +39,7 @@ final class HomeViewModel {
     func load(authService: AuthService) {
         guard !hasLoaded else { return }
         hasLoaded = true
-        layout.loadIfEmpty()
+        layout.loadSavedLayoutAddingNewSections()
         reloadFromCache()
     }
 

@@ -1,38 +1,37 @@
 import Foundation
 import os
 
+/// Reads and writes the settings documents of the sign-in it was made for.
 actor SettingsDocumentClient {
     private let backend: BackendClient
-
-    init(backend: BackendClient) {
-        self.backend = backend
-    }
+    private let signIn: SignIn
 
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        authHeaderProvider: @escaping @Sendable () async -> String? = { nil }
+        auth: BackendAuth,
+        for signIn: SignIn
     ) {
-        backend = BackendClient(
-            baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: .header(authHeaderProvider)
-        )
+        backend = BackendClient(baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: auth)
+        self.signIn = signIn
     }
 
-    func read(namespace: String) async throws -> (document: Data, revision: Int)? {
-        var request = BackendRequest("GET", segments: ["settings", namespace])
+    func read(namespace: String) async throws -> SettingsDocument {
+        var request = BackendRequest("GET", segments: ["settings", namespace]).sent(for: signIn)
         request.sendsWithoutSession = true
-        request.accepting = [404]
+        request.returnedStatuses = [404]
         let response = try await backend.send(request)
         if response.status == 404 {
-            guard BackendClient.errorCode(in: response.data) != "not_found" else {
+            guard BackendClient.errorCode(in: response.data) == "settings_document_not_found" else {
                 throw PushAPIError.httpStatus(404, body: String(decoding: response.data.prefix(512), as: UTF8.self))
             }
-            return nil
+            return .neverWritten
         }
-        return try Self.parseDocumentEnvelope(response.data)
+        let (document, revision) = try Self.parseDocumentEnvelope(response.data)
+        return .stored(document: document, revision: revision)
     }
 
-    func write(namespace: String, document: Data, baseRevision: Int?) async throws -> SettingsWriteResult {
+    func write(namespace: String, document: Data, mode: SettingsWriteMode) async throws -> SettingsWriteResult {
         let documentObject: Any
         do {
             documentObject = try JSONSerialization.jsonObject(with: document, options: [.fragmentsAllowed])
@@ -44,10 +43,9 @@ actor SettingsDocumentClient {
             "schema_version": 1,
             "document": documentObject,
         ]
-        if let baseRevision {
-            envelope["base_revision"] = baseRevision
-        } else {
-            envelope["base_revision"] = NSNull()
+        switch mode {
+        case .create: envelope["base_revision"] = NSNull()
+        case .replace(let revision): envelope["base_revision"] = revision
         }
 
         let body: Data
@@ -57,10 +55,10 @@ actor SettingsDocumentClient {
             throw PushAPIError.encodingFailed(error)
         }
 
-        var request = BackendRequest("PUT", segments: ["settings", namespace])
+        var request = BackendRequest("PUT", segments: ["settings", namespace]).sent(for: signIn)
         request.sendsWithoutSession = true
         request.body = body
-        request.accepting = [409]
+        request.returnedStatuses = [409]
         let response = try await backend.send(request)
         if response.status == 409 {
             return try Self.parseConflict(response.data)
@@ -122,6 +120,16 @@ actor SettingsDocumentClient {
         }
         return .conflict(document: try documentData(documentObject), revision: revision)
     }
+}
+
+nonisolated enum SettingsDocument: Equatable, Sendable {
+    case neverWritten
+    case stored(document: Data, revision: Int)
+}
+
+nonisolated enum SettingsWriteMode: Equatable, Sendable {
+    case create
+    case replace(revision: Int)
 }
 
 nonisolated enum SettingsWriteResult: Equatable, Sendable {

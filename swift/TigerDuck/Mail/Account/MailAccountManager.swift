@@ -29,7 +29,7 @@ final class MailAccountManager {
         }
     }
 
-    static let shared = MailAccountManager(signOutEvents: .default)
+    static let shared = MailAccountManager(signOutEvents: .default, session: .mail)
 
     static let didSignOut = Notification.Name("SchoolMail.didSignOut")
 
@@ -57,32 +57,28 @@ final class MailAccountManager {
     }
     var showsAuthFailedBanner: Bool { authFailed && !authBannerDismissed }
 
-    var displayName: String? {
-        get { settings.displayName }
-        set {
-            settings.displayName = newValue
-            prefs.displayName = newValue?.mailNonEmpty
-        }
+    var displayName: String? { settings.displayName }
+    var notificationsEnabled: Bool { settings.notificationsEnabled }
+    var muteSettings: MailMuteSettings { settings.muteSettings }
+
+    func setDisplayName(_ name: String?, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        settings.displayName = name
+        prefs.change(for: signIn) { $0.displayName = name?.mailNonEmpty }
     }
 
-    var notificationsEnabled: Bool {
-        get { settings.notificationsEnabled }
-        set {
-            let changed = newValue != settings.notificationsEnabled
-            settings.notificationsEnabled = newValue
-            guard changed else { return }
-            prefs.notificationsEnabled = newValue
-            guard isLoggedIn else { return }
-            if newValue { listeners.notificationsEnabled?() } else { listeners.notificationsDisabled?() }
-        }
+    func setNotificationsEnabled(_ enabled: Bool, for signIn: SignIn) {
+        guard signIn.isCurrent, enabled != settings.notificationsEnabled else { return }
+        settings.notificationsEnabled = enabled
+        prefs.change(for: signIn) { $0.notificationsEnabled = enabled }
+        guard isLoggedIn else { return }
+        if enabled { listeners.notificationsEnabled?() } else { listeners.notificationsDisabled?() }
     }
 
-    var muteSettings: MailMuteSettings {
-        get { settings.muteSettings }
-        set {
-            settings.muteSettings = newValue
-            prefs.muteSettings = newValue
-        }
+    func setMuteSettings(_ mute: MailMuteSettings, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        settings.muteSettings = mute
+        prefs.change(for: signIn) { $0.muteSettings = mute }
     }
 
     var isLoggedIn: Bool { studentID != nil }
@@ -122,13 +118,15 @@ final class MailAccountManager {
         let signedIn = session.endSignIn()
 
         lastRejectedPassword = nil
-        prefs.studentID = id
-        prefs.demoActive = client.demo
-        prefs.authFailed = false
+        prefs.change(for: signedIn) {
+            $0.studentID = id
+            $0.demoActive = client.demo
+            $0.authFailed = false
+        }
         await establishBaseline(client: client.client, for: signedIn)
         if prefs.displayName == nil {
             let discovered = await discoverDisplayName(client: client.client, address: MailConstants.address(forStudentID: id))
-            if signedIn.isCurrent { displayName = discovered }
+            setDisplayName(discovered, for: signedIn)
         }
         await client.client.logout()
 
@@ -153,7 +151,7 @@ final class MailAccountManager {
                 await client.logout()
                 return nil
             }
-            try signIn.credentials.savePassword(password)
+            try signIn.credentials.savePassword(password, for: signedOut)
         } catch {
             await client.logout()
             let failure = LoginError(error)
@@ -164,6 +162,7 @@ final class MailAccountManager {
         return (client, demo)
     }
 
+    // RFC 5321 §2.3.11 lets a server treat an address's local part as case-sensitive.
     static func normalizedUsername(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.contains("@") ? trimmed : trimmed.uppercased()
@@ -185,7 +184,7 @@ final class MailAccountManager {
                 return client
             } catch MailClientError.authenticationFailed {
                 await client.logout()
-                if signedIn.isCurrent { handleAuthFailure() }
+                handleAuthFailure(for: signedIn)
                 throw MailClientError.authenticationFailed
             } catch {
                 await client.logout()
@@ -194,22 +193,22 @@ final class MailAccountManager {
         }
     }
 
-    func handleAuthFailure() {
-        guard !authFailed else { return }
-        prefs.authFailed = true
+    func handleAuthFailure(for signIn: SignIn) {
+        guard signIn.isCurrent, !authFailed else { return }
+        prefs.change(for: signIn) { $0.authFailed = true }
         authFailed = true
         listeners.authFailed?()
     }
 
     func logout() {
-        SignOutPlan(session: session, stores: SignOutPlan.mailStores, clearRest: { [self] in
+        SignOutPlan(session: session, stores: SignOutPlan.mailStores, clearMemoryState: { [self] in
             cacheWipe.start(prefs: prefs)
             studentID = nil
             signInStatus.error = nil
             authFailed = false
-            displayName = nil
-            notificationsEnabled = prefs.notificationsEnabled
-            muteSettings = prefs.muteSettings
+            settings = MailAccountSettings(
+                displayName: nil, notificationsEnabled: prefs.notificationsEnabled, muteSettings: prefs.muteSettings
+            )
             listeners.signOutEvents.post(name: Self.didSignOut, object: nil)
             listeners.signedOut?()
         }).run(in: AccountStorage(mailPreferences: prefs, mailCredentials: signIn.credentials))
@@ -222,7 +221,7 @@ final class MailAccountManager {
     private func establishBaseline(client: any MailClient, for signIn: SignIn) async {
         guard let status = try? await client.status(folder: MailConstants.inbox) else { return }
         guard signIn.isCurrent else { return }
-        MailInboxCursor(prefs: prefs).reset(to: status)
+        MailInboxCursor(prefs: prefs).reset(to: status, for: signIn)
     }
 
     private func discoverDisplayName(client: any MailClient, address: String) async -> String? {

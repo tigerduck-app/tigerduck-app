@@ -3,7 +3,7 @@ import SwiftUI
 #if canImport(UIKit)
 /// `scrollDisabled` does not reach the page-style `TabView`'s pager, hence the UIKit walk to
 /// find it.
-struct PagingScrollLock: UIViewRepresentable {
+struct ForwardPagingLock: UIViewRepresentable {
     let isLocked: Bool
 
     /// A page-style `TabView` reverses under a right-to-left language, so the
@@ -61,7 +61,7 @@ struct PagingScrollLock: UIViewRepresentable {
             hasJudgedDrag = true
 
             let isRTL = pager.effectiveUserInterfaceLayoutDirection == .rightToLeft
-            guard PagingScrollLock.isForwardDrag(translationX: dx, isRTL: isRTL) else { return }
+            guard ForwardPagingLock.isForwardDrag(translationX: dx, isRTL: isRTL) else { return }
 
             // Turning scrolling off and straight back on cancels the pan in
             // flight; the pager snaps back to the page it started on.
@@ -71,7 +71,7 @@ struct PagingScrollLock: UIViewRepresentable {
     }
 }
 #else
-struct PagingScrollLock: View {
+struct ForwardPagingLock: View {
     let isLocked: Bool
     var body: some View { EmptyView() }
 }

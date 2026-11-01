@@ -90,7 +90,7 @@ struct CourseIgnoredAssignmentsTests {
     func ownMarksReturnWhenTheCourseIsNoLongerIgnored() {
         let cache = Self.cacheIgnoringCS1()
         cache.assignments.apply(.setArchived(id: "a1", true), for: testSignIn)
-        cache.assignments.apply(.setCompleted(id: "a2", true), for: testSignIn)
+        cache.assignments.apply(.setLocallyCompleted(id: "a2", true), for: testSignIn)
 
         let ignored = cache.assignments.loadAssignments(semester: Self.term)
         #expect(Self.ids(ignored.filter(\.isArchived)) == ["a1", "a2"])
@@ -223,10 +223,10 @@ struct ClassTableIgnoredCourseTests {
         defer { Defaults[.classTableSelectedSemester] = storedPick }
         let viewModel = ClassTableViewModel()
 
-        viewModel.currentSemester = CourseSelectionService.currentSemesterCode()
+        viewModel.pickSemester(CourseSelectionService.currentSemesterCode(), for: AccountSession.school.currentSignIn)
         #expect(viewModel.editor.offersIgnoreAssignments)
 
-        viewModel.currentSemester = "1001"
+        viewModel.pickSemester("1001", for: AccountSession.school.currentSignIn)
         #expect(!viewModel.editor.offersIgnoreAssignments)
     }
 }

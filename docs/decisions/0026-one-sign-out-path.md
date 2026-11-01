@@ -17,7 +17,7 @@ leaves on the device.
 - Each account signs out through a `SignOutPlan` of its own
   (`swift/TigerDuck/Account/SignOutPlan.swift`), so signing out of one leaves the other two
   alone: the school account (NTUST, Moodle and the TigerDuck backend) through
-  `SignOutPlan.school(_:)`, the library through `LibraryService.clearCredentials()` and School
+  `SignOutPlan.school(_:)`, the library through `LibraryService.signOutLibraryOnly()` and School
   Mail through `MailAccountManager.logout()`. The Settings and Mac buttons run the school plan,
   and a sign-in as another student runs it through `AuthService.signOutStoredAccount` first.
   A plan runs in this order:

@@ -1,7 +1,9 @@
 import Defaults
 import Foundation
 
-typealias PullGate = @MainActor () async -> Bool
+enum PullOutcome { case completed, cancelled }
+
+typealias PullGate = @MainActor () async -> PullOutcome
 
 private final class AssignmentRound {
     let signIn: SignIn
@@ -15,13 +17,13 @@ private final class AssignmentRound {
         self.rechecks = rechecks
     }
 
-    func pulled() async -> Bool {
+    func firstCompletedPull() async -> PullOutcome {
         var next = 0
         while next < gates.count {
-            if await gates[next]() { return true }
+            if await gates[next]() == .completed { return .completed }
             next += 1
         }
-        return false
+        return .cancelled
     }
 }
 
@@ -36,11 +38,12 @@ enum AssignmentFetch {
 
     static func fetchAssignments(
         authService: AuthService, recheckSubmissions: Bool = false,
-        applyAfter: @escaping PullGate = { true }, for signIn: SignIn
+        afterBackendPull: @escaping PullGate = { .completed }, for signIn: SignIn
     ) async -> [SDAssignment] {
-        await sharedRound(signIn: signIn, rechecks: recheckSubmissions, applyAfter: applyAfter) { pulled in
+        await sharedRound(signIn: signIn, rechecks: recheckSubmissions, afterBackendPull: afterBackendPull) { firstCompletedPull in
             await runAssignmentRound(
-                authService: authService, recheckSubmissions: recheckSubmissions, applyAfter: pulled, signIn: signIn
+                authService: authService, recheckSubmissions: recheckSubmissions, afterBackendPull: firstCompletedPull,
+                signIn: signIn
             )
         }
     }
@@ -49,20 +52,20 @@ enum AssignmentFetch {
         signIn: SignIn,
         rechecks: Bool,
         rounds: AssignmentRounds = .shared,
-        applyAfter: @escaping PullGate = { true },
-        run: @escaping @MainActor (_ pulled: @escaping PullGate) async -> [SDAssignment]
+        afterBackendPull: @escaping PullGate = { .completed },
+        run: @escaping @MainActor (_ firstCompletedPull: @escaping PullGate) async -> [SDAssignment]
     ) async -> [SDAssignment] {
         var waitedFor: AssignmentRound?
         while let round = rounds.running, round.signIn.isCurrent, signIn.isCurrent, round !== waitedFor {
-            round.gates.append(applyAfter)
+            round.gates.append(afterBackendPull)
             await round.task?.value
             if round.rechecks || !rechecks { return answer(round, for: signIn) }
             waitedFor = round
         }
         guard signIn.isCurrent else { return AssignmentStore.shared.loadAssignments() }
         let round = AssignmentRound(signIn: signIn, rechecks: rechecks)
-        round.gates = [applyAfter]
-        round.task = Task { round.assignments = await run { await round.pulled() } }
+        round.gates = [afterBackendPull]
+        round.task = Task { round.assignments = await run { await round.firstCompletedPull() } }
         rounds.running = round
         await round.task?.value
         if rounds.running === round { rounds.running = nil }
@@ -86,7 +89,7 @@ enum AssignmentFetch {
     }
 
     static func refreshAssignmentsIfDue(
-        authService: AuthService, applyAfter: @escaping PullGate = { true }, for signIn: SignIn
+        authService: AuthService, afterBackendPull: @escaping PullGate = { .completed }, for signIn: SignIn
     ) async {
         let now = Date()
         guard authService.storedStudentId != nil,
@@ -99,7 +102,7 @@ enum AssignmentFetch {
         let showsProgress = manager.loadingState == .idle || manager.loadingState == .loaded
         if showsProgress { manager.loadingState = .loading }
         let starts = manager.loadingStarts
-        _ = await fetchAssignments(authService: authService, applyAfter: applyAfter, for: signIn)
+        _ = await fetchAssignments(authService: authService, afterBackendPull: afterBackendPull, for: signIn)
         if showsProgress, manager.loadingStarts == starts { manager.loadingState = .loaded }
     }
 
@@ -109,7 +112,7 @@ enum AssignmentFetch {
     }
 
     private static func runAssignmentRound(
-        authService: AuthService, recheckSubmissions: Bool, applyAfter: PullGate, signIn: SignIn
+        authService: AuthService, recheckSubmissions: Bool, afterBackendPull: PullGate, signIn: SignIn
     ) async -> [SDAssignment] {
         guard let account = authService.storedStudentId,
               authService.storedPassword != nil else {
@@ -126,7 +129,7 @@ enum AssignmentFetch {
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
             let moodleIdMapForAssignments = AssignmentRecords.moodleCourseIdMap(moodleEnrolled)
             if !Task.isCancelled {
-                CourseLookup.saveMoodleCourseIds(moodleIdMapForAssignments, for: signIn)
+                CourseLookup.replaceMoodleCourseIds(moodleIdMapForAssignments, for: signIn)
             }
 
             let localCourseNos = Set(currentCourses.map(\.courseNo)).union(
@@ -174,7 +177,7 @@ enum AssignmentFetch {
                 try await MoodleAssignmentService.fetchSubmissionStatus(assignId: $0)
             }
             let statuses = answers.mapValues(\.status)
-            guard await applyAfter() else { return AssignmentStore.shared.loadAssignments() }
+            guard await afterBackendPull() == .completed else { return AssignmentStore.shared.loadAssignments() }
 
             let freshAssignments = AssignmentRecords.assignments(
                 from: records,

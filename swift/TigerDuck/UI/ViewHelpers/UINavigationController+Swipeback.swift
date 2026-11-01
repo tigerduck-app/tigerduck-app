@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 
 /// Re-enables the system swipe-from-left-edge pop gesture app-wide, even on views that use
@@ -16,5 +17,11 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
 
     public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         viewControllers.count > 1
+    }
+}
+
+extension View {
+    func hidesBackButtonKeepingEdgeSwipe() -> some View {
+        navigationBarBackButtonHidden(true)
     }
 }

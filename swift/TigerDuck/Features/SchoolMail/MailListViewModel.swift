@@ -25,7 +25,7 @@ final class MailListViewModel {
         session: MailPageSession? = nil,
         account: AccountSession? = nil,
         cache: MailCache? = nil,
-        noteSeenByPage: ((MailboxStatusInfo) async -> Void)? = nil,
+        noteSeenByPage: ((MailboxStatusInfo, SignIn) async -> Void)? = nil,
         signOutEvents: NotificationCenter = .default,
         warmDelay: @escaping @Sendable () async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + MailConstants.warmStartDelay) },
         catchUpDelay: @escaping @Sendable () async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + MailConstants.searchCatchUpInterval) }
@@ -33,15 +33,16 @@ final class MailListViewModel {
         // Resolved in the body, not the parameter list: a default-argument expression runs outside
         // the init's MainActor isolation, where `MailPageSession()` and `MailAccountManager.shared`
         // warn in Swift 6 mode and the checker's closure would be isolated to `MailChecker`.
-        let session = session ?? MailPageSession()
+        let account = account ?? MailAccountManager.shared.session
+        let session = session ?? MailPageSession(account: account)
         let cache = cache ?? MailAccountManager.shared.cache
         self.session = session
-        loads = MailListLoads(account: account ?? MailAccountManager.shared.session)
+        loads = MailListLoads(account: account)
         writer = MailListCacheWriter(cache: cache)
         // Starts after the warm's delay too, so the refresh that follows a paint goes first.
         let indexer = MailIndexer(session: session, cache: cache, startDelay: warmDelay)
         background = MailListBackground(list: self, indexer: indexer,
-                                        noteSeenByPage: noteSeenByPage ?? { await MailChecker.shared.noteSeenByPage($0) },
+                                        noteSeenByPage: noteSeenByPage ?? { await MailChecker.shared.noteSeenByPage($0, for: $1) },
                                         warmDelay: warmDelay)
         search = MailListSearch(list: self, catchUpDelay: catchUpDelay)
         indexer.onFill = { [weak self] folder in self?.search.indexDidFill(folder) }
@@ -94,17 +95,16 @@ final class MailListViewModel {
 
     /// Whether the status dot spins: a load, or a pass with mail to download.
     var isSyncing: Bool {
-        isRefreshing || (serverStatus == .ok && background.isDownloading)
+        isRefreshing || (serverStatus == .ok && background.indexer.isDownloading)
     }
 
     func load() async { await MailListLoader.load(list: self) }
 
     func refresh(forcingIndex: Bool = false) async {
-        background.cancelWarm()
-        await load()
-        // A pull starts the search index's download at once, however recent the last one.
-        if forcingIndex { background.startIndexIfLoaded(for: .pull) }
-        background.startWarmIfLoaded()
+        await background.pausingWarm {
+            await load()
+            if forcingIndex { background.startIndexIfLoaded(for: .pull) }
+        }
     }
 
     func loadMoreIfNeeded(after row: MailListRow) async {
@@ -114,19 +114,19 @@ final class MailListViewModel {
     }
 
     func select(_ selection: MailFolderSelection) async {
-        folders.wasChosen = true
+        folders.pickedByUser = true
         guard selection != self.selection else { return }
         folders.selection = selection
         mailbox.removeAll()
         rebuildRows()
         clearSearch()
-        background.cancelWarm()
-        await load()
-        // The query stays in the field, so the new mailbox shows its results, not its plain list.
-        if self.selection == selection, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            await submitSearch()
+        await background.pausingWarm {
+            await load()
+            // The query stays in the field, so the new mailbox shows its results, not its plain list.
+            if self.selection == selection, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                await submitSearch()
+            }
         }
-        background.startWarmIfLoaded()
     }
 
     func adoptFolderRoles(_ roles: [MailFolderRole: String]) {
@@ -165,7 +165,7 @@ final class MailListViewModel {
         mailbox.markSeen(folder: folder, uid: uid, seen: seen)
         search.markSeen(folder: folder, uid: uid, seen: seen)
         rebuildRows()
-        if let page = mailbox[folder] { writer.persist(page) }
+        if let page = mailbox[folder] { writer.save(page) }
     }
 
     func removeLocally(folder: String, uid: UInt32) {
@@ -173,7 +173,7 @@ final class MailListViewModel {
         mailbox.remove(folder: folder, uid: uid)
         search.remove(folder: folder, uid: uid)
         rebuildRows()
-        if let page = mailbox[folder] { writer.persist(page) }
+        if let page = mailbox[folder] { writer.save(page) }
     }
 
     private func apply(_ event: MailboxEvents.Event) {

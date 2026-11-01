@@ -7,10 +7,10 @@ import UniformTypeIdentifiers
 @MainActor
 final class MoodleMemberPictures {
 
+    private enum PictureRequest { case inFlight, done }
+
     private(set) var pictures: [URL: CGImage] = [:]
-    @ObservationIgnored private var askedPictures: Set<URL> = []
-    @ObservationIgnored private var picturesInFlight: Set<URL> = []
-    private static var placedRevisions = SignInBound<[URL: Int]>(empty: [:])
+    @ObservationIgnored private var requests: [URL: PictureRequest] = [:]
     @ObservationIgnored private var lastPictureDownload: Task<Data?, Never>?
     @ObservationIgnored private var lastPictureRead: Task<CGImage?, Never>?
     @ObservationIgnored var readPictureFile: @Sendable (URL) -> Data? = { try? Data(contentsOf: $0) }
@@ -23,13 +23,12 @@ final class MoodleMemberPictures {
         self.context = context
     }
 
-
     func loadPicture(of member: MoodleMember) async {
         guard let url = member.pictureURL else { return }
-        if picturesInFlight.contains(url) { _ = await lastPictureDownload?.value }
-        guard !askedPictures.contains(url) else { return }
-        let file = pictureFile(of: member, url: url)
-        let revision = Int(Self.revision(of: url)) ?? 0
+        if requests[url] == .inFlight { _ = await lastPictureDownload?.value }
+        guard requests[url] == nil else { return }
+        let file = AccountPictureFolder.file(of: member, url: url, account: context.account, in: context.cache)
+        let revision = Int(AccountPictureFolder.revision(of: url)) ?? 0
         if pictures[url] == nil, let kept = await readInTurn(file) {
             guard context.signIn.isCurrent else { return }
             pictures[url] = kept
@@ -39,21 +38,16 @@ final class MoodleMemberPictures {
         let decode = decodePicture
         let isShown = pictures[url] != nil
         let changed = await Task.detached(priority: .userInitiated) { () -> (CGImage, URL?)? in
-            let isNew = read(file) != data
-            guard isNew || !isShown, let image = decode(data) else { return nil }
-            guard isNew else { return (image, nil) }
-            return Self.stage(data, for: file, revision: revision).map { (image, $0) }
+            let folderHoldsIt = read(file) == data
+            guard !folderHoldsIt || !isShown, let image = decode(data) else { return nil }
+            guard !folderHoldsIt else { return (image, nil) }
+            return AccountPictureFolder.stage(data, for: file, revision: revision).map { (image, $0) }
         }.value
         guard case let (image, staged)? = changed else { return }
-        var placed = Self.placedRevisions.value
-        guard context.signIn.isCurrent, staged == nil || revision >= placed[file, default: 0] else {
-            if let staged { try? FileManager.default.removeItem(at: staged) }
-            return
-        }
         if let staged {
-            placed[file] = revision
-            Self.placedRevisions.set(placed, for: context.signIn)
-            Self.place(staged, at: file)
+            guard AccountPictureFolder.place(staged, at: file, revision: revision, for: context.signIn) else { return }
+        } else {
+            guard context.signIn.isCurrent else { return }
         }
         pictures[url] = image
     }
@@ -64,9 +58,9 @@ final class MoodleMemberPictures {
     /// image by its extension, which the kept files have none of.
     func picturePreview(of member: MoodleMember) async -> URL? {
         guard let url = member.pictureURL, context.signIn.isCurrent else { return nil }
-        let kept = pictureFile(of: member, url: url)
+        let kept = AccountPictureFolder.file(of: member, url: url, account: context.account, in: context.cache)
         let large = kept.deletingLastPathComponent()
-            .appendingPathComponent("\(kept.lastPathComponent)-\(Self.revision(of: url))-f3")
+            .appendingPathComponent("\(kept.lastPathComponent)-\(AccountPictureFolder.revision(of: url))-f3")
         guard let data = await largePicture(of: url, keptAt: large) ?? (try? Data(contentsOf: kept)),
               context.signIn.isCurrent, let fileExtension = Self.fileExtension(of: data) else { return nil }
         let preview = kept.deletingLastPathComponent()
@@ -119,16 +113,17 @@ final class MoodleMemberPictures {
         let previous = lastPictureDownload
         let turn = Task { [api] () -> Data? in
             _ = await previous?.value
-            guard !Task.isCancelled, !self.askedPictures.contains(url) else { return nil }
-            self.askedPictures.insert(url)
-            self.picturesInFlight.insert(url)
-            defer { self.picturesInFlight.remove(url) }
+            guard !Task.isCancelled, self.requests[url] == nil else { return nil }
+            self.requests[url] = .inFlight
             do {
-                return try await api.picture(url)
+                let data = try await api.picture(url)
+                self.requests[url] = .done
+                return data
             } catch {
                 if Task.isCancelled {
-                    self.askedPictures.remove(url)
+                    self.requests[url] = nil
                 } else {
+                    self.requests[url] = .done
                     AppLogger.breadcrumb("moodle member picture not downloaded: \(error)", category: "moodle")
                 }
                 return nil
@@ -138,25 +133,35 @@ final class MoodleMemberPictures {
         return await withTaskCancellationHandler { await turn.value } onCancel: { turn.cancel() }
     }
 
-    private func pictureFile(of member: MoodleMember, url: URL) -> URL {
-        let account = Self.folderName(context.account)
-        let studentId = Self.folderName(member.studentId ?? "")
-        let name = studentId.isEmpty ? "\(member.id)-\(Self.revision(of: url))" : studentId
-        return context.cache.moodleFilesDir
+    private nonisolated static func image(from data: Data) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+    }
+}
+
+@MainActor
+private enum AccountPictureFolder {
+    private static var placedRevisions = SignInBound<[URL: Int]>(empty: [:])
+
+    static func file(of member: MoodleMember, url: URL, account: String, in cache: MoodleFiles) -> URL {
+        let account = folderName(account)
+        let studentId = folderName(member.studentId ?? "")
+        let name = studentId.isEmpty ? "\(member.id)-\(revision(of: url))" : studentId
+        return cache.moodleFilesDir
             .appendingPathComponent(account.isEmpty ? "_" : account, isDirectory: true)
             .appendingPathComponent("pictures", isDirectory: true)
             .appendingPathComponent(name)
+    }
+
+    nonisolated static func revision(of url: URL) -> String {
+        folderName(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "rev" }?.value ?? "")
     }
 
     private nonisolated static func folderName(_ text: String) -> String {
         String(text.unicodeScalars.filter(CharacterSet.alphanumerics.contains).map(Character.init))
     }
 
-    private nonisolated static func revision(of url: URL) -> String {
-        folderName(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "rev" }?.value ?? "")
-    }
-
-    private nonisolated static func stage(_ data: Data, for file: URL, revision: Int) -> URL? {
+    nonisolated static func stage(_ data: Data, for file: URL, revision: Int) -> URL? {
         let files = FileManager.default
         let prefix = String(file.lastPathComponent.prefix { $0 != "-" }) + "-"
         let earlier = (try? files.contentsOfDirectory(
@@ -176,15 +181,22 @@ final class MoodleMemberPictures {
         }
     }
 
-    private nonisolated static func place(_ staged: URL, at file: URL) {
+    static func place(_ staged: URL, at file: URL, revision: Int, for signIn: SignIn) -> Bool {
         let files = FileManager.default
+        guard signIn.isCurrent, isNewestRevision(revision, for: file) else {
+            try? files.removeItem(at: staged)
+            return false
+        }
+        var placed = placedRevisions.value
+        placed[file] = revision
+        placedRevisions.set(placed, for: signIn)
         try? files.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? files.removeItem(at: file)
         if (try? files.moveItem(at: staged, to: file)) == nil { try? files.removeItem(at: staged) }
+        return true
     }
 
-    private nonisolated static func image(from data: Data) -> CGImage? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+    private static func isNewestRevision(_ revision: Int, for file: URL) -> Bool {
+        revision >= placedRevisions.value[file, default: 0]
     }
 }

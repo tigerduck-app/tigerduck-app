@@ -75,7 +75,7 @@ struct MailMessageBanners: View {
                 action: { Task { await viewModel.loadImages() } }
             )
         }
-        if viewModel.parseFailed {
+        if viewModel.hasNothingRenderable {
             MailWarningBanner(message: String(localized: "school_mail_parse_failed"), systemImage: "doc.text.magnifyingglass")
         }
         if let error = viewModel.actionError {

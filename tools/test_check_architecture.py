@@ -66,10 +66,10 @@ class ArchitectureTests(unittest.TestCase):
     def test_each_pattern_rule_reports_its_rule(self) -> None:
         text = ("if gen == loginGeneration {}\nlet d = UserDefaults(suiteName: group)\n"
                 "let s = URLSession(configuration: .default)\nNotificationCenter.default.post(name: dataDidUpdate)\n"
-                "isUpdatingFromNetwork = true\n")
+                "isUpdatingFromNetwork = true\nlet c = BackendClient(auth: .unbound { token })\n")
         found = ca.pattern_findings([source(APP + "Features/X.swift", text)])
         self.assertEqual(rules(found), ["login-generation", "data-did-update", "is-updating-from-network",
-                                        "user-defaults", "url-session"])
+                                        "user-defaults", "url-session", "unbound-backend-auth"])
 
     def test_two_app_files_with_one_base_name_fail(self) -> None:
         found = ca.base_name_findings([APP + "App/Foo.swift", APP + "School/Foo.swift", APP + "Bar.swift"])
@@ -134,14 +134,34 @@ class ArchitectureTests(unittest.TestCase):
                          [(APP + "Stores/X.swift", 1, "sign-in-read"), (APP + "Stores/X.swift", 2, "sign-in-read")])
 
     def test_a_sign_in_compared_by_hand_fails_outside_the_account_layer(self) -> None:
-        text = ("if signIn == other.signIn {}\nlet t = session.ticket\nvar count = SignInCount()\n"
-                "if signIn.isCurrent {}\nif phase.signIn == .idle {}\nif signIn != nil {}\nlet a = x == y.signIn.phase\n")
+        text = ("if signIn == other.signIn {}\nlet s = SignInSeries()\nsignIns.end()\n"
+                "if signIn.isCurrent {}\nif phase.signIn == .idle {}\nif signIn != nil {}\nlet a = x == y.signIn.phase\n"
+                "if [first, signIn].contains(x) {}\nif seen.contains(task.signIn) {}\nvar ended: Set<SignIn> = []\n"
+                "var byRun: [SignIn: Int] = [:]\nif self.pair.signIn == held {}\n")
         found = ca.sign_in_findings([source(APP + "Backend/Sync/X.swift", text),
                                      source(APP + "Account/X.swift", text)])
         self.assertEqual([(f.path, f.line, f.rule) for f in found],
-                         [(APP + "Backend/Sync/X.swift", 1, "sign-in-compare"),
-                          (APP + "Backend/Sync/X.swift", 2, "sign-in-compare"),
-                          (APP + "Backend/Sync/X.swift", 3, "sign-in-compare")])
+                         [(APP + "Backend/Sync/X.swift", n, "sign-in-compare") for n in (1, 2, 3, 8, 9, 10, 11, 12)])
+
+    def test_a_flag_or_a_type_named_like_a_sign_in_is_not_a_comparison(self) -> None:
+        text = ("if needsSignIn == true {}\nif false != didSignIn {}\nlet ticket = Ticket(seat: 3)\n"
+                "let t = session.ticket\nif isSigningIn == false {}\nif route == Route.signIn {}\n"
+                "if Route.signIn != route {}\nif (.signIn == step) {}\nif step == .signIn {}\n")
+        self.assertEqual(ca.sign_in_findings([source(APP + "Backend/Sync/X.swift", text)]), [])
+
+    def test_a_setter_that_reads_the_current_sign_in_fails_everywhere(self) -> None:
+        text = ("var name: String {\n    get { stored }\n    set { prefs.change(for: session.currentSignIn) { _ in } }\n}\n"
+                "var term = \"\" {\n    didSet { pick(term, for: AccountSession.school.currentSignIn) }\n}\n"
+                "var flag: Binding<Bool> {\n    Binding(get: { on }, set: { turn($0, for: session.currentSignIn) })\n}\n"
+                "func set(_ value: Int, for signIn: SignIn) { write(value, for: signIn) }\n")
+        found = [f for f in ca.sign_in_findings([source(APP + "Features/X.swift", text)]) if f.rule == "sign-in-in-setter"]
+        self.assertEqual([f.line for f in found], [3, 6])
+
+    def test_a_cleanup_gated_on_the_sign_in_fails_everywhere(self) -> None:
+        text = ("func load() async {\n    defer { if signIn.isCurrent { loading = nil } }\n"
+                "    defer { if running == load { loading = nil } }\n    guard signIn.isCurrent else { return }\n}\n")
+        found = [f for f in ca.sign_in_findings([source(APP + "Account/X.swift", text)]) if f.rule == "sign-in-in-cleanup"]
+        self.assertEqual([f.line for f in found], [2])
 
     def test_an_account_file_type_outside_its_store_fails(self) -> None:
         text = "let id = MoodleFiles.shared.lookupMoodleCourseId(idnumber: n)\n"
@@ -154,11 +174,40 @@ class ArchitectureTests(unittest.TestCase):
         inventory = ("| defaults | `syncedOnce` | school | `swift/TigerDuck/Backend/Sync/Progress.swift` `forget` |\n"
                      "| defaults | `theme` | device |  |\n")
         text = ("let seen = Defaults[.syncedOnce]\nDefaults[.syncedOnce] = true\nDefaults[.syncedOnce].insert(x)\n"
-                "Defaults.reset(.syncedOnce)\nchange(&Defaults[.syncedOnce])\nDefaults[.theme] = 1\n")
+                "Defaults.reset(.syncedOnce)\nchange(&Defaults[.syncedOnce])\nDefaults[.theme] = 1\n"
+                "Defaults[Defaults.Keys.syncedOnce] = true\nDefaults[.syncedOnce][id]?[key] = 1\n"
+                "_ = Defaults[.syncedOnce].popLast()\nDefaults[.syncedOnce].sort()\nDefaults[.syncedOnce] += [x]\n"
+                "if Defaults[.syncedOnce].contains(x) {}\nlet n = Defaults[Keys.syncedOnce].count\n")
         found = ca.account_store_findings([source(APP + "Backend/Sync/FullSync.swift", text),
                                            source(APP + "Backend/Sync/Progress.swift", text)], inventory)
         self.assertEqual([(f.path, f.line, f.rule) for f in found],
-                         [(APP + "Backend/Sync/FullSync.swift", n, "account-store-write") for n in (2, 3, 4, 5)])
+                         [(APP + "Backend/Sync/FullSync.swift", n, "account-store-write")
+                          for n in (2, 3, 4, 5, 7, 8, 9, 10, 11)])
+
+    def test_an_account_key_written_through_its_default_wrapper_fails(self) -> None:
+        inventory = "| defaults | `syncOn` | school | `swift/TigerDuck/Backend/Sync/Preference.swift` `turnOff` |\n"
+        text = ("struct V: View {\n    @Default(.syncOn) private var on\n    @Default(.theme) var theme\n"
+                "    var body: some View { Toggle(\"\", isOn: $on) }\n    func a() { on = true }\n"
+                "    func b() { self.on.toggle() }\n    func c() { if on { theme = 1 } }\n}\n")
+        found = ca.account_store_findings([source(APP + "Features/V.swift", text)], inventory)
+        self.assertEqual([f.line for f in found], [4, 5, 6])
+
+    def test_a_default_wrapper_on_its_own_line_is_still_seen(self) -> None:
+        inventory = "| defaults | `syncOn` | school | `swift/TigerDuck/Backend/Sync/Preference.swift` `turnOff` |\n"
+        text = ("struct V: View {\n    @Default(.syncOn)\n    private var on\n    var count = 0\n"
+                "    func a() { on = true; count = 1 }\n}\n")
+        found = ca.account_store_findings([source(APP + "Features/V.swift", text)], inventory)
+        self.assertEqual([f.line for f in found], [5])
+
+    def test_a_writable_mail_store_outside_the_mail_store_fails(self) -> None:
+        text = ("let store = MailSettingsStore(defaults: suite)\nlet fields = prefs as? MailPreferenceFields\n"
+                "final class Fake: MailPreferenceFields {}\nif MailSettingsStore.shared.studentID == id {}\n"
+                "prefs.change(for: signIn) { (fields: any MailPreferenceFields) in fields.studentID = id }\n"
+                "let name = MailSettingsStore.shared.displayName\nlet s = MailSettingsStore.shared as? MailSettingsStore\n")
+        found = ca.account_store_findings([source(APP + "Mail/Sync/X.swift", text),
+                                           source(APP + "Mail/Store/X.swift", text)], "")
+        self.assertEqual([(f.path, f.line, f.rule) for f in found],
+                         [(APP + "Mail/Sync/X.swift", n, "account-store-write") for n in (1, 2, 3, 7)])
 
 
 if __name__ == "__main__":

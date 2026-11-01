@@ -446,7 +446,7 @@ struct NotificationSettingsReconcileTests {
 
             let outcome = try await Self.reconcile(
                 store, client: SettingsAPIStub.makeClient(baseURL: baseURL),
-                source: .snapshot((document: document, revision: 7))
+                source: .snapshot(.stored(document: document, revision: 7))
             )
 
             #expect(outcome == .settled(adopted: [.assignments, .liveActivity, .courses], seeded: []))
@@ -465,7 +465,7 @@ struct NotificationSettingsReconcileTests {
             SettingsAPIStub.enqueue(try Fixtures.written(revision: 1), for: url)
 
             let outcome = try await Self.reconcile(
-                store, client: SettingsAPIStub.makeClient(baseURL: baseURL), source: .snapshot(nil)
+                store, client: SettingsAPIStub.makeClient(baseURL: baseURL), source: .snapshot(.neverWritten)
             )
 
             #expect(outcome == .settled(adopted: [], seeded: [.assignments, .liveActivity, .courses]))
@@ -511,7 +511,8 @@ struct NotificationSettingsReconcileTests {
             let savedCopy = Defaults[.notificationSettingsSyncedPreferences]
             defer { Defaults[.notificationSettingsSyncedPreferences] = savedCopy }
             Self.setDeviceValues(store)
-            NotificationSettingsSync.synced = .init(from: store)
+            NotificationSettingsSync.forget()
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(from: .init(from: store), for: testSignIn)
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let url = Fixtures.documentURL(baseURL)
             SettingsAPIStub.enqueue(try Fixtures.found(["assignments": Self.serverAssignments()], revision: 3), for: url)
@@ -530,28 +531,28 @@ struct NotificationSettingsReconcileTests {
                 store,
                 client: client,
                 syncLiveActivity: false,
-                recordSynced: { NotificationSettingsSync.recordSynced($0, sections: $1, for: testSignIn) }
+                recordSynced: { NotificationSettingsSync.recordSyncedSections($1, of: $0, for: testSignIn) }
             )
 
             #expect(outcome == .settled(adopted: [.assignments], seeded: [.courses]))
             #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
-            #expect(NotificationSettingsSync.synced?.classPreparingLeadTime == 600)
-            #expect(NotificationSettingsSync.synced?.isAssignmentReminderEnabled == true)
+            #expect(NotificationSettingsSync.lastSyncedPreferences?.classPreparingLeadTime == 600)
+            #expect(NotificationSettingsSync.lastSyncedPreferences?.isAssignmentReminderEnabled == true)
         }
     }
 
     @Test("a snapshot gives its notification document, none, or nothing to go on")
     func documentSourceFromTheSnapshot() throws {
         let entry: [String: Any] = ["namespace": "notification", "document": ["assignments": ["enabled": true]], "revision": 7]
-        guard case .snapshot(let copy?) = NotificationSettingsReconcile.documentSource(fromSnapshot: ["settings_documents": [entry]]) else {
+        guard case .snapshot(.stored(let copy, let revision)) = NotificationSettingsReconcile.documentSource(fromSnapshot: ["settings_documents": [entry]]) else {
             Issue.record("the snapshot's document was not used")
             return
         }
-        #expect(copy.revision == 7)
-        let document = try #require(try JSONSerialization.jsonObject(with: copy.document) as? [String: Any])
+        #expect(revision == 7)
+        let document = try #require(try JSONSerialization.jsonObject(with: copy) as? [String: Any])
         #expect((document["assignments"] as? [String: Any])?["enabled"] as? Bool == true)
 
-        guard case .snapshot(nil) = NotificationSettingsReconcile.documentSource(fromSnapshot: ["settings_documents": []]) else {
+        guard case .snapshot(.neverWritten) = NotificationSettingsReconcile.documentSource(fromSnapshot: ["settings_documents": []]) else {
             Issue.record("an account without the document should be seeded")
             return
         }

@@ -9,10 +9,16 @@ final class DeviceSurfaceSyncer {
         var accentHex: Int
         var visualPreset: String
         var signedIn: Bool
-        var nudges: Nudges
+        var unobserved: UnobservedChanges
+
+        func differsOnlyInVisualPreset(from other: Fingerprint) -> Bool {
+            var withOtherPreset = self
+            withOtherPreset.visualPreset = other.visualPreset
+            return withOtherPreset == other && visualPreset != other.visualPreset
+        }
     }
 
-    struct Nudges: Equatable {
+    struct UnobservedChanges: Equatable {
         var other = 0
         var locale = 0
     }
@@ -26,9 +32,9 @@ final class DeviceSurfaceSyncer {
     static let debounce: Duration = .milliseconds(250)
 
     private let surfaces: Surfaces
-    private let fingerprint: (Nudges) -> Fingerprint
+    private let fingerprint: (UnobservedChanges) -> Fingerprint
     private let sleep: (Duration) async -> Void
-    private var nudges = Nudges()
+    private var unobserved = UnobservedChanges()
     private var last: Fingerprint
     private var pending: Task<Void, Never>?
     private var observation: StoreObservation?
@@ -37,7 +43,7 @@ final class DeviceSurfaceSyncer {
 
     init(
         surfaces: Surfaces,
-        fingerprint: @escaping (Nudges) -> Fingerprint,
+        fingerprint: @escaping (UnobservedChanges) -> Fingerprint,
         center: NotificationCenter = .default,
         sleep: @escaping (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
@@ -45,14 +51,14 @@ final class DeviceSurfaceSyncer {
         self.fingerprint = fingerprint
         self.sleep = sleep
         self.center = center
-        last = fingerprint(Nudges())
+        last = fingerprint(UnobservedChanges())
         observation = StoreObservation(read: { [weak self] in
             guard let self else { return }
-            _ = self.fingerprint(self.nudges)
+            _ = self.fingerprint(self.unobserved)
         }) { [weak self] in
             self?.scheduleRefresh()
         }
-        tokens = Self.nudgeNames.map { name in
+        tokens = Self.unobservedChangeNames.map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.nudge(\.other) }
             }
@@ -68,7 +74,7 @@ final class DeviceSurfaceSyncer {
         tokens.forEach(center.removeObserver)
     }
 
-    private static var nudgeNames: [Notification.Name] {
+    private static var unobservedChangeNames: [Notification.Name] {
         var names = [AppConstants.holidayNotifyDidChange, AppConstants.courseSkipStateDidChange]
         #if DEBUG
         names.append(DebugClockController.didChangeNotification)
@@ -76,8 +82,8 @@ final class DeviceSurfaceSyncer {
         return names
     }
 
-    private func nudge(_ count: WritableKeyPath<Nudges, Int>) {
-        nudges[keyPath: count] &+= 1
+    private func nudge(_ count: WritableKeyPath<UnobservedChanges, Int>) {
+        unobserved[keyPath: count] &+= 1
         scheduleRefresh()
     }
 
@@ -91,28 +97,26 @@ final class DeviceSurfaceSyncer {
     }
 
     private func refresh() {
-        let now = fingerprint(nudges)
+        let now = fingerprint(unobserved)
         let previous = last
         guard now != previous else { return }
         last = now
         surfaces.watch()
-        var presentationOnly = previous
-        presentationOnly.visualPreset = now.visualPreset
-        guard presentationOnly != now else { return }
-        surfaces.widgets(previous.language != now.language || previous.nudges.locale != now.nudges.locale)
+        guard !now.differsOnlyInVisualPreset(from: previous) else { return }
+        surfaces.widgets(previous.language != now.language || previous.unobserved.locale != now.unobserved.locale)
         surfaces.liveActivity()
     }
 }
 
 extension DeviceSurfaceSyncer {
-    static func fingerprint(of app: AppEnvironment, nudges: Nudges) -> Fingerprint {
+    static func fingerprint(of app: AppEnvironment, unobserved: UnobservedChanges) -> Fingerprint {
         Fingerprint(
             data: .current,
             language: app.preferences.appLanguage,
             accentHex: app.preferences.accentColorHex,
             visualPreset: app.preferences.visualPreset.rawValue,
             signedIn: app.authService.hasStoredCredentials,
-            nudges: nudges
+            unobserved: unobserved
         )
     }
 }

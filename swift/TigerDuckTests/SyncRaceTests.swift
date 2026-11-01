@@ -19,9 +19,10 @@ struct SyncRaceTests {
         return URLSession(configuration: config)
     }
 
-    private static func push(_ baseURL: URL) -> PushCoordinator {
-        let client = PushAPIClient(baseURLProvider: { baseURL }, session: stubSession(), authHeaderProvider: { "Bearer test" })
-        return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
+    private static func push(_ baseURL: URL, signIns: SignInSeries = testSignIns) -> PushCoordinator {
+        let client = PushAPIClient(baseURLProvider: { baseURL }, session: stubSession(), authHeaderProvider: { "Bearer test" },
+                                   signIns: signIns)
+        return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client, signIns: signIns)
     }
 
     private static func cache() -> TestCache {
@@ -43,10 +44,11 @@ struct SyncRaceTests {
     }
 
     private static func sender(
-        _ baseURL: URL, cache: TestCache, colors: CourseColorStore, switchedOn: Set<String>
+        _ baseURL: URL, cache: TestCache, colors: CourseColorStore, switchedOn: Set<String>,
+        signIns: SignInSeries = testSignIns
     ) -> OutboxSender {
         OutboxSender(
-            push: push(baseURL), addedCourseUpload: { _, _ in nil }, uploadsCourses: { true },
+            push: push(baseURL, signIns: signIns), addedCourseUpload: { _, _ in nil }, uploadsCourses: { true },
             isProtectedDataAvailable: { true }, courses: cache.courses,
             kept: KeptValues(
                 policy: policy(switchedOn), colors: colors, courses: cache.courses, assignments: cache.assignments
@@ -66,7 +68,7 @@ struct SyncRaceTests {
 
     private static func keptRed(_ baseURL: URL) {
         SettingsAPIStub.enqueue(
-            .init(statusCode: 200, body: Data(##"{"color_hex":"#FF6B6B","custom_names":{},"applied":[]}"##.utf8)),
+            .init(statusCode: 200, body: Data(##"{"color_hex":"#FF6B6B","custom_names":{},"ignore_assignments":false,"applied":[]}"##.utf8)),
             for: baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
         )
     }
@@ -80,7 +82,7 @@ struct SyncRaceTests {
         Self.keptRed(baseURL)
 
         try await Self.sender(baseURL, cache: cache, colors: colors, switchedOn: ["courses", "course_colors"])
-            .send(Self.colourEdit, for: testSignIn, newerQueued: { _ in false })
+            .send(Self.colourEdit, for: testSignIn, hasNewerQueuedEdit: { _ in false })
 
         #expect(colors.map["CS1"] == Self.red)
         #expect(colors.map["CS2"] != Self.red)
@@ -97,7 +99,7 @@ struct SyncRaceTests {
             Self.keptRed(baseURL)
 
             try await Self.sender(baseURL, cache: cache, colors: colors, switchedOn: switchedOn)
-                .send(Self.colourEdit, for: testSignIn, newerQueued: { _ in newer })
+                .send(Self.colourEdit, for: testSignIn, hasNewerQueuedEdit: { _ in newer })
 
             #expect(colors.map == ["CS1": Self.teal, "CS2": Self.red])
         }
@@ -117,7 +119,7 @@ struct SyncRaceTests {
         )
 
         try await Self.sender(baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"])
-            .send(op, for: testSignIn, newerQueued: { _ in false })
+            .send(op, for: testSignIn, hasNewerQueuedEdit: { _ in false })
 
         #expect(cache.assignments.loadArchivedAssignmentIds().isEmpty)
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["42"])
@@ -138,8 +140,9 @@ struct SyncRaceTests {
         let session = AccountSession()
 
         try await Self.sender(
-            baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"]
-        ).send(op, for: session.signIns.currentSignIn, newerQueued: { _ in
+            baseURL, cache: cache, colors: CourseColorStore(files: cache.colors), switchedOn: ["assignments"],
+            signIns: session.signIns
+        ).send(op, for: session.signIns.currentSignIn, hasNewerQueuedEdit: { _ in
             session.endSignIn()
             session.endSignIn()
             return false
@@ -161,7 +164,7 @@ struct SyncRaceTests {
         )
         SettingsAPIStub.enqueue(
             .init(statusCode: 200, body: Data(
-                ##"{"color_hex":"#4ECDC4","custom_names":{"zh":"Algorithms"},"applied":["color_hex","custom_name"]}"##.utf8
+                ##"{"color_hex":"#4ECDC4","custom_names":{"zh":"Algorithms"},"ignore_assignments":false,"applied":["color_hex","custom_name"]}"##.utf8
             )), for: url
         )
         let cache = Self.cache()
@@ -169,7 +172,7 @@ struct SyncRaceTests {
             pushCoordinator: Self.push(baseURL),
             outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
             isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
-            syncsCourseOverrides: { _ in true }, courses: cache.courses,
+            syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
             kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
                              courses: cache.courses, assignments: cache.assignments)
         )
@@ -207,7 +210,7 @@ struct SyncRaceTests {
             pushCoordinator: Self.push(baseURL),
             outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
             isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
-            syncsCourseOverrides: { _ in true }, courses: cache.courses,
+            syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
             kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
                              courses: cache.courses, assignments: cache.assignments)
         )
@@ -273,7 +276,7 @@ struct SyncRaceTests {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
         SettingsAPIStub.enqueue(
-            .init(statusCode: 200, body: Data(##"{"color_hex":"#4ECDC4","custom_names":{},"applied":[]}"##.utf8)), for: url
+            .init(statusCode: 200, body: Data(##"{"color_hex":"#4ECDC4","custom_names":{},"ignore_assignments":false,"applied":[]}"##.utf8)), for: url
         )
         let cache = Self.cache()
         let colors = CourseColorStore(files: cache.colors)
@@ -281,7 +284,7 @@ struct SyncRaceTests {
         let coordinator = CloudSyncCoordinator(
             pushCoordinator: Self.push(baseURL),
             outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
-            isEnabled: true, syncsCourseOverrides: { _ in true }, courses: cache.courses,
+            isEnabled: true, syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
             kept: KeptValues(policy: Self.policy(["courses", "course_colors"]), colors: colors,
                              courses: cache.courses, assignments: cache.assignments)
         )
@@ -356,6 +359,43 @@ struct SyncRaceTests {
         }
     }
 
+    @Test("A rules store bound to the next sign-in drops the last account's edits and its save's late reply")
+    func aRebindDropsTheLastAccountsRules() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("bulletin-subscriptions")
+        let held = SettingsAPIStub.ReplyGate()
+        let first = BulletinAPI.SubscriptionRule(name: "A")
+        let next = BulletinAPI.SubscriptionRule(name: "B")
+        func reply(_ rule: BulletinAPI.SubscriptionRule, id: Int) -> Data {
+            Data(#"{"items":[{"id":\#(id),"client_id":"\#(rule.clientId.uuidString)","name":"\#(rule.name ?? "")","orgs":[],"tags":[],"mode":"AND","enabled":true}]}"#.utf8)
+        }
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: reply(first, id: 1), gate: held), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: reply(next, id: 2)), for: url)
+        let signIns = SignInSeries()
+        let client = { (signIn: SignIn) in
+            BulletinAPIClient(
+                baseURLProvider: { baseURL }, session: Self.stubSession(), auth: .signedIn(in: signIns) { "Bearer test" },
+                for: signIn
+            )
+        }
+        let store = BulletinSubscriptionsStore(retryDelay: { _ in })
+        store.configure(for: signIns.currentSignIn, client: client)
+
+        store.upsert(first)
+        let save = Task { await store.save() }
+        try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
+        signIns.end()
+        store.configure(for: signIns.currentSignIn, client: client)
+        #expect(store.pending.isEmpty && !store.isDirty)
+        held.open()
+        await save.value
+        await store.load()
+
+        #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["PUT", "GET"])
+        #expect(store.pending.map(\.name) == ["B"])
+        #expect(store.saveState == .idle && store.loadState == .loaded)
+    }
+
     private static func inputs(dueIn hours: Double, id: String) -> ScheduleSyncService.Inputs {
         let due = SDAssignment(
             assignmentId: id, courseNo: "CS101", courseName: "Algorithms", title: "Lab",
@@ -366,6 +406,29 @@ struct SyncRaceTests {
             assignmentLeadTime: 3600, showClassPreparing: false, showInClass: false, showAssignmentScenario: true,
             liveActivityAvailable: true, term: "1151"
         )
+    }
+
+    @Test("A schedule built before its account signed out is not sent once the next account signs in")
+    func aScheduleOfAnEndedSignInIsNotSent() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("schedule/sync")
+        let held = SettingsAPIStub.ReplyGate()
+        let ok = Data(#"{"pending":1,"replaced":0}"#.utf8)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: ok, gate: held), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: ok), for: url)
+        let signIns = SignInSeries()
+        let push = Self.push(baseURL, signIns: signIns)
+        let older = Self.inputs(dueIn: 3, id: "a-\(UUID().uuidString)")
+        let signedOut = Self.inputs(dueIn: 4, id: "a-\(UUID().uuidString)")
+
+        push.scheduleSync.sync(inputs: older, for: signIns.currentSignIn)
+        try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
+        push.scheduleSync.sync(building: { signedOut })
+        signIns.end()
+        held.open()
+        await push.scheduleSync.awaitInflight()
+
+        #expect(SettingsAPIStub.requests(for: url).count == 1)
     }
 
     @Test("A newer schedule waits for the one still out, which it does not cancel, so the newer one lands last")
@@ -403,14 +466,14 @@ struct SyncRaceTests {
         cache.assignments.replaceLocallyCompletedAssignmentIds([], for: testSignIn)
 
         await AssignmentMarksReconciler.keepServerSide(
-            read: { ServerMarks(archived: [], completed: ["2"]) }, protected: { [] }, for: testSignIn,
+            rereadServer: { ServerMarks(archived: [], completed: ["2"]) }, protected: { [] }, for: testSignIn,
             assignments: cache.assignments
         )
         #expect(cache.assignments.loadArchivedAssignmentIds().isEmpty)
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["2"])
 
         await AssignmentMarksReconciler.keepServerSide(
-            read: { ServerMarks(archived: ["3"], completed: []) }, protected: { [] }, for: endedTestSignIn,
+            rereadServer: { ServerMarks(archived: ["3"], completed: []) }, protected: { [] }, for: endedTestSignIn,
             assignments: cache.assignments
         )
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds() == ["2"])

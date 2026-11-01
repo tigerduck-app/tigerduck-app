@@ -16,14 +16,14 @@ final class HolidaySettingSender {
         self.poller = poller
     }
 
-    func setHolidayNotify(_ notify: Bool, holidayID: Int) {
-        guard AcademicCalendarStore.shared.setNotify(notify, forHoliday: holidayID, for: account.currentSignIn) else {
+    func setHolidayNotify(_ notify: Bool, holidayID: Int, for signIn: SignIn) {
+        guard AcademicCalendarStore.shared.setNotify(notify, forHoliday: holidayID, for: signIn) else {
             return
         }
         onChange()
         NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
         guard Defaults[.cloudSyncEnabled] else { return }
-        enqueueHolidayUpload(holidayID: holidayID)
+        enqueueHolidayUpload(holidayID: holidayID, for: signIn)
         poller.noteActivity()
     }
 
@@ -32,19 +32,19 @@ final class HolidaySettingSender {
         tail = nil
     }
 
-    func retryUnacknowledged() {
+    func retryUnacknowledged(for signIn: SignIn) {
         guard Defaults[.cloudSyncEnabled] else { return }
         for holidayID in AcademicCalendarStore.shared.unacknowledgedHolidayIDs {
-            enqueueHolidayUpload(holidayID: holidayID)
+            enqueueHolidayUpload(holidayID: holidayID, for: signIn)
         }
     }
 
-    private func enqueueHolidayUpload(holidayID: Int) {
+    private func enqueueHolidayUpload(holidayID: Int, for signIn: SignIn) {
         let previous = tail
         let store = AcademicCalendarStore.shared
-        store.setHolidayAcknowledged(false, holidayID: holidayID, for: account.currentSignIn)
+        store.setHolidayAcknowledged(false, holidayID: holidayID, for: signIn)
         store.beginHolidayUpload()
-        tail = account.task { [weak self] signIn in
+        tail = account.task { [weak self] _ in
             _ = await previous?.value
             defer { AcademicCalendarStore.shared.endHolidayUpload() }
             guard let self, signIn.isCurrent else { return }
@@ -61,7 +61,7 @@ final class HolidaySettingSender {
                 holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? Date(), for: signIn
             )
             guard store.holidayEdit(holidayID) == sent else { return }
-            if !reply.applied { store.applyKeptNotify(reply.notify, forHoliday: holidayID, for: signIn) }
+            if !reply.applied { store.applyNotifyTheBackendKept(reply.notify, forHoliday: holidayID, for: signIn) }
             store.setHolidayAcknowledged(true, holidayID: holidayID, for: signIn)
         } catch {
             AppLogger.sync.error(

@@ -7,8 +7,8 @@ enum CourseLookup {
         try await CourseLookupService.syllabus(semester: semester, courseNo: courseNo, language: language)
     }
 
-    nonisolated static func schedule(of node: String?) -> [Int: [String]] {
-        CourseLookupService.parseNodeToSchedule(node)
+    nonisolated static func schedule(of meetingCodes: String?) -> [Int: [String]] {
+        CourseLookupService.parseNodeToSchedule(meetingCodes)
     }
 
     static func moodleCourseId(idnumber: String) -> Int? {
@@ -20,8 +20,7 @@ enum CourseLookup {
         MoodleFiles.shared.loadMoodleCourseIdMap()
     }
 
-    static func saveMoodleCourseIds(_ ids: [String: Int], for signIn: SignIn) {
-        guard signIn.isCurrent else { return }
-        MoodleFiles.shared.saveMoodleCourseIdMap(ids)
+    static func replaceMoodleCourseIds(_ ids: [String: Int], for signIn: SignIn) {
+        MoodleFiles.shared.replaceMoodleCourseIdMap(ids, for: signIn)
     }
 }

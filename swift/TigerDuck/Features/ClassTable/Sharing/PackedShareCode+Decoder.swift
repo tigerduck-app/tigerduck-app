@@ -3,8 +3,8 @@ import TigerDuckCore
 
 nonisolated extension PackedShareCode {
     enum Decoder {
-        static func decode(_ code: String) throws -> ClassTableShareCode {
-            let body = Array(code.utf8.dropFirst(prefix.utf8.count))
+        static func decode(uppercasedAfterPrefix text: some StringProtocol) throws -> ClassTableShareCode {
+            let body = Array(text.utf8)
             if let version = body.first, (UInt8(ascii: "2")...UInt8(ascii: "9")).contains(version) {
                 throw ClassTableShareCodeError.unknownVersion
             }
@@ -24,14 +24,14 @@ nonisolated extension PackedShareCode {
 
             var membership = heads.map { _ in Set(order.indices) }
             if order.count > 1, heads.count > 1 {
-                membership = try heads.map { _ in Set(try r.subset(of: order.count, nonEmpty: true)) }
+                membership = try heads.map { _ in Set(try r.getCombinatorialRank(of: order.count, nonEmpty: true)) }
             }
             var seen = Set<Int>()
             var terms: [Term] = []
             for (index, semester) in order.enumerated() {
                 let present = heads.indices.filter { membership[$0].contains(index) }
                 guard !present.isEmpty else { throw ClassTableShareCodeError.malformed }
-                let counts = try present.map { _ in try r.gamma(limit: maxCourses) }
+                let counts = try present.map { _ in try r.getEliasGamma(limit: maxCourses) }
                 guard counts.reduce(0, +) <= maxCourses else { throw ClassTableShareCodeError.malformed }
                 var courseNos: [String] = []
                 for (head, count) in zip(present.map { heads[$0] }, counts) {
@@ -48,16 +48,16 @@ nonisolated extension PackedShareCode {
 
         private static func readTerms(_ r: inout BitReader, sharedAt: Date) throws -> [String] {
             let isRegular = try r.get(1) == 0
-            let count = try r.gamma(limit: maxTerms)
+            let count = try r.getEliasGamma(limit: maxTerms)
             if isRegular {
-                let distanceCode = try r.gamma()
+                let distanceCode = try r.getEliasGamma()
                 let distance = [1: 0, 2: -1, 3: 1][distanceCode] ?? distanceCode - 2
                 let kind = try r.get(2)
                 guard kind < termKinds.count else { throw ClassTableShareCodeError.malformed }
                 var slot = (AcademicTerm.academicYear(at: sharedAt) - distance) * 3 + kind
                 var slots = [slot]
                 for _ in 1..<count {
-                    slot -= try r.gamma()
+                    slot -= try r.getEliasGamma()
                     slots.append(slot)
                 }
                 guard slot >= 0 else { throw ClassTableShareCodeError.malformed }
@@ -88,12 +88,12 @@ nonisolated extension PackedShareCode {
                     letter = UInt8(ascii: "A") + UInt8(min(value, 31))
                     guard value <= 25, !idLetters.contains(letter) else { throw ClassTableShareCodeError.malformed }
                 }
-                let year = oldestYear - (try r.gamma() - 1)
+                let year = oldestYear - (try r.getEliasGamma() - 1)
                 let serial = try r.get(17)
                 guard year >= 0, serial <= 99_999 else { throw ClassTableShareCodeError.malformed }
                 return String(UnicodeScalar(letter)) + padded(year, 3) + padded(serial, 5)
             }
-            let length = try r.gamma(limit: maxStudentIdLength)
+            let length = try r.getEliasGamma(limit: maxStudentIdLength)
             let values = try (0..<length).map { _ in try r.get(6) }
             guard values.allSatisfy({ $0 < 36 }) else { throw ClassTableShareCodeError.malformed }
             let studentId = String(decoding: values.map { base36Digits[$0] }, as: UTF8.self)
@@ -102,8 +102,8 @@ nonisolated extension PackedShareCode {
         }
 
         private static func readHeads(_ r: inout BitReader) throws -> [String] {
-            let known = try r.subset(of: knownHeads.count, nonEmpty: false)
-            let unknownCount = try r.gamma() - 1
+            let known = try r.getCombinatorialRank(of: knownHeads.count, nonEmpty: false)
+            let unknownCount = try r.getEliasGamma() - 1
             guard unknownCount <= headValueCount - knownHeads.count else { throw ClassTableShareCodeError.malformed }
             let unknown = try (0..<unknownCount).map { _ in try r.get(11) }
             guard unknown.allSatisfy({ $0 < headValueCount && !knownHeads.contains(headText($0)) }),
@@ -186,7 +186,7 @@ nonisolated extension PackedShareCode {
         }
 
         private static func serial(_ r: inout BitReader) throws -> String {
-            padded(try r.gamma(limit: 99), 2)
+            padded(try r.getEliasGamma(limit: 99), 2)
         }
     }
 }

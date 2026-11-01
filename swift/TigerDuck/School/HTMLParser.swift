@@ -88,22 +88,29 @@ nonisolated enum HTMLParser {
         return nil
     }
 
+    private enum TextWalkStep {
+        case enter(Node)
+        case leaveSeparatingElement
+    }
+
     static func visibleText(of nodes: [Node], skipping skipped: Set<String>, separating separates: (String) -> Bool) -> String {
         var text = ""
-        var stack = nodes.reversed().map { (node: $0, closes: false) }
-        while let (node, closes) = stack.popLast() {
-            if closes {
+        var pending: [TextWalkStep] = nodes.reversed().map(TextWalkStep.enter)
+        while let step = pending.popLast() {
+            guard case .enter(let node) = step else {
                 text += " "
-            } else if let textNode = node as? TextNode {
+                continue
+            }
+            if let textNode = node as? TextNode {
                 text += textNode.getWholeText()
             } else if let element = node as? Element {
                 let tag = element.tagName().lowercased()
                 if skipped.contains(tag) { continue }
                 if separates(tag) {
                     text += " "
-                    stack.append((node: element, closes: true))
+                    pending.append(.leaveSeparatingElement)
                 }
-                stack += element.getChildNodes().reversed().map { (node: $0, closes: false) }
+                pending += element.getChildNodes().reversed().map(TextWalkStep.enter)
             }
         }
         return text

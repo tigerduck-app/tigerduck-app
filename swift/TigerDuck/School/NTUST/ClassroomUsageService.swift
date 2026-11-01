@@ -64,7 +64,6 @@ final class ClassroomUsageService {
     private let logFailure: LogFailure
 
     private var reads = SignInBound(empty: Reads())
-    private var epoch = 0
     private var isFetching = false
     private var waiting: [CheckedContinuation<Void, Never>] = []
 
@@ -91,7 +90,7 @@ final class ClassroomUsageService {
 
     func usage(on day: Date, isToday: Bool, force: Bool, credentials: Credentials) async throws -> KeptUsage {
         let number = ClassroomUsageParser.dayNumber(of: day)
-        let attempt = Attempt(signIn: credentials.signIn, epoch: epoch)
+        let attempt = credentials.signIn
         try check(attempt)
         if !force, let usage = freshUsage(number, isToday: isToday) { return usage }
         return try await oneAtATime {
@@ -109,14 +108,13 @@ final class ClassroomUsageService {
             var updated = reads.value
             updated.siteStatus = .ok
             updated.kept[number] = read
-            reads.set(updated, for: attempt.signIn)
+            reads.set(updated, for: attempt)
             return read
         }
     }
 
     func forget() {
         reads = SignInBound(empty: Reads())
-        epoch &+= 1
     }
 
     private struct Reads {
@@ -124,20 +122,15 @@ final class ClassroomUsageService {
         var siteStatus = ServerStatus.unknown
     }
 
-    private struct Attempt {
-        let signIn: SignIn
-        let epoch: Int
-    }
-
-    private func noteFailure(_ error: any Error, for attempt: Attempt) {
+    private func noteFailure(_ error: any Error, for attempt: SignIn) {
         guard Self.isWorthLogging(error), (try? check(attempt)) != nil else { return }
         var updated = reads.value
         updated.siteStatus = .failed
-        reads.set(updated, for: attempt.signIn)
+        reads.set(updated, for: attempt)
     }
 
-    private func check(_ attempt: Attempt) throws {
-        guard attempt.signIn.isCurrent, attempt.epoch == epoch else { throw CancellationError() }
+    private func check(_ attempt: SignIn) throws {
+        guard attempt.isCurrent else { throw CancellationError() }
     }
 
     private func freshUsage(_ day: Int, isToday: Bool) -> KeptUsage? {
@@ -146,7 +139,7 @@ final class ClassroomUsageService {
         return freshness.isFresh(storedAt: entry.fetchedAt, now: now()) ? entry : nil
     }
 
-    private func fetch(_ day: Int, credentials: Credentials, attempt: Attempt) async throws -> CampusUsage {
+    private func fetch(_ day: Int, credentials: Credentials, attempt: SignIn) async throws -> CampusUsage {
         do {
             return try await read(day, credentials: credentials, attempt: attempt)
         } catch ClassroomUsageError.unreadable {
@@ -165,7 +158,7 @@ final class ClassroomUsageService {
         !AppLogger.isCancellation(error)
     }
 
-    private func read(_ day: Int, credentials: Credentials, attempt: Attempt) async throws -> CampusUsage {
+    private func read(_ day: Int, credentials: Credentials, attempt: SignIn) async throws -> CampusUsage {
         let scope = ClassroomUsagePages.Scope(check: { try self.check(attempt) })
         return try await pages.read(day, credentials: credentials, scope: scope)
     }

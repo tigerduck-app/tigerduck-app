@@ -1319,6 +1319,29 @@ struct DepartingSessionTests {
         #expect(try Self.kept(backend)?.baseURL == backend.baseURL.absoluteString)
     }
 
+    @Test("a refresh that replies after its sign-in ended, before the sign-out ends its session, leaves its pair")
+    func aRefreshThatRepliesBeforeTheSessionEndsLeavesItsPair() async throws {
+        let signIns = SignInSeries()
+        let gate = SettingsAPIStub.ReplyGate()
+        defer { gate.open() }
+        let backend = BackendFixture(signIn: signIns.currentSignIn)
+        let manager = backend.manager
+        SettingsAPIStub.enqueue(
+            BackendFixture.refreshReply(access: "A1", refresh: "R1", heldBy: gate), for: backend.refreshURL
+        )
+        let refresh = Task { await manager.validAccessToken() }
+        try await waitUntil { SettingsAPIStub.requests(for: backend.refreshURL).count == 1 }
+
+        signIns.end()
+        gate.open()
+        _ = await refresh.value
+        let ending = await manager.endSession().accessToken
+
+        #expect(ending == "A1")
+        #expect(try backend.sentRefreshTokens() == ["R0"])
+        #expect(try Self.kept(backend)?.token == "R1")
+    }
+
     @Test("a sign-out after a sign-in refreshes the sign-in's token, not the pair of a refresh still out from before")
     func aSignOutAfterASignInLeavesTheOlderRefresh() async throws {
         let signIns = SignInSeries()
@@ -1788,12 +1811,13 @@ struct BackendSignInTests {
             let backend = BackendFixture(signedIn: false, signIn: signIns.currentSignIn)
             let signingIn = SheetSignIn()
             let harvests = CallCount()
+            let outlivingToken: MoodleTokenService.TokenStore = .init(load: { "moodle-token" }, save: { _ in }, drop: {})
             let auth = AuthService(
                 keychainHasCredentials: { false },
                 notificationCenter: NotificationCenter(),
                 moodleTokens: MoodleTokenService(
                     storedCredentials: { nil },
-                    tokens: .init(load: { "moodle-token" }, save: { _ in }, drop: {}),
+                    tokens: outlivingToken,
                     harvest: { _, _ in
                         harvests.increment()
                         await MainActor.run { signingIn.signOut?() }
@@ -1902,6 +1926,31 @@ struct BackendSignInTests {
 
         #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 2)
         withExtendedLifetime(auth) {}
+    }
+
+    @Test("a backend sign-in waits for the launch's retry of an unregister a sign-out kept")
+    func aSignInWaitsForTheKeptUnregister() async throws {
+        let backend = BackendFixture(signedIn: false)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+        auth.authTokenManager = backend.manager
+        auth.beginSignOutBackgroundTask = { {} }
+        let (unregistered, unregister) = AsyncStream<Void>.makeStream()
+        auth.backend.retryDepartingUnregisterBeforeSigningIn {
+            for await _ in unregistered {}
+        }
+
+        try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            async let signIn: Void = auth.ensureBackendSignedIn()
+            try await waitUntil { auth.isSigningInToBackend }
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(SettingsAPIStub.requests(for: backend.loginURL).isEmpty)
+
+            unregister.finish()
+            await signIn
+        }
+
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
     }
 
     @Test("sign-ins that overlap share one login")
@@ -2066,7 +2115,7 @@ struct BackendSignInTests {
             auth.authTokenManager = backend.manager
             await backend.manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
             SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
-            let push = RegistrationFixture(manager: backend.manager)
+            let push = RegistrationFixture(manager: backend.manager, signIns: auth.session.signIns)
             push.answerAnnounce()
             push.answerRegister()
 
@@ -2092,7 +2141,7 @@ struct BackendSignInTests {
             auth.authTokenManager = backend.manager
             await backend.manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
             SettingsAPIStub.enqueue(.init(statusCode: 503, body: Data()), for: backend.loginURL)
-            let push = RegistrationFixture(manager: backend.manager)
+            let push = RegistrationFixture(manager: backend.manager, signIns: auth.session.signIns)
             for _ in 0..<4 { push.answerAnnounce() }
 
             await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
@@ -2126,6 +2175,25 @@ struct BackendSignInTests {
         #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
     }
 
+    @Test("a request after the backend turned the refresh token down signs in again with the stored credentials")
+    func aRequestAfterARefusedRefreshSignsInAgain() async throws {
+        let auth = AuthService(keychainHasCredentials: { false }, notificationCenter: NotificationCenter())
+        let backend = BackendFixture(signIn: auth.session.signIns.currentSignIn)
+        let manager = backend.manager
+        auth.authTokenManager = manager
+        await manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
+        SettingsAPIStub.enqueue(.init(statusCode: 401, body: Data()), for: backend.refreshURL)
+        SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
+
+        let headers = await SecureStore.$sharedForTesting.withValue(MemoryKeychain.signedIn()) {
+            let refused = await manager.authorizationHeader()
+            return [refused, await manager.authorizationHeader()]
+        }
+
+        #expect(headers == [nil, "Bearer A9"])
+        #expect(SettingsAPIStub.requests(for: backend.loginURL).count == 1)
+    }
+
     enum SignInAgainCondition: String, CaseIterable, CustomTestStringConvertible {
         case none, syncOff, credentialsUnreadable, backendSignedIn, signingIn, registrationSent
 
@@ -2154,7 +2222,7 @@ struct BackendSignInTests {
             auth.authTokenManager = backend.manager
             await backend.manager.setNoSessionHandler { await auth.ensureBackendSignedIn() }
             SettingsAPIStub.enqueue(BackendFixture.loginReply(access: "A9", refresh: "R9"), for: backend.loginURL)
-            let push = RegistrationFixture(manager: backend.manager)
+            let push = RegistrationFixture(manager: backend.manager, signIns: auth.session.signIns)
             for _ in 0..<4 { push.answerAnnounce() }
             let keychain = MemoryKeychain.locked()
 
@@ -2370,7 +2438,10 @@ private struct RegistrationFixture {
     let unregisterURL: URL
 
     /// `resolvingAsTheApp` sends to `PushServerConfig.resolveServerURL()` instead of `baseURL`.
-    init(manager: AuthTokenManager, baseURL: URL = SettingsAPIStub.uniqueBaseURL(), resolvingAsTheApp: Bool = false) {
+    init(
+        manager: AuthTokenManager, baseURL: URL = SettingsAPIStub.uniqueBaseURL(), resolvingAsTheApp: Bool = false,
+        signIns: SignInSeries = testSignIns
+    ) {
         announceURL = baseURL.appendingPathComponent("devices/anonymous")
         registerURL = baseURL.appendingPathComponent("devices/register")
         unregisterURL = baseURL.appendingPathComponent("devices/test-device")
@@ -2381,8 +2452,9 @@ private struct RegistrationFixture {
             apiClient: PushAPIClient(
                 baseURLProvider: { resolvingAsTheApp ? PushServerConfig.resolveServerURL() : baseURL },
                 session: URLSession(configuration: config),
-                authHeaderProvider: { await manager.authorizationHeader() }
+                auth: manager.backendAuth
             ),
+            signIns: signIns,
             deviceClass: "iphone",
             debounceSleep: { _ in },
             retrySleep: { _ in }

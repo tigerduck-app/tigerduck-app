@@ -27,7 +27,7 @@ struct MacTigerSyncSettingsView: View {
             }
 
             Section {
-                Toggle(String(localized: "sync_courses_toggle"), isOn: $state.cloudSyncEnabled)
+                Toggle(String(localized: "sync_courses_toggle"), isOn: app.cloudSyncSwitch)
                     .onChange(of: state.cloudSyncEnabled) { old, newValue in
                         if newValue && !old {
                             if syncCourses { app.conflicts.markCategoryReenabled("courses") }

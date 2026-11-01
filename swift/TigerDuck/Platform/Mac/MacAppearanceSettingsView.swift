@@ -42,7 +42,7 @@ struct MacAppearanceSettingsView: View {
             isPresented: $isConfirmingReassign
         ) {
             Button(String(localized: "action_confirm"), role: .destructive) {
-                app.edits.reassignAllCourseColors()
+                app.edits.reassignAllCourseColors(for: app.authService.session.currentSignIn)
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {

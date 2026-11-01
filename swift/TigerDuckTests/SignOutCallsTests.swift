@@ -42,7 +42,7 @@ struct SignOutCallsTests {
         auth.accountNotifications = DeliveredNotificationsStub()
         #endif
         auth.beginSignOutBackgroundTask = { {} }
-        auth.forgetPages = { steps.taken.append("pages") }
+        auth.clearAllCachedPages = { steps.taken.append("pages") }
 
         let calls = auth.startSignOutCalls { steps.taken.append("calls") }
 
@@ -93,10 +93,10 @@ struct SignOutCallsTests {
             await MainActor.run { steps.taken.append("begin") }
             return { await MainActor.run { steps.taken.append("end") } }
         }
-        auth.forgetPages = { steps.taken.append("pages") }
+        auth.clearAllCachedPages = { steps.taken.append("pages") }
 
-        auth.startDepartingUnregisterRetry { steps.taken.append("retry") }
-        await auth.departingUnregisterRetry?.value
+        auth.backend.retryDepartingUnregisterBeforeSigningIn { steps.taken.append("retry") }
+        await auth.backend.departingUnregister?.value
 
         #expect(steps.taken == ["begin", "retry", "end"])
         #expect(auth.signOutCalls == nil)

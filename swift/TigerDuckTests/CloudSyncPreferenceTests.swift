@@ -42,7 +42,7 @@ struct CloudSyncPreferenceTests {
             preference.onChange { reported.append($0) }
 
             Defaults[key] = false
-            preference.isEnabled = true
+            preference.setEnabled(true, for: testSignIn)
 
             #expect(reported == [false, true])
             #expect(Defaults[key] == true)

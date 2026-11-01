@@ -4,7 +4,7 @@ import SwiftUI
 
 struct MacBulletinDetail: View {
     let detail: BulletinAPI.BulletinDetail
-    let fallback: String?
+    let listSummary: String?
     let orgLabel: (String) -> String
 
     var body: some View {
@@ -29,7 +29,7 @@ struct MacBulletinDetail: View {
 
                 let body = BulletinBodyRenderer.bodyMarkdown(
                     for: detail,
-                    fallbackSummary: fallback
+                    fallbackSummary: listSummary
                 )
                 if body.isEmpty {
                     Text(String(localized: "desktop_bulletins_no_body"))
@@ -57,7 +57,7 @@ struct MacBulletinDetail: View {
 
 struct MacBulletinDetailError: View {
     let message: String
-    let fallback: String?
+    let listSummary: String?
     let retry: () -> Void
 
     var body: some View {
@@ -72,9 +72,9 @@ struct MacBulletinDetailError: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button(String(localized: "action_retry"), action: retry)
-            if let fallback, !fallback.isEmpty {
+            if let listSummary, !listSummary.isEmpty {
                 Divider()
-                Markdown(BulletinBodyRenderer.normalize(fallback))
+                Markdown(BulletinBodyRenderer.normalize(listSummary))
                     .markdownTheme(.basic)
             }
         }

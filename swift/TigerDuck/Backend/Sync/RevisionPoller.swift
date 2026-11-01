@@ -4,7 +4,7 @@ nonisolated enum RevisionPollOutcome: Equatable, Sendable {
     case unchanged
     case changed
     case failed
-    case unauthorized(refused: String?)
+    case unauthorized(refusedAccessToken: String?)
     case offline
 }
 
@@ -129,7 +129,7 @@ final class RevisionPoller {
         cancelWait()
     }
 
-    func pollInFlight() async {
+    func waitForPollInFlight() async {
         await inFlight?.value
     }
 

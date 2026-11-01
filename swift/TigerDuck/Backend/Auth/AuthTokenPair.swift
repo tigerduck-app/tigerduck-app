@@ -35,7 +35,7 @@ nonisolated struct AuthTokenPair {
     private(set) var accessToken: String?
     private(set) var refreshToken: String?
     var expiresAt: Date = .distantPast
-    var budget = RefreshTokenUseBudget()
+    var budget = UnconfirmedRefreshSends()
     private(set) var refreshTokenIsStored = true
     private(set) var signIn: SignIn?
 
@@ -48,7 +48,7 @@ nonisolated struct AuthTokenPair {
            let interval = TimeInterval(raw) {
             expiresAt = Date(timeIntervalSince1970: interval)
         }
-        budget = RefreshTokenUseBudget(stored: tokens.load(AuthTokenManager.refreshTokenUsesKey))
+        budget = UnconfirmedRefreshSends(stored: tokens.load(AuthTokenManager.refreshTokenUsesKey))
     }
 
     func holds(_ signIn: SignIn) -> Bool {
@@ -59,7 +59,7 @@ nonisolated struct AuthTokenPair {
         self.signIn = signIn
         accessToken = access
         refreshToken = refresh
-        budget = RefreshTokenUseBudget()
+        budget = UnconfirmedRefreshSends()
         expiresAt = Date.now.addingTimeInterval(TimeInterval(expiresIn))
         tokens.save(AuthTokenManager.accessTokenKey, access)
         tokens.save(AuthTokenManager.expiresAtKey, String(expiresAt.timeIntervalSince1970))
@@ -77,12 +77,15 @@ nonisolated struct AuthTokenPair {
         if tokens.deleteConfirmed(AuthTokenManager.refreshTokenKey) { tokens.delete(AuthTokenManager.refreshTokenUsesKey) }
     }
 
-    mutating func saveBudget(_ budget: RefreshTokenUseBudget, of token: String) -> Bool {
-        guard refreshToken == token else { return false }
-        if !refreshTokenIsStored {
-            guard tokens.saveConfirmed(AuthTokenManager.refreshTokenKey, token) else { return false }
-            refreshTokenIsStored = true
-        }
+    mutating func saveBudget(_ budget: UnconfirmedRefreshSends, of token: String) -> Bool {
+        guard refreshToken == token, ensureRefreshTokenStored() else { return false }
         return tokens.saveConfirmed(AuthTokenManager.refreshTokenUsesKey, budget.stored)
+    }
+
+    private mutating func ensureRefreshTokenStored() -> Bool {
+        if !refreshTokenIsStored, let refreshToken {
+            refreshTokenIsStored = tokens.saveConfirmed(AuthTokenManager.refreshTokenKey, refreshToken)
+        }
+        return refreshTokenIsStored
     }
 }

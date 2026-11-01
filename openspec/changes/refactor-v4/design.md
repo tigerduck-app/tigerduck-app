@@ -206,7 +206,7 @@ Course membership follows the newest school roster, whichever device fetched it.
 edits follow the last writer by `hlc`. A local edit is sent at once and never waits for a pull.
 When the pull fails, school data still shows and its uploads wait for the next successful pull, so
 a device sends nothing derived from school data before its first pull after a sign-in.
-That hold lives in `SyncTarget`, not in its callers, so an upload started outside
+That hold lives in `FirstPullGate`, not in its callers, so an upload started outside
 `SceneActivation` waits too.
 - Lost: finishing the pull before starting the school fetch. It adds the backend round trip to
   every launch for the same result.
@@ -254,8 +254,11 @@ counts) and sometimes forgot it. Phase 8 moves the check into the type that land
   from account data takes the `SignIn`; the store or `BackendClient` drops what an ended sign-in
   sends, on the first send and on a replay after a 401. The token pair records its sign-in.
 - Hand-made counters go: a value held for one sign-in is a `SignInBound`; a counter kept only where
-  it guards something other than the sign-in (`MailCache.wipeCount`, the classroom usage reads,
-  the notification-settings queue) keeps a name that says what.
+  it guards something other than the sign-in (`MailCache.wipeCount`, `BrowserData.storeResets`,
+  the notification-settings queue) keeps a name that says what. School Mail is an account of its
+  own with the same `SignIn`, through `AccountSession.mail`.
+- Every backend client of account data takes the token manager's header, which names its sign-in;
+  only the course catalog's names none.
 - `check_architecture.py` phase 8 fails a sign-in read, compared or written outside its homes.
 - Lost: a write already in flight still runs; only where it lands changes. The one change users
   could see is that a write or send crossing a sign-out is dropped.

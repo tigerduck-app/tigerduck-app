@@ -49,12 +49,12 @@ enum LibraryService: AccountScoped {
     }
 
     @MainActor
-    static func clearCredentials() {
+    static func signOutLibraryOnly() {
         SignOutPlan(
             session: AccountSession.library,
             stores: SignOutPlan.libraryStores,
             stopWork: { cancelStoredPasswordRetry() },
-            clearRest: {
+            clearMemoryState: {
                 LibraryQRCache.shared.clear()
                 #if os(iOS)
                 LibraryQRImageCache.shared.clear()
@@ -68,7 +68,7 @@ enum LibraryService: AccountScoped {
     static func forgetAccount(in storage: AccountStorage) {
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
-        StoredPasswordBackoff.library.forget()
+        StoredPasswordLockoutBackoff.library.forget()
         clearToken()
     }
 
@@ -82,7 +82,11 @@ enum LibraryService: AccountScoped {
 
     @MainActor
     static func schoolAccountDidSignOut() {
-        if storedUsername == nil, !hasAccount { NotificationCenter.default.post(name: accountDidChange, object: nil) }
+        if signInFormOffersSchoolStudentID { NotificationCenter.default.post(name: accountDidChange, object: nil) }
+    }
+
+    @MainActor private static var signInFormOffersSchoolStudentID: Bool {
+        storedUsername == nil && !hasAccount
     }
 
     static var storedToken: String? {
@@ -134,12 +138,12 @@ enum LibraryService: AccountScoped {
     }
 
     static var storedPasswordRefusals: (count: Int, last: Date?) {
-        get { StoredPasswordBackoff.library.refusals }
-        set { StoredPasswordBackoff.library.refusals = newValue }
+        get { StoredPasswordLockoutBackoff.library.refusals }
+        set { StoredPasswordLockoutBackoff.library.refusals = newValue }
     }
 
     static func storedPasswordPostIsDue(now: Date) -> Bool {
-        StoredPasswordBackoff.library.postIsDue(now: now)
+        StoredPasswordLockoutBackoff.library.postIsDue(now: now)
     }
 
     @MainActor private static var pendingSignIns: [String: Task<String, Error>] = [:]
@@ -167,7 +171,7 @@ enum LibraryService: AccountScoped {
     ) async -> Bool {
         guard !isTokenValid, storedUsername != nil, storedPassword != nil else { return false }
         guard storedPasswordPostIsDue(now: Date()) else {
-            LibraryPasswordRetry.arm(signIn: signIn, retrySleep: retrySleep)
+            LibraryPasswordRetry.retryStoredPasswordWhenWaitEnds(signIn: signIn, retrySleep: retrySleep)
             return false
         }
         guard signInIsDue(lastFailure: storedSignInFailedAt, now: Date()),
@@ -210,9 +214,9 @@ enum LibraryService: AccountScoped {
             } catch {
                 if librarySignIn.isCurrent, storedPassword == password {
                     if case LibraryServiceError.loginFailed = error {
-                        StoredPasswordBackoff.library.noteRefused(at: Date())
+                        StoredPasswordLockoutBackoff.library.recordRefusalAndNextPost(at: Date())
                         if typedSignIns == typedSignInsBefore {
-                            LibraryPasswordRetry.arm(signIn: signIn, retrySleep: retrySleep)
+                            LibraryPasswordRetry.retryStoredPasswordWhenWaitEnds(signIn: signIn, retrySleep: retrySleep)
                         }
                         #if os(iOS)
                         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()

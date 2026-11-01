@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -45,10 +46,11 @@ struct MailListViewModelTests {
         let fake = FakeMailClient(folders: folders)
         let cache = SchoolMailTestDoubles.temporaryCache()
         let seen = SeenLog()
-        let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake },
-                                      onAuthFailure: { seen.authFailures += 1 }, signOutEvents: signOutEvents)
         let account = AccountSession()
-        let model = MailListViewModel(session: session, account: account, cache: cache, noteSeenByPage: { seen.noted.append($0) },
+        let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake },
+                                      onAuthFailure: { _ in seen.authFailures += 1 }, signOutEvents: signOutEvents,
+                                      account: account)
+        let model = MailListViewModel(session: session, account: account, cache: cache, noteSeenByPage: { status, _ in seen.noted.append(status) },
                                       signOutEvents: signOutEvents, warmDelay: warmDelay, catchUpDelay: catchUpDelay)
         return Harness(model: model, fake: fake, cache: cache, seen: seen, account: account)
     }
@@ -611,7 +613,7 @@ struct MailListViewModelTests {
         await h.fake.update { $0.pageError = .serverBusy }
         let visit = MailListViewModel(
             session: MailPageSession(idleClose: .milliseconds(10), open: { h.fake }, signOutEvents: NotificationCenter()),
-            cache: h.cache, noteSeenByPage: { _ in }, signOutEvents: NotificationCenter(),
+            cache: h.cache, noteSeenByPage: { _, _ in }, signOutEvents: NotificationCenter(),
             warmDelay: { try? await Task.sleep(for: .seconds(86_400)) }
         )
         await visit.load()
@@ -1033,6 +1035,43 @@ struct MailListViewModelTests {
         await load.value
 
         #expect(h.seen.authFailures == 0)
+    }
+
+    @Test("a load a sign-in of the same account overtook ends its refresh, and the next load runs")
+    func aLoadASignInOvertookEndsItsRefresh() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.hold("page")
+        let load = Task { await h.model.load() }
+        await h.fake.waitForArrival("page")
+        h.account.endSignIn()
+        await h.fake.release("page")
+        await load.value
+
+        #expect(!h.model.isRefreshing)
+        let before = await h.fake.pageRequests.count
+        await h.model.load()
+        #expect(await h.fake.pageRequests.count > before)
+    }
+
+    @Test("a warm a sign-in of the same account stopped starts again on the next visit")
+    func aWarmASignInStoppedStartsAgain() async {
+        let (released, release) = AsyncStream<Void>.makeStream()
+        let first = OSAllocatedUnfairLock(initialState: true)
+        let h = Self.harness(inboxCount: 2, sentUIDs: [1], warmDelay: {
+            guard first.withLock({ isFirst in defer { isFirst = false }; return isFirst }) else { return }
+            for await _ in released { return }
+        })
+        await h.model.refresh()
+        h.account.endSignIn()
+        release.yield()
+        await h.model.waitForWarm()
+        let warmPage = "\(MailFolderRole.trash.imapName) \(MailConstants.warmPageSize)"
+        #expect(await !h.fake.pageRequests.contains(warmPage))
+
+        h.model.startPolling()
+        await h.model.waitForWarm()
+        #expect(await h.fake.pageRequests.contains(warmPage))
+        h.model.stopPolling()
     }
 
     @Test func aFolderThatFailsToLoadLeavesTheOthersInAllMail() async {

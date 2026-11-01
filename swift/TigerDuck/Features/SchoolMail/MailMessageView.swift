@@ -18,10 +18,8 @@ struct MailMessageView: View {
     @State private var shareItem: MailFileItem?
     @State private var riskyAttachment: RiskyAttachment?
     @State private var showMoveSheet = false
-    @State private var pendingDelete: PendingDelete?
+    @State private var pendingDelete: MailDeleteConfirmation?
     @State private var compose: MailComposeContext?
-
-    private enum PendingDelete { case toTrash, permanent }
 
     private struct RiskyAttachment: Identifiable {
         let part: MailBodyPart
@@ -48,7 +46,7 @@ struct MailMessageView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             MailMessageToolbar(viewModel: viewModel, onCompose: startCompose, onMove: { showMoveSheet = true },
-                               onDelete: { pendingDelete = $0 ? .permanent : .toTrash })
+                               onDelete: { pendingDelete = $0 })
         }
         .environment(\.openURL, OpenURLAction { url in
             pendingLinkTarget = viewModel.linkTarget(forPlainText: url)
@@ -111,7 +109,7 @@ struct MailMessageView: View {
         }
     }
 
-    private func confirming(_ kind: PendingDelete) -> Binding<Bool> {
+    private func confirming(_ kind: MailDeleteConfirmation) -> Binding<Bool> {
         Binding(get: { pendingDelete == kind }, set: { if !$0 { pendingDelete = nil } })
     }
 

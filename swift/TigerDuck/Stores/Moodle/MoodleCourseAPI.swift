@@ -31,20 +31,25 @@ nonisolated struct MoodleCourseAPI: Sendable {
         _ status: MoodleSubmissionStatus, _ askedAt: ContinuousClock.Instant, _ context: MoodleCacheContext
     ) -> Void = { _, _, _ in }
 
+    func ifAllowed<Answer>(_ function: String, else empty: Answer, _ call: () async throws -> Answer) async throws -> Answer {
+        guard try await functions().contains(function) else { return empty }
+        return try await call()
+    }
+
     static let live = MoodleCourseAPI(
         functions: {
-            try await MoodleWebserviceClient.withToken { try await MoodleSiteInfoService.shared.functions(token: $0) }
+            try await MoodleWebserviceClient.withRenewingToken { try await MoodleSiteInfoService.shared.functions(token: $0) }
         },
         forums: { courseIds in
-            try await MoodleWebserviceClient.withToken { try await MoodleForumService.forums(courseIds: courseIds, token: $0) }
+            try await MoodleWebserviceClient.withRenewingToken { try await MoodleForumService.forums(courseIds: courseIds, token: $0) }
         },
         discussions: { forumId, page in
-            try await MoodleWebserviceClient.withToken {
+            try await MoodleWebserviceClient.withRenewingToken {
                 try await MoodleForumService.discussions(forumId: forumId, page: page, token: $0)
             }
         },
         posts: { discussionId in
-            try await MoodleWebserviceClient.withToken {
+            try await MoodleWebserviceClient.withRenewingToken {
                 try await MoodleForumService.posts(discussionId: discussionId, token: $0)
             }
         },
@@ -52,7 +57,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
             try await markDiscussionViewed(discussionId, for: signIn)
         },
         materials: { courseId in
-            try await MoodleWebserviceClient.withToken {
+            try await MoodleWebserviceClient.withRenewingToken {
                 try await MoodleCourseContentsService.materials(courseId: courseId, token: $0)
             }
         },
@@ -60,7 +65,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
             try await logMaterialView(material, for: signIn)
         },
         download: { file, progress in
-            try await MoodleWebserviceClient.withToken { token in
+            try await MoodleWebserviceClient.withRenewingToken { token in
                 let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token)
                 guard let source = URL(string: file.url),
                       let request = MoodleFileTransfer.downloadRequest(for: source, accessKey: key, token: token) else {
@@ -70,7 +75,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
             }
         },
         members: { courseId in
-            try await MoodleWebserviceClient.withToken { token in
+            try await MoodleWebserviceClient.withRenewingToken { token in
                 MoodleMemberList(
                     ownId: try await MoodleSiteInfoService.shared.userId(token: token),
                     members: try await MoodleCourseMembersService.members(courseId: courseId, token: token)
@@ -78,7 +83,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
             }
         },
         picture: { url in
-            try await MoodleWebserviceClient.withToken { token in
+            try await MoodleWebserviceClient.withRenewingToken { token in
                 let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token)
                 return try await MoodleCourseMembersService.picture(url, accessKey: key, token: token)
             }
@@ -87,13 +92,13 @@ nonisolated struct MoodleCourseAPI: Sendable {
             try await updatePicture(jpeg, for: signIn)
         },
         gradeItems: { courseId in
-            try await MoodleWebserviceClient.withToken { token in
+            try await MoodleWebserviceClient.withRenewingToken { token in
                 let userId = try await MoodleSiteInfoService.shared.userId(token: token)
                 return try await MoodleGradeService.gradeItems(courseId: courseId, userId: userId, token: token)
             }
         },
         summary: { courseId in
-            try await MoodleWebserviceClient.withToken {
+            try await MoodleWebserviceClient.withRenewingToken {
                 try await MoodleCourseSummaryService.summary(courseId: courseId, token: $0)
             }
         },
@@ -101,12 +106,12 @@ nonisolated struct MoodleCourseAPI: Sendable {
             try await MoodleAssignmentService.submission(assignId: assignId)
         },
         comments: { cmid, submissionId in
-            try await MoodleWebserviceClient.withToken {
+            try await MoodleWebserviceClient.withRenewingToken {
                 try await MoodleAssignmentService.comments(cmid: cmid, submissionId: submissionId, token: $0)
             }
         },
         groups: { courseId in
-            try await MoodleWebserviceClient.withToken { token in
+            try await MoodleWebserviceClient.withRenewingToken { token in
                 let userId = try await MoodleSiteInfoService.shared.userId(token: token)
                 return try await MoodleAssignmentService.groups(courseId: courseId, userId: userId, token: token)
             }
@@ -127,7 +132,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws {
-        try await MoodleWebserviceClient.withToken(tokens) { token in
+        try await MoodleWebserviceClient.withRenewingToken(tokens) { token in
             guard signIn.isCurrent, !Task.isCancelled else { throw CancellationError() }
             try await MoodleForumService.markViewed(
                 discussionId: discussionId, token: token, session: session, siteURL: siteURL
@@ -142,7 +147,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws {
-        try await MoodleWebserviceClient.withToken(tokens) { token in
+        try await MoodleWebserviceClient.withRenewingToken(tokens) { token in
             try await MoodleProfilePictureService.update(
                 jpeg: jpeg, token: token, for: signIn, session: session, siteURL: siteURL
             )
@@ -156,7 +161,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
         session: URLSession = MoodleWebserviceClient.session,
         siteURL: URL = AppConstants.moodleBaseURL
     ) async throws {
-        try await MoodleWebserviceClient.withToken(tokens) { token in
+        try await MoodleWebserviceClient.withRenewingToken(tokens) { token in
             guard signIn.isCurrent, !Task.isCancelled else { throw CancellationError() }
             try await MoodleCourseContentsService.markViewed(material, token: token, session: session, siteURL: siteURL)
         }

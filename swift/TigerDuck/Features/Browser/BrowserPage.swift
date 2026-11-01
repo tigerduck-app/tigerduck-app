@@ -19,7 +19,7 @@ final class BrowserPage {
     let zoomPeek = BrowserZoomPeek()
     private(set) var site = BrowserSiteSetting()
     let store: WKWebsiteDataStore
-    let epoch: Int
+    let storeResets: Int
     let downloads = BrowserDownloads()
     nonisolated static let downloadsRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("BrowserDownloads", isDirectory: true)
@@ -28,7 +28,7 @@ final class BrowserPage {
         let data = BrowserData.shared
         let store = data.store
         self.store = store
-        epoch = data.epoch
+        storeResets = data.storeResets
         signIn = BrowserSignIn(
             hasSession: { BrowserRouting.hasMoodleSession(await store.httpCookieStore.allCookies()) },
             signedInURL: { target in

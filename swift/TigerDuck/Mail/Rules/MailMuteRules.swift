@@ -18,19 +18,30 @@ nonisolated struct MailMuteSettings: Codable, Equatable, Sendable {
 
 nonisolated struct MailQuietHours: Codable, Equatable, Sendable {
     var isEnabled = false
-    var start = 23 * 60
-    var end = 7 * 60
+    var startMinute = 23 * 60
+    var endMinute = 7 * 60
     /// `Calendar` weekday numbers, 1 being Sunday.
     var weekdays: Set<Int> = Set(1...7)
 
+    enum CodingKeys: String, CodingKey {
+        case isEnabled, weekdays
+        case startMinute = "start"
+        case endMinute = "end"
+    }
+
     func contains(_ date: Date, calendar: Calendar = TaipeiTime.calendar) -> Bool {
-        guard isEnabled, start != end else { return false }
+        guard isEnabled else { return false }
         let parts = calendar.dateComponents([.weekday, .hour, .minute], from: date)
-        guard let weekday = parts.weekday, let hour = parts.hour, let minute = parts.minute else { return false }
-        let time = hour * 60 + minute
-        if start < end { return weekdays.contains(weekday) && start <= time && time < end }
-        if time >= start { return weekdays.contains(weekday) }
-        return time < end && weekdays.contains(weekday == 1 ? 7 : weekday - 1)
+        guard let weekday = parts.weekday, let hour = parts.hour, let minute = parts.minute,
+              let startDay = startDay(ofWindowAt: hour * 60 + minute, on: weekday) else { return false }
+        return weekdays.contains(startDay)
+    }
+
+    private func startDay(ofWindowAt minute: Int, on weekday: Int) -> Int? {
+        if startMinute < endMinute { return (startMinute..<endMinute).contains(minute) ? weekday : nil }
+        if startMinute == endMinute { return nil }
+        if minute >= startMinute { return weekday }
+        return minute < endMinute ? (weekday == 1 ? 7 : weekday - 1) : nil
     }
 }
 
@@ -94,34 +105,40 @@ nonisolated struct MailMuteRule: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-extension MailMuteSettings {
+private nonisolated extension KeyedDecodingContainer {
+    func decode<T: Decodable>(_ key: Key, default fallback: @autoclosure () -> T) throws -> T {
+        try decodeIfPresent(T.self, forKey: key) ?? fallback()
+    }
+}
+
+nonisolated extension MailMuteSettings {
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = MailMuteSettings()
-        quietHours = try container.decodeIfPresent(MailQuietHours.self, forKey: .quietHours) ?? defaults.quietHours
-        presets = try container.decodeIfPresent(Set<MailMutePreset>.self, forKey: .presets) ?? defaults.presets
-        rules = try container.decodeIfPresent([MailMuteRule].self, forKey: .rules) ?? defaults.rules
+        quietHours = try container.decode(.quietHours, default: defaults.quietHours)
+        presets = try container.decode(.presets, default: defaults.presets)
+        rules = try container.decode(.rules, default: defaults.rules)
     }
 }
 
-extension MailQuietHours {
+nonisolated extension MailQuietHours {
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = MailQuietHours()
-        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? defaults.isEnabled
-        start = try container.decodeIfPresent(Int.self, forKey: .start) ?? defaults.start
-        end = try container.decodeIfPresent(Int.self, forKey: .end) ?? defaults.end
-        weekdays = try container.decodeIfPresent(Set<Int>.self, forKey: .weekdays) ?? defaults.weekdays
+        isEnabled = try container.decode(.isEnabled, default: defaults.isEnabled)
+        startMinute = try container.decode(.startMinute, default: defaults.startMinute)
+        endMinute = try container.decode(.endMinute, default: defaults.endMinute)
+        weekdays = try container.decode(.weekdays, default: defaults.weekdays)
     }
 }
 
-extension MailMuteRule {
+nonisolated extension MailMuteRule {
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        field = try container.decodeIfPresent(Field.self, forKey: .field) ?? .from
-        op = try container.decodeIfPresent(Operator.self, forKey: .op) ?? .contains
-        value = try container.decodeIfPresent(String.self, forKey: .value) ?? ""
+        id = try container.decode(.id, default: UUID())
+        field = try container.decode(.field, default: .from)
+        op = try container.decode(.op, default: .contains)
+        value = try container.decode(.value, default: "")
     }
 }
 #endif

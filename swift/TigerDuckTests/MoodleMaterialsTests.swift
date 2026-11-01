@@ -228,9 +228,9 @@ struct MoodleMaterialsTests {
         let site = Site()
         let store = Self.store(folder, site: site)
 
-        await store.open(Self.syllabus).value
-        await store.open(Self.reading).value
-        await store.open(Self.lab).value
+        await store.logView(of: Self.syllabus).value
+        await store.logView(of: Self.reading).value
+        await store.logView(of: Self.lab).value
 
         #expect(site.viewed == [9101, 9201])
     }
@@ -242,7 +242,7 @@ struct MoodleMaterialsTests {
         let signedIn = TestSignIn.ended()
         let store = Self.store(folder, site: site, signedIn: signedIn)
 
-        await store.open(Self.syllabus).value
+        await store.logView(of: Self.syllabus).value
 
         #expect(site.viewed.isEmpty)
     }

@@ -55,7 +55,7 @@ private struct ClassTableImportHost: ViewModifier {
                 notifySheetUp: app.updateNotifyCoordinator.activeNotifySheet != nil,
                 keyWindowChanges: keyWindowChanges
             )) {
-                while !openHeldLink(), hostWindow.isPresenting, !Task.isCancelled {
+                while openHeldLink() == .waitsForTheWindow, hostWindow.isPresenting, !Task.isCancelled {
                     await hostWindow.presentationsClosed()
                 }
             }
@@ -72,7 +72,7 @@ private struct ClassTableImportHost: ViewModifier {
             .environment(\.hostWindow, hostWindow)
     }
 
-    private func openHeldLink() -> Bool {
+    private func openHeldLink() -> HeldLinkOpening {
         // A link replaces what an open scanner, or an earlier link's import, shows, inside it.
         let inPlace: ClassTableImportModel? = if let importModel, !importModel.isFinished {
             importModel
@@ -83,17 +83,24 @@ private struct ClassTableImportHost: ViewModifier {
         }
         if let inPlace {
             if let text = HeldShareLink.shared.take(in: app) { inPlace.linkOpened(text) }
-            return true
+            return .done
         }
-        let waits = !hostWindow.isForeground || hostWindow.isPresenting
+        let windowCannotShowTheImport = !hostWindow.mayBeForeground || hostWindow.isPresenting
             || app.updateNotifyCoordinator.activeNotifySheet != nil
-        if waits, HeldShareLink.shared.link != nil, HeldShareLink.mayOpen(in: app) { return false }
-        guard let text = HeldShareLink.shared.take(in: app) else { return true }
+        if windowCannotShowTheImport, HeldShareLink.shared.link != nil, HeldShareLink.mayOpen(in: app) {
+            return .waitsForTheWindow
+        }
+        guard let text = HeldShareLink.shared.take(in: app) else { return .done }
         let model = ClassTableImportModel.live(authService: app.authService)
         linkModel = model
         model.linkOpened(text)
-        return true
+        return .done
     }
+}
+
+private enum HeldLinkOpening {
+    case done
+    case waitsForTheWindow
 }
 
 private struct HeldLinkWait: Equatable {

@@ -5,70 +5,82 @@ import Foundation
 final class MailPageSession {
     private let open: () async throws -> any MailClient
     private var client: (any MailClient)?
-    private var opening: Task<any MailClient, Error>?
+    /// The open under way and the sign-in it was started in; a later sign-in opens its own.
+    private var opening: (task: Task<any MailClient, Error>, signIn: SignIn)?
     private let idleClose: MailIdleClose
     private var inFlight = 0
     private var isReleased = false
     private var pendingDrop = false
-    private let onAuthFailure: @MainActor () -> Void
-    private var signOutEpoch = 0
+    // NTUST locks the account and its Wi-Fi after repeated failed sign-ins, so every rejection a
+    // use sees, thrown or caught, reaches this.
+    private let onAuthFailure: @MainActor (SignIn) -> Void
+    let account: AccountSession
     private var signOutListener: MailSignOutListener?
 
     init(
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
         open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() },
-        onAuthFailure: @escaping @MainActor () -> Void = { MailAccountManager.shared.handleAuthFailure() },
+        onAuthFailure: @escaping @MainActor (SignIn) -> Void = { MailAccountManager.shared.handleAuthFailure(for: $0) },
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
-        signOutEvents: NotificationCenter = .default
+        signOutEvents: NotificationCenter = .default,
+        account: AccountSession? = nil
     ) {
+        self.account = account ?? MailAccountManager.shared.session
         self.idleClose = MailIdleClose(delay: idleClose, sleep: sleep)
         self.open = open
         self.onAuthFailure = onAuthFailure
         signOutListener = MailSignOutListener(center: signOutEvents) { [weak self] in self?.invalidateForSignOut() }
     }
 
-    func use<T>(_ body: (any MailClient) async throws -> T) async throws -> T {
+    func use<T>(for signIn: SignIn? = nil, _ body: (any MailClient) async throws -> T) async throws -> T {
+        try await run(for: signIn, body) { _, _ in }
+    }
+
+    func use<T: MailCaughtRejection>(
+        for signIn: SignIn? = nil, _ body: (any MailClient) async throws -> T
+    ) async throws -> T {
+        try await run(for: signIn, body) { result, signIn in
+            if result.rejectedPassword { reportAuthenticationRejection(for: signIn) }
+        }
+    }
+
+    private func run<T>(
+        for given: SignIn?, _ body: (any MailClient) async throws -> T, then inspect: (T, SignIn) -> Void
+    ) async throws -> T {
+        let signIn: SignIn
+        if let given { signIn = given } else { signIn = await account.startingSignIn }
+        guard signIn.isCurrent else { throw CancellationError() }
         cancelClose()
         inFlight += 1
         let client: any MailClient
         do {
-            client = try await resolveClient()
+            client = try await resolveClient(for: signIn)
         } catch {
-            reportIfAuthenticationRejected(error)
+            reportIfAuthenticationRejected(error, for: signIn)
             await endUse()
             throw error
         }
         do {
             let result = try await body(client)
+            inspect(result, signIn)
             await endUse()
             return result
         } catch {
             if MailErrorClass(error)?.closesConnection == true { pendingDrop = true }
-            reportIfAuthenticationRejected(error)
+            reportIfAuthenticationRejected(error, for: signIn)
             await endUse()
             throw error
         }
     }
 
-    /// The choke point that keeps a rejected password from being sent again covers everything
-    /// the page does, not only the sign-in that opened the connection. SMTP `AUTH LOGIN` and the
-    /// held connection's own relogin run inside a `use(_:)` body, never through
-    /// `MailAccountManager.openSession()`, so without this they would leave `authFailed` unset
-    /// and the next tap would send the rejected password again. NTUST locks the account (and
-    /// its Wi-Fi) after repeated failures, so every layer reports here.
-    private func reportIfAuthenticationRejected(_ error: any Error) {
+    private func reportIfAuthenticationRejected(_ error: any Error, for signIn: SignIn) {
         guard (error as? MailClientError) == .authenticationFailed else { return }
-        reportAuthenticationRejection()
+        reportAuthenticationRejection(for: signIn)
     }
 
-    /// Reports a rejected password a `use(_:)` body caught and did not rethrow.
-    /// `use(_:)` only hears about a rejection thrown as an error, and filing the sent copy is
-    /// best-effort: it must never fail a send that already succeeded (`SentCopyFiler`), so its
-    /// `.authenticationFailed` is caught and turned into an outcome. NTUST locks the account (and
-    /// its Wi-Fi) after repeated failures, so that caller reports here, reaching the same choke
-    /// point a thrown error would.
-    func reportAuthenticationRejection() {
-        onAuthFailure()
+    private func reportAuthenticationRejection(for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        onAuthFailure(signIn)
     }
 
     func releaseSoon() {
@@ -86,7 +98,6 @@ final class MailPageSession {
     }
 
     func invalidateForSignOut() {
-        signOutEpoch += 1
         idleClose.cancel()
         isReleased = false
         pendingDrop = false
@@ -106,19 +117,18 @@ final class MailPageSession {
         }
     }
 
-    private func resolveClient() async throws -> any MailClient {
+    private func resolveClient(for signIn: SignIn) async throws -> any MailClient {
         if let client { return client }
-        let epoch = signOutEpoch
-        if let opening {
-            let opened = try await opening.value
-            guard epoch == signOutEpoch else { throw CancellationError() }
+        if let opening, opening.signIn.isCurrent {
+            let opened = try await opening.task.value
+            guard signIn.isCurrent else { throw CancellationError() }
             return opened
         }
         let task = Task { try await open() }
-        opening = task
-        defer { if epoch == signOutEpoch { opening = nil } }
+        opening = (task, signIn)
+        defer { if opening?.task == task { opening = nil } }
         let opened = try await task.value
-        guard epoch == signOutEpoch else {
+        guard signIn.isCurrent else {
             await opened.logout()
             throw CancellationError()
         }

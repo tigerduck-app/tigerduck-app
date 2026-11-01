@@ -87,10 +87,10 @@ final class OutboxDrain {
             case .courseDelete: return false
             }
         }
-        await outbox.drain(holding: isHeld) { [weak self] op in
+        await outbox.drain(for: signIn, holding: isHeld) { [weak self] op, madeIn in
             guard let self else { throw CancellationError() }
             try await BackendClient.$holdsResend.withValue({ isHeld(op) }) {
-                try await self.execute(op, for: signIn)
+                try await self.execute(op, for: madeIn)
             }
         }
     }
@@ -106,7 +106,7 @@ final class OutboxDrain {
                         courseKey: fill.courseKey, colorHex: fill.colorHex, madeAt: fill.stamp, for: signIn
                     )
                 }
-                guard !reply.applied.contains("color_hex"), edits.colorEdit(of: fill.identity) <= editsBefore else { continue }
+                guard !reply.applied.contains(.colorHex), edits.editCountAtLastColorEdit(of: fill.identity) <= editsBefore else { continue }
                 sender.kept.colorKept(reply.colorHex, courseNo: fill.courseNo, for: signIn)
             } catch is ResendHeldError {
                 return
@@ -118,10 +118,10 @@ final class OutboxDrain {
 
     private func execute(_ op: SyncOp, for signIn: SignIn) async throws {
         guard sends(for: signIn) else { throw CancellationError() }
-        guard !SyncOutbox.isCutOff(op, by: edits.cutoffs) else { return }
+        guard !edits.cutoffs.cutsOff(op) else { return }
         let request = Task {
             do {
-                try await self.sender.send(op, for: signIn, newerQueued: { await self.edits.hasNewerEdit(than: $0) })
+                try await self.sender.send(op, for: signIn, hasNewerQueuedEdit: { await self.edits.hasNewerEdit(than: $0) })
             } catch let error where Self.isUnauthorized(error) {
                 throw SyncOutboxAuthError(statusCode: 401)
             }

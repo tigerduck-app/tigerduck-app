@@ -5,14 +5,18 @@ import TigerDuckCore
 @MainActor
 @Observable
 final class ClassTableViewModel {
-    var currentSemester: String = SchoolTerms.selected(storedPick: Defaults[.classTableSelectedSemester]) {
+    private(set) var currentSemester: String = SchoolTerms.selected(storedPick: Defaults[.classTableSelectedSemester]) {
         didSet {
             guard currentSemester != oldValue else { return }
-            if !terms.isFollowingNewest, shownPerson == nil {
-                SchoolAccountKeys.pickSemester(currentSemester, for: AccountSession.school.currentSignIn)
-            }
             reloadFromCache()
         }
+    }
+
+    /// The user's own table keeps the term picked on it; someone else's shown table does not.
+    func pickSemester(_ semester: String, for signIn: SignIn) {
+        guard semester != currentSemester else { return }
+        if shownPerson == nil { SchoolAccountKeys.pickSemester(semester, for: signIn) }
+        currentSemester = semester
     }
 
     var assignments: [AssignmentStore.Assignment] = []
@@ -31,7 +35,6 @@ final class ClassTableViewModel {
 
     private struct OwnTerms {
         var options: [String]
-        var isFollowingNewest = false
     }
 
     init(
@@ -87,9 +90,7 @@ final class ClassTableViewModel {
     }
 
     private func follow(_ semester: String) {
-        terms.isFollowingNewest = true
         currentSemester = semester
-        terms.isFollowingNewest = false
     }
 
     func displayLabel(for code: String) -> String {
@@ -138,7 +139,7 @@ final class ClassTableViewModel {
     }
 
     func refreshShownPerson() async {
-        if await people.refresh(semester: currentSemester) { reloadFromCache() }
+        if await people.refresh(semester: currentSemester) == .lookedUpWhileShown { reloadFromCache() }
     }
 
     func refreshCourseColors() {
@@ -181,16 +182,16 @@ final class ClassTableViewModel {
         selection.weekday = weekday
         selection.periodId = periodId
         selection.coursePeriods = course.block(weekday: weekday, at: periodId, in: grid.activePeriods.map(\.id))
-        selection.date = showsThisWeek ? Self.columnDate(weekday: weekday, today: AppClock.now()) : nil
-        selection.slot = nil
+        selection.date = showsThisWeek ? Self.nextDate(onWeekday: weekday, from: AppClock.now()) : nil
+        selection.currentClassSlot = nil
         selection.course = course
     }
 
     var showsThisWeek: Bool {
-        !grid.courseChanges.term.isEmpty && currentSemester == SchoolTerms.current
+        grid.courseChanges.hasAnswered && currentSemester == SchoolTerms.current
     }
 
-    static func columnDate(weekday: Int, today: Date) -> Date {
+    static func nextDate(onWeekday weekday: Int, from today: Date) -> Date {
         let calendar = TaipeiTime.calendar
         let start = calendar.startOfDay(for: today)
         let ahead = (weekday - today.scheduleWeekday + 7) % 7
@@ -199,7 +200,7 @@ final class ClassTableViewModel {
 
     func changedMeeting(of course: CourseStore.Course, weekday: Int, at periodId: String, today: Date) -> CourseTimeSlot? {
         guard showsThisWeek else { return nil }
-        let date = Self.columnDate(weekday: weekday, today: today)
+        let date = Self.nextDate(onWeekday: weekday, from: today)
         let changes = grid.courseChanges
         guard !changes.changes(courseNo: course.courseNo, on: date).isEmpty,
               let block = course.block(weekday: weekday, at: periodId, in: grid.activePeriods.map(\.id))
@@ -207,4 +208,8 @@ final class ClassTableViewModel {
         return CourseTimeSlot.meeting(of: course, periods: block, on: date, changes: changes)
             .flatMap { $0.changes.isEmpty ? nil : $0 }
     }
+}
+
+extension SchoolCalendar.Changes {
+    var hasAnswered: Bool { !term.isEmpty }
 }

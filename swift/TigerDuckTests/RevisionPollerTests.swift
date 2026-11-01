@@ -188,7 +188,7 @@ struct RevisionPollerTests {
     @Test("A 401 the backend client could not recover from stops polling until the next return")
     func unauthorizedSuspendsUntilReturn() async throws {
         let poll = ScriptedPoll()
-        poll.outcomes = [.unauthorized(refused: "A1")]
+        poll.outcomes = [.unauthorized(refusedAccessToken: "A1")]
         let sleeper = ManualSleeper()
         let clock = TestClock()
         let poller = Self.makePoller(poll, sleeper: sleeper, clock: clock)

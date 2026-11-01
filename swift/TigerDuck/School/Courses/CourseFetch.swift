@@ -17,7 +17,7 @@ enum CourseFetch {
         semester: String = CourseSelectionService.currentSemesterCode(),
         forceRefresh: Bool = false,
         resendingRoster: Bool = false,
-        applyAfter: PullGate = { true },
+        afterBackendPull: PullGate = { .completed },
         for signIn: SignIn
     ) async -> [SDCourse] {
         await fetchCourses(
@@ -25,7 +25,7 @@ enum CourseFetch {
             semester: semester,
             forceRefresh: forceRefresh,
             resendingRoster: resendingRoster,
-            applyAfter: applyAfter,
+            afterBackendPull: afterBackendPull,
             signIn: signIn,
             moodle: { await CourseSources.moodleCourses(for: signIn) },
             transcript: { await CourseSources.transcript(authService: authService, for: signIn) }
@@ -79,7 +79,7 @@ enum CourseFetch {
         semester: String,
         forceRefresh: Bool,
         resendingRoster: Bool = false,
-        applyAfter: PullGate = { true },
+        afterBackendPull: PullGate = { .completed },
         signIn: SignIn,
         moodle: () async -> [MoodleEnrolledCourse]?,
         transcript: () async -> ScoreReport?
@@ -88,7 +88,7 @@ enum CourseFetch {
         // The course-selection system serves one term and its list has no term
         // marker, so its numbers belong to the term the catalogue reports open.
         let servesSelectionSemester = semester == SemesterCatalog.selectionSemesterCode()
-        let display = CourseStore.shared.display()
+        let display = CourseStore.shared.currentDisplay()
         let courseApiLanguage = display.language
         let editToken = CourseStore.shared.editToken
 
@@ -113,8 +113,10 @@ enum CourseFetch {
         let scoreCoursesForSemester = report.map { TermRoster.classRows(of: $0, term: semester) }
         let cachedCourses = CourseStore.shared.loadCourses(semester: semester)
         let rebuilds = TermRoster.rebuildsFromTranscript(report, term: semester, servedBySelection: servesSelectionSemester)
-        let term: (courseNos: [String], roster: [String]?)? = rebuilds
-            ? (TermRoster.uniqueCourseNos(scoreCoursesForSemester?.map(\.code) ?? []), nil)
+        let term: TermRoster.TermCourseNos? = rebuilds
+            ? TermRoster.TermCourseNos(
+                courseNos: TermRoster.uniqueCourseNos(scoreCoursesForSemester?.map(\.code) ?? []), selectionRoster: nil
+            )
             : TermRoster.termCourseNos(
                 selection: courseSelectionNos,
                 transcript: scoreCoursesForSemester?.map(\.code),
@@ -125,7 +127,7 @@ enum CourseFetch {
         let moodleAll = await moodle()
         // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
         if let moodleAll, !Task.isCancelled {
-            CourseLookup.saveMoodleCourseIds(AssignmentRecords.moodleCourseIdMap(moodleAll), for: signIn)
+            CourseLookup.replaceMoodleCourseIds(AssignmentRecords.moodleCourseIdMap(moodleAll), for: signIn)
         }
 
         let moodleByNo = Dictionary(
@@ -146,8 +148,8 @@ enum CourseFetch {
             uniquingKeysWith: { first, _ in first }
         )
 
-        let looked = await concurrentMap(term.courseNos) { @MainActor courseNo -> (data: CourseData?, answered: Bool) in
-            var answered = false
+        let looked = await concurrentMap(term.courseNos) { @MainActor courseNo -> (data: CourseData?, found: Bool) in
+            var found = false
             let data = await CourseDetails.refreshedCourseData(
                 courseNo: courseNo,
                 semester: semester,
@@ -160,19 +162,18 @@ enum CourseFetch {
                     semester: semester, courseNo: courseNo, language: courseApiLanguage,
                     fresh: forceRefresh
                 )
-                answered = !results.isEmpty
+                found = !results.isEmpty
                 return results
             }
-            return (data, answered)
-        }.compactMap { item in item.data.map { TermRoster.LookedUpCourse(course: $0.course(in: semester), answered: item.answered) } }
+            return (data, found)
+        }.compactMap { item in
+            item.data.map { TermRoster.LookedUpCourse(course: $0.course(in: semester), lookup: item.found ? .found : .fallback) }
+        }
 
-        guard await applyAfter() else { return CourseStore.shared.loadCourses(semester: semester) }
-        if let roster = term.roster, !Task.isCancelled {
-            CourseStore.shared.recordSelectionRoster(semester: semester, roster: roster, for: signIn)
-            if selectionIsLive {
-                let stillDropped = CourseStore.shared.loadServerDroppedNos(semester: semester).subtracting(roster)
-                CourseStore.shared.saveServerDroppedNos(stillDropped, semester: semester, for: signIn)
-            }
+        guard await afterBackendPull() == .completed else { return CourseStore.shared.loadCourses(semester: semester) }
+        if let roster = term.selectionRoster, !Task.isCancelled {
+            CourseStore.shared.recordRoster(.courseSelection(roster), semester: semester, for: signIn)
+            if selectionIsLive { CourseStore.shared.forgetServerDrops(listedIn: roster, semester: semester, for: signIn) }
         }
 
         let pastTerm = !rebuilds ? nil : TermRoster.rebuiltPastTerm(
@@ -182,19 +183,19 @@ enum CourseFetch {
             userAdded: CourseStore.shared.loadUserAddedCourses().filter { CourseStore.userAddedCourse($0, belongsTo: semester) }
         )
         let drawn = pastTerm?.courses ?? TermRoster.drawnCourses(
-            looked.map(\.course), fromSelection: term.roster != nil, cached: Set(cachedByNo.keys)
+            looked.map(\.course), fromSelection: term.selectionRoster != nil, cached: Set(cachedByNo.keys)
         )
 
         guard !Task.isCancelled, signIn.isCurrent else {
             return CourseStore.shared.loadCourses(semester: semester)
         }
-        guard let courses = TermRoster.savedCourses(
-            drawn, pastTerm: pastTerm != nil, live: selectionIsLive && term.roster != nil,
+        guard case .save(let courses) = TermRoster.savedCourses(
+            drawn, pastTerm: pastTerm != nil, live: selectionIsLive && term.selectionRoster != nil,
             dropped: CourseStore.shared.loadServerDroppedNos(semester: semester)
         ) else { return cachedCourses }
         if let pastTerm {
-            CourseStore.shared.recordSelectionRoster(
-                semester: semester, roster: pastTerm.roster, alsoListed: pastTerm.dropping, isFinal: true, for: signIn
+            CourseStore.shared.recordRoster(
+                .finalTranscript(pastTerm.roster, alsoListed: pastTerm.dropping), semester: semester, for: signIn
             )
         }
         guard CourseStore.shared.saveFetchedCourses(
@@ -204,7 +205,7 @@ enum CourseFetch {
         }
         CourseUpload.uploadVisibleCourses(
             courses, semester: semester, hidden: Set(CourseStore.shared.loadDeletedCourseNos()),
-            roster: TermRoster.uploadedRoster(selection: term.roster, live: selectionIsLive, pastTerm: pastTerm?.roster),
+            roster: TermRoster.uploadedRoster(selection: term.selectionRoster, live: selectionIsLive, pastTerm: pastTerm?.roster),
             resendingRoster: resendingRoster, for: signIn, to: CourseUpload.courseUploader
         )
         return courses

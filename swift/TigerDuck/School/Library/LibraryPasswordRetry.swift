@@ -5,13 +5,13 @@ enum LibraryPasswordRetry {
     private(set) static var task: Task<Void, Never>?
     private static var misses = 0
 
-    static func arm(
+    static func retryStoredPasswordWhenWaitEnds(
         signIn: @escaping @MainActor (String, String) async throws -> LibraryLoginData,
         retrySleep: @escaping @Sendable (Duration) async -> Void
     ) {
         misses = 0
         let now = Date()
-        guard let retryAt = StoredPasswordBackoff.library.retryAt(now: now) else { return cancel() }
+        guard let retryAt = StoredPasswordLockoutBackoff.library.retryAt(now: now) else { return cancel() }
         start(after: max(0, retryAt.timeIntervalSince(now)), signIn: signIn, retrySleep: retrySleep)
     }
 
@@ -26,7 +26,7 @@ enum LibraryPasswordRetry {
             guard !Task.isCancelled, librarySignIn.isCurrent else { return }
             guard LibraryService.storedPasswordPostIsDue(now: Date()) else {
                 task = nil
-                return arm(signIn: signIn, retrySleep: retrySleep)
+                return retryStoredPasswordWhenWaitEnds(signIn: signIn, retrySleep: retrySleep)
             }
             let refusals = LibraryService.storedPasswordRefusals.count
             let signedIn = (try? await LibraryService.ensureToken(signIn: signIn, retrySleep: retrySleep)) != nil
@@ -36,7 +36,7 @@ enum LibraryPasswordRetry {
                   LibraryService.storedPasswordRefusals.count == refusals else { return }
             misses += 1
             start(
-                after: StoredPasswordBackoff.retryDelay(afterRefusals: refusals + misses),
+                after: StoredPasswordLockoutBackoff.retryDelay(afterRefusals: refusals + misses),
                 signIn: signIn, retrySleep: retrySleep
             )
         }

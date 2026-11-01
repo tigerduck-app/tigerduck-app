@@ -166,7 +166,7 @@ OnboardingNotificationsPage.swift
 OnboardingPageView.swift
 OnboardingPrivacyPage.swift
 OnboardingView.swift
-PagingScrollLock.swift
+ForwardPagingLock.swift
 
 # Features/Score — iOS score surfaces
 CreditSummaryBento.swift

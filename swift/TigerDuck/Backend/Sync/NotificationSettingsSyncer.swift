@@ -15,19 +15,16 @@ final class NotificationSettingsSyncer {
 
 
     @discardableResult
-    func push(stillQueued: @escaping @MainActor () -> Bool = { true }) async -> Bool {
-        guard Defaults[.cloudSyncEnabled] else { return false }
+    func push(stillQueued: @escaping @MainActor () -> Bool = { true }) async -> NotificationSettingsPushQueue.PushResult {
+        guard Defaults[.cloudSyncEnabled] else { return .unsettled }
         let signIn = await AccountSession.school.startingSignIn
-        guard await authTokenManager.isLoggedIn, stillQueued() else { return false }
+        guard await authTokenManager.isLoggedIn, stillQueued() else { return .unsettled }
 
-        let atm = authTokenManager
-        let client = SettingsDocumentClient(
-            authHeaderProvider: { await atm.authorizationHeader() }
-        )
+        let client = SettingsDocumentClient(auth: authTokenManager.backendAuth, for: signIn)
         let local = NotificationSettingsSync.LocalPreferences(from: preferences)
         var sent: [String: Any] = [:]
         do {
-            let written = try await NotificationSettingsSync.push(
+            let result = try await NotificationSettingsSync.push(
                 local: local,
                 base: NotificationSettingsSync.pushBase(local: local),
                 client: client,
@@ -35,24 +32,24 @@ final class NotificationSettingsSyncer {
                 syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
                 syncLiveActivityEnabled: Defaults[.syncLiveActivity],
                 isCurrent: stillQueued,
-                recordSent: { sent = $0 }
+                recordOnServer: { sent = $0 }
             )
-            guard written, stillQueued() else { return false }
-            NotificationSettingsSync.recordPushed(local, fields: sent, for: signIn)
+            guard result == .landed, stillQueued() else { return .unsettled }
+            NotificationSettingsSync.mergeSentFields(sent, of: local, for: signIn)
             if NotificationSettingsSync.canClearPendingMarker(
-                written: written,
+                result,
                 sent: local,
                 current: .init(from: preferences)
             ) {
                 Defaults[.notificationSettingsPushPending] = false
-                return true
+                return .landedWithNothingLeft
             }
         } catch {
             AppLogger.sync.error(
                 "pushNotificationSettings failed: \(error.localizedDescription, privacy: .private)"
             )
         }
-        return false
+        return .unsettled
     }
 
     @discardableResult
@@ -62,14 +59,11 @@ final class NotificationSettingsSyncer {
         linksBeforeSnapshot: Int = 0
     ) -> Task<Void, Never> {
         NotificationSettingsPushQueue.enqueueReconcile { [weak self] stillQueued in
-            guard let self, Defaults[.cloudSyncEnabled] else { return false }
+            guard let self, Defaults[.cloudSyncEnabled] else { return .finished }
             let signIn = await AccountSession.school.startingSignIn
-            guard await self.authTokenManager.isLoggedIn, stillQueued() else { return false }
+            guard await self.authTokenManager.isLoggedIn, stillQueued() else { return .finished }
 
-            let atm = self.authTokenManager
-            let client = SettingsDocumentClient(
-                authHeaderProvider: { await atm.authorizationHeader() }
-            )
+            let client = SettingsDocumentClient(auth: self.authTokenManager.backendAuth, for: signIn)
             do {
                 let outcome = try await NotificationSettingsReconcile.reconcile(
                     store: self.preferences,
@@ -80,14 +74,14 @@ final class NotificationSettingsSyncer {
                     isPushPending: { Defaults[.notificationSettingsPushPending] },
                     isCurrent: stillQueued,
                     source: NotificationSettingsPushQueue.source(snapshot, linksBeforeSnapshot: linksBeforeSnapshot),
-                    recordSynced: { NotificationSettingsSync.recordSynced($0, sections: $1, for: signIn) }
+                    recordSynced: { NotificationSettingsSync.recordSyncedSections($1, of: $0, for: signIn) }
                 )
                 switch outcome {
                 case .settled:
                     onSettled?()
                 case .deferredToPendingPush:
                     self.retryUnacknowledged()
-                    return true
+                    return .deferredToPendingPush
                 case .skipped, .abandoned:
                     break
                 }
@@ -96,7 +90,7 @@ final class NotificationSettingsSyncer {
                     "reconcileNotificationSettings failed: \(error.localizedDescription, privacy: .private)"
                 )
             }
-            return false
+            return .finished
         }
     }
 
@@ -109,7 +103,7 @@ final class NotificationSettingsSyncer {
 
     func enqueuePush() {
         NotificationSettingsPushQueue.enqueuePush { [weak self] stillQueued in
-            await self?.push(stillQueued: stillQueued) ?? false
+            await self?.push(stillQueued: stillQueued) ?? .unsettled
         }
     }
 
@@ -119,15 +113,13 @@ final class NotificationSettingsSyncer {
         enqueuePush()
     }
 
-    func adoptSection(_ section: NotificationSettingsSync.OwnedSection) {
-        NotificationSettingsSync.sectionTurnedOn(
-            section, local: .init(from: preferences), for: AccountSession.school.currentSignIn
-        )
+    func adoptSection(_ section: NotificationSettingsSync.OwnedSection, for signIn: SignIn) {
+        NotificationSettingsSync.sectionTurnedOn(section, local: .init(from: preferences), for: signIn)
         reconcile()
     }
 
-    func deviceSwitchChanged(_ section: NotificationSettingsSync.OwnedSection, old: Bool, new: Bool) {
-        if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) { adoptSection(section) }
+    func deviceSwitchChanged(_ section: NotificationSettingsSync.OwnedSection, old: Bool, new: Bool, for signIn: SignIn) {
+        if NotificationSettingsSync.shouldAdoptOnDeviceSwitchChange(old: old, new: new) { adoptSection(section, for: signIn) }
     }
 
     func cancelPushes() {

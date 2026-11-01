@@ -65,6 +65,8 @@ nonisolated enum MailIMAPErrors {
         return .authenticationFailed
     }
 
+    // SwiftMail hands NIOSSL handshake failures and server refusals over as text
+    // (`IMAPError.connectionFailed(String)`, `SMTPError.connectionFailed(String)`).
     static func classify(_ text: String, fallback: MailClientError) -> MailClientError {
         let lowered = text.lowercased()
         if lowered.contains("certificate") { return .certificateRejected }

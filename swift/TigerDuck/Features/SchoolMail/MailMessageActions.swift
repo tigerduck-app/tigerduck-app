@@ -43,37 +43,34 @@ enum MailMessageActions {
         }
         model.activity.isMoving = true
         defer { model.activity.isMoving = false }
+        let signIn = await model.session.account.startingSignIn
         let uid = model.route.uid
         let prefs = model.stores.prefs
         let wasAlreadyDeleted = model.detail?.summary.isDeleted ?? false
         let owned = prefs.ownedDeleted(folder: folder, uidValidity: uidValidity)
-        do {
-            let result = try await model.session.use { client in try await operation(client, owned) }
-            prefs.setOwnedDeleted(result.stillPending)
+        let attempt = await MailMover.attempt(
+            { try await model.session.use { client in try await operation(client, owned) } },
+            uid: uid, previouslyFlagged: owned, wasAlreadyDeleted: wasAlreadyDeleted
+        ) { recover in
+            (try? await model.session.use { client in await recover(client) }) ?? nil
+        }
+        if let pending = attempt.pending { prefs.change(for: signIn) { $0.setOwnedDeleted(pending) } }
+        guard let error = attempt.error else {
             model.events.post(.removed(folder: folder, uid: uid))
             return true
-        } catch {
-            if MailMover.shouldProbeAfterFailure(error) {
-                let recovered = try? await model.session.use { client in
-                    await MailMover.recoverAfterFailure(after: error, uid: uid, previouslyFlagged: owned,
-                                                        client: client, wasAlreadyDeleted: wasAlreadyDeleted)
-                }
-                if let claim = recovered ?? nil { prefs.setOwnedDeleted(claim) }
-            }
-            model.activity.actionError = MailAccountManager.LoginError(error).message
-            if (error as? MailClientError) == .folderChanged { model.events.post(.folderChanged(folder)) }
-            return false
         }
+        model.activity.actionError = MailAccountManager.LoginError(error).message
+        if (error as? MailClientError) == .folderChanged { model.events.post(.folderChanged(folder)) }
+        return false
     }
 
     static func loadSource(model: MailMessageViewModel) async {
         model.activity.sourceLoadFailed = false
+        let signIn = await model.session.account.startingSignIn
         let cache = model.stores.cache
-        let prefs = model.stores.prefs
         let folder = model.route.folder
         let uid = model.route.uid
         let validity = model.pageUIDValidity
-        let account = prefs.studentID
         let wipeCount = cache.wipeCount
         if let validity,
            let cached = await Task.detached(operation: { cache.loadSource(folder: folder, uidValidity: validity, uid: uid) }).value {
@@ -86,8 +83,8 @@ enum MailMessageActions {
             }
             let text = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
             model.activity.source = text
-            if let validity, prefs.studentID == account {
-                await Task.detached { cache.saveSource(text, folder: folder, uidValidity: validity, uid: uid, wipeCount: wipeCount) }.value
+            if let validity, signIn.isCurrent {
+                await Task.detached { cache.saveSource(text, folder: folder, uidValidity: validity, uid: uid, unlessWipedSince: wipeCount) }.value
             }
         } catch {
             model.activity.actionError = MailAccountManager.LoginError(error).message
@@ -110,7 +107,7 @@ enum MailMessageActions {
             }
             let filename = MailAttachmentRisk.displayFilename(part.filename ?? "attachment")
             return try await Task.detached {
-                try cache.saveAttachment(data, filename: filename, wipeCount: wipeCount)
+                try cache.saveAttachment(data, filename: filename, unlessWipedSince: wipeCount)
             }.value
         } catch {
             model.activity.actionError = MailAccountManager.LoginError(error).message

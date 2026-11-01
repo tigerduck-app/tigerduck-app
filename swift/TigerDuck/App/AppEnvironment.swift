@@ -19,7 +19,7 @@ final class AppEnvironment {
     var pushCoordinator: PushCoordinator { backend.pushCoordinator }
     var cloudSyncCoordinator: CloudSyncCoordinator { backend.cloudSyncCoordinator }
     var cloudSyncPreference: CloudSyncPreference { backend.cloudSyncPreference }
-    var syncTarget: SyncTarget { backend.syncTarget }
+    var firstPullGate: FirstPullGate { backend.firstPullGate }
     var localEdits: LocalEdits { backend.localEdits }
     var poller: RevisionPoller { backend.poller }
     var edits: EditSender { backend.edits }
@@ -36,9 +36,12 @@ final class AppEnvironment {
     var notificationSettings: NotificationSettingsSyncer { sync.notificationSettings }
     #endif
 
-    var cloudSyncEnabled: Bool {
-        get { cloudSyncPreference.isEnabled }
-        set { cloudSyncPreference.isEnabled = newValue }
+    var cloudSyncEnabled: Bool { cloudSyncPreference.isEnabled }
+
+    /// The TigerSync switch, which keeps each flip for the sign-in it was made in.
+    var cloudSyncSwitch: Binding<Bool> {
+        Binding(get: { self.cloudSyncEnabled },
+                set: { self.cloudSyncPreference.setEnabled($0, for: self.authService.session.currentSignIn) })
     }
 
     var signOutCheck: SignOutCheck { SignOutCheck(app: self) }
@@ -46,14 +49,14 @@ final class AppEnvironment {
     var versionGate: APIVersionGate { .shared }
 
     init() {
-        let isFreshInstall = FreshInstallKeychainPurge.runIfFreshInstall()
-        if Defaults[.appHasBeenInstalled] { BareKeychainItemMoveMigration.runIfNeeded() }
+        let purge = FreshInstallKeychainPurge.runIfFreshInstall()
+        if purge != .itemsLeft { BareKeychainItemMoveMigration.runIfNeeded() }
 
         let authService = AuthService(session: .school)
         self.authService = authService
         let identity = PushIdentity.loadOrCreate()
-        let atm = AuthTokenManager(deviceUUID: identity.uuid, storedFor: authService.session.currentSignIn)
-        let pushCoordinator = PushCoordinator(identity: identity, authTokenManager: atm)
+        let atm = Self.tokenManager(after: purge, deviceUUID: identity.uuid, signIn: authService.session.currentSignIn)
+        let pushCoordinator = PushCoordinator(identity: identity, authTokenManager: atm, signIns: authService.session.signIns)
         let cloudSync = CloudSyncCoordinator(
             pushCoordinator: pushCoordinator,
             addedCourseUpload: { SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1) },
@@ -67,15 +70,21 @@ final class AppEnvironment {
         sync = AppSyncParts(app: self)
 
         #if os(iOS)
-        if isFreshInstall {
+        if purge.isFreshInstall {
             updateNotifyCoordinator.seedWhatsNewOnFreshInstall()
         }
-        _ = liveActivity
+        liveActivity.observePreferenceChanges()
         holidays.onChange = { [weak self] in self?.liveActivity.scheduleRefresh() }
         #endif
 
         runPendingMigrations()
         wire(atm)
+    }
+
+    private static func tokenManager(
+        after _: FreshInstallKeychainPurge.Outcome, deviceUUID: String, signIn: SignIn
+    ) -> AuthTokenManager {
+        AuthTokenManager(deviceUUID: deviceUUID, storedFor: signIn)
     }
 
     private func wire(_ atm: AuthTokenManager) {
@@ -98,7 +107,7 @@ final class AppEnvironment {
             onboarded: hasCompletedOnboarding, signedIn: authService.hasStoredCredentials,
             keptOn: atm.departingSessionBackends, backend: PushServerConfig.resolveServerURL()
         ) {
-            authService.startDepartingUnregisterRetry { [pushCoordinator] in
+            authService.backend.retryDepartingUnregisterBeforeSigningIn { [pushCoordinator] in
                 await atm.retryDepartingUnregister { await pushCoordinator.registration.unregisterDevice(at: $0) }
             }
         }
@@ -109,8 +118,8 @@ final class AppEnvironment {
             pushCoordinator.refreshRegistrationAfterAuth()
             pushSchedule.requestSync()
             #if os(iOS)
-            NotificationSettingsSync.accountSignedIn(
-                local: .init(from: liveActivity.preferences), for: authService.session.currentSignIn
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(
+                from: .init(from: liveActivity.preferences), for: authService.session.currentSignIn
             )
             notificationSettings.reconcile()
             #endif
@@ -119,19 +128,19 @@ final class AppEnvironment {
             guard let self else { return }
             await SignOutPlan.school(self).run()?.value
         }
-        authService.forgetPages = { await AccountSignOutCleanup.forgetSchoolPages() }
+        authService.clearAllCachedPages = { await AccountSignOutCleanup.clearAllCachedPages() }
 
         cloudSyncPreference.onChange { [weak self] enabled in
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
-        preferences.onLanguageChange = { [weak self] in self?.activation.cancelRefresh() }
+        preferences.willChangeLanguage = { [weak self] in self?.activation.cancelRefresh() }
         preferences.onCourseLabelsChange = { [weak self] in
             guard let self else { return }
             relabeler.relabelAll(for: authService.session.currentSignIn)
         }
 
-        CourseUpload.courseUploader = { [weak self] courses, semester, asRoster, resend, signIn in
-            self?.uploads.uploadCourses(courses, semester: semester, asRoster: asRoster, resend: resend, for: signIn)
+        CourseUpload.courseUploader = { [weak self] courses, semester, kind, signIn in
+            self?.uploads.uploadCourses(courses, semester: semester, asRoster: kind.asRoster, resend: kind.resend, for: signIn)
         }
         AssignmentAnswers.assignmentUploader = { [weak self] request, signIn in
             self?.uploads.uploadAssignments(request, for: signIn)

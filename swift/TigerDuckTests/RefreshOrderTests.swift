@@ -50,7 +50,7 @@ struct RefreshOrderTests {
         }
     }
 
-    private static func uploader(_ target: SyncTarget, _ log: Log) -> SchoolDataUploader {
+    private static func uploader(_ target: FirstPullGate, _ log: Log) -> SchoolDataUploader {
         SchoolDataUploader(
             target: target, backend: Backend(log: log),
             policy: { SyncPolicy(cloudSyncEnabled: true, switchedOn: ["courses"], pendingChecks: []) }
@@ -62,7 +62,7 @@ struct RefreshOrderTests {
     @Test("A school fetch that finishes before the pull applies and uploads only after the pull and the outbox")
     func aSchoolFetchFinishingFirstUploadsAfterThePull() async throws {
         let account = AccountSession()
-        let target = SyncTarget()
+        let target = FirstPullGate()
         let log = Log()
         let uploader = Self.uploader(target, log)
         let pull = Gate()
@@ -78,7 +78,7 @@ struct RefreshOrderTests {
                 pushOutbox: { log.events.append("outbox") },
                 fetchSchool: { applyAfter in
                     log.events.append("fetched")
-                    #expect(await applyAfter())
+                    #expect(await applyAfter() == .completed)
                     log.events.append("applied")
                     uploader.uploadCourses([Self.course], semester: "1151", for: account.signIns.currentSignIn)
                 }
@@ -97,7 +97,7 @@ struct RefreshOrderTests {
     @Test("A failed pull lets school data apply but holds its uploads until a later pull")
     func aFailedPullHoldsTheSchoolUploads() async throws {
         let account = AccountSession()
-        let target = SyncTarget()
+        let target = FirstPullGate()
         let log = Log()
         let uploader = Self.uploader(target, log)
 
@@ -105,7 +105,7 @@ struct RefreshOrderTests {
             pull: { log.events.append("pull failed") },
             pushOutbox: { log.events.append("outbox") },
             fetchSchool: { applyAfter in
-                #expect(await applyAfter())
+                #expect(await applyAfter() == .completed)
                 log.events.append("applied")
                 uploader.uploadCourses([Self.course], semester: "1151", for: account.signIns.currentSignIn)
             }
@@ -122,7 +122,7 @@ struct RefreshOrderTests {
     func aCancelledRefreshAppliesNothing() async throws {
         let log = Log()
         let pull = Gate()
-        var applies: Bool?
+        var applies: PullOutcome?
 
         let refresh = Task {
             await RefreshOrder.run(
@@ -142,7 +142,7 @@ struct RefreshOrderTests {
         pull.open()
         await refresh.value
 
-        #expect(applies == false)
+        #expect(applies == .cancelled)
         #expect(log.events == ["fetched", "pulled", "outbox"])
     }
 
@@ -162,7 +162,7 @@ struct RefreshOrderTests {
         let coordinator = CloudSyncCoordinator(
             pushCoordinator: PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client),
             outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: { true }, syncsCourseOverrides: { _ in true }
+            syncsAssignmentMarks: { true }, syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns)
         )
         let sample = await coordinator.pendingCourseOverrides()
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
@@ -194,5 +194,5 @@ struct RefreshOrderTests {
     }
 
     private static let colourReply =
-        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"##
+        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"ignore_assignments":false,"updated_at":"2026-10-12T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"##
 }

@@ -1,13 +1,6 @@
 import Foundation
 import Observation
 
-enum CourseColorEdit {
-    /// The colour picked for a course; a course that held it gets another.
-    case pick(UInt32, courseNo: String)
-    /// Fresh colours for every course, forgetting the picks.
-    case reassignAll(courseNos: [String])
-}
-
 @Observable
 final class CourseColorStore {
     static let shared = CourseColorStore()
@@ -18,7 +11,6 @@ final class CourseColorStore {
 
     init(files: CourseColorFiles = CourseColorFiles()) {
         self.files = files
-        files.dropColorsFromBeforeHashV2()
         state = ColorState(
             load: { files.loadCourseColorMapIfReadable() },
             save: { files.saveCourseColorMap($0) },
@@ -70,14 +62,15 @@ final class CourseColorStore {
         if state.snapshot() != before { revision &+= 1 }
     }
 
+    /// Gives the course the picked colour and a course that held it another. Returns every
+    /// course whose colour changed.
     @discardableResult
-    func apply(_ edit: CourseColorEdit, palette: [UInt32], for signIn: SignIn) -> [String: UInt32] {
-        switch edit {
-        case let .pick(hex, courseNo):
-            return saving(signIn, unchanged: [:]) { $0.setColor(hex: hex, for: courseNo, palette: palette) }
-        case let .reassignAll(courseNos):
-            saving(signIn, unchanged: ()) { $0.reassignAll(courseNos: courseNos, palette: palette) }
-            return [:]
-        }
+    func pick(_ hex: UInt32, courseNo: String, palette: [UInt32], for signIn: SignIn) -> [String: UInt32] {
+        saving(signIn, unchanged: [:]) { $0.setColor(hex: hex, for: courseNo, palette: palette) }
+    }
+
+    /// Fresh colours for every course, forgetting the picks.
+    func reassignAll(courseNos: [String], palette: [UInt32], for signIn: SignIn) {
+        saving(signIn, unchanged: ()) { $0.reassignAll(courseNos: courseNos, palette: palette) }
     }
 }

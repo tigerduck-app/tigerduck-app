@@ -22,19 +22,22 @@ enum SemesterCatalog {
 
     private nonisolated static let pickerDepth = 6
 
-    // swiftlint:disable identifier_name
     struct SemesterInfo: Decodable {
-        let Semester: String
-        let LoginEnable: Bool
+        let semester: String
+        let loginEnable: Bool
+
+        private enum CodingKeys: String, CodingKey {
+            case semester = "Semester"
+            case loginEnable = "LoginEnable"
+        }
     }
-    // swiftlint:enable identifier_name
 
     static func decodeSemesters(_ data: Data) throws -> [SemesterInfo] {
         try JSONDecoder().decode([SemesterInfo].self, from: data)
     }
 
     static func openTerm(in list: [SemesterInfo]) -> String? {
-        list.first(where: \.LoginEnable)?.Semester
+        list.first(where: \.loginEnable)?.semester
     }
 
     nonisolated static func availableSemesters() -> [String] {
@@ -75,7 +78,7 @@ enum SemesterCatalog {
     static func refresh() async {
         guard let list = try? await fetch(), !list.isEmpty else { return }
         let defaults = AppUserDefaults.standard
-        defaults.set(list.map(\.Semester), forKey: listKey)
+        defaults.set(list.map(\.semester), forKey: listKey)
         defaults.set(Date().timeIntervalSince1970, forKey: refreshedAtKey)
         if let selection = openTerm(in: list) {
             defaults.set(selection, forKey: selectionKey)

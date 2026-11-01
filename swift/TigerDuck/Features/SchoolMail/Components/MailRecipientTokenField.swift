@@ -3,24 +3,10 @@ import SwiftUI
 
 nonisolated enum MailRecipientTokens {
     static func consume(_ typed: String) -> (finished: [String], remainder: String) {
-        var finished: [String] = []
-        var current = ""
-        var inQuotes = false
-        var inAngle = false
-        for character in typed {
-            if character == "\"" { inQuotes.toggle() }
-            if character == "<", !inQuotes { inAngle = true }
-            if character == ">", !inQuotes { inAngle = false }
-            let separates = !inQuotes && !inAngle
-                && (character == "," || character == ";" || (character == " " && current.contains("@")))
-            if separates {
-                if let token = current.trimmingCharacters(in: .whitespaces).mailNonEmpty { finished.append(token) }
-                current = ""
-            } else {
-                current.append(character)
-            }
+        let pieces = MailAddress.splitTopLevel(typed) { character, current in
+            character == "," || character == ";" || (character == " " && current.contains("@"))
         }
-        return (finished, String(current.drop { $0 == " " }))
+        return (pieces.dropLast().compactMap(trimmed), String(pieces.last?.drop { $0 == " " } ?? ""))
     }
 
     static func compose(_ tokens: [String], draft: String) -> String {
@@ -28,27 +14,11 @@ nonisolated enum MailRecipientTokens {
     }
 
     static func tokens(of value: String) -> [String] {
-        let (finished, remainder) = consumeSeparatorsOnly(value)
-        return finished + [remainder].compactMap { $0.trimmingCharacters(in: .whitespaces).mailNonEmpty }
+        MailAddress.splitTopLevel(value).compactMap(trimmed)
     }
 
-    private static func consumeSeparatorsOnly(_ value: String) -> (finished: [String], remainder: String) {
-        var finished: [String] = []
-        var current = ""
-        var inQuotes = false
-        var inAngle = false
-        for character in value {
-            if character == "\"" { inQuotes.toggle() }
-            if character == "<", !inQuotes { inAngle = true }
-            if character == ">", !inQuotes { inAngle = false }
-            if (character == "," || character == ";") && !inQuotes && !inAngle {
-                if let token = current.trimmingCharacters(in: .whitespaces).mailNonEmpty { finished.append(token) }
-                current = ""
-            } else {
-                current.append(character)
-            }
-        }
-        return (finished, current)
+    private static func trimmed(_ token: String) -> String? {
+        token.trimmingCharacters(in: .whitespaces).mailNonEmpty
     }
 }
 

@@ -6,9 +6,14 @@ struct ClassTableSemesterBar: View {
     @Environment(AppEnvironment.self) private var app
     @Environment(\.isUpdatingImportedClassTable) private var isUpdatingImport
 
+    private var semester: Binding<String> {
+        Binding(get: { viewModel.currentSemester },
+                set: { viewModel.pickSemester($0, for: app.authService.session.currentSignIn) })
+    }
+
     var body: some View {
         HStack {
-            Picker(String(localized: "class_table_semester_picker_label"), selection: $viewModel.currentSemester) {
+            Picker(String(localized: "class_table_semester_picker_label"), selection: semester) {
                 ForEach(viewModel.availableSemesters, id: \.self) { code in
                     Text(viewModel.displayLabel(for: code)).tag(code)
                 }

@@ -11,6 +11,16 @@ nonisolated struct TLSPinSet: Equatable, Sendable {
     let domains: [Domain]
     let pins: Set<String>
     let expiresAt: Date
+
+    func replaced(byDocumentSet listed: TLSPinSet?) -> TLSPinSet {
+        guard let listed else { return self }
+        let laterExpiry = max(expiresAt, listed.expiresAt)
+        return TLSPinSet(id: id, domains: listed.domains, pins: listed.pins, expiresAt: laterExpiry)
+    }
+
+    func adding(_ accepted: [String]) -> TLSPinSet {
+        TLSPinSet(id: id, domains: domains, pins: pins.union(accepted), expiresAt: expiresAt)
+    }
 }
 
 /// The pins built into this build, the fallback when no signed document applies.

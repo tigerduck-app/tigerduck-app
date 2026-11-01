@@ -29,7 +29,9 @@ struct SyncContentSettingsView: View {
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncAssignmentReminders) { old, new in
                         app.pushSchedule.pushSyncPreferences()
-                        app.notificationSettings.deviceSwitchChanged(.assignments, old: old, new: new)
+                        app.notificationSettings.deviceSwitchChanged(
+                            .assignments, old: old, new: new, for: app.authService.session.currentSignIn
+                        )
                     }
             }
 
@@ -38,7 +40,9 @@ struct SyncContentSettingsView: View {
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncLiveActivity) { old, new in
                         app.pushSchedule.pushSyncPreferences()
-                        app.notificationSettings.deviceSwitchChanged(.liveActivity, old: old, new: new)
+                        app.notificationSettings.deviceSwitchChanged(
+                            .liveActivity, old: old, new: new, for: app.authService.session.currentSignIn
+                        )
                     }
             }
 

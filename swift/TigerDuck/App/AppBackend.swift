@@ -7,7 +7,7 @@ struct AppBackend {
     let cloudSyncCoordinator: CloudSyncCoordinator
     let cloudSyncPreference = CloudSyncPreference()
     let poller = RevisionPoller()
-    let syncTarget: SyncTarget
+    let firstPullGate: FirstPullGate
     let localEdits: LocalEdits
     let edits: EditSender
     let uploads: SchoolDataUploader
@@ -19,12 +19,12 @@ struct AppBackend {
         self.authTokenManager = authTokenManager
         self.pushCoordinator = pushCoordinator
         cloudSyncCoordinator = cloudSync
-        syncTarget = SyncTarget()
-        localEdits = LocalEdits(account: account)
+        firstPullGate = FirstPullGate()
+        localEdits = LocalEdits()
         edits = EditSender(
             coordinator: cloudSync, push: pushCoordinator, poller: poller, localEdits: localEdits, account: account
         )
-        uploads = SchoolDataUploader(target: syncTarget, backend: pushCoordinator)
+        uploads = SchoolDataUploader(target: firstPullGate, backend: pushCoordinator)
         holidays = HolidaySettingSender(account: account, push: pushCoordinator, poller: poller)
     }
 }

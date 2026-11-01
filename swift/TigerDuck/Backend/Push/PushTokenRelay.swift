@@ -19,17 +19,7 @@ final class PushTokenRelay {
         let registration = self.registration
         let logger = self.logger
         task = Task.detached(priority: .utility) {
-            let authorization = ActivityAuthorizationInfo()
-            if !authorization.areActivitiesEnabled {
-                logger.info("Live Activities disabled; relaying the PTS token once they are enabled")
-                var enabled = false
-                for await isEnabled in authorization.activityEnablementUpdates where isEnabled {
-                    enabled = true
-                    break
-                }
-                guard enabled else { return }
-                logger.info("Live Activities enabled; starting PTS token relay")
-            }
+            guard await Self.waitUntilActivitiesEnabled(logger: logger) else { return }
             for await tokenData in Activity<TigerDuckActivityAttributes>.pushToStartTokenUpdates {
                 let hex = tokenData.hexEncodedString()
                 logger.info("received PTS token (len=\(hex.count, privacy: .public))")
@@ -37,6 +27,17 @@ final class PushTokenRelay {
             }
             logger.info("PTS token stream ended")
         }
+    }
+
+    private nonisolated static func waitUntilActivitiesEnabled(logger: Logger) async -> Bool {
+        let authorization = ActivityAuthorizationInfo()
+        guard !authorization.areActivitiesEnabled else { return true }
+        logger.info("Live Activities disabled; relaying the PTS token once they are enabled")
+        for await isEnabled in authorization.activityEnablementUpdates where isEnabled {
+            logger.info("Live Activities enabled; starting PTS token relay")
+            return true
+        }
+        return false
     }
 
     func stop() {

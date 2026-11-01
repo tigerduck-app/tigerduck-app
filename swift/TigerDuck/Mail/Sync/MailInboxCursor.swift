@@ -4,9 +4,11 @@ import Foundation
 nonisolated struct MailInboxCursor: Sendable {
     let prefs: any MailPreferences
 
-    func reset(to status: MailboxStatusInfo) {
-        prefs.inboxUIDValidity = status.uidValidity
-        prefs.inboxNextUID = status.uidNext
+    func reset(to status: MailboxStatusInfo, for signIn: SignIn) {
+        prefs.change(for: signIn) {
+            $0.inboxUIDValidity = status.uidValidity
+            $0.inboxNextUID = status.uidNext
+        }
     }
 
     func marker(for status: MailboxStatusInfo) -> UInt32? {
@@ -14,11 +16,11 @@ nonisolated struct MailInboxCursor: Sendable {
         return prefs.inboxNextUID
     }
 
-    func noteSeen(_ status: MailboxStatusInfo) {
+    func noteSeen(_ status: MailboxStatusInfo, for signIn: SignIn) {
         if prefs.inboxUIDValidity != status.uidValidity || prefs.inboxNextUID == nil {
-            reset(to: status)
+            reset(to: status, for: signIn)
         } else if let marker = prefs.inboxNextUID, status.uidNext > marker {
-            prefs.inboxNextUID = status.uidNext
+            prefs.change(for: signIn) { $0.inboxNextUID = status.uidNext }
         }
     }
 
@@ -26,12 +28,20 @@ nonisolated struct MailInboxCursor: Sendable {
         prefs.inboxMutedUIDs.flatMap { $0.uidValidity == uidValidity ? $0.uids : nil } ?? []
     }
 
-    func advance(to next: UInt32, uidValidity: UInt32, passedOver: Set<UInt32>) {
+    static func toPassOver(
+        _ unread: [MailSummary], passedOver: Set<UInt32>, mutes: (MailSummary) -> Bool
+    ) -> Set<UInt32> {
+        Set(unread.filter { passedOver.contains($0.uid) || mutes($0) }.map(\.uid))
+    }
+
+    func advance(to next: UInt32, uidValidity: UInt32, passedOver: Set<UInt32>, for signIn: SignIn) {
         guard prefs.inboxUIDValidity == uidValidity else { return }
         let marker = max(next, prefs.inboxNextUID ?? 0)
-        prefs.inboxNextUID = marker
         let held = passedOver.filter { $0 >= marker }
-        prefs.inboxMutedUIDs = held.isEmpty ? nil : MailMutedUIDs(uidValidity: uidValidity, uids: held)
+        prefs.change(for: signIn) {
+            $0.inboxNextUID = marker
+            $0.inboxMutedUIDs = held.isEmpty ? nil : MailMutedUIDs(uidValidity: uidValidity, uids: held)
+        }
     }
 }
 #endif

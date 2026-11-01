@@ -8,11 +8,11 @@ enum AccountSignOutCleanup {
     static func endSchoolSession(departing studentId: String?) {
         MoodleEnrolledCoursesService.dropSharedAnswer()
         ClassroomUsageService.shared.forget()
-        NTUSTSessionManager.shared.invalidateSession()
+        NTUSTSessionManager.shared.cancelTasksAndForgetSignIn()
         CourseSelectionService.invalidateEnrolledCoursesCache(for: studentId)
     }
 
-    static func forgetSchoolPages(
+    static func clearAllCachedPages(
         cache: URLCache = .shared,
         clearBrowser: @MainActor () async -> Void = { await AccountSignOutCleanup.clearInAppBrowser() }
     ) async {

@@ -110,7 +110,7 @@ private struct MoreFeatureDestination<Content: View>: View {
 
     var body: some View {
         content
-            .navigationBarBackButtonHidden(true)
+            .hidesBackButtonKeepingEdgeSwipe()
             .accessibilityAction(.escape) { dismiss() }
     }
 }

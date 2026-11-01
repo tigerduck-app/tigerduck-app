@@ -4,16 +4,18 @@ import Observation
 nonisolated struct EditToken: Hashable, Comparable, Sendable {
     private var count = 0
 
-    mutating func move() {
+    mutating func recordUserEdit() {
         count &+= 1
     }
+
+    func editedSince(_ earlier: EditToken) -> Bool { self > earlier }
 
     static func < (lhs: EditToken, rhs: EditToken) -> Bool { lhs.count < rhs.count }
 }
 
 enum CourseEdit {
-    case add(SDCourse, semester: String)
-    case remove(courseNo: String, semester: String)
+    case addByHand(SDCourse, semester: String)
+    case removeAddedByHand(courseNo: String, semester: String)
     /// Hides the course, or removes it when it was added by hand here.
     case delete(courseNo: String, semester: String)
     case unhide(courseNo: String, semester: String)
@@ -30,22 +32,22 @@ final class CourseStore {
     typealias Course = SDCourse
     typealias Tombstone = CourseTombstone
 
-    @ObservationIgnored let files: CourseFiles
-    @ObservationIgnored let display: () -> Display
+    @ObservationIgnored private let files: CourseFiles
+    @ObservationIgnored let currentDisplay: () -> Display
     private(set) var revision = 0
     private(set) var editToken = EditToken()
     @ObservationIgnored private var lastReset: [String: EditToken] = [:]
 
     init(files: CourseFiles = CourseFiles(), display: @escaping () -> Display = { .current() }) {
         self.files = files
-        self.display = display
+        self.currentDisplay = display
     }
 
     convenience init(folders: CacheFolders, display: @escaping () -> Display = { .current() }) {
         self.init(files: CourseFiles(folders: folders), display: display)
     }
 
-    func noteChange() {
+    func filesChangedElsewhere() {
         revision &+= 1
     }
 
@@ -136,10 +138,12 @@ final class CourseStore {
         write(signIn) { $0.saveServerDroppedNos(courseNos, semester: semester) }
     }
 
-    func recordSelectionRoster(
-        semester: String, roster: [String], alsoListed: [String] = [], isFinal: Bool = false, for signIn: SignIn
-    ) {
-        write(signIn) { $0.recordSelectionRoster(semester: semester, roster: roster, alsoListed: alsoListed, isFinal: isFinal) }
+    func recordRoster(_ source: TermRoster.RosterSource, semester: String, for signIn: SignIn) {
+        write(signIn) { $0.recordRoster(source, semester: semester) }
+    }
+
+    func forgetServerDrops(listedIn liveRoster: [String], semester: String, for signIn: SignIn) {
+        write(signIn) { $0.saveServerDroppedNos($0.loadServerDroppedNos(semester: semester).subtracting(liveRoster), semester: semester) }
     }
 
     func recordSemesterReset(_ semester: String, at date: Date = Date(), for signIn: SignIn) {
@@ -159,12 +163,12 @@ final class CourseStore {
     func saveFetchedCourses(
         _ courses: [SDCourse], semester: String, display: Display, since token: EditToken, for signIn: SignIn
     ) -> Bool {
-        guard display == self.display(), !termWasReset(semester, since: token) else { return false }
+        guard display == currentDisplay(), !termWasReset(semester, since: token) else { return false }
         return saveCourses(courses, semester: semester, for: signIn)
     }
 
     func termWasReset(_ semester: String, since token: EditToken) -> Bool {
-        lastReset[semester].map { $0 > token } ?? false
+        lastReset[semester]?.editedSince(token) ?? false
     }
 
     /// Applies details looked up during a fetch to the term's courses as they are now, so a course
@@ -174,7 +178,7 @@ final class CourseStore {
     func applyLookedUp(
         _ found: [String: CourseData], semester: String, enrolled: Bool, display: Display, for signIn: SignIn
     ) -> Bool {
-        guard !found.isEmpty, display == self.display(), signIn.isCurrent else { return false }
+        guard !found.isEmpty, display == currentDisplay(), signIn.isCurrent else { return false }
         var applied = false
         let current = files.loadCourses(semester: semester)
         if enrolled, current.contains(where: { found[$0.courseNo] != nil }) {
@@ -199,15 +203,15 @@ extension CourseStore {
     @discardableResult
     func apply(_ edit: CourseEdit, for signIn: SignIn) -> Bool {
         guard signIn.isCurrent else { return false }
-        editToken.move()
+        editToken.recordUserEdit()
         switch edit {
-        case let .add(course, semester):
+        case let .addByHand(course, semester):
             if course.semester.isEmpty { course.semester = semester }
             var userAdded = files.loadUserAddedCourses()
             userAdded.removeAll { $0.courseNo == course.courseNo && Self.userAddedCourse($0, belongsTo: semester) }
             saveUserAddedCourses(userAdded + [course], for: signIn)
             return true
-        case let .remove(courseNo, semester):
+        case let .removeAddedByHand(courseNo, semester):
             let userAdded = files.loadUserAddedCourses()
             let kept = userAdded.filter { !($0.courseNo == courseNo && Self.userAddedCourse($0, belongsTo: semester)) }
             guard kept.count != userAdded.count else { return false }

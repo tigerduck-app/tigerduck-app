@@ -80,10 +80,10 @@ enum PushAPI {
         let syncCourseColors: Bool
         let syncCourseNames: Bool
         let syncAssignments: Bool
-        let syncAssignmentReminders: Bool?
-        let syncLiveActivity: Bool?
+        let syncAssignmentReminders: Bool
+        let syncLiveActivity: Bool
         let cloudSyncEnabled: Bool
-        let bulletinPushEnabled: Bool?
+        let bulletinPushEnabled: Bool
 
         enum CodingKeys: String, CodingKey {
             case deviceId = "device_id"
@@ -203,10 +203,16 @@ enum PushAPI {
     }
 
     nonisolated struct CourseOverrideResponse: Decodable, Sendable {
+        nonisolated enum Field: String, Sendable {
+            case colorHex = "color_hex"
+            case customName = "custom_name"
+            case ignoreAssignments = "ignore_assignments"
+        }
+
         let colorHex: String?
         let customNames: [String: String]
-        let ignoreAssignments: Bool?
-        let applied: [String]
+        let ignoreAssignments: Bool
+        let applied: Set<Field>
 
         enum CodingKeys: String, CodingKey {
             case colorHex = "color_hex"
@@ -219,8 +225,8 @@ enum PushAPI {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
             customNames = try c.decodeIfPresent([String: String].self, forKey: .customNames) ?? [:]
-            ignoreAssignments = try c.decodeIfPresent(Bool.self, forKey: .ignoreAssignments)
-            applied = try c.decodeIfPresent([String].self, forKey: .applied) ?? []
+            ignoreAssignments = try c.decode(Bool.self, forKey: .ignoreAssignments)
+            applied = Set((try c.decodeIfPresent([String].self, forKey: .applied) ?? []).compactMap(Field.init(rawValue:)))
         }
     }
 
@@ -252,13 +258,13 @@ enum PushAPI {
 
     nonisolated struct CourseUploadRequest: Encodable, Sendable {
         let courses: [CourseUploadEntry]
-        var adds: [CourseAdd]?
-        var rosterTerms: [String]?
+        var handAddedCourses: [CourseAdd]?
+        var completeRosterTerms: [String]?
 
         enum CodingKeys: String, CodingKey {
             case courses
-            case adds
-            case rosterTerms = "roster_terms"
+            case handAddedCourses = "adds"
+            case completeRosterTerms = "roster_terms"
         }
     }
 

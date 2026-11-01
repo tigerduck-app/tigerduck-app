@@ -31,7 +31,7 @@ struct CloudSyncSettingsView: View {
             }
 
             Section {
-                Toggle(String(localized: "sync_courses_toggle"), isOn: $syncEnabled)
+                Toggle(String(localized: "sync_courses_toggle"), isOn: app.cloudSyncSwitch)
                     .onChange(of: syncEnabled) { old, newValue in
                         if newValue && !old {
                             if syncCourses { app.conflicts.markCategoryReenabled("courses") }

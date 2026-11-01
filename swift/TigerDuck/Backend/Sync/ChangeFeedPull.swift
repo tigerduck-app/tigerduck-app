@@ -22,7 +22,7 @@ final class ChangeFeedPull {
 
     func pollOnReturn() async {
         startPolling(pollNow: true)
-        await app.poller.pollInFlight()
+        await app.poller.waitForPollInFlight()
     }
 
     func stopPolling() {
@@ -39,18 +39,18 @@ final class ChangeFeedPull {
         await app.authService.ensureBackendSignedIn()
         guard await app.authTokenManager.isLoggedIn else { return .unchanged }
         do {
-            let serverRevision = try await app.pushCoordinator.fetchRevision()
+            let serverRevision = try await app.pushCoordinator.fetchRevision(for: signIn)
             app.conflicts.retryOwedConflictCheck()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self.lastKnownRevision)")
             guard serverRevision > lastKnownRevision else {
-                if lastKnownRevision > 0 { app.syncTarget.notePull(signIn) }
+                if lastKnownRevision > 0 { app.firstPullGate.notePull(signIn) }
                 return .unchanged
             }
             let outcome = await syncChanges(for: signIn)
             await app.cloudSyncCoordinator.onRevisionChanged()
             return outcome
         } catch PushAPIError.httpStatus(401, _, let sent) {
-            return .unauthorized(refused: sent?.value)
+            return .unauthorized(refusedAccessToken: sent?.value)
         } catch {
             AppLogger.sync.info("[poll] tick failed: \(error, privacy: .private)")
             return .failed
@@ -65,7 +65,7 @@ final class ChangeFeedPull {
         }
         let page: PushAPI.SyncChangesPage?
         do {
-            page = try await app.pushCoordinator.fetchChanges(sinceRevision: since)
+            page = try await app.pushCoordinator.fetchChanges(sinceRevision: since, for: signIn)
         } catch {
             AppLogger.sync.info("[feed] read failed: \(error, privacy: .private)")
             page = nil
@@ -79,10 +79,10 @@ final class ChangeFeedPull {
         case .fullSync:
             await app.fullSync.sync()
         case .advance(let revision):
-            await app.fullSync.retryUnsentEdits()
+            await app.fullSync.retryUnsentEdits(for: signIn)
             advanceRevision(from: since, to: revision, for: signIn)
         case .reconcileSettings(let revision):
-            await app.fullSync.retryUnsentEdits()
+            await app.fullSync.retryUnsentEdits(for: signIn)
             await reconcileSettings(thenAdvanceFrom: since, to: revision, for: signIn)
             if lastKnownRevision == since { return .failed }
         }
@@ -104,7 +104,7 @@ final class ChangeFeedPull {
     private func advanceRevision(from since: Int, to revision: Int, for signIn: SignIn) {
         guard mayAdvanceRevision(from: since, for: signIn) else { return }
         lastKnownRevision = revision
-        app.syncTarget.notePull(signIn)
+        app.firstPullGate.notePull(signIn)
         ServerStatusTracker.shared.noteSyncResult(true)
     }
 

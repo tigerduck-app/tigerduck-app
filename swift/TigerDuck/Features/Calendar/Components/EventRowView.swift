@@ -42,7 +42,7 @@ struct EventRowView: View {
                     "",
                     isOn: Binding(
                         get: { holidayOverrides.contains(holidayID) },
-                        set: { app.holidays.setHolidayNotify($0, holidayID: holidayID) }
+                        set: { app.holidays.setHolidayNotify($0, holidayID: holidayID, for: app.authService.session.currentSignIn) }
                     )
                 )
                 .labelsHidden()

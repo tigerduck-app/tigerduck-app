@@ -24,6 +24,7 @@ final class ScheduleSyncService {
 
     private let identity: PushIdentity
     private let apiClient: PushAPIClient
+    private let signIns: SignInSeries
     private let ledger: SendLedger
     private let horizonSeconds: TimeInterval
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Sync")
@@ -36,16 +37,24 @@ final class ScheduleSyncService {
     init(
         identity: PushIdentity,
         apiClient: PushAPIClient,
+        signIns: SignInSeries,
         ledger: SendLedger? = nil,
         horizonHours: Double = ScheduleSyncService.horizon / 3600
     ) {
         self.identity = identity
         self.apiClient = apiClient
+        self.signIns = signIns
         self.ledger = ledger ?? SendLedger()
         self.horizonSeconds = horizonHours * 3600
     }
 
-    func sync(inputs: Inputs, now: Date = AppClock.now()) {
+    /// Builds the list now and sends it for the sign-in it was built in.
+    func sync(building build: @MainActor () -> Inputs) {
+        let signIn = signIns.currentSignIn
+        sync(inputs: build(), for: signIn)
+    }
+
+    func sync(inputs: Inputs, for signIn: SignIn, now: Date = AppClock.now()) {
         let end = now.addingTimeInterval(horizonSeconds)
         let events = Self.buildEvents(inputs: inputs, now: now, horizonEnd: end)
         let request = PushAPI.ScheduleSyncRequest(events: events)
@@ -54,15 +63,15 @@ final class ScheduleSyncService {
         inflight = Task { [apiClient, ledger, logger] in
             await previous?.value
             do {
-                let sent = try await ledger.send(
+                let outcome = try await ledger.send(
                     SendLedger.Channel.schedule, fingerprint: fingerprint, resend: .never
                 ) {
-                    let response = try await apiClient.syncSchedule(request)
+                    let response = try await apiClient.syncSchedule(request, for: signIn)
                     logger.info(
                         "sync ok pending=\(response.pending, privacy: .public) replaced=\(response.replaced, privacy: .public)"
                     )
                 }
-                if !sent { logger.info("sync skipped, list unchanged") }
+                if outcome == .skipped { logger.info("sync skipped, list unchanged") }
             } catch {
                 logger.error("sync failed: \(error.localizedDescription, privacy: .private)")
             }
@@ -184,8 +193,7 @@ final class ScheduleSyncService {
             guard UIApplication.shared.applicationState != .background else { return }
             #endif
             guard await self?.apiClient.hasAuthSession() == true else { return }
-            let inputs = inputsBuilder()
-            self?.sync(inputs: inputs)
+            self?.sync(building: inputsBuilder)
         }
     }
 
@@ -194,7 +202,7 @@ final class ScheduleSyncService {
         await pendingRequest?.value
     }
 
-    func forgetAcceptedList() {
+    func resendScheduleOnNextSync() {
         ledger.forget(SendLedger.Channel.schedule)
     }
 }

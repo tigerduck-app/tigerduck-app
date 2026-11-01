@@ -25,9 +25,8 @@ final class BulletinSubscriptionsStore {
     private(set) var isDirty: Bool = false
 
     private var apiClient: BulletinAPIClient
-    private let usesInjectedClient: Bool
-    @ObservationIgnored private var saving: Task<Void, Never>?
-    @ObservationIgnored private var saveAsked = false
+    @ObservationIgnored private var signIn: SignIn?
+    @ObservationIgnored private let saves = CoalescedRuns()
     private let retryDelay: @Sendable (Duration) async -> Void
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Subs")
 
@@ -36,13 +35,23 @@ final class BulletinSubscriptionsStore {
         retryDelay: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) }
     ) {
         self.apiClient = apiClient ?? BulletinAPIClient()
-        self.usesInjectedClient = apiClient != nil
         self.retryDelay = retryDelay
     }
 
-    func configure(authTokenManager: AuthTokenManager) {
-        guard !usesInjectedClient else { return }
-        apiClient = BulletinAPIClient(backend: BackendClient(auth: authTokenManager.backendAuth))
+    func configure(authTokenManager: AuthTokenManager, for signIn: SignIn) {
+        configure(for: signIn) { BulletinAPIClient(backend: BackendClient(auth: authTokenManager.backendAuth), for: $0) }
+    }
+
+    /// Binds the store to `signIn` unless the sign-in it holds is still current. Leaving an ended one
+    /// drops that account's rules, so neither its edits nor a reply still on the way reach the next account.
+    func configure(for signIn: SignIn, client makeClient: (SignIn) -> BulletinAPIClient) {
+        guard self.signIn?.isCurrent != true else { return }
+        if self.signIn != nil {
+            (pending, isDirty, loadState, saveState) = ([], false, .idle, .idle)
+            saves.dropQueuedRun()
+        }
+        self.signIn = signIn
+        apiClient = makeClient(signIn)
     }
 
     func load() async {
@@ -53,8 +62,10 @@ final class BulletinSubscriptionsStore {
         }
         loadState = .loading
         let before = pending
+        let client = apiClient
         do {
-            let response = try await apiClient.getSubscriptions()
+            let response = try await client.getSubscriptions()
+            guard client === apiClient else { return }
             if pending == before {
                 pending = response.items
                 isDirty = false
@@ -62,41 +73,29 @@ final class BulletinSubscriptionsStore {
             loadState = .loaded
             logger.info("subscriptions loaded count=\(response.items.count, privacy: .public)")
         } catch {
+            guard client === apiClient else { return }
             logger.error("subscription load failed: \(error.localizedDescription, privacy: .private)")
             loadState = .failed(error.localizedDescription)
         }
     }
 
     func save() async {
-        saveAsked = true
-        if let saving {
-            await saving.value
-            return
-        }
-        let task = Task { await self.saveWhileAsked() }
-        saving = task
-        await task.value
-        saving = nil
-    }
-
-    private func saveWhileAsked() async {
-        while saveAsked {
-            saveAsked = false
-            await saveOnce()
-        }
+        await saves.run { await self.saveOnce() }
     }
 
     private func saveOnce() async {
         saveState = .saving
         let sent = pending
+        let client = apiClient
         logger.info("subscription save starting ruleCount=\(sent.count, privacy: .public)")
         let maxAttempts = 4
         for attempt in 1...maxAttempts {
             do {
-                let response = try await apiClient.putSubscriptions(rules: sent)
+                let response = try await client.putSubscriptions(rules: sent)
+                guard client === apiClient else { return }
                 guard pending == sent else {
                     logger.info("subscription save landed under a newer edit; saving that next")
-                    saveAsked = true
+                    saves.runAgain()
                     return
                 }
                 pending = response.items
@@ -111,15 +110,17 @@ final class BulletinSubscriptionsStore {
                 let delayMs = 250 * (1 << (attempt - 1))
                 logger.info("PUT subscriptions 404 (attempt \(attempt, privacy: .public)); retrying in \(delayMs, privacy: .public)ms")
                 await retryDelay(.milliseconds(delayMs))
-                if Task.isCancelled { return }
+                if Task.isCancelled || client !== apiClient { return }
             } catch {
                 logger.error("subscription save failed: \(error.localizedDescription, privacy: .private)")
-                if pending == sent { saveState = .failed(error.localizedDescription) }
+                if client === apiClient, pending == sent { saveState = .failed(error.localizedDescription) }
                 return
             }
         }
         logger.error("subscription save gave up after \(maxAttempts, privacy: .public) 404 attempts")
-        if pending == sent { saveState = .failed(String(localized: "bulletin_subscription_device_not_registered")) }
+        if client === apiClient, pending == sent {
+            saveState = .failed(String(localized: "bulletin_subscription_device_not_registered"))
+        }
     }
 
     func makeNewRule() -> BulletinAPI.SubscriptionRule {
@@ -175,5 +176,38 @@ final class BulletinSubscriptionsStore {
         )
         isDirty = true
         saveState = .idle
+    }
+}
+
+/// Runs one job at a time. A run asked for while one is going makes it go once more, and the
+/// caller returns when that run has finished.
+@MainActor
+private final class CoalescedRuns {
+    private var running: Task<Void, Never>?
+    private var askedAgain = false
+
+    func run(_ job: @escaping @MainActor () async -> Void) async {
+        askedAgain = true
+        if let running {
+            await running.value
+            return
+        }
+        let task = Task {
+            while askedAgain {
+                askedAgain = false
+                await job()
+            }
+        }
+        running = task
+        await task.value
+        running = nil
+    }
+
+    func runAgain() {
+        askedAgain = true
+    }
+
+    func dropQueuedRun() {
+        askedAgain = false
     }
 }

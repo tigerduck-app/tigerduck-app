@@ -106,20 +106,20 @@ struct AccountSwitchTests {
             cache.courses.saveUserAddedCourses([], for: testSignIn)
             cache.courses.saveDeletedCourseNos(["CS1001"], for: testSignIn)
             cache.courses.saveSelectionDroppedNos([semester: ["CS1002"]], for: testSignIn)
-            cache.courses.recordSelectionRoster(semester: semester, roster: ["CS1003"], for: testSignIn)
+            cache.courses.recordRoster(.courseSelection(["CS1003"]), semester: semester, for: testSignIn)
             cache.courses.saveCourseCustomNames([semester: ["CS1001": "Mine"]], for: testSignIn)
             cache.colors.saveCourseColorMap(["CS1001": 0xFF0000])
             cache.colors.savePickedCourseColors(["CS1001"])
             cache.assignments.saveAssignments([], for: testSignIn)
             cache.assignments.apply(.setArchived(id: "1", true), for: testSignIn)
-            cache.assignments.apply(.setCompleted(id: "2", true), for: testSignIn)
+            cache.assignments.apply(.setLocallyCompleted(id: "2", true), for: testSignIn)
             cache.assignments.apply(.ignoreCourse(courseNo: "CS1001", semester: semester, ignored: true), for: testSignIn)
             cache.assignments.saveCalendarEvents([
                 SDCalendarEvent(eventId: "moodle-1", title: "Quiz", date: Date(), source: .moodle),
             ], for: testSignIn)
             cache.bulletins.saveBulletinSummaries([])
-            cache.moodle.saveMoodleCourseIdMap(["1141CS1001": 7])
-            cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: first)
+            cache.moodle.replaceMoodleCourseIdMap(["1141CS1001": 7], for: testSignIn)
+            cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: first, for: testSignIn)
             try FileManager.default.createDirectory(at: cache.moodleFilesDir, withIntermediateDirectories: true)
             try Data("pdf".utf8).write(to: cache.moodleFilesDir.appendingPathComponent("slides.pdf"))
             try Data("{}".utf8).write(to: cache.persistentDir.appendingPathComponent("imported_class_tables.json"))
@@ -235,13 +235,6 @@ struct AccountSwitchTests {
         return auth
     }
 
-    private static func schoolSignOut(_ auth: AuthService) -> SignOutPlan {
-        SignOutPlan(session: auth.session, stores: SignOutPlan.schoolStores, endSession: {
-            auth.logout()
-            return { auth.startSignOutCalls {} }
-        })
-    }
-
     @Test("signing in as a second student after a first leaves nothing of the first")
     func aSecondAccountFindsNothingOfTheFirst() async throws {
         try await withExclusiveRealDefaults {
@@ -252,7 +245,7 @@ struct AccountSwitchTests {
             let moodleToken = OSAllocatedUnfairLock<String?>(initialState: nil)
             let signedIn = OSAllocatedUnfairLock<[String]>(initialState: [])
             let auth = Self.auth(schoolSignIns: signedIn, moodleToken: moodleToken)
-            auth.signOutStoredAccount = { await Self.schoolSignOut(auth).run(in: device.storage)?.value }
+            auth.signOutStoredAccount = { await SignOutPlan.school(auth: auth).run(in: device.storage)?.value }
 
             try await SecureStore.$sharedForTesting.withValue(device.keychain) {
                 #expect(await auth.login(studentId: Self.first, password: "first-password"))
@@ -260,7 +253,7 @@ struct AccountSwitchTests {
                 try device.fillSchool()
                 #expect(device.schoolIsKept())
                 #if os(iOS)
-                let browserEpoch = BrowserData.shared.epoch
+                let browserResets = BrowserData.shared.storeResets
                 #endif
 
                 #expect(await auth.login(studentId: Self.second, password: "second-password"))
@@ -274,7 +267,7 @@ struct AccountSwitchTests {
                 #if os(iOS)
                 #expect((auth.accountNotifications as? DeliveredNotificationsStub)?.delivered.isEmpty == true)
                 // Dropped at the sign-out and again at the sign-in.
-                #expect(BrowserData.shared.epoch >= browserEpoch + 2)
+                #expect(BrowserData.shared.storeResets >= browserResets + 2)
                 #endif
             }
         }
@@ -294,13 +287,10 @@ struct AccountSwitchTests {
 
             try await SecureStore.$sharedForTesting.withValue(device.keychain) {
                 #expect(await auth.login(studentId: Self.first, password: "first-password"))
-                SignOutPlan(session: auth.session, stores: SignOutPlan.schoolStores, endSession: {
-                    auth.logout()
-                    return {
-                        auth.startSignOutCalls {
-                            callsBegan.withLock { $0 = true }
-                            for await _ in unregistered {}
-                        }
+                SignOutPlan.school(auth: auth, endBackendSession: {
+                    {
+                        callsBegan.withLock { $0 = true }
+                        for await _ in unregistered {}
                     }
                 }).run(in: device.storage)
 
@@ -341,9 +331,9 @@ struct AccountSwitchTests {
 
                 switch account {
                 case .school:
-                    await Self.schoolSignOut(auth).run(in: device.storage)?.value
+                    await SignOutPlan.school(auth: auth).run(in: device.storage)?.value
                 case .library:
-                    LibraryService.clearCredentials()
+                    LibraryService.signOutLibraryOnly()
                 #if os(iOS)
                 case .mail:
                     mail.logout()

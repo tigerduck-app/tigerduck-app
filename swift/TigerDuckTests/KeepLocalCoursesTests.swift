@@ -129,7 +129,7 @@ private final class FakeCourseServer: CourseSyncBackend {
     func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?, for signIn: SignIn) async throws {
         guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
         defer { afterSend() }
-        for add in request.adds ?? [] { tombstones[add.courseKey] = nil }
+        for add in request.handAddedCourses ?? [] { tombstones[add.courseKey] = nil }
         let keys = request.courses.map { "client:\($0.semester):\($0.courseNo)" }
         for key in keys where tombstones[key] == true { tombstones[key] = nil }
         rows.formUnion(keys.filter { tombstones[$0] == nil })

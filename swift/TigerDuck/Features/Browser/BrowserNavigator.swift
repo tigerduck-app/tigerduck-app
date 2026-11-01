@@ -32,8 +32,8 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     private var observations: [NSKeyValueObservation] = []
     private var refusedHosts: Set<String> = []
     private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
-    private var lastRequested: URL?
-    private static let sessionKept: TimeInterval = 30 * 24 * 60 * 60
+    private var signInReturnPage: URL?
+    private static let sessionCookieLifetime: TimeInterval = 30 * 24 * 60 * 60
 
     init(page: BrowserPage) {
         self.page = page
@@ -60,10 +60,10 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         page.signIn.signInWithSession = { [weak container] in
             await BrowserSessionSignIn(store: store, host: container).signIn(for: schoolSignIn)
         }
-        page.find.run = { [weak webView] in await webView?.runFind($0) }
+        page.find.runInPage = { [weak webView] in await webView?.runFind($0) }
         Task {
             await BrowserData.shared.prepare()
-            guard BrowserData.shared.epoch == page.epoch else { return }
+            guard BrowserData.shared.storeResets == page.storeResets else { return }
             // Until asked for its records, the store answers with no cookies, not those on disk.
             _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
             await BrowserPageScripts.install(in: configuration.userContentController)
@@ -116,7 +116,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         if BrowserRouting.isMoodleSignInPage(url) {
             decisionHandler(.cancel)
             let current = webView.url.flatMap { BrowserRouting.isMoodleReturnPage($0) ? $0 : nil }
-            page.signIn.reachedSignInPage(returningTo: lastRequested ?? current ?? AppConstants.moodleBaseURL)
+            page.signIn.reachedSignInPage(returningTo: signInReturnPage ?? current ?? AppConstants.moodleBaseURL)
             return
         }
         switch BrowserRouting.decision(for: url, byLinkTap: action.navigationType == .linkActivated) {
@@ -127,7 +127,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
                 webView.load(action.request)
                 return
             }
-            if BrowserRouting.isMoodleReturnPage(url) { lastRequested = url }
+            if BrowserRouting.isMoodleReturnPage(url) { signInReturnPage = url }
             page.failure = nil
             page.downloads.failed = nil
             decisionHandler(.allow)
@@ -199,7 +199,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        lastRequested = nil
+        signInReturnPage = nil
         page.signIn.pageSettled()
         Task { await keepSession() }
         if page.find.isActive { Task { await page.find.search() } }
@@ -207,9 +207,9 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
 
     private func keepSession() async {
         let cookies = page.store.httpCookieStore
-        let expiry = Date.now.addingTimeInterval(Self.sessionKept)
+        let expiry = Date.now.addingTimeInterval(Self.sessionCookieLifetime)
         let lasting = await cookies.allCookies().compactMap { BrowserRouting.lastingSession($0, until: expiry) }
-        guard BrowserData.shared.epoch == page.epoch else { return }
+        guard BrowserData.shared.storeResets == page.storeResets else { return }
         for cookie in lasting { await cookies.setCookie(cookie) }
     }
 
@@ -250,10 +250,9 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        if let address = BrowserRouting.pageToRestore(url: webView.url, address: page.address) {
-            webView.load(URLRequest(url: address))
-        } else {
-            webView.reload()
+        switch BrowserRouting.pageToRestore(url: webView.url, address: page.address) {
+        case .load(let address): webView.load(URLRequest(url: address))
+        case .reload: webView.reload()
         }
     }
 
@@ -270,20 +269,28 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
 
 extension BrowserPage.Failure {
     nonisolated static func load(_ error: any Error, refusedHosts: Set<String>) -> Self? {
+        if let certificate = certificateFailure(error, refusedHosts: refusedHosts) { return certificate }
         let error = error as NSError
-        let host = (error.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.host(percentEncoded: false) ?? ""
-        if refusedHosts.contains(host) || error.domain == NSURLErrorDomain && (-1206 ... -1200).contains(error.code) {
-            return .certificate(host: host)
-        }
         // Cancelled, or WebKitErrorFrameLoadInterruptedByPolicyChange after a policy cancel.
         let stopped = (error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled)
             || (error.domain == "WebKitErrorDomain" && error.code == 102)
-        return stopped ? nil : .unreachable(host: host)
+        return stopped ? nil : .unreachable(host: failingHost(of: error))
     }
 
     nonisolated static func download(_ error: any Error, refusedHosts: Set<String>, requestedHost: String) -> Self {
-        let failure = load(error, refusedHosts: refusedHosts)
-        if case .certificate = failure, let failure { return failure }
-        return .unreachable(host: requestedHost)
+        certificateFailure(error, refusedHosts: refusedHosts) ?? .unreachable(host: requestedHost)
+    }
+
+    private nonisolated static func certificateFailure(_ error: any Error, refusedHosts: Set<String>) -> Self? {
+        let error = error as NSError
+        let host = failingHost(of: error)
+        guard refusedHosts.contains(host) || error.domain == NSURLErrorDomain && (-1206 ... -1200).contains(error.code) else {
+            return nil
+        }
+        return .certificate(host: host)
+    }
+
+    private nonisolated static func failingHost(of error: NSError) -> String {
+        (error.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.host(percentEncoded: false) ?? ""
     }
 }

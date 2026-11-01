@@ -2,6 +2,8 @@
 import Foundation
 
 nonisolated struct MailIndexSchedule {
+    enum PassEnd { case settled, mailArrivedDuringPass }
+
     private var completed: (at: Date, wipeCount: Int)?
     private var retryAt: Date?
     private var failedPasses = 0
@@ -41,12 +43,12 @@ nonisolated struct MailIndexSchedule {
         return retryIn
     }
 
-    mutating func passCompleted(now: Date, wipeCount: Int, arrivalsAtStart: Int) -> Bool {
+    mutating func passCompleted(now: Date, wipeCount: Int, arrivalsAtStart: Int) -> PassEnd {
         failedPasses = 0
         retryAt = nil
-        guard arrivals == arrivalsAtStart else { return false }
+        guard arrivals == arrivalsAtStart else { return .mailArrivedDuringPass }
         completed = (now, wipeCount)
-        return true
+        return .settled
     }
 
     mutating func reset() {
@@ -65,17 +67,18 @@ nonisolated struct MailIndexStrikes {
 
     private static let failuresBeforeSkipping = 2
 
-    private var strikes: [MailKey: Int] = [:]
+    private var suspects: Set<MailKey> = []
+    private var failuresAlone: [MailKey: Int] = [:]
 
     func skips(_ uid: UInt32, folder: String, uidValidity: UInt32) -> Bool {
-        (strikes[MailKey(folder: folder, uidValidity: uidValidity, uid: uid)] ?? 0) >= Self.failuresBeforeSkipping
+        failuresAlone[MailKey(folder: folder, uidValidity: uidValidity, uid: uid), default: 0] >= Self.failuresBeforeSkipping
     }
 
     func batches(of missing: [UInt32], folder: String, uidValidity: UInt32) -> [[UInt32]] {
         var batches: [[UInt32]] = []
         var current: [UInt32] = []
         for uid in missing {
-            if strikes[MailKey(folder: folder, uidValidity: uidValidity, uid: uid)] != nil {
+            if suspects.contains(MailKey(folder: folder, uidValidity: uidValidity, uid: uid)) {
                 if !current.isEmpty { batches.append(current) }
                 batches.append([uid])
                 current = []
@@ -91,11 +94,10 @@ nonisolated struct MailIndexStrikes {
         return batches
     }
 
-    mutating func strike(_ batch: [UInt32], folder: String, uidValidity: UInt32) {
-        for uid in batch {
-            let key = MailKey(folder: folder, uidValidity: uidValidity, uid: uid)
-            strikes[key] = (strikes[key] ?? 0) + (batch.count == 1 ? 1 : 0)
-        }
+    mutating func noteFailure(of batch: [UInt32], folder: String, uidValidity: UInt32) {
+        let keys = batch.map { MailKey(folder: folder, uidValidity: uidValidity, uid: $0) }
+        suspects.formUnion(keys)
+        if keys.count == 1, let alone = keys.first { failuresAlone[alone, default: 0] += 1 }
     }
 }
 #endif

@@ -12,7 +12,7 @@ final class BackendUploads {
         self.ledger = ledger
     }
 
-    static let unchangedCredentialsInterval: TimeInterval = 3600
+    static let backendCredentialsMaxAge: TimeInterval = 3600
 
     func updateCredentialsIfDue(moodleToken: String, moodlePrivateToken: String?, for signIn: SignIn) async throws {
         let client = client
@@ -21,7 +21,7 @@ final class BackendUploads {
         do {
             _ = try await ledger.send(
                 SendLedger.Channel.credentials, fingerprint: fingerprint,
-                resend: .after(Self.unchangedCredentialsInterval), for: signIn
+                resend: .after(Self.backendCredentialsMaxAge), for: signIn
             ) {
                 let response = try await client.updateCredentials(
                     moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken, for: signIn
@@ -44,7 +44,7 @@ final class BackendUploads {
         while wanted: @escaping @MainActor () -> Bool
     ) async throws -> Bool {
         let client = client
-        let always = resend || request.adds?.isEmpty == false
+        let always = resend || request.handAddedCourses?.isEmpty == false
         let sent = try await ledger.send(
             SendLedger.Channel.courses(semester),
             fingerprint: Self.fingerprint(of: request),
@@ -53,7 +53,7 @@ final class BackendUploads {
             for: signIn, while: wanted
         ) {
             try await client.uploadCourses(request, addedAt: stamp, for: signIn)
-        }
+        } == .sent
         if sent { onCoursesUploaded() }
         return sent
     }
@@ -69,7 +69,7 @@ final class BackendUploads {
             resend: .after(Self.unchangedUploadInterval), pausesAfterRefusal: true, for: signIn, while: wanted
         ) {
             try await client.uploadAssignments(request, for: signIn)
-        }
+        } == .sent
     }
 
     func forgetUploads(semester: String?) {
@@ -85,15 +85,20 @@ final class BackendUploads {
     }
 
     nonisolated static func fingerprint(of request: PushAPI.CourseUploadRequest) -> String {
-        SendLedger.fingerprint(of: PushAPI.CourseUploadRequest(
-            courses: request.courses.sorted { $0.courseNo < $1.courseNo },
-            rosterTerms: request.rosterTerms?.sorted()
-        ))
+        SendLedger.fingerprint(of: request.listIdentity)
     }
 
     nonisolated static func fingerprint(of request: PushAPI.AssignmentUploadRequest) -> String {
         SendLedger.fingerprint(of: PushAPI.AssignmentUploadRequest(
             assignments: request.assignments.sorted { $0.moodleAssignmentId < $1.moodleAssignmentId }
         ))
+    }
+}
+
+extension PushAPI.CourseUploadRequest {
+    nonisolated var listIdentity: PushAPI.CourseUploadRequest {
+        PushAPI.CourseUploadRequest(
+            courses: courses.sorted { $0.courseNo < $1.courseNo }, completeRosterTerms: completeRosterTerms?.sorted()
+        )
     }
 }

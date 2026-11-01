@@ -3,8 +3,6 @@ import Foundation
 
 nonisolated struct CourseKeyUnknownError: Error {}
 
-nonisolated struct CourseIgnoreNotStoredError: Error {}
-
 @MainActor
 final class OutboxSender {
     private let push: PushCoordinator
@@ -31,7 +29,7 @@ final class OutboxSender {
         self.kept = kept ?? KeptValues()
     }
 
-    func send(_ op: SyncOp, for signIn: SignIn, newerQueued: @MainActor (SyncOp) async -> Bool) async throws {
+    func send(_ op: SyncOp, for signIn: SignIn, hasNewerQueuedEdit: @MainActor (SyncOp) async -> Bool) async throws {
         switch op {
         case .courseOverride(let semester, let moodleId, let customName, let colorHex, let locale, let stamp):
             guard let (courseKey, courseNo) = courseKey(semester: semester, identity: moodleId) else {
@@ -42,11 +40,11 @@ final class OutboxSender {
                 courseKey: courseKey, colorHex: colorHex, customName: customName, locale: resolvedLocale, madeAt: stamp,
                 for: signIn
             )
-            guard !(await newerQueued(op)) else { return }
-            if colorHex != nil, !reply.applied.contains("color_hex") {
+            guard !(await hasNewerQueuedEdit(op)) else { return }
+            if colorHex != nil, !reply.applied.contains(.colorHex) {
                 kept.colorKept(reply.colorHex, courseNo: courseNo, for: signIn)
             }
-            if customName != nil, let resolvedLocale, !reply.applied.contains("custom_name") {
+            if customName != nil, let resolvedLocale, !reply.applied.contains(.customName) {
                 kept.nameKept(reply.customNames[resolvedLocale], courseNo: courseNo, locale: resolvedLocale, for: signIn)
             }
 
@@ -54,7 +52,7 @@ final class OutboxSender {
             let reply = try await push.patchAssignmentOverride(
                 moodleAssignmentId: String(moodleAssignmentId), localStatus: localStatus, madeAt: stamp, for: signIn
             )
-            if !reply.applied, !(await newerQueued(op)) {
+            if !reply.applied, !(await hasNewerQueuedEdit(op)) {
                 kept.markKept(reply.localStatus, assignmentId: String(moodleAssignmentId), for: signIn)
             }
 
@@ -63,9 +61,8 @@ final class OutboxSender {
                 courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
                 ignoreAssignments: ignore, moodleCourseId: moodleCourseId, madeAt: stamp, for: signIn
             )
-            guard let ignoring = reply.ignoreAssignments else { throw CourseIgnoreNotStoredError() }
-            if ignore != nil, !reply.applied.contains("ignore_assignments"), !(await newerQueued(op)) {
-                kept.ignoreKept(ignoring, key: CourseTombstone.key(semester: semester, courseNo: courseNo), for: signIn)
+            if ignore != nil, !reply.applied.contains(.ignoreAssignments), !(await hasNewerQueuedEdit(op)) {
+                kept.ignoreKept(reply.ignoreAssignments, key: CourseTombstone.key(semester: semester, courseNo: courseNo), for: signIn)
             }
 
         case .courseDelete(let semester, let courseNo, let stamp):
@@ -77,7 +74,7 @@ final class OutboxSender {
             guard isProtectedDataAvailable() else { throw CancellationError() }
             guard var request = addedCourseUpload(semester, courseNo) else { return }
             let key = CourseTombstone.serverKey(semester: semester, courseNo: courseNo)
-            request.adds = [PushAPI.CourseAdd(courseKey: key, hlc: PushAPI.clock(of: stamp))]
+            request.handAddedCourses = [PushAPI.CourseAdd(courseKey: key, hlc: PushAPI.clock(of: stamp))]
             guard try await push.uploadCoursesIfChanged(
                 request, semester: semester, addedAt: stamp, for: signIn, while: uploadsCourses
             ) else { return }
@@ -93,13 +90,17 @@ final class OutboxSender {
                 return (CourseTombstone.serverKey(semester: term, courseNo: course.courseNo), course.courseNo)
             }
         }
-        guard let term = terms.first(where: { identity.hasPrefix($0) && identity.count > $0.count }) else { return nil }
-        let courseNo = String(identity.dropFirst(term.count))
-        return (CourseTombstone.serverKey(semester: term, courseNo: courseNo), courseNo)
+        guard let course = Self.termAndNumber(of: identity, terms: terms) else { return nil }
+        return (CourseTombstone.serverKey(semester: course.term, courseNo: course.courseNo), course.courseNo)
     }
 
     nonisolated static func identity(semester: String, courseNo: String, moodleIdNumber: String?) -> String {
         moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 } ?? "\(semester)\(courseNo)"
+    }
+
+    nonisolated static func termAndNumber(of identity: String, terms: [String]) -> (term: String, courseNo: String)? {
+        guard let term = terms.first(where: { identity.hasPrefix($0) && identity.count > $0.count }) else { return nil }
+        return (term, String(identity.dropFirst(term.count)))
     }
 
     static func identity(of course: SDCourse, semester: String) -> String {

@@ -24,12 +24,12 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
 
     /// Mail2000 puts `From: "Mail Deliver System" <MAILER-DAEMON>` on every delivery-failure
     /// notice.
-    static func parseSender(_ raw: String) -> MailAddress? {
-        if let parsed = parseList(raw).first { return parsed }
-        return splitTopLevel(raw).lazy.compactMap(nameOnly).first
+    static func parseSender(_ raw: String) -> MailSender? {
+        if let parsed = parseList(raw).first { return MailSender(name: parsed.name, address: parsed.address) }
+        return splitTopLevel(raw).lazy.compactMap(nameOnly).first.map { MailSender(name: $0, address: nil) }
     }
 
-    private static func nameOnly(_ raw: String) -> MailAddress? {
+    private static func nameOnly(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let open = trimmed.lastIndex(of: "<"), let close = trimmed.lastIndex(of: ">"), open < close else {
             return nil
@@ -38,11 +38,14 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
         if name.count >= 2, name.hasPrefix("\""), name.hasSuffix("\"") {
             name = unescaped(String(name.dropFirst().dropLast()))
         }
-        guard let kept = name.mailNonEmpty else { return nil }
-        return MailAddress(name: kept, address: "")
+        return name.mailNonEmpty
     }
 
-    private static func splitTopLevel(_ raw: String) -> [String] {
+    /// Splits at `,` and `;`, or where `separates` says, outside angle brackets and quoted strings,
+    /// in which a backslash escapes the next character (RFC 5322 §3.2.4). The last piece is the rest.
+    static func splitTopLevel(
+        _ raw: String, separates: (Character, String) -> Bool = { character, _ in character == "," || character == ";" }
+    ) -> [String] {
         var pieces: [String] = []
         var current = ""
         var inQuotes = false
@@ -62,7 +65,7 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
             if character == "\"" { inQuotes.toggle() }
             if character == "<", !inQuotes { inAngle = true }
             if character == ">", !inQuotes { inAngle = false }
-            if (character == "," || character == ";") && !inQuotes && !inAngle {
+            if !inQuotes, !inAngle, separates(character, current) {
                 pieces.append(current)
                 current = ""
             } else {
@@ -103,6 +106,11 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
     }
 }
 
+nonisolated struct MailSender: Equatable, Sendable {
+    var name: String?
+    var address: String?
+}
+
 nonisolated struct MailSummary: Codable, Hashable, Sendable {
     var uid: UInt32
     var fromName: String?
@@ -117,6 +125,7 @@ nonisolated struct MailSummary: Codable, Hashable, Sendable {
     var size: Int?
     var hasAttachments: Bool
     var isExternal: Bool
+    /// IMAP INTERNALDATE (RFC 3501 §2.3.3), when the server took the mail.
     var arrivedAt: Date? = nil
 }
 

@@ -52,19 +52,19 @@ struct HomeSectionView: View {
             scrollSectionID: section.id,
             onArchive: {
                 viewModel.archiveAssignment($0)
-                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "archived")
+                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "archived", for: app.authService.session.currentSignIn)
             },
             onMarkComplete: {
                 viewModel.markAssignmentAsLocallyCompleted($0)
-                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "locally_completed")
+                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "locally_completed", for: app.authService.session.currentSignIn)
             },
             onUnarchive: {
                 viewModel.unarchiveAssignment($0)
-                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
+                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none", for: app.authService.session.currentSignIn)
             },
             onUndoComplete: {
                 viewModel.undoLocallyCompleted($0)
-                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
+                app.edits.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none", for: app.authService.session.currentSignIn)
             },
             onOpen: onOpenAssignment
         )

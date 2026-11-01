@@ -119,13 +119,13 @@ struct MacAssignmentsList: View {
         case .pending, .overdueAcceptable, .overdueRejected:
             Button {
                 MacAssignmentListModel.shared.markComplete(assignment)
-                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "locally_completed")
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "locally_completed", for: app.authService.session.currentSignIn)
             } label: {
                 Label(String(localized: "desktop_assignment_mark_complete"), systemImage: "checkmark.circle.fill")
             }
             Button {
                 MacAssignmentListModel.shared.archive(assignment)
-                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "archived")
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "archived", for: app.authService.session.currentSignIn)
             } label: {
                 Label(String(localized: "assignment_ignore"), systemImage: "archivebox.fill")
             }
@@ -133,7 +133,7 @@ struct MacAssignmentsList: View {
         case .locallyCompleted:
             Button {
                 MacAssignmentListModel.shared.undoComplete(assignment)
-                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none", for: app.authService.session.currentSignIn)
             } label: {
                 Label(String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward")
             }
@@ -141,7 +141,7 @@ struct MacAssignmentsList: View {
         case .archived:
             Button {
                 MacAssignmentListModel.shared.unarchive(assignment)
-                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
+                app.edits.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none", for: app.authService.session.currentSignIn)
             } label: {
                 Label(String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward")
             }
@@ -240,12 +240,12 @@ final class MacAssignmentListModel {
     }
 
     func markComplete(_ assignment: SDAssignment) {
-        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, true), for: AccountSession.school.currentSignIn)
+        AssignmentStore.shared.apply(.setLocallyCompleted(id: assignment.assignmentId, true), for: AccountSession.school.currentSignIn)
         bump()
     }
 
     func undoComplete(_ assignment: SDAssignment) {
-        AssignmentStore.shared.apply(.setCompleted(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
+        AssignmentStore.shared.apply(.setLocallyCompleted(id: assignment.assignmentId, false), for: AccountSession.school.currentSignIn)
         bump()
     }
 

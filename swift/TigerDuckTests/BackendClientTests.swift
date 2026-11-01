@@ -31,18 +31,28 @@ struct BackendClientTests {
         #expect(AuthTokenManager.isSameBackend(stored, BackendClient.apiBase(stored)))
     }
 
+    @Test("Only a 410 retires the build: one naming a retired API or app version, or one whose code cannot be read")
+    func onlyAGoneAnswerRetiresTheBuild() {
+        #expect(APIVersionGate.retires(status: 410, code: "api_retired"))
+        #expect(APIVersionGate.retires(status: 410, code: "app_version_retired"))
+        #expect(APIVersionGate.retires(status: 410, code: nil))
+        #expect(!APIVersionGate.retires(status: 410, code: "sync_revision_expired"))
+        #expect(!APIVersionGate.retires(status: 409, code: "api_retired"))
+        #expect(!APIVersionGate.retires(status: 404, code: nil))
+    }
+
     @Test("A colour edit of a course whose number holds a slash reaches the backend's one course key")
     func courseKeyWithASlashReachesItsCourse() async throws {
         let base = SettingsAPIStub.uniqueBaseURL()
         let url = try #require(URL(string: base.absoluteString + "/sync/courses/client:1151:AB%2F12/override"))
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(##"{"color_hex":"#FF6B6B","applied":["color_hex"]}"##.utf8)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(##"{"color_hex":"#FF6B6B","ignore_assignments":false,"applied":["color_hex"]}"##.utf8)), for: url)
         let client = PushAPIClient(baseURLProvider: { base }, session: Self.stubSession(), authHeaderProvider: { "Bearer A0" })
 
         let reply = try await client.patchCourseOverride(
             courseKey: "client:1151:AB/12", colorHex: "#FF6B6B", customName: nil, locale: nil, madeAt: Date(), for: testSignIn
         )
 
-        #expect(reply.applied == ["color_hex"])
+        #expect(reply.applied == [.colorHex])
         #expect(SettingsAPIStub.requests(for: url).count == 1)
     }
 
@@ -154,6 +164,21 @@ struct BackendClientTests {
 
         await #expect(throws: PushAPIError.self) {
             try await client.uploadAssignments(PushAPI.AssignmentUploadRequest(assignments: []), for: departing)
+        }
+        #expect(SettingsAPIStub.requests(for: url).isEmpty)
+    }
+
+    @Test("A send of a sign-in is not sent with a header that names no sign-in")
+    func aBoundSendNeedsAHeaderOfItsSignIn() async throws {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let url = base.appendingPathComponent("sync/assignments/upload")
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8)), for: url)
+        let unbound = PushAPIClient(
+            backend: BackendClient(baseURL: { base }, session: Self.stubSession(), auth: .unbound { "Bearer A0" })
+        )
+
+        await #expect(throws: PushAPIError.self) {
+            try await unbound.uploadAssignments(PushAPI.AssignmentUploadRequest(assignments: []), for: testSignIn)
         }
         #expect(SettingsAPIStub.requests(for: url).isEmpty)
     }

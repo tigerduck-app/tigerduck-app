@@ -1,11 +1,9 @@
 import Foundation
 
-/// Whether a library account is stored, for views to observe: `LibraryService` keeps it in the
-/// Keychain, which nothing observes, so each change bumps `revision`.
 @MainActor
 @Observable
 final class LibraryAccountStatus {
-    private var revision = 0
+    private var revision = KeychainRevision()
     @ObservationIgnored private var observer: Any?
 
     init() {
@@ -23,22 +21,20 @@ final class LibraryAccountStatus {
     }
 
     var isLoggedIn: Bool {
-        _ = revision
-        return LibraryService.hasAccount
+        revision.read { LibraryService.hasAccount }
     }
 
     var username: String? {
-        _ = revision
-        return LibraryService.storedUsername
+        revision.read { LibraryService.storedUsername }
     }
 
     func logout() {
-        LibraryService.clearCredentials()
-        revision += 1
+        LibraryService.signOutLibraryOnly()
+        revision.moveOn()
     }
 
     func noteChange() {
-        revision += 1
+        revision.moveOn()
     }
 }
 

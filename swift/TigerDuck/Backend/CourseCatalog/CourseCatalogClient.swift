@@ -79,9 +79,11 @@ struct CourseCatalogClient {
     }
 
     let backend: BackendClient
+    private let signIn: SignIn?
 
-    init(backend: BackendClient) {
+    init(backend: BackendClient, for signIn: SignIn? = nil) {
         self.backend = backend
+        self.signIn = signIn
     }
 
     init(
@@ -89,16 +91,17 @@ struct CourseCatalogClient {
         session: URLSession = BackendClient.catalogSession,
         authHeaderProvider: @escaping @Sendable () async -> String?
     ) {
-        self.init(backend: BackendClient(baseURL: baseURLProvider, session: session, auth: .header(authHeaderProvider)))
+        self.init(backend: BackendClient(baseURL: baseURLProvider, session: session, auth: .unbound(authHeaderProvider)))
     }
 
     func fetch(semester: String, language: String, etag: String?) async throws -> Answer {
         var request = BackendRequest("GET", segments: ["course-catalog", semester])
+        request.signIn = signIn
         request.query = [URLQueryItem(name: "language", value: language)]
         // The ETag is ours to send; URLCache would answer the revalidation itself and hide the 304.
         request.cachePolicy = .reloadIgnoringLocalCacheData
         if let etag { request.headers["If-None-Match"] = etag }
-        request.accepting = [304, 404]
+        request.returnedStatuses = [304, 404]
         let response = try await backend.send(request)
         switch response.status {
         case 304:

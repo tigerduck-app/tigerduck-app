@@ -73,7 +73,7 @@ final class AcademicCalendarStore: AccountScoped {
         request.authenticated = false
         // The ETag is ours to send; URLCache would serve its copy for the feed's max-age and hide a change.
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.accepting = [304]
+        request.returnedStatuses = [304]
         let tag = Defaults[.academicCalendarETag]
         if !tag.isEmpty {
             request.headers["If-None-Match"] = tag
@@ -153,7 +153,7 @@ final class AcademicCalendarStore: AccountScoped {
         return true
     }
 
-    func applyKeptNotify(_ notify: Bool, forHoliday holidayID: Int, for signIn: SignIn) {
+    func applyNotifyTheBackendKept(_ notify: Bool, forHoliday holidayID: Int, for signIn: SignIn) {
         guard signIn.isCurrent else { return }
         var ids = Set(Defaults[.holidayNotifyOverrides])
         if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }

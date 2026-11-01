@@ -37,8 +37,8 @@ struct CourseMeeting {
         let pieces = runs.enumerated().compactMap { index, run -> (run: [String], start: Date, end: Date, ownStart: Date, ownEnd: Date)? in
             guard let ownStart = Self.periodTime(run[0], end: false, on: date),
                   let ownEnd = Self.periodTime(run[run.count - 1], end: true, on: date) else { return nil }
-            let pieceStart = index == 0 ? start : min(max(ownStart, start), end)
-            let pieceEnd = index == runs.count - 1 ? end : min(max(ownEnd, start), end)
+            let pieceStart = index == 0 ? start : clampedIntoMeeting(ownStart)
+            let pieceEnd = index == runs.count - 1 ? end : clampedIntoMeeting(ownEnd)
             return pieceStart < pieceEnd ? (run, pieceStart, pieceEnd, ownStart, ownEnd) : nil
         }
         return pieces.enumerated().map { index, piece in
@@ -51,13 +51,16 @@ struct CourseMeeting {
                 end: fragmentEnd,
                 date: date,
                 periods: piece.run,
-                changes: changes.filter { $0.kind == .start || $0.kind == .end || piece.run.contains(where: $0.covers) },
+                changes: changes.filter { $0.isMeetingWide || piece.run.contains(where: $0.covers) },
                 originalStart: fragmentStart == piece.ownStart ? nil : piece.ownStart,
                 originalEnd: fragmentEnd == piece.ownEnd ? nil : piece.ownEnd
             )
         }
     }
 
+    private func clampedIntoMeeting(_ time: Date) -> Date {
+        min(max(time, start), end)
+    }
 
     static func meetings(
         of course: SDCourse, weekday: Int? = nil, on date: Date, changes: CourseChanges
@@ -73,10 +76,11 @@ struct CourseMeeting {
             var applied = dayChanges.filter { run.contains(where: $0.covers) }
             var start = changedTime(.start, in: applied, on: date) ?? timetableStart
             var end = changedTime(.end, in: applied, on: date) ?? timetableEnd
-            if end <= start {
+            let feedTimesInverted = end <= start
+            if feedTimesInverted {
                 start = timetableStart
                 end = timetableEnd
-                applied.removeAll { $0.kind == .start || $0.kind == .end }
+                applied.removeAll(where: \.isMeetingWide)
             }
             return CourseMeeting(
                 course: course, date: date, dayKey: dayKey, periods: run, start: start, end: end,
@@ -113,8 +117,12 @@ struct CourseMeeting {
 
     private static func changedTime(_ kind: CourseChange.Kind, in changes: [CourseChange], on date: Date) -> Date? {
         guard let change = changes.first(where: { $0.kind == kind }),
-              let time = kind == .start ? change.start : change.end
+              let time = kind == .start ? change.startHHmm : change.endHHmm
         else { return nil }
         return CourseTimeSlot.dateFromTimeString(time, on: date)
     }
+}
+
+extension CourseChange {
+    nonisolated var isMeetingWide: Bool { kind == .start || kind == .end }
 }

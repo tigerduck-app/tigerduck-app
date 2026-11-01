@@ -12,17 +12,20 @@ final class PushAPIClient: Sendable {
     convenience init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        authHeaderProvider: @escaping @Sendable () async -> String? = { nil },
+        auth: BackendAuth = .none,
         versionGate: APIVersionGate? = nil
     ) {
         self.init(backend: BackendClient(
-            baseURL: baseURLProvider, session: session ?? BackendClient.session,
-            auth: .header(authHeaderProvider), versionGate: versionGate
+            baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: auth, versionGate: versionGate
         ))
     }
 
-    func registerDevice(_ request: PushAPI.DeviceRegisterRequest) async throws -> PushAPI.DeviceRegisterResponse {
-        try await backend.send(BackendRequest("POST", "devices", "register").json(request), as: PushAPI.DeviceRegisterResponse.self)
+    func registerDevice(
+        _ request: PushAPI.DeviceRegisterRequest, for signIn: SignIn
+    ) async throws -> PushAPI.DeviceRegisterResponse {
+        try await backend.send(
+            BackendRequest("POST", "devices", "register").json(request).sent(for: signIn), as: PushAPI.DeviceRegisterResponse.self
+        )
     }
 
     func registerAnonymousDevice(_ request: PushAPI.AnonymousDeviceRequest) async throws {
@@ -33,7 +36,7 @@ final class PushAPIClient: Sendable {
 
     func unregisterDevice(deviceId: String, at baseURL: URL? = nil) async throws {
         var request = BackendRequest("DELETE", segments: ["devices", deviceId])
-        request.baseURL = baseURL
+        request.baseURLOverride = baseURL
         _ = try await backend.send(request)
     }
 
@@ -60,7 +63,8 @@ final class PushAPIClient: Sendable {
         syncAssignmentReminders: Bool? = nil,
         syncLiveActivity: Bool? = nil,
         cloudSyncEnabled: Bool? = nil,
-        bulletinPushEnabled: Bool? = nil
+        bulletinPushEnabled: Bool? = nil,
+        for signIn: SignIn
     ) async throws -> PushAPI.DevicePreferencesResponse {
         let body = PushAPI.DevicePreferencesRequest(
             serverPushEnabled: serverPushEnabled,
@@ -73,20 +77,22 @@ final class PushAPIClient: Sendable {
             cloudSyncEnabled: cloudSyncEnabled,
             bulletinPushEnabled: bulletinPushEnabled
         )
-        let request = try BackendRequest("PATCH", segments: ["devices", deviceId, "preferences"]).json(body)
+        let request = try BackendRequest("PATCH", segments: ["devices", deviceId, "preferences"]).json(body).sent(for: signIn)
         return try await backend.send(request, as: PushAPI.DevicePreferencesResponse.self)
     }
 
-    func syncSchedule(_ request: PushAPI.ScheduleSyncRequest) async throws -> PushAPI.ScheduleSyncResponse {
-        try await backend.send(BackendRequest("POST", "schedule", "sync").json(request), as: PushAPI.ScheduleSyncResponse.self)
+    func syncSchedule(_ request: PushAPI.ScheduleSyncRequest, for signIn: SignIn) async throws -> PushAPI.ScheduleSyncResponse {
+        try await backend.send(
+            BackendRequest("POST", "schedule", "sync").json(request).sent(for: signIn), as: PushAPI.ScheduleSyncResponse.self
+        )
     }
 
     #if os(iOS)
     func registerLiveActivityToken(
-        _ request: PushAPI.LiveActivityRegisterV3Request
+        _ request: PushAPI.LiveActivityRegisterV3Request, for signIn: SignIn
     ) async throws -> PushAPI.LiveActivityTokenRegisterResponse {
         try await backend.send(
-            BackendRequest("POST", "live-activities", "register").json(request),
+            BackendRequest("POST", "live-activities", "register").json(request).sent(for: signIn),
             as: PushAPI.LiveActivityTokenRegisterResponse.self
         )
     }
@@ -127,22 +133,27 @@ final class PushAPIClient: Sendable {
         madeAt stamp: Date,
         for signIn: SignIn
     ) async throws -> PushAPI.CourseOverrideResponse {
-        try await backend.sendStamped(at: stamp) { hlc in
-            try BackendRequest("PATCH", segments: ["sync", "courses", courseKey, "override"]).json(PushAPI.CourseOverrideRequest(
-                colorHex: colorHex, customName: customName, locale: locale,
-                ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, hlc: hlc
-            )).sent(for: signIn)
-        }.decoded(PushAPI.CourseOverrideResponse.self)
+        do {
+            return try await backend.sendStamped(at: stamp) { hlc in
+                try BackendRequest("PATCH", segments: ["sync", "courses", courseKey, "override"]).json(PushAPI.CourseOverrideRequest(
+                    colorHex: colorHex, customName: customName, locale: locale,
+                    ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, hlc: hlc
+                )).sent(for: signIn)
+            }.decoded(PushAPI.CourseOverrideResponse.self)
+        } catch let error as PushAPIError {
+            guard case .httpStatus(404, _, _) = error, error.code == "course_not_found" else { throw error }
+            throw PushAPIError.courseNotFound
+        }
     }
 
     func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil, for signIn: SignIn) async throws {
-        guard let stamp, let adds = request.adds, !adds.isEmpty else {
+        guard let stamp, let adds = request.handAddedCourses, !adds.isEmpty else {
             _ = try await backend.send(BackendRequest("POST", "sync", "courses", "upload").json(request).sent(for: signIn))
             return
         }
         _ = try await backend.sendStamped(at: stamp) { hlc in
             var stamped = request
-            stamped.adds = adds.map { PushAPI.CourseAdd(courseKey: $0.courseKey, hlc: hlc) }
+            stamped.handAddedCourses = adds.map { PushAPI.CourseAdd(courseKey: $0.courseKey, hlc: hlc) }
             return try BackendRequest("POST", "sync", "courses", "upload").json(stamped).sent(for: signIn)
         }
     }
@@ -168,8 +179,9 @@ final class PushAPIClient: Sendable {
         _ = try await backend.send(BackendRequest("POST", "sync", "assignments", "upload").json(request).sent(for: signIn))
     }
 
-    func fetchRevision() async throws -> Int {
-        guard let revision = try await backend.send(BackendRequest("GET", "sync", "revision")).jsonObject()["revision"] as? Int else {
+    func fetchRevision(for signIn: SignIn) async throws -> Int {
+        let request = BackendRequest("GET", "sync", "revision").sent(for: signIn)
+        guard let revision = try await backend.send(request).jsonObject()["revision"] as? Int else {
             throw PushAPIError.decodingFailed(NSError(
                 domain: "PushAPI", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing 'revision' in response"]
             ))
@@ -177,14 +189,14 @@ final class PushAPIClient: Sendable {
         return revision
     }
 
-    func fetchFullSync() async throws -> [String: Any] {
-        try await backend.send(BackendRequest("GET", "sync", "full")).jsonObject()
+    func fetchFullSync(for signIn: SignIn) async throws -> [String: Any] {
+        try await backend.send(BackendRequest("GET", "sync", "full").sent(for: signIn)).jsonObject()
     }
 
     /// The changes after `sinceRevision`. Once the backend has compacted them it answers 409
     /// `sync_revision_expired`, thrown as `syncRevisionExpired`.
-    func fetchChanges(sinceRevision: Int) async throws -> PushAPI.SyncChangesPage {
-        var request = BackendRequest("GET", "sync")
+    func fetchChanges(sinceRevision: Int, for signIn: SignIn) async throws -> PushAPI.SyncChangesPage {
+        var request = BackendRequest("GET", "sync").sent(for: signIn)
         request.query = [URLQueryItem(name: "since_revision", value: String(sinceRevision))]
         do {
             return try await backend.send(request, as: PushAPI.SyncChangesPage.self)
@@ -199,9 +211,10 @@ enum PushAPIError: Error, LocalizedError {
     case encodingFailed(Error)
     case decodingFailed(Error)
     case invalidResponse
-    case httpStatus(Int, body: String, sent: SentToken? = nil)
+    case httpStatus(Int, body: String, accessToken: RedactedToken? = nil)
     case syncRevisionExpired
     case clockAhead(serverClock: Int64?)
+    case courseNotFound
     case notSignedIn
 
     var errorDescription: String? {
@@ -212,6 +225,7 @@ enum PushAPIError: Error, LocalizedError {
         case .httpStatus(let code, let body, _): return "Push server returned HTTP \(code): \(body)"
         case .syncRevisionExpired: return "Push server has compacted the changes asked for."
         case .clockAhead: return "Push server refused a time ahead of its clock."
+        case .courseNotFound: return "Push server does not hold the course yet."
         case .notSignedIn: return String(localized: "common_auto_sign_in_failed")
         }
     }
@@ -221,7 +235,7 @@ enum PushAPIError: Error, LocalizedError {
         return BackendClient.errorCode(in: Data(body.utf8))
     }
 
-    nonisolated struct SentToken: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    nonisolated struct RedactedToken: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
         let value: String
         var description: String { "***" }
         var debugDescription: String { "***" }

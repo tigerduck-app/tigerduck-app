@@ -43,13 +43,18 @@ struct BulletinNotificationSettingsView: View {
         .navigationTitle(String(localized: "bulletin_notifications_title"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            store.configure(authTokenManager: app.authTokenManager)
+            store.configure(authTokenManager: app.authTokenManager, for: await app.authService.session.startingSignIn)
             await taxonomy.loadIfNeeded()
             await refreshAuthStatus()
             if pushEnabled, !didInitialLoad {
                 didInitialLoad = true
                 await store.load()
             }
+        }
+        .onChange(of: app.authService.session.currentSignIn) { _, signIn in
+            (editingClientId, draftRule) = (nil, nil)
+            store.configure(authTokenManager: app.authTokenManager, for: signIn)
+            if pushEnabled { Task { await store.load() } }
         }
         .onDisappear {
             // Auto-save on leaving the page (swipe back, tab switch). Pushing the editor also
@@ -154,10 +159,7 @@ struct BulletinNotificationSettingsView: View {
     /// on-state branch's status row and Settings button are unreachable from here, so this section
     /// carries both.
     static func requiresSystemSettingsRoute(for status: UNAuthorizationStatus) -> Bool {
-        switch status {
-        case .denied: return true
-        case .authorized, .provisional, .ephemeral, .notDetermined: return false
-        @unknown default: return true
-        }
+        status != .notDetermined
+            && NotificationPermissionSettingsView.notificationPermissionStatus(for: status) == .notGranted
     }
 }
