@@ -103,8 +103,8 @@ PATTERNS = (
      "`Task.sleep` outside Support/Clock/ and Support/Concurrency/; wait with `AppClock.sleep(until:)` "
      "or `StateSignal`"),
     ("unbound-backend-auth", r"\.unbound\s*[({]", (APP + "Backend/Client/", APP + "Backend/CourseCatalog/"),
-     "a backend header that names no sign-in outside the course catalog; a client of account data "
-     "takes `AuthTokenManager.backendAuth`"),
+     "a backend header that names no sign-in outside Backend/Client/ and Backend/CourseCatalog/; a client of "
+     "account data takes `AuthTokenManager.backendAuth`"),
 )
 # Where account work starts and so may read the sign-in it runs for; every other layer is handed
 # one (docs/decisions/0029-account-bound-writes.md). The push files build the device's
