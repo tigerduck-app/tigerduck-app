@@ -143,6 +143,18 @@ struct MoodleNotificationSettingsTests {
         #expect(!settings.isOn(try Self.shown(Self.forum.key, in: settings)))
     }
 
+    @Test("a load after its sign-in ended sends no read and tells the page its sign-in ended")
+    func endedSignInLoadsNothing() async {
+        let site = Site(Fixtures.matrix([Self.forum]))
+        let settings = MoodleNotificationSettings(signIn: endedTestSignIn, api: site.api)
+
+        await settings.load()
+
+        #expect(site.loads == 0)
+        #expect(settings.signInEnded)
+        #expect(settings.loadFailure == nil)
+    }
+
     @Test("a load failure keeps the error for the page and shows no list")
     func loadFailure() async {
         let api = MoodleNotificationAPI(

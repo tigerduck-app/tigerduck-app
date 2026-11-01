@@ -91,7 +91,7 @@ struct SettingsView: View {
                         api: .live(chinese: !LanguageManager.isCurrentLanguageNonChinese(
                             appLanguage: app.preferences.appLanguage
                         ))
-                    ))
+                    ), account: app.authService.session)
                 }
                 .disabled(!app.authService.hasStoredCredentials)
 

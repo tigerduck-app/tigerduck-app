@@ -39,6 +39,7 @@ final class MoodleNotificationSettings {
     private var chosenMethod: String?
     private(set) var loadFailure: (any Error)?
     private(set) var isBusy = false
+    private(set) var signInEnded = false
     var saveFailure: String?
 
     @ObservationIgnored private let signIn: SignIn
@@ -71,6 +72,10 @@ final class MoodleNotificationSettings {
 
     /// A load while a write runs is skipped: the write reads the matrix again when it ends.
     func load() async {
+        guard signIn.isCurrent else {
+            signInEnded = true
+            return
+        }
         guard !isBusy else { return }
         isBusy = true
         defer { isBusy = false }

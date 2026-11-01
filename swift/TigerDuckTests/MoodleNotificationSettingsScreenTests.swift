@@ -62,6 +62,46 @@ struct MoodleNotificationSettingsScreenTests {
         }
     }
 
+    @Test("a sign-out while the page is open goes back")
+    func signOutGoesBack() async throws {
+        let account = AccountSession()
+        let matrix = Fixtures.site(chinese: false)
+        let settings = MoodleNotificationSettings(
+            signIn: account.signIns.currentSignIn, api: MoodleNotificationAPI(load: { matrix }, save: { _, _ in })
+        )
+        let pushed = Pushed()
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 375, height: 812)
+        window.rootViewController = UIHostingController(rootView: PushedPage(pushed: pushed) {
+            MoodleNotificationSettingsView(settings: settings, account: account)
+        })
+        window.isHidden = false
+        defer { window.isHidden = true }
+        try await waitUntil { settings.matrix != nil }
+
+        account.endSignIn()
+
+        try await waitUntil { !pushed.isShown }
+        #expect(settings.signInEnded)
+    }
+
+    @Observable
+    final class Pushed {
+        var isShown = true
+    }
+
+    struct PushedPage<Page: View>: View {
+        @Bindable var pushed: Pushed
+        @ViewBuilder let page: () -> Page
+
+        var body: some View {
+            NavigationStack {
+                Color.clear.navigationDestination(isPresented: $pushed.isShown, destination: page)
+            }
+        }
+    }
+
     private static func show(
         _ settings: MoodleNotificationSettings, style: UIUserInterfaceStyle
     ) throws -> (UIWindow, UIViewController) {
@@ -69,7 +109,9 @@ struct MoodleNotificationSettingsScreenTests {
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 375, height: 812)
         window.overrideUserInterfaceStyle = style
-        let host = UIHostingController(rootView: NavigationStack { MoodleNotificationSettingsView(settings: settings) })
+        let host = UIHostingController(rootView: NavigationStack {
+            MoodleNotificationSettingsView(settings: settings, account: AccountSession())
+        })
         window.rootViewController = host
         window.isHidden = false
         return (window, host)

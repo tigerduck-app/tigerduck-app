@@ -2,9 +2,13 @@ import SwiftUI
 
 struct MoodleNotificationSettingsView: View {
     @State private var settings: MoodleNotificationSettings
+    private let account: AccountSession
 
-    init(settings: MoodleNotificationSettings) {
+    @Environment(\.dismiss) private var dismiss
+
+    init(settings: MoodleNotificationSettings, account: AccountSession) {
         _settings = State(initialValue: settings)
+        self.account = account
     }
 
     var body: some View {
@@ -17,7 +21,8 @@ struct MoodleNotificationSettingsView: View {
         }
         .navigationTitle(String(localized: "moodle_notification_settings_title"))
         .inlineNavigationTitle()
-        .task { await settings.load() }
+        .task(id: account.currentSignIn) { await settings.load() }
+        .onChange(of: settings.signInEnded) { if settings.signInEnded { dismiss() } }
         .alert(settings.saveFailure ?? "", isPresented: Binding(
             get: { settings.saveFailure != nil },
             set: { if !$0 { settings.saveFailure = nil } }
