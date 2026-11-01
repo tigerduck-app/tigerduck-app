@@ -2,8 +2,22 @@
 import SwiftUI
 
 struct MailSettingsView: View {
-    @State private var displayNameDraft = ""
+    @State private var draft = DisplayNameDraft(of: MailAccountManager.shared)
     private let account = MailAccountManager.shared
+
+    /// A name being edited, saved only into the sign-in it was copied from.
+    struct DisplayNameDraft {
+        var name: String
+        let signIn: SignIn
+
+        init(of account: MailAccountManager) {
+            (name, signIn) = (account.displayName ?? "", account.session.currentSignIn)
+        }
+
+        func save(to account: MailAccountManager) {
+            account.setDisplayName(name.mailNonEmpty, for: signIn)
+        }
+    }
 
     static func displayNameIsEnabled(isLoggedIn: Bool) -> Bool {
         isLoggedIn
@@ -12,10 +26,10 @@ struct MailSettingsView: View {
     var body: some View {
         List {
             Section {
-                TextField(String(localized: "school_mail_settings_display_name"), text: $displayNameDraft)
+                TextField(String(localized: "school_mail_settings_display_name"), text: $draft.name)
                     .textContentType(.name)
                     .submitLabel(.done)
-                    .onSubmit { saveDisplayName() }
+                    .onSubmit { draft.save(to: account) }
             } header: {
                 Text(String(localized: "school_mail_settings_display_name"))
             } footer: {
@@ -28,12 +42,8 @@ struct MailSettingsView: View {
             }
         }
         .navigationTitle(String(localized: "school_mail_account_title"))
-        .onAppear { displayNameDraft = account.displayName ?? "" }
-        .onDisappear { saveDisplayName() }
-    }
-
-    private func saveDisplayName() {
-        account.setDisplayName(displayNameDraft.mailNonEmpty, for: account.session.currentSignIn)
+        .onAppear { draft = DisplayNameDraft(of: account) }
+        .onDisappear { draft.save(to: account) }
     }
 }
 #endif

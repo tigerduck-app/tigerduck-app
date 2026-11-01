@@ -52,6 +52,21 @@ struct MailSettingsTests {
         #expect(h.hooks.enabled == 1)
     }
 
+    @Test func aNameDraftedBeforeASignOutIsNotSavedForTheNextAccount() async {
+        let h = MailAccountManagerTests.harness()
+        await h.manager.login(studentID: "B10000000", password: "pw")
+        var draft = MailSettingsView.DisplayNameDraft(of: h.manager)
+        draft.name = "Old Name"
+
+        h.manager.logout()
+        draft.save(to: h.manager)
+        await h.manager.login(studentID: "B10000000", password: "pw")
+        draft.save(to: h.manager)
+
+        #expect(h.prefs.displayName == "王大明")
+        #expect(h.manager.displayName == "王大明")
+    }
+
     @Test func bothScreensFollowTheSignedInState() async {
         let h = MailAccountManagerTests.harness()
         #expect(!h.manager.isLoggedIn)
