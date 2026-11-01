@@ -359,6 +359,43 @@ struct SyncRaceTests {
         }
     }
 
+    @Test("A rules store bound to the next sign-in drops the last account's edits and its save's late reply")
+    func aRebindDropsTheLastAccountsRules() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("bulletin-subscriptions")
+        let held = SettingsAPIStub.ReplyGate()
+        let first = BulletinAPI.SubscriptionRule(name: "A")
+        let next = BulletinAPI.SubscriptionRule(name: "B")
+        func reply(_ rule: BulletinAPI.SubscriptionRule, id: Int) -> Data {
+            Data(#"{"items":[{"id":\#(id),"client_id":"\#(rule.clientId.uuidString)","name":"\#(rule.name ?? "")","orgs":[],"tags":[],"mode":"AND","enabled":true}]}"#.utf8)
+        }
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: reply(first, id: 1), gate: held), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: reply(next, id: 2)), for: url)
+        let signIns = SignInSeries()
+        let client = { (signIn: SignIn) in
+            BulletinAPIClient(
+                baseURLProvider: { baseURL }, session: Self.stubSession(), auth: .signedIn(in: signIns) { "Bearer test" },
+                for: signIn
+            )
+        }
+        let store = BulletinSubscriptionsStore(retryDelay: { _ in })
+        store.configure(for: signIns.currentSignIn, client: client)
+
+        store.upsert(first)
+        let save = Task { await store.save() }
+        try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
+        signIns.end()
+        store.configure(for: signIns.currentSignIn, client: client)
+        #expect(store.pending.isEmpty && !store.isDirty)
+        held.open()
+        await save.value
+        await store.load()
+
+        #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["PUT", "GET"])
+        #expect(store.pending.map(\.name) == ["B"])
+        #expect(store.saveState == .idle && store.loadState == .loaded)
+    }
+
     private static func inputs(dueIn hours: Double, id: String) -> ScheduleSyncService.Inputs {
         let due = SDAssignment(
             assignmentId: id, courseNo: "CS101", courseName: "Algorithms", title: "Lab",

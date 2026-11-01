@@ -51,6 +51,11 @@ struct BulletinNotificationSettingsView: View {
                 await store.load()
             }
         }
+        .onChange(of: app.authService.session.currentSignIn) { _, signIn in
+            (editingClientId, draftRule) = (nil, nil)
+            store.configure(authTokenManager: app.authTokenManager, for: signIn)
+            if pushEnabled { Task { await store.load() } }
+        }
         .onDisappear {
             // Auto-save on leaving the page (swipe back, tab switch). Pushing the editor also
             // fires `onDisappear`; a non-nil `editingClientId` means the page is only covered.
