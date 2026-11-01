@@ -25,12 +25,13 @@ final class CourseFiles: AccountScoped {
     /// The NTUST API returns `CourseName` and `CourseTeacher` in the request's language, so the
     /// file name holds the resolved course-API language, and switching the app language does not
     /// overwrite the other language's courses.
-    func saveCourses(_ courses: [SDCourse], semester: String) {
-        cache.save(courses.map { CachedCourse(from: $0) }, to: coursesFilename(semester, currentCourseApiLanguage()))
+    func saveCourses(_ courses: [SDCourse], semester: String, language: String? = nil) {
+        let file = coursesFilename(semester, language ?? currentCourseApiLanguage())
+        cache.save(courses.map { CachedCourse(from: $0) }, to: file)
     }
 
-    func loadCourses(semester: String) -> [SDCourse] {
-        let dtos: [CachedCourse] = cache.load(coursesFilename(semester, currentCourseApiLanguage())) ?? []
+    func loadCourses(semester: String, language: String? = nil) -> [SDCourse] {
+        let dtos: [CachedCourse] = cache.load(coursesFilename(semester, language ?? currentCourseApiLanguage())) ?? []
         let customNames = loadCourseCustomNames()
         return dtos.map { applyCustomNameOverlay($0.toSDCourse(), customNames: customNames, clearPollutedCanonical: true) }
     }

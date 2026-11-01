@@ -51,7 +51,7 @@ struct DemoAccount {
         let language = language()
         let semester = CourseSelectionService.currentSemesterCode()
         let moodle = fixture.moodle?.courses(in: language) ?? DemoMoodleCourses(ownMemberId: 0, courses: [])
-        writeCourses(fixture.courses ?? [], on: moodle, semester: semester, in: language, for: signIn)
+        writeCourses(fixture.courses ?? [], on: moodle, semester: semester, for: signIn)
         let assignments = (fixture.assignments ?? []).compactMap { $0.assignment(in: language) }
         let context = stores.moodle(fixture.normalizedStudentId, signIn)
         _ = AssignmentAnswers.persistRound(
@@ -67,12 +67,15 @@ struct DemoAccount {
     }
 
     private func writeCourses(
-        _ courses: [DemoFixture.Course], on moodle: DemoMoodleCourses, semester: String, in language: DemoLanguage,
-        for signIn: SignIn
+        _ courses: [DemoFixture.Course], on moodle: DemoMoodleCourses, semester: String, for signIn: SignIn
     ) {
         let onMoodle = Set(moodle.courses.map(\.courseNo))
-        let saved = courses.map { $0.course(in: language, semester: semester, onMoodle: onMoodle.contains($0.courseNo)) }
-        guard stores.courses.saveCourses(saved, semester: semester, for: signIn) else { return }
+        for language in DemoLanguage.allCases {
+            let saved = courses.map { $0.course(in: language, semester: semester, onMoodle: onMoodle.contains($0.courseNo)) }
+            guard stores.courses.saveCourses(saved, semester: semester, language: language.rawValue, for: signIn) else {
+                return
+            }
+        }
         for course in courses {
             guard let hex = course.pickedHex else { continue }
             stores.colors.pick(hex, courseNo: course.courseNo, palette: TigerDuckTheme.coursePaletteHexes, for: signIn)

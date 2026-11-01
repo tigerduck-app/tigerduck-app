@@ -107,10 +107,9 @@ nonisolated struct DemoFixture: Decodable, Sendable {
     }
 }
 
-nonisolated enum DemoLanguage: Sendable {
+nonisolated enum DemoLanguage: String, CaseIterable, Sendable {
     case zh, en
 
-    /// The language the app shows, as push registration reads it.
     static var shown: DemoLanguage {
         (Bundle.main.preferredLocalizations.first ?? "en").hasPrefix("zh") ? .zh : .en
     }

@@ -112,8 +112,8 @@ final class CourseStore {
     }
 
     @discardableResult
-    func saveCourses(_ courses: [SDCourse], semester: String, for signIn: SignIn) -> Bool {
-        write(signIn) { $0.saveCourses(courses, semester: semester) }
+    func saveCourses(_ courses: [SDCourse], semester: String, language: String? = nil, for signIn: SignIn) -> Bool {
+        write(signIn) { $0.saveCourses(courses, semester: semester, language: language) }
     }
 
     func clearCourses(semester: String, for signIn: SignIn) { write(signIn) { $0.clearCourses(semester: semester) } }

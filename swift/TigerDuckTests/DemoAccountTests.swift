@@ -250,6 +250,23 @@ struct DemoAccountTests {
         #expect(calls.syncTurnedOff == 2)
     }
 
+    @Test("the demo timetable is there in either course language, each in its own")
+    func theTimetableIsThereInEitherLanguage() throws {
+        let folder = Folder()
+        let demo = Self.account(folder)
+        let semester = CourseSelectionService.currentSemesterCode()
+        demo.write(try #require(demo.fixture), for: Self.demoSignIn())
+
+        let files = CourseFiles(folders: folder.cache.folders)
+        let shown = ["zh-Hant", "en"].map {
+            files.loadCourses(semester: semester, language: LanguageManager.resolvedCourseApiLanguage(appLanguage: $0))
+        }
+
+        #expect(shown.map(\.count) == [5, 5])
+        #expect(shown[0].first { $0.courseNo == "CS3005301" }?.courseName == "資料結構")
+        #expect(shown[1].first { $0.courseNo == "CS3005301" }?.courseName == "Data Structures")
+    }
+
     @Test("signing out of the demo signs out the library it signed in, and the next launch is no demo")
     func signingOutOfTheDemoSignsOutItsLibrary() async {
         let folder = Folder()
