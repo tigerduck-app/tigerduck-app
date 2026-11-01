@@ -26,8 +26,7 @@ final class BulletinSubscriptionsStore {
 
     private var apiClient: BulletinAPIClient
     private let usesInjectedClient: Bool
-    @ObservationIgnored private var saving: Task<Void, Never>?
-    @ObservationIgnored private var saveAsked = false
+    @ObservationIgnored private let saves = CoalescedRuns()
     private let retryDelay: @Sendable (Duration) async -> Void
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Subs")
 
@@ -68,22 +67,7 @@ final class BulletinSubscriptionsStore {
     }
 
     func save() async {
-        saveAsked = true
-        if let saving {
-            await saving.value
-            return
-        }
-        let task = Task { await self.saveWhileAsked() }
-        saving = task
-        await task.value
-        saving = nil
-    }
-
-    private func saveWhileAsked() async {
-        while saveAsked {
-            saveAsked = false
-            await saveOnce()
-        }
+        await saves.run { await self.saveOnce() }
     }
 
     private func saveOnce() async {
@@ -96,7 +80,7 @@ final class BulletinSubscriptionsStore {
                 let response = try await apiClient.putSubscriptions(rules: sent)
                 guard pending == sent else {
                     logger.info("subscription save landed under a newer edit; saving that next")
-                    saveAsked = true
+                    saves.runAgain()
                     return
                 }
                 pending = response.items
@@ -175,5 +159,34 @@ final class BulletinSubscriptionsStore {
         )
         isDirty = true
         saveState = .idle
+    }
+}
+
+/// Runs one job at a time. A run asked for while one is going makes it go once more, and the
+/// caller returns when that run has finished.
+@MainActor
+private final class CoalescedRuns {
+    private var running: Task<Void, Never>?
+    private var askedAgain = false
+
+    func run(_ job: @escaping @MainActor () async -> Void) async {
+        askedAgain = true
+        if let running {
+            await running.value
+            return
+        }
+        let task = Task {
+            while askedAgain {
+                askedAgain = false
+                await job()
+            }
+        }
+        running = task
+        await task.value
+        running = nil
+    }
+
+    func runAgain() {
+        askedAgain = true
     }
 }
