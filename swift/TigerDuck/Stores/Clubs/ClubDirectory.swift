@@ -17,6 +17,8 @@ final class ClubDirectory {
     private(set) var clubs: [ClubCard] = []
     /// Why the last fetch failed; nil once one succeeds.
     private(set) var failure: (any Error)?
+    /// Whether the last fetch failed in the club system's nightly maintenance (`ClubAPIClient.isMaintenance`).
+    private(set) var isUnderMaintenance = false
     @ObservationIgnored private let files: ClubFiles
     @ObservationIgnored private let client: ClubAPIClient
     @ObservationIgnored private let chinese: () -> Bool
@@ -72,8 +74,12 @@ final class ClubDirectory {
             files.saveDirectory(ClubFiles.StoredDirectory(body: answer.body, storedAt: storedAt, maxAge: answer.maxAge))
             take(read, storedAt: storedAt, maxAge: answer.maxAge)
             failure = nil
+            isUnderMaintenance = false
         } catch {
-            if !AppLogger.isCancellation(error) { failure = error }
+            if !AppLogger.isCancellation(error) {
+                failure = error
+                isUnderMaintenance = ClubAPIClient.isMaintenance(error, at: now())
+            }
             if ClubAPIClient.isWorthReporting(error) {
                 AppLogger.captureError(error, context: ["service": "clubDirectoryRefresh"])
             }

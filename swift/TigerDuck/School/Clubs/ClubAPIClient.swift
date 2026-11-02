@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 /// The public API of clubs.ntust.edu.tw, which needs no account:
 /// https://clubs.ntust.edu.tw/api/v1/public/clubs and https://clubs.ntust.edu.tw/api/v1/public/activities.
@@ -47,8 +48,22 @@ nonisolated struct ClubAPIClient: Sendable {
         return min(TimeInterval(seconds), longestMaxAge)
     }
 
+    /// Every path answers 503 with an HTML page while the club system is down, as it is for
+    /// maintenance each day from 00:00 to 07:00 Taipei time.
+    nonisolated struct Unavailable: LocalizedError {
+        var errorDescription: String? { URLError(.badServerResponse).localizedDescription }
+    }
+
+    private static let maintenanceHours = 0..<7
+
+    /// Whether `error` is the nightly maintenance; at another hour a 503 means the system is down
+    /// for another reason.
+    static func isMaintenance(_ error: any Error, at date: Date) -> Bool {
+        error is Unavailable && maintenanceHours.contains(TaipeiTime.calendar.component(.hour, from: date))
+    }
+
     /// Whether a failed fetch is worth a diagnostic: an answer this build cannot read, a status the
-    /// API does not send, or an answer from another host after a redirect. A lost network, a
+    /// API does not send, or an answer from another host after a redirect. A 503, a lost network, a
     /// timeout, a cancellation and the demo account's refusal, which fails like an offline
     /// request, are expected.
     static func isWorthReporting(_ error: any Error) -> Bool {
@@ -59,10 +74,12 @@ nonisolated struct ClubAPIClient: Sendable {
         var request = request
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (body, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 304 || (200..<300).contains(http.statusCode),
+        guard let http = response as? HTTPURLResponse,
               http.url?.host.map(TLSPinMatcher.hostName) == baseURL.host.map(TLSPinMatcher.hostName) else {
             throw URLError(.badServerResponse)
         }
+        if http.statusCode == 503 { throw Unavailable() }
+        guard http.statusCode == 304 || (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
         return (body, http)
     }
 }

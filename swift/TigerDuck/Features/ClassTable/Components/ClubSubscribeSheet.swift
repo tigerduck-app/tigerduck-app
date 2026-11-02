@@ -17,7 +17,16 @@ struct ClubSubscribeSheet: View {
         NavigationStack {
             let matches = query.isEmpty ? [] : directory.search(query)
             List {
-                if directory.clubs.isEmpty {
+                if showsMaintenance {
+                    EmptyStateView(
+                        icon: "wrench.and.screwdriver",
+                        title: String(localized: "class_table_club_maintenance_title"),
+                        message: String(localized: "class_table_club_maintenance_message")
+                    )
+                    .padding(.vertical, TigerDuckTheme.Spacing.xxl)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                } else if directory.clubs.isEmpty {
                     SearchSheetStatus(
                         searching: isLoading ? String(localized: "class_table_club_searching") : nil,
                         failure: isLoading ? nil : failureText
@@ -49,6 +58,10 @@ struct ClubSubscribeSheet: View {
             await directory.refresh()
             isLoading = false
         }
+    }
+
+    private var showsMaintenance: Bool {
+        directory.clubs.isEmpty && !isLoading && directory.isUnderMaintenance
     }
 
     private var failureText: String? {

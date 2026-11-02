@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -67,6 +68,50 @@ struct ClubCacheTests {
         #expect(reopened.clubs.map(\.id) == [6, 3, 1, 5, 4, 2])
         await reopened.refresh()
         #expect(SettingsAPIStub.requests(for: url).count == 2)
+    }
+
+    @Test("a 503 from 00:00 to 07:00 Taipei time is the nightly maintenance, at noon another failure, and both keep the clubs")
+    func maintenance() async throws {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let url = base.appending(path: "clubs")
+        let (files, root) = Self.files()
+        defer { try? FileManager.default.removeItem(at: root) }
+        func taipei(day: Int, hour: Int) throws -> Date {
+            try #require(TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 11, day: day, hour: hour)))
+        }
+        var clock = try taipei(day: 2, hour: 22)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.clubs, headerFields: ["Cache-Control": "max-age=300"]), for: url)
+        SettingsAPIStub.enqueue(ClubAPIModelsTests.maintenance, for: url)
+        SettingsAPIStub.enqueue(ClubAPIModelsTests.maintenance, for: url)
+        let directory = ClubDirectory(files: files, client: Self.client(base), chinese: { true }, now: { clock })
+
+        await directory.refresh()
+        clock = try taipei(day: 3, hour: 3)
+        await directory.refresh()
+        #expect(directory.isUnderMaintenance)
+        #expect(directory.clubs.count == 6)
+
+        clock = try taipei(day: 3, hour: 12)
+        await directory.refresh()
+        #expect(!directory.isUnderMaintenance)
+        #expect(directory.failure != nil)
+        #expect(directory.clubs.count == 6)
+        #expect(ClubDirectory(files: files, client: Self.client(base), chinese: { true }).clubs.count == 6)
+        #expect(SettingsAPIStub.requests(for: url).count == 3)
+    }
+
+    @Test("the maintenance hours run from 00:00 up to 07:00 Taipei time")
+    func maintenanceHours() throws {
+        func at(_ hour: Int, _ minute: Int) throws -> Date {
+            try #require(TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: hour, minute: minute)))
+        }
+        let down = ClubAPIClient.Unavailable()
+
+        #expect(try ClubAPIClient.isMaintenance(down, at: at(0, 0)))
+        #expect(try ClubAPIClient.isMaintenance(down, at: at(6, 59)))
+        #expect(try !ClubAPIClient.isMaintenance(down, at: at(7, 0)))
+        #expect(try !ClubAPIClient.isMaintenance(down, at: at(23, 59)))
+        #expect(try !ClubAPIClient.isMaintenance(URLError(.badServerResponse), at: at(3, 0)))
     }
 
     @Test("the feed is asked with its ETag: a 304 keeps it, a 200 replaces it and a failure leaves it")

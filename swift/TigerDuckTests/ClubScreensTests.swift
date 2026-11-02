@@ -80,6 +80,35 @@ struct ClubScreensTests {
         }
     }
 
+    @Test("the subscribe sheet with no clubs says the club system is in its nightly maintenance", arguments: looks)
+    func maintenanceSheet(look: Look) async throws {
+        try await withAccessibilityAutomation {
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            SettingsAPIStub.enqueue(ClubAPIModelsTests.maintenance, for: base.appending(path: "clubs"))
+            let root = FileManager.default.temporaryDirectory.appending(path: "ClubMaintenance-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let threeAM = try #require(TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 3)))
+            let directory = ClubDirectory(
+                files: ClubFiles(folders: CacheFolders(root: root)),
+                client: ClubAPIClient(baseURL: base, session: URLSession(configuration: config)),
+                chinese: { true }, now: { threeAM }
+            )
+            let sheet = ClubSubscribeSheet(signIn: testSignIn, directory: directory, subscriptions: ClubSubscriptions())
+            let window = try Self.show(sheet, look: look)
+            defer { window.isHidden = true }
+            let title = String(localized: "class_table_club_maintenance_title")
+            try await waitUntil { Self.shows(title, in: window) }
+            try await Task.sleep(for: .milliseconds(400))
+            Self.save(window, as: "maintenance-\(look.testDescription)")
+
+            #expect(Self.shows(String(localized: "class_table_club_maintenance_message"), in: window))
+            let failed = String(format: String(localized: "class_table_club_search_failed"), try #require(directory.failure).localizedDescription)
+            #expect(!Self.shows(failed, in: window))
+        }
+    }
+
     @Test("a club's mark in the list subscribes it, only for the sign-in the sheet opened in", arguments: [false, true])
     func subscribeToggle(signedOut: Bool) async throws {
         try await withExclusiveRealDefaults {
