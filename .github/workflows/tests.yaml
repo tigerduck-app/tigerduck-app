@@ -54,8 +54,10 @@ jobs:
               TigerDuckTests/MailMessageViewModelTests/theWebViewIsLockedDown()
               TigerDuckTests/MailReadableHTMLTests/theLinkColourIsWebKitsOwn(theme:)
               TigerDuckTests/BrowserContentRulesTests
+              TigerDuckTests/BrowserDemoPageLoadTests
               TigerDuckTests/BrowserFindPageTests
               TigerDuckTests/BrowserPageScriptsTests
+              TigerDuckTests/BrowserSiteSignInPageTests
               TigerDuckTests/ClassTableShareSheetTests
               TigerDuckTests/ClassTableSwitcherTests
               TigerDuckTests/CourseColorPickerSheetTests
@@ -65,6 +67,7 @@ jobs:
               TigerDuckTests/ForwardPagingLockTests
               TigerDuckTests/HomeEditPageTests
               TigerDuckTests/HomeScrollAnchorTests
+              TigerDuckTests/InformationSystemPageTests
               TigerDuckTests/LibraryWaitLayoutTests
               TigerDuckTests/ModalClosingTests
               TigerDuckTests/MoodleAssignmentPageStateTests
@@ -82,9 +85,11 @@ jobs:
               TigerDuckTests/MoodleOwnProfileTests/theCameraButtonFollowsTheSite()
               TigerDuckTests/MoodleOwnProfileTests/theOwnRowSaysMe()
               TigerDuckTests/MoodleRefreshFailureNoteTests/noteShowsOnlyOverContent()
+              TigerDuckTests/MoreHomeLayoutTests
               TigerDuckTests/PasswordFieldAutoFillTests
               TigerDuckTests/PullToRevealSearchTests
               TigerDuckTests/ScrollPositionOriginTests
+              TigerDuckTests/SearchDrawerFirstOpenTests
               TigerDuckTests/SettingsScreenTests
               TigerDuckTests/SettingsSnapshotTests
               TigerDuckTests/StorageSettingsScreenTests

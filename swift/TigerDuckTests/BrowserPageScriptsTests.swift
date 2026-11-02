@@ -44,6 +44,27 @@ struct BrowserPageScriptsTests {
         #expect(await evaluate(webView, size) as? [Double] == before)
     }
 
+    @Test(arguments: [
+        ("stuinfosys.ntust.edu.tw", "/Account/LogOff", "https://ssoam2.ntust.edu.tw/connect/endsession", "/StudentInformation"),
+        ("moodle2.ntust.edu.tw", "/login/logout.php?sesskey=k", "/auth/oidc/logout.php", "/my/?next=/login/logout.php"),
+    ])
+    func aSchoolSitesLogoutLinksAndFormsHideAndItsOtherLinksStay(host: String, link: String, form: String, other: String) async throws {
+        let configuration = WKWebViewConfiguration()
+        BrowserPageScripts.addScripts(to: configuration.userContentController)
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 800), configuration: configuration)
+        let page = "<a id=\"link\" href=\"\(link)\">x</a><form id=\"form\" action=\"\(form)\"><button>x</button></form>"
+            + "<a id=\"other\" href=\"\(other)\">x</a>"
+        let shown = "return ['link', 'form', 'other'].map(id => getComputedStyle(document.getElementById(id)).display !== 'none')"
+        let loader = Loader()
+        webView.navigationDelegate = loader
+
+        await withCheckedContinuation { loader.loaded = $0; webView.loadHTMLString(page, baseURL: URL(string: "https://\(host)/")) }
+        #expect(await evaluate(webView, shown) as? [Bool] == [false, false, true])
+
+        await withCheckedContinuation { loader.loaded = $0; webView.loadHTMLString(page, baseURL: URL(string: "https://\(Self.host)/")) }
+        #expect(await evaluate(webView, shown) as? [Bool] == [true, true, true], "nothing hides off the school's sites")
+    }
+
     private static let darkened = "return document.documentElement.getAttribute('data-darkreader-mode') === 'dynamic'"
     private static let colors = """
     var body = getComputedStyle(document.body);
@@ -126,6 +147,32 @@ struct BrowserPageScriptsTests {
         await load(webView, Self.paragraph)
         #expect(await evaluate(webView, Self.darkened) as? Bool == false)
         #expect(try await brightnessBelowTheText(of: webView) > 0.7)
+    }
+
+    /// The classroom booking site's query page is a frameset of two pages of its own.
+    @Test func aFramesetPageKeepsItsColors() async throws {
+        let (window, webView) = try browser(in: .dark)
+        defer { window.isHidden = true }
+        let frame = "data:text/html,%3Cp%3E" + String(repeating: "classroom%20", count: 30) + "%3C/p%3E"
+        await load(webView, "<frameset rows=\"100%,*\"><frame src=\"\(frame)\"><frame src=\"about:blank\"></frameset>")
+        _ = await evaluate(webView, "dispatchEvent(new Event('load'))")
+
+        #expect(await evaluate(webView, Self.darkened) as? Bool == false)
+        #expect(try await eventually { Self.brightness(of: webView.underPageBackgroundColor, in: webView) > 0.7 })
+    }
+
+    /// The classroom booking site colors its submit button's text inline, for a light button face.
+    @Test func aButtonWhoseTextIsColoredInlineGetsADarkFace() async throws {
+        let (window, webView) = try browser(in: .dark)
+        defer { window.isHidden = true }
+        let button = "<input type=\"submit\" value=\"Go\" style=\"color:#3366cc\""
+        await load(webView, "<style>.own { background: #c00 }</style>\(Self.paragraph)\(button) id=\"plain\">\(button) id=\"own\" class=\"own\">")
+        #expect(try await eventually { await evaluate(webView, Self.darkened) as? Bool == true })
+
+        let faces = "return ['plain', 'own'].map(id => getComputedStyle(document.getElementById(id)).backgroundColor.match(/[\\d.]+/g).slice(0, 3).map(Number))"
+        let colors = try #require(await evaluate(webView, faces) as? [[Double]])
+        #expect(colors[0].reduce(0, +) / 765 < 0.3, "the face is dark, under Dark Reader's lighter text")
+        #expect(colors[1][0] > colors[1][1] + 50, "a face of the page's own keeps its color")
     }
 
     private func brightnessBelowTheText(of webView: WKWebView) async throws -> CGFloat {

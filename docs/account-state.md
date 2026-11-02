@@ -31,7 +31,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 | `AppEnvironment`'s conflicts, pending overrides, refreshes and polling | `SignOutPlan.school(_:)` |
 | Courses deleted in the last two minutes, which a full sync keeps hidden | `LocalEdits.recentCourseDeletions` holds them for one sign-in of the school `AccountSession` (`SignInBound`) |
 | Uploads, outbox and pending document pushes | `PushCoordinator.forgetUploads()`, `CloudSyncCoordinator.settleForSignOut()` |
-| Feature view models (scores, class table, empty classroom, calendar, Moodle course pages) | they reload when the school `AccountSession`'s ticket changes and when `CourseStore` or `AssignmentStore` changes, which the sign-out notes |
+| Feature view models (scores, class table, empty classroom, calendar, information system, Moodle course pages) | they reload when the school `AccountSession`'s ticket changes and when `CourseStore` or `AssignmentStore` changes, which the sign-out notes |
 | Widgets and the Watch | `DeviceSurfaceSyncer` rebuilds them from the cleared caches when the stores and the sign-in state change |
 | Live Activities | `LiveActivityCoordinator.endAll()` in the sign-out calls |
 | The backend's device registration | the unregister in the sign-out calls, sent with the kept session until it lands |
@@ -58,6 +58,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | keychain | `moodleToken` | school | `swift/TigerDuck/School/Moodle/MoodleTokenService.swift` `drop` |
 | keychain | `password` | school | `swift/TigerDuck/Account/AuthService.swift` `logout` |
 | keychain | `pushDeviceId` | device |  |
+| keychain | `pushDeviceSecret` | device |  |
 | keychain | `refreshTokenKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenPair.swift` `clear` |
 | keychain | `refreshTokenUsesKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenPair.swift` `clear` |
 | keychain | `studentId` | school | `swift/TigerDuck/Account/AuthService.swift` `logout` |
@@ -122,6 +123,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `outlineRequiredCourses` | device |  |
 | defaults | `pendingConflictCategories` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
 | defaults | `pinTodayCoursesOnClassTable` | device |  |
+| defaults | `pushDeviceSecretRefused` | device |  |
 | defaults | `pushServerEnabled` | device |  |
 | defaults | `pushServerURLOverride` | device |  |
 | defaults | `schoolDataSyncedAt` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |
@@ -163,6 +165,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | cache | `moodle_color_waits.json` | school | `swift/TigerDuck/Persistence/CourseColorFiles.swift` `forgetAccount` |
 | cache | `moodle_course_id_map.json` | school | `swift/TigerDuck/Persistence/MoodleFiles.swift` `forgetAccount` |
 | cache | `picked_course_colors.json` | school | `swift/TigerDuck/Persistence/CourseColorFiles.swift` `forgetAccount` |
+| cache | `portal_links_*` | school | `swift/TigerDuck/Persistence/PortalLinkFiles.swift` `forgetAccount` |
 | cache | `score_report_*` | school | `swift/TigerDuck/Persistence/ScoreReportFiles.swift` `forgetAccount` |
 | cache | `selection_dropped.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
 | cache | `server_dropped.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |

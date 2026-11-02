@@ -146,16 +146,18 @@ struct BulletinsView: View {
     private var filtersBlock: some View {
         if let tax = taxonomy.state.taxonomy {
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                BulletinFilterBar(
+                FilterChipBar(
                     title: String(localized: "bulletin_filter_dept"),
                     options: tax.orgs.map { (id: $0.rawId, label: $0.label) },
                     selected: viewModel.selectedOrgs,
+                    policy: app.preferences.visualStylePolicy,
                     onToggle: { viewModel.toggleOrg($0) }
                 )
-                BulletinFilterBar(
+                FilterChipBar(
                     title: String(localized: "bulletin_filter_tag"),
                     options: tax.tags.map { (id: $0.rawId, label: $0.label) },
                     selected: viewModel.selectedTags,
+                    policy: app.preferences.visualStylePolicy,
                     onToggle: { viewModel.toggleTag($0) }
                 )
             }

@@ -29,14 +29,17 @@ final class BrowserShownPage {
 @MainActor
 final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private let page: BrowserPage
+    private let auth: AuthService?
     private var observations: [NSKeyValueObservation] = []
     private var refusedHosts: Set<String> = []
     private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
     private var signInReturnPage: URL?
+    private let demoPages = BrowserDemoPages()
     private static let sessionCookieLifetime: TimeInterval = 30 * 24 * 60 * 60
 
-    init(page: BrowserPage) {
+    init(page: BrowserPage, auth: AuthService?) {
         self.page = page
+        self.auth = auth
     }
 
     func makeView(opening start: URL) -> UIView {
@@ -54,11 +57,12 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         page.shown.start = start
         observe(webView)
 
-        let store = page.store
+        let (store, auth) = (page.store, self.auth)
         let schoolSignIn = AccountSession.school.currentSignIn
         page.signIn.load = { [weak webView] in webView?.load(URLRequest(url: $0)) }
-        page.signIn.signInWithSession = { [weak container] in
-            await BrowserSessionSignIn(store: store, host: container).signIn(for: schoolSignIn)
+        page.signIn.signInWithSession = { [weak container, weak browserSignIn = page.signIn] in
+            guard let target = browserSignIn?.target else { return false }
+            return await BrowserSessionSignIn(store: store, host: container, auth: auth).signIn(for: schoolSignIn, to: target)
         }
         page.find.runInPage = { [weak webView] in await webView?.runFind($0) }
         Task {
@@ -67,7 +71,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
             // Until asked for its records, the store answers with no cookies, not those on disk.
             _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
             await BrowserPageScripts.install(in: configuration.userContentController)
-            await page.signIn.open(start)
+            await page.signIn.open(await BrowserSiteSignIn.opening(start, for: schoolSignIn, in: store))
         }
         return container
     }
@@ -111,19 +115,20 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
         guard let url = action.request.url else { return decisionHandler(.cancel) }
-        if BrowserRouting.isMoodleLogout(url) { return decisionHandler(.cancel) }
-        if let frame = action.targetFrame, !frame.isMainFrame { return decisionHandler(.allow) }
-        if BrowserRouting.isMoodleSignInPage(url) {
-            decisionHandler(.cancel)
-            let current = webView.url.flatMap { BrowserRouting.isMoodleReturnPage($0) ? $0 : nil }
-            page.signIn.reachedSignInPage(returningTo: signInReturnPage ?? current ?? AppConstants.moodleBaseURL)
-            return
+        if BrowserRouting.isLogout(url) { return decisionHandler(.cancel) }
+        let isDemo = AccountSession.school.currentSignIn.isDemo
+        if let frame = action.targetFrame, !frame.isMainFrame { return decisionHandler(isDemo ? .cancel : .allow) }
+        if !isDemo, let target = BrowserRouting.signInReturn(for: url, among: [signInReturnPage, webView.url]),
+           page.signIn.reachedSignInPage(returningTo: target) {
+            return decisionHandler(.cancel)
         }
         switch BrowserRouting.decision(for: url, byLinkTap: action.navigationType == .linkActivated) {
         case .load:
-            guard !AccountSession.school.currentSignIn.isDemo else {
-                decisionHandler(.cancel)
-                page.failure = .unreachable(host: url.host(percentEncoded: false) ?? url.absoluteString)
+            guard !isDemo else {
+                let demo = demoPages.decide(url)
+                decisionHandler(demo == .allow ? .allow : .cancel)
+                if case .show(let html) = demo { webView.loadHTMLString(html, baseURL: nil) }
+                page.failure = demo == .refuse ? .unreachable(host: url.host(percentEncoded: false) ?? url.absoluteString) : nil
                 return
             }
             // No target frame means a new window, and the browser has only this one.
@@ -132,7 +137,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
                 webView.load(action.request)
                 return
             }
-            if BrowserRouting.isMoodleReturnPage(url) { signInReturnPage = url }
+            if BrowserRouting.isReturnPage(url) { signInReturnPage = url }
             page.failure = nil
             page.downloads.failed = nil
             decisionHandler(.allow)
@@ -207,6 +212,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         signInReturnPage = nil
         page.signIn.pageSettled()
         Task { await keepSession() }
+        Task { [auth] in await BrowserSiteSignIn(auth: auth, for: AccountSession.school.currentSignIn).pageFinished(in: webView) }
         if page.find.isActive { Task { await page.find.search() } }
     }
 

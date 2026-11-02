@@ -15,7 +15,7 @@ struct MoreNavigationTests {
     @Test func everyMoreRowHasARealDestination() {
         let destinationsWithRealPages: Set<AppFeature> = [
             .home, .classTable, .calendar, .announcements, .library, .gpa,
-            .schoolMail, .emptyClassroom,
+            .informationSystem, .schoolMail, .emptyClassroom,
         ]
         let unbacked = AppFeature.moreFeatures.filter { !destinationsWithRealPages.contains($0) }
         #expect(unbacked.isEmpty, "More rows with no real destination: \(unbacked)")

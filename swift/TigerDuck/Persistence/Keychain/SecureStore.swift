@@ -26,10 +26,10 @@ nonisolated enum SecureStore {
     ///
     /// A push launches the app in the background, usually on a locked phone. Above all, a Live
     /// Activity push-to-start hands over the update token the server needs to end the activity
-    /// after class, and registering it reads the backend session, device id and endpoint
-    /// override. In ``shared`` they are unreadable then: the launch would act signed out, mint
-    /// a throwaway device id, use the default endpoint and leave the activity up. NTUST, Moodle
-    /// and library credentials stay in ``shared``: no background work needs them.
+    /// after class, and registering it reads the backend session, device id and secret, and
+    /// endpoint override. In ``shared`` they are unreadable then: the launch would act signed
+    /// out, mint a throwaway device id, use the default endpoint and leave the activity up.
+    /// NTUST, Moodle and library credentials stay in ``shared``: no background work needs them.
     private static let readableWhileLockedKeys: Set<String> = [
         AuthTokenManager.accessTokenKey,
         AuthTokenManager.refreshTokenKey,
@@ -37,11 +37,13 @@ nonisolated enum SecureStore {
         AuthTokenManager.refreshTokenUsesKey,
         AuthTokenManager.departingSessionKey,
         AppConstants.KeychainKeys.pushDeviceId,
+        AppConstants.KeychainKeys.pushDeviceSecret,
         DebugEndpointStore.keychainKey,
     ]
 
     private static let neverInShared: Set<String> = [
         AuthTokenManager.refreshTokenUsesKey, AuthTokenManager.departingSessionKey,
+        AppConstants.KeychainKeys.pushDeviceSecret,
     ]
 
     /// Home of ``readableWhileLockedKeys``. `.afterFirstUnlockThisDeviceOnly`
@@ -95,7 +97,7 @@ nonisolated enum SecureStore {
     static func loadIfReadable(key: String) throws -> Data? {
         if let value = loadSaved(key: key) { return value }
         let home = home(forKey: key)
-        if home !== shared { try requireNoUnreadableCopyInShared(forKey: key) }
+        if home !== shared, !neverInShared.contains(key) { try requireNoUnreadableCopyInShared(forKey: key) }
         do {
             return try home.object(forKey: key)
         } catch KeychainError.itemNotFound {

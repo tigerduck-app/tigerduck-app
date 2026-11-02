@@ -264,6 +264,7 @@ struct MainTabView: View {
         case .calendar: CalendarTabView()
         case .announcements: BulletinsView()
         case .gpa: ScoreView()
+        case .informationSystem: InformationSystemView()
         case .courseSelection: PlaceholderFeatureView(feature: feature)
         case .graduationRequirements: PlaceholderFeatureView(feature: feature)
         case .library: LibraryView()

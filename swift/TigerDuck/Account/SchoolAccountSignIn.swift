@@ -92,6 +92,21 @@ enum SchoolAccountSignIn {
         return success
     }
 
+    /// A school site's own post of the stored password, under the rules of the app's automatic
+    /// posts: none while refusals have the app waiting, one at a time with SSO renewals, and a
+    /// refusal counted. `post` answers the HTTP status; nil when nothing was posted or answered.
+    static func postStoredPassword(for signIn: SignIn, _ post: @MainActor () async -> Int?) async -> Int? {
+        guard !SchoolPasswordPosts.storedPasswordPostMustWait() else { return nil }
+        return await SchoolPasswordPosts.postingStoredPassword {
+            guard signIn.isCurrent, !SchoolPasswordPosts.storedPasswordPostMustWait() else { return nil }
+            let status = await post()
+            if let status, [400, 401, 403].contains(status), signIn.isCurrent {
+                SchoolPasswordPosts.noteStoredPasswordRefused(for: signIn)
+            }
+            return status
+        }
+    }
+
     private static func renewSchoolSession(
         auth: AuthService, studentId: String, password: String, for signIn: SignIn
     ) async -> Bool {

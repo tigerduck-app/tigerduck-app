@@ -13,7 +13,11 @@ struct MailListRowsSection: View {
             case .idle, .loading:
                 centered { ProgressView().padding(.vertical, 60) }
             case .failed(let message):
-                centered { MailListFailure(message: message) { Task { await viewModel.refresh() } } }
+                centered {
+                    LoadFailureView(title: String(localized: "school_mail_load_failed_title"), message: message) {
+                        Task { await viewModel.refresh() }
+                    }
+                }
             case .loaded:
                 centered {
                     EmptyStateView(
@@ -71,32 +75,6 @@ struct MailListRowButton: View {
             .tint(accentColor)
         }
         .task { await viewModel.loadMoreIfNeeded(after: row) }
-    }
-}
-
-struct MailListFailure: View {
-    let message: String
-    let onRetry: () -> Void
-    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
-
-    var body: some View {
-        VStack(spacing: TigerDuckTheme.Spacing.sm) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: heroIconSize))
-                .foregroundStyle(Color.orange)
-            Text(String(localized: "school_mail_load_failed_title"))
-                .font(TigerDuckTheme.Typography.headline)
-                .foregroundStyle(Color.textPrimary)
-            Text(message)
-                .font(TigerDuckTheme.Typography.caption)
-                .foregroundStyle(Color.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            Button(String(localized: "action_retry"), action: onRetry)
-                .buttonStyle(.bordered)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
     }
 }
 #endif

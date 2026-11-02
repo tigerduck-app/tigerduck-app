@@ -154,6 +154,7 @@ ACCOUNT_FILES = {
     "CourseColorFiles": ("Stores/CourseColorStore.swift",),
     "BulletinFiles": ("Stores/Bulletins/BulletinFeed.swift",),
     "ScoreReportFiles": ("School/NTUST/NTUSTScoreService.swift",),
+    "PortalLinkFiles": ("Stores/PortalLinks.swift",),
     "MoodleFiles": ("Stores/CourseLookup.swift", "Stores/Moodle/"),
 }
 # Persistence/ defines them, the sign-out deletes them, and a migration runs before any sign-in work.

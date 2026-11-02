@@ -1,7 +1,7 @@
 import WebKit
 
-/// What the browser adds to pages: Moodle's logout hidden and blocked, each site's zoom, and a
-/// dark page where the site has none.
+/// What the browser adds to pages: the school sites' logouts hidden and blocked, each site's zoom,
+/// and a dark page where the site has none.
 enum BrowserPageScripts {
     private nonisolated static let logoutTargets = ["/login/logout.php", "/auth/oidc/logout.php"]
         .flatMap { ["https://\(BrowserRouting.moodleHost)\($0)", $0] }
@@ -17,13 +17,23 @@ enum BrowserPageScripts {
             + logoutForms.map { ".singlebutton:has(> \($0))" }
     ).joined(separator: ", ")
 
-    /// A stylesheet, so the user menu Moodle draws later is matched too; `:has()` sits in a rule of
-    /// its own, as a browser without it drops the whole rule.
+    /// Another school site's links and forms whose address names a logout. A selector cannot tell
+    /// the path from the query, so a link that only names one hides too; the address still loads.
+    nonisolated static let schoolLogoutSelector = ["logout", "logoff", "signout", "log-out", "sign-out", "endsession"]
+        .flatMap { ["a[href*=\"\($0)\" i]", "form[action*=\"\($0)\" i]"] }
+        .joined(separator: ", ")
+
+    /// A stylesheet, so a menu a page draws later is matched too; `:has()` sits in a rule of its
+    /// own, as a browser without it drops the whole rule.
     nonisolated static let hideLogout = """
     (function() {
-      if (location.hostname !== '\(BrowserRouting.moodleHost)') return;
+      var host = location.hostname.toLowerCase().replace(/\\.$/, '');
+      var rules = host === '\(BrowserRouting.moodleHost)'
+        ? '\(logoutSelector) { display: none !important; }\\n\(leftOverSelector) { display: none !important; }'
+        : /(^|\\.)ntust\\.edu\\.tw$/.test(host) ? '\(schoolLogoutSelector) { display: none !important; }' : '';
+      if (!rules) return;
       var style = document.createElement('style');
-      style.textContent = '\(logoutSelector) { display: none !important; }\\n\(leftOverSelector) { display: none !important; }';
+      style.textContent = rules;
       (document.head || document.documentElement).appendChild(style);
     })();
     """
@@ -70,8 +80,14 @@ enum BrowserPageScripts {
     private nonisolated static let darkenWithDarkReader = """
     (function() {
       var dark = matchMedia('(prefers-color-scheme: dark)');
-      // Find's spotlight keeps the colors it gives it.
-      var fixes = { ignoreInlineStyle: ['[data-tigerduck-find-light]'] };
+      // Find's spotlight keeps the colors it gives it. iOS fills a native button with its accent
+      // blue, which hides text a page colors inline for a light button, so such a button gets a
+      // face of Dark Reader's.
+      var fixes = {
+        ignoreInlineStyle: ['[data-tigerduck-find-light]'],
+        css: ':where(input:is([type="submit" i], [type="button" i], [type="reset" i])[data-darkreader-inline-color], '
+          + 'button[data-darkreader-inline-color]) { background-color: ${#e9e9ed}; }'
+      };
       // Lets a cross-origin stylesheet be recolored where its server allows CORS.
       DarkReader.setFetchMethod(window.fetch);
       // Dark Reader puts this rule in each sheet it adopts over one of the page's own.
@@ -99,8 +115,10 @@ enum BrowserPageScripts {
           if (own.length !== adopted.length) document.adoptedStyleSheets = adopted;
         }
       }
+      // Dark Reader runs in the main frame only, so a frameset's pages stay light and darkening
+      // the frameset itself would only border them in black.
       function update() {
-        var wanted = dark.matches && drawsLight();
+        var wanted = dark.matches && !document.querySelector('frameset') && drawsLight();
         if (wanted === DarkReader.isEnabled()) return;
         if (wanted) DarkReader.enable({}, fixes);
         else DarkReader.disable();
@@ -112,13 +130,21 @@ enum BrowserPageScripts {
     })();
     """
 
-    /// Blocks the logout for every resource type, frames and scripts' requests included, which
-    /// the navigation delegate never sees. Content blocker patterns have no alternation, so one rule each.
+    /// Blocks the logouts for every resource type, frames and scripts' requests included, which
+    /// the navigation delegate never sees. Content blocker patterns have no alternation, so one rule
+    /// each: Moodle's two, and per logout word and script extension `BrowserRouting.isSchoolLogout`'s
+    /// path segments as written, which leaves a percent-encoded name and a query to the delegate.
     nonisolated static let logoutRules: String = {
         let host = BrowserRouting.moodleHost.replacingOccurrences(of: ".", with: "\\\\.")
-        let rules = ["login/+logout\\\\.php", "auth/+oidc/+logout\\\\.php"].map { path in
-            #"{"trigger":{"url-filter":"^https?://\#(host)\\.?(:[0-9]+)?/+\#(path)"},"action":{"type":"block"}}"#
+        let moodle = ["login/+logout\\\\.php", "auth/+oidc/+logout\\\\.php"].map { path in
+            #"^https?://\#(host)\\.?(:[0-9]+)?/+\#(path)"#
         }
+        let endings = [""] + BrowserRouting.scriptExtensions.map { #"\\.\#($0)"# }
+        let routes = ["log[-_]*out", "log[-_]*off", "sign[-_]*out"].flatMap { word in endings.map { "[^/?#;]*" + word + $0 } }
+        let school = (routes + ["end[-_]*session"]).map { route in
+            #"^https?://([^/?#]*\\.)?ntust\\.edu\\.tw\\.?(:[0-9]+)?/([^?#]*/)?\#(route)([/;?#].*)?$"#
+        }
+        let rules = (moodle + school).map { #"{"trigger":{"url-filter":"\#($0)"},"action":{"type":"block"}}"# }
         return "[" + rules.joined(separator: ",") + "]"
     }()
 
@@ -130,6 +156,10 @@ enum BrowserPageScripts {
     /// navigation delegate still refuses the logout, and a later browser gets the list.
     static func install(in controller: WKUserContentController) async {
         addScripts(to: controller)
+        await addLogoutRules(to: controller)
+    }
+
+    static func addLogoutRules(to controller: WKUserContentController) async {
         guard let rules = await answer(within: rulesDeadline, compileLogoutRules) else {
             return AppLogger.breadcrumb("browser opened without its logout rule list", category: "browser")
         }
