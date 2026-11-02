@@ -88,7 +88,7 @@ struct DemoAccountTests {
         let raw = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         #expect(Set(raw.keys) == [
             "studentId", "school-password", "library-password", "mail", "libraryQr", "courses", "classmates",
-            "assignments", "bulletins", "calendar", "moodle", "emptyClassroom",
+            "assignments", "bulletins", "calendar", "moodle", "emptyClassroom", "informationSystem",
         ])
 
         let fixture = try #require(DemoFixture.load(from: .main))
@@ -102,6 +102,7 @@ struct DemoAccountTests {
         #expect(fixture.calendar?.count == 3)
         #expect(fixture.moodle?.courses?.count == 3)
         #expect(fixture.emptyClassroom?.rooms?.isEmpty == false)
+        #expect(fixture.informationSystem?.count == 9)
         #expect(fixture.libraryQr?.content.isEmpty == false)
         #if os(iOS)
         let mail = try #require(MailDemoFixture.load(from: .main, in: .en))
