@@ -132,9 +132,20 @@ struct TLSPinPromptTests {
             #expect(accessibilityElement(labeled: showDetails, in: sheet)?.accessibilityExpandedStatus == .collapsed)
             try await Self.activate(showDetails, in: sheet)
             try await waitUntil { accessibilityElement(labeled: Self.details, in: sheet) != nil }
-            #expect(accessibilityElement(labeled: String(localized: "tls_pin_mismatch_view_certificate"), in: sheet) != nil)
+            let viewCertificate = String(localized: "tls_pin_mismatch_view_certificate")
+            #expect(accessibilityElement(labeled: viewCertificate, in: sheet) != nil)
             #expect(accessibilityElement(labeled: showDetails, in: sheet)?.accessibilityExpandedStatus == .expanded)
             #expect(window.rootViewController?.presentedViewController?.view === sheet)
+
+            // VoiceOver's focus ring and Voice Control's tap go to the element's frame, which is the
+            // capsule as drawn: View certificate's height and centre line, above the explanation.
+            @MainActor func frame(_ label: String) -> CGRect? { accessibilityElement(labeled: label, in: sheet)?.accessibilityFrame }
+            try await waitUntil {
+                guard let capsule = frame(showDetails), let below = frame(viewCertificate), let text = frame(Self.details)
+                else { return false }
+                return window.bounds.contains(capsule) && abs(capsule.height - below.height) < 1
+                    && abs(capsule.midX - below.midX) < 1 && capsule.maxY <= text.minY
+            }
         }
     }
 

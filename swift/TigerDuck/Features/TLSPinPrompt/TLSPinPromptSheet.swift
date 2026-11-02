@@ -244,20 +244,15 @@ private struct CapsuleDisclosure: DisclosureGroupStyle {
                 }
             }
             .promptButtonStyle(prominent: false)
-            #if os(iOS)
-            .accessibilityRepresentation {
-                ExpandableElement(label: title, isExpanded: configuration.isExpanded, action: toggle)
-            }
-            #endif
+            .expandedStatus(configuration.isExpanded, label: title, action: toggle)
             if configuration.isExpanded { configuration.content }
         }
     }
 }
 
 #if os(iOS)
-/// Before iOS 27, SwiftUI gives no element, not even a `DisclosureGroup`, an expanded status
-/// (https://developer.apple.com/documentation/objectivec/nsobject-swift.class/accessibilityexpandedstatus),
-/// so VoiceOver reads this UIKit view in its place. SwiftUI hosts it off screen.
+/// A button for VoiceOver with an expanded status. SwiftUI keeps the view in no window, so it
+/// takes no touches.
 private struct ExpandableElement: UIViewRepresentable {
     let label: String
     let isExpanded: Bool
@@ -288,6 +283,22 @@ private struct ExpandableElement: UIViewRepresentable {
 #endif
 
 private extension View {
+    /// Below iOS 27, SwiftUI gives no element, not even a `DisclosureGroup`, an expanded status
+    /// (https://developer.apple.com/documentation/objectivec/nsobject-swift.class/accessibilityexpandedstatus),
+    /// so VoiceOver reads a UIKit stand-in there. iOS 27 reads the disclosure's own button.
+    @ViewBuilder
+    func expandedStatus(_ isExpanded: Bool, label: String, action: @escaping () -> Void) -> some View {
+        #if os(iOS)
+        if #available(iOS 27, *) {
+            self
+        } else {
+            accessibilityRepresentation { ExpandableElement(label: label, isExpanded: isExpanded, action: action) }
+        }
+        #else
+        self
+        #endif
+    }
+
     @ViewBuilder
     func promptButtonStyle(prominent: Bool) -> some View {
         if #available(iOS 26, macOS 26, *) {
