@@ -24,6 +24,11 @@ struct ClubSubscriptionsDocumentTests {
         #expect(ClubSubscriptions.defaultColor(of: id, palette: TigerDuckTheme.coursePaletteHexes) == UInt32(hex))
     }
 
+    @Test("the hash is 32-bit FNV-1a", arguments: [("", 0x811C_9DC5), ("a", 0xE40C_292C), ("foobar", 0xBF9C_F968)])
+    func fnv1a(text: String, hash: Int) {
+        #expect(TigerDuckTheme.fnv1a(text) == UInt32(hash))
+    }
+
     @Test("each value takes the side that set it later, so two devices' edits of different fields both stay")
     func laterWins() {
         let local = Document(

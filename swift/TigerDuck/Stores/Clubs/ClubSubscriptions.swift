@@ -74,8 +74,7 @@ final class ClubSubscriptions: AccountScoped {
     /// 32-bit FNV-1a of the decimal id's UTF-8 bytes, modulo the palette, so that every device and
     /// the Android app give a club the same color.
     nonisolated static func defaultColor(of id: Int, palette: [UInt32]) -> UInt32 {
-        let hash = String(id).utf8.reduce(UInt32(2_166_136_261)) { ($0 ^ UInt32($1)) &* 16_777_619 }
-        return palette[Int(hash % UInt32(palette.count))]
+        palette[Int(TigerDuckTheme.fnv1a(String(id)) % UInt32(palette.count))]
     }
 
     private func change(
