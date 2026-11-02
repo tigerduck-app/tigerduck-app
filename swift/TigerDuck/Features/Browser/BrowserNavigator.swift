@@ -210,7 +210,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         page.downloads.failed = download.originalRequest
         let failure = BrowserPage.Failure.download(
             error, refusedHosts: certificates.refusedHosts,
-            requestedHost: download.originalRequest?.url?.host(percentEncoded: false) ?? page.host
+            requestedHost: download.originalRequest?.url?.host(percentEncoded: false).map(TLSPinMatcher.hostName) ?? page.host
         )
         page.failure = certificates.offering(failure, at: BrowserPage.Failure.failingURL(of: error))
     }
@@ -306,6 +306,6 @@ extension BrowserPage.Failure {
     }
 
     private nonisolated static func failingHost(of error: NSError) -> String {
-        failingURL(of: error)?.host(percentEncoded: false) ?? ""
+        failingURL(of: error)?.host(percentEncoded: false).map(TLSPinMatcher.hostName) ?? ""
     }
 }

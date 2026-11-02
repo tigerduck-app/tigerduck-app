@@ -76,6 +76,30 @@ struct BrowserPinnedHostsTests {
         #expect(try await evaluate(check.accepting(refusal), host: dotted) == .useCredential)
     }
 
+    @Test("a pinned host refused under its dotted name fails a load and a download as a certificate, with the page to open at risk")
+    func aDottedRefusalFailsAsACertificate() async throws {
+        let moodle = "moodle2.ntust.edu.tw"
+        let check = BrowserCertificateCheck(pinning: TLSPinningDelegate(engine: F.engine(now: Self.date)))
+        #expect(try await evaluate(check, host: "\(moodle).") == .cancelAuthenticationChallenge)
+
+        // WebKit fails a load whose challenge was cancelled as a cancelled load.
+        let refused = URL(string: "https://\(moodle)./my/")!
+        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled, userInfo: [NSURLErrorFailingURLErrorKey: refused])
+        let failures = [
+            BrowserPage.Failure.load(error, refusedHosts: check.refusedHosts),
+            BrowserPage.Failure.download(error, refusedHosts: check.refusedHosts, requestedHost: "\(moodle)."),
+        ]
+        for failure in failures {
+            guard let failure, case .certificate(let host, let refusal?) = check.offering(failure, at: refused) else {
+                Issue.record("\(String(describing: failure)) is no certificate failure to open at risk")
+                continue
+            }
+            #expect(host == moodle)
+            #expect(refusal.url == refused)
+            #expect(check.accepting(refusal).acceptance.allows(refusal.leaf, from: "MOODLE2.ntust.edu.tw."))
+        }
+    }
+
     @Test("a browser-only host whose chain system trust refuses is offered to open at risk, in a store of its own")
     func anInvalidChainOnABrowserOnlyHostOffersTheRisk() async throws {
         let host = "sa.ntust.edu.tw"

@@ -28,7 +28,7 @@ struct BrowserRiskAcceptance {
     }
 
     func allows(_ leaf: String?, from host: String) -> Bool {
-        leaf.map { accepted.contains(Served(host: host.lowercased(), leaf: $0)) } ?? false
+        leaf.map { accepted.contains(Served(host: TLSPinMatcher.hostName(host), leaf: $0)) } ?? false
     }
 
     /// The SHA-256 of the leaf's DER, as hex.
@@ -93,7 +93,7 @@ final class BrowserCertificateCheck {
 
     /// Notes the leaf a host served in a challenge this check did not let through itself.
     func notLetThrough(_ leaf: String, from host: String) {
-        refusedLeaves[host.lowercased()] = leaf
+        refusedLeaves[TLSPinMatcher.hostName(host)] = leaf
     }
 
     /// The failure with the page the student may open at risk, when it is a certificate's: the
