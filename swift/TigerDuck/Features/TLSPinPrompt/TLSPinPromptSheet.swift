@@ -92,7 +92,8 @@ struct TLSPinPromptSheet: View {
     /// A disclosure in a capsule like Cancel and Continue, so VoiceOver reads it expanded or
     /// collapsed.
     private var details: some View {
-        DisclosureGroup(isExpanded: $showsDetails) {
+        let title = String(localized: "tls_pin_mismatch_show_details")
+        return DisclosureGroup(isExpanded: $showsDetails) {
             Text(String(
                 format: String(localized: "tls_pin_mismatch_details"),
                 prompt.host, prompt.domains.formatted(.list(type: .and, width: .narrow))
@@ -107,9 +108,9 @@ struct TLSPinPromptSheet: View {
             }
             .promptButtonStyle(prominent: false)
         } label: {
-            Text(String(localized: "tls_pin_mismatch_show_details"))
+            Text(title)
         }
-        .disclosureGroupStyle(CapsuleDisclosure())
+        .disclosureGroupStyle(CapsuleDisclosure(title: title))
         .buttonBorderShape(.capsule)
     }
 
@@ -228,11 +229,12 @@ private struct TLSCertificateList: View {
 }
 
 private struct CapsuleDisclosure: DisclosureGroupStyle {
+    let title: String
+
     func makeBody(configuration: Configuration) -> some View {
+        let toggle = { withAnimation { configuration.isExpanded.toggle() } }
         VStack(spacing: TigerDuckTheme.Spacing.md) {
-            Button {
-                withAnimation { configuration.isExpanded.toggle() }
-            } label: {
+            Button(action: toggle) {
                 HStack(spacing: TigerDuckTheme.Spacing.xs) {
                     configuration.label
                     Image(systemName: "chevron.down")
@@ -242,10 +244,48 @@ private struct CapsuleDisclosure: DisclosureGroupStyle {
                 }
             }
             .promptButtonStyle(prominent: false)
+            #if os(iOS)
+            .accessibilityRepresentation {
+                ExpandableElement(label: title, isExpanded: configuration.isExpanded, action: toggle)
+            }
+            #endif
             if configuration.isExpanded { configuration.content }
         }
     }
 }
+
+#if os(iOS)
+/// Before iOS 27, SwiftUI gives no element, not even a `DisclosureGroup`, an expanded status
+/// (https://developer.apple.com/documentation/objectivec/nsobject-swift.class/accessibilityexpandedstatus),
+/// so VoiceOver reads this UIKit view in its place. SwiftUI hosts it off screen.
+private struct ExpandableElement: UIViewRepresentable {
+    let label: String
+    let isExpanded: Bool
+    let action: () -> Void
+
+    func makeUIView(context: Context) -> Element {
+        let element = Element()
+        element.isAccessibilityElement = true
+        element.accessibilityTraits = .button
+        return element
+    }
+
+    func updateUIView(_ element: Element, context: Context) {
+        element.accessibilityLabel = label
+        element.accessibilityExpandedStatus = isExpanded ? .expanded : .collapsed
+        element.action = action
+    }
+
+    final class Element: UIView {
+        var action: () -> Void = {}
+
+        override func accessibilityActivate() -> Bool {
+            action()
+            return true
+        }
+    }
+}
+#endif
 
 private extension View {
     @ViewBuilder
