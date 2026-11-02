@@ -69,15 +69,17 @@ struct PushDeviceSecretTests {
 
     @Test("the launch announce carries the device secret")
     func theAnnounceCarriesTheSecret() async throws {
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
-        Self.answer(Self.announceURL(baseURL))
+        try await Self.withDeviceDefaults {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            Self.answer(Self.announceURL(baseURL))
 
-        await Self.requests(PushIdentity(uuid: "test-device", secret: Self.secret), baseURL: baseURL)
-            .announce(deviceToken: "abcdef")
+            await Self.requests(PushIdentity(uuid: "test-device", secret: Self.secret), baseURL: baseURL)
+                .announce(deviceToken: "abcdef")
 
-        let sent = try #require(try Self.sentBodies(to: Self.announceURL(baseURL)).first)
-        #expect(sent["device_id"] as? String == "test-device")
-        #expect(sent["device_secret"] as? String == Self.secret)
+            let sent = try #require(try Self.sentBodies(to: Self.announceURL(baseURL)).first)
+            #expect(sent["device_id"] as? String == "test-device")
+            #expect(sent["device_secret"] as? String == Self.secret)
+        }
     }
 
     @Test("a signed-out push opt-out carries the device secret")
