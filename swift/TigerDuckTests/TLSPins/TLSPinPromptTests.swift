@@ -227,7 +227,10 @@ struct TLSPinPromptTests {
         #expect(prompting.engine.acceptances.isEmpty)
         #expect(prompting.continued == 0)
         #expect(!prompting.isQuiet)
-        try await waitUntil { root.presentedViewController == nil }
+        try await waitUntil { root.presentedViewController == nil && prompting.owner.holder == nil }
+        // SwiftUI skips a second change of the host's turn within one frame, and a browser opens
+        // frames after the swipe.
+        try await Task.sleep(for: .milliseconds(500))
 
         prompting.queue.offerDismissedAgain()
         prompting.queue.report(Self.mismatch)
