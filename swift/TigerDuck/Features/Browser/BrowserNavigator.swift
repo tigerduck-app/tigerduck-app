@@ -29,6 +29,9 @@ final class BrowserShownPage {
 @MainActor
 final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private let page: BrowserPage
+    /// The page's check when this web view was built, so one on the browser's own store never takes
+    /// what the student accepted for a store opened at risk.
+    private let certificates: BrowserCertificateCheck
     private let auth: AuthService?
     private var observations: [NSKeyValueObservation] = []
     private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
@@ -38,6 +41,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
 
     init(page: BrowserPage, auth: AuthService?) {
         self.page = page
+        certificates = page.certificates
         self.auth = auth
     }
 
@@ -71,7 +75,11 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
             // Until asked for its records, the store answers with no cookies, not those on disk.
             _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
             await BrowserPageScripts.install(in: configuration.userContentController)
-            await page.signIn.open(start)
+            if page.isAtRisk {
+                webView.load(URLRequest(url: start))
+            } else {
+                await page.signIn.open(start)
+            }
         }
         return container
     }
@@ -192,24 +200,21 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        page.certificates.evaluate(challenge, completionHandler: completionHandler)
+        certificates.evaluate(challenge, completionHandler: completionHandler)
     }
 
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
         saving[ObjectIdentifier(download)] = nil
         page.downloads.failed = download.originalRequest
-        page.failure = .download(
-            error, refusedHosts: page.certificates.refusedHosts,
+        let failure = BrowserPage.Failure.download(
+            error, refusedHosts: certificates.refusedHosts,
             requestedHost: download.originalRequest?.url?.host(percentEncoded: false) ?? page.host
         )
+        page.failure = certificates.offering(failure, at: BrowserPage.Failure.failingURL(of: error))
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         page.applySiteSettings()
-        if let host = page.certificates.refusedUnchecked(host: webView.url?.host(percentEncoded: false), trust: webView.serverTrust) {
-            webView.stopLoading()
-            page.failure = .certificate(host: host)
-        }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -236,9 +241,9 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     }
 
     private func failed(with error: any Error) {
-        guard let failure = BrowserPage.Failure.load(error, refusedHosts: page.certificates.refusedHosts) else { return }
+        guard let failure = BrowserPage.Failure.load(error, refusedHosts: certificates.refusedHosts) else { return }
         page.downloads.failed = nil
-        page.failure = failure
+        page.failure = certificates.offering(failure, at: BrowserPage.Failure.failingURL(of: error))
         page.signIn.pageSettled()
     }
 
@@ -247,7 +252,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        page.certificates.evaluate(challenge, completionHandler: completionHandler)
+        certificates.evaluate(challenge, completionHandler: completionHandler)
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -291,7 +296,11 @@ extension BrowserPage.Failure {
         return .certificate(host: host)
     }
 
+    nonisolated static func failingURL(of error: any Error) -> URL? {
+        (error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL
+    }
+
     private nonisolated static func failingHost(of error: NSError) -> String {
-        (error.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.host(percentEncoded: false) ?? ""
+        failingURL(of: error)?.host(percentEncoded: false) ?? ""
     }
 }

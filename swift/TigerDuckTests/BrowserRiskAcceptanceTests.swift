@@ -8,53 +8,35 @@ import Testing
 struct BrowserRiskAcceptanceTests {
     private let host = "suggestionbox.ntust.edu.tw"
 
-    @Test("an acceptance holds for the host and the leaf it served when refused, nothing else")
+    private var refused: URL { URL(string: "https://Suggestionbox.ntust.edu.tw/form")! }
+
+    @Test("an acceptance holds for the refused host and the leaf it served then, nothing else")
     func onlyTheRefusedLeafOfItsHost() {
-        var browser = BrowserRiskAcceptance(launch: .init())
-        #expect(!browser.canAccept(host: host))
-        browser.accept(host: host)
-        #expect(!browser.allows("a", from: host))
-
-        browser.checked("a", from: host, letThrough: false)
-        #expect(browser.canAccept(host: host))
-        #expect(!browser.allows("a", from: host))
-        browser.accept(host: "Suggestionbox.ntust.edu.tw")
-
+        let browser = BrowserRiskAcceptance().accepting(.init(url: refused, leaf: "a"))
         #expect(browser.allows("a", from: host))
+        #expect(browser.allows("a", from: "SUGGESTIONBOX.ntust.edu.tw"))
         #expect(!browser.allows("b", from: host))
         #expect(!browser.allows("a", from: "i.ntust.edu.tw"))
         #expect(!browser.allows(nil, from: host))
+        #expect(!BrowserRiskAcceptance().allows("a", from: host))
     }
 
-    @Test("a new browser refuses a page carried over an earlier browser's accepted connection")
-    func aNewBrowserRefusesAReusedConnection() {
-        let launch = BrowserRiskAcceptance.Launch()
-        var first = BrowserRiskAcceptance(launch: launch)
-        first.checked("a", from: host, letThrough: false)
-        first.accept(host: host)
-        #expect(!first.refusesUnchecked("a", from: host))
+    @Test("a certificate failure offers the address that failed and the leaf its host served at the refusal")
+    func theOfferTakesTheLeafAtTheRefusal() {
+        let check = BrowserCertificateCheck()
+        let failure = BrowserPage.Failure.certificate(host: host)
+        #expect(check.offering(failure, at: refused) == failure)
 
-        var second = BrowserRiskAcceptance(launch: launch)
-        #expect(!second.allows("a", from: host))
-        #expect(second.refusesUnchecked("a", from: host))
-        #expect(!second.refusesUnchecked("b", from: host))
-        #expect(!BrowserRiskAcceptance(launch: .init()).refusesUnchecked("a", from: host))
+        check.notLetThrough("a", from: "i.ntust.edu.tw")
+        check.notLetThrough("b", from: host)
+        check.notLetThrough("c", from: "SUGGESTIONBOX.ntust.edu.tw")
+        let offered = check.offering(failure, at: refused)
+        #expect(offered == .certificate(host: host, refusal: .init(url: refused, leaf: "c")))
+        check.notLetThrough("d", from: host)
+        #expect(offered == .certificate(host: host, refusal: .init(url: refused, leaf: "c")))
 
-        second.checked("a", from: host, letThrough: false)
-        second.accept(host: host)
-        #expect(!second.refusesUnchecked("a", from: host))
-    }
-
-    @Test("a leaf the browser's own check let through, as after new pins arrive, is not refused")
-    func aLeafCheckedHereIsNotRefused() {
-        let launch = BrowserRiskAcceptance.Launch()
-        var first = BrowserRiskAcceptance(launch: launch)
-        first.checked("a", from: host, letThrough: false)
-        first.accept(host: host)
-
-        var second = BrowserRiskAcceptance(launch: launch)
-        second.checked("a", from: host, letThrough: true)
-        #expect(!second.refusesUnchecked("a", from: host))
+        #expect(check.offering(.unreachable(host: host), at: refused) == .unreachable(host: host))
+        #expect(check.offering(failure, at: nil) == failure)
     }
 
     @Test("the leaf is the SHA-256 of the served leaf certificate")

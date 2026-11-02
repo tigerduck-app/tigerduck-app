@@ -2,6 +2,7 @@
 import SwiftUI
 import Testing
 import UIKit
+import WebKit
 @testable import TigerDuck
 
 @MainActor
@@ -10,6 +11,7 @@ struct BrowserAddressSheetTests {
     typealias Screen = TLSPinPromptTests.Screen
 
     private static let host = "suggestionbox.ntust.edu.tw"
+    private static let refused = URL(string: "https://\(host)/")!
     private static let leaf = "0f0e"
 
     /// The browser's address sheet as `TigerDuckBrowserView` presents it.
@@ -31,12 +33,10 @@ struct BrowserAddressSheetTests {
         }
     }
 
+    /// The page before shows while its link to `refused` was refused.
     private static func refusedPage(checked: Bool = true) -> BrowserPage {
-        let page = BrowserPage()
-        page.certificates.acceptance = BrowserRiskAcceptance(launch: .init())
-        page.shown.start = URL(string: "https://\(host)/")
-        page.failure = .certificate(host: host)
-        if checked { page.certificates.acceptance.checked(leaf, from: host, letThrough: false) }
+        let page = BrowserAtRiskTests.refusedPage(refused, leaf: leaf)
+        if !checked { page.failure = .certificate(host: host) }
         return page
     }
 
@@ -83,22 +83,26 @@ struct BrowserAddressSheetTests {
         }
     }
 
-    @Test("opening at risk closes the sheet and accepts the refused leaf for this browser only")
+    @Test("the sheet names the refused address, and opening it at risk loads that address in a store of its own")
     func openingAtRiskAcceptsTheLeaf() async throws {
         try await withAccessibilityAutomation {
             let page = Self.refusedPage()
             let window = try Self.window(page)
             defer { window.isHidden = true }
             let sheet = try await Self.shownSheet(in: window)
+            #expect(accessibilityElement(labeled: Self.refused.absoluteString, in: sheet) != nil)
+            #expect(accessibilityElement(labeled: try #require(page.address?.absoluteString), in: sheet) == nil)
 
             #expect(try #require(accessibilityElement(labeled: Self.acceptRisk, in: sheet)).accessibilityActivate())
             try await waitUntil { window.rootViewController?.presentedViewController == nil && page.failure == nil }
+            #expect(page.openedAtRisk == Self.refused)
+            #expect(!page.store.isPersistent)
             #expect(page.certificates.acceptance.allows(Self.leaf, from: Self.host))
             #expect(!BrowserPage().certificates.acceptance.allows(Self.leaf, from: Self.host))
         }
     }
 
-    @Test("with no certificate seen for the host, the sheet says it was refused and offers nothing")
+    @Test("with no leaf known from the refusal, the sheet says it was refused and offers nothing")
     func nothingToAcceptWithoutASeenCertificate() async throws {
         try await withAccessibilityAutomation {
             let window = try Self.window(Self.refusedPage(checked: false))

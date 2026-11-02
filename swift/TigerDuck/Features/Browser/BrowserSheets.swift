@@ -82,7 +82,7 @@ private struct BrowserAddressView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(page.address?.absoluteString ?? "")
+            Text(page.sheetAddress?.absoluteString ?? "")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
@@ -127,7 +127,7 @@ private struct BrowserAddressView: View {
                 Spacer(minLength: 0)
             }
             .padding(TigerDuckTheme.Spacing.lg)
-            if page.hostToOpenAtRisk != nil {
+            if page.refusalToOpenAtRisk != nil {
                 Divider().padding(.leading, 52)
                 Button { afterClosing { page.openAtRisk() } } label: {
                     HStack(spacing: TigerDuckTheme.Spacing.md) {

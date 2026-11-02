@@ -6,26 +6,28 @@ import WebKit
 @Observable
 final class BrowserPage {
     enum Failure: Equatable {
-        case certificate(host: String)
+        /// With the page the student may open at risk, once the refused leaf is known.
+        case certificate(host: String, refusal: BrowserRiskAcceptance.Refusal? = nil)
         case unreachable(host: String)
     }
 
     let shown = BrowserShownPage()
     var failure: Failure?
-    let certificates = BrowserCertificateCheck()
+    private(set) var certificates = BrowserCertificateCheck()
     var outside: URL?
 
     let signIn: BrowserSignIn
     let find = BrowserFind()
     let zoomPeek = BrowserZoomPeek()
     private(set) var site = BrowserSiteSetting()
-    private let opening: BrowserData.Opening
+    private var opening: BrowserData.Opening
     let downloads = BrowserDownloads()
     nonisolated static let downloadsRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("BrowserDownloads", isDirectory: true)
 
     init() {
-        opening = BrowserData.shared.opening
+        let opening = BrowserData.shared.opening
+        self.opening = opening
         let store = opening.store
         signIn = BrowserSignIn(
             hasSession: { BrowserRouting.hasMoodleSession(await store.httpCookieStore.allCookies()) },
@@ -59,22 +61,25 @@ final class BrowserPage {
 
     var host: String { address?.host(percentEncoded: false) ?? "" }
 
+    /// The address the address sheet names: the refused page's while it is the one shown.
+    var sheetAddress: URL? { refusalToOpenAtRisk?.url ?? address }
+
+    var openedAtRisk: URL? { opening.openedAtRisk }
+    var isAtRisk: Bool { openedAtRisk != nil }
+
     var serverTrust: SecTrust? { webView?.serverTrust }
 
     enum Connection { case secure, refused, unknown }
 
-    /// Only a page that loaded over a trusted connection is called secure, not one the student
-    /// opened at their own risk.
-    var connection: Connection {
-        let trusted = serverTrust.map { !certificates.acceptance.allows(BrowserRiskAcceptance.leaf(of: $0), from: host) }
-        return Self.connection(failure: failure, hasTrust: trusted ?? false)
-    }
+    /// Only a page that loaded over a trusted connection is called secure, and none in a browser
+    /// the student opened a page in at their own risk.
+    var connection: Connection { Self.connection(failure: failure, hasTrust: serverTrust != nil, isAtRisk: isAtRisk) }
 
-    static func connection(failure: Failure?, hasTrust: Bool) -> Connection {
+    static func connection(failure: Failure?, hasTrust: Bool, isAtRisk: Bool = false) -> Connection {
         switch failure {
         case .certificate: .refused
         case .unreachable: .unknown
-        case nil: hasTrust ? .secure : .unknown
+        case nil: hasTrust && !isAtRisk ? .secure : .unknown
         }
     }
 
@@ -93,17 +98,21 @@ final class BrowserPage {
         }
     }
 
-    /// The host whose refused certificate the student may open anyway.
-    var hostToOpenAtRisk: String? {
-        guard case .certificate(let host) = failure, certificates.acceptance.canAccept(host: host) else { return nil }
-        return host
+    var refusalToOpenAtRisk: BrowserRiskAcceptance.Refusal? {
+        guard case .certificate(_, let refusal?) = failure else { return nil }
+        return refusal
     }
 
-    /// Accepts the refused certificate for this browser and loads the page again.
+    /// Opens the refused page again, its leaf let through, in a new store that starts empty, keeps
+    /// nothing on disk and goes with this browser. The browser stays in that store, wherever the
+    /// page leads, and no sign-in runs in it again; `TigerDuckBrowserView` builds a web view on it.
     func openAtRisk() {
-        guard let host = hostToOpenAtRisk else { return }
-        certificates.acceptance.accept(host: host)
-        reloadOrStop()
+        guard let refusal = refusalToOpenAtRisk else { return }
+        signIn.close()
+        certificates = BrowserCertificateCheck(acceptance: certificates.acceptance.accepting(refusal))
+        opening = BrowserData.Opening(store: .nonPersistent(), resets: opening.resets, openedAtRisk: refusal.url)
+        failure = nil
+        downloads.failed = nil
     }
 
     /// A download never commits as a page, so the address still names the page it started from.

@@ -2,60 +2,33 @@ import CryptoKit
 import Foundation
 import Security
 
-/// The refused certificates the student opened anyway in one browser. An acceptance holds for its
-/// host and the leaf that host served when it was refused, in memory, until the browser closes.
-/// It reaches only that browser's web view, never the app's own requests.
+/// The refused certificates the student opened anyway in one browser, each the leaf its host served
+/// when the page was refused. Each acceptance opens a store of its own (`BrowserPage.openAtRisk`),
+/// so it reaches only the web view on that store, never the app's own requests or another browser.
 struct BrowserRiskAcceptance {
-    /// The acceptances of every browser since launch, which only ever refuse. WebKit may carry a
-    /// later browser's page over a connection an earlier one accepted, or resume its TLS session,
-    /// without asking about the certificate again.
-    final class Launch {
-        static let shared = Launch()
-        fileprivate var accepted: Set<Served> = []
-    }
-
-    fileprivate struct Served: Hashable {
-        let host: String
+    /// A page refused for its certificate: its address and the leaf its host served at the refusal.
+    struct Refusal: Equatable {
+        let url: URL
         let leaf: String
 
-        init(_ host: String, _ leaf: String) {
-            self.host = host.lowercased()
-            self.leaf = leaf
-        }
+        var host: String { BrowserRouting.host(of: url) ?? "" }
     }
 
-    private let launch: Launch
-    private var lastServed: [String: String] = [:]
+    private struct Served: Hashable {
+        let host: String
+        let leaf: String
+    }
+
     private var accepted: Set<Served> = []
-    private var letThrough: Set<Served> = []
 
-    init(launch: Launch = .shared) {
-        self.launch = launch
-    }
-
-    /// Notes a leaf the browser's certificate check saw, and whether the check let it through.
-    mutating func checked(_ leaf: String, from host: String, letThrough passed: Bool) {
-        lastServed[host.lowercased()] = leaf
-        if passed { letThrough.insert(Served(host, leaf)) }
-    }
-
-    func canAccept(host: String) -> Bool { lastServed[host.lowercased()] != nil }
-
-    /// Accepts the leaf the host served last.
-    mutating func accept(host: String) {
-        guard let leaf = lastServed[host.lowercased()] else { return }
-        accepted.insert(Served(host, leaf))
-        launch.accepted.insert(Served(host, leaf))
+    func accepting(_ refusal: Refusal) -> Self {
+        var acceptance = self
+        acceptance.accepted.insert(Served(host: refusal.host, leaf: refusal.leaf))
+        return acceptance
     }
 
     func allows(_ leaf: String?, from host: String) -> Bool {
-        leaf.map { accepted.contains(Served(host, $0)) } ?? false
-    }
-
-    /// Whether a page arrived with a leaf another browser accepted and this one never checked.
-    func refusesUnchecked(_ leaf: String, from host: String) -> Bool {
-        let served = Served(host, leaf)
-        return launch.accepted.contains(served) && !accepted.contains(served) && !letThrough.contains(served)
+        leaf.map { accepted.contains(Served(host: host.lowercased(), leaf: $0)) } ?? false
     }
 
     /// The SHA-256 of the leaf's DER, as hex.
@@ -65,12 +38,12 @@ struct BrowserRiskAcceptance {
     }
 }
 
-/// The browser's certificate check: `TLSPinningDelegate` for pins and system trust, the hosts it
-/// refused, and the certificates the student opened anyway.
-@Observable
+/// One web view's certificate check: `TLSPinningDelegate` for pins and system trust, the hosts it
+/// refused with the leaf each served then, and the refused leaves the student opened anyway.
 final class BrowserCertificateCheck {
-    var acceptance: BrowserRiskAcceptance
-    @ObservationIgnored private(set) var refusedHosts: Set<String> = []
+    let acceptance: BrowserRiskAcceptance
+    private(set) var refusedHosts: Set<String> = []
+    private var refusedLeaves: [String: String] = [:]
 
     init(acceptance: BrowserRiskAcceptance = BrowserRiskAcceptance()) {
         self.acceptance = acceptance
@@ -85,26 +58,29 @@ final class BrowserCertificateCheck {
             ? challenge.protectionSpace.serverTrust : nil
         let leaf = BrowserRiskAcceptance.leaf(of: trust)
         if let trust, acceptance.allows(leaf, from: host) {
-            refusedHosts.remove(host)
             completionHandler(.useCredential, URLCredential(trust: trust))
             return
         }
         TLSPinningDelegate.shared.evaluate(challenge) { disposition, credential in
             Task { @MainActor in
                 if disposition == .cancelAuthenticationChallenge { self.refusedHosts.insert(host) }
-                if let leaf { self.acceptance.checked(leaf, from: host, letThrough: disposition == .useCredential) }
+                // System trust may still refuse what the pins hand on, so each leaf not let through counts.
+                if disposition != .useCredential, let leaf { self.notLetThrough(leaf, from: host) }
                 completionHandler(disposition, credential)
             }
         }
     }
 
-    /// The host of a page that came over a connection a closed browser accepted, which reached no
-    /// check here: it is refused again until this browser accepts it.
-    func refusedUnchecked(host: String?, trust: SecTrust?) -> String? {
-        guard let host, let leaf = BrowserRiskAcceptance.leaf(of: trust),
-              acceptance.refusesUnchecked(leaf, from: host) else { return nil }
-        refusedHosts.insert(host)
-        acceptance.checked(leaf, from: host, letThrough: false)
-        return host
+    /// Notes the leaf a host served in a challenge this check did not let through itself.
+    func notLetThrough(_ leaf: String, from host: String) {
+        refusedLeaves[host.lowercased()] = leaf
+    }
+
+    /// The failure with the page the student may open at risk, when it is a certificate's: the
+    /// address that failed and the leaf its host served at the refusal.
+    func offering(_ failure: BrowserPage.Failure, at failingURL: URL?) -> BrowserPage.Failure {
+        guard case .certificate(let host, _) = failure, let failingURL,
+              let leaf = refusedLeaves[BrowserRouting.host(of: failingURL) ?? ""] else { return failure }
+        return .certificate(host: host, refusal: BrowserRiskAcceptance.Refusal(url: failingURL, leaf: leaf))
     }
 }

@@ -36,6 +36,8 @@ final class BrowserData: AccountScoped {
     struct Opening {
         let store: WKWebsiteDataStore
         let resets: Int
+        /// The refused page the student opened at their own risk, which gets a store of its own.
+        var openedAtRisk: URL?
     }
 
     var opening: Opening { Opening(store: store, resets: storeResets) }
