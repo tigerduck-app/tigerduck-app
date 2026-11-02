@@ -62,7 +62,7 @@ final class BrowserPage {
     var host: String { address?.host(percentEncoded: false) ?? "" }
 
     /// The address the address sheet names: the refused page's while it is the one shown.
-    var sheetAddress: URL? { refusalToOpenAtRisk?.url ?? address }
+    var sheetAddress: URL? { refusalToOpenAtRisk?.pageToOpen ?? address }
 
     var openedAtRisk: URL? { opening.openedAtRisk }
     var isAtRisk: Bool { openedAtRisk != nil }
@@ -110,7 +110,7 @@ final class BrowserPage {
         guard let refusal = refusalToOpenAtRisk else { return }
         signIn.close()
         certificates = certificates.accepting(refusal)
-        opening = BrowserData.Opening(store: .nonPersistent(), resets: opening.resets, openedAtRisk: refusal.url)
+        opening = BrowserData.Opening(store: .nonPersistent(), resets: opening.resets, openedAtRisk: refusal.pageToOpen)
         failure = nil
         downloads.failed = nil
     }
