@@ -109,7 +109,7 @@ final class BrowserPage {
     func openAtRisk() {
         guard let refusal = refusalToOpenAtRisk else { return }
         signIn.close()
-        certificates = BrowserCertificateCheck(acceptance: certificates.acceptance.accepting(refusal))
+        certificates = certificates.accepting(refusal)
         opening = BrowserData.Opening(store: .nonPersistent(), resets: opening.resets, openedAtRisk: refusal.url)
         failure = nil
         downloads.failed = nil

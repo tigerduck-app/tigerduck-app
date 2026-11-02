@@ -4,7 +4,7 @@ import TigerDuckCore
 /// `api/semestersinfo` feeds the official course-query site's semester menu. Its `LoginEnable`
 /// marks the one term course selection serves, which the list scrape lacks.
 enum SemesterCatalog {
-    private static let semestersAPI = URL.knownGood(
+    static let semestersAPI = URL.knownGood(
         "https://querycourse.ntust.edu.tw/QueryCourse/api/semestersinfo"
     )
 

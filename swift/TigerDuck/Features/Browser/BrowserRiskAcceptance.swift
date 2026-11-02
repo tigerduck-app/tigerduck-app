@@ -38,15 +38,29 @@ struct BrowserRiskAcceptance {
     }
 }
 
-/// One web view's certificate check: `TLSPinningDelegate` for pins and system trust, the hosts it
-/// refused with the leaf each served then, and the refused leaves the student opened anyway.
+/// One web view's certificate check: `TLSPinningDelegate` for the hosts the app signs in to, the
+/// system's trust store for every other, the hosts it refused with the leaf each served then, and
+/// the refused leaves the student opened anyway.
 final class BrowserCertificateCheck {
     let acceptance: BrowserRiskAcceptance
     private(set) var refusedHosts: Set<String> = []
     private var refusedLeaves: [String: String] = [:]
+    private let pinning: TLSPinningDelegate
+    private let pinnedHosts: Set<String>
 
-    init(acceptance: BrowserRiskAcceptance = BrowserRiskAcceptance()) {
+    init(
+        acceptance: BrowserRiskAcceptance = BrowserRiskAcceptance(),
+        pinning: TLSPinningDelegate = .shared,
+        pinnedHosts: Set<String> = BrowserPinnedHosts.hosts
+    ) {
         self.acceptance = acceptance
+        self.pinning = pinning
+        self.pinnedHosts = pinnedHosts
+    }
+
+    /// The same check, letting `refusal`'s leaf through as well.
+    func accepting(_ refusal: BrowserRiskAcceptance.Refusal) -> BrowserCertificateCheck {
+        BrowserCertificateCheck(acceptance: acceptance.accepting(refusal), pinning: pinning, pinnedHosts: pinnedHosts)
     }
 
     func evaluate(
@@ -61,7 +75,12 @@ final class BrowserCertificateCheck {
             completionHandler(.useCredential, URLCredential(trust: trust))
             return
         }
-        TLSPinningDelegate.shared.evaluate(challenge) { disposition, credential in
+        guard pinnedHosts.contains(host.lowercased()) else {
+            if let leaf { notLetThrough(leaf, from: host) }
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        pinning.evaluate(challenge) { disposition, credential in
             Task { @MainActor in
                 if disposition == .cancelAuthenticationChallenge { self.refusedHosts.insert(host) }
                 // System trust may still refuse what the pins hand on, so each leaf not let through counts.

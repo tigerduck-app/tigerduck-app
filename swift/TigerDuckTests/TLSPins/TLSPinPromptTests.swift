@@ -307,7 +307,7 @@ struct TLSPinPromptTests {
         }
     }
 
-    /// The prompt suggestionbox.ntust.edu.tw raised before the pins listed Let's Encrypt.
+    /// The prompt suggestionbox.ntust.edu.tw raised while the browser held every school host to the pins.
     static let letsEncryptMismatch = TLSPinMismatch(
         setID: "ntust", host: "suggestionbox.ntust.edu.tw", domains: ["ntust.edu.tw"], issuerOrganization: "Let's Encrypt",
         certificates: TLSPinningDelegateTests.letsEncryptChain.map { TLSCertificateSummary(der: Data($0)) },

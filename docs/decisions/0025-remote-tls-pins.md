@@ -45,16 +45,25 @@ no build pinned failed every NTUST request until the user updated.
   after a Cancel, the next launch whose check fails asks again. A background refusal waits for the
   next foreground. A prompt closed without an answer, by a swipe or Escape, may be asked again in
   the same launch once a browser opens, where the student reloads the refused page.
-- The TigerDuck browser can open a page it refused for its certificate, for any reason, at the
-  student's risk. The acceptance holds for that host and the leaf it served at the refusal, and
-  opens the page in a new `WKWebsiteDataStore.nonPersistent()` store. WebKit gives each such store
-  a network session of its own (`WebsiteDataStore::createNonPersistent` makes a new ephemeral
-  `SessionID`), so none of the browser's cookies, cache or connections reach the page, ssoam2's
-  session included, and nothing it sets leaves the store. The browser stays in that store wherever
-  the page leads, as returning to its own store for another host would let a page the student
-  cannot trust send the signed-in store to ssoam2 with a return address of its choosing. No
-  sign-in runs there; the student signs in by hand. Its pages are never shown as secure, and the
-  store goes when the browser closes.
+- Pins guard only the hosts the app reaches on its own and signs in to: its sessions with SSO,
+  Moodle, School Mail, the portal, the library API and the other school services, and the hidden
+  page a browser sign-in runs in. The TigerDuck browser checks pins only for those hosts
+  (`BrowserPinnedHosts`, built from the services' own addresses), where the pins win, and judges
+  every other host by the system's trust store alone, with no pin check and no prompt. A page the
+  student opens there carries no secret the app hands it, and pinning it would refuse each
+  certificate change a school office makes on a site the app never signs in to, as
+  suggestionbox.ntust.edu.tw's move to Let's Encrypt did, and ask the student about it.
+- The TigerDuck browser can open a page it refused for its certificate, by system trust or by
+  the pins of a host the app signs in to, at the student's risk. The acceptance holds for that
+  host and the leaf it served at the refusal, and opens the page in a new
+  `WKWebsiteDataStore.nonPersistent()` store. WebKit gives each such store a network session of
+  its own (`WebsiteDataStore::createNonPersistent` makes a new ephemeral `SessionID`), so none of
+  the browser's cookies, cache or connections reach the page, ssoam2's session included, and
+  nothing it sets leaves the store. The browser stays in that store wherever the page leads, as
+  returning to its own store for another host would let a page the student cannot trust send the
+  signed-in store to ssoam2 with a return address of its choosing. No sign-in runs there; the
+  student signs in by hand. Its pages are never shown as secure, and the store goes when the
+  browser closes.
 - `api.tigerduck.app` is not pinned. Cloudflare rotates its edge certificates across several CAs,
   so a pin would break the app at an unannounced rotation; Certificate Transparency monitoring of
   the zone stands in for it.
