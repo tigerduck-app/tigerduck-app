@@ -16,6 +16,7 @@ struct BrowserSignInTests {
         var sessions: [Bool] = []
         var hasSession = false
         var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        var sessionTakes: TimeInterval = 0
     }
 
     private static func signIn(_ steps: Steps) -> BrowserSignIn {
@@ -27,6 +28,7 @@ struct BrowserSignInTests {
             },
             signInWithSession: {
                 steps.taken.append("session")
+                steps.clock += steps.sessionTakes
                 return steps.sessions.isEmpty ? false : steps.sessions.removeFirst()
             },
             now: { steps.clock }
@@ -195,6 +197,100 @@ struct BrowserSignInTests {
         #expect(steps.taken.isEmpty)
         #expect(steps.loaded.isEmpty)
         #expect(signIn.phase == .idle)
+    }
+
+    private static let schoolPage = URL(string: "https://stuinfosys.ntust.edu.tw/StudentInformation")!
+    private static let otherSchoolPage = URL(string: "https://courseselection.ntust.edu.tw/First/A06/A06")!
+
+    @Test func aSchoolSiteLoadsAsItIsAndSignsInWithTheSSOSessionAloneWhenSentToSSO() async {
+        let steps = Steps()
+        steps.sessions = [true]
+        let signIn = Self.signIn(steps)
+
+        await signIn.open(Self.schoolPage)
+        #expect(steps.loaded == [Self.schoolPage])
+        #expect(signIn.reachedSignInPage(returningTo: Self.schoolPage))
+        await signIn.settle()
+
+        #expect(steps.taken == ["session"])
+        #expect(steps.loaded == [Self.schoolPage, Self.schoolPage])
+        signIn.pageSettled()
+        #expect(signIn.phase == .idle)
+    }
+
+    @Test func ssosFormASchoolSiteCannotPassIsShownOnceAndNotSignedInAgain() async {
+        let steps = Steps()
+        steps.sessions = [false, false]
+        let signIn = Self.signIn(steps)
+
+        #expect(signIn.reachedSignInPage(returningTo: Self.schoolPage))
+        await signIn.settle()
+        // The page loads again, and SSO's form, a password or reCAPTCHA, is the student's.
+        #expect(steps.loaded == [Self.schoolPage])
+        steps.clock += 5
+        #expect(!signIn.reachedSignInPage(returningTo: Self.schoolPage))
+        #expect(!signIn.reachedSignInPage(returningTo: Self.schoolPage))
+        await signIn.settle()
+        signIn.pageSettled()
+
+        #expect(steps.taken == ["session"])
+        #expect(steps.loaded == [Self.schoolPage])
+        #expect(signIn.phase == .idle)
+    }
+
+    @Test func aSchoolSiteThatDropsTheSessionGetsSSOsFormRatherThanALoop() async {
+        let steps = Steps()
+        steps.sessions = [true, true]
+        let signIn = Self.signIn(steps)
+        signIn.reachedSignInPage(returningTo: Self.schoolPage)
+        await signIn.settle()
+
+        steps.clock += 5
+        #expect(!signIn.reachedSignInPage(returningTo: Self.schoolPage))
+
+        #expect(steps.taken == ["session"])
+    }
+
+    @Test func eachSchoolSiteAndMoodleGetASignInOfTheirOwn() async {
+        let steps = Steps()
+        steps.keys = [Self.keyLink]
+        let signIn = Self.signIn(steps)
+        signIn.reachedSignInPage(returningTo: Self.schoolPage)
+        await signIn.settle()
+
+        steps.clock += 5
+        #expect(signIn.reachedSignInPage(returningTo: Self.otherSchoolPage))
+        await signIn.settle()
+        #expect(signIn.reachedSignInPage(returningTo: Self.page))
+        await signIn.settle()
+
+        #expect(steps.taken == ["session", "session", "key"])
+        #expect(steps.loaded == [Self.schoolPage, Self.otherSchoolPage, Self.keyLink])
+    }
+
+    @Test func aSlowFailedSignInStillLeavesSSOsFormToTheStudent() async {
+        let steps = Steps()
+        steps.sessionTakes = BrowserSignIn.retryWindow + 30
+        let signIn = Self.signIn(steps)
+        signIn.reachedSignInPage(returningTo: Self.schoolPage)
+        await signIn.settle()
+
+        steps.clock += 5
+        #expect(!signIn.reachedSignInPage(returningTo: Self.schoolPage))
+        #expect(steps.taken == ["session"])
+    }
+
+    @Test func aSchoolSiteSignsInAgainOnceTheRetryWindowPassed() async {
+        let steps = Steps()
+        let signIn = Self.signIn(steps)
+        signIn.reachedSignInPage(returningTo: Self.schoolPage)
+        await signIn.settle()
+
+        steps.clock += BrowserSignIn.retryWindow + 1
+        #expect(signIn.reachedSignInPage(returningTo: Self.schoolPage))
+        await signIn.settle()
+
+        #expect(steps.taken == ["session", "session"])
     }
 
     @Test func aSignInPageReachedWhileASignInRunsChangesNothing() async {
