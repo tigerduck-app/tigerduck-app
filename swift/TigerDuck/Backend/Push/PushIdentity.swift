@@ -24,7 +24,7 @@ nonisolated struct PushIdentity: Sendable {
         let delete: @Sendable (_ key: String) -> Void
 
         static let keychain = Store(
-            // `loadString` also reads an item saved before v1.3.1, which `loadIfReadable` skips.
+            // Bare Keychain items need `loadString`; `loadIfReadable` does not read them.
             read: { try KeychainManager.loadString(key: $0) ?? KeychainManager.loadStringIfReadable(key: $0) },
             save: { KeychainManager.saveStringReportingSuccess(key: $0, value: $1) },
             delete: { KeychainManager.delete(key: $0) }
