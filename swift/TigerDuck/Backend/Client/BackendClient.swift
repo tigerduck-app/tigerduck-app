@@ -16,6 +16,7 @@ nonisolated struct BackendRequest: Sendable {
     var postsCredentials = false
     var baseURLOverride: URL?
     var signIn: SignIn?
+    var conditional: ConditionalGet?
 
     init(_ method: String, _ path: String...) {
         self.method = method
@@ -201,7 +202,7 @@ nonisolated final class BackendClient: Sendable {
         for (name, value) in request.headers { urlRequest.setValue(value, forHTTPHeaderField: name) }
         if let timeout = request.timeout { urlRequest.timeoutInterval = timeout }
         if let cachePolicy = request.cachePolicy { urlRequest.cachePolicy = cachePolicy }
-        return urlRequest
+        return request.conditional?.request(urlRequest) ?? urlRequest
     }
 
     static func apiBase(_ server: URL) -> URL {

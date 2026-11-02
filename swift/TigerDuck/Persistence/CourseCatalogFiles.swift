@@ -7,7 +7,7 @@ nonisolated struct CourseCatalogFiles: Sendable {
         self.folders = folders
     }
 
-    func saveCourseCatalog(_ catalog: StoredCourseCatalog, semester: String, language: String) {
+    func saveCourseCatalog(_ catalog: ETaggedBody, semester: String, language: String) {
         let url = courseCatalogURL(semester: semester, language: language)
         do {
             let encoder = PropertyListEncoder()
@@ -18,11 +18,11 @@ nonisolated struct CourseCatalogFiles: Sendable {
         }
     }
 
-    func loadCourseCatalog(semester: String, language: String) -> StoredCourseCatalog? {
+    func loadCourseCatalog(semester: String, language: String) -> ETaggedBody? {
         let url = courseCatalogURL(semester: semester, language: language)
         guard let data = try? Data(contentsOf: url) else { return nil }
         do {
-            return try PropertyListDecoder().decode(StoredCourseCatalog.self, from: data)
+            return try PropertyListDecoder().decode(ETaggedBody.self, from: data)
         } catch {
             AppLogger.captureError(error, context: ["phase": "dataCache.loadCourseCatalog"])
             return nil

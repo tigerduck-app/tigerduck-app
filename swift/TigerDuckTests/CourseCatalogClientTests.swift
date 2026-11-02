@@ -46,7 +46,7 @@ struct CourseCatalogClientTests {
             Issue.record("expected a catalog, got \(answer)")
             return
         }
-        #expect(stored == StoredCourseCatalog(body: body, etag: #"W/"b""#))
+        #expect(stored == ETaggedBody(body: body, etag: #"W/"b""#))
         #expect(SettingsAPIStub.requests(for: url).first?.value(forHTTPHeaderField: "If-None-Match") == nil)
     }
 

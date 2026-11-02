@@ -362,8 +362,8 @@ struct CourseSearchTests {
         return TestCache(cacheDir: root.appending(path: "cache"), persistentDir: root.appending(path: "persistent"))
     }
 
-    private static func stored(_ language: String, etag: String, rows: [Row]? = nil) throws -> StoredCourseCatalog {
-        StoredCourseCatalog(body: try body(language, rows: rows), etag: etag)
+    private static func stored(_ language: String, etag: String, rows: [Row]? = nil) throws -> ETaggedBody {
+        ETaggedBody(body: try body(language, rows: rows), etag: etag)
     }
 
     /// A backend that logs each language and ETag it is asked with, waits for `gate`, then answers.

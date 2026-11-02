@@ -68,20 +68,12 @@ final class AcademicCalendarStore: AccountScoped {
         let generation = endpointGeneration
         var request = BackendRequest("GET", "calendar", "semesters")
         request.authenticated = false
-        // The ETag is ours to send; URLCache would serve its copy for the feed's max-age and hide a change.
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.returnedStatuses = [304]
-        let tag = Defaults[.academicCalendarETag]
-        if !tag.isEmpty {
-            request.headers["If-None-Match"] = tag
-        }
 
         do {
-            let response = try await BackendClient(session: .shared).send(request)
-            let (data, http) = (response.data, response.http)
+            let answer = try await BackendClient(session: .shared).revalidate(request, etag: Defaults[.academicCalendarETag])
             ServerStatusTracker.shared.noteBackendReachable(true)
-            if http.statusCode == 304 { return false }
-            let dto = try JSONDecoder().decode(AcademicCalendarDTO.self, from: data)
+            guard let copy = answer?.copy else { return false }
+            let dto = try JSONDecoder().decode(AcademicCalendarDTO.self, from: copy.body)
             let parsed = AcademicCalendar(dto: dto)
             guard generation == endpointGeneration else {
                 logger.info("dropped a calendar answered by a previous endpoint")
@@ -89,7 +81,7 @@ final class AcademicCalendarStore: AccountScoped {
             }
             let changed = parsed != calendar
             if changed { calendar = parsed }
-            Defaults[.academicCalendarETag] = http.value(forHTTPHeaderField: "ETag") ?? ""
+            Defaults[.academicCalendarETag] = copy.etag ?? ""
             if let encoded = try? JSONEncoder().encode(parsed) {
                 Defaults[.academicCalendarCache] = encoded
             }
