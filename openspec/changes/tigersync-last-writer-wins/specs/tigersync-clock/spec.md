@@ -37,9 +37,7 @@ that value as the last it issued. Two edits on one device SHALL never get the sa
 ### Requirement: A device ahead of the backend caps its stamps
 A device SHALL take its current time as no later than its estimate of the backend's time plus
 five seconds, the estimate being the last `X-TigerSync-Clock` value it heard plus the device
-time elapsed since. A device that has not heard the backend SHALL stamp uncapped, and SHALL
-re-stamp an edit the backend refuses as ahead by this rule, lowering its last issued value to
-the cap first.
+time elapsed since. A device that has not heard the backend SHALL stamp uncapped.
 
 #### Scenario: Device clock a minute ahead
 - **WHEN** the device clock reads 10:01:00 and it heard the backend's 10:00:00 at that moment
@@ -49,9 +47,14 @@ the cap first.
 - **WHEN** a device whose clock runs a minute ahead makes an edit, the write is stored but its response is lost, another device then changes the same field, and the first device sends the edit again
 - **THEN** the retry loses and the other device's value stays
 
+### Requirement: A device re-stamps an edit refused as ahead
+When the backend refuses an edit with `409 clock_ahead`, the device SHALL re-stamp that edit at
+the `X-TigerSync-Clock` value the refusal carries plus one tick and send it again. A device that
+keeps a last issued value SHALL NOT lower it to re-stamp.
+
 #### Scenario: Edit made before the device heard the backend
-- **WHEN** a device whose clock runs a minute ahead stamps an edit before it has heard the backend, and the backend refuses the edit as ahead
-- **THEN** the device re-stamps it at the backend's time plus five seconds and sends it again, and its next edit is stamped by the cap
+- **WHEN** a device whose clock runs a minute ahead stamps an edit before it has heard the backend, and the backend refuses the edit as ahead with its clock at 10:00:00
+- **THEN** the device re-stamps it at 10:00:00 plus one microsecond and sends it again, and its last issued value stays the value it first stamped
 
 ### Requirement: Only user edits are stamped
 A view appearing, a school or Moodle fetch, an automatically assigned course colour, a roster
