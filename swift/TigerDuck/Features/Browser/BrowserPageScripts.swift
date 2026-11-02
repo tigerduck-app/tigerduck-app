@@ -80,8 +80,14 @@ enum BrowserPageScripts {
     private nonisolated static let darkenWithDarkReader = """
     (function() {
       var dark = matchMedia('(prefers-color-scheme: dark)');
-      // Find's spotlight keeps the colors it gives it.
-      var fixes = { ignoreInlineStyle: ['[data-tigerduck-find-light]'] };
+      // Find's spotlight keeps the colors it gives it. iOS fills a native button with its accent
+      // blue, which hides text a page colors inline for a light button, so such a button gets a
+      // face of Dark Reader's.
+      var fixes = {
+        ignoreInlineStyle: ['[data-tigerduck-find-light]'],
+        css: ':where(input:is([type="submit" i], [type="button" i], [type="reset" i])[data-darkreader-inline-color], '
+          + 'button[data-darkreader-inline-color]) { background-color: ${#e9e9ed}; }'
+      };
       // Lets a cross-origin stylesheet be recolored where its server allows CORS.
       DarkReader.setFetchMethod(window.fetch);
       // Dark Reader puts this rule in each sheet it adopts over one of the page's own.
@@ -109,8 +115,10 @@ enum BrowserPageScripts {
           if (own.length !== adopted.length) document.adoptedStyleSheets = adopted;
         }
       }
+      // Dark Reader runs in the main frame only, so a frameset's pages stay light and darkening
+      // the frameset itself would only border them in black.
       function update() {
-        var wanted = dark.matches && drawsLight();
+        var wanted = dark.matches && !document.querySelector('frameset') && drawsLight();
         if (wanted === DarkReader.isEnabled()) return;
         if (wanted) DarkReader.enable({}, fixes);
         else DarkReader.disable();

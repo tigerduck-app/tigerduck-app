@@ -84,6 +84,23 @@ struct NTUSTPortalParserTests {
         ])
     }
 
+    @Test("the campus software page, in either language, opens the software site's sign-in")
+    func campusSoftware() throws {
+        let links = try #require(Self.links(PortalPages.page([
+            ("service-6", [
+                ("校園授權軟體下載", "https://www.cc.ntust.edu.tw/p/412-1050-8352.php?Lang=zh-tw"),
+                ("Campus Software Service", "http://www.cc.ntust.edu.tw/p/412-1050-8701.php?Lang=en"),
+                ("Other", "https://www.cc.ntust.edu.tw/p/412-1050-1.php?Lang=zh-tw"),
+            ]),
+        ])))
+
+        #expect(links.map(\.url.absoluteString) == [
+            "https://software.ntust.edu.tw/websoftware/login.aspx",
+            "https://software.ntust.edu.tw/websoftware/login.aspx",
+            "https://www.cc.ntust.edu.tw/p/412-1050-1.php?Lang=zh-tw",
+        ])
+    }
+
     @Test("a portal with an empty service block has no links, and a page without one is no portal")
     func emptyOrChanged() {
         #expect(Self.links(PortalPages.page([])) == [])
