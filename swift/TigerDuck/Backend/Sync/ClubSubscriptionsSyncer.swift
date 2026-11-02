@@ -13,7 +13,7 @@ final class ClubSubscriptionsSyncer {
     private let startingSignIn: () async -> SignIn
     private let client: Client
     private let gate = FullSyncGate()
-    private var snapshot: SettingsDocument?
+    private var snapshot = SignInBound<SettingsDocument?>(empty: nil)
     /// Counts finished runs, so that a full sync can tell whether its snapshot predates one.
     private(set) var finishedRuns = 0
 
@@ -33,13 +33,25 @@ final class ClubSubscriptionsSyncer {
         }
     }
 
-    /// Sends this device's changes and takes the server's. `snapshot` is the copy a full sync
-    /// fetched when `finishedRuns` was `runsBeforeSnapshot`; a run of this device's own since then,
-    /// or one still going, would make it stale, and the run reads the server's copy instead.
+    /// Sends this device's changes and takes the server's, read again.
     @discardableResult
-    func sync(snapshot: SettingsDocument? = nil, runsBeforeSnapshot: Int = 0) async -> FullSyncOutcome {
+    func sync() async -> FullSyncOutcome {
+        await sync(holding: SignInBound(empty: nil))
+    }
+
+    /// `snapshot` is the copy a full sync for `signIn` fetched when `finishedRuns` was
+    /// `runsBeforeSnapshot`. A run of this device's own since then, one still going, or a run for
+    /// another sign-in would make it stale, and the run reads the server's copy instead.
+    @discardableResult
+    func sync(snapshot: SettingsDocument?, runsBeforeSnapshot: Int, for signIn: SignIn) async -> FullSyncOutcome {
+        var held = SignInBound<SettingsDocument?>(empty: nil)
+        if runsBeforeSnapshot == finishedRuns { held.set(snapshot, for: signIn) }
+        return await sync(holding: held)
+    }
+
+    private func sync(holding held: SignInBound<SettingsDocument?>) async -> FullSyncOutcome {
         guard Defaults[.cloudSyncEnabled] else { return .skipped }
-        if !gate.isRunning { self.snapshot = runsBeforeSnapshot == finishedRuns ? snapshot : nil }
+        if !gate.isRunning { snapshot = held }
         return await gate.run(followUp: true, mayFollow: { Defaults[.cloudSyncEnabled] }) { await self.run() }
     }
 
@@ -49,10 +61,11 @@ final class ClubSubscriptionsSyncer {
     }
 
     private func run() async -> FullSyncOutcome {
-        let stored = snapshot
-        snapshot = nil
+        let held = snapshot
+        snapshot = SignInBound(empty: nil)
         defer { finishedRuns &+= 1 }
         let signIn = await startingSignIn()
+        let stored = held.value
         guard Defaults[.cloudSyncEnabled], let client = await client(signIn) else { return .skipped }
         let mayWrite = { signIn.isCurrent && Defaults[.cloudSyncEnabled] }
         do {

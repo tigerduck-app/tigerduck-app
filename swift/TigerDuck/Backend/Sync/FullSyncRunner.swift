@@ -134,7 +134,7 @@ final class FullSyncRunner {
             ServerStatusTracker.shared.noteSyncResult(true)
             app.conflicts.retryOwedConflictCheck()
             let clubs = SettingsDocument.inSnapshot(pass.json, namespace: ClubSubscriptionsSync.namespace)
-            Task { await app.clubSubscriptions.sync(snapshot: clubs, runsBeforeSnapshot: clubRunsBeforeFetch) }
+            Task { await app.clubSubscriptions.sync(snapshot: clubs, runsBeforeSnapshot: clubRunsBeforeFetch, for: signIn) }
             #if os(iOS)
             app.notificationSettings.reconcile(
                 snapshot: NotificationSettingsReconcile.documentSource(fromSnapshot: pass.json),
