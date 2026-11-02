@@ -79,8 +79,6 @@ final class ClassTableGrid {
         courses.reduce(0) { $0 + $1.credits }
     }
 
-    var activeWeekdays: [Int] { activeWeekdays(withClubs: true) }
-
     func activeWeekdays(withClubs: Bool) -> [Int] {
         var days = Set<Int>()
         for course in courses {
@@ -92,8 +90,6 @@ final class ClassTableGrid {
         if days.contains(7) { result.append(7) }
         return result.sorted()
     }
-
-    var activePeriods: [TimetablePeriod] { activePeriods(withClubs: true) }
 
     func activePeriods(withClubs: Bool) -> [TimetablePeriod] {
         var periodIds = Set(AppConstants.Periods.defaultVisible)
@@ -125,7 +121,7 @@ final class ClassTableGrid {
         courseLookup[weekday]?[period] ?? []
     }
 
-    func cellRole(weekday: Int, periodIndex: Int, withClubs: Bool = true) -> CellRole {
+    func cellRole(weekday: Int, periodIndex: Int, withClubs: Bool) -> CellRole {
         let key = CellRoleKey(weekday: weekday, periodIndex: periodIndex, withClubs: withClubs)
         if let cached = cellRoleCache[key] { return cached }
         let role = ClassTableLayout.cellRole(

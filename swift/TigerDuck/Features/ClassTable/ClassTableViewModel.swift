@@ -217,11 +217,14 @@ final class ClassTableViewModel {
     func selectCourse(_ course: CourseStore.Course, weekday: Int, periodId: String) {
         selection.weekday = weekday
         selection.periodId = periodId
-        selection.coursePeriods = course.block(weekday: weekday, at: periodId, in: grid.activePeriods.map(\.id))
+        selection.coursePeriods = course.block(weekday: weekday, at: periodId, in: tappablePeriodIds)
         selection.date = showsThisWeek ? Self.nextDate(onWeekday: weekday, from: AppClock.now()) : nil
         selection.currentClassSlot = nil
         selection.course = course
     }
+
+    /// The rows of the class table on screen, which draws the clubs and takes every tap.
+    private var tappablePeriodIds: [String] { grid.activePeriods(withClubs: true).map(\.id) }
 
     var showsThisWeek: Bool {
         grid.courseChanges.hasAnswered && currentSemester == SchoolTerms.current
@@ -239,7 +242,7 @@ final class ClassTableViewModel {
         let date = Self.nextDate(onWeekday: weekday, from: today)
         let changes = grid.courseChanges
         guard !changes.changes(courseNo: course.courseNo, on: date).isEmpty,
-              let block = course.block(weekday: weekday, at: periodId, in: grid.activePeriods.map(\.id))
+              let block = course.block(weekday: weekday, at: periodId, in: tappablePeriodIds)
         else { return nil }
         return CourseTimeSlot.meeting(of: course, periods: block, on: date, changes: changes)
             .flatMap { $0.changes.isEmpty ? nil : $0 }

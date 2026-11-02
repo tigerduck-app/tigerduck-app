@@ -28,6 +28,16 @@ struct ClassTableClubLayoutTests {
         Layout.blocks(segments(on: weekday), periods: periods, rowPitch: rowPitch, cellHeight: cellHeight)
     }
 
+    static func model(_ stores: ClubMock.Stores) -> ClassTableViewModel {
+        ClassTableViewModel(
+            courses: CourseStore(folders: CacheFolders(root: stores.root.appending(path: "courses"))),
+            importedTables: ImportedClassTableStore(
+                fileURL: stores.root.appending(path: "imported.json"), signedInStudentId: { nil }
+            ),
+            clubs: stores.feed
+        )
+    }
+
     static func span(_ segment: Layout.Segment) -> String {
         "\(segment.occurrence.id) \(segment.start)-\(segment.end)"
     }
@@ -128,14 +138,14 @@ struct ClassTableClubLayoutTests {
             grid.showClubs(on: Self.dates)
 
             #expect(grid.clubs.keys.sorted() == [1, 3, 4, 5, 6])
-            #expect(grid.activeWeekdays == [1, 2, 3, 4, 5, 6])
-            #expect(grid.activePeriods.map(\.id) == AppConstants.Periods.chronologicalOrder)
+            #expect(grid.activeWeekdays(withClubs: true) == [1, 2, 3, 4, 5, 6])
+            #expect(grid.activePeriods(withClubs: true).map(\.id) == AppConstants.Periods.chronologicalOrder)
             #expect(grid.activeWeekdays(withClubs: false) == [1, 2, 3, 4, 5])
             #expect(grid.activePeriods(withClubs: false).map(\.id) == ["1", "2", "3", "4", "6", "7", "8", "9", "10", "A", "B", "C"])
 
             grid.showClubs(on: [])
             #expect(grid.clubs.isEmpty)
-            #expect(grid.activeWeekdays == [1, 2, 3, 4, 5])
+            #expect(grid.activeWeekdays(withClubs: true) == [1, 2, 3, 4, 5])
         }
     }
 
@@ -153,13 +163,7 @@ struct ClassTableClubLayoutTests {
             Defaults[.classTableSelectedSemester, for: testSignIn] = nil
             let stores = try ClubMock.stores(dates: Self.dates)
             defer { ClubMock.reset(stores) }
-            let model = ClassTableViewModel(
-                courses: CourseStore(folders: CacheFolders(root: stores.root.appending(path: "courses"))),
-                importedTables: ImportedClassTableStore(
-                    fileURL: stores.root.appending(path: "imported.json"), signedInStudentId: { nil }
-                ),
-                clubs: stores.feed
-            )
+            let model = Self.model(stores)
 
             model.refreshClubs(now: Self.monday)
             #expect(model.currentSemester == "1151")
@@ -170,6 +174,34 @@ struct ClassTableClubLayoutTests {
             model.refreshClubs(now: Self.monday)
             #expect(!model.showsClubs)
             #expect(model.grid.clubs.isEmpty)
+        }
+    }
+
+    @Test("the export lays a conflict out on its own rows, whether or not a club opens period 5")
+    func exportConflictRows() async throws {
+        try await withExclusiveRealDefaults {
+            let stores = try ClubMock.stores(dates: Self.dates)
+            defer { ClubMock.reset(stores) }
+            let model = Self.model(stores)
+            let long = ClubMock.course("MA2003301", weekday: 1, periods: ["4", "6"], semester: "1151")
+            let short = ClubMock.course("CS2001301", weekday: 1, periods: ["6"], semester: "1151")
+            model.courses = [long, short]
+            let cluster = ConflictCluster(
+                viewModel: model, showsAssignmentBadges: false,
+                segments: [
+                    .init(course: long, key: long.courseNo, span: 2, offset: 0, lane: 0),
+                    .init(course: short, key: short.courseNo, span: 1, offset: 1, lane: 1),
+                ],
+                laneCount: 2, weekday: 1, periodId: "4",
+                metrics: TimetableCellMetrics(cellHeight: Self.cellHeight, rowSpacing: 3, courseNameSize: 10, badgeIconSize: 8),
+                withClubs: false
+            )
+            let rows = { cluster.segments.map { cluster.firstPeriod(of: $0)?.id } }
+            #expect(rows() == ["4", "6"])
+
+            model.grid.showClubs(on: Self.dates)
+            #expect(model.grid.clubs[5]?.contains { $0.start == 12 * 60 + 20 } == true)
+            #expect(rows() == ["4", "6"])
         }
     }
 }

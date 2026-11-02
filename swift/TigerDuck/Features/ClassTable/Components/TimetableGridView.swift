@@ -96,7 +96,7 @@ struct TimetableGridView: View {
                         viewModel: viewModel, role: role, key: key, weekday: weekday, periodId: period.id,
                         meeting: meeting, showsAssignmentBadges: showsAssignmentBadges,
                         differentiateWithoutColor: differentiateWithoutColor, drawsPeriodTiles: drawsPeriodTiles,
-                        metrics: metrics
+                        metrics: metrics, withClubs: withClubs
                     )
                         .frame(height: cellHeight)
                         .animation(.linear(duration: 0.25), value: key)

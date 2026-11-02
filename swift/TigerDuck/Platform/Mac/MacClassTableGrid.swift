@@ -11,14 +11,14 @@ struct MacClassTableGrid: View {
     private let rowSpacing: CGFloat = 4
     private let periodLabelWidth: CGFloat = 56
 
-    private var periods: [String] { viewModel.grid.activePeriods.map(\.id) }
+    private var periods: [String] { viewModel.grid.activePeriods(withClubs: false).map(\.id) }
 
     var body: some View {
         VStack(spacing: rowSpacing) {
             headerRow
             HStack(alignment: .top, spacing: rowSpacing) {
                 periodLabelColumn
-                ForEach(viewModel.grid.activeWeekdays, id: \.self) { weekday in
+                ForEach(viewModel.grid.activeWeekdays(withClubs: false), id: \.self) { weekday in
                     weekdayColumn(weekday)
                         .frame(maxWidth: .infinity)
                 }
@@ -39,7 +39,7 @@ struct MacClassTableGrid: View {
     private var headerRow: some View {
         HStack(spacing: rowSpacing) {
             Color.clear.frame(width: periodLabelWidth, height: 22)
-            ForEach(viewModel.grid.activeWeekdays, id: \.self) { weekday in
+            ForEach(viewModel.grid.activeWeekdays(withClubs: false), id: \.self) { weekday in
                 Text(weekdayLabel(weekday))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -92,7 +92,7 @@ struct MacClassTableGrid: View {
         let periods = self.periods
         VStack(spacing: rowSpacing) {
             ForEach(periods.indices, id: \.self) { index in
-                let role = viewModel.grid.cellRole(weekday: weekday, periodIndex: index)
+                let role = viewModel.grid.cellRole(weekday: weekday, periodIndex: index, withClubs: false)
                 cellView(role: role, weekday: weekday, periods: periods, index: index)
             }
         }

@@ -11,6 +11,7 @@ struct TimetableSoloCell: View {
     let showsAssignmentBadges: Bool
     let drawsPeriodTiles: Bool
     let metrics: TimetableCellMetrics
+    let withClubs: Bool
 
     @Environment(AppEnvironment.self) private var app
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
@@ -75,7 +76,7 @@ struct TimetableSoloCell: View {
                         Text(String(
                             format: String(localized: "a11y_timetable_cell"),
                             AppConstants.Periods.shortWeekdayLabel(weekday),
-                            viewModel.grid.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
+                            viewModel.grid.activePeriods(withClubs: withClubs).first { $0.id == periodId }?.displayLabel ?? periodId,
                             spokenCourse(
                                 course, room: bottomLine?.room ?? roomHint, changes: MeetingText.spoken(meeting),
                                 hasAssignment: hasBadge, ignoresAssignments: ignoresAssignments

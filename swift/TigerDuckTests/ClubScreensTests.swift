@@ -211,9 +211,9 @@ struct ClubScreensTests {
                 )
                 model.grid.showClubs(on: Self.dates)
                 let metrics = TimetableCellMetrics(cellHeight: 52, rowSpacing: 3, courseNameSize: 10, badgeIconSize: 8)
-                let periods = model.grid.activePeriods
+                let periods = model.grid.activePeriods(withClubs: true)
                 let layer = HStack(spacing: 3) {
-                    ForEach(model.grid.activeWeekdays, id: \.self) { weekday in
+                    ForEach(model.grid.activeWeekdays(withClubs: true), id: \.self) { weekday in
                         TimetableClubColumn(
                             viewModel: model, weekday: weekday, periods: periods, metrics: metrics,
                             drawsPeriodTiles: false, policy: AppPreferences().visualStylePolicy
