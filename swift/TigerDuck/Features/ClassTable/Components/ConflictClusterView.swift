@@ -8,9 +8,15 @@ struct ConflictCluster {
     let weekday: Int
     let periodId: String
     let metrics: TimetableCellMetrics
+    let withClubs: Bool
 
     var periodLabel: String {
-        viewModel.grid.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId
+        viewModel.grid.activePeriods(withClubs: withClubs).first { $0.id == periodId }?.displayLabel ?? periodId
+    }
+
+    func firstPeriod(of segment: ClassTableConflictSegment<CourseStore.Course>) -> TimetablePeriod? {
+        let periods = viewModel.grid.activePeriods(withClubs: withClubs)
+        return periods.firstIndex { $0.id == periodId }.flatMap { periods[safe: $0 + segment.offset] }
     }
 
     func showsBadge(for course: CourseStore.Course) -> Bool {

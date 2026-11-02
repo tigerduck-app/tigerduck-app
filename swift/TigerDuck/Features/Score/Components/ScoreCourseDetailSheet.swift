@@ -62,21 +62,21 @@ struct ScoreCourseDetailSheet: View {
     private func rosterSection(_ roster: CourseRoster) -> some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
             if !roster.instructor.isEmpty {
-                InfoRow(label: String(localized: "course_detail_instructor_label"), value: roster.instructor)
+                DetailInfoRow(label: String(localized: "course_detail_instructor_label"), value: roster.instructor)
             }
             if roster.maxCount > 0 {
-                InfoRow(
+                DetailInfoRow(
                     label: String(localized: "score_course_detail_enrollment_label"),
                     value: "\(roster.enrolledCount) / \(roster.maxCount)"
                 )
             }
             let classroomText = roster.classroom
             if !classroomText.isEmpty {
-                InfoRow(label: String(localized: "course_detail_classroom_label"), value: classroomText)
+                DetailInfoRow(label: String(localized: "course_detail_classroom_label"), value: classroomText)
             }
             let scheduleCode = formatScheduleCode(roster.schedule)
             if !scheduleCode.isEmpty {
-                InfoRow(label: String(localized: "score_course_detail_schedule_label"), value: scheduleCode)
+                DetailInfoRow(label: String(localized: "score_course_detail_schedule_label"), value: scheduleCode)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -170,24 +170,6 @@ struct ScoreCourseDetailSheet: View {
             return course.isPassStatusPassed ? TigerDuckTheme.Tint.teal : TigerDuckTheme.Tint.red
         case .graded:
             return ScoreColor.grade(course.grade)
-        }
-    }
-}
-
-private struct InfoRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textSecondary)
-            Spacer()
-            Text(value)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textPrimary)
-                .multilineTextAlignment(.trailing)
         }
     }
 }

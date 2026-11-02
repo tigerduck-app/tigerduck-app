@@ -265,7 +265,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 
 ### 4.11 perf(ClassTable): debounce the custom colour picker（#272）
 
-- **現況**：自訂顏色拖曳時每一格都呼叫 `onSelect`（`swift/TigerDuck/Features/ClassTable/Components/CourseColorPickerSheet.swift:141-152`），每次都寫檔、發 `dataDidUpdate`（首頁、課表、行事曆都會重讀，Live Activity 也會更新），並排一次同步。
+- **現況**：自訂顏色拖曳時每一格都呼叫 `onSelect`（`swift/TigerDuck/Features/ClassTable/Components/ColorPickerSheet.swift`），每次都寫檔、發 `dataDidUpdate`（首頁、課表、行事曆都會重讀，Live Activity 也會更新），並排一次同步。
 - **建議**：停止拖曳約 300 ms 後才套用。
 - **評估**：效益低中；成本 S；風險低；配合：不需要；信心中。
 

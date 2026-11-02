@@ -64,7 +64,7 @@ struct ClassTableCourseEditDialogs: ViewModifier {
                 }
             }
             .sheet(item: $editor.dialogs.courseToRecolor) { course in
-                CourseColorPickerSheet(
+                ColorPickerSheet(
                     course: course,
                     signIn: app.authService.session.currentSignIn,
                     onSelect: { editor.setColor(hex: $0, for: course) }

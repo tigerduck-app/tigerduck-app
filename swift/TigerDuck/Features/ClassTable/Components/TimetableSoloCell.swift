@@ -11,6 +11,7 @@ struct TimetableSoloCell: View {
     let showsAssignmentBadges: Bool
     let drawsPeriodTiles: Bool
     let metrics: TimetableCellMetrics
+    let withClubs: Bool
 
     @Environment(AppEnvironment.self) private var app
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
@@ -75,7 +76,7 @@ struct TimetableSoloCell: View {
                         Text(String(
                             format: String(localized: "a11y_timetable_cell"),
                             AppConstants.Periods.shortWeekdayLabel(weekday),
-                            viewModel.grid.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
+                            viewModel.grid.activePeriods(withClubs: withClubs).first { $0.id == periodId }?.displayLabel ?? periodId,
                             spokenCourse(
                                 course, room: bottomLine?.room ?? roomHint, changes: MeetingText.spoken(meeting),
                                 hasAssignment: hasBadge, ignoresAssignments: ignoresAssignments
@@ -134,10 +135,7 @@ struct TimetableSoloCell: View {
         switch line {
         case .room(let room):
             Text(room)
-                .font(.system(size: metrics.roomHintSize))
-                .foregroundStyle(policy.classTableCourseSecondaryTextColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .timetableBlockRoom(metrics: metrics, policy: policy)
         case .changedRoom(let room):
             changeLabel(room, systemImage: "arrow.left.arrow.right")
         case .cancelled:
@@ -206,13 +204,7 @@ struct TimetableSoloCell: View {
             }
             .overlay {
                 Text(course.displayName)
-                    .font(.system(size: metrics.courseNameSize, weight: policy.classTableCourseNameWeight))
-                    .strikethrough(isCancelled)
-                    .foregroundStyle(policy.classTableCourseTextColor.opacity(isCancelled ? 0.45 : 1))
-                    .lineLimit(lineLimit)
-                    .minimumScaleFactor(0.7)
-                    .multilineTextAlignment(.center)
-                    .padding(2)
+                    .timetableBlockName(metrics: metrics, policy: policy, lineLimit: lineLimit, isCancelled: isCancelled)
                     .padding(.bottom, leavesBottomLine ? metrics.roomHintSize + 2 : 0)
                     .padding(.top, leavesTopLine ? metrics.roomHintSize + 2 : 0)
             }

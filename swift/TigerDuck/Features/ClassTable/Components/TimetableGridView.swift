@@ -54,12 +54,6 @@ struct TimetableGridView: View {
 
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
 
-    private var weekdayLabels: [String] {
-        viewModel.grid.activeWeekdays.map { day in
-            Self.allWeekdayLabels[safe: day - 1] ?? ""
-        }
-    }
-
     var body: some View {
         TimelineView(.everyMinute) { _ in
             let _ = AppClockState.shared.version
@@ -68,53 +62,63 @@ struct TimetableGridView: View {
     }
 
     private func grid(now: Date) -> some View {
-        let periods = viewModel.grid.activePeriods
+        let withClubs = showsThisWeek
+        let weekdays = viewModel.grid.activeWeekdays(withClubs: withClubs)
+        let periods = viewModel.grid.activePeriods(withClubs: withClubs)
         let firstRowTop = headerHeight + rowSpacing
         let rowPitch = cellHeight + rowSpacing
         let switchCount = switchCount
         let thisWeek = showsThisWeek && viewModel.showsThisWeek
         let today = thisWeek ? now.scheduleWeekday : nil
         return VStack(spacing: rowSpacing) {
-            HStack(spacing: colSpacing) {
+            columns(weekdays) {
                 Text("")
-                    .frame(width: periodWidth, height: headerHeight)
-                ForEach(Array(zip(viewModel.grid.activeWeekdays, weekdayLabels)), id: \.0) { weekday, label in
-                    Text(label)
-                        .font(TigerDuckTheme.Typography.caption.bold())
-                        .foregroundStyle(weekday == today ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textSecondary))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: headerHeight)
-                }
+                    .frame(height: headerHeight)
+            } cell: { weekday in
+                Text(Self.allWeekdayLabels[safe: weekday - 1] ?? "")
+                    .font(TigerDuckTheme.Typography.caption.bold())
+                    .foregroundStyle(weekday == today ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textSecondary))
+                    .frame(height: headerHeight)
             }
 
             ForEach(Array(periods.enumerated()), id: \.element.id) { periodIndex, period in
-                HStack(spacing: colSpacing) {
+                columns(weekdays) {
                     periodLabel(period)
-
-                    ForEach(viewModel.grid.activeWeekdays, id: \.self) { weekday in
-                        let role = viewModel.grid.cellRole(weekday: weekday, periodIndex: periodIndex)
-                        let meeting = thisWeek ? changedMeeting(role, weekday: weekday, periodId: period.id, now: now) : nil
-                        let key = TimetableCellTransitionID.of(
-                            role, weekday: weekday, periodId: period.id, meeting: meeting,
-                            showsRooms: app.preferences.showClassroomInClassTable
-                        )
-                        TimetableCell(
-                            viewModel: viewModel, role: role, key: key, weekday: weekday, periodId: period.id,
-                            meeting: meeting, showsAssignmentBadges: showsAssignmentBadges,
-                            differentiateWithoutColor: differentiateWithoutColor, drawsPeriodTiles: drawsPeriodTiles,
-                            metrics: metrics
-                        )
-                            .frame(maxWidth: .infinity)
-                            .frame(height: cellHeight)
-                            .animation(.linear(duration: 0.25), value: key)
-                    }
+                } cell: { weekday in
+                    let role = viewModel.grid.cellRole(weekday: weekday, periodIndex: periodIndex, withClubs: withClubs)
+                    let meeting = thisWeek ? changedMeeting(role, weekday: weekday, periodId: period.id, now: now) : nil
+                    let key = TimetableCellTransitionID.of(
+                        role, weekday: weekday, periodId: period.id, meeting: meeting,
+                        showsRooms: app.preferences.showClassroomInClassTable
+                    )
+                    TimetableCell(
+                        viewModel: viewModel, role: role, key: key, weekday: weekday, periodId: period.id,
+                        meeting: meeting, showsAssignmentBadges: showsAssignmentBadges,
+                        differentiateWithoutColor: differentiateWithoutColor, drawsPeriodTiles: drawsPeriodTiles,
+                        metrics: metrics, withClubs: withClubs
+                    )
+                        .frame(height: cellHeight)
+                        .animation(.linear(duration: 0.25), value: key)
                 }
             }
         }
         .overlay(alignment: .topLeading) {
-            if let today, viewModel.grid.activeWeekdays.contains(today),
+            if withClubs, !viewModel.grid.clubs.isEmpty {
+                columns(weekdays) {
+                    Color.clear
+                } cell: { weekday in
+                    TimetableClubColumn(
+                        viewModel: viewModel, weekday: weekday, periods: periods, metrics: metrics,
+                        drawsPeriodTiles: drawsPeriodTiles, policy: policy
+                    )
+                }
+                .padding(.top, firstRowTop)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if let today, weekdays.contains(today),
                let offset = TimetableNowLine.offset(
-                   minute: TimetableNowLine.minuteOfDay(now), periods: periods.compactMap(TimetableNowLine.minutes),
+                   minute: TimetableNowLine.minuteOfDay(now), periods: periods.compactMap(\.minutes),
                    rowPitch: rowPitch, cellHeight: cellHeight
                ) {
                 TimetableNowLine()
@@ -143,6 +147,19 @@ struct TimetableGridView: View {
             ))
         } action: { before, after in
             if before.switchCount != after.switchCount { onSwitch?(before, after) }
+        }
+    }
+
+    private func columns<Leading: View, Cell: View>(
+        _ weekdays: [Int], @ViewBuilder leading: () -> Leading, @ViewBuilder cell: @escaping (Int) -> Cell
+    ) -> some View {
+        HStack(spacing: colSpacing) {
+            leading()
+                .frame(width: periodWidth)
+            ForEach(weekdays, id: \.self) { weekday in
+                cell(weekday)
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 

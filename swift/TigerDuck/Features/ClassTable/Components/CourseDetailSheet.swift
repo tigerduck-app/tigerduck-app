@@ -122,39 +122,27 @@ struct CourseDetailSheet: View {
     }
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
-            HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.sm) {
-                Text(course.displayName)
-                    .font(.title.bold())
-                    .foregroundStyle(Color.textPrimary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if let syllabus {
-                    Button {
-                        routes.wrappedValue.append(.syllabus(syllabus))
-                    } label: {
-                        Image(systemName: "doc.text.fill")
-                            .font(.title2)
-                            .foregroundStyle(.tint)
-                    }
-                    .accessibilityLabel(String(localized: "course_detail_syllabus"))
+        DetailSheetHeader(title: course.displayName, color: course.color) {
+            if let syllabus {
+                Button {
+                    routes.wrappedValue.append(.syllabus(syllabus))
+                } label: {
+                    Image(systemName: "doc.text.fill")
+                        .font(.title2)
+                        .foregroundStyle(.tint)
                 }
-
-                if showsMoodle, course.moodleOpenURL != nil {
-                    Button(action: openMoodleCourse) {
-                        Image(systemName: "arrow.up.right.square.fill")
-                            .font(.title2)
-                            .foregroundStyle(.tint)
-                    }
-                    .accessibilityLabel(String(localized: "a11y_course_detail_open_moodle"))
-                }
+                .accessibilityLabel(String(localized: "course_detail_syllabus"))
             }
 
-            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                .fill(course.color)
-                .frame(height: 6)
+            if showsMoodle, course.moodleOpenURL != nil {
+                Button(action: openMoodleCourse) {
+                    Image(systemName: "arrow.up.right.square.fill")
+                        .font(.title2)
+                        .foregroundStyle(.tint)
+                }
+                .accessibilityLabel(String(localized: "a11y_course_detail_open_moodle"))
+            }
         }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
     private var shownMeeting: CourseTimeSlot? {
@@ -204,6 +192,45 @@ struct CourseDetailSheet: View {
         guard let url = course.moodleOpenURL else { return }
         let web = course.moodleWebURL
         Task { await openURL(url, fallback: web) }
+    }
+}
+
+struct DetailSheetHeader<Trailing: View>: View {
+    let title: String
+    var subtitle: String?
+    let color: Color
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
+            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
+                HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.sm) {
+                    Text(title)
+                        .font(.title.bold())
+                        .foregroundStyle(Color.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    trailing
+                }
+                if let subtitle {
+                    Text(subtitle)
+                        .font(TigerDuckTheme.Typography.body)
+                        .foregroundStyle(Color.textSecondary)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                }
+            }
+
+            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                .fill(color)
+                .frame(height: 6)
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+}
+
+extension DetailSheetHeader where Trailing == EmptyView {
+    init(title: String, subtitle: String?, color: Color) {
+        self.init(title: title, subtitle: subtitle, color: color) { EmptyView() }
     }
 }
 

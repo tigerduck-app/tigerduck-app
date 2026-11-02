@@ -1,5 +1,6 @@
 import Defaults
 import SwiftUI
+import TigerDuckCore
 
 struct ClassTableView: View {
     var embedded = false
@@ -100,6 +101,13 @@ struct ClassTableView: View {
                 }
             }
             .background(Color.backgroundPrimary)
+            .background {
+                TimelineView(.everyMinute) { _ in
+                    let _ = AppClockState.shared.version
+                    let now = AppClock.now()
+                    Color.clear.onChange(of: TaipeiTime.dayKey(for: now)) { viewModel.refreshClubs(now: now) }
+                }
+            }
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .onChange(of: viewModel.shownTable) { _, _ in
                 tableSwitches += 1
@@ -116,7 +124,7 @@ struct ClassTableView: View {
 
     private var pageAccessState: NTUSTProtectedAccessState {
         if viewModel.shownPerson != nil { return viewModel.courses.isEmpty ? .empty : .content }
-        return NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: viewModel.courses.isEmpty)
+        return NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: !viewModel.hasGrid)
     }
 
     private var titleBar: some View {
@@ -129,7 +137,7 @@ struct ClassTableView: View {
                 HStack(spacing: TigerDuckTheme.Spacing.lg) {
                     SyncStatusDot(servers: ServerKind.classTableSources, lastSynced: .schoolData)
                     ClassTableHeaderMenu(
-                        viewModel: viewModel, canExportPicture: pageAccessState == .content,
+                        viewModel: viewModel, canExportPicture: !viewModel.courses.isEmpty,
                         export: $export, shareModel: $shareModel
                     )
                 }

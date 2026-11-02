@@ -29,8 +29,7 @@ struct OngoingCourseInfo: Identifiable {
     }
 
     var formattedTimeRange: String {
-        func hm(_ m: Int) -> String { String(format: "%02d:%02d", m / 60, m % 60) }
-        return "\(hm(startMinute)) - \(hm(endMinute))"
+        ClassTimeline.timeRange(from: startMinute, to: endMinute)
     }
 }
 

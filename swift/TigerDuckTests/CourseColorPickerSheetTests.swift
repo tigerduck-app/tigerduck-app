@@ -36,7 +36,7 @@ struct CourseColorPickerSheetTests {
         var body: some View {
             let generation = login.generation
             let _ = built.record(generation)
-            CourseColorPickerSheet(
+            ColorPickerSheet(
                 course: course,
                 signIn: login.account.signIn,
                 onSelect: { picks.hexes.append($0) }

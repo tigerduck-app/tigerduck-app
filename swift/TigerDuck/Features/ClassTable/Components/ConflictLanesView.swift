@@ -43,8 +43,7 @@ struct ConflictLanesView: View {
         let hasBadge = cluster.showsBadge(for: course)
         let ignoresAssignments = cluster.showsIgnoredMark(for: course)
         let markColor = policy.classTableCourseSecondaryTextColor.opacity(0.5)
-        let periods = cluster.viewModel.grid.activePeriods
-        let firstPeriod = periods.firstIndex { $0.id == cluster.periodId }.flatMap { periods[safe: $0 + segment.offset] }
+        let firstPeriod = cluster.firstPeriod(of: segment)
 
         return Button {
             cluster.viewModel.selectCourse(course, weekday: cluster.weekday, periodId: firstPeriod?.id ?? cluster.periodId)

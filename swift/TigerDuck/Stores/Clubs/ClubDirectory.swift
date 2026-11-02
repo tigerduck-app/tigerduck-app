@@ -15,6 +15,8 @@ final class ClubDirectory {
 
     /// Every club, by attribute and then by name.
     private(set) var clubs: [ClubCard] = []
+    /// Why the last fetch failed; nil once one succeeds.
+    private(set) var failure: (any Error)?
     @ObservationIgnored private let files: ClubFiles
     @ObservationIgnored private let client: ClubAPIClient
     @ObservationIgnored private let chinese: () -> Bool
@@ -69,7 +71,9 @@ final class ClubDirectory {
             let storedAt = now()
             files.saveDirectory(ClubFiles.StoredDirectory(body: answer.body, storedAt: storedAt, maxAge: answer.maxAge))
             take(read, storedAt: storedAt, maxAge: answer.maxAge)
+            failure = nil
         } catch {
+            if !AppLogger.isCancellation(error) { failure = error }
             if ClubAPIClient.isWorthReporting(error) {
                 AppLogger.captureError(error, context: ["service": "clubDirectoryRefresh"])
             }

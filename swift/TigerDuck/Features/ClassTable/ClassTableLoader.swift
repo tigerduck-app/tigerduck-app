@@ -44,6 +44,7 @@ final class ClassTableLoader {
         if !merged.isEmpty {
             table.courses = merged
         }
+        table.refreshClubs()
         if table.shownPerson != nil || table.people.store.shownPerson != nil { table.showShownTable() }
     }
 

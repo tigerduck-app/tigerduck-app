@@ -1,9 +1,20 @@
 import SwiftUI
 
-struct CourseColorPickerSheet: View {
+struct ColorPickerSheet: View {
+    struct Labels {
+        let title: String
+        let custom: String
+        let customBadge: String
+        /// A format of the swatch's place in the palette, from 1.
+        let swatch: String
+    }
+
     @Environment(\.dismiss) private var dismiss
 
-    let course: CourseStore.Course
+    let name: String
+    let detail: String?
+    let labels: Labels
+    private let appliedHex: () -> UInt32
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 5)
 
@@ -11,23 +22,29 @@ struct CourseColorPickerSheet: View {
     @State private var suppressNextColorChange = false
     @State private var customPicks: CustomColorPickDebouncer
 
-    init(course: CourseStore.Course, signIn: SignIn, onSelect: @escaping (UInt32) -> Void) {
-        self.course = course
-        _customColor = State(initialValue: Color(hex: UInt(TigerDuckTheme.assignedHex(for: course.courseNo))))
-        let courseNo = course.courseNo
+    /// `appliedHex` reads the color as it is now saved.
+    init(
+        name: String, detail: String?, labels: Labels, appliedHex: @escaping () -> UInt32, signIn: SignIn,
+        onSelect: @escaping (UInt32) -> Void
+    ) {
+        self.name = name
+        self.detail = detail
+        self.labels = labels
+        self.appliedHex = appliedHex
+        _customColor = State(initialValue: Color(hex: UInt(appliedHex())))
         _customPicks = State(initialValue: CustomColorPickDebouncer(
             apply: onSelect,
-            appliedHex: { TigerDuckTheme.assignedHex(for: courseNo) },
+            appliedHex: appliedHex,
             isCurrent: { signIn.isCurrent }
         ))
     }
 
     private var activePresetIndex: Int? {
-        TigerDuckTheme.paletteIndex(for: course.courseNo)
+        TigerDuckTheme.coursePaletteHexes.firstIndex(of: currentHex)
     }
 
     private var currentHex: UInt32 {
-        TigerDuckTheme.assignedHex(for: course.courseNo)
+        appliedHex()
     }
 
     var body: some View {
@@ -42,7 +59,7 @@ struct CourseColorPickerSheet: View {
                 .padding(.bottom, TigerDuckTheme.Spacing.xl)
             }
             .background(Color.backgroundPrimary)
-            .navigationTitle(String(localized: "course_color_picker_title"))
+            .navigationTitle(labels.title)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -58,16 +75,18 @@ struct CourseColorPickerSheet: View {
     private var header: some View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                .fill(course.color)
+                .fill(Color(hex: UInt(currentHex)))
                 .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
-                Text(course.displayName)
+                Text(name)
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
-                Text(course.courseNo)
-                    .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(Color.textSecondary)
+                if let detail {
+                    Text(detail)
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(Color.textSecondary)
+                }
             }
             Spacer()
         }
@@ -87,7 +106,7 @@ struct CourseColorPickerSheet: View {
                     swatch(color: color, isSelected: index == activePresetIndex)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(String(format: String(localized: "a11y_course_color_swatch"), index + 1)))
+                .accessibilityLabel(Text(String(format: labels.swatch, index + 1)))
                 .accessibilityAddTraits(index == activePresetIndex ? .isSelected : [])
             }
         }
@@ -96,14 +115,14 @@ struct CourseColorPickerSheet: View {
 
     private var customPickerRow: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-            Text(String(localized: "course_color_picker_custom_label"))
+            Text(labels.custom)
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
             HStack(spacing: TigerDuckTheme.Spacing.md) {
                 ColorPicker(
-                    String(localized: "course_color_picker_custom_label"),
+                    labels.custom,
                     selection: $customColor,
                     supportsOpacity: false
                 )
@@ -116,7 +135,7 @@ struct CourseColorPickerSheet: View {
                 Spacer()
 
                 if activePresetIndex == nil {
-                    Text(String(localized: "course_color_picker_custom_badge"))
+                    Text(labels.customBadge)
                         .font(TigerDuckTheme.Typography.caption2)
                         .foregroundStyle(Color.textSecondary)
                         .padding(.horizontal, 8)
@@ -162,6 +181,25 @@ struct CourseColorPickerSheet: View {
         }
         .frame(height: 50)
         .contentShape(Circle())
+    }
+}
+
+extension ColorPickerSheet {
+    init(course: CourseStore.Course, signIn: SignIn, onSelect: @escaping (UInt32) -> Void) {
+        let courseNo = course.courseNo
+        self.init(
+            name: course.displayName,
+            detail: courseNo,
+            labels: Labels(
+                title: String(localized: "course_color_picker_title"),
+                custom: String(localized: "course_color_picker_custom_label"),
+                customBadge: String(localized: "course_color_picker_custom_badge"),
+                swatch: String(localized: "a11y_course_color_swatch")
+            ),
+            appliedHex: { TigerDuckTheme.assignedHex(for: courseNo) },
+            signIn: signIn,
+            onSelect: onSelect
+        )
     }
 }
 
