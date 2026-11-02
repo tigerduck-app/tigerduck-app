@@ -352,12 +352,13 @@ struct InformationSystemFilterTests {
         #expect(opens("https://example.ntust.edu.tw/SAGraduatesServ/SAGraduates"))
     }
 
-    @Test("the campus software site is marked as on the campus network only")
+    @Test("the campus software site and the campus documents are marked as on the campus network only")
     func campusOnly() {
         func isCampusOnly(_ address: String) -> Bool {
             PortalLink(category: .resources, name: "x", url: URL(string: address)!).isCampusOnly
         }
         #expect(isCampusOnly("https://Software.ntust.edu.tw/websoftware/login.aspx"))
+        #expect(isCampusOnly("https://ccdoc.ntust.edu.tw/docmgsystem/login.aspx"))
         #expect(!isCampusOnly("https://www.cc.ntust.edu.tw/p/412-1050-8352.php?Lang=zh-tw"))
         #expect(!isCampusOnly("https://studentpay.ntust.edu.tw/"))
     }

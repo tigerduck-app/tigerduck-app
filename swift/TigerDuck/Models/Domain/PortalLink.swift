@@ -41,7 +41,7 @@ nonisolated struct PortalLink: Codable, Hashable, Identifiable, Sendable {
         url.host(percentEncoded: false).map { Self.campusHosts.contains($0.lowercased()) } ?? false
     }
 
-    private static let campusHosts: Set = ["software.ntust.edu.tw"]
+    private static let campusHosts: Set = ["software.ntust.edu.tw", "ccdoc.ntust.edu.tw"]
 }
 
 /// The portal has a Chinese page and a separate English one.
