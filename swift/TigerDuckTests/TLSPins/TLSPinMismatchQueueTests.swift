@@ -240,7 +240,8 @@ struct TLSPinMismatchQueueTests {
     }
 
     #if os(iOS)
-    @Test("A School Mail refusal in the background reaches the queue with no UI", .timeLimit(.minutes(1)))
+    // In CI, where every suite runs at once, this main-actor test has waited over a minute for its turn.
+    @Test("A School Mail refusal in the background reaches the queue with no UI", .timeLimit(.minutes(5)))
     func aMailRefusalQueuesAPrompt() async {
         let engine = F.engine(now: TLSPinEnforcementTests.date)
         engine.acceptDocument(TLSPinEnforcementTests.movedPins(promptRoots: [F.globalRootSPKI]))

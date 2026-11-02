@@ -219,19 +219,20 @@ struct MoodleCourseSearchPageTests {
             let page = try await Self.announcementsPage(folder, pages: [first], requests: requests)
             let window = try await Self.show(page, searching: "notice")
             defer { Self.close(window) }
-            try await waitUntil { Self.shows(String(localized: "action_clear_text"), in: window) }
-            let list = try #require(window.descendants(ofType: UICollectionView.self).first)
+            let clear = String(localized: "action_clear_text")
+            try await waitUntil { Self.shows(clear, in: window) }
+            #expect(!Self.showsCard(titled: "Notice 01", in: window))
 
-            try await waitUntil {
-                let bottom = list.contentSize.height - list.bounds.height + list.adjustedContentInset.bottom
-                list.setContentOffset(CGPoint(x: 0, y: max(bottom, -list.adjustedContentInset.top)), animated: false)
-                return Self.showsCard(titled: "Notice 01", in: window)
-            }
+            // With the field focused, clearing scrolls the list back up to the field, and the last row's
+            // task restarts only if SwiftUI reaches the row before it leaves the screen. With the keyboard
+            // down and every row fitting the window, the list cannot scroll.
+            window.endEditing(true)
+            window.frame.size.height = 1500
+            try await waitUntil { Self.showsCard(titled: "Notice 01", in: window) }
             try await Task.sleep(for: .milliseconds(300))
             #expect(requests.requested == [0])
 
-            let field = try #require(window.descendants(ofType: UITextField.self).first)
-            for _ in "notice" { field.deleteBackward() }
+            #expect(try #require(accessibilityElement(labeled: clear, in: window)).accessibilityActivate())
 
             try await waitUntil { requests.requested.contains(1) }
         }

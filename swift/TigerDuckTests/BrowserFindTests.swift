@@ -131,7 +131,8 @@ struct BrowserFindTests {
         #expect(page.calls.count == 1)
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    // In CI, where every suite runs at once, this main-actor test has waited over a minute for its turn.
+    @Test(.timeLimit(.minutes(5)))
     func aSlowExpressionSaysNoMatches() async {
         let page = Page()
         page.texts = BrowserFindMatcherTests.slowTexts
