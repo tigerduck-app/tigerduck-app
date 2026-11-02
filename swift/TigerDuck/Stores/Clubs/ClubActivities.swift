@@ -72,7 +72,7 @@ final class ClubActivities {
             etag = copy.etag
             if read != activities { activities = read }
         } catch {
-            if !AppLogger.isCancellation(error) {
+            if ClubAPIClient.isWorthReporting(error) {
                 AppLogger.captureError(error, context: ["service": "clubActivitiesRefresh"])
             }
         }

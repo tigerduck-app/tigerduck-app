@@ -100,4 +100,29 @@ struct ClubAPIModelsTests {
         #expect(ClubAPIClient.maxAge("max-age=soon") == 300)
         #expect(ClubAPIClient.maxAge("max-age=99999999") == 86_400)
     }
+
+    @Test("a failed fetch is reported for an unreadable answer or an unexpected status, not for a lost network or a cancellation")
+    func reportedFailures() async {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = ClubAPIClient(baseURL: base, session: URLSession(configuration: config))
+        SettingsAPIStub.enqueue(.init(statusCode: 500, body: Data()), for: base.appending(path: "clubs"))
+        SettingsAPIStub.enqueue(.init(statusCode: 0, body: Data(), failure: .notConnectedToInternet), for: base.appending(path: "clubs"))
+
+        func failure(_ body: () async throws -> Void) async -> (any Error)? {
+            do { try await body() } catch { return error }
+            return nil
+        }
+        let status = await failure { _ = try await client.clubs() }
+        let offline = await failure { _ = try await client.clubs() }
+        let unreadable = await failure { _ = try ClubAPIList<ClubCard>.decode(Data("{}".utf8)) }
+
+        #expect(status.map(ClubAPIClient.isWorthReporting) == true)
+        #expect(unreadable.map(ClubAPIClient.isWorthReporting) == true)
+        #expect(offline.map(ClubAPIClient.isWorthReporting) == false)
+        #expect(!ClubAPIClient.isWorthReporting(URLError(.timedOut)))
+        #expect(!ClubAPIClient.isWorthReporting(URLError(.cancelled)))
+        #expect(!ClubAPIClient.isWorthReporting(CancellationError()))
+    }
 }

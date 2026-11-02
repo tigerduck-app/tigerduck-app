@@ -46,6 +46,13 @@ nonisolated struct ClubAPIClient: Sendable {
         return min(TimeInterval(seconds), longestMaxAge)
     }
 
+    /// Whether a failed fetch is worth a diagnostic: an answer this build cannot read, or a status
+    /// the API does not send. A lost network, a timeout, a cancellation and the demo account's
+    /// refusal, which fails like an offline request, are expected.
+    static func isWorthReporting(_ error: any Error) -> Bool {
+        error is DecodingError || (error as? URLError)?.code == .badServerResponse
+    }
+
     private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         var request = request
         request.setValue("application/json", forHTTPHeaderField: "Accept")

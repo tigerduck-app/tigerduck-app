@@ -70,7 +70,7 @@ final class ClubDirectory {
             files.saveDirectory(ClubFiles.StoredDirectory(body: answer.body, storedAt: storedAt, maxAge: answer.maxAge))
             take(read, storedAt: storedAt, maxAge: answer.maxAge)
         } catch {
-            if !AppLogger.isCancellation(error) {
+            if ClubAPIClient.isWorthReporting(error) {
                 AppLogger.captureError(error, context: ["service": "clubDirectoryRefresh"])
             }
         }
