@@ -84,6 +84,10 @@ struct ClubSubscribeSheet: View {
                         .buttonStyle(.borderless)
                         .accessibilityLabel(String(format: String(localized: "a11y_class_table_club_color"), name))
                         ClubNameLabel(name: name, tagline: club.tagline)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "line.3.horizontal")
+                            .foregroundStyle(Color.textSecondary)
+                            .accessibilityHidden(true)
                     }
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
