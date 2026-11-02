@@ -37,12 +37,13 @@ struct BrowserPinnedHostsTests {
         #expect(SecTrustEvaluateWithError(try trust(Self.letsEncrypt, host: Self.suggestionbox), nil))
     }
 
-    @Test("the browser checks pins only for the hosts the app signs in to and those it gives the stored password")
+    @Test("the browser checks pins only for the hosts the app signs in to, those it gives the stored password and the sites' sign-in links")
     func thePinnedHostsAreTheAppsOwn() {
         #expect(BrowserPinnedHosts.hosts == [
             "moodle2.ntust.edu.tw", "ssoam2.ntust.edu.tw", "ssoam.ntust.edu.tw", "i.ntust.edu.tw", "mail.ntust.edu.tw",
             "api.lib.ntust.edu.tw", "cour01.ntust.edu.tw", "querycourse.ntust.edu.tw", "courseselection.ntust.edu.tw",
             "stuinfosys.ntust.edu.tw", "cardsystem.ntust.edu.tw", "studentpay.ntust.edu.tw",
+            "sa02.ntust.edu.tw", "sa.ntust.edu.tw",
         ])
         // Its sign-in gets the student id alone.
         #expect(!BrowserPinnedHosts.hosts.contains(Self.suggestionbox))
@@ -102,7 +103,7 @@ struct BrowserPinnedHostsTests {
 
     @Test("a browser-only host whose chain system trust refuses is offered to open at risk, in a store of its own")
     func anInvalidChainOnABrowserOnlyHostOffersTheRisk() async throws {
-        let host = "sa.ntust.edu.tw"
+        let host = "www.ntust.edu.tw"
         let invalid = try trust(Self.letsEncrypt, host: host)
         #expect(!SecTrustEvaluateWithError(invalid, nil))
         let page = BrowserPage()

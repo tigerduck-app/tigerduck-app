@@ -25,19 +25,28 @@ nonisolated enum BrowserSchoolSites {
     /// page waits for that tap; it goes through SSO and comes back to the site signed in.
     static func signInLink(for url: URL) -> URL? {
         guard url.scheme?.lowercased() == "https", url.query == nil, let host = BrowserRouting.host(of: url) else { return nil }
-        switch (host, url.path(percentEncoded: true).lowercased()) {
-        case ("querycourse.ntust.edu.tw", "/querycourse/"):
-            // The button passes the page it is on, as encodeURIComponent writes it.
-            let page = url.absoluteString.addingPercentEncoding(withAllowedCharacters: uriComponent) ?? ""
-            return URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/api//OAuth2/Login?returnUrl=" + page)
-        case ("sa02.ntust.edu.tw", "/webcounseling/"):
-            return URL.knownGood("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login")
-        case ("sa.ntust.edu.tw", "/dorm/"):
-            return URL.knownGood("https://sa.ntust.edu.tw/Dorm/OAuth2/Login")
-        default:
-            return nil
-        }
+        return signInButtons[SignInPage(host: host, path: url.path(percentEncoded: true).lowercased())]?(url)
     }
+
+    /// The hosts whose sign-in links go through SSO, which the browser holds to their pins.
+    static let signInLinkHosts = Set(signInButtons.keys.map(\.host))
+
+    private struct SignInPage: Hashable {
+        let host: String
+        let path: String
+    }
+
+    private static let signInButtons: [SignInPage: (URL) -> URL?] = [
+        SignInPage(host: "querycourse.ntust.edu.tw", path: "/querycourse/"): { page in
+            // The button passes the page it is on, as encodeURIComponent writes it.
+            let page = page.absoluteString.addingPercentEncoding(withAllowedCharacters: uriComponent) ?? ""
+            return URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/api//OAuth2/Login?returnUrl=" + page)
+        },
+        SignInPage(host: "sa02.ntust.edu.tw", path: "/webcounseling/"): { _ in
+            URL.knownGood("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login")
+        },
+        SignInPage(host: "sa.ntust.edu.tw", path: "/dorm/"): { _ in URL.knownGood("https://sa.ntust.edu.tw/Dorm/OAuth2/Login") },
+    ]
 
     /// A sign-in form of a site's own: the names of its student id and password fields, which the
     /// browser fills. Its CAPTCHA and its submit stay the student's.
