@@ -34,8 +34,8 @@ with the new version in the install line.
 ## Commands
 
 ```bash
-xcodebuild test -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' -only-testing:TigerDuckTests
-xcodebuild test -project swift/TigerDuck.xcodeproj -scheme 'TigerDuckWatch Watch App' -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm),OS=26.5'
+xcodebuild test -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' -only-testing:TigerDuckTests
+xcodebuild test -project swift/TigerDuck.xcodeproj -scheme 'TigerDuckWatch Watch App' -destination 'platform=watchOS Simulator,name=Apple Watch Series 12 (46mm),OS=27.0'
 xcodebuild build -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=macOS'
 (cd swift/Packages/SwiftMail && swift test)
 (cd swift/Packages/TigerDuckCore && swift test)
