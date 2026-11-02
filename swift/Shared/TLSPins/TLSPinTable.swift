@@ -62,6 +62,19 @@ nonisolated enum TLSPinTable {
             ],
             expiresAt: date("2027-05-04")
         ),
+        // ISRG's four roots, X1, X2, Root YR and Root YE: clubs.ntust.edu.tw serves Let's Encrypt,
+        // which changes intermediates often, and each of them chains to one of these.
+        TLSPinSet(
+            id: "clubs",
+            domains: [.init(name: "clubs.ntust.edu.tw", includeSubdomains: false)],
+            pins: [
+                "C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=",
+                "diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=",
+                "fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=",
+                "sCkq5UWXjg+7mKu9lMhhYF5bGLsy7VI/UNW3tccdR7w=",
+            ],
+            expiresAt: date("2027-07-21")
+        ),
     ]
 
     private static func date(_ literal: String) -> Date {
