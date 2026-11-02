@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -19,6 +20,41 @@ struct NotificationSettingsPushQueueTests {
     private final class RanLog {
         private(set) var values: [String] = []
         func append(_ value: String) { values.append(value) }
+    }
+
+    @Test("a reconcile whose read failed, with nothing unsent, is owed and run again by the next retry")
+    func failedReconcileIsOwed() async throws {
+        Self.resetQueue()
+        defer { Self.resetQueue() }
+        try await NotificationSettingsFixtures.withStore { store in
+            let signIn = AccountSession.school.currentSignIn
+            let syncWasOn = Defaults[.cloudSyncEnabled]
+            let pendingWas = Defaults[.notificationSettingsPushPending]
+            Defaults[.cloudSyncEnabled, for: signIn] = true
+            Defaults[.notificationSettingsPushPending, for: signIn] = false
+            defer {
+                Defaults[.cloudSyncEnabled, for: signIn] = syncWasOn
+                Defaults[.notificationSettingsPushPending, for: signIn] = pendingWas
+            }
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = NotificationSettingsFixtures.documentURL(baseURL)
+            let syncer = NotificationSettingsSyncer(preferences: store) { _ in SettingsAPIStub.makeClient(baseURL: baseURL) }
+            SettingsAPIStub.enqueue(.init(statusCode: 500, body: Data()), for: url)
+
+            await syncer.reconcile().value
+            #expect(syncer.owesReconcile)
+
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.found([:], revision: 2), for: url)
+            SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 3), for: url)
+            syncer.retryUnacknowledged()
+            await NotificationSettingsPushQueue.tail?.value
+
+            #expect(SettingsAPIStub.requests(for: url).filter { $0.httpMethod == "GET" }.count == 2)
+            #expect(!syncer.owesReconcile)
+            let tail = NotificationSettingsPushQueue.tail
+            syncer.retryUnacknowledged()
+            #expect(NotificationSettingsPushQueue.tail == tail)
+        }
     }
 
     @Test("a push already queued when the user logs out never reaches the account that signs in after")

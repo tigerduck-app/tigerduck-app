@@ -136,3 +136,12 @@ nonisolated enum SettingsWriteResult: Equatable, Sendable {
     case written(revision: Int)
     case conflict(document: Data, revision: Int)
 }
+
+extension SettingsDocumentClient {
+    /// The client of a sign-in, or nil while the backend has no session to send with.
+    static func signedIn(with authTokenManager: AuthTokenManager) -> (SignIn) async -> SettingsDocumentClient? {
+        { signIn in
+            await authTokenManager.isLoggedIn ? SettingsDocumentClient(auth: authTokenManager.backendAuth, for: signIn) : nil
+        }
+    }
+}

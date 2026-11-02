@@ -190,6 +190,37 @@ struct ClubSubscriptionsSyncTests {
         }
     }
 
+    @Test("a full sync's club run whose read failed, with nothing unsent, is owed and run again on the next poll")
+    func failedReadIsOwed() async throws {
+        try await withExclusiveRealDefaults {
+            Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending)
+            let syncWasOn = Defaults[.cloudSyncEnabled]
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
+            defer {
+                Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending)
+                Defaults[.cloudSyncEnabled, for: testSignIn] = syncWasOn
+            }
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.documentURL(baseURL)
+            let subscriptions = ClubSubscriptions()
+            let syncer = ClubSubscriptionsSyncer(subscriptions: subscriptions, startingSignIn: { testSignIn }) { _ in
+                SettingsAPIStub.makeClient(baseURL: baseURL)
+            }
+            SettingsAPIStub.enqueue(.init(statusCode: 500, body: Data()), for: url)
+
+            #expect(await syncer.sync(snapshot: .neverWritten, runsBeforeSnapshot: syncer.finishedRuns + 1, for: testSignIn) == .failed)
+            #expect(!subscriptions.hasUnsentChanges)
+            #expect(syncer.owesRun)
+
+            SettingsAPIStub.enqueue(try Fixtures.found(try Self.object(Self.subscribed([41])), revision: 2), for: url)
+            #expect(ChangeFeedPull.noNewRevision(watermark: 5, notePull: {}, retryUnsentSettings: { syncer.retryUnacknowledged() }) == .unchanged)
+
+            try await waitUntil(timeout: .seconds(5)) { subscriptions.subscribedIDs == [41] }
+            #expect(!syncer.owesRun)
+            #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "GET"])
+        }
+    }
+
     @Test("a snapshot read for an earlier sign-in is dropped, and the run reads the server's copy for its own")
     func snapshotOfAnotherSignIn() async throws {
         try await withExclusiveRealDefaults {

@@ -14,6 +14,7 @@ final class ClubSubscriptionsSyncer {
     private let client: Client
     private let gate = FullSyncGate()
     private var snapshot = SignInBound<SettingsDocument?>(empty: nil)
+    private var owed = SignInBound(empty: false)
     /// Counts finished runs, so that a full sync can tell whether its snapshot predates one.
     private(set) var finishedRuns = 0
 
@@ -28,10 +29,13 @@ final class ClubSubscriptionsSyncer {
     }
 
     convenience init(authTokenManager: AuthTokenManager) {
-        self.init { signIn in
-            await authTokenManager.isLoggedIn ? SettingsDocumentClient(auth: authTokenManager.backendAuth, for: signIn) : nil
-        }
+        self.init(client: SettingsDocumentClient.signedIn(with: authTokenManager))
     }
+
+    /// Whether a run failed, reading or writing, since the last one that landed for this sign-in;
+    /// `retryUnacknowledged` runs again until one lands, as a change it failed to read is not
+    /// marked unsent.
+    var owesRun: Bool { owed.value }
 
     /// Sends this device's changes and takes the server's, read again.
     @discardableResult
@@ -56,7 +60,7 @@ final class ClubSubscriptionsSyncer {
     }
 
     func retryUnacknowledged() {
-        guard Defaults[.cloudSyncEnabled], subscriptions.hasUnsentChanges else { return }
+        guard Defaults[.cloudSyncEnabled], subscriptions.hasUnsentChanges || owesRun else { return }
         Task { await sync() }
     }
 
@@ -77,9 +81,11 @@ final class ClubSubscriptionsSyncer {
             )
             guard let synced, mayWrite() else { return .skipped }
             subscriptions.adopt(synced, for: signIn)
+            owed.set(false, for: signIn)
             return .synced
         } catch {
             guard !FullSyncRunner.isCancellation(error), mayWrite() else { return .skipped }
+            owed.set(true, for: signIn)
             AppLogger.sync.error("club subscriptions sync failed: \(error.localizedDescription, privacy: .private)")
             return .failed
         }
