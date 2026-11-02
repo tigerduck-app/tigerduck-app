@@ -21,6 +21,22 @@ nonisolated enum BrowserSchoolSites {
         return sent.filter { $0.domain.lowercased().trimmingPrefix(".") == host }
     }
 
+    /// What the sign-in button of a page that opens signed out loads, for the sites whose landing
+    /// page waits for that tap; it goes through SSO and comes back to the site signed in.
+    static func signInLink(for url: URL) -> URL? {
+        guard url.scheme?.lowercased() == "https", url.query == nil, let host = BrowserRouting.host(of: url) else { return nil }
+        switch (host, url.path(percentEncoded: true).lowercased()) {
+        case ("querycourse.ntust.edu.tw", "/querycourse/"):
+            // The button passes the page it is on, as encodeURIComponent writes it.
+            let page = url.absoluteString.addingPercentEncoding(withAllowedCharacters: uriComponent) ?? ""
+            return URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/api//OAuth2/Login?returnUrl=" + page)
+        default:
+            return nil
+        }
+    }
+
+    private static let uriComponent = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
+
     private static func isSent(_ cookie: HTTPCookie, to host: String, path: String) -> Bool {
         let domain = cookie.domain.lowercased()
         let matches = domain.trimmingPrefix(".") == host || domain.hasPrefix(".") && host.hasSuffix(domain)

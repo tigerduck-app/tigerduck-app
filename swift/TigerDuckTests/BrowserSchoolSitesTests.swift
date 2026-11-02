@@ -49,5 +49,22 @@ struct BrowserSchoolSitesTests {
         #expect(BrowserSchoolSites.cookiesToDrop(from: otherHosts, opening: Self.url("https://sa.ntust.edu.tw/Dorm/")).isEmpty)
         #expect(BrowserSchoolSites.cookiesToDrop(from: otherHosts, opening: Self.url("https://stuinfosys.ntust.edu.tw")).count == 6)
     }
+
+    @Test func courseQueryOpensThroughItsSignInButtonsAddress() {
+        let link = BrowserSchoolSites.signInLink(for: Self.url("https://querycourse.ntust.edu.tw/QueryCourse/"))
+        #expect(link?.absoluteString
+            == "https://querycourse.ntust.edu.tw/QueryCourse/api//OAuth2/Login?returnUrl=https%3A%2F%2Fquerycourse.ntust.edu.tw%2FQueryCourse%2F")
+    }
+
+    @Test(arguments: [
+        "https://querycourse.ntust.edu.tw/QueryCourse/Report.aspx",
+        "https://querycourse.ntust.edu.tw/QueryCourse/?CourseNo=CS1001",
+        "http://querycourse.ntust.edu.tw/QueryCourse/",
+        "https://querycourse.ntust.edu.tw.example.com/QueryCourse/",
+        "https://stuinfosys.ntust.edu.tw/StudentInformation",
+    ])
+    func otherPagesOpenAsTheyAre(_ address: String) {
+        #expect(BrowserSchoolSites.signInLink(for: Self.url(address)) == nil)
+    }
 }
 #endif
