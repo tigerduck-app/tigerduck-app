@@ -72,6 +72,18 @@ enum SchoolRefresh {
         _ = await CourseChangeStore.shared.refresh()
     }
 
+    /// Starts refreshing the school's public feeds, course changes and the subscribed clubs'
+    /// activities, on the first load and on every return to the app. Both are conditional GETs, so
+    /// an unchanged feed costs a 304. Returns the club fetch, if one started.
+    @discardableResult
+    static func publicFeeds(
+        courseChanges: CourseChangeStore = .shared,
+        subscriptions: ClubSubscriptions = .shared, activities: ClubActivities = .shared, directory: ClubDirectory = .shared
+    ) -> Task<Void, Never>? {
+        Task { await courseChanges.refresh() }
+        return clubActivities(subscriptions: subscriptions, activities: activities, directory: directory)
+    }
+
     static func languageChanged() {
         CourseFetch.handleLanguageChange()
     }

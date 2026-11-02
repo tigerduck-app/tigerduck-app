@@ -154,6 +154,7 @@ final class AppEnvironment {
         ClubSubscriptions.shared.onChange = { [weak self] in
             Task { await self?.clubSubscriptions.sync() }
         }
+        ClubSubscriptions.shared.onFirstSubscription = { _ = SchoolRefresh.clubActivities() }
         CourseColorStore.shared.onLateMoodleColors = { [weak self] in
             Task { await self?.fullSync.sync(followUpIfBusy: true) }
         }

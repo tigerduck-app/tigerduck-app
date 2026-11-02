@@ -1,8 +1,8 @@
 import Foundation
 import TigerDuckCore
 
-/// A club of the public directory of clubs.ntust.edu.tw, `GET /api/v1/public/clubs` (club-aio's
-/// `ClubCardOut`), with the fields the app shows.
+/// A club of the public directory, https://clubs.ntust.edu.tw/api/v1/public/clubs, with the fields
+/// the app shows.
 nonisolated struct ClubCard: Decodable, Equatable, Sendable, Identifiable {
     let id: Int
     let name: String
@@ -39,8 +39,8 @@ nonisolated enum ClubActivityKind: Decodable, Equatable, Sendable {
     }
 }
 
-/// An activity of the school-wide feed, `GET /api/v1/public/activities` (club-aio's
-/// `PublicFeedActivityOut`). Its dates and times are Taipei wall-clock values.
+/// An activity of the school-wide feed, https://clubs.ntust.edu.tw/api/v1/public/activities. Its
+/// dates and times are Taipei wall-clock values.
 nonisolated struct ClubActivity: Decodable, Equatable, Sendable, Identifiable {
     let id: Int
     let name: String
@@ -73,14 +73,14 @@ nonisolated struct ClubActivity: Decodable, Equatable, Sendable, Identifiable {
 
     private static func minutes(_ time: String?) -> Int? {
         let parts = time?.split(separator: ":", omittingEmptySubsequences: false) ?? []
-        guard parts.count == 3, parts[2].count == 2, Int(parts[2]) != nil,
-              let minutes = ClassTimeline.minutes(of: "\(parts[0]):\(parts[1])"),
-              (0..<24 * 60).contains(minutes) else { return nil }
-        return minutes
+        guard parts.count == 3, parts[1].count == 2, parts[2].count == 2,
+              let hour = Int(parts[0]), let minute = Int(parts[1]), let second = Int(parts[2]),
+              (0..<24).contains(hour), (0..<60).contains(minute), (0..<60).contains(second) else { return nil }
+        return ClassTimeline.minutes(of: "\(parts[0]):\(parts[1])")
     }
 }
 
-/// The `data` list of a club-aio envelope, `{success, data, error, meta}`, less the elements this
+/// The `data` list of the API's envelope, `{success, data, error, meta}`, less the elements this
 /// build cannot read, so that one bad row does not hide the others, and less a second row of an
 /// id. A list none of whose rows reads is unreadable as a whole.
 nonisolated struct ClubAPIList<Element: Decodable & Sendable & Identifiable>: Decodable, Sendable {

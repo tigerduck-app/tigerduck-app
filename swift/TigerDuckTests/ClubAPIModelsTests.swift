@@ -101,6 +101,13 @@ struct ClubAPIModelsTests {
         #expect(ClubAPIClient.maxAge("max-age=99999999") == 86_400)
     }
 
+    @Test("an activity whose hour, minute or second is out of range has no place", arguments: ["08:60:00", "08:59:75", "200000000000000000:00:00", "24:00:00"])
+    func outOfRangeTimes(time: String) throws {
+        let read = try ClubAPIList<ClubActivity>.decode(Self.envelope(Self.activity(1, club: 93, start: time, end: "21:00:00")))
+
+        #expect(try #require(read.first).oneDay == nil)
+    }
+
     @Test("an answer whose every row is unreadable is a failure; an empty list and a partly readable one are not")
     func unreadableRows() throws {
         #expect(throws: DecodingError.self) { try ClubAPIList<ClubCard>.decode(Self.envelope(#"{"id":"x"},{"name":1}"#)) }

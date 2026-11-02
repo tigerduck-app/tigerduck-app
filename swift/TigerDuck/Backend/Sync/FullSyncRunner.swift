@@ -44,12 +44,18 @@ final class FullSyncRunner {
     }
 
     func retryUnsentEdits(for signIn: SignIn) async {
+        retryUnsentSettings(for: signIn)
+        await app.cloudSyncCoordinator.requeueParkedMarks()
+    }
+
+    /// Sends again each settings document change not yet acknowledged; each document keeps its
+    /// own unsent mark, so one with nothing to send does nothing.
+    func retryUnsentSettings(for signIn: SignIn) {
         app.holidays.retryUnacknowledged(for: signIn)
         app.clubSubscriptions.retryUnacknowledged()
         #if os(iOS)
         app.notificationSettings.retryUnacknowledged()
         #endif
-        await app.cloudSyncCoordinator.requeueParkedMarks()
     }
 
     nonisolated static func uploadsLocalMarksAsFirstSync(

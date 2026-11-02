@@ -13,6 +13,9 @@ final class ClubSubscriptions: AccountScoped {
     private(set) var document: ClubSubscriptionsDocument
     /// Runs after each change made on this device.
     @ObservationIgnored var onChange: (@MainActor () -> Void)?
+    /// Runs when the account goes from no subscribed club to one, by a change here or one adopted
+    /// from the server, as the club feed is fetched only while a club is subscribed.
+    @ObservationIgnored var onFirstSubscription: (@MainActor () -> Void)?
     @ObservationIgnored private let palette: [UInt32]
     @ObservationIgnored private let now: () -> Date
 
@@ -95,7 +98,9 @@ final class ClubSubscriptions: AccountScoped {
     }
 
     private func save(_ next: ClubSubscriptionsDocument, for signIn: SignIn) {
+        let hadSubscriptions = hasSubscriptions
         Defaults[.clubSubscriptions, for: signIn] = next.json()
         document = next
+        if !hadSubscriptions, hasSubscriptions { onFirstSubscription?() }
     }
 }
