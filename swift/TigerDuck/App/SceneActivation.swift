@@ -113,12 +113,11 @@ final class SceneActivation {
         _ = await AssignmentFetch.fetchAssignments(
             authService: authService, recheckSubmissions: recheckSubmissions, afterBackendPull: afterBackendPull, for: signIn
         )
+        SchoolRefresh.clubActivities()
         async let schoolEvents = CalendarService.fetchAndParseICS()
         async let courses: Void = fetchCurrentTerm(authService, afterBackendPull: afterBackendPull, for: signIn)
-        async let clubs: Void = SchoolRefresh.clubActivities()
         let fetchedSchoolEvents = await schoolEvents
         await courses
-        await clubs
         guard !Task.isCancelled, let fetchedSchoolEvents else { return }
         var calendarCache = AssignmentStore.shared.loadCalendarEvents()
         calendarCache.removeAll { $0.source == .school }

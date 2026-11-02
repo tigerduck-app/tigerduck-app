@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import os
 import Testing
 import TigerDuckCore
 @testable import TigerDuck
@@ -95,12 +96,52 @@ struct ClubOccurrencesTests {
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Models.envelope("")), for: base.appending(path: "activities"))
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Models.envelope("")), for: base.appending(path: "clubs"))
 
-            await SchoolRefresh.clubActivities(subscriptions: subscriptions, activities: feed, directory: directory)
+            #expect(SchoolRefresh.clubActivities(subscriptions: subscriptions, activities: feed, directory: directory) == nil)
             #expect(SettingsAPIStub.requests(under: base).isEmpty)
 
             subscriptions.subscribe(93, for: testSignIn)
-            await SchoolRefresh.clubActivities(subscriptions: subscriptions, activities: feed, directory: directory)
+            await SchoolRefresh.clubActivities(subscriptions: subscriptions, activities: feed, directory: directory)?.value
             #expect(Set(SettingsAPIStub.requests(under: base).compactMap { $0.url?.lastPathComponent }) == ["activities", "clubs"])
+        }
+    }
+
+    @Test("the class table's refresh does not wait for clubs.ntust.edu.tw, and the occurrences change once the feed lands")
+    func refreshRunsAlongside() async throws {
+        try await withExclusiveRealDefaults {
+            Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending)
+            defer { Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending) }
+            let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let files = ClubFiles(folders: CacheFolders(root: root))
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            let client = ClubAPIClient(baseURL: base, session: URLSession(configuration: config))
+            let subscriptions = ClubSubscriptions()
+            subscriptions.subscribe(93, for: testSignIn)
+            let directory = ClubDirectory(files: files, client: client, chinese: { true })
+            let feed = ClubActivities(files: files, client: client, subscriptions: subscriptions, directory: directory)
+            let gate = SettingsAPIStub.ReplyGate()
+            defer { gate.open() }
+            var held = SettingsAPIStub.StubResponse(statusCode: 200, body: Models.envelope(Models.activity(1, club: 93)))
+            held.gate = gate
+            SettingsAPIStub.enqueue(held, for: base.appending(path: "activities"))
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Models.envelope("")), for: base.appending(path: "clubs"))
+            let day = try #require(TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 12)))
+            let changed = OSAllocatedUnfairLock(initialState: false)
+            withObservationTracking { _ = feed.occurrences(on: [day]) } onChange: { changed.withLock { $0 = true } }
+
+            let refresh = try #require(
+                SchoolRefresh.clubActivities(subscriptions: subscriptions, activities: feed, directory: directory)
+            )
+            try await waitUntil { !SettingsAPIStub.requests(for: base.appending(path: "activities")).isEmpty }
+            #expect(feed.activities.isEmpty)
+            #expect(!changed.withLock { $0 })
+
+            gate.open()
+            await refresh.value
+            try await waitUntil { changed.withLock { $0 } }
+            #expect(feed.occurrences(on: [day]).map(\.id) == [1])
         }
     }
 }
