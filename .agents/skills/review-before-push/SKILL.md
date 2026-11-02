@@ -86,7 +86,8 @@ a parser of outside input:
 - `rg` the changed behavior's words in `openspec/`, `docs/` and `MIGRATE.md`, and update stale
   text.
 - A doc, skill or comment names only files, tests, jobs and behavior that exist on the base
-  branch; check each with `git grep ... origin/dev`, not the working tree or an open branch.
+  branch or in this diff, never ones only another open branch has; check each with
+  `git grep ... origin/dev` or the diff.
 - UI: 375 pt wide, the largest Dynamic Type, dark mode, and the VoiceOver label and state of each
   new control.
 
