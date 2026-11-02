@@ -131,8 +131,9 @@ final class BrowserPage {
     func zoomOut() { BrowserZoom.smaller(than: zoom).map(setZoom) }
     func resetZoom() { setZoom(BrowserZoom.standard) }
 
+    /// A page opened at risk keeps its host's saved zoom and desktop choice, which outlive its store.
     private func setZoom(_ percent: Int) {
-        guard !host.isEmpty, let webView else { return }
+        guard !host.isEmpty, !isAtRisk, let webView else { return }
         BrowserSites.change(for: AccountSession.school.currentSignIn) { $0.setZoom(percent, for: host) }
         BrowserPageScripts.addScripts(to: webView.configuration.userContentController)
         applySiteSettings()
@@ -140,7 +141,7 @@ final class BrowserPage {
 
     /// The page loads again, as its site sends a desktop layout only to a new request.
     func setDesktopSite(_ isDesktop: Bool) {
-        guard !host.isEmpty else { return }
+        guard !host.isEmpty, !isAtRisk else { return }
         BrowserSites.change(for: AccountSession.school.currentSignIn) { $0.setDesktop(isDesktop, for: host) }
         site.isDesktop = isDesktop
         webView?.reload()

@@ -122,6 +122,33 @@ struct BrowserAtRiskTests {
         #expect(prompts.prompt == mismatch)
     }
 
+    @Test("zoom and desktop site on a page opened at risk are not saved for its host, as they are on the browser's own store")
+    func siteSettingsAtRiskAreNotSaved() {
+        let host = "at-risk.ntust.edu.tw"
+        let start = URL(string: "https://\(host)/page")!
+        defer {
+            BrowserSites.change(for: AccountSession.school.currentSignIn) {
+                $0.setZoom(BrowserZoom.standard, for: host)
+                $0.setDesktop(false, for: host)
+            }
+        }
+        let page = Self.refusedPage(start)
+        page.openAtRisk()
+        _ = BrowserNavigator(page: page, auth: nil).makeView(opening: start)
+        page.signIn.load = { _ in }
+        #expect(page.host == host)
+        page.zoomIn()
+        page.setDesktopSite(true)
+        #expect(BrowserSites.stored.zoom(for: host) == BrowserZoom.standard)
+        #expect(!BrowserSites.stored.isDesktop(host))
+
+        let own = BrowserPage()
+        _ = BrowserNavigator(page: own, auth: nil).makeView(opening: start)
+        own.signIn.load = { _ in }
+        own.zoomIn()
+        #expect(BrowserSites.stored.zoom(for: host) != BrowserZoom.standard)
+    }
+
     @Test("no cookie a page opened at risk sets reaches the browser's store, the app's jar or a sign-in")
     func cookiesStayInTheIsolatedStore() async throws {
         let page = Self.refusedPage()
