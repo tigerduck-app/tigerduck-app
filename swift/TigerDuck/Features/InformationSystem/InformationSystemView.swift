@@ -193,6 +193,12 @@ struct InformationSystemPage: View {
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(link.opens ? Color.textPrimary : Color.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if link.isCampusOnly {
+                    Image(systemName: "network")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.textSecondary)
+                        .accessibilityLabel(String(localized: "information_system_campus_network_only"))
+                }
                 Image(systemName: "arrow.up.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Color.textSecondary)

@@ -35,6 +35,13 @@ nonisolated struct PortalLink: Codable, Hashable, Identifiable, Sendable {
         url.host(percentEncoded: false)?.lowercased() != "stuinfosys.ntust.edu.tw"
             || url.pathComponents.dropFirst().first?.lowercased() != "sagraduatesserv"
     }
+
+    /// Whether the site answers only on the school's network (TANet).
+    var isCampusOnly: Bool {
+        url.host(percentEncoded: false).map { Self.campusHosts.contains($0.lowercased()) } ?? false
+    }
+
+    private static let campusHosts: Set = ["software.ntust.edu.tw"]
 }
 
 /// The portal has a Chinese page and a separate English one.
