@@ -95,6 +95,7 @@ struct ClubSubscribeSheet: View {
                         } label: {
                             Text(String(localized: "class_table_club_unsubscribe_action"))
                         }
+                        .tint(.red)
                     }
                 }
                 .onMove { source, destination in
