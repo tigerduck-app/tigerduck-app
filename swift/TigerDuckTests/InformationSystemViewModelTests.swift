@@ -195,6 +195,23 @@ struct InformationSystemViewModelTests {
         #expect(InformationSystemViewModel(store: harness.store, showing: harness.request()).status == .ok)
     }
 
+    @Test("a network failure is not kept: the next open reads the school again")
+    func networkFailureIsNotKept() async {
+        let harness = Harness()
+        harness.school.failure = URLError(.notConnectedToInternet)
+
+        await InformationSystemViewModel(store: harness.store).open(harness.request())
+        #expect(harness.school.loads.count == 1)
+
+        harness.school.failure = nil
+        let reopened = InformationSystemViewModel(store: harness.store)
+        await reopened.open(harness.request())
+
+        #expect(harness.school.loads.count == 2)
+        #expect(reopened.links.count == 6)
+        #expect(reopened.phase == .idle)
+    }
+
     @Test("a pull that fails while links show keeps them and turns the status to failed")
     func failedRefreshKeepsLinks() async {
         let harness = Harness()
