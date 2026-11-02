@@ -71,6 +71,9 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
             // Until asked for its records, the store answers with no cookies, not those on disk.
             _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
             await BrowserPageScripts.install(in: configuration.userContentController)
+            for cookie in BrowserSchoolSites.cookiesToDrop(from: await store.httpCookieStore.allCookies(), opening: start) {
+                await store.httpCookieStore.deleteCookie(cookie)
+            }
             await page.signIn.open(start)
         }
         return container
