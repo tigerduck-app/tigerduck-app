@@ -44,6 +44,11 @@ struct BrowserConnectionTests {
         #expect(BrowserPage.connection(failure: .unreachable(host: "moodle2.ntust.edu.tw"), hasTrust: true) == .unknown)
     }
 
+    @Test func noPageIsSecureInABrowserThatOpenedOneAtRisk() {
+        #expect(BrowserPage.connection(failure: nil, hasTrust: true, isAtRisk: true) == .unknown)
+        #expect(BrowserPage.connection(failure: .certificate(host: "i.ntust.edu.tw"), hasTrust: true, isAtRisk: true) == .refused)
+    }
+
     @Test func aDownloadRefusedForItsCertificateSaysSoAndNamesTheHostThatSentIt() {
         let refused = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled, userInfo: [
             NSURLErrorFailingURLErrorKey: URL(string: "https://files.ntust.edu.tw/a.pdf")!,

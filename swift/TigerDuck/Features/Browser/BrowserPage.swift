@@ -6,29 +6,29 @@ import WebKit
 @Observable
 final class BrowserPage {
     enum Failure: Equatable {
-        case certificate(host: String)
+        /// With the page the student may open at risk, once the refused leaf is known.
+        case certificate(host: String, refusal: BrowserRiskAcceptance.Refusal? = nil)
         case unreachable(host: String)
     }
 
     let shown = BrowserShownPage()
     var failure: Failure?
+    private(set) var certificates = BrowserCertificateCheck()
     var outside: URL?
 
     let signIn: BrowserSignIn
     let find = BrowserFind()
     let zoomPeek = BrowserZoomPeek()
     private(set) var site = BrowserSiteSetting()
-    let store: WKWebsiteDataStore
-    let storeResets: Int
+    private var opening: BrowserData.Opening
     let downloads = BrowserDownloads()
     nonisolated static let downloadsRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("BrowserDownloads", isDirectory: true)
 
     init() {
-        let data = BrowserData.shared
-        let store = data.store
-        self.store = store
-        storeResets = data.storeResets
+        let opening = BrowserData.shared.opening
+        self.opening = opening
+        let store = opening.store
         signIn = BrowserSignIn(
             hasSession: { BrowserRouting.hasMoodleSession(await store.httpCookieStore.allCookies()) },
             signedInURL: { target in
@@ -38,6 +38,8 @@ final class BrowserPage {
         )
     }
 
+    var store: WKWebsiteDataStore { opening.store }
+    var storeResets: Int { opening.resets }
     var url: URL? { shown.url }
     var title: String { shown.title }
     var canGoBack: Bool { shown.canGoBack }
@@ -59,18 +61,24 @@ final class BrowserPage {
 
     var host: String { address?.host(percentEncoded: false) ?? "" }
 
+    var sheetAddress: URL? { refusalToOpenAtRisk?.pageToOpen ?? address }
+
+    var openedAtRisk: URL? { opening.openedAtRisk }
+    var isAtRisk: Bool { openedAtRisk != nil }
+
     var serverTrust: SecTrust? { webView?.serverTrust }
 
     enum Connection { case secure, refused, unknown }
 
-    /// Only a page that loaded over a trusted connection is called secure.
-    var connection: Connection { Self.connection(failure: failure, hasTrust: serverTrust != nil) }
+    /// Only a page that loaded over a trusted connection is called secure, and none in a browser
+    /// the student opened a page in at their own risk.
+    var connection: Connection { Self.connection(failure: failure, hasTrust: serverTrust != nil, isAtRisk: isAtRisk) }
 
-    static func connection(failure: Failure?, hasTrust: Bool) -> Connection {
+    static func connection(failure: Failure?, hasTrust: Bool, isAtRisk: Bool = false) -> Connection {
         switch failure {
         case .certificate: .refused
         case .unreachable: .unknown
-        case nil: hasTrust ? .secure : .unknown
+        case nil: hasTrust && !isAtRisk ? .secure : .unknown
         }
     }
 
@@ -89,6 +97,23 @@ final class BrowserPage {
         }
     }
 
+    var refusalToOpenAtRisk: BrowserRiskAcceptance.Refusal? {
+        guard case .certificate(_, let refusal?) = failure else { return nil }
+        return refusal
+    }
+
+    /// Opens the refused page again, its leaf let through, in a new store that starts empty, keeps
+    /// nothing on disk and goes with this browser. The browser stays in that store, wherever the
+    /// page leads, and no sign-in runs in it again; `TigerDuckBrowserView` builds a web view on it.
+    func openAtRisk() {
+        guard let refusal = refusalToOpenAtRisk else { return }
+        signIn.close()
+        certificates = certificates.accepting(refusal)
+        opening = BrowserData.Opening(store: .nonPersistent(), resets: opening.resets, openedAtRisk: refusal.pageToOpen)
+        failure = nil
+        downloads.failed = nil
+    }
+
     /// A download never commits as a page, so the address still names the page it started from.
     static func retryRequest(failedDownload: URLRequest?, address: URL?) -> URLRequest? {
         failedDownload ?? address.map { URLRequest(url: $0) }
@@ -105,8 +130,9 @@ final class BrowserPage {
     func zoomOut() { BrowserZoom.smaller(than: zoom).map(setZoom) }
     func resetZoom() { setZoom(BrowserZoom.standard) }
 
+    /// A page opened at risk keeps its host's saved zoom and desktop choice, which outlive its store.
     private func setZoom(_ percent: Int) {
-        guard !host.isEmpty, let webView else { return }
+        guard !host.isEmpty, !isAtRisk, let webView else { return }
         BrowserSites.change(for: AccountSession.school.currentSignIn) { $0.setZoom(percent, for: host) }
         BrowserPageScripts.addScripts(to: webView.configuration.userContentController)
         applySiteSettings()
@@ -114,7 +140,7 @@ final class BrowserPage {
 
     /// The page loads again, as its site sends a desktop layout only to a new request.
     func setDesktopSite(_ isDesktop: Bool) {
-        guard !host.isEmpty else { return }
+        guard !host.isEmpty, !isAtRisk else { return }
         BrowserSites.change(for: AccountSession.school.currentSignIn) { $0.setDesktop(isDesktop, for: host) }
         site.isDesktop = isDesktop
         webView?.reload()

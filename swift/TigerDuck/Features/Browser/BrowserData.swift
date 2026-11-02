@@ -32,6 +32,16 @@ final class BrowserData: AccountScoped {
         self.clear = clear
     }
 
+    /// The store a browser opens with and the resets before it; a later reset closes that browser.
+    struct Opening {
+        let store: WKWebsiteDataStore
+        let resets: Int
+        /// The refused page the student opened at their own risk, which gets a store of its own.
+        var openedAtRisk: URL?
+    }
+
+    var opening: Opening { Opening(store: store, resets: storeResets) }
+
     var store: WKWebsiteDataStore {
         if let current { return current }
         let store = WKWebsiteDataStore(forIdentifier: Self.storeID)

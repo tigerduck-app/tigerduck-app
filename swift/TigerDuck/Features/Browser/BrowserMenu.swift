@@ -23,6 +23,7 @@ struct BrowserMenu: View {
                     get: { page.isDesktopSite },
                     set: { page.setDesktopSite($0) }
                 ))
+                .disabled(page.isAtRisk)
                 .row()
             }
             card {
@@ -137,15 +138,16 @@ struct BrowserZoomButtons: View {
     var body: some View {
         HStack(spacing: 4) {
             button("textformat.size.smaller", String(localized: "browser_zoom_out"),
-                   enabled: BrowserZoom.smaller(than: page.zoom) != nil, page.zoomOut)
+                   enabled: !page.isAtRisk && BrowserZoom.smaller(than: page.zoom) != nil, page.zoomOut)
             Button { page.zoomPeek.zoom(page.resetZoom) } label: {
                 Text((Double(page.zoom) / 100).formatted(.percent))
                     .monospacedDigit()
                     .frame(minWidth: 52)
             }
             .buttonStyle(.plain)
+            .disabled(page.isAtRisk)
             button("textformat.size.larger", String(localized: "browser_zoom_in"),
-                   enabled: BrowserZoom.larger(than: page.zoom) != nil, page.zoomIn)
+                   enabled: !page.isAtRisk && BrowserZoom.larger(than: page.zoom) != nil, page.zoomIn)
         }
         .padding(3)
         .background(Color(uiColor: .tertiarySystemFill), in: Capsule())

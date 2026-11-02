@@ -23,9 +23,11 @@ struct TigerDuckBrowserView: View {
 
     var body: some View {
         BrowserWebView(
-            page: page, auth: app?.authService, start: url, insets: contentInsets,
+            page: page, auth: app?.authService, start: page.openedAtRisk ?? url, insets: contentInsets,
             findBarTop: page.find.isActive ? findBarTop : nil, appearance: appearance
         )
+            // A page opened at risk gets a web view of its own, on its own store.
+            .id(ObjectIdentifier(page.store))
             .ignoresSafeArea(edges: addressBar == .top ? .all : .bottom)
             .moodleFilePresentation(page.files)
             .overlay { failureView }
@@ -172,7 +174,7 @@ struct TigerDuckBrowserView: View {
             ZStack {
                 Color(uiColor: .systemBackground).ignoresSafeArea()
                 switch failure {
-                case .certificate(let host):
+                case .certificate(let host, _):
                     ContentUnavailableView {
                         Label(String(localized: "browser_error_title"), systemImage: "lock.trianglebadge.exclamationmark")
                     } description: {

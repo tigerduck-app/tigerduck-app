@@ -17,8 +17,7 @@ nonisolated struct TLSPinMatcher {
 
     func policy(forHost host: String, document: TLSPinDocument?, acceptances: [TLSPinAcceptance],
                 at date: Date) -> TLSPinPolicy {
-        var name = host.lowercased()
-        if name.hasSuffix(".") { name.removeLast() }
+        let name = Self.hostName(host)
         var best: (set: TLSPinSet, labels: Int)?
         for set in effectiveSets(document: document, acceptances: acceptances, at: date) {
             for domain in set.domains {
@@ -30,6 +29,14 @@ nonisolated struct TLSPinMatcher {
         }
         guard let set = best?.set else { return .notPinned }
         return date >= set.expiresAt ? .expired(set) : .pinned(set)
+    }
+
+    /// A host as a pin set's domains name it: lowercased, without the trailing dot of a fully
+    /// qualified name.
+    static func hostName(_ host: String) -> String {
+        var name = host.lowercased()
+        if name.hasSuffix(".") { name.removeLast() }
+        return name
     }
 
     static func listsPromptRoot(_ anchor: String, document: TLSPinDocument?, at date: Date) -> Bool {
