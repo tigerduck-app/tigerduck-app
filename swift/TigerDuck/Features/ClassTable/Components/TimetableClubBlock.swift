@@ -1,5 +1,4 @@
 import SwiftUI
-import TigerDuckCore
 
 /// One weekday's club activities, over the rows of the class table.
 struct TimetableClubColumn: View {
@@ -94,8 +93,6 @@ struct TimetableClubBlock: View {
     }
 
     static func spoken(_ club: ClubOccurrence) -> String {
-        [club.clubName, club.name, ClassTimeline.timeRange(from: club.start, to: club.end), club.location]
-            .filter { !$0.isEmpty }
-            .joined(separator: ", ")
+        ([club.clubName] + club.details).joined(separator: ", ")
     }
 }

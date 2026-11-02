@@ -157,12 +157,41 @@ struct ClubScreensTests {
             try await Task.sleep(for: .milliseconds(400))
             Self.save(window, as: "picker-\(look.testDescription)")
 
-            let row = try #require(exposedAccessibilityElements(in: window).first {
+            let named = exposedAccessibilityElements(in: window).filter {
                 $0.accessibilityLabel?.contains(clubs[1].clubName) == true
-            })
-            #expect(row.accessibilityLabel?.contains("19:00 - 21:30 · 學生活動中心 B1") == true)
+            }
+            let row = try #require(named.first)
+            #expect(Set(named.compactMap(\.accessibilityLabel)).count == 1)
+            #expect(row.accessibilityLabel == TimetableClubBlock.spoken(clubs[1]))
+            #expect(row.accessibilityTraits.contains(.button))
             _ = row.accessibilityActivate()
             #expect(picked == String(clubs[1].id))
+        }
+    }
+
+    @Test("the picker of courses that meet, which shares the club picker's rows", arguments: looks)
+    func coursePicker(look: Look) async throws {
+        try await withAccessibilityAutomation {
+            let courses = [
+                CourseStore.Course(
+                    courseNo: "CS2001301", courseName: "資料結構與演算法", instructor: "王大明", credits: 3,
+                    classroom: "TR-313", enrolledCount: 40, maxCount: 60, schedule: [2: ["6", "7"]], semester: "1151"
+                ),
+                ClubMock.course("GE3105701", weekday: 2, periods: ["6"], semester: "1151"),
+            ]
+            let sheet = ConflictPickerSheet(
+                title: String(localized: "conflict_course_picker_title"),
+                rows: courses.map(ConflictPickerSheet.Row.init(course:)),
+                onPick: { _ in }
+            )
+            let window = try Self.show(sheet, look: look)
+            defer { window.isHidden = true }
+            try await waitUntil { Self.shows(courses[0].courseName, in: window) }
+            try await Task.sleep(for: .milliseconds(400))
+            Self.save(window, as: "course-picker-\(look.testDescription)")
+
+            let row = try #require(accessibilityElement(labeled: "資料結構與演算法, CS2001301, 王大明, TR-313", in: window))
+            #expect(row.accessibilityTraits.contains(.button))
         }
     }
 

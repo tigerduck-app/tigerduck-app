@@ -7,10 +7,11 @@ struct ConflictPickerSheet: View {
         let id: String
         let color: Color
         let title: String
-        let subtitle: String
+        let details: [String]
     }
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let title: String
     let rows: [Row]
@@ -41,7 +42,9 @@ struct ConflictPickerSheet: View {
     }
 
     private func rowView(_ row: Row) -> some View {
-        Button {
+        // At the accessibility sizes the lines wrap, since the time and place tell rows apart.
+        let stacked = dynamicTypeSize.isAccessibilitySize
+        return Button {
             onPick(row.id)
         } label: {
             HStack(spacing: TigerDuckTheme.Spacing.md) {
@@ -50,11 +53,11 @@ struct ConflictPickerSheet: View {
                     Text(row.title)
                         .font(TigerDuckTheme.Typography.body.weight(.semibold))
                         .foregroundStyle(Color.textPrimary)
-                        .lineLimit(1)
-                    Text(row.subtitle)
+                        .lineLimit(stacked ? nil : 1)
+                    Text(row.details.joined(separator: " · "))
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)
-                        .lineLimit(1)
+                        .lineLimit(stacked ? nil : 1)
                         .truncationMode(.tail)
                 }
                 Spacer(minLength: 0)
@@ -64,6 +67,7 @@ struct ConflictPickerSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Text(([row.title] + row.details).joined(separator: ", ")))
     }
 }
 
@@ -73,15 +77,18 @@ extension ConflictPickerSheet.Row {
         if !course.instructor.isEmpty { parts.append(course.instructor) }
         let classroom = CourseStore.Course.dedup(course.classroom)
         if !classroom.isEmpty { parts.append(classroom) }
-        self.init(id: course.courseNo, color: course.color, title: course.displayName, subtitle: parts.joined(separator: " · "))
+        self.init(id: course.courseNo, color: course.color, title: course.displayName, details: parts)
     }
 
     init(club: ClubOccurrence) {
-        let parts = [club.name, ClassTimeline.timeRange(from: club.start, to: club.end), club.location]
-        self.init(
-            id: String(club.id), color: Color(hex: UInt(club.color)), title: club.clubName,
-            subtitle: parts.filter { !$0.isEmpty }.joined(separator: " · ")
-        )
+        self.init(id: String(club.id), color: Color(hex: UInt(club.color)), title: club.clubName, details: club.details)
+    }
+}
+
+extension ClubOccurrence {
+    /// The activity, its time and its place, which a picker row and VoiceOver read after the club.
+    var details: [String] {
+        [name, ClassTimeline.timeRange(from: start, to: end), location].filter { !$0.isEmpty }
     }
 }
 
