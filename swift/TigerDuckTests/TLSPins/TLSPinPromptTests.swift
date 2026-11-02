@@ -127,9 +127,13 @@ struct TLSPinPromptTests {
             prompting.queue.report(Self.mismatch)
             let sheet = try await Self.shownSheet(in: window)
 
-            try await Self.activate(String(localized: "tls_pin_mismatch_show_details"), in: sheet)
+            let showDetails = String(localized: "tls_pin_mismatch_show_details")
+            try await waitUntil { accessibilityElement(labeled: showDetails, in: sheet) != nil }
+            #expect(accessibilityElement(labeled: showDetails, in: sheet)?.accessibilityExpandedStatus == .collapsed)
+            try await Self.activate(showDetails, in: sheet)
             try await waitUntil { accessibilityElement(labeled: Self.details, in: sheet) != nil }
             #expect(accessibilityElement(labeled: String(localized: "tls_pin_mismatch_view_certificate"), in: sheet) != nil)
+            #expect(accessibilityElement(labeled: showDetails, in: sheet)?.accessibilityExpandedStatus == .expanded)
             #expect(window.rootViewController?.presentedViewController?.view === sheet)
         }
     }
@@ -227,6 +231,44 @@ struct TLSPinPromptTests {
         prompting.queue.report(Self.mismatch)
         try await waitUntil { root.presentedViewController != nil }
         #expect(prompting.queue.prompt == Self.mismatch)
+    }
+
+    @Test("Escape closes the sheet unanswered, as a swipe does")
+    func escapeAnswersNothing() async throws {
+        let prompting = Prompting()
+        let window = try Self.window(prompting)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        prompting.queue.report(Self.mismatch)
+        _ = try await Self.shownSheet(in: window)
+
+        try #require(Self.pressEscape(in: try #require(root.presentedViewController)))
+        try await waitUntil { root.presentedViewController == nil && prompting.owner.holder == nil }
+        #expect(prompting.engine.acceptances.isEmpty)
+        #expect(prompting.continued == 0)
+        // As in the swipe test: a browser opens frames after the sheet closes.
+        try await Task.sleep(for: .milliseconds(500))
+
+        prompting.queue.offerDismissedAgain()
+        prompting.queue.report(Self.mismatch)
+        try await waitUntil { root.presentedViewController != nil }
+    }
+
+    /// Performs the Escape key command a keyboard shortcut in `controller` made, as the key does.
+    static func pressEscape(in controller: UIViewController) -> Bool {
+        let views = [controller.view!] + controller.view.descendants(ofType: UIView.self)
+        let responders: [UIResponder] = [controller] + controller.children + views
+        let commands = responders.flatMap { $0.keyCommands ?? [] }
+        guard let escape = commands.first(where: { $0.input == UIKeyCommand.inputEscape }), let action = escape.action else {
+            Issue.record("no Escape command among \(commands.map { $0.input ?? "" })")
+            return false
+        }
+        guard let target = responders.lazy.compactMap({ $0.target(forAction: action, withSender: escape) as? NSObject }).first
+        else {
+            Issue.record("nothing performs \(action) among \(responders.map { type(of: $0) })")
+            return false
+        }
+        return UIApplication.shared.sendAction(action, to: target, from: escape, for: nil)
     }
 
     @Test("a prompt the queue takes back, as the app leaves, closes the sheet with no Cancel")

@@ -9,6 +9,7 @@ struct TLSPinPromptSheet: View {
 
     @State private var showsDetails = false
     @State private var showsCertificates = false
+    @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .title) private var badgeSize: CGFloat = 60
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
@@ -39,6 +40,7 @@ struct TLSPinPromptSheet: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
+        .background { escapeCloses }
         #if os(iOS)
         .presentationDetents([.medium, .large], selection: $detent)
         .onAppear { if dynamicTypeSize.isAccessibilitySize { detent = .large } }
@@ -87,40 +89,35 @@ struct TLSPinPromptSheet: View {
         }
     }
 
+    /// A disclosure in a capsule like Cancel and Continue, so VoiceOver reads it expanded or
+    /// collapsed.
     private var details: some View {
-        VStack(spacing: TigerDuckTheme.Spacing.md) {
+        DisclosureGroup(isExpanded: $showsDetails) {
+            Text(String(
+                format: String(localized: "tls_pin_mismatch_details"),
+                prompt.host, prompt.domains.formatted(.list(type: .and, width: .narrow))
+            ))
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
             Button {
-                withAnimation { showsDetails.toggle() }
+                showsCertificates = true
             } label: {
-                capsuleLabel(String(localized: "tls_pin_mismatch_show_details"), systemImage: "chevron.down",
-                             turned: showsDetails)
+                capsuleLabel(String(localized: "tls_pin_mismatch_view_certificate"), systemImage: "chevron.forward")
             }
             .promptButtonStyle(prominent: false)
-            if showsDetails {
-                Text(String(
-                    format: String(localized: "tls_pin_mismatch_details"),
-                    prompt.host, prompt.domains.formatted(.list(type: .and, width: .narrow))
-                ))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    showsCertificates = true
-                } label: {
-                    capsuleLabel(String(localized: "tls_pin_mismatch_view_certificate"), systemImage: "chevron.forward")
-                }
-                .promptButtonStyle(prominent: false)
-            }
+        } label: {
+            Text(String(localized: "tls_pin_mismatch_show_details"))
         }
+        .disclosureGroupStyle(CapsuleDisclosure())
         .buttonBorderShape(.capsule)
     }
 
-    private func capsuleLabel(_ title: String, systemImage: String, turned: Bool = false) -> some View {
+    private func capsuleLabel(_ title: String, systemImage: String) -> some View {
         HStack(spacing: TigerDuckTheme.Spacing.xs) {
             Text(title)
             Image(systemName: systemImage)
                 .font(.footnote.weight(.semibold))
-                .rotationEffect(.degrees(turned ? 180 : 0))
                 .accessibilityHidden(true)
         }
     }
@@ -149,7 +146,17 @@ struct TLSPinPromptSheet: View {
     private var cancelButton: some View {
         Button(action: onCancel) { buttonLabel(String(localized: "action_cancel")) }
             .promptButtonStyle(prominent: false)
+    }
+
+    /// A sheet takes Escape only through a cancel button. This one closes the sheet unanswered, as
+    /// a swipe does, where Cancel would answer.
+    private var escapeCloses: some View {
+        Button("") { dismiss() }
             .keyboardShortcut(.cancelAction)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     private var continueButton: some View {
@@ -217,6 +224,26 @@ private struct TLSCertificateList: View {
 
     static func validity(_ certificate: TLSCertificateSummary) -> String {
         [certificate.notBefore, certificate.notAfter].compactMap { $0?.fullDateString }.joined(separator: " – ")
+    }
+}
+
+private struct CapsuleDisclosure: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(spacing: TigerDuckTheme.Spacing.md) {
+            Button {
+                withAnimation { configuration.isExpanded.toggle() }
+            } label: {
+                HStack(spacing: TigerDuckTheme.Spacing.xs) {
+                    configuration.label
+                    Image(systemName: "chevron.down")
+                        .font(.footnote.weight(.semibold))
+                        .rotationEffect(.degrees(configuration.isExpanded ? 180 : 0))
+                        .accessibilityHidden(true)
+                }
+            }
+            .promptButtonStyle(prominent: false)
+            if configuration.isExpanded { configuration.content }
+        }
     }
 }
 
