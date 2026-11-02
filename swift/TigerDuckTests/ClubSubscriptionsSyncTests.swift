@@ -159,6 +159,37 @@ struct ClubSubscriptionsSyncTests {
         }
     }
 
+    @Test("a club edit whose write failed is sent again on a poll that finds no new revision")
+    func pollWithoutChangesRetries() async throws {
+        try await withExclusiveRealDefaults {
+            Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending)
+            let syncWasOn = Defaults[.cloudSyncEnabled]
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
+            defer {
+                Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending)
+                Defaults[.cloudSyncEnabled, for: testSignIn] = syncWasOn
+            }
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.documentURL(baseURL)
+            let subscriptions = ClubSubscriptions()
+            let syncer = ClubSubscriptionsSyncer(subscriptions: subscriptions, startingSignIn: { testSignIn }) { _ in
+                SettingsAPIStub.makeClient(baseURL: baseURL)
+            }
+            subscriptions.subscribe(93, for: testSignIn)
+            SettingsAPIStub.enqueue(Fixtures.notFound(), for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 500, body: Data()), for: url)
+            #expect(await syncer.sync() == .failed)
+            SettingsAPIStub.enqueue(Fixtures.notFound(), for: url)
+            SettingsAPIStub.enqueue(try Fixtures.written(revision: 1), for: url)
+
+            let outcome = ChangeFeedPull.noNewRevision(watermark: 5, notePull: {}, retryUnsentSettings: { syncer.retryUnacknowledged() })
+
+            #expect(outcome == .unchanged)
+            try await waitUntil(timeout: .seconds(5)) { !subscriptions.hasUnsentChanges }
+            #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT", "GET", "PUT"])
+        }
+    }
+
     @Test("a snapshot read for an earlier sign-in is dropped, and the run reads the server's copy for its own")
     func snapshotOfAnotherSignIn() async throws {
         try await withExclusiveRealDefaults {
