@@ -32,6 +32,8 @@ nonisolated enum BrowserSchoolSites {
             return URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/api//OAuth2/Login?returnUrl=" + page)
         case ("sa02.ntust.edu.tw", "/webcounseling/"):
             return URL.knownGood("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login")
+        case ("sa.ntust.edu.tw", "/dorm/"):
+            return URL.knownGood("https://sa.ntust.edu.tw/Dorm/OAuth2/Login")
         default:
             return nil
         }

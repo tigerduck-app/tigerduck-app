@@ -61,6 +61,12 @@ struct BrowserSchoolSitesTests {
             == Self.url("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login"))
     }
 
+    @Test func theDormitorySystemOpensThroughItsSignInLink() {
+        #expect(BrowserSchoolSites.signInLink(for: Self.url("https://sa.ntust.edu.tw/Dorm/"))
+            == Self.url("https://sa.ntust.edu.tw/Dorm/OAuth2/Login"))
+        #expect(BrowserSchoolSites.signInLink(for: Self.url("https://sa.ntust.edu.tw/Scholarship/")) == nil)
+    }
+
     @Test(arguments: [
         "https://sa02.ntust.edu.tw/WebCounseling/Front_Index/FrontIndex/Index",
         "https://sa02.ntust.edu.tw/classroom_user/SSO_login.aspx",
