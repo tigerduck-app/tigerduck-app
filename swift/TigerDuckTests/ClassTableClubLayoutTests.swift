@@ -149,34 +149,60 @@ struct ClassTableClubLayoutTests {
         }
     }
 
+    /// Runs `body` with 1151 the newest term on offer and none picked. Run inside
+    /// `withExclusiveRealDefaults`.
+    static func withNewestTerm1151(_ body: () throws -> Void) rethrows {
+        let catalogue = "semesterCatalog.semesters"
+        let savedTerms = UserDefaults.standard.stringArray(forKey: catalogue)
+        let savedPick = Defaults[.classTableSelectedSemester]
+        defer {
+            UserDefaults.standard.set(savedTerms, forKey: catalogue)
+            Defaults[.classTableSelectedSemester, for: testSignIn] = savedPick
+        }
+        UserDefaults.standard.set(["1151", "1142"], forKey: catalogue)
+        Defaults[.classTableSelectedSemester, for: testSignIn] = nil
+        try body()
+    }
+
+    @Test("the first load draws the clubs the feed already holds, with no store change")
+    func firstLoadShowsCachedClubs() async throws {
+        try await withExclusiveRealDefaults {
+            try Self.withNewestTerm1151 {
+                let now = AppClock.now()
+                let week = (1...7).map { ClassTableViewModel.nextDate(onWeekday: $0, from: now) }
+                let stores = try ClubMock.stores(dates: week)
+                defer { ClubMock.reset(stores) }
+                let model = Self.model(stores)
+
+                model.loader.load()
+
+                #expect(model.grid.clubs.keys.sorted() == [1, 3, 4, 5, 6])
+                #expect(model.hasGrid)
+            }
+        }
+    }
+
     @Test("only the user's own table for the newest term shows clubs, which show its grid without courses")
     func newestTermOnly() async throws {
         try await withExclusiveRealDefaults {
-            let catalogue = "semesterCatalog.semesters"
-            let savedTerms = UserDefaults.standard.stringArray(forKey: catalogue)
-            let savedPick = Defaults[.classTableSelectedSemester]
-            defer {
-                UserDefaults.standard.set(savedTerms, forKey: catalogue)
-                Defaults[.classTableSelectedSemester, for: testSignIn] = savedPick
+            try Self.withNewestTerm1151 {
+                let stores = try ClubMock.stores(dates: Self.dates)
+                defer { ClubMock.reset(stores) }
+                let model = Self.model(stores)
+
+                model.refreshClubs(now: Self.monday)
+                #expect(model.currentSemester == "1151")
+                #expect(model.showsClubs)
+                #expect(model.grid.clubs.keys.sorted() == [1, 3, 4, 5, 6])
+                #expect(model.courses.isEmpty)
+                #expect(model.hasGrid)
+
+                model.pickSemester("1142", for: testSignIn)
+                model.refreshClubs(now: Self.monday)
+                #expect(!model.showsClubs)
+                #expect(model.grid.clubs.isEmpty)
+                #expect(!model.hasGrid)
             }
-            UserDefaults.standard.set(["1151", "1142"], forKey: catalogue)
-            Defaults[.classTableSelectedSemester, for: testSignIn] = nil
-            let stores = try ClubMock.stores(dates: Self.dates)
-            defer { ClubMock.reset(stores) }
-            let model = Self.model(stores)
-
-            model.refreshClubs(now: Self.monday)
-            #expect(model.currentSemester == "1151")
-            #expect(model.showsClubs)
-            #expect(model.grid.clubs.keys.sorted() == [1, 3, 4, 5, 6])
-            #expect(model.courses.isEmpty)
-            #expect(model.hasGrid)
-
-            model.pickSemester("1142", for: testSignIn)
-            model.refreshClubs(now: Self.monday)
-            #expect(!model.showsClubs)
-            #expect(model.grid.clubs.isEmpty)
-            #expect(!model.hasGrid)
         }
     }
 
