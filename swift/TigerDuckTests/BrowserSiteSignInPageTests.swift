@@ -190,13 +190,18 @@ struct BrowserSiteSignInPageTests {
         (try? await webView.callAsyncJavaScript("return JSON.stringify(" + expression + ")", contentWorld: world)) as? String
     }
 
-    /// The statuses of the posts the stored-password rules let through.
+    /// The statuses of the posts the stored-password rules let through, and the checks of the
+    /// school session, each of which may renew it.
     private final class Posts {
         var statuses: [Int?] = []
+        var sessionChecks = 0
     }
 
     private func creditProgramSignIn(_ posts: Posts, sessionIsLive: Bool = true) -> BrowserSiteSignIn {
-        BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { sessionIsLive }, postingStoredPassword: { post in
+        BrowserSiteSignIn(account: { Self.account }, sessionIsLive: {
+            posts.sessionChecks += 1
+            return sessionIsLive
+        }, postingStoredPassword: { post in
             let status = await post()
             posts.statuses.append(status)
             return status
@@ -248,10 +253,12 @@ struct BrowserSiteSignInPageTests {
         #expect(await read(webView, "commits") == #"[["setShowLogin",true]]"#)
     }
 
-    @Test func aTokenThePageStillTakesIsKept() async {
+    @Test func aTokenThePageStillTakesIsKeptWithoutCheckingTheSchoolSession() async {
+        let posts = Posts()
         let webView = await creditProgramPage(answers: "answers['api/users'] = [200, {}];", cookie: "document.cookie = 'token=old';")
-        await creditProgramSignIn(Posts()).pageFinished(in: webView)
+        await creditProgramSignIn(posts).pageFinished(in: webView)
 
+        #expect(posts.sessionChecks == 0)
         #expect(await read(webView, "requests.map((request) => request[0])", in: .defaultClient) == #"["api/users"]"#)
         #expect(await read(webView, "document.cookie") == #""token=old""#)
         #expect(await read(webView, "commits") == "[]")

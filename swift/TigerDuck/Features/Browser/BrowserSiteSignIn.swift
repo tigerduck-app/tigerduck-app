@@ -39,9 +39,8 @@ struct BrowserSiteSignIn {
     /// The credit program system: a token it still takes is kept; else the stored password is
     /// posted as its popup posts it, and the popup opens for the student when that does not sign in.
     private func signInWithToken(in webView: WKWebView, at page: [String: Any]) async {
-        let account = await sessionIsLive() ? account() : nil
         guard await run(Self.savedToken, page, in: webView, world: .defaultClient) as? String == "signedOut" else { return }
-        if let account {
+        if await sessionIsLive(), let account = account() {
             let arguments = page.merging(["studentId": account.studentId, "password": account.password]) { $1 }
             let status = await postingStoredPassword { await run(Self.postToken, arguments, in: webView, world: .defaultClient) as? Int }
             if let status, (200..<300).contains(status) { return }
