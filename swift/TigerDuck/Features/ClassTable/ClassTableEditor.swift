@@ -13,6 +13,14 @@ final class ClassTableEditor {
         var showRenameAlert = false
         var courseToRecolor: CourseStore.Course?
         var tripleConflictError: TripleConflictError?
+        var showsClubSubscriptions = false
+        var clubToRecolor: ClubColorTarget?
+    }
+
+    /// A subscribed club, by its id and the name the color sheet shows.
+    struct ClubColorTarget: Identifiable {
+        let id: Int
+        let name: String
     }
 
     @ObservationIgnored weak var owner: ClassTableViewModel?
@@ -49,6 +57,8 @@ final class ClassTableEditor {
         dialogs.showRenameAlert = false
         dialogs.courseToRename = nil
         dialogs.courseToRecolor = nil
+        dialogs.showsClubSubscriptions = false
+        dialogs.clubToRecolor = nil
     }
 
     func applyCustomizations(_ courses: inout [CourseStore.Course]) {
