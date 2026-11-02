@@ -85,7 +85,7 @@ struct ChangeFeedWatermarkTests {
     }
 
     @Test(
-        "A settings change moves the watermark once the club document settled, and not after a failed club sync",
+        "A settings change reconciles the notification settings whatever the club sync did, and moves the watermark only when it did not fail",
         arguments: [(FullSyncOutcome.synced, true), (.skipped, true), (.failed, false)]
     )
     @MainActor
@@ -98,7 +98,7 @@ struct ChangeFeedWatermarkTests {
             advance: { steps.append("advance") }
         )
 
-        #expect(steps == (advances ? ["clubs", "notifications", "advance"] : ["clubs"]))
+        #expect(steps == (advances ? ["clubs", "notifications", "advance"] : ["clubs", "notifications"]))
     }
 }
 

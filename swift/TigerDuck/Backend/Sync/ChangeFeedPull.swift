@@ -107,15 +107,15 @@ final class ChangeFeedPull {
         onSettled()
     }
 
-    /// Calls `advance` once the club document and the notification settings have both settled, so
-    /// that a change either one failed to take is read again on the next poll.
+    /// Reconciles the club document and the notification settings, and calls `advance` once both
+    /// settled, so that a change either one failed to take is read again on the next poll.
     static func reconcileSettings(
         clubs: () async -> FullSyncOutcome,
         notifications: (_ onSettled: @escaping @MainActor () -> Void) async -> Void,
         advance: @escaping @MainActor () -> Void
     ) async {
-        guard await clubs() != .failed else { return }
-        await notifications(advance)
+        let clubOutcome = await clubs()
+        await notifications { if clubOutcome != .failed { advance() } }
     }
 
     private func advanceRevision(from since: Int, to revision: Int, for signIn: SignIn) {
