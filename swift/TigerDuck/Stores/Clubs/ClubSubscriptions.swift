@@ -23,8 +23,13 @@ final class ClubSubscriptions: AccountScoped {
     }
 
     static func forgetAccount(in storage: AccountStorage) {
+        shared.forget()
+    }
+
+    /// Drops the subscriptions and their unsent mark, saved and in memory.
+    func forget() {
         Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending)
-        shared.document = ClubSubscriptionsDocument()
+        document = ClubSubscriptionsDocument()
     }
 
     /// The subscribed clubs, highest priority first.

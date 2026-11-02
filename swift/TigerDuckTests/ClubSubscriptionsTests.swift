@@ -85,15 +85,14 @@ struct ClubSubscriptionsTests {
         await withExclusiveRealDefaults {
             Self.reset()
             defer { Self.reset() }
-            ClubSubscriptions.shared.subscribe(93, for: AccountSession.school.signIns.currentSignIn)
-            let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-            defer { try? FileManager.default.removeItem(at: root) }
+            let store = ClubSubscriptions(now: Self.clock())
+            store.subscribe(93, for: testSignIn)
 
-            ClubSubscriptions.forgetAccount(in: AccountStorage(folders: CacheFolders(root: root)))
+            store.forget()
 
             #expect(Defaults[.clubSubscriptions] == nil)
-            #expect(!Defaults[.clubSubscriptionsPushPending])
-            #expect(ClubSubscriptions.shared.document == ClubSubscriptionsDocument())
+            #expect(!store.hasUnsentChanges)
+            #expect(store.document == ClubSubscriptionsDocument())
             #expect(SignOutPlan.schoolStores.contains { ObjectIdentifier($0) == ObjectIdentifier(ClubSubscriptions.self) })
         }
     }
