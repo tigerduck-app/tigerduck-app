@@ -63,6 +63,7 @@ jobs:
               TigerDuckTests/BrowserSiteSignInPageTests
               TigerDuckTests/ClassTableShareSheetTests
               TigerDuckTests/ClassTableSwitcherTests
+              TigerDuckTests/ClubScreensTests
               TigerDuckTests/CourseColorPickerSheetTests
               TigerDuckTests/CourseDetailRootBarTests
               TigerDuckTests/CourseSyllabusPageTests
