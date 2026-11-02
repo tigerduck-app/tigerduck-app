@@ -1,7 +1,7 @@
 import Foundation
 
 enum LibraryRequests {
-    private static let baseURL = "https://api.lib.ntust.edu.tw/v1"
+    static let baseURL = "https://api.lib.ntust.edu.tw/v1"
 
     static let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral

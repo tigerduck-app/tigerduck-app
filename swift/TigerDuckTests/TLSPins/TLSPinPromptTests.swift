@@ -22,23 +22,14 @@ struct TLSPinPromptTests {
     @Observable
     final class Prompting {
         @ObservationIgnored let engine = F.engine(document: F.promptRootsDocument)
-        @ObservationIgnored let defaults = F.defaults()
         @ObservationIgnored let owner = TLSPinPromptOwner()
         @ObservationIgnored var continued = 0
         @ObservationIgnored private(set) var queue: TLSPinMismatchQueue!
         var showsOtherSheet = false
 
         init() {
-            queue = TLSPinMismatchQueue(
-                engine: engine, defaults: defaults, clock: { F.now }, afterContinue: { [unowned self] in continued += 1 }
-            )
+            queue = TLSPinMismatchQueue(engine: engine, afterContinue: { [unowned self] in continued += 1 })
             queue.isForeground = true
-        }
-
-        var isQuiet: Bool { isQuiet("library") }
-
-        func isQuiet(_ setID: String) -> Bool {
-            defaults.dictionary(forKey: "tlsPinPromptQuietUntil")?[setID] != nil
         }
     }
 
@@ -70,12 +61,12 @@ struct TLSPinPromptTests {
     }
 
     static func window(
-        _ prompting: Prompting, style: UIUserInterfaceStyle = .light, height: CGFloat = 874,
+        _ prompting: Prompting, style: UIUserInterfaceStyle = .light, width: CGFloat = 402, height: CGFloat = 874,
         textSize: UIContentSizeCategory? = nil, phase: Phase? = nil
     ) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: 0, y: 0, width: 402, height: height)
+        window.frame = CGRect(x: 0, y: 0, width: width, height: height)
         window.overrideUserInterfaceStyle = style
         window.rootViewController = UIHostingController(rootView: Root(prompting: prompting, phase: phase ?? Phase()))
         // Set the way the system setting reaches the app, through the window's traits.
@@ -136,9 +127,13 @@ struct TLSPinPromptTests {
             prompting.queue.report(Self.mismatch)
             let sheet = try await Self.shownSheet(in: window)
 
-            try await Self.activate(String(localized: "tls_pin_mismatch_show_details"), in: sheet)
+            let showDetails = String(localized: "tls_pin_mismatch_show_details")
+            try await waitUntil { accessibilityElement(labeled: showDetails, in: sheet) != nil }
+            #expect(accessibilityElement(labeled: showDetails, in: sheet)?.accessibilityExpandedStatus == .collapsed)
+            try await Self.activate(showDetails, in: sheet)
             try await waitUntil { accessibilityElement(labeled: Self.details, in: sheet) != nil }
             #expect(accessibilityElement(labeled: String(localized: "tls_pin_mismatch_view_certificate"), in: sheet) != nil)
+            #expect(accessibilityElement(labeled: showDetails, in: sheet)?.accessibilityExpandedStatus == .expanded)
             #expect(window.rootViewController?.presentedViewController?.view === sheet)
         }
     }
@@ -187,11 +182,10 @@ struct TLSPinPromptTests {
             #expect(prompting.queue.prompt == nil)
             #expect(prompting.engine.acceptances.map(\.setID) == ["library"])
             #expect(prompting.continued == 1)
-            #expect(!prompting.isQuiet)
         }
     }
 
-    @Test("Cancel stores nothing, starts the quiet hour and closes the sheet")
+    @Test("Cancel stores nothing, asks no more this launch and closes the sheet")
     func cancelDeclines() async throws {
         try await withAccessibilityAutomation {
             let prompting = Prompting()
@@ -205,12 +199,14 @@ struct TLSPinPromptTests {
             #expect(prompting.queue.prompt == nil)
             #expect(prompting.engine.acceptances.isEmpty)
             #expect(prompting.continued == 0)
-            #expect(prompting.isQuiet)
+            prompting.queue.offerDismissedAgain()
+            prompting.queue.report(Self.mismatch)
+            #expect(prompting.queue.prompt == nil)
         }
     }
 
-    @Test("closing the sheet outside its buttons, as a swipe down does, is a Cancel")
-    func swipeDismissCancels() async throws {
+    @Test("closing the sheet outside its buttons, as a swipe down does, answers nothing, and a new browser asks again")
+    func swipeDismissAnswersNothing() async throws {
         let prompting = Prompting()
         let window = try Self.window(prompting)
         defer { window.isHidden = true }
@@ -218,11 +214,61 @@ struct TLSPinPromptTests {
         prompting.queue.report(Self.mismatch)
         try await waitUntil { root.presentedViewController != nil }
 
-        root.dismiss(animated: true)
+        // What UIKit does for a swipe down.
+        let controller = try #require(root.presentedViewController?.presentationController)
+        let delegate = controller.delegate
+        delegate?.presentationControllerWillDismiss?(controller)
+        root.dismiss(animated: true) { delegate?.presentationControllerDidDismiss?(controller) }
         try await waitUntil { prompting.queue.prompt == nil }
         #expect(prompting.engine.acceptances.isEmpty)
         #expect(prompting.continued == 0)
-        #expect(prompting.isQuiet)
+        try await waitUntil { root.presentedViewController == nil && prompting.owner.holder == nil }
+        // SwiftUI skips a second change of the host's turn within one frame, and a browser opens
+        // frames after the swipe.
+        try await Task.sleep(for: .milliseconds(500))
+
+        prompting.queue.offerDismissedAgain()
+        prompting.queue.report(Self.mismatch)
+        try await waitUntil { root.presentedViewController != nil }
+        #expect(prompting.queue.prompt == Self.mismatch)
+    }
+
+    @Test("Escape closes the sheet unanswered, as a swipe does")
+    func escapeAnswersNothing() async throws {
+        let prompting = Prompting()
+        let window = try Self.window(prompting)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        prompting.queue.report(Self.mismatch)
+        _ = try await Self.shownSheet(in: window)
+
+        try #require(Self.pressEscape(in: try #require(root.presentedViewController)))
+        try await waitUntil { root.presentedViewController == nil && prompting.owner.holder == nil }
+        #expect(prompting.engine.acceptances.isEmpty)
+        #expect(prompting.continued == 0)
+        // As in the swipe test: a browser opens frames after the sheet closes.
+        try await Task.sleep(for: .milliseconds(500))
+
+        prompting.queue.offerDismissedAgain()
+        prompting.queue.report(Self.mismatch)
+        try await waitUntil { root.presentedViewController != nil }
+    }
+
+    /// Performs the Escape key command a keyboard shortcut in `controller` made, as the key does.
+    static func pressEscape(in controller: UIViewController) -> Bool {
+        let views = [controller.view!] + controller.view.descendants(ofType: UIView.self)
+        let responders: [UIResponder] = [controller] + controller.children + views
+        let commands = responders.flatMap { $0.keyCommands ?? [] }
+        guard let escape = commands.first(where: { $0.input == UIKeyCommand.inputEscape }), let action = escape.action else {
+            Issue.record("no Escape command among \(commands.map { $0.input ?? "" })")
+            return false
+        }
+        guard let target = responders.lazy.compactMap({ $0.target(forAction: action, withSender: escape) as? NSObject }).first
+        else {
+            Issue.record("nothing performs \(action) among \(responders.map { type(of: $0) })")
+            return false
+        }
+        return UIApplication.shared.sendAction(action, to: target, from: escape, for: nil)
     }
 
     @Test("a prompt the queue takes back, as the app leaves, closes the sheet with no Cancel")
@@ -237,7 +283,6 @@ struct TLSPinPromptTests {
         prompting.queue.isForeground = false
         try await waitUntil { root.presentedViewController == nil }
         try await Task.sleep(for: .milliseconds(500))
-        #expect(!prompting.isQuiet)
         #expect(prompting.engine.acceptances.isEmpty)
 
         prompting.queue.isForeground = true
@@ -262,6 +307,84 @@ struct TLSPinPromptTests {
         }
     }
 
+    /// The prompt suggestionbox.ntust.edu.tw raised while the browser held every school host to the pins.
+    static let letsEncryptMismatch = TLSPinMismatch(
+        setID: "ntust", host: "suggestionbox.ntust.edu.tw", domains: ["ntust.edu.tw"], issuerOrganization: "Let's Encrypt",
+        certificates: TLSPinningDelegateTests.letsEncryptChain.map { TLSCertificateSummary(der: Data($0)) },
+        acceptedSPKIs: [F.unknownSPKI], anchorSPKI: F.globalRootSPKI
+    )
+
+    struct Screen: CustomTestStringConvertible, Sendable {
+        let style: UIUserInterfaceStyle
+        let width: CGFloat
+        let textSize: UIContentSizeCategory?
+
+        var name: String {
+            "\(style == .dark ? "dark" : "light")-\(Int(width))\(textSize == nil ? "" : "-largest-text")"
+        }
+
+        var height: CGFloat { width < 400 ? 812 : 874 }
+        var testDescription: String { name }
+
+        static let all = styles.flatMap { style in
+            [CGFloat(402), 375].flatMap { width in
+                [nil, UIContentSizeCategory.accessibilityExtraExtraExtraLarge].map { Screen(style: style, width: width, textSize: $0) }
+            }
+        }
+    }
+
+    /// Scrolls the visible list to its end, again while its rows grow as they are built.
+    static func scrollToEnd(of sheet: UIView) async throws {
+        try await waitUntil { sheet.descendants(ofType: UICollectionView.self).contains { $0.window != nil } }
+        let list = try #require(sheet.descendants(ofType: UICollectionView.self).last { $0.window != nil })
+        for _ in 0..<4 {
+            let end = list.contentSize.height - list.bounds.height + list.adjustedContentInset.bottom
+            list.setContentOffset(CGPoint(x: 0, y: max(-list.adjustedContentInset.top, end)), animated: false)
+            list.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(150))
+        }
+    }
+
+    @Test("the prompt, its details and the certificate list, whose last fingerprint scrolls fully above the buttons",
+          arguments: Screen.all)
+    func pagesAtEachWidthAndTextSize(screen: Screen) async throws {
+        try await withAccessibilityAutomation {
+            let prompting = Prompting()
+            let window = try Self.window(
+                prompting, style: screen.style, width: screen.width, height: screen.height, textSize: screen.textSize
+            )
+            defer { window.isHidden = true }
+            let mismatch = Self.letsEncryptMismatch
+            prompting.queue.report(mismatch)
+            let sheet = try await Self.shownSheet(in: window)
+            try await Task.sleep(for: .milliseconds(600))
+            window.saveSnapshot(as: "tls-prompt-\(screen.name)")
+
+            try await Self.activate(String(localized: "tls_pin_mismatch_show_details"), in: sheet)
+            let viewCertificate = String(localized: "tls_pin_mismatch_view_certificate")
+            try await waitUntil { accessibilityElement(labeled: viewCertificate, in: sheet) != nil }
+            try await Task.sleep(for: .milliseconds(600))
+            window.saveSnapshot(as: "tls-prompt-details-\(screen.name)")
+
+            try await Self.activate(viewCertificate, in: sheet)
+            let title = String(localized: "tls_certificate_list_title")
+            try await waitUntil { accessibilityElement(labeled: title, in: sheet) != nil }
+            try await Self.scrollToEnd(of: sheet)
+            let last = try #require(mismatch.certificates.last).sha256Fingerprint
+            @MainActor func fingerprint() -> NSObject? {
+                exposedAccessibilityElements(in: sheet).last { $0.accessibilityLabel?.contains(last) == true }
+            }
+            try await waitUntil { fingerprint() != nil }
+            let buttons = try [String(localized: "action_cancel"), String(localized: "action_continue")].map {
+                try #require(accessibilityElement(labeled: $0, in: sheet)).accessibilityFrame
+            }
+            let row = try #require(fingerprint()).accessibilityFrame
+            #expect(row.maxY <= buttons.map(\.minY).min()!, "the fingerprint ends at \(row.maxY), under \(buttons)")
+            #expect(row.width > 0 && row.minX >= 0 && row.maxX <= screen.width)
+            window.saveSnapshot(as: "tls-certificates-\(screen.name)")
+        }
+    }
+
     static let ntustMismatch = TLSPinMismatch(
         setID: "ntust", host: "moodle2.ntust.edu.tw", domains: ["ntust.edu.tw"], issuerOrganization: "TAIWAN-CA",
         certificates: [], acceptedSPKIs: [F.unknownSPKI], anchorSPKI: F.globalRootSPKI
@@ -280,7 +403,6 @@ struct TLSPinPromptTests {
         queue.answer(Self.mismatch, continues: false)
         #expect(queue.prompt == Self.ntustMismatch)
         #expect(prompting.engine.acceptances.map(\.setID) == ["library"])
-        #expect(!prompting.isQuiet("ntust"))
     }
 
     @Test("a window that closes with the prompt up hands it to another window, with no Cancel")
@@ -298,7 +420,6 @@ struct TLSPinPromptTests {
         closing.rootViewController = nil
         try await waitUntil { other.rootViewController?.presentedViewController != nil }
         #expect(prompting.queue.prompt == Self.mismatch)
-        #expect(!prompting.isQuiet)
         #expect(prompting.engine.acceptances.isEmpty)
     }
 
@@ -318,7 +439,6 @@ struct TLSPinPromptTests {
             prompting.showsOtherSheet = false
             _ = try await Self.shownSheet(in: window)
             #expect(prompting.queue.prompt == Self.mismatch)
-            #expect(!prompting.isQuiet)
         }
     }
 
@@ -339,7 +459,6 @@ struct TLSPinPromptTests {
         phases[hidden].value = .background
         try await waitUntil { showing() == [1 - hidden] }
         #expect(prompting.queue.prompt == Self.mismatch)
-        #expect(!prompting.isQuiet)
     }
 
     @Test("a window whose scene goes to the background hands the prompt to an active one, with no Cancel")
@@ -356,7 +475,6 @@ struct TLSPinPromptTests {
         phases[hidden].value = .background
         try await waitUntil { showing() == [1 - hidden] }
         #expect(prompting.queue.prompt == Self.mismatch)
-        #expect(!prompting.isQuiet)
         #expect(prompting.engine.acceptances.isEmpty)
     }
 

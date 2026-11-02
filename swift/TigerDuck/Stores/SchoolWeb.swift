@@ -12,4 +12,18 @@ enum SchoolWeb {
     }
 
     static var schoolCookies: HTTPCookieStorage { NTUSTSessionManager.shared.ntustCookieJar }
+
+    /// The school hosts the services in School/ reach on their own.
+    static let serviceHosts: Set<String> = {
+        let reached: [URL?] = [
+            MoodleTokenHarvest.ssoBaseURL,
+            URL(string: LibraryRequests.baseURL),
+            ClassroomUsageService.queryURL,
+            CourseLookupService.courseSearchAPI,
+            CourseSelectionService.courseSelectionRoot,
+            NTUSTScoreService.scoreRootURL,
+            SemesterCatalog.semestersAPI,
+        ]
+        return Set(reached.compactMap { $0?.host(percentEncoded: false)?.lowercased() })
+    }()
 }
