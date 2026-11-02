@@ -21,10 +21,11 @@ permissions:
 
 jobs:
   unit-tests:
-    # The sources need the Xcode 26 SDK, because code behind `if #available(iOS 26)` must still
-    # compile; pick one with `sudo xcode-select -s` if an image defaults to an older Xcode.
+    # The Xcode and simulators the maintainers test on before pushing: Xcode 27.1, an iPhone 18 Pro
+    # on iOS 27.0 and an Apple Watch Series 12 (46mm) on watchOS 27.0. The xcode-27 image is still
+    # a preview (https://github.com/actions/runner-images/issues/14404).
     name: unit-tests (${{ matrix.leg }})
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     # `actions: write` lets a push run delete the cache it started from once
     # it has saved a newer one. A fork's pull request gets a read-only
@@ -41,7 +42,7 @@ jobs:
           - leg: phone
             scheme: TigerDuck
             runtime: iOS
-            device: iPhone
+            device: iPhone 18 Pro
             only_testing: TigerDuckTests
             # The tests that make a window key or bring up the keyboard, a view service, accessibility
             # or WebKit, which run in a step of their own. A Swift Testing function's identifier
@@ -109,7 +110,7 @@ jobs:
           - leg: watch
             scheme: TigerDuckWatch Watch App
             runtime: watchOS
-            device: Apple Watch
+            device: Apple Watch Series 12 (46mm)
             only_testing: ""
             on_screen_tests: ""
     steps:
@@ -158,8 +159,8 @@ jobs:
           xcodebuild -version
           sysctl -n machdep.cpu.brand_string hw.ncpu
 
-      # Take whichever devices the image has instead of naming one: images add and drop devices,
-      # and `OS=latest` can resolve to a runtime the named device does not exist on.
+      # The newest runtime that has the named device wins: `OS=latest` can resolve to a runtime the
+      # device does not exist on, and the image's iOS 27.1 runtime has only iPhone Duo.
       - name: Pick a simulator
         if: steps.changes.outputs.run == 'true'
         id: sim
@@ -168,19 +169,17 @@ jobs:
           DEVICE: ${{ matrix.device }}
         run: |
           set -euo pipefail
-          # Newest runtime wins. A runner image ships one matched set of runtimes per Xcode, so the
-          # newest watchOS pairs with the newest iOS; a machine with several sets may not.
           udid=$(xcrun simctl list devices available --json | jq -r --arg os "$RUNTIME" --arg name "$DEVICE" '
             [ .devices
               | to_entries[]
               | select(.key | test("SimRuntime\\." + $os + "-"))
               | (.key | capture("-(?<a>[0-9]+)-(?<b>[0-9]+)$")) as $v
               | .value[]
-              | select(.name | startswith($name))
+              | select(.name == $name)
               | {ver: [($v.a | tonumber), ($v.b | tonumber)], udid}
             ] | sort_by(.ver) | last.udid // empty')
           if [ -z "$udid" ]; then
-            echo "::error::no $RUNTIME simulator named $DEVICE*"
+            echo "::error::no $RUNTIME simulator named $DEVICE"
             xcrun simctl list devices available
             exit 1
           fi
@@ -194,8 +193,8 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
         with:
-          key: xcode-${{ matrix.leg }}-${{ github.sha }}
-          restore-keys: xcode-${{ matrix.leg }}-
+          key: xcode27-${{ matrix.leg }}-${{ github.sha }}
+          restore-keys: xcode27-${{ matrix.leg }}-
           # Outside the checkout, so the action's mtime scan does not walk into them.
           deriveddata-directory: ${{ runner.temp }}/DerivedData
           sourcepackages-directory: ${{ runner.temp }}/SourcePackages
@@ -439,7 +438,7 @@ jobs:
   # of their simulator and test steps. It runs nothing, so it builds unsigned.
   mac-build:
     name: macOS build
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     # As in `unit-tests`: a push run deletes the cache it started from once it saved a newer one.
     permissions:
@@ -484,8 +483,8 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
         with:
-          key: xcode-mac-${{ github.sha }}
-          restore-keys: xcode-mac-
+          key: xcode27-mac-${{ github.sha }}
+          restore-keys: xcode27-mac-
           deriveddata-directory: ${{ runner.temp }}/DerivedData
           sourcepackages-directory: ${{ runner.temp }}/SourcePackages
           swiftpm-cache-key: xcode-packages-mac-${{ hashFiles('swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
@@ -521,7 +520,7 @@ jobs:
   vendored-package:
     name: vendored SwiftMail
     if: github.event_name == 'pull_request'
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -555,7 +554,7 @@ jobs:
   core-package:
     name: TigerDuckCore
     if: github.event_name == 'pull_request'
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -585,9 +584,9 @@ jobs:
         run: swift test
 
   # Below iOS 27 the app's tab roots take UIKit's search controller rather than `.searchable`
-  # (swift/TigerDuck/UI/ViewHelpers/View+NavigationBarSearch.swift), and no runtime of the phone
-  # leg's image is older than iOS 26. This job downloads the iOS 18.6 runtime, the last of iOS 18,
-  # and runs the search suites there on a cold build: there is no cache to restore. macos-15 still
+  # (swift/TigerDuck/UI/ViewHelpers/View+NavigationBarSearch.swift), and the phone leg runs
+  # iOS 27. This job stays on macos-26 to download the iOS 18.6 runtime, the last of iOS 18, and
+  # runs the search suites there on a cold build: there is no cache to restore. macos-15 still
   # ships iOS 18 runtimes, but its newest Xcode, 26.3, cannot build the app.
   ios18-search:
     name: iOS 18 search
