@@ -70,10 +70,10 @@ the last issued value so a device never repeats a value.
 The backend refuses a stamp more than five seconds ahead of its time (D5), so a device caps
 `device now` at its estimate of the backend's time plus five seconds: the last `X-TigerSync-Clock`
 it heard plus the device time elapsed since. An edit stamped before the device first heard the
-backend can still be refused; the refusal carries the backend's clock, and the device lowers its
-last issued value to the cap and re-stamps the edit by the same rule. Lowering it is safe: every
-stamp the backend stored is at most its time plus five seconds, and the last seen value already
-covers those the device has read.
+backend can still be refused; the refusal carries the backend's clock, and both apps re-stamp
+the edit at that clock plus one tick and send it again. A device that keeps a last issued value
+never lowers it, so until the cap passes that value, a later edit is stamped after it and is
+refused and re-stamped the same way.
 
 Lost:
 - ISO-8601 strings, as the snapshot uses today: Apple's `ISO8601DateFormatter` keeps three
