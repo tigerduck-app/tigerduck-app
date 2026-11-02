@@ -52,7 +52,6 @@ BulletinSubscriptionsStore.swift
 BulletinsView.swift
 BulletinCardView.swift
 BulletinDetailView.swift
-BulletinFilterBar.swift
 BulletinPushSection.swift
 BulletinRows.swift
 BulletinRulesSections.swift

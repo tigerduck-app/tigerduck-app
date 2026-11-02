@@ -1,20 +1,20 @@
 import SwiftUI
 
-struct BulletinFilterBar: View {
-    let title: String
+struct FilterChipBar: View {
+    var title: String? = nil
     let options: [(id: String, label: String)]
     let selected: Set<String>
+    let policy: VisualStylePolicy
     let onToggle: (String) -> Void
 
-    @Environment(AppEnvironment.self) private var app
-
     var body: some View {
-        let policy = app.preferences.visualStylePolicy
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
-            Text(title)
-                .font(TigerDuckTheme.Typography.caption)
-                .foregroundStyle(Color.textSecondary)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            if let title {
+                Text(title)
+                    .font(TigerDuckTheme.Typography.caption)
+                    .foregroundStyle(Color.textSecondary)
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -24,10 +24,7 @@ struct BulletinFilterBar: View {
                         } label: {
                             Text(option.label)
                                 .font(TigerDuckTheme.Typography.caption)
-                                .foregroundStyle(chipLabelColor(
-                                    isSelected: selected.contains(option.id),
-                                    policy: policy
-                                ))
+                                .foregroundStyle(chipLabelColor(isSelected: selected.contains(option.id)))
                                 .presetChip(policy: policy, isSelected: selected.contains(option.id))
                         }
                         .buttonStyle(.plain)
@@ -38,7 +35,7 @@ struct BulletinFilterBar: View {
         }
     }
 
-    private func chipLabelColor(isSelected: Bool, policy: VisualStylePolicy) -> Color {
+    private func chipLabelColor(isSelected: Bool) -> Color {
         switch policy.chipStyle {
         case .glass:
             return isSelected ? .white : .textPrimary

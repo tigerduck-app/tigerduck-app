@@ -8,7 +8,6 @@ struct BulletinRows: View {
     @Binding var detailingBulletin: BulletinAPI.BulletinSummary?
 
     @Environment(AppEnvironment.self) private var app
-    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
 
     var body: some View {
         if viewModel.items.isEmpty {
@@ -18,7 +17,11 @@ struct BulletinRows: View {
                     ProgressView().padding(.vertical, 60)
                 }
             case .failed(let message):
-                centeredRow { errorState(message: message) }
+                centeredRow {
+                    LoadFailureView(title: String(localized: "bulletin_load_failed_title"), message: message) {
+                        Task { await viewModel.refresh() }
+                    }
+                }
             case .loaded:
                 centeredRow {
                     EmptyStateView(
@@ -107,27 +110,5 @@ struct BulletinRows: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets())
-    }
-
-    private func errorState(message: String) -> some View {
-        VStack(spacing: TigerDuckTheme.Spacing.sm) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: heroIconSize))
-                .foregroundStyle(Color.orange)
-            Text(String(localized: "bulletin_load_failed_title"))
-                .font(TigerDuckTheme.Typography.headline)
-                .foregroundStyle(Color.textPrimary)
-            Text(message)
-                .font(TigerDuckTheme.Typography.caption)
-                .foregroundStyle(Color.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            Button(String(localized: "action_retry")) {
-                Task { await viewModel.refresh() }
-            }
-            .buttonStyle(.bordered)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
     }
 }
