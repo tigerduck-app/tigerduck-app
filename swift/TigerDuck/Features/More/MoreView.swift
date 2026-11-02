@@ -86,6 +86,7 @@ struct MoreView: View {
         case .schoolMail: SchoolMailView(embedded: true)
         #endif
         case .gpa: ScoreView(embedded: true)
+        case .informationSystem: InformationSystemView(embedded: true)
         case .emptyClassroom: EmptyClassroomView(embedded: true)
         default: PlaceholderFeatureView(feature: feature)
         }

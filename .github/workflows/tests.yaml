@@ -66,6 +66,7 @@ jobs:
               TigerDuckTests/ForwardPagingLockTests
               TigerDuckTests/HomeEditPageTests
               TigerDuckTests/HomeScrollAnchorTests
+              TigerDuckTests/InformationSystemPageTests
               TigerDuckTests/LibraryWaitLayoutTests
               TigerDuckTests/ModalClosingTests
               TigerDuckTests/MoodleAssignmentPageStateTests
