@@ -37,6 +37,8 @@ may change different clubs, or different values of one club, while one of them i
   UTF-8 bytes, modulo the course palette (`ClubSubscriptions.defaultColor`).
 - The shown order is `order.ids` filtered to subscribed clubs, then subscribed clubs it lacks by
   `subscribed_at`, then by id.
+- `order` is one value: after a reorder on one device and a subscription made offline on another,
+  only the later order stays, and a club the earlier one placed shows after the ordered ones.
 - Subscriptions are not tied to a term; they carry over to the next one.
 - A change marks the document unsent until a sync leaves nothing to send; the next full sync or
   change-feed pull sends it again.
