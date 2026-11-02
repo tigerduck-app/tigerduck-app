@@ -33,6 +33,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     private var refusedHosts: Set<String> = []
     private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
     private var signInReturnPage: URL?
+    private let demoPages = BrowserDemoPages()
     private static let sessionCookieLifetime: TimeInterval = 30 * 24 * 60 * 60
 
     init(page: BrowserPage) {
@@ -122,8 +123,10 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         switch BrowserRouting.decision(for: url, byLinkTap: action.navigationType == .linkActivated) {
         case .load:
             guard !AccountSession.school.currentSignIn.isDemo else {
-                decisionHandler(.cancel)
-                page.failure = .unreachable(host: url.host(percentEncoded: false) ?? url.absoluteString)
+                let demo = demoPages.decide(url)
+                decisionHandler(demo == .allow ? .allow : .cancel)
+                if case .show(let html) = demo { webView.loadHTMLString(html, baseURL: nil) }
+                page.failure = demo == .refuse ? .unreachable(host: url.host(percentEncoded: false) ?? url.absoluteString) : nil
                 return
             }
             // No target frame means a new window, and the browser has only this one.

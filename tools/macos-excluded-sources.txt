@@ -458,6 +458,7 @@ BrowserBar.swift
 BrowserCertificate.swift
 BrowserChromeCollapse.swift
 BrowserData.swift
+BrowserDemoPages.swift
 BrowserFind.swift
 BrowserFindBar.swift
 BrowserFindScript.swift
