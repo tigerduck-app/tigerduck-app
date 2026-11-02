@@ -10,11 +10,9 @@ extension View {
         #if os(iOS)
         if #available(iOS 27, *) {
             systemSearch(text: text, isPresented: isPresented, prompt: prompt)
-        } else if #available(iOS 26, *) {
+        } else {
             // iOS 26's .searchable opens a root page's drawer on its first show; UIKit's search controller folds it.
             background(NavigationBarSearchController(text: text, isPresented: isPresented, prompt: prompt))
-        } else {
-            systemSearch(text: text, isPresented: isPresented, prompt: prompt)
         }
         #else
         systemSearch(text: text, isPresented: isPresented, prompt: prompt)
