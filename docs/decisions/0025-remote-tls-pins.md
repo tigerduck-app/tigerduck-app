@@ -47,11 +47,12 @@ no build pinned failed every NTUST request until the user updated.
   the same launch once a browser opens, where the student reloads the refused page.
 - Pins guard only the hosts the app reaches on its own and signs in to: its sessions with SSO,
   Moodle, School Mail, the portal, the library API and the other school services, and the hidden
-  page a browser sign-in runs in. The TigerDuck browser checks pins only for those hosts
-  (`BrowserPinnedHosts`, built from the services' own addresses), where the pins win, and judges
-  every other host by the system's trust store alone, with no pin check and no prompt. A page the
-  student opens there carries no secret the app hands it, and pinning it would refuse each
-  certificate change a school office makes on a site the app never signs in to, as
+  page a browser sign-in runs in. The TigerDuck browser checks pins only for those hosts and the
+  school sites it fills or posts the stored password on (`BrowserPinnedHosts`, built from the
+  services' own addresses and `BrowserSchoolSites`), where the pins win, and judges every other
+  host by the system's trust store alone, with no pin check and no prompt. A page the student
+  opens there gets no password from the app, at most the student id, and pinning it would refuse
+  each certificate change a school office makes on a site the app never signs in to, as
   suggestionbox.ntust.edu.tw's move to Let's Encrypt did, and ask the student about it.
 - The TigerDuck browser can open a page it refused for its certificate, by system trust or by
   the pins of a host the app signs in to, at the student's risk. The acceptance holds for that

@@ -63,6 +63,11 @@ nonisolated enum BrowserSchoolSites {
     /// The credit program system's landing page, whose sign-in popup posts to `api/tokens`.
     static let tokenSignInPage = "https://cour01.ntust.edu.tw/DMP_student/"
 
+    /// The hosts the browser gives the stored password to, in a form fill or a token post.
+    static let passwordHosts = Set(
+        (signInForms.filter { $0.value.password != nil }.keys + [tokenSignInPage]).compactMap { URL(string: $0)?.host() }
+    )
+
     private static let signInForms: [String: SignInForm] = [
         "https://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/ethicscourse": SignInForm(studentId: "UserName", password: "Password"),
         "https://stuinfosys.ntust.edu.tw/Authenticate/SSOAccount/Index/SSOcgesocial": SignInForm(studentId: "UserName", password: "Password"),

@@ -37,13 +37,15 @@ struct BrowserPinnedHostsTests {
         #expect(SecTrustEvaluateWithError(try trust(Self.letsEncrypt, host: Self.suggestionbox), nil))
     }
 
-    @Test("the browser checks pins only for the hosts the app reaches on its own and signs in to")
+    @Test("the browser checks pins only for the hosts the app signs in to and those it gives the stored password")
     func thePinnedHostsAreTheAppsOwn() {
         #expect(BrowserPinnedHosts.hosts == [
             "moodle2.ntust.edu.tw", "ssoam2.ntust.edu.tw", "ssoam.ntust.edu.tw", "i.ntust.edu.tw", "mail.ntust.edu.tw",
             "api.lib.ntust.edu.tw", "cour01.ntust.edu.tw", "querycourse.ntust.edu.tw", "courseselection.ntust.edu.tw",
-            "stuinfosys.ntust.edu.tw",
+            "stuinfosys.ntust.edu.tw", "cardsystem.ntust.edu.tw", "studentpay.ntust.edu.tw",
         ])
+        // Its sign-in gets the student id alone.
+        #expect(!BrowserPinnedHosts.hosts.contains(Self.suggestionbox))
     }
 
     @Test("a pinned host's chain outside its pins is refused, though system trust takes it")
