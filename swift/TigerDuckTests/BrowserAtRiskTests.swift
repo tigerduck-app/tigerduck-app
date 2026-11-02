@@ -21,35 +21,47 @@ struct BrowserAtRiskTests {
         return page
     }
 
-    /// Refused sign-in steps and SSO returns, and the address opening each at risk loads.
-    static let signInSteps: [(refused: String, opens: String)] = [
-        // BrowserSignIn's autologin link: its one-time key stays behind and its urltogo opens.
+    /// Refused addresses and what opening each at risk loads: a pinned host's front page, as any
+    /// part of its address may hold a credential, and for any other host the page without one.
+    static let atRiskPages: [(refused: String, opens: String)] = [
+        // BrowserSignIn's autologin link, with its user id and one-time key.
         (
             "https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php?userid=42&key=one-time"
                 + "&urltogo=https%3A%2F%2Fmoodle2.ntust.edu.tw%2Fcourse%2Fview.php%3Fid%3D7",
-            "https://moodle2.ntust.edu.tw/course/view.php?id=7"
+            "https://moodle2.ntust.edu.tw/"
         ),
-        ("https://moodle2.ntust.edu.tw/auth/oidc/?code=one-time&state=s", "https://moodle2.ntust.edu.tw"),
-        ("https://moodle2.ntust.edu.tw/login/index.php", "https://moodle2.ntust.edu.tw"),
+        ("https://moodle2.ntust.edu.tw/auth/oidc/?code=one-time&state=s", "https://moodle2.ntust.edu.tw/"),
+        ("https://moodle2.ntust.edu.tw/login/index.php", "https://moodle2.ntust.edu.tw/"),
+        ("https://moodle2.ntust.edu.tw/tokenpluginfile.php/0123abcd/45/mod_resource/content/1/notes.pdf", "https://moodle2.ntust.edu.tw/"),
         (
             "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback%3Fclient_id%3Dmoodle"
                 + "%26redirect_uri%3Dhttps%253A%252F%252Fmoodle2.ntust.edu.tw%252Fauth%252Foidc%252F%26state%3Ds%26nonce%3Dn",
-            "https://moodle2.ntust.edu.tw"
+            "https://ssoam2.ntust.edu.tw/"
         ),
         (
             "https://ssoam2.ntust.edu.tw/connect/authorize?client_id=x"
                 + "&redirect_uri=https%3A%2F%2Fsa02.ntust.edu.tw%2FWebCounseling%2FOAuth2%2FCallback&state=s",
-            "https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Callback"
+            "https://ssoam2.ntust.edu.tw/"
         ),
+        ("https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=", "https://ssoam2.ntust.edu.tw/"),
         (
-            "https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Callback?code=one-time&state=s#id_token=t",
-            "https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Callback"
+            "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Faccount%2Flogin%3FReturnUrl%3D%252Faccount%252Flogin"
+                + "%253FReturnUrl%253D%25252Faccount%25252Flogin",
+            "https://ssoam2.ntust.edu.tw/"
         ),
-        ("https://stuinfosys.ntust.edu.tw/Auth/Return?ticket=one-time&lang=zh", "https://stuinfosys.ntust.edu.tw/Auth/Return?lang=zh"),
-        ("https://suggestionbox.ntust.edu.tw/form?id=3", "https://suggestionbox.ntust.edu.tw/form?id=3"),
+        ("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Callback?code=one-time&state=s#id_token=t", "https://sa02.ntust.edu.tw/"),
+        ("https://stuinfosys.ntust.edu.tw/Auth/Return?ticket=one-time&lang=zh", "https://stuinfosys.ntust.edu.tw/"),
+        ("https://www.ntust.edu.tw/app/#/callback?code=one-time", "https://www.ntust.edu.tw/app/"),
+        (
+            "https://www.ntust.edu.tw/webservice/rest/server.php?wstoken=t&sesskey=s&moodlewsrestformat=json",
+            "https://www.ntust.edu.tw/webservice/rest/server.php?moodlewsrestformat=json"
+        ),
+        ("https://www.ntust.edu.tw/portal;jsessionid=one-time/page?id=7", "https://www.ntust.edu.tw/portal/page?id=7"),
+        ("https://suggestionbox.ntust.edu.tw/list?id=7&lang=zh", "https://suggestionbox.ntust.edu.tw/list?id=7&lang=zh"),
     ]
 
-    @Test("a page opened at risk loads no sign-in's credential: a sign-in step opens the page it leads to", arguments: signInSteps)
+    @Test("a page opened at risk loads no credential: a pinned host its front page, any other its page without one",
+          arguments: atRiskPages)
     func noCredentialOpensAtRisk(step: (refused: String, opens: String)) throws {
         let refused = try #require(URL(string: step.refused))
         let page = Self.refusedPage(refused)

@@ -104,50 +104,31 @@ final class BrowserCertificateCheck {
 }
 
 extension BrowserRiskAcceptance.Refusal {
-    /// What opening the refused page at risk loads: a sign-in step gives way to the page it leads
-    /// to, and no sign-in's credential goes to the host the student was told not to trust.
-    var pageToOpen: URL { Self.withoutCredentials(Self.pageSignedIn(by: url) ?? url) }
+    /// What opening the refused page at risk loads. The app signs in and posts credentials to the
+    /// pinned hosts, so any part of their address may hold one and only their front page opens.
+    /// Any other host keeps its page, without the parts that could carry a credential.
+    var pageToOpen: URL {
+        let host = TLSPinMatcher.hostName(url.host(percentEncoded: false) ?? "")
+        let front = URL(string: "https://\(host)/") ?? AppConstants.moodleBaseURL
+        guard !BrowserPinnedHosts.hosts.contains(host), let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return front
+        }
+        var page = URLComponents()
+        page.scheme = parts.scheme
+        page.percentEncodedHost = parts.percentEncodedHost
+        page.percentEncodedPath = parts.percentEncodedPath.split(separator: "/", omittingEmptySubsequences: false)
+            .map { segment in segment.prefix { $0 != ";" } }
+            .joined(separator: "/")
+        let kept = parts.percentEncodedQueryItems?.filter { item in
+            let name = (item.name.removingPercentEncoding ?? item.name).lowercased()
+            return !Self.credentialWords.contains { name.contains($0) }
+        }
+        page.percentEncodedQueryItems = kept?.isEmpty == false ? kept : nil
+        return page.url ?? front
+    }
 
-    /// The names a sign-in hands its credential under, in a query or a fragment: Moodle's autologin
-    /// key, OAuth's and OIDC's codes and tokens, CAS tickets and SAML's responses.
-    private static let credentialNames: Set<String> = [
-        "key", "code", "state", "nonce", "id_token", "access_token", "refresh_token", "token", "session_state",
-        "ticket", "samlresponse", "samlart", "relaystate",
+    private static let credentialWords = [
+        "token", "code", "ticket", "key", "saml", "assertion", "secret", "pass", "session", "sid", "hint", "jwt", "auth",
+        "verifier", "state", "nonce", "sig", "credential",
     ]
-    private static let ssoReturnNames = ["redirect_uri", "returnurl", "service"]
-
-    /// An autologin link's `urltogo`, Moodle's front page for its other sign-in and OIDC pages, and
-    /// for an SSO page the address it returns to.
-    private static func pageSignedIn(by url: URL) -> URL? {
-        guard let host = BrowserRouting.host(of: url) else { return nil }
-        if host == BrowserRouting.moodleHost, !BrowserRouting.isMoodleReturnPage(url) {
-            let target = BrowserRouting.isMoodleSignInLink(url) ? query("urltogo", of: url).flatMap(URL.init(string:)) : nil
-            return target.flatMap { BrowserRouting.isMoodleReturnPage($0) ? $0 : nil } ?? AppConstants.moodleBaseURL
-        }
-        guard BrowserRouting.ssoHosts.contains(host),
-              let back = ssoReturnNames.lazy.compactMap({ query($0, of: url) }).first
-                  .flatMap({ URL(string: $0, relativeTo: url)?.absoluteURL }),
-              BrowserRouting.isAllowed(back) else { return nil }
-        return pageSignedIn(by: back) ?? back
-    }
-
-    private static func query(_ name: String, of url: URL) -> String? {
-        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name.lowercased() == name }?.value
-    }
-
-    private static func withoutCredentials(_ url: URL) -> URL {
-        let root = URL(string: "/", relativeTo: url)?.absoluteURL ?? AppConstants.moodleBaseURL
-        guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return root }
-        let isCredential = { (item: URLQueryItem) in credentialNames.contains((item.name.removingPercentEncoding ?? item.name).lowercased()) }
-        if let items = parts.percentEncodedQueryItems, items.contains(where: isCredential) {
-            let kept = items.filter { !isCredential($0) }
-            parts.percentEncodedQueryItems = kept.isEmpty ? nil : kept
-        }
-        // A fragment that does not parse as a query goes too, as it may hide one.
-        if let fragment = parts.percentEncodedFragment,
-           URLComponents(string: "?" + fragment)?.percentEncodedQueryItems?.contains(where: isCredential) != false {
-            parts.percentEncodedFragment = nil
-        }
-        return parts.url ?? root
-    }
 }

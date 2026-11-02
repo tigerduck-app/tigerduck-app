@@ -64,9 +64,11 @@ no build pinned failed every NTUST request until the user updated.
   nothing it sets leaves the store. The browser stays in that store wherever the page leads, as
   returning to its own store for another host would let a page the student cannot trust send the
   signed-in store to ssoam2 with a return address of its choosing. No sign-in runs there; the
-  student signs in by hand. A refused sign-in step opens the page it leads to, and nothing opened
-  there carries a sign-in's credential, such as Moodle's autologin key or an OIDC code. Its pages
-  are never shown as secure, and the store goes when the browser closes.
+  student signs in by hand. A refused pinned host opens there only at its front page, as the app
+  signs in and posts credentials to those hosts and any part of their addresses may hold one; any
+  other host keeps its page without the fragment, path parameters or query items whose names
+  suggest a credential. Its pages are never shown as secure, and the store goes when the browser
+  closes.
 - `api.tigerduck.app` is not pinned. Cloudflare rotates its edge certificates across several CAs,
   so a pin would break the app at an unannounced rotation; Certificate Transparency monitoring of
   the zone stands in for it.
