@@ -43,7 +43,8 @@ nonisolated enum BrowserSchoolSites {
     /// browser fills. Its CAPTCHA and its submit stay the student's.
     struct SignInForm: Equatable {
         let studentId: String
-        let password: String
+        /// Nil where the site's password is not the school's.
+        let password: String?
     }
 
     /// The form the page at `url` signs in with, for the exact https origins and paths listed.
@@ -67,7 +68,8 @@ nonisolated enum BrowserSchoolSites {
         "https://stuinfosys.ntust.edu.tw/Authenticate/SSOAccount/Index/SSOcgesocial": SignInForm(studentId: "UserName", password: "Password"),
         "https://cardsystem.ntust.edu.tw/std/index.php/user/login": SignInForm(studentId: "id", password: "password"),
         "https://studentpay.ntust.edu.tw/": SignInForm(studentId: "studentno", password: "password"),
-        "https://suggestionbox.ntust.edu.tw/login": SignInForm(studentId: "account", password: "password"),
+        // Its sign-in page says its password is the career development site's, not the school's.
+        "https://suggestionbox.ntust.edu.tw/login": SignInForm(studentId: "account", password: nil),
     ]
 
     private static let uriComponent = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")

@@ -96,8 +96,8 @@ struct BrowserSiteSignInPageTests {
     }
 
     /// Its sign-in form sits between two forms that ask for a student id alone, and its reCAPTCHA
-    /// is a widget the student taps.
-    @Test func fillsTheSuggestionBoxSignInAndLeavesItsReCAPTCHA() async throws {
+    /// is a widget the student taps. Its password is the career site's, not the school's.
+    @Test func fillsOnlyTheSuggestionBoxStudentIdAndLeavesItsReCAPTCHA() async throws {
         let forms = """
         <form method="post" action="/send-forget-email"><input name="_token" type="hidden" value="t">
         <input name="student_id" type="text"><button type="submit">send</button></form>
@@ -108,7 +108,7 @@ struct BrowserSiteSignInPageTests {
         """
         let webView = await page(forms, at: URL(string: "https://suggestionbox.ntust.edu.tw/login")!)
         await signIn.pageFinished(in: webView)
-        #expect(await values(webView, ["account", "password", "g-recaptcha-response", "student_id"]) == ["B00000001", "not-a-password", "", ""])
+        #expect(await values(webView, ["account", "password", "g-recaptcha-response", "student_id"]) == ["B00000001", "", "", ""])
         let others = "return [...document.getElementsByName('student_id')].map((field) => field.value)"
         #expect(try await webView.callAsyncJavaScript(others, contentWorld: .page) as? [String] == ["", ""])
     }

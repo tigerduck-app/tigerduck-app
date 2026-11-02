@@ -27,10 +27,14 @@ struct BrowserSiteSignIn {
             return await run(Self.tokenSignIn, arguments, in: webView, world: .page)
         }
         guard let form = BrowserSchoolSites.signInForm(at: url), let account = account() else { return }
-        let arguments = [
-            "origin": page.origin, "path": page.path, "studentIdField": form.studentId, "passwordField": form.password,
-            "studentId": account.studentId, "password": account.password,
+        var arguments: [String: Any] = [
+            "origin": page.origin, "path": page.path, "studentIdField": form.studentId, "studentId": account.studentId,
+            "passwordField": NSNull(), "password": NSNull(),
         ]
+        if let passwordField = form.password {
+            arguments["passwordField"] = passwordField
+            arguments["password"] = account.password
+        }
         await run(Self.fill, arguments, in: webView, world: .defaultClient)
     }
 
@@ -47,9 +51,9 @@ struct BrowserSiteSignIn {
     if (location.origin !== origin || location.pathname !== path) return false;
     const field = (name) => Array.prototype.find.call(
       document.getElementsByName(name), (element) => element instanceof HTMLInputElement && element.form !== null);
-    const id = field(studentIdField), secret = field(passwordField);
-    if (!id || !secret || secret.type !== 'password') return false;
-    for (const [element, value] of [[id, studentId], [secret, password]]) {
+    const id = field(studentIdField), secret = passwordField === null ? null : field(passwordField);
+    if (!id || (passwordField !== null && (!secret || secret.type !== 'password'))) return false;
+    for (const [element, value] of secret ? [[id, studentId], [secret, password]] : [[id, studentId]]) {
       if (element.value) continue;
       element.value = value;
       element.dispatchEvent(new Event('input', { bubbles: true }));

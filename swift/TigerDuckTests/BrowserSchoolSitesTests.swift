@@ -101,7 +101,7 @@ struct BrowserSchoolSitesTests {
 
     @Test func theSuggestionBoxSignInIsFilledByItsFieldsNames() {
         #expect(BrowserSchoolSites.signInForm(at: Self.url("https://suggestionbox.ntust.edu.tw/login"))
-            == BrowserSchoolSites.SignInForm(studentId: "account", password: "password"))
+            == BrowserSchoolSites.SignInForm(studentId: "account", password: nil))
         #expect(BrowserSchoolSites.signInForm(at: Self.url("https://suggestionbox.ntust.edu.tw/")) == nil)
     }
 
