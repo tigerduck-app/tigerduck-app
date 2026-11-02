@@ -8,16 +8,7 @@ nonisolated extension PushDeviceRequests {
     ) async throws {
         let uuid = identity.uuid
         do {
-            try await apiClient.registerAnonymousDevice(
-                PushAPI.AnonymousDeviceRequest(
-                    device_id: uuid,
-                    platform: "apple",
-                    device_class: deviceClass,
-                    push_token: deviceToken,
-                    bundle_id: bundleId,
-                    server_push_enabled: !optOut
-                )
-            )
+            try await sendAnonymous(deviceToken: deviceToken, serverPushEnabled: !optOut)
             if await apiClient.hasAuthSession() {
                 _ = try await apiClient.updateDevicePreferences(
                     deviceId: uuid, serverPushEnabled: !optOut, for: signIn

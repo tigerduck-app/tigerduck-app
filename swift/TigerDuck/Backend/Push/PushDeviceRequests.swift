@@ -40,20 +40,26 @@ nonisolated struct PushDeviceRequests: Sendable {
 
     func announce(deviceToken: String?) async {
         do {
-            try await apiClient.registerAnonymousDevice(
-                PushAPI.AnonymousDeviceRequest(
-                    device_id: identity.uuid,
-                    platform: "apple",
-                    device_class: deviceClass,
-                    push_token: deviceToken,
-                    bundle_id: bundleId,
-                    server_push_enabled: !Defaults[.serverPushUserOptOut]
-                )
-            )
+            try await sendAnonymous(deviceToken: deviceToken, serverPushEnabled: !Defaults[.serverPushUserOptOut])
         } catch is CancellationError {
         } catch {
             logger.error("device announce failed: \(error.localizedDescription, privacy: .private)")
         }
+    }
+
+    func sendAnonymous(deviceToken: String?, serverPushEnabled: Bool) async throws {
+        guard identity.mayAnnounce else { return }
+        try await apiClient.registerAnonymousDevice(
+            PushAPI.AnonymousDeviceRequest(
+                device_id: identity.uuid,
+                platform: "apple",
+                device_class: deviceClass,
+                push_token: deviceToken,
+                bundle_id: bundleId,
+                server_push_enabled: serverPushEnabled,
+                device_secret: identity.secret
+            )
+        )
     }
 
     func register(_ tokens: [PushAPI.PushTokenIn]) async throws {
@@ -92,7 +98,8 @@ nonisolated struct PushDeviceRequests: Sendable {
             push_token: pushToken,
             cloud_sync_enabled: cloudSync,
             bulletin_push_enabled: Defaults[.bulletinPushEnabled],
-            server_push_enabled: !Defaults[.serverPushUserOptOut]
+            server_push_enabled: !Defaults[.serverPushUserOptOut],
+            device_secret: identity.secret
         )
     }
 
