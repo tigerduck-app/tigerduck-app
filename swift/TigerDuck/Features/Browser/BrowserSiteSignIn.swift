@@ -39,8 +39,9 @@ struct BrowserSiteSignIn {
     /// The credit program system: a token it still takes is kept; else the stored password is
     /// posted as its popup posts it, and the popup opens for the student when that does not sign in.
     private func signInWithToken(in webView: WKWebView, at page: [String: Any]) async {
-        guard await run(Self.savedToken, page, in: webView, world: .defaultClient) as? String == "signedOut" else { return }
-        if await sessionIsLive(), let account = account() {
+        let state = await run(Self.savedToken, page, in: webView, world: .defaultClient) as? String
+        guard state == "signedOut" || state == "posted" else { return }
+        if state == "signedOut", await sessionIsLive(), let account = account() {
             let arguments = page.merging(["studentId": account.studentId, "password": account.password]) { $1 }
             let status = await postingStoredPassword { await run(Self.postToken, arguments, in: webView, world: .defaultClient) as? Int }
             if let status, (200..<300).contains(status) { return }
@@ -89,14 +90,23 @@ struct BrowserSiteSignIn {
         if (users.ok) return 'signedIn';
       } catch (error) {}
     }
-    return 'signedOut';
+    try {
+      return sessionStorage.getItem('tigerduck.tokenPosted') ? 'posted' : 'signedOut';
+    } catch (error) {
+      return 'posted';
+    }
     """
 
     /// Posts the account as the popup does and keeps the token as the site does. Answers the HTTP
     /// status, or null when no answer or no token came; a redirect fails rather than send the
-    /// password on.
+    /// password on. A tab posts once, so a token the site then turns away cannot start a reload loop.
     nonisolated static let postToken = """
     if (location.origin !== origin || location.pathname !== path) return null;
+    try {
+      sessionStorage.setItem('tigerduck.tokenPosted', '1');
+    } catch (error) {
+      return null;
+    }
     let answer;
     try {
       answer = await fetch('api/tokens', {

@@ -222,6 +222,21 @@ struct BrowserSiteSignInPageTests {
         #expect(loader.refused == [.reload])
     }
 
+    @Test func aFreshTokenThePageRefusesIsPostedOnceAndThenThePopupOpens() async throws {
+        let loader = Loader(), posts = Posts()
+        let webView = await creditProgramPage(loader: loader)
+        let signIn = creditProgramSignIn(posts)
+        await signIn.pageFinished(in: webView)
+        try await waitUntil { loader.refused == [.reload] }
+        // The load the reload starts, which `api/users` turns away with the fresh token.
+        await signIn.pageFinished(in: webView)
+
+        #expect(posts.statuses == [200])
+        #expect(await read(webView, "requests.map((request) => request[0])", in: .defaultClient) == #"["api/tokens","api/users"]"#)
+        #expect(await read(webView, "commits") == #"[["setShowLogin",true]]"#)
+        #expect(loader.refused == [.reload])
+    }
+
     @Test func aRefusedSignInOpensThePopupForTheStudent() async {
         let loader = Loader(), posts = Posts()
         let webView = await creditProgramPage(answers: "answers['api/tokens'] = [400, {}];", loader: loader)
