@@ -156,7 +156,7 @@ struct BrowserBar: View {
         .frame(maxWidth: .infinity)
         .overlay(alignment: .bottom) {
             if !subtitle.isEmpty {
-                Text(subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     .padding(.horizontal, 14)
                     .padding(.bottom, Self.subtitleRoom)
                     .opacity(collapsed ? 0 : 1)
