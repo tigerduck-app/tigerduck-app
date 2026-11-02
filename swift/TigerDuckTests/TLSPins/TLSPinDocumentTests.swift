@@ -87,6 +87,9 @@ struct TLSPinDocumentTests {
         engine.acceptDocument(F.envelope(F.payload(sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.unknownSPKI])])))
         let library = try #require(pins(engine, host: "api.lib.ntust.edu.tw"))
         #expect(library.pins == TLSPinTable.builtIn[1].pins)
+        let clubs = try #require(pins(engine, host: "clubs.ntust.edu.tw"))
+        #expect(clubs.id == "clubs")
+        #expect(clubs.pins == TLSPinTable.builtIn.first { $0.id == "clubs" }?.pins)
     }
 
     @Test("A document can move a set's expiry later, never earlier")
@@ -144,5 +147,13 @@ struct TLSPinDocumentTests {
         #expect(ntust.id == "ntust")
         #expect(engine.policy(forHost: "example.com") == .notPinned)
         #expect(engine.policy(forHost: "notntust.edu.tw") == .notPinned)
+    }
+
+    @Test("clubs.ntust.edu.tw takes the clubs set, and a host under it the ntust set")
+    func clubsMatchesOnlyItsOwnHost() {
+        let engine = F.engine()
+        #expect(pins(engine, host: "CLUBS.ntust.edu.tw.")?.id == "clubs")
+        #expect(pins(engine, host: "www.clubs.ntust.edu.tw")?.id == "ntust")
+        #expect(pins(engine, host: "moodle2.ntust.edu.tw")?.id == "ntust")
     }
 }
