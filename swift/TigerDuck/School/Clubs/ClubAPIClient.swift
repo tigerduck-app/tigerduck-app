@@ -46,11 +46,20 @@ nonisolated struct ClubAPIClient: Sendable {
         return min(TimeInterval(seconds), longestMaxAge)
     }
 
+    /// Whether a failed fetch is worth a diagnostic: an answer this build cannot read, a status the
+    /// API does not send, or an answer from another host after a redirect. A lost network, a
+    /// timeout, a cancellation and the demo account's refusal, which fails like an offline
+    /// request, are expected.
+    static func isWorthReporting(_ error: any Error) -> Bool {
+        error is DecodingError || (error as? URLError)?.code == .badServerResponse
+    }
+
     private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         var request = request
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (body, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 304 || (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 304 || (200..<300).contains(http.statusCode),
+              http.url?.host.map(TLSPinMatcher.hostName) == baseURL.host.map(TLSPinMatcher.hostName) else {
             throw URLError(.badServerResponse)
         }
         return (body, http)

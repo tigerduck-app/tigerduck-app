@@ -149,13 +149,42 @@ struct ClubSubscriptionsSyncTests {
             subscriptions.subscribe(93, for: testSignIn)
             SettingsAPIStub.enqueue(try Fixtures.written(revision: 1), for: url)
 
-            #expect(await syncer.sync(snapshot: .neverWritten, runsBeforeSnapshot: 0) == .synced)
+            #expect(await syncer.sync(snapshot: .neverWritten, runsBeforeSnapshot: 0, for: testSignIn) == .synced)
             #expect(!subscriptions.hasUnsentChanges)
 
             SettingsAPIStub.enqueue(try Fixtures.found(try Self.object(subscriptions.document), revision: 1), for: url)
-            #expect(await syncer.sync(snapshot: .neverWritten, runsBeforeSnapshot: 0) == .synced)
+            #expect(await syncer.sync(snapshot: .neverWritten, runsBeforeSnapshot: 0, for: testSignIn) == .synced)
             #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["PUT", "GET"])
             #expect(subscriptions.subscribedIDs == [93])
+        }
+    }
+
+    @Test("a snapshot read for an earlier sign-in is dropped, and the run reads the server's copy for its own")
+    func snapshotOfAnotherSignIn() async throws {
+        try await withExclusiveRealDefaults {
+            Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending)
+            let syncWasOn = Defaults[.cloudSyncEnabled]
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
+            defer {
+                Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending)
+                Defaults[.cloudSyncEnabled, for: testSignIn] = syncWasOn
+            }
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.documentURL(baseURL)
+            let subscriptions = ClubSubscriptions()
+            let syncer = ClubSubscriptionsSyncer(subscriptions: subscriptions, startingSignIn: { testSignIn }) { _ in
+                SettingsAPIStub.makeClient(baseURL: baseURL)
+            }
+            subscriptions.subscribe(93, for: testSignIn)
+            SettingsAPIStub.enqueue(try Fixtures.found(try Self.object(Self.subscribed([41], from: 9)), revision: 2), for: url)
+            SettingsAPIStub.enqueue(try Fixtures.written(revision: 3), for: url)
+
+            #expect(await syncer.sync(snapshot: .neverWritten, runsBeforeSnapshot: 0, for: endedTestSignIn) == .synced)
+
+            let requests = SettingsAPIStub.requests(for: url)
+            try #require(requests.map(\.httpMethod) == ["GET", "PUT"])
+            #expect(try Fixtures.sentEnvelope(requests[1])["base_revision"] as? Int == 2)
+            #expect(Set(subscriptions.subscribedIDs) == [41, 93])
         }
     }
 

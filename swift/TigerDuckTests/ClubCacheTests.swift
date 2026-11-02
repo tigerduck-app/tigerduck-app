@@ -10,6 +10,14 @@ struct ClubCacheTests {
         return ClubAPIClient(baseURL: base, session: URLSession(configuration: config))
     }
 
+    /// A feed with club stores of its own, so that no test reaches the app's.
+    private static func feed(_ files: ClubFiles, _ base: URL) -> ClubActivities {
+        ClubActivities(
+            files: files, client: client(base), subscriptions: ClubSubscriptions(),
+            directory: ClubDirectory(files: files, client: client(base), chinese: { true })
+        )
+    }
+
     private static func files() -> (ClubFiles, URL) {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         return (ClubFiles(folders: CacheFolders(root: root)), root)
@@ -73,14 +81,14 @@ struct ClubCacheTests {
         SettingsAPIStub.enqueue(.init(statusCode: 304, body: Data()), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 500, body: Data()), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: second, headerFields: ["ETag": #""b""#]), for: url)
-        let feed = ClubActivities(files: files, client: Self.client(base))
+        let feed = Self.feed(files, base)
 
         await feed.refresh()
         await feed.refresh()
         await feed.refresh()
         #expect(feed.activities.map(\.id) == [1])
 
-        let reopened = ClubActivities(files: files, client: Self.client(base))
+        let reopened = Self.feed(files, base)
         #expect(reopened.activities.map(\.id) == [1])
         await reopened.refresh()
         #expect(reopened.activities.map(\.id) == [2])
@@ -88,6 +96,24 @@ struct ClubCacheTests {
 
         let sent = SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") }
         #expect(sent == [nil, #""a""#, #""a""#, #""a""#])
+    }
+
+    @Test("an answer whose rows are all unreadable keeps the stored feed")
+    func unreadableRowsKeepTheStoredFeed() async throws {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let url = base.appending(path: "activities")
+        let (files, root) = Self.files()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stored = ETaggedBody(body: ClubAPIModelsTests.envelope(ClubAPIModelsTests.activity(1, club: 41)), etag: #""a""#)
+        files.saveActivities(stored)
+        let unreadable = ClubAPIModelsTests.envelope(#"{"id":"x"},{"id":"y"}"#)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: unreadable, headerFields: ["ETag": #""b""#]), for: url)
+        let feed = Self.feed(files, base)
+
+        await feed.refresh()
+
+        #expect(feed.activities.map(\.id) == [1])
+        #expect(files.loadActivities() == stored)
     }
 
     @Test("a stored feed this build cannot read is fetched whole")
@@ -99,7 +125,7 @@ struct ClubCacheTests {
         files.saveActivities(ETaggedBody(body: Data("garbage".utf8), etag: #""a""#))
         SettingsAPIStub.enqueue(.init(statusCode: 304, body: Data()), for: url)
 
-        await ClubActivities(files: files, client: Self.client(base)).refresh()
+        await Self.feed(files, base).refresh()
 
         #expect(SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") } == [nil])
     }

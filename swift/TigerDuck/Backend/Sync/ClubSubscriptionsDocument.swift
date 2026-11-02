@@ -53,6 +53,15 @@ nonisolated struct ClubSubscriptionsDocument: Equatable, Sendable {
         clubs[id]?.subscribed?.value == true
     }
 
+    /// The stamp of an edit made at `now`: `now`, or 1 ms after the latest stamp the document
+    /// holds when that is later, so that a value another device stamped ahead by a wrong clock
+    /// cannot outlast the edits made after it.
+    func stamp(at now: Date) -> Stamp {
+        let dates = clubs.values.flatMap { [$0.subscribed?.at.date, $0.color?.at.date] } + [order?.at.date]
+        guard let latest = dates.compactMap({ $0 }).max() else { return Stamp(now) }
+        return Stamp(max(now, latest.addingTimeInterval(0.001)))
+    }
+
     /// Every value takes the side that set it later; a tie keeps the server's.
     static func merged(local: Self, server: Self) -> Self {
         var clubs = server.clubs

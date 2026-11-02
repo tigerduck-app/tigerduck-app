@@ -27,6 +27,9 @@ may change different clubs, or different values of one club, while one of them i
   document's `order`, from the side that set it later; a tie keeps the server's
   (`ClubSubscriptionsDocument.merged`). A value that is unreadable, or lacks its stamp, counts as
   absent, so another writer's mistake cannot erase a choice.
+- An edit is stamped with the device's time, or 1 ms after the latest stamp the device's copy
+  holds when that is later (`ClubSubscriptionsDocument.stamp(at:)`), so a value stamped ahead by
+  another device's wrong clock cannot outlast the edits made after it.
 - A push and a pull are one step (`ClubSubscriptionsSync.sync`): merge the device's copy with the
   server's, write the result with the server's revision when it differs, merge once more with the
   copy a 409 carries, and keep the result on the device. The write splices the merged values over
@@ -37,6 +40,8 @@ may change different clubs, or different values of one club, while one of them i
   UTF-8 bytes, modulo the course palette (`ClubSubscriptions.defaultColor`).
 - The shown order is `order.ids` filtered to subscribed clubs, then subscribed clubs it lacks by
   `subscribed_at`, then by id.
+- `order` is one value: after a reorder on one device and a subscription made offline on another,
+  only the later order stays, and a club the earlier one placed shows after the ordered ones.
 - Subscriptions are not tied to a term; they carry over to the next one.
 - A change marks the document unsent until a sync leaves nothing to send; the next full sync or
   change-feed pull sends it again.

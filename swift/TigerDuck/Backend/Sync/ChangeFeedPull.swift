@@ -90,16 +90,32 @@ final class ChangeFeedPull {
     }
 
     private func reconcileSettings(thenAdvanceFrom since: Int, to revision: Int, for signIn: SignIn) async {
-        await app.clubSubscriptions.sync()
+        await Self.reconcileSettings(
+            clubs: { [app] in await app.clubSubscriptions.sync() },
+            notifications: { [weak self] onSettled in await self?.settleNotifications(onSettled) },
+            advance: { [weak self] in self?.advanceRevision(from: since, to: revision, for: signIn) }
+        )
+    }
+
+    private func settleNotifications(_ onSettled: @escaping @MainActor () -> Void) async {
         #if os(iOS)
         if !Defaults[.notificationSettingsPushPending] {
-            await app.notificationSettings.reconcile(onSettled: { [weak self] in
-                self?.advanceRevision(from: since, to: revision, for: signIn)
-            }).value
+            await app.notificationSettings.reconcile(onSettled: onSettled).value
             return
         }
         #endif
-        advanceRevision(from: since, to: revision, for: signIn)
+        onSettled()
+    }
+
+    /// Reconciles the club document and the notification settings, and calls `advance` once both
+    /// settled, so that a change either one failed to take is read again on the next poll.
+    static func reconcileSettings(
+        clubs: () async -> FullSyncOutcome,
+        notifications: (_ onSettled: @escaping @MainActor () -> Void) async -> Void,
+        advance: @escaping @MainActor () -> Void
+    ) async {
+        let clubOutcome = await clubs()
+        await notifications { if clubOutcome != .failed { advance() } }
     }
 
     private func advanceRevision(from since: Int, to revision: Int, for signIn: SignIn) {

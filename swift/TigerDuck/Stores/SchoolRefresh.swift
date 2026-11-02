@@ -53,15 +53,19 @@ enum SchoolRefresh {
         _ = await CourseDetails.refreshCoursesMissingClassroom(semester: semester, for: signIn)
     }
 
-    /// The club activity feed and, once its `max-age` has passed, the club directory; nothing while
-    /// the account subscribes to no club.
+    /// Starts fetching the club activity feed and, once its `max-age` has passed, the club
+    /// directory, without holding up the caller; nothing while the account subscribes to no club.
+    /// The stores are observable, so what reads them changes once the answers land.
+    @discardableResult
     static func clubActivities(
         subscriptions: ClubSubscriptions = .shared, activities: ClubActivities = .shared, directory: ClubDirectory = .shared
-    ) async {
-        guard subscriptions.hasSubscriptions else { return }
-        async let feed: Void = activities.refresh()
-        await directory.refresh()
-        await feed
+    ) -> Task<Void, Never>? {
+        guard subscriptions.hasSubscriptions else { return nil }
+        return Task {
+            async let feed: Void = activities.refresh()
+            await directory.refresh()
+            await feed
+        }
     }
 
     static func courseChanges() async {

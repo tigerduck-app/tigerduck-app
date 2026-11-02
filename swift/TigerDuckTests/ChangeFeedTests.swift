@@ -83,6 +83,23 @@ struct ChangeFeedWatermarkTests {
         #expect(!ChangeFeedPull.feedMayAdvanceRevision(
             readAfter: 10, watermark: 10, signedOutSince: false, cloudSyncEnabled: false))
     }
+
+    @Test(
+        "A settings change reconciles the notification settings whatever the club sync did, and moves the watermark only when it did not fail",
+        arguments: [(FullSyncOutcome.synced, true), (.skipped, true), (.failed, false)]
+    )
+    @MainActor
+    func settingsChangeWaitsForTheClubs(clubs: FullSyncOutcome, advances: Bool) async {
+        var steps: [String] = []
+
+        await ChangeFeedPull.reconcileSettings(
+            clubs: { steps.append("clubs"); return clubs },
+            notifications: { onSettled in steps.append("notifications"); onSettled() },
+            advance: { steps.append("advance") }
+        )
+
+        #expect(steps == (advances ? ["clubs", "notifications", "advance"] : ["clubs", "notifications"]))
+    }
 }
 
 @MainActor

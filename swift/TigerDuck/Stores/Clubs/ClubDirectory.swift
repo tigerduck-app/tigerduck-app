@@ -73,8 +73,8 @@ final class ClubDirectory {
             take(read, storedAt: storedAt, maxAge: answer.maxAge)
             failure = nil
         } catch {
-            if !AppLogger.isCancellation(error) {
-                failure = error
+            if !AppLogger.isCancellation(error) { failure = error }
+            if ClubAPIClient.isWorthReporting(error) {
                 AppLogger.captureError(error, context: ["service": "clubDirectoryRefresh"])
             }
         }

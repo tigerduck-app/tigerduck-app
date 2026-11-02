@@ -100,4 +100,61 @@ struct ClubAPIModelsTests {
         #expect(ClubAPIClient.maxAge("max-age=soon") == 300)
         #expect(ClubAPIClient.maxAge("max-age=99999999") == 86_400)
     }
+
+    @Test("an answer whose every row is unreadable is a failure; an empty list and a partly readable one are not")
+    func unreadableRows() throws {
+        #expect(throws: DecodingError.self) { try ClubAPIList<ClubCard>.decode(Self.envelope(#"{"id":"x"},{"name":1}"#)) }
+        #expect(try ClubAPIList<ClubCard>.decode(Self.envelope("")).isEmpty)
+        #expect(try ClubAPIList<ClubCard>.decode(Self.envelope(#"{"id":"x"},"# + Self.club(1, "管樂社"))).map(\.id) == [1])
+    }
+
+    @Test("a club or an activity listed twice keeps its first row")
+    func duplicateIDs() throws {
+        let clubs = [Self.club(1, "管樂社"), Self.club(1, "吉他社"), Self.club(2, "熱舞社")]
+        let activities = [Self.activity(5, club: 93), Self.activity(5, club: 41), Self.activity(6, club: 41)]
+
+        #expect(try ClubAPIList<ClubCard>.decode(Self.envelope(clubs.joined(separator: ","))).map(\.name) == ["管樂社", "熱舞社"])
+        #expect(try ClubAPIList<ClubActivity>.decode(Self.envelope(activities.joined(separator: ","))).map(\.clubID) == [93, 41])
+    }
+
+    @Test("an answer that ends on another host, after a redirect, is refused")
+    func otherHostRefused() async {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = ClubAPIClient(baseURL: base, session: URLSession(configuration: config))
+        var moved = SettingsAPIStub.StubResponse(statusCode: 200, body: Self.envelope(Self.club(1, "管樂社")))
+        moved.url = URL(string: "https://elsewhere.invalid/api/v1/public/clubs")
+        SettingsAPIStub.enqueue(moved, for: base.appending(path: "clubs"))
+
+        var refusal: URLError?
+        do { _ = try await client.clubs() } catch { refusal = error as? URLError }
+
+        #expect(refusal?.code == .badServerResponse)
+    }
+
+    @Test("a failed fetch is reported for an unreadable answer or an unexpected status, not for a lost network or a cancellation")
+    func reportedFailures() async {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = ClubAPIClient(baseURL: base, session: URLSession(configuration: config))
+        SettingsAPIStub.enqueue(.init(statusCode: 500, body: Data()), for: base.appending(path: "clubs"))
+        SettingsAPIStub.enqueue(.init(statusCode: 0, body: Data(), failure: .notConnectedToInternet), for: base.appending(path: "clubs"))
+
+        func failure(_ body: () async throws -> Void) async -> (any Error)? {
+            do { try await body() } catch { return error }
+            return nil
+        }
+        let status = await failure { _ = try await client.clubs() }
+        let offline = await failure { _ = try await client.clubs() }
+        let unreadable = await failure { _ = try ClubAPIList<ClubCard>.decode(Data("{}".utf8)) }
+
+        #expect(status.map(ClubAPIClient.isWorthReporting) == true)
+        #expect(unreadable.map(ClubAPIClient.isWorthReporting) == true)
+        #expect(offline.map(ClubAPIClient.isWorthReporting) == false)
+        #expect(!ClubAPIClient.isWorthReporting(URLError(.timedOut)))
+        #expect(!ClubAPIClient.isWorthReporting(URLError(.cancelled)))
+        #expect(!ClubAPIClient.isWorthReporting(CancellationError()))
+    }
 }
