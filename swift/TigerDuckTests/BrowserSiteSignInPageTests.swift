@@ -268,6 +268,23 @@ struct BrowserSiteSignInPageTests {
         #expect(await read(webView, "commits") == #"[["setShowLogin",true]]"#)
     }
 
+    @Test func theCreditProgramScriptsCheckTheAddressAsTheyRun() async throws {
+        let webView = await creditProgramPage()
+        let elsewhere: [String: Any] = ["origin": "https://cour01.ntust.edu.tw", "path": "/DMP_student/other"]
+        let account = elsewhere.merging(["studentId": "B00000001", "password": "not-a-password"]) { $1 }
+
+        let state = try await webView.callAsyncJavaScript(BrowserSiteSignIn.savedToken, arguments: elsewhere, contentWorld: .defaultClient)
+        #expect(state as? String == "elsewhere")
+        let posted = try await webView.callAsyncJavaScript(BrowserSiteSignIn.postToken, arguments: account, contentWorld: .defaultClient)
+        #expect(posted as? Int == nil)
+        let opened = try await webView.callAsyncJavaScript(BrowserSiteSignIn.openPopup, arguments: elsewhere, contentWorld: .page)
+        #expect(opened as? Bool == false)
+
+        #expect(await read(webView, "requests", in: .defaultClient) == "[]")
+        #expect(await read(webView, "sessionStorage.length") == "0")
+        #expect(await read(webView, "commits") == "[]")
+    }
+
     @Test func aTokenThePageStillTakesIsKeptWithoutCheckingTheSchoolSession() async {
         let posts = Posts()
         let webView = await creditProgramPage(answers: "answers['api/users'] = [200, {}];", cookie: "document.cookie = 'token=old';")
