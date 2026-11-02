@@ -585,17 +585,14 @@ jobs:
 
   # Below iOS 27 the app's tab roots take UIKit's search controller rather than `.searchable`
   # (swift/TigerDuck/UI/ViewHelpers/View+NavigationBarSearch.swift), and no runtime of the phone
-  # leg's image is older than iOS 26. macos-15 still has iOS 18 runtimes next to an Xcode 26, so
-  # this job runs the search suites there, on a cold build: there is no cache to restore. Xcode
-  # 26.3, because the scheme embeds the Watch app and macos-15 has the watchOS 26.2 runtime its SDK
-  # needs, not the watchOS 26.0 one of Xcode 26.0.1.
+  # leg's image is older than iOS 26. This job downloads the iOS 18.6 runtime, the last of iOS 18,
+  # and runs the search suites there on a cold build: there is no cache to restore. macos-15 still
+  # ships iOS 18 runtimes, but its newest Xcode, 26.3, cannot build the app.
   ios18-search:
     name: iOS 18 search
     if: github.event_name == 'pull_request'
-    runs-on: macos-15
-    timeout-minutes: 45
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    runs-on: macos-26
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -615,34 +612,20 @@ jobs:
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
-      - name: Pick a simulator
+      # Xcode 27 downloads no runtime older than iOS 26 (https://developer.apple.com/forums/thread/847134).
+      - name: iOS 18.6 simulator
         if: steps.changes.outputs.run == 'true'
         id: sim
         run: |
           set -euo pipefail
           xcodebuild -version
-          udid=$(xcrun simctl list devices available --json | jq -r '
-            [.devices["com.apple.CoreSimulator.SimRuntime.iOS-18-5"][]? | select(.name | startswith("iPhone"))]
-            | first.udid // empty')
-          if [ -z "$udid" ]; then
-            echo "::error::no iOS 18.5 iPhone simulator"
-            xcrun simctl list devices available
-            exit 1
+          runtime=com.apple.CoreSimulator.SimRuntime.iOS-18-6
+          if ! xcrun simctl list runtimes --json | jq -e --arg r "$runtime" '.runtimes[] | select(.identifier == $r and .isAvailable)' > /dev/null; then
+            xcodebuild -downloadPlatform iOS -buildVersion 18.6
           fi
+          udid=$(xcrun simctl create "iPhone 16 Pro" com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro "$runtime")
           xcrun simctl list devices available | grep -E "$udid"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
-
-      # xcodebuild refuses to build the scheme without the watchOS runtime of its SDK's version.
-      # The image has it today; this downloads it only if an image update drops it.
-      - name: Watch platform
-        if: steps.changes.outputs.run == 'true'
-        run: |
-          sdk=$(xcrun --sdk watchsimulator --show-sdk-version)
-          if xcrun simctl list runtimes | grep -qE "^watchOS ${sdk//./\\.}[ .]"; then
-            echo "watchOS $sdk runtime installed"
-          else
-            xcodebuild -downloadPlatform watchOS
-          fi
 
       # Signing stays on, as in `unit-tests`. The errors print in the order the compiler hit them.
       - name: Build for testing
