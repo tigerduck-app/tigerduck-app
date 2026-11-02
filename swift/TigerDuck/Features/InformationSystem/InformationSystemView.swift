@@ -191,7 +191,7 @@ struct InformationSystemPage: View {
             HStack(spacing: TigerDuckTheme.Spacing.md) {
                 Text(link.name)
                     .font(TigerDuckTheme.Typography.body)
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(link.opens ? Color.textPrimary : Color.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "arrow.up.right")
                     .font(.footnote.weight(.semibold))
@@ -200,6 +200,7 @@ struct InformationSystemPage: View {
             }
             .contentShape(Rectangle())
         }
+        .disabled(!link.opens)
         .listRowBackground(Color.clear)
     }
 

@@ -339,4 +339,16 @@ struct InformationSystemFilterTests {
         #expect(Self.names(.personalInfo, "選課").isEmpty)
         #expect(Self.names(nil, "quantum chromodynamics").isEmpty)
     }
+
+    @Test("only the graduates' leaving form, as the portal writes its address, does not open")
+    func linksThatOpen() {
+        func opens(_ address: String) -> Bool {
+            PortalLink(category: .personalInfo, name: "x", url: URL(string: address)!).opens
+        }
+        #expect(!opens("https://StuInfoSys.ntust.edu.tw/SAGraduatesServ/SAGraduates"))
+        #expect(!opens("https://stuinfosys.ntust.edu.tw/sagraduatesserv/"))
+        #expect(opens("https://stuinfosys.ntust.edu.tw/StudentInformation"))
+        #expect(opens("https://StuInfoSys.ntust.edu.tw/StuScoreQueryServ/StuScoreQuery"))
+        #expect(opens("https://example.ntust.edu.tw/SAGraduatesServ/SAGraduates"))
+    }
 }

@@ -28,6 +28,13 @@ nonisolated struct PortalLink: Codable, Hashable, Identifiable, Sendable {
     let url: URL
 
     var id: Self { self }
+
+    /// False for the graduates' leaving form (`SAGraduatesServ`), whose sign-in through ssoam's
+    /// NetIQ page does not finish; the list shows it without opening it.
+    var opens: Bool {
+        url.host(percentEncoded: false)?.lowercased() != "stuinfosys.ntust.edu.tw"
+            || url.pathComponents.dropFirst().first?.lowercased() != "sagraduatesserv"
+    }
 }
 
 /// The portal has a Chinese page and a separate English one.
