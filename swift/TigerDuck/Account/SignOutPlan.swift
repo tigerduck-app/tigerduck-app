@@ -42,6 +42,7 @@ extension SignOutPlan {
             CalendarEventFiles.self, BulletinFiles.self, ScoreReportFiles.self, MoodleFiles.self, PortalLinkFiles.self,
             PortalLinks.UnreadablePages.self,
             ImportedClassTableStore.self, BulletinsViewModel.self, AcademicCalendarStore.self, DemoAccount.self,
+            ClubSubscriptions.self,
         ]
         #if os(iOS)
         stores.append(BrowserData.self)

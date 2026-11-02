@@ -60,7 +60,7 @@ final class FullSyncRunner {
     }
 
     /// A backend timestamp: Python `isoformat()`, which has microseconds unless they are zero.
-    static func backendDate(_ value: Any?) -> Date? {
+    nonisolated static func backendDate(_ value: Any?) -> Date? {
         guard let raw = value as? String else { return nil }
         return TigerDuckDateFormatters.withFractional.date(from: raw)
             ?? TigerDuckDateFormatters.withoutFractional.date(from: raw)

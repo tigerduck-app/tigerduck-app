@@ -64,29 +64,6 @@ nonisolated extension NotificationSettingsDocument.Assignments {
     }
 }
 
-private nonisolated struct WholeNumberElement: Decodable {
-    let value: Int?
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        value = try? container.decode(Int.self)
-    }
-}
-
-/// Drops bad elements, not the array, like the backend's `_numbers`
-/// (`server/push/reminders.py`) and Android's `asValidatedIntListOrNull`: all
-/// three read `[30, "15"]` as the full set `[30]`, not as a reason to fall back
-/// to `reminder_offsets_hours`. The backend delivers the reminders, so reading
-/// it differently would give two devices on one account different reminders.
-private nonisolated func wholeNumberList<Key: CodingKey>(
-    in container: KeyedDecodingContainer<Key>,
-    forKey key: Key
-) -> [Int]? {
-    let decoded = try? container.decodeIfPresent([WholeNumberElement].self, forKey: key)
-    guard let elements = decoded.flatMap({ $0 }) else { return nil }
-    return elements.compactMap(\.value)
-}
-
 nonisolated extension NotificationSettingsDocument.Courses {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
