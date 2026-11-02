@@ -58,7 +58,6 @@ final class BrowserCertificateCheck {
         self.pinnedHosts = pinnedHosts
     }
 
-    /// The same check, letting `refusal`'s leaf through as well.
     func accepting(_ refusal: BrowserRiskAcceptance.Refusal) -> BrowserCertificateCheck {
         BrowserCertificateCheck(acceptance: acceptance.accepting(refusal), pinning: pinning, pinnedHosts: pinnedHosts)
     }
@@ -91,7 +90,6 @@ final class BrowserCertificateCheck {
         }
     }
 
-    /// Notes the leaf a host served in a challenge this check did not let through itself.
     func notLetThrough(_ leaf: String, from host: String) {
         refusedLeaves[TLSPinMatcher.hostName(host)] = leaf
     }

@@ -61,7 +61,6 @@ final class BrowserPage {
 
     var host: String { address?.host(percentEncoded: false) ?? "" }
 
-    /// The address the address sheet names: the refused page's while it is the one shown.
     var sheetAddress: URL? { refusalToOpenAtRisk?.pageToOpen ?? address }
 
     var openedAtRisk: URL? { opening.openedAtRisk }
