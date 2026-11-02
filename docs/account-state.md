@@ -58,6 +58,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | keychain | `moodleToken` | school | `swift/TigerDuck/School/Moodle/MoodleTokenService.swift` `drop` |
 | keychain | `password` | school | `swift/TigerDuck/Account/AuthService.swift` `logout` |
 | keychain | `pushDeviceId` | device |  |
+| keychain | `pushDeviceSecret` | device |  |
 | keychain | `refreshTokenKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenPair.swift` `clear` |
 | keychain | `refreshTokenUsesKey` | school | `swift/TigerDuck/Backend/Auth/AuthTokenPair.swift` `clear` |
 | keychain | `studentId` | school | `swift/TigerDuck/Account/AuthService.swift` `logout` |
@@ -122,6 +123,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `outlineRequiredCourses` | device |  |
 | defaults | `pendingConflictCategories` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
 | defaults | `pinTodayCoursesOnClassTable` | device |  |
+| defaults | `pushDeviceSecretRefused` | device |  |
 | defaults | `pushServerEnabled` | device |  |
 | defaults | `pushServerURLOverride` | device |  |
 | defaults | `schoolDataSyncedAt` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |

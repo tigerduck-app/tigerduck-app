@@ -31,4 +31,21 @@ struct FreshInstallKeychainPurgeTests {
             } == .installedBefore)
         }
     }
+
+    @Test("a reinstall keeps the device id and its secret, so the app announces as the same device")
+    func aReinstallKeepsTheDeviceIdAndSecret() async {
+        let installed = AppConstants.UserDefaultsKeys.appHasBeenInstalled
+        await withExclusiveRealDefaults {
+            let saved = UserDefaults.standard.object(forKey: installed)
+            defer { UserDefaults.standard.set(saved, forKey: installed) }
+            UserDefaults.standard.removeObject(forKey: installed)
+            var deleted: Set<String> = []
+
+            #expect(FreshInstallKeychainPurge.runIfFreshInstall { deleted.insert($0); return true } == .purged)
+
+            #expect(deleted.contains(AuthTokenManager.refreshTokenKey))
+            #expect(!deleted.contains(AppConstants.KeychainKeys.pushDeviceId))
+            #expect(!deleted.contains(AppConstants.KeychainKeys.pushDeviceSecret))
+        }
+    }
 }

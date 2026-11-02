@@ -14,6 +14,7 @@ enum PushAPI {
         let cloud_sync_enabled: Bool?
         let bulletin_push_enabled: Bool?
         let server_push_enabled: Bool?
+        let device_secret: String?
     }
 
     nonisolated struct PushTokenIn: Encodable, Sendable {
@@ -32,6 +33,7 @@ enum PushAPI {
         let push_token: String?
         let bundle_id: String
         let server_push_enabled: Bool?
+        let device_secret: String?
     }
 
     struct DeviceRegisterResponse: Decodable, Sendable {
