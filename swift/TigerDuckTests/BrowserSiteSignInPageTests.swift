@@ -237,6 +237,46 @@ struct BrowserSiteSignInPageTests {
         #expect(loader.refused == [.reload])
     }
 
+    @Test func twoLoadsOfOneTabAtOncePostOnce() async throws {
+        let loader = Loader(), posts = Posts()
+        let webView = await creditProgramPage(loader: loader)
+        // Both loads read the page signed out before either posts.
+        let signIn = BrowserSiteSignIn(account: { Self.account }, sessionIsLive: {
+            posts.sessionChecks += 1
+            try? await waitUntil { posts.sessionChecks == 2 }
+            return true
+        }, postingStoredPassword: { post in
+            let status = await post()
+            posts.statuses.append(status)
+            return status
+        })
+        let first = Task { await signIn.pageFinished(in: webView) }
+        let second = Task { await signIn.pageFinished(in: webView) }
+        await first.value
+        await second.value
+
+        #expect(await read(webView, "requests.map((request) => request[0])", in: .defaultClient) == #"["api/tokens"]"#)
+        #expect(await read(webView, "document.cookie") == #""token=a.b-c""#)
+        #expect(await read(webView, "commits") == "[]")
+        #expect(loader.refused == [.reload])
+    }
+
+    @Test func aSignInThatEndsWhileItsPostIsOutKeepsNoToken() async {
+        let loader = Loader(), posts = Posts()
+        let webView = await creditProgramPage(loader: loader)
+        let signIn = BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { true }, postingStoredPassword: { post in
+            let status = await post()
+            posts.statuses.append(status)
+            return status
+        }, isCurrent: { posts.statuses.isEmpty })
+        await signIn.pageFinished(in: webView)
+
+        #expect(posts.statuses == [200])
+        #expect(await read(webView, "document.cookie") == #""""#)
+        #expect(await read(webView, "commits") == "[]")
+        #expect(loader.refused.isEmpty)
+    }
+
     @Test func aRefusedSignInOpensThePopupForTheStudent() async {
         let loader = Loader(), posts = Posts()
         let webView = await creditProgramPage(answers: "answers['api/tokens'] = [400, {}];", loader: loader)
@@ -276,12 +316,16 @@ struct BrowserSiteSignInPageTests {
         let state = try await webView.callAsyncJavaScript(BrowserSiteSignIn.savedToken, arguments: elsewhere, contentWorld: .defaultClient)
         #expect(state as? String == "elsewhere")
         let posted = try await webView.callAsyncJavaScript(BrowserSiteSignIn.postToken, arguments: account, contentWorld: .defaultClient)
-        #expect(posted as? Int == nil)
+        #expect(posted is NSNull)
+        let kept = try await webView.callAsyncJavaScript(
+            BrowserSiteSignIn.keepToken, arguments: elsewhere.merging(["token": "a.b-c"]) { $1 }, contentWorld: .defaultClient)
+        #expect(kept as? Bool == false)
         let opened = try await webView.callAsyncJavaScript(BrowserSiteSignIn.openPopup, arguments: elsewhere, contentWorld: .page)
         #expect(opened as? Bool == false)
 
         #expect(await read(webView, "requests", in: .defaultClient) == "[]")
         #expect(await read(webView, "sessionStorage.length") == "0")
+        #expect(await read(webView, "document.cookie") == #""""#)
         #expect(await read(webView, "commits") == "[]")
     }
 

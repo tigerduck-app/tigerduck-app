@@ -18,6 +18,8 @@ struct BrowserSiteSignIn {
     /// Runs a post of the stored password the site makes itself, which answers its HTTP status,
     /// under the app's rules for automatic posts; nil when the rules hold it back.
     var postingStoredPassword: @MainActor (_ post: @MainActor () async -> Int?) async -> Int? = { await $0() }
+    /// Whether the sign-in this runs for, and the browser store it started in, are still current.
+    var isCurrent: () -> Bool = { true }
 
     func pageFinished(in webView: WKWebView) async {
         guard let url = webView.url, let page = BrowserSchoolSites.page(of: url) else { return }
@@ -43,8 +45,17 @@ struct BrowserSiteSignIn {
         guard state == "signedOut" || state == "posted" else { return }
         if state == "signedOut", await sessionIsLive(), let account = account() {
             let arguments = page.merging(["studentId": account.studentId, "password": account.password]) { $1 }
-            let status = await postingStoredPassword { await run(Self.postToken, arguments, in: webView, world: .defaultClient) as? Int }
-            if let status, (200..<300).contains(status) { return }
+            var answer: Any?
+            let status = await postingStoredPassword {
+                answer = await run(Self.postToken, arguments, in: webView, world: .defaultClient)
+                return (answer as? [String: Any])?["status"] as? Int
+            }
+            if answer as? String == Self.postedBefore { return }
+            if let status, (200..<300).contains(status), let token = (answer as? [String: Any])?["token"] as? String {
+                guard isCurrent() else { return }
+                await run(Self.keepToken, page.merging(["token": token]) { $1 }, in: webView, world: .defaultClient)
+                return
+            }
         }
         await run(Self.openPopup, page, in: webView, world: .page)
     }
@@ -97,12 +108,16 @@ struct BrowserSiteSignIn {
     }
     """
 
-    /// Posts the account as the popup does and keeps the token as the site does. Answers the HTTP
-    /// status, or null when no answer or no token came; a redirect fails rather than send the
-    /// password on. A tab posts once, so a token the site then turns away cannot start a reload loop.
+    nonisolated static let postedBefore = "postedBefore"
+
+    /// Posts the account as the popup does. Answers the HTTP status and the token, `postedBefore`
+    /// when this tab posted already, or null when no answer came; a redirect fails rather than send
+    /// the password on. A tab posts once, so a token the site then turns away cannot start a
+    /// reload loop.
     nonisolated static let postToken = """
     if (location.origin !== origin || location.pathname !== path) return null;
     try {
+      if (sessionStorage.getItem('tigerduck.tokenPosted')) return 'postedBefore';
       sessionStorage.setItem('tigerduck.tokenPosted', '1');
     } catch (error) {
       return null;
@@ -116,12 +131,17 @@ struct BrowserSiteSignIn {
     } catch (error) {
       return null;
     }
-    if (!answer.ok) return answer.status;
+    if (!answer.ok) return { status: answer.status };
     const token = await answer.json().then((body) => body.Token, () => null);
-    if (typeof token !== 'string' || !token || location.origin !== origin || location.pathname !== path) return null;
+    return { status: answer.status, token: typeof token === 'string' && token ? token : null };
+    """
+
+    /// Keeps the token as the site does, in a `token` cookie, and loads the page again with it.
+    nonisolated static let keepToken = """
+    if (location.origin !== origin || location.pathname !== path) return false;
     document.cookie = 'token=' + encodeURIComponent(token) + '; path=/; max-age=86400';
     location.reload();
-    return answer.status;
+    return true;
     """
 
     /// Run in the page's world, which holds the Vue app whose store opens the popup.
@@ -146,6 +166,8 @@ extension BrowserSiteSignIn {
             return await auth.ensureAuthenticated(for: signIn)
         } postingStoredPassword: { post in
             await SchoolAccountSignIn.postStoredPassword(for: signIn, post)
+        } isCurrent: { [resets = BrowserData.shared.storeResets] in
+            signIn.isCurrent && BrowserData.shared.storeResets == resets
         }
     }
 
