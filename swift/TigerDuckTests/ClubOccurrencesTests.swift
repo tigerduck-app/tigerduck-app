@@ -105,6 +105,34 @@ struct ClubOccurrencesTests {
         }
     }
 
+    @Test("a return to the app refreshes the club feed along with the course changes, as the first load does")
+    func publicFeedsTakeTheClubs() async throws {
+        try await withExclusiveRealDefaults {
+            Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending)
+            defer { Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending) }
+            let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let files = ClubFiles(folders: CacheFolders(root: root))
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            let client = ClubAPIClient(baseURL: base, session: URLSession(configuration: config))
+            let subscriptions = ClubSubscriptions()
+            subscriptions.subscribe(93, for: testSignIn)
+            let directory = ClubDirectory(files: files, client: client, chinese: { true })
+            let feed = ClubActivities(files: files, client: client, subscriptions: subscriptions, directory: directory)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Models.envelope("")), for: base.appending(path: "activities"))
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Models.envelope("")), for: base.appending(path: "clubs"))
+
+            await SchoolRefresh.publicFeeds(
+                courseChanges: CourseChangeStore(hasCompletedOnboarding: { false }),
+                subscriptions: subscriptions, activities: feed, directory: directory
+            )?.value
+
+            #expect(Set(SettingsAPIStub.requests(under: base).compactMap { $0.url?.lastPathComponent }) == ["activities", "clubs"])
+        }
+    }
+
     @Test("the class table's refresh does not wait for clubs.ntust.edu.tw, and the occurrences change once the feed lands")
     func refreshRunsAlongside() async throws {
         try await withExclusiveRealDefaults {
