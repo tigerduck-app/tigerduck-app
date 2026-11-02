@@ -22,3 +22,36 @@ nonisolated func wholeNumberList<Key: CodingKey>(
     guard let elements = decoded.flatMap({ $0 }) else { return nil }
     return elements.compactMap(\.value)
 }
+
+nonisolated extension SettingsDocument {
+    /// The namespace's document as a full sync's snapshot lists it in `settings_documents`; nil when
+    /// the snapshot cannot say, and the caller reads the document instead.
+    static func inSnapshot(_ json: [String: Any], namespace: String) -> SettingsDocument? {
+        guard let entries = json["settings_documents"] as? [[String: Any]] else { return nil }
+        guard let entry = entries.first(where: { $0["namespace"] as? String == namespace }) else { return .neverWritten }
+        guard let revision = entry["revision"] as? Int,
+              let object = entry["document"], JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object)
+        else { return nil }
+        return .stored(document: data, revision: revision)
+    }
+
+    /// `updates` spliced over `existing` key by key and recursively, so that keys this build does not
+    /// know survive; an array is replaced whole (docs/decisions/0002-notification-settings-json-merge.md).
+    static func merging(_ updates: [String: Any], into existing: [String: Any]) -> [String: Any] {
+        var merged = existing
+        for (key, value) in updates {
+            if let update = value as? [String: Any],
+               let current = merged[key] as? [String: Any] {
+                merged[key] = merging(update, into: current)
+            } else {
+                merged[key] = value
+            }
+        }
+        return merged
+    }
+
+    static func object(from data: Data) -> [String: Any] {
+        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+}

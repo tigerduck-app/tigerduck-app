@@ -1132,7 +1132,7 @@ struct NotificationSettingsApplyTests {
             #expect(!store.hasPickedClassReminderLead)
             let existing: [String: Any] = ["courses": ["enabled": false, "reminder_offsets_minutes": [30]]]
             let updates = try NotificationSettingsSync.LocalPreferences(from: store).documentUpdates(existing: existing)
-            let courses = try #require(NotificationSettingsSync.merging(updates, into: existing)["courses"] as? [String: Any])
+            let courses = try #require(SettingsDocument.merging(updates, into: existing)["courses"] as? [String: Any])
             #expect(courses["enabled"] as? Bool == false)
             #expect(courses["reminder_offsets_minutes"] as? [Int] == [30])
         }

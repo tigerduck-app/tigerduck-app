@@ -27,9 +27,9 @@ For each line of the inventory, search the whole repository (`swift/`, `swift/Sh
 - It has several: extract one shared implementation, move every caller onto it, delete the rest.
 
 A second implementation of something the project already does is a defect, as is a new copy
-beside existing duplicates. Known duplicates to fold in when touched: conditional GET with an
-ETag (`CourseCatalogClient`, `CourseChanges`, `AcademicCalendarStore`). Term ordering lives in
-`AcademicTerm`; host names are normalized by `TLSPinMatcher.hostName`.
+beside existing duplicates. A conditional GET with an ETag goes through `ConditionalGet`
+(`BackendClient.revalidate` for the backend). Term ordering lives in `AcademicTerm`; host names
+are normalized by `TLSPinMatcher.hostName`.
 
 ## 3. Every path into the state
 

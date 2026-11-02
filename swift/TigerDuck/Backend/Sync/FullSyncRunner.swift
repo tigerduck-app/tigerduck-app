@@ -45,6 +45,7 @@ final class FullSyncRunner {
 
     func retryUnsentEdits(for signIn: SignIn) async {
         app.holidays.retryUnacknowledged(for: signIn)
+        app.clubSubscriptions.retryUnacknowledged()
         #if os(iOS)
         app.notificationSettings.retryUnacknowledged()
         #endif
@@ -115,6 +116,7 @@ final class FullSyncRunner {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)
             #endif
+            let clubRunsBeforeFetch = app.clubSubscriptions.finishedRuns
             #if os(iOS)
             let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
             #endif
@@ -131,6 +133,8 @@ final class FullSyncRunner {
             app.firstPullGate.notePull(signIn)
             ServerStatusTracker.shared.noteSyncResult(true)
             app.conflicts.retryOwedConflictCheck()
+            let clubs = SettingsDocument.inSnapshot(pass.json, namespace: ClubSubscriptionsSync.namespace)
+            Task { await app.clubSubscriptions.sync(snapshot: clubs, runsBeforeSnapshot: clubRunsBeforeFetch) }
             #if os(iOS)
             app.notificationSettings.reconcile(
                 snapshot: NotificationSettingsReconcile.documentSource(fromSnapshot: pass.json),

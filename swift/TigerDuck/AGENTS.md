@@ -49,6 +49,7 @@ Each rule below has one home; call it instead of writing the rule again.
 - What this device may send or apply: `Backend/Sync/SyncPolicy.swift`.
 - Whether an upload already went out: `Backend/Sync/SendLedger.swift`.
 - Requests to the TigerDuck backend: `Backend/Client/BackendClient.swift`.
+- A cached answer revalidated with its ETag: `ConditionalGet` in `Backend/Client/ConditionalGet.swift`.
 - A full sync's categories: one `CategoryReconciler` each, in `Backend/Sync/Reconcilers/`.
 - Freshness of a cached answer: `Persistence/FreshnessPolicy.swift`.
 - The demo account's data: `Account/Demo/demo.json`, shared with the Android app's

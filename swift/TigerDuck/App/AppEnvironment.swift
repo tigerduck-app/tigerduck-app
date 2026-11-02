@@ -31,6 +31,7 @@ final class AppEnvironment {
     var conflicts: SyncConflicts { sync.conflicts }
     var pushSchedule: PushScheduleSync { sync.pushSchedule }
     var activation: SceneActivation { sync.activation }
+    var clubSubscriptions: ClubSubscriptionsSyncer { sync.clubSubscriptions }
     #if os(iOS)
     var liveActivity: LiveActivityRefresher { sync.liveActivity }
     var notificationSettings: NotificationSettingsSyncer { sync.notificationSettings }
@@ -119,6 +120,7 @@ final class AppEnvironment {
             guard let self else { return }
             pushCoordinator.refreshRegistrationAfterAuth()
             pushSchedule.requestSync()
+            Task { await self.clubSubscriptions.sync() }
             #if os(iOS)
             NotificationSettingsSync.seedSyncedCopyOnSignIn(
                 from: .init(from: liveActivity.preferences), for: authService.session.currentSignIn
@@ -149,6 +151,9 @@ final class AppEnvironment {
         }
         poller.poll = { [weak self] in await self?.feed.pollRevision() ?? .unchanged }
         pushCoordinator.onCoursesUploaded = { [weak self] in self?.cloudSyncCoordinator.courseUploadLanded() }
+        ClubSubscriptions.shared.onChange = { [weak self] in
+            Task { await self?.clubSubscriptions.sync() }
+        }
         CourseColorStore.shared.onLateMoodleColors = { [weak self] in
             Task { await self?.fullSync.sync(followUpIfBusy: true) }
         }

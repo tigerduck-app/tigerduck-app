@@ -90,6 +90,7 @@ final class ChangeFeedPull {
     }
 
     private func reconcileSettings(thenAdvanceFrom since: Int, to revision: Int, for signIn: SignIn) async {
+        await app.clubSubscriptions.sync()
         #if os(iOS)
         if !Defaults[.notificationSettingsPushPending] {
             await app.notificationSettings.reconcile(onSettled: { [weak self] in
