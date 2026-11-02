@@ -41,10 +41,10 @@ no build pinned failed every NTUST request until the user updated.
   prompt shows and when Continue stores, since the document can expire or be replaced meanwhile.
   Continue trusts the leaf's and the intermediates' SPKIs, never the root's, for that set until the
   build number changes. The acceptance lives in `UserDefaults`, not the Keychain, which outlives an
-  uninstall. One prompt shows at a time, in the foreground only, each set at most once per launch
-  and not within an hour of a Cancel; a background refusal waits for the next foreground. A prompt
-  closed without an answer, by a swipe, quiets nothing, and its set may be asked again once a
-  browser opens, where the student reloads the refused page.
+  uninstall. One prompt shows at a time, in the foreground only, each set at most once per launch:
+  after a Cancel, the next launch whose check fails asks again. A background refusal waits for the
+  next foreground. A prompt closed without an answer, by a swipe or Escape, may be asked again in
+  the same launch once a browser opens, where the student reloads the refused page.
 - The TigerDuck browser can open a page it refused for its certificate, for any reason, at the
   student's risk. That acceptance holds for the host and the leaf it served when refused, in that
   browser's memory until it closes, and never reaches the app's own sessions. The page gets the

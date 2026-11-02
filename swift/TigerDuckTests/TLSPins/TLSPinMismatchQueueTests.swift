@@ -15,16 +15,15 @@ struct TLSPinMismatchQueueTests {
         )
     }
 
-    /// Read on the main actor only, by the queue and by the engines these tests build.
+    /// Read on the main actor only, by the engines these tests build.
     final class Clock: @unchecked Sendable {
         var now = F.now
     }
 
     private func queue(
-        engine: TLSPinEngine = F.engine(document: F.promptRootsDocument), defaults: UserDefaults = F.defaults(), clock: Clock = Clock(),
-        afterContinue: @escaping @MainActor () -> Void = {}
+        engine: TLSPinEngine = F.engine(document: F.promptRootsDocument), afterContinue: @escaping @MainActor () -> Void = {}
     ) -> TLSPinMismatchQueue {
-        let queue = TLSPinMismatchQueue(engine: engine, defaults: defaults, clock: { clock.now }, afterContinue: afterContinue)
+        let queue = TLSPinMismatchQueue(engine: engine, afterContinue: afterContinue)
         queue.isForeground = true
         return queue
     }
@@ -51,32 +50,29 @@ struct TLSPinMismatchQueueTests {
         #expect(queue.prompt == nil)
     }
 
-    @Test("After a Cancel the set is not asked about for an hour, across launches")
-    func aCancelStartsAQuietHour() {
-        let defaults = F.defaults()
-        let clock = Clock()
-        let first = queue(defaults: defaults, clock: clock)
+    @Test("After a Cancel the set is not asked about again this launch, and the next launch asks again")
+    func aCancelLastsTheLaunch() {
+        let engine = F.engine(document: F.promptRootsDocument)
+        let first = queue(engine: engine)
         first.report(Self.mismatch())
         first.cancel()
+        first.report(Self.mismatch())
+        #expect(first.prompt == nil)
+        first.offerDismissedAgain()
+        first.report(Self.mismatch())
+        #expect(first.prompt == nil)
 
-        clock.now = F.now.addingTimeInterval(59 * 60)
-        let relaunched = queue(defaults: defaults, clock: clock)
-        relaunched.report(Self.mismatch())
-        #expect(relaunched.prompt == nil)
-
-        clock.now = F.now.addingTimeInterval(61 * 60)
+        let relaunched = queue(engine: engine)
         relaunched.report(Self.mismatch())
         #expect(relaunched.prompt?.setID == "ntust")
     }
 
-    @Test("A prompt closed without an answer quiets nothing and is offered again once a browser opens")
+    @Test("A prompt closed without an answer is offered again once a browser opens")
     func aDismissedPromptReturnsWithTheNextBrowser() {
-        let defaults = F.defaults()
-        let queue = queue(defaults: defaults)
+        let queue = queue()
         queue.report(Self.mismatch())
         queue.dismiss(Self.mismatch())
         #expect(queue.prompt == nil)
-        #expect(defaults.dictionary(forKey: "tlsPinPromptQuietUntil") == nil)
 
         queue.report(Self.mismatch())
         #expect(queue.prompt == nil)
@@ -176,7 +172,7 @@ struct TLSPinMismatchQueueTests {
             defaults: F.defaults(), buildNumber: "100", clock: { clock.now }
         )
         engine.acceptDocument(F.promptRootsDocument)
-        let queue = queue(engine: engine, clock: clock)
+        let queue = queue(engine: engine)
         queue.isForeground = false
         queue.report(Self.mismatch())
         clock.now = F.now.addingTimeInterval(31 * F.day)

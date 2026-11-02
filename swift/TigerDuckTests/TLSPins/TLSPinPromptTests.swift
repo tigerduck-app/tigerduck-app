@@ -22,23 +22,14 @@ struct TLSPinPromptTests {
     @Observable
     final class Prompting {
         @ObservationIgnored let engine = F.engine(document: F.promptRootsDocument)
-        @ObservationIgnored let defaults = F.defaults()
         @ObservationIgnored let owner = TLSPinPromptOwner()
         @ObservationIgnored var continued = 0
         @ObservationIgnored private(set) var queue: TLSPinMismatchQueue!
         var showsOtherSheet = false
 
         init() {
-            queue = TLSPinMismatchQueue(
-                engine: engine, defaults: defaults, clock: { F.now }, afterContinue: { [unowned self] in continued += 1 }
-            )
+            queue = TLSPinMismatchQueue(engine: engine, afterContinue: { [unowned self] in continued += 1 })
             queue.isForeground = true
-        }
-
-        var isQuiet: Bool { isQuiet("library") }
-
-        func isQuiet(_ setID: String) -> Bool {
-            defaults.dictionary(forKey: "tlsPinPromptQuietUntil")?[setID] != nil
         }
     }
 
@@ -187,11 +178,10 @@ struct TLSPinPromptTests {
             #expect(prompting.queue.prompt == nil)
             #expect(prompting.engine.acceptances.map(\.setID) == ["library"])
             #expect(prompting.continued == 1)
-            #expect(!prompting.isQuiet)
         }
     }
 
-    @Test("Cancel stores nothing, starts the quiet hour and closes the sheet")
+    @Test("Cancel stores nothing, asks no more this launch and closes the sheet")
     func cancelDeclines() async throws {
         try await withAccessibilityAutomation {
             let prompting = Prompting()
@@ -205,7 +195,9 @@ struct TLSPinPromptTests {
             #expect(prompting.queue.prompt == nil)
             #expect(prompting.engine.acceptances.isEmpty)
             #expect(prompting.continued == 0)
-            #expect(prompting.isQuiet)
+            prompting.queue.offerDismissedAgain()
+            prompting.queue.report(Self.mismatch)
+            #expect(prompting.queue.prompt == nil)
         }
     }
 
@@ -226,7 +218,6 @@ struct TLSPinPromptTests {
         try await waitUntil { prompting.queue.prompt == nil }
         #expect(prompting.engine.acceptances.isEmpty)
         #expect(prompting.continued == 0)
-        #expect(!prompting.isQuiet)
         try await waitUntil { root.presentedViewController == nil && prompting.owner.holder == nil }
         // SwiftUI skips a second change of the host's turn within one frame, and a browser opens
         // frames after the swipe.
@@ -250,7 +241,6 @@ struct TLSPinPromptTests {
         prompting.queue.isForeground = false
         try await waitUntil { root.presentedViewController == nil }
         try await Task.sleep(for: .milliseconds(500))
-        #expect(!prompting.isQuiet)
         #expect(prompting.engine.acceptances.isEmpty)
 
         prompting.queue.isForeground = true
@@ -371,7 +361,6 @@ struct TLSPinPromptTests {
         queue.answer(Self.mismatch, continues: false)
         #expect(queue.prompt == Self.ntustMismatch)
         #expect(prompting.engine.acceptances.map(\.setID) == ["library"])
-        #expect(!prompting.isQuiet("ntust"))
     }
 
     @Test("a window that closes with the prompt up hands it to another window, with no Cancel")
@@ -389,7 +378,6 @@ struct TLSPinPromptTests {
         closing.rootViewController = nil
         try await waitUntil { other.rootViewController?.presentedViewController != nil }
         #expect(prompting.queue.prompt == Self.mismatch)
-        #expect(!prompting.isQuiet)
         #expect(prompting.engine.acceptances.isEmpty)
     }
 
@@ -409,7 +397,6 @@ struct TLSPinPromptTests {
             prompting.showsOtherSheet = false
             _ = try await Self.shownSheet(in: window)
             #expect(prompting.queue.prompt == Self.mismatch)
-            #expect(!prompting.isQuiet)
         }
     }
 
@@ -430,7 +417,6 @@ struct TLSPinPromptTests {
         phases[hidden].value = .background
         try await waitUntil { showing() == [1 - hidden] }
         #expect(prompting.queue.prompt == Self.mismatch)
-        #expect(!prompting.isQuiet)
     }
 
     @Test("a window whose scene goes to the background hands the prompt to an active one, with no Cancel")
@@ -447,7 +433,6 @@ struct TLSPinPromptTests {
         phases[hidden].value = .background
         try await waitUntil { showing() == [1 - hidden] }
         #expect(prompting.queue.prompt == Self.mismatch)
-        #expect(!prompting.isQuiet)
         #expect(prompting.engine.acceptances.isEmpty)
     }
 

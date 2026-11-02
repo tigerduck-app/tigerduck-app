@@ -2,15 +2,13 @@ import Foundation
 import Observation
 
 /// The pin-mismatch prompt waiting to be shown: at most one at a time, each set at most once per
-/// launch and not within an hour of a Cancel for it, and only while the app is in the foreground.
-/// A prompt closed without an answer may be asked again once a browser opens. A mismatch from a
+/// launch, and only while the app is in the foreground. After a Cancel the next launch asks again;
+/// a prompt closed without an answer may be asked again once a browser opens. A mismatch from a
 /// background request waits here for the next foreground.
 @MainActor
 @Observable
 final class TLSPinMismatchQueue {
     static let shared = TLSPinMismatchQueue()
-    static let quietPeriod: TimeInterval = 60 * 60
-    private static let quietUntilKey = "tlsPinPromptQuietUntil"
 
     private(set) var prompt: TLSPinMismatch?
 
@@ -31,19 +29,10 @@ final class TLSPinMismatchQueue {
     @ObservationIgnored private var askedThisLaunch: Set<String> = []
     @ObservationIgnored private var closedUnanswered: Set<String> = []
     @ObservationIgnored private let engine: TLSPinEngine
-    @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private let clock: () -> Date
     @ObservationIgnored private let afterContinue: @MainActor () -> Void
 
-    init(
-        engine: TLSPinEngine = .shared,
-        defaults: UserDefaults = .standard,
-        clock: @escaping () -> Date = { Date() },
-        afterContinue: (@MainActor () -> Void)? = nil
-    ) {
+    init(engine: TLSPinEngine = .shared, afterContinue: (@MainActor () -> Void)? = nil) {
         self.engine = engine
-        self.defaults = defaults
-        self.clock = clock
         self.afterContinue = afterContinue ?? {
             #if os(iOS)
             TLSPinWatchBroadcaster.shared.broadcast()
@@ -53,9 +42,7 @@ final class TLSPinMismatchQueue {
     }
 
     func report(_ mismatch: TLSPinMismatch) {
-        guard prompt == nil, held == nil,
-              !askedThisLaunch.contains(mismatch.setID),
-              clock() >= quietUntil(mismatch.setID) else { return }
+        guard prompt == nil, held == nil, !askedThisLaunch.contains(mismatch.setID) else { return }
         held = mismatch
         surface()
     }
@@ -70,16 +57,13 @@ final class TLSPinMismatchQueue {
         afterContinue()
     }
 
+    /// Stores nothing, and the set is not asked about again until the next launch.
     func cancel() {
-        guard let prompt else { return }
-        var quiet = defaults.dictionary(forKey: Self.quietUntilKey) as? [String: Double] ?? [:]
-        quiet[prompt.setID] = clock().addingTimeInterval(Self.quietPeriod).timeIntervalSince1970
-        defaults.set(quiet, forKey: Self.quietUntilKey)
-        self.prompt = nil
+        prompt = nil
     }
 
-    /// The student closed the prompt without answering, as a swipe does: nothing is stored or
-    /// quieted. A late close of a prompt the queue has since replaced changes nothing.
+    /// The student closed the prompt without answering, as a swipe or Escape does: nothing is
+    /// stored. A late close of a prompt the queue has since replaced changes nothing.
     func dismiss(_ shown: TLSPinMismatch) {
         guard prompt == shown else { return }
         closedUnanswered.insert(shown.setID)
@@ -92,11 +76,6 @@ final class TLSPinMismatchQueue {
     func offerDismissedAgain() {
         askedThisLaunch.subtract(closedUnanswered)
         closedUnanswered = []
-    }
-
-    private func quietUntil(_ setID: String) -> Date {
-        let quiet = defaults.dictionary(forKey: Self.quietUntilKey) as? [String: Double]
-        return Date(timeIntervalSince1970: quiet?[setID] ?? 0)
     }
 
     /// A held mismatch the engine no longer allows a prompt for, after a newer document or its
