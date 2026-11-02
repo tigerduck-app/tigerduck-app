@@ -70,6 +70,17 @@ struct BrowserSiteSignInPageTests {
         #expect(await values(webView, ["id", "password", "verify", "utoken"]) == ["B00000001", "not-a-password", "", "t"])
     }
 
+    @Test func fillsTheWorkStudySignInAndLeavesItsCAPTCHA() async {
+        let form = """
+        <form id="Form1" method="post" action="./"><input name="__VIEWSTATE" type="hidden" value="v">
+        <input name="studentno" type="text"><input name="password" type="password"><input name="code_box" type="text">
+        <input name="Button1" type="submit" value="sign in"></form>
+        """
+        let webView = await page(form, at: URL(string: "https://studentpay.ntust.edu.tw/")!)
+        await signIn.pageFinished(in: webView)
+        #expect(await values(webView, ["studentno", "password", "code_box"]) == ["B00000001", "not-a-password", ""])
+    }
+
     @Test func leavesWhatTheStudentTyped() async {
         let webView = await page(Self.ethicsForm, at: Self.ethics, script: "document.getElementsByName('UserName')[0].value = 'M11000000'")
         await signIn.pageFinished(in: webView)
