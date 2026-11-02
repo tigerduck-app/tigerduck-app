@@ -111,7 +111,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
         guard let url = action.request.url else { return decisionHandler(.cancel) }
-        if BrowserRouting.isMoodleLogout(url) { return decisionHandler(.cancel) }
+        if BrowserRouting.isLogout(url) { return decisionHandler(.cancel) }
         if let frame = action.targetFrame, !frame.isMainFrame { return decisionHandler(.allow) }
         if BrowserRouting.isMoodleSignInPage(url) {
             decisionHandler(.cancel)

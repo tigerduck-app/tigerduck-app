@@ -77,7 +77,7 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
         decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
     ) {
         guard let url = action.request.url else { return decisionHandler(.cancel) }
-        if BrowserRouting.isMoodleLogout(url) { return decisionHandler(.cancel) }
+        if BrowserRouting.isLogout(url) { return decisionHandler(.cancel) }
         guard action.targetFrame?.isMainFrame != false, BrowserRouting.endsSessionSignIn(url) else {
             return decisionHandler(.allow)
         }

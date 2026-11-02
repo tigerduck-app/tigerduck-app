@@ -44,6 +44,27 @@ struct BrowserPageScriptsTests {
         #expect(await evaluate(webView, size) as? [Double] == before)
     }
 
+    @Test(arguments: [
+        ("stuinfosys.ntust.edu.tw", "/Account/LogOff", "https://ssoam2.ntust.edu.tw/connect/endsession", "/StudentInformation"),
+        ("moodle2.ntust.edu.tw", "/login/logout.php?sesskey=k", "/auth/oidc/logout.php", "/my/?next=/login/logout.php"),
+    ])
+    func aSchoolSitesLogoutLinksAndFormsHideAndItsOtherLinksStay(host: String, link: String, form: String, other: String) async throws {
+        let configuration = WKWebViewConfiguration()
+        BrowserPageScripts.addScripts(to: configuration.userContentController)
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 800), configuration: configuration)
+        let page = "<a id=\"link\" href=\"\(link)\">x</a><form id=\"form\" action=\"\(form)\"><button>x</button></form>"
+            + "<a id=\"other\" href=\"\(other)\">x</a>"
+        let shown = "return ['link', 'form', 'other'].map(id => getComputedStyle(document.getElementById(id)).display !== 'none')"
+        let loader = Loader()
+        webView.navigationDelegate = loader
+
+        await withCheckedContinuation { loader.loaded = $0; webView.loadHTMLString(page, baseURL: URL(string: "https://\(host)/")) }
+        #expect(await evaluate(webView, shown) as? [Bool] == [false, false, true])
+
+        await withCheckedContinuation { loader.loaded = $0; webView.loadHTMLString(page, baseURL: URL(string: "https://\(Self.host)/")) }
+        #expect(await evaluate(webView, shown) as? [Bool] == [true, true, true], "nothing hides off the school's sites")
+    }
+
     private static let darkened = "return document.documentElement.getAttribute('data-darkreader-mode') === 'dynamic'"
     private static let colors = """
     var body = getComputedStyle(document.body);

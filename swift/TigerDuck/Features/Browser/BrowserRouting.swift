@@ -1,6 +1,6 @@
 import Foundation
 
-/// The TigerDuck browser's URL rules: what loads inside, what goes outside, and which Moodle
+/// The TigerDuck browser's URL rules: what loads inside, what goes outside, and which school
 /// addresses sign the browser in or out. Plain URL checks, so tests need no WebKit.
 nonisolated enum BrowserRouting {
     enum Decision: Equatable {
@@ -37,7 +37,7 @@ nonisolated enum BrowserRouting {
     static func decision(for url: URL, byLinkTap: Bool = false) -> Decision {
         switch url.scheme?.lowercased() {
         case "https", "http":
-            if isMoodleLogout(url) { return .refuse }
+            if isLogout(url) { return .refuse }
             return isAllowed(url) ? .load : .openOutside(url)
         case "about":
             // Pages open about:blank to write into.
@@ -69,12 +69,54 @@ nonisolated enum BrowserRouting {
         return host.hasSuffix(".ntust.edu.tw")
     }
 
+    /// Every school site's logout, Moodle's and the others'. Each session is TigerDuck's to end, at
+    /// its own sign-out: a logout inside the browser could end the SSO session the app holds.
+    static func isLogout(_ url: URL) -> Bool {
+        isMoodleLogout(url) || isSchoolLogout(url)
+    }
+
     /// Moodle's logout and auth_oidc's, as the server reads the path: any case, encoding, doubled
     /// slash, dot segment or trailing path. The session is TigerDuck's to end at its own sign-out.
     static func isMoodleLogout(_ url: URL) -> Bool {
         guard host(of: url) == moodleHost else { return false }
         let path = segments(of: url)
         return path.starts(with: ["login", "logout.php"]) || path.starts(with: ["auth", "oidc", "logout.php"])
+    }
+
+    /// A logout on `ntust.edu.tw` or a host under it but Moodle's, read as the server reads it: a
+    /// path segment whose route ends in a logout word (`Logout.aspx`, `LogOff`, `AGLogout`,
+    /// `sign-out`, `logout;jsessionid=x`), SSO's `endsession`, or a query that names the action
+    /// (`?action=logout`). A document named so (`logout.pdf`) is no logout.
+    static func isSchoolLogout(_ url: URL) -> Bool {
+        guard let host = host(of: url), host == "ntust.edu.tw" || host.hasSuffix(".ntust.edu.tw"), host != moodleHost else {
+            return false
+        }
+        let routes = segments(of: url).map(routeName)
+        if routes.contains(where: { route in route == "endsession" || !route.isEmpty && logoutWords.contains { route.hasSuffix($0) } }) {
+            return true
+        }
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return query.contains { actionParameters.contains($0.name.lowercased()) && logoutWords.contains(letters($0.value ?? "")) }
+    }
+
+    /// What a school logout's route ends in, letters only.
+    static let logoutWords = ["logout", "logoff", "signout"]
+
+    /// The extensions of pages a server runs, which name a route rather than a document.
+    static let scriptExtensions = ["aspx", "asp", "ashx", "php", "jsp", "jspx", "do", "action", "cgi", "pl", "cfm", "html", "htm", "shtml"]
+
+    private static let actionParameters: Set<String> = ["action", "act", "op", "cmd", "do", "mode", "method", "task", "func"]
+
+    /// What a server routes `segment` by, letters only: its path parameters and a script's
+    /// extension left out. Another extension names a document, which is no route: empty.
+    private static func routeName(_ segment: String) -> String {
+        let path = segment.prefix { $0 != ";" }
+        guard let dot = path.lastIndex(of: "."), dot != path.startIndex else { return letters(path) }
+        return scriptExtensions.contains(path[path.index(after: dot)...].lowercased()) ? letters(path[..<dot]) : ""
+    }
+
+    private static func letters(_ text: some StringProtocol) -> String {
+        String(text.lowercased().filter(\.isLetter))
     }
 
     /// Moodle's `/login/` pages, its sign-in form and what that posts to, but not its logout.
