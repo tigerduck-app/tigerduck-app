@@ -35,7 +35,8 @@ struct MoreHomeLayoutTests {
 
             let headings = MoreScreen.headings(in: window).map(\.accessibilityFrame)
             let heading = try #require(headings.first)
-            let gear = try #require(MoreScreen.gear(in: window)).accessibilityFrame
+            let gearButton = try #require(MoreScreen.gear(in: window))
+            let gear = gearButton.accessibilityFrame
             let bar = try #require(window.descendants(ofType: UINavigationBar.self).first { !$0.isHidden })
             let barFrame = bar.convert(bar.bounds, to: window).insetBy(dx: -0.5, dy: -0.5)
             #expect(headings.count == 1, "\(headings)")
@@ -45,6 +46,7 @@ struct MoreHomeLayoutTests {
             #expect(heading.maxX < gear.minX, "\(heading) runs into \(gear)")
             // iOS 26 reports the 44 pt gear as 43.99999999999999 pt tall.
             #expect(gear.width.rounded() >= 44 && gear.height.rounded() >= 44, "\(gear)")
+            #expect(gearButton.accessibilityLabel == String(localized: "feature_settings"))
         }
     }
 }
