@@ -36,7 +36,8 @@ struct TimetableClubColumn: View {
 }
 
 /// A piece of a club activity: a course block's shape and fill in the club's color, with a bar of
-/// that color down its leading edge.
+/// that color down its leading edge. The fill lies on the page's background, as a course block's
+/// does, rather than on the empty cells under it.
 struct TimetableClubBlock: View {
     let viewModel: ClassTableViewModel
     let block: ClassTableClubLayout.Block
@@ -56,6 +57,7 @@ struct TimetableClubBlock: View {
         )
         shape
             .fill(policy.classTableCourseFill(color))
+            .background(Color.backgroundPrimary, in: shape)
             .overlay(alignment: .leading) {
                 color.frame(width: Self.barWidth)
             }
