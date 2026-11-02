@@ -148,19 +148,23 @@ struct PushDeviceSecretTests {
         }
     }
 
-    @Test("a refused signed-out opt-out is recorded and fails, leaving the setting as it was")
-    func aRefusedSignedOutOptOutFails() async throws {
-        await Self.withDeviceDefaults {
+    @Test("a refused signed-out opt-out is kept locally, and the next announce under a new id carries it")
+    func aRefusedSignedOutOptOutIsKept() async throws {
+        try await Self.withDeviceDefaults {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             Self.answer(Self.announceURL(baseURL), status: 403, body: Self.refusal)
+            Self.answer(Self.announceURL(baseURL))
 
-            await #expect(throws: PushAPIError.self) {
-                try await Self.requests(PushIdentity(uuid: "test-device", secret: Self.secret), baseURL: baseURL)
-                    .sendServerPushOptOut(true, deviceToken: "abcdef", for: testSignIn)
-            }
-
+            try await Self.requests(PushIdentity(uuid: "test-device", secret: Self.secret), baseURL: baseURL)
+                .sendServerPushOptOut(true, deviceToken: "abcdef", for: testSignIn)
             #expect(Defaults[.pushDeviceSecretRefused])
-            #expect(!Defaults[.serverPushUserOptOut])
+            #expect(Defaults[.serverPushUserOptOut])
+            await Self.requests(PushIdentity(uuid: "new-device", secret: Self.secret), baseURL: baseURL)
+                .announce(deviceToken: "abcdef")
+
+            let next = try #require(try Self.sentBodies(to: Self.announceURL(baseURL)).last)
+            #expect(next["device_id"] as? String == "new-device")
+            #expect(next["server_push_enabled"] as? Bool == false)
         }
     }
 
