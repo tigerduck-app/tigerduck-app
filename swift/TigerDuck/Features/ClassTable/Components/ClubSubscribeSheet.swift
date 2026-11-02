@@ -19,7 +19,10 @@ struct ClubSubscribeSheet: View {
             let matches = query.isEmpty ? [] : directory.search(query)
             List {
                 if directory.clubs.isEmpty {
-                    SearchSheetStatus(isSearching: isLoading, failure: isLoading ? nil : failureText)
+                    SearchSheetStatus(
+                        searching: isLoading ? String(localized: "class_table_club_searching") : nil,
+                        failure: isLoading ? nil : failureText
+                    )
                 }
                 if query.isEmpty {
                     subscribedSection
@@ -50,7 +53,7 @@ struct ClubSubscribeSheet: View {
     }
 
     private var failureText: String? {
-        directory.failure.map { String(format: String(localized: "add_course_search_failed"), $0.localizedDescription) }
+        directory.failure.map { String(format: String(localized: "class_table_club_search_failed"), $0.localizedDescription) }
     }
 
     @ViewBuilder

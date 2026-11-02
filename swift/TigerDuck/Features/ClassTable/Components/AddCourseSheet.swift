@@ -72,7 +72,9 @@ struct AddCourseSheet: View {
         NavigationStack {
             let shown = shownCourses
             Form {
-                SearchSheetStatus(isSearching: model.isSearching, failure: failureText)
+                SearchSheetStatus(
+                    searching: model.isSearching ? String(localized: "add_course_searching") : nil, failure: failureText
+                )
 
                 if !shown.isEmpty {
                     Section {

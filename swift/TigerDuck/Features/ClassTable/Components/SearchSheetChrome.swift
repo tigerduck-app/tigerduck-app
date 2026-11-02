@@ -47,17 +47,18 @@ private struct SearchSheetChrome: ViewModifier {
 
 /// The searching row and the failure line at the top of a search sheet's list.
 struct SearchSheetStatus: View {
-    let isSearching: Bool
+    /// The text beside the spinner while a search runs; nil once it ends.
+    let searching: String?
     let failure: String?
 
     var body: some View {
-        if isSearching {
+        if let searching {
             Section {
                 HStack(spacing: 8) {
                     Spacer()
                     ProgressView()
                         .controlSize(.small)
-                    Text(String(localized: "add_course_searching"))
+                    Text(searching)
                     Spacer()
                 }
             }
