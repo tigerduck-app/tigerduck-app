@@ -199,7 +199,7 @@ struct InformationSystemPageTests {
         }
     }
 
-    @Test("signed out, the page asks to sign in, with no search")
+    @Test("signed out, the page asks to sign in")
     func signedOut() async throws {
         try await withAccessibilityAutomation {
             let window = try Self.show(nil, signedIn: false, store: Self.store(FakePortalSchool(), in: Folder(), saved: true))
@@ -208,7 +208,6 @@ struct InformationSystemPageTests {
             try await waitUntil { Self.shows(String(localized: "common_not_signed_in"), in: window) }
 
             #expect(Self.shows(String(localized: "onboarding_sign_in_button"), in: window))
-            #expect(window.descendants(ofType: UISearchBar.self).isEmpty)
             try Self.expectNoOverflow(in: window)
             try await Self.save(window, as: "infosys-signed-out")
         }
@@ -227,7 +226,6 @@ struct InformationSystemPageTests {
             try await Task.sleep(for: .milliseconds(300))
             #expect(!Self.shows(String(localized: "common_not_signed_in"), in: window))
             #expect(!Self.shows(String(localized: "onboarding_sign_in_button"), in: window))
-            #expect(window.descendants(ofType: UISearchBar.self).isEmpty)
 
             keychain.request = Self.request
             try await waitUntil { Self.shows("Licensed Software", in: window) }
@@ -235,7 +233,7 @@ struct InformationSystemPageTests {
         }
     }
 
-    @Test("a failed first load shows the failure's message with a retry, and no search")
+    @Test("a failed first load shows the failure's message with a retry")
     func failure() async throws {
         try await withAccessibilityAutomation {
             let folder = Folder()
@@ -247,7 +245,6 @@ struct InformationSystemPageTests {
             try await waitUntil { Self.shows(String(localized: "information_system_load_failed"), in: window) }
 
             #expect(Self.shows(Self.timedOut, in: window))
-            #expect(window.descendants(ofType: UISearchBar.self).isEmpty)
             #expect(Self.shows(String(localized: "action_retry"), in: window))
             try Self.expectNoOverflow(in: window)
             try await Self.save(window, as: "infosys-failure")
