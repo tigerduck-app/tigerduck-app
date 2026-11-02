@@ -28,15 +28,17 @@ struct TLSPinPromptSheet: View {
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
             }
             .scrollBounceBehavior(.basedOnSize)
+            .safeAreaInset(edge: .bottom) { buttons }
             .navigationDestination(isPresented: $showsCertificates) {
+                // A pushed list ignores an inset set on the stack, and its last rows would sit
+                // under the buttons, so each page sets its own.
                 TLSCertificateList(prompt: prompt) { showsCertificates = false }
+                    .safeAreaInset(edge: .bottom) { buttons }
             }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
-        // On the stack, so the certificate list keeps both answers too.
-        .safeAreaInset(edge: .bottom) { buttons }
         #if os(iOS)
         .presentationDetents([.medium, .large], selection: $detent)
         .onAppear { if dynamicTypeSize.isAccessibilitySize { detent = .large } }
@@ -86,8 +88,15 @@ struct TLSPinPromptSheet: View {
     }
 
     private var details: some View {
-        DisclosureGroup(isExpanded: $showsDetails) {
-            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
+        VStack(spacing: TigerDuckTheme.Spacing.md) {
+            Button {
+                withAnimation { showsDetails.toggle() }
+            } label: {
+                capsuleLabel(String(localized: "tls_pin_mismatch_show_details"), systemImage: "chevron.down",
+                             turned: showsDetails)
+            }
+            .promptButtonStyle(prominent: false)
+            if showsDetails {
                 Text(String(
                     format: String(localized: "tls_pin_mismatch_details"),
                     prompt.host, prompt.domains.formatted(.list(type: .and, width: .narrow))
@@ -95,30 +104,25 @@ struct TLSPinPromptSheet: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Divider()
                 Button {
                     showsCertificates = true
                 } label: {
-                    HStack {
-                        Text(String(localized: "tls_pin_mismatch_view_certificate"))
-                            .foregroundStyle(.tint)
-                        Spacer()
-                        Image(systemName: "chevron.forward")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                            .accessibilityHidden(true)
-                    }
-                    .contentShape(.rect)
+                    capsuleLabel(String(localized: "tls_pin_mismatch_view_certificate"), systemImage: "chevron.forward")
                 }
-                .buttonStyle(.plain)
+                .promptButtonStyle(prominent: false)
             }
-            .padding(.top, TigerDuckTheme.Spacing.md)
-        } label: {
-            Text(String(localized: "tls_pin_mismatch_show_details"))
-                .foregroundStyle(.primary)
         }
-        .padding(TigerDuckTheme.Spacing.lg)
-        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
+        .buttonBorderShape(.capsule)
+    }
+
+    private func capsuleLabel(_ title: String, systemImage: String, turned: Bool = false) -> some View {
+        HStack(spacing: TigerDuckTheme.Spacing.xs) {
+            Text(title)
+            Image(systemName: systemImage)
+                .font(.footnote.weight(.semibold))
+                .rotationEffect(.degrees(turned ? 180 : 0))
+                .accessibilityHidden(true)
+        }
     }
 
     private var buttons: some View {

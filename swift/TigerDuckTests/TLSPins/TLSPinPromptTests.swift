@@ -70,12 +70,12 @@ struct TLSPinPromptTests {
     }
 
     static func window(
-        _ prompting: Prompting, style: UIUserInterfaceStyle = .light, height: CGFloat = 874,
+        _ prompting: Prompting, style: UIUserInterfaceStyle = .light, width: CGFloat = 402, height: CGFloat = 874,
         textSize: UIContentSizeCategory? = nil, phase: Phase? = nil
     ) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: 0, y: 0, width: 402, height: height)
+        window.frame = CGRect(x: 0, y: 0, width: width, height: height)
         window.overrideUserInterfaceStyle = style
         window.rootViewController = UIHostingController(rootView: Root(prompting: prompting, phase: phase ?? Phase()))
         // Set the way the system setting reaches the app, through the window's traits.
@@ -259,6 +259,84 @@ struct TLSPinPromptTests {
             let proceed = try #require(accessibilityElement(labeled: String(localized: "action_continue"), in: sheet))
             #expect(proceed.accessibilityFrame.maxY <= cancel.accessibilityFrame.minY)
             #expect(abs(proceed.accessibilityFrame.width - cancel.accessibilityFrame.width) < 1)
+        }
+    }
+
+    /// The prompt suggestionbox.ntust.edu.tw raised before the pins listed Let's Encrypt.
+    static let letsEncryptMismatch = TLSPinMismatch(
+        setID: "ntust", host: "suggestionbox.ntust.edu.tw", domains: ["ntust.edu.tw"], issuerOrganization: "Let's Encrypt",
+        certificates: TLSPinningDelegateTests.letsEncryptChain.map { TLSCertificateSummary(der: Data($0)) },
+        acceptedSPKIs: [F.unknownSPKI], anchorSPKI: F.globalRootSPKI
+    )
+
+    struct Screen: CustomTestStringConvertible, Sendable {
+        let style: UIUserInterfaceStyle
+        let width: CGFloat
+        let textSize: UIContentSizeCategory?
+
+        var name: String {
+            "\(style == .dark ? "dark" : "light")-\(Int(width))\(textSize == nil ? "" : "-largest-text")"
+        }
+
+        var height: CGFloat { width < 400 ? 812 : 874 }
+        var testDescription: String { name }
+
+        static let all = styles.flatMap { style in
+            [CGFloat(402), 375].flatMap { width in
+                [nil, UIContentSizeCategory.accessibilityExtraExtraExtraLarge].map { Screen(style: style, width: width, textSize: $0) }
+            }
+        }
+    }
+
+    /// Scrolls the visible list to its end, again while its rows grow as they are built.
+    static func scrollToEnd(of sheet: UIView) async throws {
+        try await waitUntil { sheet.descendants(ofType: UICollectionView.self).contains { $0.window != nil } }
+        let list = try #require(sheet.descendants(ofType: UICollectionView.self).last { $0.window != nil })
+        for _ in 0..<4 {
+            let end = list.contentSize.height - list.bounds.height + list.adjustedContentInset.bottom
+            list.setContentOffset(CGPoint(x: 0, y: max(-list.adjustedContentInset.top, end)), animated: false)
+            list.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(150))
+        }
+    }
+
+    @Test("the prompt, its details and the certificate list, whose last fingerprint scrolls fully above the buttons",
+          arguments: Screen.all)
+    func pagesAtEachWidthAndTextSize(screen: Screen) async throws {
+        try await withAccessibilityAutomation {
+            let prompting = Prompting()
+            let window = try Self.window(
+                prompting, style: screen.style, width: screen.width, height: screen.height, textSize: screen.textSize
+            )
+            defer { window.isHidden = true }
+            let mismatch = Self.letsEncryptMismatch
+            prompting.queue.report(mismatch)
+            let sheet = try await Self.shownSheet(in: window)
+            try await Task.sleep(for: .milliseconds(600))
+            window.saveSnapshot(as: "tls-prompt-\(screen.name)")
+
+            try await Self.activate(String(localized: "tls_pin_mismatch_show_details"), in: sheet)
+            let viewCertificate = String(localized: "tls_pin_mismatch_view_certificate")
+            try await waitUntil { accessibilityElement(labeled: viewCertificate, in: sheet) != nil }
+            try await Task.sleep(for: .milliseconds(600))
+            window.saveSnapshot(as: "tls-prompt-details-\(screen.name)")
+
+            try await Self.activate(viewCertificate, in: sheet)
+            let title = String(localized: "tls_certificate_list_title")
+            try await waitUntil { accessibilityElement(labeled: title, in: sheet) != nil }
+            try await Self.scrollToEnd(of: sheet)
+            let last = try #require(mismatch.certificates.last).sha256Fingerprint
+            @MainActor func fingerprint() -> NSObject? {
+                exposedAccessibilityElements(in: sheet).last { $0.accessibilityLabel?.contains(last) == true }
+            }
+            try await waitUntil { fingerprint() != nil }
+            let buttons = try [String(localized: "action_cancel"), String(localized: "action_continue")].map {
+                try #require(accessibilityElement(labeled: $0, in: sheet)).accessibilityFrame
+            }
+            let row = try #require(fingerprint()).accessibilityFrame
+            #expect(row.maxY <= buttons.map(\.minY).min()!, "the fingerprint ends at \(row.maxY), under \(buttons)")
+            #expect(row.width > 0 && row.minX >= 0 && row.maxX <= screen.width)
+            window.saveSnapshot(as: "tls-certificates-\(screen.name)")
         }
     }
 
