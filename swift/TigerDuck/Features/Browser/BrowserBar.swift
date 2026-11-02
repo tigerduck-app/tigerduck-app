@@ -13,9 +13,10 @@ struct BrowserBar: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static let barHeight: CGFloat = 44
-    private static let capsuleHeight: CGFloat = 30
+    private static let capsuleHeight: CGFloat = 24
     static let toolbarHeight: CGFloat = 56
     private static let homeIndicatorClearance: CGFloat = 16
+    private static let subtitleRoom: CGFloat = 6
     private static let slideTowardCapsule: CGFloat = 56
 
     private var collapsed: Bool { page.isCollapsed }
@@ -32,16 +33,12 @@ struct BrowserBar: View {
     private var topBar: some View {
         HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
             closeButton.hiddenWhenCollapsed(collapsed, toward: CGSize(width: Self.slideTowardCapsule, height: -24), moving: !reduceMotion)
-            address {
-                VStack(spacing: 0) {
-                    HStack(spacing: collapsed ? 4 : 5) {
-                        lock(size: collapsed ? 10 : 12)
-                        Text(page.host).font(.system(size: collapsed ? 13 : 15, weight: .semibold))
-                    }
-                    if !collapsed, !page.title.isEmpty {
-                        Text(page.title).font(.caption2).foregroundStyle(.secondary)
-                    }
+            address(subtitle: page.title) {
+                HStack(spacing: collapsed ? 3 : 5) {
+                    lock(size: collapsed ? 9 : 12)
+                    Text(page.host).font(.system(size: collapsed ? 12 : 15, weight: .semibold))
                 }
+                .offset(y: collapsed || page.title.isEmpty ? 0 : -Self.subtitleRoom)
             }
             circle {
                 ShareLink(item: page.address ?? url) {
@@ -93,7 +90,7 @@ struct BrowserBar: View {
                         .disabled(!page.canUsePage)
                         .accessibilityLabel(String(localized: "browser_find"))
                     )
-                    Text(page.host).font(.system(size: collapsed ? 13 : 15, weight: .semibold))
+                    Text(page.host).font(.system(size: collapsed ? 12 : 15, weight: .semibold))
                         .frame(maxWidth: collapsed ? nil : .infinity)
                     shrinkingIntoCapsule(reloadButton(size: 16))
                 }
@@ -137,7 +134,7 @@ struct BrowserBar: View {
             .browserGlass(in: Circle())
     }
 
-    private func address(@ViewBuilder _ label: () -> some View) -> some View {
+    private func address(subtitle: String = "", @ViewBuilder _ label: () -> some View) -> some View {
         Button {
             if collapsed { page.expandChrome() } else { sheet = .address }
         } label: {
@@ -145,7 +142,7 @@ struct BrowserBar: View {
                 .lineLimit(1)
                 .foregroundStyle(.primary)
                 .contentTransition(.interpolate)
-                .padding(.horizontal, collapsed ? 14 : 0)
+                .padding(.horizontal, collapsed ? 11 : 0)
                 .frame(maxWidth: collapsed ? nil : .infinity, minHeight: collapsed ? Self.capsuleHeight : Self.barHeight)
                 .overlay(alignment: .bottom) { BrowserLoadProgress(page: page) }
                 .clipShape(.capsule)
@@ -157,10 +154,20 @@ struct BrowserBar: View {
         .accessibilityLabel(String(format: String(localized: "browser_address"), page.host))
         .crossFadingInsteadOfMorphing(when: reduceMotion && collapsed)
         .frame(maxWidth: .infinity)
+        .overlay(alignment: .bottom) {
+            if !subtitle.isEmpty {
+                Text(subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, Self.subtitleRoom)
+                    .opacity(collapsed ? 0 : 1)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     private func lock(size: CGFloat) -> some View {
-        Image(systemName: "lock.fill").font(.system(size: size, weight: .semibold)).foregroundStyle(.secondary)
+        Image(systemName: "lock.fill").modifier(SymbolSize(size: size)).foregroundStyle(.secondary)
     }
 
     private func reloadButton(size: CGFloat) -> some View {
@@ -171,6 +178,21 @@ struct BrowserBar: View {
                 .contentShape(.rect)
         }
         .accessibilityLabel(page.isLoading ? String(localized: "browser_stop") : String(localized: "browser_reload"))
+    }
+}
+
+/// A symbol's font size as animatable data: SwiftUI swaps a symbol's size in one step while the
+/// text beside it interpolates, which shifts the symbol sideways mid-animation.
+private nonisolated struct SymbolSize: ViewModifier, Animatable {
+    var size: CGFloat
+
+    var animatableData: CGFloat {
+        get { size }
+        set { size = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: .semibold))
     }
 }
 
