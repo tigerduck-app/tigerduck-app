@@ -27,6 +27,22 @@ nonisolated struct PortalLink: Codable, Hashable, Identifiable, Sendable {
     let name: String
     let url: URL
 
+    init(category: PortalCategory, name: String, url: URL) {
+        self.category = category
+        self.name = name
+        self.url = Self.opening(url)
+    }
+
+    /// A saved list holds the addresses of the day it was fetched; they open as a fresh list would.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            category: container.decode(PortalCategory.self, forKey: .category),
+            name: container.decode(String.self, forKey: .name),
+            url: container.decode(URL.self, forKey: .url)
+        )
+    }
+
     var id: Self { self }
 
     /// False for the graduates' leaving form (`SAGraduatesServ`), whose sign-in through ssoam's
@@ -42,6 +58,25 @@ nonisolated struct PortalLink: Codable, Hashable, Identifiable, Sendable {
     }
 
     private static let campusHosts: Set = ["software.ntust.edu.tw", "ccdoc.ntust.edu.tw"]
+
+    /// The portal still links the research ethics course at `ae.ntust.edu.tw`, whose certificate
+    /// covers only `*.cge.ntust.edu.tw`; the course is served at `ae.cge.ntust.edu.tw`.
+    private static let movedHosts = ["ae.ntust.edu.tw": "ae.cge.ntust.edu.tw"]
+
+    /// The portal links the computer center's page about campus software, in each language; the
+    /// app opens the software download site's sign-in, which that page points to.
+    private static let replacedPages = Set(["/p/412-1050-8352.php", "/p/412-1050-8701.php"])
+    private static let campusSoftware = URL.knownGood("https://software.ntust.edu.tw/websoftware/login.aspx")
+
+    private static func opening(_ url: URL) -> URL {
+        if url.host(percentEncoded: false)?.lowercased() == "www.cc.ntust.edu.tw", replacedPages.contains(url.path(percentEncoded: true)) {
+            return campusSoftware
+        }
+        guard let host = url.host(percentEncoded: false)?.lowercased(), let movedHost = movedHosts[host],
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        components.host = movedHost
+        return components.url ?? url
+    }
 }
 
 /// The portal has a Chinese page and a separate English one.

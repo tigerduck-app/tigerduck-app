@@ -4,15 +4,6 @@ import SwiftSoup
 /// The student portal, `i.ntust.edu.tw/student` or its English page, holds its links in a
 /// `#service` block whose children are the groups, each named by its id (`PortalCategory`).
 nonisolated enum NTUSTPortalParser {
-    /// The portal still links the research ethics course at `ae.ntust.edu.tw`, whose certificate
-    /// covers only `*.cge.ntust.edu.tw`; the course is served at `ae.cge.ntust.edu.tw`.
-    private static let movedHosts = ["ae.ntust.edu.tw": "ae.cge.ntust.edu.tw"]
-
-    /// The portal links the computer center's page about campus software, in each language; the
-    /// app opens the software download site's sign-in, which that page points to.
-    private static let replacedPages = Set(["/p/412-1050-8352.php", "/p/412-1050-8701.php"])
-    private static let campusSoftware = URL.knownGood("https://software.ntust.edu.tw/websoftware/login.aspx")
-
     /// Nil for a page with no `#service` block, which a lapsed session or a redesigned page
     /// serves, unlike a portal with no links.
     static func links(in html: String, pageURL: URL) -> [PortalLink]? {
@@ -30,7 +21,7 @@ nonisolated enum NTUSTPortalParser {
               let href = try? anchor.attr("href").trimmingCharacters(in: .whitespacesAndNewlines),
               let resolved = URL(string: href, relativeTo: pageURL)?.absoluteURL, !isPage(resolved, pageURL),
               let url = httpsURL(for: resolved) else { return nil }
-        return PortalLink(category: category, name: name, url: moved(url))
+        return PortalLink(category: category, name: name, url: url)
     }
 
     private static func isPage(_ url: URL, _ pageURL: URL) -> Bool {
@@ -53,15 +44,5 @@ nonisolated enum NTUSTPortalParser {
         default:
             return nil
         }
-    }
-
-    private static func moved(_ url: URL) -> URL {
-        if url.host(percentEncoded: false)?.lowercased() == "www.cc.ntust.edu.tw", replacedPages.contains(url.path(percentEncoded: true)) {
-            return campusSoftware
-        }
-        guard let host = url.host(percentEncoded: false)?.lowercased(), let movedHost = movedHosts[host],
-              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
-        components.host = movedHost
-        return components.url ?? url
     }
 }

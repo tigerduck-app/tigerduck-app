@@ -30,7 +30,7 @@ struct InformationSystemPageTests {
         ("service-1", [("Course Selection", "/a"), (longName, "/b")]),
         ("service-2", [("Student Record", "/c")]),
         ("service-3", [("Dormitory", "/d")]),
-        ("service-6", [("Licensed Software", "/e")]),
+        ("service-6", [("Licensed Software", "https://www.cc.ntust.edu.tw/p/412-1050-8701.php?Lang=en")]),
     ])
 
     private static let request = InformationSystemViewModel.Request(
@@ -149,6 +149,7 @@ struct InformationSystemPageTests {
 
             #expect(Self.shows(String(localized: PortalCategory.curriculum.titleKey), in: window))
             #expect(Self.shows("Licensed Software", in: window))
+            #expect(Self.shows(String(localized: "information_system_campus_network_only"), in: window))
             try await waitUntil { !window.descendants(ofType: UISearchBar.self).isEmpty }
             #expect(school.loads.isEmpty)
             try Self.expectNoOverflow(in: window)
