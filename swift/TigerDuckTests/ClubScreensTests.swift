@@ -108,6 +108,23 @@ struct ClubScreensTests {
         }
     }
 
+    @Test("a drag in the subscribed list moves the club among every subscription, the hidden ones too")
+    func moveOffsets() {
+        // 999 is subscribed but missing from the directory, so the list leaves it out.
+        let order = [101, 999, 102, 103]
+        let shown = [101, 102, 103]
+        func move(_ from: Int, to destination: Int) -> [Int] {
+            let offsets = ClubSubscribeSheet.move([from], to: destination, shown: shown, order: order)
+            var moved = order
+            moved.move(fromOffsets: offsets.source, toOffset: offsets.destination)
+            return moved
+        }
+
+        #expect(move(2, to: 0) == [103, 101, 999, 102])
+        #expect(move(0, to: 2) == [999, 102, 101, 103])
+        #expect(move(0, to: 3) == [999, 102, 103, 101])
+    }
+
     @Test("an activity's details: the club, the activity, where, when and what kind", arguments: looks)
     func detail(look: Look) async throws {
         try await withAccessibilityAutomation {

@@ -79,7 +79,10 @@ struct ClubSubscribeSheet: View {
                     }
                 }
                 .onMove { source, destination in
-                    move(source, to: destination, among: subscribed)
+                    let move = Self.move(
+                        source, to: destination, shown: subscribed.map(\.id), order: subscriptions.subscribedIDs
+                    )
+                    subscriptions.move(fromOffsets: move.source, toOffset: move.destination, for: signIn)
                 }
             }
         }
@@ -117,13 +120,14 @@ struct ClubSubscribeSheet: View {
         .accessibilityHint(String(localized: subscribed ? "class_table_club_unsubscribe_action" : "class_table_club_subscribe_action"))
     }
 
-    /// The list hides a subscribed club the directory no longer has, so its offsets are mapped
-    /// onto the subscriptions' own order.
-    private func move(_ source: IndexSet, to destination: Int, among shown: [ClubDirectory.Club]) {
-        let ids = subscriptions.subscribedIDs
-        let from = IndexSet(source.compactMap { ids.firstIndex(of: shown[$0].id) })
-        let to = shown.indices.contains(destination) ? ids.firstIndex(of: shown[destination].id) ?? ids.count : ids.count
-        subscriptions.move(fromOffsets: from, toOffset: to, for: signIn)
+    /// The list hides a subscribed club the directory no longer has, so a move's offsets in the
+    /// `shown` IDs are mapped onto the subscriptions' own `order`.
+    static func move(
+        _ source: IndexSet, to destination: Int, shown: [Int], order: [Int]
+    ) -> (source: IndexSet, destination: Int) {
+        let from = IndexSet(source.compactMap { order.firstIndex(of: shown[$0]) })
+        let to = shown.indices.contains(destination) ? order.firstIndex(of: shown[destination]) ?? order.count : order.count
+        return (from, to)
     }
 }
 
