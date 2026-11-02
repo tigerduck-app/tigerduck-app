@@ -123,6 +123,20 @@ struct BrowserSiteSignInPageTests {
         #expect(await values(same, ["UserName", "Password"]) == ["B00000001", "not-a-password"])
     }
 
+    @Test func fieldsInTwoFormsOrInAFormThatPostsElsewhereGetNothing() async {
+        let split = "<form action=\"/a\"><input name=\"UserName\" type=\"text\"></form>"
+            + "<form action=\"/b\"><input name=\"Password\" type=\"password\"></form>"
+        let apart = await page(split, at: Self.ethics)
+        await signIn.pageFinished(in: apart)
+        #expect(await values(apart, ["UserName", "Password"]) == ["", ""])
+
+        let away = Self.ethicsForm.replacingOccurrences(
+            of: "action=\"/Authenticate/Account/EnrollStudent/ethicscourse\"", with: "action=\"https://elsewhere.test/collect\"")
+        let elsewhere = await page(away, at: Self.ethics)
+        await signIn.pageFinished(in: elsewhere)
+        #expect(await values(elsewhere, ["UserName", "Password"]) == ["", ""])
+    }
+
     @Test func aPageElsewhereOrAPasswordFieldThatIsNotOneGetsNothing() async {
         let elsewhere = URL(string: "https://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/other")!
         let other = await page(Self.ethicsForm, at: elsewhere)
