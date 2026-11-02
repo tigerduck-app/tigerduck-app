@@ -180,8 +180,14 @@ struct InformationSystemPage: View {
             HStack(spacing: TigerDuckTheme.Spacing.md) {
                 Text(link.name)
                     .font(TigerDuckTheme.Typography.body)
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(link.opens ? Color.textPrimary : Color.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if link.isCampusOnly {
+                    Image(systemName: "network")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.textSecondary)
+                        .accessibilityLabel(String(localized: "information_system_campus_network_only"))
+                }
                 Image(systemName: "arrow.up.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Color.textSecondary)
@@ -189,6 +195,7 @@ struct InformationSystemPage: View {
             }
             .contentShape(Rectangle())
         }
+        .disabled(!link.opens)
         .listRowBackground(Color.clear)
     }
 
