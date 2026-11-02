@@ -19,17 +19,17 @@ struct ConflictPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    rowView(row)
-                    if index < rows.count - 1 {
-                        Divider()
-                            .padding(.leading, 56)
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        rowView(row)
+                        if index < rows.count - 1 {
+                            Divider()
+                                .padding(.leading, 56)
+                        }
                     }
                 }
-                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color.backgroundPrimary)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
