@@ -169,11 +169,6 @@ nonisolated enum BrowserRouting {
         isMoodleReturnPage(target) ? webSignInURL : target
     }
 
-    /// The hidden sign-in for `target` has passed SSO once a page of its kind finishes.
-    static func isSignedIn(at url: URL, for target: URL) -> Bool {
-        isMoodleReturnPage(target) ? isMoodleReturnPage(url) : isSchoolReturnPage(url)
-    }
-
     static func hasMoodleSession(_ cookies: [HTTPCookie]) -> Bool {
         cookies.contains { cookie in
             cookie.name.hasPrefix("MoodleSession") && !cookie.value.isEmpty

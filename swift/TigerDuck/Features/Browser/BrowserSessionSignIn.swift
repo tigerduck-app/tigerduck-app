@@ -66,13 +66,42 @@ extension BrowserSessionSignIn {
     }
 }
 
-/// The hidden page a session sign-in runs in: done once a page of the target's kind finishes,
-/// failed where a password, reCAPTCHA or another site comes up.
+/// What the hidden page's navigations mean for a sign-in to `target`, apart from WebKit.
+nonisolated struct BrowserSignInSteps {
+    enum Step: Equatable { case allow, fail }
+
+    let target: URL
+    private var throughSSO = false
+
+    init(target: URL) {
+        self.target = target
+    }
+
+    /// A logout anywhere fails the sign-in, as does a main-frame password form, reCAPTCHA or
+    /// another site.
+    mutating func navigating(to url: URL, isMainFrame: Bool) -> Step {
+        if BrowserRouting.isLogout(url) { return .fail }
+        guard isMainFrame else { return .allow }
+        if BrowserRouting.endsSessionSignIn(url) { return .fail }
+        if BrowserRouting.host(of: url) == BrowserRouting.ssoHost { throughSSO = true }
+        return .allow
+    }
+
+    /// A school site's first page may send the browser to SSO by a script or a refresh, so the
+    /// sign-in ends at a school page only once it went through ssoam2.
+    func isSignedIn(at url: URL) -> Bool {
+        guard !BrowserRouting.isMoodleReturnPage(target) else { return BrowserRouting.isMoodleReturnPage(url) }
+        return throughSSO && BrowserRouting.isSchoolReturnPage(url)
+    }
+}
+
+/// The hidden page a session sign-in runs in, with the visible browser's logout rule list: a
+/// page's own request to a logout would end the SSO session the app holds.
 @MainActor
 private final class BrowserSignInPage: NSObject, WKNavigationDelegate {
     private let store: WKWebsiteDataStore
     private weak var host: UIView?
-    private let target: URL
+    private var steps: BrowserSignInSteps
     private var finish: ((Bool) -> Void)?
 
     static let deadline: Duration = .seconds(15)
@@ -80,12 +109,13 @@ private final class BrowserSignInPage: NSObject, WKNavigationDelegate {
     init(store: WKWebsiteDataStore, host: UIView?, target: URL) {
         self.store = store
         self.host = host
-        self.target = target
+        steps = BrowserSignInSteps(target: target)
     }
 
     func run(_ entry: URL) async -> Bool {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = store
+        await BrowserPageScripts.addLogoutRules(to: configuration.userContentController)
         let page = WKWebView(frame: host?.bounds ?? .zero, configuration: configuration)
         page.navigationDelegate = self
         page.isUserInteractionEnabled = false
@@ -118,17 +148,17 @@ private final class BrowserSignInPage: NSObject, WKNavigationDelegate {
         decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
     ) {
         guard let url = action.request.url else { return decisionHandler(.cancel) }
-        if BrowserRouting.isLogout(url) { return decisionHandler(.cancel) }
-        guard action.targetFrame?.isMainFrame != false, BrowserRouting.endsSessionSignIn(url) else {
-            return decisionHandler(.allow)
+        guard steps.navigating(to: url, isMainFrame: action.targetFrame?.isMainFrame != false) == .allow else {
+            decisionHandler(.cancel)
+            finish?(false)
+            return
         }
-        decisionHandler(.cancel)
-        finish?(false)
+        decisionHandler(.allow)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         // The SSO's form_post page finishes too, on its way back to the site.
-        if let url = webView.url, BrowserRouting.isSignedIn(at: url, for: target) { finish?(true) }
+        if let url = webView.url, steps.isSignedIn(at: url) { finish?(true) }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {

@@ -148,6 +148,10 @@ enum BrowserPageScripts {
     /// navigation delegate still refuses the logout, and a later browser gets the list.
     static func install(in controller: WKUserContentController) async {
         addScripts(to: controller)
+        await addLogoutRules(to: controller)
+    }
+
+    static func addLogoutRules(to controller: WKUserContentController) async {
         guard let rules = await answer(within: rulesDeadline, compileLogoutRules) else {
             return AppLogger.breadcrumb("browser opened without its logout rule list", category: "browser")
         }

@@ -272,10 +272,6 @@ struct BrowserRoutingTests {
         }
         #expect(BrowserRouting.signInEntry(for: site) == site)
         #expect(BrowserRouting.signInEntry(for: moodle) == BrowserRouting.webSignInURL)
-        #expect(BrowserRouting.isSignedIn(at: Self.url("https://stuinfosys.ntust.edu.tw/Home"), for: site))
-        #expect(!BrowserRouting.isSignedIn(at: Self.url("https://ssoam2.ntust.edu.tw/connect/authorize/callback"), for: site))
-        #expect(!BrowserRouting.isSignedIn(at: site, for: moodle))
-        #expect(BrowserRouting.isSignedIn(at: moodle, for: moodle))
     }
 
     @Test func aSignInPageGoesBackToThePageItCameInTheWayOf() {

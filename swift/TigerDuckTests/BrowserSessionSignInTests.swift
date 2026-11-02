@@ -189,6 +189,45 @@ struct BrowserSessionSignInTests {
         #expect(browser.kept.isEmpty)
     }
 
+    private static func url(_ text: String) -> URL { URL(string: text)! }
+
+    @Test func aLogoutOnTheHiddenPageEndsTheSignInAtOnce() {
+        var steps = BrowserSignInSteps(target: Self.site)
+        #expect(steps.navigating(to: Self.url("https://stuinfosys.ntust.edu.tw/Account/LogOff"), isMainFrame: false) == .fail)
+        #expect(steps.navigating(to: Self.url("https://ssoam2.ntust.edu.tw/connect/endsession"), isMainFrame: true) == .fail)
+        var moodle = BrowserSignInSteps(target: Self.moodle)
+        #expect(moodle.navigating(to: Self.url("https://moodle2.ntust.edu.tw/login/logout.php?sesskey=k"), isMainFrame: true) == .fail)
+        #expect(steps.navigating(to: Self.site, isMainFrame: true) == .allow)
+    }
+
+    @Test func aSchoolPageEndsTheSignInOnlyOnceTheRunWentThroughSSO() {
+        var steps = BrowserSignInSteps(target: Self.site)
+        // The site's own page finishes first and sends the browser on to SSO by a script.
+        #expect(steps.navigating(to: Self.site, isMainFrame: true) == .allow)
+        #expect(!steps.isSignedIn(at: Self.site))
+        #expect(steps.navigating(to: Self.url("https://ssoam2.ntust.edu.tw/connect/authorize?client_id=x"), isMainFrame: true) == .allow)
+        #expect(!steps.isSignedIn(at: Self.url("https://ssoam2.ntust.edu.tw/connect/authorize/callback")))
+        #expect(steps.isSignedIn(at: Self.url("https://stuinfosys.ntust.edu.tw/Home")))
+    }
+
+    @Test func aPasswordFormRecaptchaOrAnotherSiteEndsTheHiddenSignIn() {
+        for address in [
+            "https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize",
+            "https://ssoam.ntust.edu.tw/nidp/app/login",
+            "https://moodle2.ntust.edu.tw/login/index.php",
+            "https://example.com/",
+        ] {
+            var steps = BrowserSignInSteps(target: Self.site)
+            #expect(steps.navigating(to: Self.url(address), isMainFrame: true) == .fail, "\(address)")
+        }
+    }
+
+    @Test func moodlesSignInEndsAtAMoodlePageAsBefore() {
+        let steps = BrowserSignInSteps(target: Self.moodle)
+        #expect(steps.isSignedIn(at: Self.moodle))
+        #expect(!steps.isSignedIn(at: Self.site))
+    }
+
     @Test func theDemoAccountSignsNothingIn() async {
         let browser = Browser()
         let demo = SignInSeries()
