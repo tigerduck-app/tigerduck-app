@@ -56,6 +56,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         page.shown.webView = webView
         page.shown.start = start
         observe(webView)
+        TLSPinMismatchQueue.shared.offerDismissedAgain()
 
         let (store, auth) = (page.store, self.auth)
         let schoolSignIn = AccountSession.school.currentSignIn

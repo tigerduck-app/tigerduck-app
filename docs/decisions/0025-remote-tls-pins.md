@@ -42,7 +42,9 @@ no build pinned failed every NTUST request until the user updated.
   Continue trusts the leaf's and the intermediates' SPKIs, never the root's, for that set until the
   build number changes. The acceptance lives in `UserDefaults`, not the Keychain, which outlives an
   uninstall. One prompt shows at a time, in the foreground only, each set at most once per launch
-  and not within an hour of a Cancel; a background refusal waits for the next foreground.
+  and not within an hour of a Cancel; a background refusal waits for the next foreground. A prompt
+  closed without an answer, by a swipe, quiets nothing, and its set may be asked again once a
+  browser opens, where the student reloads the refused page.
 - `api.tigerduck.app` is not pinned. Cloudflare rotates its edge certificates across several CAs,
   so a pin would break the app at an unannounced rotation; Certificate Transparency monitoring of
   the zone stands in for it.

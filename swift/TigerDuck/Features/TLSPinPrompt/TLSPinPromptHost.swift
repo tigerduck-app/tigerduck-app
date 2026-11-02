@@ -19,7 +19,7 @@ extension TLSPinMismatchQueue {
 }
 
 /// Shows the queue's prompt over the window's root. Dismissing the sheet any other way than its
-/// buttons, by a swipe or Escape, is a Cancel.
+/// buttons, by a swipe or Escape, answers nothing (`TLSPinMismatchQueue.dismiss`).
 private struct TLSPinPromptHost: ViewModifier {
     let queue: TLSPinMismatchQueue
     let owner: TLSPinPromptOwner
@@ -88,14 +88,14 @@ private struct TLSPinPromptHost: ViewModifier {
     }
 
     /// A swipe down. A window closing with the sheet up sets the item to nil as well, before its
-    /// `onDisappear`, so the Cancel waits a turn and is dropped if the host went away.
+    /// `onDisappear`, so the dismissal waits a turn and is dropped if the host went away.
     private func closedOutsideButtons() {
         guard let closed = presentation.prompt else { return }
         presentation.prompt = nil
         presentation.requestedAt = nil
         Task { [presentation, queue] in
             guard !presentation.isGone else { return }
-            queue.answer(closed, continues: false)
+            queue.dismiss(closed)
         }
     }
 

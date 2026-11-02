@@ -69,6 +69,37 @@ struct TLSPinMismatchQueueTests {
         #expect(relaunched.prompt?.setID == "ntust")
     }
 
+    @Test("A prompt closed without an answer quiets nothing and is offered again once a browser opens")
+    func aDismissedPromptReturnsWithTheNextBrowser() {
+        let defaults = F.defaults()
+        let queue = queue(defaults: defaults)
+        queue.report(Self.mismatch())
+        queue.dismiss(Self.mismatch())
+        #expect(queue.prompt == nil)
+        #expect(defaults.dictionary(forKey: "tlsPinPromptQuietUntil") == nil)
+
+        queue.report(Self.mismatch())
+        #expect(queue.prompt == nil)
+        queue.offerDismissedAgain()
+        queue.report(Self.mismatch())
+        #expect(queue.prompt == Self.mismatch())
+
+        queue.cancel()
+        queue.offerDismissedAgain()
+        queue.report(Self.mismatch())
+        #expect(queue.prompt == nil)
+    }
+
+    @Test("Closing a prompt the queue has since replaced leaves the newer one")
+    func aLateDismissalLeavesTheNewerPrompt() {
+        let queue = queue()
+        queue.report(Self.mismatch())
+        queue.continue()
+        queue.report(Self.mismatch("library"))
+        queue.dismiss(Self.mismatch())
+        #expect(queue.prompt == Self.mismatch("library"))
+    }
+
     @Test("A mismatch from the background waits for the foreground")
     func aBackgroundFailureQueuesThePrompt() {
         let queue = queue()

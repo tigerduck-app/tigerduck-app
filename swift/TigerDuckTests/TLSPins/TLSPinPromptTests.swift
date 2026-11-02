@@ -209,8 +209,8 @@ struct TLSPinPromptTests {
         }
     }
 
-    @Test("closing the sheet outside its buttons, as a swipe down does, is a Cancel")
-    func swipeDismissCancels() async throws {
+    @Test("closing the sheet outside its buttons, as a swipe down does, answers nothing, and a new browser asks again")
+    func swipeDismissAnswersNothing() async throws {
         let prompting = Prompting()
         let window = try Self.window(prompting)
         defer { window.isHidden = true }
@@ -218,11 +218,21 @@ struct TLSPinPromptTests {
         prompting.queue.report(Self.mismatch)
         try await waitUntil { root.presentedViewController != nil }
 
-        root.dismiss(animated: true)
+        // What UIKit does for a swipe down.
+        let controller = try #require(root.presentedViewController?.presentationController)
+        let delegate = controller.delegate
+        delegate?.presentationControllerWillDismiss?(controller)
+        root.dismiss(animated: true) { delegate?.presentationControllerDidDismiss?(controller) }
         try await waitUntil { prompting.queue.prompt == nil }
         #expect(prompting.engine.acceptances.isEmpty)
         #expect(prompting.continued == 0)
-        #expect(prompting.isQuiet)
+        #expect(!prompting.isQuiet)
+        try await waitUntil { root.presentedViewController == nil }
+
+        prompting.queue.offerDismissedAgain()
+        prompting.queue.report(Self.mismatch)
+        try await waitUntil { root.presentedViewController != nil }
+        #expect(prompting.queue.prompt == Self.mismatch)
     }
 
     @Test("a prompt the queue takes back, as the app leaves, closes the sheet with no Cancel")

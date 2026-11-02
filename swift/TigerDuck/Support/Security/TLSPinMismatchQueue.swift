@@ -3,7 +3,8 @@ import Observation
 
 /// The pin-mismatch prompt waiting to be shown: at most one at a time, each set at most once per
 /// launch and not within an hour of a Cancel for it, and only while the app is in the foreground.
-/// A mismatch from a background request waits here for the next foreground.
+/// A prompt closed without an answer may be asked again once a browser opens. A mismatch from a
+/// background request waits here for the next foreground.
 @MainActor
 @Observable
 final class TLSPinMismatchQueue {
@@ -28,6 +29,7 @@ final class TLSPinMismatchQueue {
 
     @ObservationIgnored private var held: TLSPinMismatch?
     @ObservationIgnored private var askedThisLaunch: Set<String> = []
+    @ObservationIgnored private var closedUnanswered: Set<String> = []
     @ObservationIgnored private let engine: TLSPinEngine
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let clock: () -> Date
@@ -74,6 +76,22 @@ final class TLSPinMismatchQueue {
         quiet[prompt.setID] = clock().addingTimeInterval(Self.quietPeriod).timeIntervalSince1970
         defaults.set(quiet, forKey: Self.quietUntilKey)
         self.prompt = nil
+    }
+
+    /// The student closed the prompt without answering, as a swipe does: nothing is stored or
+    /// quieted. A late close of a prompt the queue has since replaced changes nothing.
+    func dismiss(_ shown: TLSPinMismatch) {
+        guard prompt == shown else { return }
+        closedUnanswered.insert(shown.setID)
+        prompt = nil
+    }
+
+    /// A new browser, where the student reloads the refused page, lets each set closed without an
+    /// answer be asked about again. Only a browser opening re-arms it, so requests that keep being
+    /// refused cannot bring the prompt back the moment it closes.
+    func offerDismissedAgain() {
+        askedThisLaunch.subtract(closedUnanswered)
+        closedUnanswered = []
     }
 
     private func quietUntil(_ setID: String) -> Date {
