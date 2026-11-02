@@ -57,6 +57,20 @@ struct SecureStoreLockedReadTests {
         #expect(accessibilityClasses(of: key) == [afterFirstUnlock])
     }
 
+    @Test(arguments: readWhileLockedSinceTheMove)
+    func aSecretNoEarlierBuildSavedReadsWhileLocked(key: String) throws {
+        SecureStore.delete(key: key)
+        defer { SecureStore.delete(key: key) }
+        let shared = LockablePhoneKeychain(absentReadsFailWhileLocked: true)
+
+        try SecureStore.$sharedForTesting.withValue(shared) {
+            shared.isLocked = true
+            #expect(throws: Never.self) { try SecureStore.loadIfReadable(key: key) }
+            try SecureStore.save(Data("value".utf8), forKey: key)
+            #expect(try SecureStore.loadIfReadable(key: key) != nil)
+        }
+    }
+
     @Test(arguments: unlockedOnly)
     func aCredentialStaysUnreadableWhileLocked(key: String) throws {
         SecureStore.delete(key: key)

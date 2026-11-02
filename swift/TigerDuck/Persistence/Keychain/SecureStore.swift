@@ -97,7 +97,7 @@ nonisolated enum SecureStore {
     static func loadIfReadable(key: String) throws -> Data? {
         if let value = loadSaved(key: key) { return value }
         let home = home(forKey: key)
-        if home !== shared { try requireNoUnreadableCopyInShared(forKey: key) }
+        if home !== shared, !neverInShared.contains(key) { try requireNoUnreadableCopyInShared(forKey: key) }
         do {
             return try home.object(forKey: key)
         } catch KeychainError.itemNotFound {
