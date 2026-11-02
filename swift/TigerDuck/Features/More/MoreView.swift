@@ -73,34 +73,6 @@ struct MoreHome<Settings: View>: View {
     var body: some View {
         ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                HStack(alignment: .top) {
-                    Text(String(localized: "feature_more"))
-                        .font(TigerDuckTheme.Typography.title)
-                        .foregroundStyle(Color.textPrimary)
-                    Spacer()
-                    if #available(iOS 26, *) {
-                        NavigationLink(destination: settings) {
-                            Image(systemName: "gearshape.fill")
-                                .font(.title2)
-                                .foregroundStyle(.primary)
-                                .frame(width: 44, height: 44)
-                                .glassEffect(.regular.interactive(), in: .circle)
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        NavigationLink(destination: settings) {
-                            Image(systemName: "gearshape.fill")
-                                .font(.title2)
-                                .foregroundStyle(Color.textPrimary)
-                                .frame(width: 44, height: 44)
-                                .background(.ultraThinMaterial, in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                .padding(.top, TigerDuckTheme.Spacing.md)
-
                 ForEach(viewModel.groupedFeatures, id: \.category) { group in
                     FeatureCategorySection(
                         category: group.category,
@@ -120,5 +92,49 @@ struct MoreHome<Settings: View>: View {
         .background(Color.backgroundPrimary)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .notImplementedAlert(isPresented: $showNotImplementedAlert)
+        // Under a root page without a title, a pushed page's search drawer slides in open.
+        .navigationTitle(String(localized: "feature_more"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(removing: .title)
+        .toolbar { toolbar }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        if #available(iOS 26, *) {
+            ToolbarItem(placement: .topBarLeading) { heading }
+                .sharedBackgroundVisibility(.hidden)
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(destination: settings) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.title2)
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .topBarLeading) { heading }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(destination: settings) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.title2)
+                        .foregroundStyle(Color.textPrimary)
+                        .frame(width: 44, height: 44)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // The bar offers a leading item less width than this heading needs, cutting "More" short.
+    private var heading: some View {
+        Text(String(localized: "feature_more"))
+            .font(TigerDuckTheme.Typography.title)
+            .foregroundStyle(Color.textPrimary)
+            .fixedSize()
     }
 }
