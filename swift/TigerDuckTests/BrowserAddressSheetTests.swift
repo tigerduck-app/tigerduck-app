@@ -17,7 +17,7 @@ struct BrowserAddressSheetTests {
     /// The browser's address sheet as `TigerDuckBrowserView` presents it.
     private struct Presenter: View {
         let page: BrowserPage
-        @State private var sheet: BrowserSheet? = .address
+        @State var sheet: BrowserSheet? = .address
         @State private var afterSheet: (() -> Void)?
 
         var body: some View {
@@ -40,12 +40,12 @@ struct BrowserAddressSheetTests {
         return page
     }
 
-    private static func window(_ page: BrowserPage, screen: Screen = Screen.all[0]) throws -> UIWindow {
+    private static func window(_ page: BrowserPage, screen: Screen = Screen.all[0], sheet: BrowserSheet = .address) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: screen.width, height: screen.height)
         window.overrideUserInterfaceStyle = screen.style
-        window.rootViewController = UIHostingController(rootView: Presenter(page: page))
+        window.rootViewController = UIHostingController(rootView: Presenter(page: page, sheet: sheet))
         if let textSize = screen.textSize { window.traitOverrides.preferredContentSizeCategory = textSize }
         window.makeKeyAndVisible()
         return window
@@ -99,6 +99,27 @@ struct BrowserAddressSheetTests {
             #expect(!page.store.isPersistent)
             #expect(page.certificates.acceptance.allows(Self.leaf, from: Self.host))
             #expect(!BrowserPage().certificates.acceptance.allows(Self.leaf, from: Self.host))
+        }
+    }
+
+    @Test("on a page opened at risk the More sheet's zoom buttons and desktop site toggle are disabled")
+    func siteSettingsAreDisabledAtRisk() async throws {
+        try await withAccessibilityAutomation {
+            let atRisk = Self.refusedPage()
+            atRisk.openAtRisk()
+            for page in [BrowserPage(), atRisk] {
+                let window = try Self.window(page, sheet: .more)
+                defer { window.isHidden = true }
+                let root = try #require(window.rootViewController)
+                let zoomIn = String(localized: "browser_zoom_in")
+                try await waitUntil { root.presentedViewController.map { accessibilityElement(labeled: zoomIn, in: $0.view) != nil } == true }
+                let sheet = try #require(root.presentedViewController?.view)
+                let controls = [zoomIn, String(localized: "browser_zoom_out"), 1.0.formatted(.percent), String(localized: "browser_desktop_site")]
+                for label in controls {
+                    let control = try #require(accessibilityElement(labeled: label, in: sheet))
+                    #expect(control.accessibilityTraits.contains(.notEnabled) == page.isAtRisk, "\(label)")
+                }
+            }
         }
     }
 
