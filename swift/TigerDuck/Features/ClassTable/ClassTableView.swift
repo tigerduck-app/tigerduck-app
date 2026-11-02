@@ -1,5 +1,6 @@
 import Defaults
 import SwiftUI
+import TigerDuckCore
 
 struct ClassTableView: View {
     var embedded = false
@@ -100,6 +101,13 @@ struct ClassTableView: View {
                 }
             }
             .background(Color.backgroundPrimary)
+            .background {
+                TimelineView(.everyMinute) { _ in
+                    let _ = AppClockState.shared.version
+                    let now = AppClock.now()
+                    Color.clear.onChange(of: TaipeiTime.dayKey(for: now)) { viewModel.refreshClubs(now: now) }
+                }
+            }
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .onChange(of: viewModel.shownTable) { _, _ in
                 tableSwitches += 1

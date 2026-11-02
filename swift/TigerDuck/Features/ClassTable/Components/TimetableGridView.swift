@@ -138,9 +138,6 @@ struct TimetableGridView: View {
                 .padding(.top, firstRowTop - rowSpacing / 2)
             }
         }
-        .onChange(of: TaipeiTime.dayKey(for: now)) {
-            viewModel.refreshClubs(now: now)
-        }
         .onGeometryChange(for: TimetableRowTops.self) { proxy in
             let gridTop = proxy.frame(in: .scrollView).minY
             return TimetableRowTops(switchCount: switchCount, tops: Dictionary(
