@@ -100,6 +100,28 @@ struct BrowserAtRiskTests {
         #expect(Set(await page.store.httpCookieStore.allCookies().map(\.name)) == ["large0", "large1", "large2"])
     }
 
+    @Test("opening a page at risk brings back no prompt the student closed unanswered; a new browser does")
+    func theAtRiskWebViewOffersNoClosedPromptAgain() throws {
+        let prompts = TLSPinMismatchQueue(engine: TLSPinFixtures.engine(document: TLSPinFixtures.promptRootsDocument)) {}
+        prompts.isForeground = true
+        let mismatch = TLSPinMismatchQueueTests.mismatch()
+        prompts.report(mismatch)
+        prompts.dismiss(mismatch)
+
+        let page = Self.refusedPage(URL(string: "https://at-risk.invalid/form")!)
+        page.openAtRisk()
+        _ = BrowserNavigator(page: page, auth: nil).makeView(opening: try #require(page.openedAtRisk), prompts: prompts)
+        page.signIn.load = { _ in }
+        prompts.report(mismatch)
+        #expect(prompts.prompt == nil)
+
+        let browser = BrowserPage()
+        _ = BrowserNavigator(page: browser, auth: nil).makeView(opening: URL(string: "https://at-risk.invalid/")!, prompts: prompts)
+        browser.signIn.load = { _ in }
+        prompts.report(mismatch)
+        #expect(prompts.prompt == mismatch)
+    }
+
     @Test("no cookie a page opened at risk sets reaches the browser's store, the app's jar or a sign-in")
     func cookiesStayInTheIsolatedStore() async throws {
         let page = Self.refusedPage()

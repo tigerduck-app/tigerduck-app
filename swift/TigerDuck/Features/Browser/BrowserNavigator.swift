@@ -47,7 +47,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         self.siteSignIn = siteSignIn ?? { BrowserSiteSignIn(auth: auth, for: $0) }
     }
 
-    func makeView(opening start: URL) -> UIView {
+    func makeView(opening start: URL, prompts: TLSPinMismatchQueue = .shared) -> UIView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = page.store
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -61,7 +61,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         page.shown.webView = webView
         page.shown.start = start
         observe(webView)
-        TLSPinMismatchQueue.shared.offerDismissedAgain()
+        if !page.isAtRisk { prompts.offerDismissedAgain() }
 
         let (store, auth) = (page.store, self.auth)
         let schoolSignIn = AccountSession.school.currentSignIn
