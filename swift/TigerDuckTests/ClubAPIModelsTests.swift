@@ -101,6 +101,13 @@ struct ClubAPIModelsTests {
         #expect(ClubAPIClient.maxAge("max-age=99999999") == 86_400)
     }
 
+    @Test("an answer whose every row is unreadable is a failure; an empty list and a partly readable one are not")
+    func unreadableRows() throws {
+        #expect(throws: DecodingError.self) { try ClubAPIList<ClubCard>.decode(Self.envelope(#"{"id":"x"},{"name":1}"#)) }
+        #expect(try ClubAPIList<ClubCard>.decode(Self.envelope("")).isEmpty)
+        #expect(try ClubAPIList<ClubCard>.decode(Self.envelope(#"{"id":"x"},"# + Self.club(1, "管樂社"))).map(\.id) == [1])
+    }
+
     @Test("a failed fetch is reported for an unreadable answer or an unexpected status, not for a lost network or a cancellation")
     func reportedFailures() async {
         let base = SettingsAPIStub.uniqueBaseURL()

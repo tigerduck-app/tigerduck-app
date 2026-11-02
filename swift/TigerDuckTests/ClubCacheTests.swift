@@ -98,6 +98,24 @@ struct ClubCacheTests {
         #expect(sent == [nil, #""a""#, #""a""#, #""a""#])
     }
 
+    @Test("an answer whose rows are all unreadable keeps the stored feed")
+    func unreadableRowsKeepTheStoredFeed() async throws {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let url = base.appending(path: "activities")
+        let (files, root) = Self.files()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stored = ETaggedBody(body: ClubAPIModelsTests.envelope(ClubAPIModelsTests.activity(1, club: 41)), etag: #""a""#)
+        files.saveActivities(stored)
+        let unreadable = ClubAPIModelsTests.envelope(#"{"id":"x"},{"id":"y"}"#)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: unreadable, headerFields: ["ETag": #""b""#]), for: url)
+        let feed = Self.feed(files, base)
+
+        await feed.refresh()
+
+        #expect(feed.activities.map(\.id) == [1])
+        #expect(files.loadActivities() == stored)
+    }
+
     @Test("a stored feed this build cannot read is fetched whole")
     func unreadableFeed() async throws {
         let base = SettingsAPIStub.uniqueBaseURL()
