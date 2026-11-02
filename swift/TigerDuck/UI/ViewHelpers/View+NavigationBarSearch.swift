@@ -109,6 +109,7 @@ private struct NavigationBarSearchController: UIViewControllerRepresentable {
             var page = parent
             while let current = page, !(current.parent is UINavigationController) { page = current.parent }
             guard let page, page.navigationItem.searchController !== search else { return }
+            page.definesPresentationContext = true
             page.navigationItem.searchController = search
         }
     }

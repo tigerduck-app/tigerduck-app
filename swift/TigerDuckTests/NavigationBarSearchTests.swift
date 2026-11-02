@@ -12,6 +12,8 @@ struct NavigationBarSearchTests {
         var text = ""
         var isPresented = false
         var tab = 0
+        var pushed = false
+        var sheet = false
     }
 
     private struct Page: View {
@@ -22,6 +24,8 @@ struct NavigationBarSearchTests {
             List { ForEach(Self.rows.filter { search.text.isEmpty || $0.contains(search.text) }, id: \.self) { Text($0) } }
                 .navigationTitle("Rows")
                 .navigationBarSearch(text: $search.text, isPresented: $search.isPresented, prompt: "Find a row")
+                .navigationDestination(isPresented: $search.pushed) { Text("Detail").navigationTitle("Detail") }
+                .sheet(isPresented: $search.sheet) { Text("Sheet") }
         }
     }
 
@@ -41,14 +45,17 @@ struct NavigationBarSearchTests {
         let list: UICollectionView
         let bar: UISearchBar
 
+        var navigation: UINavigationController? {
+            sequence(first: list as UIResponder, next: \.next).lazy.compactMap { $0 as? UINavigationController }.first
+        }
+
         func close() {
             window.endEditing(true)
             window.isHidden = true
         }
     }
 
-    /// The page with "Row 1" typed into its revealed search, and the list showing the matches.
-    private static func typed(_ search: Search) async throws -> Typed {
+    private static func show(_ search: Search) async throws -> (UIWindow, UICollectionView) {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 375, height: 812)
@@ -56,7 +63,12 @@ struct NavigationBarSearchTests {
         window.makeKeyAndVisible()
 
         try await waitUntil { window.descendants(ofType: UICollectionView.self).first.map { $0.contentSize.height > 0 } ?? false }
-        let list = try #require(window.descendants(ofType: UICollectionView.self).first)
+        return (window, try #require(window.descendants(ofType: UICollectionView.self).first))
+    }
+
+    /// The page with "Row 1" typed into its revealed search, and the list showing the matches.
+    private static func typed(_ search: Search) async throws -> Typed {
+        let (window, list) = try await show(search)
         list.contentOffset.y = -list.adjustedContentInset.top - 90
         try await waitUntil { !window.descendants(ofType: UISearchBar.self).isEmpty }
         let bar = try #require(window.descendants(ofType: UISearchBar.self).first)
@@ -66,7 +78,11 @@ struct NavigationBarSearchTests {
         try await waitUntil { search.isPresented }
         bar.searchTextField.insertText("Row 1")
         try await waitUntil { search.text == "Row 1" && list.numberOfItems(inSection: 0) == 11 }
-        return Typed(window: window, list: list, bar: bar)
+        let typed = Typed(window: window, list: list, bar: bar)
+        let navigation = try #require(typed.navigation)
+        let controller = try #require(navigation.viewControllers.first?.navigationItem.searchController)
+        try await waitUntil { navigation.transitionCoordinator == nil && controller.transitionCoordinator == nil }
+        return typed
     }
 
     @Test("typing reaches the page's text, and the page clearing and closing the search empties and closes the field")
@@ -127,6 +143,48 @@ struct NavigationBarSearchTests {
         #expect(search.text == "Row 1")
         #expect(search.isPresented)
         #expect(page.bar.searchTextField.text == "Row 1")
+        #expect(page.list.numberOfItems(inSection: 0) == 11)
+    }
+
+    @Test("a page pushed during a search covers the search, and coming back finds it active with its text and no keyboard")
+    func pushAndBack() async throws {
+        let search = Search()
+        let page = try await Self.typed(search)
+        defer { page.close() }
+        let navigation = try #require(page.navigation)
+
+        search.pushed = true
+        try await waitUntil { navigation.viewControllers.count == 2 && navigation.transitionCoordinator == nil }
+        #expect(page.bar.window == nil)
+        #expect(!page.bar.searchTextField.isFirstResponder)
+
+        search.pushed = false
+        try await waitUntil { navigation.viewControllers.count == 1 && navigation.transitionCoordinator == nil }
+        #expect(search.isPresented)
+        #expect(search.text == "Row 1")
+        #expect(page.bar.window != nil)
+        #expect(page.bar.searchTextField.text == "Row 1")
+        #expect(!page.bar.searchTextField.isFirstResponder)
+        #expect(page.list.numberOfItems(inSection: 0) == 11)
+    }
+
+    @Test("a sheet opened during a search goes over it, and closing it finds the search active with its text and keyboard")
+    func sheetAndBack() async throws {
+        let search = Search()
+        let page = try await Self.typed(search)
+        defer { page.close() }
+        let root = try #require(page.window.rootViewController)
+
+        search.sheet = true
+        try await waitUntil { root.presentedViewController.map { $0.transitionCoordinator == nil } ?? false }
+        #expect(!(root.presentedViewController is UISearchController))
+
+        search.sheet = false
+        try await waitUntil { root.presentedViewController == nil }
+        #expect(search.isPresented)
+        #expect(search.text == "Row 1")
+        #expect(page.bar.searchTextField.text == "Row 1")
+        #expect(page.bar.searchTextField.isFirstResponder)
         #expect(page.list.numberOfItems(inSection: 0) == 11)
     }
 }
