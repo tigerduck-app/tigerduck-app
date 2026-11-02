@@ -13,6 +13,12 @@ struct ClubAPIModelsTests {
             + #""tagline":\#(json(tagline)),"tags":[],"recruit_status":null,"avatar_file_id":null,"banner_file_id":null}"#
     }
 
+    /// What every path of the club API answers during its nightly maintenance.
+    static let maintenance = SettingsAPIStub.StubResponse(
+        statusCode: 503, body: Data("<!doctype html><title>系統暫停服務</title>".utf8),
+        headerFields: ["Content-Type": "text/html", "Cache-Control": "no-store", "Retry-After": "3600"]
+    )
+
     static func activity(
         _ id: Int, club: Int, date: String? = "2026-11-03", endDate: String? = "2026-11-03",
         start: String? = "18:00:00", end: String? = "20:30:00", type: String = "社課或會議"
@@ -140,13 +146,15 @@ struct ClubAPIModelsTests {
         #expect(refusal?.code == .badServerResponse)
     }
 
-    @Test("a failed fetch is reported for an unreadable answer or an unexpected status, not for a lost network or a cancellation")
+    @Test("a failed fetch is reported for an unreadable answer or an unexpected status, not for a 503, a lost network or a cancellation")
     func reportedFailures() async {
         let base = SettingsAPIStub.uniqueBaseURL()
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = ClubAPIClient(baseURL: base, session: URLSession(configuration: config))
         SettingsAPIStub.enqueue(.init(statusCode: 500, body: Data()), for: base.appending(path: "clubs"))
+        SettingsAPIStub.enqueue(Self.maintenance, for: base.appending(path: "clubs"))
+        SettingsAPIStub.enqueue(Self.maintenance, for: base.appending(path: "activities"))
         SettingsAPIStub.enqueue(.init(statusCode: 0, body: Data(), failure: .notConnectedToInternet), for: base.appending(path: "clubs"))
 
         func failure(_ body: () async throws -> Void) async -> (any Error)? {
@@ -154,11 +162,15 @@ struct ClubAPIModelsTests {
             return nil
         }
         let status = await failure { _ = try await client.clubs() }
+        let down = await failure { _ = try await client.clubs() }
+        let feedDown = await failure { _ = try await client.activities(etag: #""a""#) }
         let offline = await failure { _ = try await client.clubs() }
         let unreadable = await failure { _ = try ClubAPIList<ClubCard>.decode(Data("{}".utf8)) }
 
         #expect(status.map(ClubAPIClient.isWorthReporting) == true)
         #expect(unreadable.map(ClubAPIClient.isWorthReporting) == true)
+        #expect(down.map(ClubAPIClient.isWorthReporting) == false)
+        #expect(feedDown.map(ClubAPIClient.isWorthReporting) == false)
         #expect(offline.map(ClubAPIClient.isWorthReporting) == false)
         #expect(!ClubAPIClient.isWorthReporting(URLError(.timedOut)))
         #expect(!ClubAPIClient.isWorthReporting(URLError(.cancelled)))
