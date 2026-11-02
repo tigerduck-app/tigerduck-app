@@ -48,9 +48,11 @@ enum MoreScreen {
         return window
     }
 
-    /// The elements above the feature cards; the tab bar repeats the heading's text.
+    /// The elements above the feature cards that VoiceOver reaches; the tab bar repeats the heading's
+    /// text, and iOS 26 keeps the removed bar title as a transparent label.
     static func top(in window: UIWindow) -> [NSObject] {
-        exposedAccessibilityElements(in: window).filter { $0.accessibilityFrame.maxY < 160 }
+        guard let root = window.rootViewController else { return [] }
+        return SettingsScreen.elements(in: root).filter { $0.accessibilityFrame.maxY < 160 }
     }
 
     static func gear(in window: UIWindow) -> NSObject? {
