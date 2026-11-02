@@ -11,6 +11,8 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         var headerFields: [String: String] = [:]
         var failure: URLError.Code?
         var gate: ReplyGate?
+        /// Where the answer says it came from, as after a redirect; the request's URL when nil.
+        var url: URL?
 
         static var noReply: StubResponse {
             StubResponse(statusCode: 0, body: Data(), failure: .networkConnectionLost)
@@ -150,7 +152,7 @@ nonisolated final class SettingsAPIStub: URLProtocol {
             return
         }
         let response = HTTPURLResponse(
-            url: url, statusCode: next.statusCode, httpVersion: "HTTP/1.1",
+            url: next.url ?? url, statusCode: next.statusCode, httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"].merging(next.headerFields) { $1 }
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

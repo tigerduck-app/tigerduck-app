@@ -117,6 +117,22 @@ struct ClubAPIModelsTests {
         #expect(try ClubAPIList<ClubActivity>.decode(Self.envelope(activities.joined(separator: ","))).map(\.clubID) == [93, 41])
     }
 
+    @Test("an answer that ends on another host, after a redirect, is refused")
+    func otherHostRefused() async {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = ClubAPIClient(baseURL: base, session: URLSession(configuration: config))
+        var moved = SettingsAPIStub.StubResponse(statusCode: 200, body: Self.envelope(Self.club(1, "管樂社")))
+        moved.url = URL(string: "https://elsewhere.invalid/api/v1/public/clubs")
+        SettingsAPIStub.enqueue(moved, for: base.appending(path: "clubs"))
+
+        var refusal: URLError?
+        do { _ = try await client.clubs() } catch { refusal = error as? URLError }
+
+        #expect(refusal?.code == .badServerResponse)
+    }
+
     @Test("a failed fetch is reported for an unreadable answer or an unexpected status, not for a lost network or a cancellation")
     func reportedFailures() async {
         let base = SettingsAPIStub.uniqueBaseURL()
