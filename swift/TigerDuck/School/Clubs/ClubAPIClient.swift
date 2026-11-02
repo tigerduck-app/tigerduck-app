@@ -1,6 +1,7 @@
 import Foundation
 
-/// The public API of clubs.ntust.edu.tw, which needs no account (club-aio's `app/api/v1/public.py`).
+/// The public API of clubs.ntust.edu.tw, which needs no account:
+/// https://clubs.ntust.edu.tw/api/v1/public/clubs and https://clubs.ntust.edu.tw/api/v1/public/activities.
 nonisolated struct ClubAPIClient: Sendable {
     static let baseURL = URL.knownGood("https://clubs.ntust.edu.tw/api/v1/public")
 
