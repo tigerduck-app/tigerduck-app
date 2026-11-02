@@ -116,7 +116,7 @@ struct ClassTableView: View {
 
     private var pageAccessState: NTUSTProtectedAccessState {
         if viewModel.shownPerson != nil { return viewModel.courses.isEmpty ? .empty : .content }
-        return NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: viewModel.courses.isEmpty)
+        return NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: !viewModel.hasGrid)
     }
 
     private var titleBar: some View {
@@ -129,7 +129,7 @@ struct ClassTableView: View {
                 HStack(spacing: TigerDuckTheme.Spacing.lg) {
                     SyncStatusDot(servers: ServerKind.classTableSources, lastSynced: .schoolData)
                     ClassTableHeaderMenu(
-                        viewModel: viewModel, canExportPicture: pageAccessState == .content,
+                        viewModel: viewModel, canExportPicture: !viewModel.courses.isEmpty,
                         export: $export, shareModel: $shareModel
                     )
                 }

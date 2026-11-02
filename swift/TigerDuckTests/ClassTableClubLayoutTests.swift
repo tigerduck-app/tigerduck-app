@@ -149,7 +149,7 @@ struct ClassTableClubLayoutTests {
         }
     }
 
-    @Test("only the user's own table for the newest term shows clubs")
+    @Test("only the user's own table for the newest term shows clubs, which show its grid without courses")
     func newestTermOnly() async throws {
         try await withExclusiveRealDefaults {
             let catalogue = "semesterCatalog.semesters"
@@ -169,11 +169,14 @@ struct ClassTableClubLayoutTests {
             #expect(model.currentSemester == "1151")
             #expect(model.showsClubs)
             #expect(model.grid.clubs.keys.sorted() == [1, 3, 4, 5, 6])
+            #expect(model.courses.isEmpty)
+            #expect(model.hasGrid)
 
             model.pickSemester("1142", for: testSignIn)
             model.refreshClubs(now: Self.monday)
             #expect(!model.showsClubs)
             #expect(model.grid.clubs.isEmpty)
+            #expect(!model.hasGrid)
         }
     }
 

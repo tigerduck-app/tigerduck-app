@@ -156,6 +156,10 @@ final class ClassTableViewModel {
         #endif
     }
 
+    /// Whether the page draws the grid rather than its empty state: this week's club activities
+    /// fill it before any course does.
+    var hasGrid: Bool { !courses.isEmpty || !grid.clubs.isEmpty }
+
     /// Each column shows its weekday's next date, today's being today.
     func refreshClubs(now: Date = AppClock.now()) {
         grid.showClubs(on: showsClubs ? (1...7).map { Self.nextDate(onWeekday: $0, from: now) } : [])
