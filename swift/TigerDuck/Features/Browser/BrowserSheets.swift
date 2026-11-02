@@ -33,10 +33,14 @@ struct BrowserSheetView: View {
                     .fittedHeight($height)
             } else {
                 NavigationStack {
-                    BrowserAddressView(page: page, showsCertificate: $showsCertificate)
-                        .fittedHeight($height)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                        .background(Color(uiColor: .systemGroupedBackground))
+                    // Scrolls once large text makes it taller than the screen, where the sheet stops.
+                    ScrollView {
+                        BrowserAddressView(page: page, showsCertificate: $showsCertificate, afterClosing: afterClosing)
+                            .fittedHeight($height)
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .background(Color(uiColor: .systemGroupedBackground))
                         // The content runs under the empty bar, which stays shown: a push that brings
                         // a hidden bar in lays it out too high until the push ends.
                         .ignoresSafeArea(.container, edges: .top)
@@ -73,11 +77,12 @@ private extension View {
 private struct BrowserAddressView: View {
     let page: BrowserPage
     @Binding var showsCertificate: Bool
+    let afterClosing: (@escaping () -> Void) -> Void
     @State private var signedIn = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(page.address?.absoluteString ?? "")
+            Text(page.sheetAddress?.absoluteString ?? "")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
@@ -122,6 +127,20 @@ private struct BrowserAddressView: View {
                 Spacer(minLength: 0)
             }
             .padding(TigerDuckTheme.Spacing.lg)
+            if page.refusalToOpenAtRisk != nil {
+                Divider().padding(.leading, 52)
+                Button { afterClosing { page.openAtRisk() } } label: {
+                    HStack(spacing: TigerDuckTheme.Spacing.md) {
+                        Image(systemName: "lock.open").frame(width: 24)
+                        Text(String(localized: "browser_certificate_accept_risk")).fontWeight(.semibold)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(.red)
+                    .padding(TigerDuckTheme.Spacing.lg)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            }
         } else {
             Button { showsCertificate = true } label: {
                 HStack(spacing: TigerDuckTheme.Spacing.md) {

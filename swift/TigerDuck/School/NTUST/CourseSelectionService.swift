@@ -21,7 +21,7 @@ enum CourseServiceError: LocalizedError {
 enum CourseSelectionService {
     typealias LiveAnswer = (courseNos: [String], at: Date)
 
-    private static let courseSelectionRoot = URL.knownGood("https://courseselection.ntust.edu.tw/")
+    static let courseSelectionRoot = URL.knownGood("https://courseselection.ntust.edu.tw/")
     private static let courseListURL = URL.knownGood("https://courseselection.ntust.edu.tw/ChooseList/D01/D01")
 
     static func fetchEnrolledCourseNos(

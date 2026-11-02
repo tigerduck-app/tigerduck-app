@@ -17,7 +17,7 @@ enum NTUSTScoreServiceError: LocalizedError {
 }
 
 enum NTUSTScoreService {
-    private static let scoreRootURL = URL.knownGood("https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/")
+    static let scoreRootURL = URL.knownGood("https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/")
     private static let scoreDisplayURL = URL.knownGood(
         "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/StuScoreQuery/DisplayAll"
     )

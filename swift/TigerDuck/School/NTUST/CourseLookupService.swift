@@ -2,7 +2,7 @@ import Foundation
 import os
 
 enum CourseLookupService {
-    private static let courseSearchAPI = URL.knownGood("https://querycourse.ntust.edu.tw/QueryCourse/api//courses")
+    static let courseSearchAPI = URL.knownGood("https://querycourse.ntust.edu.tw/QueryCourse/api//courses")
 
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default

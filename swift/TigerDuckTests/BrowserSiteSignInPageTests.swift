@@ -340,4 +340,60 @@ struct BrowserSiteSignInPageTests {
         #expect(await read(webView, "commits") == "[]")
     }
 }
+
+/// A page opened at the student's risk runs none of these sign-ins; the same page on the
+/// browser's own store, finished just after it, shows each would have run.
+extension BrowserSiteSignInPageTests {
+    private static let cardSystem = URL(string: "https://cardsystem.ntust.edu.tw/std/index.php/user/login")!
+    private static let cardSystemForm = """
+    <form method="post" action="https://cardsystem.ntust.edu.tw/std/index.php/user/agreement">
+    <input name="id" type="text"><input name="password" type="password"><input type="submit" value="sign in"></form>
+    """
+
+    private func finish(_ atRiskPage: WKWebView, with atRisk: BrowserSiteSignIn, _ ownPage: WKWebView, with own: BrowserSiteSignIn) {
+        let page = BrowserAtRiskTests.refusedPage()
+        page.openAtRisk()
+        BrowserNavigator(page: page, auth: nil, siteSignIn: { _ in atRisk }).webView(atRiskPage, didFinish: nil)
+        BrowserNavigator(page: BrowserPage(), auth: nil, siteSignIn: { _ in own }).webView(ownPage, didFinish: nil)
+    }
+
+    private func waitFor(_ webView: WKWebView, _ expression: String, toRead expected: String) async throws {
+        for _ in 0..<400 {
+            if await read(webView, expression) == expected { return }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        Issue.record("\(expression) never read \(expected)")
+    }
+
+    @Test func aPageOpenedAtRiskGetsNoFill() async throws {
+        let atRisk = await page(Self.cardSystemForm, at: Self.cardSystem)
+        let own = await page(Self.cardSystemForm, at: Self.cardSystem)
+        finish(atRisk, with: signIn, own, with: signIn)
+
+        try await waitFor(own, "document.getElementsByName('password')[0].value", toRead: #""not-a-password""#)
+        #expect(await values(atRisk, ["id", "password"]) == ["", ""])
+    }
+
+    @Test func aPageOpenedAtRiskPostsNoToken() async throws {
+        let riskPosts = Posts(), ownPosts = Posts()
+        let atRisk = await creditProgramPage(), own = await creditProgramPage()
+        finish(atRisk, with: creditProgramSignIn(riskPosts), own, with: creditProgramSignIn(ownPosts))
+
+        try await waitUntil { ownPosts.statuses == [200] }
+        try await waitFor(own, "document.cookie", toRead: #""token=a.b-c""#)
+        #expect(riskPosts.statuses.isEmpty)
+        #expect(riskPosts.sessionChecks == 0)
+        #expect(await read(atRisk, "requests", in: .defaultClient) == "[]")
+        #expect(await read(atRisk, "document.cookie") == #""""#)
+    }
+
+    @Test func aPageOpenedAtRiskOpensNoSignInPopup() async throws {
+        let atRisk = await creditProgramPage(), own = await creditProgramPage()
+        finish(atRisk, with: creditProgramSignIn(Posts(), sessionIsLive: false), own, with: creditProgramSignIn(Posts(), sessionIsLive: false))
+
+        try await waitFor(own, "commits", toRead: #"[["setShowLogin",true]]"#)
+        #expect(await read(atRisk, "commits") == "[]")
+        #expect(await read(atRisk, "requests", in: .defaultClient) == "[]")
+    }
+}
 #endif

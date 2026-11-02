@@ -53,6 +53,9 @@ jobs:
               TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()
               TigerDuckTests/MailMessageViewModelTests/theWebViewIsLockedDown()
               TigerDuckTests/MailReadableHTMLTests/theLinkColourIsWebKitsOwn(theme:)
+              TigerDuckTests/BrowserAddressSheetTests
+              TigerDuckTests/BrowserAtRiskTests
+              TigerDuckTests/BrowserPinnedHostsTests
               TigerDuckTests/BrowserContentRulesTests
               TigerDuckTests/BrowserDemoPageLoadTests
               TigerDuckTests/BrowserFindPageTests

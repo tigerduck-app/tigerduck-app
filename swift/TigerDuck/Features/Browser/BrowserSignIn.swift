@@ -56,6 +56,7 @@ final class BrowserSignIn {
     /// cancels it for this sign-in, false when it shows the page for the student to sign in.
     @discardableResult
     func reachedSignInPage(returningTo target: URL) -> Bool {
+        guard !closed else { return false }
         guard running == nil else { return true }
         guard let attempt, BrowserRouting.host(of: attempt.target) == BrowserRouting.host(of: target),
               now().timeIntervalSince(attempt.steppedAt) < Self.retryWindow else {
@@ -77,8 +78,9 @@ final class BrowserSignIn {
         if running == nil { phase = .idle }
     }
 
-    /// The browser closed: what runs stops, and nothing starts again, as each start may spend
-    /// Moodle's one autologin key per six minutes.
+    /// The browser closed, or opened a page at the student's risk: what runs stops, nothing starts
+    /// again, as each start may spend Moodle's one autologin key per six minutes, and the student
+    /// signs in on any sign-in page by hand.
     func close() {
         closed = true
         running?.cancel()
