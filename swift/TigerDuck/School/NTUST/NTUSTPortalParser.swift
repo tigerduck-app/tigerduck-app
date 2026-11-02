@@ -8,6 +8,11 @@ nonisolated enum NTUSTPortalParser {
     /// covers only `*.cge.ntust.edu.tw`; the course is served at `ae.cge.ntust.edu.tw`.
     private static let movedHosts = ["ae.ntust.edu.tw": "ae.cge.ntust.edu.tw"]
 
+    /// The portal links the computer center's page about campus software, in each language; the
+    /// app opens the software download site's sign-in, which that page points to.
+    private static let replacedPages = Set(["/p/412-1050-8352.php", "/p/412-1050-8701.php"])
+    private static let campusSoftware = URL.knownGood("https://software.ntust.edu.tw/websoftware/login.aspx")
+
     /// Nil for a page with no `#service` block, which a lapsed session or a redesigned page
     /// serves, unlike a portal with no links.
     static func links(in html: String, pageURL: URL) -> [PortalLink]? {
@@ -51,6 +56,9 @@ nonisolated enum NTUSTPortalParser {
     }
 
     private static func moved(_ url: URL) -> URL {
+        if url.host(percentEncoded: false)?.lowercased() == "www.cc.ntust.edu.tw", replacedPages.contains(url.path(percentEncoded: true)) {
+            return campusSoftware
+        }
         guard let host = url.host(percentEncoded: false)?.lowercased(), let movedHost = movedHosts[host],
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         components.host = movedHost

@@ -1,30 +1,133 @@
+import Defaults
 import Foundation
+import os
+import Security
+import Valet
 
-/// The device's UUIDv4, kept in the Keychain so it survives a reinstall.
-nonisolated struct PushIdentity: Sendable {
-    let uuid: String
+/// The device's UUIDv4 and the secret that proves it to the backend's anonymous registration,
+/// kept together in the Keychain so both survive a reinstall and neither leaves the device.
+///
+/// A launch behind the lock screen may not read them yet. Every service shares this one
+/// instance, which reads them at its first use once the Keychain can be read, so they all
+/// move from the stand-in id to the stored one together.
+nonisolated final class PushIdentity: Sendable {
+    private struct Held: Sendable {
+        let uuid: String
+        let secret: String?
+    }
 
-    static func loadOrCreate() -> PushIdentity {
-        if let existing = KeychainManager.loadString(
-            key: AppConstants.KeychainKeys.pushDeviceId
-        ), !existing.isEmpty {
-            return PushIdentity(uuid: existing)
+    private let store: Store
+    private let held: OSAllocatedUnfairLock<Held?>
+    /// The id while the Keychain cannot be read; never saved, and no request carries it.
+    private let standIn = UUID().uuidString.lowercased()
+
+    init(uuid: String, secret: String? = nil) {
+        store = .keychain
+        held = OSAllocatedUnfairLock(initialState: Held(uuid: uuid, secret: secret))
+    }
+
+    private init(store: Store, held: Held?) {
+        self.store = store
+        self.held = OSAllocatedUnfairLock(initialState: held)
+    }
+
+    var uuid: String { current()?.uuid ?? standIn }
+    /// Sent as `device_secret`; nil when a newly minted one could not be saved.
+    var secret: String? { current()?.secret }
+    /// False while the Keychain cannot be read.
+    var isLoaded: Bool { current() != nil }
+
+    /// The stored id for a request that carries it; throws while the Keychain cannot be read.
+    func storedUUID() throws -> String {
+        guard let held = current() else { throw KeychainError.couldNotAccessKeychain }
+        return held.uuid
+    }
+
+    private func current() -> Held? {
+        held.withLock { held in
+            if held == nil { held = Self.read(from: store) }
+            return held
         }
-        if let legacy = KeychainManager.loadString(
-            key: "push_user_id"
-        ), !legacy.isEmpty {
-            KeychainManager.saveString(
-                key: AppConstants.KeychainKeys.pushDeviceId,
-                value: legacy
-            )
-            KeychainManager.delete(key: "push_user_id")
-            return PushIdentity(uuid: legacy)
-        }
-        let minted = UUID().uuidString.lowercased()
-        KeychainManager.saveString(
-            key: AppConstants.KeychainKeys.pushDeviceId,
-            value: minted
+    }
+
+    nonisolated struct Store: Sendable {
+        /// Throws when the item cannot be read now rather than being absent.
+        let read: @Sendable (_ key: String) throws -> String?
+        let save: @Sendable (_ key: String, _ value: String) -> Bool
+        let delete: @Sendable (_ key: String) -> Void
+
+        static let keychain = Store(
+            // Bare Keychain items need `loadString`; `loadIfReadable` does not read them.
+            read: { try KeychainManager.loadString(key: $0) ?? KeychainManager.loadStringIfReadable(key: $0) },
+            save: { KeychainManager.saveStringReportingSuccess(key: $0, value: $1) },
+            delete: { KeychainManager.delete(key: $0) }
         )
-        return PushIdentity(uuid: minted)
+    }
+
+    private static let idKey = AppConstants.KeychainKeys.pushDeviceId
+    private static let secretKey = AppConstants.KeychainKeys.pushDeviceSecret
+    private static let legacyIdKey = "push_user_id"
+
+    static func loadOrCreate(from store: Store = .keychain) -> PushIdentity {
+        PushIdentity(store: store, held: read(from: store))
+    }
+
+    /// The stored id and secret, minting what is missing; nil, minting nothing, while either
+    /// cannot be read.
+    private static func read(from store: Store) -> Held? {
+        let id: String?
+        do {
+            id = try store.read(idKey).flatMap { $0.isEmpty ? nil : $0 } ?? movedLegacyId(in: store)
+            if let id, let secret = try store.read(secretKey), !secret.isEmpty {
+                return Held(uuid: id, secret: secret)
+            }
+        } catch {
+            return nil
+        }
+        let uuid = id ?? mintedId(in: store)
+        let secret = mintSecret().flatMap { store.save(secretKey, $0) ? $0 : nil }
+        return Held(uuid: uuid, secret: secret)
+    }
+
+    /// After the backend refused the secret, a launch with no backend session stored discards the
+    /// id and secret, so `loadOrCreate` mints new ones. The backend keys a signed-in device and its
+    /// Live Activity rows by the id, and a sign-out's kept session deletes that device by it.
+    static func startOverIfRefused(in store: Store = .keychain) {
+        guard Defaults[.pushDeviceSecretRefused], storesNoSession(in: store) else { return }
+        store.delete(idKey)
+        store.delete(secretKey)
+        Defaults[.pushDeviceSecretRefused] = false
+    }
+
+    /// Whether the Keychain, read now, holds neither a backend session nor one a sign-out keeps.
+    static func storesNoSession(in store: Store) -> Bool {
+        let sessionKeys = [AuthTokenManager.refreshTokenKey, AuthTokenManager.departingSessionKey]
+        guard case .success(let sessions) = Result(catching: { try sessionKeys.compactMap(store.read) }) else {
+            return false
+        }
+        return sessions.isEmpty
+    }
+
+    /// 32 random bytes as unpadded base64url, the 43 characters the backend accepts.
+    static func mintSecret() -> String? {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return nil }
+        return Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func mintedId(in store: Store) -> String {
+        let minted = UUID().uuidString.lowercased()
+        _ = store.save(idKey, minted)
+        return minted
+    }
+
+    private static func movedLegacyId(in store: Store) -> String? {
+        guard let legacy = try? store.read(legacyIdKey), !legacy.isEmpty else { return nil }
+        _ = store.save(idKey, legacy)
+        store.delete(legacyIdKey)
+        return legacy
     }
 }

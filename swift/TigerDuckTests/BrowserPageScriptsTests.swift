@@ -149,6 +149,32 @@ struct BrowserPageScriptsTests {
         #expect(try await brightnessBelowTheText(of: webView) > 0.7)
     }
 
+    /// The classroom booking site's query page is a frameset of two pages of its own.
+    @Test func aFramesetPageKeepsItsColors() async throws {
+        let (window, webView) = try browser(in: .dark)
+        defer { window.isHidden = true }
+        let frame = "data:text/html,%3Cp%3E" + String(repeating: "classroom%20", count: 30) + "%3C/p%3E"
+        await load(webView, "<frameset rows=\"100%,*\"><frame src=\"\(frame)\"><frame src=\"about:blank\"></frameset>")
+        _ = await evaluate(webView, "dispatchEvent(new Event('load'))")
+
+        #expect(await evaluate(webView, Self.darkened) as? Bool == false)
+        #expect(try await eventually { Self.brightness(of: webView.underPageBackgroundColor, in: webView) > 0.7 })
+    }
+
+    /// The classroom booking site colors its submit button's text inline, for a light button face.
+    @Test func aButtonWhoseTextIsColoredInlineGetsADarkFace() async throws {
+        let (window, webView) = try browser(in: .dark)
+        defer { window.isHidden = true }
+        let button = "<input type=\"submit\" value=\"Go\" style=\"color:#3366cc\""
+        await load(webView, "<style>.own { background: #c00 }</style>\(Self.paragraph)\(button) id=\"plain\">\(button) id=\"own\" class=\"own\">")
+        #expect(try await eventually { await evaluate(webView, Self.darkened) as? Bool == true })
+
+        let faces = "return ['plain', 'own'].map(id => getComputedStyle(document.getElementById(id)).backgroundColor.match(/[\\d.]+/g).slice(0, 3).map(Number))"
+        let colors = try #require(await evaluate(webView, faces) as? [[Double]])
+        #expect(colors[0].reduce(0, +) / 765 < 0.3, "the face is dark, under Dark Reader's lighter text")
+        #expect(colors[1][0] > colors[1][1] + 50, "a face of the page's own keeps its color")
+    }
+
     private func brightnessBelowTheText(of webView: WKWebView) async throws -> CGFloat {
         _ = await evaluate(webView, "await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
         let image = try await webView.takeSnapshot(configuration: nil)

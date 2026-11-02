@@ -1444,6 +1444,22 @@ struct DepartingSessionTests {
         #expect(try Self.kept(backend) == nil)
     }
 
+    @Test("a kept session whose device id cannot be read yet sends no unregister and stays kept")
+    func aKeptSessionWaitsForTheDeviceId() async throws {
+        let backend = await Self.signedOut()
+        let relaunched = backend.relaunched()
+        let locked = PushIdentity.loadOrCreate(
+            from: FakeIdentityKeychain(unreadable: [AppConstants.KeychainKeys.pushDeviceId]).store
+        )
+        let registration = RegistrationFixture(manager: relaunched, baseURL: backend.baseURL, identity: locked)
+        SettingsAPIStub.enqueue(BackendFixture.refreshReply(access: "A1", refresh: "R1"), for: backend.refreshURL)
+
+        await relaunched.retryDepartingUnregister { await registration.service.unregisterDevice(at: $0) }
+
+        #expect(SettingsAPIStub.requests(under: backend.baseURL).filter { $0.httpMethod == "DELETE" }.isEmpty)
+        #expect(try Self.kept(backend) != nil)
+    }
+
     @Test("a session kept on a cleartext backend is retried only while that backend is in use")
     func aCleartextSessionIsRetriedOnlyWhileInUse() async throws {
         let signIns = SignInSeries()
@@ -2400,7 +2416,7 @@ struct BackendFixture {
         config.timeoutIntervalForRequest = 600
         return AuthTokenManager(
             baseURLProvider: endpoint,
-            deviceUUID: "test-device",
+            deviceUUID: { "test-device" },
             session: URLSession(configuration: config),
             tokens: tokens ?? recorder.tokenStore,
             storedFor: signIn,
@@ -2463,7 +2479,7 @@ private struct RegistrationFixture {
     /// `resolvingAsTheApp` sends to `PushServerConfig.resolveServerURL()` instead of `baseURL`.
     init(
         manager: AuthTokenManager, baseURL: URL = SettingsAPIStub.uniqueBaseURL(), resolvingAsTheApp: Bool = false,
-        signIns: SignInSeries = testSignIns
+        signIns: SignInSeries = testSignIns, identity: PushIdentity = PushIdentity(uuid: "test-device")
     ) {
         announceURL = baseURL.appendingPathComponent("devices/anonymous")
         registerURL = baseURL.appendingPathComponent("devices/register")
@@ -2471,7 +2487,7 @@ private struct RegistrationFixture {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         service = PushRegistrationService(
-            identity: PushIdentity(uuid: "test-device"),
+            identity: identity,
             apiClient: PushAPIClient(
                 baseURLProvider: { resolvingAsTheApp ? PushServerConfig.resolveServerURL() : baseURL },
                 session: URLSession(configuration: config),

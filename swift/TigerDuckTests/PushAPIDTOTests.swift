@@ -124,7 +124,8 @@ struct PushAPIDTOTests {
             push_token: nil,
             cloud_sync_enabled: nil,
             bulletin_push_enabled: false,
-            server_push_enabled: nil
+            server_push_enabled: nil,
+            device_secret: nil
         )
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -147,7 +148,8 @@ struct PushAPIDTOTests {
             push_token: nil,
             cloud_sync_enabled: nil,
             bulletin_push_enabled: nil,
-            server_push_enabled: true
+            server_push_enabled: true,
+            device_secret: nil
         )
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -170,7 +172,8 @@ struct PushAPIDTOTests {
             push_token: nil,
             cloud_sync_enabled: nil,
             bulletin_push_enabled: nil,
-            server_push_enabled: nil
+            server_push_enabled: nil,
+            device_secret: nil
         )
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -178,5 +181,32 @@ struct PushAPIDTOTests {
         )
 
         #expect(object["device_model"] as? String == "iPhone17,3")
+    }
+
+    @Test("encoding the device secret on both device requests produces device_secret, and none leaves it out")
+    func deviceRequestsEncodeTheSecretToItsWireKey() throws {
+        func encoded(_ secret: String?) throws -> (anonymous: [String: Any], register: [String: Any]) {
+            let anonymous = PushAPI.AnonymousDeviceRequest(
+                device_id: "device-1", platform: "apple", device_class: "iphone", push_token: nil,
+                bundle_id: "org.ntust.app.TigerDuck", server_push_enabled: nil, device_secret: secret
+            )
+            let register = PushAPI.DeviceRegisterRequest(
+                client_device_id: "device-1", platform: "ios", device_class: nil, app_version: nil,
+                os_version: nil, device_model: nil, locale: nil, push_token: nil, cloud_sync_enabled: nil,
+                bulletin_push_enabled: nil, server_push_enabled: nil, device_secret: secret
+            )
+            return try (
+                #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(anonymous)) as? [String: Any]),
+                #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(register)) as? [String: Any])
+            )
+        }
+
+        let withSecret = try encoded("secret-1")
+        let without = try encoded(nil)
+
+        #expect(withSecret.anonymous["device_secret"] as? String == "secret-1")
+        #expect(withSecret.register["device_secret"] as? String == "secret-1")
+        #expect(without.anonymous["device_secret"] == nil)
+        #expect(without.register["device_secret"] == nil)
     }
 }

@@ -2,7 +2,7 @@ import Foundation
 
 nonisolated struct AuthRequests: Sendable {
     let baseURL: @Sendable () -> URL
-    let deviceUUID: String
+    let deviceUUID: @Sendable () -> String
     let backend: BackendClient
     let refreshTimeout: TimeInterval
 
@@ -41,7 +41,7 @@ nonisolated struct AuthRequests: Sendable {
             moodle_token: moodleToken,
             moodle_private_token: moodlePrivateToken,
             device_info: DeviceInfo(
-                client_device_id: deviceUUID,
+                client_device_id: deviceUUID(),
                 platform: platform,
                 app_version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
                 os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),

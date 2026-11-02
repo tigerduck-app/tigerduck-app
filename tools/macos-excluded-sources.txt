@@ -469,7 +469,9 @@ BrowserPageScripts.swift
 BrowserPinnedHosts.swift
 BrowserRiskAcceptance.swift
 BrowserRouting.swift
+BrowserSchoolSites.swift
 BrowserSessionSignIn.swift
+BrowserSiteSignIn.swift
 BrowserSheets.swift
 BrowserSignIn.swift
 BrowserSites.swift

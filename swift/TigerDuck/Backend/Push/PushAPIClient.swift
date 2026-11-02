@@ -235,6 +235,9 @@ enum PushAPIError: Error, LocalizedError {
         return BackendClient.errorCode(in: Data(body.utf8))
     }
 
+    /// The backend's 403 when the device secret does not prove the anonymous registration.
+    var refusesDeviceSecret: Bool { code == "device_secret_invalid" }
+
     nonisolated struct RedactedToken: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
         let value: String
         var description: String { "***" }

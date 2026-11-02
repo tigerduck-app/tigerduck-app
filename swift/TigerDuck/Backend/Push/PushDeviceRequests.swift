@@ -11,6 +11,7 @@ nonisolated struct PushDeviceRequests: Sendable {
     let attrsType: String
     let apnsEnv: String
     let deviceClass: String
+    var keychain: PushIdentity.Store = .keychain
     let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Register")
 
     func pushTokens(device: String?, pts: String?) -> [PushAPI.PushTokenIn] {
@@ -40,6 +41,18 @@ nonisolated struct PushDeviceRequests: Sendable {
 
     func announce(deviceToken: String?) async {
         do {
+            try await sendAnonymous(deviceToken: deviceToken, serverPushEnabled: !Defaults[.serverPushUserOptOut])
+        } catch is CancellationError {
+        } catch {
+            logger.error("device announce failed: \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    /// Whether a request went out.
+    @discardableResult
+    func sendAnonymous(deviceToken: String?, serverPushEnabled: Bool) async throws -> Bool {
+        guard identity.isLoaded else { return false }
+        do {
             try await apiClient.registerAnonymousDevice(
                 PushAPI.AnonymousDeviceRequest(
                     device_id: identity.uuid,
@@ -47,13 +60,19 @@ nonisolated struct PushDeviceRequests: Sendable {
                     device_class: deviceClass,
                     push_token: deviceToken,
                     bundle_id: bundleId,
-                    server_push_enabled: !Defaults[.serverPushUserOptOut]
+                    server_push_enabled: serverPushEnabled,
+                    device_secret: identity.secret
                 )
             )
-        } catch is CancellationError {
-        } catch {
-            logger.error("device announce failed: \(error.localizedDescription, privacy: .private)")
+        } catch let error as PushAPIError where error.refusesDeviceSecret {
+            Defaults[.pushDeviceSecretRefused] = true
+            throw error
         }
+        // The backend answers a request with both a secret and a token only after binding the secret.
+        if identity.secret != nil, deviceToken?.isEmpty == false, Defaults[.pushDeviceSecretRefused] {
+            Defaults[.pushDeviceSecretRefused] = false
+        }
+        return true
     }
 
     func register(_ tokens: [PushAPI.PushTokenIn]) async throws {
@@ -62,7 +81,7 @@ nonisolated struct PushDeviceRequests: Sendable {
         let cloudSync = Defaults[.cloudSyncEnabled]
         logger.info("[register] cloud_sync_enabled=\(cloudSync, privacy: .public)")
         for token in tokens {
-            let request = registerRequest(pushToken: token, appVersion: appVersion, cloudSync: cloudSync)
+            let request = try registerRequest(pushToken: token, appVersion: appVersion, cloudSync: cloudSync)
             let response = try await apiClient.registerDevice(request, for: signIn)
             logger.info("registered device (\(token.token_kind, privacy: .public)) device_id=\(response.device_id, privacy: .private)")
         }
@@ -72,7 +91,7 @@ nonisolated struct PushDeviceRequests: Sendable {
     func registerPassive() async throws {
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         let signIn = signIns.currentSignIn
-        let request = registerRequest(pushToken: nil, appVersion: appVersion, cloudSync: Defaults[.cloudSyncEnabled])
+        let request = try registerRequest(pushToken: nil, appVersion: appVersion, cloudSync: Defaults[.cloudSyncEnabled])
         let response = try await apiClient.registerDevice(request, for: signIn)
         logger.info("registered passive macOS device device_id=\(response.device_id, privacy: .private)")
     }
@@ -80,9 +99,9 @@ nonisolated struct PushDeviceRequests: Sendable {
 
     private func registerRequest(
         pushToken: PushAPI.PushTokenIn?, appVersion: String?, cloudSync: Bool
-    ) -> PushAPI.DeviceRegisterRequest {
-        PushAPI.DeviceRegisterRequest(
-            client_device_id: identity.uuid,
+    ) throws -> PushAPI.DeviceRegisterRequest {
+        try PushAPI.DeviceRegisterRequest(
+            client_device_id: identity.storedUUID(),
             platform: PushDeviceClass.platform(for: deviceClass),
             device_class: deviceClass,
             app_version: appVersion,
@@ -92,13 +111,14 @@ nonisolated struct PushDeviceRequests: Sendable {
             push_token: pushToken,
             cloud_sync_enabled: cloudSync,
             bulletin_push_enabled: Defaults[.bulletinPushEnabled],
-            server_push_enabled: !Defaults[.serverPushUserOptOut]
+            server_push_enabled: !Defaults[.serverPushUserOptOut],
+            device_secret: identity.secret
         )
     }
 
     func unregister(at baseURL: URL?) async -> Bool {
         do {
-            try await apiClient.unregisterDevice(deviceId: identity.uuid, at: baseURL)
+            try await apiClient.unregisterDevice(deviceId: identity.storedUUID(), at: baseURL)
             logger.info("unregistered device on server")
             return true
         } catch let error as PushAPIError where error.code == "device_not_found" {

@@ -6,25 +6,27 @@ nonisolated extension PushDeviceRequests {
     func sendServerPushOptOut(
         _ optOut: Bool, deviceToken: String?, for signIn: SignIn
     ) async throws {
-        let uuid = identity.uuid
         do {
-            try await apiClient.registerAnonymousDevice(
-                PushAPI.AnonymousDeviceRequest(
-                    device_id: uuid,
-                    platform: "apple",
-                    device_class: deviceClass,
-                    push_token: deviceToken,
-                    bundle_id: bundleId,
-                    server_push_enabled: !optOut
-                )
-            )
+            var sent = false, refusal: PushAPIError?
+            do {
+                sent = try await sendAnonymous(deviceToken: deviceToken, serverPushEnabled: !optOut)
+            } catch let error as PushAPIError where error.refusesDeviceSecret {
+                refusal = error
+            }
             if await apiClient.hasAuthSession() {
                 _ = try await apiClient.updateDevicePreferences(
-                    deviceId: uuid, serverPushEnabled: !optOut, for: signIn
+                    deviceId: identity.storedUUID(), serverPushEnabled: !optOut, for: signIn
                 )
+                sent = true
+            } else if let refusal, !PushIdentity.storesNoSession(in: keychain) {
+                throw refusal
             }
             await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
-            logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
+            if sent {
+                logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
+            } else {
+                logger.info("server push opt-out=\(optOut, privacy: .public) kept for the next announce")
+            }
         } catch {
             logger.error("server push opt-out did not propagate: \(error.localizedDescription, privacy: .private)")
             throw error
@@ -34,7 +36,7 @@ nonisolated extension PushDeviceRequests {
     func sendBulletinPushEnabled(_ enabled: Bool, for signIn: SignIn) async throws {
         do {
             let response = try await apiClient.updateDevicePreferences(
-                deviceId: identity.uuid, bulletinPushEnabled: enabled, for: signIn
+                deviceId: identity.storedUUID(), bulletinPushEnabled: enabled, for: signIn
             )
             guard response.bulletinPushEnabled == enabled else {
                 throw PushAPIError.invalidResponse
@@ -50,7 +52,7 @@ nonisolated extension PushDeviceRequests {
     func sendCloudSyncEnabled(_ enabled: Bool, for signIn: SignIn) async {
         do {
             _ = try await apiClient.updateDevicePreferences(
-                deviceId: identity.uuid,
+                deviceId: identity.storedUUID(),
                 cloudSyncEnabled: enabled,
                 for: signIn
             )
@@ -65,7 +67,7 @@ nonisolated extension PushDeviceRequests {
         Defaults[.syncPreferencesPushPending] = true
         do {
             _ = try await apiClient.updateDevicePreferences(
-                deviceId: identity.uuid,
+                deviceId: identity.storedUUID(),
                 syncCourses: sent.courses,
                 syncCourseColors: sent.courseColors,
                 syncCourseNames: sent.courseNames,

@@ -78,7 +78,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
             if page.isAtRisk {
                 webView.load(URLRequest(url: start))
             } else {
-                await page.signIn.open(start)
+                await page.signIn.open(await BrowserSiteSignIn.opening(start, for: schoolSignIn, in: store))
             }
         }
         return container
@@ -221,6 +221,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         signInReturnPage = nil
         page.signIn.pageSettled()
         Task { await keepSession() }
+        Task { [auth] in await BrowserSiteSignIn(auth: auth, for: AccountSession.school.currentSignIn).pageFinished(in: webView) }
         if page.find.isActive { Task { await page.find.search() } }
     }
 
