@@ -161,63 +161,98 @@ struct BrowserSiteSignInPageTests {
     }
 
     /// The credit program system as its landing page runs: a Vue app on `#app` whose store opens
-    /// the sign-in popup, and requests to `api/` answered here with `answers`.
+    /// the sign-in popup. Its own `fetch` answers nothing, so a request made from the page's world
+    /// shows in `trapped`.
     private static let creditPrograms = URL(string: "https://cour01.ntust.edu.tw/DMP_student/")!
     private static let creditProgramApp = """
-    window.requests = []; window.commits = [];
+    window.trapped = []; window.commits = [];
+    window.fetch = async (address) => { trapped.push(String(address)); return new Response('{}', { status: 500 }); };
+    document.getElementById('app').__vue__ = { $store: { commit: (name, value) => commits.push([name, value]) } };
+    """
+    /// The site's `api/` as the browser's own script world reaches it, answered with `answers`.
+    private static let creditProgramServer = """
+    window.requests = [];
     window.answers = { 'api/tokens': [200, { Token: 'a.b-c' }], 'api/users': [401, {}] };
     window.fetch = async (address, init = {}) => {
-      requests.push([String(address), init.method || 'get', init.body || null, (init.headers || {})['Content-Type'] || null]);
+      requests.push([String(address), init.method || 'get', init.body || null, (init.headers || {})['Content-Type'] || null, init.redirect || null]);
       const [status, body] = answers[address];
       return new Response(JSON.stringify(body), { status });
     };
-    document.getElementById('app').__vue__ = { $store: { commit: (name, value) => commits.push([name, value]) } };
     """
 
     private func creditProgramPage(answers: String = "", cookie: String = "", loader: Loader = Loader()) async -> WKWebView {
-        await page("<div id=\"app\"></div>", at: Self.creditPrograms, script: Self.creditProgramApp + answers + cookie, loader: loader)
+        let webView = await page("<div id=\"app\"></div>", at: Self.creditPrograms, script: Self.creditProgramApp + cookie, loader: loader)
+        _ = try? await webView.callAsyncJavaScript(Self.creditProgramServer + answers, contentWorld: .defaultClient)
+        return webView
     }
 
-    private func read(_ webView: WKWebView, _ expression: String) async -> String? {
-        (try? await webView.callAsyncJavaScript("return JSON.stringify(" + expression + ")", contentWorld: .page)) as? String
+    private func read(_ webView: WKWebView, _ expression: String, in world: WKContentWorld = .page) async -> String? {
+        (try? await webView.callAsyncJavaScript("return JSON.stringify(" + expression + ")", contentWorld: world)) as? String
+    }
+
+    /// The statuses of the posts the stored-password rules let through.
+    private final class Posts {
+        var statuses: [Int?] = []
+    }
+
+    private func creditProgramSignIn(_ posts: Posts, sessionIsLive: Bool = true) -> BrowserSiteSignIn {
+        BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { sessionIsLive }, postingStoredPassword: { post in
+            let status = await post()
+            posts.statuses.append(status)
+            return status
+        })
     }
 
     @Test func signsInToTheCreditProgramsAsItsPopupDoes() async {
-        let loader = Loader()
+        let loader = Loader(), posts = Posts()
         let webView = await creditProgramPage(loader: loader)
-        await BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { true }).pageFinished(in: webView)
+        await creditProgramSignIn(posts).pageFinished(in: webView)
 
-        let post = #"[["api/tokens","post","{\"AccountId\":\"B00000001\",\"Password\":\"not-a-password\"}","application/json; charset=utf-8"]]"#
-        #expect(await read(webView, "requests") == post)
+        let post = #"[["api/tokens","post","{\"AccountId\":\"B00000001\",\"Password\":\"not-a-password\"}","application/json; charset=utf-8","error"]]"#
+        #expect(await read(webView, "requests", in: .defaultClient) == post)
+        #expect(posts.statuses == [200])
+        #expect(await read(webView, "trapped") == "[]", "nothing goes through the page's own fetch")
         #expect(await read(webView, "document.cookie") == #""token=a.b-c""#)
         #expect(await read(webView, "commits") == "[]")
         #expect(loader.refused == [.reload])
     }
 
     @Test func aRefusedSignInOpensThePopupForTheStudent() async {
-        let loader = Loader()
+        let loader = Loader(), posts = Posts()
         let webView = await creditProgramPage(answers: "answers['api/tokens'] = [400, {}];", loader: loader)
-        await BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { true }).pageFinished(in: webView)
+        await creditProgramSignIn(posts).pageFinished(in: webView)
 
-        #expect(await read(webView, "requests.map((request) => request[0])") == #"["api/tokens"]"#)
+        #expect(await read(webView, "requests.map((request) => request[0])", in: .defaultClient) == #"["api/tokens"]"#)
+        #expect(posts.statuses == [400])
         #expect(await read(webView, "document.cookie") == #""""#)
         #expect(await read(webView, "commits") == #"[["setShowLogin",true]]"#)
         #expect(loader.refused.isEmpty)
     }
 
-    @Test func withNoLiveSchoolSessionThePopupOpensAndNothingIsPosted() async {
+    @Test func aPostTheStoredPasswordRulesHoldBackOpensThePopup() async {
         let webView = await creditProgramPage()
-        await BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { false }).pageFinished(in: webView)
+        let heldBack = BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { true }, postingStoredPassword: { _ in nil })
+        await heldBack.pageFinished(in: webView)
 
-        #expect(await read(webView, "requests") == "[]")
+        #expect(await read(webView, "requests", in: .defaultClient) == "[]")
+        #expect(await read(webView, "commits") == #"[["setShowLogin",true]]"#)
+    }
+
+    @Test func withNoLiveSchoolSessionThePopupOpensAndNothingIsPosted() async {
+        let posts = Posts()
+        let webView = await creditProgramPage()
+        await creditProgramSignIn(posts, sessionIsLive: false).pageFinished(in: webView)
+
+        #expect(await read(webView, "requests", in: .defaultClient) == "[]")
+        #expect(posts.statuses.isEmpty)
         #expect(await read(webView, "commits") == #"[["setShowLogin",true]]"#)
     }
 
     @Test func aTokenThePageStillTakesIsKept() async {
         let webView = await creditProgramPage(answers: "answers['api/users'] = [200, {}];", cookie: "document.cookie = 'token=old';")
-        await BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { true }).pageFinished(in: webView)
+        await creditProgramSignIn(Posts()).pageFinished(in: webView)
 
-        #expect(await read(webView, "requests.map((request) => request[0])") == #"["api/users"]"#)
+        #expect(await read(webView, "requests.map((request) => request[0])", in: .defaultClient) == #"["api/users"]"#)
         #expect(await read(webView, "document.cookie") == #""token=old""#)
         #expect(await read(webView, "commits") == "[]")
     }
