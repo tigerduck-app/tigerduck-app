@@ -114,6 +114,30 @@ struct ClubSubscriptionsTests {
         #expect(try #require(ClubSubscriptionsDocument.Stamp(stamp.text)).date > latest.date)
     }
 
+    @Test("the first subscribed club, subscribed here or adopted from another device, starts the club fetch once")
+    func firstSubscriptionStartsTheFetch() async {
+        await withExclusiveRealDefaults {
+            Self.reset()
+            defer { Self.reset() }
+            let adopting = ClubSubscriptions(now: Self.clock())
+            var adoptedStarts = 0
+            adopting.onFirstSubscription = { adoptedStarts += 1 }
+
+            adopting.adopt(ClubSubscriptionsDocument(clubs: [41: .init(subscribed: .init(value: true, at: .init(Date())))]), for: testSignIn)
+            adopting.subscribe(93, for: testSignIn)
+            #expect(adoptedStarts == 1)
+
+            Self.reset()
+            let subscribing = ClubSubscriptions(now: Self.clock())
+            var subscribedStarts = 0
+            subscribing.onFirstSubscription = { subscribedStarts += 1 }
+
+            subscribing.subscribe(93, for: testSignIn)
+            subscribing.subscribe(33, for: testSignIn)
+            #expect(subscribedStarts == 1)
+        }
+    }
+
     @Test("signing out forgets the subscriptions, their colors and the unsent mark")
     func signOutForgets() async {
         await withExclusiveRealDefaults {
