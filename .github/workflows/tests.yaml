@@ -599,16 +599,16 @@ jobs:
           submodules: true
           fetch-depth: 2
 
-      # Skips the steps for the documentation-only changes `unit-tests` skips.
+      # The suites run only for a change to the search bridge, the pages that use it, its tests or
+      # this file.
       - name: Changed paths
         id: changes
         run: |
           run=true
           files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
-          if [ -n "$files" ] && ! printf '%s\n' "$files" \
-              | grep -qvE '\.md$|^(docs|openspec|api-poc|\.claude|\.agents|\.greptile|\.github/ISSUE_TEMPLATE)/|^LICENSE'; then
+          if ! printf '%s\n' "$files" | grep -qE '^(swift/TigerDuck/UI/ViewHelpers/View\+NavigationBarSearch|swift/TigerDuck/Features/InformationSystem/InformationSystemView|swift/TigerDuck/Features/Bulletins/BulletinsView|swift/TigerDuckTests/SearchDrawerFirstOpenTests|swift/TigerDuckTests/NavigationBarSearchTests)\.swift$|^\.github/workflows/tests\.yaml$'; then
             run=false
-            echo "Documentation-only change: skipping the build and tests."
+            echo "No change to the navigation bar search or to tests.yaml: skipping the build and tests."
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
