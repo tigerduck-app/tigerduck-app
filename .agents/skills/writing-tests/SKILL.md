@@ -44,6 +44,11 @@ unrelated tests with "Time limit was exceeded".
   does with `entered`, and the test waits for the count.
 - A deadline the code enforces gets a limit a starved main actor still meets; the test checks
   the order of events.
+- A `.timeLimit` on a main-actor test is at least five minutes: on CI such tests have waited
+  over a minute for their turn.
+- An on-screen action that also scrolls or animates (clearing a search field scrolls the list
+  back to it) can take the view the test watches off screen first. Set the scene up so the
+  motion cannot change what is asserted, for example a window tall enough that nothing scrolls.
 
 ## The test environment
 

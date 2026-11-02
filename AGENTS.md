@@ -55,6 +55,9 @@ the same build folder.
 
 ## Conventions
 
+- Reuse before writing: search the whole repository for an implementation of each concept a
+  change needs, and use, extend or extract it into one shared place for every caller. Before
+  every push, follow the `review-before-push` skill.
 - One-time upgrade compatibility code goes only in `swift/TigerDuck/Migrations/`.
 - Label issues and pull requests as `docs/issue-triage.md` says.
 - Localized strings come from the `app-translation` submodule, which takes its own pull requests.
