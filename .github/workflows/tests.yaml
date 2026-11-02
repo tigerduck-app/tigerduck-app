@@ -84,6 +84,7 @@ jobs:
               TigerDuckTests/MoodleOwnProfileTests/theCameraButtonFollowsTheSite()
               TigerDuckTests/MoodleOwnProfileTests/theOwnRowSaysMe()
               TigerDuckTests/MoodleRefreshFailureNoteTests/noteShowsOnlyOverContent()
+              TigerDuckTests/MoreHomeLayoutTests
               TigerDuckTests/PasswordFieldAutoFillTests
               TigerDuckTests/PullToRevealSearchTests
               TigerDuckTests/ScrollPositionOriginTests
