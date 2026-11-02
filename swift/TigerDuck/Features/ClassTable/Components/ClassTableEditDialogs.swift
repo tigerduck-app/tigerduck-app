@@ -70,9 +70,7 @@ struct ClassTableEditDialogs: ViewModifier {
             .sheet(item: $viewModel.selection.club) { club in
                 ClubActivityDetailSheet(club: club, policy: app.preferences.visualStylePolicy)
             }
-            .sheet(isPresented: $editor.dialogs.showsClubSubscriptions, onDismiss: {
-                Task { await SchoolRefresh.clubActivities() }
-            }) {
+            .sheet(isPresented: $editor.dialogs.showsClubSubscriptions) {
                 ClubSubscribeSheet(signIn: app.authService.session.currentSignIn)
                     .presentationDetents([.large])
             }
