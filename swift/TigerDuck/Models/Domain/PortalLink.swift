@@ -30,8 +30,7 @@ nonisolated struct PortalLink: Codable, Hashable, Identifiable, Sendable {
     var id: Self { self }
 }
 
-/// The portal has a Chinese page and a separate English one; every other language reads the
-/// English page, as the course API's language does.
+/// The portal has a Chinese page and a separate English one.
 nonisolated enum PortalLanguage: String, Codable, Sendable {
     case zh, en
 

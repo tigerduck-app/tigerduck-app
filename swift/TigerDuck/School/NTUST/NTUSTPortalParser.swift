@@ -1,15 +1,15 @@
 import Foundation
 import SwiftSoup
 
-/// Reads the links of the student portal, `i.ntust.edu.tw/student` or its English page: a
+/// The student portal, `i.ntust.edu.tw/student` or its English page, holds its links in a
 /// `#service` block whose children are the groups, each named by its id (`PortalCategory`).
 nonisolated enum NTUSTPortalParser {
     /// The portal still links the research ethics course at `ae.ntust.edu.tw`, whose certificate
     /// covers only `*.cge.ntust.edu.tw`; the course is served at `ae.cge.ntust.edu.tw`.
     private static let movedHosts = ["ae.ntust.edu.tw": "ae.cge.ntust.edu.tw"]
 
-    /// The groups' links in page order, or nil for a page with no `#service` block, which a
-    /// lapsed session or a redesigned page serves, unlike a portal with no links.
+    /// Nil for a page with no `#service` block, which a lapsed session or a redesigned page
+    /// serves, unlike a portal with no links.
     static func links(in html: String, pageURL: URL) -> [PortalLink]? {
         guard let document = try? SwiftSoup.parse(html),
               let service = try? document.getElementById("service") else { return nil }
@@ -24,20 +24,17 @@ nonisolated enum NTUSTPortalParser {
         guard let name = try? anchor.text().trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
               let href = try? anchor.attr("href").trimmingCharacters(in: .whitespacesAndNewlines),
               let resolved = URL(string: href, relativeTo: pageURL)?.absoluteURL, !isPage(resolved, pageURL),
-              let url = secured(resolved) else { return nil }
+              let url = httpsURL(for: resolved) else { return nil }
         return PortalLink(category: category, name: name, url: moved(url))
     }
 
-    /// An empty or fragment-only href, such as a placeholder `#`, leads back to the portal page.
     private static func isPage(_ url: URL, _ pageURL: URL) -> Bool {
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         components?.fragment = nil
         return components?.url == pageURL
     }
 
-    /// An https link as it is; an http one only on a school host, moved to https, which the
-    /// TigerDuck browser opens where Safari would open the http one.
-    private static func secured(_ url: URL) -> URL? {
+    private static func httpsURL(for url: URL) -> URL? {
         switch url.scheme?.lowercased() {
         case "https":
             return url
@@ -53,7 +50,6 @@ nonisolated enum NTUSTPortalParser {
         }
     }
 
-    /// Only the host changes, so an escaped `/` or `&` in the path or query stays escaped.
     private static func moved(_ url: URL) -> URL {
         guard let host = url.host(percentEncoded: false)?.lowercased(), let movedHost = movedHosts[host],
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }

@@ -1,8 +1,5 @@
 import Foundation
 
-/// The demo account reaches no server, so the browser loads no page for it: a demo portal link's
-/// page is made on the device and shown as `about:blank`, the one load the demo lets through,
-/// and every other page fails.
 @MainActor
 struct BrowserDemoPages {
     enum Decision: Equatable {
@@ -18,6 +15,7 @@ struct BrowserDemoPages {
     }
 
     func decide(_ url: URL) -> Decision {
+        // WebKit asks for a page loaded with `loadHTMLString(_:baseURL: nil)` as `about:blank`.
         if url.scheme?.lowercased() == "about" { return .allow }
         return page(url).map(Decision.show) ?? .refuse
     }

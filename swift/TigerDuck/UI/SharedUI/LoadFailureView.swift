@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// A list's first load that failed, with a way to try again.
 struct LoadFailureView: View {
     let title: String
     let message: String

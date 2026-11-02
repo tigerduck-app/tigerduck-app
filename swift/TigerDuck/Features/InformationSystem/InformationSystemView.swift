@@ -22,8 +22,7 @@ struct InformationSystemView: View {
         )
     }
 
-    /// From the Keychain, which reads nothing before the first unlock: the page then shows its
-    /// loading state, and `AuthService` reads again once the device unlocks.
+    /// Nil before the device's first unlock, when the Keychain reads nothing.
     private func request() -> InformationSystemViewModel.Request? {
         guard let studentId = app.authService.storedStudentId, let password = app.authService.storedPassword else {
             return nil
@@ -37,7 +36,6 @@ struct InformationSystemView: View {
     }
 }
 
-/// The page itself, which reads nothing from the app's environment.
 struct InformationSystemPage: View {
     let request: InformationSystemViewModel.Request?
     let signedIn: Bool
@@ -48,8 +46,8 @@ struct InformationSystemPage: View {
     @State private var demoLink: PortalLink?
     @Environment(\.openURL) private var openURL
 
-    /// The saved links are there from the first frame: the search drawer starts folded only when
-    /// it is attached before the page first shows.
+    /// UIKit folds the search drawer only for a search attached before the page first shows, so
+    /// the saved links are read before the first frame.
     init(
         request: InformationSystemViewModel.Request?, signedIn: Bool, policy: VisualStylePolicy,
         onSignIn: @escaping () -> Void, store: PortalLinks? = nil

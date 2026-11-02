@@ -1,8 +1,6 @@
 import Defaults
 import Foundation
 
-/// The demo account's portal links, `demo.json`'s `informationSystem`, and the page the
-/// TigerDuck browser shows for one, made here, as the demo account reaches no server.
 nonisolated enum DemoPortal {
     static func links(in language: PortalLanguage, fixture: DemoFixture? = .bundled) -> [PortalLink] {
         let shown: DemoLanguage = language == .zh ? .zh : .en

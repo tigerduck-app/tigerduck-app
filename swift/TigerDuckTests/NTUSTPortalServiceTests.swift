@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// A school that answers the portal's page from memory, for the portal's service and store.
 @MainActor
 final class FakePortalSchool {
     /// The page each load answers with, the last one repeating; nil answers with the sign-in form.

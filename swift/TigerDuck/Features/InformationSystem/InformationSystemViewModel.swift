@@ -9,7 +9,6 @@ final class InformationSystemViewModel {
         case failed(String)
     }
 
-    /// The account, sign-in and language links are shown for; a load for another is dropped.
     struct Request: Equatable {
         let studentId: String
         let password: String
@@ -32,7 +31,6 @@ final class InformationSystemViewModel {
     @ObservationIgnored private var request: Request?
     @ObservationIgnored private var fetching: Request?
 
-    /// Shows the saved links of `request` from the start.
     init(store: PortalLinks? = nil, showing request: Request? = nil) {
         self.store = store ?? PortalLinks()
         show(request)
@@ -40,25 +38,20 @@ final class InformationSystemViewModel {
 
     var sections: [Section] { Self.sections(of: links, in: category, matching: query) }
 
-    /// The school's answer to the last read, for the status dot; a failure there leaves the
-    /// shown links in place.
     var status: ServerStatus {
         if case .failed = phase { return .failed }
         return fetchedAt == nil ? .unknown : .ok
     }
 
-    /// Shows the saved links of `request`, then reads the school's when none are saved or they
-    /// are older than `PortalLinks.freshness`, unless a read failed within it. Nil, signed out,
-    /// shows nothing.
     func open(_ request: Request?) async {
         show(request)
         guard let request else { return }
         if let fetchedAt, !links.isEmpty, PortalLinks.freshness.isFresh(storedAt: fetchedAt, now: store.now()) {
             return
         }
-        let failure = store.recentFailure(studentId: request.studentId, language: request.language, for: request.signIn)
-        if let failure {
-            phase = .failed(failure)
+        let unreadable = store.recentUnreadablePage(studentId: request.studentId, language: request.language, for: request.signIn)
+        if let unreadable {
+            phase = .failed(unreadable)
             return
         }
         await fetch(request)
@@ -75,7 +68,6 @@ final class InformationSystemViewModel {
         query = ""
     }
 
-    /// Reads the school's links again, for a pull or a retry.
     func refresh() async {
         guard let request else { return }
         await fetch(request)
@@ -112,8 +104,6 @@ final class InformationSystemViewModel {
         isDemo && browser == .system ? .demoPage(link) : .address(link.url)
     }
 
-    /// The links of `category`, or of every category, whose name or category name holds `query`,
-    /// ignoring case and diacritics, grouped in the portal's order.
     static func sections(of links: [PortalLink], in category: PortalCategory?, matching query: String) -> [Section] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return PortalCategory.allCases.compactMap { shown in

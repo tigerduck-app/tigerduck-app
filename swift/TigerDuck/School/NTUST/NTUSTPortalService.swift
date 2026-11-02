@@ -12,8 +12,6 @@ enum NTUSTPortalError: LocalizedError, Equatable {
     }
 }
 
-/// The student portal's links, read with the school SSO session. It signs in only when the
-/// page is not answered, so a live session costs one request.
 @MainActor
 struct NTUSTPortalService {
     struct Credentials: Sendable {
@@ -53,7 +51,6 @@ struct NTUSTPortalService {
         return links
     }
 
-    /// Nil for an answer from another host, the sign-in form, or a page with no links.
     private func read(_ url: URL) async throws -> [PortalLink]? {
         let (data, response) = try await load(url)
         guard let landed = response.url, landed.host() == url.host(),

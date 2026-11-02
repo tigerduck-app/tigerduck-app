@@ -12,7 +12,7 @@ struct InformationSystemViewModelTests {
             .appendingPathComponent("InformationSystemViewModelTests-\(UUID().uuidString)", isDirectory: true)
         let school = FakePortalSchool()
         let session = AccountSession()
-        let failures = PortalLinks.Failures()
+        let unreadablePages = PortalLinks.UnreadablePages()
         var now = Date()
         var demoLinks: [PortalLink] = []
 
@@ -21,7 +21,7 @@ struct InformationSystemViewModelTests {
 
         var store: PortalLinks {
             PortalLinks(
-                files: files, service: school.service, failures: failures, demoLinks: { _ in self.demoLinks }, now: { self.now }
+                files: files, service: school.service, unreadablePages: unreadablePages, demoLinks: { _ in self.demoLinks }, now: { self.now }
             )
         }
 
@@ -211,14 +211,14 @@ struct InformationSystemViewModelTests {
 
         harness.school.pages = [nil]
         var shared = harness.store
-        shared.failures = .shared
+        shared.unreadablePages = .shared
         _ = try? await shared.fetch(studentId: "B00000001", password: "not-a-password", language: .zh, for: harness.session.signIns.currentSignIn)
-        #expect(shared.recentFailure(studentId: "B00000001", language: .zh, for: harness.session.signIns.currentSignIn) != nil)
-        #expect(SignOutPlan.schoolStores.contains { $0 == PortalLinks.Failures.self })
-        for store in SignOutPlan.schoolStores where store == PortalLinks.Failures.self {
+        #expect(shared.recentUnreadablePage(studentId: "B00000001", language: .zh, for: harness.session.signIns.currentSignIn) != nil)
+        #expect(SignOutPlan.schoolStores.contains { $0 == PortalLinks.UnreadablePages.self })
+        for store in SignOutPlan.schoolStores where store == PortalLinks.UnreadablePages.self {
             store.forgetAccount(in: AccountStorage(folders: harness.folders))
         }
-        #expect(shared.recentFailure(studentId: "B00000001", language: .zh, for: harness.session.signIns.currentSignIn) == nil)
+        #expect(shared.recentUnreadablePage(studentId: "B00000001", language: .zh, for: harness.session.signIns.currentSignIn) == nil)
     }
 
     @Test("a network failure is not kept: the next open reads the school again")

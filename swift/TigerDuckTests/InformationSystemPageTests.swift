@@ -37,16 +37,14 @@ struct InformationSystemPageTests {
         studentId: "B00000000", password: "not-a-password", language: .en, signIn: testSignIn
     )
 
-    /// With `saved`, the links an earlier visit saved, which the page shows from its first frame.
     private static func store(_ school: FakePortalSchool, in folder: Folder, saved: Bool) -> PortalLinks {
         let files = PortalLinkFiles(folders: CacheFolders(root: folder.root))
         if saved, let links = NTUSTPortalParser.links(in: page, pageURL: PortalPages.pageURL) {
             files.save(.init(links: links, fetchedAt: Date()), studentId: request.studentId, language: request.language)
         }
-        return PortalLinks(files: files, service: school.service, failures: PortalLinks.Failures())
+        return PortalLinks(files: files, service: school.service, unreadablePages: PortalLinks.UnreadablePages())
     }
 
-    /// The page's request, which the app builds from the Keychain and rebuilds once it unlocks.
     @Observable
     fileprivate final class Keychain {
         var request: InformationSystemViewModel.Request?
@@ -115,7 +113,6 @@ struct InformationSystemPageTests {
         labels(in: window).contains { $0.contains(text) }
     }
 
-    /// The chip row scrolls sideways, so its chips past the edge are left out.
     private static func expectNoOverflow(in window: UIWindow, sourceLocation: SourceLocation = #_sourceLocation) throws {
         let root = try #require(window.rootViewController?.view)
         let chips = Set(PortalCategory.allCases.map { String(localized: $0.titleKey) })

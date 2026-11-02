@@ -1,6 +1,5 @@
 import Foundation
 
-/// The student portal's links, one file per account and language.
 struct PortalLinkFiles: AccountScoped {
     struct Saved: Codable, Equatable {
         let links: [PortalLink]
