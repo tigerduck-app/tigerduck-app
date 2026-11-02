@@ -86,6 +86,12 @@ struct BrowserSchoolSitesTests {
         #expect(BrowserSchoolSites.signInForm(at: Self.url("https://StuInfoSys.ntust.edu.tw/Authenticate/SSOAccount/Index/SSOcgesocial?x=1")) == form)
     }
 
+    @Test func theStudentCardSignInIsFilledByItsFieldsNames() {
+        #expect(BrowserSchoolSites.signInForm(at: Self.url("https://cardsystem.ntust.edu.tw/std/index.php/user/login"))
+            == BrowserSchoolSites.SignInForm(studentId: "id", password: "password"))
+        #expect(BrowserSchoolSites.signInForm(at: Self.url("https://cardsystem.ntust.edu.tw/std/index.php/user/agreement")) == nil)
+    }
+
     @Test(arguments: [
         "http://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/ethicscourse",
         "https://stuinfosys.ntust.edu.tw:8443/Authenticate/Account/EnrollStudent/ethicscourse",

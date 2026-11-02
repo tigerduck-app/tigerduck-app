@@ -62,6 +62,7 @@ nonisolated enum BrowserSchoolSites {
     private static let signInForms: [String: SignInForm] = [
         "https://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/ethicscourse": SignInForm(studentId: "UserName", password: "Password"),
         "https://stuinfosys.ntust.edu.tw/Authenticate/SSOAccount/Index/SSOcgesocial": SignInForm(studentId: "UserName", password: "Password"),
+        "https://cardsystem.ntust.edu.tw/std/index.php/user/login": SignInForm(studentId: "id", password: "password"),
     ]
 
     private static let uriComponent = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
