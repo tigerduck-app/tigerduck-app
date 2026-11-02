@@ -8,6 +8,11 @@ struct ClassTableSelection {
         let periodId: String
     }
 
+    struct ClubPickerTarget: Identifiable {
+        let id = UUID()
+        let clubs: [ClubOccurrence]
+    }
+
     var course: CourseStore.Course?
     var weekday: Int?
     var periodId: String?
@@ -15,6 +20,8 @@ struct ClassTableSelection {
     var date: Date?
     var currentClassSlot: CourseTimeSlot?
     var conflictPickerTarget: ConflictPickerTarget?
+    var club: ClubOccurrence?
+    var clubPicker: ClubPickerTarget?
 
     var timeRange: String? {
         if let periods = coursePeriods { return CourseStore.Course.timeRange(periods: periods) }

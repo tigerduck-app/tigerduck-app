@@ -34,10 +34,12 @@ struct ClassTableHeaderMenu: View {
             } label: {
                 Label(String(localized: "add_course_title"), systemImage: "plus")
             }
-            Button {} label: {
+            Button {
+                viewModel.editor.dialogs.showsClubSubscriptions = true
+            } label: {
                 Label(String(localized: "class_table_subscribe_clubs"), systemImage: "person.2")
             }
-            .disabled(true)
+            .disabled(!viewModel.showsClubs)
         }
         Section {
             Button {

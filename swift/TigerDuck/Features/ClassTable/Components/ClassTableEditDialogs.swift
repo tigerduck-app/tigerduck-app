@@ -57,5 +57,25 @@ struct ClassTableEditDialogs: ViewModifier {
                 )
                 .presentationDetents([.medium])
             }
+            .sheet(item: $viewModel.selection.clubPicker) { target in
+                ConflictPickerSheet(
+                    title: String(localized: "class_table_club_picker_title"),
+                    rows: target.clubs.map(ConflictPickerSheet.Row.init(club:)),
+                    onPick: { id in
+                        if let club = target.clubs.first(where: { String($0.id) == id }) { viewModel.pickFromClubPicker(club) }
+                    }
+                )
+                .presentationDetents([.medium])
+            }
+            .sheet(item: $viewModel.selection.club) { club in
+                ClubActivityDetailSheet(club: club, policy: app.preferences.visualStylePolicy)
+            }
+            .sheet(isPresented: $editor.dialogs.showsClubSubscriptions, onDismiss: {
+                Task { await SchoolRefresh.clubActivities() }
+            }) {
+                ClubSubscribeSheet(signIn: app.authService.session.currentSignIn)
+                    .presentationDetents([.large])
+            }
+            .clubColorSheet($editor.dialogs.clubToRecolor, signIn: app.authService.session.currentSignIn)
     }
 }

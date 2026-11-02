@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import TigerDuckCore
 
 @MainActor
 @Observable
@@ -9,6 +10,7 @@ final class ClassTableGrid {
     struct CellRoleKey: Hashable {
         let weekday: Int
         let periodIndex: Int
+        let withClubs: Bool
     }
 
     var courses: [CourseStore.Course] = [] {
@@ -16,6 +18,13 @@ final class ClassTableGrid {
     }
 
     var courseChanges: SchoolCalendar.Changes = SchoolCalendar.changes
+
+    /// The coming week's activities of the subscribed clubs, by weekday from 1 for Monday. A row or
+    /// column they reach shows as for a course, except in the export, which leaves clubs out.
+    private(set) var clubs: [Int: [ClubOccurrence]] = [:] {
+        didSet { invalidateCellRoleCache() }
+    }
+    @ObservationIgnored let clubFeed: ClubActivities
 
     private(set) var showsAllPeriods: Bool = Defaults[.alwaysShowAllPeriods]
     @ObservationIgnored var cellRoleCache: [CellRoleKey: CellRole] = [:]
@@ -25,7 +34,8 @@ final class ClassTableGrid {
 
     @ObservationIgnored var onCoursesChange: () -> Void = {}
 
-    init() {
+    init(clubFeed: ClubActivities = .shared) {
+        self.clubFeed = clubFeed
         periodVisibilityTask = Task { [weak self] in
             for await value in Defaults.updates(.alwaysShowAllPeriods, initial: true) {
                 guard let self else { return }
@@ -54,6 +64,13 @@ final class ClassTableGrid {
         onCoursesChange()
     }
 
+    /// Shows the activities on `days`, each in its weekday's column.
+    func showClubs(on days: [Date]) {
+        let weekdays = Dictionary(days.map { (TaipeiTime.dayKey(for: $0), $0.scheduleWeekday) }) { first, _ in first }
+        let shown = Dictionary(grouping: clubFeed.occurrences(on: days)) { weekdays[$0.day] ?? 0 }
+        if shown != clubs { clubs = shown }
+    }
+
     func invalidateCellRoleCache() {
         cellRoleCache.removeAll(keepingCapacity: true)
     }
@@ -62,18 +79,23 @@ final class ClassTableGrid {
         courses.reduce(0) { $0 + $1.credits }
     }
 
-    var activeWeekdays: [Int] {
+    var activeWeekdays: [Int] { activeWeekdays(withClubs: true) }
+
+    func activeWeekdays(withClubs: Bool) -> [Int] {
         var days = Set<Int>()
         for course in courses {
             for day in course.schedule.keys { days.insert(day) }
         }
+        if withClubs { days.formUnion(clubs.filter { !$0.value.isEmpty }.keys) }
         var result = Array(1...5)
         if days.contains(6) { result.append(6) }
         if days.contains(7) { result.append(7) }
         return result.sorted()
     }
 
-    var activePeriods: [TimetablePeriod] {
+    var activePeriods: [TimetablePeriod] { activePeriods(withClubs: true) }
+
+    func activePeriods(withClubs: Bool) -> [TimetablePeriod] {
         var periodIds = Set(AppConstants.Periods.defaultVisible)
         if showsAllPeriods {
             periodIds.formUnion(AppConstants.Periods.chronologicalOrder)
@@ -81,6 +103,14 @@ final class ClassTableGrid {
         for course in courses {
             for periods in course.schedule.values {
                 for p in periods { periodIds.insert(p) }
+            }
+        }
+        if withClubs {
+            for club in clubs.values.joined() {
+                for period in TimetablePeriod.all {
+                    guard let times = period.minutes, club.start < times.end, times.start < club.end else { continue }
+                    periodIds.insert(period.id)
+                }
             }
         }
         let order = AppConstants.Periods.chronologicalOrder
@@ -95,12 +125,12 @@ final class ClassTableGrid {
         courseLookup[weekday]?[period] ?? []
     }
 
-    func cellRole(weekday: Int, periodIndex: Int) -> CellRole {
-        let key = CellRoleKey(weekday: weekday, periodIndex: periodIndex)
+    func cellRole(weekday: Int, periodIndex: Int, withClubs: Bool = true) -> CellRole {
+        let key = CellRoleKey(weekday: weekday, periodIndex: periodIndex, withClubs: withClubs)
         if let cached = cellRoleCache[key] { return cached }
         let role = ClassTableLayout.cellRole(
             courses: courses,
-            periodIds: activePeriods.map(\.id),
+            periodIds: activePeriods(withClubs: withClubs).map(\.id),
             weekday: weekday,
             periodIndex: periodIndex,
             keyOf: { $0.courseNo },

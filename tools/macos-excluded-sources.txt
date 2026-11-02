@@ -91,8 +91,10 @@ SearchSheetChrome.swift
 
 # Features/ClassTable — club subscriptions and their activities, which only the iPhone class table
 # shows for now
+ClassTableClubLayout.swift
 ClubActivityDetailSheet.swift
 ClubSubscribeSheet.swift
+TimetableClubBlock.swift
 
 # Features/CourseMoodle — the assignment page; the Mac opens an assignment on Moodle instead
 MoodleAssignmentDetails.swift

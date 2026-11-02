@@ -21,7 +21,7 @@ final class ClassTableViewModel {
 
     var assignments: [AssignmentStore.Assignment] = []
     var selection = ClassTableSelection()
-    let grid = ClassTableGrid()
+    let grid: ClassTableGrid
     let today: ClassTableToday
     let people: ShownPersonModel
     let editor: ClassTableEditor
@@ -31,7 +31,7 @@ final class ClassTableViewModel {
             including: SchoolTerms.selected(storedPick: Defaults[.classTableSelectedSemester])
         )
     )
-    @ObservationIgnored private var storeObservation: StoreObservation?
+    @ObservationIgnored private var storeObservations: [StoreObservation] = []
 
     private struct OwnTerms {
         var options: [String]
@@ -41,6 +41,7 @@ final class ClassTableViewModel {
         isClassDay: @escaping (Date) -> Bool = { _ in true },
         courses: CourseStore = .shared,
         importedTables: ImportedClassTableStore = .shared,
+        clubs: ClubActivities = .shared,
         lookUpImportedTerm: @escaping ShownPersonModel.TermLookup = {
             await SchoolRefresh.importedTerm(semester: $0, courseNos: $1, current: $2)
         }
@@ -48,12 +49,19 @@ final class ClassTableViewModel {
         today = ClassTableToday(isClassDay: isClassDay)
         people = ShownPersonModel(store: importedTables, lookUpTerm: lookUpImportedTerm)
         editor = ClassTableEditor(store: courses)
+        grid = ClassTableGrid(clubFeed: clubs)
         editor.owner = self
         loader.owner = self
         grid.onCoursesChange = { [weak self] in self?.refreshCourseColors() }
-        storeObservation = StoreObservation(read: { _ = AppDataRevision.current }) { [weak self] in
-            self?.reloadFromCache()
-        }
+        storeObservations = [
+            StoreObservation(read: { _ = AppDataRevision.current }) { [weak self] in
+                self?.reloadFromCache()
+            },
+            // An empty list of days still reads the feed, the subscriptions and the club names.
+            StoreObservation(read: { _ = clubs.occurrences(on: []) }) { [weak self] in
+                self?.refreshClubs()
+            },
+        ]
     }
 
     var courseStore: CourseStore { editor.store }
@@ -107,6 +115,7 @@ final class ClassTableViewModel {
     }
 
     func reloadFromCache() {
+        defer { refreshClubs() }
         if let shownPerson {
             today.reload()
             courses = shownPerson.courses(in: currentSemester)
@@ -136,6 +145,34 @@ final class ClassTableViewModel {
             return
         }
         follow(semester)
+    }
+
+    /// The user's own table for the newest term shows the subscribed clubs; the Mac's does not yet.
+    var showsClubs: Bool {
+        #if os(iOS)
+        shownPerson == nil && currentSemester == SchoolTerms.available().first
+        #else
+        false
+        #endif
+    }
+
+    /// Each column shows its weekday's next date, today's being today.
+    func refreshClubs(now: Date = AppClock.now()) {
+        grid.showClubs(on: showsClubs ? (1...7).map { Self.nextDate(onWeekday: $0, from: now) } : [])
+    }
+
+    /// One activity opens its details; several that meet open the picker.
+    func selectClubs(_ overlapping: [ClubOccurrence]) {
+        if overlapping.count > 1 {
+            selection.clubPicker = .init(clubs: overlapping)
+        } else {
+            selection.club = overlapping.first
+        }
+    }
+
+    func pickFromClubPicker(_ club: ClubOccurrence) {
+        selection.clubPicker = nil
+        selection.club = club
     }
 
     func refreshShownPerson() async {
