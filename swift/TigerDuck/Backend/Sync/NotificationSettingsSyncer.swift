@@ -5,22 +5,31 @@ import os
 
 @MainActor
 final class NotificationSettingsSyncer {
-    private let authTokenManager: AuthTokenManager
+    private let client: (SignIn) async -> SettingsDocumentClient?
     private let preferences: LiveActivityPreferencesStore
+    private var owed = SignInBound(empty: false)
 
-    init(authTokenManager: AuthTokenManager, preferences: LiveActivityPreferencesStore) {
-        self.authTokenManager = authTokenManager
+    init(preferences: LiveActivityPreferencesStore, client: @escaping (SignIn) async -> SettingsDocumentClient?) {
+        self.client = client
         self.preferences = preferences
     }
+
+    convenience init(authTokenManager: AuthTokenManager, preferences: LiveActivityPreferencesStore) {
+        self.init(preferences: preferences, client: SettingsDocumentClient.signedIn(with: authTokenManager))
+    }
+
+    /// Whether a reconcile failed since the last one that settled for this sign-in;
+    /// `retryUnacknowledged` reconciles again until one settles, as a change it failed to read is
+    /// not marked unsent.
+    var owesReconcile: Bool { owed.value }
 
 
     @discardableResult
     func push(stillQueued: @escaping @MainActor () -> Bool = { true }) async -> NotificationSettingsPushQueue.PushResult {
         guard Defaults[.cloudSyncEnabled] else { return .unsettled }
         let signIn = await AccountSession.school.startingSignIn
-        guard await authTokenManager.isLoggedIn, stillQueued() else { return .unsettled }
+        guard let client = await client(signIn), stillQueued() else { return .unsettled }
 
-        let client = SettingsDocumentClient(auth: authTokenManager.backendAuth, for: signIn)
         let local = NotificationSettingsSync.LocalPreferences(from: preferences)
         var sent: [String: Any] = [:]
         do {
@@ -61,9 +70,8 @@ final class NotificationSettingsSyncer {
         NotificationSettingsPushQueue.enqueueReconcile { [weak self] stillQueued in
             guard let self, Defaults[.cloudSyncEnabled] else { return .finished }
             let signIn = await AccountSession.school.startingSignIn
-            guard await self.authTokenManager.isLoggedIn, stillQueued() else { return .finished }
+            guard let client = await self.client(signIn), stillQueued() else { return .finished }
 
-            let client = SettingsDocumentClient(auth: self.authTokenManager.backendAuth, for: signIn)
             do {
                 let outcome = try await NotificationSettingsReconcile.reconcile(
                     store: self.preferences,
@@ -78,6 +86,7 @@ final class NotificationSettingsSyncer {
                 )
                 switch outcome {
                 case .settled:
+                    self.owed.set(false, for: signIn)
                     onSettled?()
                 case .deferredToPendingPush:
                     self.retryUnacknowledged()
@@ -86,6 +95,7 @@ final class NotificationSettingsSyncer {
                     break
                 }
             } catch {
+                self.owed.set(true, for: signIn)
                 AppLogger.sync.error(
                     "reconcileNotificationSettings failed: \(error.localizedDescription, privacy: .private)"
                 )
@@ -109,8 +119,11 @@ final class NotificationSettingsSyncer {
 
     func retryUnacknowledged() {
         guard Defaults[.cloudSyncEnabled] else { return }
-        guard Defaults[.notificationSettingsPushPending] else { return }
-        enqueuePush()
+        if Defaults[.notificationSettingsPushPending] {
+            enqueuePush()
+        } else if owesReconcile {
+            reconcile()
+        }
     }
 
     func adoptSection(_ section: NotificationSettingsSync.OwnedSection, for signIn: SignIn) {

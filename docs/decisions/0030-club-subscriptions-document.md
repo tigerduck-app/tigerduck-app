@@ -44,7 +44,8 @@ may change different clubs, or different values of one club, while one of them i
   only the later order stays, and a club the earlier one placed shows after the ordered ones.
 - Subscriptions are not tied to a term; they carry over to the next one.
 - A change marks the document unsent until a sync leaves nothing to send; the next full sync or
-  change-feed pull sends it again.
+  change-feed pull sends it again. A sync that fails, reading or writing, is owed until one
+  lands, and every poll runs it again, as a change it failed to read is not marked unsent.
 
 ## Alternatives
 
