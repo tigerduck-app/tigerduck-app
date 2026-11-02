@@ -56,8 +56,9 @@ After every `await` that precedes a write, check `signIn.isCurrent` again before
 ## 5. Platforms and CI
 
 - Run the touched on-screen and UIKit-bridged suites on an iOS 26 simulator and an iOS 27 one
-  before pushing. CI's phone job runs iOS 26.5 and its "iOS 18 search" job iOS 18.6; where
-  iOS 18 behavior is not run, say why in the pull request.
+  before pushing. CI's phone job runs the newest iOS runtime of its macOS image, which is older
+  than the newest Xcode's, and no job covers iOS 18 by default; where iOS 18 behavior is not
+  run, say why in the pull request.
 - Tests follow the `writing-tests` skill. A test that starts a scroll or an animation waits for
   the outcome it asserts, not for the motion to end.
 - A CI job, checker or script change is tried against its bypasses: a renamed or commented-out

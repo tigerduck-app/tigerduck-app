@@ -48,7 +48,7 @@ unrelated tests with "Time limit was exceeded".
   over a minute for their turn.
 - An on-screen action that also scrolls or animates (clearing a search field scrolls the list
   back to it) can take the view the test watches off screen first. Set the scene up so the
-  motion cannot change what is asserted, as `MoodleCourseSearchPageTests` grows its window.
+  motion cannot change what is asserted, for example a window tall enough that nothing scrolls.
 
 ## The test environment
 
