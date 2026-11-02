@@ -8,24 +8,28 @@ struct BrowserSessionSignInTests {
     private static let site = URL(string: "https://stuinfosys.ntust.edu.tw/StudentInformation")!
     private static let moodle = URL(string: "https://moodle2.ntust.edu.tw/my/")!
 
-    private static func cookie(_ name: String, _ domain: String, _ value: String = "v") -> HTTPCookie {
-        HTTPCookie(properties: [.name: name, .value: value, .domain: domain, .path: "/", .secure: "TRUE"])!
+    private static func cookie(_ name: String, _ domain: String, _ value: String = "v", secure: Bool = true) -> HTTPCookie {
+        var properties: [HTTPCookiePropertyKey: Any] = [.name: name, .value: value, .domain: domain, .path: "/"]
+        if secure { properties[.secure] = "TRUE" }
+        return HTTPCookie(properties: properties)!
     }
 
-    private static let identity = ".AspNetCore.Identity.Application"
+    /// ssoam2's session, which it sets on `.ntust.edu.tw`; on its own host it keeps only a load
+    /// balancer's cookie.
+    private static let session = "AuthServer"
     private static let appJars = [
-        [cookie(identity, "ssoam2.ntust.edu.tw", "harvest"), cookie("MoodleSession", "moodle2.ntust.edu.tw", "app")],
-        [cookie(identity, "ssoam2.ntust.edu.tw", "school"), cookie("shared", ".ntust.edu.tw"),
+        [cookie(session, ".ntust.edu.tw", "harvest"), cookie("MoodleSession", "moodle2.ntust.edu.tw", "app")],
+        [cookie(session, ".ntust.edu.tw", "school"), cookie("BIGipServerpool_ExamSSO_443", "ssoam2.ntust.edu.tw", "balancer"),
+         cookie("ntustLan", ".ntust.edu.tw", "insecure", secure: false),
          cookie("ASP.NET_SessionId", "courseselection.ntust.edu.tw", "app")],
     ]
     /// What the browser holds once its page passed SSO: SSO's renewed session, the site's own, and
     /// those of other sites the student opened.
     private static let browserJar = [
-        cookie(identity, "ssoam2.ntust.edu.tw", "renewed"),
-        cookie("ASP.NET_SessionId", "stuinfosys.ntust.edu.tw", "site"),
+        cookie(session, ".ntust.edu.tw", "renewed"),
+        cookie(".AspNetCore.Cookies", "stuinfosys.ntust.edu.tw", "site"),
         cookie("ASP.NET_SessionId", "courseselection.ntust.edu.tw", "other"),
         cookie("MoodleSession", "moodle2.ntust.edu.tw", "browser"),
-        cookie("tracker", ".ntust.edu.tw", "site"),
     ]
 
     private final class Browser {
@@ -75,8 +79,8 @@ struct BrowserSessionSignInTests {
 
         #expect(await browser.signIn(to: Self.site))
 
-        #expect(browser.put.map(\.value) == ["harvest", "school"])
-        #expect(browser.put.allSatisfy { $0.domain == "ssoam2.ntust.edu.tw" })
+        #expect(browser.put.map(\.value) == ["harvest", "school", "balancer"])
+        #expect(browser.put.filter { $0.name == Self.session }.allSatisfy { $0.domain == ".ntust.edu.tw" })
         #expect(browser.pages.map(\.entry) == [Self.site])
         #expect(browser.kept.map(\.value) == ["renewed"])
     }
@@ -87,9 +91,9 @@ struct BrowserSessionSignInTests {
         #expect(await browser.signIn(to: Self.moodle))
 
         #expect(browser.checks == 0, "Moodle's sign-in goes on as before, without the check")
-        #expect(browser.put.map(\.value) == ["harvest", "app", "school", "v"])
+        #expect(browser.put.map(\.value) == ["harvest", "app", "school", "balancer"])
         #expect(browser.pages.map(\.entry) == [BrowserRouting.webSignInURL])
-        #expect(browser.kept.map(\.value) == ["renewed", "browser", "site"])
+        #expect(browser.kept.map(\.value) == ["renewed", "browser"])
     }
 
     @Test func aLapsedSSOSessionIsRenewedOnceAndThenItsCookiesGoIn() async {
@@ -101,7 +105,7 @@ struct BrowserSessionSignInTests {
 
         #expect(browser.checks == 2)
         #expect(browser.renewals == 1)
-        #expect(browser.put.map(\.value) == ["harvest", "school", "harvest", "school"])
+        #expect(browser.put.map(\.value) == ["harvest", "school", "balancer", "harvest", "school", "balancer"])
         #expect(browser.pages.count == 2)
     }
 
@@ -208,6 +212,41 @@ struct BrowserSessionSignInTests {
         #expect(steps.navigating(to: Self.url("https://ssoam2.ntust.edu.tw/connect/authorize?client_id=x"), isMainFrame: true) == .allow)
         #expect(!steps.isSignedIn(at: Self.url("https://ssoam2.ntust.edu.tw/connect/authorize/callback")))
         #expect(steps.isSignedIn(at: Self.url("https://stuinfosys.ntust.edu.tw/Home")))
+    }
+
+    /// The school's OIDC flow as its sites run it: the site's own entry, then ssoam2's authorize,
+    /// which with SSO's session answers with a form_post page that posts the code to the site.
+    @Test func theSchoolsOIDCFlowSignsInWithSSOsSessionAndStopsWhereItCannot() {
+        let authorize = Self.url("https://ssoam2.ntust.edu.tw/connect/authorize?client_id=x&response_mode=form_post")
+        var steps = BrowserSignInSteps(target: Self.site)
+        for address in [
+            "https://stuinfosys.ntust.edu.tw/StudentInformation",
+            "https://stuinfosys.ntust.edu.tw/StudentInformation/Home/Login?ReturnUrl=%2F",
+            authorize.absoluteString,
+            "https://stuinfosys.ntust.edu.tw/StudentInformation/signin-oidc",
+            "https://stuinfosys.ntust.edu.tw/StudentInformation/Home/OpenIDCallback",
+            "https://stuinfosys.ntust.edu.tw/StudentInformation/Home/Index",
+        ] {
+            #expect(steps.navigating(to: Self.url(address), isMainFrame: true) == .allow, "\(address)")
+        }
+        #expect(!steps.isSignedIn(at: authorize))
+        #expect(steps.isSignedIn(at: Self.url("https://stuinfosys.ntust.edu.tw/StudentInformation/Home/Index")))
+
+        var lapsed = BrowserSignInSteps(target: Self.site)
+        #expect(lapsed.navigating(to: authorize, isMainFrame: true) == .allow)
+        let form = Self.url("https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback")
+        #expect(lapsed.navigating(to: form, isMainFrame: true) == .fail)
+
+        // A site on ssoam's NetIQ, through the school's own SSO service.
+        var netIQ = BrowserSignInSteps(target: Self.url("https://stuinfosys.ntust.edu.tw/SAGraduatesServ/SAGraduates"))
+        let service = Self.url("https://stuinfosys.ntust.edu.tw/NTUSTSSOServ/SSO/AMLogin/SAGraduatesServ?ReturnUrl=x")
+        #expect(netIQ.navigating(to: service, isMainFrame: true) == .allow)
+        #expect(netIQ.navigating(to: Self.url("https://ssoam.ntust.edu.tw/nidp/oauth/nam/authz?client_id=x"), isMainFrame: true) == .fail)
+
+        // A site that signs the student in, then answers with an error page and its own logout.
+        var refused = BrowserSignInSteps(target: Self.url("https://stuinfosys.ntust.edu.tw/ThesisAdvisor"))
+        #expect(refused.navigating(to: Self.url("https://stuinfosys.ntust.edu.tw/ThesisAdvisor/Account/Logout"), isMainFrame: true) == .fail)
+        #expect(refused.navigating(to: Self.url("https://ssoam2.ntust.edu.tw/connect/logout?post_logout_redirect_uri=x"), isMainFrame: true) == .fail)
     }
 
     @Test func aPasswordFormRecaptchaOrAnotherSiteEndsTheHiddenSignIn() {
