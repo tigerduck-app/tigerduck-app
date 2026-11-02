@@ -58,12 +58,6 @@ nonisolated extension CourseCatalog.Course: Decodable {
     }
 }
 
-/// A catalog's body as the backend sent it, with its ETag, as the device stores it.
-nonisolated struct StoredCourseCatalog: Codable, Equatable, Sendable {
-    let body: Data
-    let etag: String?
-}
-
 nonisolated enum CourseCatalogError: Error, LocalizedError {
     /// The backend has not stored the term, or this device has no copy to fall back on.
     case unavailable
@@ -75,7 +69,7 @@ nonisolated enum CourseCatalogError: Error, LocalizedError {
 struct CourseCatalogClient {
     enum Answer: Sendable {
         case notModified
-        case changed(StoredCourseCatalog)
+        case changed(ETaggedBody)
     }
 
     let backend: BackendClient
@@ -98,18 +92,9 @@ struct CourseCatalogClient {
         var request = BackendRequest("GET", segments: ["course-catalog", semester])
         request.signIn = signIn
         request.query = [URLQueryItem(name: "language", value: language)]
-        // The ETag is ours to send; URLCache would answer the revalidation itself and hide the 304.
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        if let etag { request.headers["If-None-Match"] = etag }
-        request.returnedStatuses = [304, 404]
-        let response = try await backend.send(request)
-        switch response.status {
-        case 304:
-            return .notModified
-        case 404:
-            throw CourseCatalogError.unavailable
-        default:
-            return .changed(StoredCourseCatalog(body: response.data, etag: response.http.value(forHTTPHeaderField: "ETag")))
-        }
+        request.returnedStatuses = [404]
+        guard let answer = try await backend.revalidate(request, etag: etag) else { return .notModified }
+        if answer.status == 404 { throw CourseCatalogError.unavailable }
+        return .changed(answer.copy)
     }
 }

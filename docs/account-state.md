@@ -86,6 +86,8 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `classTableSelectedSemester` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |
 | defaults | `classroomMandarinDisplay` | device |  |
 | defaults | `cloudSyncEnabled` | school | `swift/TigerDuck/Backend/Sync/CloudSyncPreference.swift` `setEnabled` |
+| defaults | `clubSubscriptions` | school | `swift/TigerDuck/Stores/Clubs/ClubSubscriptions.swift` `forget` |
+| defaults | `clubSubscriptionsPushPending` | school | `swift/TigerDuck/Stores/Clubs/ClubSubscriptions.swift` `forget` |
 | defaults | `configuredTabsData` | device |  |
 | defaults | `courseChangesCache` | device |  |
 | defaults | `courseChangesETag` | device |  |
@@ -153,6 +155,8 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | cache | `bulletin_summaries.json` | school | `swift/TigerDuck/Persistence/BulletinFiles.swift` `forgetAccount` |
 | cache | `calendar_events.json` | school | `swift/TigerDuck/Persistence/CalendarEventFiles.swift` `forgetAccount` |
 | cache | `closed_unsubmitted_assignments.json` | school | `swift/TigerDuck/Persistence/AssignmentFiles.swift` `forgetAccount` |
+| cache | `club_activities.json` | device |  |
+| cache | `club_directory.json` | device |  |
 | cache | `course_color_map.json` | school | `swift/TigerDuck/Persistence/CourseColorFiles.swift` `forgetAccount` |
 | cache | `course_custom_colors.json` | school | `swift/TigerDuck/Persistence/CourseColorFiles.swift` `forgetAccount` |
 | cache | `course_custom_names.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |

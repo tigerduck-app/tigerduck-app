@@ -53,8 +53,35 @@ enum SchoolRefresh {
         _ = await CourseDetails.refreshCoursesMissingClassroom(semester: semester, for: signIn)
     }
 
+    /// Starts fetching the club activity feed and, once its `max-age` has passed, the club
+    /// directory, without holding up the caller; nothing while the account subscribes to no club.
+    /// The stores are observable, so what reads them changes once the answers land.
+    @discardableResult
+    static func clubActivities(
+        subscriptions: ClubSubscriptions = .shared, activities: ClubActivities = .shared, directory: ClubDirectory = .shared
+    ) -> Task<Void, Never>? {
+        guard subscriptions.hasSubscriptions else { return nil }
+        return Task {
+            async let feed: Void = activities.refresh()
+            await directory.refresh()
+            await feed
+        }
+    }
+
     static func courseChanges() async {
         _ = await CourseChangeStore.shared.refresh()
+    }
+
+    /// Starts refreshing the school's public feeds, course changes and the subscribed clubs'
+    /// activities, on the first load and on every return to the app. Both are conditional GETs, so
+    /// an unchanged feed costs a 304. Returns the club fetch, if one started.
+    @discardableResult
+    static func publicFeeds(
+        courseChanges: CourseChangeStore = .shared,
+        subscriptions: ClubSubscriptions = .shared, activities: ClubActivities = .shared, directory: ClubDirectory = .shared
+    ) -> Task<Void, Never>? {
+        Task { await courseChanges.refresh() }
+        return clubActivities(subscriptions: subscriptions, activities: activities, directory: directory)
     }
 
     static func languageChanged() {

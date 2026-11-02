@@ -352,13 +352,12 @@ FlipToLibraryDefaultOffMigration.swift
 # class, which `MoodleFileDownloads` sets only there.
 MoodleDownloadProtectMigration.swift
 
-# Backend/Sync — the `notification` settings-document model and its client.
-# Both sections `NotificationSettingsDocument` carries (`assignments`,
-# `live_activity`) describe local reminder scheduling and Live Activity
-# state, neither of which macOS has; `SettingsDocumentClient` has no caller
-# outside `NotificationSettingsSyncer.swift`, itself excluded above.
+# Backend/Sync — the `notification` settings-document model. Both sections
+# `NotificationSettingsDocument` carries (`assignments`, `live_activity`)
+# describe local reminder scheduling and Live Activity state, neither of which
+# macOS has. `SettingsDocumentClient` stays in the Mac build for the
+# `club_subscriptions` document.
 NotificationSettingsDocument.swift
-SettingsDocumentClient.swift
 
 # Features/SchoolMail — the School Mail feature (design doc §6.2). Every file
 # here is wrapped in `#if os(iOS)`; `SchoolMailAvailability.isEnabled`

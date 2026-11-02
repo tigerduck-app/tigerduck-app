@@ -9,15 +9,7 @@ nonisolated enum NotificationSettingsReconcile {
     typealias ReconcileOutcome = NotificationSettingsSync.ReconcileOutcome
 
     static func documentSource(fromSnapshot json: [String: Any]) -> DocumentSource {
-        guard let entries = json["settings_documents"] as? [[String: Any]] else { return .read }
-        guard let entry = entries.first(where: { $0["namespace"] as? String == NotificationSettingsSync.namespace }) else {
-            return .snapshot(.neverWritten)
-        }
-        guard let revision = entry["revision"] as? Int,
-              let object = entry["document"], JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object)
-        else { return .read }
-        return .snapshot(.stored(document: data, revision: revision))
+        SettingsDocument.inSnapshot(json, namespace: NotificationSettingsSync.namespace).map(DocumentSource.snapshot) ?? .read
     }
 
     @MainActor
@@ -47,7 +39,7 @@ nonisolated enum NotificationSettingsReconcile {
         var existing: [String: Any] = [:]
         var mode = SettingsWriteMode.create
         if case .stored(let document, let revision) = stored {
-            existing = NotificationSettingsSync.object(from: document)
+            existing = SettingsDocument.object(from: document)
             mode = .replace(revision: revision)
         }
         var adopted: Set<OwnedSection> = []
@@ -78,7 +70,7 @@ nonisolated enum NotificationSettingsReconcile {
                 includeCourses: missing.contains(.courses)
             )
             let body = try JSONSerialization.data(
-                withJSONObject: NotificationSettingsSync.merging(updates, into: existing),
+                withJSONObject: SettingsDocument.merging(updates, into: existing),
                 options: [.sortedKeys]
             )
             switch try await client.write(namespace: NotificationSettingsSync.namespace, document: body, mode: mode) {
@@ -88,7 +80,7 @@ nonisolated enum NotificationSettingsReconcile {
             case .conflict(let serverDocument, let serverRevision):
                 attempt += 1
                 guard attempt <= 1 else { throw NotificationSettingsSync.SyncError.conflictNotResolved }
-                existing = NotificationSettingsSync.object(from: serverDocument)
+                existing = SettingsDocument.object(from: serverDocument)
                 mode = .replace(revision: serverRevision)
             }
         }

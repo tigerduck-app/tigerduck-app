@@ -44,11 +44,18 @@ final class FullSyncRunner {
     }
 
     func retryUnsentEdits(for signIn: SignIn) async {
+        retryUnsentSettings(for: signIn)
+        await app.cloudSyncCoordinator.requeueParkedMarks()
+    }
+
+    /// Sends again each settings document change not yet acknowledged; each document keeps its
+    /// own unsent mark, so one with nothing to send does nothing.
+    func retryUnsentSettings(for signIn: SignIn) {
         app.holidays.retryUnacknowledged(for: signIn)
+        app.clubSubscriptions.retryUnacknowledged()
         #if os(iOS)
         app.notificationSettings.retryUnacknowledged()
         #endif
-        await app.cloudSyncCoordinator.requeueParkedMarks()
     }
 
     nonisolated static func uploadsLocalMarksAsFirstSync(
@@ -60,7 +67,7 @@ final class FullSyncRunner {
     }
 
     /// A backend timestamp: Python `isoformat()`, which has microseconds unless they are zero.
-    static func backendDate(_ value: Any?) -> Date? {
+    nonisolated static func backendDate(_ value: Any?) -> Date? {
         guard let raw = value as? String else { return nil }
         return TigerDuckDateFormatters.withFractional.date(from: raw)
             ?? TigerDuckDateFormatters.withoutFractional.date(from: raw)
@@ -115,6 +122,7 @@ final class FullSyncRunner {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)
             #endif
+            let clubRunsBeforeFetch = app.clubSubscriptions.finishedRuns
             #if os(iOS)
             let settingsLinksBeforeFetch = NotificationSettingsPushQueue.finishedLinks
             #endif
@@ -131,6 +139,8 @@ final class FullSyncRunner {
             app.firstPullGate.notePull(signIn)
             ServerStatusTracker.shared.noteSyncResult(true)
             app.conflicts.retryOwedConflictCheck()
+            let clubs = SettingsDocument.inSnapshot(pass.json, namespace: ClubSubscriptionsSync.namespace)
+            Task { await app.clubSubscriptions.sync(snapshot: clubs, runsBeforeSnapshot: clubRunsBeforeFetch, for: signIn) }
             #if os(iOS)
             app.notificationSettings.reconcile(
                 snapshot: NotificationSettingsReconcile.documentSource(fromSnapshot: pass.json),

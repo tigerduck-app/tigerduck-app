@@ -27,9 +27,9 @@ For each line of the inventory, search the whole repository (`swift/`, `swift/Sh
 - It has several: extract one shared implementation, move every caller onto it, delete the rest.
 
 A second implementation of something the project already does is a defect, as is a new copy
-beside existing duplicates. Known duplicates to fold in when touched: conditional GET with an
-ETag (`CourseCatalogClient`, `CourseChanges`, `AcademicCalendarStore`). Term ordering lives in
-`AcademicTerm`; host names are normalized by `TLSPinMatcher.hostName`.
+beside existing duplicates. A conditional GET with an ETag goes through `ConditionalGet`
+(`BackendClient.revalidate` for the backend). Term ordering lives in `AcademicTerm`; host names
+are normalized by `TLSPinMatcher.hostName`.
 
 ## 3. Every path into the state
 
@@ -41,6 +41,8 @@ fails without the change:
 - a retry and a duplicate submit
 - a second cache of the same data (another language, a fallback)
 - a background refresh, a relaunch, the Watch, widgets and macOS
+- a return to the foreground: a refresh added to the first load runs there too
+- a write that failed: it is sent again without waiting for the server's revision to move
 
 After every `await` that precedes a write, check `signIn.isCurrent` again before writing
 (`docs/decisions/0029-account-bound-writes.md`). A late result for an old sign-in writes nothing.
@@ -73,6 +75,7 @@ a parser of outside input:
 - Normalize host names with `TLSPinMatcher.hostName` everywhere a host is compared.
 - Choose an allowlist over a denylist.
 - Feed each parser and loop empty, oversized and hostile input.
+- A time or date read from parts checks each part's range before combining them.
 - Follow each credential: it reaches only the origin it belongs to.
 - Then an adversarial reviewer, read-only, starting from the diff without the author's account.
 

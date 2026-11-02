@@ -43,8 +43,11 @@ final class ChangeFeedPull {
             app.conflicts.retryOwedConflictCheck()
             AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self.lastKnownRevision)")
             guard serverRevision > lastKnownRevision else {
-                if lastKnownRevision > 0 { app.firstPullGate.notePull(signIn) }
-                return .unchanged
+                return Self.noNewRevision(
+                    watermark: lastKnownRevision,
+                    notePull: { app.firstPullGate.notePull(signIn) },
+                    retryUnsentSettings: { app.fullSync.retryUnsentSettings(for: signIn) }
+                )
             }
             let outcome = await syncChanges(for: signIn)
             await app.cloudSyncCoordinator.onRevisionChanged()
@@ -89,16 +92,41 @@ final class ChangeFeedPull {
         return .changed
     }
 
+    /// A poll that found no new revision. It still sends the settings changes this device has not
+    /// had acknowledged, since a failed write moves no revision for a later poll to see.
+    static func noNewRevision(watermark: Int, notePull: () -> Void, retryUnsentSettings: () -> Void) -> RevisionPollOutcome {
+        if watermark > 0 { notePull() }
+        retryUnsentSettings()
+        return .unchanged
+    }
+
     private func reconcileSettings(thenAdvanceFrom since: Int, to revision: Int, for signIn: SignIn) async {
+        await Self.reconcileSettings(
+            clubs: { [app] in await app.clubSubscriptions.sync() },
+            notifications: { [weak self] onSettled in await self?.settleNotifications(onSettled) },
+            advance: { [weak self] in self?.advanceRevision(from: since, to: revision, for: signIn) }
+        )
+    }
+
+    private func settleNotifications(_ onSettled: @escaping @MainActor () -> Void) async {
         #if os(iOS)
         if !Defaults[.notificationSettingsPushPending] {
-            await app.notificationSettings.reconcile(onSettled: { [weak self] in
-                self?.advanceRevision(from: since, to: revision, for: signIn)
-            }).value
+            await app.notificationSettings.reconcile(onSettled: onSettled).value
             return
         }
         #endif
-        advanceRevision(from: since, to: revision, for: signIn)
+        onSettled()
+    }
+
+    /// Reconciles the club document and the notification settings, and calls `advance` once both
+    /// settled, so that a change either one failed to take is read again on the next poll.
+    static func reconcileSettings(
+        clubs: () async -> FullSyncOutcome,
+        notifications: (_ onSettled: @escaping @MainActor () -> Void) async -> Void,
+        advance: @escaping @MainActor () -> Void
+    ) async {
+        let clubOutcome = await clubs()
+        await notifications { if clubOutcome != .failed { advance() } }
     }
 
     private func advanceRevision(from since: Int, to revision: Int, for signIn: SignIn) {

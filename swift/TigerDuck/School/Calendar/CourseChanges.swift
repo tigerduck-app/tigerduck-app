@@ -182,23 +182,16 @@ final class CourseChangeStore {
         let generation = endpointGeneration
         var request = BackendRequest("GET", "calendar", "course-changes")
         request.authenticated = false
-        // The ETag is ours to send; URLCache would serve its copy for the feed's max-age and hide a change.
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.returnedStatuses = [304]
         let tag = Defaults[.courseChangesETag]
-        if !tag.isEmpty, hasReadableStoredFeed {
-            request.headers["If-None-Match"] = tag
-        }
 
         do {
-            let response = try await backend.send(request)
-            guard response.status != 304 else { return false }
-            let (data, http) = (response.data, response.http)
-            let parsed = try CourseChanges(json: data)
+            let answer = try await backend.revalidate(request, etag: !tag.isEmpty && hasReadableStoredFeed ? tag : nil)
+            guard let copy = answer?.copy else { return false }
+            let parsed = try CourseChanges(json: copy.body)
             guard generation == endpointGeneration else { return false }
             let changed = parsed != CourseChanges.cached
-            Defaults[.courseChangesCache] = data
-            Defaults[.courseChangesETag] = http.value(forHTTPHeaderField: "ETag") ?? ""
+            Defaults[.courseChangesCache] = copy.body
+            Defaults[.courseChangesETag] = copy.etag ?? ""
             if changed { revision &+= 1 }
             return changed
         } catch PushAPIError.httpStatus {

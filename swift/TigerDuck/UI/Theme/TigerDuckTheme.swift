@@ -129,6 +129,12 @@ enum TigerDuckTheme {
         ColorState.assigning(hex & 0xFFFFFF, to: courseNo, in: map, palette: palette)
     }
 
+    /// 32-bit FNV-1a over the Unicode scalar values, which for ASCII text is FNV-1a over its UTF-8
+    /// bytes.
+    nonisolated static func fnv1a(_ text: String) -> UInt32 {
+        text.unicodeScalars.reduce(2_166_136_261) { ($0 ^ $1.value) &* 16_777_619 }
+    }
+
     static func snapshot() -> [String: UInt32] {
         store.state.snapshot()
     }
@@ -353,8 +359,7 @@ final class ColorState: @unchecked Sendable {
             let candidate = palette[(start + offset) % palette.count]
             if !used.contains(candidate) { return candidate }
         }
-        var state: UInt32 = 2_166_136_261
-        for c in seed.unicodeScalars { state = (state ^ c.value) &* 16_777_619 }
+        var state = TigerDuckTheme.fnv1a(seed)
         for _ in 0..<256 {
             state = state &* 1_664_525 &+ 1_013_904_223
             let candidate = state >> 8

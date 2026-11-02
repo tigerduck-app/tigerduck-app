@@ -83,19 +83,6 @@ nonisolated enum NotificationSettingsSync {
         Defaults.reset(.notificationSettingsSyncedPreferences, .notificationSettingsPushSendsEveryField)
     }
 
-    static func merging(_ updates: [String: Any], into existing: [String: Any]) -> [String: Any] {
-        var merged = existing
-        for (key, value) in updates {
-            if let update = value as? [String: Any],
-               let current = merged[key] as? [String: Any] {
-                merged[key] = merging(update, into: current)
-            } else {
-                merged[key] = value
-            }
-        }
-        return merged
-    }
-
     static func changes(
         in updates: [String: Any],
         since synced: [String: Any],
@@ -156,7 +143,7 @@ nonisolated enum NotificationSettingsSync {
         var mode = SettingsWriteMode.create
 
         if case .stored(let data, let revision) = try await client.read(namespace: namespace) {
-            existing = Self.object(from: data)
+            existing = SettingsDocument.object(from: data)
             mode = .replace(revision: revision)
         }
 
@@ -169,7 +156,7 @@ nonisolated enum NotificationSettingsSync {
                 includeAssignments: syncAssignmentRemindersEnabled,
                 includeLiveActivity: syncLiveActivityEnabled
             )
-            let merged = merging(updates, into: existing)
+            let merged = SettingsDocument.merging(updates, into: existing)
             if NSDictionary(dictionary: merged).isEqual(to: existing) {
                 recordOnServer(updates)
                 return isCurrent() ? .landed : .skipped
@@ -186,14 +173,10 @@ nonisolated enum NotificationSettingsSync {
                 guard attempt <= 1 else {
                     throw SyncError.conflictNotResolved
                 }
-                existing = Self.object(from: serverDocument)
+                existing = SettingsDocument.object(from: serverDocument)
                 mode = .replace(revision: serverRevision)
             }
         }
-    }
-
-    static func object(from data: Data) -> [String: Any] {
-        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
     }
 
     static func canClearPendingMarker(

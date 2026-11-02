@@ -221,6 +221,9 @@ nonisolated extension AccountKeys {
     static let classTableSelectedSemester = AccountKey<String?>(
         AppConstants.UserDefaultsKeys.classTableSelectedSemester
     )
+    /// The account's `club_subscriptions` document as this device holds it (`ClubSubscriptionsDocument`).
+    static let clubSubscriptions = AccountKey<Data?>("clubSubscriptions")
+    static let clubSubscriptionsPushPending = AccountKey<Bool>("clubSubscriptionsPushPending", default: false)
     static let cloudSyncEnabled = AccountKey<Bool>(
         AppConstants.UserDefaultsKeys.cloudSyncEnabled,
         default: true

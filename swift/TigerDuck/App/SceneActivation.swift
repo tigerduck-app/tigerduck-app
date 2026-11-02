@@ -27,7 +27,7 @@ final class SceneActivation {
             #endif
             return
         }
-        refreshCourseChanges()
+        SchoolRefresh.publicFeeds()
         returnTask = Task { [app] in
             #if os(iOS)
             await app.liveActivity.refresh()
@@ -57,7 +57,7 @@ final class SceneActivation {
     func refresh(recheckSubmissions: Bool = false) {
         guard app.hasCompletedOnboarding, !app.authService.session.currentSignIn.isDemo else { return }
         app.feed.startPolling(pollNow: false)
-        refreshCourseChanges()
+        SchoolRefresh.publicFeeds()
         refreshTask?.cancel()
         let signIn = app.authService.session.currentSignIn
         refreshTask = Task { [app] in
@@ -79,10 +79,6 @@ final class SceneActivation {
             guard !Task.isCancelled else { return }
             NTUSTSessionManager.shared.loadingState = .loaded
         }
-    }
-
-    private func refreshCourseChanges() {
-        Task { await CourseChangeStore.shared.refresh() }
     }
 
     func cancelRefresh() {

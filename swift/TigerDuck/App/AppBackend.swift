@@ -37,6 +37,7 @@ final class AppSyncParts {
     private(set) lazy var conflicts = SyncConflicts(app: app)
     private(set) lazy var pushSchedule = PushScheduleSync(app: app)
     private(set) lazy var activation = SceneActivation(app: app)
+    private(set) lazy var clubSubscriptions = ClubSubscriptionsSyncer(authTokenManager: app.authTokenManager)
     #if os(iOS)
     private(set) lazy var liveActivity = LiveActivityRefresher(app: app)
     private(set) lazy var notificationSettings = NotificationSettingsSyncer(

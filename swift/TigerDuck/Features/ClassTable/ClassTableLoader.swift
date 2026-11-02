@@ -149,6 +149,7 @@ final class ClassTableLoader {
         guard await SchoolRefresh.begin() else { return }
 
         SchoolRefresh.dropMoodleCourses()
+        SchoolRefresh.clubActivities()
         async let coursesTask: Void = SchoolRefresh.courses(targetSemester, authService: authService, force: true, for: signIn)
         async let assignmentsTask = SchoolRefresh.assignments(authService: authService, for: signIn)
         async let userAddedTask: Void = SchoolRefresh.userAddedCourses(targetSemester, for: signIn)
