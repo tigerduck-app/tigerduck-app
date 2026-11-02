@@ -14,6 +14,7 @@ struct NavigationBarSearchTests {
         var tab = 0
         var pushed = false
         var sheet = false
+        var searches = true
 
         init(text: String = "", isPresented: Bool = false) {
             self.text = text
@@ -28,9 +29,21 @@ struct NavigationBarSearchTests {
         var body: some View {
             List { ForEach(Self.rows.filter { search.text.isEmpty || $0.contains(search.text) }, id: \.self) { Text($0) } }
                 .navigationTitle("Rows")
-                .navigationBarSearch(text: $search.text, isPresented: $search.isPresented, prompt: "Find a row")
+                .modifier(Searching(search: search))
                 .navigationDestination(isPresented: $search.pushed) { Text("Detail").navigationTitle("Detail") }
                 .sheet(isPresented: $search.sheet) { Text("Sheet") }
+        }
+    }
+
+    private struct Searching: ViewModifier {
+        @Bindable var search: Search
+
+        func body(content: Content) -> some View {
+            if search.searches {
+                content.navigationBarSearch(text: $search.text, isPresented: $search.isPresented, prompt: "Find a row")
+            } else {
+                content
+            }
         }
     }
 
@@ -208,6 +221,20 @@ struct NavigationBarSearchTests {
         #expect(search.isPresented)
         #expect(bar.text == "Row 1")
         #expect(list.numberOfItems(inSection: 0) == 11)
+    }
+
+    @Test("taking the search off a page that stays removes its bar")
+    func removed() async throws {
+        let search = Search()
+        let (window, list) = try await Self.show(search)
+        defer { window.isHidden = true }
+        let navigation = sequence(first: list as UIResponder, next: \.next).lazy.compactMap { $0 as? UINavigationController }.first
+        let page = try #require(navigation?.viewControllers.first)
+        try await waitUntil { page.navigationItem.searchController != nil }
+
+        search.searches = false
+        try await waitUntil(timeout: .seconds(5)) { page.navigationItem.searchController == nil }
+        #expect(window.descendants(ofType: UISearchBar.self).allSatisfy { $0.window == nil })
     }
 }
 #endif

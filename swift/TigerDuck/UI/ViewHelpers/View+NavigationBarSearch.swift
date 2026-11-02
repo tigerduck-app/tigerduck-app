@@ -74,6 +74,12 @@ private struct NavigationBarSearchController: UIViewControllerRepresentable {
         }
     }
 
+    static func dismantleUIViewController(_ host: Host, coordinator: Coordinator) {
+        if let page = host.page, page.navigationItem.searchController === host.search {
+            page.navigationItem.searchController = nil
+        }
+    }
+
     final class Coordinator: NSObject, UISearchResultsUpdating, UISearchControllerDelegate {
         var text: Binding<String>
         var isPresented: Binding<Bool>?
