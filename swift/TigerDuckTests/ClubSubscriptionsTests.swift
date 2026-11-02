@@ -101,6 +101,19 @@ struct ClubSubscriptionsTests {
         }
     }
 
+    @Test(
+        "an edit's stamp, as written, is later than the latest stamp the document holds",
+        arguments: ["000", "001", "123", "499", "500", "501", "998", "999"]
+    )
+    func stampsAfterTheLatest(millis: String) throws {
+        let latest = try #require(ClubSubscriptionsDocument.Stamp("2099-01-01T00:00:00.\(millis)Z"))
+        let document = ClubSubscriptionsDocument(clubs: [93: .init(color: .init(value: 0x111111, at: latest))])
+
+        let stamp = document.stamp(at: Date(timeIntervalSince1970: 1_793_620_800))
+
+        #expect(try #require(ClubSubscriptionsDocument.Stamp(stamp.text)).date > latest.date)
+    }
+
     @Test("signing out forgets the subscriptions, their colors and the unsent mark")
     func signOutForgets() async {
         await withExclusiveRealDefaults {
