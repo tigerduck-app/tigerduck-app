@@ -9,6 +9,8 @@ import Testing
 struct ClassTableClubLayoutTests {
     typealias Layout = ClassTableClubLayout
 
+    static let monday = Date(timeIntervalSince1970: 1_793_548_800)
+    static let dates = (0..<7).map { monday.addingTimeInterval(Double($0) * 86_400) }
     static let cellHeight: CGFloat = 52
     static let rowPitch: CGFloat = 55
     /// Every period shows, as on the mock's table: its clubs reach period 5 and A to D.
@@ -118,14 +120,12 @@ struct ClassTableClubLayoutTests {
     @Test("a club's day opens its row and its weekend column, which the export leaves out")
     func rowsAndColumns() async throws {
         try await withExclusiveRealDefaults {
-            let monday = Date(timeIntervalSince1970: 1_793_548_800)
-            let dates = (0..<7).map { monday.addingTimeInterval(Double($0) * 86_400) }
-            let stores = try ClubMock.stores(dates: dates)
+            let stores = try ClubMock.stores(dates: Self.dates)
             defer { ClubMock.reset(stores) }
             let grid = ClassTableGrid(clubFeed: stores.feed)
             grid.courses = ClubMock.tableCourses(semester: "1151")
 
-            grid.showClubs(on: dates)
+            grid.showClubs(on: Self.dates)
 
             #expect(grid.clubs.keys.sorted() == [1, 3, 4, 5, 6])
             #expect(grid.activeWeekdays == [1, 2, 3, 4, 5, 6])
@@ -136,6 +136,40 @@ struct ClassTableClubLayoutTests {
             grid.showClubs(on: [])
             #expect(grid.clubs.isEmpty)
             #expect(grid.activeWeekdays == [1, 2, 3, 4, 5])
+        }
+    }
+
+    @Test("only the user's own table for the newest term shows clubs")
+    func newestTermOnly() async throws {
+        try await withExclusiveRealDefaults {
+            let catalogue = "semesterCatalog.semesters"
+            let savedTerms = UserDefaults.standard.stringArray(forKey: catalogue)
+            let savedPick = Defaults[.classTableSelectedSemester]
+            defer {
+                UserDefaults.standard.set(savedTerms, forKey: catalogue)
+                Defaults[.classTableSelectedSemester, for: testSignIn] = savedPick
+            }
+            UserDefaults.standard.set(["1151", "1142"], forKey: catalogue)
+            Defaults[.classTableSelectedSemester, for: testSignIn] = nil
+            let stores = try ClubMock.stores(dates: Self.dates)
+            defer { ClubMock.reset(stores) }
+            let model = ClassTableViewModel(
+                courses: CourseStore(folders: CacheFolders(root: stores.root.appending(path: "courses"))),
+                importedTables: ImportedClassTableStore(
+                    fileURL: stores.root.appending(path: "imported.json"), signedInStudentId: { nil }
+                ),
+                clubs: stores.feed
+            )
+
+            model.refreshClubs(now: Self.monday)
+            #expect(model.currentSemester == "1151")
+            #expect(model.showsClubs)
+            #expect(model.grid.clubs.keys.sorted() == [1, 3, 4, 5, 6])
+
+            model.pickSemester("1142", for: testSignIn)
+            model.refreshClubs(now: Self.monday)
+            #expect(!model.showsClubs)
+            #expect(model.grid.clubs.isEmpty)
         }
     }
 }

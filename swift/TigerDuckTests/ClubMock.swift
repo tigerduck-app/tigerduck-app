@@ -36,9 +36,11 @@ enum ClubMock {
         Club(id: 106, zh: "國際親善大使團", en: "International Ambassadors", tagline: nil),
     ]
 
-    /// Mon 3-4 and A, Tue 6-7, Wed 2 and B-C, Thu 8-9 and 10, Fri 1-2.
-    static let courses: [Int: [String]] = [
-        1: ["3", "4", "A"], 2: ["6", "7"], 3: ["2", "B", "C"], 4: ["8", "9", "10"], 5: ["1", "2"],
+    /// One course per entry: Mon 3-4 and A, Tue 6-7, Wed 2 and B-C, Thu 8-9 and 10, Fri 1-2.
+    static let courses: [(no: String, weekday: Int, periods: [String])] = [
+        ("MA2003301", 1, ["3", "4"]), ("GE3105701", 1, ["A"]), ("CS2001301", 2, ["6", "7"]),
+        ("PE1010301", 3, ["2"]), ("FL1002701", 3, ["B", "C"]), ("EE2005301", 4, ["8", "9"]),
+        ("CS4900301", 4, ["10"]), ("MA1001302", 5, ["1", "2"]),
     ]
 
     static let activities = [
@@ -79,7 +81,7 @@ enum ClubMock {
     }
 
     static func courseTimes(on weekday: Int) -> [(start: Int, end: Int)] {
-        (courses[weekday] ?? []).compactMap { TimetablePeriod.byId[$0]?.minutes }
+        courses.filter { $0.weekday == weekday }.flatMap(\.periods).compactMap { TimetablePeriod.byId[$0]?.minutes }
     }
 
     static func course(_ no: String, weekday: Int, periods: [String], semester: String) -> CourseStore.Course {
@@ -89,13 +91,8 @@ enum ClubMock {
         )
     }
 
-    /// The mock's courses, one per run of periods.
     static func tableCourses(semester: String) -> [CourseStore.Course] {
-        courses.flatMap { weekday, periods in
-            ClassTimeline.runs(of: periods, order: AppConstants.Periods.chronologicalOrder).map { run in
-                course("MOCK\(weekday)\(run.joined())", weekday: weekday, periods: run, semester: semester)
-            }
-        }
+        courses.map { course($0.no, weekday: $0.weekday, periods: $0.periods, semester: semester) }
     }
 
     // MARK: Stores
