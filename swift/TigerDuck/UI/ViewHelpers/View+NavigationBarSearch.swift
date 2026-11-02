@@ -51,6 +51,7 @@ private struct NavigationBarSearchController: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> Host {
         let host = Host()
+        host.search.obscuresBackgroundDuringPresentation = false
         host.search.searchResultsUpdater = context.coordinator
         host.search.delegate = context.coordinator
         return host
