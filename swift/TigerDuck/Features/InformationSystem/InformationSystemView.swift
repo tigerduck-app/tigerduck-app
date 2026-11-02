@@ -46,8 +46,6 @@ struct InformationSystemPage: View {
     @State private var demoLink: PortalLink?
     @Environment(\.openURL) private var openURL
 
-    /// UIKit folds the search drawer only for a search attached before the page first shows, so
-    /// the saved links are read before the first frame.
     init(
         request: InformationSystemViewModel.Request?, signedIn: Bool, policy: VisualStylePolicy,
         onSignIn: @escaping () -> Void, store: PortalLinks? = nil
@@ -64,25 +62,16 @@ struct InformationSystemPage: View {
     }
 
     var body: some View {
-        Group {
-            if access == .content {
-                list.searchable(text: $viewModel.query, prompt: String(localized: "information_system_search_prompt"))
-            } else {
-                list
-            }
-        }
-        .toolbar { toolbar }
-        .sheet(item: $demoLink) { DemoPortalSheet(link: $0) }
-        .task(id: request) { await viewModel.open(request) }
-    }
-
-    private var list: some View {
         List { content }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Color.backgroundPrimary)
             .navigationTitle(String(localized: "feature_information_system"))
+            .searchable(text: $viewModel.query, prompt: String(localized: "information_system_search_prompt"))
             .refreshable { await viewModel.refresh() }
+            .toolbar { toolbar }
+            .sheet(item: $demoLink) { DemoPortalSheet(link: $0) }
+            .task(id: request) { await viewModel.open(request) }
     }
 
     @ToolbarContentBuilder
