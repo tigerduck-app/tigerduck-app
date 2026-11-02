@@ -181,6 +181,37 @@ struct PushDeviceSecretTests {
         }
     }
 
+    @Test("an announce with the secret and a push token that goes through clears the refusal")
+    func aClaimThatGoesThroughClearsTheRefusal() async {
+        await Self.withDeviceDefaults {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            Defaults[.pushDeviceSecretRefused] = true
+            Self.answer(Self.announceURL(baseURL))
+
+            await Self.requests(PushIdentity(uuid: "test-device", secret: Self.secret), baseURL: baseURL)
+                .announce(deviceToken: "abcdef")
+
+            #expect(!Defaults[.pushDeviceSecretRefused])
+        }
+    }
+
+    @Test(
+        "an announce that goes through without the secret or a push token keeps the refusal",
+        arguments: [(secret, nil), (nil, "abcdef")] as [(String?, String?)]
+    )
+    func anAnnounceThatBindsNothingKeepsTheRefusal(secret: String?, deviceToken: String?) async {
+        await Self.withDeviceDefaults {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            Defaults[.pushDeviceSecretRefused] = true
+            Self.answer(Self.announceURL(baseURL))
+
+            await Self.requests(PushIdentity(uuid: "test-device", secret: secret), baseURL: baseURL)
+                .announce(deviceToken: deviceToken)
+
+            #expect(Defaults[.pushDeviceSecretRefused])
+        }
+    }
+
     @Test("a Keychain that could not be read at launch sends no announce")
     func anUnreadableKeychainSendsNoAnnounce() async {
         let baseURL = SettingsAPIStub.uniqueBaseURL()

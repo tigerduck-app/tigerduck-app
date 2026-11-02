@@ -65,6 +65,10 @@ nonisolated struct PushDeviceRequests: Sendable {
             Defaults[.pushDeviceSecretRefused] = true
             throw error
         }
+        // The backend answers a request with both a secret and a token only after binding the secret.
+        if identity.secret != nil, deviceToken?.isEmpty == false, Defaults[.pushDeviceSecretRefused] {
+            Defaults[.pushDeviceSecretRefused] = false
+        }
     }
 
     func register(_ tokens: [PushAPI.PushTokenIn]) async throws {
