@@ -50,6 +50,7 @@ nonisolated enum AppConstants {
         static let moodleToken = "moodle_token"
         static let moodlePrivateToken = "moodle_private_token"
         static let pushDeviceId = "push_device_id"
+        static let pushDeviceSecret = "push_device_secret"
     }
 
     static let productionPushServerURL = URL.knownGood("https://api.tigerduck.app/v4")

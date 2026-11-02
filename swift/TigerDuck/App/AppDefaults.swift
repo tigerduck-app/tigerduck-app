@@ -163,6 +163,7 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.serverPushUserOptOut,
         default: false
     )
+    static let pushDeviceSecretRefused = Key<Bool>("pushDeviceSecretRefused", default: false)
     static let shownServerPopupIds = Key<[String]>(
         AppConstants.UserDefaultsKeys.shownServerPopupIds,
         default: []

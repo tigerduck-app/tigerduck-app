@@ -71,7 +71,7 @@ actor AuthTokenManager {
 
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
-        deviceUUID: String,
+        deviceUUID: @escaping @Sendable () -> String,
         session: URLSession = .shared,
         tokens: TokenStore = .keychain,
         storedFor signIn: SignIn = SignInSeries().currentSignIn,
