@@ -70,7 +70,7 @@ private struct NavigationBarSearchController: UIViewControllerRepresentable {
         }
         if let presentedValue, presentedValue != coordinator.shownPresented {
             coordinator.shownPresented = presentedValue
-            search.isActive = presentedValue
+            if host.page == nil { host.activatesOnAttach = presentedValue } else { search.isActive = presentedValue }
         }
     }
 
@@ -103,6 +103,10 @@ private struct NavigationBarSearchController: UIViewControllerRepresentable {
 
     final class Host: UIViewController {
         let search = UISearchController(searchResultsController: nil)
+        /// The page whose navigation item holds `search`.
+        private(set) weak var page: UIViewController?
+        /// An activation asked for before `search` reached the page, made once it does.
+        var activatesOnAttach = false
 
         override func viewIsAppearing(_ animated: Bool) {
             super.viewIsAppearing(animated)
@@ -111,6 +115,16 @@ private struct NavigationBarSearchController: UIViewControllerRepresentable {
             guard let page, page.navigationItem.searchController !== search else { return }
             page.definesPresentationContext = true
             page.navigationItem.searchController = search
+            self.page = page
+        }
+
+        // A search controller cannot present while its page is still appearing. Focusing the field
+        // activates it and brings up the keyboard, as `.searchable` does.
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            guard activatesOnAttach, page != nil else { return }
+            activatesOnAttach = false
+            search.searchBar.becomeFirstResponder()
         }
     }
 }

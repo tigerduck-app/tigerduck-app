@@ -14,6 +14,11 @@ struct NavigationBarSearchTests {
         var tab = 0
         var pushed = false
         var sheet = false
+
+        init(text: String = "", isPresented: Bool = false) {
+            self.text = text
+            self.isPresented = isPresented
+        }
     }
 
     private struct Page: View {
@@ -186,6 +191,23 @@ struct NavigationBarSearchTests {
         #expect(page.bar.searchTextField.text == "Row 1")
         #expect(page.bar.searchTextField.isFirstResponder)
         #expect(page.list.numberOfItems(inSection: 0) == 11)
+    }
+
+    @Test("a search already open with text when the page first shows is shown open with that text")
+    func openAtFirstShow() async throws {
+        let search = Search(text: "Row 1", isPresented: true)
+        let (window, list) = try await Self.show(search)
+        defer {
+            window.endEditing(true)
+            window.isHidden = true
+        }
+
+        try await waitUntil(timeout: .seconds(5)) { window.descendants(ofType: UISearchBar.self).contains { $0.window != nil } }
+        let bar = try #require(window.descendants(ofType: UISearchBar.self).first)
+        try await waitUntil(timeout: .seconds(5)) { bar.searchTextField.isFirstResponder }
+        #expect(search.isPresented)
+        #expect(bar.text == "Row 1")
+        #expect(list.numberOfItems(inSection: 0) == 11)
     }
 }
 #endif
