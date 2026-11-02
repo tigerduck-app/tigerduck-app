@@ -352,6 +352,21 @@ struct InformationSystemFilterTests {
         #expect(opens("https://example.ntust.edu.tw/SAGraduatesServ/SAGraduates"))
     }
 
+    @Test("a list saved with the portal's old addresses opens the moved and replaced ones, marked as before")
+    func savedLinksOpenTodaysAddresses() throws {
+        let saved = #"""
+        [{"category":"service-6","name":"校園授權軟體下載","url":"https:\/\/www.cc.ntust.edu.tw\/p\/412-1050-8352.php?Lang=zh-tw"},
+         {"category":"service-1","name":"學術研究倫理","url":"https:\/\/ae.ntust.edu.tw\/course"}]
+        """#
+        let links = try JSONDecoder().decode([PortalLink].self, from: Data(saved.utf8))
+
+        #expect(links.map(\.url.absoluteString) == [
+            "https://software.ntust.edu.tw/websoftware/login.aspx", "https://ae.cge.ntust.edu.tw/course",
+        ])
+        #expect(links.map(\.isCampusOnly) == [true, false])
+        #expect(try JSONDecoder().decode([PortalLink].self, from: JSONEncoder().encode(links)) == links)
+    }
+
     @Test("the campus software site and the campus documents are marked as on the campus network only")
     func campusOnly() {
         func isCampusOnly(_ address: String) -> Bool {
@@ -359,7 +374,8 @@ struct InformationSystemFilterTests {
         }
         #expect(isCampusOnly("https://Software.ntust.edu.tw/websoftware/login.aspx"))
         #expect(isCampusOnly("https://ccdoc.ntust.edu.tw/docmgsystem/login.aspx"))
-        #expect(!isCampusOnly("https://www.cc.ntust.edu.tw/p/412-1050-8352.php?Lang=zh-tw"))
+        #expect(isCampusOnly("https://www.cc.ntust.edu.tw/p/412-1050-8352.php?Lang=zh-tw"))
+        #expect(!isCampusOnly("https://www.cc.ntust.edu.tw/"))
         #expect(!isCampusOnly("https://studentpay.ntust.edu.tw/"))
     }
 }
