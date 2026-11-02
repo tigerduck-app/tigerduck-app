@@ -67,7 +67,7 @@ struct InformationSystemPage: View {
             .scrollContentBackground(.hidden)
             .background(Color.backgroundPrimary)
             .navigationTitle(String(localized: "feature_information_system"))
-            .searchable(text: $viewModel.query, prompt: String(localized: "information_system_search_prompt"))
+            .navigationBarSearch(text: $viewModel.query, prompt: String(localized: "information_system_search_prompt"))
             .refreshable { await viewModel.refresh() }
             .toolbar { toolbar }
             .sheet(item: $demoLink) { DemoPortalSheet(link: $0) }

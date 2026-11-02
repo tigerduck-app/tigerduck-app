@@ -86,6 +86,7 @@ jobs:
               TigerDuckTests/MoodleOwnProfileTests/theOwnRowSaysMe()
               TigerDuckTests/MoodleRefreshFailureNoteTests/noteShowsOnlyOverContent()
               TigerDuckTests/MoreHomeLayoutTests
+              TigerDuckTests/NavigationBarSearchTests
               TigerDuckTests/PasswordFieldAutoFillTests
               TigerDuckTests/PullToRevealSearchTests
               TigerDuckTests/ScrollPositionOriginTests
