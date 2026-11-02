@@ -81,6 +81,24 @@ struct BrowserSiteSignInPageTests {
         #expect(await values(webView, ["studentno", "password", "code_box"]) == ["B00000001", "not-a-password", ""])
     }
 
+    /// Its sign-in form sits between two forms that ask for a student id alone, and its reCAPTCHA
+    /// is a widget the student taps.
+    @Test func fillsTheSuggestionBoxSignInAndLeavesItsReCAPTCHA() async throws {
+        let forms = """
+        <form method="post" action="/send-forget-email"><input name="_token" type="hidden" value="t">
+        <input name="student_id" type="text"><button type="submit">send</button></form>
+        <form class="form_login" method="post" action="/login"><input name="_token" type="hidden" value="t">
+        <input name="account"><input name="password" type="password">
+        <div id="grecaptcha"><textarea name="g-recaptcha-response"></textarea></div><button type="submit">sign in</button></form>
+        <form method="post" action="/send-email"><input name="student_id" type="text"><button type="submit">send</button></form>
+        """
+        let webView = await page(forms, at: URL(string: "https://suggestionbox.ntust.edu.tw/login")!)
+        await signIn.pageFinished(in: webView)
+        #expect(await values(webView, ["account", "password", "g-recaptcha-response", "student_id"]) == ["B00000001", "not-a-password", "", ""])
+        let others = "return [...document.getElementsByName('student_id')].map((field) => field.value)"
+        #expect(try await webView.callAsyncJavaScript(others, contentWorld: .page) as? [String] == ["", ""])
+    }
+
     @Test func leavesWhatTheStudentTyped() async {
         let webView = await page(Self.ethicsForm, at: Self.ethics, script: "document.getElementsByName('UserName')[0].value = 'M11000000'")
         await signIn.pageFinished(in: webView)
