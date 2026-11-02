@@ -49,17 +49,22 @@ nonisolated struct PushDeviceRequests: Sendable {
 
     func sendAnonymous(deviceToken: String?, serverPushEnabled: Bool) async throws {
         guard identity.mayAnnounce else { return }
-        try await apiClient.registerAnonymousDevice(
-            PushAPI.AnonymousDeviceRequest(
-                device_id: identity.uuid,
-                platform: "apple",
-                device_class: deviceClass,
-                push_token: deviceToken,
-                bundle_id: bundleId,
-                server_push_enabled: serverPushEnabled,
-                device_secret: identity.secret
+        do {
+            try await apiClient.registerAnonymousDevice(
+                PushAPI.AnonymousDeviceRequest(
+                    device_id: identity.uuid,
+                    platform: "apple",
+                    device_class: deviceClass,
+                    push_token: deviceToken,
+                    bundle_id: bundleId,
+                    server_push_enabled: serverPushEnabled,
+                    device_secret: identity.secret
+                )
             )
-        )
+        } catch let error as PushAPIError where error.refusesDeviceSecret {
+            Defaults[.pushDeviceSecretRefused] = true
+            throw error
+        }
     }
 
     func register(_ tokens: [PushAPI.PushTokenIn]) async throws {

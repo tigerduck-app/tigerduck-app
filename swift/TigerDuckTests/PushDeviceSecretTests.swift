@@ -40,11 +40,26 @@ struct PushDeviceSecretTests {
         }
     }
 
-    private static func withServerPushOptOut(_ body: () async throws -> Void) async rethrows {
+    private static let refusal = #"{"error":"device_secret_invalid","message":"The device secret is missing or does not match."}"#
+    private static let preferences = """
+        {"device_id":"server-device","server_push_enabled":false,"sync_courses":true,"sync_course_colors":true,\
+        "sync_course_names":true,"sync_assignments":true,"sync_assignment_reminders":true,"sync_live_activity":true,\
+        "cloud_sync_enabled":true,"bulletin_push_enabled":true}
+        """
+
+    private static func preferencesURL(_ baseURL: URL) -> URL {
+        baseURL.appendingPathComponent("devices/test-device/preferences")
+    }
+
+    private static func withDeviceDefaults(_ body: () async throws -> Void) async rethrows {
         try await withExclusiveRealDefaults {
-            let saved = Defaults[.serverPushUserOptOut]
-            defer { Defaults[.serverPushUserOptOut] = saved }
+            let savedOptOut = Defaults[.serverPushUserOptOut], savedRefusal = Defaults[.pushDeviceSecretRefused]
+            defer {
+                Defaults[.serverPushUserOptOut] = savedOptOut
+                Defaults[.pushDeviceSecretRefused] = savedRefusal
+            }
             Defaults[.serverPushUserOptOut] = false
+            Defaults[.pushDeviceSecretRefused] = false
             try await body()
         }
     }
@@ -64,7 +79,7 @@ struct PushDeviceSecretTests {
 
     @Test("a signed-out push opt-out carries the device secret")
     func aSignedOutOptOutCarriesTheSecret() async throws {
-        try await Self.withServerPushOptOut {
+        try await Self.withDeviceDefaults {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             Self.answer(Self.announceURL(baseURL))
 
@@ -102,6 +117,68 @@ struct PushDeviceSecretTests {
         let sent = try #require(try Self.sentBodies(to: Self.announceURL(baseURL)).first)
         #expect(sent["device_id"] as? String == identity.uuid)
         #expect(sent["device_secret"] == nil)
+    }
+
+    @Test("a refused announce is recorded for the next launch")
+    func aRefusedAnnounceIsRecorded() async throws {
+        await Self.withDeviceDefaults {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            Self.answer(Self.announceURL(baseURL), status: 403, body: Self.refusal)
+
+            await Self.requests(PushIdentity(uuid: "test-device", secret: Self.secret), baseURL: baseURL)
+                .announce(deviceToken: "abcdef")
+
+            #expect(Defaults[.pushDeviceSecretRefused])
+        }
+    }
+
+    @Test("an announce turned away for another reason records no refusal")
+    func anotherFailureIsNotRecorded() async throws {
+        await Self.withDeviceDefaults {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            Self.answer(
+                Self.announceURL(baseURL), status: 429,
+                body: #"{"error":"too_many_registration_attempts","message":"Too many registrations; try again later."}"#
+            )
+
+            await Self.requests(PushIdentity(uuid: "test-device", secret: Self.secret), baseURL: baseURL)
+                .announce(deviceToken: "abcdef")
+
+            #expect(!Defaults[.pushDeviceSecretRefused])
+        }
+    }
+
+    @Test("a refused signed-out opt-out is recorded and fails, leaving the setting as it was")
+    func aRefusedSignedOutOptOutFails() async throws {
+        await Self.withDeviceDefaults {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            Self.answer(Self.announceURL(baseURL), status: 403, body: Self.refusal)
+
+            await #expect(throws: PushAPIError.self) {
+                try await Self.requests(PushIdentity(uuid: "test-device", secret: Self.secret), baseURL: baseURL)
+                    .sendServerPushOptOut(true, deviceToken: "abcdef", for: testSignIn)
+            }
+
+            #expect(Defaults[.pushDeviceSecretRefused])
+            #expect(!Defaults[.serverPushUserOptOut])
+        }
+    }
+
+    @Test("a refused signed-in opt-out is recorded and still reaches the preferences PATCH")
+    func aRefusedSignedInOptOutStillPatches() async throws {
+        try await Self.withDeviceDefaults {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            Self.answer(Self.announceURL(baseURL), status: 403, body: Self.refusal)
+            Self.answer(Self.preferencesURL(baseURL), body: Self.preferences)
+
+            try await Self.requests(PushIdentity(uuid: "test-device", secret: Self.secret), baseURL: baseURL, signedIn: true)
+                .sendServerPushOptOut(true, deviceToken: "abcdef", for: testSignIn)
+
+            let patch = try #require(try Self.sentBodies(to: Self.preferencesURL(baseURL)).first)
+            #expect(patch["server_push_enabled"] as? Bool == false)
+            #expect(Defaults[.pushDeviceSecretRefused])
+            #expect(Defaults[.serverPushUserOptOut])
+        }
     }
 
     @Test("a Keychain that could not be read at launch sends no announce")
