@@ -30,6 +30,8 @@ nonisolated enum BrowserSchoolSites {
             // The button passes the page it is on, as encodeURIComponent writes it.
             let page = url.absoluteString.addingPercentEncoding(withAllowedCharacters: uriComponent) ?? ""
             return URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/api//OAuth2/Login?returnUrl=" + page)
+        case ("sa02.ntust.edu.tw", "/webcounseling/"):
+            return URL.knownGood("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login")
         default:
             return nil
         }

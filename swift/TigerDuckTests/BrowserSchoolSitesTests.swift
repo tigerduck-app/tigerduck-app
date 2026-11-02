@@ -56,7 +56,14 @@ struct BrowserSchoolSitesTests {
             == "https://querycourse.ntust.edu.tw/QueryCourse/api//OAuth2/Login?returnUrl=https%3A%2F%2Fquerycourse.ntust.edu.tw%2FQueryCourse%2F")
     }
 
+    @Test func counselingOpensThroughItsSignInLink() {
+        #expect(BrowserSchoolSites.signInLink(for: Self.url("https://sa02.ntust.edu.tw/WebCounseling/"))
+            == Self.url("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login"))
+    }
+
     @Test(arguments: [
+        "https://sa02.ntust.edu.tw/WebCounseling/Front_Index/FrontIndex/Index",
+        "https://sa02.ntust.edu.tw/classroom_user/SSO_login.aspx",
         "https://querycourse.ntust.edu.tw/QueryCourse/Report.aspx",
         "https://querycourse.ntust.edu.tw/QueryCourse/?CourseNo=CS1001",
         "http://querycourse.ntust.edu.tw/QueryCourse/",
