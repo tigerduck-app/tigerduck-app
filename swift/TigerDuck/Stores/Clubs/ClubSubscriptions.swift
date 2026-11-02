@@ -87,7 +87,7 @@ final class ClubSubscriptions: AccountScoped {
     ) {
         guard signIn.isCurrent else { return }
         var next = document
-        edit(&next, ClubSubscriptionsDocument.Stamp(now()))
+        edit(&next, document.stamp(at: now()))
         guard next != document else { return }
         save(next, for: signIn)
         Defaults[.clubSubscriptionsPushPending, for: signIn] = true

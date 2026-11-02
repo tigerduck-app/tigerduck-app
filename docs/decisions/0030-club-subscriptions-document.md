@@ -27,6 +27,9 @@ may change different clubs, or different values of one club, while one of them i
   document's `order`, from the side that set it later; a tie keeps the server's
   (`ClubSubscriptionsDocument.merged`). A value that is unreadable, or lacks its stamp, counts as
   absent, so another writer's mistake cannot erase a choice.
+- An edit is stamped with the device's time, or 1 ms after the latest stamp the device's copy
+  holds when that is later (`ClubSubscriptionsDocument.stamp(at:)`), so a value stamped ahead by
+  another device's wrong clock cannot outlast the edits made after it.
 - A push and a pull are one step (`ClubSubscriptionsSync.sync`): merge the device's copy with the
   server's, write the result with the server's revision when it differs, merge once more with the
   copy a 409 carries, and keep the result on the device. The write splices the merged values over
