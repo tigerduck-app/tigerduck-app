@@ -73,10 +73,10 @@ nonisolated struct ClubActivity: Decodable, Equatable, Sendable, Identifiable {
 
     private static func minutes(_ time: String?) -> Int? {
         let parts = time?.split(separator: ":", omittingEmptySubsequences: false) ?? []
-        guard parts.count == 3, parts[2].count == 2, Int(parts[2]) != nil,
-              let minutes = ClassTimeline.minutes(of: "\(parts[0]):\(parts[1])"),
-              (0..<24 * 60).contains(minutes) else { return nil }
-        return minutes
+        guard parts.count == 3, parts[1].count == 2, parts[2].count == 2,
+              let hour = Int(parts[0]), let minute = Int(parts[1]), let second = Int(parts[2]),
+              (0..<24).contains(hour), (0..<60).contains(minute), (0..<60).contains(second) else { return nil }
+        return ClassTimeline.minutes(of: "\(parts[0]):\(parts[1])")
     }
 }
 
