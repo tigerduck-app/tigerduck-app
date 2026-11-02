@@ -19,7 +19,7 @@ struct PushIdentityTests {
         #expect(identity.uuid.range(of: Self.uuidPattern, options: .regularExpression) != nil)
         let secret = try #require(identity.secret)
         #expect(secret.range(of: Self.secretPattern, options: .regularExpression) != nil)
-        #expect(identity.mayAnnounce)
+        #expect(identity.isLoaded)
         #expect(keychain[Self.idKey] == identity.uuid)
         #expect(keychain[Self.secretKey] == secret)
     }
@@ -43,7 +43,7 @@ struct PushIdentityTests {
 
         #expect(identity.uuid == "kept-device")
         #expect(identity.secret == "kept-secret")
-        #expect(identity.mayAnnounce)
+        #expect(identity.isLoaded)
         #expect(keychain.saves.isEmpty)
     }
 
@@ -66,7 +66,7 @@ struct PushIdentityTests {
 
         #expect(unsaved.uuid == "kept-device")
         #expect(unsaved.secret == nil)
-        #expect(unsaved.mayAnnounce)
+        #expect(unsaved.isLoaded)
         keychain.unsavable = []
         let later = PushIdentity.loadOrCreate(from: keychain.store)
         #expect(try #require(later.secret).count == 43)
@@ -79,7 +79,7 @@ struct PushIdentityTests {
 
         let identity = PushIdentity.loadOrCreate(from: keychain.store)
 
-        #expect(!identity.mayAnnounce)
+        #expect(!identity.isLoaded)
         #expect(identity.secret == nil)
         #expect(keychain.saves.isEmpty)
     }
@@ -162,11 +162,11 @@ struct PushIdentityTests {
     func anIdentityReadWhileLockedLoadsOnceReadable() throws {
         let keychain = FakeIdentityKeychain([Self.idKey: "kept-device"], unreadable: [Self.idKey])
         let identity = PushIdentity.loadOrCreate(from: keychain.store)
-        #expect(!identity.mayAnnounce)
+        #expect(!identity.isLoaded)
 
         keychain.unreadable = []
 
-        #expect(identity.mayAnnounce)
+        #expect(identity.isLoaded)
         #expect(identity.uuid == "kept-device")
         #expect(try #require(identity.secret).count == 43)
         #expect(keychain[Self.secretKey] == identity.secret)

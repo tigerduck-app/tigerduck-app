@@ -6,7 +6,6 @@ nonisolated extension PushDeviceRequests {
     func sendServerPushOptOut(
         _ optOut: Bool, deviceToken: String?, for signIn: SignIn
     ) async throws {
-        let uuid = identity.uuid
         do {
             var sent = false, refusal: PushAPIError?
             do {
@@ -16,7 +15,7 @@ nonisolated extension PushDeviceRequests {
             }
             if await apiClient.hasAuthSession() {
                 _ = try await apiClient.updateDevicePreferences(
-                    deviceId: uuid, serverPushEnabled: !optOut, for: signIn
+                    deviceId: identity.storedUUID(), serverPushEnabled: !optOut, for: signIn
                 )
                 sent = true
             } else if let refusal, !PushIdentity.storesNoSession(in: keychain) {
@@ -37,7 +36,7 @@ nonisolated extension PushDeviceRequests {
     func sendBulletinPushEnabled(_ enabled: Bool, for signIn: SignIn) async throws {
         do {
             let response = try await apiClient.updateDevicePreferences(
-                deviceId: identity.uuid, bulletinPushEnabled: enabled, for: signIn
+                deviceId: identity.storedUUID(), bulletinPushEnabled: enabled, for: signIn
             )
             guard response.bulletinPushEnabled == enabled else {
                 throw PushAPIError.invalidResponse
@@ -53,7 +52,7 @@ nonisolated extension PushDeviceRequests {
     func sendCloudSyncEnabled(_ enabled: Bool, for signIn: SignIn) async {
         do {
             _ = try await apiClient.updateDevicePreferences(
-                deviceId: identity.uuid,
+                deviceId: identity.storedUUID(),
                 cloudSyncEnabled: enabled,
                 for: signIn
             )
@@ -68,7 +67,7 @@ nonisolated extension PushDeviceRequests {
         Defaults[.syncPreferencesPushPending] = true
         do {
             _ = try await apiClient.updateDevicePreferences(
-                deviceId: identity.uuid,
+                deviceId: identity.storedUUID(),
                 syncCourses: sent.courses,
                 syncCourseColors: sent.courseColors,
                 syncCourseNames: sent.courseNames,

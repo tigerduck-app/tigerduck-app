@@ -2,6 +2,7 @@ import Defaults
 import Foundation
 import os
 import Security
+import Valet
 
 /// The device's UUIDv4 and the secret that proves it to the backend's anonymous registration,
 /// kept together in the Keychain so both survive a reinstall and neither leaves the device.
@@ -17,7 +18,7 @@ nonisolated final class PushIdentity: Sendable {
 
     private let store: Store
     private let held: OSAllocatedUnfairLock<Held?>
-    /// The id while the Keychain cannot be read; never saved, and no anonymous request carries it.
+    /// The id while the Keychain cannot be read; never saved, and no request carries it.
     private let standIn = UUID().uuidString.lowercased()
 
     init(uuid: String, secret: String? = nil) {
@@ -34,7 +35,13 @@ nonisolated final class PushIdentity: Sendable {
     /// Sent as `device_secret`; nil when a newly minted one could not be saved.
     var secret: String? { current()?.secret }
     /// False while the Keychain cannot be read.
-    var mayAnnounce: Bool { current() != nil }
+    var isLoaded: Bool { current() != nil }
+
+    /// The stored id for a request that carries it; throws while the Keychain cannot be read.
+    func storedUUID() throws -> String {
+        guard let held = current() else { throw KeychainError.couldNotAccessKeychain }
+        return held.uuid
+    }
 
     private func current() -> Held? {
         held.withLock { held in
