@@ -287,6 +287,20 @@ struct BrowserRoutingTests {
         #expect(BrowserRouting.signInReturn(for: school, among: [school, moodle]) == nil)
     }
 
+    /// The portal links several sites by their own sign-in entry, which sends the browser to SSO.
+    @Test func thePortalsSignInEntriesAreSchoolPagesThatGoThroughSSO() {
+        for address in [
+            "https://stu.ntust.edu.tw/Behavior/account/login",
+            "https://sa02.ntust.edu.tw/classroom_user/SSO_login.aspx",
+            "https://ccdoc.ntust.edu.tw/docmgsystem/login.aspx",
+            "https://stu.ntust.edu.tw/stueduneed/stu_login.aspx",
+            "https://stu.ntust.edu.tw/exchange_stu/login.aspx",
+        ] {
+            let url = Self.url(address)
+            #expect(BrowserRouting.isSchoolReturnPage(url) && !BrowserRouting.isSSOSignInPage(url), "\(address)")
+        }
+    }
+
     @Test func ssosPasswordFormIsTheSchoolSitesSignInPage() {
         #expect(BrowserRouting.isSSOSignInPage(Self.url("https://ssoam2.ntust.edu.tw/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize")))
         #expect(!BrowserRouting.isSSOSignInPage(Self.url("https://ssoam2.ntust.edu.tw/connect/authorize?client_id=x")))
@@ -298,22 +312,24 @@ struct BrowserRoutingTests {
         #expect(!BrowserRouting.endsSessionSignIn(Self.url("https://stuinfosys.ntust.edu.tw/signin-oidc")))
     }
 
-    @Test func aSchoolSitesSignInHandsTheBrowserSSOsCookiesAlone() {
+    /// ssoam2 keeps its session in `AuthServer` on `.ntust.edu.tw`, and only a load balancer's
+    /// cookie on its own host; `ntustLan`, which the sites set on the domain, is not secure.
+    @Test func aSchoolSitesSignInHandsTheBrowserSSOsCookiesItsDomainWideSessionAmongThem() {
         let jars = [
-            [Self.cookie(".AspNetCore.Identity.Application", domain: "ssoam2.ntust.edu.tw", value: "harvest")],
+            [Self.cookie("AuthServer", domain: ".ntust.edu.tw", value: "harvest")],
             [
-                Self.cookie(".AspNetCore.Identity.Application", domain: ".ssoam2.ntust.edu.tw", value: "school"),
-                Self.cookie("idsrv.session", domain: "ssoam2.ntust.edu.tw", secure: false),
-                Self.cookie("shared", domain: ".ntust.edu.tw"),
+                Self.cookie("AuthServer", domain: ".ntust.edu.tw", value: "school"),
+                Self.cookie("BIGipServerpool_ExamSSO_443", domain: "ssoam2.ntust.edu.tw", value: "balancer"),
+                Self.cookie("ntustLan", domain: ".ntust.edu.tw", secure: false),
                 Self.cookie("MoodleSession", domain: "moodle2.ntust.edu.tw"),
-                Self.cookie("ASP.NET_SessionId", domain: "stuinfosys.ntust.edu.tw"),
+                Self.cookie(".AspNetCore.Cookies", domain: "stuinfosys.ntust.edu.tw"),
                 Self.cookie("ASP.NET_SessionId", domain: "courseselection.ntust.edu.tw"),
             ],
         ]
         let site = Self.url("https://stuinfosys.ntust.edu.tw/StudentInformation")
-        #expect(BrowserSessionSignIn.sessionCookies(in: jars, for: site).map(\.value) == ["harvest", "school"])
+        #expect(BrowserSessionSignIn.sessionCookies(in: jars, for: site).map(\.value) == ["harvest", "school", "balancer"])
         let moodle = BrowserSessionSignIn.sessionCookies(in: jars, for: Self.url("https://moodle2.ntust.edu.tw/my/"))
-        #expect(moodle.map(\.name) == [".AspNetCore.Identity.Application", ".AspNetCore.Identity.Application", "shared", "MoodleSession"])
+        #expect(moodle.map(\.name) == ["AuthServer", "AuthServer", "BIGipServerpool_ExamSSO_443", "MoodleSession"])
     }
 
     @Test func aPageWhoseProcessEndedReloadsOrLoadsItsAddress() {

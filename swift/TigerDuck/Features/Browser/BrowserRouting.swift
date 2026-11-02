@@ -194,9 +194,10 @@ nonisolated enum BrowserRouting {
     }
 
     /// The shared cookies a sign-in to `target` hands the browser and takes back: all of them for
-    /// Moodle's, SSO's alone for another school site's, so no site gets another's.
+    /// Moodle's, SSO's for another school site's, never Moodle's. ssoam2 sets its session,
+    /// `AuthServer`, on `.ntust.edu.tw` rather than its own host, and skips its form on that alone.
     static func isSignInCookie(_ cookie: HTTPCookie, for target: URL) -> Bool {
-        isSharedCookie(cookie) && (isMoodleReturnPage(target) || cookieDomain(cookie) == ssoHost)
+        isSharedCookie(cookie) && (isMoodleReturnPage(target) || cookieDomain(cookie) != moodleHost)
     }
 
     private static func cookieDomain(_ cookie: HTTPCookie) -> String {
