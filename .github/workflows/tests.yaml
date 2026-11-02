@@ -89,6 +89,7 @@ jobs:
               TigerDuckTests/MoodleOwnProfileTests/theOwnRowSaysMe()
               TigerDuckTests/MoodleRefreshFailureNoteTests/noteShowsOnlyOverContent()
               TigerDuckTests/MoreHomeLayoutTests
+              TigerDuckTests/NavigationBarSearchTests
               TigerDuckTests/PasswordFieldAutoFillTests
               TigerDuckTests/PullToRevealSearchTests
               TigerDuckTests/ScrollPositionOriginTests
@@ -581,3 +582,101 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         working-directory: swift/Packages/TigerDuckCore
         run: swift test
+
+  # Below iOS 27 the app's tab roots take UIKit's search controller rather than `.searchable`
+  # (swift/TigerDuck/UI/ViewHelpers/View+NavigationBarSearch.swift), and no runtime of the phone
+  # leg's image is older than iOS 26. This job downloads the iOS 18.6 runtime, the last of iOS 18,
+  # and runs the search suites there on a cold build: there is no cache to restore. macos-15 still
+  # ships iOS 18 runtimes, but its newest Xcode, 26.3, cannot build the app.
+  ios18-search:
+    name: iOS 18 search
+    if: github.event_name == 'pull_request'
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 2
+
+      # The suites run only for a change to the search bridge, the pages that use it, its tests or
+      # this file.
+      - name: Changed paths
+        id: changes
+        run: |
+          run=true
+          files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
+          if ! printf '%s\n' "$files" | grep -qE '^(swift/TigerDuck/UI/ViewHelpers/View\+NavigationBarSearch|swift/TigerDuck/Features/InformationSystem/InformationSystemView|swift/TigerDuck/Features/Bulletins/BulletinsView|swift/TigerDuckTests/SearchDrawerFirstOpenTests|swift/TigerDuckTests/NavigationBarSearchTests)\.swift$|^\.github/workflows/tests\.yaml$'; then
+            run=false
+            echo "No change to the navigation bar search or to tests.yaml: skipping the build and tests."
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      # Xcode 27 downloads no runtime older than iOS 26 (https://developer.apple.com/forums/thread/847134).
+      - name: iOS 18.6 simulator
+        if: steps.changes.outputs.run == 'true'
+        id: sim
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          runtime=com.apple.CoreSimulator.SimRuntime.iOS-18-6
+          if ! xcrun simctl list runtimes --json | jq -e --arg r "$runtime" '.runtimes[] | select(.identifier == $r and .isAvailable)' > /dev/null; then
+            xcodebuild -downloadPlatform iOS -buildVersion 18.6
+          fi
+          udid=$(xcrun simctl create "iPhone 16 Pro" com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro "$runtime")
+          xcrun simctl list devices available | grep -E "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      # Signing stays on, as in `unit-tests`. The errors print in the order the compiler hit them.
+      - name: Build for testing
+        if: steps.changes.outputs.run == 'true'
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          log="$RUNNER_TEMP/build.log"
+          if ! xcodebuild build-for-testing \
+              -project swift/TigerDuck.xcodeproj \
+              -scheme TigerDuck \
+              -destination "id=$UDID" \
+              -only-testing:TigerDuckTests \
+              -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              > "$log" 2>&1; then
+            grep -E "error:" "$log" | awk '!seen[$0]++' | head -50
+            tail -n 30 "$log"
+            exit 1
+          fi
+
+      # A run whose filter matches nothing exits 0, so the step also fails unless Swift Testing ran
+      # as many tests as the suites' files declare: it counts a parameterized test once.
+      - name: Search tests
+        if: steps.changes.outputs.run == 'true'
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -o pipefail
+          shopt -s nullglob
+          runs=("$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun)
+          if [ ${#runs[@]} -ne 1 ]; then
+            echo "::error::expected one .xctestrun, found ${#runs[@]}: ${runs[*]}"
+            exit 1
+          fi
+          expected=0
+          only=()
+          for suite in SearchDrawerFirstOpenTests NavigationBarSearchTests; do
+            expected=$((expected + $(grep -cE '^[[:space:]]*@Test' "swift/TigerDuckTests/$suite.swift")))
+            only+=("-only-testing:TigerDuckTests/$suite")
+          done
+          log="$RUNNER_TEMP/tests.log"
+          xcodebuild test-without-building \
+            -xctestrun "${runs[0]}" \
+            -destination "id=$UDID" \
+            "${only[@]}" \
+            -parallel-testing-enabled NO \
+            2>&1 | tee "$log"
+          ran=$(grep -oE 'Test run with [0-9]+ tests?' "$log" | grep -oE '[0-9]+' | tail -n 1 || true)
+          if [ "${ran:-0}" -ne "$expected" ]; then
+            echo "::error::ran ${ran:-no} tests; the suites declare $expected"
+            exit 1
+          fi
+          echo "ran $ran tests, as the suites declare"

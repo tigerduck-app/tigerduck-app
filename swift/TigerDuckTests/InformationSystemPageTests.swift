@@ -181,6 +181,35 @@ struct InformationSystemPageTests {
         }
     }
 
+    @Test("a tap on a result while the search is active reaches the row, opens its link and keeps the search")
+    func tapWhileSearching() async throws {
+        try await withAccessibilityAutomation {
+            let folder = Folder()
+            let school = FakePortalSchool()
+            school.pages = [Self.page]
+            let opened = OpenedURLs()
+            let window = try Self.show(Self.request, store: Self.store(school, in: folder, saved: true), opened: opened)
+            defer { Self.close(window) }
+
+            try await Self.search("admission ticket", in: window)
+            try await waitUntil { !Self.shows("Student Record", in: window) }
+            let field = try #require(window.descendants(ofType: UISearchBar.self).first?.searchTextField)
+            #expect(field.isFirstResponder)
+
+            let root = try #require(window.rootViewController?.view)
+            let row = try #require(accessibilityElement(labeled: Self.longName, in: root))
+            let list = try #require(window.descendants(ofType: UICollectionView.self).first)
+            let hit = window.hitTest(CGPoint(x: row.accessibilityFrame.midX, y: row.accessibilityFrame.midY), with: nil)
+            #expect(hit?.isDescendant(of: list) == true, "\(hit.map { "\(type(of: $0))" } ?? "nothing") takes the tap")
+
+            row.accessibilityActivate()
+            try await waitUntil { !opened.urls.isEmpty }
+            #expect(opened.urls == [URL(string: "https://i.ntust.edu.tw/b")!])
+            #expect(field.text == "admission ticket")
+            #expect(Self.shows(Self.longName, in: window))
+        }
+    }
+
     @Test("a search that matches nothing shows the empty search state, inside the width")
     func searchEmpty() async throws {
         try await withAccessibilityAutomation {
