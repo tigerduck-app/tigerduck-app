@@ -29,14 +29,16 @@ final class BrowserShownPage {
 @MainActor
 final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private let page: BrowserPage
+    private let auth: AuthService?
     private var observations: [NSKeyValueObservation] = []
     private var refusedHosts: Set<String> = []
     private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
     private var signInReturnPage: URL?
     private static let sessionCookieLifetime: TimeInterval = 30 * 24 * 60 * 60
 
-    init(page: BrowserPage) {
+    init(page: BrowserPage, auth: AuthService?) {
         self.page = page
+        self.auth = auth
     }
 
     func makeView(opening start: URL) -> UIView {
@@ -54,12 +56,12 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         page.shown.start = start
         observe(webView)
 
-        let store = page.store
+        let (store, auth) = (page.store, self.auth)
         let schoolSignIn = AccountSession.school.currentSignIn
         page.signIn.load = { [weak webView] in webView?.load(URLRequest(url: $0)) }
         page.signIn.signInWithSession = { [weak container, weak browserSignIn = page.signIn] in
             guard let target = browserSignIn?.target else { return false }
-            return await BrowserSessionSignIn(store: store, host: container).signIn(for: schoolSignIn, to: target)
+            return await BrowserSessionSignIn(store: store, host: container, auth: auth).signIn(for: schoolSignIn, to: target)
         }
         page.find.runInPage = { [weak webView] in await webView?.runFind($0) }
         Task {

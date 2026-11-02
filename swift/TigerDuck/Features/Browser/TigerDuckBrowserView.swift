@@ -8,6 +8,7 @@ struct TigerDuckBrowserView: View {
     let url: URL
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Default(.browserAddressBar) private var addressBar
     @Default(.browserAppearance) private var appearance
@@ -21,7 +22,10 @@ struct TigerDuckBrowserView: View {
     private var collapsed: Bool { page.isCollapsed }
 
     var body: some View {
-        BrowserWebView(page: page, start: url, insets: contentInsets, findBarTop: page.find.isActive ? findBarTop : nil, appearance: appearance)
+        BrowserWebView(
+            page: page, auth: app?.authService, start: url, insets: contentInsets,
+            findBarTop: page.find.isActive ? findBarTop : nil, appearance: appearance
+        )
             .ignoresSafeArea(edges: addressBar == .top ? .all : .bottom)
             .moodleFilePresentation(page.files)
             .overlay { failureView }
@@ -191,12 +195,13 @@ struct TigerDuckBrowserView: View {
 
 private struct BrowserWebView: UIViewRepresentable {
     let page: BrowserPage
+    let auth: AuthService?
     let start: URL
     let insets: UIEdgeInsets
     let findBarTop: CGFloat?
     let appearance: BrowserAppearance
 
-    func makeCoordinator() -> BrowserNavigator { BrowserNavigator(page: page) }
+    func makeCoordinator() -> BrowserNavigator { BrowserNavigator(page: page, auth: auth) }
 
     func makeUIView(context: Context) -> UIView {
         context.coordinator.makeView(opening: start)

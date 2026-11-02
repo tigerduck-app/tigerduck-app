@@ -4,13 +4,17 @@ import WebKit
 /// Signs the browser in to a school site with the school SSO session the app already holds, for
 /// when Moodle has no autologin key to give or another school site sends the browser to SSO's
 /// password form: the app's sign-in cookies for that site go into the browser, a hidden page runs
-/// the site's SSO entry, and the sign-in cookies it ends with go back. No password is posted.
+/// the site's SSO entry, and the sign-in cookies it ends with go back. For a site other than
+/// Moodle the app first renews its own SSO session where it lapsed, as a school fetch does; no
+/// password goes into a page.
 @MainActor
 struct BrowserSessionSignIn {
     var putCookie: (HTTPCookie) async -> Void
     var browserCookies: () async -> [HTTPCookie]
     /// Runs `entry` on the hidden page; true once it passed SSO on its way to `target`.
     var runPage: (_ entry: URL, _ target: URL) async -> Bool
+    /// Whether the app's SSO session is live, renewed first where it lapsed.
+    var renewSession: (SignIn) async -> Bool
     var appJars: () -> [[HTTPCookie]] = { [HTTPCookieStorage.shared, SchoolWeb.schoolCookies].map { $0.cookies ?? [] } }
     var keepCookie: (HTTPCookie) -> Void = { HTTPCookieStorage.shared.setCookie($0) }
     var storeResets: () -> Int = { BrowserData.shared.storeResets }
@@ -21,6 +25,9 @@ struct BrowserSessionSignIn {
         // A sign-out or a Settings › Storage reset since the start purged the jars, which must not
         // get the cookies they held back, nor the browser's store those it held.
         let isCurrent = { !Task.isCancelled && signIn.isCurrent && storeResets() == resets }
+        if !BrowserRouting.isMoodleReturnPage(target) {
+            guard await renewSession(signIn), isCurrent() else { return false }
+        }
         for cookie in Self.sessionCookies(in: appJars(), for: target) {
             guard isCurrent() else { return false }
             await putCookie(cookie)
@@ -43,12 +50,17 @@ struct BrowserSessionSignIn {
 
 extension BrowserSessionSignIn {
     /// `host` holds the hidden page under the visible one, as WebKit runs a page off screen slowly.
-    init(store: WKWebsiteDataStore, host: UIView?) {
+    /// Without `auth` the jars go in as they are.
+    init(store: WKWebsiteDataStore, host: UIView?, auth: AuthService?) {
         self.init(
             putCookie: { await store.httpCookieStore.setCookie($0) },
             browserCookies: { await store.httpCookieStore.allCookies() },
             runPage: { [weak host] entry, target in
                 await BrowserSignInPage(store: store, host: host, target: target).run(entry)
+            },
+            renewSession: { signIn in
+                guard let auth else { return true }
+                return await auth.ensureAuthenticated(for: signIn)
             }
         )
     }
