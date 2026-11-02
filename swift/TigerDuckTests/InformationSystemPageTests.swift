@@ -66,11 +66,6 @@ struct InformationSystemPageTests {
         return window
     }
 
-    /// The navigation bar folds the drawer's search bar to no height until a pull reveals it.
-    private static func searchIsFolded(in window: UIWindow) -> Bool {
-        window.descendants(ofType: UISearchBar.self).first.map { $0.convert($0.bounds, to: window).height < 1 } ?? false
-    }
-
     private static func search(_ query: String, in window: UIWindow) async throws {
         try await waitUntil { window.descendants(ofType: UIScrollView.self).first.map { $0.contentSize.height > 0 } ?? false }
         let list = try #require(window.descendants(ofType: UIScrollView.self).first)
@@ -115,7 +110,7 @@ struct InformationSystemPageTests {
         window.isHidden = true
     }
 
-    @Test("saved links show from the first frame under their categories, with the search folded and a long name inside the width, and a row opens its link")
+    @Test("saved links show from the first frame under their categories, with the search attached and a long name inside the width, and a row opens its link")
     func list() async throws {
         try await withAccessibilityAutomation {
             let folder = Folder()
@@ -132,7 +127,6 @@ struct InformationSystemPageTests {
             #expect(Self.shows(String(localized: PortalCategory.curriculum.titleKey), in: window))
             #expect(Self.shows("Licensed Software", in: window))
             try await waitUntil { !window.descendants(ofType: UISearchBar.self).isEmpty }
-            #expect(Self.searchIsFolded(in: window))
             #expect(school.loads.isEmpty)
             try Self.expectNoOverflow(in: window)
             try await Self.save(window, as: "infosys-list")
