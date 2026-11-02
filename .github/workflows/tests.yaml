@@ -579,3 +579,82 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         working-directory: swift/Packages/TigerDuckCore
         run: swift test
+
+  # Below iOS 27 the app's tab roots take UIKit's search controller rather than `.searchable`
+  # (swift/TigerDuck/UI/ViewHelpers/View+NavigationBarSearch.swift), and no runtime of the phone
+  # leg's image is older than iOS 26. macos-15 still has iOS 18 runtimes next to an Xcode 26, so
+  # this job runs the search suites there, on a cold build: there is no cache to restore.
+  ios18-search:
+    name: iOS 18 search
+    if: github.event_name == 'pull_request'
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 2
+
+      # Skips the steps for the documentation-only changes `unit-tests` skips.
+      - name: Changed paths
+        id: changes
+        run: |
+          run=true
+          files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
+          if [ -n "$files" ] && ! printf '%s\n' "$files" \
+              | grep -qvE '\.md$|^(docs|openspec|api-poc|\.claude|\.agents|\.greptile|\.github/ISSUE_TEMPLATE)/|^LICENSE'; then
+            run=false
+            echo "Documentation-only change: skipping the build and tests."
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - name: Pick a simulator
+        if: steps.changes.outputs.run == 'true'
+        id: sim
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          udid=$(xcrun simctl list devices available --json | jq -r '
+            [.devices["com.apple.CoreSimulator.SimRuntime.iOS-18-5"][]? | select(.name | startswith("iPhone"))]
+            | first.udid // empty')
+          if [ -z "$udid" ]; then
+            echo "::error::no iOS 18.5 iPhone simulator"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          xcrun simctl list devices available | grep -E "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      # Signing stays on, as in `unit-tests`. The errors print in the order the compiler hit them.
+      - name: Build for testing
+        if: steps.changes.outputs.run == 'true'
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          log="$RUNNER_TEMP/build.log"
+          if ! xcodebuild build-for-testing \
+              -project swift/TigerDuck.xcodeproj \
+              -scheme TigerDuck \
+              -destination "id=$UDID" \
+              -only-testing:TigerDuckTests \
+              -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              > "$log" 2>&1; then
+            grep -E "error:" "$log" | awk '!seen[$0]++' | head -50
+            tail -n 30 "$log"
+            exit 1
+          fi
+
+      - name: Search tests
+        if: steps.changes.outputs.run == 'true'
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          xcodebuild test-without-building \
+            -xctestrun "$(ls "$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun)" \
+            -destination "id=$UDID" \
+            -only-testing:TigerDuckTests/SearchDrawerFirstOpenTests \
+            -only-testing:TigerDuckTests/NavigationBarSearchTests \
+            -parallel-testing-enabled NO
