@@ -33,6 +33,29 @@ struct TimetableCellMetrics {
     }
 }
 
+extension Text {
+    /// The name on a block of the class table.
+    func timetableBlockName(
+        metrics: TimetableCellMetrics, policy: VisualStylePolicy, lineLimit: Int, isCancelled: Bool = false
+    ) -> some View {
+        font(.system(size: metrics.courseNameSize, weight: policy.classTableCourseNameWeight))
+            .strikethrough(isCancelled)
+            .foregroundStyle(policy.classTableCourseTextColor.opacity(isCancelled ? 0.45 : 1))
+            .lineLimit(lineLimit)
+            .minimumScaleFactor(0.7)
+            .multilineTextAlignment(.center)
+            .padding(2)
+    }
+
+    /// The room at the foot of a block.
+    func timetableBlockRoom(metrics: TimetableCellMetrics, policy: VisualStylePolicy) -> some View {
+        font(.system(size: metrics.roomHintSize))
+            .foregroundStyle(policy.classTableCourseSecondaryTextColor)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+    }
+}
+
 struct TimetableCourseMenu: View {
     let course: CourseStore.Course
     let editor: ClassTableEditor

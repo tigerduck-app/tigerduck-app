@@ -2,7 +2,6 @@ import SwiftUI
 import Defaults
 
 struct AddCourseSheet: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(AppEnvironment.self) private var app
 
     let semester: String
@@ -73,25 +72,7 @@ struct AddCourseSheet: View {
         NavigationStack {
             let shown = shownCourses
             Form {
-                if model.isSearching {
-                    Section {
-                        HStack(spacing: 8) {
-                            Spacer()
-                            ProgressView()
-                                .controlSize(.small)
-                            Text(String(localized: "add_course_searching"))
-                            Spacer()
-                        }
-                    }
-                }
-
-                if let failureText {
-                    Section {
-                        Label(failureText, systemImage: "xmark.circle")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
+                SearchSheetStatus(isSearching: model.isSearching, failure: failureText)
 
                 if !shown.isEmpty {
                     Section {
@@ -103,33 +84,14 @@ struct AddCourseSheet: View {
                 emptyState(shown)
                     .allowsHitTesting(false)
             }
-            // Dismiss the keyboard from the background only: a `.simultaneousGesture` on
-            // the Form swallows row Buttons, so "+" stops firing. Taps in section gaps
-            // reach the background; `.scrollDismissesKeyboard` handles drags.
-            .background(
-                Color.backgroundPrimary
-                    .contentShape(Rectangle())
-                    .onTapGesture { searchFocused = false }
-            )
-            .scrollDismissesKeyboard(.interactively)
-            .searchable(
+            .searchSheetChrome(
+                title: String(localized: "add_course_title"),
+                prompt: String(localized: "add_course_placeholder"),
                 text: $searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: String(localized: "add_course_placeholder")
+                focused: $searchFocused
             )
-            .searchFocused($searchFocused)
-            // The field is active from the start, and active search would otherwise hide the
-            // bar that holds Close and the filter button.
-            .searchPresentationToolbarBehavior(.avoidHidingContent)
-            .autocorrectionDisabled()
-            .textFieldNeverCapitalized()
             .onSubmit(of: .search) { model.submit() }
-            .navigationTitle(String(localized: "add_course_title"))
-            .inlineNavigationTitle()
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "action_close")) { dismiss() }
-                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showFilters = true

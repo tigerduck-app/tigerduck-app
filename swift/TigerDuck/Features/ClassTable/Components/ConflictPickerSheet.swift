@@ -1,17 +1,27 @@
 import SwiftUI
+import TigerDuckCore
 
-struct ConflictCoursePickerSheet: View {
+/// The blocks that share a place on the class table, to pick the one to open.
+struct ConflictPickerSheet: View {
+    struct Row: Identifiable {
+        let id: String
+        let color: Color
+        let title: String
+        let subtitle: String
+    }
+
     @Environment(\.dismiss) private var dismiss
 
-    let courses: [CourseStore.Course]
-    let onPick: (CourseStore.Course) -> Void
+    let title: String
+    let rows: [Row]
+    let onPick: (Row.ID) -> Void
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ForEach(Array(courses.enumerated()), id: \.element.courseNo) { index, course in
-                    row(course: course)
-                    if index < courses.count - 1 {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    rowView(row)
+                    if index < rows.count - 1 {
                         Divider()
                             .padding(.leading, 56)
                     }
@@ -20,7 +30,7 @@ struct ConflictCoursePickerSheet: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color.backgroundPrimary)
-            .navigationTitle(String(localized: "conflict_course_picker_title"))
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -30,20 +40,18 @@ struct ConflictCoursePickerSheet: View {
         }
     }
 
-    private func row(course: CourseStore.Course) -> some View {
+    private func rowView(_ row: Row) -> some View {
         Button {
-            onPick(course)
+            onPick(row.id)
         } label: {
             HStack(spacing: TigerDuckTheme.Spacing.md) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(course.color)
-                    .frame(width: 16, height: 16)
+                ColorSquare(color: row.color, side: 16)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(course.displayName)
+                    Text(row.title)
                         .font(TigerDuckTheme.Typography.body.weight(.semibold))
                         .foregroundStyle(Color.textPrimary)
                         .lineLimit(1)
-                    Text(subtitle(for: course))
+                    Text(row.subtitle)
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)
                         .lineLimit(1)
@@ -57,12 +65,34 @@ struct ConflictCoursePickerSheet: View {
         }
         .buttonStyle(.plain)
     }
+}
 
-    private func subtitle(for course: CourseStore.Course) -> String {
+extension ConflictPickerSheet.Row {
+    init(course: CourseStore.Course) {
         var parts = [course.courseNo]
         if !course.instructor.isEmpty { parts.append(course.instructor) }
         let classroom = CourseStore.Course.dedup(course.classroom)
         if !classroom.isEmpty { parts.append(classroom) }
-        return parts.joined(separator: " · ")
+        self.init(id: course.courseNo, color: course.color, title: course.displayName, subtitle: parts.joined(separator: " · "))
+    }
+
+    init(club: ClubOccurrence) {
+        let parts = [club.name, ClassTimeline.timeRange(from: club.start, to: club.end), club.location]
+        self.init(
+            id: String(club.id), color: Color(hex: UInt(club.color)), title: club.clubName,
+            subtitle: parts.filter { !$0.isEmpty }.joined(separator: " · ")
+        )
+    }
+}
+
+/// A rounded swatch of a course's or a club's color.
+struct ColorSquare: View {
+    let color: Color
+    let side: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(color)
+            .frame(width: side, height: side)
     }
 }

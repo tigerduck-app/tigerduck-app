@@ -48,9 +48,12 @@ struct ClassTableEditDialogs: ViewModifier {
                 Text(String(localized: "error_network_unavailable"))
             }
             .sheet(item: $viewModel.selection.conflictPickerTarget) { target in
-                ConflictCoursePickerSheet(
-                    courses: target.courses,
-                    onPick: { viewModel.pickFromConflict($0) }
+                ConflictPickerSheet(
+                    title: String(localized: "conflict_course_picker_title"),
+                    rows: target.courses.map(ConflictPickerSheet.Row.init(course:)),
+                    onPick: { id in
+                        if let course = target.courses.first(where: { $0.courseNo == id }) { viewModel.pickFromConflict(course) }
+                    }
                 )
                 .presentationDetents([.medium])
             }

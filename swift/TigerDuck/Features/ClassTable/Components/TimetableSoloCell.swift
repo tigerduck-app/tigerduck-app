@@ -134,10 +134,7 @@ struct TimetableSoloCell: View {
         switch line {
         case .room(let room):
             Text(room)
-                .font(.system(size: metrics.roomHintSize))
-                .foregroundStyle(policy.classTableCourseSecondaryTextColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .timetableBlockRoom(metrics: metrics, policy: policy)
         case .changedRoom(let room):
             changeLabel(room, systemImage: "arrow.left.arrow.right")
         case .cancelled:
@@ -206,13 +203,7 @@ struct TimetableSoloCell: View {
             }
             .overlay {
                 Text(course.displayName)
-                    .font(.system(size: metrics.courseNameSize, weight: policy.classTableCourseNameWeight))
-                    .strikethrough(isCancelled)
-                    .foregroundStyle(policy.classTableCourseTextColor.opacity(isCancelled ? 0.45 : 1))
-                    .lineLimit(lineLimit)
-                    .minimumScaleFactor(0.7)
-                    .multilineTextAlignment(.center)
-                    .padding(2)
+                    .timetableBlockName(metrics: metrics, policy: policy, lineLimit: lineLimit, isCancelled: isCancelled)
                     .padding(.bottom, leavesBottomLine ? metrics.roomHintSize + 2 : 0)
                     .padding(.top, leavesTopLine ? metrics.roomHintSize + 2 : 0)
             }

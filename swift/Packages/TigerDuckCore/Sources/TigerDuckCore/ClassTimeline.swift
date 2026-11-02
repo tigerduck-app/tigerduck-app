@@ -114,6 +114,12 @@ extension ClassTimeline {
         return hour * 60 + minute
     }
 
+    /// `HH:mm - HH:mm`, as the class times are written, of two minutes after midnight.
+    public static func timeRange(from start: Int, to end: Int) -> String {
+        func clock(_ minutes: Int) -> String { String(format: "%02d:%02d", minutes / 60, minutes % 60) }
+        return "\(clock(start)) - \(clock(end))"
+    }
+
     /// The Taipei weekday, 1 for Monday to 7 for Sunday.
     public static func weekday(of date: Date) -> Int {
         (TaipeiTime.calendar.component(.weekday, from: date) + 5) % 7 + 1

@@ -114,7 +114,7 @@ struct TimetableGridView: View {
         .overlay(alignment: .topLeading) {
             if let today, viewModel.grid.activeWeekdays.contains(today),
                let offset = TimetableNowLine.offset(
-                   minute: TimetableNowLine.minuteOfDay(now), periods: periods.compactMap(TimetableNowLine.minutes),
+                   minute: TimetableNowLine.minuteOfDay(now), periods: periods.compactMap(\.minutes),
                    rowPitch: rowPitch, cellHeight: cellHeight
                ) {
                 TimetableNowLine()

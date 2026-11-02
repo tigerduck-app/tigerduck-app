@@ -13,14 +13,9 @@ struct CourseDetailRoomAndTime: View {
     let meeting: CourseTimeSlot?
 
     @Environment(AppEnvironment.self) private var app
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.md))
-            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
-
-        return layout {
+        EmphasisCards {
             EmphasisCard(
                 label: String(localized: "course_detail_classroom_label"),
                 value: meeting?.hasChangedRoom == true ? meeting?.room ?? classroomValue : classroomValue,
@@ -34,7 +29,6 @@ struct CourseDetailRoomAndTime: View {
                 policy: app.preferences.visualStylePolicy
             )
         }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
     private static func changedTime(_ meeting: CourseTimeSlot) -> String? {
@@ -68,39 +62,39 @@ struct CourseDetailInfoRows: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-            InfoRow(
+            DetailInfoRow(
                 label: String(localized: "course_detail_instructor_label"),
                 value: course.instructor.isEmpty ? "—" : course.instructor
             )
-            InfoRow(
+            DetailInfoRow(
                 label: String(localized: "course_detail_code_label"),
                 value: course.courseNo,
                 copied: codeCopied,
                 onTap: copyCourseCode
             )
             if !course.dimension.isEmpty {
-                InfoRow(
+                DetailInfoRow(
                     label: String(localized: "course_detail_dimension_label"),
                     value: course.dimension
                 )
             }
             if let duration = durationText {
-                InfoRow(
+                DetailInfoRow(
                     label: String(localized: "course_detail_duration_label"),
                     value: duration
                 )
             }
             if let requireOption = Self.requireOptionText(course.requireOption) {
-                InfoRow(
+                DetailInfoRow(
                     label: String(localized: "course_detail_require_option_label"),
                     value: requireOption
                 )
             }
-            InfoRow(
+            DetailInfoRow(
                 label: String(localized: "course_detail_credits_label"),
                 value: course.credits.creditsText
             )
-            InfoRow(
+            DetailInfoRow(
                 label: String(localized: "course_detail_enrollment_label"),
                 value: "\(course.enrolledCount) / \(course.maxCount)"
             )
@@ -146,7 +140,22 @@ struct CourseDetailInfoRows: View {
     }
 }
 
-private struct EmphasisCard: View {
+/// Cards side by side, or stacked at the accessibility text sizes.
+struct EmphasisCards<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.md))
+            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
+        layout { content }
+            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+}
+
+struct EmphasisCard: View {
     let label: String
     let value: String
     var isChanged = false
@@ -173,7 +182,7 @@ private struct EmphasisCard: View {
     }
 }
 
-private struct InfoRow: View {
+struct DetailInfoRow: View {
     let label: String
     let value: String
     var copied: Bool = false

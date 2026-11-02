@@ -71,7 +71,7 @@ ClassTableEditDialogs.swift
 ClassTableHeaderMenu.swift
 ClassTableSemesterBar.swift
 ClassTableTabBarGestures.swift
-ConflictCoursePickerSheet.swift
+ConflictPickerSheet.swift
 ClassTableExportView.swift
 ClassTableImportScannerView.swift  # camera scanner; the Mac reads an image file instead
 ConflictLShape.swift
@@ -84,6 +84,10 @@ TimetableCell.swift
 TimetableCourseMenu.swift
 TimetableNowLine.swift
 TimetableSoloCell.swift
+
+# Features/ClassTable — the bar of the iPhone's search sheets; the Mac lays out its add-course
+# sheet in AddCourseMacLayout.swift
+SearchSheetChrome.swift
 
 # Features/CourseMoodle — the assignment page; the Mac opens an assignment on Moodle instead
 MoodleAssignmentDetails.swift
