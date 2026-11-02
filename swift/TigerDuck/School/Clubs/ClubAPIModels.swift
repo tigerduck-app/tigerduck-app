@@ -81,9 +81,9 @@ nonisolated struct ClubActivity: Decodable, Equatable, Sendable, Identifiable {
 }
 
 /// The `data` list of a club-aio envelope, `{success, data, error, meta}`, less the elements this
-/// build cannot read, so that one bad row does not hide the others. A list none of whose rows
-/// reads is unreadable as a whole.
-nonisolated struct ClubAPIList<Element: Decodable & Sendable>: Decodable, Sendable {
+/// build cannot read, so that one bad row does not hide the others, and less a second row of an
+/// id. A list none of whose rows reads is unreadable as a whole.
+nonisolated struct ClubAPIList<Element: Decodable & Sendable & Identifiable>: Decodable, Sendable {
     let elements: [Element]
 
     private struct Row: Decodable {
@@ -101,7 +101,8 @@ nonisolated struct ClubAPIList<Element: Decodable & Sendable>: Decodable, Sendab
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let rows = try container.decode([Row].self, forKey: .data)
-        elements = rows.compactMap(\.element)
+        var seen = Set<Element.ID>()
+        elements = rows.compactMap(\.element).filter { seen.insert($0.id).inserted }
         guard rows.isEmpty || !elements.isEmpty else {
             throw DecodingError.dataCorruptedError(forKey: .data, in: container, debugDescription: "no row is readable")
         }
