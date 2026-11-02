@@ -22,7 +22,9 @@ struct SecureStoreLockedReadTests {
         DebugEndpointStore.keychainKey,
     ]
 
-    static let readWhileLockedSinceTheMove = [AuthTokenManager.refreshTokenUsesKey, AuthTokenManager.departingSessionKey]
+    static let readWhileLockedSinceTheMove = [
+        AuthTokenManager.refreshTokenUsesKey, AuthTokenManager.departingSessionKey, AppConstants.KeychainKeys.pushDeviceSecret,
+    ]
 
     static let unlockedOnly = [
         AppConstants.KeychainKeys.studentId,
@@ -37,6 +39,20 @@ struct SecureStoreLockedReadTests {
         defer { SecureStore.delete(key: key) }
 
         try SecureStore.save(Data("value".utf8), forKey: key)
+
+        #expect(accessibilityClasses(of: key) == [afterFirstUnlock])
+    }
+
+    @Test(arguments: readWhileLockedSinceTheMove)
+    func aSecretNoEarlierBuildSavedCanBeSavedWhileLocked(key: String) throws {
+        SecureStore.delete(key: key)
+        defer { SecureStore.delete(key: key) }
+        let shared = LockablePhoneKeychain(absentReadsFailWhileLocked: true)
+
+        try SecureStore.$sharedForTesting.withValue(shared) {
+            shared.isLocked = true
+            try SecureStore.save(Data("value".utf8), forKey: key)
+        }
 
         #expect(accessibilityClasses(of: key) == [afterFirstUnlock])
     }
