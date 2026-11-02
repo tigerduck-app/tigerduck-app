@@ -78,6 +78,28 @@ struct BrowserAtRiskTests {
         #expect(page.signIn.phase == .idle)
     }
 
+    @Test("a page opened at risk loads its own address, not a site's sign-in link, and keeps every cookie of its host")
+    func theOpeningIsLeftAsItIs() async throws {
+        let start = URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/")!
+        let page = Self.refusedPage(start)
+        page.openAtRisk()
+        // Past `BrowserSchoolSites.cookieBudget`, so a page on the browser's own store would drop them.
+        let cookies = try (0..<3).map { index in
+            try #require(HTTPCookie(properties: [
+                .name: "large\(index)", .value: String(repeating: "a", count: 3000),
+                .domain: "querycourse.ntust.edu.tw", .path: "/",
+            ]))
+        }
+        for cookie in cookies { await page.store.httpCookieStore.setCookie(cookie) }
+
+        _ = BrowserNavigator(page: page, auth: nil).makeView(opening: start)
+        var loaded: [URL] = []
+        page.signIn.load = { loaded.append($0) }
+        try await waitUntil { !loaded.isEmpty }
+        #expect(loaded == [start])
+        #expect(Set(await page.store.httpCookieStore.allCookies().map(\.name)) == ["large0", "large1", "large2"])
+    }
+
     @Test("no cookie a page opened at risk sets reaches the browser's store, the app's jar or a sign-in")
     func cookiesStayInTheIsolatedStore() async throws {
         let page = Self.refusedPage()

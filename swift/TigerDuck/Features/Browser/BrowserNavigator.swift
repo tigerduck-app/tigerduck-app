@@ -33,16 +33,18 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     /// what the student accepted for a store opened at risk.
     private let certificates: BrowserCertificateCheck
     private let auth: AuthService?
+    private let siteSignIn: (SignIn) -> BrowserSiteSignIn
     private var observations: [NSKeyValueObservation] = []
     private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
     private var signInReturnPage: URL?
     private let demoPages = BrowserDemoPages()
     private static let sessionCookieLifetime: TimeInterval = 30 * 24 * 60 * 60
 
-    init(page: BrowserPage, auth: AuthService?) {
+    init(page: BrowserPage, auth: AuthService?, siteSignIn: ((SignIn) -> BrowserSiteSignIn)? = nil) {
         self.page = page
         certificates = page.certificates
         self.auth = auth
+        self.siteSignIn = siteSignIn ?? { BrowserSiteSignIn(auth: auth, for: $0) }
     }
 
     func makeView(opening start: URL) -> UIView {
@@ -76,7 +78,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
             _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
             await BrowserPageScripts.install(in: configuration.userContentController)
             if page.isAtRisk {
-                webView.load(URLRequest(url: start))
+                page.signIn.load(start)
             } else {
                 await page.signIn.open(await BrowserSiteSignIn.opening(start, for: schoolSignIn, in: store))
             }
@@ -221,7 +223,9 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         signInReturnPage = nil
         page.signIn.pageSettled()
         Task { await keepSession() }
-        Task { [auth] in await BrowserSiteSignIn(auth: auth, for: AccountSession.school.currentSignIn).pageFinished(in: webView) }
+        if !page.isAtRisk {
+            Task { [siteSignIn] in await siteSignIn(AccountSession.school.currentSignIn).pageFinished(in: webView) }
+        }
         if page.find.isActive { Task { await page.find.search() } }
     }
 
