@@ -27,7 +27,7 @@ struct CourseMembershipStampTests {
             reply: .init(statusCode: 409, body: Data(#"{"error":"something_else","message":"other"}"#.utf8)),
             sentStamp: CourseMembershipStampTests.hlc
         )
-        static let landsRestamped = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)), sentStamp: serverClock)
+        static let landsRestamped = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)), sentStamp: "1789999000000001")
     }
 
     struct Case: Sendable, CustomTestStringConvertible {
@@ -40,7 +40,7 @@ struct CourseMembershipStampTests {
                  edit: .hide, attempts: [.lands]),
             Case(testDescription: "A hide whose reply was lost goes again with the same time",
                  edit: .hide, attempts: [.loses, .lands]),
-            Case(testDescription: "A hide stamped ahead of the server's clock goes again stamped from that clock",
+            Case(testDescription: "A hide stamped ahead of the server's clock goes again stamped one tick after that clock",
                  edit: .hide, attempts: [.refusedAsAhead, .landsRestamped]),
             Case(testDescription: "A hide answered with another conflict stays queued with its time",
                  edit: .hide, attempts: [.otherConflict, .otherConflict]),
@@ -48,7 +48,7 @@ struct CourseMembershipStampTests {
                  edit: .add, attempts: [.lands]),
             Case(testDescription: "An add whose reply was lost goes again with the same time",
                  edit: .add, attempts: [.loses, .lands]),
-            Case(testDescription: "An add stamped ahead of the server's clock goes again stamped from that clock",
+            Case(testDescription: "An add stamped ahead of the server's clock goes again stamped one tick after that clock",
                  edit: .add, attempts: [.refusedAsAhead, .landsRestamped]),
             Case(testDescription: "An add answered with another conflict stays queued with its time",
                  edit: .add, attempts: [.otherConflict, .otherConflict]),

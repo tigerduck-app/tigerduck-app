@@ -44,4 +44,28 @@ struct PushAPIRefusalTests {
         _ = try await unbound.send(BackendRequest("GET", "sync", "revision"))
         #expect(SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "Authorization") } == ["Bearer C1"])
     }
+
+    @Test("a clock_ahead carrying the largest clock value is thrown, not sent again")
+    func anAheadRefusalWithNoNextTickIsNotResent() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = PushAPIClient(
+            baseURLProvider: { baseURL }, session: URLSession(configuration: config), authHeaderProvider: { "Bearer B1" }
+        )
+        let madeAt = Date(timeIntervalSince1970: 1_790_000_000)
+        SettingsAPIStub.enqueue(
+            .init(
+                statusCode: 409, body: Data(#"{"error":"clock_ahead","message":"ahead"}"#.utf8),
+                headerFields: ["X-TigerSync-Clock": String(Int64.max)]
+            ),
+            for: baseURL.appendingPathComponent("sync/courses/client:1151:CS1001301")
+                .appending(queryItems: [URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: madeAt)))])
+        )
+
+        await #expect(throws: PushAPIError.self) {
+            try await client.deleteCourse(courseKey: "client:1151:CS1001301", madeAt: madeAt, for: testSignIn)
+        }
+        #expect(SettingsAPIStub.requests(under: baseURL).count == 1)
+    }
 }

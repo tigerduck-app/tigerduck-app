@@ -17,7 +17,7 @@ struct OverrideStampTests {
             case .lands: return [(landed, OverrideStampTests.hlc)]
             case .lostReplyThenLands: return [(.noReply, OverrideStampTests.hlc), (landed, OverrideStampTests.hlc)]
             case .refusedAsAheadThenLandsRestamped:
-                return [(Self.clockAhead, OverrideStampTests.hlc), (landed, Self.serverClock)]
+                return [(Self.clockAhead, OverrideStampTests.hlc), (landed, Self.serverClock + 1)]
             }
         }
 
@@ -136,7 +136,7 @@ struct OverrideStampTests {
         }
     }
 
-    @Test("A holiday setting refused as ahead of the server's clock goes again stamped from that clock")
+    @Test("A holiday setting refused as ahead of the server's clock goes again stamped one tick after that clock")
     func holidayAheadOfTheServerGoesRestamped() async throws {
         try await Self.withCleanHolidayDefaults { id, url, registration in
             SettingsAPIStub.enqueue(Attempts.clockAhead, for: url)
@@ -149,7 +149,7 @@ struct OverrideStampTests {
 
             let stamps = try SettingsAPIStub.requests(for: url).map { try (Self.json($0)["hlc"] as? NSNumber)?.int64Value }
             let madeAt = try #require(store.holidayEdit(id).madeAt)
-            #expect(stamps == [PushAPI.clock(of: madeAt), Attempts.serverClock])
+            #expect(stamps == [PushAPI.clock(of: madeAt), Attempts.serverClock + 1])
             #expect(!store.unacknowledgedHolidayIDs.contains(id))
         }
     }
