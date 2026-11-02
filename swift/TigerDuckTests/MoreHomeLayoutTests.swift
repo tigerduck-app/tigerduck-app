@@ -33,10 +33,10 @@ struct MoreHomeLayoutTests {
             try await waitUntil { MoreScreen.gear(in: window) != nil && !MoreScreen.headings(in: window).isEmpty }
             window.saveSnapshot(as: "more-\(Int(width))-\(look.rawValue)")
 
-            // The walk meets one element through more than one parent.
-            let headings = Set(MoreScreen.headings(in: window).map { "\($0.accessibilityFrame)" })
-            let heading = try #require(MoreScreen.headings(in: window).first).accessibilityFrame
-            let gear = try #require(MoreScreen.gear(in: window)).accessibilityFrame
+            let headings = MoreScreen.headings(in: window).map(\.accessibilityFrame)
+            let heading = try #require(headings.first)
+            let gearButton = try #require(MoreScreen.gear(in: window))
+            let gear = gearButton.accessibilityFrame
             let bar = try #require(window.descendants(ofType: UINavigationBar.self).first { !$0.isHidden })
             let barFrame = bar.convert(bar.bounds, to: window).insetBy(dx: -0.5, dy: -0.5)
             #expect(headings.count == 1, "\(headings)")
@@ -44,7 +44,9 @@ struct MoreHomeLayoutTests {
             #expect(barFrame.contains(gear), "\(gear) outside \(barFrame)")
             #expect(heading.width >= Self.headingWidthAtDefaultSize - 0.5, "\(heading) cut short")
             #expect(heading.maxX < gear.minX, "\(heading) runs into \(gear)")
-            #expect(gear.width >= 44 && gear.height >= 44, "\(gear)")
+            // iOS 26 reports the 44 pt gear as 43.99999999999999 pt tall.
+            #expect(gear.width.rounded() >= 44 && gear.height.rounded() >= 44, "\(gear)")
+            #expect(gearButton.accessibilityLabel == String(localized: "feature_settings"))
         }
     }
 }

@@ -113,6 +113,7 @@ struct MoreHome<Settings: View>: View {
                         .glassEffect(.regular.interactive(), in: .circle)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "feature_settings"))
             }
             .sharedBackgroundVisibility(.hidden)
         } else {
@@ -126,6 +127,7 @@ struct MoreHome<Settings: View>: View {
                         .background(.ultraThinMaterial, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "feature_settings"))
             }
         }
     }

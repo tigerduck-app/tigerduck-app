@@ -113,7 +113,7 @@ struct BulletinsView: View {
         // Default placement on iOS 26 is the navigation bar drawer, revealed on
         // pull-down and collapsed on scroll. The system applies Liquid Glass, so
         // per the HIG this view does not call `.glassEffect()`.
-        .searchable(text: $viewModel.searchText, isPresented: $searchIsPresented, prompt: String(localized: "bulletin_search_prompt"))
+        .navigationBarSearch(text: $viewModel.searchText, isPresented: $searchIsPresented, prompt: String(localized: "bulletin_search_prompt"))
         .refreshable { await viewModel.refresh() }
         .toolbar {
             BulletinsToolbar(
