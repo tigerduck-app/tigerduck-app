@@ -55,6 +55,7 @@ final class AppEnvironment {
 
         let authService = AuthService(session: .school)
         self.authService = authService
+        PushIdentity.startOverIfRefused()
         let identity = PushIdentity.loadOrCreate()
         let atm = Self.tokenManager(after: purge, deviceUUID: identity.uuid, signIn: authService.session.currentSignIn)
         let pushCoordinator = PushCoordinator(identity: identity, authTokenManager: atm, signIns: authService.session.signIns)

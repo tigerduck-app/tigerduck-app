@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Security
 
@@ -47,6 +48,20 @@ nonisolated struct PushIdentity: Sendable {
         let uuid = id ?? mintedId(in: store)
         let secret = mintSecret().flatMap { store.save(secretKey, $0) ? $0 : nil }
         return PushIdentity(uuid: uuid, secret: secret)
+    }
+
+    /// After the backend refused the secret, a launch with no backend session stored discards the
+    /// id and secret, so `loadOrCreate` mints new ones. The backend keys a signed-in device and its
+    /// Live Activity rows by the id, and a sign-out's kept session deletes that device by it.
+    static func startOverIfRefused(in store: Store = .keychain) {
+        let sessionKeys = [AuthTokenManager.refreshTokenKey, AuthTokenManager.departingSessionKey]
+        guard Defaults[.pushDeviceSecretRefused],
+              case .success(let sessions) = Result(catching: { try sessionKeys.compactMap(store.read) }),
+              sessions.isEmpty
+        else { return }
+        store.delete(idKey)
+        store.delete(secretKey)
+        Defaults[.pushDeviceSecretRefused] = false
     }
 
     /// 32 random bytes as unpadded base64url, the 43 characters the backend accepts.

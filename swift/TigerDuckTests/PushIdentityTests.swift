@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Testing
 import os
@@ -81,6 +82,80 @@ struct PushIdentityTests {
         #expect(!identity.mayAnnounce)
         #expect(identity.secret == nil)
         #expect(keychain.saves.isEmpty)
+    }
+
+    private static func withRefusalRecorded(_ refused: Bool, _ body: () async -> Void) async {
+        await withExclusiveRealDefaults {
+            let saved = Defaults[.pushDeviceSecretRefused]
+            defer { Defaults[.pushDeviceSecretRefused] = saved }
+            Defaults[.pushDeviceSecretRefused] = refused
+            await body()
+        }
+    }
+
+    @Test("a refused device that launches signed out starts over with a new id and secret")
+    func aRefusedSignedOutLaunchStartsOver() async {
+        await Self.withRefusalRecorded(true) {
+            let keychain = FakeIdentityKeychain([Self.idKey: "refused-device", Self.secretKey: "refused-secret"])
+
+            PushIdentity.startOverIfRefused(in: keychain.store)
+            let identity = PushIdentity.loadOrCreate(from: keychain.store)
+
+            #expect(identity.uuid != "refused-device")
+            #expect(identity.secret?.count == 43)
+            #expect(keychain[Self.idKey] == identity.uuid)
+            #expect(keychain[Self.secretKey] == identity.secret)
+            #expect(!Defaults[.pushDeviceSecretRefused])
+        }
+    }
+
+    @Test(
+        "a refused device keeps its id while a backend session is stored, and starts over after sign-out",
+        arguments: [AuthTokenManager.refreshTokenKey, AuthTokenManager.departingSessionKey]
+    )
+    func aRefusedSignedInLaunchWaits(sessionKey: String) async {
+        await Self.withRefusalRecorded(true) {
+            let keychain = FakeIdentityKeychain(
+                [Self.idKey: "refused-device", Self.secretKey: "refused-secret", sessionKey: "session"]
+            )
+
+            PushIdentity.startOverIfRefused(in: keychain.store)
+            let signedIn = PushIdentity.loadOrCreate(from: keychain.store)
+
+            #expect(signedIn.uuid == "refused-device")
+            #expect(signedIn.secret == "refused-secret")
+            #expect(Defaults[.pushDeviceSecretRefused])
+            keychain.store.delete(sessionKey)
+            PushIdentity.startOverIfRefused(in: keychain.store)
+            #expect(PushIdentity.loadOrCreate(from: keychain.store).uuid != "refused-device")
+            #expect(!Defaults[.pushDeviceSecretRefused])
+        }
+    }
+
+    @Test("a refused device whose session cannot be read yet keeps its id")
+    func anUnreadableSessionKeepsTheId() async {
+        await Self.withRefusalRecorded(true) {
+            let keychain = FakeIdentityKeychain(
+                [Self.idKey: "refused-device"], unreadable: [AuthTokenManager.refreshTokenKey]
+            )
+
+            PushIdentity.startOverIfRefused(in: keychain.store)
+
+            #expect(keychain[Self.idKey] == "refused-device")
+            #expect(Defaults[.pushDeviceSecretRefused])
+        }
+    }
+
+    @Test("with no refusal recorded, a signed-out launch keeps its id and secret")
+    func noRefusalKeepsBoth() async {
+        await Self.withRefusalRecorded(false) {
+            let keychain = FakeIdentityKeychain([Self.idKey: "kept-device", Self.secretKey: "kept-secret"])
+
+            PushIdentity.startOverIfRefused(in: keychain.store)
+
+            #expect(keychain[Self.idKey] == "kept-device")
+            #expect(keychain[Self.secretKey] == "kept-secret")
+        }
     }
 
     @Test("each minted secret is new")
