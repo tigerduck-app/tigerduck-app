@@ -257,6 +257,22 @@ struct ClubScreensTests {
                 try await waitUntil {
                     accessibilityElement(labeled: TimetableClubBlock.spoken(thursday), in: window) != nil
                 }
+                let block = try #require(accessibilityElement(labeled: TimetableClubBlock.spoken(thursday), in: window))
+                #expect(block.accessibilityTraits.contains(.button))
+                let center = CGPoint(x: block.accessibilityFrame.midX, y: block.accessibilityFrame.midY)
+                let menus = { @MainActor in
+                    window.descendants(ofType: UIView.self)
+                        .flatMap { $0.interactions.compactMap { $0 as? UIContextMenuInteraction } }
+                }
+                let opensMenu = { @MainActor in
+                    menus().contains { menu in
+                        guard let host = menu.view else { return false }
+                        let point = window.convert(center, to: host)
+                        return menu.delegate?.contextMenuInteraction(menu, configurationForMenuAtLocation: point) != nil
+                    }
+                }
+                try? await waitUntil(timeout: .seconds(5)) { opensMenu() }
+                #expect(opensMenu(), "\(menus().count) menus, block at \(block.accessibilityFrame)")
 
                 _ = accessibilityElement(labeled: TimetableClubBlock.spoken(monday), in: window)?.accessibilityActivate()
                 #expect(model.selection.clubPicker?.clubs.map(\.id) == [1, 2])

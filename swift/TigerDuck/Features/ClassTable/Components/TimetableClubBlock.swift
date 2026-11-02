@@ -83,7 +83,7 @@ struct TimetableClubBlock: View {
                 viewModel.selectClubs(ClassTableClubLayout.overlapping(club, among: drawn))
             }
             .accessibilityLabel(Text(Self.spoken(club)))
-            .contextMenu {
+            .courseEditMenu(isEditable: viewModel.shownPerson == nil) {
                 Button {
                     viewModel.editor.dialogs.clubToRecolor = .init(id: club.clubID, name: club.clubName)
                 } label: {
