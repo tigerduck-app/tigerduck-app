@@ -661,14 +661,36 @@ jobs:
             exit 1
           fi
 
+      # A run whose filter matches nothing exits 0, so the step also fails unless Swift Testing ran
+      # as many tests as the suites' files declare: it counts a parameterized test once.
       - name: Search tests
         if: steps.changes.outputs.run == 'true'
         env:
           UDID: ${{ steps.sim.outputs.udid }}
         run: |
+          set -o pipefail
+          shopt -s nullglob
+          runs=("$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun)
+          if [ ${#runs[@]} -ne 1 ]; then
+            echo "::error::expected one .xctestrun, found ${#runs[@]}: ${runs[*]}"
+            exit 1
+          fi
+          expected=0
+          only=()
+          for suite in SearchDrawerFirstOpenTests NavigationBarSearchTests; do
+            expected=$((expected + $(grep -cE '^[[:space:]]*@Test' "swift/TigerDuckTests/$suite.swift")))
+            only+=("-only-testing:TigerDuckTests/$suite")
+          done
+          log="$RUNNER_TEMP/tests.log"
           xcodebuild test-without-building \
-            -xctestrun "$(ls "$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun)" \
+            -xctestrun "${runs[0]}" \
             -destination "id=$UDID" \
-            -only-testing:TigerDuckTests/SearchDrawerFirstOpenTests \
-            -only-testing:TigerDuckTests/NavigationBarSearchTests \
-            -parallel-testing-enabled NO
+            "${only[@]}" \
+            -parallel-testing-enabled NO \
+            2>&1 | tee "$log"
+          ran=$(grep -oE 'Test run with [0-9]+ tests?' "$log" | grep -oE '[0-9]+' | tail -n 1 || true)
+          if [ "${ran:-0}" -ne "$expected" ]; then
+            echo "::error::ran ${ran:-no} tests; the suites declare $expected"
+            exit 1
+          fi
+          echo "ran $ran tests, as the suites declare"
