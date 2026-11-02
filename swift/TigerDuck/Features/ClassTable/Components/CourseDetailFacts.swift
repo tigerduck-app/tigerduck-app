@@ -140,7 +140,6 @@ struct CourseDetailInfoRows: View {
     }
 }
 
-/// Cards side by side, or stacked at the accessibility text sizes.
 struct EmphasisCards<Content: View>: View {
     @ViewBuilder let content: Content
 

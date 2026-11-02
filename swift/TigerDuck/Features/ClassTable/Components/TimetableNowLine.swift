@@ -27,8 +27,7 @@ struct TimetableNowLine: View {
         return position(minute: minute, periods: periods, rowPitch: rowPitch, cellHeight: cellHeight)
     }
 
-    /// A period's share of its row, and the time between two periods the same share of the gap
-    /// between their rows; held to the first row's top and the last row's bottom.
+    /// Held to the first row's top and the last row's bottom.
     nonisolated static func position(
         minute: Int, periods: [(start: Int, end: Int)], rowPitch: CGFloat, cellHeight: CGFloat
     ) -> CGFloat {

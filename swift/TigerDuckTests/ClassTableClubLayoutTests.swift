@@ -13,7 +13,6 @@ struct ClassTableClubLayoutTests {
     static let dates = (0..<7).map { monday.addingTimeInterval(Double($0) * 86_400) }
     static let cellHeight: CGFloat = 52
     static let rowPitch: CGFloat = 55
-    /// Every period shows, as on the mock's table: its clubs reach period 5 and A to D.
     static let periods = AppConstants.Periods.chronologicalOrder.compactMap { TimetablePeriod.byId[$0]?.minutes }
 
     static func row(_ period: String) -> CGFloat {
@@ -48,7 +47,6 @@ struct ClassTableClubLayoutTests {
 
     @Test("Monday: a course wins, and a lower club shows only where the higher one has ended")
     func monday() throws {
-        // The security club's 19:00-21:00 after period A, which ends 19:15; the band's 19:00-21:30 after it.
         #expect(Self.segments(on: 1).map(Self.span) == ["1 1155-1260", "2 1260-1290"])
 
         let blocks = Self.blocks(on: 1)
@@ -65,7 +63,6 @@ struct ClassTableClubLayoutTests {
 
     @Test("Wednesday: two clubs cut short of B-C, and the shorter piece goes without its name")
     func wednesday() throws {
-        // The guitar club's 19:00-21:00 ranks above the ambassadors' 18:30-21:00; B-C runs 19:20-21:05.
         #expect(Self.segments(on: 3).map(Self.span) == ["4 1140-1160", "4 1210-1215", "3 1110-1140"])
 
         let blocks = Self.blocks(on: 3)
@@ -149,8 +146,7 @@ struct ClassTableClubLayoutTests {
         }
     }
 
-    /// Runs `body` with 1151 the newest term on offer and none picked. Run inside
-    /// `withExclusiveRealDefaults`.
+    /// Run inside `withExclusiveRealDefaults`.
     static func withNewestTerm1151(_ body: () throws -> Void) rethrows {
         let catalogue = "semesterCatalog.semesters"
         let savedTerms = UserDefaults.standard.stringArray(forKey: catalogue)

@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// One weekday's club activities, over the rows of the class table.
 struct TimetableClubColumn: View {
     let viewModel: ClassTableViewModel
     let weekday: Int
@@ -19,12 +18,12 @@ struct TimetableClubColumn: View {
             rowPitch: metrics.cellHeight + metrics.rowSpacing,
             cellHeight: metrics.cellHeight
         )
-        let drawn = blocks.map(\.segment.occurrence)
+        let columnActivities = blocks.map(\.segment.occurrence)
         ZStack(alignment: .top) {
             ForEach(blocks) { block in
                 TimetableClubBlock(
-                    viewModel: viewModel, block: block, drawn: drawn, metrics: metrics, drawsPeriodTiles: drawsPeriodTiles,
-                    policy: policy
+                    viewModel: viewModel, block: block, columnActivities: columnActivities, metrics: metrics,
+                    drawsPeriodTiles: drawsPeriodTiles, policy: policy
                 )
                 .frame(height: block.height)
                 .offset(y: block.top)
@@ -34,14 +33,10 @@ struct TimetableClubColumn: View {
     }
 }
 
-/// A piece of a club activity: a course block's shape and fill in the club's color, with a bar of
-/// that color down its leading edge. The fill lies on the page's background, as a course block's
-/// does, rather than on the empty cells under it.
 struct TimetableClubBlock: View {
     let viewModel: ClassTableViewModel
     let block: ClassTableClubLayout.Block
-    /// The activities the column draws, which a tap offers when they meet this one.
-    let drawn: [ClubOccurrence]
+    let columnActivities: [ClubOccurrence]
     let metrics: TimetableCellMetrics
     let drawsPeriodTiles: Bool
     let policy: VisualStylePolicy
@@ -80,7 +75,7 @@ struct TimetableClubBlock: View {
             }
             .contentShape(.contextMenuPreview, shape)
             .scrollSafeTapAction {
-                viewModel.selectClubs(ClassTableClubLayout.overlapping(club, among: drawn))
+                viewModel.selectClubs(ClassTableClubLayout.overlapping(club, among: columnActivities))
             }
             .accessibilityLabel(Text(Self.spoken(club)))
             .courseEditMenu(isEditable: viewModel.shownPerson == nil) {

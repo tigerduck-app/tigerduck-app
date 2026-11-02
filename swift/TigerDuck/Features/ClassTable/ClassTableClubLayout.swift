@@ -1,23 +1,18 @@
 import CoreGraphics
 import Foundation
 
-/// Where the class table draws the club activities of a day. Clubs never share a column: an
-/// activity shows only where no course and no club ranked above it takes the time, so it may be
-/// cut into pieces or hidden.
 nonisolated enum ClassTableClubLayout {
     typealias Interval = (start: Int, end: Int)
 
     static let nameHeight: CGFloat = 24
     static let locationHeight: CGFloat = 44
 
-    /// A piece of an activity, in minutes after midnight.
+    /// `start` and `end` are minutes after midnight.
     struct Segment: Equatable {
         let occurrence: ClubOccurrence
         let start: Int
         let end: Int
-        /// A course or a higher-ranked activity ends where the piece starts.
         let startsAtBlocker: Bool
-        /// A course or a higher-ranked activity starts where the piece ends.
         let endsAtBlocker: Bool
     }
 
@@ -48,8 +43,6 @@ nonisolated enum ClassTableClubLayout {
         return segments
     }
 
-    /// The pieces with room to draw, placed on rows of `periods` as the now line is. A piece leaves
-    /// the grid's gap between rows where it meets a course or a higher-ranked activity.
     static func blocks(
         _ segments: [Segment], periods: [Interval], rowPitch: CGFloat, cellHeight: CGFloat
     ) -> [Block] {
@@ -64,7 +57,6 @@ nonisolated enum ClassTableClubLayout {
         }
     }
 
-    /// The minutes the courses of `weekday` take, one interval per period.
     @MainActor static func courseTimes(_ courses: [CourseStore.Course], weekday: Int) -> [Interval] {
         courses.flatMap { $0.schedule[weekday] ?? [] }.compactMap { TimetablePeriod.byId[$0]?.minutes }
     }

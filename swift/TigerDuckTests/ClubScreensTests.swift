@@ -5,8 +5,6 @@ import TigerDuckCore
 import UIKit
 @testable import TigerDuck
 
-/// The club screens of the class table at the narrowest phone, light and dark, and at the largest
-/// text size. A local run on the build host also saves each one to `.out/club-ui`.
 @MainActor
 @Suite(.serialized)
 struct ClubScreensTests {
@@ -110,8 +108,8 @@ struct ClubScreensTests {
 
     @Test("a drag in the subscribed list moves the club among every subscription, the hidden ones too")
     func moveOffsets() {
-        // 999 is subscribed but missing from the directory, so the list leaves it out.
-        let order = [101, 999, 102, 103]
+        let missingFromDirectory = 999
+        let order = [101, missingFromDirectory, 102, 103]
         let shown = [101, 102, 103]
         func move(_ from: Int, to destination: Int) -> [Int] {
             let offsets = ClubSubscribeSheet.move([from], to: destination, shown: shown, order: order)
@@ -120,9 +118,9 @@ struct ClubScreensTests {
             return moved
         }
 
-        #expect(move(2, to: 0) == [103, 101, 999, 102])
-        #expect(move(0, to: 2) == [999, 102, 101, 103])
-        #expect(move(0, to: 3) == [999, 102, 103, 101])
+        #expect(move(2, to: 0) == [103, 101, missingFromDirectory, 102])
+        #expect(move(0, to: 2) == [missingFromDirectory, 102, 101, 103])
+        #expect(move(0, to: 3) == [missingFromDirectory, 102, 103, 101])
     }
 
     @Test("an activity's details: the club, the activity, where, when and what kind", arguments: looks)

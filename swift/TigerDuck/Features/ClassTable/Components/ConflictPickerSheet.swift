@@ -1,7 +1,6 @@
 import SwiftUI
 import TigerDuckCore
 
-/// The blocks that share a place on the class table, to pick the one to open.
 struct ConflictPickerSheet: View {
     struct Row: Identifiable {
         let id: String
@@ -42,8 +41,7 @@ struct ConflictPickerSheet: View {
     }
 
     private func rowView(_ row: Row) -> some View {
-        // At the accessibility sizes the lines wrap, since the time and place tell rows apart.
-        let stacked = dynamicTypeSize.isAccessibilitySize
+        let wrapsLines = dynamicTypeSize.isAccessibilitySize
         return Button {
             onPick(row.id)
         } label: {
@@ -53,11 +51,11 @@ struct ConflictPickerSheet: View {
                     Text(row.title)
                         .font(TigerDuckTheme.Typography.body.weight(.semibold))
                         .foregroundStyle(Color.textPrimary)
-                        .lineLimit(stacked ? nil : 1)
+                        .lineLimit(wrapsLines ? nil : 1)
                     Text(row.details.joined(separator: " · "))
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)
-                        .lineLimit(stacked ? nil : 1)
+                        .lineLimit(wrapsLines ? nil : 1)
                         .truncationMode(.tail)
                 }
                 Spacer(minLength: 0)
@@ -86,13 +84,11 @@ extension ConflictPickerSheet.Row {
 }
 
 extension ClubOccurrence {
-    /// The activity, its time and its place, which a picker row and VoiceOver read after the club.
     var details: [String] {
         [name, ClassTimeline.timeRange(from: start, to: end), location].filter { !$0.isEmpty }
     }
 }
 
-/// A rounded swatch of a course's or a club's color.
 struct ColorSquare: View {
     let color: Color
     let side: CGFloat

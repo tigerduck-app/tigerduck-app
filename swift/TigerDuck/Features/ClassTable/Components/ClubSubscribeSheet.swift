@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Subscribes to clubs, ranks the subscribed ones, the first ranked highest, and picks their colors.
 struct ClubSubscribeSheet: View {
     /// The sign-in the sheet opened in, which its changes are saved for.
     let signIn: SignIn
@@ -154,7 +153,6 @@ private struct ClubNameLabel: View {
 }
 
 extension View {
-    /// The color sheet of a subscribed club, which saves for `signIn` only.
     func clubColorSheet(
         _ target: Binding<ClassTableEditor.ClubColorTarget?>, signIn: SignIn, subscriptions: ClubSubscriptions = .shared
     ) -> some View {

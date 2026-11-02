@@ -1,8 +1,6 @@
 import SwiftUI
 
 extension View {
-    /// The bar of a sheet that searches a list: its title, Close at the leading edge, and a search
-    /// field kept in the bar with its own Cancel.
     func searchSheetChrome(
         title: String, prompt: String, text: Binding<String>, focused: FocusState<Bool>.Binding
     ) -> some View {
@@ -45,7 +43,6 @@ private struct SearchSheetChrome: ViewModifier {
     }
 }
 
-/// The searching row and the failure line at the top of a search sheet's list.
 struct SearchSheetStatus: View {
     /// The text beside the spinner while a search runs; nil once it ends.
     let searching: String?

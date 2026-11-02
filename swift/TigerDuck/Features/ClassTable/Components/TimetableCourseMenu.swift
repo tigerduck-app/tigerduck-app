@@ -34,7 +34,6 @@ struct TimetableCellMetrics {
 }
 
 extension Text {
-    /// The name on a block of the class table.
     func timetableBlockName(
         metrics: TimetableCellMetrics, policy: VisualStylePolicy, lineLimit: Int, isCancelled: Bool = false
     ) -> some View {
@@ -47,7 +46,6 @@ extension Text {
             .padding(2)
     }
 
-    /// The room at the foot of a block.
     func timetableBlockRoom(metrics: TimetableCellMetrics, policy: VisualStylePolicy) -> some View {
         font(.system(size: metrics.roomHintSize))
             .foregroundStyle(policy.classTableCourseSecondaryTextColor)

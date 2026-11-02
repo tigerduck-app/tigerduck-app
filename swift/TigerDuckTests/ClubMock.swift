@@ -4,8 +4,6 @@ import Foundation
 import TigerDuckCore
 @testable import TigerDuck
 
-/// The week of the approved class table mock: its courses, and its clubs from the highest ranked
-/// down.
 @MainActor
 enum ClubMock {
     struct Club {
@@ -36,7 +34,6 @@ enum ClubMock {
         Club(id: 106, zh: "國際親善大使團", en: "International Ambassadors", tagline: nil),
     ]
 
-    /// One course per entry: Mon 3-4 and A, Tue 6-7, Wed 2 and B-C, Thu 8-9 and 10, Fri 1-2.
     static let courses: [(no: String, weekday: Int, periods: [String])] = [
         ("MA2003301", 1, ["3", "4"]), ("GE3105701", 1, ["A"]), ("CS2001301", 2, ["6", "7"]),
         ("PE1010301", 3, ["2"]), ("FL1002701", 3, ["B", "C"]), ("EE2005301", 4, ["8", "9"]),
@@ -66,7 +63,6 @@ enum ClubMock {
         ClassTimeline.minutes(of: time) ?? 0
     }
 
-    /// The day's activities as `ClubActivities` hands them out.
     static func occurrences(on weekday: Int) -> [ClubOccurrence] {
         activities.filter { $0.weekday == weekday }.map { activity in
             let rank = clubs.firstIndex { $0.id == activity.club } ?? 0
@@ -95,8 +91,6 @@ enum ClubMock {
         courses.map { course($0.no, weekday: $0.weekday, periods: $0.periods, semester: semester) }
     }
 
-    // MARK: Stores
-
     struct Stores {
         let feed: ClubActivities
         let directory: ClubDirectory
@@ -104,8 +98,7 @@ enum ClubMock {
         let root: URL
     }
 
-    /// Subscribes to every club in rank order and stores the directory and a feed whose activities
-    /// fall on `dates`, Monday's first. Run inside `withExclusiveRealDefaults`.
+    /// `dates` runs from Monday. Run inside `withExclusiveRealDefaults`.
     static func stores(dates: [Date], chinese: Bool = true) throws -> Stores {
         Defaults.reset(.clubSubscriptions, .clubSubscriptionsPushPending)
         let subscriptions = ClubSubscriptions()

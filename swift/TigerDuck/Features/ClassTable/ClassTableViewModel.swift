@@ -147,7 +147,6 @@ final class ClassTableViewModel {
         follow(semester)
     }
 
-    /// The user's own table for the newest term shows the subscribed clubs; the Mac's does not yet.
     var showsClubs: Bool {
         #if os(iOS)
         shownPerson == nil && currentSemester == SchoolTerms.available().first
@@ -156,16 +155,12 @@ final class ClassTableViewModel {
         #endif
     }
 
-    /// Whether the page draws the grid rather than its empty state: this week's club activities
-    /// fill it before any course does.
     var hasGrid: Bool { !courses.isEmpty || !grid.clubs.isEmpty }
 
-    /// Each column shows its weekday's next date, today's being today.
     func refreshClubs(now: Date = AppClock.now()) {
         grid.showClubs(on: showsClubs ? (1...7).map { Self.nextDate(onWeekday: $0, from: now) } : [])
     }
 
-    /// One activity opens its details; several that meet open the picker.
     func selectClubs(_ overlapping: [ClubOccurrence]) {
         if overlapping.count > 1 {
             selection.clubPicker = .init(clubs: overlapping)
@@ -221,14 +216,13 @@ final class ClassTableViewModel {
     func selectCourse(_ course: CourseStore.Course, weekday: Int, periodId: String) {
         selection.weekday = weekday
         selection.periodId = periodId
-        selection.coursePeriods = course.block(weekday: weekday, at: periodId, in: tappablePeriodIds)
+        selection.coursePeriods = course.block(weekday: weekday, at: periodId, in: onScreenPeriodIds)
         selection.date = showsThisWeek ? Self.nextDate(onWeekday: weekday, from: AppClock.now()) : nil
         selection.currentClassSlot = nil
         selection.course = course
     }
 
-    /// The rows of the class table on screen, which draws the clubs and takes every tap.
-    private var tappablePeriodIds: [String] { grid.activePeriods(withClubs: true).map(\.id) }
+    private var onScreenPeriodIds: [String] { grid.activePeriods(withClubs: true).map(\.id) }
 
     var showsThisWeek: Bool {
         grid.courseChanges.hasAnswered && currentSemester == SchoolTerms.current
@@ -246,7 +240,7 @@ final class ClassTableViewModel {
         let date = Self.nextDate(onWeekday: weekday, from: today)
         let changes = grid.courseChanges
         guard !changes.changes(courseNo: course.courseNo, on: date).isEmpty,
-              let block = course.block(weekday: weekday, at: periodId, in: tappablePeriodIds)
+              let block = course.block(weekday: weekday, at: periodId, in: onScreenPeriodIds)
         else { return nil }
         return CourseTimeSlot.meeting(of: course, periods: block, on: date, changes: changes)
             .flatMap { $0.changes.isEmpty ? nil : $0 }

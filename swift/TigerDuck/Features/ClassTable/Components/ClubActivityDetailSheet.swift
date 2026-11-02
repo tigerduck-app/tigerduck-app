@@ -1,7 +1,6 @@
 import SwiftUI
 import TigerDuckCore
 
-/// A club activity as the course detail shows a course: where, when, what kind, and what it is.
 struct ClubActivityDetailSheet: View {
     let club: ClubOccurrence
     let policy: VisualStylePolicy

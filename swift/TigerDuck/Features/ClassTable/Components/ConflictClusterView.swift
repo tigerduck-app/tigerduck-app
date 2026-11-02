@@ -8,14 +8,12 @@ struct ConflictCluster {
     let weekday: Int
     let periodId: String
     let metrics: TimetableCellMetrics
-    /// Whether the grid drawing the cluster has rows for the clubs, which the export leaves out.
     let withClubs: Bool
 
     var periodLabel: String {
         viewModel.grid.activePeriods(withClubs: withClubs).first { $0.id == periodId }?.displayLabel ?? periodId
     }
 
-    /// The row a segment starts on, `segment.offset` rows below the cluster's first.
     func firstPeriod(of segment: ClassTableConflictSegment<CourseStore.Course>) -> TimetablePeriod? {
         let periods = viewModel.grid.activePeriods(withClubs: withClubs)
         return periods.firstIndex { $0.id == periodId }.flatMap { periods[safe: $0 + segment.offset] }

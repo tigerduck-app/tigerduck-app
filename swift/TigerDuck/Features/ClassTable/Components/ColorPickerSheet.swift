@@ -1,8 +1,6 @@
 import SwiftUI
 
-/// Picks a course's or a club's color from the palette or freely.
 struct ColorPickerSheet: View {
-    /// The words of the sheet, which the caller gives so that each kind of item has its own.
     struct Labels {
         let title: String
         let custom: String
@@ -14,7 +12,6 @@ struct ColorPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let name: String
-    /// A second line under the name, such as the course number.
     let detail: String?
     let labels: Labels
     private let appliedHex: () -> UInt32

@@ -19,8 +19,6 @@ final class ClassTableGrid {
 
     var courseChanges: SchoolCalendar.Changes = SchoolCalendar.changes
 
-    /// The coming week's activities of the subscribed clubs, by weekday from 1 for Monday. A row or
-    /// column they reach shows as for a course, except in the export, which leaves clubs out.
     private(set) var clubs: [Int: [ClubOccurrence]] = [:] {
         didSet { invalidateCellRoleCache() }
     }
@@ -64,7 +62,6 @@ final class ClassTableGrid {
         onCoursesChange()
     }
 
-    /// Shows the activities on `days`, each in its weekday's column.
     func showClubs(on days: [Date]) {
         let weekdays = Dictionary(days.map { (TaipeiTime.dayKey(for: $0), $0.scheduleWeekday) }) { first, _ in first }
         let shown = Dictionary(grouping: clubFeed.occurrences(on: days)) { weekdays[$0.day] ?? 0 }

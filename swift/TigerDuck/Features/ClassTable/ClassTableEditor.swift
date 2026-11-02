@@ -17,7 +17,6 @@ final class ClassTableEditor {
         var clubToRecolor: ClubColorTarget?
     }
 
-    /// A subscribed club, by its id and the name the color sheet shows.
     struct ClubColorTarget: Identifiable {
         let id: Int
         let name: String

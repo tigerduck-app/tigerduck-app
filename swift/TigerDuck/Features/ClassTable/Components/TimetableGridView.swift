@@ -62,7 +62,6 @@ struct TimetableGridView: View {
     }
 
     private func grid(now: Date) -> some View {
-        // Clubs belong to this week's table, which the export does not show.
         let withClubs = showsThisWeek
         let weekdays = viewModel.grid.activeWeekdays(withClubs: withClubs)
         let periods = viewModel.grid.activePeriods(withClubs: withClubs)
@@ -154,7 +153,6 @@ struct TimetableGridView: View {
         }
     }
 
-    /// The period labels' column, then one column of equal width per weekday.
     private func columns<Leading: View, Cell: View>(
         _ weekdays: [Int], @ViewBuilder leading: () -> Leading, @ViewBuilder cell: @escaping (Int) -> Cell
     ) -> some View {

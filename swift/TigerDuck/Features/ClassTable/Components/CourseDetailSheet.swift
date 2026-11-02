@@ -195,7 +195,6 @@ struct CourseDetailSheet: View {
     }
 }
 
-/// A detail sheet's title, with what the title row offers, and the color bar under it.
 struct DetailSheetHeader<Trailing: View>: View {
     let title: String
     var subtitle: String?
