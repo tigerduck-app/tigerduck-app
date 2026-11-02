@@ -1,8 +1,9 @@
 import WebKit
 
-/// Fills a school site's own sign-in form on each page the browser finishes loading. The values
-/// go to the page as arguments, and only into the main frame at an address
-/// `BrowserSchoolSites.signInForm(at:)` lists, which the script checks again as it fills.
+/// Signs the browser in to a school site with a password of its own, or fills its sign-in form,
+/// on each page the browser finishes loading. The values go to the page as arguments, and only
+/// into the main frame at an address `BrowserSchoolSites` lists, which the script checks again as
+/// it uses them.
 @MainActor
 struct BrowserSiteSignIn {
     struct Account {
@@ -11,18 +12,33 @@ struct BrowserSiteSignIn {
     }
 
     var account: () -> Account?
+    /// Whether the app's school session is live, renewed where it lapsed, so the stored password
+    /// is one the school takes.
+    var sessionIsLive: () async -> Bool = { false }
 
     func pageFinished(in webView: WKWebView) async {
-        guard let url = webView.url, let form = BrowserSchoolSites.signInForm(at: url),
-              let page = BrowserSchoolSites.page(of: url), let account = account() else { return }
+        guard let url = webView.url, let page = BrowserSchoolSites.page(of: url) else { return }
+        if page.origin + page.path == BrowserSchoolSites.tokenSignInPage {
+            let account = await sessionIsLive() ? account() : nil
+            let arguments: [String: Any] = [
+                "origin": page.origin, "path": page.path,
+                "studentId": account?.studentId ?? NSNull(), "password": account?.password ?? NSNull(),
+            ]
+            return await run(Self.tokenSignIn, arguments, in: webView, world: .page)
+        }
+        guard let form = BrowserSchoolSites.signInForm(at: url), let account = account() else { return }
         let arguments = [
             "origin": page.origin, "path": page.path, "studentIdField": form.studentId, "passwordField": form.password,
             "studentId": account.studentId, "password": account.password,
         ]
+        await run(Self.fill, arguments, in: webView, world: .defaultClient)
+    }
+
+    private func run(_ script: String, _ arguments: [String: Any], in webView: WKWebView, world: WKContentWorld) async {
         do {
-            _ = try await webView.callAsyncJavaScript(Self.fill, arguments: arguments, in: nil, contentWorld: .defaultClient)
+            _ = try await webView.callAsyncJavaScript(script, arguments: arguments, in: nil, contentWorld: world)
         } catch {
-            AppLogger.breadcrumb("a school site's sign-in form was not filled", category: "browser")
+            AppLogger.breadcrumb("a school site's sign-in script did not finish", category: "browser")
         }
     }
 
@@ -41,6 +57,37 @@ struct BrowserSiteSignIn {
     }
     return true;
     """
+
+    /// The credit program system's sign-in popup posts the account to `api/tokens` and keeps the
+    /// token it answers in a `token` cookie, which its pages send as a bearer token. Run in the
+    /// page's world, which holds the Vue app whose store opens the popup.
+    nonisolated static let tokenSignIn = """
+    const here = () => location.origin === origin && location.pathname === path;
+    if (!here()) return 'elsewhere';
+    const call = async (address, init) => { try { return await fetch(address, init); } catch (error) { return null; } };
+    const saved = document.cookie.split('; ').find((cookie) => cookie.startsWith('token='));
+    if (saved) {
+      const users = await call('api/users', { headers: { Authorization: 'Bearer ' + decodeURIComponent(saved.slice(6)) } });
+      if (users && users.ok) return 'signedIn';
+    }
+    let token = null;
+    if (studentId !== null && here()) {
+      const answer = await call('api/tokens', {
+        method: 'post', body: JSON.stringify({ AccountId: studentId, Password: password }),
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      });
+      if (answer && answer.ok) token = await answer.json().then((body) => body.Token, () => null);
+    }
+    if (typeof token === 'string' && token && here()) {
+      document.cookie = 'token=' + encodeURIComponent(token) + '; path=/; max-age=86400';
+      location.reload();
+      return 'signedIn';
+    }
+    const app = document.getElementById('app');
+    const store = app && app.__vue__ && app.__vue__.$store;
+    if (store) store.commit('setShowLogin', true);
+    return 'popup';
+    """
 }
 
 extension BrowserSiteSignIn {
@@ -50,6 +97,9 @@ extension BrowserSiteSignIn {
                 return nil
             }
             return Account(studentId: studentId, password: password)
+        } sessionIsLive: { [weak auth] in
+            guard !signIn.isDemo, signIn.isCurrent, let auth else { return false }
+            return await auth.ensureAuthenticated(for: signIn)
         }
     }
 

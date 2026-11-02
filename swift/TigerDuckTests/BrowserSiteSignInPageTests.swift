@@ -19,19 +19,33 @@ struct BrowserSiteSignInPageTests {
     </form>
     """
 
+    /// Lets the first page load and refuses, and counts, any navigation after it.
     private final class Loader: NSObject, WKNavigationDelegate {
         var loaded: CheckedContinuation<Void, Never>?
+        var refused: [WKNavigationType] = []
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             loaded?.resume()
             loaded = nil
         }
+
+        func webView(
+            _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+            decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
+        ) {
+            guard loaded == nil else { return decisionHandler(.allow) }
+            refused.append(action.navigationType)
+            decisionHandler(.cancel)
+        }
     }
 
     private func page(_ body: String, at url: URL, script: String = "") async -> WKWebView {
+        await page(body, at: url, script: script, loader: Loader())
+    }
+
+    private func page(_ body: String, at url: URL, script: String = "", loader: Loader) async -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 800), configuration: configuration)
-        let loader = Loader()
         webView.navigationDelegate = loader
         await withCheckedContinuation { loader.loaded = $0; webView.loadHTMLString("<body>\(body)<script>\(script)</script></body>", baseURL: url) }
         withExtendedLifetime(loader) {}
@@ -44,7 +58,7 @@ struct BrowserSiteSignInPageTests {
     }
 
     private static let account = BrowserSiteSignIn.Account(studentId: "B00000001", password: "not-a-password")
-    private let signIn = BrowserSiteSignIn { Self.account }
+    private let signIn = BrowserSiteSignIn(account: { Self.account })
 
     @Test func fillsTheStudentIdAndPasswordAndLeavesTheCAPTCHA() async {
         let webView = await page(Self.ethicsForm, at: Self.ethics, script: """
@@ -126,6 +140,68 @@ struct BrowserSiteSignInPageTests {
         let filled = try? await webView.callAsyncJavaScript(BrowserSiteSignIn.fill, arguments: arguments, contentWorld: .defaultClient)
         #expect(filled as? Bool == false)
         #expect(await values(webView, ["UserName", "Password"]) == ["", ""])
+    }
+
+    /// The credit program system as its landing page runs: a Vue app on `#app` whose store opens
+    /// the sign-in popup, and requests to `api/` answered here with `answers`.
+    private static let creditPrograms = URL(string: "https://cour01.ntust.edu.tw/DMP_student/")!
+    private static let creditProgramApp = """
+    window.requests = []; window.commits = [];
+    window.answers = { 'api/tokens': [200, { Token: 'a.b-c' }], 'api/users': [401, {}] };
+    window.fetch = async (address, init = {}) => {
+      requests.push([String(address), init.method || 'get', init.body || null, (init.headers || {})['Content-Type'] || null]);
+      const [status, body] = answers[address];
+      return new Response(JSON.stringify(body), { status });
+    };
+    document.getElementById('app').__vue__ = { $store: { commit: (name, value) => commits.push([name, value]) } };
+    """
+
+    private func creditProgramPage(answers: String = "", cookie: String = "", loader: Loader = Loader()) async -> WKWebView {
+        await page("<div id=\"app\"></div>", at: Self.creditPrograms, script: Self.creditProgramApp + answers + cookie, loader: loader)
+    }
+
+    private func read(_ webView: WKWebView, _ expression: String) async -> String? {
+        (try? await webView.callAsyncJavaScript("return JSON.stringify(" + expression + ")", contentWorld: .page)) as? String
+    }
+
+    @Test func signsInToTheCreditProgramsAsItsPopupDoes() async {
+        let loader = Loader()
+        let webView = await creditProgramPage(loader: loader)
+        await BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { true }).pageFinished(in: webView)
+
+        let post = #"[["api/tokens","post","{\"AccountId\":\"B00000001\",\"Password\":\"not-a-password\"}","application/json; charset=utf-8"]]"#
+        #expect(await read(webView, "requests") == post)
+        #expect(await read(webView, "document.cookie") == #""token=a.b-c""#)
+        #expect(await read(webView, "commits") == "[]")
+        #expect(loader.refused == [.reload])
+    }
+
+    @Test func aRefusedSignInOpensThePopupForTheStudent() async {
+        let loader = Loader()
+        let webView = await creditProgramPage(answers: "answers['api/tokens'] = [400, {}];", loader: loader)
+        await BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { true }).pageFinished(in: webView)
+
+        #expect(await read(webView, "requests.map((request) => request[0])") == #"["api/tokens"]"#)
+        #expect(await read(webView, "document.cookie") == #""""#)
+        #expect(await read(webView, "commits") == #"[["setShowLogin",true]]"#)
+        #expect(loader.refused.isEmpty)
+    }
+
+    @Test func withNoLiveSchoolSessionThePopupOpensAndNothingIsPosted() async {
+        let webView = await creditProgramPage()
+        await BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { false }).pageFinished(in: webView)
+
+        #expect(await read(webView, "requests") == "[]")
+        #expect(await read(webView, "commits") == #"[["setShowLogin",true]]"#)
+    }
+
+    @Test func aTokenThePageStillTakesIsKept() async {
+        let webView = await creditProgramPage(answers: "answers['api/users'] = [200, {}];", cookie: "document.cookie = 'token=old';")
+        await BrowserSiteSignIn(account: { Self.account }, sessionIsLive: { true }).pageFinished(in: webView)
+
+        #expect(await read(webView, "requests.map((request) => request[0])") == #"["api/users"]"#)
+        #expect(await read(webView, "document.cookie") == #""token=old""#)
+        #expect(await read(webView, "commits") == "[]")
     }
 }
 #endif
