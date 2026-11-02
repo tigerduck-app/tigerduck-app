@@ -183,7 +183,7 @@ struct InformationSystemPage: View {
                     .foregroundStyle(link.opens ? Color.textPrimary : Color.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if link.isCampusOnly {
-                    Image(systemName: "network")
+                    Image(systemName: "graduationcap")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Color.textSecondary)
                         .accessibilityLabel(String(localized: "information_system_campus_network_only"))
