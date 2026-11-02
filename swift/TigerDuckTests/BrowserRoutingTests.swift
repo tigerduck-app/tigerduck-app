@@ -134,7 +134,7 @@ struct BrowserRoutingTests {
             Self.cookie(identity, domain: "ssoam2.ntust.edu.tw", value: "school"),
             Self.cookie("ASP.NET_SessionId", domain: "courseselection.ntust.edu.tw"),
         ]
-        #expect(BrowserSessionSignIn.sessionCookies(in: [shared, school]).map(\.value) == ["harvest", "school"])
+        #expect(BrowserSessionSignIn.sessionCookies(in: [shared, school], for: Self.url("https://moodle2.ntust.edu.tw/my/")).map(\.value) == ["harvest", "school"])
     }
 
     @Test func aMoodleSessionIsAMoodleSessionCookieWithAValue() {
@@ -229,6 +229,7 @@ struct BrowserRoutingTests {
             let url = Self.url(address)
             #expect(BrowserRouting.isSchoolLogout(url), "\(address)")
             #expect(BrowserRouting.decision(for: url) == .refuse, "\(address)")
+            #expect(!BrowserRouting.isSchoolReturnPage(url), "\(address)")
         }
     }
 
@@ -254,6 +255,69 @@ struct BrowserRoutingTests {
         for address in Self.schoolLogouts { #expect(blocked(address), "\(address)") }
         for address in Self.notSchoolLogouts { #expect(!blocked(address), "\(address)") }
         #expect(blocked("https://MOODLE2.ntust.edu.tw:443//login/logout.php"))
+    }
+
+    @Test func aSchoolSiteSignsInThroughItsOwnRedirectToSSOAndMoodleThroughItsOIDCEntry() {
+        let site = Self.url("https://stuinfosys.ntust.edu.tw/StudentInformation")
+        let moodle = Self.url("https://moodle2.ntust.edu.tw/my/")
+        #expect(BrowserRouting.isSchoolReturnPage(site) && BrowserRouting.isReturnPage(site))
+        #expect(!BrowserRouting.isSchoolReturnPage(moodle) && BrowserRouting.isReturnPage(moodle))
+        for address in [
+            "https://ssoam2.ntust.edu.tw/connect/authorize?client_id=x",
+            "https://ssoam.ntust.edu.tw/nidp/app/login",
+            "http://stuinfosys.ntust.edu.tw/",
+            "https://example.com/",
+        ] {
+            #expect(!BrowserRouting.isReturnPage(Self.url(address)), "\(address)")
+        }
+        #expect(BrowserRouting.signInEntry(for: site) == site)
+        #expect(BrowserRouting.signInEntry(for: moodle) == BrowserRouting.webSignInURL)
+        #expect(BrowserRouting.isSignedIn(at: Self.url("https://stuinfosys.ntust.edu.tw/Home"), for: site))
+        #expect(!BrowserRouting.isSignedIn(at: Self.url("https://ssoam2.ntust.edu.tw/connect/authorize/callback"), for: site))
+        #expect(!BrowserRouting.isSignedIn(at: site, for: moodle))
+        #expect(BrowserRouting.isSignedIn(at: moodle, for: moodle))
+    }
+
+    @Test func aSignInPageGoesBackToThePageItCameInTheWayOf() {
+        let school = Self.url("https://stuinfosys.ntust.edu.tw/StudentInformation")
+        let moodle = Self.url("https://moodle2.ntust.edu.tw/user/edit.php")
+        let ssoForm = Self.url("https://ssoam2.ntust.edu.tw/account/login?ReturnUrl=%2Fconnect%2Fauthorize")
+        let moodleForm = Self.url("https://moodle2.ntust.edu.tw/login/index.php")
+        #expect(BrowserRouting.signInReturn(for: ssoForm, among: [school, moodle]) == school)
+        #expect(BrowserRouting.signInReturn(for: ssoForm, among: [nil, moodle]) == moodle)
+        #expect(BrowserRouting.signInReturn(for: ssoForm, among: [ssoForm, nil]) == nil)
+        #expect(BrowserRouting.signInReturn(for: moodleForm, among: [school, moodle]) == moodle)
+        #expect(BrowserRouting.signInReturn(for: moodleForm, among: [school, nil]) == AppConstants.moodleBaseURL)
+        #expect(BrowserRouting.signInReturn(for: school, among: [school, moodle]) == nil)
+    }
+
+    @Test func ssosPasswordFormIsTheSchoolSitesSignInPage() {
+        #expect(BrowserRouting.isSSOSignInPage(Self.url("https://ssoam2.ntust.edu.tw/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize")))
+        #expect(!BrowserRouting.isSSOSignInPage(Self.url("https://ssoam2.ntust.edu.tw/connect/authorize?client_id=x")))
+        #expect(!BrowserRouting.isSSOSignInPage(Self.url("https://stuinfosys.ntust.edu.tw/account/login")))
+    }
+
+    @Test func theHiddenSignInAlsoStopsAtSsoamsRecaptchaForm() {
+        #expect(BrowserRouting.endsSessionSignIn(Self.url("https://ssoam.ntust.edu.tw/nidp/idff/sso?id=x")))
+        #expect(!BrowserRouting.endsSessionSignIn(Self.url("https://stuinfosys.ntust.edu.tw/signin-oidc")))
+    }
+
+    @Test func aSchoolSitesSignInHandsTheBrowserSSOsCookiesAlone() {
+        let jars = [
+            [Self.cookie(".AspNetCore.Identity.Application", domain: "ssoam2.ntust.edu.tw", value: "harvest")],
+            [
+                Self.cookie(".AspNetCore.Identity.Application", domain: ".ssoam2.ntust.edu.tw", value: "school"),
+                Self.cookie("idsrv.session", domain: "ssoam2.ntust.edu.tw", secure: false),
+                Self.cookie("shared", domain: ".ntust.edu.tw"),
+                Self.cookie("MoodleSession", domain: "moodle2.ntust.edu.tw"),
+                Self.cookie("ASP.NET_SessionId", domain: "stuinfosys.ntust.edu.tw"),
+                Self.cookie("ASP.NET_SessionId", domain: "courseselection.ntust.edu.tw"),
+            ],
+        ]
+        let site = Self.url("https://stuinfosys.ntust.edu.tw/StudentInformation")
+        #expect(BrowserSessionSignIn.sessionCookies(in: jars, for: site).map(\.value) == ["harvest", "school"])
+        let moodle = BrowserSessionSignIn.sessionCookies(in: jars, for: Self.url("https://moodle2.ntust.edu.tw/my/"))
+        #expect(moodle.map(\.name) == [".AspNetCore.Identity.Application", ".AspNetCore.Identity.Application", "shared", "MoodleSession"])
     }
 
     @Test func aPageWhoseProcessEndedReloadsOrLoadsItsAddress() {

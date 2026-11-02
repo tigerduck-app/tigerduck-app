@@ -14,6 +14,9 @@ nonisolated enum BrowserRouting {
 
     static let moodleHost = AppConstants.moodleBaseURL.host()!.lowercased()
     static let ssoHost = "ssoam2.ntust.edu.tw"
+    /// The other SSO host, whose NetIQ form submits through reCAPTCHA.
+    static let netIQHost = "ssoam.ntust.edu.tw"
+    static let ssoHosts: Set<String> = [ssoHost, netIQHost]
 
     /// Moodle's OIDC entry, which signs the browser in with the school SSO session it holds.
     static let webSignInURL = URL.knownGood("https://moodle2.ntust.edu.tw/auth/oidc/?source=loginpage")
@@ -136,6 +139,41 @@ nonisolated enum BrowserRouting {
             && segments(of: url).first != "auth"
     }
 
+    /// A school page off Moodle and SSO that the school sign-in can return to; it signs in through
+    /// the site's own redirect to SSO.
+    static func isSchoolReturnPage(_ url: URL) -> Bool {
+        guard isAllowed(url), let host = host(of: url), host != moodleHost, !ssoHosts.contains(host) else { return false }
+        return !isSchoolLogout(url)
+    }
+
+    static func isReturnPage(_ url: URL) -> Bool {
+        isMoodleReturnPage(url) || isSchoolReturnPage(url)
+    }
+
+    /// SSO's password form, where a school site with no session of its own sends the browser.
+    static func isSSOSignInPage(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "https" && host(of: url) == ssoHost && segments(of: url).starts(with: ["account", "login"])
+    }
+
+    /// The page a sign-in page at `url` came in the way of, from `pages`, the last one asked for
+    /// and the one shown: a Moodle page or Moodle's front page for Moodle's form, any school page
+    /// for SSO's. Nil for any other page, and for SSO's form reached from no school page.
+    static func signInReturn(for url: URL, among pages: [URL?]) -> URL? {
+        if isMoodleSignInPage(url) { return pages.compactMap { $0 }.first(where: isMoodleReturnPage) ?? AppConstants.moodleBaseURL }
+        return isSSOSignInPage(url) ? pages.compactMap { $0 }.first(where: isReturnPage) : nil
+    }
+
+    /// Where the hidden sign-in for `target` starts: Moodle's OIDC entry, or a school page itself,
+    /// which sends the browser through SSO.
+    static func signInEntry(for target: URL) -> URL {
+        isMoodleReturnPage(target) ? webSignInURL : target
+    }
+
+    /// The hidden sign-in for `target` has passed SSO once a page of its kind finishes.
+    static func isSignedIn(at url: URL, for target: URL) -> Bool {
+        isMoodleReturnPage(target) ? isMoodleReturnPage(url) : isSchoolReturnPage(url)
+    }
+
     static func hasMoodleSession(_ cookies: [HTTPCookie]) -> Bool {
         cookies.contains { cookie in
             cookie.name.hasPrefix("MoodleSession") && !cookie.value.isEmpty
@@ -157,17 +195,28 @@ nonisolated enum BrowserRouting {
     /// the Moodle sign-in uses, which `MoodleTokenService.signOut()` also purges from that jar.
     static func isSharedCookie(_ cookie: HTTPCookie) -> Bool {
         guard cookie.isSecure else { return false }
-        return ["ntust.edu.tw", ssoHost, moodleHost].contains(String(cookie.domain.lowercased().trimmingPrefix(".")))
+        return ["ntust.edu.tw", ssoHost, moodleHost].contains(cookieDomain(cookie))
     }
 
-    /// The hidden sign-in page has failed once SSO or Moodle asks for a password.
+    /// The shared cookies a sign-in to `target` hands the browser and takes back: all of them for
+    /// Moodle's, SSO's alone for another school site's, so no site gets another's.
+    static func isSignInCookie(_ cookie: HTTPCookie, for target: URL) -> Bool {
+        isSharedCookie(cookie) && (isMoodleReturnPage(target) || cookieDomain(cookie) == ssoHost)
+    }
+
+    private static func cookieDomain(_ cookie: HTTPCookie) -> String {
+        String(cookie.domain.lowercased().trimmingPrefix("."))
+    }
+
+    /// The hidden sign-in page has failed once SSO or Moodle asks for a password, or ssoam for its
+    /// reCAPTCHA form; the student signs in there.
     static func endsSessionSignIn(_ url: URL) -> Bool {
-        if isMoodleSignInPage(url) { return true }
-        if host(of: url) == ssoHost, segments(of: url).starts(with: ["account", "login"]) { return true }
+        if isMoodleSignInPage(url) || isSSOSignInPage(url) { return true }
+        if host(of: url) == netIQHost { return true }
         return !isAllowed(url)
     }
 
-    private static func host(of url: URL) -> String? {
+    static func host(of url: URL) -> String? {
         guard let host = url.host(percentEncoded: false)?.lowercased() else { return nil }
         return host.hasSuffix(".") ? String(host.dropLast()) : host
     }

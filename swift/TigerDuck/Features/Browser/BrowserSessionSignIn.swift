@@ -1,48 +1,77 @@
 import UIKit
 import WebKit
 
-/// Signs the browser in with the school SSO session the app already holds, for when Moodle has no
-/// autologin key to give: the app's sign-in cookies go into the browser, a hidden page runs
-/// Moodle's OIDC entry, and the cookies it ends with go back. No password is posted.
+/// Signs the browser in to a school site with the school SSO session the app already holds, for
+/// when Moodle has no autologin key to give or another school site sends the browser to SSO's
+/// password form: the app's sign-in cookies for that site go into the browser, a hidden page runs
+/// the site's SSO entry, and the sign-in cookies it ends with go back. No password is posted.
 @MainActor
-final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
+struct BrowserSessionSignIn {
+    var putCookie: (HTTPCookie) async -> Void
+    var browserCookies: () async -> [HTTPCookie]
+    /// Runs `entry` on the hidden page; true once it passed SSO on its way to `target`.
+    var runPage: (_ entry: URL, _ target: URL) async -> Bool
+    var appJars: () -> [[HTTPCookie]] = { [HTTPCookieStorage.shared, SchoolWeb.schoolCookies].map { $0.cookies ?? [] } }
+    var keepCookie: (HTTPCookie) -> Void = { HTTPCookieStorage.shared.setCookie($0) }
+    var storeResets: () -> Int = { BrowserData.shared.storeResets }
+
+    func signIn(for signIn: SignIn, to target: URL) async -> Bool {
+        guard !signIn.isDemo else { return false }
+        let resets = storeResets()
+        // A sign-out or a Settings › Storage reset since the start purged the jars, which must not
+        // get the cookies they held back, nor the browser's store those it held.
+        let isCurrent = { !Task.isCancelled && signIn.isCurrent && storeResets() == resets }
+        for cookie in Self.sessionCookies(in: appJars(), for: target) {
+            guard isCurrent() else { return false }
+            await putCookie(cookie)
+        }
+        guard isCurrent(), await runPage(BrowserRouting.signInEntry(for: target), target) else { return false }
+        let signedIn = await browserCookies()
+        guard isCurrent() else { return false }
+        signedIn.filter { BrowserRouting.isSignInCookie($0, for: target) }.forEach(keepCookie)
+        return !BrowserRouting.isMoodleReturnPage(target) || BrowserRouting.hasMoodleSession(signedIn)
+    }
+
+    /// The jars' sign-in cookies for `target` in the order they go into the browser. A later cookie
+    /// replaces one of the same name, domain and path, so the school jar, whose session
+    /// `NTUSTSessionManager` keeps alive, comes after the shared one, which holds what the last
+    /// Moodle token harvest left.
+    nonisolated static func sessionCookies(in jars: [[HTTPCookie]], for target: URL) -> [HTTPCookie] {
+        jars.joined().filter { BrowserRouting.isSignInCookie($0, for: target) }
+    }
+}
+
+extension BrowserSessionSignIn {
+    /// `host` holds the hidden page under the visible one, as WebKit runs a page off screen slowly.
+    init(store: WKWebsiteDataStore, host: UIView?) {
+        self.init(
+            putCookie: { await store.httpCookieStore.setCookie($0) },
+            browserCookies: { await store.httpCookieStore.allCookies() },
+            runPage: { [weak host] entry, target in
+                await BrowserSignInPage(store: store, host: host, target: target).run(entry)
+            }
+        )
+    }
+}
+
+/// The hidden page a session sign-in runs in: done once a page of the target's kind finishes,
+/// failed where a password, reCAPTCHA or another site comes up.
+@MainActor
+private final class BrowserSignInPage: NSObject, WKNavigationDelegate {
     private let store: WKWebsiteDataStore
     private weak var host: UIView?
+    private let target: URL
     private var finish: ((Bool) -> Void)?
 
     static let deadline: Duration = .seconds(15)
 
-    /// `host` holds the hidden page under the visible one, as WebKit runs a page off screen slowly.
-    init(store: WKWebsiteDataStore, host: UIView?) {
+    init(store: WKWebsiteDataStore, host: UIView?, target: URL) {
         self.store = store
         self.host = host
+        self.target = target
     }
 
-    func signIn(for signIn: SignIn) async -> Bool {
-        guard !signIn.isDemo else { return false }
-        let resets = BrowserData.shared.storeResets
-        let cookies = store.httpCookieStore
-        let jars = [HTTPCookieStorage.shared, SchoolWeb.schoolCookies]
-        for cookie in Self.sessionCookies(in: jars.map { $0.cookies ?? [] }) {
-            await cookies.setCookie(cookie)
-        }
-        guard await runSignInPage() else { return false }
-        let signedIn = await cookies.allCookies()
-        // A sign-out or a Settings › Storage reset since the start purged the jar, which must not get
-        // the cookies it held back.
-        guard !Task.isCancelled, signIn.isCurrent, BrowserData.shared.storeResets == resets else { return false }
-        signedIn.filter(BrowserRouting.isSharedCookie).forEach(HTTPCookieStorage.shared.setCookie)
-        return BrowserRouting.hasMoodleSession(signedIn)
-    }
-
-    /// The jars' sign-in cookies in the order they go into the browser. A later cookie replaces one
-    /// of the same name, domain and path, so the school jar, whose session `NTUSTSessionManager`
-    /// keeps alive, comes after the shared one, which holds what the last Moodle token harvest left.
-    nonisolated static func sessionCookies(in jars: [[HTTPCookie]]) -> [HTTPCookie] {
-        jars.joined().filter(BrowserRouting.isSharedCookie)
-    }
-
-    private func runSignInPage() async -> Bool {
+    func run(_ entry: URL) async -> Bool {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = store
         let page = WKWebView(frame: host?.bounds ?? .zero, configuration: configuration)
@@ -64,7 +93,7 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
                     self?.finish = nil
                     continuation.resume(returning: signedIn)
                 }
-                page.load(URLRequest(url: BrowserRouting.webSignInURL))
+                page.load(URLRequest(url: entry))
             }
         } onCancel: {
             Task { @MainActor in self.finish?(false) }
@@ -86,8 +115,8 @@ final class BrowserSessionSignIn: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // The SSO's form_post page finishes too, on its way back to Moodle.
-        if let url = webView.url, BrowserRouting.isMoodleReturnPage(url) { finish?(true) }
+        // The SSO's form_post page finishes too, on its way back to the site.
+        if let url = webView.url, BrowserRouting.isSignedIn(at: url, for: target) { finish?(true) }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {

@@ -57,8 +57,9 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         let store = page.store
         let schoolSignIn = AccountSession.school.currentSignIn
         page.signIn.load = { [weak webView] in webView?.load(URLRequest(url: $0)) }
-        page.signIn.signInWithSession = { [weak container] in
-            await BrowserSessionSignIn(store: store, host: container).signIn(for: schoolSignIn)
+        page.signIn.signInWithSession = { [weak container, weak browserSignIn = page.signIn] in
+            guard let target = browserSignIn?.target else { return false }
+            return await BrowserSessionSignIn(store: store, host: container).signIn(for: schoolSignIn, to: target)
         }
         page.find.runInPage = { [weak webView] in await webView?.runFind($0) }
         Task {
@@ -113,11 +114,9 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         guard let url = action.request.url else { return decisionHandler(.cancel) }
         if BrowserRouting.isLogout(url) { return decisionHandler(.cancel) }
         if let frame = action.targetFrame, !frame.isMainFrame { return decisionHandler(.allow) }
-        if BrowserRouting.isMoodleSignInPage(url) {
-            decisionHandler(.cancel)
-            let current = webView.url.flatMap { BrowserRouting.isMoodleReturnPage($0) ? $0 : nil }
-            page.signIn.reachedSignInPage(returningTo: signInReturnPage ?? current ?? AppConstants.moodleBaseURL)
-            return
+        if let target = BrowserRouting.signInReturn(for: url, among: [signInReturnPage, webView.url]),
+           page.signIn.reachedSignInPage(returningTo: target) {
+            return decisionHandler(.cancel)
         }
         switch BrowserRouting.decision(for: url, byLinkTap: action.navigationType == .linkActivated) {
         case .load:
@@ -132,7 +131,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
                 webView.load(action.request)
                 return
             }
-            if BrowserRouting.isMoodleReturnPage(url) { signInReturnPage = url }
+            if BrowserRouting.isReturnPage(url) { signInReturnPage = url }
             page.failure = nil
             page.downloads.failed = nil
             decisionHandler(.allow)

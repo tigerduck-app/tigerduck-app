@@ -2,7 +2,9 @@ import Foundation
 
 /// Signs the browser in to Moodle without ever showing a signed-out page: Moodle's one-time
 /// autologin link first, then the school SSO session the app holds, then a failure the student
-/// can retry. A sign-in page reached within ``retryWindow`` of a start means the step before failed.
+/// can retry. Another school site that sends the browser to SSO's password form gets the SSO
+/// session alone, and the form itself when that fails, for the student to sign in. A sign-in page
+/// reached within ``retryWindow`` of a start for the same site means the step before failed.
 @MainActor
 @Observable
 final class BrowserSignIn {
@@ -50,14 +52,19 @@ final class BrowserSignIn {
         }
     }
 
-    /// A main-frame navigation reached Moodle's sign-in page, which the browser cancelled.
-    func reachedSignInPage(returningTo target: URL) {
-        guard running == nil else { return }
-        if let attempt, now().timeIntervalSince(attempt.startedAt) < Self.retryWindow {
-            run()
-        } else {
+    /// A main-frame navigation on its way to `target` reached a sign-in page; true when the browser
+    /// cancels it for this sign-in, false when it shows the page for the student to sign in.
+    @discardableResult
+    func reachedSignInPage(returningTo target: URL) -> Bool {
+        guard running == nil else { return true }
+        guard let attempt, BrowserRouting.host(of: attempt.target) == BrowserRouting.host(of: target),
+              now().timeIntervalSince(attempt.startedAt) < Self.retryWindow else {
             signIn(to: target)
+            return true
         }
+        if attempt.next == .none, !BrowserRouting.isMoodleReturnPage(attempt.target) { return false }
+        run()
+        return true
     }
 
     func retry() {
@@ -86,7 +93,7 @@ final class BrowserSignIn {
     }
 
     private func signIn(to target: URL) {
-        attempt = (target, now(), .key)
+        attempt = (target, now(), BrowserRouting.isMoodleReturnPage(target) ? .key : .session)
         run()
     }
 
@@ -107,10 +114,10 @@ final class BrowserSignIn {
             }
             if attempt?.next == .session {
                 attempt?.next = .none
-                if await signInWithSession() {
-                    guard !Task.isCancelled else { return }
-                    return load(target)
-                }
+                let signedIn = await signInWithSession()
+                guard !Task.isCancelled else { return }
+                // Another school site's SSO form, never Moodle's, is the student's once the page loads again.
+                if signedIn || !BrowserRouting.isMoodleReturnPage(target) { return load(target) }
             }
             guard !Task.isCancelled else { return }
             phase = .failed
