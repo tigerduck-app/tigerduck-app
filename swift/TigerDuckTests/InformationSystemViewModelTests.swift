@@ -279,6 +279,16 @@ struct InformationSystemViewModelTests {
         #expect(model.sections.map(\.category) == [.resources])
     }
 
+    @Test("a demo link never goes to the system browser, which the Mac opens links in, and the phone's browser keeps it")
+    func demoLinkTarget() {
+        let link = PortalLink(category: .curriculum, name: "Course Selection", url: URL(string: "https://courseselection.ntust.edu.tw/")!)
+
+        #expect(InformationSystemViewModel.target(of: link, isDemo: true, browser: .system) == .demoPage(link))
+        #expect(InformationSystemViewModel.target(of: link, isDemo: false, browser: .system) == .address(link.url))
+        #expect(InformationSystemViewModel.target(of: link, isDemo: true, browser: .inApp) == .address(link.url))
+        #expect(InformationSystemViewModel.target(of: link, isDemo: false, browser: .inApp) == .address(link.url))
+    }
+
     @Test("the demo account's links come from the demo, not the school")
     func demoLinks() async {
         let harness = Harness()

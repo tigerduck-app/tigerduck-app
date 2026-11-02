@@ -45,6 +45,7 @@ struct InformationSystemPage: View {
     let onSignIn: () -> Void
 
     @State private var viewModel: InformationSystemViewModel
+    @State private var demoLink: PortalLink?
     @Environment(\.openURL) private var openURL
 
     /// The saved links are there from the first frame: the search drawer starts folded only when
@@ -73,6 +74,7 @@ struct InformationSystemPage: View {
             }
         }
         .toolbar { toolbar }
+        .sheet(item: $demoLink) { DemoPortalSheet(link: $0) }
         .task(id: request) { await viewModel.open(request) }
     }
 
@@ -184,10 +186,9 @@ struct InformationSystemPage: View {
         )
     }
 
-    /// Opens through `openURL`: the TigerDuck browser on the phone, the default browser on the Mac.
     private func row(_ link: PortalLink) -> some View {
         Button {
-            openURL(link.url)
+            open(link)
         } label: {
             HStack(spacing: TigerDuckTheme.Spacing.md) {
                 Text(link.name)
@@ -204,11 +205,47 @@ struct InformationSystemPage: View {
         .listRowBackground(Color.clear)
     }
 
+    private func open(_ link: PortalLink) {
+        #if os(iOS)
+        let browser = InformationSystemViewModel.LinkBrowser.inApp
+        #else
+        let browser = InformationSystemViewModel.LinkBrowser.system
+        #endif
+        switch InformationSystemViewModel.target(of: link, isDemo: request?.signIn.isDemo == true, browser: browser) {
+        case .address(let url): openURL(url)
+        case .demoPage(let link): demoLink = link
+        }
+    }
+
     private func centered(@ViewBuilder _ content: () -> some View) -> some View {
         content()
             .frame(maxWidth: .infinity)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets())
+    }
+}
+
+/// A demo link's page on the Mac, whose links open in the default browser, outside the app.
+private struct DemoPortalSheet: View {
+    let link: PortalLink
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Text(link.category.titleKey)
+                .font(TigerDuckTheme.Typography.caption)
+                .foregroundStyle(Color.textSecondary)
+            Text(link.name)
+                .font(TigerDuckTheme.Typography.title)
+                .foregroundStyle(Color.textPrimary)
+                .multilineTextAlignment(.center)
+            Button(String(localized: "action_close")) { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .padding(.top, TigerDuckTheme.Spacing.md)
+        }
+        .padding(TigerDuckTheme.Spacing.xl)
+        .frame(minWidth: 320)
     }
 }

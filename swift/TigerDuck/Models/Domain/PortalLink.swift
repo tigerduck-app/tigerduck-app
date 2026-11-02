@@ -22,10 +22,12 @@ nonisolated enum PortalCategory: String, CaseIterable, Codable, Sendable {
     }
 }
 
-nonisolated struct PortalLink: Codable, Hashable, Sendable {
+nonisolated struct PortalLink: Codable, Hashable, Identifiable, Sendable {
     let category: PortalCategory
     let name: String
     let url: URL
+
+    var id: Self { self }
 }
 
 /// The portal has a Chinese page and a separate English one; every other language reads the

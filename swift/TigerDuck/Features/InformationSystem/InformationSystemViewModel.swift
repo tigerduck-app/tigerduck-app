@@ -100,6 +100,18 @@ final class InformationSystemViewModel {
         }
     }
 
+    enum LinkBrowser { case inApp, system }
+
+    enum LinkTarget: Equatable {
+        case address(URL)
+        case demoPage(PortalLink)
+    }
+
+    /// The system browser would load a demo link from the school.
+    static func target(of link: PortalLink, isDemo: Bool, browser: LinkBrowser) -> LinkTarget {
+        isDemo && browser == .system ? .demoPage(link) : .address(link.url)
+    }
+
     /// The links of `category`, or of every category, whose name or category name holds `query`,
     /// ignoring case and diacritics, grouped in the portal's order.
     static func sections(of links: [PortalLink], in category: PortalCategory?, matching query: String) -> [Section] {
