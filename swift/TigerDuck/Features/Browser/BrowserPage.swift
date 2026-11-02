@@ -12,23 +12,21 @@ final class BrowserPage {
 
     let shown = BrowserShownPage()
     var failure: Failure?
+    let certificates = BrowserCertificateCheck()
     var outside: URL?
 
     let signIn: BrowserSignIn
     let find = BrowserFind()
     let zoomPeek = BrowserZoomPeek()
     private(set) var site = BrowserSiteSetting()
-    let store: WKWebsiteDataStore
-    let storeResets: Int
+    private let opening: BrowserData.Opening
     let downloads = BrowserDownloads()
     nonisolated static let downloadsRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("BrowserDownloads", isDirectory: true)
 
     init() {
-        let data = BrowserData.shared
-        let store = data.store
-        self.store = store
-        storeResets = data.storeResets
+        opening = BrowserData.shared.opening
+        let store = opening.store
         signIn = BrowserSignIn(
             hasSession: { BrowserRouting.hasMoodleSession(await store.httpCookieStore.allCookies()) },
             signedInURL: { target in
@@ -38,6 +36,8 @@ final class BrowserPage {
         )
     }
 
+    var store: WKWebsiteDataStore { opening.store }
+    var storeResets: Int { opening.resets }
     var url: URL? { shown.url }
     var title: String { shown.title }
     var canGoBack: Bool { shown.canGoBack }
@@ -63,8 +63,12 @@ final class BrowserPage {
 
     enum Connection { case secure, refused, unknown }
 
-    /// Only a page that loaded over a trusted connection is called secure.
-    var connection: Connection { Self.connection(failure: failure, hasTrust: serverTrust != nil) }
+    /// Only a page that loaded over a trusted connection is called secure, not one the student
+    /// opened at their own risk.
+    var connection: Connection {
+        let trusted = serverTrust.map { !certificates.acceptance.allows(BrowserRiskAcceptance.leaf(of: $0), from: host) }
+        return Self.connection(failure: failure, hasTrust: trusted ?? false)
+    }
 
     static func connection(failure: Failure?, hasTrust: Bool) -> Connection {
         switch failure {
@@ -87,6 +91,19 @@ final class BrowserPage {
         } else {
             webView?.reload()
         }
+    }
+
+    /// The host whose refused certificate the student may open anyway.
+    var hostToOpenAtRisk: String? {
+        guard case .certificate(let host) = failure, certificates.acceptance.canAccept(host: host) else { return nil }
+        return host
+    }
+
+    /// Accepts the refused certificate for this browser and loads the page again.
+    func openAtRisk() {
+        guard let host = hostToOpenAtRisk else { return }
+        certificates.acceptance.accept(host: host)
+        reloadOrStop()
     }
 
     /// A download never commits as a page, so the address still names the page it started from.

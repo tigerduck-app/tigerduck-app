@@ -45,6 +45,10 @@ no build pinned failed every NTUST request until the user updated.
   and not within an hour of a Cancel; a background refusal waits for the next foreground. A prompt
   closed without an answer, by a swipe, quiets nothing, and its set may be asked again once a
   browser opens, where the student reloads the refused page.
+- The TigerDuck browser can open a page it refused for its certificate, for any reason, at the
+  student's risk. That acceptance holds for the host and the leaf it served when refused, in that
+  browser's memory until it closes, and never reaches the app's own sessions. The page gets the
+  browser's cookies for its host and `.ntust.edu.tw`, ssoam2's session among them.
 - `api.tigerduck.app` is not pinned. Cloudflare rotates its edge certificates across several CAs,
   so a pin would break the app at an unannounced rotation; Certificate Transparency monitoring of
   the zone stands in for it.

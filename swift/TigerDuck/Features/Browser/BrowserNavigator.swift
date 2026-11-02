@@ -11,7 +11,7 @@ final class BrowserShownPage {
     fileprivate(set) var isLoading = false
     fileprivate(set) var progress = 0.0
     fileprivate(set) var isCollapsed = false
-    fileprivate(set) var start: URL?
+    var start: URL?
     @ObservationIgnored fileprivate(set) weak var webView: WKWebView?
     @ObservationIgnored private var collapse = BrowserChromeCollapse()
 
@@ -31,7 +31,6 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     private let page: BrowserPage
     private let auth: AuthService?
     private var observations: [NSKeyValueObservation] = []
-    private var refusedHosts: Set<String> = []
     private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
     private var signInReturnPage: URL?
     private let demoPages = BrowserDemoPages()
@@ -193,20 +192,24 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        pin(challenge, completionHandler: completionHandler)
+        page.certificates.evaluate(challenge, completionHandler: completionHandler)
     }
 
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
         saving[ObjectIdentifier(download)] = nil
         page.downloads.failed = download.originalRequest
         page.failure = .download(
-            error, refusedHosts: refusedHosts,
+            error, refusedHosts: page.certificates.refusedHosts,
             requestedHost: download.originalRequest?.url?.host(percentEncoded: false) ?? page.host
         )
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         page.applySiteSettings()
+        if let host = page.certificates.refusedUnchecked(host: webView.url?.host(percentEncoded: false), trust: webView.serverTrust) {
+            webView.stopLoading()
+            page.failure = .certificate(host: host)
+        }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -233,7 +236,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     }
 
     private func failed(with error: any Error) {
-        guard let failure = BrowserPage.Failure.load(error, refusedHosts: refusedHosts) else { return }
+        guard let failure = BrowserPage.Failure.load(error, refusedHosts: page.certificates.refusedHosts) else { return }
         page.downloads.failed = nil
         page.failure = failure
         page.signIn.pageSettled()
@@ -244,20 +247,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        pin(challenge, completionHandler: completionHandler)
-    }
-
-    private func pin(
-        _ challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        let host = challenge.protectionSpace.host
-        TLSPinningDelegate.shared.evaluate(challenge) { disposition, credential in
-            Task { @MainActor in
-                if disposition == .cancelAuthenticationChallenge { self.refusedHosts.insert(host) }
-                completionHandler(disposition, credential)
-            }
-        }
+        page.certificates.evaluate(challenge, completionHandler: completionHandler)
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
