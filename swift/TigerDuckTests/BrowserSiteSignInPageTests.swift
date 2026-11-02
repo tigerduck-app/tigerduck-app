@@ -113,10 +113,14 @@ struct BrowserSiteSignInPageTests {
         #expect(try await webView.callAsyncJavaScript(others, contentWorld: .page) as? [String] == ["", ""])
     }
 
-    @Test func leavesWhatTheStudentTyped() async {
-        let webView = await page(Self.ethicsForm, at: Self.ethics, script: "document.getElementsByName('UserName')[0].value = 'M11000000'")
-        await signIn.pageFinished(in: webView)
-        #expect(await values(webView, ["UserName", "Password"]) == ["M11000000", "not-a-password"])
+    @Test func leavesWhatTheStudentTypedAndGivesThePasswordOnlyToTheStoredId() async {
+        let other = await page(Self.ethicsForm, at: Self.ethics, script: "document.getElementsByName('UserName')[0].value = 'M11000000'")
+        await signIn.pageFinished(in: other)
+        #expect(await values(other, ["UserName", "Password"]) == ["M11000000", ""])
+
+        let same = await page(Self.ethicsForm, at: Self.ethics, script: "document.getElementsByName('UserName')[0].value = 'B00000001'")
+        await signIn.pageFinished(in: same)
+        #expect(await values(same, ["UserName", "Password"]) == ["B00000001", "not-a-password"])
     }
 
     @Test func aPageElsewhereOrAPasswordFieldThatIsNotOneGetsNothing() async {

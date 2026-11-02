@@ -47,13 +47,15 @@ struct BrowserSiteSignIn {
     }
 
     /// Fills only empty fields, as the student may have typed, and leaves every other field alone.
+    /// The password goes only beside the stored student id, never beside one the student typed.
     nonisolated static let fill = """
     if (location.origin !== origin || location.pathname !== path) return false;
     const field = (name) => Array.prototype.find.call(
       document.getElementsByName(name), (element) => element instanceof HTMLInputElement && element.form !== null);
     const id = field(studentIdField), secret = passwordField === null ? null : field(passwordField);
     if (!id || (passwordField !== null && (!secret || secret.type !== 'password'))) return false;
-    for (const [element, value] of secret ? [[id, studentId], [secret, password]] : [[id, studentId]]) {
+    const fills = secret && (!id.value || id.value === studentId) ? [[id, studentId], [secret, password]] : [[id, studentId]];
+    for (const [element, value] of fills) {
       if (element.value) continue;
       element.value = value;
       element.dispatchEvent(new Event('input', { bubbles: true }));
