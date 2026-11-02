@@ -63,8 +63,12 @@ struct PushAPIRefusalTests {
                 .appending(queryItems: [URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: madeAt)))])
         )
 
-        await #expect(throws: PushAPIError.self) {
+        let error = await #expect(throws: PushAPIError.self) {
             try await client.deleteCourse(courseKey: "client:1151:CS1001301", madeAt: madeAt, for: testSignIn)
+        }
+        guard case .clockAhead(Int64.max)? = error else {
+            Issue.record("expected clockAhead(Int64.max), got \(String(describing: error))")
+            return
         }
         #expect(SettingsAPIStub.requests(under: baseURL).count == 1)
     }
