@@ -16,6 +16,7 @@ struct BrowserSignInTests {
         var sessions: [Bool] = []
         var hasSession = false
         var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        var sessionTakes: TimeInterval = 0
     }
 
     private static func signIn(_ steps: Steps) -> BrowserSignIn {
@@ -27,6 +28,7 @@ struct BrowserSignInTests {
             },
             signInWithSession: {
                 steps.taken.append("session")
+                steps.clock += steps.sessionTakes
                 return steps.sessions.isEmpty ? false : steps.sessions.removeFirst()
             },
             now: { steps.clock }
@@ -264,6 +266,18 @@ struct BrowserSignInTests {
 
         #expect(steps.taken == ["session", "session", "key"])
         #expect(steps.loaded == [Self.schoolPage, Self.otherSchoolPage, Self.keyLink])
+    }
+
+    @Test func aSlowFailedSignInStillLeavesSSOsFormToTheStudent() async {
+        let steps = Steps()
+        steps.sessionTakes = BrowserSignIn.retryWindow + 30
+        let signIn = Self.signIn(steps)
+        signIn.reachedSignInPage(returningTo: Self.schoolPage)
+        await signIn.settle()
+
+        steps.clock += 5
+        #expect(!signIn.reachedSignInPage(returningTo: Self.schoolPage))
+        #expect(steps.taken == ["session"])
     }
 
     @Test func aSchoolSiteSignsInAgainOnceTheRetryWindowPassed() async {
