@@ -57,7 +57,7 @@ final class AppEnvironment {
         self.authService = authService
         PushIdentity.startOverIfRefused()
         let identity = PushIdentity.loadOrCreate()
-        let atm = Self.tokenManager(after: purge, deviceUUID: identity.uuid, signIn: authService.session.currentSignIn)
+        let atm = Self.tokenManager(after: purge, deviceUUID: { identity.uuid }, signIn: authService.session.currentSignIn)
         let pushCoordinator = PushCoordinator(identity: identity, authTokenManager: atm, signIns: authService.session.signIns)
         let cloudSync = CloudSyncCoordinator(
             pushCoordinator: pushCoordinator,
@@ -84,7 +84,7 @@ final class AppEnvironment {
     }
 
     private static func tokenManager(
-        after _: FreshInstallKeychainPurge.Outcome, deviceUUID: String, signIn: SignIn
+        after _: FreshInstallKeychainPurge.Outcome, deviceUUID: @escaping @Sendable () -> String, signIn: SignIn
     ) -> AuthTokenManager {
         AuthTokenManager(deviceUUID: deviceUUID, storedFor: signIn)
     }

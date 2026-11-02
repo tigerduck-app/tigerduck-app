@@ -2400,7 +2400,7 @@ struct BackendFixture {
         config.timeoutIntervalForRequest = 600
         return AuthTokenManager(
             baseURLProvider: endpoint,
-            deviceUUID: "test-device",
+            deviceUUID: { "test-device" },
             session: URLSession(configuration: config),
             tokens: tokens ?? recorder.tokenStore,
             storedFor: signIn,

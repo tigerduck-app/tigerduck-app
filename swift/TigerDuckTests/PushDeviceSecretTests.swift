@@ -238,6 +238,27 @@ struct PushDeviceSecretTests {
         }
     }
 
+    @Test("an announce behind the lock screen waits, and the next one after the unlock goes out under the stored id")
+    func anAnnounceAfterTheUnlockGoesOut() async throws {
+        try await Self.withDeviceDefaults {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let keychain = FakeIdentityKeychain(
+                [AppConstants.KeychainKeys.pushDeviceId: "kept-device"], unreadable: [AppConstants.KeychainKeys.pushDeviceId]
+            )
+            let requests = Self.requests(PushIdentity.loadOrCreate(from: keychain.store), baseURL: baseURL)
+
+            await requests.announce(deviceToken: "abcdef")
+            #expect(SettingsAPIStub.requests(under: baseURL).isEmpty)
+            keychain.unreadable = []
+            Self.answer(Self.announceURL(baseURL))
+            await requests.announce(deviceToken: "abcdef")
+
+            let sent = try #require(try Self.sentBodies(to: Self.announceURL(baseURL)).first)
+            #expect(sent["device_id"] as? String == "kept-device")
+            #expect(sent["device_secret"] as? String == keychain[AppConstants.KeychainKeys.pushDeviceSecret])
+        }
+    }
+
     @Test("a Keychain that could not be read at launch sends no announce")
     func anUnreadableKeychainSendsNoAnnounce() async {
         let baseURL = SettingsAPIStub.uniqueBaseURL()

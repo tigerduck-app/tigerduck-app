@@ -149,7 +149,7 @@ struct SecureStoreLockedReadTests {
             earlierBuilds.isLocked = true
             let manager = AuthTokenManager(
                 baseURLProvider: { refreshURL.deletingLastPathComponent().deletingLastPathComponent() },
-                deviceUUID: "test-device", session: URLSession(configuration: config), beginBackgroundTask: { {} }
+                deviceUUID: { "test-device" }, session: URLSession(configuration: config), beginBackgroundTask: { {} }
             )
 
             #expect(await manager.validAccessToken() == nil)

@@ -158,6 +158,20 @@ struct PushIdentityTests {
         }
     }
 
+    @Test("an identity read behind the lock screen takes the stored id and a secret once the Keychain can be read")
+    func anIdentityReadWhileLockedLoadsOnceReadable() throws {
+        let keychain = FakeIdentityKeychain([Self.idKey: "kept-device"], unreadable: [Self.idKey])
+        let identity = PushIdentity.loadOrCreate(from: keychain.store)
+        #expect(!identity.mayAnnounce)
+
+        keychain.unreadable = []
+
+        #expect(identity.mayAnnounce)
+        #expect(identity.uuid == "kept-device")
+        #expect(try #require(identity.secret).count == 43)
+        #expect(keychain[Self.secretKey] == identity.secret)
+    }
+
     @Test("each minted secret is new")
     func mintedSecretsDiffer() {
         let secrets = (0..<8).compactMap { _ in PushIdentity.mintSecret() }
@@ -171,15 +185,14 @@ nonisolated final class FakeIdentityKeychain: Sendable {
     private struct State {
         var items: [String: String]
         var saves: [String] = []
+        var unreadable: Set<String>
         var unsavable: Set<String>
     }
 
     private let state: OSAllocatedUnfairLock<State>
-    private let unreadable: Set<String>
 
     init(_ items: [String: String] = [:], unreadable: Set<String> = [], unsavable: Set<String> = []) {
-        state = .init(initialState: State(items: items, unsavable: unsavable))
-        self.unreadable = unreadable
+        state = .init(initialState: State(items: items, unreadable: unreadable, unsavable: unsavable))
     }
 
     struct Unreadable: Error {}
@@ -193,11 +206,18 @@ nonisolated final class FakeIdentityKeychain: Sendable {
         set { state.withLock { $0.unsavable = newValue } }
     }
 
+    var unreadable: Set<String> {
+        get { state.withLock { $0.unreadable } }
+        set { state.withLock { $0.unreadable = newValue } }
+    }
+
     var store: PushIdentity.Store {
         PushIdentity.Store(
-            read: { [self] key in
-                if unreadable.contains(key) { throw Unreadable() }
-                return self[key]
+            read: { [state] key in
+                try state.withLock {
+                    if $0.unreadable.contains(key) { throw Unreadable() }
+                    return $0.items[key]
+                }
             },
             save: { [state] key, value in
                 state.withLock {

@@ -267,7 +267,7 @@ extension SSOServiceLoginTests {
         SSOServerStub.reset()
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: base.appendingPathComponent("auth/login"))
         let manager = AuthTokenManager(
-            baseURLProvider: { base }, deviceUUID: "test-device", session: SSOServerStub.session(),
+            baseURLProvider: { base }, deviceUUID: { "test-device" }, session: SSOServerStub.session(),
             tokens: .init(load: { _ in nil }, save: { _, _ in }, delete: { _ in }), beginBackgroundTask: { {} }
         )
         await #expect(throws: AuthTokenManager.AuthError.loginFailed) {
@@ -338,7 +338,7 @@ extension SSOServiceLoginTests {
         SSOServerStub.enqueue(.redirect(status, to: elsewhere), for: refresh)
         let stored = [AuthTokenManager.refreshTokenKey: "R0", AuthTokenManager.expiresAtKey: "0"]
         let manager = AuthTokenManager(
-            baseURLProvider: { base }, deviceUUID: "test-device", session: SSOServerStub.session(),
+            baseURLProvider: { base }, deviceUUID: { "test-device" }, session: SSOServerStub.session(),
             tokens: .init(load: { stored[$0] }, save: { _, _ in }, delete: { _ in }), beginBackgroundTask: { {} }
         )
 

@@ -1,20 +1,46 @@
 import Defaults
 import Foundation
+import os
 import Security
 
 /// The device's UUIDv4 and the secret that proves it to the backend's anonymous registration,
 /// kept together in the Keychain so both survive a reinstall and neither leaves the device.
-nonisolated struct PushIdentity: Sendable {
-    let uuid: String
-    /// Sent as `device_secret`; nil when a newly minted one could not be saved.
-    let secret: String?
-    /// False when the Keychain could not be read at launch.
-    let mayAnnounce: Bool
+///
+/// A launch behind the lock screen may not read them yet. Every service shares this one
+/// instance, which reads them at its first use once the Keychain can be read, so they all
+/// move from the stand-in id to the stored one together.
+nonisolated final class PushIdentity: Sendable {
+    private struct Held: Sendable {
+        let uuid: String
+        let secret: String?
+    }
 
-    init(uuid: String, secret: String? = nil, mayAnnounce: Bool = true) {
-        self.uuid = uuid
-        self.secret = secret
-        self.mayAnnounce = mayAnnounce
+    private let store: Store
+    private let held: OSAllocatedUnfairLock<Held?>
+    /// The id while the Keychain cannot be read; never saved, and no anonymous request carries it.
+    private let standIn = UUID().uuidString.lowercased()
+
+    init(uuid: String, secret: String? = nil) {
+        store = .keychain
+        held = OSAllocatedUnfairLock(initialState: Held(uuid: uuid, secret: secret))
+    }
+
+    private init(store: Store, held: Held?) {
+        self.store = store
+        self.held = OSAllocatedUnfairLock(initialState: held)
+    }
+
+    var uuid: String { current()?.uuid ?? standIn }
+    /// Sent as `device_secret`; nil when a newly minted one could not be saved.
+    var secret: String? { current()?.secret }
+    /// False while the Keychain cannot be read.
+    var mayAnnounce: Bool { current() != nil }
+
+    private func current() -> Held? {
+        held.withLock { held in
+            if held == nil { held = Self.read(from: store) }
+            return held
+        }
     }
 
     nonisolated struct Store: Sendable {
@@ -36,18 +62,24 @@ nonisolated struct PushIdentity: Sendable {
     private static let legacyIdKey = "push_user_id"
 
     static func loadOrCreate(from store: Store = .keychain) -> PushIdentity {
-        var id: String?
+        PushIdentity(store: store, held: read(from: store))
+    }
+
+    /// The stored id and secret, minting what is missing; nil, minting nothing, while either
+    /// cannot be read.
+    private static func read(from store: Store) -> Held? {
+        let id: String?
         do {
             id = try store.read(idKey).flatMap { $0.isEmpty ? nil : $0 } ?? movedLegacyId(in: store)
             if let id, let secret = try store.read(secretKey), !secret.isEmpty {
-                return PushIdentity(uuid: id, secret: secret)
+                return Held(uuid: id, secret: secret)
             }
         } catch {
-            return PushIdentity(uuid: id ?? UUID().uuidString.lowercased(), mayAnnounce: false)
+            return nil
         }
         let uuid = id ?? mintedId(in: store)
         let secret = mintSecret().flatMap { store.save(secretKey, $0) ? $0 : nil }
-        return PushIdentity(uuid: uuid, secret: secret)
+        return Held(uuid: uuid, secret: secret)
     }
 
     /// After the backend refused the secret, a launch with no backend session stored discards the
