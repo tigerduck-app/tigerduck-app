@@ -53,6 +53,17 @@ enum SchoolRefresh {
         _ = await CourseDetails.refreshCoursesMissingClassroom(semester: semester, for: signIn)
     }
 
+    /// The club activity feed and, once its `max-age` has passed, the club directory; nothing while
+    /// the account subscribes to no club.
+    static func clubActivities(
+        subscriptions: ClubSubscriptions = .shared, activities: ClubActivities = .shared, directory: ClubDirectory = .shared
+    ) async {
+        guard subscriptions.hasSubscriptions else { return }
+        async let feed: Void = activities.refresh()
+        await directory.refresh()
+        await feed
+    }
+
     static func courseChanges() async {
         _ = await CourseChangeStore.shared.refresh()
     }

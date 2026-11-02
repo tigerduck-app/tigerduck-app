@@ -46,6 +46,11 @@ final class ClubDirectory {
         club.displayName(chinese: chinese())
     }
 
+    /// The clubs whose Chinese or English name holds every word of `query`, in list order.
+    func search(_ query: String) -> [ClubCard] {
+        Self.matching(query, in: clubs)
+    }
+
     /// Fetches the directory once the stored answer is older than its `max-age`; a call during a
     /// fetch waits for it. A failed fetch keeps the stored answer.
     func refresh() async {
@@ -86,6 +91,15 @@ final class ClubDirectory {
             if group(lhs) != group(rhs) { return group(lhs) < group(rhs) }
             let order = lhs.displayName(chinese: chinese).localizedStandardCompare(rhs.displayName(chinese: chinese))
             return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
+        }
+    }
+
+    nonisolated static func matching(_ query: String, in clubs: [ClubCard]) -> [ClubCard] {
+        let words = query.split(whereSeparator: \.isWhitespace)
+        guard !words.isEmpty else { return clubs }
+        return clubs.filter { club in
+            let names = [club.name, club.enName].compactMap { $0 }
+            return words.allSatisfy { word in names.contains { $0.containsSearchWord(word) } }
         }
     }
 }

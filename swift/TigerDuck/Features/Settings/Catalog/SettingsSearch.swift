@@ -15,7 +15,7 @@ nonisolated enum SettingsSearch {
         return SettingsRow.allCases.compactMap { row in
             guard row.isShown(in: state) else { return nil }
             let path = path(of: row)
-            guard words.allSatisfy({ word in path.contains { matches($0, word) } }) else { return nil }
+            guard words.allSatisfy({ word in path.contains { $0.containsSearchWord(word) } }) else { return nil }
             return SettingsSearchResult(row: row, path: path)
         }
     }
@@ -23,9 +23,5 @@ nonisolated enum SettingsSearch {
     static func path(of row: SettingsRow) -> [String] {
         let names = [row.place.titleKey.map { String(localized: $0) }, row.label].compactMap { $0 }
         return names.first == names.last ? [row.label] : names
-    }
-
-    static func matches(_ text: String, _ word: some StringProtocol) -> Bool {
-        text.range(of: word, options: [.caseInsensitive, .widthInsensitive]) != nil
     }
 }

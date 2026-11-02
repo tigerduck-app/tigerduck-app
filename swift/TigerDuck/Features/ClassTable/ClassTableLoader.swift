@@ -152,8 +152,9 @@ final class ClassTableLoader {
         async let coursesTask: Void = SchoolRefresh.courses(targetSemester, authService: authService, force: true, for: signIn)
         async let assignmentsTask = SchoolRefresh.assignments(authService: authService, for: signIn)
         async let userAddedTask: Void = SchoolRefresh.userAddedCourses(targetSemester, for: signIn)
+        async let clubsTask: Void = SchoolRefresh.clubActivities()
 
-        _ = await (coursesTask, assignmentsTask, userAddedTask)
+        _ = await (coursesTask, assignmentsTask, userAddedTask, clubsTask)
         reloadFromStoresAfterFetch(signedOutSince: !signIn.isCurrent)
     }
 
