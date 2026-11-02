@@ -8,18 +8,26 @@ nonisolated extension PushDeviceRequests {
     ) async throws {
         let uuid = identity.uuid
         do {
+            var sent = false, refusal: PushAPIError?
             do {
-                try await sendAnonymous(deviceToken: deviceToken, serverPushEnabled: !optOut)
+                sent = try await sendAnonymous(deviceToken: deviceToken, serverPushEnabled: !optOut)
             } catch let error as PushAPIError where error.refusesDeviceSecret {
-                logger.info("server push opt-out kept for the announce under a new device id")
+                refusal = error
             }
             if await apiClient.hasAuthSession() {
                 _ = try await apiClient.updateDevicePreferences(
                     deviceId: uuid, serverPushEnabled: !optOut, for: signIn
                 )
+                sent = true
+            } else if let refusal, !PushIdentity.storesNoSession(in: keychain) {
+                throw refusal
             }
             await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
-            logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
+            if sent {
+                logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
+            } else {
+                logger.info("server push opt-out=\(optOut, privacy: .public) kept for the next announce")
+            }
         } catch {
             logger.error("server push opt-out did not propagate: \(error.localizedDescription, privacy: .private)")
             throw error

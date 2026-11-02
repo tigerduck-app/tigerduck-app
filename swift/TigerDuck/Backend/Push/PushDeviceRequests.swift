@@ -11,6 +11,7 @@ nonisolated struct PushDeviceRequests: Sendable {
     let attrsType: String
     let apnsEnv: String
     let deviceClass: String
+    var keychain: PushIdentity.Store = .keychain
     let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Register")
 
     func pushTokens(device: String?, pts: String?) -> [PushAPI.PushTokenIn] {
@@ -47,8 +48,10 @@ nonisolated struct PushDeviceRequests: Sendable {
         }
     }
 
-    func sendAnonymous(deviceToken: String?, serverPushEnabled: Bool) async throws {
-        guard identity.mayAnnounce else { return }
+    /// Whether a request went out.
+    @discardableResult
+    func sendAnonymous(deviceToken: String?, serverPushEnabled: Bool) async throws -> Bool {
+        guard identity.mayAnnounce else { return false }
         do {
             try await apiClient.registerAnonymousDevice(
                 PushAPI.AnonymousDeviceRequest(
@@ -69,6 +72,7 @@ nonisolated struct PushDeviceRequests: Sendable {
         if identity.secret != nil, deviceToken?.isEmpty == false, Defaults[.pushDeviceSecretRefused] {
             Defaults[.pushDeviceSecretRefused] = false
         }
+        return true
     }
 
     func register(_ tokens: [PushAPI.PushTokenIn]) async throws {

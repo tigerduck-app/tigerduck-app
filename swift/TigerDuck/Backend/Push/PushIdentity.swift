@@ -54,14 +54,19 @@ nonisolated struct PushIdentity: Sendable {
     /// id and secret, so `loadOrCreate` mints new ones. The backend keys a signed-in device and its
     /// Live Activity rows by the id, and a sign-out's kept session deletes that device by it.
     static func startOverIfRefused(in store: Store = .keychain) {
-        let sessionKeys = [AuthTokenManager.refreshTokenKey, AuthTokenManager.departingSessionKey]
-        guard Defaults[.pushDeviceSecretRefused],
-              case .success(let sessions) = Result(catching: { try sessionKeys.compactMap(store.read) }),
-              sessions.isEmpty
-        else { return }
+        guard Defaults[.pushDeviceSecretRefused], storesNoSession(in: store) else { return }
         store.delete(idKey)
         store.delete(secretKey)
         Defaults[.pushDeviceSecretRefused] = false
+    }
+
+    /// Whether the Keychain, read now, holds neither a backend session nor one a sign-out keeps.
+    static func storesNoSession(in store: Store) -> Bool {
+        let sessionKeys = [AuthTokenManager.refreshTokenKey, AuthTokenManager.departingSessionKey]
+        guard case .success(let sessions) = Result(catching: { try sessionKeys.compactMap(store.read) }) else {
+            return false
+        }
+        return sessions.isEmpty
     }
 
     /// 32 random bytes as unpadded base64url, the 43 characters the backend accepts.

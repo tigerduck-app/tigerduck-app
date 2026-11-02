@@ -8,7 +8,9 @@ import Testing
 struct PushDeviceSecretTests {
     private static let secret = String(repeating: "s", count: 43)
 
-    private static func requests(_ identity: PushIdentity, baseURL: URL, signedIn: Bool = false) -> PushDeviceRequests {
+    private static func requests(
+        _ identity: PushIdentity, baseURL: URL, signedIn: Bool = false, keychain: FakeIdentityKeychain = FakeIdentityKeychain()
+    ) -> PushDeviceRequests {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         return PushDeviceRequests(
@@ -22,7 +24,8 @@ struct PushDeviceSecretTests {
             bundleId: "org.ntust.app.TigerDuck",
             attrsType: "TigerDuckActivityAttributes",
             apnsEnv: "development",
-            deviceClass: "iphone"
+            deviceClass: "iphone",
+            keychain: keychain.store
         )
     }
 
@@ -165,6 +168,23 @@ struct PushDeviceSecretTests {
             let next = try #require(try Self.sentBodies(to: Self.announceURL(baseURL)).last)
             #expect(next["device_id"] as? String == "new-device")
             #expect(next["server_push_enabled"] as? Bool == false)
+        }
+    }
+
+    @Test("a refused opt-out on a signed-in device whose session cannot be refreshed now does not report success")
+    func aRefusedOptOutWithoutAFreshSessionFails() async {
+        await Self.withDeviceDefaults {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            Self.answer(Self.announceURL(baseURL), status: 403, body: Self.refusal)
+            let signedIn = FakeIdentityKeychain([AuthTokenManager.refreshTokenKey: "refresh"])
+
+            await #expect(throws: PushAPIError.self) {
+                try await Self.requests(PushIdentity(uuid: "test-device", secret: Self.secret), baseURL: baseURL, keychain: signedIn)
+                    .sendServerPushOptOut(true, deviceToken: "abcdef", for: testSignIn)
+            }
+
+            #expect(Defaults[.pushDeviceSecretRefused])
+            #expect(!Defaults[.serverPushUserOptOut])
         }
     }
 
