@@ -11,15 +11,20 @@ struct PortalLinks {
     /// the page again does not sign in again; a network failure is not kept, and the next open
     /// tries again.
     @MainActor
-    final class Failures {
+    final class Failures: AccountScoped {
         static let shared = Failures()
 
         fileprivate struct Key: Hashable {
+            let studentId: String
             let signIn: SignIn
             let language: PortalLanguage
         }
 
         fileprivate var latest: [Key: (at: Date, message: String)] = [:]
+
+        static func forgetAccount(in storage: AccountStorage) {
+            shared.latest = [:]
+        }
     }
 
     var files = PortalLinkFiles()
@@ -33,8 +38,8 @@ struct PortalLinks {
     }
 
     /// The message of a portal page with no links within `freshness`, for the sign-in and language.
-    func recentFailure(language: PortalLanguage, for signIn: SignIn) -> String? {
-        guard let failure = failures.latest[Failures.Key(signIn: signIn, language: language)],
+    func recentFailure(studentId: String, language: PortalLanguage, for signIn: SignIn) -> String? {
+        guard let failure = failures.latest[Failures.Key(studentId: studentId, signIn: signIn, language: language)],
               Self.freshness.isFresh(storedAt: failure.at, now: now()) else { return nil }
         return failure.message
     }
@@ -42,7 +47,7 @@ struct PortalLinks {
     func fetch(
         studentId: String, password: String, language: PortalLanguage, for signIn: SignIn
     ) async throws -> (links: [PortalLink], fetchedAt: Date) {
-        let key = Failures.Key(signIn: signIn, language: language)
+        let key = Failures.Key(studentId: studentId, signIn: signIn, language: language)
         let credentials = NTUSTPortalService.Credentials(studentId: studentId, password: password, signIn: signIn)
         let links: [PortalLink]
         do {

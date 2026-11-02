@@ -40,6 +40,7 @@ extension SignOutPlan {
         var stores: [any AccountScoped.Type] = [
             SchoolAccountKeys.self, CourseFiles.self, CourseColorFiles.self, AssignmentFiles.self,
             CalendarEventFiles.self, BulletinFiles.self, ScoreReportFiles.self, MoodleFiles.self, PortalLinkFiles.self,
+            PortalLinks.Failures.self,
             ImportedClassTableStore.self, BulletinsViewModel.self, AcademicCalendarStore.self, DemoAccount.self,
         ]
         #if os(iOS)

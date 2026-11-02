@@ -16,13 +16,14 @@ struct InformationSystemView: View {
     private var page: some View {
         InformationSystemPage(
             request: request(),
+            signedIn: app.authService.hasStoredCredentials,
             policy: app.preferences.visualStylePolicy,
             onSignIn: { app.router.presentNTUSTLogin() }
         )
     }
 
-    /// From the Keychain, which reads nothing before the first unlock: the page then asks to
-    /// sign in, and `AuthService` reads again once the device unlocks.
+    /// From the Keychain, which reads nothing before the first unlock: the page then shows its
+    /// loading state, and `AuthService` reads again once the device unlocks.
     private func request() -> InformationSystemViewModel.Request? {
         guard let studentId = app.authService.storedStudentId, let password = app.authService.storedPassword else {
             return nil
@@ -39,6 +40,7 @@ struct InformationSystemView: View {
 /// The page itself, which reads nothing from the app's environment.
 struct InformationSystemPage: View {
     let request: InformationSystemViewModel.Request?
+    let signedIn: Bool
     let policy: VisualStylePolicy
     let onSignIn: () -> Void
 
@@ -48,20 +50,23 @@ struct InformationSystemPage: View {
     /// The saved links are there from the first frame: the search drawer starts folded only when
     /// it is attached before the page first shows.
     init(
-        request: InformationSystemViewModel.Request?, policy: VisualStylePolicy, onSignIn: @escaping () -> Void,
-        store: PortalLinks? = nil
+        request: InformationSystemViewModel.Request?, signedIn: Bool, policy: VisualStylePolicy,
+        onSignIn: @escaping () -> Void, store: PortalLinks? = nil
     ) {
         self.request = request
+        self.signedIn = signedIn
         self.policy = policy
         self.onSignIn = onSignIn
         _viewModel = State(initialValue: InformationSystemViewModel(store: store, showing: request))
     }
 
-    private var signedIn: Bool { request != nil }
+    private var access: NTUSTProtectedAccessState {
+        NTUSTProtectedAccessState(signedIn: signedIn, isEmpty: viewModel.links.isEmpty)
+    }
 
     var body: some View {
         Group {
-            if signedIn, !viewModel.links.isEmpty {
+            if access == .content {
                 list.searchable(text: $viewModel.query, prompt: String(localized: "information_system_search_prompt"))
             } else {
                 list
@@ -119,9 +124,10 @@ struct InformationSystemPage: View {
 
     @ViewBuilder
     private var content: some View {
-        if !signedIn {
+        switch access {
+        case .loginRequired:
             centered { signInPrompt }
-        } else if viewModel.links.isEmpty {
+        case .empty:
             if case .failed(let message) = viewModel.phase {
                 centered {
                     LoadFailureView(title: String(localized: "information_system_load_failed"), message: message) {
@@ -131,7 +137,7 @@ struct InformationSystemPage: View {
             } else {
                 centered { ProgressView().padding(.vertical, 60) }
             }
-        } else {
+        case .content:
             centered { chips.padding(.vertical, TigerDuckTheme.Spacing.sm) }
             let sections = viewModel.sections
             if sections.isEmpty {

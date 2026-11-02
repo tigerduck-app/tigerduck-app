@@ -49,7 +49,7 @@ struct InformationSystemViewModelTests {
         #expect(harness.school.loads.isEmpty)
     }
 
-    @Test("links are kept per account and per language, and another one's links show unfiltered")
+    @Test("links are kept per account and per language, and another one's links show with no chip or search")
     func cachePerAccountAndLanguage() async {
         let harness = Harness()
         harness.save(["Chinese"], for: "B00000001", .zh, at: harness.now)
@@ -60,9 +60,11 @@ struct InformationSystemViewModelTests {
         await model.open(harness.request("B00000001", .en))
         #expect(model.links.map(\.name) == ["English"])
         model.query = "English"
+        model.category = .resources
         await model.open(harness.request("B00000002", .zh))
         #expect(model.links.map(\.name) == ["Other student"])
         #expect(model.query.isEmpty)
+        #expect(model.category == nil)
         await model.open(harness.request("B00000001", .zh))
         #expect(model.links.map(\.name) == ["Chinese"])
         #expect(harness.school.loads.isEmpty)
@@ -193,6 +195,30 @@ struct InformationSystemViewModelTests {
         await reopened.refresh()
         #expect(reopened.links.count == 6)
         #expect(InformationSystemViewModel(store: harness.store, showing: harness.request()).status == .ok)
+    }
+
+    @Test("a portal page with no links is kept for its account only, and the school sign-out forgets it")
+    func unreadableAnswerIsPerAccount() async {
+        let harness = Harness()
+        harness.school.pages = [nil]
+        await InformationSystemViewModel(store: harness.store).open(harness.request("B00000001"))
+        #expect(harness.school.signIns == 1)
+
+        harness.school.pages = [PortalPages.full]
+        let other = InformationSystemViewModel(store: harness.store)
+        await other.open(harness.request("B00000002"))
+        #expect(other.links.count == 6)
+
+        harness.school.pages = [nil]
+        var shared = harness.store
+        shared.failures = .shared
+        _ = try? await shared.fetch(studentId: "B00000001", password: "not-a-password", language: .zh, for: harness.session.signIns.currentSignIn)
+        #expect(shared.recentFailure(studentId: "B00000001", language: .zh, for: harness.session.signIns.currentSignIn) != nil)
+        #expect(SignOutPlan.schoolStores.contains { $0 == PortalLinks.Failures.self })
+        for store in SignOutPlan.schoolStores where store == PortalLinks.Failures.self {
+            store.forgetAccount(in: AccountStorage(folders: harness.folders))
+        }
+        #expect(shared.recentFailure(studentId: "B00000001", language: .zh, for: harness.session.signIns.currentSignIn) == nil)
     }
 
     @Test("a network failure is not kept: the next open reads the school again")

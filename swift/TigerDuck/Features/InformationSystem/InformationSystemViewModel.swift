@@ -56,8 +56,9 @@ final class InformationSystemViewModel {
         if let fetchedAt, !links.isEmpty, PortalLinks.freshness.isFresh(storedAt: fetchedAt, now: store.now()) {
             return
         }
-        if let message = store.recentFailure(language: request.language, for: request.signIn) {
-            phase = .failed(message)
+        let failure = store.recentFailure(studentId: request.studentId, language: request.language, for: request.signIn)
+        if let failure {
+            phase = .failed(failure)
             return
         }
         await fetch(request)
@@ -70,6 +71,7 @@ final class InformationSystemViewModel {
         links = saved?.links ?? []
         fetchedAt = saved?.fetchedAt
         phase = .idle
+        category = nil
         query = ""
     }
 

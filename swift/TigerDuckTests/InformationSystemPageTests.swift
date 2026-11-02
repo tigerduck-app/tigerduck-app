@@ -46,15 +46,41 @@ struct InformationSystemPageTests {
         return PortalLinks(files: files, service: school.service, failures: PortalLinks.Failures())
     }
 
+    /// The page's request, which the app builds from the Keychain and rebuilds once it unlocks.
+    @Observable
+    fileprivate final class Keychain {
+        var request: InformationSystemViewModel.Request?
+
+        init(_ request: InformationSystemViewModel.Request?) { self.request = request }
+    }
+
+    private struct Host: View {
+        let keychain: Keychain
+        let signedIn: Bool
+        let store: PortalLinks
+
+        var body: some View {
+            InformationSystemPage(
+                request: keychain.request, signedIn: signedIn, policy: VisualStylePolicy(preset: .default), onSignIn: {},
+                store: store
+            )
+        }
+    }
+
     private static func show(
-        _ request: InformationSystemViewModel.Request?, store: PortalLinks, opened: OpenedURLs = OpenedURLs()
+        _ request: InformationSystemViewModel.Request?, signedIn: Bool = true, store: PortalLinks,
+        opened: OpenedURLs = OpenedURLs()
+    ) throws -> UIWindow {
+        try show(Keychain(request), signedIn: signedIn, store: store, opened: opened)
+    }
+
+    private static func show(
+        _ keychain: Keychain, signedIn: Bool, store: PortalLinks, opened: OpenedURLs = OpenedURLs()
     ) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: width, height: 812)
-        let page = InformationSystemPage(
-            request: request, policy: VisualStylePolicy(preset: .default), onSignIn: {}, store: store
-        )
+        let page = Host(keychain: keychain, signedIn: signedIn, store: store)
         // In a tab, as the app shows it, where the search field waits in the navigation bar.
         let feature = AppFeature.informationSystem
         let tabs = TabView {
@@ -179,7 +205,7 @@ struct InformationSystemPageTests {
     @Test("signed out, the page asks to sign in, with no search")
     func signedOut() async throws {
         try await withAccessibilityAutomation {
-            let window = try Self.show(nil, store: Self.store(FakePortalSchool(), in: Folder(), saved: true))
+            let window = try Self.show(nil, signedIn: false, store: Self.store(FakePortalSchool(), in: Folder(), saved: true))
             defer { Self.close(window) }
 
             try await waitUntil { Self.shows(String(localized: "common_not_signed_in"), in: window) }
@@ -188,6 +214,27 @@ struct InformationSystemPageTests {
             #expect(window.descendants(ofType: UISearchBar.self).isEmpty)
             try Self.expectNoOverflow(in: window)
             try await Self.save(window, as: "infosys-signed-out")
+        }
+    }
+
+    @Test("signed in before the first unlock, the page waits without a sign-in prompt and loads once the Keychain reads")
+    func lockedKeychain() async throws {
+        try await withAccessibilityAutomation {
+            let folder = Folder()
+            let school = FakePortalSchool()
+            let keychain = Keychain(nil)
+            let window = try Self.show(keychain, signedIn: true, store: Self.store(school, in: folder, saved: true))
+            defer { Self.close(window) }
+
+            try await waitUntil { !window.descendants(ofType: UICollectionView.self).isEmpty }
+            try await Task.sleep(for: .milliseconds(300))
+            #expect(!Self.shows(String(localized: "common_not_signed_in"), in: window))
+            #expect(!Self.shows(String(localized: "onboarding_sign_in_button"), in: window))
+            #expect(window.descendants(ofType: UISearchBar.self).isEmpty)
+
+            keychain.request = Self.request
+            try await waitUntil { Self.shows("Licensed Software", in: window) }
+            #expect(school.loads.isEmpty)
         }
     }
 
