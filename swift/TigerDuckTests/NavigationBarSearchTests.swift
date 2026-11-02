@@ -130,7 +130,7 @@ struct NavigationBarSearchTests {
 
         #expect(search.text.isEmpty)
         #expect(page.bar.searchTextField.text?.isEmpty == true)
-        #expect(page.list.numberOfItems(inSection: 0) == 30)
+        try await waitUntil { page.list.numberOfItems(inSection: 0) == 30 }
     }
 
     @Test("the field's clear button empties the text and keeps the search")
