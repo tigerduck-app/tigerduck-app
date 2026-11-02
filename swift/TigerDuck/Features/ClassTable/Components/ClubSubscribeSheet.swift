@@ -93,9 +93,15 @@ struct ClubSubscribeSheet: View {
                         Button(role: .destructive) {
                             subscriptions.unsubscribe(club.id, for: signIn)
                         } label: {
-                            Text(String(localized: "class_table_club_unsubscribe_action"))
+                            Label(String(localized: "class_table_club_unsubscribe_action"), systemImage: "minus.circle")
+                                .labelStyle(.iconOnly)
                         }
                         .tint(.red)
+                    }
+                    .accessibilityActions {
+                        Button(String(localized: "class_table_club_unsubscribe_action")) {
+                            subscriptions.unsubscribe(club.id, for: signIn)
+                        }
                     }
                 }
                 .onMove { source, destination in
