@@ -67,7 +67,8 @@ final class BrowserCertificateCheck {
         _ challenge: URLAuthenticationChallenge,
         completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        let host = challenge.protectionSpace.host
+        // WebKit names a host as its address does, so `moodle2.ntust.edu.tw.` keeps its dot.
+        let host = TLSPinMatcher.hostName(challenge.protectionSpace.host)
         let trust = challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust
             ? challenge.protectionSpace.serverTrust : nil
         let leaf = BrowserRiskAcceptance.leaf(of: trust)
@@ -75,7 +76,7 @@ final class BrowserCertificateCheck {
             completionHandler(.useCredential, URLCredential(trust: trust))
             return
         }
-        guard pinnedHosts.contains(host.lowercased()) else {
+        guard pinnedHosts.contains(host) else {
             if let leaf { notLetThrough(leaf, from: host) }
             completionHandler(.performDefaultHandling, nil)
             return

@@ -61,6 +61,21 @@ struct BrowserPinnedHostsTests {
         #expect(app.refusedHosts == [moodle])
     }
 
+    @Test("a pinned host named with a trailing dot is held to its pins, and its refusal and acceptance go by its plain name")
+    func aTrailingDotNamesTheSameHost() async throws {
+        let moodle = "moodle2.ntust.edu.tw", dotted = "moodle2.ntust.edu.tw."
+        let check = BrowserCertificateCheck(pinning: TLSPinningDelegate(engine: F.engine(now: Self.date)))
+        #expect(try await evaluate(check, host: dotted) == .cancelAuthenticationChallenge)
+        #expect(check.refusedHosts == [moodle])
+
+        let offer = check.offering(.certificate(host: moodle), at: URL(string: "https://\(dotted)/my/"))
+        guard case .certificate(_, let refusal?) = offer else {
+            Issue.record("no page to open at risk in \(offer)")
+            return
+        }
+        #expect(try await evaluate(check.accepting(refusal), host: dotted) == .useCredential)
+    }
+
     @Test("a browser-only host whose chain system trust refuses is offered to open at risk, in a store of its own")
     func anInvalidChainOnABrowserOnlyHostOffersTheRisk() async throws {
         let host = "sa.ntust.edu.tw"
