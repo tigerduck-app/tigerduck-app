@@ -17,8 +17,9 @@ Pins come from two places; the reasoning is in `docs/decisions/0025-remote-tls-p
 
 Pins are CA-only: intermediates and roots, never a leaf.
 
-1. For each pinned host (`ntust.edu.tw` and its subdomains, `api.lib.ntust.edu.tw`), print the
-   SPKI SHA-256 of every certificate in the chain the server sends:
+1. For each pinned host (`ntust.edu.tw` and its subdomains, `api.lib.ntust.edu.tw`,
+   `clubs.ntust.edu.tw`), print the SPKI SHA-256 of every certificate in the chain the server
+   sends:
 
    ```bash
    HOST=moodle2.ntust.edu.tw
@@ -41,7 +42,8 @@ Pins are CA-only: intermediates and roots, never a leaf.
    document's serial so an older document cannot replace the new table. Set each `expiresAt` to
    six months after the latest `notAfter` among the leaves the set's hosts serve. Keep the
    library set's Sectigo roots, E46 and R46: its renewals change the issuer, and Sectigo issues
-   only under these two.
+   only under these two. Keep the clubs set's four ISRG roots, X1, X2, Root YR and Root YE: Let's
+   Encrypt changes intermediates often, and each of them chains to one of these.
 4. Update the tests that hold certificate data: `appPins` in
    `swift/TigerDuckTests/SchoolMail/MailTLSVerifierTests.swift`, and `servedChains` in
    `TLSPinningDelegateTests`. Each set needs chains its hosts served, with a date inside their
