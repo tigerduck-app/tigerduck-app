@@ -39,6 +39,31 @@ nonisolated enum BrowserSchoolSites {
         }
     }
 
+    /// A sign-in form of a site's own: the names of its student id and password fields, which the
+    /// browser fills. Its CAPTCHA and its submit stay the student's.
+    struct SignInForm: Equatable {
+        let studentId: String
+        let password: String
+    }
+
+    /// The form the page at `url` signs in with, for the exact https origins and paths listed.
+    static func signInForm(at url: URL) -> SignInForm? {
+        guard let page = page(of: url) else { return nil }
+        return signInForms[page.origin + page.path]
+    }
+
+    /// The origin and path a page script compares with `location.origin` and `location.pathname`.
+    static func page(of url: URL) -> (origin: String, path: String)? {
+        guard url.scheme == "https", url.port == nil, url.user == nil, url.password == nil,
+              let host = url.host(percentEncoded: false)?.lowercased() else { return nil }
+        return ("https://" + host, url.path(percentEncoded: true))
+    }
+
+    private static let signInForms: [String: SignInForm] = [
+        "https://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/ethicscourse": SignInForm(studentId: "UserName", password: "Password"),
+        "https://stuinfosys.ntust.edu.tw/Authenticate/SSOAccount/Index/SSOcgesocial": SignInForm(studentId: "UserName", password: "Password"),
+    ]
+
     private static let uriComponent = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
 
     private static func isSent(_ cookie: HTTPCookie, to host: String, path: String) -> Bool {

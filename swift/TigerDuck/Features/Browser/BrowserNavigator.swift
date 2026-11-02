@@ -71,11 +71,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
             // Until asked for its records, the store answers with no cookies, not those on disk.
             _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
             await BrowserPageScripts.install(in: configuration.userContentController)
-            let opening = schoolSignIn.isDemo ? start : BrowserSchoolSites.signInLink(for: start) ?? start
-            for cookie in BrowserSchoolSites.cookiesToDrop(from: await store.httpCookieStore.allCookies(), opening: opening) {
-                await store.httpCookieStore.deleteCookie(cookie)
-            }
-            await page.signIn.open(opening)
+            await page.signIn.open(await BrowserSiteSignIn.opening(start, for: schoolSignIn, in: store))
         }
         return container
     }
@@ -216,6 +212,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         signInReturnPage = nil
         page.signIn.pageSettled()
         Task { await keepSession() }
+        Task { [auth] in await BrowserSiteSignIn(auth: auth, for: AccountSession.school.currentSignIn).pageFinished(in: webView) }
         if page.find.isActive { Task { await page.find.search() } }
     }
 

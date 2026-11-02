@@ -79,5 +79,24 @@ struct BrowserSchoolSitesTests {
     func otherPagesOpenAsTheyAre(_ address: String) {
         #expect(BrowserSchoolSites.signInLink(for: Self.url(address)) == nil)
     }
+
+    @Test func theResearchEthicsAndSocialPracticeSignInsAreFilledByTheirFieldsNames() {
+        let form = BrowserSchoolSites.SignInForm(studentId: "UserName", password: "Password")
+        #expect(BrowserSchoolSites.signInForm(at: Self.url("https://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/ethicscourse")) == form)
+        #expect(BrowserSchoolSites.signInForm(at: Self.url("https://StuInfoSys.ntust.edu.tw/Authenticate/SSOAccount/Index/SSOcgesocial?x=1")) == form)
+    }
+
+    @Test(arguments: [
+        "http://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/ethicscourse",
+        "https://stuinfosys.ntust.edu.tw:8443/Authenticate/Account/EnrollStudent/ethicscourse",
+        "https://user@stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/ethicscourse",
+        "https://stuinfosys.ntust.edu.tw/authenticate/account/enrollstudent/ethicscourse",
+        "https://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/ethicscourse/",
+        "https://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent",
+        "https://ssoam2.ntust.edu.tw/account/login",
+    ])
+    func noOtherAddressIsFilled(_ address: String) {
+        #expect(BrowserSchoolSites.signInForm(at: Self.url(address)) == nil)
+    }
 }
 #endif
