@@ -39,7 +39,8 @@ extension SignOutPlan {
     static let schoolStores: [any AccountScoped.Type] = {
         var stores: [any AccountScoped.Type] = [
             SchoolAccountKeys.self, CourseFiles.self, CourseColorFiles.self, AssignmentFiles.self,
-            CalendarEventFiles.self, BulletinFiles.self, ScoreReportFiles.self, MoodleFiles.self,
+            CalendarEventFiles.self, BulletinFiles.self, ScoreReportFiles.self, MoodleFiles.self, PortalLinkFiles.self,
+            PortalLinks.UnreadablePages.self,
             ImportedClassTableStore.self, BulletinsViewModel.self, AcademicCalendarStore.self, DemoAccount.self,
         ]
         #if os(iOS)

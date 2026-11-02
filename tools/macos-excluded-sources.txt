@@ -52,7 +52,6 @@ BulletinSubscriptionsStore.swift
 BulletinsView.swift
 BulletinCardView.swift
 BulletinDetailView.swift
-BulletinFilterBar.swift
 BulletinPushSection.swift
 BulletinRows.swift
 BulletinRulesSections.swift
@@ -459,6 +458,7 @@ BrowserBar.swift
 BrowserCertificate.swift
 BrowserChromeCollapse.swift
 BrowserData.swift
+BrowserDemoPages.swift
 BrowserFind.swift
 BrowserFindBar.swift
 BrowserFindScript.swift

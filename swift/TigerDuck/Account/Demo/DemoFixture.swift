@@ -14,9 +14,11 @@ nonisolated struct DemoFixture: Decodable, Sendable {
     let calendar: [CalendarEntry]?
     let moodle: DemoMoodle?
     let emptyClassroom: DemoClassrooms?
+    let informationSystem: [PortalEntry]?
 
     enum CodingKeys: String, CodingKey {
         case studentId, libraryQr, courses, classmates, assignments, bulletins, calendar, moodle, emptyClassroom
+        case informationSystem
         case schoolPassword = "school-password"
         case libraryPassword = "library-password"
     }
@@ -67,6 +69,13 @@ nonisolated struct DemoFixture: Decodable, Sendable {
         let title: String
         let date: String
         let source: String?
+    }
+
+    /// `category` is the portal block's id, `service-1` to `service-6`.
+    struct PortalEntry: Decodable, Sendable {
+        let category: String
+        let name: DemoText
+        let url: String
     }
 
     static let bundled: DemoFixture? = load(from: .main)

@@ -1159,5 +1159,16 @@
       "E1-306": { "*": "5555.6666999.." },
       "E1-211": { "*": "7777.8888bbb.." }
     }
-  }
+  },
+  "informationSystem": [
+    { "category": "service-1", "name": { "zh": "選課系統", "en": "Course Selection" }, "url": "https://courseselection.ntust.edu.tw/" },
+    { "category": "service-1", "name": { "zh": "課程查詢", "en": "Course Search" }, "url": "https://querycourse.ntust.edu.tw/querycourse/" },
+    { "category": "service-2", "name": { "zh": "學生資訊系統", "en": "Student Information System" }, "url": "https://stuinfosys.ntust.edu.tw/" },
+    { "category": "service-2", "name": { "zh": "歷年成績查詢", "en": "Grade History" }, "url": "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/" },
+    { "category": "service-3", "name": { "zh": "教室借用查詢", "en": "Classroom Booking" }, "url": "https://cour01.ntust.edu.tw/classroom_user/classroom_usecondition.aspx" },
+    { "category": "service-3", "name": { "zh": "學校信箱", "en": "School Mail" }, "url": "https://mail.ntust.edu.tw/" },
+    { "category": "service-4", "name": { "zh": "獎助學金", "en": "Scholarships" }, "url": "https://www.ntust.edu.tw/" },
+    { "category": "service-5", "name": { "zh": "學術研究倫理課程報名", "en": "Research Ethics Course Registration" }, "url": "https://ae.cge.ntust.edu.tw/" },
+    { "category": "service-6", "name": { "zh": "圖書館", "en": "Library" }, "url": "https://www.lib.ntust.edu.tw/" }
+  ]
 }

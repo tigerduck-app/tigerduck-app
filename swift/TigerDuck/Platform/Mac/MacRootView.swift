@@ -140,7 +140,7 @@ struct MacFeatureDetail: View {
         content
             .onPreferenceChange(MacRefreshShortcutClaimKey.self) { refreshShortcutClaimed = $0 }
             .toolbar {
-                if feature != .gpa && feature != .announcements {
+                if ![.gpa, .announcements, .informationSystem].contains(feature) {
                     ToolbarItem(placement: .primaryAction) {
                         HStack(spacing: 8) {
                             SyncStatusDot(servers: serversForFeature, lastSynced: .schoolData)
@@ -173,6 +173,8 @@ struct MacFeatureDetail: View {
             MacBulletinsView()
         case .gpa:
             MacScoreView()
+        case .informationSystem:
+            InformationSystemView(embedded: true)
         default:
             MacFeaturePlaceholder(
                 feature: feature,
