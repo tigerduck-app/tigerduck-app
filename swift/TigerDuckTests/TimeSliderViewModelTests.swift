@@ -399,16 +399,47 @@ struct TimeSliderViewModelTests {
             id: 1, courseNo: "MATH101", kind: .cancelled, periods: .everyPeriodThatDay,
             room: nil, startHHmm: nil, endHHmm: nil, noteZh: nil, noteEn: nil
         )]
-        let club = ClubOccurrence(
-            id: 9, clubID: 101, clubName: "資訊安全研究社", color: 0x3366CC, priority: 0, day: TaipeiTime.dayKey(for: day),
-            start: ClubMock.minutes("18:30"), end: ClubMock.minutes("21:00"), location: "TR-412", kind: .meeting,
-            name: "社課", content: ""
-        )
+        let club = Self.club(on: day, from: "18:30", to: "21:00")
 
         let items = TimeSliderItem.timeline(courses: [slot], clubs: [club], days: [day])
 
         #expect(items.map { "\($0.club == nil ? "class" : "club") \($0.start.timeString)-\($0.end.timeString)" }
             == ["club 18:30-19:00", "class 19:00-20:00", "club 20:00-21:00"])
+    }
+
+    @Test("a class inside an activity leaves the card showing that activity once at every minute")
+    func activityAroundAClassShowsOnce() {
+        let day = TaipeiTime.calendar.startOfDay(for: AppClock.now())
+        func at(_ time: String) -> Date { day.addingTimeInterval(TimeInterval(ClubMock.minutes(time) * 60)) }
+        let vm = TimeSliderViewModel(clubs: Self.noClubs())
+        vm.items = TimeSliderItem.timeline(
+            courses: [makeMockSlot(courseNo: "MATH101", start: at("11:00"), end: at("12:00"))],
+            clubs: [Self.club(on: day, from: "10:00", to: "14:00")], days: [day]
+        )
+        #expect(vm.items.filter { $0.club != nil }.count == 2)
+
+        for minute in stride(from: ClubMock.minutes("09:00"), through: ClubMock.minutes("15:00"), by: 1) {
+            let clubs = Self.carded(vm.state(at: day.addingTimeInterval(TimeInterval(minute * 60)))).compactMap(\.club?.id)
+            #expect(Set(clubs).count == clubs.count, "\(minute / 60):\(minute % 60)")
+        }
+    }
+
+    static func club(on day: Date, from start: String, to end: String) -> ClubOccurrence {
+        ClubOccurrence(
+            id: 9, clubID: 101, clubName: "資訊安全研究社", color: 0x3366CC, priority: 0, day: TaipeiTime.dayKey(for: day),
+            start: ClubMock.minutes(start), end: ClubMock.minutes(end), location: "TR-412", kind: .meeting,
+            name: "社課", content: ""
+        )
+    }
+
+    /// The items `CourseTimeCard` draws a card for in `state`.
+    static func carded(_ state: ClassState<TimeSliderItem>) -> [TimeSliderItem] {
+        switch state {
+        case .inClass(let items): items
+        case .between(let previous, let next): [previous, next].compactMap { $0 }
+        case .beforeFirst(let next): [next]
+        case .afterLast(let previous): [previous]
+        }
     }
 
     private func calendarStore(holding calendar: AcademicCalendar) throws -> AcademicCalendarStore {
