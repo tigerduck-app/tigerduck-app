@@ -84,11 +84,14 @@ struct FullSettingsButton: View {
 struct PageMenuToggle: View {
     let row: SettingsRow
     @Binding var isOn: Bool
+    /// What the row's settings page does as the setting turns on, such as asking to notify.
+    var onTurnOn: () -> Void = {}
     @Environment(\.settingsState) private var state
     @Environment(\.showToast) private var showToast
 
     var body: some View {
-        Toggle(row.label, isOn: Self.gated($isOn, closedReason: row.closedReason(in: state)) { showToast($0) })
+        let isOn = Self.turningOn($isOn, then: onTurnOn)
+        Toggle(row.label, isOn: Self.gated(isOn, closedReason: row.closedReason(in: state)) { showToast($0) })
     }
 
     static func gated(
@@ -97,5 +100,13 @@ struct PageMenuToggle: View {
     ) -> Binding<Bool> {
         guard let closedReason else { return isOn }
         return Binding(get: { false }, set: { _ in showToast(closedReason) })
+    }
+
+    static func turningOn(_ isOn: Binding<Bool>, then onTurnOn: @escaping () -> Void) -> Binding<Bool> {
+        Binding(get: { isOn.wrappedValue }, set: { newValue in
+            let turnsOn = newValue && !isOn.wrappedValue
+            isOn.wrappedValue = newValue
+            if turnsOn { onTurnOn() }
+        })
     }
 }

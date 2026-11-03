@@ -38,10 +38,13 @@ struct HomeTitleBar: View {
 private struct HomeMenuToggles: View {
     @Bindable var reminders: LiveActivityPreferencesStore
     @Environment(AppPreferences.self) private var preferences
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
 
     var body: some View {
         HomeDisplayToggles(preferences: preferences)
-        PageMenuToggle(row: .assignmentReminders, isOn: $reminders.isAssignmentReminderEnabled)
+        PageMenuToggle(row: .assignmentReminders, isOn: $reminders.isAssignmentReminderEnabled) {
+            Task { await app?.liveActivity.requestNotificationAuthorization() }
+        }
         PageMenuToggle(row: .liveActivity, isOn: $reminders.isLiveActivityEnabled)
     }
 }

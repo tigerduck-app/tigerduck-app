@@ -10,6 +10,7 @@ struct PageMenuToggleTests {
     private final class Box {
         var isOn: Bool
         var toasts: [String] = []
+        var turnedOn = 0
 
         init(isOn: Bool) { self.isOn = isOn }
 
@@ -38,6 +39,33 @@ struct PageMenuToggleTests {
         gated.wrappedValue = false
         #expect(!box.isOn)
         #expect(box.toasts.isEmpty)
+    }
+
+    @Test("turning a switch on runs its settings page's step for that, such as asking to notify")
+    func turningOnRunsTheSettingsPagesStep() {
+        let box = Box(isOn: false)
+        let toggle = PageMenuToggle.turningOn(box.binding) { box.turnedOn += 1 }
+
+        toggle.wrappedValue = true
+        #expect(box.isOn)
+        #expect(box.turnedOn == 1)
+        toggle.wrappedValue = false
+        #expect(!box.isOn)
+        #expect(box.turnedOn == 1)
+    }
+
+    @Test("a switch behind a closed gate runs no step for turning on")
+    func aClosedGateRunsNoStep() {
+        let box = Box(isOn: false)
+        let toggle = PageMenuToggle.gated(
+            PageMenuToggle.turningOn(box.binding) { box.turnedOn += 1 },
+            closedReason: SettingsGate.tigerSync.reasonKey
+        ) { box.toasts.append(String(localized: $0)) }
+
+        toggle.wrappedValue = true
+        #expect(!box.isOn)
+        #expect(box.turnedOn == 0)
+        #expect(box.toasts.count == 1)
     }
 }
 
