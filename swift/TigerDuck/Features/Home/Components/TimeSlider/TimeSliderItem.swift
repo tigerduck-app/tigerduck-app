@@ -51,6 +51,7 @@ enum TimeSliderItem: Identifiable, Equatable, TimedClass {
     /// their day and the clubs ranked above them leave, merged in by start. `days` are the days
     /// `clubs` fall on.
     static func timeline(courses: [CourseTimeSlot], clubs: [ClubOccurrence], days: [Date]) -> [TimeSliderItem] {
+        guard !clubs.isEmpty else { return courses.map(TimeSliderItem.course) }
         let starts = Dictionary(days.map { (TaipeiTime.dayKey(for: $0), TaipeiTime.calendar.startOfDay(for: $0)) }) { first, _ in first }
         let classes = Dictionary(grouping: courses) { TaipeiTime.dayKey(for: $0.date) }
         let pieces = Dictionary(grouping: clubs, by: \.day).flatMap { key, activities -> [TimeSliderItem] in
@@ -78,8 +79,7 @@ struct TimeSliderSchedule {
         let radius = TimeSliderMetrics.timelineDayRadius
         let slots = CourseTimeSlot.buildMultiDaySlots(from: courses, centerDate: center, dayRadius: radius)
             .filter { !isQuietDay($0.date) && !$0.isSkipped }
-        let calendar = TaipeiTime.calendar
-        let days = (-radius...radius).compactMap { calendar.date(byAdding: .day, value: $0, to: calendar.startOfDay(for: center)) }
+        let days = CourseTimeSlot.days(around: center, radius: radius)
         return TimeSliderItem.timeline(courses: slots, clubs: clubs.occurrences(on: days), days: days)
     }
 }

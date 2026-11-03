@@ -4,6 +4,7 @@ import TigerDuckCore
 struct TimeSliderSection: View {
     let courses: [CourseStore.Course]
     var onSelectCourse: ((CourseTimeSlot) -> Void)? = nil
+    var onSelectClub: ((ClubOccurrence) -> Void)? = nil
     @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = TimeSliderViewModel(isQuietDay: { !SchoolCalendar.isClassDay($0) })
@@ -28,7 +29,7 @@ struct TimeSliderSection: View {
 
     @ViewBuilder
     private var contentArea: some View {
-        switch NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: !viewModel.hasCourses) {
+        switch NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: !viewModel.hasItems) {
         case .loginRequired:
             LoginRequiredView(
                 layout: .section,
@@ -72,8 +73,9 @@ struct TimeSliderSection: View {
         return TimelineView(.everyMinute) { context in
             VStack(spacing: 12) {
                 CourseTimeCard(
-                    state: viewModel.currentCourseState,
+                    state: viewModel.currentState,
                     onSelect: onSelectCourse,
+                    onSelectClub: onSelectClub,
                     policy: policy
                 )
 

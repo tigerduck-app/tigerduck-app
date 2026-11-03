@@ -88,6 +88,9 @@ struct HomeView: View {
             .linkRouting()
             .onDisappear { viewModel.sheets.selectedCourseSlot = nil }
         }
+        .sheet(item: $viewModel.sheets.selectedClub) { club in
+            ClubActivityDetailSheet(club: club, policy: app.preferences.visualStylePolicy)
+        }
         // Leaving Home, by tab, by push or by going to the background, ends editing as Done does.
         .onDisappear { setEditing(false, keepingPlace: false) }
         .onChange(of: scenePhase) { _, phase in

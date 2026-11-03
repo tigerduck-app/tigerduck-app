@@ -3,6 +3,7 @@ import Foundation
 struct HomeSheets {
     var selectedCourse: CourseStore.Course?
     var selectedCourseSlot: CourseTimeSlot?
+    var selectedClub: ClubOccurrence?
     var shownAssignment: MoodleAssignmentPage?
     private var assignmentAfterSheet: MoodleAssignmentPage?
 

@@ -5,12 +5,12 @@ struct TimeSliderLayout {
     private(set) var lanes: [String: TimeSliderLane] = [:]
     private var anchors: [(time: Date, x: CGFloat)] = []
 
-    init(slots: [CourseTimeSlot] = []) {
-        lanes = Self.lanes(for: slots)
-        anchors = Self.anchors(for: slots)
+    init(items: [TimeSliderItem] = []) {
+        lanes = Self.lanes(for: items)
+        anchors = Self.anchors(for: items)
     }
 
-    private static func anchors(for slots: [CourseTimeSlot]) -> [(time: Date, x: CGFloat)] {
+    private static func anchors(for slots: [TimeSliderItem]) -> [(time: Date, x: CGFloat)] {
         let intervals = busyIntervals(slots)
         guard !intervals.isEmpty else { return [] }
 
@@ -65,7 +65,7 @@ struct TimeSliderLayout {
         return result
     }
 
-    private static func busyIntervals(_ slots: [CourseTimeSlot]) -> [(start: Date, end: Date, date: Date)] {
+    private static func busyIntervals(_ slots: [TimeSliderItem]) -> [(start: Date, end: Date, date: Date)] {
         var result: [(start: Date, end: Date, date: Date)] = []
         for slot in slots {
             if let last = result.last, slot.start < last.end {
@@ -77,9 +77,9 @@ struct TimeSliderLayout {
         return result
     }
 
-    static func lanes(for slots: [CourseTimeSlot]) -> [String: TimeSliderLane] {
+    static func lanes(for slots: [TimeSliderItem]) -> [String: TimeSliderLane] {
         var lanes: [String: TimeSliderLane] = [:]
-        var group: [CourseTimeSlot] = []
+        var group: [TimeSliderItem] = []
         var groupEnd = Date.distantPast
         func assignGroup() {
             guard group.count > 1 else { return }

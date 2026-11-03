@@ -6,8 +6,8 @@ import TigerDuckCore
 final class TimeSliderViewModel {
     private var prefersReducedMotion: Bool { UIAccessibility.isReduceMotionEnabled }
 
-    var timeSlots: [CourseTimeSlot] = [] {
-        didSet { layout = TimeSliderLayout(slots: timeSlots) }
+    var items: [TimeSliderItem] = [] {
+        didSet { layout = TimeSliderLayout(items: items) }
     }
 
     private(set) var layout = TimeSliderLayout()
@@ -17,22 +17,22 @@ final class TimeSliderViewModel {
     var selectedTime: Date = AppClock.now()
     var isUserDragging: Bool = false
 
-    private var allCourses: [CourseStore.Course] = []
+    private var schedule: TimeSliderSchedule
     private var timelineCenterDate: Date = AppClock.now()
     private let haptics = TimeSliderHaptics()
-    private let isQuietDay: (Date) -> Bool
     // `nonisolated(unsafe)` so `deinit` can remove them; `@ObservationIgnored`
     // keeps the macro from swapping the storage out from under the modifier.
     @ObservationIgnored
     private nonisolated(unsafe) var quietDayObservers: [Any] = []
     @ObservationIgnored private var storeObservation: StoreObservation?
 
-    var hasCourses: Bool { !timeSlots.isEmpty }
+    var hasItems: Bool { !items.isEmpty }
 
-    init(isQuietDay: @escaping (Date) -> Bool = { _ in false }) {
-        self.isQuietDay = isQuietDay
+    init(isQuietDay: @escaping (Date) -> Bool = { _ in false }, clubs: ClubActivities = .shared) {
+        schedule = TimeSliderSchedule(isQuietDay: isQuietDay, clubs: clubs)
         haptics.prepare()
-        storeObservation = StoreObservation(read: { _ = AppDataRevision.current }) { [weak self] in
+        // An empty list of days still reads the feed, the subscriptions and the club names.
+        storeObservation = StoreObservation(read: { _ = AppDataRevision.current; _ = clubs.occurrences(on: []) }) { [weak self] in
             self?.reloadQuietDays()
         }
         quietDayObservers = [
@@ -54,7 +54,7 @@ final class TimeSliderViewModel {
     }
 
     func configure(courses: [CourseStore.Course]) {
-        allCourses = courses
+        schedule.courses = courses
         rebuildTimeline(around: AppClock.now())
         if !isUserDragging {
             selectedTime = AppClock.now()
@@ -67,11 +67,7 @@ final class TimeSliderViewModel {
 
     private func rebuildTimeline(around center: Date) {
         timelineCenterDate = center
-        timeSlots = CourseTimeSlot.buildMultiDaySlots(
-            from: allCourses,
-            centerDate: center,
-            dayRadius: TimeSliderMetrics.timelineDayRadius
-        ).filter { !isQuietDay($0.date) && !$0.isSkipped }
+        items = schedule.items(around: center)
     }
 
     func tick(_ now: Date) {
@@ -91,12 +87,12 @@ final class TimeSliderViewModel {
         }
     }
 
-    func courseState(at time: Date) -> CourseState {
-        ClassTimeline.state(at: time, in: timeSlots)
+    func state(at time: Date) -> ClassState<TimeSliderItem> {
+        ClassTimeline.state(at: time, in: items)
     }
 
-    var currentCourseState: CourseState {
-        courseState(at: selectedTime)
+    var currentState: ClassState<TimeSliderItem> {
+        state(at: selectedTime)
     }
 
     func xOffset(for time: Date) -> CGFloat {
