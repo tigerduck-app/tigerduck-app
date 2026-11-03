@@ -148,17 +148,20 @@ final class MailListViewModel {
 
     func markAllRead(for signIn: SignIn) async {
         for (folder, rows) in Dictionary(grouping: displayedRows.filter { !$0.summary.isSeen }, by: \.folder) where signIn.isCurrent {
-            await setSeen(true, folder: folder, uids: rows.map(\.uid))
+            await setSeen(true, folder: folder, uids: rows.map(\.uid), for: signIn)
         }
     }
 
-    private func setSeen(_ seen: Bool, folder: String, uids: [UInt32]) async {
+    private func setSeen(_ seen: Bool, folder: String, uids: [UInt32], for given: SignIn? = nil) async {
         markSeenLocally(folder: folder, uids: uids, seen: seen)
         let validity = mailbox[folder]?.uidValidity
+        let signIn = if let given { given } else { await account.startingSignIn }
         do {
-            try await session.use { client in
+            try await session.use(for: signIn) { client in
                 try await client.setFlag(.seen, on: seen, folder: folder, uids: uids, expectedUIDValidity: validity)
             }
+        } catch where !signIn.isCurrent {
+            return
         } catch MailClientError.folderChanged {
             markSeenLocally(folder: folder, uids: uids, seen: !seen)
             await recoverFromFolderChange(folder)

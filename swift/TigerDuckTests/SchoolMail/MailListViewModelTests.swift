@@ -567,6 +567,20 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.filter { $0.hasPrefix("setFlag") }.count == 1)
     }
 
+    @Test func aRefusalAfterTheSignInEndsPutsNothingBack() async throws {
+        let h = Self.harness(inboxCount: 6)
+        await h.model.load()
+        await h.fake.update { $0.setFlagError = .unreachable }
+        await h.fake.holdNext("setFlag")
+        let signIn = await h.account.startingSignIn
+        let marking = Task { await h.model.markAllRead(for: signIn) }
+        await h.fake.waitForArrival("setFlag")
+        h.account.endSignIn()
+        await h.fake.release("setFlag")
+        await marking.value
+        #expect(h.model.rows.allSatisfy { $0.summary.isSeen })
+    }
+
     @Test func pollingReloadsWhenNewMailArrives() async {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
