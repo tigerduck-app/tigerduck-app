@@ -217,6 +217,7 @@ ClassTablePageSettingsView.swift
 BulletinsPageSettingsView.swift
 BrowserPageSettingsView.swift
 MoodlePageSettingsView.swift
+PageMenu.swift
 
 # Features/Updates — the iPhone's update and What's New sheets; the Mac answers
 # with an alert (MacUpdateCheck.swift) and shows no What's New
