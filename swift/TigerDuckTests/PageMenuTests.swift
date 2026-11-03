@@ -168,9 +168,14 @@ struct PageMenuScreenTests {
         return items
     }
 
+    /// The element VoiceOver reads: on iOS 26 a toolbar item's host view carries its label too.
+    static func readElement(labeled label: String, in window: UIWindow) -> NSObject? {
+        exposedAccessibilityElements(in: window).first { $0.accessibilityLabel == label }
+    }
+
     /// A filter says whether it is on, and VoiceOver finds its mark-all-read among its actions.
     static func expectFilter(labeled label: String, selected: Bool, offers markAllRead: String, in window: UIWindow) throws {
-        let filter = try #require(accessibilityElement(labeled: label, in: window))
+        let filter = try #require(readElement(labeled: label, in: window))
         #expect(filter.accessibilityTraits.contains(.selected) == selected)
         #expect(filter.accessibilityCustomActions?.contains { $0.name == markAllRead } == true)
     }
@@ -293,12 +298,17 @@ struct PageMenuScreenTests {
                 defer { window.isHidden = true }
 
                 let items = try await Self.openMenu(labeled: Page.home.menuLabel, in: window)
+                let reason = String(localized: SettingsGate.tigerSync.reasonKey)
                 for row in [SettingsRow.assignmentReminders, .liveActivity] {
-                    let reason = String(localized: try #require(row.closedReason(in: Screen.closed)))
+                    #expect(row.gate == .tigerSync)
                     let item = try #require(items.first { $0.accessibilityLabel?.hasPrefix(row.label) == true })
                     #expect(item.accessibilityTraits.contains(.notEnabled))
-                    #expect([item.accessibilityLabel, item.accessibilityValue].compactMap(\.self).joined().contains(reason))
                 }
+                // iOS 27 reads a subtitle as part of its item, iOS 26 as a text of its own.
+                let reasons = exposedAccessibilityElements(in: window).filter { $0.accessibilityLabel?.contains(reason) == true }
+                #expect(reasons.count >= 2)
+                // The subtitles fade in after the items.
+                try await Task.sleep(for: .seconds(2))
                 window.saveSnapshot(as: "page-menu-home-tigersync-off-\(Self.language)")
 
                 let item = try #require(items.first { $0.accessibilityLabel?.hasPrefix(SettingsRow.assignmentReminders.label) == true })
@@ -354,7 +364,7 @@ struct PageMenuScreenTests {
                                       offers: String(localized: "bulletin_mark_all_read_action"), in: window)
                 try await Self.tap(try #require(accessibilityElement(labeled: unreadOnly, in: window)), in: window)
                 try await waitUntil { fixtures.filter.unreadOnly }
-                try await waitUntil { accessibilityElement(labeled: unreadOnly, in: window)?.accessibilityTraits.contains(.selected) == true }
+                try await waitUntil { Self.readElement(labeled: unreadOnly, in: window)?.accessibilityTraits.contains(.selected) == true }
 
                 let items = try await Self.openMenu(labeled: unreadOnly, in: window, holding: .seconds(1))
                 #expect(fixtures.filter.unreadOnly)
@@ -386,7 +396,7 @@ struct PageMenuScreenTests {
                                       offers: String(localized: "school_mail_mark_all_read"), in: window)
                 try await Self.tap(try #require(accessibilityElement(labeled: filter, in: window)), in: window)
                 try await waitUntil { fixtures.mail.unreadOnly }
-                try await waitUntil { accessibilityElement(labeled: filter, in: window)?.accessibilityTraits.contains(.selected) == true }
+                try await waitUntil { Self.readElement(labeled: filter, in: window)?.accessibilityTraits.contains(.selected) == true }
                 #expect(fixtures.mail.displayedRows.count == 3)
 
                 let items = try await Self.openMenu(labeled: filter, in: window, holding: .seconds(1))
