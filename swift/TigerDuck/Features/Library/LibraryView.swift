@@ -31,6 +31,7 @@ struct LibraryView: View {
         }
         .background(Color.backgroundPrimary)
         .modifier(LibraryPageLifecycle(viewModel: viewModel))
+        .pageMenu(.library)
     }
 
     /// A wide canvas rotates freely, so anchor the QR to vertical center to keep
@@ -81,16 +82,19 @@ struct LibraryView: View {
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
-            SyncStatusDot(
-                status: viewModel.errorMessage != nil ? .failed : (viewModel.isLoggedIn ? .ok : .unknown),
-                label: String(localized: "feature_library"),
-                icon: "books.vertical.fill",
-                text: viewModel.isLoggedIn
-                    ? String(localized: "library_status_signed_in")
-                    : String(localized: "common_not_signed_in"),
-                isLoading: viewModel.isLoadingQR,
-                lastSynced: .at(viewModel.codeFetchedAt)
-            )
+            HStack(spacing: TigerDuckTheme.Spacing.lg) {
+                SyncStatusDot(
+                    status: viewModel.errorMessage != nil ? .failed : (viewModel.isLoggedIn ? .ok : .unknown),
+                    label: String(localized: "feature_library"),
+                    icon: "books.vertical.fill",
+                    text: viewModel.isLoggedIn
+                        ? String(localized: "library_status_signed_in")
+                        : String(localized: "common_not_signed_in"),
+                    isLoading: viewModel.isLoadingQR,
+                    lastSynced: .at(viewModel.codeFetchedAt)
+                )
+                PageMenuButton(page: .library) { LibraryMenuItems() }
+            }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.md)
@@ -112,6 +116,25 @@ struct LibraryView: View {
             username: viewModel.signedInUsername,
             showsCountdown: !viewModel.isWaitingToRetry
         )
+    }
+}
+
+struct LibraryMenuItems: View {
+    @Environment(AppPreferences.self) private var preferences
+    @Environment(\.settingsState) private var state
+
+    var body: some View {
+        @Bindable var preferences = preferences
+        if SettingsRow.flipToLibrary.isShown(in: state) {
+            Section {
+                PageMenuToggle(
+                    row: .flipToLibrary,
+                    isOn: LibrarySettingsView.flipSwitch($preferences.flipToLibraryEnabled, signedIn: state.library.isSignedIn)
+                )
+            }
+        }
+        Section { FullSettingsButton() }
+        LibrarySignOutSection()
     }
 }
 
