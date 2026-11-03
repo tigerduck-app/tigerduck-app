@@ -37,6 +37,7 @@ struct HomeView: View {
         let _ = AppClockState.shared.version
         return page
         .background(Color.backgroundPrimary)
+        .pageMenu(.home)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -125,7 +126,7 @@ struct HomeView: View {
 
     private var editingPage: some View {
         HomeEditPage(viewModel: viewModel, sections: visibleSections, scrollAnchor: scrollAnchor) {
-            HomeTitleBar(controls: .spaceOnly) { setEditing(true) }
+            HomeTitleBar(controls: .spaceOnly, reminders: app.liveActivity.preferences) { setEditing(true) }
                 .padding(.top, TigerDuckTheme.Spacing.md)
         }
     }

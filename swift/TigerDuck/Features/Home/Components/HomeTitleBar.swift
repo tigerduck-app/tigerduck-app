@@ -7,6 +7,7 @@ struct HomeTitleBar: View {
     }
 
     var controls: Controls = .shown
+    let reminders: LiveActivityPreferencesStore
     let onEdit: () -> Void
 
     var body: some View {
@@ -17,10 +18,12 @@ struct HomeTitleBar: View {
             Spacer()
             let controlsRow = HStack(spacing: TigerDuckTheme.Spacing.lg) {
                 SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
-                HeaderMenuButton(accessibilityLabel: String(localized: "home_more_actions")) {
+                PageMenuButton(page: .home, accessibilityLabel: String(localized: "home_more_actions")) {
                     Button { onEdit() } label: {
                         Label(String(localized: "home_edit"), systemImage: "pencil")
                     }
+                    Section { HomeMenuToggles(reminders: reminders) }
+                    Section { FullSettingsButton() }
                 }
             }
             switch controls {
@@ -29,5 +32,16 @@ struct HomeTitleBar: View {
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+}
+
+private struct HomeMenuToggles: View {
+    @Bindable var reminders: LiveActivityPreferencesStore
+    @Environment(AppPreferences.self) private var preferences
+
+    var body: some View {
+        HomeDisplayToggles(preferences: preferences)
+        PageMenuToggle(row: .assignmentReminders, isOn: $reminders.isAssignmentReminderEnabled)
+        PageMenuToggle(row: .liveActivity, isOn: $reminders.isLiveActivityEnabled)
     }
 }
