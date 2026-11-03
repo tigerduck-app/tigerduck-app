@@ -4,6 +4,7 @@ import SwiftUI
 struct MailTitleBar: View {
     let viewModel: MailListViewModel
     let isLoggedIn: Bool
+    private let account = MailAccountManager.shared
 
     static var headerActionHeight: CGFloat { HeaderMenuButton<EmptyView>.height }
     private static let headerActionWidth: CGFloat = 44
@@ -37,23 +38,33 @@ struct MailTitleBar: View {
         )
     }
 
-    /// The button is `.borderless` because the row is a `List` row: the default style there
+    /// The filter is `.borderless` because the row is a `List` row: the default style there
     /// gives the whole row one tap target and drops the tint. `MailFolderChipBar` and
     /// `SyncStatusDot` take `.plain` in the same situation, for the same reason.
     @ViewBuilder
     private var headerActions: some View {
-        let row = Button { viewModel.unreadOnly.toggle() } label: {
-            headerIcon(viewModel.unreadOnly
-                ? "line.3.horizontal.decrease.circle.fill"
-                : "line.3.horizontal.decrease.circle")
-                .symbolRenderingMode(.hierarchical)
+        let filter = UnreadFilterButton(
+            unreadOnly: Binding(get: { viewModel.unreadOnly }, set: { viewModel.unreadOnly = $0 }),
+            markAllReadTitle: String(localized: "school_mail_mark_all_read"),
+            markAllRead: viewModel.displayedRows.contains { !$0.summary.isSeen }
+                ? { Task { await viewModel.markAllRead() } } : nil
+        ) {
+            headerIcon($0).symbolRenderingMode(.hierarchical)
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(String(localized: "school_mail_unread_only"))
         if #available(iOS 26, *) {
-            row.glassEffect(.regular.interactive(), in: .capsule)
+            filter.glassEffect(.regular.interactive(), in: .capsule)
         } else {
-            row.background(Capsule().fill(Color(uiColor: .secondarySystemFill)))
+            filter.background(Capsule().fill(Color(uiColor: .secondarySystemFill)))
+        }
+        PageMenuButton(page: .mail) {
+            Section {
+                PageMenuToggle(row: .mailNotifications, isOn: MailNotificationSettingsView.notificationsBinding(for: account))
+                    .disabled(!MailNotificationSettingsView.notificationsToggleIsEnabled(
+                        isLoggedIn: account.isLoggedIn, authFailed: account.authFailed))
+            }
+            Section { FullSettingsButton() }
         }
     }
 

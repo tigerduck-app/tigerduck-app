@@ -532,6 +532,27 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.contains("setFlag seen true [\(unread.uid)]"))
     }
 
+    @Test func markingAllReadMarksEveryShownUnreadRowLocallyAndOnTheServer() async throws {
+        let h = Self.harness(inboxCount: 6)
+        await h.model.load()
+        h.model.unreadOnly = true
+        let unread = h.model.displayedRows.map(\.uid)
+        try #require(unread.count == 3)
+        await h.model.markAllRead()
+        #expect(h.model.displayedRows.isEmpty)
+        #expect(h.model.rows.allSatisfy { $0.summary.isSeen })
+        #expect(await h.fake.calls.filter { $0.hasPrefix("setFlag") } == ["setFlag seen true \(unread)"])
+        try await waitUntil { h.cache.loadPage(folder: "INBOX")?.summaries.allSatisfy { $0.isSeen } == true }
+    }
+
+    @Test func markingAllReadPutsTheRowsBackWhenTheServerRefuses() async throws {
+        let h = Self.harness(inboxCount: 6)
+        await h.model.load()
+        await h.fake.update { $0.setFlagError = .unreachable }
+        await h.model.markAllRead()
+        #expect(h.model.rows.filter { !$0.summary.isSeen }.map(\.uid) == [5, 3, 1])
+    }
+
     @Test func pollingReloadsWhenNewMailArrives() async {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
