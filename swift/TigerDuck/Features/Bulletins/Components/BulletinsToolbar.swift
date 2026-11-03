@@ -23,14 +23,12 @@ struct BulletinsToolbar: ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             UnreadFilterButton(
                 unreadOnly: $unreadOnly,
+                accessibilityLabel: String(localized: "bulletin_show_unread_only_action"),
                 markAllReadTitle: String(localized: "bulletin_mark_all_read_action"),
                 markAllRead: unreadShown.isEmpty ? nil : { readState.markAllRead(unreadShown) }
             ) {
                 Image(systemName: $0).symbolRenderingMode(.hierarchical)
             }
-            .accessibilityLabel(unreadOnly
-                ? String(localized: "bulletin_show_all_action")
-                : String(localized: "bulletin_show_unread_only_action"))
         }
         ToolbarItem(placement: .topBarTrailing) {
             PageMenuButton(page: .bulletins, placement: .toolbar) { FullSettingsButton() }

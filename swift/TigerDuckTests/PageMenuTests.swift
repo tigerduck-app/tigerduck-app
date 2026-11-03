@@ -168,6 +168,13 @@ struct PageMenuScreenTests {
         return items
     }
 
+    /// A filter says whether it is on, and VoiceOver finds its mark-all-read among its actions.
+    static func expectFilter(labeled label: String, selected: Bool, offers markAllRead: String, in window: UIWindow) throws {
+        let filter = try #require(accessibilityElement(labeled: label, in: window))
+        #expect(filter.accessibilityTraits.contains(.selected) == selected)
+        #expect(filter.accessibilityCustomActions?.contains { $0.name == markAllRead } == true)
+    }
+
     /// Whether `condition` holds within `timeout`, recording nothing when it does not.
     static func holds(within timeout: Duration, _ condition: () -> Bool) async throws -> Bool {
         let end = ContinuousClock.now + timeout
@@ -343,12 +350,13 @@ struct PageMenuScreenTests {
 
                 let unreadOnly = String(localized: "bulletin_show_unread_only_action")
                 try await waitUntil { accessibilityElement(labeled: unreadOnly, in: window) != nil }
+                try Self.expectFilter(labeled: unreadOnly, selected: false,
+                                      offers: String(localized: "bulletin_mark_all_read_action"), in: window)
                 try await Self.tap(try #require(accessibilityElement(labeled: unreadOnly, in: window)), in: window)
                 try await waitUntil { fixtures.filter.unreadOnly }
+                try await waitUntil { accessibilityElement(labeled: unreadOnly, in: window)?.accessibilityTraits.contains(.selected) == true }
 
-                let items = try await Self.openMenu(
-                    labeled: String(localized: "bulletin_show_all_action"), in: window, holding: .seconds(1)
-                )
+                let items = try await Self.openMenu(labeled: unreadOnly, in: window, holding: .seconds(1))
                 #expect(fixtures.filter.unreadOnly)
                 let markAll = try #require(items.first {
                     $0.accessibilityLabel == String(localized: "bulletin_mark_all_read_action")
@@ -374,8 +382,11 @@ struct PageMenuScreenTests {
 
                 let filter = String(localized: "school_mail_unread_only")
                 try await waitUntil { accessibilityElement(labeled: filter, in: window) != nil }
+                try Self.expectFilter(labeled: filter, selected: false,
+                                      offers: String(localized: "school_mail_mark_all_read"), in: window)
                 try await Self.tap(try #require(accessibilityElement(labeled: filter, in: window)), in: window)
                 try await waitUntil { fixtures.mail.unreadOnly }
+                try await waitUntil { accessibilityElement(labeled: filter, in: window)?.accessibilityTraits.contains(.selected) == true }
                 #expect(fixtures.mail.displayedRows.count == 3)
 
                 let items = try await Self.openMenu(labeled: filter, in: window, holding: .seconds(1))

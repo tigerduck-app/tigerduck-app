@@ -45,6 +45,7 @@ struct MailTitleBar: View {
     private var headerActions: some View {
         let filter = UnreadFilterButton(
             unreadOnly: Binding(get: { viewModel.unreadOnly }, set: { viewModel.unreadOnly = $0 }),
+            accessibilityLabel: String(localized: "school_mail_unread_only"),
             markAllReadTitle: String(localized: "school_mail_mark_all_read"),
             markAllRead: viewModel.displayedRows.contains { !$0.summary.isSeen } ? {
                 let signIn = viewModel.account.currentSignIn
@@ -54,7 +55,6 @@ struct MailTitleBar: View {
             headerIcon($0).symbolRenderingMode(.hierarchical)
         }
         .buttonStyle(.borderless)
-        .accessibilityLabel(String(localized: "school_mail_unread_only"))
         if #available(iOS 26, *) {
             filter.glassEffect(.regular.interactive(), in: .capsule)
         } else {
