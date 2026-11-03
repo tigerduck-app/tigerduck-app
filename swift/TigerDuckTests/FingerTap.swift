@@ -6,11 +6,11 @@ import UIKit
 // does, through private IOKit, BackBoardServices and UIKit calls, the ones
 // https://github.com/lyft/Hammer makes.
 @MainActor
-func fingerTap(at point: CGPoint, in window: UIWindow) async throws {
+func fingerTap(at point: CGPoint, in window: UIWindow, holding: Duration = .milliseconds(50)) async throws {
     let digitizer = try Digitizer()
     Digitizer.lastTouchID += 1
     try digitizer.send(touch: Digitizer.lastTouchID, at: point, isDown: true, to: window)
-    try await Task.sleep(for: .milliseconds(50))
+    try await Task.sleep(for: holding)
     try digitizer.send(touch: Digitizer.lastTouchID, at: point, isDown: false, to: window)
 }
 

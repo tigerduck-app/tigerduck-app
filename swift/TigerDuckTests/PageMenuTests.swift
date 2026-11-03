@@ -1,0 +1,411 @@
+#if os(iOS)
+import Defaults
+import SwiftUI
+import Testing
+import UIKit
+@testable import TigerDuck
+
+@MainActor
+struct PageMenuToggleTests {
+    private final class Box {
+        var isOn: Bool
+        var toasts: [String] = []
+
+        init(isOn: Bool) { self.isOn = isOn }
+
+        var binding: Binding<Bool> { Binding(get: { self.isOn }, set: { self.isOn = $0 }) }
+    }
+
+    @Test("a switch behind a closed gate reads off, shows the reason and leaves the setting")
+    func aClosedGateShowsWhy() {
+        let box = Box(isOn: true)
+        let reason = SettingsGate.tigerSync.reasonKey
+        let gated = PageMenuToggle.gated(box.binding, closedReason: reason) { box.toasts.append(String(localized: $0)) }
+
+        #expect(!gated.wrappedValue)
+        gated.wrappedValue = true
+        gated.wrappedValue = false
+        #expect(box.isOn)
+        #expect(box.toasts == Array(repeating: String(localized: reason), count: 2))
+    }
+
+    @Test("a switch behind an open gate changes the setting")
+    func anOpenGatePassesThrough() {
+        let box = Box(isOn: true)
+        let gated = PageMenuToggle.gated(box.binding, closedReason: nil) { box.toasts.append(String(localized: $0)) }
+
+        #expect(gated.wrappedValue)
+        gated.wrappedValue = false
+        #expect(!box.isOn)
+        #expect(box.toasts.isEmpty)
+    }
+}
+
+/// Opens each page's ⋯ with a finger, as `SettingsScreenTests` taps a closed row.
+@MainActor
+@Suite(.serialized)
+struct PageMenuScreenTests {
+    private typealias Screen = SettingsScreen
+
+    enum Page: String, CaseIterable, CustomTestStringConvertible {
+        case home, bulletins, mail, library, moodle
+
+        var testDescription: String { rawValue }
+
+        var settings: PageSettings {
+            switch self {
+            case .home: .home
+            case .bulletins: .bulletins
+            case .mail: .mail
+            case .library: .library
+            case .moodle: .moodle
+            }
+        }
+
+        var menuLabel: String {
+            self == .home ? String(localized: "home_more_actions") : String(localized: "action_more_actions")
+        }
+
+        /// The ⋯'s items in order, in `Screen.allOpenButSchool`.
+        var items: [String] {
+            let full = String(localized: "action_full_settings")
+            return switch self {
+            case .home:
+                [String(localized: "home_edit")]
+                    + [SettingsRow.showFullDueDate, .invertSlider, .assignmentReminders, .liveActivity].map(\.label) + [full]
+            case .bulletins, .moodle: [full]
+            case .mail: [SettingsRow.mailNotifications.label, full]
+            case .library: [SettingsRow.flipToLibrary.label, full, SettingsRow.librarySignOut.label]
+            }
+        }
+    }
+
+    struct Look: CustomTestStringConvertible {
+        let name: String
+        let style: UIUserInterfaceStyle
+        let size: UIContentSizeCategory
+
+        var testDescription: String { name }
+
+        static let all = [
+            Look(name: "light", style: .light, size: .large),
+            Look(name: "dark", style: .dark, size: .large),
+            Look(name: "light-largest", style: .light, size: .accessibilityExtraExtraExtraLarge),
+            Look(name: "dark-largest", style: .dark, size: .accessibilityExtraExtraExtraLarge),
+        ]
+    }
+
+    @MainActor
+    @Observable
+    final class Filter {
+        var unreadOnly = false
+    }
+
+    /// What a page's header needs, made once per test so a redraw keeps it.
+    @MainActor
+    struct Fixtures {
+        let reminders = LiveActivityPreferencesStore()
+        let readState = BulletinReadStateStore()
+        let mail = MailListViewModelTests.harness(inboxCount: 6).model
+        let filter = Filter()
+        var unreadShown: [Int] = []
+    }
+
+    static let narrowestPhoneWidth: CGFloat = 375
+
+    @ViewBuilder
+    static func header(of page: Page, _ fixtures: Fixtures) -> some View {
+        switch page {
+        case .home:
+            VStack { HomeTitleBar(reminders: fixtures.reminders) {}; Spacer() }
+                .pageMenu(.home)
+        case .bulletins:
+            List {}
+                .toolbar {
+                    BulletinsToolbar(
+                        unreadOnly: Bindable(fixtures.filter).unreadOnly, unreadShown: fixtures.unreadShown,
+                        readState: fixtures.readState, bulletinsSyncedAt: nil
+                    )
+                }
+                .pageMenu(.bulletins)
+        case .mail:
+            VStack { MailTitleBar(viewModel: fixtures.mail, isLoggedIn: true); Spacer() }
+                .pageMenu(.mail)
+        case .library:
+            VStack {
+                HStack { Spacer(); PageMenuButton(page: .library) { LibraryMenuItems() } }.padding()
+                Spacer()
+            }
+            .pageMenu(.library)
+        case .moodle:
+            Color.clear.moodleListChrome(title: "Moodle", page: .course(1), refresh: {})
+        }
+    }
+
+    private static func show(
+        _ view: some View, state: SettingsState, preferences: AppPreferences, look: Look = Look.all[0]
+    ) throws -> (UIWindow, UIViewController) {
+        let (window, host) = try Screen.show(
+            view, state: state, preferences: preferences, width: narrowestPhoneWidth, height: 812, style: look.style
+        )
+        window.traitOverrides.preferredContentSizeCategory = look.size
+        window.makeKey()
+        return (window, host)
+    }
+
+    static func tap(_ element: NSObject, in window: UIWindow, holding: Duration = .milliseconds(50)) async throws {
+        let frame = element.accessibilityFrame
+        let point = window.convert(CGPoint(x: frame.midX, y: frame.midY), from: window.screen.coordinateSpace)
+        try await fingerTap(at: point, in: window, holding: holding)
+    }
+
+    /// The menu's items in order: the buttons that were not on the page before it opened. The menu
+    /// lists its items twice, and the first copy ends at the first repeat.
+    static func items(in window: UIWindow, besides page: Set<String>) -> [NSObject] {
+        var seen = Set<String>()
+        var items: [NSObject] = []
+        for element in exposedAccessibilityElements(in: window) where element.accessibilityTraits.contains(.button) {
+            guard let label = element.accessibilityLabel, !page.contains(label) else { continue }
+            guard seen.insert(label).inserted else { break }
+            items.append(element)
+        }
+        return items
+    }
+
+    /// Whether `condition` holds within `timeout`, recording nothing when it does not.
+    static func holds(within timeout: Duration, _ condition: () -> Bool) async throws -> Bool {
+        let end = ContinuousClock.now + timeout
+        while ContinuousClock.now < end {
+            if condition() { return true }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        return condition()
+    }
+
+    /// `tries` above one taps again when the menu does not open: on iOS 26.5 a new window's first
+    /// touch can go nowhere after another test's window presented a sheet.
+    static func openMenu(
+        labeled label: String, in window: UIWindow, holding: Duration = .milliseconds(50), tries: Int = 3
+    ) async throws -> [NSObject] {
+        try await waitUntil { accessibilityElement(labeled: label, in: window) != nil }
+        let page = Set(exposedAccessibilityElements(in: window).compactMap(\.accessibilityLabel))
+        for _ in 0..<tries {
+            try await tap(try #require(accessibilityElement(labeled: label, in: window)), in: window, holding: holding)
+            if try await holds(within: .seconds(5), { !items(in: window, besides: page).isEmpty }) { break }
+        }
+        try await waitUntil { !items(in: window, besides: page).isEmpty }
+        // The items arrive together; the wait lets the menu finish growing for a picture.
+        try await Task.sleep(for: .milliseconds(600))
+        return items(in: window, besides: page)
+    }
+
+    @Test("each page's ⋯ lists its items, and All settings opens that page's settings", arguments: Page.allCases)
+    func allSettingsOpensThePage(page: Page) async throws {
+        try await withExclusiveRealDefaults {
+            try await withAccessibilityAutomation {
+                let preferences = AppPreferences()
+                let state = Screen.allOpenButSchool(preferences)
+                let (window, host) = try Self.show(Self.header(of: page, Fixtures()), state: state, preferences: preferences)
+                defer { window.isHidden = true }
+
+                let items = try await Self.openMenu(labeled: page.menuLabel, in: window)
+                #expect(items.compactMap(\.accessibilityLabel) == page.items)
+
+                let full = try #require(items.first { $0.accessibilityLabel == String(localized: "action_full_settings") })
+                try await Self.tap(full, in: window)
+                let first = try #require(page.settings.rows.first { $0.isShown(in: state) })
+                try await waitUntil { Self.sheet(over: host).map { Screen.shows(first.label, in: $0) } == true }
+                #expect(Self.sheet(over: host).map {
+                    Screen.shows(String(localized: page.settings.titleKey), in: $0)
+                        && Screen.shows(String(localized: "action_done"), in: $0)
+                } == true)
+                try await Task.sleep(for: .milliseconds(600))
+                window.saveSnapshot(as: "page-menu-\(page)-sheet-\(Self.language)")
+
+                // Done closes the sheet, and the page's ⋯ opens again on the first tap.
+                let done = try #require(Self.sheet(over: host).flatMap {
+                    accessibilityElement(labeled: String(localized: "action_done"), in: $0.view)
+                })
+                try await Self.tap(done, in: window)
+                try await waitUntil { Self.sheet(over: host) == nil }
+                #expect(try await Self.openMenu(labeled: page.menuLabel, in: window, tries: 1).count == page.items.count)
+            }
+        }
+    }
+
+    @Test("the class table's settings sit right above its reset, in the same section")
+    func classTableSettingsSitAboveTheReset() async throws {
+        try await withAccessibilityAutomation {
+            let preferences = AppPreferences()
+            let menu = VStack {
+                HStack {
+                    Spacer()
+                    HeaderMenuButton(accessibilityLabel: String(localized: "class_table_more_actions")) {
+                        ClassTableResetSection {}
+                    }
+                }
+                .padding()
+                Spacer()
+            }
+            let (window, _) = try Self.show(menu, state: Screen.allOpenButSchool(preferences), preferences: preferences)
+            defer { window.isHidden = true }
+
+            let items = try await Self.openMenu(labeled: String(localized: "class_table_more_actions"), in: window)
+            #expect(items.compactMap(\.accessibilityLabel) == [
+                String(localized: "action_full_settings"), String(localized: "class_table_reset_title"),
+            ])
+        }
+    }
+
+    @Test("with TigerSync off, a reminder switch in Home's ⋯ shows why and changes nothing",
+          arguments: [SettingsRow.assignmentReminders, .liveActivity])
+    func aClosedSwitchShowsWhy(row: SettingsRow) async throws {
+        try await withExclusiveRealDefaults {
+            try await withAccessibilityAutomation {
+                let saved = (Defaults[.isAssignmentReminderEnabled], Defaults[.isLiveActivityEnabled])
+                defer { (Defaults[.isAssignmentReminderEnabled], Defaults[.isLiveActivityEnabled]) = saved }
+                let fixtures = Fixtures()
+                let before = (fixtures.reminders.isAssignmentReminderEnabled, fixtures.reminders.isLiveActivityEnabled)
+                let (window, host) = try Self.show(Self.header(of: .home, fixtures), state: Screen.closed, preferences: AppPreferences())
+                defer { window.isHidden = true }
+                let reason = String(localized: try #require(row.closedReason(in: Screen.closed)))
+
+                let items = try await Self.openMenu(labeled: Page.home.menuLabel, in: window)
+                let item = try #require(items.first { $0.accessibilityLabel == row.label })
+                #expect(!item.accessibilityTraits.contains(.notEnabled))
+                #expect(!item.accessibilityTraits.contains(.selected))
+                try await Self.tap(item, in: window)
+
+                try await waitUntil { accessibilityElement(labeled: reason, in: host.view) != nil }
+                #expect(fixtures.reminders.isAssignmentReminderEnabled == before.0)
+                #expect(fixtures.reminders.isLiveActivityEnabled == before.1)
+            }
+        }
+    }
+
+    @Test("a tap on the bulletins filter shows unread only, and its long press marks every shown bulletin read")
+    func bulletinsFilter() async throws {
+        try await withExclusiveRealDefaults {
+            try await withAccessibilityAutomation {
+                let saved = Defaults[.bulletinReadIds]
+                defer { Defaults[.bulletinReadIds] = saved }
+                Defaults[.bulletinReadIds] = []
+                var fixtures = Fixtures()
+                fixtures.unreadShown = [-3, -2, -1]
+                let (window, _) = try Self.show(
+                    Self.header(of: .bulletins, fixtures), state: Screen.closed, preferences: AppPreferences()
+                )
+                defer { window.isHidden = true }
+
+                let unreadOnly = String(localized: "bulletin_show_unread_only_action")
+                try await waitUntil { accessibilityElement(labeled: unreadOnly, in: window) != nil }
+                try await Self.tap(try #require(accessibilityElement(labeled: unreadOnly, in: window)), in: window)
+                try await waitUntil { fixtures.filter.unreadOnly }
+
+                let items = try await Self.openMenu(
+                    labeled: String(localized: "bulletin_show_all_action"), in: window, holding: .seconds(1)
+                )
+                #expect(fixtures.filter.unreadOnly)
+                let markAll = try #require(items.first {
+                    $0.accessibilityLabel == String(localized: "bulletin_mark_all_read_action")
+                })
+                try await Self.tap(markAll, in: window)
+                try await waitUntil { fixtures.unreadShown.allSatisfy(fixtures.readState.isRead) }
+                #expect(fixtures.filter.unreadOnly)
+            }
+        }
+    }
+
+    @Test("a tap on the mail filter shows unread only, and its long press marks every shown message read")
+    func mailFilter() async throws {
+        try await withExclusiveRealDefaults {
+            try await withAccessibilityAutomation {
+                let fixtures = Fixtures()
+                await fixtures.mail.load()
+                let (window, _) = try Self.show(
+                    Self.header(of: .mail, fixtures), state: Screen.allOpenButSchool(AppPreferences()),
+                    preferences: AppPreferences()
+                )
+                defer { window.isHidden = true }
+
+                let filter = String(localized: "school_mail_unread_only")
+                try await waitUntil { accessibilityElement(labeled: filter, in: window) != nil }
+                try await Self.tap(try #require(accessibilityElement(labeled: filter, in: window)), in: window)
+                try await waitUntil { fixtures.mail.unreadOnly }
+                #expect(fixtures.mail.displayedRows.count == 3)
+
+                let items = try await Self.openMenu(labeled: filter, in: window, holding: .seconds(1))
+                let markAll = try #require(items.first {
+                    $0.accessibilityLabel == String(localized: "school_mail_mark_all_read")
+                })
+                try await Self.tap(markAll, in: window)
+                try await waitUntil { fixtures.mail.rows.allSatisfy(\.summary.isSeen) }
+                #expect(fixtures.mail.unreadOnly)
+            }
+        }
+    }
+
+    @Test("the browser's More sheet ends with All settings, which opens the browser's settings")
+    func browserMoreSheet() async throws {
+        try await withAccessibilityAutomation {
+            let preferences = AppPreferences()
+            let state = Screen.allOpenButSchool(preferences)
+            let more = ScrollView {
+                BrowserMenu(page: BrowserPage(), showsNavigation: false) { $0() }
+            }
+            .pageMenu(.browser)
+            let (window, host) = try Self.show(more, state: state, preferences: preferences)
+            defer { window.isHidden = true }
+
+            let label = String(localized: "action_full_settings")
+            @MainActor func buttons() -> [NSObject] {
+                exposedAccessibilityElements(in: window).filter { $0.accessibilityTraits.contains(.button) }
+            }
+            @MainActor func allSettings() -> NSObject? {
+                exposedAccessibilityElements(in: window).first { $0.accessibilityLabel?.contains(label) == true }
+            }
+            try await waitUntil { allSettings() != nil }
+            let row = try #require(allSettings())
+            #expect(buttons().allSatisfy { $0.accessibilityFrame.minY <= row.accessibilityFrame.minY })
+            try await Task.sleep(for: .milliseconds(400))
+            window.saveSnapshot(as: "page-menu-browser-more-\(Self.language)")
+
+            try await Self.tap(row, in: window)
+            try await waitUntil { Self.sheet(over: host).map { Screen.shows(SettingsRow.addressBar.label, in: $0) } == true }
+        }
+    }
+
+    @Test("each page's ⋯, open at 375 points", arguments: Page.allCases, Look.all)
+    func openMenuPicture(page: Page, look: Look) async throws {
+        try await withExclusiveRealDefaults {
+            try await withAccessibilityAutomation {
+                let preferences = AppPreferences()
+                let (window, _) = try Self.show(
+                    Self.header(of: page, Fixtures()), state: Screen.allOpenButSchool(preferences),
+                    preferences: preferences, look: look
+                )
+                defer { window.isHidden = true }
+                try await waitUntil { accessibilityElement(labeled: page.menuLabel, in: window) != nil }
+                try await Task.sleep(for: .milliseconds(400))
+                window.saveSnapshot(as: "page-menu-\(page)-\(look.name)-closed-\(Self.language)")
+
+                let items = try await Self.openMenu(labeled: page.menuLabel, in: window)
+                #expect(items.count == page.items.count)
+                for item in items {
+                    #expect(item.accessibilityFrame.maxX <= window.frame.maxX + 0.5)
+                }
+                window.saveSnapshot(as: "page-menu-\(page)-\(look.name)-\(Self.language)")
+            }
+        }
+    }
+
+    static var language: String { Bundle.main.preferredLocalizations.first ?? "en" }
+
+    /// The topmost controller presented over `controller` or one of its children.
+    static func sheet(over controller: UIViewController) -> UIViewController? {
+        guard let presented = controller.presentedViewController
+            ?? controller.children.lazy.compactMap({ sheet(over: $0) }).first else { return nil }
+        return sheet(over: presented) ?? presented
+    }
+}
+#endif
