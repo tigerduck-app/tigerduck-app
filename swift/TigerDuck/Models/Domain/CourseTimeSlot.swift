@@ -160,17 +160,15 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
         dayRadius: Int = CourseTimeSlot.defaultDayRadius,
         changes: CourseChanges = .cached
     ) -> [CourseTimeSlot] {
+        days(around: centerDate, radius: dayRadius)
+            .flatMap { buildSlots(from: courses, weekday: $0.scheduleWeekday, on: $0, changes: changes) }
+            .sorted { $0.start < $1.start }
+    }
+
+    /// The Taipei days from `radius` days before `center`'s to `radius` days after, each at its start.
+    static func days(around center: Date, radius: Int) -> [Date] {
         let calendar = TaipeiTime.calendar
-        var allSlots: [CourseTimeSlot] = []
-
-        for offset in -dayRadius...dayRadius {
-            guard let date = calendar.date(byAdding: .day, value: offset, to: calendar.startOfDay(for: centerDate)) else { continue }
-            let weekday = date.scheduleWeekday
-            let daySlots = buildSlots(from: courses, weekday: weekday, on: date, changes: changes)
-            allSlots.append(contentsOf: daySlots)
-        }
-
-        return allSlots.sorted { $0.start < $1.start }
+        return (-radius...radius).compactMap { calendar.date(byAdding: .day, value: $0, to: calendar.startOfDay(for: center)) }
     }
 
     static func dateFromTimeString(_ time: String, on date: Date, calendar: Calendar = TaipeiTime.calendar) -> Date? {
