@@ -68,7 +68,7 @@ struct TimeSliderLayout {
     private static func busyIntervals(_ slots: [TimeSliderItem]) -> [(start: Date, end: Date, date: Date)] {
         var result: [(start: Date, end: Date, date: Date)] = []
         for slot in slots {
-            if let last = result.last, slot.start < last.end {
+            if let last = result.last, slot.start <= last.end {
                 result[result.count - 1].end = max(last.end, slot.end)
             } else {
                 result.append((start: slot.start, end: slot.end, date: slot.date))

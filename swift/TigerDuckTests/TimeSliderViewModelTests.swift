@@ -423,6 +423,21 @@ struct TimeSliderViewModelTests {
             == ["club 18:30-19:00", "class 19:00-20:00", "club 20:00-21:00"])
     }
 
+    @Test("dragging forward passes the minute a class ends and a club piece begins")
+    func dragPassesAClubPieceThatStartsAsAClassEnds() {
+        let day = TaipeiTime.calendar.startOfDay(for: AppClock.now())
+        func at(_ time: String) -> Date { day.addingTimeInterval(TimeInterval(ClubMock.minutes(time) * 60)) }
+        let layout = TimeSliderLayout(items: TimeSliderItem.timeline(
+            courses: [makeMockSlot(courseNo: "MATH101", start: at("18:25"), end: at("19:15"))],
+            clubs: [Self.club(on: day, from: "19:00", to: "21:00")], days: [day]
+        ))
+
+        var time = at("19:14")
+        for _ in 0..<100 { time = layout.time(for: layout.x(for: time) + 2, fallback: time) }
+
+        #expect(time > at("19:15"))
+    }
+
     @Test("a class inside an activity leaves the card showing that activity once at every minute")
     func activityAroundAClassShowsOnce() {
         let day = TaipeiTime.calendar.startOfDay(for: AppClock.now())
