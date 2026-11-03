@@ -10,7 +10,6 @@ struct BulletinsView: View {
     @AccountDefault(.bulletinsSyncedAt) private var bulletinsSyncedAt
     private let taxonomy = BulletinTaxonomyStore.shared
     @State private var readState = BulletinReadStateStore()
-    @State private var showNotificationSettings: Bool = false
     @State private var detailingBulletin: BulletinAPI.BulletinSummary?
     @State private var inflightDeepLinkIds: Set<Int> = []
     @State private var unreadOnly: Bool = false
@@ -118,16 +117,10 @@ struct BulletinsView: View {
         .toolbar {
             BulletinsToolbar(
                 unreadOnly: $unreadOnly,
-                showNotificationSettings: $showNotificationSettings,
                 unreadShown: unreadShown,
                 readState: readState,
-                bulletinsSyncedAt: bulletinsSyncedAt,
-                showsNotificationSettings: app.authService.hasStoredCredentials
+                bulletinsSyncedAt: bulletinsSyncedAt
             )
-        }
-        .navigationDestination(isPresented: $showNotificationSettings) {
-            BulletinNotificationSettingsView(taxonomy: taxonomy)
-                .navigationTitle(String(localized: "bulletin_notifications_title"))
         }
         .navigationDestination(item: $detailingBulletin) { row in
             BulletinDetailView(
@@ -136,6 +129,7 @@ struct BulletinsView: View {
                 readState: readState
             )
         }
+        .pageMenu(.bulletins)
     }
 
     private var filtersAvailable: [BulletinAPI.OrgLabel] {
