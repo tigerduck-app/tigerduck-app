@@ -137,7 +137,6 @@ struct ClassTableHeaderMenu: View {
     }
 }
 
-/// The last section of the class table's ⋯: its settings right above the reset.
 struct ClassTableResetSection: View {
     let reset: () -> Void
 

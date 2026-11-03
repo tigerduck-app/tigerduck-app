@@ -71,7 +71,6 @@ private struct MoodleLinkOpening: ViewModifier {
 }
 
 extension View {
-    /// `showsSettings` puts the Moodle settings behind a ⋯ in the bar.
     func moodleListChrome(
         title: String,
         page: MoodlePage?,

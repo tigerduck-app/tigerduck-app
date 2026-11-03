@@ -1,7 +1,6 @@
 import SwiftUI
 
 extension View {
-    /// Lets the page's ⋯ open `page`'s settings view as a sheet and read their gates.
     func pageMenu(_ page: PageSettings) -> some View {
         modifier(PageMenuHost(page: page))
     }
@@ -41,8 +40,6 @@ private struct PageSettingsSheet: View {
     }
 }
 
-/// A page's ⋯ while the page has a setting to change: in the header beside its `SyncStatusDot`,
-/// or in the navigation bar.
 struct PageMenuButton<Items: View>: View {
     enum Placement { case header, toolbar }
 
@@ -65,7 +62,6 @@ struct PageMenuButton<Items: View>: View {
     }
 }
 
-/// The item of a page's ⋯ that opens the page's settings view.
 struct PageSettingsButton: View {
     @Environment(\.openPageSettings) private var open
 
@@ -76,12 +72,9 @@ struct PageSettingsButton: View {
     }
 }
 
-/// A switch in a page's ⋯ for one settings row. While the row's gate is closed it is dimmed, with
-/// the reason under its label, which a menu shows as the item's subtitle.
 struct PageMenuToggle: View {
     let row: SettingsRow
     @Binding var isOn: Bool
-    /// What the row's settings page does as the setting turns on, such as asking to notify.
     var onTurnOn: () -> Void = {}
     @Environment(\.settingsState) private var state
 
@@ -89,6 +82,7 @@ struct PageMenuToggle: View {
         let closedReason = row.closedReason(in: state)
         Toggle(isOn: Self.turningOn($isOn, then: onTurnOn)) {
             Text(row.label)
+            // A menu shows a toggle label's second Text as the item's subtitle.
             if let closedReason { Text(closedReason) }
         }
         .disabled(closedReason != nil)

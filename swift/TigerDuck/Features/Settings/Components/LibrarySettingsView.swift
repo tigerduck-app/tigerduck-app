@@ -47,7 +47,6 @@ struct LibrarySettingsView: View {
     }
 }
 
-/// The library sign-out, red and in a section of its own, in Library's settings and its ⋯.
 struct LibrarySignOutSection: View {
     @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @Environment(\.settingsState) private var state
