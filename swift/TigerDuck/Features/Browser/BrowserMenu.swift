@@ -1,9 +1,7 @@
 import Defaults
 import SwiftUI
 
-/// The More sheet: the page's zoom, appearance and desktop site, then find in page and print,
-/// then the browser's settings. In the bottom layout it opens with back, forward and share, which
-/// have no button there.
+/// In the bottom layout the More sheet opens with back, forward and share, which have no button there.
 struct BrowserMenu: View {
     let page: BrowserPage
     let showsNavigation: Bool

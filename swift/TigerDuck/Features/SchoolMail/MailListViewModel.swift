@@ -161,7 +161,6 @@ final class MailListViewModel {
                 try await client.setFlag(.seen, on: seen, folder: folder, uids: uids, expectedUIDValidity: validity)
             }
         } catch where !signIn.isCurrent {
-            return
         } catch MailClientError.folderChanged {
             markSeenLocally(folder: folder, uids: uids, seen: !seen)
             await recoverFromFolderChange(folder)
