@@ -46,8 +46,10 @@ struct MailTitleBar: View {
         let filter = UnreadFilterButton(
             unreadOnly: Binding(get: { viewModel.unreadOnly }, set: { viewModel.unreadOnly = $0 }),
             markAllReadTitle: String(localized: "school_mail_mark_all_read"),
-            markAllRead: viewModel.displayedRows.contains { !$0.summary.isSeen }
-                ? { Task { await viewModel.markAllRead() } } : nil
+            markAllRead: viewModel.displayedRows.contains { !$0.summary.isSeen } ? {
+                let signIn = viewModel.account.currentSignIn
+                Task { await viewModel.markAllRead(for: signIn) }
+            } : nil
         ) {
             headerIcon($0).symbolRenderingMode(.hierarchical)
         }

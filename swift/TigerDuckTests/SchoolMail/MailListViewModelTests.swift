@@ -538,7 +538,7 @@ struct MailListViewModelTests {
         h.model.unreadOnly = true
         let unread = h.model.displayedRows.map(\.uid)
         try #require(unread.count == 3)
-        await h.model.markAllRead()
+        await h.model.markAllRead(for: await h.account.startingSignIn)
         #expect(h.model.displayedRows.isEmpty)
         #expect(h.model.rows.allSatisfy { $0.summary.isSeen })
         #expect(await h.fake.calls.filter { $0.hasPrefix("setFlag") } == ["setFlag seen true \(unread)"])
@@ -549,8 +549,22 @@ struct MailListViewModelTests {
         let h = Self.harness(inboxCount: 6)
         await h.model.load()
         await h.fake.update { $0.setFlagError = .unreachable }
-        await h.model.markAllRead()
+        await h.model.markAllRead(for: await h.account.startingSignIn)
         #expect(h.model.rows.filter { !$0.summary.isSeen }.map(\.uid) == [5, 3, 1])
+    }
+
+    @Test func markingAllReadStopsAtTheNextFolderOnceTheSignInEnds() async throws {
+        let h = Self.harness(inboxCount: 6, sentUIDs: [7])
+        await h.model.load()
+        try #require(Set(h.model.displayedRows.filter { !$0.summary.isSeen }.map(\.folder)).count == 2)
+        await h.fake.holdNext("setFlag")
+        let signIn = await h.account.startingSignIn
+        let marking = Task { await h.model.markAllRead(for: signIn) }
+        await h.fake.waitForArrival("setFlag")
+        h.account.endSignIn()
+        await h.fake.release("setFlag")
+        await marking.value
+        #expect(await h.fake.calls.filter { $0.hasPrefix("setFlag") }.count == 1)
     }
 
     @Test func pollingReloadsWhenNewMailArrives() async {

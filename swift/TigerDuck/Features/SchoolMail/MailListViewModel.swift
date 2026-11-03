@@ -146,8 +146,8 @@ final class MailListViewModel {
         await setSeen(!row.summary.isSeen, folder: row.folder, uids: [row.uid])
     }
 
-    func markAllRead() async {
-        for (folder, rows) in Dictionary(grouping: displayedRows.filter { !$0.summary.isSeen }, by: \.folder) {
+    func markAllRead(for signIn: SignIn) async {
+        for (folder, rows) in Dictionary(grouping: displayedRows.filter { !$0.summary.isSeen }, by: \.folder) where signIn.isCurrent {
             await setSeen(true, folder: folder, uids: rows.map(\.uid))
         }
     }
