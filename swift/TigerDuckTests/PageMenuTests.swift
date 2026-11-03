@@ -9,36 +9,11 @@ import UIKit
 struct PageMenuToggleTests {
     private final class Box {
         var isOn: Bool
-        var toasts: [String] = []
         var turnedOn = 0
 
         init(isOn: Bool) { self.isOn = isOn }
 
         var binding: Binding<Bool> { Binding(get: { self.isOn }, set: { self.isOn = $0 }) }
-    }
-
-    @Test("a switch behind a closed gate reads off, shows the reason and leaves the setting")
-    func aClosedGateShowsWhy() {
-        let box = Box(isOn: true)
-        let reason = SettingsGate.tigerSync.reasonKey
-        let gated = PageMenuToggle.gated(box.binding, closedReason: reason) { box.toasts.append(String(localized: $0)) }
-
-        #expect(!gated.wrappedValue)
-        gated.wrappedValue = true
-        gated.wrappedValue = false
-        #expect(box.isOn)
-        #expect(box.toasts == Array(repeating: String(localized: reason), count: 2))
-    }
-
-    @Test("a switch behind an open gate changes the setting")
-    func anOpenGatePassesThrough() {
-        let box = Box(isOn: true)
-        let gated = PageMenuToggle.gated(box.binding, closedReason: nil) { box.toasts.append(String(localized: $0)) }
-
-        #expect(gated.wrappedValue)
-        gated.wrappedValue = false
-        #expect(!box.isOn)
-        #expect(box.toasts.isEmpty)
     }
 
     @Test("turning a switch on runs its settings page's step for that, such as asking to notify")
@@ -52,20 +27,6 @@ struct PageMenuToggleTests {
         toggle.wrappedValue = false
         #expect(!box.isOn)
         #expect(box.turnedOn == 1)
-    }
-
-    @Test("a switch behind a closed gate runs no step for turning on")
-    func aClosedGateRunsNoStep() {
-        let box = Box(isOn: false)
-        let toggle = PageMenuToggle.gated(
-            PageMenuToggle.turningOn(box.binding) { box.turnedOn += 1 },
-            closedReason: SettingsGate.tigerSync.reasonKey
-        ) { box.toasts.append(String(localized: $0)) }
-
-        toggle.wrappedValue = true
-        #expect(!box.isOn)
-        #expect(box.turnedOn == 0)
-        #expect(box.toasts.count == 1)
     }
 }
 
@@ -285,29 +246,56 @@ struct PageMenuScreenTests {
         }
     }
 
-    @Test("with TigerSync off, a reminder switch in Home's ⋯ shows why and changes nothing",
-          arguments: [SettingsRow.assignmentReminders, .liveActivity])
-    func aClosedSwitchShowsWhy(row: SettingsRow) async throws {
+    @Test("with TigerSync off, Home's ⋯ dims its reminder switches, says why under each, and they change nothing")
+    func closedSwitchesSayWhy() async throws {
         try await withExclusiveRealDefaults {
             try await withAccessibilityAutomation {
                 let saved = (Defaults[.isAssignmentReminderEnabled], Defaults[.isLiveActivityEnabled])
                 defer { (Defaults[.isAssignmentReminderEnabled], Defaults[.isLiveActivityEnabled]) = saved }
                 let fixtures = Fixtures()
                 let before = (fixtures.reminders.isAssignmentReminderEnabled, fixtures.reminders.isLiveActivityEnabled)
-                let (window, host) = try Self.show(Self.header(of: .home, fixtures), state: Screen.closed, preferences: AppPreferences())
+                let (window, _) = try Self.show(Self.header(of: .home, fixtures), state: Screen.closed, preferences: AppPreferences())
                 defer { window.isHidden = true }
-                let reason = String(localized: try #require(row.closedReason(in: Screen.closed)))
 
                 let items = try await Self.openMenu(labeled: Page.home.menuLabel, in: window)
-                let item = try #require(items.first { $0.accessibilityLabel == row.label })
-                #expect(!item.accessibilityTraits.contains(.notEnabled))
-                #expect(!item.accessibilityTraits.contains(.selected))
-                try await Self.tap(item, in: window)
+                for row in [SettingsRow.assignmentReminders, .liveActivity] {
+                    let reason = String(localized: try #require(row.closedReason(in: Screen.closed)))
+                    let item = try #require(items.first { $0.accessibilityLabel?.hasPrefix(row.label) == true })
+                    #expect(item.accessibilityTraits.contains(.notEnabled))
+                    #expect([item.accessibilityLabel, item.accessibilityValue].compactMap(\.self).joined().contains(reason))
+                }
+                window.saveSnapshot(as: "page-menu-home-tigersync-off-\(Self.language)")
 
-                try await waitUntil { accessibilityElement(labeled: reason, in: host.view) != nil }
+                let item = try #require(items.first { $0.accessibilityLabel?.hasPrefix(SettingsRow.assignmentReminders.label) == true })
+                try await Self.tap(item, in: window)
+                try await Task.sleep(for: .milliseconds(500))
                 #expect(fixtures.reminders.isAssignmentReminderEnabled == before.0)
                 #expect(fixtures.reminders.isLiveActivityEnabled == before.1)
             }
+        }
+    }
+
+    @Test("a closed row in the settings sheet shows its reason in the sheet")
+    func aClosedRowInTheSheetShowsWhyThere() async throws {
+        try await withAccessibilityAutomation {
+            let row = SettingsRow.assignmentReminders
+            let (window, host) = try Self.show(Self.header(of: .home, Fixtures()), state: Screen.closed, preferences: AppPreferences())
+            defer { window.isHidden = true }
+            let reason = String(localized: try #require(row.closedReason(in: Screen.closed)))
+
+            let items = try await Self.openMenu(labeled: Page.home.menuLabel, in: window)
+            try await Self.tap(try #require(items.first { $0.accessibilityLabel == String(localized: "action_full_settings") }), in: window)
+            try await waitUntil { Self.sheet(over: host).flatMap { Screen.element(of: row, hint: reason, in: $0) } != nil }
+            // The sheet slides up, and a tap during that misses the row.
+            try await Task.sleep(for: .milliseconds(800))
+            let sheet = try #require(Self.sheet(over: host))
+            let element = try #require(Screen.element(of: row, hint: reason, in: sheet))
+            #expect(accessibilityElement(labeled: reason, in: sheet.view) == nil)
+
+            let point = window.convert(element.accessibilityActivationPoint, from: window.screen.coordinateSpace)
+            try await fingerTap(at: point, in: window)
+            let inSheet = try await Self.holds(within: .seconds(3)) { accessibilityElement(labeled: reason, in: sheet.view) != nil }
+            #expect(inSheet, "over the page instead: \(accessibilityElement(labeled: reason, in: host.view) != nil)")
         }
     }
 

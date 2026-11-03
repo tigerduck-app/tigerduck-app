@@ -1,8 +1,7 @@
 import SwiftUI
 
 extension View {
-    /// Lets the page's ⋯ open `page`'s settings view as a sheet and read their gates, and shows a
-    /// closed gate's toast over the page.
+    /// Lets the page's ⋯ open `page`'s settings view as a sheet and read their gates.
     func pageMenu(_ page: PageSettings) -> some View {
         modifier(PageMenuHost(page: page))
     }
@@ -19,7 +18,6 @@ private struct PageMenuHost: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(\.openPageSettings) { showsSettings = true }
-            .toastHost()
             .settingsEnvironment()
             .sheet(isPresented: $showsSettings) {
                 PageSettingsSheet(page: page)
@@ -78,28 +76,22 @@ struct FullSettingsButton: View {
     }
 }
 
-/// A switch in a page's ⋯ for one settings row. While the row's gate is closed it reads off, and
-/// a tap shows why in a toast and leaves the setting as it was: a menu cannot dim an item that
-/// still takes a tap.
+/// A switch in a page's ⋯ for one settings row. While the row's gate is closed it is dimmed, with
+/// the reason under its label, which a menu shows as the item's subtitle.
 struct PageMenuToggle: View {
     let row: SettingsRow
     @Binding var isOn: Bool
     /// What the row's settings page does as the setting turns on, such as asking to notify.
     var onTurnOn: () -> Void = {}
     @Environment(\.settingsState) private var state
-    @Environment(\.showToast) private var showToast
 
     var body: some View {
-        let isOn = Self.turningOn($isOn, then: onTurnOn)
-        Toggle(row.label, isOn: Self.gated(isOn, closedReason: row.closedReason(in: state)) { showToast($0) })
-    }
-
-    static func gated(
-        _ isOn: Binding<Bool>, closedReason: LocalizedStringResource?,
-        showToast: @escaping (LocalizedStringResource) -> Void
-    ) -> Binding<Bool> {
-        guard let closedReason else { return isOn }
-        return Binding(get: { false }, set: { _ in showToast(closedReason) })
+        let closedReason = row.closedReason(in: state)
+        Toggle(isOn: Self.turningOn($isOn, then: onTurnOn)) {
+            Text(row.label)
+            if let closedReason { Text(closedReason) }
+        }
+        .disabled(closedReason != nil)
     }
 
     static func turningOn(_ isOn: Binding<Bool>, then onTurnOn: @escaping () -> Void) -> Binding<Bool> {
