@@ -51,11 +51,18 @@ struct PageMenuScreenTests {
             }
         }
 
+        /// Bulletins has a setting to change only while signed in to school.
+        @MainActor func state(_ preferences: AppPreferences) -> SettingsState {
+            var state = Screen.allOpenButSchool(preferences)
+            if self == .bulletins { state.school.isSignedIn = true }
+            return state
+        }
+
         var menuLabel: String {
             self == .home ? String(localized: "home_more_actions") : String(localized: "action_more_actions")
         }
 
-        /// The ⋯'s items in order, in `Screen.allOpenButSchool`.
+        /// The ⋯'s items in order, in `state(_:)`.
         var items: [String] {
             let full = String(localized: "action_full_settings")
             return switch self {
@@ -188,12 +195,14 @@ struct PageMenuScreenTests {
         return items(in: window, besides: page)
     }
 
-    @Test("each page's ⋯ lists its items, and All settings opens that page's settings", arguments: Page.allCases)
+    /// Signed in, the bulletins settings view needs the app, so its sheet is left out.
+    @Test("each page's ⋯ lists its items, and Settings opens that page's settings",
+          arguments: Page.allCases.filter { $0 != .bulletins })
     func allSettingsOpensThePage(page: Page) async throws {
         try await withExclusiveRealDefaults {
             try await withAccessibilityAutomation {
                 let preferences = AppPreferences()
-                let state = Screen.allOpenButSchool(preferences)
+                let state = page.state(preferences)
                 let (window, host) = try Self.show(Self.header(of: page, Fixtures()), state: state, preferences: preferences)
                 defer { window.isHidden = true }
 
@@ -218,6 +227,25 @@ struct PageMenuScreenTests {
                 try await Self.tap(done, in: window)
                 try await waitUntil { Self.sheet(over: host) == nil }
                 #expect(try await Self.openMenu(labeled: page.menuLabel, in: window, tries: 1).count == page.items.count)
+            }
+        }
+    }
+
+    @Test("the bulletins ⋯ shows only while signed in to school")
+    func bulletinsMenuNeedsTheSchoolSignIn() async throws {
+        try await withAccessibilityAutomation {
+            let preferences = AppPreferences()
+            for signedIn in [false, true] {
+                let state = signedIn ? Page.bulletins.state(preferences) : Screen.allOpenButSchool(preferences)
+                let (window, _) = try Self.show(Self.header(of: .bulletins, Fixtures()), state: state, preferences: preferences)
+                defer { window.isHidden = true }
+                try await waitUntil { accessibilityElement(labeled: String(localized: "bulletin_show_unread_only_action"), in: window) != nil }
+                if signedIn {
+                    let items = try await Self.openMenu(labeled: Page.bulletins.menuLabel, in: window)
+                    #expect(items.compactMap(\.accessibilityLabel) == Page.bulletins.items)
+                } else {
+                    #expect(accessibilityElement(labeled: Page.bulletins.menuLabel, in: window) == nil)
+                }
             }
         }
     }
@@ -397,8 +425,7 @@ struct PageMenuScreenTests {
             try await withAccessibilityAutomation {
                 let preferences = AppPreferences()
                 let (window, _) = try Self.show(
-                    Self.header(of: page, Fixtures()), state: Screen.allOpenButSchool(preferences),
-                    preferences: preferences, look: look
+                    Self.header(of: page, Fixtures()), state: page.state(preferences), preferences: preferences, look: look
                 )
                 defer { window.isHidden = true }
                 try await waitUntil { accessibilityElement(labeled: page.menuLabel, in: window) != nil }

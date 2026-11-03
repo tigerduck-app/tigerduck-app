@@ -24,4 +24,9 @@ nonisolated enum PageSettings: CaseIterable, Identifiable {
     func isShown(in state: SettingsState) -> Bool {
         rows.contains { $0.isShown(in: state) }
     }
+
+    /// Whether the page's ⋯ shows: while one of its settings can be changed.
+    func hasMenu(in state: SettingsState) -> Bool {
+        rows.contains { $0.isShown(in: state) && $0.closedReason(in: state) == nil }
+    }
 }

@@ -41,8 +41,8 @@ private struct PageSettingsSheet: View {
     }
 }
 
-/// A page's ⋯ when the page has settings to show: in the header beside its `SyncStatusDot`, or
-/// in the navigation bar.
+/// A page's ⋯ while the page has a setting to change: in the header beside its `SyncStatusDot`,
+/// or in the navigation bar.
 struct PageMenuButton<Items: View>: View {
     enum Placement { case header, toolbar }
 
@@ -53,7 +53,7 @@ struct PageMenuButton<Items: View>: View {
     @Environment(\.settingsState) private var state
 
     var body: some View {
-        if page.isShown(in: state) {
+        if page.hasMenu(in: state) {
             switch placement {
             case .header:
                 HeaderMenuButton(accessibilityLabel: accessibilityLabel, items: items)
