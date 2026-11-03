@@ -26,7 +26,7 @@ struct FluidGlassTrackView: View {
 
                 tickMarks(centerX: centerX, visibleWidth: width)
 
-                ForEach(viewModel.timeSlots) { slot in
+                ForEach(viewModel.items) { slot in
                     let startOffset = viewModel.xOffset(for: slot.start)
                     let endOffset = viewModel.xOffset(for: slot.end)
                     let segWidth = max(TimeSliderMetrics.minimumFluidBlockWidth, endOffset - startOffset)
@@ -145,7 +145,7 @@ struct FluidGlassTrackView: View {
         guard policy.timeSliderUsesCourseColoredThumb else {
             return Color.textPrimary
         }
-        if case .inClass(let slots) = viewModel.currentCourseState, let slot = slots.first(where: { !$0.isCancelled }) {
+        if case .inClass(let slots) = viewModel.currentState, let slot = slots.first(where: { !$0.isCancelled }) {
             return slot.color
         }
         return Color.textPrimary

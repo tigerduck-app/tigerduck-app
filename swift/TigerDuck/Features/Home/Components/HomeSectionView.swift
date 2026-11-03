@@ -114,7 +114,8 @@ struct HomeSectionView: View {
                     onSelectCourse: { slot in
                         viewModel.sheets.selectedCourseSlot = slot
                         viewModel.sheets.selectedCourse = slot.course(in: viewModel.allCourses)
-                    }
+                    },
+                    onSelectClub: { viewModel.sheets.selectedClub = $0 }
                 )
             case .upcomingAssignments:
                 filterPicker

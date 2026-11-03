@@ -137,6 +137,7 @@ TimeSliderMetrics.swift
 TimeSliderSection.swift
 TimeSliderViewModel.swift
 TimeSliderHaptics.swift
+TimeSliderItem.swift
 TimeSliderLayout.swift
 TodayCourseCarousel.swift
 UpcomingAssignmentsView.swift

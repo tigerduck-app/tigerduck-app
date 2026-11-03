@@ -250,6 +250,42 @@ struct ClubScreensTests {
         }
     }
 
+    @Test("the time machine draws a club where no class sits, and its card shows the whole activity", arguments: looks)
+    func timeMachine(look: Look) async throws {
+        try await withExclusiveRealDefaults {
+            try await withAccessibilityAutomation {
+                let week = (1...7).map { ClassTableViewModel.nextDate(onWeekday: $0, from: AppClock.now()) }
+                let chinese = Bundle.main.preferredLocalizations.first?.hasPrefix("zh") == true
+                let stores = try ClubMock.stores(dates: week, chinese: chinese)
+                defer { ClubMock.reset(stores) }
+                let club = try #require(stores.feed.occurrences(on: [week[0]]).first)
+                let model = TimeSliderViewModel(clubs: stores.feed)
+                model.configure(courses: ClubMock.tableCourses(semester: "1151"))
+                model.selectedTime = week[0].addingTimeInterval(TimeInterval(ClubMock.minutes("19:30") * 60))
+                var opened: ClubOccurrence?
+                let slider = VStack(spacing: 12) {
+                    CourseTimeCard(state: model.currentState, onSelect: nil, onSelectClub: { opened = $0 })
+                    FluidGlassTrackView(viewModel: model)
+                }
+                .padding(16)
+                let window = try Self.show(slider, look: look, height: 420)
+                defer { window.isHidden = true }
+                try await waitUntil { Self.shows(club.name, in: window) }
+                try await Task.sleep(for: .milliseconds(400))
+                Self.save(window, as: "time-machine-\(look.testDescription)")
+
+                #expect(Self.shows("\(club.clubName) · \(club.location)", in: window))
+                #expect(Self.shows("19:00 - 21:00", in: window))
+                let card = try #require(exposedAccessibilityElements(in: window).first {
+                    $0.accessibilityLabel?.contains(club.name) == true
+                })
+                #expect(card.accessibilityHint == String(localized: "a11y_club_activity_open_details_hint"))
+                _ = card.accessibilityActivate()
+                #expect(opened == club)
+            }
+        }
+    }
+
     @Test("a tap on activities that meet opens the picker; on one alone, its details")
     func gridTaps() async throws {
         try await withExclusiveRealDefaults {
