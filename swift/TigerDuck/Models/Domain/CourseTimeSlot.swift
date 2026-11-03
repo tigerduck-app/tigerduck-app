@@ -165,7 +165,6 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
             .sorted { $0.start < $1.start }
     }
 
-    /// The Taipei days from `radius` days before `center`'s to `radius` days after, each at its start.
     static func days(around center: Date, radius: Int) -> [Date] {
         let calendar = TaipeiTime.calendar
         return (-radius...radius).compactMap { calendar.date(byAdding: .day, value: $0, to: calendar.startOfDay(for: center)) }

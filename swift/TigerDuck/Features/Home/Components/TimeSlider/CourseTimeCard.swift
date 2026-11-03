@@ -67,8 +67,6 @@ struct CourseTimeCard: View {
         }
     }
 
-    /// The whole activity's time, its name, and the club and place; the club's name leads when the
-    /// activity has none.
     private func clubSurface(_ club: ClubOccurrence, on day: Date, opacity: Double) -> some View {
         let subtitle = [club.name.isEmpty ? "" : club.clubName, club.location].filter { !$0.isEmpty }
         return cardSurface(

@@ -19,7 +19,8 @@ struct HomeView: View {
 
     private var visibleSections: [HomeSection] {
         _ = termTicker.tick
-        guard !SchoolCalendar.isInSession() else { return viewModel.layout.sections }
+        guard !SchoolCalendar.isInSession(), !TimeSliderSchedule.hasClubActivities(from: AppClock.now(), in: .shared)
+        else { return viewModel.layout.sections }
         return viewModel.layout.sections.filter { $0.type != .todayCourses }
     }
 

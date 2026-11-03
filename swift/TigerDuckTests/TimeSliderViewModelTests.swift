@@ -390,6 +390,22 @@ struct TimeSliderViewModelTests {
         }
     }
 
+    @Test("out of term, Home keeps the time machine only for a subscribed club's activity from today on")
+    func outOfTermKeepsTheTimeMachineForComingClubs() async throws {
+        try await withExclusiveRealDefaults {
+            let now = AppClock.now()
+            let lastFortnight = try (8...14).map { try #require(TaipeiTime.calendar.date(byAdding: .day, value: -$0, to: now)) }
+            let coming = try ClubMock.stores(dates: Self.week)
+            defer { ClubMock.reset(coming) }
+            #expect(TimeSliderSchedule.hasClubActivities(from: now, in: coming.feed))
+            #expect(!TimeSliderSchedule.hasClubActivities(from: now, in: Self.noClubs()))
+
+            let past = try ClubMock.stores(dates: lastFortnight)
+            defer { ClubMock.reset(past) }
+            #expect(!TimeSliderSchedule.hasClubActivities(from: now, in: past.feed))
+        }
+    }
+
     @Test("a cancelled class still covers a club, as the track still draws it")
     func cancelledClassCoversAClub() {
         let day = TaipeiTime.calendar.startOfDay(for: AppClock.now())
