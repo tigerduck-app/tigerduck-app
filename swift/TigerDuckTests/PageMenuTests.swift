@@ -64,14 +64,14 @@ struct PageMenuScreenTests {
 
         /// The ⋯'s items in order, in `state(_:)`.
         var items: [String] {
-            let full = String(localized: "action_full_settings")
+            let settings = String(localized: "action_settings")
             return switch self {
             case .home:
                 [String(localized: "home_edit")]
-                    + [SettingsRow.showFullDueDate, .invertSlider, .assignmentReminders, .liveActivity].map(\.label) + [full]
-            case .bulletins, .moodle: [full]
-            case .mail: [SettingsRow.mailNotifications.label, full]
-            case .library: [SettingsRow.flipToLibrary.label, full, SettingsRow.librarySignOut.label]
+                    + [SettingsRow.showFullDueDate, .invertSlider, .assignmentReminders, .liveActivity].map(\.label) + [settings]
+            case .bulletins, .moodle: [settings]
+            case .mail: [SettingsRow.mailNotifications.label, settings]
+            case .library: [SettingsRow.flipToLibrary.label, settings, SettingsRow.librarySignOut.label]
             }
         }
     }
@@ -205,7 +205,7 @@ struct PageMenuScreenTests {
     /// Signed in, the bulletins settings view needs the app, so its sheet is left out.
     @Test("each page's ⋯ lists its items, and Settings opens that page's settings",
           arguments: Page.allCases.filter { $0 != .bulletins })
-    func allSettingsOpensThePage(page: Page) async throws {
+    func settingsOpensThePage(page: Page) async throws {
         try await withExclusiveRealDefaults {
             try await withAccessibilityAutomation {
                 let preferences = AppPreferences()
@@ -216,8 +216,8 @@ struct PageMenuScreenTests {
                 let items = try await Self.openMenu(labeled: page.menuLabel, in: window)
                 #expect(items.compactMap(\.accessibilityLabel) == page.items)
 
-                let full = try #require(items.first { $0.accessibilityLabel == String(localized: "action_full_settings") })
-                try await Self.tap(full, in: window)
+                let settings = try #require(items.first { $0.accessibilityLabel == String(localized: "action_settings") })
+                try await Self.tap(settings, in: window)
                 let first = try #require(page.settings.rows.first { $0.isShown(in: state) })
                 try await waitUntil { Self.sheet(over: host).map { Screen.shows(first.label, in: $0) } == true }
                 #expect(Self.sheet(over: host).map {
@@ -276,7 +276,7 @@ struct PageMenuScreenTests {
 
             let items = try await Self.openMenu(labeled: String(localized: "class_table_more_actions"), in: window)
             #expect(items.compactMap(\.accessibilityLabel) == [
-                String(localized: "action_full_settings"), String(localized: "class_table_reset_title"),
+                String(localized: "action_settings"), String(localized: "class_table_reset_title"),
             ])
         }
     }
@@ -319,7 +319,7 @@ struct PageMenuScreenTests {
             let reason = String(localized: try #require(row.closedReason(in: Screen.closed)))
 
             let items = try await Self.openMenu(labeled: Page.home.menuLabel, in: window)
-            try await Self.tap(try #require(items.first { $0.accessibilityLabel == String(localized: "action_full_settings") }), in: window)
+            try await Self.tap(try #require(items.first { $0.accessibilityLabel == String(localized: "action_settings") }), in: window)
             try await waitUntil { Self.sheet(over: host).flatMap { Screen.element(of: row, hint: reason, in: $0) } != nil }
             // The sheet slides up, and a tap during that misses the row.
             try await Task.sleep(for: .milliseconds(800))
@@ -400,7 +400,7 @@ struct PageMenuScreenTests {
         }
     }
 
-    @Test("the browser's More sheet ends with All settings, which opens the browser's settings")
+    @Test("the browser's More sheet ends with Settings, which opens the browser's settings")
     func browserMoreSheet() async throws {
         try await withAccessibilityAutomation {
             let preferences = AppPreferences()
@@ -412,15 +412,15 @@ struct PageMenuScreenTests {
             let (window, host) = try Self.show(more, state: state, preferences: preferences)
             defer { window.isHidden = true }
 
-            let label = String(localized: "action_full_settings")
+            let label = String(localized: "action_settings")
             @MainActor func buttons() -> [NSObject] {
                 exposedAccessibilityElements(in: window).filter { $0.accessibilityTraits.contains(.button) }
             }
-            @MainActor func allSettings() -> NSObject? {
+            @MainActor func settingsCard() -> NSObject? {
                 exposedAccessibilityElements(in: window).first { $0.accessibilityLabel?.contains(label) == true }
             }
-            try await waitUntil { allSettings() != nil }
-            let row = try #require(allSettings())
+            try await waitUntil { settingsCard() != nil }
+            let row = try #require(settingsCard())
             #expect(buttons().allSatisfy { $0.accessibilityFrame.minY <= row.accessibilityFrame.minY })
             try await Task.sleep(for: .milliseconds(400))
             window.saveSnapshot(as: "page-menu-browser-more-\(Self.language)")

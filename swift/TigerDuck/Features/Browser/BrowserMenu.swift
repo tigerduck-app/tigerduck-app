@@ -34,7 +34,7 @@ struct BrowserMenu: View {
                 action("printer", String(localized: "browser_print")) { page.print() }
             }
             card {
-                action("gearshape", String(localized: "action_full_settings"), needsPage: false, openPageSettings)
+                action("gearshape", String(localized: "action_settings"), needsPage: false, openPageSettings)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)

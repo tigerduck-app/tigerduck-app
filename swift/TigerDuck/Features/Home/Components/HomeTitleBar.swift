@@ -23,7 +23,7 @@ struct HomeTitleBar: View {
                         Label(String(localized: "home_edit"), systemImage: "pencil")
                     }
                     Section { HomeMenuToggles(reminders: reminders) }
-                    Section { FullSettingsButton() }
+                    Section { PageSettingsButton() }
                 }
             }
             switch controls {

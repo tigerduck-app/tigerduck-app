@@ -66,12 +66,12 @@ struct PageMenuButton<Items: View>: View {
 }
 
 /// The item of a page's ⋯ that opens the page's settings view.
-struct FullSettingsButton: View {
+struct PageSettingsButton: View {
     @Environment(\.openPageSettings) private var open
 
     var body: some View {
         Button(action: open) {
-            Label(String(localized: "action_full_settings"), systemImage: "gearshape")
+            Label(String(localized: "action_settings"), systemImage: "gearshape")
         }
     }
 }

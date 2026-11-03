@@ -121,7 +121,7 @@ private struct MoodleListChrome: ViewModifier {
                 }
                 if showsSettings {
                     ToolbarItem(placement: .topBarTrailing) {
-                        PageMenuButton(page: .moodle, placement: .toolbar) { FullSettingsButton() }
+                        PageMenuButton(page: .moodle, placement: .toolbar) { PageSettingsButton() }
                     }
                 }
             }

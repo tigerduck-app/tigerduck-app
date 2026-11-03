@@ -133,7 +133,7 @@ struct LibraryMenuItems: View {
                 )
             }
         }
-        Section { FullSettingsButton() }
+        Section { PageSettingsButton() }
         LibrarySignOutSection()
     }
 }

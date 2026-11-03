@@ -31,7 +31,7 @@ struct BulletinsToolbar: ToolbarContent {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            PageMenuButton(page: .bulletins, placement: .toolbar) { FullSettingsButton() }
+            PageMenuButton(page: .bulletins, placement: .toolbar) { PageSettingsButton() }
         }
     }
 }

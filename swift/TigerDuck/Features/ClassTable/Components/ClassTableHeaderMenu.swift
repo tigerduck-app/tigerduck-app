@@ -72,7 +72,7 @@ struct ClassTableHeaderMenu: View {
                     if action == .exportScreenshot {
                         exportButton
                     } else {
-                        if action == .deleteUser { FullSettingsButton() }
+                        if action == .deleteUser { PageSettingsButton() }
                         Button(role: action.role) {
                             perform(action)
                         } label: {
@@ -143,7 +143,7 @@ struct ClassTableResetSection: View {
 
     var body: some View {
         Section {
-            FullSettingsButton()
+            PageSettingsButton()
             Button(role: .destructive, action: reset) {
                 Label(String(localized: "class_table_reset_title"), systemImage: "arrow.triangle.2.circlepath")
             }

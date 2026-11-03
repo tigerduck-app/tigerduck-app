@@ -66,7 +66,7 @@ struct MailTitleBar: View {
                     .disabled(!MailNotificationSettingsView.notificationsToggleIsEnabled(
                         isLoggedIn: account.isLoggedIn, authFailed: account.authFailed))
             }
-            Section { FullSettingsButton() }
+            Section { PageSettingsButton() }
         }
     }
 
