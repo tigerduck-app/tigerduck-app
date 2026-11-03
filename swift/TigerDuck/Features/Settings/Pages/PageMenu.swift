@@ -1,0 +1,98 @@
+import SwiftUI
+
+extension View {
+    func pageMenu(_ page: PageSettings) -> some View {
+        modifier(PageMenuHost(page: page))
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var openPageSettings: () -> Void = {}
+}
+
+private struct PageMenuHost: ViewModifier {
+    let page: PageSettings
+    @State private var showsSettings = false
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.openPageSettings) { showsSettings = true }
+            .settingsEnvironment()
+            .sheet(isPresented: $showsSettings) {
+                PageSettingsSheet(page: page)
+            }
+    }
+}
+
+private struct PageSettingsSheet: View {
+    let page: PageSettings
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            page.view
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(String(localized: "action_done")) { dismiss() }
+                    }
+                }
+        }
+    }
+}
+
+struct PageMenuButton<Items: View>: View {
+    enum Placement { case header, toolbar }
+
+    let page: PageSettings
+    var placement = Placement.header
+    var accessibilityLabel = String(localized: "action_more_actions")
+    @ViewBuilder let items: () -> Items
+    @Environment(\.settingsState) private var state
+
+    var body: some View {
+        if page.hasMenu(in: state) {
+            switch placement {
+            case .header:
+                HeaderMenuButton(accessibilityLabel: accessibilityLabel, items: items)
+            case .toolbar:
+                Menu(content: items) { Image(systemName: "ellipsis") }
+                    .accessibilityLabel(Text(accessibilityLabel))
+            }
+        }
+    }
+}
+
+struct PageSettingsButton: View {
+    @Environment(\.openPageSettings) private var open
+
+    var body: some View {
+        Button(action: open) {
+            Label(String(localized: "action_settings"), systemImage: "gearshape")
+        }
+    }
+}
+
+struct PageMenuToggle: View {
+    let row: SettingsRow
+    @Binding var isOn: Bool
+    var onTurnOn: () -> Void = {}
+    @Environment(\.settingsState) private var state
+
+    var body: some View {
+        let closedReason = row.closedReason(in: state)
+        Toggle(isOn: Self.turningOn($isOn, then: onTurnOn)) {
+            Text(row.label)
+            // A menu shows a toggle label's second Text as the item's subtitle.
+            if let closedReason { Text(closedReason) }
+        }
+        .disabled(closedReason != nil)
+    }
+
+    static func turningOn(_ isOn: Binding<Bool>, then onTurnOn: @escaping () -> Void) -> Binding<Bool> {
+        Binding(get: { isOn.wrappedValue }, set: { newValue in
+            let turnsOn = newValue && !isOn.wrappedValue
+            isOn.wrappedValue = newValue
+            if turnsOn { onTurnOn() }
+        })
+    }
+}

@@ -1,8 +1,7 @@
 import Defaults
 import SwiftUI
 
-/// The More sheet: the page's zoom, appearance and desktop site, then find in page and print.
-/// In the bottom layout it opens with back, forward and share, which have no button there.
+/// In the bottom layout the More sheet opens with back, forward and share, which have no button there.
 struct BrowserMenu: View {
     let page: BrowserPage
     let showsNavigation: Bool
@@ -10,6 +9,7 @@ struct BrowserMenu: View {
     let afterClosing: (@escaping () -> Void) -> Void
 
     @Default(.browserAppearance) private var appearance
+    @Environment(\.openPageSettings) private var openPageSettings
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
@@ -30,6 +30,9 @@ struct BrowserMenu: View {
                 action("magnifyingglass", String(localized: "browser_find")) { page.find.start() }
                 Divider().padding(.leading, 52)
                 action("printer", String(localized: "browser_print")) { page.print() }
+            }
+            card {
+                action("gearshape", String(localized: "action_settings"), needsPage: false, openPageSettings)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -65,7 +68,9 @@ struct BrowserMenu: View {
         .row()
     }
 
-    private func action(_ symbol: String, _ title: String, _ work: @escaping () -> Void) -> some View {
+    private func action(
+        _ symbol: String, _ title: String, needsPage: Bool = true, _ work: @escaping () -> Void
+    ) -> some View {
         Button { afterClosing(work) } label: {
             HStack(spacing: TigerDuckTheme.Spacing.md) {
                 Image(systemName: symbol).foregroundStyle(.tint).frame(width: 24)
@@ -76,7 +81,7 @@ struct BrowserMenu: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .disabled(!page.canUsePage)
+        .disabled(needsPage && !page.canUsePage)
     }
 
     private func card(@ViewBuilder _ content: () -> some View) -> some View {

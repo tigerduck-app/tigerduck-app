@@ -47,7 +47,7 @@ struct CourseSyllabusView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color.backgroundPrimary)
-        .moodleListChrome(title: String(localized: "course_detail_syllabus"), page: nil, refresh: {})
+        .moodleListChrome(title: String(localized: "course_detail_syllabus"), page: nil, showsSettings: false, refresh: {})
     }
 
     private var details: [(heading: String, text: String)] {

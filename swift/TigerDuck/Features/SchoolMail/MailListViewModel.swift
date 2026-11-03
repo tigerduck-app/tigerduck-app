@@ -143,27 +143,40 @@ final class MailListViewModel {
     func clearSearch() { search.clear() }
 
     func toggleRead(_ row: MailListRow) async {
-        let seen = !row.summary.isSeen
-        let folder = row.folder
-        let uid = row.uid
-        markSeenLocally(folder: folder, uid: uid, seen: seen)
-        let validity = mailbox[folder]?.uidValidity
-        do {
-            try await session.use { client in
-                try await client.setFlag(.seen, on: seen, folder: folder, uids: [uid], expectedUIDValidity: validity)
-            }
-        } catch MailClientError.folderChanged {
-            markSeenLocally(folder: folder, uid: uid, seen: !seen)
-            await recoverFromFolderChange(folder)
-        } catch {
-            markSeenLocally(folder: folder, uid: uid, seen: !seen)
+        await setSeen(!row.summary.isSeen, folder: row.folder, uids: [row.uid])
+    }
+
+    func markAllRead(for signIn: SignIn) async {
+        for (folder, rows) in Dictionary(grouping: displayedRows.filter { !$0.summary.isSeen }, by: \.folder) where signIn.isCurrent {
+            await setSeen(true, folder: folder, uids: rows.map(\.uid), for: signIn)
         }
     }
 
-    func markSeenLocally(folder: String, uid: UInt32, seen: Bool = true) {
+    private func setSeen(_ seen: Bool, folder: String, uids: [UInt32], for given: SignIn? = nil) async {
+        markSeenLocally(folder: folder, uids: uids, seen: seen)
+        let validity = mailbox[folder]?.uidValidity
+        let signIn = if let given { given } else { await account.startingSignIn }
+        do {
+            try await session.use(for: signIn) { client in
+                try await client.setFlag(.seen, on: seen, folder: folder, uids: uids, expectedUIDValidity: validity)
+            }
+        } catch where !signIn.isCurrent {
+        } catch MailClientError.folderChanged {
+            markSeenLocally(folder: folder, uids: uids, seen: !seen)
+            await recoverFromFolderChange(folder)
+        } catch {
+            markSeenLocally(folder: folder, uids: uids, seen: !seen)
+        }
+    }
+
+    func markSeenLocally(folder: String, uid: UInt32, seen: Bool = true) { markSeenLocally(folder: folder, uids: [uid], seen: seen) }
+
+    private func markSeenLocally(folder: String, uids: [UInt32], seen: Bool) {
         guard targets.contains(folder) else { return }
-        mailbox.markSeen(folder: folder, uid: uid, seen: seen)
-        search.markSeen(folder: folder, uid: uid, seen: seen)
+        for uid in uids {
+            mailbox.markSeen(folder: folder, uid: uid, seen: seen)
+            search.markSeen(folder: folder, uid: uid, seen: seen)
+        }
         rebuildRows()
         if let page = mailbox[folder] { writer.save(page) }
     }

@@ -74,10 +74,13 @@ extension View {
     func moodleListChrome(
         title: String,
         page: MoodlePage?,
+        showsSettings: Bool = true,
         willOpenPage: @escaping () -> Void = {},
         refresh: @escaping () async -> Void
     ) -> some View {
-        modifier(MoodleListChrome(title: title, page: page, willOpenPage: willOpenPage, refresh: refresh))
+        modifier(MoodleListChrome(
+            title: title, page: page, showsSettings: showsSettings, willOpenPage: willOpenPage, refresh: refresh
+        ))
     }
 
     func moodleArticleChrome(page: MoodlePage? = nil) -> some View {
@@ -101,6 +104,7 @@ extension View {
 private struct MoodleListChrome: ViewModifier {
     let title: String
     let page: MoodlePage?
+    let showsSettings: Bool
     let willOpenPage: () -> Void
     let refresh: () async -> Void
 
@@ -114,7 +118,13 @@ private struct MoodleListChrome: ViewModifier {
                 if let page {
                     ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page, willOpen: willOpenPage) }
                 }
+                if showsSettings {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        PageMenuButton(page: .moodle, placement: .toolbar) { PageSettingsButton() }
+                    }
+                }
             }
+            .pageMenu(.moodle)
         #else
         content
             .navigationBarBackButtonHidden(true)

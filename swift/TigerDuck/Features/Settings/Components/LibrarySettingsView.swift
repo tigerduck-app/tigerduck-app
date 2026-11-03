@@ -5,7 +5,6 @@ import UIKit
 
 struct LibrarySettingsView: View {
     @Environment(AppPreferences.self) private var preferences
-    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @Environment(\.settingsState) private var state
 
     var body: some View {
@@ -22,13 +21,7 @@ struct LibrarySettingsView: View {
                     Text(String(localized: "settings_flip_to_library_summary"))
                 }
             }
-            if SettingsRow.librarySignOut.isShown(in: state) {
-                Section {
-                    Button(SettingsRow.librarySignOut.label, role: .destructive) {
-                        app?.library.logout()
-                    }
-                }
-            }
+            LibrarySignOutSection()
         }
     }
 
@@ -51,5 +44,20 @@ struct LibrarySettingsView: View {
         #else
         false
         #endif
+    }
+}
+
+struct LibrarySignOutSection: View {
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
+    @Environment(\.settingsState) private var state
+
+    var body: some View {
+        if SettingsRow.librarySignOut.isShown(in: state) {
+            Section {
+                Button(SettingsRow.librarySignOut.label, role: .destructive) {
+                    app?.library.logout()
+                }
+            }
+        }
     }
 }

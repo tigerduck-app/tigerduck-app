@@ -62,13 +62,7 @@ struct ClassTableHeaderMenu: View {
         Section {
             exportButton
         }
-        Section {
-            Button(role: .destructive) {
-                viewModel.editor.dialogs.showResetConfirm = true
-            } label: {
-                Label(String(localized: "class_table_reset_title"), systemImage: "arrow.triangle.2.circlepath")
-            }
-        }
+        ClassTableResetSection { viewModel.editor.dialogs.showResetConfirm = true }
     }
 
     private var otherPersonActions: some View {
@@ -78,6 +72,7 @@ struct ClassTableHeaderMenu: View {
                     if action == .exportScreenshot {
                         exportButton
                     } else {
+                        if action == .deleteUser { PageSettingsButton() }
                         Button(role: action.role) {
                             perform(action)
                         } label: {
@@ -139,6 +134,19 @@ struct ClassTableHeaderMenu: View {
             terms: terms,
             semesterLabel: viewModel.displayLabel(for:)
         )
+    }
+}
+
+struct ClassTableResetSection: View {
+    let reset: () -> Void
+
+    var body: some View {
+        Section {
+            PageSettingsButton()
+            Button(role: .destructive, action: reset) {
+                Label(String(localized: "class_table_reset_title"), systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
     }
 }
 

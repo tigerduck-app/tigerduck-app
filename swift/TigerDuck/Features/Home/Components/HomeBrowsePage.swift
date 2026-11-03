@@ -13,7 +13,7 @@ struct HomeBrowsePage: View {
 
     var body: some View {
         List {
-            HomeTitleBar(onEdit: onEdit)
+            HomeTitleBar(reminders: app.liveActivity.preferences, onEdit: onEdit)
                 .homeListRow(top: TigerDuckTheme.Spacing.md)
 
             if let reauthError = app.authService.reauthErrorMessage {

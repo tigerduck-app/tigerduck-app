@@ -2,20 +2,11 @@ import SwiftUI
 
 struct BulletinsToolbar: ToolbarContent {
     @Binding var unreadOnly: Bool
-    @Binding var showNotificationSettings: Bool
     let unreadShown: [Int]
     let readState: BulletinReadStateStore
     let bulletinsSyncedAt: Date?
-    let showsNotificationSettings: Bool
 
     var body: some ToolbarContent {
-        if unreadOnly, !unreadShown.isEmpty {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(String(localized: "bulletin_mark_all_read_action")) {
-                    readState.markAllRead(unreadShown)
-                }
-            }
-        }
         // The dot opts out of the shared toolbar background: that capsule spans
         // neighbouring items and stays while the dot fades on idle, leaving an
         // empty pill.
@@ -30,26 +21,17 @@ struct BulletinsToolbar: ToolbarContent {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                unreadOnly.toggle()
-            } label: {
-                Image(systemName: unreadOnly
-                    ? "line.3.horizontal.decrease.circle.fill"
-                    : "line.3.horizontal.decrease.circle")
-                    .symbolRenderingMode(.hierarchical)
+            UnreadFilterButton(
+                unreadOnly: $unreadOnly,
+                accessibilityLabel: String(localized: "bulletin_show_unread_only_action"),
+                markAllReadTitle: String(localized: "bulletin_mark_all_read_action"),
+                markAllRead: unreadShown.isEmpty ? nil : { readState.markAllRead(unreadShown) }
+            ) {
+                Image(systemName: $0).symbolRenderingMode(.hierarchical)
             }
-            .accessibilityLabel(unreadOnly
-                ? String(localized: "bulletin_show_all_action")
-                : String(localized: "bulletin_show_unread_only_action"))
         }
-        if showsNotificationSettings {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showNotificationSettings = true
-                } label: {
-                    Image(systemName: "bell.badge")
-                }
-            }
+        ToolbarItem(placement: .topBarTrailing) {
+            PageMenuButton(page: .bulletins, placement: .toolbar) { PageSettingsButton() }
         }
     }
 }

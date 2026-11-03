@@ -31,6 +31,7 @@ struct SchoolMailView: View {
             if account.isLoggedIn { mailList } else { signedOut }
         }
         .sheet(isPresented: $showLoginSheet) { MailLoginSheet(isPresented: $showLoginSheet) }
+        .pageMenu(.mail)
         #if DEBUG
         .onChange(of: DevMailServerSettings.shared.revision) { _, _ in
             viewModel.resetForServerChange()

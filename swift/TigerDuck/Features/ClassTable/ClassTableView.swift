@@ -101,6 +101,7 @@ struct ClassTableView: View {
                 }
             }
             .background(Color.backgroundPrimary)
+            .pageMenu(.classTable)
             .background {
                 TimelineView(.everyMinute) { _ in
                     let _ = AppClockState.shared.version

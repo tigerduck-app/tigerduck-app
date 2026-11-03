@@ -56,6 +56,18 @@ struct SettingsCatalogTests {
         }
     }
 
+    @Test("a page's ⋯ shows while one of its settings can be changed")
+    func aPageMenuNeedsAnOpenRow() {
+        let closed = SettingsState(hasFlipToLibrary: true, hasSchoolMail: true)
+        #expect(!PageSettings.bulletins.hasMenu(in: closed))
+        #expect(!PageSettings.library.hasMenu(in: closed))
+        #expect(PageSettings.home.hasMenu(in: closed))
+        #expect(PageSettings.mail.hasMenu(in: closed))
+        var signedIn = closed
+        signedIn.school.isSignedIn = true
+        #expect(PageSettings.bulletins.hasMenu(in: signedIn))
+    }
+
     @Test("matching ignores case and width, and takes words from the page name and the title")
     func matchingIgnoresCaseAndWidth() throws {
         let label = SettingsRow.showClassroom.label

@@ -86,6 +86,7 @@ struct TigerDuckBrowserView: View {
                 // Quick Look over the browser may take it off screen; the browser stays open under it.
                 if page.files.preview == nil { page.signIn.close() }
             }
+            .pageMenu(.browser)
     }
 
     /// The zoom buttons while a zoom change fades the More sheet, under the sheet's own.
