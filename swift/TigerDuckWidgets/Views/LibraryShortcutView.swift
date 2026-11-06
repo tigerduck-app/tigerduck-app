@@ -8,7 +8,7 @@ struct LibraryShortcutView: View {
         VStack(spacing: 6) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(palette.highlight)
+                    .fill(palette.isFullColor ? palette.highlight : palette.highlight.opacity(0.2))
                 Image(systemName: "qrcode.viewfinder")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
