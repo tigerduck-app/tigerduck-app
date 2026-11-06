@@ -16,6 +16,8 @@ enum SchoolCalendar {
 
     static func isInSession() -> Bool { AcademicCalendarStore.shared.calendar.isInSession() }
 
+    static func week(of term: String, on day: Date) -> Int? { AcademicCalendarStore.shared.calendar.week(of: term, on: day) }
+
     /// The rows the academic calendar adds to the calendar: holidays and the terms' first and last days.
     static func events() -> [SDCalendarEvent] { AcademicCalendarStore.shared.calendar.calendarEvents() }
 

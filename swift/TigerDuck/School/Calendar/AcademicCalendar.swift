@@ -98,6 +98,15 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
     func isClassDay(_ day: Date, optedIn: Set<Int>) -> Bool {
         quietDays(optedIn: optedIn).isClassDay(day)
     }
+
+    /// The week of term `code` that `day` falls in, week 1 being the Monday-to-Sunday week of the
+    /// term's first day; nil when `day` is outside that term.
+    func week(of code: String, on day: Date) -> Int? {
+        guard let term = terms.first(where: { $0.code == code }), term.contains(day) else { return nil }
+        let calendar = TaipeiTime.calendar
+        let monday = calendar.date(byAdding: .day, value: 1 - ClassTimeline.weekday(of: term.start), to: term.start)
+        return monday.flatMap { calendar.week(of: day, countingFrom: $0) }
+    }
 }
 
 nonisolated struct AcademicCalendarDTO: Decodable, Sendable {
