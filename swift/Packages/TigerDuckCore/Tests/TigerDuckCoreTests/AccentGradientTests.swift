@@ -79,6 +79,23 @@ struct AccentGradientTests {
         }
     }
 
+    @Test(arguments: [
+        #"{"name":"a","gradient":{"stops":[1,2],"style":"diamond","direction":"leftToRight"}}"#,
+        #"{"name":"a","gradient":null}"#,
+        #"{"name":"a"}"#,
+    ])
+    func anOptionalGradientOutsideTheRulesDecodesAsNone(json: String) throws {
+        struct Holder: Decodable {
+            let name: String
+            let gradient: AccentGradient?
+        }
+
+        let holder = try JSONDecoder().decode(Holder.self, from: Data(json.utf8))
+
+        #expect(holder.name == "a")
+        #expect(holder.gradient == nil)
+    }
+
     @Test func theAccentFromBeforeGradientsIsItsOneColour() {
         let saved = AccentGradient.saved(nil, accentHex: 0x5856D6)
 
