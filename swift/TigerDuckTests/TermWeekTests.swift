@@ -73,7 +73,6 @@ struct ClassTableWeekShownTests {
         )
     }
 
-    /// The school's answer for `term` with no change in it, which is all the table needs to mark today.
     private static func answered(_ term: String) throws -> CourseChanges {
         try CourseChanges(json: Data(#"{"term":"\#(term)","changes":[]}"#.utf8))
     }

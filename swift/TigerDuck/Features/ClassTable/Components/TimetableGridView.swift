@@ -18,7 +18,6 @@ struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
     var showsAssignmentBadges = true
     var differentiateWithoutColor: Bool? = nil
-    /// Off for the export, which shares the plain timetable without today's date, week or changes.
     var showsThisWeek = true
     var switchCount = 0
     var onSwitch: ((_ before: TimetableRowTops, _ after: TimetableRowTops) -> Void)? = nil
@@ -183,8 +182,6 @@ struct TimetableGridView: View {
 
 }
 
-/// The period column's width: a tile holds the period's number alone, otherwise its start and end
-/// times sit around it.
 struct TimetablePeriodColumn: DynamicProperty {
     @ScaledMetric(relativeTo: .caption2) private var timesWidth: CGFloat = 28
     @ScaledMetric(relativeTo: .caption2) private var numberWidth: CGFloat = 16
@@ -194,7 +191,6 @@ struct TimetablePeriodColumn: DynamicProperty {
     }
 }
 
-/// The weekday names over the grid's columns, and the shown term's week over its period numbers.
 struct TimetableHeaderRow: View {
     static let height: CGFloat = 30
     static let font = TigerDuckTheme.Typography.caption.bold()
@@ -236,11 +232,7 @@ struct TimetableHeaderRow: View {
     }
 }
 
-/// The header's labels on the grid's columns: the week, the first subview, over the period column,
-/// then a weekday name a column. The names shrink by the one scale the widest needs to fit its
-/// column, and the week by that scale or by less if the period column is narrower, so the row
-/// reads in one size. No label is given a height, since a minimum scale factor would shrink it to
-/// fit the row's 30 pt.
+/// No label is given a height, since a minimum scale factor would shrink it to fit the row's 30 pt.
 private struct TimetableHeaderLayout: Layout {
     let periodWidth: CGFloat
 

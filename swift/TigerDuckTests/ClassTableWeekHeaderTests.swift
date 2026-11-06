@@ -38,7 +38,6 @@ struct ClassTableWeekHeaderTests {
         look.weekdays.map { AppConstants.Periods.shortWeekdayLabel($0) }
     }
 
-    /// The grid's own columns, drawn clear under the header, to show where its labels belong.
     private struct GridColumns: View {
         let look: Look
         private var periodColumn = TimetablePeriodColumn()
@@ -95,7 +94,6 @@ struct ClassTableWeekHeaderTests {
         return try labels.map { try #require(accessibilityElement(labeled: $0, in: window)).accessibilityFrame }
     }
 
-    /// The width of `text` in the header's font, on one line at the look's text size.
     private static func idealWidth(_ text: String, _ look: Look) -> CGFloat {
         let size = DynamicTypeSize(look.textSize) ?? .large
         return UIHostingController(rootView: Text(text).font(TimetableHeaderRow.font).environment(\.dynamicTypeSize, size))
