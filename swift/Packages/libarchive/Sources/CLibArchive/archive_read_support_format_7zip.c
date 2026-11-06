@@ -404,6 +404,8 @@ struct _7zip {
  * Android app's 100,000 entries and the zip central directory's 16 MiB. */
 #define TIGERDUCK_MAX_ENTRIES	100000
 #define TIGERDUCK_MAX_HEADER_SIZE	((uint64_t)16 << 20)
+/* TigerDuck: the streams of one folder, which 7-Zip's coders keep to a few. */
+#define TIGERDUCK_MAX_FOLDER_STREAMS	64
 
 /* Don't try to read more than 16 MB at a time */
 #define MAX_READ	16 * 1024 * 1024
@@ -2478,6 +2480,10 @@ read_Folder(struct archive_read *a, struct _7z_folder *f)
 
 	if (numOutStreamsTotal == 0 ||
 	    numInStreamsTotal < numOutStreamsTotal-1)
+		return (-1);
+	/* TigerDuck: refuse before binding streams pair by pair. */
+	if (numInStreamsTotal > TIGERDUCK_MAX_FOLDER_STREAMS ||
+	    numOutStreamsTotal > TIGERDUCK_MAX_FOLDER_STREAMS)
 		return (-1);
 
 	f->numBindPairs = numOutStreamsTotal - 1;

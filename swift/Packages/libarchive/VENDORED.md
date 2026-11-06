@@ -59,6 +59,8 @@ cmake -G Ninja <libarchive> -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=<iPhoneO
      (`numFolders`), packed streams (`numPackStreams`) and unpacked substreams
      (`unpack_streams`). Every other table, including the digests, is sized by one of these
      counts or by the header's bytes.
+   - `TIGERDUCK_MAX_FOLDER_STREAMS` (64): the in and out streams of one folder's coders, all
+     together, before they are bound pair by pair. This one fails as a damaged archive.
 3. `archive_read_support_format_tar.c`: a pax extended header (`x` or `g`) whose body is larger
    than `TIGERDUCK_MAX_PAX_SIZE` (1 MiB) fails as a format error before any of it is read. Each
    entry has at most one of each, so this also caps the attributes, extended attributes
