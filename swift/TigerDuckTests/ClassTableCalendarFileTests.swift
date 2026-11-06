@@ -83,6 +83,30 @@ struct ClassTableCalendarFileTests {
         ])
     }
 
+    @Test("a series begins at its first meeting a holiday leaves, under the same uid and end")
+    func aHolidayOnTheFirstDayMovesTheStart() throws {
+        let firstWednesday = QuietDayCalendar.Holiday(id: 3, span: .init(start: Self.day(9, 16), end: Self.day(9, 16)))
+        let term = SchoolCalendar.Term(
+            code: "1151", days: Self.days,
+            quietDays: QuietDayCalendar(terms: [Self.days], holidays: Self.holidays + [firstWednesday], optedIn: [2])
+        )
+        let events = File.events(courses: [Self.structures()], term: term, owner: nil)
+
+        #expect(events.map(\.uid) == ["1151-CS1001301-3-3@tigerduck.app", "1151-CS1001301-3-6@tigerduck.app"])
+        #expect(events.map(\.start) == [Self.day(9, 23, hour: 10, minute: 20), Self.day(9, 23, hour: 13, minute: 20)])
+        #expect(events.map(\.end) == [Self.day(9, 23, hour: 12, minute: 10), Self.day(9, 23, hour: 14, minute: 10)])
+        let lines = File.text(of: events, in: term, now: Self.now).components(separatedBy: "\r\n")
+        #expect(!lines.contains { $0.contains("20260916T") })
+        #expect(lines.filter { $0 == "RRULE:FREQ=WEEKLY;UNTIL=20270108T155959Z" }.count == 2)
+        #expect(lines.filter { $0.hasPrefix("EXDATE") } == [
+            "EXDATE;TZID=Asia/Taipei:20260930T102000", "EXDATE;TZID=Asia/Taipei:20260930T132000",
+        ])
+
+        let week = QuietDayCalendar.Span(start: Self.day(9, 14), end: Self.day(9, 18))
+        let closed = SchoolCalendar.Term(code: "1151", days: week, quietDays: QuietDayCalendar(terms: [week], holidays: [firstWednesday]))
+        #expect(File.events(courses: [Self.structures()], term: closed, owner: nil).isEmpty)
+    }
+
     @Test("courses with no timed period on a weekday are left out")
     func untimedCoursesLeftOut() {
         let courses = [
