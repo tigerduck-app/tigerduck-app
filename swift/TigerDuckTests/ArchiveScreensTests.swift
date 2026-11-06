@@ -10,13 +10,17 @@ struct ArchiveScreensTests {
     private static var language: String { Bundle.main.preferredLocalizations.first ?? "en" }
     private static let longName = "\u{671F}\u{4E2D}\u{5C08}\u{984C}\u{5831}\u{544A}_\u{7B2C}\u{4E09}\u{7D44}_final_revision_2026_v12.pdf"
 
-    private static func browser(_ name: String, path: [ArchiveFolder] = []) throws -> (ArchiveBrowser, URL) {
+    static let looks = ClubScreensTests.looks + [ClubScreensTests.Look(style: .dark, textSize: .accessibilityExtraExtraExtraLarge)]
+
+    private static func browser(
+        _ name: String, path: [ArchiveFolder] = [], limits: ArchiveLimits = ArchiveLimits()
+    ) throws -> (ArchiveBrowser, URL) {
         let session = try ArchiveReaderTests.folder()
-        return (ArchiveBrowser(archive: try ArchiveReaderTests.fixture(name), session: session, path: path), session)
+        return (ArchiveBrowser(archive: try ArchiveReaderTests.fixture(name), session: session, path: path, limits: limits), session)
     }
 
-    private static func save(_ window: UIWindow, _ state: String, _ look: ClubScreensTests.Look) async throws {
-        try await Task.sleep(for: .milliseconds(500))
+    private static func save(_ window: UIWindow, _ state: String, _ look: ClubScreensTests.Look, title: String) async throws {
+        try await waitUntil { barTitle(in: window) == title }
         window.saveSnapshot(as: "archive-\(state)-\(look.testDescription)-\(language)")
     }
 
@@ -32,7 +36,7 @@ struct ArchiveScreensTests {
         return view.subviews.lazy.compactMap(barTitle(in:)).first
     }
 
-    @Test("the top of an archive lists its folders with their counts, then its files", arguments: ClubScreensTests.looks)
+    @Test("the top of an archive lists its folders with their counts, then its files", arguments: looks)
     func root(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
             let (browser, session) = try Self.browser("lab4_starter.zip")
@@ -40,7 +44,7 @@ struct ArchiveScreensTests {
             let window = try ClubScreensTests.show(browser, look: look)
             defer { window.isHidden = true }
             try await waitUntil { accessibilityElement(labeled: "docs", in: window) != nil }
-            try await Self.save(window, "root", look)
+            try await Self.save(window, "root", look, title: "lab4_starter.zip")
 
             let folder = String(localized: "file_viewer_archive_folder")
             #expect(accessibilityElement(labeled: "docs", in: window)?.accessibilityValue == "\(folder), 4")
@@ -52,7 +56,7 @@ struct ArchiveScreensTests {
         }
     }
 
-    @Test("a folder of an archive lists its files with their dates and sizes", arguments: ClubScreensTests.looks)
+    @Test("a folder of an archive lists its files with their dates and sizes", arguments: looks)
     func folder(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
             let (browser, session) = try Self.browser("lab4_starter.zip", path: [ArchiveFolder(path: "docs", name: "docs")])
@@ -60,7 +64,7 @@ struct ArchiveScreensTests {
             let window = try ClubScreensTests.show(browser, look: look)
             defer { window.isHidden = true }
             try await waitUntil { accessibilityElement(labeled: "protocol.pdf", in: window) != nil }
-            try await Self.save(window, "folder", look)
+            try await Self.save(window, "folder", look, title: "docs")
 
             let pdf = try #require(accessibilityElement(labeled: "protocol.pdf", in: window))
             #expect(pdf.accessibilityValue?.contains("11/03") == true || pdf.accessibilityValue?.contains("2026") == true)
@@ -68,7 +72,7 @@ struct ArchiveScreensTests {
         }
     }
 
-    @Test("a file in an archive opens in Quick Look", arguments: ClubScreensTests.looks)
+    @Test("a file in an archive opens in Quick Look", arguments: looks)
     func file(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
             let (browser, session) = try Self.browser("lab4_starter.zip")
@@ -81,13 +85,13 @@ struct ArchiveScreensTests {
             try await waitUntil { window.rootViewController?.presentedViewController != nil }
             let shown = try #require(window.rootViewController?.presentedViewController)
             // Quick Look titles its bar once the file has loaded.
-            for _ in 0..<50 where Self.barTitle(in: shown.view) == nil { try await Task.sleep(for: .milliseconds(100)) }
-            try await Self.save(window, "file", look)
+            try await waitUntil { Self.barTitle(in: shown.view) != nil }
+            window.saveSnapshot(as: "archive-file-\(look.testDescription)-\(Self.language)")
             window.rootViewController?.dismiss(animated: false)
         }
     }
 
-    @Test("an archive that can't be read says why and offers another app", arguments: ClubScreensTests.looks)
+    @Test("an archive that can't be read says why and offers another app", arguments: looks)
     func failed(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
             let (browser, session) = try Self.browser("archive-locked-names.7z")
@@ -96,9 +100,37 @@ struct ArchiveScreensTests {
             defer { window.isHidden = true }
             let reason = String(localized: "file_viewer_archive_password")
             try await waitUntil { ClubScreensTests.shows(reason, in: window) }
-            try await Self.save(window, "failed", look)
+            try await Self.save(window, "failed", look, title: "archive-locked-names.7z")
             #expect(ClubScreensTests.shows(String(localized: "file_viewer_cannot_show"), in: window))
             #expect(ClubScreensTests.shows(String(localized: "file_viewer_open_elsewhere"), in: window))
+        }
+    }
+
+    @Test("a listing cut short says how many items it shows", arguments: looks)
+    func truncated(look: ClubScreensTests.Look) async throws {
+        try await withAccessibilityAutomation {
+            let (browser, session) = try Self.browser("lab4_starter.zip", limits: ArchiveLimits(maxItems: 10))
+            defer { try? FileManager.default.removeItem(at: session) }
+            let window = try ClubScreensTests.show(browser, look: look)
+            defer { window.isHidden = true }
+            let footer = String(format: String(localized: "file_viewer_archive_truncated"), 10.formatted())
+            try await waitUntil { ClubScreensTests.shows(footer, in: window) }
+            try await Self.save(window, "truncated", look, title: "lab4_starter.zip")
+        }
+    }
+
+    @Test("files locked by a password show a lock and say why", arguments: looks)
+    func locked(look: ClubScreensTests.Look) async throws {
+        try await withAccessibilityAutomation {
+            let (browser, session) = try Self.browser("archive-password.zip")
+            defer { try? FileManager.default.removeItem(at: session) }
+            let window = try ClubScreensTests.show(browser, look: look)
+            defer { window.isHidden = true }
+            try await waitUntil { accessibilityElement(labeled: "README.md", in: window) != nil }
+            try await Self.save(window, "locked", look, title: "archive-password.zip")
+            let reason = String(localized: "file_viewer_archive_password")
+            #expect(accessibilityElement(labeled: "README.md", in: window)?.accessibilityValue?.contains(reason) == true)
+            try Self.staysInWindow(["docs", "README.md"], in: window)
         }
     }
 }
