@@ -41,4 +41,20 @@ struct TaipeiTimeTests {
         let next = TaipeiTime.calendar.date(byAdding: .day, value: 1, to: utcDate(2026, 12, 31, 20))!
         #expect(TaipeiTime.dayKey(for: next) == "2027-01-02")
     }
+
+    @Test func aWeekIsSevenTaipeiDaysFromTheStartsDayWhateverTheHour() {
+        let calendar = TaipeiTime.calendar
+        let start = utcDate(2026, 9, 9, 15)
+        #expect(calendar.week(of: start, countingFrom: start) == 1)
+        #expect(calendar.week(of: utcDate(2026, 9, 8, 16), countingFrom: start) == 1)
+        #expect(calendar.week(of: utcDate(2026, 9, 15, 15, 59), countingFrom: start) == 1)
+        #expect(calendar.week(of: utcDate(2026, 9, 15, 16), countingFrom: start) == 2)
+        #expect(calendar.week(of: utcDate(2026, 11, 3, 16), countingFrom: start) == 9)
+    }
+
+    @Test func aDayBeforeTheStartsDayHasNoWeek() {
+        let start = utcDate(2026, 9, 9, 15)
+        #expect(TaipeiTime.calendar.week(of: utcDate(2026, 9, 8, 15, 59), countingFrom: start) == nil)
+        #expect(TaipeiTime.calendar.week(of: utcDate(2025, 9, 9, 15), countingFrom: start) == nil)
+    }
 }

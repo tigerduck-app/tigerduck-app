@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 /// Moodle numbers a weekly course's sections from its start date, so those need no dates. Any
 /// other format leaves the week to the section names, the only place a teacher writes it.
@@ -12,13 +13,11 @@ nonisolated enum MoodleCurrentWeek {
         now: Date,
         calendar: Calendar
     ) -> Int? {
-        let today = calendar.startOfDay(for: now)
         guard format == weeklyFormat, let startDate else {
-            return sectionId(byNames: sections, today: today, calendar: calendar)
+            return sectionId(byNames: sections, today: calendar.startOfDay(for: now), calendar: calendar)
         }
-        guard let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: startDate), to: today).day,
-              days >= 0 else { return nil }
-        return sections.first { $0.number == days / 7 + 1 }?.id
+        guard let week = calendar.week(of: now, countingFrom: startDate) else { return nil }
+        return sections.first { $0.number == week }?.id
     }
 
     private struct DatedSection {
