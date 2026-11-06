@@ -11,9 +11,8 @@ nonisolated final class SyncClock: Sendable {
     /// tigerduck-backend refuses a stamp later than its own time plus this with 409 `clock_ahead`
     /// (`MAX_CLOCK_SKEW` in https://github.com/tigerduck-app/tigerduck-backend/blob/dev/server/sync/merge.py).
     static let backendLead: Int64 = 5_000_000
-    // Far past any real time, and small enough that the cap's sums and a trip through `Date` cannot trap.
-    private static let ceiling = Int64.max / 2
-    private static let plausible: Range<Int64> = 1..<ceiling
+    private static let overflowSafeCeiling = Int64.max / 2
+    private static let plausible: Range<Int64> = 1..<overflowSafeCeiling
 
     nonisolated struct Heard: Equatable, Sendable {
         let clock: Int64
@@ -67,7 +66,7 @@ nonisolated final class SyncClock: Sendable {
 
     /// Every stamp issued before this read is below it, and every one issued after is not.
     var lowestNextStamp: Date {
-        PushAPI.date(ofClock: min(readings.lastIssued, Self.ceiling - 1) + 1)
+        PushAPI.date(ofClock: min(readings.lastIssued, Self.overflowSafeCeiling - 1) + 1)
     }
 
     func stamp() -> Date {
@@ -75,7 +74,7 @@ nonisolated final class SyncClock: Sendable {
             let device = PushAPI.clock(of: now())
             let backend = readings.heard.map { $0.clock + (device - $0.arrivedAt) + Self.backendLead }
             let latest = max(min(device, backend ?? device), readings.lastSeen, readings.lastIssued)
-            readings.lastIssued = min(latest, Self.ceiling - 1) + 1
+            readings.lastIssued = min(latest, Self.overflowSafeCeiling - 1) + 1
             return readings.lastIssued
         })
     }
