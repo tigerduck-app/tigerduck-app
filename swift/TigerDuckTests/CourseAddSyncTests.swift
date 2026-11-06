@@ -320,6 +320,24 @@ struct CourseAddSyncTests {
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
     }
 
+    @Test("A reset made elsewhere wipes a course this device added before it, on a device whose clock is ahead of the backend")
+    func resetElsewhereWipesAnEarlierAddOnADeviceAhead() async throws {
+        let backend = Backend()
+        backend.answer(200)
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten + 10 * SyncClockTests.minute))
+        await clock.hear(SyncClockTests.ten)
+        let cache = Self.makeCache(userAdded: [Self.art()])
+        let coordinator = Self.makeCoordinator(backend, cache: cache, clock: clock)
+
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+        #expect(backend.uploads.count == 1)
+        #expect(!(await coordinator.holdsUnsentEdits()))
+        let resetAt = PushAPI.date(ofClock: SyncClockTests.ten + 3 * SyncClockTests.minute)
+        _ = try await CourseReset.apply(at: resetAt, courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { true })
+
+        #expect(cache.courses.loadUserAddedCourses().isEmpty)
+    }
+
     @Test("A reset made elsewhere leaves the hand-added and hidden courses alone when the sync may no longer write, as behind the lock screen")
     func resetElsewhereWritesNothingWhenItMayNot() async {
         let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:PE4"])

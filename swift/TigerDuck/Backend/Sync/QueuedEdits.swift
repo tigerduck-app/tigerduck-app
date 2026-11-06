@@ -141,7 +141,7 @@ final class QueuedEdits {
         let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
         let stamp = clock.stamp()
         addsEnqueuing[id] = key
-        addStartedOrLandedAt[key] = clock.mark()
+        addStartedOrLandedAt[key] = stamp
         return Task {
             await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: stamp), for: signIn)
             addsEnqueuing[id] = nil
@@ -150,7 +150,7 @@ final class QueuedEdits {
     }
 
     func noteCourseAddLanded(_ key: String) {
-        addStartedOrLandedAt[key] = clock.mark()
+        addStartedOrLandedAt[key] = clock.stamp()
     }
 
     func courseAddKeys(unlandedAt date: Date) async -> Set<String> {

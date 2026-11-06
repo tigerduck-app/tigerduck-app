@@ -165,6 +165,7 @@ final class FullSyncRunner {
         let editGenerationAtFetch = app.localEdits.overrideEditGeneration
         let heldHolidayIDs = AcademicCalendarStore.shared.unacknowledgedHolidayIDs
         let fetchedAt = coordinator.clock.lowestNextMark
+        let addsLandingFrom = coordinator.clock.lowestNextStamp
         let (json, fetchedDeletes) = try await coordinator.courseDeletes(around: {
             try await app.pushCoordinator.fetchFullSync(for: signIn)
         })
@@ -194,7 +195,7 @@ final class FullSyncRunner {
         let settled = try await Self.settleCourseEditsThenReadPolicy(
             fetchedDeletes, takingCourses: takesCourses,
             settle: { try await self.settleQueuedCourseEdits(deleting: $0, reset: reset, for: signIn) },
-            adds: { await coordinator.courseAddKeys(unlandedAt: fetchedAt) },
+            adds: { await coordinator.courseAddKeys(unlandedAt: addsLandingFrom) },
             mayWrite: { mayWrite(for: signIn) }, policy: { SyncPolicy.current }
         )
         let policy = settled.policy
