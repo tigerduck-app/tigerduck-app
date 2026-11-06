@@ -62,7 +62,7 @@ extension BulletinAPIClient {
 }
 
 extension SyncOutbox {
-    func enqueue(_ op: SyncOp) { enqueue(op, for: testSignIn) }
+    func enqueue(_ op: SyncOp) async { await enqueue(op, for: testSignIn) }
 
     @discardableResult
     func drain(
@@ -89,14 +89,14 @@ extension CloudSyncCoordinator {
     func enqueueAssignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String) async {
         await enqueueAssignmentOverride(
             moodleCourseId: moodleCourseId, moodleAssignmentId: moodleAssignmentId, localStatus: localStatus, for: testSignIn
-        )
+        )?.value
     }
 
     func enqueueCourseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?) async {
         await enqueueCourseIgnore(
             semester: semester, courseNo: courseNo, moodleId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore,
             for: testSignIn
-        )
+        )?.value
     }
 
     func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date? = nil) async {

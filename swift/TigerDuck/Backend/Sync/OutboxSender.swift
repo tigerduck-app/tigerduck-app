@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import os
 
 nonisolated struct CourseKeyUnknownError: Error {}
 
@@ -34,14 +35,16 @@ final class OutboxSender {
     func send(_ op: SyncOp, for signIn: SignIn, hasNewerQueuedEdit: @MainActor (SyncOp) async -> Bool) async throws {
         switch op {
         case .courseOverride(let semester, let moodleId, let customName, let colorHex, let locale, let stamp):
-            guard let (courseKey, courseNo) = courseKey(semester: semester, identity: moodleId) else {
+            guard let (courseKey, term, courseNo) = courseKey(semester: semester, identity: moodleId) else {
                 throw CourseKeyUnknownError()
             }
             let resolvedLocale = customName != nil ? (locale ?? Locale.current.language.languageCode?.identifier) : nil
-            let reply = try await push.patchCourseOverride(
-                courseKey: courseKey, colorHex: colorHex, customName: customName, locale: resolvedLocale, madeAt: stamp,
-                for: signIn
-            )
+            guard let reply = try await sendOrGiveUp("courseOverride", courseNo, semester: term, {
+                try await push.patchCourseOverride(
+                    courseKey: courseKey, colorHex: colorHex, customName: customName, locale: resolvedLocale, madeAt: stamp,
+                    for: signIn
+                )
+            }) else { return }
             guard !(await hasNewerQueuedEdit(op)) else { return }
             if colorHex != nil, !reply.applied.contains(.colorHex) {
                 kept.colorKept(reply.colorHex, courseNo: courseNo, for: signIn)
@@ -59,10 +62,12 @@ final class OutboxSender {
             }
 
         case .courseIgnore(let semester, let courseNo, _, let moodleCourseId, let ignore, let stamp):
-            let reply = try await push.patchCourseOverride(
-                courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
-                ignoreAssignments: ignore, moodleCourseId: moodleCourseId, madeAt: stamp, for: signIn
-            )
+            guard let reply = try await sendOrGiveUp("courseIgnore", courseNo, semester: semester, {
+                try await push.patchCourseOverride(
+                    courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
+                    ignoreAssignments: ignore, moodleCourseId: moodleCourseId, madeAt: stamp, for: signIn
+                )
+            }) else { return }
             if ignore != nil, !reply.applied.contains(.ignoreAssignments), !(await hasNewerQueuedEdit(op)) {
                 kept.ignoreKept(reply.ignoreAssignments, key: CourseTombstone.key(semester: semester, courseNo: courseNo), for: signIn)
             }
@@ -89,16 +94,37 @@ final class OutboxSender {
         }
     }
 
-    func courseKey(semester: String, identity: String) -> (key: String, courseNo: String)? {
+    func courseKey(semester: String, identity: String) -> (key: String, term: String, courseNo: String)? {
         let terms = [semester] + SemesterCatalog.availableSemesters().filter { $0 != semester }
         for term in terms {
-            let held = courses.loadCourses(semester: term) + courses.loadUserAddedCourses(semester: term)
-            if let course = held.first(where: { Self.identity(of: $0, semester: term) == identity }) {
-                return (CourseTombstone.serverKey(semester: term, courseNo: course.courseNo), course.courseNo)
+            if let course = held(in: term).first(where: { Self.identity(of: $0, semester: term) == identity }) {
+                return (CourseTombstone.serverKey(semester: term, courseNo: course.courseNo), term, course.courseNo)
             }
         }
         guard let course = Self.termAndNumber(of: identity, terms: terms) else { return nil }
-        return (CourseTombstone.serverKey(semester: course.term, courseNo: course.courseNo), course.courseNo)
+        return (CourseTombstone.serverKey(semester: course.term, courseNo: course.courseNo), course.term, course.courseNo)
+    }
+
+    private func sendOrGiveUp(
+        _ kind: String, _ courseNo: String, semester: String, _ send: () async throws -> PushAPI.CourseOverrideResponse
+    ) async throws -> PushAPI.CourseOverrideResponse? {
+        do {
+            return try await send()
+        } catch PushAPIError.courseNotFound {
+            guard noLongerHolds(courseNo, in: semester) else { throw PushAPIError.courseNotFound }
+            AppLogger.sync.warning("[outbox] gave up \(kind, privacy: .public) for a course this device no longer holds")
+            AppLogger.captureError(PushAPIError.courseNotFound, context: ["phase": "cloudSync.outbox.giveUp", "op": kind])
+            return nil
+        }
+    }
+
+    private func noLongerHolds(_ courseNo: String, in term: String) -> Bool {
+        guard let roster = courses.loadCoursesIfCached(semester: term) else { return false }
+        return !(roster + courses.loadUserAddedCourses(semester: term)).contains { $0.courseNo == courseNo }
+    }
+
+    private func held(in term: String) -> [SDCourse] {
+        courses.loadCourses(semester: term) + courses.loadUserAddedCourses(semester: term)
     }
 
     nonisolated static func identity(semester: String, courseNo: String, moodleIdNumber: String?) -> String {

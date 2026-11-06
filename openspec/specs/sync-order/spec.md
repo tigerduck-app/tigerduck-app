@@ -50,12 +50,27 @@ version it synced, and SHALL take every other field from the server's current ve
 
 ### Requirement: A user's edit is never dropped
 An edit that keeps failing to send SHALL be kept and sent again after the next pull or upload that
-can make it succeed. It SHALL leave the queue only when it is sent, superseded by a newer edit, or
-cleared by a sign-out.
+can make it succeed. It SHALL leave the queue only when it is sent, superseded by a newer edit,
+cleared by a sign-out, or refused for a course the backend lacks that this device no longer holds,
+which no upload can bring.
 
 #### Scenario: The course is not on the backend yet
 - **WHEN** a course rename keeps getting 404 because the course upload has not landed
 - **THEN** the rename is sent again after the next course upload
+
+#### Scenario: The course is hidden here
+- **WHEN** a course colour gets 404 for a course hidden on this device
+- **THEN** the colour is sent again after a course upload, such as the one that shows it again
+
+#### Scenario: The course is no longer held here
+- **WHEN** a course colour, name or ignore setting gets 404 for a course missing from this device's
+  cached course list for its term and from the courses added here
+- **THEN** the setting leaves the queue and is not sent again
+
+#### Scenario: The term's course list is not cached here
+- **WHEN** a course colour, name or ignore setting gets 404 and this device has no course list
+  cached for that term
+- **THEN** the setting waits and is sent again after the next course upload
 
 ### Requirement: One send per channel at a time
 A channel SHALL have at most one request in flight. A newer state SHALL wait for that request's

@@ -12,7 +12,7 @@ final class QueuedEdits {
     private var addStartedOrLandedAt: [String: Date] = [:]
     private(set) var cutoffs = DiscardCutoffs()
 
-    init(outbox: SyncOutbox, clock: SyncClock) {
+    init(outbox: SyncOutbox, clock: SyncClock = .shared) {
         self.outbox = outbox
         self.clock = clock
     }
@@ -35,14 +35,24 @@ final class QueuedEdits {
         lastColorEdit[identity, default: 0]
     }
 
-    func pendingAssignmentOverrideIds() async -> Set<String> {
-        var ids = Set<String>()
-        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
-            if case .assignmentOverride(_, let moodleAssignmentId, _, _) = entry.op {
-                ids.insert(String(moodleAssignmentId))
+    var marksAndIgnoresEnqueuing: Set<String> {
+        Set(overridesEnqueuing.values.compactMap { op -> String? in
+            switch op {
+            case .assignmentOverride(_, let moodleAssignmentId, _, _):
+                return String(moodleAssignmentId)
+            case .courseIgnore(let semester, let courseNo, _, _, .some, _):
+                return CourseTombstone.key(semester: semester, courseNo: courseNo)
+            case .courseIgnore, .courseOverride, .courseDelete, .courseAdd:
+                return nil
             }
-        }
-        return ids
+        })
+    }
+
+    func pendingAssignmentOverrideIds() async -> Set<String> {
+        Set(await unsentOps().compactMap { op -> String? in
+            guard case .assignmentOverride(_, let moodleAssignmentId, _, _) = op else { return nil }
+            return String(moodleAssignmentId)
+        })
     }
 
     func holdsUnsentEdits() async -> Bool {
@@ -52,7 +62,7 @@ final class QueuedEdits {
 
     func pendingCourseOverrides() async -> (colors: Set<String>, names: Set<String>, edits: Int) {
         var pending: (colors: Set<String>, names: Set<String>, edits: Int) = ([], [], overrideEdits)
-        for op in await outbox.snapshot().map(\.op) + overridesEnqueuing.values {
+        for op in await unsentOps() {
             guard case .courseOverride(_, let moodleId, let customName, let colorHex, _, _) = op else { continue }
             if colorHex != nil { pending.colors.insert(moodleId) }
             if customName != nil { pending.names.insert(moodleId) }
@@ -99,13 +109,10 @@ final class QueuedEdits {
     }
 
     func pendingCourseIgnoreKeys() async -> Set<String> {
-        var keys = Set<String>()
-        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
-            if case .courseIgnore(let semester, let courseNo, _, _, .some, _) = entry.op {
-                keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
-            }
-        }
-        return keys
+        Set(await unsentOps().compactMap { op -> String? in
+            guard case .courseIgnore(let semester, let courseNo, _, _, .some, _) = op else { return nil }
+            return CourseTombstone.key(semester: semester, courseNo: courseNo)
+        })
     }
 
     func courseDeletes<Fetched>(
@@ -196,8 +203,12 @@ final class QueuedEdits {
 
     func hasNewerEdit(than op: SyncOp) async -> Bool {
         let key = op.dedupKey
-        let queued = await outbox.snapshot().map(\.op) + outbox.parkedSnapshot().map(\.op)
-            + overridesEnqueuing.values
-        return queued.contains { $0.dedupKey == key && $0.stamp > op.stamp }
+        return await unsentOps().contains { $0.dedupKey == key && $0.stamp > op.stamp }
+    }
+
+    private func unsentOps() async -> [SyncOp] {
+        let enqueuingBeforeTheRead = Array(overridesEnqueuing.values)
+        let queuedOrParked = await outbox.queuedAndParked().map(\.op)
+        return enqueuingBeforeTheRead + queuedOrParked + overridesEnqueuing.values
     }
 }

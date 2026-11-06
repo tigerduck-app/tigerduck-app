@@ -85,7 +85,10 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             #expect(written == .landed)
             #expect((sent["live_activity"] as? [String: Any])?["show_in_class"] as? Bool == true)
 
-            NotificationSettingsSync.mergeSentFields(try local.documentUpdates(existing: [:]), of: local, for: testSignIn)
+            NotificationSettingsSync.mergeSentFields(
+                try local.documentUpdates(existing: [:]), of: local, turnOnsAtStart: NotificationSettingsSync.sectionTurnOns,
+                for: testSignIn
+            )
             #expect(NotificationSettingsSync.lastSyncedPreferences == local)
             #expect(NotificationSettingsSync.pushBase(local: Self.preferences(showInClass: false)) == .since(local))
         }
@@ -218,6 +221,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 return nil
             })
             var sent: [String: Any] = [:]
+            let turnOns = NotificationSettingsSync.sectionTurnOns
 
             let written = try await NotificationSettingsSync.push(
                 local: startOfPush,
@@ -228,7 +232,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 recordOnServer: { sent = $0 }
             )
             #expect(written == .landed)
-            NotificationSettingsSync.mergeSentFields(sent, of: startOfPush, for: testSignIn)
+            NotificationSettingsSync.mergeSentFields(sent, of: startOfPush, turnOnsAtStart: turnOns, for: testSignIn)
 
             #expect(NotificationSettingsSync.lastSyncedPreferences?.classPreparingLeadTime == 900)
             #expect(NotificationSettingsSync.lastSyncedPreferences?.isAssignmentReminderEnabled == false)
@@ -260,6 +264,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
             SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 2), for: url)
             let client = SettingsAPIStub.makeClient(baseURL: baseURL)
             var sent: [String: Any] = [:]
+            let turnOns = NotificationSettingsSync.sectionTurnOns
 
             let landed = try await NotificationSettingsSync.push(
                 local: turnedOn,
@@ -269,7 +274,7 @@ struct NotificationSettingsSyncedSeedMigrationTests {
                 recordOnServer: { sent = $0 }
             )
             #expect(landed == .landed)
-            NotificationSettingsSync.mergeSentFields(sent, of: turnedOn, for: testSignIn)
+            NotificationSettingsSync.mergeSentFields(sent, of: turnedOn, turnOnsAtStart: turnOns, for: testSignIn)
             #expect(NotificationSettingsSync.lastSyncedPreferences?.showInClassScenario == true)
 
             let turnedOff = Self.preferences(showInClass: false)

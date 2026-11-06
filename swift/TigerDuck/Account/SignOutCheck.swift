@@ -11,7 +11,6 @@ struct SignOutCheck {
 
     func deletesUnsyncedData() async -> Bool {
         let unsent = await app.cloudSyncCoordinator.holdsUnsentEdits() || app.pushCoordinator.holdsUnsentCourseUploads
-            || !app.localEdits.marksAndIgnoresEnqueuing.isEmpty
             || !AcademicCalendarStore.shared.unacknowledgedHolidayIDs.isEmpty
         return Self.signOutDeletesUnsyncedData(
             heldSignOutData(),

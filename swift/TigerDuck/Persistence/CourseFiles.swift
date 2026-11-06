@@ -31,7 +31,13 @@ final class CourseFiles: AccountScoped {
     }
 
     func loadCourses(semester: String, language: String? = nil) -> [SDCourse] {
-        let dtos: [CachedCourse] = cache.load(coursesFilename(semester, language ?? currentCourseApiLanguage())) ?? []
+        loadCoursesIfCached(semester: semester, language: language) ?? []
+    }
+
+    func loadCoursesIfCached(semester: String, language: String? = nil) -> [SDCourse]? {
+        guard let dtos: [CachedCourse] = cache.load(coursesFilename(semester, language ?? currentCourseApiLanguage())) else {
+            return nil
+        }
         let customNames = loadCourseCustomNames()
         return dtos.map { applyCustomNameOverlay($0.toSDCourse(), customNames: customNames, clearPollutedCanonical: true) }
     }

@@ -16,13 +16,22 @@ actor SyncOutbox {
         case loaded
         case filesUnreadable
     }
+
+    nonisolated enum Pause: Sendable {
+        case beforeEnqueue
+        case afterRead
+    }
+
+    private let pause: (@Sendable (Pause) async -> Void)?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
 
     init(
         directory: URL = OutboxFiles.defaultDirectory(),
-        read: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) }
+        read: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) },
+        pause: (@Sendable (Pause) async -> Void)? = nil
     ) {
         files = OutboxFiles(directory: directory, read: read)
+        self.pause = pause
         switch files.load() {
         case .read(let queued, let parked):
             entries = queued
@@ -33,7 +42,8 @@ actor SyncOutbox {
         }
     }
 
-    func enqueue(_ op: SyncOp, for signIn: SignIn) {
+    func enqueue(_ op: SyncOp, for signIn: SignIn) async {
+        if let pause { await pause(.beforeEnqueue) }
         loadIfNeeded()
         guard signIn.isCurrent, !cutoffs.cutsOff(op) else { return }
         let key = op.dedupKey
@@ -77,6 +87,13 @@ actor SyncOutbox {
     func parkedSnapshot() -> [OutboxEntry] {
         loadIfNeeded()
         return parked
+    }
+
+    func queuedAndParked() async -> [OutboxEntry] {
+        loadIfNeeded()
+        let read = entries + parked
+        if let pause { await pause(.afterRead) }
+        return read
     }
 
     func clearAll() {

@@ -32,12 +32,10 @@ final class MarkConflicts {
         } else {
             let coordinator = app.cloudSyncCoordinator
             let push = app.pushCoordinator
-            Task { [weak self] in
+            Task {
                 await AssignmentMarksReconciler.keepServerSide(
                     rereadServer: { ServerMarks(try await push.fetchFullSync(for: signIn)) },
-                    protected: { [weak self] in
-                        await coordinator.pendingAssignmentOverrideIds().union(self?.app?.localEdits.marksAndIgnoresEnqueuing ?? [])
-                    },
+                    protected: { await coordinator.pendingAssignmentOverrideIds() },
                     for: signIn,
                     assignments: .shared
                 )
