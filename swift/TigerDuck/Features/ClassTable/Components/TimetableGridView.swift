@@ -27,7 +27,7 @@ struct TimetableGridView: View {
     private let rowSpacing: CGFloat = 3
 
     @ScaledMetric(relativeTo: .caption2) private var scaledCellHeight: CGFloat = 40
-    private var periodColumn = TimetablePeriodColumn()
+    private let periodColumn = TimetablePeriodColumn()
     @ScaledMetric(relativeTo: .caption2) private var periodTimeSize: CGFloat = 9
     @ScaledMetric(relativeTo: .caption2) private var periodLabelSize: CGFloat = 12
 
@@ -202,7 +202,7 @@ struct TimetableHeaderRow: View {
     let today: Int?
     let week: Int?
     let drawsPeriodTiles: Bool
-    private var periodColumn = TimetablePeriodColumn()
+    private let periodColumn = TimetablePeriodColumn()
 
     var body: some View {
         TimetableHeaderLayout(periodWidth: periodColumn.width(drawsPeriodTiles: drawsPeriodTiles)) {
