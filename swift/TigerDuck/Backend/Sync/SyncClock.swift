@@ -25,6 +25,22 @@ nonisolated final class SyncClock: Sendable {
         var heard: Heard?
     }
 
+    /// The last stamp issued moved down from `top`, and no stamp issued since is below `ceiling`.
+    nonisolated struct PullBack: Equatable, Sendable {
+        let ceiling: Int64
+        let top: Int64
+
+        /// A time from before the pull-back, more than `backendLead` past `ceiling`, moves down by
+        /// the pull-back's size: under `ceiling`, in the order it had. Stamps issued in the five
+        /// seconds after it stay within `backendLead` past `ceiling`, so a holder restamping then
+        /// leaves them.
+        func restamped(_ date: Date) -> Date {
+            let value = PushAPI.clock(of: date)
+            guard value > ceiling + SyncClock.backendLead, value <= top else { return date }
+            return PushAPI.date(ofClock: value - (top - ceiling))
+        }
+    }
+
     nonisolated struct Storage: Sendable {
         let load: @Sendable () -> Readings
         let save: @Sendable (Readings) -> Void
@@ -48,6 +64,7 @@ nonisolated final class SyncClock: Sendable {
     private let storage: Storage
     private let now: @Sendable () -> Date
     private let held = OSAllocatedUnfairLock(initialState: Readings())
+    private let restampers = OSAllocatedUnfairLock<[@Sendable (PullBack) async -> Void]>(initialState: [])
 
     init(storage: Storage = .defaults, now: @escaping @Sendable () -> Date = { Date() }) {
         self.storage = storage
@@ -86,17 +103,31 @@ nonisolated final class SyncClock: Sendable {
 
     /// A last stamp or last server value further ahead of `serverClock` than any answer could be,
     /// as after a device clock set ahead, comes back to what the backend accepts: it refuses a
-    /// stamp past its clock plus `backendLead`, so no stamp above that has landed.
-    func hear(_ serverClock: Int64) {
+    /// stamp past its clock plus `backendLead`, so no stamp above that has landed. The caller
+    /// passes the pull-back it returns to `restamp(after:)`.
+    @discardableResult
+    func hear(_ serverClock: Int64) -> PullBack? {
         let arrivedAt = PushAPI.clock(of: now())
-        guard Self.plausible.contains(serverClock) else { return }
-        update { readings in
+        guard Self.plausible.contains(serverClock) else { return nil }
+        return update { readings in
             let reach = serverClock + Self.backendLead
             let farAhead = reach + Self.answerSpread
             readings.lastSeen = readings.lastSeen > farAhead ? serverClock : max(readings.lastSeen, serverClock)
-            if readings.lastIssued > farAhead { readings.lastIssued = reach }
             readings.heard = Heard(clock: serverClock, arrivedAt: arrivedAt)
+            guard readings.lastIssued > farAhead else { return nil }
+            let top = readings.lastIssued
+            readings.lastIssued = reach
+            return PullBack(ceiling: max(reach, readings.lastSeen), top: top)
         }
+    }
+
+    /// `restamp` moves every time it keeps with `PullBack.restamped`.
+    func onPullBack(_ restamp: @escaping @Sendable (PullBack) async -> Void) {
+        restampers.withLock { $0.append(restamp) }
+    }
+
+    func restamp(after pullBack: PullBack) async {
+        for restamp in restampers.withLock({ $0 }) { await restamp(pullBack) }
     }
 
     @discardableResult

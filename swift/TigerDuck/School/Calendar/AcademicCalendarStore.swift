@@ -110,6 +110,11 @@ final class AcademicCalendarStore: AccountScoped {
         return true
     }
 
+    func restamp(after pullBack: SyncClock.PullBack, for signIn: SignIn) {
+        lastHolidayEditAt = pullBack.restamped(lastHolidayEditAt)
+        Defaults[.holidayOverrideEditTimes, for: signIn] = Defaults[.holidayOverrideEditTimes].mapValues(pullBack.restamped)
+    }
+
     func endpointDidChange() {
         forgetCachedCalendar()
         Task { await refresh() }

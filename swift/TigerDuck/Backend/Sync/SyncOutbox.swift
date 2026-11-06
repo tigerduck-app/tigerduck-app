@@ -122,6 +122,13 @@ actor SyncOutbox {
         return discard { discarding.cutsOff($0) }
     }
 
+    func restamp(after pullBack: SyncClock.PullBack) {
+        loadIfNeeded()
+        (entries, parked) = (entries.map { $0.restamped(pullBack) }, parked.map { $0.restamped(pullBack) })
+        cutoffs = cutoffs.restamped(pullBack.restamped)
+        persist()
+    }
+
     func requeueParked() {
         loadIfNeeded()
         guard !parked.isEmpty else { return }
@@ -158,17 +165,16 @@ actor SyncOutbox {
             kept.append(contentsOf: snapshot[fromIndex...])
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
             let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
-            let stillQueued = Set(entries.map(\.id))
-            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) && stillQueued.contains($0.id) }
-                + newlyEnqueued
+            let queuedOps = Dictionary(entries.map { ($0.id, $0.op) }, uniquingKeysWith: { first, _ in first })
+            entries = kept.compactMap { entry in queuedOps[entry.id].map { entry.with($0) } }
+                .filter { !freshKeys.contains($0.op.dedupKey) } + newlyEnqueued
             parked.removeAll { freshKeys.contains($0.op.dedupKey) }
             persist()
         }
 
         while index < snapshot.count {
             guard clearGeneration == startGeneration else { return entries.isEmpty }
-            let entry = snapshot[index]
-            guard entries.contains(where: { $0.id == entry.id }) else {
+            guard let entry = entries.first(where: { $0.id == snapshot[index].id }) else {
                 index += 1
                 continue
             }
@@ -230,9 +236,9 @@ actor SyncOutbox {
     }
 
     private func park(_ entry: OutboxEntry) {
-        guard entries.contains(where: { $0.id == entry.id }) else { return }
+        guard let queued = entries.first(where: { $0.id == entry.id }) else { return }
         parked.removeAll { $0.op.dedupKey == entry.op.dedupKey }
-        parked.append(entry)
+        parked.append(entry.with(queued.op))
     }
 
     private func loadIfNeeded() {

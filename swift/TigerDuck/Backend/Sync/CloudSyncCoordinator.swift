@@ -56,6 +56,7 @@ final class CloudSyncCoordinator {
         account: AccountSession = AccountSession(),
         courses: CourseStore = .shared,
         kept: KeptValues? = nil,
+        calendar: AcademicCalendarStore? = nil,
         clock: SyncClock
     ) {
         self.outbox = outbox
@@ -76,6 +77,12 @@ final class CloudSyncCoordinator {
             push: pushCoordinator, outbox: outbox, edits: edits, drain: drain, isEnabled: isEnabled
         )
         sender.onCourseAddLanded = { [weak edits] key in edits?.noteCourseAddLanded(key) }
+        clock.onPullBack { [weak edits, weak calendar] pullBack in
+            let signIn = await account.startingSignIn
+            await edits?.restamp(after: pullBack)
+            await courses.restampSemesterResets(after: pullBack, for: signIn)
+            await calendar?.restamp(after: pullBack, for: signIn)
+        }
     }
 
     func followPreference() {

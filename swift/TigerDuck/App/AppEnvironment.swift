@@ -65,6 +65,7 @@ final class AppEnvironment {
             addedCourseUpload: { SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1) },
             uploadsCourses: { SyncPolicy.current.uploadsCourses },
             account: authService.session,
+            calendar: .shared,
             clock: .shared
         )
         CloudSyncCoordinator.registerShared(cloudSync)

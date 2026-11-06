@@ -172,6 +172,24 @@ struct SyncClockTests {
         #expect(Self.clock(of: clock.stamp()) == Self.ten + 2 * Self.minute + 1)
     }
 
+    @Test("A pull-back moves a time kept from before it under its ceiling in its order, and leaves one near or under the ceiling")
+    func pullBackMovesKeptTimesUnderItsCeiling() throws {
+        let device = DeviceClock(Self.ten + Self.year)
+        let clock = Self.makeClock(device)
+        let kept = [clock.stamp(), clock.stamp()]
+        device.set(Self.ten)
+
+        let pullBack = try #require(clock.hear(Self.ten))
+        let fresh = clock.stamp()
+        let earlier = PushAPI.date(ofClock: Self.ten - Self.minute)
+
+        #expect(kept.map { Self.clock(of: pullBack.restamped($0)) } == [Self.ten + SyncClock.backendLead - 1, Self.ten + SyncClock.backendLead])
+        #expect(Self.clock(of: fresh) == Self.ten + SyncClock.backendLead + 1)
+        #expect(pullBack.restamped(fresh) == fresh)
+        #expect(pullBack.restamped(earlier) == earlier)
+        #expect(clock.hear(Self.ten) == nil)
+    }
+
     @Test("Stored values that read back missing or unreadable never produce a stamp at or before one already issued")
     func unreadableStoredValuesFailClosed() {
         let device = DeviceClock(Self.ten)
@@ -267,7 +285,15 @@ struct SyncClockTests {
         #expect(clock.readings == SyncClock.Readings())
     }
 
-    private static func stubbedClient(_ clock: SyncClock) -> (PushAPIClient, URL) {
+    static func backendAnswers(_ clock: SyncClock, at serverClock: Int64) async throws {
+        let (client, baseURL) = stubbedClient(clock)
+        SettingsAPIStub.enqueue(.init(
+            statusCode: 200, body: Data(#"{"revision":1}"#.utf8), headerFields: ["X-TigerSync-Clock": String(serverClock)]
+        ), for: baseURL.appendingPathComponent("sync/revision"))
+        _ = try await client.fetchRevision(for: testSignIn)
+    }
+
+    static func stubbedClient(_ clock: SyncClock) -> (PushAPIClient, URL) {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]

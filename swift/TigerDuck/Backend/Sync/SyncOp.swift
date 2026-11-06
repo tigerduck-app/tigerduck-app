@@ -98,6 +98,30 @@ nonisolated enum SyncOp: Codable, Sendable {
         }
     }
 
+    func restamped(_ restamp: (Date) -> Date) -> SyncOp {
+        switch self {
+        case .courseOverride(let semester, let moodleId, let customName, let colorHex, let locale, let stamp):
+            .courseOverride(
+                semester: semester, moodleId: moodleId, customName: customName, colorHex: colorHex, locale: locale,
+                stamp: restamp(stamp)
+            )
+        case .assignmentOverride(let moodleCourseId, let moodleAssignmentId, let localStatus, let stamp):
+            .assignmentOverride(
+                moodleCourseId: moodleCourseId, moodleAssignmentId: moodleAssignmentId, localStatus: localStatus,
+                stamp: restamp(stamp)
+            )
+        case .courseIgnore(let semester, let courseNo, let moodleId, let moodleCourseId, let ignore, let stamp):
+            .courseIgnore(
+                semester: semester, courseNo: courseNo, moodleId: moodleId, moodleCourseId: moodleCourseId, ignore: ignore,
+                stamp: restamp(stamp)
+            )
+        case .courseDelete(let semester, let courseNo, let stamp):
+            .courseDelete(semester: semester, courseNo: courseNo, stamp: restamp(stamp))
+        case .courseAdd(let semester, let courseNo, let stamp):
+            .courseAdd(semester: semester, courseNo: courseNo, stamp: restamp(stamp))
+        }
+    }
+
     var discardScopes: [DiscardScope] {
         switch self {
         case .courseOverride(_, _, let customName, let colorHex, _, _):
@@ -137,17 +161,31 @@ nonisolated struct DiscardCutoffs: Sendable {
     func cutsOff(_ op: SyncOp) -> Bool {
         op.discardScopes.contains { scope in byScope[scope].map { op.stamp < $0 } ?? false }
     }
+
+    func restamped(_ restamp: (Date) -> Date) -> DiscardCutoffs {
+        DiscardCutoffs(byScope.mapValues(restamp))
+    }
 }
 
 /// `signIn` is the sign-in the op was made in. An entry read back from disk has none and goes out
 /// with the drain's, as a sign-out clears the outbox before the next account signs in.
 nonisolated struct OutboxEntry: Codable, Sendable {
     let id: UUID
-    let op: SyncOp
+    var op: SyncOp
     var attempts: Int
     var signIn: SignIn?
 
     private enum CodingKeys: String, CodingKey {
         case id, op, attempts
+    }
+
+    func with(_ op: SyncOp) -> OutboxEntry {
+        var entry = self
+        entry.op = op
+        return entry
+    }
+
+    func restamped(_ pullBack: SyncClock.PullBack) -> OutboxEntry {
+        with(op.restamped(pullBack.restamped))
     }
 }

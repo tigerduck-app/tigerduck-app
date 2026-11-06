@@ -295,6 +295,65 @@ struct OverrideStampTests {
         #expect(await coordinator.pendingCourseOverrides().colors == ["1151CS1001301"])
     }
 
+    @Test("Edits queued while the device clock ran a year ahead fall under the backend's clock once it answers, so Use Server drops them")
+    func editsQueuedAYearAheadAreDroppedByALaterUseServer() async throws {
+        let device = SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year)
+        let clock = SyncClockTests.makeClock(device)
+        let coordinator = Self.makeCoordinator(SettingsAPIStub.uniqueBaseURL(), clock: clock)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1001301", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 4242, moodleAssignmentId: 42, localStatus: "ignored")
+
+        device.set(SyncClockTests.ten)
+        try await SyncClockTests.backendAnswers(clock, at: SyncClockTests.ten)
+        await coordinator.discardEdits(of: [.courseColors, .assignments], courseIgnores: false)
+
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    @Test("An edit queued while the device clock ran a year ahead goes out under the backend's clock once an earlier send heard it")
+    func editQueuedAYearAheadGoesOutUnderTheBackendsClock() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let refused = baseURL.appendingPathComponent("sync/assignments/42/override")
+        let next = baseURL.appendingPathComponent("sync/assignments/43/override")
+        SettingsAPIStub.enqueue(.init(
+            statusCode: 409, body: Data(#"{"error":"clock_ahead","message":"ahead"}"#.utf8),
+            headerFields: ["X-TigerSync-Clock": String(SyncClockTests.ten)]
+        ), for: refused)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: refused)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: next)
+        let device = SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year)
+        let clock = SyncClockTests.makeClock(device)
+        let coordinator = Self.makeCoordinator(baseURL, clock: clock)
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 4242, moodleAssignmentId: 42, localStatus: "ignored")
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 4242, moodleAssignmentId: 43, localStatus: "ignored")
+
+        device.set(SyncClockTests.ten)
+        await coordinator.syncTick()
+
+        let sent = try SettingsAPIStub.requests(for: next).map { try (Self.json($0)["hlc"] as? NSNumber)?.int64Value }
+        #expect(sent.count == 1)
+        #expect(sent.allSatisfy { ($0 ?? .max) <= SyncClockTests.ten + SyncClock.backendLead })
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    @Test("A holiday setting made while the device clock ran a year ahead falls under the backend's clock once it answers")
+    func holidayMadeAYearAheadFallsUnderTheBackendsClock() async throws {
+        try await Self.withCleanHolidayDefaults { id, _, _ in
+            let device = SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year)
+            let clock = SyncClockTests.makeClock(device)
+            let store = AcademicCalendarStore(clock: clock)
+            let coordinator = Self.makeCoordinator(SettingsAPIStub.uniqueBaseURL(), clock: clock, calendar: store)
+            store.setNotify(true, forHoliday: id, for: testSignIn)
+
+            device.set(SyncClockTests.ten)
+            try await SyncClockTests.backendAnswers(clock, at: SyncClockTests.ten)
+
+            let madeAt = try #require(store.holidayEdit(id).madeAt)
+            #expect(PushAPI.clock(of: madeAt) <= SyncClockTests.ten + SyncClock.backendLead)
+            withExtendedLifetime(coordinator) {}
+        }
+    }
+
     private static func withCleanHolidayDefaults(
         _ body: (_ id: Int, _ url: URL, _ registration: PushRegistrationService) async throws -> Void
     ) async throws {
@@ -343,12 +402,12 @@ struct OverrideStampTests {
 
     private static func makeCoordinator(
         _ baseURL: URL, conflictCheckOwed: @escaping @Sendable () -> Bool = { false },
-        clock: SyncClock = .isolated(), outboxIn directory: URL = outboxDirectory()
+        clock: SyncClock = .isolated(), outboxIn directory: URL = outboxDirectory(), calendar: AcademicCalendarStore? = nil
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(
             pushCoordinator: pushCoordinator(baseURL, clock: clock), outbox: SyncOutbox(directory: directory), isEnabled: true,
             syncsAssignmentMarks: { !conflictCheckOwed() }, syncsCourseIgnores: { !conflictCheckOwed() }, syncsCourseOverrides: { _ in !conflictCheckOwed() },
-            account: AccountSession(signIns: testSignIns), clock: clock
+            account: AccountSession(signIns: testSignIns), calendar: calendar, clock: clock
         )
     }
 }

@@ -161,6 +161,10 @@ final class CourseStore {
         files.clearSemesterResets(outlivedBy: fetchedAt, keeping: owned, notAfter: latest, for: signIn)
     }
 
+    func restampSemesterResets(after pullBack: SyncClock.PullBack, for signIn: SignIn) {
+        files.restampSemesterResets(after: pullBack, for: signIn)
+    }
+
     /// Saves a term fetched with `display` from the start of the fetch at `token`. Dropped, and
     /// false, when the language or the labels changed meanwhile, as its names would be in the old
     /// ones, or when the user reset the term since.

@@ -10,6 +10,8 @@ push registration, the course catalog and `APIVersionGate`.
   stamp, a cutoff and a course add's start or landing, which are compared with stamps; `mark()`
   and `lowestNextMark` for a term reset's landing, a holiday edit and the full sync's fetch they
   are compared with. A `Date()` is compared only with another `Date()`.
+- A sync time kept past the request that stamped it, in memory or stored, moves with
+  `SyncClock.onPullBack` when a header brings the clock back.
 - Add Course searches the term's catalog from the backend (`CourseCatalog/`) on the device and
   sends the school nothing, with no school query or fallback to one.
 - Nothing derived from school data, the course and assignment uploads, goes before the

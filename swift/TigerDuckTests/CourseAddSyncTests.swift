@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import os
 import Testing
@@ -336,6 +337,42 @@ struct CourseAddSyncTests {
         _ = try await CourseReset.apply(at: resetAt, courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { true })
 
         #expect(cache.courses.loadUserAddedCourses().isEmpty)
+    }
+
+    @Test("A course added while the device clock ran a year ahead counts as landed once the backend answers")
+    func addLandedAYearAheadCountsAsLanded() async throws {
+        let backend = Backend()
+        backend.answer(200)
+        let device = SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year)
+        let clock = SyncClockTests.makeClock(device)
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]), clock: clock)
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+        #expect(backend.uploads.count == 1)
+
+        device.set(SyncClockTests.ten)
+        try await SyncClockTests.backendAnswers(clock, at: SyncClockTests.ten)
+
+        #expect(await coordinator.courseAddKeys(unlandedAt: clock.lowestNextStamp).isEmpty)
+    }
+
+    @Test("A term reset marked while the device clock ran a year ahead falls under the backend's clock once it answers")
+    func resetMarkedAYearAheadFallsUnderTheBackendsClock() async throws {
+        try await withExclusiveRealDefaults {
+            let device = SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year)
+            let clock = SyncClockTests.makeClock(device)
+            let cache = Self.makeCache(userAdded: [])
+            let coordinator = Self.makeCoordinator(Backend(), cache: cache, clock: clock)
+            let semester = "reset-\(UUID().uuidString)"
+            defer { Defaults[.semesterResetAt, for: testSignIn][semester] = nil }
+            cache.courses.recordSemesterReset(semester, at: clock.mark(), for: testSignIn)
+
+            device.set(SyncClockTests.ten)
+            try await SyncClockTests.backendAnswers(clock, at: SyncClockTests.ten)
+
+            let resetAt = try #require(cache.courses.loadSemesterResetAt()[semester])
+            #expect(PushAPI.clock(of: resetAt) <= SyncClockTests.ten + SyncClock.backendLead)
+            withExtendedLifetime(coordinator) {}
+        }
     }
 
     @Test("A reset made elsewhere leaves the hand-added and hidden courses alone when the sync may no longer write, as behind the lock screen")

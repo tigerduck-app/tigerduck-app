@@ -173,7 +173,7 @@ nonisolated final class BackendClient: Sendable {
         guard let http = response as? HTTPURLResponse else { throw PushAPIError.invalidResponse }
         let answer = BackendResponse(data: data, http: http)
         let ownClock = isFromThisBackend(answer) ? answer.serverClock : nil
-        if let clock, let ownClock { clock.hear(ownClock) }
+        if let clock, let ownClock, let pullBack = clock.hear(ownClock) { await clock.restamp(after: pullBack) }
         if (200..<300).contains(http.statusCode) || request.acceptsEveryStatus { return answer }
         let code = Self.errorCode(in: data)
         if http.statusCode == 401, request.authenticated, case .first = attempt, let sent, let signIn,

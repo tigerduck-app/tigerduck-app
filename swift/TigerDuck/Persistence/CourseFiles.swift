@@ -92,6 +92,10 @@ final class CourseFiles: AccountScoped {
 
     private static let semesterResetGrace: TimeInterval = 60
 
+    func restampSemesterResets(after pullBack: SyncClock.PullBack, for signIn: SignIn) {
+        Defaults[.semesterResetAt, for: signIn] = loadSemesterResetAt().mapValues(pullBack.restamped)
+    }
+
     func saveUserAddedCourses(_ courses: [SDCourse]) {
         persistent.save(courses.map { CachedCourse(from: $0) }, to: "user_added_courses.json")
     }

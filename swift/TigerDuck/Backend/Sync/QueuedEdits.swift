@@ -196,6 +196,12 @@ final class QueuedEdits {
         })
     }
 
+    func restamp(after pullBack: SyncClock.PullBack) async {
+        cutoffs = cutoffs.restamped(pullBack.restamped)
+        addStartedOrLandedAt = addStartedOrLandedAt.mapValues(pullBack.restamped)
+        await outbox.restamp(after: pullBack)
+    }
+
     func forgetDiscards() {
         cutoffs = DiscardCutoffs()
         addStartedOrLandedAt = [:]
