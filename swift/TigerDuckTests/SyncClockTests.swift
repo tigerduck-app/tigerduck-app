@@ -223,6 +223,39 @@ struct SyncClockTests {
         #expect(pullBack.restamped(later) >= pullBack.restamped(nearer))
     }
 
+    @Test("A time taken before two pull-backs moves with both and stays under a time taken between them")
+    func eraMovesATimeAcrossTwoPullBacks() throws {
+        let device = DeviceClock(Self.ten + Self.year)
+        let clock = Self.makeClock(device)
+        let before = clock.era
+        let first = clock.stamp()
+        device.set(Self.ten)
+        let firstPullBack = try #require(clock.hear(Self.ten))
+        let between = clock.era
+        device.set(Self.ten + 30 * 24 * 60 * Self.minute)
+        let second = clock.stamp()
+        device.set(Self.ten + Self.minute)
+        let secondPullBack = try #require(clock.hear(Self.ten + Self.minute))
+
+        #expect(before.current(first) == secondPullBack.restamped(firstPullBack.restamped(first)))
+        #expect(before.current(first) < between.current(second))
+        #expect(Self.clock(of: between.current(second)) <= Self.ten + Self.minute + SyncClock.backendLead)
+    }
+
+    @Test("A time a holder already moved stays where it is when it goes through the era, and the other way round")
+    func restampThenEraChangesNothing() throws {
+        let device = DeviceClock(Self.ten + Self.year)
+        let clock = Self.makeClock(device)
+        let era = clock.era
+        let kept = clock.stamp()
+        device.set(Self.ten)
+        let pullBack = try #require(clock.hear(Self.ten))
+
+        let moved = pullBack.restamped(kept)
+        #expect(era.current(moved) == moved)
+        #expect(pullBack.restamped(era.current(kept)) == era.current(kept))
+    }
+
     @Test("Stored values that read back missing or unreadable never produce a stamp at or before one already issued")
     func unreadableStoredValuesFailClosed() {
         let device = DeviceClock(Self.ten)
