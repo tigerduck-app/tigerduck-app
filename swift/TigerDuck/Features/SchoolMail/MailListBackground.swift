@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import os
 
 @MainActor
 final class MailListBackground {
@@ -9,6 +10,7 @@ final class MailListBackground {
     private let noteSeenByPage: (MailboxStatusInfo, SignIn) async -> Void
     private var warmTask: Task<Void, Never>?
     private var warmDone = false
+    private var flagStorageTask: Task<Void, Never>?
     private let warmDelay: @Sendable () async -> Void
     private weak var list: MailListViewModel?
 
@@ -60,6 +62,27 @@ final class MailListBackground {
     }
 
     func waitForWarm() async { await warmTask?.value }
+
+    func learnFlagStorage(for signIn: SignIn) {
+        guard let list, flagStorageTask == nil else { return }
+        let unknown = list.targets.filter { list.folders.storesFlagged[$0] == nil }
+        guard !unknown.isEmpty else { return }
+        flagStorageTask = Task { [weak self] in
+            defer { self?.flagStorageTask = nil }
+            do {
+                let found = try await list.session.use(for: signIn) { client -> [String: Bool] in
+                    var found: [String: Bool] = [:]
+                    for folder in unknown { found[folder] = try await client.storesFlagged(folder: folder) }
+                    return found
+                }
+                if signIn.isCurrent { list.folders.storesFlagged.merge(found) { $1 } }
+            } catch {
+                if signIn.isCurrent { AppLogger.mail.error("Flag storage check failed: \(String(describing: error), privacy: .private)") }
+            }
+        }
+    }
+
+    func waitForFlagStorage() async { await flagStorageTask?.value }
 
     var isIndexBusy: Bool { !indexer.isComplete || indexer.isDownloading }
 

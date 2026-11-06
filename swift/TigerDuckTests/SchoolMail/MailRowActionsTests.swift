@@ -41,7 +41,10 @@ struct MailRowActionsTests {
                                      warmDelay: { try? await Task.sleep(for: .seconds(86_400)) },
                                      catchUpDelay: { try? await Task.sleep(for: .seconds(86_400)) })
         let actions = MailRowActions(prefs: InMemoryMailPreferences(), notifier: MailNotifier(center: RecordingNotificationCenter()))
-        if loads { await list.load() }
+        if loads {
+            await list.load()
+            await list.background.waitForFlagStorage()
+        }
         return Harness(list: list, actions: actions, fake: fake, cache: cache, account: account)
     }
 
@@ -54,6 +57,7 @@ struct MailRowActionsTests {
         let h = await Self.harness()
         #expect(h.list.canFlag("INBOX"))
         await h.list.load()
+        await h.list.background.waitForFlagStorage()
         #expect(await h.fake.calls.filter { $0 == "storesFlagged INBOX" }.count == 1)
     }
 
@@ -71,7 +75,19 @@ struct MailRowActionsTests {
         h.account.endSignIn()
         await h.fake.release("storesFlagged")
         await loading.value
+        await h.list.background.waitForFlagStorage()
         #expect(!h.list.canFlag("INBOX"))
+    }
+
+    @Test func theListFinishesLoadingWithoutWaitingForTheFlagCheck() async throws {
+        let h = await Self.harness(loads: false)
+        await h.fake.holdNext("storesFlagged")
+        let loading = Task { await h.list.load() }
+        await h.fake.waitForArrival("storesFlagged")
+        #expect(!h.list.status.isRefreshing)
+        #expect(h.list.status.loadState == .loaded)
+        await h.fake.release("storesFlagged")
+        await loading.value
     }
 
     @Test(arguments: [

@@ -57,8 +57,8 @@ enum MailListLoader {
             if let failure = fetched.failure { throw failure }
             list.status.serverStatus = .ok
             list.status.loadState = .loaded
-            await learnFlagStorage(list: list, signIn: signIn)
             list.background.startIndexIfLoaded()
+            list.background.learnFlagStorage(for: signIn)
         } catch {
             guard list.isCurrent(selection, signIn) else { return }
             list.status.serverStatus = .failed
@@ -85,16 +85,6 @@ enum MailListLoader {
         guard list.isCurrent(selection, signIn) else { return .superseded }
         await list.writer.save(merged).value
         return .merged
-    }
-
-    private static func learnFlagStorage(list: MailListViewModel, signIn: SignIn) async {
-        let unknown = list.targets.filter { list.folders.storesFlagged[$0] == nil }
-        guard !unknown.isEmpty, let found = try? await list.session.use(for: signIn, { client -> [String: Bool] in
-            var found: [String: Bool] = [:]
-            for folder in unknown { found[folder] = try await client.storesFlagged(folder: folder) }
-            return found
-        }), signIn.isCurrent else { return }
-        list.folders.storesFlagged.merge(found) { $1 }
     }
 
     private static func adoptDefaultSelection(list: MailListViewModel) -> Bool {
