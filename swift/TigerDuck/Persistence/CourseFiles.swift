@@ -73,7 +73,7 @@ final class CourseFiles: AccountScoped {
         Defaults[.semesterResetAt]
     }
 
-    func recordSemesterReset(_ semester: String, at date: Date = Date(), for signIn: SignIn) {
+    func recordSemesterReset(_ semester: String, at date: Date, for signIn: SignIn) {
         Defaults[.semesterResetAt, for: signIn][semester] = date
     }
 

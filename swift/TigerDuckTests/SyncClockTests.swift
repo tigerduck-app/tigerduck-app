@@ -57,6 +57,22 @@ struct SyncClockTests {
         #expect(Self.clock(of: issuedLater.stamp()) == Self.ten + 60 * Self.minute + 1)
     }
 
+    @Test("A fetch's read of the next mark sits between the marks before and after it, with the backend behind or ahead", arguments: [Int64(-60), 10])
+    func lowestNextMarkSitsBetweenMarks(backendMinutesAhead: Int64) async {
+        let device = DeviceClock(Self.ten)
+        let clock = Self.makeClock(device)
+        await clock.hear(Self.ten + backendMinutesAhead * Self.minute)
+
+        let before = clock.mark()
+        let reading = clock.lowestNextMark
+        let after = clock.mark()
+
+        #expect(before >= device.now)
+        #expect(before <= reading)
+        #expect(reading <= after)
+        #expect(Self.clock(of: after) >= clock.readings.lastIssued)
+    }
+
     @Test("Two edits made before the device clock moves are a microsecond apart on the wire")
     func twoEditsInOneMicrosecond() {
         let clock = Self.makeClock(DeviceClock(Self.ten))

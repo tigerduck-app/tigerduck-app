@@ -293,7 +293,8 @@ final class SyncConflicts {
             dropQueuedEdits: { await self.app.cloudSyncCoordinator.discardEdits(of: $0, courseIgnores: $1) },
             sendCourses: {
                 try await ReenableAnswer.sendLocalCourses(
-                    localEdits: self.app.localEdits, push: self.app.pushCoordinator, for: signIn
+                    localEdits: self.app.localEdits, push: self.app.pushCoordinator,
+                    clock: self.app.cloudSyncCoordinator.clock, for: signIn
                 )
             },
             markCoursesForCheck: { self.markCategoryReenabled(.courses) },

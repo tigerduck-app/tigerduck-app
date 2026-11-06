@@ -105,8 +105,8 @@ final class AcademicCalendarStore: AccountScoped {
         if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }
         guard ids != before else { return false }
         Defaults[.holidayNotifyOverrides, for: signIn] = Array(ids).sorted()
-        lastHolidayEditAt = Date()
         Defaults[.holidayOverrideEditTimes, for: signIn][String(holidayID)] = clock.stamp()
+        lastHolidayEditAt = clock.mark()
         return true
     }
 

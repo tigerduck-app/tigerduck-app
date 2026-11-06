@@ -69,6 +69,17 @@ nonisolated final class SyncClock: Sendable {
         PushAPI.date(ofClock: min(readings.lastIssued, Self.overflowSafeCeiling - 1) + 1)
     }
 
+    /// A local event's time, for comparing with stamps and with `lowestNextMark`: later than every
+    /// stamp issued before it, and never before the device's clock.
+    func mark() -> Date {
+        max(now(), stamp())
+    }
+
+    /// Every mark taken before this read is at or below it, and every one taken after is at or above it.
+    var lowestNextMark: Date {
+        max(now(), lowestNextStamp)
+    }
+
     func stamp() -> Date {
         PushAPI.date(ofClock: update { readings in
             let device = PushAPI.clock(of: now())

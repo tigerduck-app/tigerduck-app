@@ -164,7 +164,7 @@ final class FullSyncRunner {
         let preFetchCourseOverrides = await coordinator.pendingCourseOverrides()
         let editGenerationAtFetch = app.localEdits.overrideEditGeneration
         let heldHolidayIDs = AcademicCalendarStore.shared.unacknowledgedHolidayIDs
-        let fetchedAt = Date()
+        let fetchedAt = coordinator.clock.lowestNextMark
         let (json, fetchedDeletes) = try await coordinator.courseDeletes(around: {
             try await app.pushCoordinator.fetchFullSync(for: signIn)
         })

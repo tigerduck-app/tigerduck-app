@@ -120,10 +120,10 @@ final class EditSender {
         if let semester { localEdits.resettingSemesters.insert(semester) }
         defer { if let semester { localEdits.resettingSemesters.remove(semester) } }
         do {
-            try await Self.resetCourses(semester: semester, on: coordinator, onServer: { [push] in
+            try await Self.resetCourses(semester: semester, on: coordinator, onServer: { [push, clock = coordinator.clock] in
                 try await push.deleteAllCourses(semester: semester, madeAt: madeAt, for: signIn)
                 AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
-                if let semester { CourseStore.shared.recordSemesterReset(semester, for: signIn) }
+                if let semester { CourseStore.shared.recordSemesterReset(semester, at: clock.mark(), for: signIn) }
                 push.forgetUploads(semester: semester)
             }, thenLocally: resetLocally)
             return true

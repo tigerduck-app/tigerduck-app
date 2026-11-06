@@ -268,6 +268,28 @@ struct CourseDeleteSyncTests {
         }
     }
 
+    @Test("A term reset made here is its own in the next snapshot on a device whose clock is behind the backend")
+    func termResetStaysOwnOnADeviceBehind() async {
+        await withExclusiveRealDefaults {
+            let saved = (Defaults[.cloudSyncEnabled], Defaults[.semesterResetAt, for: testSignIn])
+            defer {
+                Defaults[.cloudSyncEnabled, for: testSignIn] = saved.0
+                Defaults[.semesterResetAt, for: testSignIn] = saved.1
+            }
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
+            let backend = Backend()
+            let resetClock = SyncClockTests.laterThanAnyRun + 1
+            backend.answer("sync/courses?semester=1151&hlc=\(resetClock)")
+            let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
+            await clock.hear(SyncClockTests.laterThanAnyRun)
+
+            #expect(await Self.makeEditSender(backend, clock: clock).deleteBackendCourses(semester: "1151"))
+
+            let tombstone = ServerTombstone(["course_no": "CS1001301", "kind": "reset", "hlc": NSNumber(value: resetClock)])
+            #expect(tombstone.isOwnReset(landedAt: CourseStore.shared.loadSemesterResetAt()["1151"]))
+        }
+    }
+
     @Test("Adding a course back drops its hides made before the re-add, but not one made after it while the drop was on its way")
     func reAddKeepsAHideMadeAfterIt() async {
         let coordinator = Self.makeCoordinator(Backend())

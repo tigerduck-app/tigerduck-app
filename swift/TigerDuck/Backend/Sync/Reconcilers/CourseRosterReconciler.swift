@@ -53,7 +53,7 @@ struct CourseRosterReconciler: CategoryReconciler {
 
         for semester in semesters.sorted() {
             if app.localEdits.resettingSemesters.contains(semester) { continue }
-            if let reset = resetAt[semester], reset > fetchedAt { continue }
+            if let reset = resetAt[semester], reset >= fetchedAt { continue }
             let term = Self.readTerm(
                 semester, rows: rowsBySemester[semester] ?? [], tombstones: tombstonesBySemester[semester] ?? [],
                 selectionDropped: Set(selectionDropped[semester] ?? []), userAdded: userAdded, hidden: deletedNos,

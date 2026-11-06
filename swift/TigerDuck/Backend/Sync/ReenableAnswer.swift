@@ -50,7 +50,7 @@ enum ReenableAnswer {
     }
 
     static func sendLocalCourses(
-        localEdits: LocalEdits, push: PushCoordinator, for signIn: SignIn
+        localEdits: LocalEdits, push: PushCoordinator, clock: SyncClock, for signIn: SignIn
     ) async throws {
         guard SyncPolicy.current.uploadsCourses else { return }
         let terms = SemesterCatalog.availableSemesters().map { semester in
@@ -61,9 +61,12 @@ enum ReenableAnswer {
         localEdits.resettingSemesters.formUnion(latched)
         defer {
             localEdits.resettingSemesters.subtract(latched)
-            for semester in latched { CourseStore.shared.recordSemesterReset(semester, for: signIn) }
+            let landedAt = clock.mark()
+            for semester in latched { CourseStore.shared.recordSemesterReset(semester, at: landedAt, for: signIn) }
         }
-        try await keepLocalCourses(terms, hiding: Set(CourseStore.shared.loadDeletedCourseNos()), on: push, for: signIn)
+        try await keepLocalCourses(
+            terms, hiding: Set(CourseStore.shared.loadDeletedCourseNos()), on: push, for: signIn, clock: clock
+        )
     }
 
     static func queueLocalEdits(of conflict: Conflict, edits: EditSender, for signIn: SignIn) -> [Task<Void, Never>] {

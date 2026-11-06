@@ -176,7 +176,7 @@ struct CourseIgnoresReconciler: CategoryReconciler {
         let now = Date()
         let deleting = app.localEdits.recentCourseDeletions.filter { now.timeIntervalSince($0.value) < LocalEdits.courseDeleteGraceInterval }
         let resetSemesters = app.localEdits.resettingSemesters.union(
-            CourseStore.shared.loadSemesterResetAt().filter { $0.value > fetchedAt }.keys
+            CourseStore.shared.loadSemesterResetAt().filter { $0.value >= fetchedAt }.keys
         )
         let current = AssignmentStore.shared.loadIgnoredAssignmentCourses()
         let listed = Self.listedCourses(coursesArray)
