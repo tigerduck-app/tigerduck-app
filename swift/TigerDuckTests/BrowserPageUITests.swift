@@ -273,6 +273,8 @@ struct BrowserPageUITests {
         let pageUI = BrowserPageUI { _, _ in }
         let dialogs = pageUI.dialogs
         dialogs.show = { _ in }
+        var time = ContinuousClock.now
+        dialogs.now = { time }
         let sites = Sites([
             "page.example": "<iframe src=\"\(Sites.scheme)://embedded.example/\"></iframe>",
             "embedded.example": "<script>alert('來自嵌入的網站')</script>",
@@ -289,6 +291,7 @@ struct BrowserPageUITests {
         #expect(embedded.message == "來自嵌入的網站")
         dialogs.answer(embedded, with: "")
 
+        time += BrowserDialogs.inARowGap
         webView.evaluateJavaScript("alert('來自頁面')", completionHandler: nil)
         try await waitUntil { dialogs.shown != nil }
         let own = try #require(dialogs.shown)
@@ -296,6 +299,7 @@ struct BrowserPageUITests {
         dialogs.answer(own, with: "")
 
         let sandboxed = "<iframe sandbox=\"allow-scripts allow-modals\" src=\"\(Sites.scheme)://sandboxed.example/\"></iframe>"
+        time += BrowserDialogs.inARowGap
         webView.evaluateJavaScript("document.body.insertAdjacentHTML('beforeend', '\(sandboxed)')", completionHandler: nil)
         try await waitUntil { dialogs.shown != nil }
         let opaque = try #require(dialogs.shown)
@@ -303,6 +307,7 @@ struct BrowserPageUITests {
         dialogs.answer(opaque, with: "")
 
         let srcdoc = "<iframe sandbox=\"allow-scripts allow-modals\" srcdoc=\"<script>alert(`來自內嵌文件`)</script>\"></iframe>"
+        time += BrowserDialogs.inARowGap
         webView.evaluateJavaScript("document.body.insertAdjacentHTML('beforeend', '\(srcdoc)')", completionHandler: nil)
         try await waitUntil { dialogs.shown != nil }
         let hostless = try #require(dialogs.shown)
@@ -326,6 +331,34 @@ struct BrowserPageUITests {
         pageUI = nil
         try await waitUntil { webView.title == "false" }
         #expect(dialogs.shown == nil)
+    }
+
+    @Test("in the browser's own web view, a page asking dialog after dialog gets the rest cancelled unseen until its next page")
+    func aPageAskingOverAndOverIsCancelledUntilItsNextPage() async throws {
+        let page = BrowserPage()
+        let navigator = BrowserNavigator(page: page, auth: nil)
+        let webView = try Self.browsersWebView(page, navigator)
+        let dialogs = try #require((webView.uiDelegate as? BrowserPageUI)?.dialogs)
+        let start = ContinuousClock.now
+        dialogs.now = { start }
+        var shown = 0
+        dialogs.show = { dialog in
+            shown += 1
+            Task { dialogs.answer(dialog, with: "") }
+        }
+        let limit = BrowserDialogs.dialogsInARow
+        webView.loadHTMLString(
+            "<script>document.title = Array.from({ length: \(limit + 2) }, () => confirm('再確認一次？')).join()</script>",
+            baseURL: Self.site
+        )
+        let answers = (Array(repeating: "true", count: limit) + ["false", "false"]).joined(separator: ",")
+        try await waitUntil { webView.title == answers }
+        #expect(shown == limit)
+
+        webView.loadHTMLString("<script>document.title = String(confirm('確定要送出嗎？'))</script>", baseURL: Self.site)
+        try await waitUntil { webView.title == "true" }
+        #expect(shown == limit + 1)
+        withExtendedLifetime(navigator) {}
     }
 
     @Test("the browser's own web view brings its page's dialogs to its page UI")

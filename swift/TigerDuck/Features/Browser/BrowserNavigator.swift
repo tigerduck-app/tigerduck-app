@@ -219,6 +219,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKDownloadDelegate
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        pageUI.dialogs.pageChanged()
         page.applySiteSettings()
     }
 
