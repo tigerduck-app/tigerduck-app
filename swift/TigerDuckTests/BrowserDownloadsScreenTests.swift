@@ -69,7 +69,7 @@ struct BrowserDownloadsScreenTests {
             let sheet = try await Self.sheet(in: window, showing: title)
             let row = try #require(accessibilityElement(labeled: title, in: sheet))
             #expect(row.accessibilityValue == 0.25.formatted(.percent.precision(.fractionLength(0))))
-            try await Task.sleep(for: .milliseconds(600))
+            try await waitUntil { window.isStill }
             window.saveSnapshot(as: Self.name("menu", screen))
 
             // The menu runs under the sheet's empty navigation bar, which must not take its first row's taps.
@@ -92,8 +92,7 @@ struct BrowserDownloadsScreenTests {
                 .accessibilityActivate())
             let cancel = String(localized: "browser_download_cancel")
             let sheet = try await Self.sheet(in: window, showing: cancel)
-            try await waitUntil { accessibilityElement(labeled: String(localized: "action_retry"), in: sheet) != nil }
-            try await Task.sleep(for: .milliseconds(800))
+            try await waitUntil { accessibilityElement(labeled: String(localized: "action_retry"), in: sheet) != nil && window.isStill }
             window.saveSnapshot(as: Self.name("list", screen))
 
             let texts = exposedAccessibilityTexts(in: sheet)
@@ -102,7 +101,9 @@ struct BrowserDownloadsScreenTests {
             #expect(texts.contains { $0.contains(String(localized: "browser_download_failed")) })
             let clear = try #require(accessibilityElement(labeled: String(localized: "browser_downloads_clear"), in: sheet))
             #expect(!clear.accessibilityTraits.contains(.notEnabled))
-            let frames = try [cancel, String(localized: "browser_downloads_open_in_files"), String(localized: "action_retry")].map {
+            // A saved row offers Open in Files as an action of its own instead.
+            #expect(accessibilityElement(labeled: String(localized: "browser_downloads_open_in_files"), in: sheet) == nil)
+            let frames = try [cancel, String(localized: "action_retry")].map {
                 try #require(accessibilityElement(labeled: $0, in: sheet), "\($0)").accessibilityFrame
             }
             #expect(frames.allSatisfy { $0.maxX <= screen.width + 0.5 && $0.width.rounded() >= 44 }, "\(frames)")
@@ -130,18 +131,19 @@ struct BrowserDownloadsScreenTests {
             try await waitUntil {
                 Self.element(containing: saved, in: sheet).map { screenFrame.contains($0.accessibilityFrame) } == true
             }
-            try await Task.sleep(for: .milliseconds(600))
+            try await waitUntil { window.isStill }
             let row = try #require(Self.element(containing: saved, in: sheet))
             let remove = String(localized: "action_remove")
-            #expect((row.accessibilityCustomActions ?? []).filter { $0.name == remove }.count == 1)
+            let actions = (row.accessibilityCustomActions ?? []).map(\.name)
+            #expect(actions.filter { $0 == remove }.count == 1, "\(actions)")
+            #expect(actions.filter { $0 == String(localized: "browser_downloads_open_in_files") }.count == 1, "\(actions)")
             let frame = row.accessibilityFrame
             let center = window.convert(CGPoint(x: frame.midX, y: frame.midY), from: window.screen.coordinateSpace)
             try await fingerTap(at: center, in: window, holding: .milliseconds(1_200))
             try await waitUntil {
                 [String(localized: "browser_download_open"), String(localized: "browser_share_short"), remove]
-                    .allSatisfy { accessibilityElement(labeled: $0, in: window) != nil }
+                    .allSatisfy { accessibilityElement(labeled: $0, in: window) != nil } && window.isStill
             }
-            try await Task.sleep(for: .milliseconds(800))
             window.saveSnapshot(as: Self.name("long-press", screen))
         }
     }

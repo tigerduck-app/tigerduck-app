@@ -25,7 +25,7 @@ nonisolated struct StorageSizes: Equatable, Sendable {
 
     var total: Int { bytes.values.reduce(0, +) }
 
-    static func text(_ bytes: Int) -> String {
+    static func text(_ bytes: some BinaryInteger) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 

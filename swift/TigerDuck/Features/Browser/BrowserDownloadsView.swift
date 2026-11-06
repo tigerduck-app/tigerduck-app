@@ -32,7 +32,7 @@ struct BrowserDownloadsView: View {
                     .disabled(!downloads.canClear)
             }
         }
-        .alert(String(localized: "browser_downloads_delete_title"), isPresented: $confirmsClear) {
+        .alert(StorageKind.browserDownloads.deleteConfirmation?.title ?? "", isPresented: $confirmsClear) {
             Button(String(localized: "action_cancel"), role: .cancel) {}
             Button(String(localized: "action_delete"), role: .destructive) { Task { await downloads.clear() } }
         }
@@ -42,7 +42,7 @@ struct BrowserDownloadsView: View {
     }
 
     private func running(_ item: BrowserDownloads.Item) -> some View {
-        let amount = [item.received, item.expected].compactMap { $0.map(Self.size) }.joined(separator: " / ")
+        let amount = [item.received, item.expected].compactMap { $0.map { StorageSizes.text($0) } }.joined(separator: " / ")
         return HStack(spacing: TigerDuckTheme.Spacing.md) {
             BrowserDownloadLabel(name: item.name) {
                 if let expected = item.expected, expected > 0 {
@@ -67,22 +67,25 @@ struct BrowserDownloadsView: View {
 
     private func saved(_ entry: SavedDownloads.Entry) -> some View {
         let file = downloads.store.url(of: entry)
-        let open: () -> Void = { files.show(downloaded: file, mimeType: nil) }
+        let open: () -> Void = { if let file { files.show(downloaded: file, mimeType: nil) } }
         let remove: () -> Void = { Task { await downloads.remove(entry) } }
         return HStack(spacing: TigerDuckTheme.Spacing.md) {
             Button(action: open) {
                 BrowserDownloadLabel(name: entry.name) {
-                    Text(String(format: String(localized: "browser_download_done"), Self.size(Int64(entry.size))))
+                    Text(String(format: String(localized: "browser_download_done"), StorageSizes.text(entry.size)))
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityAction(named: Text(String(localized: "browser_downloads_open_in_files")), openFolder)
             // iOS 26 puts the swipe action below on no accessibility element.
             .accessibilityAction(named: Text(String(localized: "action_remove")), remove)
+            // The row's action above stands in for it, so VoiceOver does not read it on every row.
             accessory("magnifyingglass", String(localized: "browser_downloads_open_in_files"), openFolder)
+                .accessibilityHidden(true)
         }
         .contextMenu {
             Button(String(localized: "browser_download_open"), systemImage: "doc", action: open)
-            Button(String(localized: "browser_share_short"), systemImage: "square.and.arrow.up") { files.share(link: file) }
+            Button(String(localized: "browser_share_short"), systemImage: "square.and.arrow.up") { if let file { files.share(link: file) } }
             Button(String(localized: "browser_downloads_open_in_files"), systemImage: "folder", action: openFolder)
             Divider()
             Button(String(localized: "action_remove"), systemImage: "trash", role: .destructive, action: remove)
@@ -107,10 +110,6 @@ struct BrowserDownloadsView: View {
         let folder = downloads.store.folder
         Task { showsPicker = await FilesFolderOpener().route(to: folder) == .picker }
     }
-
-    private static func size(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
 }
 
 private struct BrowserDownloadLabel<Status: View>: View {
@@ -119,24 +118,34 @@ private struct BrowserDownloadLabel<Status: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            Image(systemName: "doc")
-                .font(.title2)
-                .foregroundStyle(.secondary)
-                .frame(width: 30)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
-                Text(name)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
-                    .truncationMode(.middle)
-                VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) { status }
-                    .font(.footnote)
+        let isLarge = dynamicTypeSize.isAccessibilitySize
+        // At accessibility sizes the status takes the row's whole width, which it needs to wrap
+        // between words.
+        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
+            HStack(alignment: isLarge ? .firstTextBaseline : .center, spacing: TigerDuckTheme.Spacing.md) {
+                Image(systemName: "doc")
+                    .font(.title2)
                     .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                    .frame(width: 30)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
+                    Text(name)
+                        .lineLimit(isLarge ? 3 : 1)
+                        .truncationMode(.middle)
+                    if !isLarge { details }
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if isLarge { details }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(.rect)
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) { status }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
     }
 }
 

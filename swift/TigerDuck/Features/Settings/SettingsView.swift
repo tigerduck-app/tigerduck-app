@@ -120,7 +120,7 @@ struct SettingsList: View {
                 StorageSettingsView()
             } label: {
                 LabeledContent(SettingsRow.storage.label) {
-                    Text(storageBytes.map(StorageSizes.text) ?? "…")
+                    Text(storageBytes.map { StorageSizes.text($0) } ?? "…")
                         .monospacedDigit()
                 }
             }

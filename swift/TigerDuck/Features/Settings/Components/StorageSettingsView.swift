@@ -105,7 +105,7 @@ private struct StorageRow: View {
             texts {
                 Text(kind.title)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(sizes == nil ? "…" : size.map(StorageSizes.text) ?? "")
+                Text(sizes == nil ? "…" : size.map { StorageSizes.text($0) } ?? "")
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                     .fixedSize()
@@ -232,7 +232,7 @@ extension StorageKind {
         }
     }
 
-    fileprivate var deleteConfirmation: (title: String, message: String?)? {
+    var deleteConfirmation: (title: String, message: String?)? {
         switch self {
         case .moodleFiles, .moodleData, .mailAttachments, .mailCache:
             nil
