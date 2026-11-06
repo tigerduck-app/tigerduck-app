@@ -294,6 +294,28 @@ def write_7z_tables() -> None:
     )
 
 
+def write_deep_and_pax() -> None:
+    """A zip with three files three folders deep and two the app leaves out, one 65 levels deep
+    and one whose path is over 1,024 bytes; and a tar.gz whose one entry carries more than
+    1 MiB of pax extension records."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name in [
+            "README.md", "a/b/c/one.txt", "deep/" * 64 + "deep.txt", "d/e/f/two.txt",
+            "long/" + "n" * 1024 + ".txt", "g/h/i/three.txt",
+        ]:
+            archive.writestr(zipfile.ZipInfo(name, MTIME), NOTES)
+    (OUT / "archive-deep.zip").write_bytes(buffer.getvalue())
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as archive:
+        info = tarfile.TarInfo("README.md")
+        info.size = len(README)
+        info.mtime = EPOCH
+        info.pax_headers = {"SCHILY.xattr.user.note": "n" * (1 << 20)}
+        archive.addfile(info, io.BytesIO(README))
+    (OUT / "archive-big-pax.tar.gz").write_bytes(gzip.compress(buffer.getvalue(), mtime=0))
+
+
 def write_huge_sizes() -> None:
     """Entries declaring 2**63 - 1 bytes and followed by none of them: a zip with no central
     directory, so it is read as a stream, its sizes in a zip64 extra field, and an encrypted
@@ -423,6 +445,7 @@ def main() -> None:
     write_7z_tables()
     write_huge_sizes()
     write_zip64()
+    write_deep_and_pax()
     write_rar5()
     write_rar4()
     for path in sorted(OUT.iterdir()):

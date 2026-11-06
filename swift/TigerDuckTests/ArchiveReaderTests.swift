@@ -156,6 +156,17 @@ struct ArchiveReaderTests {
         #expect(Self.problem { _ = try ArchiveReader.list(Self.fixture("archive-dumpdir.tar.bz2"), limits: limits) } == .tooLarge)
     }
 
+    @Test("an entry nested more than 64 levels deep or with a path over 1,024 bytes is left out")
+    func deepPaths() throws {
+        let listing = try ArchiveReader.list(Self.fixture("archive-deep.zip"))
+        #expect(listing.items.map(\.path) == ["README.md", "a/b/c/one.txt", "d/e/f/two.txt", "g/h/i/three.txt"])
+    }
+
+    @Test("a tar entry carrying more than 1 MiB of pax extension records can't be read")
+    func bigPaxRecords() {
+        #expect(Self.problem { _ = try ArchiveReader.list(Self.fixture("archive-big-pax.tar.gz")) } == .broken)
+    }
+
     @Test("an entry declaring the largest size there is fails cleanly when passed over",
           arguments: ["archive-huge-size.zip", "archive-huge-size.rar"])
     func hugeSizes(name: String) throws {
@@ -257,11 +268,11 @@ struct ArchiveReaderTests {
     }
 
     @Test("folders come first, each sorted as Files sorts, and a folder only a file names still shows")
-    func tree() {
+    func tree() throws {
         func item(_ index: Int, _ path: String, directory: Bool = false) -> ArchiveItem {
             ArchiveItem(index: index, path: path, size: 1, modified: nil, isDirectory: directory, problem: nil)
         }
-        let tree = ArchiveTree([
+        let tree = try ArchiveTree([
             item(0, "week10.pdf"), item(1, "week2.pdf"), item(2, "src/main.c"), item(3, "docs", directory: true),
             item(4, "docs/a/b.txt"), item(5, "empty", directory: true),
         ])

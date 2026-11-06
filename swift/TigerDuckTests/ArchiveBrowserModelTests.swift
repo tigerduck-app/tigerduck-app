@@ -18,6 +18,21 @@ struct ArchiveBrowserModelTests {
         return item
     }
 
+    @Test("folders a listing implies count toward its limit, and the listing says where it stopped")
+    func impliedFolders() async throws {
+        let session = try ArchiveReaderTests.folder()
+        defer { try? FileManager.default.removeItem(at: session) }
+        let archive = try ArchiveReaderTests.fixture("archive-deep.zip")
+        let model = ArchiveBrowserModel(archive: archive, session: session, limits: ArchiveLimits(maxItems: 7))
+        await model.load()
+        guard case .listed(let tree, let truncatedAt) = model.phase else {
+            Issue.record("not listed: \(model.phase)")
+            return
+        }
+        #expect(truncatedAt == 3)
+        #expect(tree.children(of: "").map(\.name) == ["a", "d", "README.md"])
+    }
+
     @Test("a file opens in Quick Look from the browser's own folder, and a second tap opens the same copy")
     func opensInQuickLook() async throws {
         let (model, session) = try Self.model("archive-sample.zip")
