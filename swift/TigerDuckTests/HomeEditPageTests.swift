@@ -72,14 +72,17 @@ struct HomeEditPageTests {
                 #expect(Self.moveActions(of: card(.gpa)) == [Self.moveUp])
 
                 var expected = try Self.dragged(ids(), "calendar", onto: "library")
-                try Self.perform(Self.moveUp, on: card(.calendar))
+                let calendarUp = try Self.action(Self.moveUp, of: card(.calendar))
+                #expect(try Self.perform(calendarUp))
                 #expect(ids() == ["calendar", "library", "gpa"])
                 #expect(ids() == expected)
                 #expect(Self.savedLayout()?.first?.widgets.map(\.id) == expected)
+                try Self.perform(calendarUp)
+                #expect(ids() == expected, "an action the card no longer offers moves nothing")
 
                 try await waitUntil { Self.moveActions(of: card(.library)) == [Self.moveUp, Self.moveDown] }
                 expected = try Self.dragged(ids(), "library", onto: "gpa")
-                try Self.perform(Self.moveDown, on: card(.library))
+                #expect(try Self.perform(Self.action(Self.moveDown, of: card(.library))))
                 #expect(ids() == ["calendar", "gpa", "library"])
                 #expect(ids() == expected)
                 #expect(Self.savedLayout()?.first?.widgets.map(\.id) == expected)
@@ -113,7 +116,7 @@ struct HomeEditPageTests {
                 #expect(Self.moveActions(of: handle(.custom)) == [Self.moveUp])
 
                 let expected = try Self.dragged(ids(), "quickWidgets", onto: "upcomingAssignments")
-                try Self.perform(Self.moveUp, on: handle(.quickWidgets))
+                #expect(try Self.perform(Self.action(Self.moveUp, of: handle(.quickWidgets))))
                 #expect(ids() == ["todayCourses", "quickWidgets", "upcomingAssignments", "custom"])
                 #expect(ids() == expected)
                 #expect(Self.savedLayout()?.map(\.id) == expected)
@@ -148,13 +151,14 @@ struct HomeEditPageTests {
         (element?.accessibilityCustomActions ?? []).map(\.name).filter { [moveUp, moveDown].contains($0) }
     }
 
-    static func perform(_ name: String, on element: NSObject?) throws {
-        let action = try #require(element?.accessibilityCustomActions?.first { $0.name == name })
-        if let handler = action.actionHandler {
-            #expect(handler(action))
-        } else {
-            _ = (action.target as AnyObject?)?.perform(action.selector, with: action)
-        }
+    static func action(_ name: String, of element: NSObject?) throws -> UIAccessibilityCustomAction {
+        try #require(element?.accessibilityCustomActions?.first { $0.name == name })
+    }
+
+    @discardableResult
+    static func perform(_ action: UIAccessibilityCustomAction) throws -> Bool {
+        let handler = try #require(action.actionHandler)
+        return handler(action)
     }
 
     static func dragged(_ ids: [String], _ id: String, onto target: String) throws -> [String] {

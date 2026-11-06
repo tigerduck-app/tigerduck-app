@@ -161,12 +161,13 @@ extension View {
     ) -> some View {
         let index = shownIDs.firstIndex(of: id)
         func step(_ offset: Int) {
-            guard let index, shownIDs.indices.contains(index + offset),
-                  ReorderDropSupport.move(id, onto: shownIDs[index + offset], in: currentIDs(), moveAction: moveAction)
+            let shown = currentIDs().filter(shownIDs.contains)
+            guard let from = shown.firstIndex(of: id), shown.indices.contains(from + offset),
+                  ReorderDropSupport.move(id, onto: shown[from + offset], in: currentIDs(), moveAction: moveAction)
             else { return }
             onPersist()
             var position = AttributedString(
-                String(format: String(localized: "a11y_home_edit_position"), index + offset + 1, shownIDs.count)
+                String(format: String(localized: "a11y_home_edit_position"), from + offset + 1, shown.count)
             )
             // Other speech cannot interrupt a high-priority announcement (AccessibilityNotification.Announcement).
             position.accessibilitySpeechAnnouncementPriority = .high
