@@ -27,7 +27,7 @@ private struct FilePreview: ViewModifier {
                 opened = archive
             }
             .fullScreenCover(item: $opened, onDismiss: closed) { archive in
-                ArchiveBrowser(archive: archive.url, session: archive.session)
+                ArchiveBrowser(archive: archive.url, session: archive.session).id(archive.id)
             }
         #else
         content.quickLookPreview($url, in: items)
@@ -46,7 +46,7 @@ private struct FilePreview: ViewModifier {
     }
 
     private func closed() {
-        // A cover is dismissed too when another archive's replaces it, which stays open.
+        // SwiftUI documents a cover whose item changes as dismissed and shown again.
         guard opened == nil else { return }
         if let session { ArchiveCache.shared.remove(session) }
         session = nil
