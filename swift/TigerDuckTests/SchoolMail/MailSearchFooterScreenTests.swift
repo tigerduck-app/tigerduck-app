@@ -71,6 +71,46 @@ struct MailSearchFooterScreenTests {
         }
     }
 
+    enum StopBeforeCount: String, CaseIterable { case failed, paused }
+
+    @Test("a pass that stopped before counting leaves the footer saying the search may miss mail",
+          arguments: ClubScreensTests.looks, StopBeforeCount.allCases)
+    func stoppedBeforeCount(look: ClubScreensTests.Look, stop: StopBeforeCount) async throws {
+        try await withAccessibilityAutomation {
+            let h = MailListViewModelTests.harness(warmDelay: {})
+            switch stop {
+            case .failed:
+                await h.fake.update { $0.undeletedUIDsError = .unreachable }
+                await h.model.load()
+                await h.model.waitForIndex()
+            case .paused:
+                await h.fake.hold("undeletedUIDs")
+                await h.model.load()
+                await h.fake.waitForArrival("undeletedUIDs")
+                h.model.stopPolling()
+                await h.fake.release("undeletedUIDs")
+                try await waitUntil { !h.model.background.indexer.isRunning }
+            }
+            #expect(h.model.background.indexer.progress == .counting)
+            h.model.searchText = "公告 60"
+            await h.model.submitSearch()
+            #expect(h.model.displayedRows.map(\.uid) == [60])
+
+            let window = try ClubScreensTests.show(SearchResults(model: h.model), look: look,
+                                                   height: look.textSize == .large ? 812 : 2_000)
+            defer { window.isHidden = true }
+            let partial = String(localized: "school_mail_search_index_partial")
+            try await waitUntil { shownListLabels(in: window).contains(partial) }
+            let footer = MailListFooter(viewModel: h.model, hasRows: true)
+            #expect(footer.text == partial)
+            #expect(!footer.showsSpinner)
+            let element = try #require(accessibilityElement(labeled: partial, in: window))
+            #expect(element.accessibilityFrame.minX >= 0 && element.accessibilityFrame.maxX <= window.bounds.maxX + 0.5)
+            try await Task.sleep(for: .milliseconds(400))
+            window.saveSnapshot(as: "mail-search-\(stop.rawValue)-before-count-\(look.testDescription)-\(Self.language)")
+        }
+    }
+
     @Test("the footer leaves while the list shows its own spinner")
     func oneSpinner() async throws {
         try await withAccessibilityAutomation {

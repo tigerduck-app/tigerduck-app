@@ -36,6 +36,7 @@ actor FakeMailClient: MailClient {
     var copyError: MailClientError?
     var setFlagError: MailClientError?
     var deletedUIDsError: MailClientError?
+    var undeletedUIDsError: MailClientError?
     var createFolderError: MailClientError?
     var createdFolderName: String?
     var listFoldersError: MailClientError?
@@ -232,6 +233,7 @@ actor FakeMailClient: MailClient {
     func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
         calls.append("undeletedUIDs \(folder)")
         await gate("undeletedUIDs")
+        if let undeletedUIDsError { throw undeletedUIDsError }
         return ((folders[folder] ?? []).map(\.summary).filter { !$0.isDeleted }.map(\.uid), uidValidity[folder] ?? 1)
     }
 
