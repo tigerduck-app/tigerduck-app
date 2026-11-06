@@ -23,7 +23,6 @@ struct AccentGradientStopRow: View {
             }
             ColorPicker(name, selection: color, supportsOpacity: false)
                 .labelsHidden()
-                .accessibilityLabel(name)
                 .accessibilityValue(hex)
             Text(hex)
                 .monospacedDigit()
