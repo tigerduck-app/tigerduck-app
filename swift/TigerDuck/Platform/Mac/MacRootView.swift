@@ -13,7 +13,7 @@ struct MacRootView: View {
             }
         }
         .tlsPinPrompt()
-        .tint(app.preferences.accentStyle)
+        .tint(app.preferences.accentTint)
     }
 }
 

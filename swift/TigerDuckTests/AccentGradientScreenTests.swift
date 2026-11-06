@@ -80,7 +80,7 @@ struct AccentGradientScreenTests {
             try await Self.withAccent(Editing.linear.accent) { preferences in
                 let view = SettingsList(sheets: SettingsSheetState())
                 let (window, host) = try Screen.show(
-                    view.tint(preferences.accentStyle), state: Screen.allOpenButSchool(preferences),
+                    view.tint(preferences.accentTint), state: Screen.allOpenButSchool(preferences),
                     preferences: preferences, width: 375, height: look.height, style: look.style
                 )
                 defer { window.isHidden = true }
@@ -99,7 +99,7 @@ struct AccentGradientScreenTests {
     func editor(editing: Editing, look: Look) async throws {
         try await withAccessibilityAutomation {
             try await Self.withAccent(editing.accent) { preferences in
-                let (window, host) = try Self.window(AccentGradientEditor(preferences: preferences).tint(preferences.accentStyle), look: look)
+                let (window, host) = try Self.window(AccentGradientEditor(preferences: preferences).tint(preferences.accentTint), look: look)
                 defer { window.isHidden = true }
                 let accent = editing.accent
                 let add = Self.label("action_add")
@@ -130,7 +130,7 @@ struct AccentGradientScreenTests {
         try await withAccessibilityAutomation {
             try await Self.withAccent(Editing.linear.accent) { preferences in
                 let window = try MoreScreen.window(
-                    width: 375, height: 812, style: look.style, textSize: look.size, tint: preferences.accentStyle,
+                    width: 375, height: 812, style: look.style, textSize: look.size, tint: preferences.accentTint,
                     settings: EmptyView(), feature: EmptyView()
                 )
                 window.makeKeyAndVisible()

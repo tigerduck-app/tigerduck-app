@@ -154,7 +154,7 @@ private struct AutoProgressBar: View {
             } currentValueLabel: {
                 EmptyView()
             }
-            .tint(accentFill(snapshot))
+            .tint(snapshot.accentGradient?.tintStyle(color: hexColor) ?? AnyShapeStyle(hexColor(snapshot.accentHex)))
             .scaleEffect(x: 1, y: 1.2, anchor: .center)
             .padding(.vertical, 6)
         }

@@ -182,6 +182,8 @@ final class AppPreferences {
 
     var accentStyle: AnyShapeStyle { accent.shapeStyle(color: Self.accentColor(hex:)) }
 
+    var accentTint: AnyShapeStyle { accent.tintStyle(color: Self.accentColor(hex:)) }
+
     static func accentColor(hex: Int) -> Color {
         let rgb = Int(UInt(bitPattern: hex) & 0xFFFFFF)
         return .adaptive(light: Color(hex: UInt(AccentContrast.readableOnLight(rgb))), dark: Color(hex: UInt(rgb)))

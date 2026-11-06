@@ -65,9 +65,8 @@ struct AccentGradientEditor: View {
     }
 
     private var preview: some View {
-        let style = fill(readable)
-        return VStack(spacing: TigerDuckTheme.Spacing.md) {
-            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg).fill(style).frame(height: 96)
+        VStack(spacing: TigerDuckTheme.Spacing.md) {
+            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg).fill(fill(readable)).frame(height: 96)
             HStack {
                 Image(systemName: "chart.bar.fill")
                     .font(.title)
@@ -91,7 +90,7 @@ struct AccentGradientEditor: View {
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.sm)
         }
-        .tint(style)
+        .tint(readable.tintStyle(color: AppPreferences.accentColor(hex:)))
         .accessibilityHidden(true)
         .padding(.vertical, TigerDuckTheme.Spacing.xs)
     }
@@ -159,16 +158,18 @@ struct AccentGradientEditor: View {
 
     private func stopRow(_ index: Int) -> some View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
-            Button {
-                draft.stops.remove(at: index)
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.white, .red)
+            if draft.isGradient {
+                Button {
+                    draft.stops.remove(at: index)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.white, .red)
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(String(localized: "action_remove"))
             }
-            .buttonStyle(.borderless)
-            .disabled(!draft.isGradient)
-            .accessibilityLabel(String(localized: "action_remove"))
             ColorPicker(
                 String(format: String(localized: "a11y_accent_gradient_stop"), index + 1),
                 selection: Binding(

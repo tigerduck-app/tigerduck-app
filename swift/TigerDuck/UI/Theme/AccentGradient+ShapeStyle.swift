@@ -22,6 +22,15 @@ extension AccentGradient {
         }
     }
 
+    /// Controls take a tint's first stop only from a gradient with stops, which a mesh is not.
+    func tintStyle(color: (Int) -> Color) -> AnyShapeStyle {
+        guard style == .mesh else { return shapeStyle(color: color) }
+        var linear = self
+        linear.style = .linear
+        linear.direction = .topLeftToBottomRight
+        return linear.shapeStyle(color: color)
+    }
+
     private static let meshPoints: [SIMD2<Float>] = (0..<9).map { SIMD2(Float($0 % 3) / 2, Float($0 / 3) / 2) }
 }
 
