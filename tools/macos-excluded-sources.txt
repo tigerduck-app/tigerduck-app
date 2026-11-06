@@ -505,6 +505,7 @@ SavedDownloadFiles.swift
 # TigerDuckWidgets — the widgets' layouts, which the app compiles only for the phone tests that draw them
 AccessoryViews.swift
 ClassTileParts.swift
+LibraryShortcutView.swift
 NextClassView.swift
 TodayListView.swift
 WeekGridParts.swift
