@@ -251,6 +251,26 @@ struct OverrideStampTests {
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
+    @Test("An edit stamped before the backend was first heard, refused as ahead, goes again one tick after the refusal's clock, and the last stamp issued stays")
+    func editStampedBeforeTheFirstHeaderIsRestamped() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("sync/assignments/42/override")
+        SettingsAPIStub.enqueue(Attempts.clockAhead, for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url)
+        let madeAt = Attempts.serverClock + SyncClockTests.minute
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(madeAt))
+        let coordinator = Self.makeCoordinator(baseURL, clock: clock)
+
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 4242, moodleAssignmentId: 42, localStatus: "ignored")
+        await coordinator.syncTick()
+
+        let stamps = try SettingsAPIStub.requests(for: url).map { try (Self.json($0)["hlc"] as? NSNumber)?.int64Value }
+        #expect(stamps == [madeAt + 1, Attempts.serverClock + 1])
+        #expect(clock.readings.lastIssued == madeAt + 1)
+        #expect(clock.readings.lastSeen == Attempts.serverClock)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
     @Test("Use Server drops a colour queued just before it on a device whose clock is behind the backend")
     func useServerDropsAnEditStampedAheadOfTheDevice() async {
         let now = PushAPI.clock(of: Date())
