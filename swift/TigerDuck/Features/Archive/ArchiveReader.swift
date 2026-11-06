@@ -83,7 +83,9 @@ nonisolated enum ArchiveReader {
 
 /// libarchive holds every record of a zip's central directory before the first entry. Like its
 /// seekable zip reader, this finds the last end record in the file's final 16 KiB, wherever the
-/// file starts, and measures the records libarchive would read up to it.
+/// file starts, and measures the records libarchive would read from where it starts reading up
+/// to that end record. A zip64 end record that passes libarchive's checks names that start
+/// instead of the plain end record, whatever the plain one says.
 nonisolated enum ArchiveZipDirectory {
     private static let searched = 16 << 10
     private static let endRecordSize = 22
@@ -94,20 +96,30 @@ nonisolated enum ArchiveZipDirectory {
         guard let tail = read(file, at: tailAt, count: tailSize),
               let at = stride(from: tailSize - endRecordSize, through: 0, by: -1)
                 .first(where: { word(tail, $0, 4) == 0x0605_4B50 }) else { return }
+        let endAt = tailAt + Int64(at)
         var span: Int64 = 0
         let directorySize = Int64(word(tail, at + 12, 4))
         if word(tail, at + 4, 2) == 0, word(tail, at + 6, 2) == 0, word(tail, at + 8, 2) == word(tail, at + 10, 2),
-           Int64(word(tail, at + 16, 4)) + directorySize <= tailAt + Int64(at) {
+           Int64(word(tail, at + 16, 4)) + directorySize <= endAt {
             span = directorySize
         }
         if at >= 20, word(tail, at - 20, 4) == 0x0706_4B50, word(tail, at - 16, 4) == 0, word(tail, at - 4, 4) == 1 {
             let recordAt = Int64(bitPattern: word(tail, at - 12, 8))
-            if let record = read(file, at: recordAt, count: 56), word(record, 0, 4) == 0x0606_4B50 {
-                let directoryAt = Int64(bitPattern: word(record, 48, 8))
-                if directoryAt >= 0 { span = max(span, recordAt - directoryAt) }
+            if let directoryAt = zip64DirectoryStart(file, recordAt: recordAt, size: size) {
+                guard (0...recordAt).contains(directoryAt) else { throw ArchiveProblem.broken }
+                span = endAt - directoryAt
             }
         }
         if span > limit { throw ArchiveProblem.tooMany }
+    }
+
+    /// The checks libarchive's read_zip64_eocd makes, which leave out the record's signature.
+    private static func zip64DirectoryStart(_ file: Int32, recordAt: Int64, size: Int64) -> Int64? {
+        guard let record = read(file, at: recordAt, count: 56) else { return nil }
+        let length = word(record, 4, 8) &+ 12
+        guard (56...16384).contains(length), recordAt + Int64(length) <= size,
+              word(record, 16, 4) == 0, word(record, 20, 4) == 0, word(record, 24, 8) == word(record, 32, 8) else { return nil }
+        return Int64(bitPattern: word(record, 48, 8))
     }
 
     private static func read(_ file: Int32, at offset: Int64, count: Int) -> [UInt8]? {
