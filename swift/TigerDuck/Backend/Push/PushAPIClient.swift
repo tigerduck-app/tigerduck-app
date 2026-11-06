@@ -167,10 +167,16 @@ final class PushAPIClient: Sendable {
         }
     }
 
-    func deleteCourse(courseKey: String, madeAt stamp: Date, for signIn: SignIn) async throws {
+    /// The backend reads `kind=remove` as taking back a hand-add, which hides the course nowhere, and
+    /// `kind=hide` as a hide, of a `user_added` row too. With no kind it removes a `user_added` row and
+    /// hides any other key, one it holds no row of too.
+    func deleteCourse(
+        courseKey: String, kind: PushAPI.CourseDeleteKind? = nil, madeAt stamp: Date, for signIn: SignIn
+    ) async throws {
         _ = try await backend.sendStamped(at: stamp) { hlc in
             var request = BackendRequest("DELETE", segments: ["sync", "courses", courseKey]).sent(for: signIn)
             request.query = [URLQueryItem(name: "hlc", value: String(hlc))]
+                + (kind.map { [URLQueryItem(name: "kind", value: $0.rawValue)] } ?? [])
             return request
         }
     }

@@ -280,6 +280,11 @@ enum PushAPI {
         }
     }
 
+    nonisolated enum CourseDeleteKind: String, Sendable {
+        case hide
+        case remove
+    }
+
     nonisolated static func clock(of date: Date) -> Int64 {
         Int64((date.timeIntervalSince1970 * 1_000_000).rounded(.down))
     }

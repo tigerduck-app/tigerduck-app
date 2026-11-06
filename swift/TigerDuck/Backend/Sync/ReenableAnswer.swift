@@ -54,9 +54,8 @@ enum ReenableAnswer {
     ) async throws {
         guard SyncPolicy.current.uploadsCourses else { return }
         let terms = SemesterCatalog.availableSemesters().map { semester in
-            (semester: semester,
-             courses: CourseStore.shared.loadCourses(semester: semester)
-                + CourseStore.shared.loadUserAddedCourses(semester: semester))
+            (semester: semester, fetched: CourseStore.shared.loadCourses(semester: semester),
+             userAdded: CourseStore.shared.loadUserAddedCourses(semester: semester))
         }
         let latched = Set(terms.map(\.semester))
         localEdits.resettingSemesters.formUnion(latched)
@@ -64,38 +63,20 @@ enum ReenableAnswer {
             localEdits.resettingSemesters.subtract(latched)
             for semester in latched { CourseStore.shared.recordSemesterReset(semester, for: signIn) }
         }
-        try await keepLocalCourses(
-            terms, hiding: Set(CourseStore.shared.loadDeletedCourseNos()), on: push, for: signIn
-        )
+        try await keepLocalCourses(terms, hiding: Set(CourseStore.shared.loadDeletedCourseNos()), on: push, for: signIn)
     }
 
     static func queueLocalEdits(of conflict: Conflict, edits: EditSender, for signIn: SignIn) -> [Task<Void, Never>] {
         var queued: [Task<Void, Never>?] = []
-        if conflict.categories.contains(.courseColors) || conflict.categories.contains(.courseNames) {
-            let terms = SemesterCatalog.availableSemesters().map { ($0, CourseStore.shared.loadCourses(semester: $0)) }
-            let moodleIdByCourseNo = Dictionary(
-                terms.flatMap(\.1).compactMap { c in c.moodleIdNumber.map { (c.courseNo, $0) } },
-                uniquingKeysWith: { first, _ in first })
-            if conflict.categories.contains(.courseColors) {
-                let identities = terms.flatMap { term in
-                    term.1.map { ($0.courseNo, EditSender.colorIdentity(of: $0, semester: term.0)) }
-                }
-                let identityByCourseNo = moodleIdByCourseNo.merging(identities, uniquingKeysWith: { first, _ in first })
-                let colorMap = TigerDuckTheme.courseColorMap
-                for (courseNo, hex) in colorMap {
-                    guard let identity = identityByCourseNo[courseNo] else { continue }
-                    queued += edits.syncCourseOverride(moodleCourseId: identity, colorHex: String(format: "#%06X", hex), for: signIn)
-                }
-            }
-            if conflict.categories.contains(.courseNames) {
-                let customNames = CourseStore.shared.loadCourseCustomNames()
-                for (courseNo, locales) in customNames {
-                    guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
-                    for (locale, name) in locales where !name.isEmpty {
-                        queued += edits.syncCourseOverride(moodleCourseId: moodleId, customName: name, locale: locale, for: signIn)
-                    }
-                }
-            }
+        let resent = courseOverridesToResend(
+            for: Set(conflict.categories), syncsNames: SyncPolicy.current.switchedOn.contains(.courseNames),
+            terms: SemesterCatalog.availableSemesters(), courses: .shared, colors: TigerDuckTheme.courseColorMap
+        )
+        for color in resent.colors {
+            queued += edits.syncCourseOverride(moodleCourseId: color.identity, colorHex: color.colorHex, for: signIn)
+        }
+        for name in resent.names {
+            queued += edits.syncCourseOverride(moodleCourseId: name.identity, customName: name.name, locale: name.locale, for: signIn)
         }
         if conflict.categories.contains(.assignments) {
             let archived = AssignmentStore.shared.loadArchivedAssignmentIds()
@@ -126,6 +107,27 @@ enum ReenableAnswer {
         return queued.compactMap { $0 }
     }
 
+    static func courseOverridesToResend(
+        for categories: Set<SyncCategory>, syncsNames: Bool, terms: [String], courses: CourseStore, colors colorMap: [String: UInt32]
+    ) -> (colors: [(identity: String, colorHex: String)], names: [(identity: String, name: String, locale: String)]) {
+        let colors = categories.contains(.courseColors)
+        // The term resets of Use Local for courses clear the backend's names as well.
+        let names = categories.contains(.courseNames) || (categories.contains(.courses) && syncsNames)
+        guard colors || names else { return ([], []) }
+        let identities = EditSender.courseIdentities(terms.flatMap { term in
+            (courses.loadCourses(semester: term) + courses.loadUserAddedCourses(semester: term)).map { (semester: term, course: $0) }
+        })
+        let resentColors = !colors ? [] : colorMap.compactMap { courseNo, hex in
+            identities[courseNo].map { (identity: $0, colorHex: String(format: "#%06X", hex)) }
+        }
+        let resentNames = !names ? [] : courses.loadCourseCustomNames().flatMap { courseNo, locales in
+            identities[courseNo].map { identity in
+                locales.filter { !$0.value.isEmpty }.map { (identity: identity, name: $0.value, locale: $0.key) }
+            } ?? []
+        }
+        return (resentColors, resentNames)
+    }
+
     static func dropLocalCopies(
         for conflict: Conflict, courses: CourseStore, assignments: AssignmentStore, colors: CourseColorStore,
         signIn: SignIn
@@ -145,27 +147,41 @@ enum ReenableAnswer {
         }
     }
 
+    /// The backend's term reset clears every add stamped at or before it, and the backend takes a
+    /// course an upload lists outside `adds` for the school's.
     static func keepLocalCourses(
-        _ terms: [(semester: String, courses: [SDCourse])],
+        _ terms: [(semester: String, fetched: [SDCourse], userAdded: [SDCourse])],
         hiding deletedNos: Set<String>,
         on backend: some CourseSyncBackend,
         for signIn: SignIn
     ) async throws {
         try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.uploadsCourses }) {
-            for (semester, courses) in terms {
+            for (semester, fetched, userAdded) in terms {
+                let courses = fetched + userAdded
                 let hiddenNos = CourseTombstone.courseNos(hiddenIn: semester, in: deletedNos)
                 let stubs = hiddenNos.subtracting(courses.map(\.courseNo)).sorted()
                     .map { SDCourse(courseNo: $0, courseName: $0) }
                 guard !courses.isEmpty || !stubs.isEmpty else { continue }
+                let resetAt = Date()
                 if !courses.isEmpty {
-                    try await backend.deleteAllCourses(semester: semester, madeAt: Date(), for: signIn)
+                    try await backend.deleteAllCourses(semester: semester, madeAt: resetAt, for: signIn)
                 }
-                try await backend.uploadCourses(
-                    SchoolDataUploader.courseUploadRequest(courses + stubs, semester: semester), addedAt: nil, for: signIn
-                )
+                let addedAt = max(Date(), resetAt.addingTimeInterval(Double(CourseOverridesReconciler.fillStep) / 1_000_000))
+                let adds = Set(userAdded.filter { $0.userAddedOrigin == .addedHere }.map(\.courseNo))
+                    .subtracting(fetched.map(\.courseNo)).subtracting(hiddenNos).sorted()
+                var request = SchoolDataUploader.courseUploadRequest(courses + stubs, semester: semester)
+                if !adds.isEmpty {
+                    request.handAddedCourses = adds.map {
+                        PushAPI.CourseAdd(
+                            courseKey: CourseTombstone.serverKey(semester: semester, courseNo: $0), hlc: PushAPI.clock(of: addedAt)
+                        )
+                    }
+                }
+                try await backend.uploadCourses(request, addedAt: adds.isEmpty ? nil : addedAt, for: signIn)
                 for courseNo in hiddenNos.sorted() {
                     try await backend.deleteCourse(
-                        courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), madeAt: Date(), for: signIn
+                        courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
+                        kind: fetched.contains { $0.courseNo == courseNo } ? .hide : nil, madeAt: Date(), for: signIn
                     )
                 }
             }

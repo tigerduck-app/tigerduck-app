@@ -27,13 +27,16 @@ final class BrowserShownPage {
 }
 
 @MainActor
-final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class BrowserNavigator: NSObject, WKNavigationDelegate, WKDownloadDelegate {
     private let page: BrowserPage
     /// The page's check when this web view was built, so one on the browser's own store never takes
     /// what the student accepted for a store opened at risk.
     private let certificates: BrowserCertificateCheck
     private let auth: AuthService?
     private let siteSignIn: (SignIn) -> BrowserSiteSignIn
+    private lazy var pageUI = BrowserPageUI { [weak self] action, webView in
+        self?.decidePolicy(for: action, in: webView) { _ in }
+    }
     private var observations: [NSKeyValueObservation] = []
     private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
     private var signInReturnPage: URL?
@@ -53,7 +56,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = self
-        webView.uiDelegate = self
+        webView.uiDelegate = pageUI
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         let container = UIView()
         webView.frame = container.bounds
@@ -216,6 +219,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        pageUI.dialogs.pageChanged()
         page.applySiteSettings()
     }
 
@@ -265,16 +269,6 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         case .load(let address): webView.load(URLRequest(url: address))
         case .reload: webView.reload()
         }
-    }
-
-    func webView(
-        _ webView: WKWebView,
-        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
-        initiatedByFrame frame: WKFrameInfo,
-        type: WKMediaCaptureType,
-        decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void
-    ) {
-        decisionHandler(.deny)
     }
 }
 

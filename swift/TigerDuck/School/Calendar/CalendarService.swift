@@ -101,21 +101,21 @@ enum CalendarService {
                 inEvent = true
                 summary = nil; dtStart = nil; dtEnd = nil; uid = nil
             } else if trimmed == "END:VEVENT" {
-                if let title = summary.map(Self.unescapeICSText), let start = dtStart {
-                    let eventId = (uid.map(Self.unescapeICSText))
+                if let title = summary.map(ICSFormat.unescaped), let start = dtStart {
+                    let eventId = (uid.map(ICSFormat.unescaped))
                         ?? "school-\(title)-\(start.timeIntervalSince1970)"
 
-                    if let end = dtEnd, !Self.icsCalendar.isDate(start, inSameDayAs: end.addingTimeInterval(-1)) {
+                    if let end = dtEnd, !TaipeiTime.calendar.isDate(start, inSameDayAs: end.addingTimeInterval(-1)) {
                         var current = start
                         let lastDay = end.addingTimeInterval(-1) // ICS DTEND is exclusive
                         while current <= lastDay {
                             events.append(SDCalendarEvent(
-                                eventId: "\(eventId)-\(Self.icsCalendar.startOfDay(for: current).timeIntervalSince1970)",
+                                eventId: "\(eventId)-\(TaipeiTime.calendar.startOfDay(for: current).timeIntervalSince1970)",
                                 title: title,
                                 date: current,
                                 source: .school
                             ))
-                            guard let next = Self.icsCalendar.date(byAdding: .day, value: 1, to: current) else {
+                            guard let next = TaipeiTime.calendar.date(byAdding: .day, value: 1, to: current) else {
                                 break
                             }
                             current = next
@@ -146,70 +146,21 @@ enum CalendarService {
         return events
     }
 
-    static let icsDateOnly = icsFormatter("yyyyMMdd", timeZone: TaipeiTime.timeZone)
-    static let icsDateTime = icsFormatter("yyyyMMdd'T'HHmmss", timeZone: TaipeiTime.timeZone)
-    static let icsDateTimeZ = icsFormatter("yyyyMMdd'T'HHmmss'Z'", timeZone: TimeZone(identifier: "UTC"))
-
-    private static func icsFormatter(_ format: String, timeZone: TimeZone?) -> DateFormatter {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.calendar = Calendar(identifier: .gregorian)
-        f.dateFormat = format
-        f.timeZone = timeZone
-        return f
-    }
-
-    private static let icsCalendar: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TaipeiTime.timeZone
-        return cal
-    }()
-
-    /// Unescape ICS TEXT-typed values per RFC 5545:
-    /// `\,` → `,`, `\;` → `;`, `\n` / `\N` → newline, `\\` → `\`.
-    /// Without this, raw escape sequences leak into the UI as
-    /// `Final Exam\, MA1`.
-    nonisolated static func unescapeICSText(_ raw: String) -> String {
-        var out = ""
-        out.reserveCapacity(raw.count)
-        var iter = raw.makeIterator()
-        while let ch = iter.next() {
-            if ch == "\\" {
-                guard let next = iter.next() else {
-                    out.append(ch)
-                    break
-                }
-                switch next {
-                case "n", "N": out.append("\n")
-                case ",": out.append(",")
-                case ";": out.append(";")
-                case "\\": out.append("\\")
-                default:
-                    out.append("\\")
-                    out.append(next)
-                }
-            } else {
-                out.append(ch)
-            }
-        }
-        return out
-    }
-
     private static func parseICSDate(_ line: String) -> Date? {
         guard let colonIndex = line.lastIndex(of: ":") else { return nil }
         let value = String(line[line.index(after: colonIndex)...])
         let prefix = line[..<colonIndex]
-        var localFormatter = icsDateTime
+        var localFormatter = ICSFormat.dateTime
         if let tzidRange = prefix.range(of: "TZID=") {
             let tzidValue = prefix[tzidRange.upperBound...]
                 .split(separator: ";")
                 .first
                 .map(String.init) ?? ""
             if !tzidValue.isEmpty, let tz = TimeZone(identifier: tzidValue) {
-                localFormatter = icsFormatter("yyyyMMdd'T'HHmmss", timeZone: tz)
+                localFormatter = ICSFormat.formatter("yyyyMMdd'T'HHmmss", timeZone: tz)
             }
         }
-        if value.hasSuffix("Z") { return icsDateTimeZ.date(from: value) }
-        return localFormatter.date(from: value) ?? icsDateOnly.date(from: value)
+        if value.hasSuffix("Z") { return ICSFormat.utcDateTime.date(from: value) }
+        return localFormatter.date(from: value) ?? ICSFormat.date.date(from: value)
     }
 }

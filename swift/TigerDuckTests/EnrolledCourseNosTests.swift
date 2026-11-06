@@ -363,7 +363,54 @@ struct SelectionDropsTests {
         #expect(own.localCourses.map(\.courseNo) == fetched.sorted())
         #expect(read(tombstones("reset", resetLandedAt.addingTimeInterval(30)), resetLandedAt).unlisted.hide == fetched)
         #expect(read(tombstones("reset", resetMadeAt), nil).unlisted.hide == fetched)
-        #expect(read(tombstones("remove", resetMadeAt), resetLandedAt).unlisted.hide == fetched)
+        #expect(read(tombstones("hide", resetMadeAt), resetLandedAt).unlisted.hide == fetched)
+        #expect(read(tombstones("remove", resetMadeAt), resetLandedAt).unlisted.hide.isEmpty)
+    }
+
+    private static func tombstones(_ courseNos: [String], kind: String) -> [[String: Any]] {
+        courseNos.map {
+            ["course_key": "client:1151:\($0)", "course_no": $0, "semester": "1151", "kind": kind,
+             "hlc": PushAPI.clock(of: Date(timeIntervalSince1970: 1_790_000_000))]
+        }
+    }
+
+    @Test("A course removed by hand shows once course selection lists it, before its roster upload lands and after")
+    @MainActor
+    func removalHidesNothingTheSchoolLists() {
+        let otherCourse: [String: Any] = ["semester": "1151", "course_no": "CS1001301", "enrollment_status": "enrolled"]
+        let removedCourse: [String: Any] = ["semester": "1151", "course_no": "GE1010001", "enrollment_status": "enrolled"]
+        let read = { (rows: [[String: Any]], fetched: [String], kind: String) in
+            CourseRosterReconciler.readTerm(
+                "1151", rows: rows, tombstones: Self.tombstones(["GE1010001"], kind: kind), selectionDropped: [],
+                userAdded: [], hidden: [], adding: [], liveAnswer: nil,
+                courses: Self.makeCache(fetched: fetched, userAdded: []).courses
+            ).unlisted
+        }
+
+        #expect(read([otherCourse], ["CS1001301"], "remove").hide.isEmpty)
+        #expect(read([otherCourse], ["CS1001301", "GE1010001"], "remove").hide.isEmpty)
+        #expect(read([], ["GE1010001"], "remove").hide.isEmpty)
+        #expect(read([otherCourse, removedCourse], ["CS1001301", "GE1010001"], "remove").hide.isEmpty)
+        #expect(read([otherCourse], ["CS1001301", "GE1010001"], "hide").hide == ["GE1010001"])
+    }
+
+    @Test("A removal takes the term's hand-added and merged copies with no hide, in a term the server lists nothing of too, unless an add from here is out",
+          arguments: [false, true])
+    @MainActor
+    func removalTakesCopiesWithoutAHide(serverListsTheTerm: Bool) {
+        let rows: [[String: Any]] = serverListsTheTerm
+            ? [["semester": "1151", "course_no": "CS1001301", "enrollment_status": "enrolled"]] : []
+        let read = { (adding: Set<String>) in
+            CourseRosterReconciler.readTerm(
+                "1151", rows: rows, tombstones: Self.tombstones(["GE1010001", "EE2005301"], kind: "remove"),
+                selectionDropped: [], userAdded: Self.addedAndMerged, hidden: [], adding: adding, liveAnswer: nil,
+                courses: Self.makeCache(fetched: ["CS1001301"], userAdded: Self.addedAndMerged).courses
+            ).unlisted
+        }
+
+        #expect(read([]).hide.isEmpty)
+        #expect(read([]).drop == ["GE1010001", "EE2005301"])
+        #expect(read(["1151:GE1010001"]).drop == ["EE2005301"])
     }
 
     @Test("This device's term reset is remembered past its grace while the snapshot shows its tombstones")

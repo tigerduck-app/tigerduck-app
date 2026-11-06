@@ -73,7 +73,7 @@ struct CalendarServiceTests {
 
     @Test("ICS dates are read in the Gregorian calendar whatever the device calendar")
     func formattersIgnoreTheDeviceCalendar() {
-        for formatter in [CalendarService.icsDateOnly, CalendarService.icsDateTime, CalendarService.icsDateTimeZ] {
+        for formatter in [ICSFormat.date, ICSFormat.dateTime, ICSFormat.utcDateTime] {
             #expect(formatter.calendar.identifier == .gregorian)
             #expect(formatter.locale.identifier == "en_US_POSIX")
         }
