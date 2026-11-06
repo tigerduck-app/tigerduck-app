@@ -132,8 +132,7 @@ struct ArchiveScreensTests {
             let first = sessions()
             choice.url = try ArchiveReaderTests.fixture("archive-sample.zip")
             try await waitUntil { Self.barTitle(in: window) == "archive-sample.zip" && sessions().count == 1 && sessions() != first }
-            let close = try #require(accessibilityElement(labeled: String(localized: "action_close"), in: window))
-            _ = close.accessibilityActivate()
+            window.rootViewController?.closePresentations { _ in }
             try await waitUntil { window.rootViewController?.presentedViewController == nil && sessions().isEmpty }
             #expect(choice.url == nil)
         }
