@@ -416,7 +416,7 @@ struct PageMenuScreenTests {
             let preferences = AppPreferences()
             let state = Screen.allOpenButSchool(preferences)
             let more = ScrollView {
-                BrowserMenu(page: BrowserPage(), showsNavigation: false) { $0() }
+                BrowserMenu(page: BrowserPage(), showsNavigation: false, afterClosing: { $0() }, openDownloads: {})
             }
             .pageMenu(.browser)
             let (window, host) = try Self.show(more, state: state, preferences: preferences)

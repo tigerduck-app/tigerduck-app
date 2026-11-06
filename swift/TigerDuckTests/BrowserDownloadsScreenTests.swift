@@ -125,39 +125,24 @@ struct BrowserDownloadsScreenTests {
             let saved = String(format: String(localized: "browser_download_done"), "12.6 MB")
             try await waitUntil { exposedAccessibilityTexts(in: sheet).contains { $0.contains(saved) } }
             try await Task.sleep(for: .milliseconds(600))
-            let rowFrame = try #require(Self.element(containing: saved, in: sheet)).accessibilityFrame
-            let center = CGPoint(x: rowFrame.midX, y: rowFrame.midY)
-            let menu = try #require(window.descendants(ofType: UIView.self)
-                .flatMap { $0.interactions.compactMap { $0 as? UIContextMenuInteraction } }
-                .first { menu in
-                    guard let host = menu.view else { return false }
-                    return menu.delegate?.contextMenuInteraction(menu, configurationForMenuAtLocation: window.convert(center, to: host)) != nil
-                })
             let row = try #require(Self.element(containing: saved, in: sheet))
             let remove = String(localized: "action_remove")
             #expect((row.accessibilityCustomActions ?? []).contains { $0.name == remove })
 
-            Self.present(menu, at: try #require(menu.view).convert(center, from: window))
+            let frame = row.accessibilityFrame
+            let center = window.convert(CGPoint(x: frame.midX, y: frame.midY), from: window.screen.coordinateSpace)
+            try await fingerTap(at: center, in: window, holding: .milliseconds(1_200))
             try await waitUntil {
                 [String(localized: "browser_download_open"), String(localized: "browser_share_short"), remove]
                     .allSatisfy { accessibilityElement(labeled: $0, in: window) != nil }
             }
             try await Task.sleep(for: .milliseconds(800))
             window.saveSnapshot(as: Self.name("long-press", screen))
-            menu.dismissMenu()
         }
     }
 
     private static func element(containing text: String, in view: UIView) -> NSObject? {
         exposedAccessibilityElements(in: view).first { $0.accessibilityLabel?.contains(text) == true }
-    }
-
-    /// UIKit has no public way to open a context menu without a touch; tests reach its own presenter.
-    private static func present(_ menu: UIContextMenuInteraction, at point: CGPoint) {
-        let selector = NSSelectorFromString("_presentMenuAtLocation:")
-        guard menu.responds(to: selector) else { return }
-        typealias Present = @convention(c) (AnyObject, Selector, CGPoint) -> Void
-        unsafeBitCast(menu.method(for: selector), to: Present.self)(menu, selector, point)
     }
 }
 #endif
