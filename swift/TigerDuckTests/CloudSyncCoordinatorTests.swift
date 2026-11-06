@@ -37,11 +37,12 @@ struct CloudSyncCoordinatorTests {
             .appendingPathComponent("CloudSyncCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
         guard let syncsAssignmentMarks else {
             return CloudSyncCoordinator(pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true,
-                                        account: AccountSession(signIns: testSignIns))
+                                        account: AccountSession(signIns: testSignIns), clock: .isolated())
         }
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseOverrides: syncsCourseOverrides, account: AccountSession(signIns: testSignIns)
+            syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseOverrides: syncsCourseOverrides, account: AccountSession(signIns: testSignIns),
+            clock: .isolated()
         )
     }
 

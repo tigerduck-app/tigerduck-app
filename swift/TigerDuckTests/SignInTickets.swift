@@ -44,7 +44,7 @@ extension PushAPIClient {
         authHeaderProvider: @escaping @Sendable () async -> String?,
         versionGate: APIVersionGate? = nil,
         signIns: SignInSeries = testSignIns,
-        clock: SyncClock? = nil
+        clock: SyncClock = .isolated()
     ) {
         self.init(baseURLProvider: baseURLProvider, session: session, auth: .signedIn(in: signIns, authHeaderProvider),
                   versionGate: versionGate, clock: clock)

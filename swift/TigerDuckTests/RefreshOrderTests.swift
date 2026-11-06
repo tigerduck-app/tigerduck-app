@@ -162,7 +162,8 @@ struct RefreshOrderTests {
         let coordinator = CloudSyncCoordinator(
             pushCoordinator: PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client),
             outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: { true }, syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns)
+            syncsAssignmentMarks: { true }, syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns),
+            clock: .isolated()
         )
         let sample = await coordinator.pendingCourseOverrides()
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value

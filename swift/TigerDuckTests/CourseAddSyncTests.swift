@@ -48,7 +48,7 @@ struct CourseAddSyncTests {
         push: PushCoordinator? = nil, uploadsCourses: @escaping @MainActor () -> Bool = { true },
         isProtectedDataAvailable: @escaping @MainActor () -> Bool = { true },
         account: AccountSession = AccountSession(signIns: testSignIns),
-        whileReading: @escaping @MainActor () -> Void = {}
+        whileReading: @escaping @MainActor () -> Void = {}, clock: SyncClock = .isolated()
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(
             pushCoordinator: push ?? makePush(backend), outbox: outbox, isEnabled: true,
@@ -58,7 +58,7 @@ struct CourseAddSyncTests {
                 return SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses)
             },
             uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
-            account: account, courses: cache.courses
+            account: account, courses: cache.courses, clock: clock
         )
     }
 

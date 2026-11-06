@@ -12,7 +12,7 @@ final class QueuedEdits {
     private var addStartedOrLandedAt: [String: Date] = [:]
     private(set) var cutoffs = DiscardCutoffs()
 
-    init(outbox: SyncOutbox, clock: SyncClock = .shared) {
+    init(outbox: SyncOutbox, clock: SyncClock) {
         self.outbox = outbox
         self.clock = clock
     }

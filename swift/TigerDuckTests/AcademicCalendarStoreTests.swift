@@ -37,7 +37,7 @@ struct AcademicCalendarStoreTests {
         Defaults[.academicCalendarCache] = try! JSONEncoder().encode(calendar)
         Defaults[.academicCalendarETag] = "W/\"rev-7\""
 
-        let store = AcademicCalendarStore()
+        let store = AcademicCalendarStore(clock: .isolated())
         #expect(store.calendar.revision == 7)
 
         store.forgetCachedCalendar()
@@ -87,7 +87,7 @@ struct AcademicCalendarStoreTests {
     @Test("a sync snapshot arriving mid-upload does not overwrite the local set")
     func syncedOverridesDeferToPendingUpload() {
         Self.withCleanHolidayDefaults {
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             store.applySyncedOverrides([1, 2], fetchedAt: Date(), for: testSignIn)
             #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2])
 
@@ -105,7 +105,7 @@ struct AcademicCalendarStoreTests {
     @Test("a snapshot that matches the local set reports no change, so the sync posts none")
     func unchangedSnapshotReportsNoChange() {
         Self.withCleanHolidayDefaults {
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             #expect(store.applySyncedOverrides([1, 2], fetchedAt: Date(), for: testSignIn))
             #expect(!store.applySyncedOverrides([2, 1], fetchedAt: Date().addingTimeInterval(1), for: testSignIn))
             #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2])
@@ -115,7 +115,7 @@ struct AcademicCalendarStoreTests {
     @Test("a snapshot older than the local edit is ignored even once the upload lands")
     func staleSnapshotIgnoredAfterUpload() {
         Self.withCleanHolidayDefaults {
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             let fetchedBeforeTap = Date()
             store.applySyncedOverrides([1], fetchedAt: fetchedBeforeTap, for: testSignIn)
             #expect(Set(Defaults[.holidayNotifyOverrides]) == [1])
@@ -132,7 +132,7 @@ struct AcademicCalendarStoreTests {
     @Test("a toggle the server never acknowledged outlives the sync snapshot")
     func unacknowledgedToggleSurvivesSync() {
         Self.withCleanHolidayDefaults {
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             store.applySyncedOverrides([1, 5], fetchedAt: Date(), for: testSignIn)
             #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 5])
 
@@ -154,7 +154,7 @@ struct AcademicCalendarStoreTests {
     @Test("a toggle still uploading when the sync's fetch began outlives that snapshot, though its upload lands first")
     func toggleUploadingAtTheFetchOutlivesTheSnapshot() {
         Self.withCleanHolidayDefaults {
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             store.setNotify(true, forHoliday: 9, for: testSignIn)
             store.setHolidayAcknowledged(false, holidayID: 9, for: testSignIn)
             store.beginHolidayUpload()
@@ -172,7 +172,7 @@ struct AcademicCalendarStoreTests {
     @Test("a pull that replaces a holiday setting drops its edit time, and one it leaves keeps it")
     func pullDropsTheEditTimeOfAReplacedSetting() {
         Self.withCleanHolidayDefaults {
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             store.setNotify(true, forHoliday: 9, for: testSignIn)
             store.setNotify(true, forHoliday: 5, for: testSignIn)
 
@@ -187,7 +187,7 @@ struct AcademicCalendarStoreTests {
     @Test("logging out leaves no holiday state for the next account")
     func forgetHolidayOverridesClearsBothSets() {
         Self.withCleanHolidayDefaults {
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             store.setNotify(true, forHoliday: 9, for: testSignIn)
             store.setHolidayAcknowledged(false, holidayID: 9, for: testSignIn)
             #expect(Set(Defaults[.holidayNotifyOverrides]) == [9])
@@ -206,7 +206,7 @@ struct AcademicCalendarStoreTests {
     @Test("the pending count never goes negative")
     func pendingCountFloors() {
         Self.withCleanHolidayDefaults {
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             store.endHolidayUpload()
             store.endHolidayUpload()
             store.applySyncedOverrides([4], fetchedAt: Date(), for: testSignIn)

@@ -173,7 +173,7 @@ struct CourseMembershipStampTests {
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
             addedCourseUpload: { SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses) },
             uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
-            account: AccountSession(signIns: testSignIns), courses: cache.courses
+            account: AccountSession(signIns: testSignIns), courses: cache.courses, clock: .isolated()
         )
     }
 }

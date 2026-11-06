@@ -56,7 +56,7 @@ final class CloudSyncCoordinator {
         account: AccountSession = AccountSession(),
         courses: CourseStore = .shared,
         kept: KeptValues? = nil,
-        clock: SyncClock = .shared
+        clock: SyncClock
     ) {
         self.outbox = outbox
         self.clock = clock

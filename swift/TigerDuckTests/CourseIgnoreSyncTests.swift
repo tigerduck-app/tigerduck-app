@@ -171,7 +171,8 @@ struct CourseIgnoreCoordinatorTests {
             .appendingPathComponent("CourseIgnoreCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseIgnores: syncsCourseIgnores, account: AccountSession(signIns: testSignIns)
+            syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseIgnores: syncsCourseIgnores, account: AccountSession(signIns: testSignIns),
+            clock: .isolated()
         )
     }
 

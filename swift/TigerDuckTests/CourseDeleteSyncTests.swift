@@ -29,18 +29,23 @@ struct CourseDeleteSyncTests {
             .appendingPathComponent("CourseDeleteSyncTests-\(UUID().uuidString)", isDirectory: true)
     }
 
-    private static func makeCoordinator(
-        _ backend: Backend, isEnabled: Bool = true, syncsCourseIgnores: @escaping @Sendable () -> Bool = { true },
-        clock: SyncClock = .shared
-    ) -> CloudSyncCoordinator {
+    private static func makePush(_ backend: Backend, clock: SyncClock) -> PushCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
             baseURLProvider: { [baseURL = backend.baseURL] in baseURL },
             session: URLSession(configuration: config),
-            authHeaderProvider: { "Bearer test" }
+            authHeaderProvider: { "Bearer test" },
+            clock: clock
         )
-        let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
+        return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
+    }
+
+    private static func makeCoordinator(
+        _ backend: Backend, isEnabled: Bool = true, syncsCourseIgnores: @escaping @Sendable () -> Bool = { true },
+        clock: SyncClock = .isolated(), push: PushCoordinator? = nil
+    ) -> CloudSyncCoordinator {
+        let push = push ?? makePush(backend, clock: clock)
         let courses = CourseStore(folders: CacheFolders(root: Self.freshDirectory()))
         courses.saveDeletedCourseNos(["1151:CS1001301"], for: testSignIn)
         return CloudSyncCoordinator(
@@ -223,9 +228,8 @@ struct CourseDeleteSyncTests {
 
     @Test("A term reset drops a hide made while its request was out on a device whose clock is behind the backend")
     func termResetDropsAHideStampedAheadOfTheDevice() async throws {
-        let now = PushAPI.clock(of: Date())
-        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(now))
-        await clock.hear(now + 10 * SyncClockTests.minute)
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
+        await clock.hear(SyncClockTests.laterThanAnyRun)
         let coordinator = Self.makeCoordinator(Backend(), clock: clock)
 
         try await EditSender.resetCourses(semester: "1151", on: coordinator, onServer: {

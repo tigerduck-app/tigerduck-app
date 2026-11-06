@@ -64,7 +64,8 @@ final class AppEnvironment {
             pushCoordinator: pushCoordinator,
             addedCourseUpload: { SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1) },
             uploadsCourses: { SyncPolicy.current.uploadsCourses },
-            account: authService.session
+            account: authService.session,
+            clock: .shared
         )
         CloudSyncCoordinator.registerShared(cloudSync)
         preferences = AppPreferences()

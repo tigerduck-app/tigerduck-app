@@ -34,6 +34,7 @@ struct SyncClockTests {
     static let ten: Int64 = 1_790_000_000_000_000
     static let second: Int64 = 1_000_000
     static let minute = 60 * second
+    static let laterThanAnyRun: Int64 = 4_000_000_000_000_000
 
     static func makeClock(
         _ device: DeviceClock, _ stored: StoredReadings = StoredReadings(), readable: Bool = true
@@ -191,5 +192,11 @@ struct SyncClockTests {
             clock: clock
         )
         return (client, baseURL)
+    }
+}
+
+extension SyncClock {
+    static func isolated() -> SyncClock {
+        SyncClock(storage: SyncClockTests.StoredReadings().storage, protectedDataReadable: { true })
     }
 }

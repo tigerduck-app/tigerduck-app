@@ -273,9 +273,8 @@ struct OverrideStampTests {
 
     @Test("Use Server drops a colour queued just before it on a device whose clock is behind the backend")
     func useServerDropsAnEditStampedAheadOfTheDevice() async {
-        let now = PushAPI.clock(of: Date())
-        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(now))
-        await clock.hear(now + 10 * SyncClockTests.minute)
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
+        await clock.hear(SyncClockTests.laterThanAnyRun)
         let coordinator = Self.makeCoordinator(SettingsAPIStub.uniqueBaseURL(), clock: clock)
 
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1001301", semester: "1151", colorHex: "#FF6B6B")?.value
@@ -286,9 +285,8 @@ struct OverrideStampTests {
 
     @Test("A colour picked after Use Server on a device whose clock is ahead of the backend stays queued")
     func editAfterUseServerOnADeviceAheadStays() async {
-        let now = PushAPI.clock(of: Date())
-        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(now))
-        await clock.hear(now - 60 * SyncClockTests.minute)
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
+        await clock.hear(SyncClockTests.ten - 60 * SyncClockTests.minute)
         let coordinator = Self.makeCoordinator(SettingsAPIStub.uniqueBaseURL(), clock: clock)
 
         await coordinator.discardEdits(of: [.courseColors], courseIgnores: false)
@@ -326,7 +324,7 @@ struct OverrideStampTests {
         return try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
     }
 
-    private static func pushCoordinator(_ baseURL: URL, clock: SyncClock? = nil) -> PushCoordinator {
+    private static func pushCoordinator(_ baseURL: URL, clock: SyncClock = .isolated()) -> PushCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
@@ -345,12 +343,12 @@ struct OverrideStampTests {
 
     private static func makeCoordinator(
         _ baseURL: URL, conflictCheckOwed: @escaping @Sendable () -> Bool = { false },
-        clock: SyncClock? = nil, outboxIn directory: URL = outboxDirectory()
+        clock: SyncClock = .isolated(), outboxIn directory: URL = outboxDirectory()
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(
             pushCoordinator: pushCoordinator(baseURL, clock: clock), outbox: SyncOutbox(directory: directory), isEnabled: true,
             syncsAssignmentMarks: { !conflictCheckOwed() }, syncsCourseIgnores: { !conflictCheckOwed() }, syncsCourseOverrides: { _ in !conflictCheckOwed() },
-            account: AccountSession(signIns: testSignIns), clock: clock ?? .shared
+            account: AccountSession(signIns: testSignIns), clock: clock
         )
     }
 }

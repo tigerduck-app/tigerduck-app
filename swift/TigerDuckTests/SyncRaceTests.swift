@@ -179,7 +179,7 @@ struct SyncRaceTests {
             directory: FileManager.default.temporaryDirectory
                 .appendingPathComponent("SyncRaceTests-\(UUID().uuidString)", isDirectory: true),
             pause: { await landing.pause(at: $0) }
-        ))
+        ), clock: .isolated())
     }
 
     @Test("An edit on its way into the outbox is newer than one whose reply is back, though it lands just after the check reads the outbox")
@@ -235,7 +235,7 @@ struct SyncRaceTests {
                 let coordinator = CloudSyncCoordinator(
                     pushCoordinator: push,
                     outbox: SyncOutbox(directory: Self.cache().persistentDir.appendingPathComponent("outbox", isDirectory: true)),
-                    isEnabled: true, account: AccountSession(signIns: testSignIns)
+                    isEnabled: true, account: AccountSession(signIns: testSignIns), clock: .isolated()
                 )
                 let edits = EditSender(
                     coordinator: coordinator, push: push, poller: RevisionPoller(), localEdits: LocalEdits(),
@@ -257,7 +257,8 @@ struct SyncRaceTests {
             isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
             syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
             kept: KeptValues(policy: policy([]), colors: CourseColorStore(files: cache.colors),
-                             courses: cache.courses, assignments: cache.assignments)
+                             courses: cache.courses, assignments: cache.assignments),
+            clock: .isolated()
         )
     }
 
@@ -415,7 +416,8 @@ struct SyncRaceTests {
             outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
             isEnabled: true, syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
             kept: KeptValues(policy: Self.policy([.courses, .courseColors]), colors: colors,
-                             courses: cache.courses, assignments: cache.assignments)
+                             courses: cache.courses, assignments: cache.assignments),
+            clock: .isolated()
         )
         let fill = try #require(Self.fills(local: colors.map)["CS1"])
 
