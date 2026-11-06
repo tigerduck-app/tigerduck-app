@@ -4225,7 +4225,7 @@ setup_decode_folder(struct archive_read *a, struct _7z_folder *folder,
 			if ((uint64_t)zip->folder_outbytes_remaining >
 			    TIGERDUCK_MAX_PPMD_SIZE) {
 				free(b[0]); free(b[1]); free(b[2]);
-				archive_set_error(&a->archive, E2BIG,
+				archive_set_error(&a->archive, ENOMEM,
 				    "7-Zip sub-stream too large");
 				return (ARCHIVE_FATAL);
 			}
