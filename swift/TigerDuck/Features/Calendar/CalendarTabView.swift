@@ -25,10 +25,11 @@ struct CalendarTabView: View {
         content
             .onChange(of: pageAccessState, initial: true) { _, state in
                 guard state != .loginRequired else { return }
-                viewModel.load(authService: app.authService)
+                viewModel.load { MoodleCacheContext.signedIn(app.authService, for: app.authService.session.currentSignIn) }
             }
-            .moodleAssignmentDestination($shownAssignment)
-            .onChange(of: app.authService.session.currentSignIn) { shownAssignment = nil }
+            .moodleAssignmentDestination(
+                $shownAssignment, signIn: app.authService.session.currentSignIn, preferences: app.preferences
+            )
     }
 
     private var content: some View {

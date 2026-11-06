@@ -156,24 +156,28 @@ struct MoodleAssignmentPage: Hashable {
 }
 
 extension View {
-    func moodleAssignmentDestination(_ page: Binding<MoodleAssignmentPage?>) -> some View {
-        modifier(MoodleAssignmentDestination(page: page))
+    func moodleAssignmentDestination(
+        _ page: Binding<MoodleAssignmentPage?>, signIn: SignIn, preferences: AppPreferences
+    ) -> some View {
+        modifier(MoodleAssignmentDestination(page: page, signIn: signIn, preferences: preferences))
     }
 }
 
 private struct MoodleAssignmentDestination: ViewModifier {
     @Binding var page: MoodleAssignmentPage?
-
-    @Environment(AppEnvironment.self) private var app
+    let signIn: SignIn
+    let preferences: AppPreferences
 
     func body(content: Content) -> some View {
-        content.navigationDestination(item: $page) { page in
-            MoodleAssignmentView(
-                store: page.store, entry: page.entry, courseName: page.courseName,
-                policy: app.preferences.visualStylePolicy, accent: app.preferences.accentColor
-            )
-            .moodleLinkOpening()
-        }
+        content
+            .navigationDestination(item: $page) { page in
+                MoodleAssignmentView(
+                    store: page.store, entry: page.entry, courseName: page.courseName,
+                    policy: preferences.visualStylePolicy, accent: preferences.accentColor
+                )
+                .moodleLinkOpening()
+            }
+            .onChange(of: signIn) { page = nil }
     }
 }
 #endif

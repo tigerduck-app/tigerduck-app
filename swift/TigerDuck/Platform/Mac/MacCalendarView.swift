@@ -3,8 +3,6 @@ import SwiftUI
 import TigerDuckCore
 
 struct MacCalendarView: View {
-    @Environment(AppEnvironment.self) private var app
-
     @State private var viewModel = CalendarViewModel()
 
     private let weekdaySymbols: [String] = [
@@ -45,7 +43,7 @@ struct MacCalendarView: View {
                 .help(String(localized: "desktop_action_jump_to_today"))
             }
         }
-        .onAppear { viewModel.load(authService: app.authService) }
+        .onAppear { viewModel.load { nil } }
     }
 
     private var monthCard: some View {

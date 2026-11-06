@@ -60,7 +60,9 @@ struct HomeView: View {
         .navigationDestination(item: $selectedFeature) { feature in
             HomeFeatureDestination(feature: feature)
         }
-        .moodleAssignmentDestination($viewModel.sheets.shownAssignment)
+        .moodleAssignmentDestination(
+            $viewModel.sheets.shownAssignment, signIn: app.authService.session.currentSignIn, preferences: app.preferences
+        )
         .onChange(of: app.authService.session.currentSignIn) {
             viewModel.sheets.closeAssignment()
         }

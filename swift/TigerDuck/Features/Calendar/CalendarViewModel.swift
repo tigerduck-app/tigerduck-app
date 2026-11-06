@@ -51,14 +51,16 @@ final class CalendarViewModel {
         displayedMonth = .now
     }
 
-    func load(authService: AuthService) {
+    func load(moodle: @escaping () -> MoodleCacheContext?) {
         guard storeObservation == nil else { return }
 
-        setEvents(assignmentStore.loadCalendarEvents())
+        setEvents(assignmentStore.loadCalendarEvents(), moodle: moodle())
 
-        storeObservation = StoreObservation(read: { _ = AppDataRevision.current }) { [weak self] in
+        storeObservation = StoreObservation(read: { [assignmentStore, courseStore] in
+            _ = (AppDataRevision.current, assignmentStore.revision, courseStore.revision)
+        }) { [weak self] in
             guard let self else { return }
-            setEvents(assignmentStore.loadCalendarEvents())
+            setEvents(assignmentStore.loadCalendarEvents(), moodle: moodle())
         }
     }
 
@@ -83,7 +85,7 @@ final class CalendarViewModel {
         defer { SchoolRefresh.end() }
         let updated = moodle + (school ?? events.filter { $0.source == .school })
         guard assignmentStore.saveCalendarEvents(updated, for: signIn) else { return }
-        setEvents(updated)
+        setEvents(updated, moodle: MoodleCacheContext.signedIn(authService, for: signIn))
     }
 
     static func buildCalendarDays(for month: Date) -> [Date?] {
@@ -102,15 +104,21 @@ final class CalendarViewModel {
         return days
     }
 
-    private func setEvents(_ newEvents: [AssignmentStore.CalendarEvent]) {
-        let newEvents = newEvents.filter { $0.source != .holiday && $0.source != .semester }
-            + SchoolCalendar.events()
-        events = newEvents
-        assignmentsByEventId = Dictionary(
+    private func openableAssignments(moodle: MoodleCacheContext?) -> [String: AssignmentStore.Assignment] {
+        let cachedRecordIds = moodle.map { Set(MoodleCourseAssignments.records(in: $0).map { String($0.assignId) }) } ?? []
+        return Dictionary(
             assignmentStore.loadAssignments().ofTimetable(CanonicalCourseProvider(courses: courseStore).currentCourses())
+                .filter { MoodleCourseStore.opens($0, cachedRecordIds: cachedRecordIds) }
                 .map { ($0.calendarEventId, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+    }
+
+    private func setEvents(_ newEvents: [AssignmentStore.CalendarEvent], moodle: MoodleCacheContext?) {
+        let newEvents = newEvents.filter { $0.source != .holiday && $0.source != .semester }
+            + SchoolCalendar.events()
+        events = newEvents
+        assignmentsByEventId = openableAssignments(moodle: moodle)
         let cal = TaipeiTime.calendar
         eventsByDay = Dictionary(grouping: newEvents) { event in
             cal.dateComponents([.year, .month, .day], from: event.date)

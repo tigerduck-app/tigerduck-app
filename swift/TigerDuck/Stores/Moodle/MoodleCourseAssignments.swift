@@ -103,4 +103,8 @@ extension MoodleCourseStore {
         else { return nil }
         return MoodleCourseStore(courseId: courseId, termCourseIds: [courseId], context: context, api: api)
     }
+
+    static func opens(_ assignment: SDAssignment, cachedRecordIds: Set<String>) -> Bool {
+        cachedRecordIds.contains(assignment.assignmentId) || assignment.moodleDeepLink != nil
+    }
 }
