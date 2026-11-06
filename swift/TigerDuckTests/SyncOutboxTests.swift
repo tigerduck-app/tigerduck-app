@@ -212,6 +212,16 @@ struct SyncOutboxTests {
         #expect(await outbox.snapshot().isEmpty)
     }
 
+    @Test("An ahead refusal from a server the client has left since costs the edit no attempt")
+    func aRefusalFromALeftServerCostsNoAttempt() async {
+        let outbox = Self.makeOutbox()
+        await outbox.enqueue(Self.colour)
+
+        await Self.drain(outbox, times: SyncOutbox.maxAttempts, failingWith: PushAPIError.clockAhead(serverClock: nil))
+
+        #expect(await outbox.snapshot().map(\.attempts) == [0])
+    }
+
     nonisolated private final class ReadGate: @unchecked Sendable {
         private let lock = NSLock()
         private var locked = true

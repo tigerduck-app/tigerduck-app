@@ -32,6 +32,8 @@ enum OutboxErrorPolicy {
             return auth.statusCode == 401
         case PushAPIError.httpStatus(let code, _, _):
             return code == 408 || code == 429 || (500..<600).contains(code)
+        case PushAPIError.clockAhead(serverClock: nil):
+            return true
         default:
             return false
         }
