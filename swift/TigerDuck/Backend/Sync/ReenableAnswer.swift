@@ -76,31 +76,15 @@ enum ReenableAnswer {
 
     static func queueLocalEdits(of conflict: Conflict, edits: EditSender, for signIn: SignIn) -> [Task<Void, Never>] {
         var queued: [Task<Void, Never>?] = []
-        if conflict.categories.contains(.courseColors) || conflict.categories.contains(.courseNames) {
-            let terms = SemesterCatalog.availableSemesters().map { ($0, CourseStore.shared.loadCourses(semester: $0)) }
-            let moodleIdByCourseNo = Dictionary(
-                terms.flatMap(\.1).compactMap { c in c.moodleIdNumber.map { (c.courseNo, $0) } },
-                uniquingKeysWith: { first, _ in first })
-            if conflict.categories.contains(.courseColors) {
-                let identities = terms.flatMap { term in
-                    term.1.map { ($0.courseNo, EditSender.colorIdentity(of: $0, semester: term.0)) }
-                }
-                let identityByCourseNo = moodleIdByCourseNo.merging(identities, uniquingKeysWith: { first, _ in first })
-                let colorMap = TigerDuckTheme.courseColorMap
-                for (courseNo, hex) in colorMap {
-                    guard let identity = identityByCourseNo[courseNo] else { continue }
-                    queued += edits.syncCourseOverride(moodleCourseId: identity, colorHex: String(format: "#%06X", hex), for: signIn)
-                }
-            }
-            if conflict.categories.contains(.courseNames) {
-                let customNames = CourseStore.shared.loadCourseCustomNames()
-                for (courseNo, locales) in customNames {
-                    guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
-                    for (locale, name) in locales where !name.isEmpty {
-                        queued += edits.syncCourseOverride(moodleCourseId: moodleId, customName: name, locale: locale, for: signIn)
-                    }
-                }
-            }
+        let resent = courseOverridesToResend(
+            for: Set(conflict.categories), syncsNames: SyncPolicy.current.switchedOn.contains(.courseNames),
+            terms: SemesterCatalog.availableSemesters(), courses: .shared, colors: TigerDuckTheme.courseColorMap
+        )
+        for color in resent.colors {
+            queued += edits.syncCourseOverride(moodleCourseId: color.identity, colorHex: color.colorHex, for: signIn)
+        }
+        for name in resent.names {
+            queued += edits.syncCourseOverride(moodleCourseId: name.identity, customName: name.name, locale: name.locale, for: signIn)
         }
         if conflict.categories.contains(.assignments) {
             let archived = AssignmentStore.shared.loadArchivedAssignmentIds()
@@ -129,6 +113,28 @@ enum ReenableAnswer {
             }
         }
         return queued.compactMap { $0 }
+    }
+
+    static func courseOverridesToResend(
+        for categories: Set<SyncCategory>, syncsNames: Bool, terms: [String], courses: CourseStore, colors colorMap: [String: UInt32]
+    ) -> (colors: [(identity: String, colorHex: String)], names: [(identity: String, name: String, locale: String)]) {
+        let colors = categories.contains(.courseColors)
+        // The term resets of Use Local for courses clear the backend's names as well.
+        let names = categories.contains(.courseNames) || (categories.contains(.courses) && syncsNames)
+        guard colors || names else { return ([], []) }
+        let shown = CanonicalCourseProvider(courses: courses)
+        let identities = EditSender.courseIdentities(terms.flatMap { term in
+            shown.currentCourses(semester: term).map { (semester: term, course: $0) }
+        })
+        let resentColors = !colors ? [] : colorMap.compactMap { courseNo, hex in
+            identities[courseNo].map { (identity: $0, colorHex: String(format: "#%06X", hex)) }
+        }
+        let resentNames = !names ? [] : courses.loadCourseCustomNames().flatMap { courseNo, locales in
+            identities[courseNo].map { identity in
+                locales.filter { !$0.value.isEmpty }.map { (identity: identity, name: $0.value, locale: $0.key) }
+            } ?? []
+        }
+        return (resentColors, resentNames)
     }
 
     static func dropLocalCopies(

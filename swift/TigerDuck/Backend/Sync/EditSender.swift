@@ -204,9 +204,12 @@ final class EditSender {
         termCourses: [(semester: String, courses: [SDCourse])],
         userAdded: [SDCourse]
     ) -> [String: String] {
-        let named = [(picked.semester, picked)]
-            + termCourses.flatMap { term in term.courses.map { (term.semester, $0) } }
-            + userAdded.map { ($0.semester, $0) }
+        courseIdentities([(semester: picked.semester, course: picked)]
+            + termCourses.flatMap { term in term.courses.map { (semester: term.semester, course: $0) } }
+            + userAdded.map { (semester: $0.semester, course: $0) })
+    }
+
+    static func courseIdentities(_ named: [(semester: String, course: SDCourse)]) -> [String: String] {
         var ids: [String: String] = [:]
         for (semester, course) in named where ids[course.courseNo] == nil && course.moodleIdNumber?.isEmpty == false {
             ids[course.courseNo] = colorIdentity(of: course, semester: semester)
