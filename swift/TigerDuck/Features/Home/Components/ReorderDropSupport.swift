@@ -54,6 +54,20 @@ enum ReorderDropSupport {
         return true
     }
 
+    static func step(
+        _ id: String,
+        by offset: Int,
+        among shownIDs: [String],
+        in itemIDs: [String],
+        moveAction: (IndexSet, Int) -> Void
+    ) -> (position: Int, count: Int)? {
+        let shown = itemIDs.filter(shownIDs.contains)
+        guard let from = shown.firstIndex(of: id), shown.indices.contains(from + offset),
+              move(id, onto: shown[from + offset], in: itemIDs, moveAction: moveAction)
+        else { return nil }
+        return (from + offset + 1, shown.count)
+    }
+
     @discardableResult
     static func finalizeDrop(
         activePayload: Binding<ReorderDragPayload?>,
@@ -161,13 +175,12 @@ extension View {
     ) -> some View {
         let index = shownIDs.firstIndex(of: id)
         func step(_ offset: Int) {
-            let shown = currentIDs().filter(shownIDs.contains)
-            guard let from = shown.firstIndex(of: id), shown.indices.contains(from + offset),
-                  ReorderDropSupport.move(id, onto: shown[from + offset], in: currentIDs(), moveAction: moveAction)
-            else { return }
+            guard let landed = ReorderDropSupport.step(
+                id, by: offset, among: shownIDs, in: currentIDs(), moveAction: moveAction
+            ) else { return }
             onPersist()
             var position = AttributedString(
-                String(format: String(localized: "a11y_home_edit_position"), from + offset + 1, shown.count)
+                String(format: String(localized: "a11y_home_edit_position"), landed.position, landed.count)
             )
             // Other speech cannot interrupt a high-priority announcement (AccessibilityNotification.Announcement).
             position.accessibilitySpeechAnnouncementPriority = .high

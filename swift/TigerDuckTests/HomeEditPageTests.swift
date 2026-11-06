@@ -104,9 +104,7 @@ struct HomeEditPageTests {
                 ]
                 let (window, host) = try Self.show(viewModel, hiding: .todayCourses)
                 defer { window.isHidden = true }
-                let handle = { (type: HomeSection.HomeSectionType) in
-                    Self.element(labeled: String(localized: "home_section_drag_hint"), value: type.defaultTitle, in: host.view)
-                }
+                let handle = { (type: HomeSection.HomeSectionType) in Self.element(labeled: type.defaultTitle, in: host.view) }
                 let ids = { viewModel.layout.sections.map(\.id) }
 
                 try await waitUntil { accessibilityElement(labeled: HomeSection.HomeSectionType.custom.defaultTitle, in: host.view) != nil }
@@ -115,6 +113,16 @@ struct HomeEditPageTests {
                 #expect(Self.moveActions(of: handle(.quickWidgets)) == [Self.moveUp, Self.moveDown])
                 #expect(Self.moveActions(of: handle(.custom)) == [Self.moveUp])
 
+                let exposed = exposedAccessibilityElements(in: host.view)
+                let titles = [HomeSection.HomeSectionType.upcomingAssignments, .quickWidgets, .custom].map(\.defaultTitle)
+                #expect(!exposed.contains { $0.accessibilityLabel == String(localized: "home_section_drag_hint") })
+                for title in titles {
+                    let named = exposed.filter { $0.accessibilityLabel == title }
+                    #expect(!named.isEmpty && named.allSatisfy { !Self.moveActions(of: $0).isEmpty }, "\(title) is read only on its handle")
+                }
+                let removed = exposed.filter { $0.accessibilityLabel == String(localized: "action_remove") }.compactMap(\.accessibilityValue)
+                #expect(Set(titles).isSubset(of: Set(removed)))
+
                 let expected = try Self.dragged(ids(), "quickWidgets", onto: "upcomingAssignments")
                 #expect(try Self.perform(Self.action(Self.moveUp, of: handle(.quickWidgets))))
                 #expect(ids() == ["todayCourses", "quickWidgets", "upcomingAssignments", "custom"])
@@ -122,6 +130,34 @@ struct HomeEditPageTests {
                 #expect(Self.savedLayout()?.map(\.id) == expected)
             }
         }
+    }
+
+    @Test func aMoveOfAnIDTheLayoutDoesNotHoldMovesNothing() {
+        var ids = ["stale", "upcomingAssignments", "quickWidgets"]
+        let shown = ["upcomingAssignments", "gone", "quickWidgets"]
+        let move = { (offsets: IndexSet, destination: Int) in ids.move(fromOffsets: offsets, toOffset: destination) }
+
+        #expect(ReorderDropSupport.step("gone", by: 1, among: shown, in: ids, moveAction: move)?.position == nil)
+        #expect(ReorderDropSupport.step("gone", by: -1, among: shown, in: ids, moveAction: move)?.position == nil)
+        #expect(ReorderDropSupport.step("upcomingAssignments", by: -1, among: shown, in: ids, moveAction: move)?.position == nil)
+        #expect(ids == ["stale", "upcomingAssignments", "quickWidgets"])
+
+        let landed = ReorderDropSupport.step("quickWidgets", by: -1, among: shown, in: ids, moveAction: move)
+        #expect(landed?.position == 1 && landed?.count == 2)
+        #expect(ids == ["stale", "quickWidgets", "upcomingAssignments"])
+    }
+
+    @Test func twoQuickMovesDownGoTwoPlacesAndStopAtTheEnd() {
+        var ids = ["library", "calendar", "gpa"]
+        let drawn = ids
+        let move = { (offsets: IndexSet, destination: Int) in ids.move(fromOffsets: offsets, toOffset: destination) }
+
+        let first = ReorderDropSupport.step("library", by: 1, among: drawn, in: ids, moveAction: move)
+        let second = ReorderDropSupport.step("library", by: 1, among: drawn, in: ids, moveAction: move)
+        let third = ReorderDropSupport.step("library", by: 1, among: drawn, in: ids, moveAction: move)
+
+        #expect(first?.position == 2 && second?.position == 3 && third?.position == nil)
+        #expect(ids == ["calendar", "gpa", "library"])
     }
 
     static let moveUp = String(localized: "a11y_home_edit_move_up")
@@ -140,10 +176,8 @@ struct HomeEditPageTests {
     }
 
     /// The tree lists some elements twice.
-    static func element(labeled label: String, value: String? = nil, in view: UIView) -> NSObject? {
-        let matches = exposedAccessibilityElements(in: view).filter {
-            $0.accessibilityLabel == label && (value == nil || $0.accessibilityValue == value)
-        }
+    static func element(labeled label: String, in view: UIView) -> NSObject? {
+        let matches = exposedAccessibilityElements(in: view).filter { $0.accessibilityLabel == label }
         return matches.first { !($0.accessibilityCustomActions ?? []).isEmpty } ?? matches.first
     }
 

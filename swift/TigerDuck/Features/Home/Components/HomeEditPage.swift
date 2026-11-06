@@ -54,7 +54,8 @@ struct HomeEditPage<Header: View>: View {
         // The handle sits above the outline, which is mostly its header, instead of covering it.
         return VStack(spacing: 0) {
             SectionDragHandle()
-                .accessibilityValue(section.displayTitle)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(section.displayTitle)
                 .reorderAccessibilityActions(
                     section.id,
                     shown: sections.map(\.id),
@@ -114,6 +115,7 @@ struct HomeEditPage<Header: View>: View {
         case .quickWidgets, .custom:
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
                 SectionHeader(title: section.title)
+                    .accessibilityHidden(true)
                 WidgetGridView(
                     widgets: Binding(
                         get: { viewModel.layout.sections.first { $0.id == section.id }?.widgets ?? [] },
@@ -152,6 +154,7 @@ private struct SectionPlaceholder: View {
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             SectionHeader(title: section.displayTitle)
+                .accessibilityHidden(true)
 
             Group {
                 if section.type == .todayCourses {
@@ -193,7 +196,6 @@ private struct SectionDragHandle: View {
         HStack(spacing: TigerDuckTheme.Spacing.xs) {
             Image(systemName: "line.3.horizontal")
                 .font(.caption.weight(.bold))
-                .accessibilityHidden(true)
             Text(String(localized: "home_section_drag_hint"))
                 .font(TigerDuckTheme.Typography.caption2)
         }
@@ -204,7 +206,6 @@ private struct SectionDragHandle: View {
             Capsule().fill(Color(.systemGray5))
         )
         .padding(.top, TigerDuckTheme.Spacing.xs)
-        .accessibilityElement(children: .combine)
     }
 }
 
