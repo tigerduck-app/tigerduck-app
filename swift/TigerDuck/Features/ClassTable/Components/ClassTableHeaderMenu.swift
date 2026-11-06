@@ -5,8 +5,11 @@ struct ClassTableHeaderMenu: View {
     let canExportPicture: Bool
     @Binding var export: ClassTableExportState
     @Binding var shareModel: ClassTableShareModel?
+    var schoolTerm: @MainActor (_ code: String, _ ownTable: Bool) -> SchoolCalendar.Term? = {
+        SchoolCalendar.term($0, ownTable: $1)
+    }
 
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @Environment(\.requestClassTableImport) private var requestImport
     @State private var shareAvailability = ClassTableShareModel.AvailabilityMemo()
     // Read here and passed on to the export, whose renderer does not inherit
@@ -48,7 +51,7 @@ struct ClassTableHeaderMenu: View {
                 Label(String(localized: "class_table_share"), systemImage: "qrcode")
             }
             .disabled(export.isExporting || !ClassTableShareModel.canShare(
-                studentId: app.authService.storedStudentId,
+                studentId: app?.authService.storedStudentId,
                 shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses),
                 semesters: viewModel.availableSemesters,
                 memo: shareAvailability
@@ -61,6 +64,7 @@ struct ClassTableHeaderMenu: View {
         }
         Section {
             exportButton
+            calendarButton
         }
         ClassTableResetSection { viewModel.editor.dialogs.showResetConfirm = true }
     }
@@ -71,6 +75,8 @@ struct ClassTableHeaderMenu: View {
                 ForEach(section, id: \.self) { action in
                     if action == .exportScreenshot {
                         exportButton
+                    } else if action == .exportCalendar {
+                        calendarButton
                     } else {
                         if action == .deleteUser { PageSettingsButton() }
                         Button(role: action.role) {
@@ -87,6 +93,7 @@ struct ClassTableHeaderMenu: View {
     private func perform(_ action: ClassTableOtherPersonAction) {
         switch action {
         case .exportScreenshot: exportScreenshot()
+        case .exportCalendar: exportCalendar()
         case .importClassTable: requestImport()
         case .rename: viewModel.people.startRenamingPerson()
         case .deleteUser: viewModel.people.startDeletingPerson()
@@ -103,9 +110,9 @@ struct ClassTableHeaderMenu: View {
     }
 
     private func exportScreenshot() {
-        export.isExporting = true
-        Task {
-            let url = await ClassTableExporter.render(
+        guard let app else { return }
+        shareFile {
+            await ClassTableExporter.render(
                 viewModel: viewModel,
                 app: app,
                 colorScheme: colorScheme,
@@ -113,6 +120,45 @@ struct ClassTableHeaderMenu: View {
                 legibilityWeight: legibilityWeight,
                 differentiateWithoutColor: differentiateWithoutColor
             )
+        }
+    }
+
+    private var calendarButton: some View {
+        Button {
+            exportCalendar()
+        } label: {
+            Label(String(localized: "class_table_export_ics"), systemImage: "calendar")
+        }
+        .disabled(
+            export.isExporting || calendarTerm == nil || !ClassTableCalendarFile.hasTimedMeeting(in: viewModel.courses)
+        )
+    }
+
+    private var calendarTerm: SchoolCalendar.Term? {
+        schoolTerm(viewModel.currentSemester, viewModel.shownPerson == nil)
+    }
+
+    private func exportCalendar() {
+        guard let term = calendarTerm else { return }
+        let events = ClassTableCalendarFile.events(of: viewModel, in: term)
+        guard !events.isEmpty else {
+            export.showsFailed = true
+            return
+        }
+        let text = ClassTableCalendarFile.text(of: events, in: term, now: Date())
+        let name = ClassTableExporter.fileName(
+            title: String(localized: "feature_class_table"),
+            semesterLabel: viewModel.displayLabel(for: viewModel.currentSemester),
+            studentId: viewModel.shownPerson?.nickname,
+            pathExtension: "ics"
+        )
+        shareFile { await ClassTableExporter.save(named: name) { Data(text.utf8) } }
+    }
+
+    private func shareFile(_ file: @escaping @MainActor () async -> URL?) {
+        export.isExporting = true
+        Task {
+            let url = await file()
             export.isExporting = false
             if let url {
                 export.file = ClassTableExportState.File(url: url)
@@ -123,7 +169,7 @@ struct ClassTableHeaderMenu: View {
     }
 
     private func openShareSheet() {
-        guard let studentId = app.authService.storedStudentId else { return }
+        guard let studentId = app?.authService.storedStudentId else { return }
         let terms = ClassTableShareModel.terms(
             in: viewModel.availableSemesters,
             shownTerm: .init(semester: viewModel.currentSemester, courses: viewModel.courses)
