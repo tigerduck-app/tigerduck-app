@@ -320,6 +320,31 @@ struct CourseDeleteSyncTests {
         #expect(viewModel.editor.deletedCourseNos.isEmpty)
     }
 
+    @Test("A class table delete sends its delete alone, so no course added by hand goes up again as one of the school's")
+    func classTableDeleteUploadsNoCourseList() {
+        let folder = Self.freshDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let courses = CourseStore(folders: CacheFolders(root: folder))
+        let viewModel = ClassTableViewModel(courses: courses, importedTables: ImportedClassTableStore(
+            fileURL: folder.appendingPathComponent("imported_class_tables.json"), signedInStudentId: { "B11300000" }
+        ))
+        let term = viewModel.currentSemester
+        let fetched = SDCourse(courseNo: "CS1001301", courseName: "Programming", moodleIdNumber: "\(term)CS1001301", semester: term)
+        let added = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: term)
+        courses.saveCourses([fetched], semester: term, for: testSignIn)
+        courses.saveUserAddedCourses([added], for: testSignIn)
+        viewModel.courses = [fetched, added]
+        var deleted: [String] = []
+        var uploaded: [[String]] = []
+        viewModel.editor.sync.courseDeleted = { courseNo, _ in deleted.append(courseNo) }
+        viewModel.editor.sync.coursesChanged = { list, _ in uploaded.append(list.map(\.courseNo)) }
+
+        viewModel.editor.deleteCourse(fetched)
+
+        #expect(deleted == ["CS1001301"])
+        #expect(uploaded.isEmpty)
+    }
+
     @Test("A term reset still resets the term here when the class table closes while the backend delete runs")
     func resetOutlivesTheClassTable() async throws {
         let folder = Self.freshDirectory()

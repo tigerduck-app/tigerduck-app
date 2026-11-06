@@ -70,6 +70,24 @@ struct KeepLocalCoursesTests {
         #expect(server.rows == ["client:1151:CS1"])
     }
 
+    @Test("Use Local adds back each course added by hand and still shown, stamped after its term's reset, and sends the rest as the school's")
+    func useLocalAddsBackHandAddedCourses() async throws {
+        let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1151:GE1", "client:1151:EE2"])
+
+        try await SyncConflicts.keepLocalCourses(
+            [("1151", Self.roster("CS1", "GE1", "EE2", "PE3"))], addedByHand: ["1151:GE1", "1151:EE2", "1151:PE3", "1142:CS1"],
+            hiding: ["1151:PE3"], on: server, for: testSignIn
+        )
+
+        let upload = try #require(server.uploads.first)
+        let resetAt = try #require(server.resets.first)
+        let addedAt = try #require(upload.addedAt)
+        #expect(upload.request.courses.map(\.courseNo) == ["CS1", "GE1", "EE2", "PE3"])
+        #expect(upload.request.handAddedCourses?.map(\.courseKey) == ["client:1151:EE2", "client:1151:GE1"])
+        #expect(PushAPI.clock(of: addedAt) > PushAPI.clock(of: resetAt))
+        #expect(upload.request.handAddedCourses?.allSatisfy { $0.hlc == PushAPI.clock(of: addedAt) } == true)
+    }
+
     @Test("Use Local resets only the terms it re-uploads, never every term at once")
     func resetsTermByTerm() async throws {
         let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1142:CS9"])
@@ -162,6 +180,8 @@ private final class FakeCourseServer: CourseSyncBackend {
     private(set) var rows: Set<String>
     private(set) var tombstones: [String: Bool]
     private(set) var fullResets = 0
+    private(set) var resets: [Date] = []
+    private(set) var uploads: [(request: PushAPI.CourseUploadRequest, addedAt: Date?)] = []
     var failingDeletes = 0
     var afterSend: () -> Void = {}
 
@@ -173,6 +193,7 @@ private final class FakeCourseServer: CourseSyncBackend {
     func deleteAllCourses(semester: String?, madeAt: Date, for signIn: SignIn) async throws {
         guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
         defer { afterSend() }
+        resets.append(madeAt)
         guard let semester else {
             fullResets += 1
             rows = []
@@ -189,6 +210,7 @@ private final class FakeCourseServer: CourseSyncBackend {
     func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?, for signIn: SignIn) async throws {
         guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
         defer { afterSend() }
+        uploads.append((request, addedAt))
         for add in request.handAddedCourses ?? [] { tombstones[add.courseKey] = nil }
         let keys = request.courses.map { "client:\($0.semester):\($0.courseNo)" }
         for key in keys where tombstones[key] == true { tombstones[key] = nil }

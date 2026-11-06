@@ -129,7 +129,6 @@ final class ClassTableEditor {
             ignoredAssignmentCourses = AssignmentStore.shared.loadIgnoredAssignmentCourses()
         }
         sync.courseDeleted?(courseNo, semester)
-        sync.coursesChanged?(table.courses, semester)
     }
 
     func resetCourses(authService: AuthService) {
