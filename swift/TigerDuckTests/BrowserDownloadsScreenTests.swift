@@ -126,12 +126,12 @@ struct BrowserDownloadsScreenTests {
             let list = try #require(sheet.descendants(ofType: UICollectionView.self).first)
             let below = try #require(Self.element(containing: saved, in: sheet)).accessibilityFrame
             list.scrollRectToVisible(list.convert(below, from: window.screen.coordinateSpace), animated: false)
-            try await Task.sleep(for: .milliseconds(600))
-            let row = try #require(Self.element(containing: saved, in: sheet))
             let remove = String(localized: "action_remove")
-            #expect((row.accessibilityCustomActions ?? []).contains { $0.name == remove })
-
-            let frame = row.accessibilityFrame
+            try await waitUntil {
+                Self.element(containing: saved, in: sheet)?.accessibilityCustomActions?.contains { $0.name == remove } == true
+            }
+            try await Task.sleep(for: .milliseconds(600))
+            let frame = try #require(Self.element(containing: saved, in: sheet)).accessibilityFrame
             let center = window.convert(CGPoint(x: frame.midX, y: frame.midY), from: window.screen.coordinateSpace)
             try await fingerTap(at: center, in: window, holding: .milliseconds(1_200))
             try await waitUntil {
