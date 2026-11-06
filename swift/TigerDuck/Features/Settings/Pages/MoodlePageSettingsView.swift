@@ -16,7 +16,7 @@ struct MoodlePageSettingsView: View {
                 }
                 .settingsRow(.moodleNotifications)
             }
-            StorageKindSection(kind: .moodleFiles)
+            StorageKindSection(kinds: [.moodleFiles, .moodleData])
         }
     }
 }

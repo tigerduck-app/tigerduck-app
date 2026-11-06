@@ -61,7 +61,7 @@ final class MoodleFiles: AccountScoped {
         let value: Value
     }
 
-    private var moodleDir: URL { folders.cache.appendingPathComponent("moodle", isDirectory: true) }
+    var moodleDir: URL { folders.cache.appendingPathComponent("moodle", isDirectory: true) }
 
     var moodleFilesDir: URL {
         folders.cache.deletingLastPathComponent().appendingPathComponent("Moodle", isDirectory: true)

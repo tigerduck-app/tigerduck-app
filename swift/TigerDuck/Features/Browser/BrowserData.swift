@@ -99,7 +99,7 @@ final class BrowserData: AccountScoped {
 
     nonisolated static func storeBytes(in folder: URL, inUse: Bool) -> Int? {
         guard FileManager.default.fileExists(atPath: folder.path) else { return inUse ? nil : 0 }
-        return MoodleFileDownloads.totalBytes(in: folder)
+        return FileManager.default.bytes(at: folder)
     }
 
     /// WebKit refuses while a web view still has the store, as a browser that is closing does.

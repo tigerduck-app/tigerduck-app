@@ -10,12 +10,11 @@ struct StorageSettingsView: View {
     var body: some View {
         List {
             Section { StorageTotalCard(sizes: sizes) }
-            Section(String(localized: "settings_storage_cache")) {
-                row(.moodleFiles)
-                row(.mail)
-            }
-            Section(String(localized: "settings_browser_in_app")) {
-                row(.websiteData)
+            ForEach(StorageKind.sections.indices, id: \.self) { index in
+                let section = StorageKind.sections[index]
+                Section(section.title) {
+                    ForEach(section.kinds, id: \.self, content: row)
+                }
             }
         }
         .navigationTitle(String(localized: "settings_storage_title"))
@@ -29,7 +28,7 @@ struct StorageSettingsView: View {
             Button(String(localized: "action_cancel"), role: .cancel) {}
             Button(String(localized: "action_delete"), role: .destructive) { delete(kind) }
         } message: { kind in
-            Text(kind.deleteConfirmation?.message ?? "")
+            if let message = kind.deleteConfirmation?.message { Text(message) }
         }
     }
 
@@ -49,32 +48,38 @@ struct StorageSettingsView: View {
 }
 
 struct StorageKindSection: View {
-    let kind: StorageKind
+    let kinds: [StorageKind]
     var cleaner: StorageCleaner = .live
 
     @State private var sizes: StorageSizes?
     @State private var deleting = false
-    @State private var confirming = false
+    @State private var confirming: StorageKind?
 
     var body: some View {
         Section(String(localized: "settings_storage_title")) {
-            StorageRow(kind: kind, sizes: sizes, deleting: deleting) {
-                if kind.confirmsDelete { confirming = true } else { delete() }
+            ForEach(kinds, id: \.self) { kind in
+                StorageRow(kind: kind, sizes: sizes, deleting: deleting) {
+                    if kind.confirmsDelete { confirming = kind } else { delete(kind) }
+                }
             }
-            .alert(kind.deleteConfirmation?.title ?? "", isPresented: $confirming) {
+            .alert(
+                confirming?.deleteConfirmation?.title ?? "",
+                isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
+                presenting: confirming
+            ) { kind in
                 Button(String(localized: "action_cancel"), role: .cancel) {}
-                Button(String(localized: "action_delete"), role: .destructive) { delete() }
-            } message: {
-                Text(kind.deleteConfirmation?.message ?? "")
+                Button(String(localized: "action_delete"), role: .destructive) { delete(kind) }
+            } message: { kind in
+                if let message = kind.deleteConfirmation?.message { Text(message) }
             }
         }
-        .task { sizes = await cleaner.only(kind).measure() }
+        .task { sizes = await cleaner.only(kinds).measure() }
     }
 
-    private func delete() {
+    private func delete(_ kind: StorageKind) {
         deleting = true
         Task {
-            sizes = await cleaner.only(kind).delete(kind)
+            sizes = await cleaner.only(kinds).delete(kind)
             deleting = false
         }
     }
@@ -120,8 +125,8 @@ private struct StorageRow: View {
 }
 
 private extension StorageCleaner {
-    func only(_ kind: StorageKind) -> StorageCleaner {
-        StorageCleaner(stores: stores.filter { $0.key == kind })
+    func only(_ kinds: [StorageKind]) -> StorageCleaner {
+        StorageCleaner(stores: stores.filter { kinds.contains($0.key) })
     }
 }
 
@@ -183,10 +188,22 @@ private struct StorageIconTile: View {
 }
 
 extension StorageKind {
+    static var sections: [(title: String, kinds: [StorageKind])] {
+        [
+            (String(localized: "settings_downloaded_files_title"), [.moodleFiles, .moodleData, .mailAttachments]),
+            (String(localized: "feature_school_mail"), [.mailCache, .mail]),
+            (String(localized: "settings_browser_in_app"), [.browserDownloads, .websiteData]),
+        ]
+    }
+
     var title: String {
         switch self {
         case .moodleFiles: String(localized: "settings_downloaded_files_moodle")
-        case .mail: String(localized: "feature_school_mail")
+        case .moodleData: String(localized: "settings_storage_moodle_data")
+        case .mailAttachments: String(localized: "settings_downloaded_files_mail")
+        case .mailCache: String(localized: "school_mail_cache_size")
+        case .mail: String(localized: "school_mail_storage_title")
+        case .browserDownloads: String(localized: "browser_downloads")
         case .websiteData: String(localized: "settings_storage_browser_data")
         }
     }
@@ -194,7 +211,11 @@ extension StorageKind {
     fileprivate var symbol: String {
         switch self {
         case .moodleFiles: "folder.fill"
-        case .mail: "envelope.fill"
+        case .moodleData: "person.crop.circle.fill"
+        case .mailAttachments: "paperclip"
+        case .mailCache: "envelope.fill"
+        case .mail: "tray.fill"
+        case .browserDownloads: "arrow.down.circle.fill"
         case .websiteData: "globe"
         }
     }
@@ -202,17 +223,23 @@ extension StorageKind {
     fileprivate var color: Color {
         switch self {
         case .moodleFiles: .orange
-        case .mail: .blue
+        case .moodleData: .yellow
+        case .mailAttachments: .teal
+        case .mailCache: .blue
+        case .mail: .purple
+        case .browserDownloads: .green
         case .websiteData: .gray
         }
     }
 
-    fileprivate var deleteConfirmation: (title: String, message: String)? {
+    fileprivate var deleteConfirmation: (title: String, message: String?)? {
         switch self {
-        case .moodleFiles:
+        case .moodleFiles, .moodleData, .mailAttachments, .mailCache:
             nil
         case .mail:
             (String(localized: "school_mail_storage_delete_title"), String(localized: "school_mail_storage_delete_message"))
+        case .browserDownloads:
+            (String(localized: "browser_downloads_delete_title"), nil)
         case .websiteData:
             (String(localized: "settings_storage_browser_data_delete_title"),
              String(localized: "settings_storage_browser_data_delete_message"))
@@ -225,9 +252,16 @@ extension StorageCleaner {
     /// as at a sign-out, but keeps each site's zoom and desktop choice.
     static var live: StorageCleaner {
         let downloads = MoodleFileDownloads.shared
+        let moodleData = MoodleUserData.shared
+        let mail = MailAccountManager.shared.cache
+        let browserDownloads = SavedDownloads.browser
         return StorageCleaner(stores: [
             .moodleFiles: Store(measure: { await downloads.measure() }, clear: { _ = await downloads.clear() }),
-            .mail: .mail(MailAccountManager.shared.cache),
+            .moodleData: Store(measure: { await moodleData.measure() }, clear: { await moodleData.clear() }),
+            .mailAttachments: .mail(mail, .attachments),
+            .mailCache: .mail(mail, .lists),
+            .mail: .mail(mail, .messages),
+            .browserDownloads: Store(measure: { await browserDownloads.measure() }, clear: { await browserDownloads.clear() }),
             .websiteData: Store(
                 measure: { await BrowserData.storeBytes() },
                 clear: { await BrowserData.shared.reset(keepingSiteChoices: true)?.value }
@@ -237,10 +271,10 @@ extension StorageCleaner {
 }
 
 extension StorageCleaner.Store {
-    nonisolated static func mail(_ cache: MailCache) -> Self {
+    nonisolated static func mail(_ cache: MailCache, _ part: MailCache.Part) -> Self {
         Self(
-            measure: { await Task.detached { cache.totalBytes() }.value },
-            clear: { await Task.detached { cache.clearAll() }.value }
+            measure: { await Task.detached { cache.bytes(in: part) }.value },
+            clear: { await Task.detached { cache.clear(part) }.value }
         )
     }
 }

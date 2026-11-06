@@ -1,13 +1,17 @@
 import Foundation
 
-/// Case order sets the bar's segments; keep it matching the rows `StorageSettingsView` lays out.
 nonisolated enum StorageKind: CaseIterable, Hashable, Sendable {
     case moodleFiles
+    case moodleData
+    case mailAttachments
+    case mailCache
     case mail
+    case browserDownloads
     case websiteData
 
-    /// Mail has to download again and sites may sign the user out, so those two ask first.
-    var confirmsDelete: Bool { self != .moodleFiles }
+    /// Mail has to download again, sites may sign the user out and the browser's downloads are
+    /// the student's own files, so those ask first.
+    var confirmsDelete: Bool { [.mail, .browserDownloads, .websiteData].contains(self) }
 }
 
 /// Bytes per kind; a kind that could not be measured has none.

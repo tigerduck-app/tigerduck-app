@@ -149,7 +149,7 @@ private enum AccountPictureFolder {
         let name = studentId.isEmpty ? "\(member.id)-\(revision(of: url))" : studentId
         return cache.moodleFilesDir
             .appendingPathComponent(account.isEmpty ? "_" : account, isDirectory: true)
-            .appendingPathComponent("pictures", isDirectory: true)
+            .appendingPathComponent(MoodleFileDownloads.picturesFolder, isDirectory: true)
             .appendingPathComponent(name)
     }
 

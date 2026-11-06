@@ -39,7 +39,7 @@ struct MailSettingsView: View {
                 Text(String(localized: "school_mail_settings_display_name_hint"))
             }
 
-            StorageKindSection(kind: .mail)
+            StorageKindSection(kinds: [.mailAttachments, .mailCache, .mail])
         }
         .onAppear { draft = DisplayNameDraft(of: account) }
         .onDisappear { if SettingsGate.mailSignIn.isOpen(in: state) { draft.save(to: account) } }

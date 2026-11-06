@@ -9,7 +9,7 @@ struct BrowserPageSettingsView: View {
             Section(SettingsRow.addressBar.label) {
                 BrowserAddressBarPicker(selection: $addressBar)
             }
-            StorageKindSection(kind: .websiteData)
+            StorageKindSection(kinds: [.browserDownloads, .websiteData])
         }
     }
 }
