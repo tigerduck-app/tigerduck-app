@@ -4,7 +4,6 @@ struct ClassTableSync {
     var courseIgnore: ((_ course: CourseStore.Course, _ semester: String, _ ignore: Bool) -> Void)?
     var courseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
     var colorPick: ((_ hex: UInt32, _ course: CourseStore.Course, _ changed: [String: UInt32]) -> Void)?
-    var coursesChanged: ((_ courses: [CourseStore.Course], _ semester: String) -> Void)?
     var courseAdded: ((_ courses: [CourseStore.Course], _ semester: String, _ addedCourseNo: String) -> Void)?
     var courseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?
     var resetBackendCourses: ((_ semester: String, _ resetLocally: @MainActor () -> Void) async -> Bool)?
@@ -25,7 +24,6 @@ struct ClassTableSync {
                 )
             },
             colorPick: { app.edits.syncColorPick($0, for: $1, changed: $2, signIn: session.currentSignIn) },
-            coursesChanged: { app.uploads.uploadCourses($0, semester: $1, for: session.currentSignIn) },
             courseAdded: {
                 app.edits.addCourses(
                     [CourseStore.Tombstone.serverKey(semester: $1, courseNo: $2)], semester: $1, for: session.currentSignIn

@@ -109,11 +109,7 @@ final class ClassTableEditor {
 
         table.courses.append(course)
         store.apply(.addByHand(course, semester: semester), for: AccountSession.school.currentSignIn)
-        if sync.courseAdded != nil {
-            sync.courseAdded?(table.courses, semester, course.courseNo)
-        } else {
-            sync.coursesChanged?(table.courses, semester)
-        }
+        sync.courseAdded?(table.courses, semester, course.courseNo)
         return true
     }
 
