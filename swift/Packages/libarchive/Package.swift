@@ -15,7 +15,8 @@ let package = Package(
             name: "CLibArchive",
             dependencies: [.product(name: "CLZMA", package: "xz")],
             path: "Sources/CLibArchive",
-            cSettings: [.define("HAVE_CONFIG_H")],
+            // Upstream code is kept as released, so its warnings are not ours to fix.
+            cSettings: [.define("HAVE_CONFIG_H"), .unsafeFlags(["-w"])],
             linkerSettings: [.linkedLibrary("z"), .linkedLibrary("bz2"), .linkedLibrary("iconv")]
         ),
     ]

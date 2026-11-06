@@ -31,6 +31,8 @@ let package = Package(
                 .define("HAVE_VISIBILITY", to: "0"), .define("HAVE___BUILTIN_BSWAPXX"),
                 .define("HAVE___BUILTIN_ASSUME_ALIGNED"), .define("TUKLIB_FAST_UNALIGNED_ACCESS"),
                 .define("TUKLIB_SYMBOL_PREFIX", to: "lzma_"), .define("_DARWIN_C_SOURCE"),
+                // Upstream code is kept as released, so its warnings are not ours to fix.
+                .unsafeFlags(["-w"]),
             ]
         ),
     ]

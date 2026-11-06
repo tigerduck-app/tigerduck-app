@@ -52,6 +52,7 @@ cmake -G Ninja <libarchive> -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=<iPhoneO
    `TIGERDUCK_MAX_HEADER_SIZE` (16 MiB) fails with `E2BIG` before it is unpacked. Upstream
    allows 100,000,000 entries and any header size, and builds the whole table before the first
    entry is read.
+3. `Package.swift` builds the sources with `-w`, since their warnings are upstream's.
 
 ## Updating
 

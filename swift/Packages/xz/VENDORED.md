@@ -22,8 +22,9 @@ passes on the command line.
 1. `liblzma/lz/lz_decoder.c`: an LZ decoder asking for a dictionary larger than
    `TIGERDUCK_MAX_DICT_SIZE` (96 MiB) fails with `LZMA_MEMLIMIT_ERROR` instead of allocating it.
    libarchive sets no memory limit, and an archive's LZMA dictionary may ask for up to 4 GiB.
+2. `Package.swift` builds the sources with `-w`, since their warnings are upstream's.
 
 ## Updating
 
-Copy the same files from the new release over these, keep the change above, check the defines
+Copy the same files from the new release over these, keep the changes above, check the defines
 against a fresh CMake configure, then run `ArchiveReaderTests`.
