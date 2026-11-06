@@ -68,7 +68,7 @@ nonisolated extension SettingsRow {
         case .mailNotifications, .mailDisplayName, .mailStorage: .page(.mail)
         case .flipToLibrary, .librarySignOut: .page(.library)
         case .addressBar, .websiteData: .page(.browser)
-        case .moodleNotifications, .moodleStorage: .page(.moodle)
+        case .moodleNotifications, .moodleOpenIn, .moodleStorage: .page(.moodle)
         }
     }
 
@@ -90,6 +90,7 @@ nonisolated extension SettingsRow {
         case .mandarinClassroomNames: !state.isChineseUI && state.usesEnglishClassroomNames
         case .flipToLibrary: state.hasFlipToLibrary
         case .librarySignOut: state.library.isSignedIn
+        case .moodleOpenIn: state.hasMoodleApp
         default: true
         }
     }
