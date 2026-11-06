@@ -3,6 +3,7 @@ import Testing
 import TigerDuckCore
 @testable import TigerDuck
 
+@MainActor
 struct TimeRangeSpokenTests {
     @Test func voiceOverHearsTheRangeInWords() {
         #expect(TimeRange.spoken("10:20", "12:10") == "10:20 to 12:10")
