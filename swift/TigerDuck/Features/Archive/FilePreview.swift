@@ -21,6 +21,7 @@ private struct FilePreview: ViewModifier {
             .quickLookPreview(quickLook, in: quickLookItems)
             .onChange(of: url, initial: true) { _, url in
                 guard let url, ArchiveFormats.isArchive(url), opened?.url != url else { return }
+                if let session { ArchiveCache.shared.remove(session) }
                 let archive = ArchiveCache.shared.open(url)
                 session = archive.session
                 opened = archive
@@ -45,6 +46,8 @@ private struct FilePreview: ViewModifier {
     }
 
     private func closed() {
+        // A cover is dismissed too when another archive's replaces it, which stays open.
+        guard opened == nil else { return }
         if let session { ArchiveCache.shared.remove(session) }
         session = nil
         url = nil

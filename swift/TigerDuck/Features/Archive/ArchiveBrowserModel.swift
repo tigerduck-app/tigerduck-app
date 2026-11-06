@@ -65,7 +65,6 @@ final class ArchiveBrowserModel {
         opening = item
     }
 
-    /// The browser runs this as its own task, so closing the browser cancels the extraction.
     func extractOpening() async {
         guard let item = opening else { return }
         let archive = archive
