@@ -82,8 +82,11 @@ struct NowNextRoomAndRangeTests {
     }
 
     @Test func theCountdownReservesTheWidthOfItsLongestValue() {
-        #expect(ClassCountdown(span: mondayAt("10:20")...mondayAt("11:10"), tint: .orange).widest == "00:00")
-        #expect(ClassCountdown(span: mondayAt("10:20")...mondayAt("12:10"), tint: .orange).widest == "000:00")
         #expect(ClassCountdown(span: mondayAt("10:20")...mondayAt("10:25"), tint: .orange).widest == "0:00")
+        #expect(ClassCountdown(span: mondayAt("10:20")...mondayAt("11:10"), tint: .orange).widest == "00:00")
+        #expect(ClassCountdown(span: mondayAt("10:20")...mondayAt("11:19"), tint: .orange).widest == "00:00")
+        #expect(ClassCountdown(span: mondayAt("10:20")...mondayAt("11:20"), tint: .orange).widest == "0:00:00")
+        #expect(ClassCountdown(span: mondayAt("10:20")...mondayAt("12:10"), tint: .orange).widest == "0:00:00")
+        #expect(ClassCountdown(span: mondayAt("10:20")...mondayAt("13:20"), tint: .orange).widest == "0:00:00")
     }
 }

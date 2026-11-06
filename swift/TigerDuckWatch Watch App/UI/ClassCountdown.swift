@@ -22,16 +22,21 @@ struct ClassCountdown: View {
             Text(widest)
                 .hidden()
                 .overlay(alignment: .trailing) {
-                    Text(timerInterval: real, countsDown: true, showsHours: false)
+                    Self.timer(real)
                         .multilineTextAlignment(.trailing)
                 }
                 .font(.footnote.weight(.semibold).monospacedDigit())
         }
     }
 
+    static func timer(_ real: ClosedRange<Date>, pausedAt pause: Date? = nil) -> Text {
+        Text(timerInterval: real, pauseTime: pause, countsDown: true, showsHours: true)
+    }
+
     var widest: String {
-        let minutes = Int(span.upperBound.timeIntervalSince(span.lowerBound) / 60)
-        return String(repeating: "0", count: String(minutes).count) + ":00"
+        let seconds = Int(span.upperBound.timeIntervalSince(span.lowerBound))
+        func zeros(_ value: Int) -> String { String(repeating: "0", count: String(value).count) }
+        return seconds >= 3_600 ? zeros(seconds / 3_600) + ":00:00" : zeros(seconds / 60) + ":00"
     }
 }
 

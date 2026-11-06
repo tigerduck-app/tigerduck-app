@@ -106,23 +106,34 @@ final class NextClassWidgetSnapshotTests: XCTestCase {
                 accentHex: "#FF8800", languageTag: language.tag, relevance: nil
             )
             let policy = WatchVisualStylePolicy(preset: .default)
-            let page = VStack(spacing: 12) {
-                ClassCard(title: words.string("watch_now"), course: now, span: span, policy: policy, language: words)
-                ClassCard(
-                    title: NextClassResolver.Day.today.headline(in: words), course: next, span: nil, policy: policy,
-                    language: words
-                )
+            func page(width: CGFloat) -> some View {
+                VStack(spacing: 12) {
+                    ClassCard(title: words.string("watch_now"), course: now, span: span, policy: policy, language: words)
+                    ClassCard(
+                        title: NextClassResolver.Day.today.headline(in: words), course: next, span: nil, policy: policy,
+                        language: words
+                    )
+                }
+                .padding(.horizontal, 8)
+                .frame(width: width, alignment: .top)
             }
+            let threeHourPage = ClassCard(
+                title: words.string("watch_now"), course: threeHourClass, span: threeHours, policy: policy, language: words
+            )
             .padding(.horizontal, 8)
-            .frame(width: 208, alignment: .top)
 
             let pictures: [(name: String, view: AnyView, size: CGSize?)] = [
-                ("page", AnyView(page), CGSize(width: 208, height: 248)),
-                ("page-largest-text", AnyView(page.dynamicTypeSize(.accessibility3)), nil),
+                ("page", AnyView(page(width: 208)), CGSize(width: 208, height: 248)),
+                ("page-41mm", AnyView(page(width: 176)), CGSize(width: 176, height: 215)),
+                ("page-45mm", AnyView(page(width: 198)), CGSize(width: 198, height: 242)),
+                ("page-49mm", AnyView(page(width: 205)), CGSize(width: 205, height: 251)),
+                ("page-3h-41mm", AnyView(threeHourPage), CGSize(width: 176, height: 120)),
+                ("page-largest-text", AnyView(page(width: 208).dynamicTypeSize(.accessibility3)), nil),
                 ("rectangular", AnyView(RectangularView(entry: during)), CGSize(width: 193, height: 82)),
                 ("rectangular-next", AnyView(RectangularView(entry: before)), CGSize(width: 193, height: 82)),
                 ("rectangular-next-long-room", AnyView(RectangularView(entry: beforeFarRoom)), CGSize(width: 193, height: 82)),
                 ("rectangular-3h", AnyView(RectangularView(entry: longClass)), CGSize(width: 193, height: 82)),
+                ("rectangular-3h-41mm", AnyView(RectangularView(entry: longClass)), CGSize(width: 171.5, height: 73)),
                 ("circular", AnyView(CircularView(entry: during)), CGSize(width: 50, height: 50)),
                 ("corner", AnyView(CornerView(entry: during)), CGSize(width: 38, height: 38)),
                 ("inline", AnyView(InlineView(entry: during)), CGSize(width: 180, height: 20)),
