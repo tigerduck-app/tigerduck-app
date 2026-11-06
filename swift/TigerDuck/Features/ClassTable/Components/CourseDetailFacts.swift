@@ -8,7 +8,7 @@ import AppKit
 
 struct CourseDetailRoomAndTime: View {
     let course: CourseStore.Course
-    let timeRange: String?
+    let times: (start: String, end: String)?
     let weekday: Int?
     let periods: [String]?
     let meeting: CourseTimeSlot?
@@ -16,6 +16,7 @@ struct CourseDetailRoomAndTime: View {
     @Environment(AppEnvironment.self) private var app
 
     var body: some View {
+        let time = Self.time(of: course, times: times, weekday: weekday, meeting: meeting)
         EmphasisCards {
             EmphasisCard(
                 label: String(localized: "course_detail_classroom_label"),
@@ -25,16 +26,27 @@ struct CourseDetailRoomAndTime: View {
             )
             EmphasisCard(
                 label: String(localized: "course_detail_time_label"),
-                value: meeting.flatMap(Self.changedTime) ?? timeValue,
-                isChanged: meeting.flatMap(Self.changedTime) != nil,
+                value: time.text,
+                spokenValue: time.spoken,
+                isChanged: time.isChanged,
                 policy: app.preferences.visualStylePolicy
             )
         }
     }
 
-    private static func changedTime(_ meeting: CourseTimeSlot) -> String? {
-        if meeting.isCancelled { return String(localized: "course_card_cancelled") }
-        return meeting.hasChangedTime ? TimeRange.text(meeting.start.timeString, meeting.end.timeString) : nil
+    static func time(
+        of course: CourseStore.Course, times: (start: String, end: String)?, weekday: Int?, meeting: CourseTimeSlot?
+    ) -> (text: String, spoken: String, isChanged: Bool) {
+        if meeting?.isCancelled == true {
+            let cancelled = String(localized: "course_card_cancelled")
+            return (cancelled, cancelled, true)
+        }
+        if let meeting, meeting.hasChangedTime {
+            let start = meeting.start.timeString, end = meeting.end.timeString
+            return (TimeRange.text(start, end), TimeRange.spoken(start, end), true)
+        }
+        guard let shown = times ?? weekday.flatMap({ course.times(for: $0) }) else { return ("—", "—", false) }
+        return (TimeRange.text(shown.start, shown.end), TimeRange.spoken(shown.start, shown.end), false)
     }
 
     private var classroomValue: String {
@@ -48,11 +60,6 @@ struct CourseDetailRoomAndTime: View {
         return course.classroom(weekday: weekday, periods: periods)
     }
 
-    private var timeValue: String {
-        if let timeRange, !timeRange.isEmpty { return timeRange }
-        if let weekday, let derived = course.timeRange(for: weekday) { return derived }
-        return "—"
-    }
 }
 
 struct CourseDetailInfoRows: View {
@@ -158,6 +165,7 @@ struct EmphasisCards<Content: View>: View {
 struct EmphasisCard: View {
     let label: String
     let value: String
+    var spokenValue: String? = nil
     var isChanged = false
     let policy: VisualStylePolicy
 
@@ -168,6 +176,7 @@ struct EmphasisCard: View {
                 .foregroundStyle(Color.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(value)
+                .accessibilityLabel(spokenValue ?? value)
                 .font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit())
                 .foregroundStyle(isChanged ? Color.changeInk : Color.textPrimary)
                 .lineLimit(1)

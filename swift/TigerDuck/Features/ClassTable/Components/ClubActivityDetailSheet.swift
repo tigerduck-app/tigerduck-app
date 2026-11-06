@@ -20,6 +20,7 @@ struct ClubActivityDetailSheet: View {
                     EmphasisCard(
                         label: String(localized: "class_table_club_time_label"),
                         value: TimeRange.text(from: club.start, to: club.end),
+                        spokenValue: TimeRange.spoken(from: club.start, to: club.end),
                         policy: policy
                     )
                 }

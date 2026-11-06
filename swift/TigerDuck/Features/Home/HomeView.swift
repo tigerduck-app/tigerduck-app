@@ -1,6 +1,5 @@
 import Defaults
 import SwiftUI
-import TigerDuckCore
 
 struct HomeView: View {
     var embedded = false
@@ -82,7 +81,7 @@ struct HomeView: View {
             CourseDetailSheet(
                 course: course,
                 assignments: viewModel.assignments.unfinished(for: course.courseNo),
-                timeRange: slot.map { TimeRange.text($0.start.timeString, $0.end.timeString) },
+                times: slot.map { ($0.start.timeString, $0.end.timeString) },
                 weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday,
                 periods: slot?.periods,
                 date: slot?.date,
