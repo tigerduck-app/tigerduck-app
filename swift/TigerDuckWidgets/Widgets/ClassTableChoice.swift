@@ -36,7 +36,7 @@ struct ClassTableQuery: EntityQuery {
 }
 
 struct ChooseClassTableIntent: WidgetConfigurationIntent {
-    static let title: LocalizedStringResource = "widget_class_table_choose"
+    static let title = LocalizedStringResource("widget_class_table_choose")
 
     @Parameter(title: LocalizedStringResource("widget_class_table_choice"))
     var classTable: ClassTableEntity?
