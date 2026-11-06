@@ -7,16 +7,24 @@ import Testing
 struct SyncClockTests {
     nonisolated final class StoredReadings: Sendable {
         private let readings: OSAllocatedUnfairLock<SyncClock.Readings>
-        private let forgets: Bool
+        private let emptyReads: OSAllocatedUnfairLock<Int>
 
-        init(_ readings: SyncClock.Readings = .init(), forgets: Bool = false) {
+        init(_ readings: SyncClock.Readings = .init(), emptyReads: Int = 0) {
             self.readings = OSAllocatedUnfairLock(initialState: readings)
-            self.forgets = forgets
+            self.emptyReads = OSAllocatedUnfairLock(initialState: emptyReads)
         }
+
+        var stored: SyncClock.Readings { readings.withLock { $0 } }
 
         var storage: SyncClock.Storage {
             SyncClock.Storage(
-                load: { self.forgets ? .init() : self.readings.withLock { $0 } },
+                load: {
+                    let readsEmpty = self.emptyReads.withLock { left in
+                        defer { left = max(left - 1, 0) }
+                        return left > 0
+                    }
+                    return readsEmpty ? .init() : self.readings.withLock { $0 }
+                },
                 save: { new in self.readings.withLock { $0 = new } }
             )
         }
@@ -167,7 +175,7 @@ struct SyncClockTests {
     @Test("Stored values that read back missing or unreadable never produce a stamp at or before one already issued")
     func unreadableStoredValuesFailClosed() {
         let device = DeviceClock(Self.ten)
-        let forgetful = Self.makeClock(device, StoredReadings(forgets: true))
+        let forgetful = Self.makeClock(device, StoredReadings(emptyReads: .max))
         let first = Self.clock(of: forgetful.stamp())
         device.set(Self.ten - Self.minute)
         #expect(Self.clock(of: forgetful.stamp()) == first + 1)
@@ -179,6 +187,19 @@ struct SyncClockTests {
         let pastAnyRealTime = Self.makeClock(DeviceClock(Self.ten), StoredReadings(.init(lastIssued: .max, lastSeen: .max)))
         _ = pastAnyRealTime.stamp()
         #expect(pastAnyRealTime.readings.lastIssued == Int64.max / 2)
+    }
+
+    @Test("A save after a read that found the store empty lowers no value the store holds")
+    func aSaveAfterAnEmptyReadLowersNothing() {
+        let held = SyncClock.Readings(
+            lastIssued: Self.ten + Self.minute, lastSeen: Self.ten + Self.minute,
+            heard: SyncClock.Heard(clock: Self.ten, arrivedAt: Self.ten)
+        )
+        let stored = StoredReadings(held, emptyReads: 1)
+
+        _ = Self.makeClock(DeviceClock(Self.ten), stored).stamp()
+
+        #expect(stored.stored == SyncClock.Readings(lastIssued: Self.ten + Self.minute, lastSeen: Self.ten + Self.minute, heard: held.heard))
     }
 
     @Test("A clock value up to the year 2100 survives the outbox's Date unchanged")

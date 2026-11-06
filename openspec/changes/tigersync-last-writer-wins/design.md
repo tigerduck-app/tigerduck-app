@@ -111,7 +111,8 @@ device time it arrived (for D1's cap), in `Defaults` keys behind a small
 session's server. Every client that hears and every caller that stamps belongs to
 `AppEnvironment`, which a launch before the first unlock does not build
 (`docs/decisions/0024-launch-before-first-unlock.md`), so neither can write over the stored values
-with the empty ones `UserDefaults` reads then. A course add's start or landing is a stamp,
+with the empty ones `UserDefaults` reads then; and a save keeps a stored value higher than its
+own unless a pull-back lowered it. A course add's start or landing is a stamp,
 which a full sync compares with `lowestNextStamp` read at its fetch. A term reset's landing and a
 holiday edit are a `SyncClock.mark()`, the later of the device clock and a new stamp, which the
 fetch compares with its `lowestNextMark`. The outbox keeps `SyncOp.stamp` as a `Date`

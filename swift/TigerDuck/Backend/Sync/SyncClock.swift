@@ -102,10 +102,16 @@ nonisolated final class SyncClock: Sendable {
     @discardableResult
     private func update<Result>(_ change: (inout Readings) -> Result) -> Result {
         held.withLockUnchecked { kept in
-            var readings = Self.merged(kept, storage.load())
+            let before = Self.merged(kept, storage.load())
+            var readings = before
             let result = change(&readings)
-            kept = readings
-            storage.save(readings)
+            // UserDefaults reads empty before the first unlock, so only a pull-back may save a
+            // value below the stored one.
+            var saved = Self.merged(readings, storage.load())
+            if readings.lastIssued < before.lastIssued { saved.lastIssued = readings.lastIssued }
+            if readings.lastSeen < before.lastSeen { saved.lastSeen = readings.lastSeen }
+            kept = saved
+            storage.save(saved)
             return result
         }
     }
