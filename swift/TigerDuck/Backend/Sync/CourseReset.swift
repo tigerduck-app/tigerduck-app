@@ -14,9 +14,7 @@ enum CourseReset {
         mayWrite: () -> Bool
     ) async throws -> Set<String> {
         let dropped = await coordinator.dropCourseEdits(madeBeforeReset: resetAt)
-        let adding = await coordinator.courseAddKeys(
-            unlandedAt: resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin), takenIn: coordinator.clock.era
-        )
+        let adding = await coordinator.courseAddKeys(unlandedAtReset: resetAt)
         let deleting = await coordinator.pendingCourseDeleteKeys()
         guard mayWrite() else { throw FullSyncAbandoned() }
         let added = adding.compactMap(CourseTombstone.parts(of:))

@@ -168,6 +168,10 @@ final class QueuedEdits {
         return keys.union(addStartedOrLandedAt.filter { era.current($0.value) >= landingFrom }.keys)
     }
 
+    func courseAddKeys(unlandedAtReset resetAt: Date) async -> Set<String> {
+        await courseAddKeys(unlandedAt: resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin), takenIn: clock.era)
+    }
+
     func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
         let cutoff = resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin)
         let dropped = await discard(madeBefore: [.allCourseAdds: cutoff, .allCourseDeletes: cutoff], takenIn: clock.era)

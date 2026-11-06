@@ -220,6 +220,10 @@ final class CloudSyncCoordinator {
         await edits.courseAddKeys(unlandedAt: date, takenIn: era)
     }
 
+    func courseAddKeys(unlandedAtReset resetAt: Date) async -> Set<String> {
+        await edits.courseAddKeys(unlandedAtReset: resetAt)
+    }
+
     nonisolated static let clockSkewMargin: TimeInterval = 2 * 60
 
     @discardableResult

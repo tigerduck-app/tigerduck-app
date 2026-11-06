@@ -119,8 +119,8 @@ final class EditSender {
             resetLocally()
             return true
         }
-        let madeAt = coordinator.clock.stamp()
         let signIn = await account.startingSignIn
+        let madeAt = coordinator.clock.stamp()
         if let semester { localEdits.resettingSemesters.insert(semester) }
         defer { if let semester { localEdits.resettingSemesters.remove(semester) } }
         do {
