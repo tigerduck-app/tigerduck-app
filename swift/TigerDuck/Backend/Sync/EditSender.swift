@@ -88,8 +88,9 @@ final class EditSender {
     }
 
     func addCourses(_ serverKeys: [String], semester: String, for signIn: SignIn) {
+        let era = coordinator.clock.era
         let addedAt = coordinator.clock.stamp()
-        Task { await coordinator.discardCourseDeletes(courseKeys: Set(serverKeys), madeBeforeAction: addedAt) }
+        Task { await coordinator.discardCourseDeletes(courseKeys: Set(serverKeys), madeBeforeAction: addedAt, takenIn: era) }
         guard SyncPolicy.current.uploadsCourses else { return }
         let prefix = CourseTombstone.serverKey(semester: semester, courseNo: "")
         for key in serverKeys where key.hasPrefix(prefix) {
@@ -102,8 +103,11 @@ final class EditSender {
         guard Defaults[.cloudSyncEnabled] else { return nil }
         localEdits.setRecentCourseDeletions(localEdits.recentCourseDeletions.merging([courseNo: Date()]) { $1 }, for: signIn)
         poller.noteActivity()
+        let era = coordinator.clock.era
         let hiddenAt = coordinator.clock.stamp()
-        return Task { await coordinator.deleteCourse(semester: semester, courseNo: courseNo, at: hiddenAt, for: signIn) }
+        return Task {
+            await coordinator.deleteCourse(semester: semester, courseNo: courseNo, at: hiddenAt, takenIn: era, for: signIn)
+        }
     }
 
     @discardableResult
@@ -138,10 +142,11 @@ final class EditSender {
         onServer reset: () async throws -> Void, thenLocally resetLocally: () -> Void
     ) async throws {
         try await reset()
+        let era = coordinator.clock.era
         let serverResetLandedAt = coordinator.clock.stamp()
         resetLocally()
         await coordinator.discardCourseIgnores(semester: semester)
-        await coordinator.discardCourseDeletes(semester: semester, madeBeforeAction: serverResetLandedAt)
+        await coordinator.discardCourseDeletes(semester: semester, madeBeforeAction: serverResetLandedAt, takenIn: era)
     }
 
     nonisolated static func courseColorsAfterCoursesChange(coursesNowOn: Bool) -> Bool {

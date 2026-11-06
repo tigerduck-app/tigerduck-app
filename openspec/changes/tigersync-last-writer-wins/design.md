@@ -81,8 +81,10 @@ before then moves down by as much as the last issued value did: queued edits and
 a course add's start or landing, a holiday edit and a term reset. They keep their order and fall
 under the new value, and after one jump of the device clock land near the time each was made. A
 time within five seconds past the new value stays, as stamps issued since start there while the
-holders move theirs. A header before 2026 or from 2100 on is not a clock and is ignored, and is
-never re-stamped after.
+holders move theirs. A time taken before the header and stored or compared after it, as an edit on
+its way into the queue or a full sync's fetch start, moves the same way: the device notes the
+pull-backs made before it takes the time and applies those made since. A header before 2026
+or from 2100 on is not a clock and is ignored, and is never re-stamped after.
 
 Lost:
 - ISO-8601 strings, as the snapshot uses today: Apple's `ISO8601DateFormatter` keeps three
@@ -453,7 +455,7 @@ Backend (`uv run pytest server/tests/` against a throwaway Postgres):
 - Migration: upgrade and downgrade on seeded rows.
 
 iOS (`xcodebuild test ... -only-testing:TigerDuckTests`):
-- `SyncClock`: stamping rule, persistence, lowered only from past the backend's reach with the times kept before moved along, broken headers ignored.
+- `SyncClock`: stamping rule, persistence, lowered only from past the backend's reach with the times kept or taken before moved along, broken headers ignored.
 - Outbox: a legacy entry keeps its stamp; entries kept while off; cleared on sign-out.
 - Requests: protocol header and stamps on every write (a stub `URLProtocol`, as
   `swift/TigerDuckTests/SettingsAPIStub.swift` does).

@@ -146,7 +146,8 @@ struct SyncOutboxTests {
         await outbox.enqueue(Self.mark)
 
         let dropped = await outbox.discard(
-            madeBefore: [.allCourseAdds: cutoff, .courseDelete(key: "1151:PE7"): Date().addingTimeInterval(3600)], notAfter: Date()
+            madeBefore: [.allCourseAdds: cutoff, .courseDelete(key: "1151:PE7"): Date().addingTimeInterval(3600)], notAfter: Date(),
+            takenIn: SyncClock.isolated().era
         )
         await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE4", stamp: older))
         await outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE5", stamp: Date()))
@@ -186,7 +187,7 @@ struct SyncOutboxTests {
         let outbox = Self.makeOutbox()
         let earlier = SyncOp.assignmentOverride(
             moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored", stamp: Date().addingTimeInterval(-60))
-        await outbox.discard(madeBefore: [.assignmentMarks: Date()], notAfter: Date())
+        await outbox.discard(madeBefore: [.assignmentMarks: Date()], notAfter: Date(), takenIn: SyncClock.isolated().era)
 
         await outbox.clearAll()
         await outbox.enqueue(earlier)

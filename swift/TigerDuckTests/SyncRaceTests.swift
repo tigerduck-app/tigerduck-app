@@ -193,7 +193,7 @@ struct SyncRaceTests {
             moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "none", stamp: Date(timeIntervalSince1970: 1_790_000_001)
         )
 
-        let enqueuing = edits.enqueueOverride(tapped, for: testSignIn)
+        let enqueuing = edits.enqueueOverride(for: testSignIn) { _ in tapped }
         await landing.follow(enqueuing)
 
         #expect(await edits.hasNewerEdit(than: sent))
@@ -205,7 +205,7 @@ struct SyncRaceTests {
         let landing = LateLanding()
         let edits = Self.edits(landingLate: landing)
 
-        let enqueuing = edits.enqueueOverride(Self.colourEdit, for: testSignIn)
+        let enqueuing = edits.enqueueOverride(for: testSignIn) { _ in Self.colourEdit }
         await landing.follow(enqueuing)
 
         #expect(await edits.pendingCourseOverrides().colors == ["1151CS1"])

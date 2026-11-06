@@ -42,11 +42,11 @@ actor SyncOutbox {
         }
     }
 
-    func enqueue(_ op: SyncOp, for signIn: SignIn) async {
+    func enqueue(_ op: SyncOp, takenIn era: SyncClock.Era, for signIn: SignIn) async {
         if let pause { await pause(.beforeEnqueue) }
         loadIfNeeded()
+        let (op, key) = (op.restamped(era.current), op.dedupKey)
         guard signIn.isCurrent, !cutoffs.cutsOff(op) else { return }
-        let key = op.dedupKey
         entries.removeAll { $0.op.dedupKey == key }
         parked.removeAll { $0.op.dedupKey == key }
         entries.append(OutboxEntry(id: UUID(), op: op, attempts: 0, signIn: signIn))
@@ -116,9 +116,9 @@ actor SyncOutbox {
     }
 
     @discardableResult
-    func discard(madeBefore scopeCutoffs: [DiscardScope: Date], notAfter now: Date) -> [SyncOp] {
-        cutoffs.keep(scopeCutoffs, notAfter: now)
-        let discarding = DiscardCutoffs(scopeCutoffs)
+    func discard(madeBefore scopeCutoffs: [DiscardScope: Date], notAfter now: Date, takenIn era: SyncClock.Era) -> [SyncOp] {
+        let discarding = DiscardCutoffs(scopeCutoffs.mapValues(era.current))
+        cutoffs.keep(scopeCutoffs.mapValues(era.current), notAfter: era.current(now))
         return discard { discarding.cutsOff($0) }
     }
 

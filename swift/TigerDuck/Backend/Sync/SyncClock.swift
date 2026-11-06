@@ -30,14 +30,25 @@ nonisolated final class SyncClock: Sendable {
         let ceiling: Int64
         let top: Int64
 
-        /// A time from before the pull-back, more than `backendLead` past `ceiling`, moves down by
-        /// the pull-back's size: under `ceiling`, in the order it had. Stamps issued in the five
-        /// seconds after it stay within `backendLead` past `ceiling`, so a holder restamping then
-        /// leaves them.
+        /// A time from before the pull-back, more than `backendLead` past `ceiling` and at most the
+        /// next stamp after `top`, moves down by the pull-back's size: to at most `ceiling` plus one,
+        /// in the order it had. Stamps issued in the five seconds after it stay within `backendLead`
+        /// past `ceiling`, so a holder restamping then leaves them.
         func restamped(_ date: Date) -> Date {
             let value = PushAPI.clock(of: date)
-            guard value > ceiling + SyncClock.backendLead, value <= top else { return date }
+            guard value > ceiling + SyncClock.backendLead, value <= top + 1 else { return date }
             return PushAPI.date(ofClock: value - (top - ceiling))
+        }
+    }
+
+    /// The pull-backs made before a time was taken: read it first, then take the time.
+    nonisolated struct Era: Sendable {
+        let clock: SyncClock
+        let pullBacks: Int
+
+        /// `date`, taken in this era, moved as `restamp(after:)` moved the times kept since.
+        func current(_ date: Date) -> Date {
+            clock.pullBacks.withLock { Array($0.dropFirst(pullBacks)) }.reduce(date) { $1.restamped($0) }
         }
     }
 
@@ -65,10 +76,15 @@ nonisolated final class SyncClock: Sendable {
     private let now: @Sendable () -> Date
     private let held = OSAllocatedUnfairLock(initialState: Readings())
     private let restampers = OSAllocatedUnfairLock<[@Sendable (PullBack) async -> Void]>(initialState: [])
+    private let pullBacks = OSAllocatedUnfairLock<[PullBack]>(initialState: [])
 
     init(storage: Storage = .defaults, now: @escaping @Sendable () -> Date = { Date() }) {
         self.storage = storage
         self.now = now
+    }
+
+    var era: Era {
+        Era(clock: self, pullBacks: pullBacks.withLock(\.count))
     }
 
     var readings: Readings {
@@ -115,9 +131,10 @@ nonisolated final class SyncClock: Sendable {
             readings.lastSeen = readings.lastSeen > farAhead ? serverClock : max(readings.lastSeen, serverClock)
             readings.heard = Heard(clock: serverClock, arrivedAt: arrivedAt)
             guard readings.lastIssued > farAhead else { return nil }
-            let top = readings.lastIssued
+            let pullBack = PullBack(ceiling: max(reach, readings.lastSeen), top: readings.lastIssued)
             readings.lastIssued = reach
-            return PullBack(ceiling: max(reach, readings.lastSeen), top: top)
+            pullBacks.withLock { $0.append(pullBack) }
+            return pullBack
         }
     }
 

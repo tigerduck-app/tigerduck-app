@@ -118,9 +118,9 @@ final class CloudSyncCoordinator {
         moodleId: String, semester: String, colorHex: String, for signIn: SignIn
     ) -> Task<Void, Never>? {
         guard isOnOrTurningOn else { return nil }
-        return edits.enqueueOverride(.courseOverride(
-            semester: semester, moodleId: moodleId,
-            customName: nil, colorHex: colorHex, locale: nil, stamp: clock.stamp()), for: signIn)
+        return edits.enqueueOverride(for: signIn) {
+            .courseOverride(semester: semester, moodleId: moodleId, customName: nil, colorHex: colorHex, locale: nil, stamp: $0)
+        }
     }
 
     @discardableResult
@@ -128,9 +128,10 @@ final class CloudSyncCoordinator {
         moodleId: String, semester: String, customName: String, locale: String?, for signIn: SignIn
     ) -> Task<Void, Never>? {
         guard isOnOrTurningOn else { return nil }
-        return edits.enqueueOverride(.courseOverride(
-            semester: semester, moodleId: moodleId,
-            customName: customName, colorHex: nil, locale: locale, stamp: clock.stamp()), for: signIn)
+        return edits.enqueueOverride(for: signIn) {
+            .courseOverride(
+                semester: semester, moodleId: moodleId, customName: customName, colorHex: nil, locale: locale, stamp: $0)
+        }
     }
 
     @discardableResult
@@ -138,10 +139,10 @@ final class CloudSyncCoordinator {
         moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String, for signIn: SignIn
     ) -> Task<Void, Never>? {
         guard isOnOrTurningOn else { return nil }
-        return edits.enqueueOverride(.assignmentOverride(
-            moodleCourseId: moodleCourseId,
-            moodleAssignmentId: moodleAssignmentId,
-            localStatus: localStatus, stamp: clock.stamp()), for: signIn)
+        return edits.enqueueOverride(for: signIn) {
+            .assignmentOverride(
+                moodleCourseId: moodleCourseId, moodleAssignmentId: moodleAssignmentId, localStatus: localStatus, stamp: $0)
+        }
     }
 
     var marksAndIgnoresEnqueuing: Set<String> { edits.marksAndIgnoresEnqueuing }
@@ -174,9 +175,11 @@ final class CloudSyncCoordinator {
         semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?, for signIn: SignIn
     ) -> Task<Void, Never>? {
         guard isOnOrTurningOn else { return nil }
-        return edits.enqueueOverride(.courseIgnore(
-            semester: semester, courseNo: courseNo, moodleId: moodleId,
-            moodleCourseId: moodleCourseId, ignore: ignore, stamp: clock.stamp()), for: signIn)
+        return edits.enqueueOverride(for: signIn) {
+            .courseIgnore(
+                semester: semester, courseNo: courseNo, moodleId: moodleId,
+                moodleCourseId: moodleCourseId, ignore: ignore, stamp: $0)
+        }
     }
 
     func discardCourseIgnores(semester: String? = nil, courseNo: String? = nil) async {
@@ -185,14 +188,18 @@ final class CloudSyncCoordinator {
 
     func pendingCourseIgnoreKeys() async -> Set<String> { await edits.pendingCourseIgnoreKeys() }
 
-    func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date, for signIn: SignIn) async {
+    func enqueueCourseDelete(
+        semester: String, courseNo: String, at stamp: Date, takenIn era: SyncClock.Era, for signIn: SignIn
+    ) async {
         guard isOnOrTurningOn else { return }
-        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp), for: signIn)
+        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp), takenIn: era, for: signIn)
     }
 
-    func deleteCourse(semester: String, courseNo: String, at stamp: Date, for signIn: SignIn) async {
+    func deleteCourse(
+        semester: String, courseNo: String, at stamp: Date, takenIn era: SyncClock.Era, for signIn: SignIn
+    ) async {
         await discardCourseIgnores(semester: semester, courseNo: courseNo)
-        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp, for: signIn)
+        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp, takenIn: era, for: signIn)
         await syncTick()
     }
 
@@ -209,7 +216,9 @@ final class CloudSyncCoordinator {
         edits.addCourse(semester: semester, courseNo: courseNo, for: signIn, afterEnqueued: { await self.syncTick() })
     }
 
-    func courseAddKeys(unlandedAt date: Date) async -> Set<String> { await edits.courseAddKeys(unlandedAt: date) }
+    func courseAddKeys(unlandedAt date: Date, takenIn era: SyncClock.Era) async -> Set<String> {
+        await edits.courseAddKeys(unlandedAt: date, takenIn: era)
+    }
 
     nonisolated static let clockSkewMargin: TimeInterval = 2 * 60
 
@@ -218,8 +227,10 @@ final class CloudSyncCoordinator {
         await edits.dropCourseEdits(madeBeforeReset: resetAt)
     }
 
-    func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil, madeBeforeAction cutoff: Date) async {
-        await edits.discardCourseDeletes(semester: semester, courseKeys: courseKeys, madeBeforeAction: cutoff)
+    func discardCourseDeletes(
+        semester: String? = nil, courseKeys: Set<String>? = nil, madeBeforeAction cutoff: Date, takenIn era: SyncClock.Era
+    ) async {
+        await edits.discardCourseDeletes(semester: semester, courseKeys: courseKeys, madeBeforeAction: cutoff, takenIn: era)
     }
 
     func requeueParkedMarks() async {

@@ -55,6 +55,7 @@ final class HolidaySettingSender {
     static func uploadHolidayOverride(
         _ holidayID: Int, from store: AcademicCalendarStore, via registration: PushRegistrationService, for signIn: SignIn
     ) async {
+        let era = store.clock.era
         let sent = store.holidayEdit(holidayID)
         do {
             let reply = try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.cloudSyncEnabled }) {
@@ -62,7 +63,7 @@ final class HolidaySettingSender {
                     holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? store.clock.stamp(), for: signIn
                 )
             }
-            guard store.holidayEdit(holidayID) == sent else { return }
+            guard store.holidayEdit(holidayID) == (sent.notify, sent.madeAt.map(era.current)) else { return }
             if !reply.applied { store.applyNotifyTheBackendKept(reply.notify, forHoliday: holidayID, for: signIn) }
             store.setHolidayAcknowledged(true, holidayID: holidayID, for: signIn)
         } catch {

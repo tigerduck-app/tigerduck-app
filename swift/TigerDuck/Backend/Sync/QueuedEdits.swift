@@ -17,7 +17,9 @@ final class QueuedEdits {
         self.clock = clock
     }
 
-    func enqueueOverride(_ op: SyncOp, for signIn: SignIn) -> Task<Void, Never> {
+    func enqueueOverride(for signIn: SignIn, stamping makeOp: (Date) -> SyncOp) -> Task<Void, Never> {
+        let era = clock.era
+        let op = makeOp(clock.stamp())
         if case .courseOverride(_, let moodleId, let customName, let colorHex, _, _) = op {
             overrideEdits += 1
             if colorHex != nil { lastColorEdit[moodleId] = overrideEdits }
@@ -26,7 +28,7 @@ final class QueuedEdits {
         let id = UUID()
         overridesEnqueuing[id] = op
         return Task {
-            await outbox.enqueue(op, for: signIn)
+            await outbox.enqueue(op, takenIn: era, for: signIn)
             overridesEnqueuing[id] = nil
         }
     }
@@ -90,15 +92,16 @@ final class QueuedEdits {
         if courseIgnores && categories.contains(.assignments) { scopes.insert(.courseIgnores) }
         overridesEnqueuing = overridesEnqueuing.filter { scopes.isDisjoint(with: $0.value.discardScopes) }
         if scopes.contains(.allCourseAdds) { addsEnqueuing = [:] }
+        let era = clock.era
         let now = clock.stamp()
-        await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
+        await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }), takenIn: era)
     }
 
     @discardableResult
-    private func discard(madeBefore scopeCutoffs: [DiscardScope: Date]) async -> [SyncOp] {
+    private func discard(madeBefore scopeCutoffs: [DiscardScope: Date], takenIn era: SyncClock.Era) async -> [SyncOp] {
         let next = clock.lowestNextStamp
-        cutoffs.keep(scopeCutoffs, notAfter: next)
-        return await outbox.discard(madeBefore: scopeCutoffs, notAfter: next)
+        cutoffs.keep(scopeCutoffs.mapValues(era.current), notAfter: era.current(next))
+        return await outbox.discard(madeBefore: scopeCutoffs, notAfter: next, takenIn: era)
     }
 
     func discardCourseIgnores(semester: String?, courseNo: String?) async {
@@ -139,11 +142,12 @@ final class QueuedEdits {
     ) -> Task<Void, Never> {
         let id = UUID()
         let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
+        let era = clock.era
         let stamp = clock.stamp()
         addsEnqueuing[id] = key
         addStartedOrLandedAt[key] = stamp
         return Task {
-            await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: stamp), for: signIn)
+            await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: stamp), takenIn: era, for: signIn)
             addsEnqueuing[id] = nil
             await afterEnqueued()
         }
@@ -153,26 +157,29 @@ final class QueuedEdits {
         addStartedOrLandedAt[key] = clock.stamp()
     }
 
-    func courseAddKeys(unlandedAt date: Date) async -> Set<String> {
+    func courseAddKeys(unlandedAt date: Date, takenIn era: SyncClock.Era) async -> Set<String> {
         var keys = Set(addsEnqueuing.values)
         for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
             if case .courseAdd(let semester, let courseNo, _) = entry.op {
                 keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
             }
         }
-        return keys.union(addStartedOrLandedAt.filter { $0.value >= date }.keys)
+        let landingFrom = era.current(date)
+        return keys.union(addStartedOrLandedAt.filter { $0.value >= landingFrom }.keys)
     }
 
     func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
         let cutoff = resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin)
-        let dropped = await discard(madeBefore: [.allCourseAdds: cutoff, .allCourseDeletes: cutoff])
+        let dropped = await discard(madeBefore: [.allCourseAdds: cutoff, .allCourseDeletes: cutoff], takenIn: clock.era)
         return Self.courseKeys(of: dropped.filter { op in
             if case .courseDelete = op { return true }
             return false
         })
     }
 
-    func discardCourseDeletes(semester: String?, courseKeys: Set<String>?, madeBeforeAction cutoff: Date) async {
+    func discardCourseDeletes(
+        semester: String?, courseKeys: Set<String>?, madeBeforeAction cutoff: Date, takenIn era: SyncClock.Era
+    ) async {
         let serverPrefix = CourseTombstone.serverKey(of: "")
         let scopes = courseKeys.map { keys in
             keys.compactMap { key -> DiscardScope? in
@@ -182,7 +189,7 @@ final class QueuedEdits {
                 return .courseDelete(key: local)
             }
         } ?? [semester.map { .courseDeletes(term: $0) } ?? .allCourseDeletes]
-        await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, cutoff) }))
+        await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, cutoff) }), takenIn: era)
     }
 
     private nonisolated static func courseKeys(of ops: [SyncOp]) -> Set<String> {
@@ -197,6 +204,7 @@ final class QueuedEdits {
     }
 
     func restamp(after pullBack: SyncClock.PullBack) async {
+        overridesEnqueuing = overridesEnqueuing.mapValues { $0.restamped(pullBack.restamped) }
         cutoffs = cutoffs.restamped(pullBack.restamped)
         addStartedOrLandedAt = addStartedOrLandedAt.mapValues(pullBack.restamped)
         await outbox.restamp(after: pullBack)

@@ -64,6 +64,8 @@ extension BulletinAPIClient {
 extension SyncOutbox {
     func enqueue(_ op: SyncOp) async { await enqueue(op, for: testSignIn) }
 
+    func enqueue(_ op: SyncOp, for signIn: SignIn) async { await enqueue(op, takenIn: SyncClock.isolated().era, for: signIn) }
+
     @discardableResult
     func drain(
         holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
@@ -100,11 +102,21 @@ extension CloudSyncCoordinator {
     }
 
     func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date? = nil) async {
-        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp ?? clock.stamp(), for: testSignIn)
+        let era = clock.era
+        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp ?? clock.stamp(), takenIn: era, for: testSignIn)
     }
 
     func deleteCourse(semester: String, courseNo: String, at stamp: Date? = nil) async {
-        await deleteCourse(semester: semester, courseNo: courseNo, at: stamp ?? clock.stamp(), for: testSignIn)
+        let era = clock.era
+        await deleteCourse(semester: semester, courseNo: courseNo, at: stamp ?? clock.stamp(), takenIn: era, for: testSignIn)
+    }
+
+    func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil, madeBeforeAction cutoff: Date) async {
+        await discardCourseDeletes(semester: semester, courseKeys: courseKeys, madeBeforeAction: cutoff, takenIn: clock.era)
+    }
+
+    func courseAddKeys(unlandedAt date: Date) async -> Set<String> {
+        await courseAddKeys(unlandedAt: date, takenIn: clock.era)
     }
 
     @discardableResult

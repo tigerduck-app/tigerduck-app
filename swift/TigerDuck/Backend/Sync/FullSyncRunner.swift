@@ -164,7 +164,8 @@ final class FullSyncRunner {
         let preFetchCourseOverrides = await coordinator.pendingCourseOverrides()
         let editGenerationAtFetch = app.localEdits.overrideEditGeneration
         let heldHolidayIDs = AcademicCalendarStore.shared.unacknowledgedHolidayIDs
-        let fetchedAt = coordinator.clock.lowestNextMark
+        let era = coordinator.clock.era
+        let fetchStart = coordinator.clock.lowestNextMark
         let addsLandingFrom = coordinator.clock.lowestNextStamp
         let (json, fetchedDeletes) = try await coordinator.courseDeletes(around: {
             try await app.pushCoordinator.fetchFullSync(for: signIn)
@@ -195,7 +196,7 @@ final class FullSyncRunner {
         let settled = try await Self.settleCourseEditsThenReadPolicy(
             fetchedDeletes, takingCourses: takesCourses,
             settle: { try await self.settleQueuedCourseEdits(deleting: $0, reset: reset, for: signIn) },
-            adds: { await coordinator.courseAddKeys(unlandedAt: addsLandingFrom) },
+            adds: { await coordinator.courseAddKeys(unlandedAt: addsLandingFrom, takenIn: era) },
             mayWrite: { mayWrite(for: signIn) }, policy: { SyncPolicy.current }
         )
         let policy = settled.policy
@@ -207,7 +208,7 @@ final class FullSyncRunner {
             editedDuringFetch: app.localEdits.overrideEditGeneration != editGenerationAtFetch
         )
         return FullSyncPass(
-            json: json, signIn: signIn, fetchedAt: fetchedAt, policy: policy, marks: marks,
+            json: json, signIn: signIn, fetchStart: fetchStart, era: era, policy: policy, marks: marks,
             courseOverrides: courseOverrides, serverIgnoredCourses: serverIgnoredCourses,
             localArchived: localArchived, localCompleted: localCompleted,
             queuedMarkAndIgnoreKeys: preFetchQueued.union(coordinator.marksAndIgnoresEnqueuing).union(inFlight),
@@ -297,7 +298,8 @@ nonisolated struct ServerMarks: Sendable {
 struct FullSyncPass {
     let json: [String: Any]
     let signIn: SignIn
-    let fetchedAt: Date
+    let fetchStart: Date
+    let era: SyncClock.Era
     let policy: SyncPolicy
     let marks: ServerMarks
     let courseOverrides: [[String: Any]]
@@ -314,6 +316,7 @@ struct FullSyncPass {
     let reset: (apply: Bool, remember: Date)
     let editGenerationAtFetch: Int
 
+    var fetchedAt: Date { era.current(fetchStart) }
     var coursesArray: [[String: Any]] { json["courses"] as? [[String: Any]] ?? [] }
 }
 

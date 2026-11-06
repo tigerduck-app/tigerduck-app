@@ -126,10 +126,14 @@ from another host or with a status other than 2xx or 409.
 - **THEN** the device's next edit is stamped at most five seconds past that clock, also after its clock is set right
 
 ### Requirement: A client moves the times it kept with a clock it brings back
-When a header brings a client's last issued value back, every time the client kept from before
-then, more than five seconds past the new value, SHALL move down by as much as that value did,
-keeping its order.
+When a header brings a client's last issued value back, every time the client took before then,
+more than five seconds past the new value, SHALL move down by as much as that value did, keeping
+its order, whether the client kept it then or stores or compares it later.
 
 #### Scenario: Edits queued while the clock was a year ahead
 - **WHEN** edits are queued while the device clock is a year ahead, the clock is set right and a response carries the backend's clock
 - **THEN** a later discard drops them, and none is sent stamped more than five seconds past that clock
+
+#### Scenario: A setting changed while a full sync's answer brings the clock back
+- **WHEN** a full sync starts while the last issued value is a year ahead, its answer carries the backend's clock, and a setting is changed before the sync applies what it fetched
+- **THEN** the sync keeps the changed setting

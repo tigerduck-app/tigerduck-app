@@ -190,6 +190,24 @@ struct SyncClockTests {
         #expect(clock.hear(Self.ten) == nil)
     }
 
+    @Test("A time taken before a pull-back moves with it, a lowest next stamp to at most the first stamp after, and a later time stays")
+    func eraMovesATimeTakenBeforeAPullBack() {
+        let device = DeviceClock(Self.ten + Self.year)
+        let clock = Self.makeClock(device)
+        let era = clock.era
+        let stamp = clock.stamp()
+        let next = clock.lowestNextStamp
+        device.set(Self.ten)
+
+        clock.hear(Self.ten)
+        let fresh = clock.stamp()
+
+        #expect(Self.clock(of: era.current(stamp)) == Self.ten + SyncClock.backendLead)
+        #expect(era.current(next) <= fresh)
+        #expect(era.current(fresh) == fresh)
+        #expect(clock.era.current(stamp) == stamp)
+    }
+
     @Test("Stored values that read back missing or unreadable never produce a stamp at or before one already issued")
     func unreadableStoredValuesFailClosed() {
         let device = DeviceClock(Self.ten)

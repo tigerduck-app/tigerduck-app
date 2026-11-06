@@ -355,6 +355,25 @@ struct CourseAddSyncTests {
         #expect(await coordinator.courseAddKeys(unlandedAt: clock.lowestNextStamp).isEmpty)
     }
 
+    @Test("A course that lands during a full sync whose answer brought the clock back counts as landing for that sync")
+    func addLandingDuringAFetchThatBringsTheClockBackCounts() async throws {
+        let backend = Backend()
+        backend.answer(200)
+        let device = SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year)
+        let clock = SyncClockTests.makeClock(device)
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]), clock: clock)
+        _ = clock.stamp()
+        device.set(SyncClockTests.ten)
+        let era = clock.era
+        let addsLandingFrom = clock.lowestNextStamp
+
+        try await SyncClockTests.backendAnswers(clock, at: SyncClockTests.ten)
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        #expect(backend.uploads.count == 1)
+        #expect(await coordinator.courseAddKeys(unlandedAt: addsLandingFrom, takenIn: era) == ["1151:GE1010001"])
+    }
+
     @Test("A term reset marked while the device clock ran a year ahead falls under the backend's clock once it answers")
     func resetMarkedAYearAheadFallsUnderTheBackendsClock() async throws {
         try await withExclusiveRealDefaults {

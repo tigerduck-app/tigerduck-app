@@ -354,7 +354,89 @@ struct OverrideStampTests {
         }
     }
 
+    @Test("An edit stamped before an answer brings the clock back, and queued after it, falls under the backend's clock")
+    func editQueuedAfterAPullBackFallsUnderIt() async throws {
+        let device = SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year)
+        let clock = SyncClockTests.makeClock(device)
+        let held = HeldEnqueue()
+        let coordinator = Self.makeCoordinator(
+            SettingsAPIStub.uniqueBaseURL(), clock: clock, pause: { await held.pause(at: $0) }
+        )
+        let enqueuing = coordinator.enqueueCourseColorOverride(moodleId: "1151CS1001301", semester: "1151", colorHex: "#FF6B6B")
+
+        device.set(SyncClockTests.ten)
+        try await SyncClockTests.backendAnswers(clock, at: SyncClockTests.ten)
+        await held.release()
+        await enqueuing?.value
+
+        let stamps = await coordinator.outbox.snapshot().map { PushAPI.clock(of: $0.op.stamp) }
+        #expect(stamps.count == 1)
+        #expect(stamps.allSatisfy { $0 <= SyncClockTests.ten + SyncClock.backendLead })
+    }
+
+    private actor HeldEnqueue {
+        private var held: CheckedContinuation<Void, Never>?
+        private var released = false
+
+        func pause(at step: SyncOutbox.Pause) async {
+            guard step == .beforeEnqueue, !released else { return }
+            await withCheckedContinuation { held = $0 }
+        }
+
+        func release() {
+            released = true
+            held?.resume()
+            held = nil
+        }
+    }
+
+    @Test("A holiday setting changed during a full sync whose answer brought the clock back is not overwritten by that sync")
+    func holidayChangedDuringAFetchThatBringsTheClockBackIsKept() async throws {
+        try await Self.withCleanHolidayDefaults { id, _, _ in
+            let device = SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year)
+            let clock = SyncClockTests.makeClock(device)
+            let store = AcademicCalendarStore(clock: clock)
+            let coordinator = Self.makeCoordinator(SettingsAPIStub.uniqueBaseURL(), clock: clock, calendar: store)
+            _ = clock.stamp()
+            device.set(SyncClockTests.ten)
+            let era = clock.era
+            let fetchedAt = clock.lowestNextMark
+
+            try await SyncClockTests.backendAnswers(clock, at: SyncClockTests.ten)
+            store.setNotify(true, forHoliday: id, for: testSignIn)
+
+            #expect(!store.applySyncedOverrides([], fetchedAt: era.current(fetchedAt), for: testSignIn))
+            #expect(store.optedInHolidayIDs.contains(id))
+            withExtendedLifetime(coordinator) {}
+        }
+    }
+
+    @Test("A holiday setting made while the device clock ran a year ahead is acknowledged by the send that brings the clock back")
+    func holidaySendThatBringsTheClockBackAcknowledgesIt() async throws {
+        let device = SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year)
+        let clock = SyncClockTests.makeClock(device)
+        try await Self.withCleanHolidayDefaults(clock: clock) { id, url, registration in
+            SettingsAPIStub.enqueue(.init(
+                statusCode: 409, body: Data(#"{"error":"clock_ahead","message":"ahead"}"#.utf8),
+                headerFields: ["X-TigerSync-Clock": String(SyncClockTests.ten)]
+            ), for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id)), for: url)
+            let store = AcademicCalendarStore(clock: clock)
+            let coordinator = Self.makeCoordinator(SettingsAPIStub.uniqueBaseURL(), clock: clock, calendar: store)
+            store.setNotify(true, forHoliday: id, for: testSignIn)
+            store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
+            device.set(SyncClockTests.ten)
+
+            await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration, for: testSignIn)
+
+            #expect(SettingsAPIStub.requests(for: url).count == 2)
+            #expect(!store.unacknowledgedHolidayIDs.contains(id))
+            withExtendedLifetime(coordinator) {}
+        }
+    }
+
     private static func withCleanHolidayDefaults(
+        clock: SyncClock = .isolated(),
         _ body: (_ id: Int, _ url: URL, _ registration: PushRegistrationService) async throws -> Void
     ) async throws {
         try await withExclusiveRealDefaults {
@@ -373,7 +455,7 @@ struct OverrideStampTests {
             let id = Int.random(in: 100_000...999_999)
             try await body(
                 id, baseURL.appendingPathComponent("sync/holiday-overrides/\(id)"),
-                Self.pushCoordinator(baseURL).registration
+                Self.pushCoordinator(baseURL, clock: clock).registration
             )
         }
     }
@@ -402,10 +484,12 @@ struct OverrideStampTests {
 
     private static func makeCoordinator(
         _ baseURL: URL, conflictCheckOwed: @escaping @Sendable () -> Bool = { false },
-        clock: SyncClock = .isolated(), outboxIn directory: URL = outboxDirectory(), calendar: AcademicCalendarStore? = nil
+        clock: SyncClock = .isolated(), outboxIn directory: URL = outboxDirectory(), calendar: AcademicCalendarStore? = nil,
+        pause: (@Sendable (SyncOutbox.Pause) async -> Void)? = nil
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(
-            pushCoordinator: pushCoordinator(baseURL, clock: clock), outbox: SyncOutbox(directory: directory), isEnabled: true,
+            pushCoordinator: pushCoordinator(baseURL, clock: clock), outbox: SyncOutbox(directory: directory, pause: pause),
+            isEnabled: true,
             syncsAssignmentMarks: { !conflictCheckOwed() }, syncsCourseIgnores: { !conflictCheckOwed() }, syncsCourseOverrides: { _ in !conflictCheckOwed() },
             account: AccountSession(signIns: testSignIns), calendar: calendar, clock: clock
         )
