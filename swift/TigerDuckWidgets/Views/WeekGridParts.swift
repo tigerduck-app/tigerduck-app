@@ -84,14 +84,20 @@ struct WeekCourseBlock: View {
     let size: CGFloat
     let radius: CGFloat
 
+    private var isCancelled: Bool { change?.cancelled == true }
+
     var body: some View {
-        let isCancelled = change?.cancelled == true
         let tile = palette.tile(course.colorHex, isPast: isCancelled)
+        let changedTime = isCancelled ? nil : TimeRange.partial(start: change?.start, end: change?.end)
+        let spoken = [
+            course.displayName,
+            changedTime.map { spokenChangedTime ?? $0 },
+            isCancelled ? String(localized: "course_card_cancelled") : classroom,
+        ]
         return VStack(alignment: .leading, spacing: 1) {
-            if !isCancelled, let time = TimeRange.partial(start: change?.start, end: change?.end) {
-                Label(time, systemImage: "clock.fill")
+            if let changedTime {
+                Label(changedTime, systemImage: "clock.fill")
                     .labelStyle(ChangedValueLabelStyle())
-                    .accessibilityLabel(spokenChangedTime ?? time)
                     .font(.system(size: size - 2, weight: .semibold).monospacedDigit())
                     .foregroundStyle(palette.changeInk)
                     .lineLimit(1)
@@ -102,27 +108,34 @@ struct WeekCourseBlock: View {
                 .strikethrough(isCancelled)
                 .foregroundStyle(tile.ink)
                 .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            Group {
-                if isCancelled {
-                    Text(String(localized: "course_card_cancelled"))
-                        .font(.system(size: size - 1, weight: .semibold))
-                        .foregroundStyle(tile.secondaryInk)
-                } else {
-                    WidgetRoom(
-                        room: classroom, changed: change?.room != nil, font: .system(size: size, weight: .bold),
-                        ink: tile.ink, changeInk: palette.changeInk
-                    )
-                }
-            }
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .layoutPriority(1)
+                .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
+                .clipped()
+            bottom(tile: tile)
         }
         .padding(.horizontal, family == .systemLarge ? 4 : 5)
         .padding(.vertical, family == .systemLarge ? 3 : 5)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .classTile(tile, radius: radius, progress: progress, outline: 1.5, bottomBar: true)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", "))
+    }
+
+    private func bottom(tile: WidgetTile) -> some View {
+        Group {
+            if isCancelled {
+                Text(String(localized: "course_card_cancelled"))
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .foregroundStyle(tile.secondaryInk)
+            } else {
+                WidgetRoom(
+                    room: classroom, changed: change?.room != nil, font: .system(size: size, weight: .bold),
+                    ink: tile.ink, changeInk: palette.changeInk
+                )
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .layoutPriority(1)
     }
 
     private var spokenChangedTime: String? {
