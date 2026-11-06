@@ -209,23 +209,18 @@ struct TimetableHeaderRow: View {
     private var periodColumn = TimetablePeriodColumn()
 
     var body: some View {
-        TimetableGridView.columns(weekdays, periodWidth: periodColumn.width(drawsPeriodTiles: drawsPeriodTiles)) {
-            Group {
-                if let week {
-                    label("W\(week)", style: Color.textSecondary)
-                        .accessibilityLabel(Text(String(format: String(localized: "a11y_class_table_week"), week)))
-                } else {
-                    Text("")
-                }
+        TimetableHeaderLayout(periodWidth: periodColumn.width(drawsPeriodTiles: drawsPeriodTiles)) {
+            if let week {
+                label("W\(week)", style: Color.textSecondary)
+                    .accessibilityLabel(Text(String(format: String(localized: "a11y_class_table_week"), week)))
+            } else {
+                Text("")
             }
-            .frame(height: Self.height)
-        } cell: { weekday in
-            ShrinksLikeTheWidest {
+            ForEach(weekdays, id: \.self) { weekday in
                 label(name(of: weekday), style: weekday == today ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textSecondary))
-                ForEach(weekdays, id: \.self) { label(name(of: $0), style: Color.clear).hidden() }
             }
-            .frame(height: Self.height)
         }
+        .frame(height: Self.height)
     }
 
     private func name(of weekday: Int) -> String {
@@ -238,30 +233,40 @@ struct TimetableHeaderRow: View {
             .foregroundStyle(style)
             .lineLimit(1)
             .minimumScaleFactor(Self.minimumScale)
-            // A minimum scale factor also shrinks text to the row's fixed height; only the width should.
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-/// Shrinks a weekday name, its first subview, by the scale the row's widest name needs to fit the
-/// column, so every name in the row shrinks alike. The other subviews are the row's names, hidden.
-private struct ShrinksLikeTheWidest: Layout {
+/// The header's labels on the grid's columns: the week, the first subview, over the period column,
+/// then a weekday name a column. The names shrink by the one scale the widest needs to fit its
+/// column, and the week by that scale or by less if the period column is narrower, so the row
+/// reads in one size. No label is given a height, since a minimum scale factor would shrink it to
+/// fit the row's 30 pt.
+private struct TimetableHeaderLayout: Layout {
+    let periodWidth: CGFloat
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        subviews[0].sizeThatFits(nameProposal(proposal, subviews))
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let ideal = sizes.dropFirst().reduce(periodWidth) { $0 + TimetableGridView.columnSpacing + $1.width }
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? ideal
+        return CGSize(width: width, height: sizes.map(\.height).max() ?? 0)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let center = CGPoint(x: bounds.midX, y: bounds.midY)
-        subviews[0].place(at: center, anchor: .center, proposal: nameProposal(proposal, subviews))
-        for hidden in subviews.dropFirst() {
-            hidden.place(at: center, anchor: .center, proposal: .zero)
+        guard let week = subviews.first else { return }
+        let spacing = TimetableGridView.columnSpacing
+        let names = subviews.dropFirst()
+        let columnWidth = (bounds.width - periodWidth) / CGFloat(max(names.count, 1)) - spacing
+        let widths = subviews.map { $0.sizeThatFits(.unspecified).width }
+        let scale = min(1, columnWidth / max(widths.dropFirst().max() ?? 0, 1))
+        place(week, width: widths[0] * min(scale, periodWidth / max(widths[0], 1)), midX: bounds.minX + periodWidth / 2, in: bounds)
+        for (index, name) in names.enumerated() {
+            let midX = bounds.minX + periodWidth + spacing + columnWidth / 2 + CGFloat(index) * (columnWidth + spacing)
+            place(name, width: widths[index + 1] * scale, midX: midX, in: bounds)
         }
     }
 
-    private func nameProposal(_ proposal: ProposedViewSize, _ subviews: Subviews) -> ProposedViewSize {
-        let widest = subviews.dropFirst().map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
-        guard let width = proposal.width, widest > width else { return ProposedViewSize(width: proposal.width, height: nil) }
-        return ProposedViewSize(width: subviews[0].sizeThatFits(.unspecified).width * width / widest, height: nil)
+    private func place(_ label: LayoutSubview, width: CGFloat, midX: CGFloat, in bounds: CGRect) {
+        label.place(at: CGPoint(x: midX, y: bounds.midY), anchor: .center, proposal: ProposedViewSize(width: width, height: nil))
     }
 }
 

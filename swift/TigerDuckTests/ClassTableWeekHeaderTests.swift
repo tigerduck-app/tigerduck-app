@@ -38,13 +38,47 @@ struct ClassTableWeekHeaderTests {
         look.weekdays.map { AppConstants.Periods.shortWeekdayLabel($0) }
     }
 
+    /// The grid's own columns, drawn clear under the header, to show where its labels belong.
+    private struct GridColumns: View {
+        let look: Look
+        private var periodColumn = TimetablePeriodColumn()
+
+        init(look: Look) {
+            self.look = look
+        }
+
+        var body: some View {
+            TimetableGridView.columns(look.weekdays, periodWidth: periodColumn.width(drawsPeriodTiles: look.drawsPeriodTiles)) {
+                column("grid period")
+            } cell: { weekday in
+                column("grid day \(weekday)")
+            }
+        }
+
+        private func column(_ name: String) -> some View {
+            Color.clear.frame(height: 1).accessibilityElement().accessibilityLabel(Text(verbatim: name))
+        }
+    }
+
+    private static func gridColumns(of look: Look, in window: UIWindow) throws -> (period: CGRect, days: [CGRect]) {
+        let frame = { (name: String) in try #require(accessibilityElement(labeled: name, in: window)).accessibilityFrame }
+        return (try frame("grid period"), try look.weekdays.map { try frame("grid day \($0)") })
+    }
+
+    private static func headerLabels(in window: UIWindow) -> [String] {
+        exposedAccessibilityLabels(in: window).filter { !$0.hasPrefix("grid ") }
+    }
+
     private static func show(week: Int?, look: Look) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 375, height: 200)
         window.overrideUserInterfaceStyle = look.style
         window.traitOverrides.preferredContentSizeCategory = look.textSize
-        let header = TimetableHeaderRow(weekdays: look.weekdays, today: 3, week: week, drawsPeriodTiles: look.drawsPeriodTiles)
+        let header = VStack(spacing: 0) {
+            TimetableHeaderRow(weekdays: look.weekdays, today: 3, week: week, drawsPeriodTiles: look.drawsPeriodTiles)
+            GridColumns(look: look)
+        }
             .padding(.horizontal, padding)
             .padding(.top, TigerDuckTheme.Spacing.lg)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -74,7 +108,7 @@ struct ClassTableWeekHeaderTests {
         #expect(frame.width >= smallest - 0.5, "\(text) is cut off at \(frame.width) pt, \(smallest) pt at the smallest")
     }
 
-    @Test("W12 stands whole over the period numbers, centred left of Monday, and reads as the week", arguments: looks)
+    @Test("W12 stands whole and centred over the period numbers, no larger than the weekday names, and reads as the week", arguments: looks)
     func week(look: Look) async throws {
         try await withAccessibilityAutomation {
             let window = try Self.show(week: 12, look: look)
@@ -82,13 +116,14 @@ struct ClassTableWeekHeaderTests {
             let days = try await Self.frames(of: look, in: window)
             window.saveSnapshot(as: "class-table-week-\(look.testDescription)-\(Self.language)")
 
-            #expect(exposedAccessibilityLabels(in: window) == [Self.spokenWeek] + Self.labels(of: look))
+            #expect(Self.headerLabels(in: window) == [Self.spokenWeek] + Self.labels(of: look))
             let label = try #require(accessibilityElement(labeled: Self.spokenWeek, in: window)).accessibilityFrame
-            let spacing = TimetableGridView.columnSpacing
-            let mondayStart = days[0].midX - (days[1].midX - days[0].midX - spacing) / 2
-            let column = (start: Self.padding, end: mondayStart - spacing)
-            #expect(abs(label.midX - (column.start + column.end) / 2) < 0.5, "\(label) off the centre of \(column)")
-            #expect(label.minX >= column.start - 0.5 && label.maxX <= column.end + 0.5, "\(label) outside \(column)")
+            let grid = try Self.gridColumns(of: look, in: window)
+            #expect(abs(label.midX - grid.period.midX) < 0.5, "\(label) off the centre of \(grid.period)")
+            #expect(label.minX >= grid.period.minX - 0.5 && label.maxX <= grid.period.maxX + 0.5, "\(label) outside \(grid.period)")
+            for (name, column) in zip(days, grid.days) {
+                #expect(abs(name.midX - column.midX) < 0.5, "\(name) off the centre of \(column)")
+            }
             #expect(abs(label.midY - days[0].midY) < 0.5, "\(label) beside \(days[0])")
             Self.expectWhole(label, "W12", look)
             for (frame, text) in zip(days, Self.labels(of: look)) {
@@ -96,6 +131,10 @@ struct ClassTableWeekHeaderTests {
             }
             let scales = zip(days, Self.labels(of: look)).map { $0.width / Self.idealWidth($1, look) }
             #expect((scales.max() ?? 0) - (scales.min() ?? 0) < 0.03, "the weekday names shrink by \(scales)")
+            let weekIdeal = Self.idealWidth("W12", look)
+            let names = scales.min() ?? 1
+            let expected = min(names, grid.period.width / weekIdeal, 1)
+            #expect(abs(label.width / weekIdeal - expected) < 0.03, "W12 shrinks by \(label.width / weekIdeal), the names by \(names)")
         }
     }
 
@@ -110,7 +149,7 @@ struct ClassTableWeekHeaderTests {
             let days = try await Self.frames(of: look, in: window)
             window.saveSnapshot(as: "class-table-no-week-\(look.testDescription)-\(Self.language)")
 
-            #expect(exposedAccessibilityLabels(in: window) == Self.labels(of: look))
+            #expect(Self.headerLabels(in: window) == Self.labels(of: look))
             #expect(days == placed)
         }
     }
