@@ -45,10 +45,17 @@ nonisolated final class MailCache: @unchecked Sendable {
     }
 
     func loadPages() -> [MailFolderPage] {
-        lock.withLock {
-            let urls = (try? FileManager.default.contentsOfDirectory(at: pagesDirectory, includingPropertiesForKeys: nil)) ?? []
-            return urls.compactMap { read(MailFolderPage.self, at: $0) }
+        let urls = lock.withLock {
+            (try? FileManager.default.contentsOfDirectory(at: pagesDirectory, includingPropertiesForKeys: nil)) ?? []
         }
+        var pages: [MailFolderPage] = []
+        for url in urls {
+            guard !Task.isCancelled else { return [] }
+            guard let data = lock.withLock({ try? Data(contentsOf: url) }),
+                  let page = files.decoded(MailFolderPage.self, from: data) else { continue }
+            pages.append(page)
+        }
+        return pages
     }
 
     func savePage(_ page: MailFolderPage, unlessWipedSince wipeCount: Int) {

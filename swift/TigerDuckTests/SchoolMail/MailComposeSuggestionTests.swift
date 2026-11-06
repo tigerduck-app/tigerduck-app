@@ -39,7 +39,7 @@ extension MailComposeViewModelTests {
 
     @Test func theRecipientFieldsSuggestThePeopleInTheCachedMailButNotOnesAlreadyAddressed() async {
         let model = Self.suggestingModel(cache: Self.suggestionCache())
-        await model.prepare()
+        await model.contacts.load()
         #expect(model.recipientSuggestions(for: "陳").map(\.address) == Self.suggested)
         #expect(model.recipientSuggestions(for: "林").map(\.name) == ["林小美"])
 
@@ -51,15 +51,33 @@ extension MailComposeViewModelTests {
         let account = AccountSession()
         let cache = Self.suggestionCache()
         let model = Self.suggestingModel(account: account, cache: cache)
-        await model.prepare()
+        await model.contacts.load()
         #expect(!model.recipientSuggestions(for: "陳").isEmpty)
 
         account.endSignIn()
         cache.clearAll()
         #expect(model.recipientSuggestions(for: "陳").isEmpty)
         let next = Self.suggestingModel(account: account, cache: cache)
-        await next.prepare()
+        await next.contacts.load()
         #expect(next.recipientSuggestions(for: "陳").isEmpty)
+    }
+
+    @Test func aComposerThatClosesBeforeTheSuggestionsLoadKeepsNone() async {
+        let model = Self.suggestingModel(cache: Self.suggestionCache())
+        let load = Task { await model.contacts.load() }
+        load.cancel()
+        await load.value
+        #expect(model.recipientSuggestions(for: "陳").isEmpty)
+    }
+
+    @Test func readingTheCachedPagesStopsOnceItsTaskIsCancelled() async {
+        let cache = Self.suggestionCache()
+        let pages = await Task.detached { () -> [MailFolderPage] in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return cache.loadPages()
+        }.value
+        #expect(pages.isEmpty)
+        #expect(cache.loadPages().count == 2)
     }
 }
 

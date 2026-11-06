@@ -40,8 +40,9 @@ final class MailComposeViewModel {
         self.folderRoles = folderRoles
         self.events = events ?? MailboxEvents()
         signIn = session.account.currentSignIn
-        services = MailComposeServices(prefs: prefs ?? MailAccountManager.shared.prefs, cache: cache ?? MailAccountManager.shared.cache,
-                                       sleep: sleep, now: now, contacts: MailComposeContacts(signIn: signIn, own: sender.address))
+        let cache = cache ?? MailAccountManager.shared.cache
+        services = MailComposeServices(prefs: prefs ?? MailAccountManager.shared.prefs, cache: cache, sleep: sleep, now: now, contacts:
+            MailComposeContacts(signIn: signIn, own: sender.address, cache: cache, roles: folderRoles, now: now))
     }
 
     var to: String {
@@ -73,19 +74,15 @@ final class MailComposeViewModel {
     var shouldClose: Bool { status.didFinish || status.signInEnded }
     var sentCopy: SentCopy? { status.sentCopy }
     var mode: MailComposeMode { context.mode }
+    var contacts: MailComposeContacts { services.contacts }
+    func recipientSuggestions(for typed: String) -> [MailAddress] { contacts.suggestions(for: typed, addressed: [to, cc, bcc]) }
 
     var hasChanges: Bool { draft.snapshot != tracking.unchangedSnapshot }
-
-    func recipientSuggestions(for typed: String) -> [MailAddress] {
-        services.contacts.suggestions(for: typed, to: to, cc: cc, bcc: bcc)
-    }
 
     func prepare() async {
         guard !tracking.prepareStarted else { return }
         tracking.prepareStarted = true
-        let loading = Task { await services.contacts.load(from: services.cache, drafts: folderRoles[.drafts], now: services.now()) }
         await runPrepare()
-        await loading.value
     }
 
     func retryPrepare() async {

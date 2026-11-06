@@ -164,6 +164,7 @@ struct MailComposeView: View {
                 if closes { dismiss() }
             }
             .task { await viewModel.prepare() }
+            .task { await viewModel.contacts.load() }
             .interactiveDismissDisabled(viewModel.hasChanges || viewModel.isSending)
         }
     }

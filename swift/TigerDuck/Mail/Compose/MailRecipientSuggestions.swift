@@ -8,13 +8,16 @@ nonisolated enum MailRecipientSuggestions {
     }
 
     static let shown = 5
+    private static let skippedRoles: [MailFolderRole] = [.drafts, .junk, .trash]
     private static let halfLife: TimeInterval = 30 * 24 * 60 * 60
     private static let writtenTo = 2.0
     private static let heardFrom = 1.0
     private static let undated = 0.001
     private static let noReply = try! NSRegularExpression(pattern: "^(no|do[-_.]?not)[-_.]?reply", options: .caseInsensitive)
 
-    static func contacts(in pages: [MailFolderPage], own: String, drafts: String, now: Date) -> [Contact] {
+    static func contacts(in pages: [MailFolderPage], own: String, roles: [MailFolderRole: String], now: Date) -> [Contact] {
+        let cached = MailFolderMap.resolve(available: pages.map(\.folder))
+        let skipped = Set(skippedRoles.flatMap { [roles[$0], cached[$0]].compactMap { $0 } })
         struct Tally {
             var address: MailAddress
             var at: Date? = nil
@@ -23,7 +26,7 @@ nonisolated enum MailRecipientSuggestions {
         }
         let own = own.lowercased()
         var tallies: [String: Tally] = [:]
-        for page in pages where page.folder != drafts {
+        for page in pages where !skipped.contains(page.folder) {
             for mail in page.summaries where !mail.isDeleted {
                 let written = mail.fromAddress?.lowercased() == own
                 let people = written
@@ -35,7 +38,8 @@ nonisolated enum MailRecipientSuggestions {
                 for person in people {
                     let address = person.address.trimmingCharacters(in: .whitespaces)
                     let key = address.lowercased()
-                    guard !address.isEmpty, key != own, !isNoReply(address), counted.insert(key).inserted else { continue }
+                    guard MailRecipients.sendableAddress(address) != nil, key != own, !isNoReply(address),
+                          counted.insert(key).inserted else { continue }
                     var tally = tallies[key] ?? Tally(address: MailAddress(name: nil, address: address))
                     tally.score += weight
                     if isLater(at, than: tally.at) {

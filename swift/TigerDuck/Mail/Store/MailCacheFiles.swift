@@ -22,12 +22,17 @@ nonisolated struct MailCacheFiles: Sendable {
 
     func read<T: Codable>(_ type: T.Type, at url: URL) -> T? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        guard let envelope = try? JSONDecoder().decode(Envelope<T>.self, from: data),
-              envelope.version == Self.formatVersion,
-              envelope.account == account() else {
+        guard let value = decoded(type, from: data) else {
             try? FileManager.default.removeItem(at: url)
             return nil
         }
+        return value
+    }
+
+    func decoded<T: Codable>(_ type: T.Type, from data: Data) -> T? {
+        guard let envelope = try? JSONDecoder().decode(Envelope<T>.self, from: data),
+              envelope.version == Self.formatVersion,
+              envelope.account == account() else { return nil }
         return envelope.payload
     }
 

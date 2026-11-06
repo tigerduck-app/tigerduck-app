@@ -22,7 +22,7 @@ struct MailRecipientSuggestionsTests {
     }
 
     static func contacts(_ pages: [MailFolderPage]) -> [MailRecipientSuggestions.Contact] {
-        MailRecipientSuggestions.contacts(in: pages, own: me, drafts: drafts, now: now)
+        MailRecipientSuggestions.contacts(in: pages, own: me, roles: [.drafts: drafts], now: now)
     }
 
     static func contact(_ name: String?, _ address: String, score: Double = 1) -> MailRecipientSuggestions.Contact {
@@ -66,6 +66,26 @@ struct MailRecipientSuggestionsTests {
             ]),
             Self.page([Self.mail(from: Self.me, to: ["draft@mail.example.edu.tw"])], in: Self.drafts),
         ])
+        #expect(ranked.map(\.address.address) == ["kept@mail.example.edu.tw"])
+    }
+
+    @Test func junkTrashAndDraftsAreLeftOutByTheirRoleWhateverTheirName() {
+        let junk = Self.page([Self.mail(from: "spam@mail.example.edu.tw")], in: MailFolderRole.junk.imapName)
+        let trash = Self.page([Self.mail(from: "binned@mail.example.edu.tw")], in: MailFolderRole.trash.imapName)
+        let drafts = Self.page([Self.mail(from: Self.me, to: ["draft@mail.example.edu.tw"])], in: "Drafts")
+        let kept = Self.page([Self.mail(from: "kept@mail.example.edu.tw")])
+        let ranked = MailRecipientSuggestions.contacts(in: [junk, trash, drafts, kept], own: Self.me, roles: [.drafts: "Drafts"], now: Self.now)
+        #expect(ranked.map(\.address.address) == ["kept@mail.example.edu.tw"])
+
+        let mailboxDrafts = Self.page([Self.mail(from: Self.me, to: ["draft@mail.example.edu.tw"])], in: Self.drafts)
+        #expect(MailRecipientSuggestions.contacts(in: [junk, trash, mailboxDrafts], own: Self.me, roles: [:], now: Self.now).isEmpty)
+    }
+
+    @Test func anAddressTheComposerCannotSendIsNotSuggested() {
+        let ranked = Self.contacts([Self.page([
+            Self.mail(from: "陳@mail.example.edu.tw", uid: 1),
+            Self.mail(from: Self.me, to: ["小陳 <陳@mail.example.edu.tw>", "kept@mail.example.edu.tw"], uid: 2),
+        ])])
         #expect(ranked.map(\.address.address) == ["kept@mail.example.edu.tw"])
     }
 
