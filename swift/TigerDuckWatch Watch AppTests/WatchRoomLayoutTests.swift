@@ -4,8 +4,6 @@ import Testing
 @testable import TigerDuckWatch_Watch_App
 import TigerDuckCore
 
-/// A text left whole draws the same with head and tail truncation; the room is drawn in a colour
-/// nothing else uses, so its ink can be counted.
 @MainActor
 struct WatchRoomLayoutTests {
 
@@ -20,7 +18,6 @@ struct WatchRoomLayoutTests {
         )
     }
 
-    /// Not begun, so the bar is empty and the countdown stands still between renders.
     private var notBegun: ClosedRange<Date> {
         Date().addingTimeInterval(3_600)...Date().addingTimeInterval(3_600 + 110 * 60)
     }
