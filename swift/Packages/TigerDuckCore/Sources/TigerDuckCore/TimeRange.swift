@@ -43,7 +43,8 @@ public enum TimeRange {
 
     public static func times(ofLiveActivitySubtitle subtitle: String) -> (start: String, end: String)? {
         let parts = subtitle.components(separatedBy: " - ")
-        return parts.count == 2 ? (parts[0], parts[1]) : nil
+        guard parts.count == 2, parts.allSatisfy({ ClassTimeline.minutes(of: $0) != nil }) else { return nil }
+        return (parts[0], parts[1])
     }
 
     private static func clock(_ minutes: Int) -> String {

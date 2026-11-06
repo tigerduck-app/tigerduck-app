@@ -177,18 +177,18 @@ final class SDCourse: Identifiable {
         return prefix + moodleId.dropFirst(4)
     }
 
-    func timeRange(for weekday: Int) -> String? {
+    func times(for weekday: Int) -> (start: String, end: String)? {
         guard let periods = schedule[weekday], !periods.isEmpty else { return nil }
-        return Self.timeRange(periods: periods)
+        return Self.times(periods: periods)
     }
 
-    static func timeRange(periods: [String]) -> String? {
+    static func times(periods: [String]) -> (start: String, end: String)? {
         let sorted = periods.timedPeriodsInOrder()
         guard let first = sorted.first,
               let last = sorted.last,
               let firstTime = AppConstants.PeriodTimes.mapping[first],
               let lastTime = AppConstants.PeriodTimes.mapping[last] else { return nil }
-        return TimeRange.text(firstTime.start, lastTime.end)
+        return (firstTime.start, lastTime.end)
     }
 
     func block(
