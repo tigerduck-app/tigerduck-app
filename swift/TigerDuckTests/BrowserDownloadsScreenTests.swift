@@ -133,8 +133,7 @@ struct BrowserDownloadsScreenTests {
             try await Task.sleep(for: .milliseconds(600))
             let row = try #require(Self.element(containing: saved, in: sheet))
             let remove = String(localized: "action_remove")
-            // With accessibility automation on, iOS 26 gives the row's swipe action to no element.
-            if #available(iOS 27, *) { #expect((row.accessibilityCustomActions ?? []).contains { $0.name == remove }) }
+            #expect((row.accessibilityCustomActions ?? []).filter { $0.name == remove }.count == 1)
             let frame = row.accessibilityFrame
             let center = window.convert(CGPoint(x: frame.midX, y: frame.midY), from: window.screen.coordinateSpace)
             try await fingerTap(at: center, in: window, holding: .milliseconds(1_200))

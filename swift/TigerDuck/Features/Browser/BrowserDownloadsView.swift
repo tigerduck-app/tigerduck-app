@@ -76,6 +76,8 @@ struct BrowserDownloadsView: View {
                 }
             }
             .buttonStyle(.plain)
+            // iOS 26 puts the swipe action below on no accessibility element.
+            .accessibilityAction(named: Text(String(localized: "action_remove")), remove)
             accessory("magnifyingglass", String(localized: "browser_downloads_open_in_files"), openFolder)
         }
         .contextMenu {
