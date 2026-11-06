@@ -526,12 +526,15 @@ struct NotificationSettingsReconcileTests {
                 }
                 return nil
             })
+            let turnOns = NotificationSettingsSync.sectionTurnOns
 
             let outcome = try await Self.reconcile(
                 store,
                 client: client,
                 syncLiveActivity: false,
-                recordSynced: { NotificationSettingsSync.recordSyncedSections($1, of: $0, for: testSignIn) }
+                recordSynced: {
+                    NotificationSettingsSync.recordSyncedSections($1, of: $0, turnOnsAtStart: turnOns, for: testSignIn)
+                }
             )
 
             #expect(outcome == .settled(adopted: [.assignments], seeded: [.courses]))

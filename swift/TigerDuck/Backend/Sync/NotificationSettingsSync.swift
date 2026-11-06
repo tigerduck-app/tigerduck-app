@@ -58,23 +58,39 @@ nonisolated enum NotificationSettingsSync {
         }
     }
 
+    @MainActor private(set) static var sectionTurnOns: [OwnedSection: Int] = [:]
+
     @MainActor
     static func sectionTurnedOn(_ section: OwnedSection, local: LocalPreferences, for signIn: SignIn) {
+        sectionTurnOns[section, default: 0] &+= 1
         guard let lastSyncedPreferences else { return }
         setLastSyncedPreferences(lastSyncedPreferences.replacing(section, from: local), for: signIn)
     }
 
     @MainActor
-    static func mergeSentFields(_ fields: [String: Any], of sent: LocalPreferences, for signIn: SignIn) {
+    private static func sectionsTurnedOn(since turnOnsAtStart: [OwnedSection: Int]) -> Set<OwnedSection> {
+        Set(OwnedSection.allCases.filter { sectionTurnOns[$0] != turnOnsAtStart[$0] })
+    }
+
+    @MainActor
+    static func mergeSentFields(
+        _ fields: [String: Any], of sent: LocalPreferences, turnOnsAtStart: [OwnedSection: Int], for signIn: SignIn
+    ) {
         guard signIn.isCurrent else { return }
-        setLastSyncedPreferences((lastSyncedPreferences ?? sent).mergeSentFields(fields, of: sent), for: signIn)
+        let turnedOn = Set(sectionsTurnedOn(since: turnOnsAtStart).map(\.rawValue))
+        let recorded = fields.filter { !turnedOn.contains($0.key) }
+        setLastSyncedPreferences((lastSyncedPreferences ?? sent).mergeSentFields(recorded, of: sent), for: signIn)
         Defaults[.notificationSettingsPushSendsEveryField, for: signIn] = false
     }
 
     @MainActor
-    static func recordSyncedSections(_ sections: Set<OwnedSection>, of settled: LocalPreferences, for signIn: SignIn) {
+    static func recordSyncedSections(
+        _ sections: Set<OwnedSection>, of settled: LocalPreferences, turnOnsAtStart: [OwnedSection: Int], for signIn: SignIn
+    ) {
         setLastSyncedPreferences(
-            sections.reduce(lastSyncedPreferences ?? settled) { $0.replacing($1, from: settled) }, for: signIn
+            sections.subtracting(sectionsTurnedOn(since: turnOnsAtStart))
+                .reduce(lastSyncedPreferences ?? settled) { $0.replacing($1, from: settled) },
+            for: signIn
         )
     }
 

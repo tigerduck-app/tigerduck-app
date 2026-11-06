@@ -64,7 +64,9 @@ later build. Only the iOS build syncs the document: every synced field lives on
   sends every other device to reconcile. Turning a device switch back on makes that section's
   values the copy, so a push sends only the fields edited after it, which are newer than anything
   on the server, and takes the section's other fields from the document; a reconcile then adopts
-  the section. A reconcile that waited for a pending push runs again once a push lands with
+  the section. A push or reconcile already out when the switch comes back on records nothing for
+  that section when it lands (`NotificationSettingsSync.sectionTurnOns`), so it cannot put back the
+  values from before the turn-on. A reconcile that waited for a pending push runs again once a push lands with
   nothing left to send (`NotificationSettingsPushQueue`). Sign-out clears the copy and the mark,
   and drops a reconcile still waiting.
 - A device on an earlier build still writes whole sections, so its push can revert a field
