@@ -64,7 +64,7 @@ struct TimetableGridView: View {
         let switchCount = switchCount
         let thisWeek = showsThisWeek && viewModel.showsThisWeek
         let today = thisWeek ? now.scheduleWeekday : nil
-        let week = showsThisWeek ? SchoolCalendar.week(of: viewModel.currentSemester, on: now) : nil
+        let week = showsThisWeek ? viewModel.week(on: now) : nil
         return VStack(spacing: rowSpacing) {
             TimetableHeaderRow(weekdays: weekdays, today: today, week: week, drawsPeriodTiles: drawsPeriodTiles)
 

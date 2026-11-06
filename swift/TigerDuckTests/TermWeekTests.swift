@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Testing
 import TigerDuckCore
@@ -60,5 +61,58 @@ struct TermWeekTests {
         #expect(Self.week("1151", on: Self.taipei(2027, 3, 1)) == nil)
         #expect(Self.week("1152", on: Self.taipei(2027, 3, 1)) == 2)
         #expect(AcademicCalendar.empty.week(of: "1151", on: friday) == nil)
+    }
+}
+
+@MainActor
+struct ClassTableWeekShownTests {
+    private static func shareCode(_ studentId: String, semester: String) -> ClassTableShareCode {
+        ClassTableShareCode(
+            format: .tigerDuck, studentId: studentId, sharedAt: nil,
+            terms: [ClassTableShareCode.Term(semester: semester, courseNos: ["CS1010001"])]
+        )
+    }
+
+    /// The school's answer for `term` with no change in it, which is all the table needs to mark today.
+    private static func answered(_ term: String) throws -> CourseChanges {
+        try CourseChanges(json: Data(#"{"term":"\#(term)","changes":[]}"#.utf8))
+    }
+
+    @Test("the week shows only with today's mark: course changes answered and the shown term current, another student's too")
+    func weekFollowsTodaysMark() async throws {
+        try await withExclusiveRealDefaults {
+            let storedPick = Defaults[.classTableSelectedSemester]
+            defer { Defaults[.classTableSelectedSemester, for: testSignIn] = storedPick }
+            let root = FileManager.default.temporaryDirectory.appending(path: "ClassTableWeekShownTests-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let people = ImportedClassTableStore(fileURL: root.appending(path: "imported.json"), signedInStudentId: { "B11300000" })
+            let viewModel = ClassTableViewModel(courses: CourseStore(folders: CacheFolders(root: root)), importedTables: people)
+            let current = SchoolTerms.current
+            var asked: [String] = []
+            let termWeek: (String, Date) -> Int? = { term, _ in
+                asked.append(term)
+                return 8
+            }
+            let now = AppClock.now()
+
+            viewModel.pickSemester(current, for: AccountSession.school.currentSignIn)
+            viewModel.grid.courseChanges = .empty
+            #expect(viewModel.week(on: now, termWeek: termWeek) == nil)
+            viewModel.grid.courseChanges = try Self.answered(current)
+            #expect(viewModel.week(on: now, termWeek: termWeek) == 8)
+            #expect(asked.last == current)
+
+            viewModel.pickSemester("1001", for: AccountSession.school.currentSignIn)
+            viewModel.grid.courseChanges = try Self.answered(current)
+            #expect(viewModel.week(on: now, termWeek: termWeek) == nil)
+
+            let person = try #require(people.add(Self.shareCode("B11300001", semester: current), nickname: "Ming", courses: [:], for: testSignIn))
+            people.show(person.id)
+            viewModel.showShownTable()
+            viewModel.grid.courseChanges = try Self.answered(current)
+            #expect(viewModel.currentSemester == current)
+            #expect(viewModel.week(on: now, termWeek: termWeek) == 8)
+            #expect(asked.last == current)
+        }
     }
 }
