@@ -117,6 +117,10 @@ final class BrowserPage {
     }
 
     func retryDownload(_ item: BrowserDownloads.Item) {
+        if item.arrived != nil {
+            Task { if let kept = await downloads.saveAgain(item.id) { files.show(downloaded: kept, mimeType: nil) } }
+            return
+        }
         guard let request = item.request else { return }
         downloads.forgetFailures(of: request)
         failure = nil

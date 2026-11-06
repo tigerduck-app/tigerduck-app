@@ -14,6 +14,8 @@ final class BrowserDownloads {
         var received: Int64 = 0
         var expected: Int64?
         var state = State.running
+        /// A download that arrived but could not be saved, which Retry saves again.
+        var arrived: URL?
     }
 
     private(set) var items: [Item] = []
@@ -82,9 +84,15 @@ final class BrowserDownloads {
             return store.url(of: entry)
         } catch {
             AppLogger.breadcrumb("browser download not saved: \(error)", category: "browser")
-            _ = fail(id)
+            if fail(id), let index = items.firstIndex(where: { $0.id == id }) { items[index].arrived = file }
             return nil
         }
+    }
+
+    func saveAgain(_ id: UUID) async -> URL? {
+        guard let index = items.firstIndex(where: { $0.id == id }), let file = items[index].arrived else { return nil }
+        items[index].state = .running
+        return await finish(id, file: file)
     }
 
     /// A download the student cancelled is gone already, so its failure is not one to show.

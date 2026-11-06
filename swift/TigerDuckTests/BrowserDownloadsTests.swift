@@ -90,6 +90,27 @@ struct BrowserDownloadsTests {
         #expect(downloads.saved.isEmpty)
     }
 
+    @Test func aDownloadThatCouldNotBeSavedIsKeptAndSavedByRetry() async throws {
+        let place = SavedDownloadsTests.Place()
+        defer { place.remove() }
+        let downloads = Self.downloads(place)
+        let unreadable = place.support.appending(path: "saved_downloads.json", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: unreadable, withIntermediateDirectories: true)
+        let id = downloads.start("講義.pdf", request: Self.request) {}
+        let file = try place.download("hello")
+
+        #expect(await downloads.finish(id, file: file) == nil)
+        #expect(downloads.item(id)?.state == .failed)
+        #expect(FileManager.default.fileExists(atPath: file.path(percentEncoded: false)))
+
+        try FileManager.default.removeItem(at: unreadable)
+        let kept = try #require(await downloads.saveAgain(id))
+
+        #expect(downloads.items.isEmpty)
+        #expect(downloads.saved.map(\.name) == ["講義.pdf"])
+        #expect(try String(contentsOf: kept, encoding: .utf8) == "hello")
+    }
+
     @Test func aCancelStopsTheDownloadAndItsFailureIsNotShown() {
         let place = SavedDownloadsTests.Place()
         defer { place.remove() }
