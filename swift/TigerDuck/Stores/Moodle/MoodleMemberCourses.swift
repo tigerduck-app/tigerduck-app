@@ -38,7 +38,7 @@ final class MoodleMemberCourses {
     }
 
     func refresh(with member: MoodleMember) async {
-        let own = Set(context.cache.loadMoodleCourseIdMap().values)
+        let own = context.cache.loadEnrolledMoodleCourseIds()
         guard isSomeoneElse(member), !own.isEmpty,
               (try? await api.functions())?.contains(MoodleEnrolledCoursesService.usersCoursesFunction) == true
         else { return }

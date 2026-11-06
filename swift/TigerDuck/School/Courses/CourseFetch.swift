@@ -129,7 +129,7 @@ enum CourseFetch {
         let moodleAll = await moodle()
         // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
         if let moodleAll, !Task.isCancelled {
-            CourseLookup.replaceMoodleCourseIds(AssignmentRecords.moodleCourseIdMap(moodleAll), for: signIn)
+            CourseLookup.replaceMoodleCourseIds(of: moodleAll, for: signIn)
         }
 
         let moodleByNo = Dictionary(

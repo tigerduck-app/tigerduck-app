@@ -19,7 +19,9 @@ struct LateMoodleIdColorTests {
         }
 
         func storeIds(_ ids: [String: Int]) {
-            cache.moodle.replaceMoodleCourseIdMap(ids.reduce(into: [:]) { $0["1151\($1.key)"] = $1.value }, for: testSignIn)
+            cache.moodle.replaceMoodleCourseIdMap(
+                ids.reduce(into: [:]) { $0["1151\($1.key)"] = $1.value }, enrolled: Set(ids.values), for: testSignIn
+            )
         }
 
         func giveColours(_ courseNos: [String], for signIn: SignIn = testSignIn) {

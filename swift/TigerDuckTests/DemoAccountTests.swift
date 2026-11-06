@@ -205,6 +205,7 @@ struct DemoAccountTests {
         #expect(courses.first { $0.courseNo == "CS3005301" }?.moodleIdNumber == semester + "CS3005301")
         #expect(CourseColorStore(files: cache.colors).hex(for: "CS3005301", palette: TigerDuckTheme.coursePaletteHexes) == 0xE57373)
         #expect(cache.moodle.lookupMoodleCourseId(idnumber: semester + "CS3005301") == 90501)
+        #expect(cache.moodle.loadEnrolledMoodleCourseIds().contains(90501))
 
         let assignments = cache.assignments.loadAssignments(semester: semester)
         #expect(Set(assignments.map(\.assignmentId)) == ["900001", "900002", "900003"])
@@ -250,6 +251,7 @@ struct DemoAccountTests {
         #expect(folder.cache.assignments.loadAssignments(semester: semester).isEmpty)
         #expect(folder.cache.bulletins.loadBulletinSummaries().isEmpty)
         #expect(folder.cache.moodle.loadMoodleCourseIdMap().isEmpty)
+        #expect(folder.cache.moodle.loadEnrolledMoodleCourseIds().isEmpty)
     }
 
     @Test("a launch behind the lock screen resumes the demo sign-in, and a classmate removed stays removed")

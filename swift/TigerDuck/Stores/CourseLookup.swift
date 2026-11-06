@@ -24,7 +24,9 @@ enum CourseLookup {
         MoodleFiles.shared.loadMoodleCourseIdMap()
     }
 
-    static func replaceMoodleCourseIds(_ ids: [String: Int], for signIn: SignIn) {
-        MoodleFiles.shared.replaceMoodleCourseIdMap(ids, for: signIn)
+    static func replaceMoodleCourseIds(of courses: [MoodleEnrolledCourse], for signIn: SignIn) {
+        MoodleFiles.shared.replaceMoodleCourseIdMap(
+            AssignmentRecords.moodleCourseIdMap(courses), enrolled: Set(courses.map(\.id)), for: signIn
+        )
     }
 }

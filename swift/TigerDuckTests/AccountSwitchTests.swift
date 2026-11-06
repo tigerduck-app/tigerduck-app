@@ -123,7 +123,7 @@ struct AccountSwitchTests {
                 SDCalendarEvent(eventId: "moodle-1", title: "Quiz", date: Date(), source: .moodle),
             ], for: testSignIn)
             cache.bulletins.saveBulletinSummaries([])
-            cache.moodle.replaceMoodleCourseIdMap(["1141CS1001": 7], for: testSignIn)
+            cache.moodle.replaceMoodleCourseIdMap(["1141CS1001": 7], enrolled: [7, 900], for: testSignIn)
             cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: first, for: testSignIn)
             try FileManager.default.createDirectory(at: cache.moodleFilesDir, withIntermediateDirectories: true)
             try Data("pdf".utf8).write(to: cache.moodleFilesDir.appendingPathComponent("slides.pdf"))
@@ -148,6 +148,7 @@ struct AccountSwitchTests {
 
         func schoolIsEmpty() -> Bool {
             var empty = files.isEmpty && cache.courses.loadDeletedCourseNos().isEmpty && cache.moodle.loadMoodleCourseIdMap().isEmpty
+                && cache.moodle.loadEnrolledMoodleCourseIds().isEmpty
                 && Defaults[.schoolDataSyncedAt] == nil && Defaults[.classTableSelectedSemester] == nil
                 && Defaults[.emptyClassroomBuilding] == nil && Defaults[.categoriesSyncedOnce].isEmpty
                 && Defaults[.courseRowIdsSeen].isEmpty && Defaults[.pendingConflictCategories].isEmpty

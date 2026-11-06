@@ -151,13 +151,15 @@ struct PersistenceFormatTests {
         #expect(cache.colors.loadPickedCourseColors() == ["CS1001301"])
     }
 
-    @Test("the Moodle files read back the course id map and a course page's answer")
+    @Test("the Moodle files read back the course id map, the enrolled course ids and a course page's answer")
     func moodleFilesReadTodaysFormat() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         try write(#"{"1151CS1001301":7}"#, "persistent/moodle_course_id_map.json")
+        try write(#"[7,900]"#, "persistent/moodle_enrolled_course_ids.json")
         try write(#"{"fetchedAt":800000000,"value":[1,2]}"#, "cache/moodle/B11000001/forums-7.json")
 
         #expect(cache.moodle.lookupMoodleCourseId(idnumber: "1151CS1001301") == 7)
+        #expect(cache.moodle.loadEnrolledMoodleCourseIds() == [7, 900])
         let page = try #require(cache.moodle.loadMoodleData([Int].self, name: "forums-7", account: "B11000001"))
         #expect(page.value == [1, 2] && page.fetchedAt == Date(timeIntervalSinceReferenceDate: 800_000_000))
         #expect(cache.moodle.moodleFilesDir.standardizedFileURL.path == root.appending(path: "Moodle").standardizedFileURL.path)

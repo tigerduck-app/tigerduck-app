@@ -108,7 +108,9 @@ struct MoodleMemberCoursesTests {
     }
 
     private static func ownCourses(_ courses: [MoodleEnrolledCourse], in folder: Folder) {
-        folder.cache.moodle.replaceMoodleCourseIdMap(AssignmentRecords.moodleCourseIdMap(courses), for: testSignIn)
+        folder.cache.moodle.replaceMoodleCourseIdMap(
+            AssignmentRecords.moodleCourseIdMap(courses), enrolled: Set(courses.map(\.id)), for: testSignIn
+        )
     }
 
     private static func kept(_ folder: Folder, account: String = "B11399001") -> [MoodleEnrolledCourse]? {
@@ -245,9 +247,35 @@ struct MoodleMemberCoursesTests {
         #expect(Self.kept(folder)?.map(\.id) == [Self.courseId, 30001])
     }
 
-    @Test("without the account's own course list nothing is asked, kept or listed, and the page asks once the list is there")
+    @Test("a course both are in that has no Moodle id number lists after the terms, and one only the member is in stays out")
+    func sharedCourseWithoutIdNumber() async {
+        let folder = Folder()
+        let notices = Self.moodle(900, "", "Department Notices")
+        Self.ownCourses([Self.thisCourse, Self.algorithms, notices], in: folder)
+        let site = Site()
+        site.set(shared: [Self.thisCourse, Self.algorithms, notices, Self.moodle(901, "", "Club Notices")])
+        let store = Self.store(folder, site: site)
+        await store.refreshMembers()
+
+        await store.memberCourses.refresh(with: Self.classmate)
+
+        #expect(store.memberCourses.terms(with: Self.classmate) == [
+            MoodleCommonTerm(term: "1141", courses: [
+                MoodleCommonCourse(id: 30001, name: "Algorithms", details: ["CS2001301"], colorKey: "CS2001301"),
+            ]),
+            MoodleCommonTerm(term: nil, courses: [
+                MoodleCommonCourse(id: 900, name: "Department Notices", details: [], colorKey: "900"),
+            ]),
+        ])
+        #expect(Self.kept(folder)?.map(\.id) == [Self.courseId, 30001, 900])
+    }
+
+    @Test("without the account's enrolled course list, even with its id map, nothing is asked, kept or listed until it is there")
     func ownListMissing() async {
         let folder = Folder()
+        folder.cache.folders.persistentFiles.save(
+            AssignmentRecords.moodleCourseIdMap([Self.thisCourse, Self.algorithms]), to: "moodle_course_id_map.json"
+        )
         let site = Site()
         site.set(shared: [Self.thisCourse, Self.algorithms])
         let store = Self.store(folder, site: site)
