@@ -166,12 +166,25 @@ def _redact(text: str, student_id: str) -> str:
     return re.sub(re.escape(student_id), "<id>", text, flags=re.IGNORECASE)
 
 
+def _blank(path: str) -> str:
+    return "/".join(
+        "<token>" if len(s) >= TOKEN_LENGTH or SESSION_SEGMENT.search(s) else s
+        for s in path.split("/")
+    )
+
+
 def _path(url: httpx.URL, student_id: str) -> str:
     """The URL's path, never its query, with the student ID and session-like segments blanked."""
-    segments = _redact(url.path, student_id).split("/")
-    return "/".join(
-        "<token>" if len(s) >= TOKEN_LENGTH or SESSION_SEGMENT.search(s) else s for s in segments
-    )
+    return _blank(_redact(url.path, student_id))
+
+
+def _address(text: str) -> str:
+    """A script's address as host and blanked path, never its query."""
+    try:
+        url = httpx.URL(text)
+    except httpx.InvalidURL:
+        return "<url>"
+    return f"{url.host}{_blank(url.path)}"
 
 
 def _trace(student_id: str, last: list[httpx.Response]) -> Callable[[httpx.Response], None]:
@@ -243,9 +256,9 @@ def _skeleton(el: Tag, depth: int = SKELETON_DEPTH) -> str:
 
 def _scripts(soup: BeautifulSoup) -> tuple[list[str], list[str], bool]:
     """Script sources and the addresses inline scripts quote, as paths, and whether they name 導師."""
-    sources = [s["src"].split("?")[0] for s in soup.find_all("script", src=True)]
+    sources = [_address(s["src"]) for s in soup.find_all("script", src=True)]
     inline = "\n".join(s.get_text() for s in soup.find_all("script") if not s.get("src"))
-    return sources, sorted(set(URL_LITERAL.findall(inline))), ADVISOR in inline
+    return sources, sorted({_address(u) for u in URL_LITERAL.findall(inline)}), ADVISOR in inline
 
 
 def _describe(resp: httpx.Response, student_id: str, structure: bool) -> None:
@@ -472,6 +485,14 @@ def _self_check() -> None:
     assert _scripts(scripts) == (
         ["/lib/grid.js"], ["/StudentInformation/Information/Tutors"], True,
     ), _scripts(scripts)
+    session_scripts = BeautifulSoup(
+        '<script src="/(S(abcdef))/app.js?v=2"></script>'
+        '<script>location = "https://h.example/s/' + "t" * TOKEN_LENGTH + '/next";</script>',
+        "html.parser",
+    )
+    assert _scripts(session_scripts) == (
+        ["/<token>/app.js"], ["h.example/s/<token>/next"], False,
+    ), _scripts(session_scripts)
 
     def captured(run: Callable[[], object]) -> tuple[object, str, str]:
         out, err = io.StringIO(), io.StringIO()
