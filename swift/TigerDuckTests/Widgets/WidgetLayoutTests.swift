@@ -13,10 +13,13 @@ struct WidgetLayoutTests {
 
     @MainActor
     enum Host {
+        /// A widget's content margin, measured on the iPhone 18 Pro simulator with iOS 27.
+        static let systemMargin: CGFloat = 18.04
+
         static func show(
             _ view: some View, size: CGSize, style: UIUserInterfaceStyle = .light,
             textSize: UIContentSizeCategory = .large, renderingMode: WidgetRenderingMode = .fullColor,
-            background: Color? = nil, margins: CGFloat = 16
+            background: Color? = nil, margins: CGFloat = systemMargin
         ) throws -> UIWindow {
             let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
             let window = UIWindow(windowScene: scene)

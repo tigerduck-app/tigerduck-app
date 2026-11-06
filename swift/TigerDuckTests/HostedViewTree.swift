@@ -14,10 +14,13 @@ extension UIWindow {
         let out = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appending(path: ".out")
         guard FileManager.default.fileExists(atPath: out.path(percentEncoded: false)) else { return }
-        let image = UIGraphicsImageRenderer(bounds: bounds).image { _ in
+        try? picture()?.write(to: out.appending(path: "\(name).png"))
+    }
+
+    func picture() -> Data? {
+        UIGraphicsImageRenderer(bounds: bounds).image { _ in
             drawHierarchy(in: bounds, afterScreenUpdates: true)
-        }
-        try? image.pngData()?.write(to: out.appending(path: "\(name).png"))
+        }.pngData()
     }
 }
 #endif

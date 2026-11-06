@@ -96,7 +96,12 @@ struct WidgetSnapshotPictureTests {
             defer { window.isHidden = true }
             let expected = shot == .nextSmallBetween || shot == .nextMediumBetween ? "計算機網路概論" : look.long ? "IB-505" : "TR-412"
             try await waitUntil { exposedAccessibilityTexts(in: window).contains { $0.contains(expected) } }
-            try await Task.sleep(for: .milliseconds(300))
+            var shown: Data?
+            try await waitUntil {
+                let picture = window.picture()
+                defer { shown = picture }
+                return picture != nil && picture == shown
+            }
             window.saveSnapshot(as: "widget-\(shot.rawValue)-\(look.name)-\(Self.language)")
         }
     }
@@ -115,7 +120,8 @@ struct WidgetSnapshotPictureTests {
             return (AnyView(view), palette.canvas, 11)
         case .todayMedium, .todayLarge, .todayPortrait, .todayPortraitBetween, .todayExtraLarge, .todayExtraLargeMini,
              .todayExtraLargePro13:
-            return (AnyView(TodayView(snapshot: snapshot, now: now, palette: palette, family: family)), palette.canvas, 16)
+            let view = TodayView(snapshot: snapshot, now: now, palette: palette, family: family)
+            return (AnyView(view), palette.canvas, WidgetLayoutTests.Host.systemMargin)
         case .weekLarge, .weekPortrait, .weekExtraLarge, .weekExtraLargeMini, .weekExtraLargePro13:
             let view = WeekGridView(snapshot: snapshot, now: now, palette: palette, family: family)
             return (AnyView(view), palette.canvas, family == .systemLarge ? 8 : 10)
