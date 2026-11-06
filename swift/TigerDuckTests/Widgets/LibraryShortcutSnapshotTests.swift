@@ -25,8 +25,16 @@ struct LibraryShortcutSnapshotTests {
     @Test(arguments: [ColorScheme.light, .dark])
     func tinted(scheme: ColorScheme) throws {
         let image = try Self.render(Self.palette(scheme, .accented), scheme)
-        let translucent = try Self.alphas(of: image).filter { (0.1..<0.5).contains($0) }
+        let alphas = try Self.alphas(of: image)
+        let width = image.width
+        let translucent = alphas.indices.filter { (0.1..<0.5).contains(alphas[$0]) }
         #expect(translucent.count > 2000)
+        let squareRows = Set(Dictionary(grouping: translucent) { $0 / width }.filter { $0.value.count >= 40 }.keys)
+        let squareColumns = Set(Dictionary(grouping: translucent) { $0 % width }.filter { $0.value.count >= 40 }.keys)
+        let glyph = alphas.indices.filter {
+            alphas[$0] > 0.9 && squareRows.contains($0 / width) && squareColumns.contains($0 % width)
+        }
+        #expect(glyph.count > 150)
         Self.picture(image, over: Self.tintedHomeScreen, keepingOnlyAlpha: true)
             .saveSnapshot(as: Self.name("tinted", scheme))
     }
