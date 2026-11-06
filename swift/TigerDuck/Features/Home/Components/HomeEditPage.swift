@@ -54,6 +54,14 @@ struct HomeEditPage<Header: View>: View {
         // The handle sits above the outline, which is mostly its header, instead of covering it.
         return VStack(spacing: 0) {
             SectionDragHandle()
+                .accessibilityValue(section.displayTitle)
+                .reorderAccessibilityActions(
+                    section.id,
+                    shown: sections.map(\.id),
+                    currentIDs: sectionIDs,
+                    moveAction: moveSections,
+                    onPersist: viewModel.layout.saveSectionLayout
+                )
             sectionOutline(section)
         }
         .overlay(alignment: .topTrailing) {
@@ -83,13 +91,19 @@ struct HomeEditPage<Header: View>: View {
                 containerID: sectionDragContainerID,
                 activePayload: $activeSectionDrag,
                 didReorder: $didReorderSection,
-                currentIDs: { viewModel.layout.sections.map(\.id) },
-                moveAction: { fromOffsets, destination in
-                    viewModel.layout.sections.move(fromOffsets: fromOffsets, toOffset: destination)
-                },
+                currentIDs: sectionIDs,
+                moveAction: moveSections,
                 onPersist: viewModel.layout.saveSectionLayout
             )
         )
+    }
+
+    private func sectionIDs() -> [String] {
+        viewModel.layout.sections.map(\.id)
+    }
+
+    private func moveSections(_ offsets: IndexSet, to destination: Int) {
+        viewModel.layout.sections.move(fromOffsets: offsets, toOffset: destination)
     }
 
     @ViewBuilder
@@ -179,6 +193,7 @@ private struct SectionDragHandle: View {
         HStack(spacing: TigerDuckTheme.Spacing.xs) {
             Image(systemName: "line.3.horizontal")
                 .font(.caption.weight(.bold))
+                .accessibilityHidden(true)
             Text(String(localized: "home_section_drag_hint"))
                 .font(TigerDuckTheme.Typography.caption2)
         }
@@ -189,6 +204,7 @@ private struct SectionDragHandle: View {
             Capsule().fill(Color(.systemGray5))
         )
         .padding(.top, TigerDuckTheme.Spacing.xs)
+        .accessibilityElement(children: .combine)
     }
 }
 

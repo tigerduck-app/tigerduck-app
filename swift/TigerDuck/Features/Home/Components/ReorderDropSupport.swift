@@ -39,6 +39,22 @@ enum ReorderDropSupport {
     }
 
     @discardableResult
+    static func move(
+        _ draggedID: String,
+        onto targetID: String,
+        in itemIDs: [String],
+        moveAction: (IndexSet, Int) -> Void
+    ) -> Bool {
+        guard let (fromOffsets, destination) = moveDestination(in: itemIDs, draggedID: draggedID, targetID: targetID) else {
+            return false
+        }
+        withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .smoothSpring) {
+            moveAction(fromOffsets, destination)
+        }
+        return true
+    }
+
+    @discardableResult
     static func finalizeDrop(
         activePayload: Binding<ReorderDragPayload?>,
         didReorder: Binding<Bool>,
@@ -70,16 +86,8 @@ struct ReorderDropDelegate: DropDelegate {
 
     func dropEntered(info: DropInfo) {
         guard let payload = validatedPayload(info: info),
-              let (fromOffsets, destination) = ReorderDropSupport.moveDestination(
-                  in: currentIDs(),
-                  draggedID: payload.id,
-                  targetID: targetID
-              ) else {
+              ReorderDropSupport.move(payload.id, onto: targetID, in: currentIDs(), moveAction: moveAction) else {
             return
-        }
-
-        withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .smoothSpring) {
-            moveAction(fromOffsets, destination)
         }
         didReorder = true
     }
@@ -140,5 +148,38 @@ struct ReorderContainerDropDelegate: DropDelegate {
         }
 
         return activePayload
+    }
+}
+
+extension View {
+    func reorderAccessibilityActions(
+        _ id: String,
+        shown shownIDs: [String],
+        currentIDs: @escaping () -> [String],
+        moveAction: @escaping (IndexSet, Int) -> Void,
+        onPersist: @escaping () -> Void
+    ) -> some View {
+        let index = shownIDs.firstIndex(of: id)
+        func step(_ offset: Int) {
+            guard let index, shownIDs.indices.contains(index + offset),
+                  ReorderDropSupport.move(id, onto: shownIDs[index + offset], in: currentIDs(), moveAction: moveAction)
+            else { return }
+            onPersist()
+            var position = AttributedString(
+                String(format: String(localized: "a11y_home_edit_position"), index + offset + 1, shownIDs.count)
+            )
+            // Other speech cannot interrupt a high-priority announcement (AccessibilityNotification.Announcement).
+            position.accessibilitySpeechAnnouncementPriority = .high
+            AccessibilityNotification.Announcement(position).post()
+        }
+        // SwiftUI hands VoiceOver these actions last first, so move up comes first in the Actions rotor.
+        return accessibilityActions {
+            if let index, index < shownIDs.count - 1 {
+                Button(String(localized: "a11y_home_edit_move_down")) { step(1) }
+            }
+            if let index, index > 0 {
+                Button(String(localized: "a11y_home_edit_move_up")) { step(-1) }
+            }
+        }
     }
 }
