@@ -7,10 +7,12 @@ final class MailIdleClose {
     private let sleep: @Sendable (Duration) async -> Void
     private var task: Task<Void, Never>?
     private var armCount = 0
+    let afterEveryUse: Bool
 
-    init(delay: Duration, sleep: @escaping @Sendable (Duration) async -> Void) {
+    init(delay: Duration, sleep: @escaping @Sendable (Duration) async -> Void, afterEveryUse: Bool = false) {
         self.delay = delay
         self.sleep = sleep
+        self.afterEveryUse = afterEveryUse
     }
 
     func arm(_ fire: @escaping @MainActor () async -> Void) {

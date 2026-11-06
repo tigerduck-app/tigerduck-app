@@ -19,6 +19,7 @@ final class MailPageSession {
 
     init(
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
+        closesWhenIdle: Bool = false,
         open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() },
         onAuthFailure: @escaping @MainActor (SignIn) -> Void = { MailAccountManager.shared.handleAuthFailure(for: $0) },
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
@@ -26,7 +27,7 @@ final class MailPageSession {
         account: AccountSession? = nil
     ) {
         self.account = account ?? MailAccountManager.shared.session
-        self.idleClose = MailIdleClose(delay: idleClose, sleep: sleep)
+        self.idleClose = MailIdleClose(delay: idleClose, sleep: sleep, afterEveryUse: closesWhenIdle)
         self.open = open
         self.onAuthFailure = onAuthFailure
         signOutListener = MailNotificationListener(center: signOutEvents, name: MailAccountManager.didSignOut) { [weak self] in self?.invalidateForSignOut() }
@@ -112,7 +113,7 @@ final class MailPageSession {
         guard inFlight == 0 else { return }
         if pendingDrop {
             await close()
-        } else if isReleased {
+        } else if isReleased || idleClose.afterEveryUse {
             armClose()
         }
     }
