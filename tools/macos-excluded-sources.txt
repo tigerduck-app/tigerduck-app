@@ -397,6 +397,7 @@ MailMessageViewModel.swift
 MailMuteRuleEditor.swift
 MailNotificationSettingsView.swift
 MailPageSession.swift
+MailSendHold.swift
 MailSettingsView.swift
 SchoolMailView.swift
 
@@ -412,6 +413,7 @@ MailReadableHTML.swift
 MailRecipientRow.swift
 MailRecipientTokenField.swift
 MailRowView.swift
+MailSendHoldBar.swift
 MailSourceTextView.swift
 MailWarningBanner.swift
 MailWebViewFactory.swift
@@ -511,3 +513,14 @@ BrowserAddressBarPicker.swift
 # The browser's downloads, kept in a folder the Files app shows; the Mac's browser saves to Downloads
 SavedDownloads.swift
 SavedDownloadFiles.swift
+
+# TigerDuckWidgets — the widgets' layouts, which the app compiles only for the phone tests that draw them
+AccessoryViews.swift
+ClassTileParts.swift
+LibraryShortcutView.swift
+NextClassView.swift
+TodayListView.swift
+WeekGridParts.swift
+WeekGridView.swift
+WidgetDayLayout.swift
+WidgetPalette.swift

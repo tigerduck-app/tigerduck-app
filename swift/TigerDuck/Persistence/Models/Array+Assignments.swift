@@ -27,6 +27,11 @@ extension Array where Element == SDAssignment {
         filter { !$0.isArchived || $0.isCompleted }
     }
 
+    func ofTimetable(_ courses: [SDCourse]) -> [SDAssignment] {
+        let courseNos = Set(courses.map(\.courseNo))
+        return courseNos.isEmpty ? self : filter { courseNos.contains($0.courseNo) }
+    }
+
     func partitionedByDueDate(now: Date) -> [SDAssignment] {
         let future = filter { $0.dueDate >= now }.sorted { $0.dueDate < $1.dueDate }
         let past = filter { $0.dueDate < now }.sorted { $0.dueDate > $1.dueDate }

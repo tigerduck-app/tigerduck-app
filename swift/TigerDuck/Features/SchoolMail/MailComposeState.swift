@@ -18,6 +18,11 @@ nonisolated struct MailComposeContext: Identifiable, Sendable {
         guard let folder, let uid else { return nil }
         return (folder, uid)
     }
+
+    var draftID: MailListRow.ID? {
+        guard mode == .draft, let folder, let uid else { return nil }
+        return MailListRow.ID(folder: folder, uid: uid)
+    }
 }
 
 struct MailComposeDraft {
@@ -51,6 +56,8 @@ struct MailComposeStatus {
     var invalidRecipients: [String] = []
     var didFinish = false
     var signInEnded = false
+    var mayHaveSent = false
+    var discarded = false
     var sentCopy: SentCopy?
 
     mutating func recipientsReportingProblems(of draft: MailComposeDraft, requireOne: Bool) -> MailRecipients.Parsed? {

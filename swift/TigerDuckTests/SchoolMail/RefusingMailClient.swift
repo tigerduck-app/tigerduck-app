@@ -38,6 +38,7 @@ actor RefusingMailClient: MailClient {
     func setFlag(
         _ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?
     ) async throws { throw refuse() }
+    func storesFlagged(folder: String) async throws -> Bool { throw refuse() }
     func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {
         throw refuse()
     }
@@ -46,6 +47,8 @@ actor RefusingMailClient: MailClient {
     func createFolder(_ name: String) async throws { throw refuse() }
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws { throw refuse() }
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool { throw refuse() }
-    func send(_ message: Data, from sender: String, to recipients: [String]) async throws { throw refuse() }
+    func send(
+        _ message: Data, from sender: String, to recipients: [String], unless isExpired: @escaping @MainActor () -> Bool
+    ) async throws { throw refuse() }
 }
 #endif

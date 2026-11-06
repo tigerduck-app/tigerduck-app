@@ -198,7 +198,7 @@ struct MailFolderProvisionerTests {
         await h.model.load()
         #expect(h.model.deleteIsPermanent)
 
-        #expect(await h.model.prepareDelete() == false)
+        #expect(await h.model.prepareDelete() == .toTrash)
         #expect(!h.model.deleteIsPermanent)
         #expect(h.reportedRoles.last?[.trash] == Self.trash)
         #expect(!h.model.isMoving)
@@ -213,7 +213,7 @@ struct MailFolderProvisionerTests {
         await h.fake.update { $0.createFolderError = .protocolError("permission denied") }
         await h.model.load()
 
-        #expect(await h.model.prepareDelete())
+        #expect(await h.model.prepareDelete() == .permanent)
         #expect(h.model.deleteIsPermanent)
         #expect(h.reportedRoles.isEmpty)
 
@@ -225,7 +225,7 @@ struct MailFolderProvisionerTests {
     @Test func preparingADeleteWithATrashFolderCreatesNothing() async {
         let h = Self.message(trashFolderExists: true)
         await h.model.load()
-        #expect(await h.model.prepareDelete() == false)
+        #expect(await h.model.prepareDelete() == .toTrash)
         #expect(!(await h.fake.calls).contains { $0.hasPrefix("createFolder") })
         #expect(h.reportedRoles.isEmpty)
     }
@@ -233,7 +233,7 @@ struct MailFolderProvisionerTests {
     @Test func deletingInsideTrashStaysPermanentAndCreatesNothing() async {
         let h = Self.message(trashFolderExists: true, folder: Self.trash)
         await h.model.load()
-        #expect(await h.model.prepareDelete())
+        #expect(await h.model.prepareDelete() == .permanent)
         #expect(!(await h.fake.calls).contains { $0.hasPrefix("createFolder") })
     }
 

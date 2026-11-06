@@ -8,32 +8,31 @@ struct WeekEntry: TimelineEntry {
     let snapshot: WidgetSnapshot
 }
 
-struct WeekProvider: TimelineProvider {
-    private let store = WidgetSnapshotStore()
-
+struct WeekProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> WeekEntry {
         WeekEntry(date: Date(), appNow: AppClock.now(), snapshot: Self.emptySnapshot)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (WeekEntry) -> Void) {
-        completion(WeekEntry(
+    func snapshot(for configuration: ChooseClassTableIntent, in context: Context) async -> WeekEntry {
+        WeekEntry(
             date: Date(),
             appNow: AppClock.now(),
-            snapshot: store.readSnapshot() ?? Self.emptySnapshot
-        ))
+            snapshot: WidgetSnapshotStore().readSnapshot(of: configuration.personID) ?? Self.emptySnapshot
+        )
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<WeekEntry>) -> Void) {
-        let snap = store.readSnapshot() ?? Self.emptySnapshot
-        let appMidnight = TaipeiTime.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+    func timeline(for configuration: ChooseClassTableIntent, in context: Context) async -> Timeline<WeekEntry> {
+        let snap = WidgetSnapshotStore().readSnapshot(of: configuration.personID) ?? Self.emptySnapshot
+        let now = AppClock.now()
+        let appDates = WidgetDayLayout.timelineDates(snapshot: snap, after: now)
         // WidgetKit interprets `.after(...)` against real wall-clock time,
         // so translate the fake-clock midnight to the real instant it maps
         // to. Identity when no debug override is active.
-        let midnight = AppClock.realTime(forApp: appMidnight)
-        completion(Timeline(
-            entries: [WeekEntry(date: Date(), appNow: AppClock.now(), snapshot: snap)],
+        let midnight = AppClock.realTime(forApp: WidgetTimelineDerivation.nextMidnight(after: now))
+        return Timeline(
+            entries: appDates.map { WeekEntry(date: AppClock.realTime(forApp: $0), appNow: $0, snapshot: snap) },
             policy: .after(midnight)
-        ))
+        )
     }
 
     private static let emptySnapshot = WidgetSnapshot(
@@ -45,6 +44,7 @@ struct WeekProvider: TimelineProvider {
 
 struct WeekWidgetView: View {
     let entry: WeekEntry
+    @Environment(\.widgetFamily) private var family
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.widgetRenderingMode) private var renderingMode
 
@@ -54,10 +54,11 @@ struct WeekWidgetView: View {
             colorScheme: colorScheme,
             renderingMode: renderingMode
         )
-        WeekGridView(snapshot: entry.snapshot, now: entry.appNow, palette: palette)
-            .padding(3)
-            .containerBackground(palette.background, for: .widget)
+        WeekGridView(snapshot: entry.snapshot, now: entry.appNow, palette: palette, family: family)
+            .padding(family == .systemLarge ? 8 : 10)
+            .containerBackground(palette.canvas, for: .widget)
             .widgetURL(URL(string: "tigerduck://classtable"))
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 
@@ -65,7 +66,7 @@ struct WeekWidget: Widget {
     let kind: String = "WeekWidget"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: WeekProvider()) { entry in
+        AppIntentConfiguration(kind: kind, intent: ChooseClassTableIntent.self, provider: WeekProvider()) { entry in
             WeekWidgetView(entry: entry)
         }
         .configurationDisplayName(String(localized: "widget_week_light_label"))
@@ -73,7 +74,7 @@ struct WeekWidget: Widget {
         // iPad gets the larger family; WidgetKit drops it on iPhone. The grid clamps its minimum
         // cell height so the edit-mode resize preview never collapses to an invisible state when
         // iOS asks for an intermediate size.
-        .supportedFamilies([.systemLarge, .systemExtraLarge])
+        .supportedFamilies(WidgetFamily.withExtraLargePortrait([.systemLarge, .systemExtraLarge]))
         .contentMarginsDisabled()
     }
 }

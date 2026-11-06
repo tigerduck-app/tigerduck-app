@@ -140,5 +140,44 @@ struct MoodleAssignmentPage: Hashable {
         hasher.combine(ObjectIdentifier(store))
         hasher.combine(courseName)
     }
+
+    static func open(
+        _ assignment: AssignmentStore.Assignment, authService: AuthService, openURL: OpenURLAction, show: (MoodleAssignmentPage) -> Void
+    ) {
+        if let context = MoodleCacheContext.signedIn(authService, for: authService.session.currentSignIn),
+           let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context),
+           let entry = store.assignments.entry(for: assignment) {
+            show(MoodleAssignmentPage(entry: entry, store: store, courseName: assignment.displayCourseName))
+        } else if let url = assignment.moodleDeepLink {
+            let web = assignment.moodleWebURL
+            Task { await openURL(url, fallback: web) }
+        }
+    }
+}
+
+extension View {
+    func moodleAssignmentDestination(
+        _ page: Binding<MoodleAssignmentPage?>, signIn: SignIn, preferences: AppPreferences
+    ) -> some View {
+        modifier(MoodleAssignmentDestination(page: page, signIn: signIn, preferences: preferences))
+    }
+}
+
+private struct MoodleAssignmentDestination: ViewModifier {
+    @Binding var page: MoodleAssignmentPage?
+    let signIn: SignIn
+    let preferences: AppPreferences
+
+    func body(content: Content) -> some View {
+        content
+            .navigationDestination(item: $page) { page in
+                MoodleAssignmentView(
+                    store: page.store, entry: page.entry, courseName: page.courseName,
+                    policy: preferences.visualStylePolicy, accent: preferences.accentColor
+                )
+                .moodleLinkOpening()
+            }
+            .onChange(of: signIn) { page = nil }
+    }
 }
 #endif

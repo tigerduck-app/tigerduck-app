@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 struct WhatsNewRepository {
     struct ResolvedWhatsNew: Equatable {
@@ -64,14 +65,6 @@ struct WhatsNewRepository {
         try? JSONDecoder()
             .decode([String: Lenient<[String: WhatsNewEntry]>].self, from: data)
             .compactMapValues(\.value)
-    }
-
-    private struct Lenient<Value: Decodable>: Decodable {
-        let value: Value?
-
-        init(from decoder: Decoder) throws {
-            value = try? Value(from: decoder)
-        }
     }
 
     static func select(

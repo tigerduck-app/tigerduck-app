@@ -51,12 +51,15 @@ jobs:
               TigerDuckTests/MailComposeSuggestionScreenTests
               TigerDuckTests/MailHTMLSanitizerTests/aFixedImageBoxKeepsItsRatioOnThePage(pageWidth:)
               TigerDuckTests/MailMuteSettingsScreenTests
+              TigerDuckTests/MailSwipeScreenTests
+              TigerDuckTests/MailRouteSignOutTests
               TigerDuckTests/MailSearchFooterScreenTests
               TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
               TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()
               TigerDuckTests/MailMessageViewModelTests/theWebViewIsLockedDown()
               TigerDuckTests/MailReadableHTMLTests/theLinkColourIsWebKitsOwn(theme:)
               TigerDuckTests/ArchiveScreensTests
+              TigerDuckTests/MailSendHoldScreenTests
               TigerDuckTests/BrowserAddressSheetTests
               TigerDuckTests/BrowserAtRiskTests
               TigerDuckTests/BrowserPinnedHostsTests
@@ -67,6 +70,7 @@ jobs:
               TigerDuckTests/BrowserPageScriptsTests
               TigerDuckTests/BrowserPageUITests
               TigerDuckTests/BrowserSiteSignInPageTests
+              TigerDuckTests/CalendarDayListScreenTests
               TigerDuckTests/ClassTableCalendarMenuTests
               TigerDuckTests/ClassTableShareSheetTests
               TigerDuckTests/ClassTableSwitcherTests
@@ -115,6 +119,8 @@ jobs:
               TigerDuckTests/TLSPinPromptTests
               TigerDuckTests/TodayCourseCardLayoutTests
               TigerDuckTests/WhatsNewPagerTests
+              TigerDuckTests/WidgetLayoutTests
+              TigerDuckTests/WidgetSnapshotPictureTests
           # The watch app is a companion app with its own scheme and destination; Xcode pairs the
           # watch simulator with a phone one. The scheme builds the phone app for running only:
           # built for testing on a watch destination it compiled twice the phone leg's code.
