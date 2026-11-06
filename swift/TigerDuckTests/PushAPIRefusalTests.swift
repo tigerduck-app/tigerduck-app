@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
@@ -71,5 +72,35 @@ struct PushAPIRefusalTests {
             return
         }
         #expect(SettingsAPIStub.requests(under: baseURL).count == 1)
+    }
+
+    @Test("a clock_ahead from a server the app has switched away from since is thrown, not sent to the new one")
+    func anAheadRefusalFromALeftServerIsNotResent() async throws {
+        let left = SettingsAPIStub.uniqueBaseURL()
+        let switchedTo = URL(string: "https://other-stub.invalid/\(UUID().uuidString)/v4")!
+        let reads = OSAllocatedUnfairLock(initialState: 0)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = PushAPIClient(
+            baseURLProvider: { reads.withLock { $0 += 1; return $0 == 1 ? left : switchedTo } },
+            session: URLSession(configuration: config), authHeaderProvider: { "Bearer B1" }
+        )
+        let madeAt = Date(timeIntervalSince1970: 1_790_000_000)
+        let path = "sync/courses/client:1151:CS1001301"
+        let hlc = [URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: madeAt)))]
+        SettingsAPIStub.enqueue(
+            .init(
+                statusCode: 409, body: Data(#"{"error":"clock_ahead","message":"ahead"}"#.utf8),
+                headerFields: ["X-TigerSync-Clock": String(SyncClockTests.ten)]
+            ),
+            for: left.appendingPathComponent(path).appending(queryItems: hlc)
+        )
+
+        await #expect(throws: PushAPIError.self) {
+            try await client.deleteCourse(courseKey: "client:1151:CS1001301", madeAt: madeAt, for: testSignIn)
+        }
+
+        #expect(SettingsAPIStub.requests(under: left).count == 1)
+        #expect(SettingsAPIStub.requests(under: switchedTo).isEmpty)
     }
 }

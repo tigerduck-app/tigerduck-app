@@ -126,9 +126,9 @@ nonisolated final class BackendClient: Sendable {
 
     @TaskLocal static var holdsResend: (@Sendable () async -> Bool)?
 
-    /// Sends an edit stamped with its own time. A 409 `clock_ahead` is answered once by stamping
-    /// it again one tick after the backend's clock, which that reply carries, unless
-    /// `holdsResend` holds it.
+    /// Sends an edit stamped with its own time. A 409 `clock_ahead` from this client's backend is
+    /// answered once by stamping it again one tick after the backend's clock, which that reply
+    /// carries, unless `holdsResend` holds it.
     func sendStamped(
         at stamp: Date, _ make: @Sendable (_ hlc: Int64) throws -> BackendRequest
     ) async throws -> BackendResponse {
@@ -172,14 +172,15 @@ nonisolated final class BackendClient: Sendable {
             : try await session.data(for: urlRequest)
         guard let http = response as? HTTPURLResponse else { throw PushAPIError.invalidResponse }
         let answer = BackendResponse(data: data, http: http)
-        if let clock, let serverClock = answer.serverClock, isFromThisBackend(answer) { clock.hear(serverClock) }
+        let ownClock = isFromThisBackend(answer) ? answer.serverClock : nil
+        if let clock, let ownClock { clock.hear(ownClock) }
         if (200..<300).contains(http.statusCode) || request.acceptsEveryStatus { return answer }
         let code = Self.errorCode(in: data)
         if http.statusCode == 401, request.authenticated, case .first = attempt, let sent, let signIn,
            await auth.recover(sent, code, signIn) {
             return try await send(request, as: .replay(after401For: signIn))
         }
-        if http.statusCode == 409, code == "clock_ahead" { throw PushAPIError.clockAhead(serverClock: answer.serverClock) }
+        if http.statusCode == 409, code == "clock_ahead" { throw PushAPIError.clockAhead(serverClock: ownClock) }
         if http.statusCode == 409, code == "sync_revision_expired" { throw PushAPIError.syncRevisionExpired }
         if request.returnedStatuses.contains(http.statusCode) { return answer }
         let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
