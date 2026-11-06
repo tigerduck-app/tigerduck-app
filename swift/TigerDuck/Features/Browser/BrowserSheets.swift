@@ -15,7 +15,7 @@ struct BrowserSheetView: View {
     let showsNavigation: Bool
     let afterClosing: (@escaping () -> Void) -> Void
 
-    @State private var showsCertificate: Bool
+    @State private var pushed: Bool
     @State private var height: CGFloat = 160
 
     init(page: BrowserPage, sheet: BrowserSheet, showsNavigation: Bool, afterClosing: @escaping (@escaping () -> Void) -> Void) {
@@ -23,34 +23,37 @@ struct BrowserSheetView: View {
         self.sheet = sheet
         self.showsNavigation = showsNavigation
         self.afterClosing = afterClosing
-        _showsCertificate = State(initialValue: sheet == .certificate)
+        _pushed = State(initialValue: sheet == .certificate)
     }
 
     var body: some View {
-        Group {
-            if sheet == .more {
-                BrowserMenu(page: page, showsNavigation: showsNavigation, afterClosing: afterClosing)
-                    .fittedHeight($height)
-            } else {
-                NavigationStack {
-                    // Scrolls once large text makes it taller than the screen, where the sheet stops.
-                    ScrollView {
-                        BrowserAddressView(page: page, showsCertificate: $showsCertificate, afterClosing: afterClosing)
-                            .fittedHeight($height)
+        NavigationStack {
+            // Scrolls once large text makes it taller than the screen, where the sheet stops.
+            ScrollView {
+                Group {
+                    if sheet == .more {
+                        BrowserMenu(page: page, showsNavigation: showsNavigation, afterClosing: afterClosing) { pushed = true }
+                    } else {
+                        BrowserAddressView(page: page, showsCertificate: $pushed, afterClosing: afterClosing)
                     }
-                    .scrollBounceBehavior(.basedOnSize)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .background(Color(uiColor: .systemGroupedBackground))
-                        // The content runs under the empty bar, which stays shown: a push that brings
-                        // a hidden bar in lays it out too high until the push ends.
-                        .ignoresSafeArea(.container, edges: .top)
-                        .navigationDestination(isPresented: $showsCertificate) {
-                            BrowserCertificateView(chain: BrowserCertificate.chain(of: page.connection == .secure ? page.serverTrust : nil))
-                        }
                 }
+                .fittedHeight($height)
             }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Color(uiColor: .systemGroupedBackground))
+                // The content runs under the empty bar, which stays shown: a push that brings
+                // a hidden bar in lays it out too high until the push ends.
+                .ignoresSafeArea(.container, edges: .top)
+                .navigationDestination(isPresented: $pushed) {
+                    if sheet == .more {
+                        BrowserDownloadsView(page: page)
+                    } else {
+                        BrowserCertificateView(chain: BrowserCertificate.chain(of: page.connection == .secure ? page.serverTrust : nil))
+                    }
+                }
         }
-        .presentationDetents(showsCertificate ? [.large] : [.height(height)])
+        .presentationDetents(pushed ? [.large] : [.height(height)])
         .presentationDragIndicator(.visible)
         .centeredPlacement()
         .presentationBackground(Color(uiColor: .systemGroupedBackground))

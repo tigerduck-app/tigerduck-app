@@ -7,6 +7,7 @@ struct BrowserMenu: View {
     let showsNavigation: Bool
     /// Runs its work once the sheet has closed, as print presents a sheet of its own.
     let afterClosing: (@escaping () -> Void) -> Void
+    let openDownloads: () -> Void
 
     @Default(.browserAppearance) private var appearance
     @Environment(\.openPageSettings) private var openPageSettings
@@ -30,6 +31,8 @@ struct BrowserMenu: View {
                 action("magnifyingglass", String(localized: "browser_find")) { page.find.start() }
                 Divider().padding(.leading, 52)
                 action("printer", String(localized: "browser_print")) { page.print() }
+                Divider().padding(.leading, 52)
+                downloadsRow
             }
             card {
                 action("gearshape", String(localized: "action_settings"), needsPage: false, openPageSettings)
@@ -66,6 +69,22 @@ struct BrowserMenu: View {
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { page.zoomPeek.size = $0 }
         }
         .row()
+    }
+
+    private var downloadsRow: some View {
+        let share = page.downloads.runningShare
+        return Button(action: openDownloads) {
+            HStack(spacing: TigerDuckTheme.Spacing.md) {
+                BrowserDownloadsIcon(share: share).frame(width: 24)
+                Text(String(localized: "browser_downloads"))
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .row()
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(share.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? "")
     }
 
     private func action(
