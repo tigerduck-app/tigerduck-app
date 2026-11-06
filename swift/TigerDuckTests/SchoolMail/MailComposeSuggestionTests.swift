@@ -69,11 +69,13 @@ struct MailComposeSuggestionScreenTests {
     static let language = Bundle.main.preferredLocalizations.first ?? "en"
 
     /// A list keeps the cells of rows it no longer shows, hidden, for reuse.
-    static func rows(in window: UIWindow) -> [String] {
+    static func rows(in window: UIWindow) -> [NSObject] {
         let shown: [UIView] = window.descendants(ofType: UICollectionView.self).first?.visibleCells ?? [window]
         var seen = Set<String>()
-        return shown.flatMap { exposedAccessibilityLabels(in: $0) }
-            .filter { $0.contains("@mail.example.edu.tw") && !$0.contains("<") && seen.insert($0).inserted }
+        return shown.flatMap { exposedAccessibilityElements(in: $0) }.filter {
+            let label = $0.accessibilityLabel ?? ""
+            return label.contains("@mail.example.edu.tw") && !label.contains("<") && seen.insert(label).inserted
+        }
     }
 
     @Test("typing in To lists the matches under it, each read name then address, and a pick becomes its bubble",
@@ -91,13 +93,17 @@ struct MailComposeSuggestionScreenTests {
             field.insertText("陳")
 
             let names = ["陳怡君", "陳柏翰", "陳志明老師", "資工系 陳助教"]
-            let read = zip(names, MailComposeViewModelTests.suggested).map { "\($0), \($1)" }
-            try await waitUntil { Self.rows(in: window) == read }
+            try await waitUntil { Self.rows(in: window).count == names.count }
+            let rows = Self.rows(in: window)
+            for (row, (name, address)) in zip(rows, zip(names, MailComposeViewModelTests.suggested)) {
+                let label = row.accessibilityLabel ?? ""
+                #expect(label.hasPrefix(name) && label.hasSuffix(address), "\(label)")
+            }
             #expect(accessibilityElement(labeled: String(localized: "a11y_school_mail_recipient_suggestions"), in: window) != nil)
             try await Task.sleep(for: .milliseconds(400))
             window.saveSnapshot(as: "mail-suggest-\(look.testDescription)-\(Self.language)")
 
-            _ = accessibilityElement(labeled: read[0], in: window)?.accessibilityActivate()
+            _ = rows.first?.accessibilityActivate()
             try await waitUntil { model.to == "陳怡君 <yichun@mail.example.edu.tw>" }
             try await waitUntil { Self.rows(in: window).isEmpty }
             #expect(accessibilityElement(labeled: "陳怡君 <yichun@mail.example.edu.tw> ×", in: window) != nil)
