@@ -116,6 +116,21 @@ struct WidgetLayoutTests {
         }
     }
 
+    @Test func aWeekBlockReadsItsClassTimes() async throws {
+        try await withAccessibilityAutomation {
+            let view = WeekGridView(snapshot: Fixtures.snapshot(), now: Fixtures.wednesday(11, 32), palette: Host.palette(), family: .systemLarge)
+            let window = try Host.show(view, size: Self.large, margins: 8)
+            defer { window.isHidden = true }
+            let first = try #require(AppConstants.PeriodTimes.mapping["3"])
+            let last = try #require(AppConstants.PeriodTimes.mapping["4"])
+            let spoken = TimeRange.spoken(first.start, last.end)
+
+            let texts = try await Host.texts(in: window, waitingFor: "資料結構與演算法")
+
+            #expect(texts.contains { $0.contains("資料結構與演算法") && $0.contains(spoken) }, "\(texts)")
+        }
+    }
+
     @Test(arguments: [(11, 32), (16, 0)])
     func theNextClassWidgetKeepsEachRoomWholeWhileTheNameGivesWay(hour: Int, minute: Int) async throws {
         try await withAccessibilityAutomation {

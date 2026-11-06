@@ -15,6 +15,7 @@ final class WidgetSnapshotWriter {
     private let courses: CourseStore
     private let isProtectedDataAvailable: @MainActor () -> Bool
     private let importedPeople: @MainActor () -> [ImportedPerson]
+    private let schoolCalendar: @MainActor () -> (calendar: AcademicCalendar, optedIn: Set<Int>)
     private var owesForcedReload = false
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "WidgetWriter")
 
@@ -44,7 +45,10 @@ final class WidgetSnapshotWriter {
         coordinator: WidgetReloadCoordinator? = nil,
         courseProvider: CanonicalCourseProvider? = nil,
         isProtectedDataAvailable: (@MainActor () -> Bool)? = nil,
-        importedPeople: @escaping @MainActor () -> [ImportedPerson] = { ImportedClassTableStore.shared.people }
+        importedPeople: @escaping @MainActor () -> [ImportedPerson] = { ImportedClassTableStore.shared.people },
+        schoolCalendar: @escaping @MainActor () -> (calendar: AcademicCalendar, optedIn: Set<Int>) = {
+            (AcademicCalendarStore.shared.calendar, AcademicCalendarStore.shared.optedInHolidayIDs)
+        }
     ) {
         #if os(iOS)
         self.isProtectedDataAvailable = isProtectedDataAvailable ?? { UIApplication.shared.isProtectedDataAvailable }
@@ -58,6 +62,7 @@ final class WidgetSnapshotWriter {
         self.coordinator = coordinator ?? WidgetReloadCoordinator()
         self.courseProvider = courseProvider ?? CanonicalCourseProvider()
         self.importedPeople = importedPeople
+        self.schoolCalendar = schoolCalendar
     }
 
     private static let outsideTermHorizonDays = 366 + 7
@@ -82,16 +87,18 @@ final class WidgetSnapshotWriter {
         owesForcedReload = false
         let semester = CourseSelectionService.currentSemesterCode()
         let colorMap = CourseColorStore.shared.files.loadCourseColorMap()
+        let now = AppClock.now()
+        let (calendar, optedIn) = schoolCalendar()
         let input = WidgetSnapshotBuilder.Input(
             courses: courseProvider.currentCourses(semester: semester),
             customNames: courses.loadCourseCustomNamesFlat(),
             colorMap: colorMap,
             isLoggedIn: isLoggedIn(),
             accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: accentColorHex())),
-            now: AppClock.now(),
-            quietDayKeys: Self.quietDayKeys(),
+            now: now,
+            quietDayKeys: Self.quietDayKeys(calendar: calendar, optedIn: optedIn, now: now),
             changes: .cached,
-            term: AcademicCalendarStore.shared.calendar.terms.first { $0.code == semester }?.days
+            term: calendar.terms.first { $0.code == semester }?.days
         )
         let snapshot = WidgetSnapshotBuilder.build(input)
         let people = importedPeople().map { person in
