@@ -21,6 +21,15 @@ struct LibraryPassEntryTests {
         #expect(opened.map(Self.destination(of:)) == [.library])
     }
 
+    @Test func theQuickActionDelegateLeavesLinksToSwiftUI() {
+        let linkCallbacks = [
+            #selector(UISceneDelegate.scene(_:openURLContexts:)),
+            #selector(UISceneDelegate.scene(_:continue:)),
+            #selector(UISceneDelegate.scene(_:willContinueUserActivityWithType:)),
+        ]
+        #expect(linkCallbacks.filter(QuickActionSceneDelegate.instancesRespond(to:)).isEmpty)
+    }
+
     @Test(arguments: ["en", "zh-Hant"])
     func theQuickActionIsTitledAsThePass(localization: String) throws {
         let declared = try #require(Self.quickActions.first)
@@ -39,9 +48,13 @@ struct LibraryPassEntryTests {
         #expect(opened.map(Self.destination(of:)) == [.library])
     }
 
-    @Test(arguments: ["en", "zh-Hant"])
-    func theActionButtonHintIsTranslated(localization: String) {
-        #expect(Self.strings("Localizable", localization)["library_virtual_pass_action_hint"] != nil)
+    @Test(arguments: [("en", "Open virtual pass"), ("zh-Hant", "開啟虛擬入館證")])
+    func theActionButtonHintIsTranslated(localization: String, hint: String) throws {
+        let widgets = try #require(
+            Bundle.main.builtInPlugInsURL.flatMap { Bundle(url: $0.appending(path: "TigerDuckWidgetsExtension.appex")) }
+        )
+        #expect(Self.strings("Localizable", localization, in: widgets)["library_virtual_pass_action_hint"] == hint)
+        #expect(Self.strings("Localizable", localization)["library_virtual_pass_action_hint"] == hint)
     }
 
     private static var quickActions: [[String: Any]] {
@@ -54,8 +67,8 @@ struct LibraryPassEntryTests {
         return router.pendingWidgetDestination
     }
 
-    private static func strings(_ table: String, _ localization: String) -> [String: String] {
-        let path = Bundle.main.path(forResource: table, ofType: "strings", inDirectory: nil, forLocalization: localization)
+    private static func strings(_ table: String, _ localization: String, in bundle: Bundle = .main) -> [String: String] {
+        let path = bundle.path(forResource: table, ofType: "strings", inDirectory: nil, forLocalization: localization)
         return path.flatMap { NSDictionary(contentsOfFile: $0) as? [String: String] } ?? [:]
     }
 }

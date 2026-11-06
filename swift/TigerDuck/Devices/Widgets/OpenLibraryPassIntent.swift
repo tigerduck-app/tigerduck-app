@@ -15,6 +15,7 @@ nonisolated enum AppLink {
 /// actions across the system").
 struct OpenLibraryPassIntent: OpenIntent {
     static let title: LocalizedStringResource = "library_virtual_pass_title"
+    static let openAppWhenRun = true
 
     @Parameter(title: "library_virtual_pass_title", default: .virtualPass)
     var target: LibraryPassScreen
