@@ -102,6 +102,15 @@ LOCAL_PACKAGE_NOTES: dict[str, str] = {
         "A patched copy of Cocoanetics/SwiftMail 1.11.0 kept in this repository "
         "and built from source, so there is no released version to name."
     ),
+    # Packages/libarchive/VENDORED.md and Packages/xz/VENDORED.md likewise.
+    "libarchive": (
+        "The archive readers of libarchive 3.8.11, which open zip, 7z, RAR, tar, "
+        "gzip, bzip2 and xz files, kept in this repository and built from source."
+    ),
+    "xz": (
+        "The LZMA decoders of XZ Utils 5.8.4 (liblzma), which libarchive reads 7z "
+        "and xz files with, kept in this repository and built from source."
+    ),
 }
 # Local packages that hold the app's own code. The app's licence, which the
 # page shows first, covers them, so they are not listed as packages.
@@ -116,6 +125,10 @@ LICENSE_OVERRIDES = {
     # COPYING opens with cmark's own BSD-2-Clause, then the MIT terms of the
     # houdini, buffer and utf8 code it includes.
     "swift-cmark": "BSD-2-Clause AND MIT",
+    # COPYING is libarchive's BSD-2-Clause; its BLAKE2 files are taken under CC0.
+    "libarchive": "BSD-2-Clause AND CC0-1.0",
+    # liblzma's LICENSE is XZ Utils' COPYING.0BSD.
+    "xz": "0BSD",
 }
 
 LICENSE_FILE = re.compile(r"^(licen[cs]e|copying)(\.(md|txt))?$", re.IGNORECASE)

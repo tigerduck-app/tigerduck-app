@@ -39,7 +39,7 @@ nonisolated enum MoodleFileKind: Equatable {
         case "png", "jpg", "jpeg", "gif", "heic", "webp", "bmp", "tif", "tiff", "svg": self = .image
         case "mp4", "mov", "m4v", "avi", "mkv", "webm": self = .video
         case "mp3", "m4a", "wav", "aac", "flac", "ogg": self = .audio
-        case "zip", "rar", "7z", "gz", "tar", "tgz": self = .archive
+        case _ where ArchiveFormats.extensions.contains(ext): self = .archive
         case "txt", "md": self = .text
         default: return nil
         }
@@ -215,7 +215,7 @@ struct MoodleFolderRow: View {
     }
 }
 
-private struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: View {
+struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: View {
     let indent: CGFloat
     @ViewBuilder let icon: Icon
     @ViewBuilder let text: Lines
@@ -229,7 +229,7 @@ private struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: Vie
             VStack(alignment: .leading, spacing: 2) { text }
                 .frame(maxWidth: .infinity, alignment: .leading)
             trailing
-                .frame(width: 30, height: 30)
+                .frame(minWidth: 30, minHeight: 30)
                 .accessibilityHidden(true)
         }
         .padding(.leading, TigerDuckTheme.Spacing.lg + indent)
