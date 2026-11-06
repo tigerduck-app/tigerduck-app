@@ -48,7 +48,7 @@ struct LibraryShortcutWidgetView: View {
         )
         LibraryShortcutView(palette: palette)
             .containerBackground(palette.background, for: .widget)
-            .widgetURL(URL(string: "tigerduck://library"))
+            .widgetURL(AppLink.libraryPass)
     }
 
     private static let fallbackSnapshot = WidgetSnapshot(
