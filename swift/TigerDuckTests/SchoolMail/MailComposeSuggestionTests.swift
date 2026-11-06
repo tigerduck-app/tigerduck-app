@@ -47,6 +47,17 @@ extension MailComposeViewModelTests {
         #expect(model.recipientSuggestions(for: "陳").map(\.address) == Array(Self.suggested.dropFirst()))
     }
 
+    @Test func aFullyTypedAddressStillSuggestsItsPersonUnlessAnotherFieldHasThem() async {
+        let model = Self.suggestingModel(cache: Self.suggestionCache())
+        await model.contacts.load()
+        let typed = "yichun@mail.example.edu.tw"
+        model.to = typed
+        #expect(model.recipientSuggestions(for: typed).map(\.name) == ["陳怡君"])
+
+        model.cc = "陳怡君 <yichun@mail.example.edu.tw>"
+        #expect(model.recipientSuggestions(for: typed).isEmpty)
+    }
+
     @Test func aSignOutTakesTheSuggestionsAwayAndTheNextScreenFindsNone() async {
         let account = AccountSession()
         let cache = Self.suggestionCache()

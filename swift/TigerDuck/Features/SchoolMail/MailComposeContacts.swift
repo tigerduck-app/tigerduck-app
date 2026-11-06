@@ -32,7 +32,10 @@ final class MailComposeContacts {
     }
 
     func suggestions(for typed: String, addressed fields: [String]) -> [MailAddress] {
-        let taken = fields.flatMap { MailRecipients.parse($0).addresses.map(\.address) }
+        var taken = fields.flatMap { MailRecipients.parse($0).addresses.map { $0.address.lowercased() } }
+        for address in MailRecipients.parse(typed).addresses.map({ $0.address.lowercased() }) {
+            if let index = taken.firstIndex(of: address) { taken.remove(at: index) }
+        }
         return MailRecipientSuggestions.matching(contacts.value, typed: typed, taken: taken)
     }
 }
