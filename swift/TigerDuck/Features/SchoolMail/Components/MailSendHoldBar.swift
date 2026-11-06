@@ -132,7 +132,7 @@ private struct MailHeldMailHost: ViewModifier {
             await hostWindow.presentationsClosed()
         }
         let scene = hostWindow.window?.windowScene?.activationState
-        guard !Task.isCancelled, scene == .foregroundActive || scene == .foregroundInactive else { return }
+        guard !Task.isCancelled, scene.map({ $0 == .foregroundActive || $0 == .foregroundInactive }) ?? true else { return }
         shown = hold.takeReopened()
     }
 }
