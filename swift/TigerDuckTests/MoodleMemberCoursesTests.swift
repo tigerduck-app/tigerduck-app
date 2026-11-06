@@ -155,7 +155,7 @@ struct MoodleMemberCoursesTests {
     @Test("a course whose Moodle id names no term lists after every term, under Moodle's name and without a course number")
     func courseWithoutTerm() {
         let shared = [
-            Self.moodle(900, "", "TA Training"),
+            Self.moodle(900, "", "Department Notices"),
             Self.moodle(901, "2025ORIENT", "Orientation 2025"),
             Self.moodle(902, "DEPTCS", "CS Department News"),
             Self.algorithms,
@@ -166,8 +166,8 @@ struct MoodleMemberCoursesTests {
         #expect(terms.map(\.term) == ["1141", nil])
         #expect(terms.last?.courses == [
             MoodleCommonCourse(id: 902, name: "CS Department News", details: [], colorKey: "902"),
+            MoodleCommonCourse(id: 900, name: "Department Notices", details: [], colorKey: "900"),
             MoodleCommonCourse(id: 901, name: "Orientation 2025", details: [], colorKey: "901"),
-            MoodleCommonCourse(id: 900, name: "TA Training", details: [], colorKey: "900"),
         ])
     }
 
@@ -265,7 +265,7 @@ struct MoodleUsersCoursesServiceTests {
     [
       {"id": 30001, "shortname": "Algorithms", "fullname": "CS2001301 Algorithms", "displayname": "CS2001301 Algorithms",
        "idnumber": "1141CS2001301", "visible": 1, "format": "topics", "startdate": 1788192000, "enddate": 1799596800},
-      {"id": 900, "shortname": "TA", "fullname": "TA Training", "idnumber": "", "startdate": 0, "enddate": 0}
+      {"id": 900, "shortname": "Notices", "fullname": "Department Notices", "idnumber": "", "startdate": 0, "enddate": 0}
     ]
     """#
 
@@ -310,7 +310,7 @@ struct MoodleMemberCommonCoursesScreenTests {
             MoodleCommonCourse(id: 4, name: "Introduction to Computers", details: ["CS1002301", "Chen"], colorKey: "CS1002301"),
         ]),
         MoodleCommonTerm(term: nil, courses: [
-            MoodleCommonCourse(id: 900, name: "TA Training", details: [], colorKey: "900"),
+            MoodleCommonCourse(id: 900, name: "Department Notices", details: [], colorKey: "900"),
         ]),
     ]
 
@@ -349,7 +349,7 @@ struct MoodleMemberCommonCoursesScreenTests {
             }
             for label in [
                 "Algorithms, CS2001301, Wang", "\(Self.longName), CS5145701, Professor Long Surname", "Swimming, PE1001301",
-                "Introduction to Computers, CS1002301, Chen", "TA Training",
+                "Introduction to Computers, CS1002301, Chen", "Department Notices",
             ] {
                 let row = try #require(accessibilityElement(labeled: label, in: window), "\(label)")
                 #expect(!row.accessibilityTraits.contains(.button), "\(label)")
