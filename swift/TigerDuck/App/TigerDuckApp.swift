@@ -48,6 +48,9 @@ struct TigerDuckApp: App {
         // and `.onAppear` never runs.
         let launch = Self.makeLaunch(hasUnlocked: FirstUnlock.hasHappened(), center: .default)
         _launch = State(initialValue: launch)
+        AppLink.open = { url in
+            launch.whenBuilt { $0.app.router.open(url, signIn: $0.app.authService.session.currentSignIn) }
+        }
         PushAppDelegate.launchWork = { delegate in
             launch.whenBuilt { built in
                 if built.app.hasCompletedOnboarding {

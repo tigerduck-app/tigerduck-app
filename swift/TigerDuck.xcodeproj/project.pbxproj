@@ -206,6 +206,7 @@
 		B244D7902FB87B590040D6FA /* Exceptions for "TigerDuck" folder in "TigerDuckWidgetsExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Devices/Widgets/OpenLibraryPassIntent.swift,
 				Devices/Widgets/WidgetSnapshot.swift,
 				Persistence/AppUserDefaults.swift,
 				Shared/ClassTableLayout.swift,
@@ -1664,6 +1665,7 @@
 					NTUSTScoreService.swift,
 					NTUSTSessionManager.swift,
 					OngoingCourseInfo.swift,
+					OpenLibraryPassIntent.swift,
 					"OpenURLAction+Fallback.swift",
 					OutboxDrain.swift,
 					OutboxErrorPolicy.swift,
@@ -2231,6 +2233,7 @@
 					NTUSTScoreService.swift,
 					NTUSTSessionManager.swift,
 					OngoingCourseInfo.swift,
+					OpenLibraryPassIntent.swift,
 					"OpenURLAction+Fallback.swift",
 					OutboxDrain.swift,
 					OutboxErrorPolicy.swift,

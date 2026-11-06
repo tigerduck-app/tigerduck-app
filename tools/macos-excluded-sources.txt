@@ -16,10 +16,11 @@
 # App — iOS launch before the first unlock after a restart, a state a Mac app never runs in
 AfterFirstUnlock.swift
 
-# App — iOS app-delegate, push registration and CoreMotion flip handling
+# App — iOS app and scene delegates, push registration and CoreMotion flip handling
 FlipToLibraryCoordinator.swift
 NTUSTLoginSheetHost.swift
 PushAppDelegate.swift
+QuickActionSceneDelegate.swift
 
 # App/ContentView.swift — iOS-only
 ContentView.swift
