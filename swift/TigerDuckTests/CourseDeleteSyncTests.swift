@@ -40,10 +40,12 @@ struct CourseDeleteSyncTests {
             authHeaderProvider: { "Bearer test" }
         )
         let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
+        let courses = CourseStore(folders: CacheFolders(root: Self.freshDirectory()))
+        courses.saveDeletedCourseNos(["1151:CS1001301"], for: testSignIn)
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: Self.freshDirectory()), isEnabled: isEnabled,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: syncsCourseIgnores, syncsCourseOverrides: { _ in true },
-            account: AccountSession(signIns: testSignIns)
+            uploadsCourses: { true }, account: AccountSession(signIns: testSignIns), courses: courses
         )
     }
 

@@ -165,7 +165,8 @@ enum ReenableAnswer {
                 )
                 for courseNo in hiddenNos.sorted() {
                     try await backend.deleteCourse(
-                        courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), madeAt: Date(), for: signIn
+                        courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), removing: false,
+                        madeAt: Date(), for: signIn
                     )
                 }
             }

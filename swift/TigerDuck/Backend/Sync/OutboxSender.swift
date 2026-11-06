@@ -29,7 +29,7 @@ final class OutboxSender {
         self.kept = kept ?? KeptValues()
     }
 
-    var sendsCourseAdds: Bool { isProtectedDataAvailable() && uploadsCourses() }
+    var sendsMembershipEdits: Bool { isProtectedDataAvailable() && uploadsCourses() }
 
     func send(_ op: SyncOp, for signIn: SignIn, hasNewerQueuedEdit: @MainActor (SyncOp) async -> Bool) async throws {
         switch op {
@@ -68,8 +68,14 @@ final class OutboxSender {
             }
 
         case .courseDelete(let semester, let courseNo, let stamp):
+            guard isProtectedDataAvailable() else { throw CancellationError() }
+            guard uploadsCourses() else { return }
+            let takesBackAHandAdd = !CourseTombstone.isHidden(
+                courseNo, semester: semester, in: Set(courses.loadDeletedCourseNos())
+            )
             try await push.deleteCourse(
-                courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), madeAt: stamp, for: signIn
+                courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
+                removing: takesBackAHandAdd, madeAt: stamp, for: signIn
             )
 
         case .courseAdd(let semester, let courseNo, let stamp):

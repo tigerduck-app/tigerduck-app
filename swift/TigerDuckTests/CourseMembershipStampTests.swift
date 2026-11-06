@@ -71,7 +71,7 @@ struct CourseMembershipStampTests {
         for attempt in example.attempts {
             SettingsAPIStub.enqueue(attempt.reply, for: stamped(attempt.sentStamp))
         }
-        let coordinator = Self.makeCoordinator(baseURL)
+        let coordinator = Self.makeCoordinator(baseURL, hidingTheCourse: example.edit == .hide)
 
         switch example.edit {
         case .hide:
@@ -102,22 +102,27 @@ struct CourseMembershipStampTests {
         var on = false
     }
 
-    @Test("An add refused as ahead waits when course sync turns off or data locks during its first send",
-          arguments: Hold.allCases)
-    func aheadAddWaitsForAHoldStartedDuringTheSend(_ hold: Hold) async throws {
+    @Test("An add or hide refused as ahead waits when course sync turns off or data locks during its first send",
+          arguments: Hold.allCases, [Edit.add, .hide])
+    func aheadEditWaitsForAHoldStartedDuringTheSend(_ hold: Hold, _ edit: Edit) async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let url = baseURL.appendingPathComponent("sync/courses/upload")
+        let url = edit == .add
+            ? baseURL.appendingPathComponent("sync/courses/upload")
+            : baseURL.appendingPathComponent("sync/courses/\(Self.key)").appending(queryItems: [URLQueryItem(name: "hlc", value: Self.hlc)])
         var refused = Attempt.refusedAsAhead.reply
         let gate = SettingsAPIStub.ReplyGate()
         refused.gate = gate
         SettingsAPIStub.enqueue(refused, for: url)
         let held = Switch()
         let coordinator = Self.makeCoordinator(
-            baseURL,
+            baseURL, hidingTheCourse: edit == .hide,
             uploadsCourses: { !(hold == .courseSyncOff && held.on) },
             isProtectedDataAvailable: { !(hold == .dataLocked && held.on) }
         )
-        await coordinator.outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE1010001", stamp: Self.madeAt))
+        switch edit {
+        case .add: await coordinator.outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE1010001", stamp: Self.madeAt))
+        case .hide: await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE1010001", at: Self.madeAt)
+        }
 
         let tick = Task { await coordinator.syncTick() }
         try await waitUntil { !SettingsAPIStub.requests(for: url).isEmpty }
@@ -125,7 +130,7 @@ struct CourseMembershipStampTests {
         gate.open()
         await tick.value
 
-        #expect(SettingsAPIStub.requests(for: url).count == 1)
+        #expect(SettingsAPIStub.requests(under: baseURL).count == 1)
         #expect(await coordinator.outbox.snapshot().map(\.attempts) == [0])
     }
 
@@ -142,6 +147,7 @@ struct CourseMembershipStampTests {
 
     private static func makeCoordinator(
         _ baseURL: URL,
+        hidingTheCourse: Bool = false,
         uploadsCourses: @escaping @MainActor () -> Bool = { true },
         isProtectedDataAvailable: @escaping @MainActor () -> Bool = { true }
     ) -> CloudSyncCoordinator {
@@ -153,6 +159,7 @@ struct CourseMembershipStampTests {
         )
         cache.courses.saveCourses([SDCourse(courseNo: "CS1001301", courseName: "Programming", semester: "1151")], semester: "1151", for: testSignIn)
         cache.courses.saveUserAddedCourses([SDCourse(courseNo: "GE1010001", courseName: "Art", semester: "1151")], for: testSignIn)
+        if hidingTheCourse { cache.courses.saveDeletedCourseNos(["1151:GE1010001"], for: testSignIn) }
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
@@ -166,7 +173,7 @@ struct CourseMembershipStampTests {
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
             addedCourseUpload: { SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses) },
             uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
-            account: AccountSession(signIns: testSignIns)
+            account: AccountSession(signIns: testSignIns), courses: cache.courses
         )
     }
 }

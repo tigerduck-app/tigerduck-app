@@ -371,7 +371,7 @@ final class SyncConflicts {
 protocol CourseSyncBackend {
     func deleteAllCourses(semester: String?, madeAt: Date, for signIn: SignIn) async throws
     func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?, for signIn: SignIn) async throws
-    func deleteCourse(courseKey: String, madeAt: Date, for signIn: SignIn) async throws
+    func deleteCourse(courseKey: String, removing: Bool, madeAt: Date, for signIn: SignIn) async throws
 }
 
 extension PushCoordinator: CourseSyncBackend {}

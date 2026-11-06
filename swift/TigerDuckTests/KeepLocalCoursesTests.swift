@@ -152,8 +152,8 @@ private final class StampedCourseServer: CourseSyncBackend {
         try await client.uploadCourses(request, addedAt: addedAt, for: signIn)
     }
 
-    func deleteCourse(courseKey: String, madeAt: Date, for signIn: SignIn) async throws {
-        try await client.deleteCourse(courseKey: courseKey, madeAt: Self.madeAt, for: signIn)
+    func deleteCourse(courseKey: String, removing: Bool, madeAt: Date, for signIn: SignIn) async throws {
+        try await client.deleteCourse(courseKey: courseKey, removing: removing, madeAt: Self.madeAt, for: signIn)
     }
 }
 
@@ -195,7 +195,7 @@ private final class FakeCourseServer: CourseSyncBackend {
         rows.formUnion(keys.filter { tombstones[$0] == nil })
     }
 
-    func deleteCourse(courseKey: String, madeAt: Date, for signIn: SignIn) async throws {
+    func deleteCourse(courseKey: String, removing: Bool, madeAt: Date, for signIn: SignIn) async throws {
         guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
         defer { afterSend() }
         if failingDeletes > 0 {
