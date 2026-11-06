@@ -31,6 +31,13 @@ final class MailListSearch {
 
     var isShowingResults: Bool { results != nil }
 
+    var indexProgress: MailIndexProgress? {
+        guard let list, isShowingResults else { return nil }
+        let indexer = list.background.indexer
+        guard indexer.isDownloading, list.targets.contains(where: { !indexer.isIndexed($0) }) else { return nil }
+        return indexer.progress
+    }
+
     func submit() async {
         guard let list else { return }
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)

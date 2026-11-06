@@ -4,10 +4,10 @@ import SwiftUI
 struct MailRowView: View {
     let summary: MailSummary
 
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
 
     var body: some View {
-        let policy = app.preferences.visualStylePolicy
+        let policy = app?.preferences.visualStylePolicy ?? VisualStylePolicy(preset: .default)
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
             HStack(alignment: .center, spacing: TigerDuckTheme.Spacing.sm) {
                 if !summary.isSeen {

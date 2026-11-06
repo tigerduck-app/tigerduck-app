@@ -32,9 +32,28 @@ struct MailListRowsSection: View {
             ForEach(items) { item in
                 MailListRowButton(row: item, viewModel: viewModel, accentColor: accentColor, onOpen: onOpen)
             }
-            if viewModel.isPaginating {
-                centered { ProgressView().padding(.vertical, TigerDuckTheme.Spacing.md) }
+        }
+        if let progress = viewModel.search.indexProgress {
+            loadingFooter(count: progress.text())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(String(localized: "school_mail_search_index_partial"))
+        } else if viewModel.isPaginating, !items.isEmpty {
+            loadingFooter(count: nil)
+        }
+    }
+
+    private func loadingFooter(count: String?) -> some View {
+        centered {
+            HStack(spacing: TigerDuckTheme.Spacing.sm) {
+                ProgressView()
+                if let count {
+                    Text(count)
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(Color.textSecondary)
+                        .monospacedDigit()
+                }
             }
+            .padding(.vertical, TigerDuckTheme.Spacing.md)
         }
     }
 
