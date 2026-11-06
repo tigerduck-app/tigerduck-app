@@ -18,19 +18,17 @@ struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
     var showsAssignmentBadges = true
     var differentiateWithoutColor: Bool? = nil
-    /// Off for the export, which shares the plain timetable without today's date or changes.
+    /// Off for the export, which shares the plain timetable without today's date, week or changes.
     var showsThisWeek = true
     var switchCount = 0
     var onSwitch: ((_ before: TimetableRowTops, _ after: TimetableRowTops) -> Void)? = nil
     @Environment(AppEnvironment.self) private var app
 
+    static let columnSpacing: CGFloat = 3
     private let rowSpacing: CGFloat = 3
-    private let colSpacing: CGFloat = 3
-    private let headerHeight: CGFloat = 30
 
     @ScaledMetric(relativeTo: .caption2) private var scaledCellHeight: CGFloat = 40
-    @ScaledMetric(relativeTo: .caption2) private var scaledPeriodWidth: CGFloat = 28
-    @ScaledMetric(relativeTo: .caption2) private var scaledPeriodNumberWidth: CGFloat = 16
+    private var periodColumn = TimetablePeriodColumn()
     @ScaledMetric(relativeTo: .caption2) private var periodTimeSize: CGFloat = 9
     @ScaledMetric(relativeTo: .caption2) private var periodLabelSize: CGFloat = 12
 
@@ -38,9 +36,7 @@ struct TimetableGridView: View {
     private var drawsPeriodTiles: Bool { policy.classTableGridStyle == .periodTiles }
 
     private var cellHeight: CGFloat { max(52, scaledCellHeight) }
-    private var periodWidth: CGFloat {
-        drawsPeriodTiles ? max(20, scaledPeriodNumberWidth) : max(36, scaledPeriodWidth)
-    }
+    private var periodWidth: CGFloat { periodColumn.width(drawsPeriodTiles: drawsPeriodTiles) }
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
 
@@ -51,8 +47,6 @@ struct TimetableGridView: View {
             badgeIconSize: badgeIconSize
         )
     }
-
-    private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
 
     var body: some View {
         TimelineView(.everyMinute) { _ in
@@ -65,24 +59,17 @@ struct TimetableGridView: View {
         let withClubs = showsThisWeek
         let weekdays = viewModel.grid.activeWeekdays(withClubs: withClubs)
         let periods = viewModel.grid.activePeriods(withClubs: withClubs)
-        let firstRowTop = headerHeight + rowSpacing
+        let firstRowTop = TimetableHeaderRow.height + rowSpacing
         let rowPitch = cellHeight + rowSpacing
         let switchCount = switchCount
         let thisWeek = showsThisWeek && viewModel.showsThisWeek
         let today = thisWeek ? now.scheduleWeekday : nil
+        let week = showsThisWeek ? SchoolCalendar.week(of: viewModel.currentSemester, on: now) : nil
         return VStack(spacing: rowSpacing) {
-            columns(weekdays) {
-                Text("")
-                    .frame(height: headerHeight)
-            } cell: { weekday in
-                Text(Self.allWeekdayLabels[safe: weekday - 1] ?? "")
-                    .font(TigerDuckTheme.Typography.caption.bold())
-                    .foregroundStyle(weekday == today ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textSecondary))
-                    .frame(height: headerHeight)
-            }
+            TimetableHeaderRow(weekdays: weekdays, today: today, week: week, drawsPeriodTiles: drawsPeriodTiles)
 
             ForEach(Array(periods.enumerated()), id: \.element.id) { periodIndex, period in
-                columns(weekdays) {
+                Self.columns(weekdays, periodWidth: periodWidth) {
                     periodLabel(period)
                 } cell: { weekday in
                     let role = viewModel.grid.cellRole(weekday: weekday, periodIndex: periodIndex, withClubs: withClubs)
@@ -104,7 +91,7 @@ struct TimetableGridView: View {
         }
         .overlay(alignment: .topLeading) {
             if withClubs, !viewModel.grid.clubs.isEmpty {
-                columns(weekdays) {
+                Self.columns(weekdays, periodWidth: periodWidth) {
                     Color.clear
                 } cell: { weekday in
                     TimetableClubColumn(
@@ -122,7 +109,7 @@ struct TimetableGridView: View {
                    rowPitch: rowPitch, cellHeight: cellHeight
                ) {
                 TimetableNowLine()
-                    .padding(.leading, periodWidth + colSpacing)
+                    .padding(.leading, periodWidth + Self.columnSpacing)
                     .offset(y: firstRowTop + offset - TimetableNowLine.width / 2)
             }
         }
@@ -150,10 +137,11 @@ struct TimetableGridView: View {
         }
     }
 
-    private func columns<Leading: View, Cell: View>(
-        _ weekdays: [Int], @ViewBuilder leading: () -> Leading, @ViewBuilder cell: @escaping (Int) -> Cell
+    static func columns<Leading: View, Cell: View>(
+        _ weekdays: [Int], periodWidth: CGFloat,
+        @ViewBuilder leading: () -> Leading, @ViewBuilder cell: @escaping (Int) -> Cell
     ) -> some View {
-        HStack(spacing: colSpacing) {
+        HStack(spacing: columnSpacing) {
             leading()
                 .frame(width: periodWidth)
             ForEach(weekdays, id: \.self) { weekday in
@@ -193,6 +181,88 @@ struct TimetableGridView: View {
         return viewModel.changedMeeting(of: course, weekday: weekday, at: periodId, today: now)
     }
 
+}
+
+/// The period column's width: a tile holds the period's number alone, otherwise its start and end
+/// times sit around it.
+struct TimetablePeriodColumn: DynamicProperty {
+    @ScaledMetric(relativeTo: .caption2) private var timesWidth: CGFloat = 28
+    @ScaledMetric(relativeTo: .caption2) private var numberWidth: CGFloat = 16
+
+    func width(drawsPeriodTiles: Bool) -> CGFloat {
+        drawsPeriodTiles ? max(20, numberWidth) : max(36, timesWidth)
+    }
+}
+
+/// The weekday names over the grid's columns, and the shown term's week over its period numbers.
+struct TimetableHeaderRow: View {
+    static let height: CGFloat = 30
+    static let font = TigerDuckTheme.Typography.caption.bold()
+    /// At the largest text size on a 375 pt screen, seven English weekday names need about 0.4.
+    static let minimumScale: CGFloat = 0.35
+    private static let weekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
+
+    let weekdays: [Int]
+    let today: Int?
+    let week: Int?
+    let drawsPeriodTiles: Bool
+    private var periodColumn = TimetablePeriodColumn()
+
+    var body: some View {
+        TimetableGridView.columns(weekdays, periodWidth: periodColumn.width(drawsPeriodTiles: drawsPeriodTiles)) {
+            Group {
+                if let week {
+                    label("W\(week)", style: Color.textSecondary)
+                        .accessibilityLabel(Text(String(format: String(localized: "a11y_class_table_week"), week)))
+                } else {
+                    Text("")
+                }
+            }
+            .frame(height: Self.height)
+        } cell: { weekday in
+            ShrinksLikeTheWidest {
+                label(name(of: weekday), style: weekday == today ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textSecondary))
+                ForEach(weekdays, id: \.self) { label(name(of: $0), style: Color.clear).hidden() }
+            }
+            .frame(height: Self.height)
+        }
+    }
+
+    private func name(of weekday: Int) -> String {
+        Self.weekdayLabels[safe: weekday - 1] ?? ""
+    }
+
+    private func label(_ text: String, style: some ShapeStyle) -> some View {
+        Text(text)
+            .font(Self.font)
+            .foregroundStyle(style)
+            .lineLimit(1)
+            .minimumScaleFactor(Self.minimumScale)
+            // A minimum scale factor also shrinks text to the row's fixed height; only the width should.
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Shrinks a weekday name, its first subview, by the scale the row's widest name needs to fit the
+/// column, so every name in the row shrinks alike. The other subviews are the row's names, hidden.
+private struct ShrinksLikeTheWidest: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        subviews[0].sizeThatFits(nameProposal(proposal, subviews))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        subviews[0].place(at: center, anchor: .center, proposal: nameProposal(proposal, subviews))
+        for hidden in subviews.dropFirst() {
+            hidden.place(at: center, anchor: .center, proposal: .zero)
+        }
+    }
+
+    private func nameProposal(_ proposal: ProposedViewSize, _ subviews: Subviews) -> ProposedViewSize {
+        let widest = subviews.dropFirst().map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+        guard let width = proposal.width, widest > width else { return ProposedViewSize(width: proposal.width, height: nil) }
+        return ProposedViewSize(width: subviews[0].sizeThatFits(.unspecified).width * width / widest, height: nil)
+    }
 }
 
 enum TimetableCellTransitionID {
