@@ -114,9 +114,8 @@ enum ReenableAnswer {
         // The term resets of Use Local for courses clear the backend's names as well.
         let names = categories.contains(.courseNames) || (categories.contains(.courses) && syncsNames)
         guard colors || names else { return ([], []) }
-        let shown = CanonicalCourseProvider(courses: courses)
         let identities = EditSender.courseIdentities(terms.flatMap { term in
-            shown.currentCourses(semester: term).map { (semester: term, course: $0) }
+            (courses.loadCourses(semester: term) + courses.loadUserAddedCourses(semester: term)).map { (semester: term, course: $0) }
         })
         let resentColors = !colors ? [] : colorMap.compactMap { courseNo, hex in
             identities[courseNo].map { (identity: $0, colorHex: String(format: "#%06X", hex)) }

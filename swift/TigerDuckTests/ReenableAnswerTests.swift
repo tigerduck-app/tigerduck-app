@@ -134,7 +134,7 @@ struct ReenableAnswerTests {
         #expect(app.pending == [.courseNames])
     }
 
-    @Test("Use Local for courses sends back the names of every course shown, fetched or added by hand, as the term resets clear them; a hidden course gets neither name nor colour")
+    @Test("Use Local for courses sends back the names of every course held, fetched, added by hand or hidden, as the term resets clear them")
     func useLocalSendsBackTheNamesTheResetsClear() {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("ReenableAnswerTests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -147,22 +147,23 @@ struct ReenableAnswerTests {
         courses.saveUserAddedCourses([SDCourse(courseNo: "GE3", courseName: "GE3", semester: "1151")], for: testSignIn)
         courses.saveDeletedCourseNos(["1151:PE4"], for: testSignIn)
         courses.saveCourseCustomNames(
-            ["CS1": ["en": "Code"], "EE2": ["zh": "Circuits", "en": ""], "GE3": ["en": "Art"], "PE4": ["en": "Gym"]],
+            ["CS1": ["en": "Code"], "EE2": ["zh": "Circuits", "en": ""], "GE3": ["en": "Art"], "PE4": ["en": "Gym"], "XX9": ["en": "Gone"]],
             for: testSignIn
         )
         let resend = { (categories: Set<SyncCategory>, syncsNames: Bool) in
             ReenableAnswer.courseOverridesToResend(
                 for: categories, syncsNames: syncsNames, terms: ["1151"], courses: courses,
-                colors: ["CS1": 0xFF0000, "GE3": 0x00FF00, "PE4": 0x0000FF]
+                colors: ["CS1": 0xFF0000, "GE3": 0x00FF00, "PE4": 0x0000FF, "XX9": 0x111111]
             )
         }
 
         let afterReset = resend([.courses, .courseColors], true)
         #expect(Set(afterReset.names.map { "\($0.identity) \($0.locale) \($0.name)" })
-            == ["1151CS1-M en Code", "1151EE2 zh Circuits", "1151GE3 en Art"])
-        #expect(Set(afterReset.colors.map { "\($0.identity) \($0.colorHex)" }) == ["1151CS1-M #FF0000", "1151GE3 #00FF00"])
+            == ["1151CS1-M en Code", "1151EE2 zh Circuits", "1151GE3 en Art", "1151PE4-M en Gym"])
+        #expect(Set(afterReset.colors.map { "\($0.identity) \($0.colorHex)" })
+            == ["1151CS1-M #FF0000", "1151GE3 #00FF00", "1151PE4-M #0000FF"])
         #expect(resend([.courses, .courseColors], false).names.isEmpty)
-        #expect(Set(resend([.courseNames], false).names.map { $0.identity }) == ["1151CS1-M", "1151EE2", "1151GE3"])
+        #expect(Set(resend([.courseNames], false).names.map { $0.identity }) == ["1151CS1-M", "1151EE2", "1151GE3", "1151PE4-M"])
         #expect(resend([.assignments], true).names.isEmpty)
     }
 
