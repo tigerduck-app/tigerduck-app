@@ -13,11 +13,13 @@ extension SDCourse {
 nonisolated struct ServerTombstone {
     let courseNo: String?
     let isReset: Bool
+    let isRemoval: Bool
     let hlc: Int64?
 
     init(_ row: [String: Any]) {
         courseNo = row["course_no"] as? String
         isReset = row["kind"] as? String == "reset"
+        isRemoval = row["kind"] as? String == "remove"
         hlc = (row["hlc"] as? NSNumber)?.int64Value
     }
 

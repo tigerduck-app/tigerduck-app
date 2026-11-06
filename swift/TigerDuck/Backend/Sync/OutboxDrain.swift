@@ -80,11 +80,10 @@ final class OutboxDrain {
             switch op {
             case .assignmentOverride: return !syncsMarks()
             case .courseIgnore: return !syncsIgnores()
-            case .courseAdd: return !protectedDataAvailable
+            case .courseAdd, .courseDelete: return !protectedDataAvailable
             case .courseOverride(_, _, let customName, let colorHex, _, _):
                 return (colorHex != nil && !syncsOverrides(.courseColors))
                     || (customName != nil && !syncsOverrides(.courseNames))
-            case .courseDelete: return false
             }
         }
         await outbox.drain(for: signIn, holding: isHeld) { [weak self] op, madeIn in
@@ -96,8 +95,10 @@ final class OutboxDrain {
     }
 
     private func holdsResend(_ op: SyncOp, _ isHeld: @Sendable (SyncOp) -> Bool) -> Bool {
-        if case .courseAdd = op { return !sender.sendsCourseAdds }
-        return isHeld(op)
+        switch op {
+        case .courseAdd, .courseDelete: return !sender.sendsMembershipEdits
+        case .courseOverride, .assignmentOverride, .courseIgnore: return isHeld(op)
+        }
     }
 
     func sendColorFills(_ fills: [CourseColorFill], for signIn: SignIn) async {
