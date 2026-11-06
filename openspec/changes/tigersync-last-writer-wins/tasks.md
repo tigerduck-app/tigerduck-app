@@ -42,7 +42,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 - [ ] 4.5 On `409 clock_ahead`, re-stamp the edit at the refusal's `X-TigerSync-Clock` plus one tick and resend it, leaving the last issued value as it is (design.md D1); verify a test of an edit stamped before the first header that is refused, re-stamped and accepted
 - [x] 4.2 Raise the last seen value from `X-TigerSync-Clock` in `BackendClient.send`, and record the header with the device time it arrived, while protected data is readable; verify a test with a stub `URLProtocol` and one that ignores the header with protected data unavailable
 - [x] 4.3 Stamp every outbox op through `SyncClock` and send its stamp as `hlc` on the override PATCHes and the course DELETE; keep the stored shape so queued entries send their queue time; verify tests on the request bodies and on an entry decoded from today's file format
-- [ ] 4.4 Send the edit's stamp on the holiday PUT, including from `retryUnacknowledgedHolidayOverrides`; verify a test that a retried PUT carries the original stamp
+- [x] 4.4 Send the edit's stamp on the holiday PUT, including from `retryUnacknowledgedHolidayOverrides`; verify a test that a retried PUT carries the original stamp
 
 ## 5. iOS PR: per-field pull and unsent edits
 

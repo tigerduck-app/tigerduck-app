@@ -15,10 +15,12 @@ final class AcademicCalendarStore: AccountScoped {
     private var pendingHolidayUploads = 0
     private var lastHolidayEditAt = Date.distantPast
     private var endpointGeneration = 0
+    let clock: SyncClock
 
     private(set) var calendar: AcademicCalendar
 
-    init() {
+    init(clock: SyncClock = .shared) {
+        self.clock = clock
         calendar = Self.loadCached()
     }
 
@@ -104,7 +106,7 @@ final class AcademicCalendarStore: AccountScoped {
         guard ids != before else { return false }
         Defaults[.holidayNotifyOverrides, for: signIn] = Array(ids).sorted()
         lastHolidayEditAt = Date()
-        Defaults[.holidayOverrideEditTimes, for: signIn][String(holidayID)] = lastHolidayEditAt
+        Defaults[.holidayOverrideEditTimes, for: signIn][String(holidayID)] = clock.stamp()
         return true
     }
 

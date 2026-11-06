@@ -113,15 +113,17 @@ struct OverrideStampTests {
         try await Self.withCleanHolidayDefaults { id, url, registration in
             SettingsAPIStub.enqueue(.noReply, for: url)
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id)), for: url)
-            let store = AcademicCalendarStore()
+            let device = SyncClockTests.DeviceClock(Self.deviceTime)
+            let clock = SyncClockTests.makeClock(device)
+            let store = AcademicCalendarStore(clock: clock)
             store.setNotify(true, forHoliday: id, for: testSignIn)
             store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
             let madeAt = try #require(store.holidayEdit(id).madeAt)
 
             await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration, for: testSignIn)
             #expect(store.unacknowledgedHolidayIDs.contains(id))
-            let retriedAt = Date()
-            let relaunched = AcademicCalendarStore()
+            device.set(Self.deviceTime + 60 * SyncClockTests.minute)
+            let relaunched = AcademicCalendarStore(clock: clock)
             await HolidaySettingSender.uploadHolidayOverride(id, from: relaunched, via: registration, for: testSignIn)
 
             let sent = SettingsAPIStub.requests(for: url)
@@ -129,9 +131,9 @@ struct OverrideStampTests {
             for request in sent {
                 let json = try Self.json(request)
                 #expect(json["notify"] as? Bool == true)
-                #expect((json["hlc"] as? NSNumber)?.int64Value == PushAPI.clock(of: madeAt))
+                #expect((json["hlc"] as? NSNumber)?.int64Value == Self.deviceTime + 1)
             }
-            #expect(PushAPI.clock(of: madeAt) < PushAPI.clock(of: retriedAt))
+            #expect(PushAPI.clock(of: madeAt) == Self.deviceTime + 1)
             #expect(!relaunched.unacknowledgedHolidayIDs.contains(id))
         }
     }
