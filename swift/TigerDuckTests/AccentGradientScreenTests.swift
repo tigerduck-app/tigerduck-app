@@ -110,9 +110,8 @@ struct AccentGradientScreenTests {
                     elements.first { $0.accessibilityLabel == Self.label(key) }
                 }
 
-                for stop in 1...accent.stops.count {
-                    let name = String(format: Self.label("a11y_accent_gradient_stop"), stop)
-                    #expect(labels.contains(name), "\(labels)")
+                for stop in accent.stops {
+                    #expect(labels.contains(String(format: "#%06lX", AccentContrast.readable(stop))), "\(labels)")
                 }
                 for style in AccentGradient.Style.allCases {
                     #expect((button(style.titleKey) != nil) == accent.isGradient, "\(style)")
