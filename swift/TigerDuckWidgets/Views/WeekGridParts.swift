@@ -91,7 +91,7 @@ struct WeekCourseBlock: View {
         let changedTime = isCancelled ? nil : TimeRange.partial(start: change?.start, end: change?.end)
         let spoken = [
             course.displayName,
-            changedTime.map { spokenChangedTime ?? $0 },
+            spokenTime ?? changedTime,
             isCancelled ? String(localized: "course_card_cancelled") : classroom,
         ]
         return VStack(alignment: .leading, spacing: 1) {
@@ -138,7 +138,7 @@ struct WeekCourseBlock: View {
         .layoutPriority(1)
     }
 
-    private var spokenChangedTime: String? {
+    private var spokenTime: String? {
         guard let start = change?.start ?? times?.start, let end = change?.end ?? times?.end else { return nil }
         return TimeRange.spoken(start, end)
     }

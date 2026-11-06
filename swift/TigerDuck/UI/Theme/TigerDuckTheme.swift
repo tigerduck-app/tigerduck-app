@@ -223,8 +223,7 @@ final class ColorState: @unchecked Sendable {
 
     func hex(for courseNo: String, palette: [UInt32]) -> UInt32 {
         lock.withLock {
-            if let h = loadedMap()?[courseNo] { return h }
-            return palette[Self.hashIndex(for: courseNo, paletteCount: palette.count)]
+            loadedMap()?[courseNo] ?? Self.unassignedHex(for: courseNo, palette: palette)
         }
     }
 
@@ -366,6 +365,10 @@ final class ColorState: @unchecked Sendable {
             if !used.contains(candidate) { return candidate }
         }
         return palette[start] ^ UInt32(truncatingIfNeeded: used.count)
+    }
+
+    nonisolated static func unassignedHex(for courseNo: String, palette: [UInt32]) -> UInt32 {
+        palette[hashIndex(for: courseNo, paletteCount: palette.count)]
     }
 
     private nonisolated static func hashIndex(for courseNo: String, paletteCount: Int) -> Int {

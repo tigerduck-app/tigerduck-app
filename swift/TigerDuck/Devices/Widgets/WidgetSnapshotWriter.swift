@@ -1,5 +1,4 @@
 import Foundation
-import os
 import TigerDuckCore
 #if canImport(UIKit)
 import UIKit
@@ -17,7 +16,6 @@ final class WidgetSnapshotWriter {
     private let importedPeople: @MainActor () -> [ImportedPerson]
     private let schoolCalendar: @MainActor () -> (calendar: AcademicCalendar, optedIn: Set<Int>)
     private var owesForcedReload = false
-    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "WidgetWriter")
 
 
     convenience init(
@@ -105,6 +103,7 @@ final class WidgetSnapshotWriter {
             var friend = input
             friend.courses = person.courses(in: semester)
             friend.customNames = [:]
+            friend.quietDayKeys = Self.quietDayKeys(calendar: calendar, optedIn: [], now: now)
             return WidgetPersonSnapshot(
                 id: person.id.uuidString, name: person.nickname, snapshot: WidgetSnapshotBuilder.build(friend)
             )

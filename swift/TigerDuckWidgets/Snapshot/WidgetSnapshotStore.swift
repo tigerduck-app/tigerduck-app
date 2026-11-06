@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TigerDuckCore
 
 nonisolated final class WidgetSnapshotStore {
     private let defaults: UserDefaults
@@ -61,8 +62,12 @@ nonisolated final class WidgetSnapshotStore {
     func readPeople() -> [WidgetPersonSnapshot] {
         guard let data = defaults.data(forKey: WidgetSnapshot.peopleStoreKey) else { return [] }
         do {
-            return try decoder.decode([WidgetPersonSnapshot].self, from: data)
-                .filter { $0.snapshot.version == WidgetSnapshot.currentVersion }
+            let stored = try decoder.decode([Lenient<WidgetPersonSnapshot>].self, from: data)
+            let people = stored.compactMap(\.value)
+            if people.count != stored.count {
+                logger.warning("widget people: dropped \(stored.count - people.count, privacy: .public) undecodable entries")
+            }
+            return people.filter { $0.snapshot.version == WidgetSnapshot.currentVersion }
         } catch {
             logger.error("widget people decode failed: \(error.localizedDescription, privacy: .private)")
             return []

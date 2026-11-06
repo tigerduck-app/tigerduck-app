@@ -21,7 +21,8 @@ enum WidgetSnapshotBuilder {
                 displayName: resolveDisplayName(course: course, customNames: input.customNames),
                 classroom: course.classroom,
                 schedule: course.schedule,
-                colorHex: resolveColor(courseNo: course.courseNo, colorMap: input.colorMap),
+                colorHex: input.colorMap[course.courseNo]
+                    ?? ColorState.unassignedHex(for: course.courseNo, palette: TigerDuckTheme.coursePaletteHexes),
                 skippedDates: Set(course.skippedDates),
                 classroomMap: course.classroomMap,
                 changes: snapshotChanges(of: course, changes: input.changes),
@@ -77,19 +78,6 @@ enum WidgetSnapshotBuilder {
     ) -> String {
         if let custom = customNames[course.courseNo], !custom.isEmpty { return custom }
         return course.courseName
-    }
-
-    static let coursePaletteHex: [UInt32] = [
-        0xFF6B6B, 0x4ECDC4, 0x45B7D1, 0xF39C12, 0xDDA0DD,
-        0x2ECC71, 0xE74C3C, 0x3498DB, 0xF7DC6F, 0x9B59B6,
-        0x1ABC9C, 0xE67E22, 0x85C1E9, 0xD35400, 0x27AE60,
-        0xC0392B, 0x8E44AD, 0x16A085, 0xF1C40F, 0x2980B9,
-    ]
-
-    private static func resolveColor(courseNo: String, colorMap: [String: UInt32]) -> UInt32 {
-        if let hex = colorMap[courseNo] { return hex }
-        let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
-        return coursePaletteHex[abs(hash) % coursePaletteHex.count]
     }
 
     private static func buildPeriodTimes() -> [String: PeriodTime] {
