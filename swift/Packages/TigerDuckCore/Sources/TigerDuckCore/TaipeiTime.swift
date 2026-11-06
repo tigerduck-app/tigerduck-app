@@ -17,3 +17,12 @@ public enum TaipeiTime {
         return String(format: "%04d-%02d-%02d", day.year ?? 0, day.month ?? 0, day.day ?? 0)
     }
 }
+
+extension Calendar {
+    /// Counting from 1, the seven-day week from `start`'s day that `date` falls in; nil on an earlier day.
+    public func week(of date: Date, countingFrom start: Date) -> Int? {
+        guard let days = dateComponents([.day], from: startOfDay(for: start), to: startOfDay(for: date)).day,
+              days >= 0 else { return nil }
+        return days / 7 + 1
+    }
+}

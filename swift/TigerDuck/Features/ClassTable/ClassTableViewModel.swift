@@ -228,6 +228,10 @@ final class ClassTableViewModel {
         grid.courseChanges.hasAnswered && currentSemester == SchoolTerms.current
     }
 
+    func week(on day: Date, termWeek: (String, Date) -> Int? = SchoolCalendar.week) -> Int? {
+        showsThisWeek ? termWeek(currentSemester, day) : nil
+    }
+
     static func nextDate(onWeekday weekday: Int, from today: Date) -> Date {
         let calendar = TaipeiTime.calendar
         let start = calendar.startOfDay(for: today)
