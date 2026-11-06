@@ -27,7 +27,6 @@ final class MailSendHold {
     private(set) var held: Held?
     private(set) var reopened: [MailComposeViewModel] = []
     private(set) var deliveries = 0
-    @ObservationIgnored private var sending: [MailComposeViewModel] = []
     @ObservationIgnored private var countdown: Task<Void, Never>?
     @ObservationIgnored private let sleep: (Duration) async -> Void
     @ObservationIgnored private let beginBackgroundTask: @MainActor () -> BackgroundGrant
@@ -60,10 +59,9 @@ final class MailSendHold {
     func hold(_ model: MailComposeViewModel) -> Bool {
         if held?.model === model { return true }
         guard !model.isSending, !model.shouldClose else { return false }
-        if let other = held?.model, Self.sameDraft(other, model) { sendNow() }
-        if sending.contains(where: { Self.sameDraft($0, model) }) { return true }
         sendNow()
         held = Held(model: model, until: Date().addingTimeInterval(Self.seconds))
+        listsDraft(of: model, false)
         announce()
         countdown = Task {
             await self.sleep(.seconds(Self.seconds))
@@ -75,6 +73,7 @@ final class MailSendHold {
 
     func undo() {
         guard let model = release() else { return }
+        listsDraft(of: model, true)
         reopened.append(model)
     }
 
@@ -85,7 +84,6 @@ final class MailSendHold {
     private func sendNow() {
         guard let model = release() else { return }
         let grant = beginBackgroundTask()
-        sending.append(model)
         Task { await self.deliver(model, grant: grant) }
     }
 
@@ -104,14 +102,14 @@ final class MailSendHold {
     private func deliver(_ model: MailComposeViewModel, grant: BackgroundGrant) async {
         await model.send(unless: grant.isExpired)
         grant.end()
-        sending.removeAll { $0 === model }
         deliveries += 1
+        if !model.didFinish, !model.mayHaveSent { listsDraft(of: model, true) }
         if !model.shouldClose { reopened.append(model) }
     }
 
-    private static func sameDraft(_ one: MailComposeViewModel, _ other: MailComposeViewModel) -> Bool {
-        guard let mine = one.draftMessage, let theirs = other.draftMessage else { return false }
-        return mine == theirs
+    private func listsDraft(of model: MailComposeViewModel, _ isListed: Bool) {
+        guard let id = model.draftID else { return }
+        model.events.post(.draftHidden(id, isHidden: !isListed))
     }
 
     // A high priority keeps VoiceOver from cutting the announcement for the focus change the

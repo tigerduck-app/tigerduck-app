@@ -9,6 +9,7 @@ final class MailboxEvents {
         case folderChanged(String)
         case folderRoles([MailFolderRole: String])
         case sentCopyNotice(String)
+        case draftHidden(MailListRow.ID, isHidden: Bool)
     }
 
     private var observers: [(Event) -> Void] = []

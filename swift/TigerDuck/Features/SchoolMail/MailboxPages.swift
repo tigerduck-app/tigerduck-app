@@ -50,17 +50,23 @@ struct MailboxPages {
     var cachedNotRefreshed: Set<String> = []
     private(set) var lastEdit = EditToken()
     private var edits: [MailKey: (token: EditToken, edit: Edit)] = [:]
+    private(set) var hiddenDrafts: Set<MailListRow.ID> = []
 
     subscript(folder: String) -> MailFolderPage? {
         get { pages[folder] }
         set { pages[folder] = newValue }
     }
 
-    mutating func removeAll() {
+    mutating func removeAll(keepingHiddenDrafts: Bool = false) {
         pages = [:]
         rows = []
         cachedNotRefreshed = []
         edits = [:]
+        if !keepingHiddenDrafts { hiddenDrafts = [] }
+    }
+
+    mutating func hideDraft(_ id: MailListRow.ID, _ isHidden: Bool) {
+        if isHidden { hiddenDrafts.insert(id) } else { hiddenDrafts.remove(id) }
     }
 
     mutating func drop(_ folder: String) {

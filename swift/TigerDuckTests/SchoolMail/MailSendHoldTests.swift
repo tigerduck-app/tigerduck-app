@@ -245,30 +245,6 @@ struct MailSendHoldTests {
         #expect(rig.hold.takeReopened() == nil)
     }
 
-    @Test func aDraftOpenedAgainDuringTheHoldGoesOnce() async throws {
-        let rig = Self.rig()
-        let fake = Compose.fake()
-        let draft = MailComposeContext(mode: .draft, folder: Compose.drafts, uid: 7)
-        let held = await Self.written(fake, context: draft)
-        let reopened = await Self.written(fake, context: draft)
-        let late = await Self.written(fake, context: draft)
-        rig.hold.hold(held)
-        try await rig.sleeper.waitUntilArmed()
-
-        #expect(rig.hold.hold(reopened))
-        #expect(rig.hold.held == nil)
-        #expect(rig.hold.hold(late))
-        #expect(rig.hold.held == nil)
-        try await waitUntil { rig.hold.deliveries == 1 }
-        #expect(await fake.sent.count == 1)
-        #expect(held.didFinish)
-
-        let other = await Self.written(fake, context: MailComposeContext(mode: .draft, folder: Compose.drafts, uid: 8))
-        #expect(rig.hold.hold(other))
-        #expect(rig.hold.held?.model === other)
-        rig.hold.undo()
-    }
-
     @Test func aGrantThatRunsOutBeforeTheSendStartsSendsNothingAndReopens() async throws {
         let rig = Self.rig()
         let fake = Compose.fake()
@@ -306,6 +282,75 @@ struct MailSendHoldTests {
         try await timer.waitUntilArmed()
         await timer.fire()
         await fake.waitForArrival("logout")
+    }
+
+    private typealias List = MailListViewModelTests
+    private static let draft = MailListRow.ID(folder: List.drafts, uid: 7)
+
+    private static func listWithDraft() async -> List.Harness {
+        let h = List.harness(inboxCount: 2, warmDelay: {})
+        await h.fake.update { $0.folders[List.drafts] = [FakeMailClient.message(uid: 7, subject: "期末報告", text: "老師好")] }
+        await h.model.load()
+        await h.model.waitForIndex()
+        return h
+    }
+
+    private static func heldDraft(_ rig: Rig, on h: List.Harness) async -> MailComposeViewModel {
+        let model = await Self.written(h.fake, context: MailComposeContext(mode: .draft, folder: List.drafts, uid: 7),
+                                       session: h.model.session, events: h.model.events)
+        rig.hold.hold(model)
+        return model
+    }
+
+    private static func listsTheDraft(_ h: List.Harness) -> Bool {
+        h.model.displayedRows.contains { $0.id == Self.draft }
+    }
+
+    @Test func aHeldDraftLeavesTheDraftsListAndSearchUntilItIsUndone() async throws {
+        let rig = Self.rig()
+        let h = await Self.listWithDraft()
+        #expect(Self.listsTheDraft(h))
+
+        _ = await Self.heldDraft(rig, on: h)
+        #expect(!Self.listsTheDraft(h))
+        await h.model.select(.real(List.drafts))
+        #expect(!Self.listsTheDraft(h))
+        h.model.searchText = "期末報告"
+        await h.model.submitSearch()
+        #expect(h.model.searchResults?.contains { $0.id == Self.draft } == true)
+        #expect(!Self.listsTheDraft(h))
+
+        rig.hold.undo()
+        #expect(Self.listsTheDraft(h))
+    }
+
+    @Test func aDraftWhoseSendFailsReopensAndIsListedAgain() async throws {
+        let rig = Self.rig()
+        let h = await Self.listWithDraft()
+        await h.fake.update { $0.sendError = .unreachable }
+        let model = await Self.heldDraft(rig, on: h)
+        try await rig.sleeper.waitUntilArmed()
+        await rig.sleeper.fire()
+        try await waitUntil { rig.hold.deliveries == 1 }
+
+        #expect(rig.hold.takeReopened() === model)
+        #expect(Self.listsTheDraft(h))
+    }
+
+    @Test("a draft that went out, or may have, stays out of the list", arguments: [false, true])
+    func aDraftThatMayHaveGoneOutStaysGone(unconfirmed: Bool) async throws {
+        let rig = Self.rig()
+        let h = await Self.listWithDraft()
+        if unconfirmed { await h.fake.update { $0.sendError = .sendUnconfirmed } }
+        let model = await Self.heldDraft(rig, on: h)
+        try await rig.sleeper.waitUntilArmed()
+        await rig.sleeper.fire()
+        try await waitUntil { rig.hold.deliveries == 1 }
+        #expect(model.didFinish != unconfirmed)
+        #expect(!Self.listsTheDraft(h))
+
+        await h.model.refresh()
+        #expect(!Self.listsTheDraft(h))
     }
 }
 #endif

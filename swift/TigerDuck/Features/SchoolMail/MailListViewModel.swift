@@ -77,8 +77,7 @@ final class MailListViewModel {
     }
 
     var displayedRows: [MailListRow] {
-        let base = search.results ?? rows
-        return unreadOnly ? base.filter { !$0.summary.isSeen } : base
+        (search.results ?? rows).filter { !mailbox.hiddenDrafts.contains($0.id) && !(unreadOnly && $0.summary.isSeen) }
     }
 
     var targets: [String] { folders.targets }
@@ -117,7 +116,7 @@ final class MailListViewModel {
         folders.pickedByUser = true
         guard selection != self.selection else { return }
         folders.selection = selection
-        mailbox.removeAll()
+        mailbox.removeAll(keepingHiddenDrafts: true)
         rebuildRows()
         clearSearch()
         await background.pausingWarm {
@@ -196,6 +195,7 @@ final class MailListViewModel {
         case let .folderChanged(folder): Task { await recoverFromFolderChange(folder) }
         case let .folderRoles(roles): adoptFolderRoles(roles)
         case let .sentCopyNotice(notice): reportSentCopyNotice(notice)
+        case let .draftHidden(id, isHidden): mailbox.hideDraft(id, isHidden)
         }
     }
 

@@ -45,7 +45,8 @@ final class MailComposeViewModel: Identifiable {
     }
 
     var mode: MailComposeMode { context.mode }
-    var draftMessage: (folder: String, uid: UInt32)? { context.mode == .draft ? context.message : nil }
+    var draftID: MailListRow.ID? { context.mode == .draft ? context.message.map { MailListRow.ID(folder: $0.folder, uid: $0.uid) } : nil }
+    var mayHaveSent: Bool { status.mayHaveSent }
     var to: String {
         get { draft.to }
         set { draft.to = newValue; tracking.edited.insert(.to) }
@@ -193,6 +194,7 @@ final class MailComposeViewModel: Identifiable {
         } catch where !signIn.isCurrent {
             status.signInEnded = true
         } catch MailClientError.sendUnconfirmed {
+            status.mayHaveSent = true
             status.error = String(localized: "school_mail_send_unconfirmed")
         } catch {
             status.error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError(error).message
