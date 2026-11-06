@@ -27,6 +27,7 @@ struct WidgetLayoutTests {
                 ? AnyShapeStyle(Color(white: style == .dark ? 0.05 : 0.88))
                 : AnyShapeStyle(LinearGradient(colors: [Color(red: 0.08, green: 0.13, blue: 0.22), Color(red: 0.12, green: 0.23, blue: 0.36)], startPoint: .topLeading, endPoint: .bottomTrailing))
             let widget = view
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .padding(margins)
                 .frame(width: size.width, height: size.height)
                 .background(
@@ -37,7 +38,9 @@ struct WidgetLayoutTests {
                 .environment(\.widgetRenderingMode, renderingMode)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(backdrop)
-            window.rootViewController = UIHostingController(rootView: widget)
+            let host = UIHostingController(rootView: widget)
+            host.safeAreaRegions = []
+            window.rootViewController = host
             window.makeKeyAndVisible()
             return window
         }
