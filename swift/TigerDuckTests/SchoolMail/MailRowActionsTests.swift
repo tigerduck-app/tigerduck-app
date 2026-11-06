@@ -347,7 +347,35 @@ struct MailRowActionsTests {
     @Test func theMoreSwipeOpensTheSheetForItsRow() async throws {
         let h = await Self.harness()
         h.actions.perform(.more, on: try h.row(1), in: h.list)
-        #expect(h.actions.sheetRow?.uid == 1)
+        #expect(h.actions.sheet.value?.row.uid == 1)
+    }
+
+    @Test(arguments: [MailRowAction.trash, .move, .toggleFlag, .toggleRead, .compose(.reply)])
+    func aSheetChoiceAfterTheSignInThatOpenedItEndsTouchesNoMail(action: MailRowAction) async throws {
+        let h = await Self.harness()
+        h.actions.perform(.more, on: try h.row(3), in: h.list)
+        let opened = try #require(h.actions.sheet.value)
+        h.account.endSignIn()
+        #expect(h.actions.sheet.value == nil)
+
+        let (row, signIn) = (opened.row, opened.signIn)
+        switch action {
+        case .trash: await h.actions.trash(row, in: h.list, for: signIn)
+        case .move:
+            h.actions.perform(.move, on: row, in: h.list, for: signIn)
+            #expect(h.actions.moving == nil)
+            await h.actions.move(h.actions.message(row, in: h.list, for: signIn), to: Self.course, in: h.list)
+        case .toggleFlag: await h.actions.toggle(.flagged, row, in: h.list, for: signIn)
+        case .toggleRead: await h.actions.toggle(.seen, row, in: h.list, for: signIn)
+        case .compose(let mode): #expect(await h.actions.compose(mode, row: row, in: h.list, for: signIn) == nil)
+        case .more: break
+        }
+
+        #expect(!(await h.fake.calls).contains { $0.hasPrefix("copy") || $0.hasPrefix("setFlag") || $0.hasPrefix("detail") })
+        #expect(await h.fake.folders["INBOX"]?.map(\.summary.isFlagged) == [false, false, false])
+        #expect(await h.fake.folders[Self.course]?.isEmpty == true)
+        let shown = try h.row(3).summary
+        #expect(!shown.isFlagged && !shown.isSeen)
     }
 
     enum SheetChoice: CaseIterable { case trash, deleteForever, move, flag, read }
@@ -356,7 +384,7 @@ struct MailRowActionsTests {
     func aSheetChoiceAfterTheFolderIsRecreatedLeavesTheMailThatReusedItsUIDAlone(choice: SheetChoice) async throws {
         let h = await Self.harness(withTrash: choice != .deleteForever)
         h.actions.perform(.more, on: try h.row(3), in: h.list)
-        let row = try #require(h.actions.sheetRow)
+        let row = try #require(h.actions.sheet.value?.row)
         await h.fake.update {
             $0.uidValidity["INBOX"] = 2
             $0.folders["INBOX"] = [FakeMailClient.message(uid: 3, subject: "其他")]

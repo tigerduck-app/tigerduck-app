@@ -46,7 +46,8 @@ final class MailMessageViewModel: Identifiable {
         events: MailboxEvents? = nil,
         cache: MailCache? = nil,
         prefs: (any MailPreferences)? = nil,
-        notifier: MailNotifier = MailChecker.shared.notifier
+        notifier: MailNotifier = MailChecker.shared.notifier,
+        signIn: SignIn? = nil
     ) {
         self.route = route
         self.session = session
@@ -55,7 +56,7 @@ final class MailMessageViewModel: Identifiable {
         pageUIDValidity = route.uidValidity
         stores = MailMessageStores(cache: cache ?? MailAccountManager.shared.cache,
                                    prefs: prefs ?? MailAccountManager.shared.prefs, notifier: notifier,
-                                   signIn: session.account.currentSignIn)
+                                   signIn: signIn ?? session.account.currentSignIn)
     }
 
     var signIn: SignIn { stores.signIn }

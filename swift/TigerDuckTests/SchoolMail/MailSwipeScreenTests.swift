@@ -112,5 +112,32 @@ struct MailSwipeScreenTests {
             #expect(accessibilityElement(labeled: String(localized: "school_mail_move_to"), in: window) != nil)
         }
     }
+
+    struct SheetHost: View {
+        let list: MailListViewModel
+        let actions: MailRowActions
+        @State private var compose: MailComposeContext?
+
+        var body: some View {
+            List { Text("mail list") }
+                .modifier(MailRowActionsPresenter(list: list, actions: actions, compose: $compose))
+        }
+    }
+
+    @Test("the More sheet closes once the sign-in that opened it ends")
+    func moreSheetClosesWithItsSignIn() async throws {
+        try await withAccessibilityAutomation {
+            let (list, actions) = await Self.list()
+            let window = try ClubScreensTests.show(SheetHost(list: list, actions: actions), look: ClubScreensTests.looks[0])
+            defer { window.isHidden = true }
+            try await waitUntil { ClubScreensTests.shows("mail list", in: window) }
+            actions.perform(.more, on: try #require(list.rows.first), in: list)
+            let delete = String(localized: "school_mail_delete")
+            try await waitUntil { accessibilityElement(labeled: delete, in: window) != nil }
+            list.account.endSignIn()
+            try await waitUntil { accessibilityElement(labeled: delete, in: window) == nil }
+            #expect(actions.sheet.value == nil)
+        }
+    }
 }
 #endif

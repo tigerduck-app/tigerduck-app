@@ -3,9 +3,9 @@ import Foundation
 
 @MainActor
 enum MailListFlags {
-    static func toggle(_ flag: MailFlag, of row: MailListRow, list: MailListViewModel) async {
+    static func toggle(_ flag: MailFlag, of row: MailListRow, list: MailListViewModel, for signIn: SignIn? = nil) async {
         let on = flag == .flagged ? !row.summary.isFlagged : !row.summary.isSeen
-        await store(flag, on: on, folder: row.folder, validity: row.uidValidity, uids: [row.uid], list: list)
+        await store(flag, on: on, folder: row.folder, validity: row.uidValidity, uids: [row.uid], for: signIn, list: list)
     }
 
     static func markAllRead(for signIn: SignIn, list: MailListViewModel) async {
@@ -19,6 +19,7 @@ enum MailListFlags {
         _ flag: MailFlag, on: Bool, folder: String, validity: UInt32, uids: [UInt32], for given: SignIn? = nil,
         list: MailListViewModel
     ) async {
+        if let given, !given.isCurrent { return }
         mark(edit(flag, on), folder: folder, uids: uids, list: list)
         let signIn = if let given { given } else { await list.account.startingSignIn }
         do {

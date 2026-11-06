@@ -114,10 +114,12 @@ struct MailRowActionsPresenter: ViewModifier {
     @Binding var compose: MailComposeContext?
 
     func body(content: Content) -> some View {
+        let signIn = list.account.currentSignIn
         content
-            .sheet(item: $actions.sheetRow, onDismiss: runAfterSheet) { row in
-                MailRowActionsSheet(row: row, canFlag: list.canFlag(row.folder), composing: actions.composing) {
-                    choose($0, on: row)
+            .sheet(item: Binding(get: { actions.sheet.value }, set: { actions.sheet.set($0, for: signIn) }),
+                   onDismiss: runAfterSheet) { sheet in
+                MailRowActionsSheet(row: sheet.row, canFlag: list.canFlag(sheet.row.folder), composing: actions.composing) {
+                    choose($0, on: sheet)
                 }
             }
             .sheet(item: $actions.moving) { model in
@@ -143,17 +145,17 @@ struct MailRowActionsPresenter: ViewModifier {
         next?()
     }
 
-    private func choose(_ action: MailRowAction, on row: MailListRow) {
+    private func choose(_ action: MailRowAction, on sheet: MailRowActions.Sheet) {
         guard case .compose(let mode) = action else {
-            actions.afterSheet = { actions.perform(action, on: row, in: list) }
-            actions.sheetRow = nil
+            actions.afterSheet = { actions.perform(action, on: sheet.row, in: list, for: sheet.signIn) }
+            actions.sheet.set(nil, for: sheet.signIn)
             return
         }
         Task {
-            let context = await actions.compose(mode, row: row, in: list)
-            guard actions.sheetRow?.id == row.id else { return }
+            let context = await actions.compose(mode, row: sheet.row, in: list, for: sheet.signIn)
+            guard actions.sheet.value?.id == sheet.id else { return }
             actions.afterSheet = { compose = context }
-            actions.sheetRow = nil
+            actions.sheet.set(nil, for: sheet.signIn)
         }
     }
 }

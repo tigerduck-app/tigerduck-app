@@ -42,7 +42,13 @@ nonisolated enum MailRowAction: Hashable {
 @MainActor
 @Observable
 final class MailRowActions {
-    var sheetRow: MailListRow?
+    struct Sheet: Identifiable {
+        let row: MailListRow
+        let signIn: SignIn
+        var id: MailListRow.ID { row.id }
+    }
+
+    var sheet = SignInBound<Sheet?>(empty: nil)
     var composing: MailComposeMode?
     var moving: MailMessageViewModel?
     var deletingForever: MailMessageViewModel?
@@ -56,32 +62,35 @@ final class MailRowActions {
         self.notifier = notifier
     }
 
-    func perform(_ action: MailRowAction, on row: MailListRow, in list: MailListViewModel) {
+    func perform(_ action: MailRowAction, on row: MailListRow, in list: MailListViewModel, for given: SignIn? = nil) {
+        let signIn = given ?? list.account.currentSignIn
+        guard signIn.isCurrent else { return }
         switch action {
-        case .toggleRead: Task { await toggle(.seen, row, in: list) }
-        case .toggleFlag: Task { await toggle(.flagged, row, in: list) }
-        case .trash: Task { await trash(row, in: list) }
-        case .move: moving = message(row, in: list)
-        case .more: sheetRow = row
+        case .toggleRead: Task { await toggle(.seen, row, in: list, for: signIn) }
+        case .toggleFlag: Task { await toggle(.flagged, row, in: list, for: signIn) }
+        case .trash: Task { await trash(row, in: list, for: signIn) }
+        case .move: moving = message(row, in: list, for: signIn)
+        case .more: sheet.set(Sheet(row: row, signIn: signIn), for: signIn)
         case .compose: break
         }
     }
 
-    func message(_ row: MailListRow, in list: MailListViewModel) -> MailMessageViewModel {
+    func message(_ row: MailListRow, in list: MailListViewModel, for signIn: SignIn? = nil) -> MailMessageViewModel {
         let route = MailMessageRoute(folder: row.folder, uid: row.uid, uidValidity: row.uidValidity)
         return MailMessageViewModel(route: route, session: list.session, folderRoles: list.folderRoles, events: list.events,
-                                    cache: list.writer.cache, prefs: prefs, notifier: notifier ?? MailChecker.shared.notifier)
+                                    cache: list.writer.cache, prefs: prefs, notifier: notifier ?? MailChecker.shared.notifier,
+                                    signIn: signIn)
     }
 
-    func toggle(_ flag: MailFlag, _ row: MailListRow, in list: MailListViewModel) async {
+    func toggle(_ flag: MailFlag, _ row: MailListRow, in list: MailListViewModel, for signIn: SignIn? = nil) async {
         let key = Work(row: row.id, flag: flag)
         guard busy.insert(key).inserted else { return }
         defer { busy.remove(key) }
-        await MailListFlags.toggle(flag, of: row, list: list)
+        await MailListFlags.toggle(flag, of: row, list: list, for: signIn)
     }
 
-    func trash(_ row: MailListRow, in list: MailListViewModel) async {
-        let model = message(row, in: list)
+    func trash(_ row: MailListRow, in list: MailListViewModel, for signIn: SignIn? = nil) async {
+        let model = message(row, in: list, for: signIn)
         await once(model, in: list) {
             guard let kind = await model.prepareDelete() else { return false }
             guard kind == .permanent else { return await model.delete() }
@@ -98,8 +107,10 @@ final class MailRowActions {
         await once(model, in: list) { await model.move(to: folder) }
     }
 
-    func compose(_ mode: MailComposeMode, row: MailListRow, in list: MailListViewModel) async -> MailComposeContext? {
-        let model = message(row, in: list)
+    func compose(
+        _ mode: MailComposeMode, row: MailListRow, in list: MailListViewModel, for signIn: SignIn? = nil
+    ) async -> MailComposeContext? {
+        let model = message(row, in: list, for: signIn)
         composing = mode
         defer { composing = nil }
         var context: MailComposeContext?
