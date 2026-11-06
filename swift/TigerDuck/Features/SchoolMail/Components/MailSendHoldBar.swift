@@ -1,5 +1,6 @@
 #if os(iOS)
 import SwiftUI
+import UIKit
 
 struct MailSendHoldBar: View {
     let hold: MailSendHold
@@ -104,13 +105,20 @@ extension View {
 }
 
 private struct MailHeldMailHost: ViewModifier {
+    private struct Wait: Equatable {
+        let next: ObjectIdentifier?
+        let activations: Int
+    }
+
     let hold: MailSendHold
     @State private var shown: MailComposeViewModel?
     @State private var hostWindow = HostWindow()
+    @State private var activations = 0
 
     func body(content: Content) -> some View {
         content
-            .task(id: shown == nil ? hold.reopened.first?.id : nil) { await showNext() }
+            .task(id: Wait(next: shown == nil ? hold.reopened.first?.id : nil, activations: activations)) { await showNext() }
+            .onReceive(NotificationCenter.default.publisher(for: UIScene.didActivateNotification)) { _ in activations += 1 }
             .sheet(item: $shown) { MailComposeView(model: $0, hold: hold) }
             .readsHostWindow(into: hostWindow)
     }
@@ -120,7 +128,8 @@ private struct MailHeldMailHost: ViewModifier {
         while hostWindow.isPresenting, !Task.isCancelled {
             await hostWindow.presentationsClosed()
         }
-        guard !Task.isCancelled else { return }
+        let scene = hostWindow.window?.windowScene?.activationState
+        guard !Task.isCancelled, scene == .foregroundActive || scene == .foregroundInactive else { return }
         shown = hold.takeReopened()
     }
 }
