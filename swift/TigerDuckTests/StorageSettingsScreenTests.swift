@@ -72,7 +72,7 @@ struct StorageSettingsScreenTests {
             try await waitUntil { accessibilityElement(labeled: Self.bar, in: host.view) != nil }
             let list = try #require(host.view.descendants(ofType: UICollectionView.self).first)
             for part in 0..<4 {
-                try await Task.sleep(for: .milliseconds(400))
+                try await waitUntil { window.isStill }
                 #expect(list.contentSize.width <= list.bounds.width + 0.5)
                 window.saveSnapshot(as: "storage-\(screen.name)-\(part)-\(PageMenuScreenTests.language)")
                 let end = list.contentSize.height + list.adjustedContentInset.bottom - list.bounds.height

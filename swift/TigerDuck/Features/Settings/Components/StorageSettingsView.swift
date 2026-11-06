@@ -108,7 +108,7 @@ private struct StorageRow: View {
                 Text(sizes == nil ? "…" : size.map { StorageSizes.text($0) } ?? "")
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
-                    .fixedSize()
+                    .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
             }
             Button(action: onDelete) {
                 Image(systemName: "trash")
