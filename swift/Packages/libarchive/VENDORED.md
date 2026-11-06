@@ -57,7 +57,11 @@ cmake -G Ninja <libarchive> -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=<iPhoneO
      (`numFolders`), packed streams (`numPackStreams`) and unpacked substreams
      (`unpack_streams`). Every other table, including the digests, is sized by one of these
      counts or by the header's bytes.
-3. `Package.swift` builds the sources with `-w`, since their warnings are upstream's.
+3. `archive_read_support_format_tar.c`: a pax extended header (`x` or `g`) whose body is larger
+   than `TIGERDUCK_MAX_PAX_SIZE` (1 MiB) fails as a format error before any of it is read. Each
+   entry has at most one of each, so this also caps the attributes, extended attributes
+   included, kept for one entry. Upstream reads bodies up to 1 GiB and skips larger ones.
+4. `Package.swift` builds the sources with `-w`, since their warnings are upstream's.
 
 ## Updating
 

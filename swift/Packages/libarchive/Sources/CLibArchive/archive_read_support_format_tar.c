@@ -252,6 +252,8 @@ static const size_t xattr_limit = 16 * 1048576; /* Longest xattr: 16MiB */
 static const size_t fflags_limit = 512; /* Longest fflags */
 static const size_t acl_limit = 131072; /* Longest textual ACL: 128kiB */
 static const int64_t entry_limit = 0xfffffffffffffffLL; /* 2^60 bytes = 1 ExbiByte */
+/* TigerDuck: the pax extension body an archive preview reads for one entry. */
+#define TIGERDUCK_MAX_PAX_SIZE	((int64_t)1 << 20)
 
 int
 archive_read_support_format_gnutar(struct archive *a)
@@ -2005,6 +2007,12 @@ header_pax_records(struct archive_read *a, struct tar *tar,
 		return (ARCHIVE_FATAL);
 	}
 
+	/* TigerDuck: refuse a larger body instead of reading or skipping it. */
+	if (ext_size > TIGERDUCK_MAX_PAX_SIZE) {
+		archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
+		    "pax extended header too large");
+		return (ARCHIVE_FATAL);
+	}
 	ext_padding = 0x1ff & (-ext_size);
 	if (ext_size > ext_size_limit) {
 		/* Consume the pax extension body and return an error */
