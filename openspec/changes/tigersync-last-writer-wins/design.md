@@ -70,25 +70,25 @@ the last issued value so a device never repeats a value.
 The backend refuses a stamp more than five seconds ahead of its time (D5), so a device caps
 `device now` at its estimate of the backend's time plus five seconds: the last `X-TigerSync-Clock`
 it heard plus the device time elapsed since. An edit stamped before the device first heard the
-backend can still be refused; the refusal carries the backend's clock, and both apps re-stamp
-the edit at that clock plus one tick and send it again. A device that keeps a last issued value
-never lowers it, so until the cap passes that value, a later edit is stamped after it and is
-refused and re-stamped the same way. The exception is a value more than two minutes past the
-backend's limit, longer than any request takes, as after a device clock set a year ahead: no
-stamp above the limit can have landed, so a header brings the last issued value back to its clock
-plus five seconds and the last seen value back to its clock. Every time the device keeps from
-before then moves down by as much as the last issued value did: queued edits and their cutoffs,
-a course add's start or landing, a holiday edit and a term reset. They keep their order and fall
-under the new value, and after one jump of the device clock land near the time each was made. A
-time within five seconds past the new value stays, as stamps issued since start there while the
-holders move theirs. A time taken before the header and stored or compared after it, as an edit on
-its way into the queue or a full sync's fetch start, moves the same way: the device notes the
-pull-backs made before it takes the time and applies those made since. Two jumps before one
-header are the limit: a time from the smaller jump moves by the larger one's size, so it lands
-before it was made, still in order with every other time kept. Clamping every kept time to the new
-value would avoid that but tie them all, so an edit and a Use Server made after it could no longer
-be told apart. A header before 2026 or from 2100 on is not a clock and is ignored, and is
-never re-stamped after.
+backend can still be refused; the refusal carries the backend's clock, and both apps re-stamp the
+edit at that clock plus one tick and send it again. A device that keeps a last issued value never
+lowers it, so until the cap passes that value, a later edit is stamped after it and is refused and
+re-stamped the same way. The exception is a value more than two minutes past the backend's limit,
+longer than any request takes, as after a device clock set a year ahead: no stamp above the limit
+can have landed, so a header brings the last issued value back to its clock plus five seconds and
+the last seen value back to its clock. Every time the device keeps from before then that lies past
+the higher of the new last issued value and the last seen value moves down to it: queued edits and
+their cutoffs, a course add's start or landing, a holiday edit and a term reset. Each stays at or
+after every time it was after and under every stamp issued since. The times moved tie with each
+other, and a tie keeps the queued edit: a Use Server taken before the header does not drop it, and
+the answer to an earlier edit does not overwrite it. Moving every time down by as much as the last
+issued value did would keep them apart, but a time already near the new value would then sit above
+one moved from far past it, so an older edit could win over a newer one. A time taken before the
+header and stored or compared after it, as an edit on its way into the queue, a send's check for a
+newer queued edit or a full sync's fetch start, moves the same way: the device notes the
+pull-backs made before it takes the time and applies those made since to both times it compares,
+as moving a time again changes nothing. A header before 2026 or from 2100 on is not a clock and is
+ignored, and is never re-stamped after.
 
 Lost:
 - ISO-8601 strings, as the snapshot uses today: Apple's `ISO8601DateFormatter` keeps three

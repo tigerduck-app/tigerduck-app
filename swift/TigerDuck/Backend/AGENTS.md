@@ -13,7 +13,7 @@ push registration, the course catalog and `APIVersionGate`.
 - A sync time kept past the request that stamped it, in memory or stored, moves with
   `SyncClock.onPullBack` when a header brings the clock back. One taken before an await and
   stored or compared after it goes through `Era.current`, with the `SyncClock.era` read before
-  the time was taken.
+  the time was taken, and so does the kept time it is compared with.
 - Add Course searches the term's catalog from the backend (`CourseCatalog/`) on the device and
   sends the school nothing, with no school query or fallback to one.
 - Nothing derived from school data, the course and assignment uploads, goes before the
