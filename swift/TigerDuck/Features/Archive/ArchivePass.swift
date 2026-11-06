@@ -104,13 +104,21 @@ nonisolated final class ArchivePass {
     // libarchive skips an entry by unpacking it, out of reach of stop(), unless it can seek past
     // it: a zip or plain tar entry of known size. A 7z skips without unpacking until an entry is
     // read, and then unpacks everything skipped before it. An encrypted entry can only be skipped.
+    // Any tar entry may carry data, a GNU 'D' directory too; RAR 5 refuses to read a directory's.
     private func drains(_ entry: OpaquePointer, listing: Bool) -> Bool {
-        guard archive_entry_is_encrypted(entry) == 0, archive_entry_filetype(entry) == S_IFREG else { return false }
+        guard archive_entry_is_encrypted(entry) == 0 else { return false }
         let family = archive_format(archive) & ARCHIVE_FORMAT_BASE_MASK
-        guard archive_filter_count(archive) < 2 else { return true }
-        if family == ARCHIVE_FORMAT_7ZIP { return !listing }
-        let seeks = archive_entry_size_is_set(entry) != 0 && (family == ARCHIVE_FORMAT_ZIP || family == ARCHIVE_FORMAT_TAR)
-        return !seeks
+        let type = archive_entry_filetype(entry)
+        let compressed = archive_filter_count(archive) > 1
+        switch family {
+        case ARCHIVE_FORMAT_TAR:
+            return compressed || archive_entry_size_is_set(entry) == 0
+        case ARCHIVE_FORMAT_7ZIP:
+            return type != S_IFDIR && (compressed || !listing)
+        default:
+            guard type == S_IFREG else { return false }
+            return compressed || family != ARCHIVE_FORMAT_ZIP || archive_entry_size_is_set(entry) == 0
+        }
     }
 
     private func drain() throws {
@@ -216,8 +224,9 @@ nonisolated final class ArchivePass {
     private func skip(_ request: Int64) -> Int64 {
         let here = lseek(file, 0, SEEK_CUR)
         guard here >= 0, request > 0 else { return 0 }
-        let target = min(here + request, size)
-        return lseek(file, target, SEEK_SET) < 0 ? 0 : target - here
+        // libarchive passes the size an entry declares, which may be up to Int64.max.
+        let step = min(request, max(size - here, 0))
+        return lseek(file, here + step, SEEK_SET) < 0 ? 0 : step
     }
 
     private func stop() -> (any Error)? {
