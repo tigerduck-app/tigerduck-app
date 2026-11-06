@@ -172,7 +172,7 @@ struct SyncClockTests {
         #expect(Self.clock(of: clock.stamp()) == Self.ten + 2 * Self.minute + 1)
     }
 
-    @Test("A pull-back moves a time kept from before it under its ceiling in its order, and leaves one near or under the ceiling")
+    @Test("A pull-back moves a time kept from before it down to its ceiling, a time just after it no lower, and leaves one under it")
     func pullBackMovesKeptTimesUnderItsCeiling() throws {
         let device = DeviceClock(Self.ten + Self.year)
         let clock = Self.makeClock(device)
@@ -183,14 +183,14 @@ struct SyncClockTests {
         let fresh = clock.stamp()
         let earlier = PushAPI.date(ofClock: Self.ten - Self.minute)
 
-        #expect(kept.map { Self.clock(of: pullBack.restamped($0)) } == [Self.ten + SyncClock.backendLead - 1, Self.ten + SyncClock.backendLead])
+        #expect(kept.map { Self.clock(of: pullBack.restamped($0)) } == [Self.ten + SyncClock.backendLead, Self.ten + SyncClock.backendLead])
         #expect(Self.clock(of: fresh) == Self.ten + SyncClock.backendLead + 1)
-        #expect(pullBack.restamped(fresh) == fresh)
+        #expect(Self.clock(of: pullBack.restamped(fresh)) == Self.ten + SyncClock.backendLead)
         #expect(pullBack.restamped(earlier) == earlier)
         #expect(clock.hear(Self.ten) == nil)
     }
 
-    @Test("A time taken before a pull-back moves with it, a lowest next stamp to at most the first stamp after, and a later time stays")
+    @Test("A time taken before a pull-back moves with it, a lowest next stamp to at most the first stamp after, and a later time no lower")
     func eraMovesATimeTakenBeforeAPullBack() {
         let device = DeviceClock(Self.ten + Self.year)
         let clock = Self.makeClock(device)
@@ -204,8 +204,23 @@ struct SyncClockTests {
 
         #expect(Self.clock(of: era.current(stamp)) == Self.ten + SyncClock.backendLead)
         #expect(era.current(next) <= fresh)
-        #expect(era.current(fresh) == fresh)
+        #expect(era.current(fresh) == era.current(stamp))
         #expect(clock.era.current(stamp) == stamp)
+    }
+
+    @Test("A pull-back never moves a time below one it was after, also one within five seconds past the new value")
+    func pullBackKeepsTheOrderOfTheTimesItMoves() throws {
+        let device = DeviceClock(Self.ten)
+        let clock = Self.makeClock(device)
+        clock.hear(Self.ten)
+        device.set(Self.ten + 8 * Self.second)
+        let nearer = clock.stamp()
+        device.set(Self.ten + 60 * Self.minute + 8 * Self.second)
+        let later = clock.stamp()
+
+        let pullBack = try #require(clock.hear(Self.ten + 3 * Self.second))
+
+        #expect(pullBack.restamped(later) >= pullBack.restamped(nearer))
     }
 
     @Test("Stored values that read back missing or unreadable never produce a stamp at or before one already issued")

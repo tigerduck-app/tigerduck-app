@@ -3,7 +3,7 @@ import Foundation
 @MainActor
 final class QueuedEdits {
     private let outbox: SyncOutbox
-    private let clock: SyncClock
+    let clock: SyncClock
     private var overridesEnqueuing: [UUID: SyncOp] = [:]
     private(set) var overrideEdits = 0
     private var lastColorEdit: [String: Int] = [:]
@@ -165,7 +165,7 @@ final class QueuedEdits {
             }
         }
         let landingFrom = era.current(date)
-        return keys.union(addStartedOrLandedAt.filter { $0.value >= landingFrom }.keys)
+        return keys.union(addStartedOrLandedAt.filter { era.current($0.value) >= landingFrom }.keys)
     }
 
     func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
@@ -217,7 +217,7 @@ final class QueuedEdits {
 
     func hasNewerEdit(than op: SyncOp) async -> Bool {
         let key = op.dedupKey
-        return await unsentOps().contains { $0.dedupKey == key && $0.stamp > op.stamp }
+        return await unsentOps().contains { $0.dedupKey == key && $0.stamp >= op.stamp && $0 != op }
     }
 
     private func unsentOps() async -> [SyncOp] {

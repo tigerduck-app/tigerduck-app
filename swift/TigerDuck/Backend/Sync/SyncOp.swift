@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated enum SyncOp: Codable, Sendable {
+nonisolated enum SyncOp: Codable, Equatable, Sendable {
     case courseOverride(semester: String, moodleId: String, customName: String?, colorHex: String?, locale: String?, stamp: Date)
     case assignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String, stamp: Date)
     case courseIgnore(semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?, stamp: Date)

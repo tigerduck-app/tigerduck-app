@@ -245,6 +245,24 @@ struct SyncOutboxTests {
         #expect(await outbox.parkedSnapshot().map(\.op.stamp) == [moved])
     }
 
+    @Test("An edit made after a discard stays when it reaches a queue that has not yet moved that discard's cutoff")
+    @MainActor func anEditReachingAQueueNotYetMovedStays() async throws {
+        let device = SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year)
+        let clock = SyncClockTests.makeClock(device)
+        let outbox = Self.makeOutbox()
+        let discardEra = clock.era
+        let cutoff = clock.stamp()
+        await outbox.discard(madeBefore: [.assignmentMarks: cutoff], notAfter: clock.lowestNextStamp, takenIn: discardEra)
+        let era = clock.era
+        let mark = SyncOp.assignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored", stamp: clock.stamp())
+        device.set(SyncClockTests.ten)
+        _ = try #require(clock.hear(SyncClockTests.ten))
+
+        await outbox.enqueue(mark, takenIn: era, for: testSignIn)
+
+        #expect(await outbox.snapshot().count == 1)
+    }
+
     nonisolated private final class ReadGate: @unchecked Sendable {
         private let lock = NSLock()
         private var locked = true

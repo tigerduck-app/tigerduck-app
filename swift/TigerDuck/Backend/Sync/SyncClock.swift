@@ -25,19 +25,18 @@ nonisolated final class SyncClock: Sendable {
         var heard: Heard?
     }
 
-    /// The last stamp issued moved down from `top`, and no stamp issued since is below `ceiling`.
+    /// The last stamp issued moved down from `top`, and no stamp issued since is at or below `ceiling`.
     nonisolated struct PullBack: Equatable, Sendable {
         let ceiling: Int64
         let top: Int64
 
-        /// A time from before the pull-back, more than `backendLead` past `ceiling` and at most the
-        /// next stamp after `top`, moves down by the pull-back's size: to at most `ceiling` plus one,
-        /// in the order it had. Stamps issued in the five seconds after it stay within `backendLead`
-        /// past `ceiling`, so a holder restamping then leaves them.
+        /// A time from before the pull-back past `ceiling`, up to the next stamp after `top`, moves
+        /// down to `ceiling`: under every stamp issued since and never below a time it was after.
+        /// Moving it twice changes nothing, and a time taken just after it moves no lower than `ceiling`.
         func restamped(_ date: Date) -> Date {
             let value = PushAPI.clock(of: date)
-            guard value > ceiling + SyncClock.backendLead, value <= top + 1 else { return date }
-            return PushAPI.date(ofClock: value - (top - ceiling))
+            guard value > ceiling, value <= top + 1 else { return date }
+            return PushAPI.date(ofClock: ceiling)
         }
     }
 
@@ -92,8 +91,8 @@ nonisolated final class SyncClock: Sendable {
         held.withLock { Self.merged($0, storage.load()) }
     }
 
-    /// Every stamp issued before this read is below it, and every one issued after is not, once a
-    /// pull-back between them is applied with `Era.current`.
+    /// Every stamp issued before this read is below it, and every one issued after is not. A
+    /// pull-back between them, applied with `Era.current`, keeps the second and can tie the first.
     var lowestNextStamp: Date {
         PushAPI.date(ofClock: min(readings.lastIssued, Self.overflowSafeCeiling - 1) + 1)
     }
@@ -105,7 +104,7 @@ nonisolated final class SyncClock: Sendable {
     }
 
     /// Every mark taken before this read is at or below it, and every one taken after is at or above
-    /// it, once a pull-back between them is applied with `Era.current`.
+    /// it, also once a pull-back between them is applied with `Era.current`.
     var lowestNextMark: Date {
         max(now(), lowestNextStamp)
     }

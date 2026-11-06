@@ -20,9 +20,9 @@ struct SyncRaceTests {
         return URLSession(configuration: config)
     }
 
-    private static func push(_ baseURL: URL, signIns: SignInSeries = testSignIns) -> PushCoordinator {
+    private static func push(_ baseURL: URL, signIns: SignInSeries = testSignIns, clock: SyncClock = .isolated()) -> PushCoordinator {
         let client = PushAPIClient(baseURLProvider: { baseURL }, session: stubSession(), authHeaderProvider: { "Bearer test" },
-                                   signIns: signIns)
+                                   signIns: signIns, clock: clock)
         return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client, signIns: signIns)
     }
 
@@ -260,6 +260,38 @@ struct SyncRaceTests {
                              courses: cache.courses, assignments: cache.assignments),
             clock: .isolated()
         )
+    }
+
+    @Test("A newer mark queued while an older one is out stays when the older one's answer brings the clock back")
+    func newerMarkQueuedDuringASendThatBringsTheClockBackStays() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("sync/assignments/42/override")
+        let gate = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(.init(
+            statusCode: 200, body: Data(#"{"local_status":"locally_completed","local_status_hlc":2,"applied":false}"#.utf8),
+            headerFields: ["X-TigerSync-Clock": String(SyncClockTests.ten)], gate: gate
+        ), for: url)
+        let cache = Self.cache()
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten + SyncClockTests.year))
+        let coordinator = CloudSyncCoordinator(
+            pushCoordinator: Self.push(baseURL, clock: clock),
+            outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
+            isEnabled: true, syncsAssignmentMarks: { true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
+            kept: KeptValues(policy: Self.policy([.assignments]), colors: CourseColorStore(files: cache.colors),
+                             courses: cache.courses, assignments: cache.assignments),
+            clock: clock
+        )
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 7, moodleAssignmentId: 42, localStatus: "ignored")
+        let sending = Task { await coordinator.syncTick() }
+        try await waitUntil { !SettingsAPIStub.requests(for: url).isEmpty }
+
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 7, moodleAssignmentId: 42, localStatus: "archived")
+        cache.assignments.replaceArchivedAssignmentIds(["42"], for: testSignIn)
+        gate.open()
+        await sending.value
+
+        #expect(cache.assignments.loadArchivedAssignmentIds() == ["42"])
+        #expect(cache.assignments.loadLocallyCompletedAssignmentIds().isEmpty)
     }
 
     private static let courseNotFound = SettingsAPIStub.StubResponse(

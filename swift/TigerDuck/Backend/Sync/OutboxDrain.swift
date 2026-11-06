@@ -86,10 +86,11 @@ final class OutboxDrain {
                     || (customName != nil && !syncsOverrides(.courseNames))
             }
         }
+        let era = edits.clock.era
         await outbox.drain(for: signIn, holding: isHeld) { [weak self] op, madeIn in
             guard let self else { throw CancellationError() }
             try await BackendClient.$holdsResend.withValue({ await self.holdsResend(op, isHeld) }) {
-                try await self.execute(op, for: madeIn)
+                try await self.execute(op, takenIn: era, for: madeIn)
             }
         }
     }
@@ -122,12 +123,14 @@ final class OutboxDrain {
         }
     }
 
-    private func execute(_ op: SyncOp, for signIn: SignIn) async throws {
+    private func execute(_ op: SyncOp, takenIn era: SyncClock.Era, for signIn: SignIn) async throws {
         guard sends(for: signIn) else { throw CancellationError() }
-        guard !edits.cutoffs.cutsOff(op) else { return }
+        guard !edits.cutoffs.restamped(era.current).cutsOff(op.restamped(era.current)) else { return }
         let request = Task {
             do {
-                try await self.sender.send(op, for: signIn, hasNewerQueuedEdit: { await self.edits.hasNewerEdit(than: $0) })
+                try await self.sender.send(op, for: signIn, hasNewerQueuedEdit: {
+                    await self.edits.hasNewerEdit(than: $0.restamped(era.current))
+                })
             } catch let error where Self.isUnauthorized(error) {
                 throw SyncOutboxAuthError(statusCode: 401)
             }
