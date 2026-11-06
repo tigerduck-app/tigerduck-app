@@ -269,6 +269,7 @@ actor FakeMailClient: MailClient {
 
     func storesFlagged(folder: String) async throws -> Bool {
         calls.append("storesFlagged \(folder)")
+        await gate("storesFlagged")
         return foldersStoringFlagged?.contains(folder) ?? true
     }
 

@@ -8,6 +8,7 @@ struct SchoolMailView: View {
     @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = MailListViewModel()
+    @State private var rowActions = MailRowActions()
     @State private var showLoginSheet = false
     @State private var route: MailMessageRoute?
     @State private var compose: MailComposeContext?
@@ -98,16 +99,7 @@ struct SchoolMailView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
-            if let notice = viewModel.sentCopyNotice {
-                MailWarningBanner(
-                    message: notice,
-                    systemImage: "tray.and.arrow.down",
-                    actionTitle: String(localized: "settings_acknowledged"),
-                    action: { viewModel.dismissSentCopyNotice() }
-                )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            }
+            MailListNotices(viewModel: viewModel)
             MailFolderChipBar(
                 roles: viewModel.folderRoles,
                 others: viewModel.otherFolders,
@@ -125,8 +117,10 @@ struct SchoolMailView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
-            MailListRowsSection(viewModel: viewModel, accentColor: app.preferences.accentColor, onOpen: open)
+            MailListRowsSection(viewModel: viewModel, actions: rowActions, accentColor: app.preferences.accentColor,
+                                policy: app.preferences.visualStylePolicy, onOpen: open)
         }
+        .modifier(MailRowActionsPresenter(list: viewModel, actions: rowActions, compose: $compose))
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)

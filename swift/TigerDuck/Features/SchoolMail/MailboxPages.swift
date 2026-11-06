@@ -7,6 +7,7 @@ struct MailFolderChoice: Equatable {
     var selection: MailFolderSelection = .real(MailConstants.inbox)
     var pickedByUser = false
     var unreadOnly = false
+    var storesFlagged: [String: Bool] = [:]
 
     var targets: [String] { selection.targets(roles: roles, others: others) }
 
@@ -22,6 +23,7 @@ struct MailListStatus: Equatable {
     var isRefreshing = false
     var isPaginating = false
     var sentCopyNotice: String?
+    var actionError: String?
 }
 
 struct MailListLoads {
@@ -35,8 +37,9 @@ struct MailListLoads {
 }
 
 struct MailboxPages {
-    private enum Edit {
+    enum Edit {
         case seen(Bool)
+        case flagged(Bool)
         case removed
     }
 
@@ -68,10 +71,10 @@ struct MailboxPages {
         edits = edits.filter { $0.key.folder != folder }
     }
 
-    mutating func markSeen(folder: String, uid: UInt32, seen: Bool) {
-        record(.seen(seen), folder: folder, uid: uid)
+    mutating func mark(_ edit: Edit, folder: String, uid: UInt32) {
+        record(edit, folder: folder, uid: uid)
         if var page = pages[folder], let index = page.summaries.firstIndex(where: { $0.uid == uid }) {
-            page.summaries[index].isSeen = seen
+            page.summaries[index].apply(edit)
             pages[folder] = page
         }
     }
@@ -90,11 +93,10 @@ struct MailboxPages {
     func replayingEdits(onto page: MailFolderPage, madeAfter token: EditToken) -> MailFolderPage {
         var page = page
         for (key, entry) in edits where key.folder == page.folder && entry.token > token {
-            switch entry.edit {
-            case .seen(let seen):
-                if let index = page.summaries.firstIndex(where: { $0.uid == key.uid }) { page.summaries[index].isSeen = seen }
-            case .removed:
+            if case .removed = entry.edit {
                 page = Self.removing(key.uid, from: page)
+            } else if let index = page.summaries.firstIndex(where: { $0.uid == key.uid }) {
+                page.summaries[index].apply(entry.edit)
             }
         }
         return page
@@ -185,6 +187,16 @@ struct MailboxPages {
         if left != right { return left > right }
         if lhs.folder != rhs.folder { return lhs.folder < rhs.folder }
         return lhs.uid > rhs.uid
+    }
+}
+
+extension MailSummary {
+    mutating func apply(_ edit: MailboxPages.Edit) {
+        switch edit {
+        case .seen(let seen): isSeen = seen
+        case .flagged(let flagged): self.flagged = flagged
+        case .removed: break
+        }
     }
 }
 #endif

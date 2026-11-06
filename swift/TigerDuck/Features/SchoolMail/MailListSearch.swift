@@ -227,9 +227,9 @@ final class MailListSearch {
         known.gone = [:]
     }
 
-    func markSeen(folder: String, uid: UInt32, seen: Bool) {
+    func mark(_ edit: MailboxPages.Edit, folder: String, uid: UInt32) {
         if let index = results?.firstIndex(where: { $0.folder == folder && $0.uid == uid }) {
-            results?[index].summary.isSeen = seen
+            results?[index].summary.apply(edit)
         }
     }
 

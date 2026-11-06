@@ -12,9 +12,9 @@ struct MailMessageToolbar: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                Button { onCompose(.reply) } label: { Label(String(localized: "school_mail_reply"), systemImage: "arrowshape.turn.up.left") }
-                Button { onCompose(.replyAll) } label: { Label(String(localized: "school_mail_reply_all"), systemImage: "arrowshape.turn.up.left.2") }
-                Button { onCompose(.forward) } label: { Label(String(localized: "school_mail_forward"), systemImage: "arrowshape.turn.up.right") }
+                ForEach(MailRowAction.composeModes, id: \.self) { mode in
+                    Button { onCompose(mode) } label: { label(.compose(mode)) }
+                }
             } label: {
                 Image(systemName: "arrowshape.turn.up.left")
                     .accessibilityLabel(String(localized: "school_mail_reply_menu"))
@@ -38,21 +38,15 @@ struct MailMessageToolbar: ToolbarContent {
                     }
                 }
                 Section {
-                    Button { Task { await viewModel.toggleSeen() } } label: {
-                        let seen = viewModel.detail?.summary.isSeen ?? true
-                        Label(seen ? String(localized: "school_mail_mark_unread") : String(localized: "school_mail_mark_read"),
-                              systemImage: seen ? "envelope.badge" : "envelope.open")
-                    }
-                    Button { onMove() } label: {
-                        Label(String(localized: "school_mail_move_to"), systemImage: "folder")
-                    }
-                    .disabled(viewModel.isMoving)
+                    Button { Task { await viewModel.toggleSeen() } } label: { label(.toggleRead) }
+                    Button { onMove() } label: { label(.move) }
+                        .disabled(viewModel.isMoving)
                 }
                 Section {
                     Button(role: .destructive) {
                         Task { onDelete(await viewModel.prepareDelete() ? .permanent : .toTrash) }
                     } label: {
-                        Label(String(localized: "school_mail_delete"), systemImage: "trash")
+                        label(.trash)
                     }
                     .disabled(viewModel.isMoving)
                 }
@@ -61,6 +55,10 @@ struct MailMessageToolbar: ToolbarContent {
                     .accessibilityLabel(String(localized: "school_mail_message_actions"))
             }
         }
+    }
+
+    private func label(_ action: MailRowAction) -> some View {
+        Label(action.title(for: viewModel.detail?.summary), systemImage: action.icon(for: viewModel.detail?.summary))
     }
 }
 

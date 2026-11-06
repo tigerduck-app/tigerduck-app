@@ -10,7 +10,7 @@ struct MailMessageRoute: Hashable {
 
 @MainActor
 @Observable
-final class MailMessageViewModel {
+final class MailMessageViewModel: Identifiable {
     enum ViewMode: String, CaseIterable, Identifiable {
         case formatted, plain, source
         var id: String { rawValue }
@@ -52,6 +52,7 @@ final class MailMessageViewModel {
         self.session = session
         self.folderRoles = folderRoles
         self.events = events ?? MailboxEvents()
+        pageUIDValidity = route.uidValidity
         stores = MailMessageStores(cache: cache ?? MailAccountManager.shared.cache,
                                    prefs: prefs ?? MailAccountManager.shared.prefs, notifier: notifier)
     }
@@ -106,6 +107,11 @@ final class MailMessageViewModel {
     }
 
     var original: MailOriginal? { detail.map { MailOriginal(detail: $0, bodyText: plainText) } }
+
+    func composeContext(_ mode: MailComposeMode) -> MailComposeContext {
+        MailComposeContext(mode: mode, folder: route.folder, uid: route.uid, original: original,
+                           attachments: mode == .forward ? detail?.attachments ?? [] : [])
+    }
 
     func load() async {
         let signIn = await session.account.startingSignIn

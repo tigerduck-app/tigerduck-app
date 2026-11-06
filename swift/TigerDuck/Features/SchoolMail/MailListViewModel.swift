@@ -142,43 +142,13 @@ final class MailListViewModel {
     func submitSearch() async { await search.submit() }
     func clearSearch() { search.clear() }
 
-    func toggleRead(_ row: MailListRow) async {
-        await setSeen(!row.summary.isSeen, folder: row.folder, uids: [row.uid])
-    }
+    func canFlag(_ folder: String) -> Bool { folders.storesFlagged[folder] == true }
+    func toggleRead(_ row: MailListRow) async { await MailListFlags.toggle(.seen, of: row, list: self) }
+    func toggleFlag(_ row: MailListRow) async { await MailListFlags.toggle(.flagged, of: row, list: self) }
+    func markAllRead(for signIn: SignIn) async { await MailListFlags.markAllRead(for: signIn, list: self) }
 
-    func markAllRead(for signIn: SignIn) async {
-        for (folder, rows) in Dictionary(grouping: displayedRows.filter { !$0.summary.isSeen }, by: \.folder) where signIn.isCurrent {
-            await setSeen(true, folder: folder, uids: rows.map(\.uid), for: signIn)
-        }
-    }
-
-    private func setSeen(_ seen: Bool, folder: String, uids: [UInt32], for given: SignIn? = nil) async {
-        markSeenLocally(folder: folder, uids: uids, seen: seen)
-        let validity = mailbox[folder]?.uidValidity
-        let signIn = if let given { given } else { await account.startingSignIn }
-        do {
-            try await session.use(for: signIn) { client in
-                try await client.setFlag(.seen, on: seen, folder: folder, uids: uids, expectedUIDValidity: validity)
-            }
-        } catch where !signIn.isCurrent {
-        } catch MailClientError.folderChanged {
-            markSeenLocally(folder: folder, uids: uids, seen: !seen)
-            await recoverFromFolderChange(folder)
-        } catch {
-            markSeenLocally(folder: folder, uids: uids, seen: !seen)
-        }
-    }
-
-    func markSeenLocally(folder: String, uid: UInt32, seen: Bool = true) { markSeenLocally(folder: folder, uids: [uid], seen: seen) }
-
-    private func markSeenLocally(folder: String, uids: [UInt32], seen: Bool) {
-        guard targets.contains(folder) else { return }
-        for uid in uids {
-            mailbox.markSeen(folder: folder, uid: uid, seen: seen)
-            search.markSeen(folder: folder, uid: uid, seen: seen)
-        }
-        rebuildRows()
-        if let page = mailbox[folder] { writer.save(page) }
+    func markSeenLocally(folder: String, uid: UInt32, seen: Bool = true) {
+        MailListFlags.mark(.seen(seen), folder: folder, uids: [uid], list: self)
     }
 
     func removeLocally(folder: String, uid: UInt32) {
