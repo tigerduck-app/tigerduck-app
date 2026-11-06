@@ -26,7 +26,6 @@ nonisolated struct ArchiveListing: Sendable {
 /// The Android app's limits, so an archive opens, or fails, alike on both.
 nonisolated struct ArchiveLimits: Sendable {
     var maxItems = 5_000
-    /// A zip's whole central directory is read before its first entry; past this it is not read.
     var maxZipDirectoryBytes: Int64 = 16 << 20
     var maxEntryBytes: Int64 = 256 << 20
     var maxRatio: Int64 = 100
