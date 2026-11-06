@@ -126,11 +126,14 @@ struct BrowserDownloadsScreenTests {
             let list = try #require(sheet.descendants(ofType: UICollectionView.self).first)
             let below = try #require(Self.element(containing: saved, in: sheet)).accessibilityFrame
             list.scrollRectToVisible(list.convert(below, from: window.screen.coordinateSpace), animated: false)
-            let remove = String(localized: "action_remove")
+            let screenFrame = window.convert(window.bounds, to: window.screen.coordinateSpace)
             try await waitUntil {
-                Self.element(containing: saved, in: sheet)?.accessibilityCustomActions?.contains { $0.name == remove } == true
+                Self.element(containing: saved, in: sheet).map { screenFrame.contains($0.accessibilityFrame) } == true
             }
             try await Task.sleep(for: .milliseconds(600))
+            // iOS 27 puts the row's actions on its button, iOS 26 elsewhere in the row.
+            let remove = String(localized: "action_remove")
+            #expect(Self.offers(remove, in: sheet))
             let frame = try #require(Self.element(containing: saved, in: sheet)).accessibilityFrame
             let center = window.convert(CGPoint(x: frame.midX, y: frame.midY), from: window.screen.coordinateSpace)
             try await fingerTap(at: center, in: window, holding: .milliseconds(1_200))
@@ -141,6 +144,11 @@ struct BrowserDownloadsScreenTests {
             try await Task.sleep(for: .milliseconds(800))
             window.saveSnapshot(as: Self.name("long-press", screen))
         }
+    }
+
+    private static func offers(_ action: String, in node: NSObject) -> Bool {
+        (node.accessibilityCustomActions ?? []).contains { $0.name == action }
+            || accessibilityChildren(of: node).contains { offers(action, in: $0) }
     }
 
     private static func element(containing text: String, in view: UIView) -> NSObject? {
