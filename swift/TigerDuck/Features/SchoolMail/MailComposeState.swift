@@ -18,6 +18,11 @@ nonisolated struct MailComposeContext: Identifiable, Sendable {
         guard let folder, let uid else { return nil }
         return (folder, uid)
     }
+
+    var draftID: MailListRow.ID? {
+        guard mode == .draft, let folder, let uid else { return nil }
+        return MailListRow.ID(folder: folder, uid: uid)
+    }
 }
 
 struct MailComposeDraft {
@@ -99,5 +104,6 @@ struct MailComposeServices {
     let cache: MailCache
     let sleep: (Duration) async -> Void
     let now: () -> Date
+    let contacts: MailComposeContacts
 }
 #endif

@@ -68,7 +68,7 @@ final class MailSendHold {
         guard !model.isSending, !model.shouldClose else { return false }
         sendNow()
         held = Held(model: model, until: Date().addingTimeInterval(Self.seconds))
-        if let id = model.draftID { hiddenDrafts.insert(HiddenDraft(id: id, signIn: model.signIn)) }
+        if let id = model.context.draftID { hiddenDrafts.insert(HiddenDraft(id: id, signIn: model.signIn)) }
         announce()
         countdown = Task {
             await self.sleep(.seconds(Self.seconds))
@@ -90,11 +90,11 @@ final class MailSendHold {
     func composerClosed(_ model: MailComposeViewModel) {
         reopened.removeAll { $0 === model }
         guard held?.model !== model, !sending.contains(ObjectIdentifier(model)), !model.shouldClose else { return }
-        if model.hasChanges, !model.isDiscarded {
+        if model.hasChanges, !model.status.discarded {
             reopened.insert(model, at: 0)
             return
         }
-        guard let id = model.draftID, !model.mayHaveSent else { return }
+        guard let id = model.context.draftID, !model.status.mayHaveSent else { return }
         hiddenDrafts.remove(HiddenDraft(id: id, signIn: model.signIn))
     }
 

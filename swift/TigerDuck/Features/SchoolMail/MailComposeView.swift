@@ -16,16 +16,16 @@ struct MailComposeView: View {
     @State private var pendingPicks = 0
     @FocusState private var focused: Field?
 
-    init(model: MailComposeViewModel, hold: MailSendHold) {
-        _viewModel = State(initialValue: model)
-        self.hold = hold
+    init(viewModel: MailComposeViewModel, hold: MailSendHold? = nil) {
+        _viewModel = State(initialValue: viewModel)
+        self.hold = hold ?? .shared
     }
 
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String], events: MailboxEvents) {
         let account = MailAccountManager.shared
         let sender = MailAddress(name: account.displayName, address: account.address ?? "")
-        self.init(model: MailComposeViewModel(context: context, session: session, sender: sender,
-                                              folderRoles: folderRoles, events: events), hold: .shared)
+        self.init(viewModel: MailComposeViewModel(context: context, session: session, sender: sender,
+                                                  folderRoles: folderRoles, events: events))
     }
 
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String],
@@ -165,6 +165,7 @@ struct MailComposeView: View {
                 if closes { dismiss() }
             }
             .task { await viewModel.prepare() }
+            .task { await viewModel.contacts.load() }
             .interactiveDismissDisabled(viewModel.hasChanges || viewModel.isSending)
         }
     }
@@ -184,7 +185,7 @@ struct MailComposeView: View {
     }
 
     private func addressField(_ title: String, text: Binding<String>, field: Field) -> some View {
-        MailRecipientTokenField(title: title, text: text, focus: $focused, field: field)
+        MailRecipientTokenField(title: title, text: text, focus: $focused, field: field, suggest: viewModel.recipientSuggestions(for:))
     }
 
     private func addFile(_ url: URL) async {

@@ -115,22 +115,21 @@ struct InformationSystemPage: View {
     private var content: some View {
         switch access {
         case .loginRequired:
-            centered { signInPrompt }
+            signInPrompt.centeredListRow()
         case .empty:
             if case .failed(let message) = viewModel.phase {
-                centered {
-                    LoadFailureView(title: String(localized: "information_system_load_failed"), message: message) {
-                        Task { await viewModel.refresh() }
-                    }
+                LoadFailureView(title: String(localized: "information_system_load_failed"), message: message) {
+                    Task { await viewModel.refresh() }
                 }
+                .centeredListRow()
             } else {
-                centered { ProgressView().padding(.vertical, 60) }
+                ProgressView().padding(.vertical, 60).centeredListRow()
             }
         case .content:
-            centered { chips.padding(.vertical, TigerDuckTheme.Spacing.sm) }
+            chips.padding(.vertical, TigerDuckTheme.Spacing.sm).centeredListRow()
             let sections = viewModel.sections
             if sections.isEmpty {
-                centered { ContentUnavailableView.search(text: viewModel.query) }
+                ContentUnavailableView.search(text: viewModel.query).centeredListRow()
             }
             ForEach(sections, id: \.category) { section in
                 Section {
@@ -209,14 +208,6 @@ struct InformationSystemPage: View {
         case .address(let url): openURL(url)
         case .demoPage(let link): demoLink = link
         }
-    }
-
-    private func centered(@ViewBuilder _ content: () -> some View) -> some View {
-        content()
-            .frame(maxWidth: .infinity)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets())
     }
 }
 

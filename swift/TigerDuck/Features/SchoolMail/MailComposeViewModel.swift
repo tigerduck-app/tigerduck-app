@@ -16,7 +16,7 @@ final class MailComposeViewModel: Identifiable {
     private(set) var status = MailComposeStatus()
     @ObservationIgnored private var tracking = MailComposeTracking()
     @ObservationIgnored let events: MailboxEvents
-    @ObservationIgnored private let context: MailComposeContext
+    @ObservationIgnored let context: MailComposeContext
     @ObservationIgnored private let session: MailPageSession
     @ObservationIgnored private let sender: MailAddress
     @ObservationIgnored private var folderRoles: [MailFolderRole: String]
@@ -40,14 +40,11 @@ final class MailComposeViewModel: Identifiable {
         self.folderRoles = folderRoles
         self.events = events ?? MailboxEvents()
         signIn = session.account.currentSignIn
-        services = MailComposeServices(prefs: prefs ?? MailAccountManager.shared.prefs,
-                                       cache: cache ?? MailAccountManager.shared.cache, sleep: sleep, now: now)
+        let cache = cache ?? MailAccountManager.shared.cache
+        services = MailComposeServices(prefs: prefs ?? MailAccountManager.shared.prefs, cache: cache, sleep: sleep, now: now, contacts:
+            MailComposeContacts(signIn: signIn, own: sender.address, cache: cache, roles: folderRoles, now: now))
     }
 
-    var mode: MailComposeMode { context.mode }
-    var draftID: MailListRow.ID? { context.mode == .draft ? context.message.map { MailListRow.ID(folder: $0.folder, uid: $0.uid) } : nil }
-    var mayHaveSent: Bool { status.mayHaveSent }
-    var isDiscarded: Bool { status.discarded }
     func discard() { status.discarded = true }
     var to: String {
         get { draft.to }
@@ -77,6 +74,9 @@ final class MailComposeViewModel: Identifiable {
     var didFinish: Bool { status.didFinish }
     var shouldClose: Bool { status.didFinish || status.signInEnded }
     var sentCopy: SentCopy? { status.sentCopy }
+    var mode: MailComposeMode { context.mode }
+    var contacts: MailComposeContacts { services.contacts }
+    func recipientSuggestions(for typed: String) -> [MailAddress] { contacts.suggestions(for: typed, addressed: [to, cc, bcc]) }
 
     var hasChanges: Bool { draft.snapshot != tracking.unchangedSnapshot }
 

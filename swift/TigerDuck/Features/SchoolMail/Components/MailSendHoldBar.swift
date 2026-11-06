@@ -136,7 +136,7 @@ private struct MailHeldMailHost: ViewModifier {
             .task(id: Wait(next: shown == nil ? hold.reopened.first?.id : nil, activations: activations)) { await showNext() }
             .onReceive(NotificationCenter.default.publisher(for: UIScene.didActivateNotification)) { _ in activations += 1 }
             .sheet(item: $shown) { model in
-                MailComposeView(model: model, hold: hold)
+                MailComposeView(viewModel: model, hold: hold)
                     .onDisappear { hold.composerClosed(model) }
             }
             .readsHostWindow(into: hostWindow)

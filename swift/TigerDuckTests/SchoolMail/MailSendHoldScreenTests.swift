@@ -84,7 +84,7 @@ struct MailSendHoldScreenTests {
             rig.hold.hold(await MailSendHoldTests.written(MailComposeViewModelTests.fake()))
             rig.hold.undo()
             let reopened = try #require(rig.hold.takeReopened())
-            let window = try Self.show(MailComposeView(model: reopened, hold: rig.hold), look: look)
+            let window = try Self.show(MailComposeView(viewModel: reopened, hold: rig.hold), look: look)
             defer { window.isHidden = true }
             let root = try #require(window.rootViewController?.view)
             var shown = ["a@mail.ntust.edu.tw", "期末報告"]
@@ -106,7 +106,7 @@ struct MailSendHoldScreenTests {
         try await withAccessibilityAutomation {
             let rig = MailSendHoldTests.rig()
             let model = await MailSendHoldTests.written(MailComposeViewModelTests.fake())
-            let window = try Self.show(MailComposeView(model: model, hold: rig.hold), look: .light)
+            let window = try Self.show(MailComposeView(viewModel: model, hold: rig.hold), look: .light)
             defer {
                 window.isHidden = true
                 rig.hold.undo()
@@ -186,7 +186,7 @@ struct MailSendHoldScreenTests {
                 fake: MailComposeViewModelTests.fake()
             )
             await model.prepare()
-            let id = try #require(model.draftID)
+            let id = try #require(model.context.draftID)
             let window = try Self.show(Text(verbatim: "課表").heldMailHost(rig.hold), look: .light)
             defer { window.isHidden = true }
             rig.hold.hold(model)
