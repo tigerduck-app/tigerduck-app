@@ -226,8 +226,16 @@ final class MoodleFileDownloads {
     nonisolated static func safeName(_ name: String) -> String {
         let cleaned = String(name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_").drop { $0 == "." })
         guard !cleaned.isEmpty else { return "file" }
-        let suffix = (cleaned as NSString).pathExtension
-        return fileName((cleaned as NSString).deletingPathExtension, suffix.isEmpty ? "" : ".\(suffix)")
+        let (stem, suffix) = nameParts(cleaned)
+        return fileName(stem, suffix)
+    }
+
+    /// The stem and the extension with its dot; an extension longer than any real one stays in the
+    /// stem, where it can be shortened.
+    nonisolated static func nameParts(_ name: String) -> (stem: String, suffix: String) {
+        let suffix = (name as NSString).pathExtension
+        guard !suffix.isEmpty, suffix.utf8.count <= 32 else { return (name, "") }
+        return ((name as NSString).deletingPathExtension, "." + suffix)
     }
 
     /// POSIX `NAME_MAX` is 255 bytes, the limit of file systems such as ext4 that a shared copy may

@@ -8,11 +8,18 @@ import Testing
 struct SavedDownloadsTests {
     /// Counts the files the store hashes, and fails each read while `failing` is set.
     final class Reads: Sendable {
-        private let state = OSAllocatedUnfairLock(initialState: (count: 0, failing: false))
+        private let state = OSAllocatedUnfairLock(initialState: (count: 0, failing: false, valuesFailing: false))
 
         var count: Int { state.withLock { $0.count } }
 
         func fail(_ failing: Bool) { state.withLock { $0.failing = failing } }
+
+        func failValues(_ failing: Bool) { state.withLock { $0.valuesFailing = failing } }
+
+        func values(_ file: URL) throws -> URLResourceValues {
+            if state.withLock({ $0.valuesFailing }) { throw CocoaError(.fileReadNoPermission) }
+            return try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
+        }
 
         func hash(_ file: URL) throws -> String {
             try state.withLock { state in
@@ -23,6 +30,9 @@ struct SavedDownloadsTests {
         }
     }
 
+    static let notesHash = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    static let notesRecord = #"{"name":"notes.txt","size":5,"sha256":"\#(notesHash)","saved":0}"#
+
     struct Place {
         let root = FileManager.default.temporaryDirectory
             .appending(path: "SavedDownloadsTests-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -30,7 +40,7 @@ struct SavedDownloadsTests {
         var folder: URL { root.appending(path: "Documents", directoryHint: .isDirectory) }
         var support: URL { root.appending(path: "Support", directoryHint: .isDirectory) }
         var ledger: SavedDownloadFiles { SavedDownloadFiles(directory: support) }
-        var store: SavedDownloads { SavedDownloads(folder: folder, ledger: ledger, hash: reads.hash) }
+        var store: SavedDownloads { SavedDownloads(folder: folder, ledger: ledger, hash: reads.hash, values: reads.values) }
 
         func download(_ text: String, named name: String = "download") throws -> URL {
             let folder = root.appending(path: "tmp/\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -126,7 +136,7 @@ struct SavedDownloadsTests {
 
         #expect(place.exists("mine.txt"))
         #expect(try await SavedDownloads(folder: place.folder, ledger: place.ledger).entries().isEmpty)
-        let recorded: [SavedDownloads.Entry] = try place.ledger.load()
+        let recorded = try (place.ledger.load() as SavedDownloadFiles.Ledger<SavedDownloads.Entry>).entries
         #expect(recorded.isEmpty)
     }
 
@@ -217,27 +227,22 @@ struct SavedDownloadsTests {
         #expect(place.reads.count == 2)
     }
 
-    @Test func aRecordWrittenBeforeModificationDatesIsReadOnceThenKeepsOne() async throws {
+    @Test func aRecordWithoutAModificationDateIsReadOnceThenKeepsOne() async throws {
         let place = Place()
         defer { place.remove() }
         _ = try place.usersOwn("hello", named: "notes.txt")
-        try place.writeLedger("""
-            [{"name":"notes.txt","size":5,"sha256":"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824","saved":0}]
-            """)
+        try place.writeLedger(#"{"version":1,"entries":[\#(Self.notesRecord)]}"#)
 
         #expect(try await place.store.entries().map(\.name) == ["notes.txt"])
         #expect(try await place.store.entries().first?.modified != nil)
         #expect(place.reads.count == 1)
     }
 
-    @Test("a ledger that cannot be read is never written over, and nothing moves into the folder",
-          arguments: ["damaged", "newer"])
+    @Test("a file that is not a ledger is kept aside, and the ledger starts again", arguments: ["damaged", "a list"])
     func aLedgerThatCannotBeDecodedIsKeptAside(_ shape: String) async throws {
         let place = Place()
         defer { place.remove() }
-        let text = shape == "damaged"
-            ? "[{\"name\":\"notes.txt\",\"size\":"
-            : #"{"version":2,"entries":[{"name":"notes.txt","size":5,"sha256":"2cf2","saved":0,"tags":["week 3"]}]}"#
+        let text = shape == "damaged" ? #"{"version":1,"entries":[{"name":"notes.txt","size":"# : "[1, 2, 3]"
         try place.writeLedger(text)
 
         let entry = try await place.store.save(try place.download("a"), as: "a.pdf")
@@ -245,8 +250,74 @@ struct SavedDownloadsTests {
         let files = place.supportFiles()
         #expect(files.count == 2)
         #expect(files.values.contains(text))
-        let recorded: [SavedDownloads.Entry] = try place.ledger.load()
+        let recorded = try (place.ledger.load() as SavedDownloadFiles.Ledger<SavedDownloads.Entry>).entries
         #expect(recorded == [entry])
+    }
+
+    @Test func aRecordStaysWhenItsFileCannotBeLookedAtEvenIfItSeemsGone() async throws {
+        let place = Place()
+        defer { place.remove() }
+        let entry = try await place.store.save(try place.download("hello"), as: "notes.txt")
+        try FileManager.default.removeItem(at: try #require(place.store.url(of: entry)))
+        place.reads.failValues(true)
+
+        #expect(try await place.store.entries().map(\.name) == ["notes.txt"])
+
+        place.reads.failValues(false)
+        #expect(try await place.store.entries().isEmpty)
+    }
+
+    @Test func aRecordThatCannotBeDecodedIsLeftOutAndTheRestKept() async throws {
+        let place = Place()
+        defer { place.remove() }
+        _ = try place.usersOwn("hello", named: "notes.txt")
+        try place.writeLedger("""
+            {"version":1,"entries":[{"name":3},\(Self.notesRecord)]}
+            """)
+
+        #expect(try await place.store.entries().map(\.name) == ["notes.txt"])
+    }
+
+    @Test func aLedgerFromANewerAppIsNeitherWrittenOverNorActedOn() async throws {
+        let place = Place()
+        defer { place.remove() }
+        _ = try place.usersOwn("hello", named: "notes.txt")
+        let text = #"{"version":2,"entries":[{"name":"notes.txt","size":5,"sha256":"\#(Self.notesHash)","saved":0,"tags":["week 3"]}]}"#
+        try place.writeLedger(text)
+
+        #expect(try await place.store.entries().isEmpty)
+        let saved = try await place.store.save(try place.download("a"), as: "a.pdf")
+        await place.store.clear()
+
+        #expect(place.exists("notes.txt") && place.exists(saved.name))
+        #expect(place.supportFiles() == ["saved_downloads.json": text])
+    }
+
+    @Test func aLedgerThatCannotBeWrittenLeavesTheDownloadWhereItWas() async throws {
+        let place = Place()
+        defer { place.remove() }
+        try FileManager.default.createDirectory(at: place.support, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: place.support.path(percentEncoded: false))
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: place.support.path(percentEncoded: false)) }
+        let download = try place.download("a")
+
+        await #expect(throws: (any Error).self) { try await place.store.save(download, as: "a.pdf") }
+
+        #expect(FileManager.default.fileExists(atPath: download.path(percentEncoded: false)))
+        #expect(!place.exists("a.pdf"))
+    }
+
+    @Test func aLongExtensionCountsAsPartOfTheName() async throws {
+        let place = Place()
+        defer { place.remove() }
+        let name = MoodleFileDownloads.safeName("notes." + String(repeating: "x", count: 300))
+
+        let first = try await place.store.save(try place.download("a"), as: name)
+        let second = try await place.store.save(try place.download("b"), as: name)
+
+        #expect(name.utf8.count <= 255 && name.hasPrefix("notes.x"))
+        #expect(second.name.utf8.count <= 255 && second.name != first.name)
+        #expect(place.exists(first.name) && place.exists(second.name))
     }
 
     @Test func aLedgerThatCannotBeOpenedStopsASaveBeforeTheFileMoves() async throws {

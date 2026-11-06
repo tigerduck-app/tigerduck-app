@@ -27,11 +27,20 @@ actor SavedDownloads {
     nonisolated let folder: URL
     private let ledger: SavedDownloadFiles
     private let hash: @Sendable (URL) throws -> String
+    private let values: @Sendable (URL) throws -> URLResourceValues
 
-    init(folder: URL, ledger: SavedDownloadFiles, hash: @escaping @Sendable (URL) throws -> String = SavedDownloads.sha256(of:)) {
+    init(
+        folder: URL,
+        ledger: SavedDownloadFiles,
+        hash: @escaping @Sendable (URL) throws -> String = SavedDownloads.sha256(of:),
+        values: @escaping @Sendable (URL) throws -> URLResourceValues = {
+            try $0.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
+        }
+    ) {
         self.folder = folder
         self.ledger = ledger
         self.hash = hash
+        self.values = values
     }
 
     nonisolated func url(of entry: Entry) -> URL? {
@@ -40,24 +49,37 @@ actor SavedDownloads {
         return folder.appending(path: name, directoryHint: .notDirectory)
     }
 
+    /// The record is written before the file moves and taken back if the move fails, so a file
+    /// never lands without one. Under a ledger from a newer app the file lands unrecorded, the
+    /// student's to keep.
     func save(_ file: URL, as name: String, at date: Date = .now) throws -> Entry {
-        let recorded: [Entry] = try ledger.load()
+        let current: SavedDownloadFiles.Ledger<Entry> = try ledger.load()
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         let sha256 = try hash(file)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let free = Self.freeName(for: name) { FileManager.default.fileExists(atPath: folder.appending(path: $0).path(percentEncoded: false)) }
         let target = folder.appending(path: free, directoryHint: .notDirectory)
-        try FileManager.default.moveItem(at: file, to: target)
-        let modified = try? target.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-        let entry = Entry(name: free, size: size, sha256: sha256, saved: date, modified: modified)
-        ledger.save(recorded.filter { $0.name != free } + [entry])
+        var entry = Entry(name: free, size: size, sha256: sha256, saved: date)
+        let others = current.entries.filter { $0.name != free }
+        if !current.isNewer { try ledger.save(others + [entry]) }
+        do {
+            try FileManager.default.moveItem(at: file, to: target)
+        } catch {
+            if !current.isNewer { try? ledger.save(others) }
+            throw error
+        }
+        guard !current.isNewer else { return entry }
+        entry.modified = try? values(target).contentModificationDate
+        try? ledger.save(others + [entry])
         return entry
     }
 
     /// A record whose file is gone or changed leaves the ledger, and the file stays the student's.
     /// One whose file cannot be read right now stays as it is.
     func entries() throws -> [Entry] {
-        let recorded: [Entry] = try ledger.load()
+        let current: SavedDownloadFiles.Ledger<Entry> = try ledger.load()
+        guard !current.isNewer else { return [] }
+        let recorded = current.entries
         let kept = recorded.compactMap { entry -> Entry? in
             switch check(entry) {
             case .same(let current): current
@@ -65,7 +87,7 @@ actor SavedDownloads {
             case .changed: nil
             }
         }
-        if kept != recorded { ledger.save(kept) }
+        if kept != recorded { try? ledger.save(kept) }
         return kept.sorted { $0.saved > $1.saved }
     }
 
@@ -83,7 +105,8 @@ actor SavedDownloads {
     }
 
     private func remove(where isRemoved: (Entry) -> Bool) {
-        guard let recorded: [Entry] = try? ledger.load() else { return }
+        guard let current: SavedDownloadFiles.Ledger<Entry> = try? ledger.load(), !current.isNewer else { return }
+        let recorded = current.entries
         let left = recorded.compactMap { entry -> Entry? in
             guard isRemoved(entry) else { return entry }
             switch check(entry) {
@@ -94,16 +117,16 @@ actor SavedDownloads {
                 return nil
             }
         }
-        if left != recorded { ledger.save(left) }
+        if left != recorded { try? ledger.save(left) }
     }
 
     private func check(_ entry: Entry) -> Check {
         guard let file = url(of: entry) else { return .changed }
         let values: URLResourceValues
         do {
-            values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
+            values = try self.values(file)
         } catch {
-            return FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) ? .unreadable : .changed
+            return Self.isMissing(error) ? .changed : .unreadable
         }
         guard values.isRegularFile == true, values.fileSize == entry.size else { return .changed }
         if let modified = values.contentModificationDate, modified == entry.modified { return .same(entry) }
@@ -114,15 +137,20 @@ actor SavedDownloads {
         return .same(current)
     }
 
+    private static func isMissing(_ error: any Error) -> Bool {
+        let error = error as NSError
+        return error.domain == NSCocoaErrorDomain && [NSFileReadNoSuchFileError, NSFileNoSuchFileError].contains(error.code)
+            || error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT)
+    }
+
     /// The Files app numbers a copy whose name is taken: "notes.pdf", then "notes 2.pdf".
     nonisolated static func freeName(for name: String, isTaken: (String) -> Bool) -> String {
-        let stem = (name as NSString).deletingPathExtension
-        let suffix = (name as NSString).pathExtension
+        let (stem, suffix) = MoodleFileDownloads.nameParts(name)
         var candidate = name
         var number = 1
         while isTaken(candidate) {
             number += 1
-            candidate = MoodleFileDownloads.fileName(stem, " \(number)" + (suffix.isEmpty ? "" : ".\(suffix)"))
+            candidate = MoodleFileDownloads.fileName(stem, " \(number)" + suffix)
         }
         return candidate
     }
