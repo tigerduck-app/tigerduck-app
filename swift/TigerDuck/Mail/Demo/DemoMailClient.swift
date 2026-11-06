@@ -136,12 +136,15 @@ actor DemoMailClient: MailClient {
             switch flag {
             case .seen: messages[index].summary.isSeen = on
             case .answered: messages[index].summary.isAnswered = on
+            case .flagged: messages[index].summary.flagged = on
             case .deleted: messages[index].summary.isDeleted = on
             case .draft: break
             }
         }
         folders[folder] = messages
     }
+
+    func storesFlagged(folder: String) async throws -> Bool { true }
 
     func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {
         try assertUIDValidity(expectedUIDValidity)

@@ -51,6 +51,8 @@ jobs:
               TigerDuckTests/MailComposeSuggestionScreenTests
               TigerDuckTests/MailHTMLSanitizerTests/aFixedImageBoxKeepsItsRatioOnThePage(pageWidth:)
               TigerDuckTests/MailMuteSettingsScreenTests
+              TigerDuckTests/MailSwipeScreenTests
+              TigerDuckTests/MailRouteSignOutTests
               TigerDuckTests/MailSearchFooterScreenTests
               TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
               TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()

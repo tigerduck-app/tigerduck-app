@@ -35,6 +35,7 @@ actor FakeMailClient: MailClient {
     var rawSourceError: MailClientError?
     var copyError: MailClientError?
     var setFlagError: MailClientError?
+    var foldersStoringFlagged: Set<String>?
     var deletedUIDsError: MailClientError?
     var undeletedUIDsError: MailClientError?
     var createFolderError: MailClientError?
@@ -71,6 +72,10 @@ actor FakeMailClient: MailClient {
     func holdNext(_ command: String) {
         arrivedCommands.remove(command)
         heldCommands.insert(command)
+    }
+
+    func stopHolding(_ command: String) {
+        heldCommands.remove(command)
     }
 
     func release(_ command: String) {
@@ -260,11 +265,18 @@ actor FakeMailClient: MailClient {
             switch flag {
             case .seen: messages[index].summary.isSeen = on
             case .answered: messages[index].summary.isAnswered = on
+            case .flagged: messages[index].summary.flagged = on
             case .deleted: messages[index].summary.isDeleted = on
             case .draft: break
             }
         }
         folders[folder] = messages
+    }
+
+    func storesFlagged(folder: String) async throws -> Bool {
+        calls.append("storesFlagged \(folder)")
+        await gate("storesFlagged")
+        return foldersStoringFlagged?.contains(folder) ?? true
     }
 
     func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {

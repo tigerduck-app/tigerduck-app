@@ -175,10 +175,7 @@ struct MailMessageView: View {
     }
 
     private func startCompose(_ mode: MailComposeMode) {
-        compose = MailComposeContext(
-            mode: mode, folder: viewModel.route.folder, uid: viewModel.route.uid, original: viewModel.original,
-            attachments: mode == .forward ? viewModel.detail?.attachments ?? [] : []
-        )
+        compose = viewModel.composeContext(mode)
     }
 
     private func openLink(_ href: String) {

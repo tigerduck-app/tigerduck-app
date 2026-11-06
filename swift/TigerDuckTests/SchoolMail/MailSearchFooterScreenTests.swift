@@ -16,7 +16,8 @@ struct MailSearchFooterScreenTests {
 
         var body: some View {
             List {
-                MailListRowsSection(viewModel: model, accentColor: .blue, onOpen: { _ in })
+                MailListRowsSection(viewModel: model, actions: MailRowActions(), accentColor: .blue,
+                                    policy: VisualStylePolicy(preset: .default), onOpen: { _ in })
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -156,7 +157,8 @@ struct MailListFooterTests {
         let rowsChanged = OSAllocatedUnfairLock(initialState: false)
         let footerChanged = OSAllocatedUnfairLock(initialState: false)
         withObservationTracking {
-            _ = MailListRowsSection(viewModel: h.model, accentColor: .blue, onOpen: { _ in }).body
+            _ = MailListRowsSection(viewModel: h.model, actions: MailRowActions(), accentColor: .blue,
+                                    policy: VisualStylePolicy(preset: .default), onOpen: { _ in }).body
         } onChange: { rowsChanged.withLock { $0 = true } }
         withObservationTracking {
             _ = MailListFooter(viewModel: h.model, hasRows: true).body

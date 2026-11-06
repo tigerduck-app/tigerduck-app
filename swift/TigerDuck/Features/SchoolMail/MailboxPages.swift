@@ -7,6 +7,7 @@ struct MailFolderChoice: Equatable {
     var selection: MailFolderSelection = .real(MailConstants.inbox)
     var pickedByUser = false
     var unreadOnly = false
+    var storesFlagged: [String: Bool] = [:]
 
     var targets: [String] { selection.targets(roles: roles, others: others) }
 
@@ -22,6 +23,7 @@ struct MailListStatus: Equatable {
     var isRefreshing = false
     var isPaginating = false
     var sentCopyNotice: String?
+    var actionError: String?
 }
 
 struct MailListLoads {
@@ -35,21 +37,25 @@ struct MailListLoads {
 }
 
 struct MailboxPages {
-    private enum Edit {
+    enum Edit {
         case seen(Bool)
+        case flagged(Bool)
         case removed
     }
 
-    private struct MailKey: Hashable {
+    private enum Field { case seen, flagged, removed }
+
+    private struct EditKey: Hashable {
         var folder: String
         var uid: UInt32
+        var field: Field
     }
 
     private(set) var pages: [String: MailFolderPage] = [:]
     private(set) var rows: [MailListRow] = []
     var cachedNotRefreshed: Set<String> = []
     private(set) var lastEdit = EditToken()
-    private var edits: [MailKey: (token: EditToken, edit: Edit)] = [:]
+    private var edits: [EditKey: (token: EditToken, edit: Edit)] = [:]
 
     subscript(folder: String) -> MailFolderPage? {
         get { pages[folder] }
@@ -68,10 +74,10 @@ struct MailboxPages {
         edits = edits.filter { $0.key.folder != folder }
     }
 
-    mutating func markSeen(folder: String, uid: UInt32, seen: Bool) {
-        record(.seen(seen), folder: folder, uid: uid)
+    mutating func mark(_ edit: Edit, folder: String, uid: UInt32) {
+        record(edit, folder: folder, uid: uid)
         if var page = pages[folder], let index = page.summaries.firstIndex(where: { $0.uid == uid }) {
-            page.summaries[index].isSeen = seen
+            page.summaries[index].apply(edit)
             pages[folder] = page
         }
     }
@@ -84,17 +90,21 @@ struct MailboxPages {
 
     private mutating func record(_ edit: Edit, folder: String, uid: UInt32) {
         lastEdit.recordUserEdit()
-        edits[MailKey(folder: folder, uid: uid)] = (lastEdit, edit)
+        let field: Field = switch edit {
+        case .seen: .seen
+        case .flagged: .flagged
+        case .removed: .removed
+        }
+        edits[EditKey(folder: folder, uid: uid, field: field)] = (lastEdit, edit)
     }
 
     func replayingEdits(onto page: MailFolderPage, madeAfter token: EditToken) -> MailFolderPage {
         var page = page
         for (key, entry) in edits where key.folder == page.folder && entry.token > token {
-            switch entry.edit {
-            case .seen(let seen):
-                if let index = page.summaries.firstIndex(where: { $0.uid == key.uid }) { page.summaries[index].isSeen = seen }
-            case .removed:
+            if case .removed = entry.edit {
                 page = Self.removing(key.uid, from: page)
+            } else if let index = page.summaries.firstIndex(where: { $0.uid == key.uid }) {
+                page.summaries[index].apply(entry.edit)
             }
         }
         return page
@@ -161,7 +171,7 @@ struct MailboxPages {
         var collected: [MailListRow] = []
         for folder in folders {
             guard let page = pages[folder] else { continue }
-            collected += page.summaries.map { MailListRow(folder: folder, summary: $0) }
+            collected += page.summaries.map { MailListRow(folder: folder, uidValidity: page.uidValidity, summary: $0) }
         }
         rows = newestFirst ? collected.sorted(by: Self.newestFirst) : collected
     }
@@ -185,6 +195,16 @@ struct MailboxPages {
         if left != right { return left > right }
         if lhs.folder != rhs.folder { return lhs.folder < rhs.folder }
         return lhs.uid > rhs.uid
+    }
+}
+
+extension MailSummary {
+    mutating func apply(_ edit: MailboxPages.Edit) {
+        switch edit {
+        case .seen(let seen): isSeen = seen
+        case .flagged(let flagged): self.flagged = flagged
+        case .removed: break
+        }
     }
 }
 #endif

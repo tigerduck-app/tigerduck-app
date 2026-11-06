@@ -587,7 +587,7 @@ struct MailListViewModelTests {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
         let unread = try #require(h.model.rows.first { !$0.summary.isSeen })
-        await h.model.toggleRead(unread)
+        await MailListFlags.toggle(.seen, of: unread, list: h.model)
         #expect(h.model.rows.first { $0.uid == unread.uid }?.summary.isSeen == true)
         #expect(await h.fake.calls.contains("setFlag seen true [\(unread.uid)]"))
     }
@@ -817,7 +817,7 @@ struct MailListViewModelTests {
         await h.model.load()
         let unread = try #require(h.model.rows.first { !$0.summary.isSeen })
         await h.fake.update { $0.setFlagError = .folderChanged }
-        await h.model.toggleRead(unread)
+        await MailListFlags.toggle(.seen, of: unread, list: h.model)
         #expect(h.model.rows.first { $0.uid == unread.uid }?.summary.isSeen == unread.summary.isSeen)
         #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 2)
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == h.model.rows.count)
@@ -833,7 +833,7 @@ struct MailListViewModelTests {
             $0.setFlagError = .folderChanged
             $0.pageError = .unreachable
         }
-        await h.model.toggleRead(unread)
+        await MailListFlags.toggle(.seen, of: unread, list: h.model)
         #expect(h.cache.loadPage(folder: "INBOX") == nil)
     }
 
@@ -1227,14 +1227,14 @@ struct MailListViewModelTests {
 
         let inboxRow = try #require(h.model.rows.first { $0.folder == "INBOX" && $0.uid == 3 })
         #expect(inboxRow.summary.isSeen == false)
-        await h.model.toggleRead(inboxRow)
+        await MailListFlags.toggle(.seen, of: inboxRow, list: h.model)
         #expect(h.model.rows.first { $0.id == inboxRow.id }?.summary.isSeen == true)
         #expect(h.model.rows.first { $0.folder == Self.sent && $0.uid == 3 }?.summary.isSeen == false)
         #expect(await h.fake.folders["INBOX"]?.first { $0.summary.uid == 3 }?.summary.isSeen == true)
         #expect(await h.fake.folders[Self.sent]?.first { $0.summary.uid == 3 }?.summary.isSeen == false)
 
         let sentRow = try #require(h.model.rows.first { $0.folder == Self.sent && $0.uid == 1 })
-        await h.model.toggleRead(sentRow)
+        await MailListFlags.toggle(.seen, of: sentRow, list: h.model)
         #expect(h.model.rows.first { $0.id == sentRow.id }?.summary.isSeen == true)
         #expect(await h.fake.folders[Self.sent]?.first { $0.summary.uid == 1 }?.summary.isSeen == true)
         #expect(await h.fake.folders["INBOX"]?.first { $0.summary.uid == 1 }?.summary.isSeen == false)
@@ -1264,6 +1264,7 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.rows).last == "收1")
 
         last = try #require(h.model.rows.last)
+        await h.model.background.flagStorage.wait()
         let before = await h.fake.calls.count
         await h.model.loadMoreIfNeeded(after: last)
         #expect(await h.fake.calls.count == before)
