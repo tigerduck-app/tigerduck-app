@@ -98,6 +98,20 @@ private struct MailSendHoldCapsule: View {
     }
 }
 
+enum MailReopenTurn: Equatable {
+    case now
+    case afterActiveWindows
+    case never
+
+    init(_ state: UIScene.ActivationState?) {
+        switch state {
+        case .foregroundActive: self = .now
+        case .foregroundInactive, nil: self = .afterActiveWindows
+        default: self = .never
+        }
+    }
+}
+
 extension View {
     func heldMailHost(_ hold: MailSendHold = .shared) -> some View {
         modifier(MailHeldMailHost(hold: hold))
@@ -109,6 +123,8 @@ private struct MailHeldMailHost: ViewModifier {
         let next: ObjectIdentifier?
         let activations: Int
     }
+
+    private static let inactiveWindowDelay: Duration = .milliseconds(500)
 
     let hold: MailSendHold
     @State private var shown: MailComposeViewModel?
@@ -127,12 +143,16 @@ private struct MailHeldMailHost: ViewModifier {
     }
 
     private func showNext() async {
-        guard shown == nil, !hold.reopened.isEmpty else { return }
+        guard shown == nil, let next = hold.reopened.first else { return }
         while hostWindow.isPresenting, !Task.isCancelled {
             await hostWindow.presentationsClosed()
         }
-        let scene = hostWindow.window?.windowScene?.activationState
-        guard !Task.isCancelled, scene.map({ $0 == .foregroundActive || $0 == .foregroundInactive }) ?? true else { return }
+        switch MailReopenTurn(hostWindow.window?.windowScene?.activationState) {
+        case .now: break
+        case .afterActiveWindows: try? await AppClock.sleep(until: ContinuousClock.now + Self.inactiveWindowDelay)
+        case .never: return
+        }
+        guard !Task.isCancelled, shown == nil, hold.reopened.first === next else { return }
         shown = hold.takeReopened()
     }
 }
