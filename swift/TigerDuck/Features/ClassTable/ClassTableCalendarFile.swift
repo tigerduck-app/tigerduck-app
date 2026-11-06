@@ -1,10 +1,7 @@
 import Foundation
 import TigerDuckCore
 
-/// The class table on screen as an iCalendar file (RFC 5545) for a calendar app to import: each
-/// meeting of a course repeats weekly through its term, less the days a holiday takes its class.
 enum ClassTableCalendarFile {
-    /// A meeting's first class a holiday leaves, and the course it belongs to.
     struct Event {
         let uid: String
         let summary: String
@@ -12,20 +9,13 @@ enum ClassTableCalendarFile {
         let description: String
         let start: Date
         let end: Date
-        /// The starts of the later meetings a holiday takes.
         let excluded: [Date]
     }
 
-    /// The table's courses, not the clubs drawn over its grid. Someone else's table gets uids of its
-    /// own, so a calendar that imports both tables keeps both.
     static func events(of table: ClassTableViewModel, in term: SchoolCalendar.Term) -> [Event] {
         events(courses: table.courses, term: term, owner: table.shownPerson?.id.uuidString)
     }
 
-    /// One event per meeting, a run of consecutive periods of a course on a weekday; a period with no
-    /// time on the timetable makes none, and nor does a day the grid has no column for or a meeting
-    /// the term never holds. A series starts at its first meeting a holiday leaves, since RFC 5545
-    /// counts the start as a meeting even when an EXDATE names it.
     static func events(courses: [CourseStore.Course], term: SchoolCalendar.Term, owner: String?) -> [Event] {
         let calendar = TaipeiTime.calendar
         let until = lastMoment(of: term)
@@ -35,8 +25,12 @@ enum ClassTableCalendarFile {
                 return CourseMeeting.meetings(of: course, weekday: weekday, on: firstDay, changes: .empty).compactMap { meeting -> Event? in
                     let starts = sequence(first: meeting.start) { calendar.date(byAdding: .day, value: 7, to: $0) }
                         .prefix(while: { $0 <= until })
+                    // RFC 5545 counts DTSTART as a meeting even when an EXDATE names it, so a series starts
+                    // at the first meeting a holiday leaves.
                     guard let held = starts.firstIndex(where: term.quietDays.isClassDay) else { return nil }
                     return Event(
+                        // A calendar keeps one event per UID (RFC 5545 §3.8.4.7), so another student's
+                        // table adds its owner to them.
                         uid: "\(term.code)-\(course.courseNo)-\(weekday)-\(meeting.periods[0])"
                             + (owner.map { "-\($0)" } ?? "") + "@tigerduck.app",
                         summary: course.displayName,
@@ -51,8 +45,6 @@ enum ClassTableCalendarFile {
         }
     }
 
-    /// Whether any course has a timed period on one of the grid's days. The menu asks this, not
-    /// `events`, each time it draws.
     static func hasTimedMeeting(in courses: [CourseStore.Course]) -> Bool {
         courses.contains { course in
             course.schedule.contains { weekday, periods in
@@ -61,7 +53,6 @@ enum ClassTableCalendarFile {
         }
     }
 
-    /// The grid's columns, Monday to Sunday.
     private static let weekdays = 1...7
 
     private static func lastMoment(of term: SchoolCalendar.Term) -> Date {
@@ -70,8 +61,6 @@ enum ClassTableCalendarFile {
             .addingTimeInterval(-1) ?? term.days.end
     }
 
-    /// The file: each event repeats weekly to the term's last day, except on the days it excludes.
-    /// CRLF line ends, long lines folded, and times in Taipei under the zone they name.
     static func text(of events: [Event], in term: SchoolCalendar.Term, now: Date) -> String {
         let zone = TaipeiTime.timeZone.identifier
         let until = lastMoment(of: term)

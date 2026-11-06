@@ -16,7 +16,6 @@ struct ClassTableCalendarFileTests {
 
     /// Monday 14 September 2026 to Friday 8 January 2027.
     static let days = QuietDayCalendar.Span(start: day(9, 14), end: day(1, 8, year: 2027))
-    /// A Wednesday off, and Wednesday to Friday off a week later, which the user keeps classes on.
     static let holidays = [
         QuietDayCalendar.Holiday(id: 1, span: .init(start: day(9, 30), end: day(9, 30))),
         QuietDayCalendar.Holiday(id: 2, span: .init(start: day(10, 7), end: day(10, 9))),
@@ -25,7 +24,6 @@ struct ClassTableCalendarFileTests {
         code: "1151", days: days, quietDays: QuietDayCalendar(terms: [days], holidays: holidays, optedIn: [2])
     )
 
-    /// Wednesday 3 and 4 in one room, 6 in another.
     static func structures() -> SDCourse {
         SDCourse(
             courseNo: "CS1001301", courseName: "資料結構", instructor: "王大明", classroom: "TR-313, IB-201",

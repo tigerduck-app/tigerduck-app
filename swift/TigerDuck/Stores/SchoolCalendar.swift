@@ -4,7 +4,6 @@ import TigerDuckCore
 enum SchoolCalendar {
     typealias Changes = CourseChanges
 
-    /// A term's days and the days in them with no classes.
     struct Term {
         let code: String
         let days: QuietDayCalendar.Span
@@ -22,8 +21,6 @@ enum SchoolCalendar {
 
     static func holidayID(for event: SDCalendarEvent) -> Int? { AcademicCalendar.holidayID(for: event) }
 
-    /// Term `code` as the academic calendar has it, or nil when it does not. The holidays the user
-    /// still has classes on count only on the user's own table.
     static func term(_ code: String, ownTable: Bool) -> Term? {
         let store = AcademicCalendarStore.shared
         return term(code, ownTable: ownTable, calendar: store.calendar, optedIn: store.optedInHolidayIDs)

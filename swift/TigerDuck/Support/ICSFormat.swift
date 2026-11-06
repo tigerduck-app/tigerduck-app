@@ -1,8 +1,6 @@
 import Foundation
 import TigerDuckCore
 
-/// The text forms of iCalendar (RFC 5545) that the school calendar's reader and the class table's
-/// file share.
 enum ICSFormat {
     static let date = formatter("yyyyMMdd", timeZone: TaipeiTime.timeZone)
     static let dateTime = formatter("yyyyMMdd'T'HHmmss", timeZone: TaipeiTime.timeZone)
@@ -47,8 +45,8 @@ enum ICSFormat {
         return out
     }
 
-    /// A TEXT value as RFC 5545 §3.3.11 writes it: backslashes, semicolons and commas escaped, a line
-    /// break as `\n`, and the other control characters, which TEXT cannot hold, left out.
+    /// RFC 5545 §3.3.11: TEXT escapes a backslash, a semicolon and a comma, writes a line break as
+    /// `\n`, and cannot hold the other control characters.
     nonisolated static func escaped(_ text: String) -> String {
         var out = ""
         for scalar in text.replacingOccurrences(of: "\r\n", with: "\n").unicodeScalars {
@@ -63,8 +61,8 @@ enum ICSFormat {
         return out
     }
 
-    /// A content line folded as RFC 5545 §3.1 asks: past 75 octets it goes on after a line break and a
-    /// space, broken between characters so no UTF-8 sequence is split.
+    /// RFC 5545 §3.1: a content line past 75 octets goes on after a CRLF and a space, and a fold
+    /// must not split a UTF-8 sequence.
     nonisolated static func folded(_ line: String) -> String {
         var out = ""
         var octets = 0

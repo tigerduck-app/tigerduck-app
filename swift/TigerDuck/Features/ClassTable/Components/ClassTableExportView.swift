@@ -83,9 +83,7 @@ enum ClassTableExporter {
         return await save(named: name) { image.pngData() }
     }
 
-    /// Writes what `data` makes to a new folder in the temporary directory,
-    /// off the main actor, and returns its URL, or `nil` when nothing could be
-    /// made or written. Hand the URL to ``discard(_:)`` once it has been shared.
+    /// Hand the URL to ``discard(_:)`` once it has been shared.
     nonisolated static func save(named name: String, _ data: @escaping @Sendable () -> Data?) async -> URL? {
         await Task.detached(priority: .userInitiated) { () -> URL? in
             guard let data = data() else { return nil }

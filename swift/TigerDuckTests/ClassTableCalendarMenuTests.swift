@@ -5,8 +5,6 @@ import TigerDuckCore
 import UIKit
 @testable import TigerDuck
 
-/// Opens the class table's ⋯ with a finger, as `PageMenuScreenTests` does, over the user's own table
-/// and over someone else's.
 @MainActor
 @Suite(.serialized)
 struct ClassTableCalendarMenuTests {
@@ -17,7 +15,6 @@ struct ClassTableCalendarMenuTests {
 
         var testDescription: String { rawValue }
 
-        /// The ⋯'s items in order.
         var items: [String] {
             let exports = [String(localized: "class_table_export_screenshot"), String(localized: "class_table_export_ics")]
             return switch self {
@@ -73,7 +70,6 @@ struct ClassTableCalendarMenuTests {
         let ming: ImportedPerson?
     }
 
-    /// The user's own two courses, or Ming's one, in the term the table opens on.
     private static func show(_ table: Table, in folder: Folder) throws -> Shown {
         let courses = CourseStore(folders: CacheFolders(root: folder.url.appending(path: "courses")))
         let people = ImportedClassTableStore(
