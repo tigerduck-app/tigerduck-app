@@ -71,9 +71,9 @@ final class BrowserPageUI: NSObject, WKUIDelegate {
         dialogs.ask(BrowserDialogs.Dialog(kind: kind, host: host, message: message), reply: reply)
     }
 
-    /// SwiftUI presents no alert while another presentation is up, nor once that one closes, and
-    /// UIKit presents nothing during a transition. A full-screen presentation over the browser, as
-    /// Quick Look's, and the browser closing take the web view out of its window.
+    /// SwiftUI presents no alert while another presentation is up, nor once that one closes. UIKit
+    /// presents nothing during a transition, drops a presentation it cannot make with only a console
+    /// warning, and takes a web view under a full-screen presentation, as Quick Look's, out of its window.
     private func present(_ dialog: BrowserDialogs.Dialog) {
         guard dialog == dialogs.shown else { return }
         guard var top = webView?.window?.rootViewController else { return dialogs.answer(dialog, with: nil) }
@@ -82,7 +82,9 @@ final class BrowserPageUI: NSObject, WKUIDelegate {
             _ = transition.animate(alongsideTransition: nil) { [weak self] _ in self?.present(dialog) }
             return
         }
-        top.present(alert(for: dialog), animated: true)
+        let alert = alert(for: dialog)
+        top.present(alert, animated: true)
+        if alert.presentingViewController == nil { dialogs.answer(dialog, with: nil) }
     }
 
     private func alert(for dialog: BrowserDialogs.Dialog) -> UIAlertController {

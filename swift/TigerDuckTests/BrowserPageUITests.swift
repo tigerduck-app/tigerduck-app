@@ -64,13 +64,15 @@ struct BrowserPageUITests {
         withExtendedLifetime(navigator) {}
     }
 
-    private static func show(_ pageUI: BrowserPageUI, screen: Screen = Screen.all[0]) throws -> (UIWindow, WKWebView) {
+    private static func show(
+        _ pageUI: BrowserPageUI, screen: Screen = Screen.all[0], page: UIViewController? = nil
+    ) throws -> (UIWindow, WKWebView) {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: screen.width, height: screen.height)
         window.overrideUserInterfaceStyle = screen.style
         if let textSize = screen.textSize { window.traitOverrides.preferredContentSizeCategory = textSize }
-        let page = UIViewController()
+        let page = page ?? UIViewController()
         let webView = Self.webView(pageUI, configuration: WKWebViewConfiguration())
         webView.frame = window.bounds
         page.view.addSubview(webView)
@@ -194,6 +196,22 @@ struct BrowserPageUITests {
         try await waitUntil { webView.title == "false" }
         #expect(pageUI.dialogs.shown == nil)
         withExtendedLifetime(pageUI) {}
+    }
+
+    /// UIKit drops a presentation it cannot make, with only a console warning.
+    private final class Unpresenting: UIViewController {
+        override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {}
+    }
+
+    @Test("a dialog UIKit drops instead of presenting is answered as cancelled")
+    func aDialogUIKitDropsIsCancelled() async throws {
+        let pageUI = BrowserPageUI { _, _ in }
+        let (window, webView) = try Self.show(pageUI, page: Unpresenting())
+        defer { window.isHidden = true }
+        webView.loadHTMLString("<script>document.title = String(confirm('確定要送出嗎？'))</script>", baseURL: Self.site)
+
+        try await waitUntil { webView.title == "false" }
+        #expect(pageUI.dialogs.shown == nil)
     }
 
     enum Shot: String, CaseIterable {
