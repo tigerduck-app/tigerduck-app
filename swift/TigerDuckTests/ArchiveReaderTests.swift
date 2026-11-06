@@ -152,6 +152,14 @@ struct ArchiveReaderTests {
             let problem = Self.problem { _ = try ArchiveReader.extract(readme, from: archive, into: Self.folder(), limits: limits) }
             #expect(problem == .tooLarge, "\(name)")
         }
+        // A GNU dumpdir is a directory with data.
+        #expect(Self.problem { _ = try ArchiveReader.list(Self.fixture("archive-dumpdir.tar.bz2"), limits: limits) } == .tooLarge)
+    }
+
+    @Test("an entry declaring the largest size there is fails cleanly when passed over",
+          arguments: ["archive-huge-size.zip", "archive-huge-size.rar"])
+    func hugeSizes(name: String) throws {
+        #expect(Self.problem { _ = try ArchiveReader.list(Self.fixture(name)) } == .broken)
     }
 
     @Test("a zip after other bytes has its central directory measured as well")
@@ -164,8 +172,19 @@ struct ArchiveReaderTests {
         #expect(Self.problem { _ = try ArchiveReader.list(prefixed, limits: ArchiveLimits(maxZipDirectoryBytes: 64)) } == .tooMany)
     }
 
+    @Test("a zip64 directory is measured from where its end record says it starts, which can't be past that record")
+    func zip64Directory() throws {
+        let zip64 = try Self.fixture("archive-zip64.zip")
+        #expect(try ArchiveReader.list(zip64).items.map(\.path) == ["README.md"])
+        #expect(Self.problem { _ = try ArchiveReader.list(zip64, limits: ArchiveLimits(maxZipDirectoryBytes: 100)) } == .tooMany)
+        #expect(Self.problem { _ = try ArchiveReader.list(Self.fixture("archive-zip64-backwards.zip")) } == .broken)
+    }
+
     @Test("a 7z declaring more entries or header bytes than a preview lists is refused before reading them",
-          arguments: ["archive-many-entries.7z", "archive-big-header.7z"])
+          arguments: [
+              "archive-many-entries.7z", "archive-big-header.7z", "archive-big-plain-header.7z",
+              "archive-many-folders.7z", "archive-many-pack-streams.7z",
+          ])
     func sevenZipTables(name: String) throws {
         #expect(Self.problem { _ = try ArchiveReader.list(Self.fixture(name)) } == .tooMany)
     }

@@ -119,6 +119,26 @@ struct ArchiveScreensTests {
         }
     }
 
+    @Test("an archive opened over another releases the other's folder, and closing it releases its own")
+    func replaced() async throws {
+        try await withAccessibilityAutomation {
+            let choice = PreviewChoice()
+            let window = try ClubScreensTests.show(PreviewHost(choice: choice), look: Self.looks[0])
+            defer { window.isHidden = true }
+            let root = ArchiveCache.shared.root
+            func sessions() -> [String] { (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? [] }
+            choice.url = try ArchiveReaderTests.fixture("lab4_starter.zip")
+            try await waitUntil { Self.barTitle(in: window) == "lab4_starter.zip" && sessions().count == 1 }
+            let first = sessions()
+            choice.url = try ArchiveReaderTests.fixture("archive-sample.zip")
+            try await waitUntil { Self.barTitle(in: window) == "archive-sample.zip" && sessions().count == 1 && sessions() != first }
+            let close = try #require(accessibilityElement(labeled: String(localized: "action_close"), in: window))
+            _ = close.accessibilityActivate()
+            try await waitUntil { window.rootViewController?.presentedViewController == nil && sessions().isEmpty }
+            #expect(choice.url == nil)
+        }
+    }
+
     @Test("files locked by a password show a lock and say why", arguments: looks)
     func locked(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
@@ -132,6 +152,19 @@ struct ArchiveScreensTests {
             #expect(accessibilityElement(labeled: "README.md", in: window)?.accessibilityValue?.contains(reason) == true)
             try Self.staysInWindow(["docs", "README.md"], in: window)
         }
+    }
+}
+
+@Observable
+private final class PreviewChoice {
+    var url: URL?
+}
+
+private struct PreviewHost: View {
+    @Bindable var choice: PreviewChoice
+
+    var body: some View {
+        Color.clear.filePreview($choice.url)
     }
 }
 #endif

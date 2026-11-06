@@ -6,7 +6,8 @@ Python's standard library, 7z with a local 7-Zip (`7z`, p7zip 17 or later), and 
 free tool writes, by hand as stored (uncompressed) RAR 5 and RAR 4 archives following RARLAB's
 format notes (https://www.rarlab.com/technote.htm). Two 7z archives then have their decoder's
 memory request raised past what the app allows, with the header checksums fixed up after,
-and two more 7z headers are written by hand to declare more entries and header bytes than it lists.
+and more 7z headers are written by hand to declare more entries and header bytes than it lists.
+Zips with zip64 records and entries declaring the largest size there is are written by hand too.
 
     python3 tools/make_archive_fixtures.py
 """
@@ -222,16 +223,22 @@ def write_7z() -> None:
 
 def write_bombs() -> None:
     """A tar.bz2 and a solid 7z whose first entry, 64 MiB of zeros, packs into a few kilobytes,
-    so reaching README.md after it means unpacking all of it. 7-Zip stores files in name order."""
+    so reaching README.md after it means unpacking all of it. 7-Zip stores files in name order.
+    A second tar.bz2 carries the zeros in a GNU dumpdir ('D'), a directory with data."""
     zeros = bytes(64 << 20)
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:bz2", format=tarfile.PAX_FORMAT) as archive:
-        for name, data in [("00-zeros.bin", zeros), ("README.md", README)]:
-            info = tarfile.TarInfo(name)
-            info.size = len(data)
-            info.mtime = EPOCH
-            archive.addfile(info, io.BytesIO(data))
-    (OUT / "archive-bomb.tar.bz2").write_bytes(buffer.getvalue())
+    for name, kind, tar_format in [
+        ("archive-bomb.tar.bz2", tarfile.REGTYPE, tarfile.PAX_FORMAT),
+        ("archive-dumpdir.tar.bz2", b"D", tarfile.GNU_FORMAT),
+    ]:
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:bz2", format=tar_format) as archive:
+            for entry, data, entry_kind in [("00-zeros.bin", zeros, kind), ("README.md", README, tarfile.REGTYPE)]:
+                info = tarfile.TarInfo(entry)
+                info.type = entry_kind
+                info.size = len(data)
+                info.mtime = EPOCH
+                archive.addfile(info, io.BytesIO(data))
+        (OUT / name).write_bytes(buffer.getvalue())
     with tempfile.TemporaryDirectory() as tmp:
         stage = Path(tmp)
         for name, data in [("00-zeros.bin", zeros), ("README.md", README)]:
@@ -254,10 +261,11 @@ def number_7z(value: int) -> bytes:
     return b"\xff" + value.to_bytes(8, "little")
 
 
-def plain_7z(name: str, packed: bytes, header: bytes) -> None:
+def plain_7z(name: str, packed: bytes, header: bytes, declared: int | None = None) -> None:
     """A 7z of the packed bytes `packed` followed by `header`, written as is, with the start
-    header's offsets and checksums."""
-    start = struct.pack("<QQI", len(packed), len(header), zlib.crc32(header))
+    header's offsets and checksums. `declared` claims a header size other than the bytes written."""
+    size = len(header) if declared is None else declared
+    start = struct.pack("<QQI", len(packed), size, zlib.crc32(header))
     signature = b"7z\xbc\xaf\x27\x1c\x00\x04" + struct.pack("<I", zlib.crc32(start))
     (OUT / name).write_bytes(signature + start + packed + header)
 
@@ -275,6 +283,59 @@ def write_7z_tables() -> None:
         + b"\x00"
     )
     plain_7z("archive-big-header.7z", stream, header)
+    # A plain kHeader claiming one byte more than 16 MiB.
+    plain_7z("archive-big-plain-header.7z", b"", b"\x01", declared=(16 << 20) + 1)
+    # kEncodedHeader's kUnPackInfo and kHeader's kMainStreamsInfo with kPackInfo, each declaring
+    # one folder or packed stream more than 100,000, in a header claiming 1 MiB.
+    plain_7z("archive-many-folders.7z", b"", b"\x17\x07\x0b" + number_7z(100_001), declared=1 << 20)
+    plain_7z(
+        "archive-many-pack-streams.7z", b"", b"\x01\x04\x06" + number_7z(0) + number_7z(100_001) + b"\x09",
+        declared=1 << 20,
+    )
+
+
+def write_huge_sizes() -> None:
+    """Entries declaring 2**63 - 1 bytes and followed by none of them: a zip with no central
+    directory, so it is read as a stream, its sizes in a zip64 extra field, and an encrypted
+    RAR 5 entry."""
+    huge = (1 << 63) - 1
+    name = b"zeros.bin"
+    extra = struct.pack("<HHQQ", 0x0001, 16, huge, huge)
+    local = struct.pack("<IHHHHHIIIHH", 0x04034B50, 45, 0, 0, 0, 0, 0, 0xFFFFFFFF, 0xFFFFFFFF, len(name), len(extra))
+    (OUT / "archive-huge-size.zip").write_bytes(local + name + extra)
+    body = vint(0) + vint(0) + vint(0o100644) + vint(0) + vint(1) + vint(len(name)) + name
+    # An encryption record with no fields: its size covers only its id, 1.
+    encrypted = vint(1) + vint(1)
+    rar = b"Rar!\x1a\x07\x01\x00" + rar5_header(1, 0, vint(0)) + rar5_header(2, 0x0002, body, huge, encrypted)
+    (OUT / "archive-huge-size.rar").write_bytes(rar)
+
+
+def write_zip64() -> None:
+    """README.md in a zip whose zip64 end record names where its central directory starts while
+    the plain end record claims an empty one, and a copy with that zip64 record placed before
+    the directory it names, a second one after the directory ending it."""
+    name = b"README.md"
+    crc = zlib.crc32(README)
+    local = struct.pack(
+        "<IHHHHHIIIHH", 0x04034B50, 20, 0, 0, 0, 0, crc, len(README), len(README), len(name), 0,
+    ) + name + README
+    central = struct.pack(
+        "<IHHHHHHIIIHHHHHII", 0x02014B50, 20, 20, 0, 0, 0, 0, crc, len(README), len(README),
+        len(name), 0, 0, 0, 0, 0o100644 << 16, 0,
+    ) + name
+
+    def record(directory_at: int) -> bytes:
+        return struct.pack("<IQHHIIQQQQ", 0x06064B50, 44, 45, 45, 0, 0, 1, 1, len(central), directory_at)
+
+    def ends(record_at: int) -> bytes:
+        locator = struct.pack("<IIQI", 0x07064B50, 0, record_at, 1)
+        return locator + struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, 1, 1, 0, 0, 0)
+
+    directory_at = len(local)
+    (OUT / "archive-zip64.zip").write_bytes(local + central + record(directory_at) + ends(directory_at + len(central)))
+    record_at = len(local)
+    moved = record(record_at + 56)
+    (OUT / "archive-zip64-backwards.zip").write_bytes(local + moved + central + moved + ends(record_at))
 
 
 def vint(value: int) -> bytes:
@@ -287,8 +348,9 @@ def vint(value: int) -> bytes:
             return bytes(out)
 
 
-def rar5_header(kind: int, flags: int, body: bytes, data_size: int | None = None) -> bytes:
-    fields = vint(kind) + vint(flags) + (vint(data_size) if data_size is not None else b"") + body
+def rar5_header(kind: int, flags: int, body: bytes, data_size: int | None = None, extra: bytes = b"") -> bytes:
+    fields = vint(kind) + vint(flags | (0x0001 if extra else 0)) + (vint(len(extra)) if extra else b"")
+    fields += (vint(data_size) if data_size is not None else b"") + body + extra
     sized = vint(len(fields)) + fields
     return struct.pack("<I", zlib.crc32(sized)) + sized
 
@@ -359,6 +421,8 @@ def main() -> None:
     write_7z()
     write_bombs()
     write_7z_tables()
+    write_huge_sizes()
+    write_zip64()
     write_rar5()
     write_rar4()
     for path in sorted(OUT.iterdir()):
