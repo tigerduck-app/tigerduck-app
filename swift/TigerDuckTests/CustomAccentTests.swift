@@ -61,66 +61,6 @@ struct CustomAccentTests {
         #expect(Color(hex: UInt(hex)).rgbHex == hex)
     }
 
-    @Test("Opening the picker on the saved accent saves nothing")
-    func openingSavesNothing() {
-        let preview = AccentPreview()
-
-        #expect(preview.preview(0x007AFF, saved: 0x007AFF) == nil)
-        #expect(preview.hex == nil)
-    }
-
-    @Test("Opening the picker on a preset saves nothing, a pale one included",
-          arguments: AppPreferences.themeColors.map(\.hex))
-    func openingOnAPresetSavesNothing(hex: Int) {
-        let preview = AccentPreview()
-        let opening = Int(CustomAccentPicker.openingColour(saved: hex).rgbHex)
-
-        #expect(preview.preview(opening, saved: hex) == nil)
-    }
-
-    @Test("A pick is drawn readable and saved as drawn")
-    func pickIsSavedReadable() throws {
-        let preview = AccentPreview()
-
-        let saved = preview.preview(0xFFFFFF, saved: 0x007AFF)
-
-        #expect(saved == AccentContrast.readable(0xFFFFFF))
-        #expect(preview.shownHex(saved: 0x007AFF) == saved)
-        #expect(preview.isCustom(saved: 0x007AFF))
-        #expect(preview.takeForSaving(try #require(saved)))
-        #expect(preview.hex == nil)
-    }
-
-    @Test("A preset chosen before the save keeps the save from replacing it")
-    func presetBeatsPendingSave() throws {
-        let preview = AccentPreview()
-        let pending = try #require(preview.preview(0xFFFFFF, saved: 0x007AFF))
-
-        preview.clear()
-
-        #expect(!preview.takeForSaving(pending))
-        #expect(!preview.isCustom(saved: 0x007AFF))
-    }
-
-    @Test("Only the latest pick is saved")
-    func latestPickWins() throws {
-        let preview = AccentPreview()
-        let older = try #require(preview.preview(0x5856D6, saved: 0x007AFF))
-        let newer = try #require(preview.preview(0x8E44AD, saved: 0x007AFF))
-
-        #expect(!preview.takeForSaving(older))
-        #expect(preview.takeForSaving(newer))
-    }
-
-    @Test("Dragging back to the saved accent drops the preview")
-    func backToSavedDropsPreview() {
-        let preview = AccentPreview()
-        _ = preview.preview(0x5856D6, saved: 0x007AFF)
-
-        #expect(preview.preview(0x007AFF, saved: 0x007AFF) == nil)
-        #expect(preview.hex == nil)
-    }
-
     private static func contrast(_ first: Int, _ second: Int) -> Double {
         let (a, b) = (luminance(first), luminance(second))
         return (max(a, b) + 0.05) / (min(a, b) + 0.05)

@@ -1,5 +1,6 @@
 import Defaults
 import SwiftUI
+import TigerDuckCore
 
 @MainActor
 @Observable
@@ -26,6 +27,20 @@ final class AppPreferences {
     var accentColorHex: Int {
         get { toggles.accentColorHex }
         set { toggles.accentColorHex = newValue }
+    }
+    var accent: AccentGradient {
+        get { AccentGradient.saved(toggles.accentGradient, accentHex: toggles.accentColorHex) }
+        set {
+            toggles.accentGradient = newValue.isGradient ? newValue : nil
+            toggles.accentColorHex = newValue.first
+        }
+    }
+    var accentGradientOnDevices: Bool {
+        get { toggles.accentGradientOnDevices }
+        set { toggles.accentGradientOnDevices = newValue }
+    }
+    var deviceAccentGradient: AccentGradient? {
+        accentGradientOnDevices && accent.isGradient ? accent : nil
     }
     var macMoodleOpenTarget: MoodleOpenTarget {
         get { toggles.macMoodleOpenTarget }
@@ -164,6 +179,8 @@ final class AppPreferences {
     #endif
 
     var accentColor: Color { Self.accentColor(hex: accentColorHex) }
+
+    var accentStyle: AnyShapeStyle { accent.shapeStyle(color: Self.accentColor(hex:)) }
 
     static func accentColor(hex: Int) -> Color {
         let rgb = Int(UInt(bitPattern: hex) & 0xFFFFFF)

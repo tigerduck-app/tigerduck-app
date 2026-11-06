@@ -1,10 +1,12 @@
 #if os(macOS)
 import Defaults
 import SwiftUI
+import TigerDuckCore
 
 struct MacAppearanceSettingsView: View {
     @Environment(AppEnvironment.self) private var app
     @Default(.appAppearance) private var appearance
+    @State private var showingAccentEditor = false
 
     var body: some View {
         Form {
@@ -21,7 +23,7 @@ struct MacAppearanceSettingsView: View {
                     ForEach(AppPreferences.themeColors, id: \.hex) { entry in
                         accentSwatch(hex: entry.hex, nameKey: entry.nameKey)
                     }
-                    CustomAccentPicker(preferences: app.preferences, size: 32)
+                    CustomAccentButton(preferences: app.preferences, size: 32) { showingAccentEditor = true }
                         .padding(4)
                 }
                 .padding(.vertical, 4)
@@ -33,15 +35,17 @@ struct MacAppearanceSettingsView: View {
         }
         .formStyle(.grouped)
         .padding(20)
+        .sheet(isPresented: $showingAccentEditor) {
+            AccentGradientEditor(preferences: app.preferences)
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func accentSwatch(hex: Int, nameKey: LocalizedStringResource) -> some View {
         let color = Color(hex: UInt(bitPattern: Int(hex)))
-        let isSelected = AccentPreview.shared.shownHex(saved: app.preferences.accentColorHex) == hex
+        let isSelected = app.preferences.accent == AccentGradient(color: hex)
         return Button {
-            AccentPreview.shared.clear()
-            app.preferences.accentColorHex = hex
+            app.preferences.accent = AccentGradient(color: hex)
         } label: {
             ZStack {
                 Circle()

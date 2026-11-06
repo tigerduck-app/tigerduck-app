@@ -1,5 +1,6 @@
 import Defaults
 import Foundation
+import TigerDuckCore
 
 extension BrowserAddressBar: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension BrowserDataState: Defaults.Serializable, Defaults.PreferRawRepresentable {}
@@ -7,6 +8,7 @@ extension BrowserAppearance: Defaults.Serializable, Defaults.PreferRawRepresenta
 extension MoodleOpenTarget: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension VisualPreset: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension AppAppearance: Defaults.Serializable, Defaults.PreferRawRepresentable {}
+extension AccentGradient: Defaults.Serializable {}
 
 nonisolated extension Defaults.Keys {
     static let hasCompletedOnboarding = Key<Bool>(
@@ -20,6 +22,15 @@ nonisolated extension Defaults.Keys {
     static let accentColorHex = Key<Int>(
         AppConstants.UserDefaultsKeys.accentColorHex,
         default: 0x007AFF
+    )
+    /// Its first stop is also saved as `accentColorHex`, which builds without gradients read.
+    static let accentGradient = Key<AccentGradient?>(
+        AppConstants.UserDefaultsKeys.accentGradient,
+        default: nil
+    )
+    static let accentGradientOnDevices = Key<Bool>(
+        AppConstants.UserDefaultsKeys.accentGradientOnDevices,
+        default: false
     )
     static let browserAddressBar = Key<BrowserAddressBar>(
         AppConstants.UserDefaultsKeys.browserAddressBar,

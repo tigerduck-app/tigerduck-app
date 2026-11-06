@@ -1,9 +1,18 @@
 import Defaults
 import Foundation
+import TigerDuckCore
 
 struct AppDisplayToggles {
     var accentColorHex: Int = Defaults[.accentColorHex] {
         didSet { Defaults[.accentColorHex] = accentColorHex }
+    }
+
+    var accentGradient: AccentGradient? = Defaults[.accentGradient] {
+        didSet { Defaults[.accentGradient] = accentGradient }
+    }
+
+    var accentGradientOnDevices: Bool = Defaults[.accentGradientOnDevices] {
+        didSet { Defaults[.accentGradientOnDevices] = accentGradientOnDevices }
     }
 
     /// The iPad Moodle app installed from the Mac App Store registers `moodlemobile://` too, so its

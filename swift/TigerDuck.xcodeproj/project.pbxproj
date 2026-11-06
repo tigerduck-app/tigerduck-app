@@ -175,6 +175,7 @@
 				Persistence/AppUserDefaults.swift,
 				Support/Clock/AppClock.swift,
 				Support/Clock/ClockOverride.swift,
+				"UI/Theme/AccentGradient+ShapeStyle.swift",
 			);
 			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;
 		};
@@ -185,6 +186,7 @@
 				Support/Clock/AppClock.swift,
 				Support/Clock/ClockOverride.swift,
 				Support/Concurrency/StateSignal.swift,
+				"UI/Theme/AccentGradient+ShapeStyle.swift",
 			);
 			target = B21DC6912FB887D900AE2430 /* TigerDuckWatch Watch App */;
 		};
@@ -213,6 +215,7 @@
 				Shared/CourseCardFontScale.swift,
 				Support/Clock/AppClock.swift,
 				Support/Clock/ClockOverride.swift,
+				"UI/Theme/AccentGradient+ShapeStyle.swift",
 			);
 			target = B244D74E2FB87B580040D6FA /* TigerDuckWidgetsExtension */;
 		};
@@ -1301,6 +1304,8 @@
 					AcademicCalendarEvents.swift,
 					AcademicCalendarStore.swift,
 					AccentContrast.swift,
+					"AccentGradient+ShapeStyle.swift",
+					AccentGradientEditor.swift,
 					AccountKey.swift,
 					AccountSession.swift,
 					AccountSignOutCleanup.swift,
@@ -1457,8 +1462,8 @@
 					CredentialPost.swift,
 					CreditFormat.swift,
 					CurrentClassCard.swift,
+					CustomAccentButton.swift,
 					CustomAccentContrastMigration.swift,
-					CustomAccentPicker.swift,
 					"Data+Hex.swift",
 					"Date+Formatting.swift",
 					DebugClockController.swift,
@@ -1868,6 +1873,8 @@
 					AcademicCalendarEvents.swift,
 					AcademicCalendarStore.swift,
 					AccentContrast.swift,
+					"AccentGradient+ShapeStyle.swift",
+					AccentGradientEditor.swift,
 					AccountKey.swift,
 					AccountSession.swift,
 					AccountSignOutCleanup.swift,
@@ -2024,8 +2031,8 @@
 					CredentialPost.swift,
 					CreditFormat.swift,
 					CurrentClassCard.swift,
+					CustomAccentButton.swift,
 					CustomAccentContrastMigration.swift,
-					CustomAccentPicker.swift,
 					"Data+Hex.swift",
 					"Date+Formatting.swift",
 					DebugClockController.swift,

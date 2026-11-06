@@ -36,13 +36,13 @@ enum MoreScreen {
     /// The window, not yet shown: the suite that shows it is listed in `on_screen_tests`.
     static func window(
         path: Path = Path(), width: CGFloat, height: CGFloat, style: UIUserInterfaceStyle = .light,
-        textSize: UIContentSizeCategory? = nil, settings: some View, feature: some View
+        textSize: UIContentSizeCategory? = nil, tint: AnyShapeStyle? = nil, settings: some View, feature: some View
     ) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: width, height: height)
         window.overrideUserInterfaceStyle = style
-        window.rootViewController = UIHostingController(rootView: Root(path: path, settings: settings, feature: feature))
+        window.rootViewController = UIHostingController(rootView: Root(path: path, settings: settings, feature: feature).tint(tint))
         // Set the way the system setting reaches the app, through the window's traits.
         if let textSize { window.traitOverrides.preferredContentSizeCategory = textSize }
         return window

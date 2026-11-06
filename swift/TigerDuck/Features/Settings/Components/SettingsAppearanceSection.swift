@@ -1,5 +1,6 @@
 import Defaults
 import SwiftUI
+import TigerDuckCore
 
 struct SettingsAppearanceSection: View {
     let sheets: SettingsSheetState
@@ -17,10 +18,14 @@ struct SettingsAppearanceSection: View {
                     ForEach(AppPreferences.themeColors, id: \.hex) { theme in
                         swatch(theme.hex, name: theme.nameKey)
                     }
-                    CustomAccentPicker(preferences: preferences, size: 28)
+                    CustomAccentButton(preferences: preferences, size: 28) {
+                        sheets.showingAccentEditor = true
+                    }
                 }
             }
             .settingsRow(.accentColor)
+            Toggle(SettingsRow.accentGradientOnDevices.label, isOn: $preferences.accentGradientOnDevices)
+                .settingsRow(.accentGradientOnDevices)
             Picker(SettingsRow.visualPreset.label, selection: $preferences.visualPreset) {
                 ForEach(VisualPreset.allCases) { preset in
                     Text(preset.displayName).tag(preset)
@@ -41,11 +46,10 @@ struct SettingsAppearanceSection: View {
     }
 
     private func swatch(_ hex: Int, name: LocalizedStringResource) -> some View {
-        let isShown = AccentPreview.shared.shownHex(saved: preferences.accentColorHex) == hex
+        let isShown = preferences.accent == AccentGradient(color: hex)
         return Button {
             withAnimation(reduceMotion ? nil : .smoothSpring) {
-                AccentPreview.shared.clear()
-                preferences.accentColorHex = hex
+                preferences.accent = AccentGradient(color: hex)
             }
         } label: {
             Circle()

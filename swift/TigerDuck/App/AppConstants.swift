@@ -67,6 +67,8 @@ nonisolated enum AppConstants {
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
         static let appHasBeenInstalled = "appHasBeenInstalled"
         static let accentColorHex = "accentColorHex"
+        static let accentGradient = "accentGradient"
+        static let accentGradientOnDevices = "accentGradientOnDevices"
         static let browserAddressBar = "browserAddressBar"
         static let browserDataState = "browserDataState"
         static let browserAppearance = "browserAppearance"

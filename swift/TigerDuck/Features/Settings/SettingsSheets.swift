@@ -5,6 +5,7 @@ import SwiftUI
 @Observable
 final class SettingsSheetState {
     var showingTabEditor = false
+    var showingAccentEditor = false
     var showLibraryLogin = false
     var confirmsSignOut = false
     var signOutLines: [String] = []
@@ -21,11 +22,15 @@ struct SettingsSheets: ViewModifier {
     @Bindable var state: SettingsSheetState
 
     @Environment(AppEnvironment.self) private var app
+    @Environment(AppPreferences.self) private var preferences
 
     func body(content: Content) -> some View {
         content
             .sheet(isPresented: $state.showingTabEditor) {
                 TabEditorView()
+            }
+            .sheet(isPresented: $state.showingAccentEditor) {
+                AccentGradientEditor(preferences: preferences)
             }
             .alert(String(localized: "action_sign_out"), isPresented: $state.confirmsSignOut) {
                 Button(String(localized: "action_sign_out"), role: .destructive) {
