@@ -181,8 +181,8 @@ enum ReenableAnswer {
                 try await backend.uploadCourses(request, addedAt: adds.isEmpty ? nil : addedAt, for: signIn)
                 for courseNo in hiddenNos.sorted() {
                     try await backend.deleteCourse(
-                        courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo), removing: false,
-                        madeAt: Date(), for: signIn
+                        courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
+                        kind: fetched.contains { $0.courseNo == courseNo } ? .hide : nil, madeAt: Date(), for: signIn
                     )
                 }
             }

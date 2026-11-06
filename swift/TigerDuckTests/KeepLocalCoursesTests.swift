@@ -89,6 +89,20 @@ struct KeepLocalCoursesTests {
         #expect(upload.request.handAddedCourses?.allSatisfy { $0.hlc == PushAPI.clock(of: addedAt) } == true)
     }
 
+    @Test("Use Local hides a course the school lists here as kind=hide, and any other course hidden here with no kind")
+    func useLocalNamesTheKindOfEachHide() async throws {
+        let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1151:CS2", "client:1151:MG4"])
+        let merged = SDCourse(courseNo: "MG4", courseName: "MG4", moodleIdNumber: "1151MG4", semester: "1151")
+
+        try await SyncConflicts.keepLocalCourses(
+            [("1151", Self.roster("CS1", "CS2"), [merged])], hiding: ["1151:CS2", "1151:MG4", "1151:XX9"],
+            on: server, for: testSignIn
+        )
+
+        #expect(server.deletes.map { "\($0.key) \($0.kind?.rawValue ?? "none")" }
+            == ["client:1151:CS2 hide", "client:1151:MG4 none", "client:1151:XX9 none"])
+    }
+
     @Test("Use Local resets only the terms it re-uploads, never every term at once")
     func resetsTermByTerm() async throws {
         let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1142:CS9"])
@@ -171,8 +185,8 @@ private final class StampedCourseServer: CourseSyncBackend {
         try await client.uploadCourses(request, addedAt: addedAt, for: signIn)
     }
 
-    func deleteCourse(courseKey: String, removing: Bool, madeAt: Date, for signIn: SignIn) async throws {
-        try await client.deleteCourse(courseKey: courseKey, removing: removing, madeAt: Self.madeAt, for: signIn)
+    func deleteCourse(courseKey: String, kind: PushAPI.CourseDeleteKind?, madeAt: Date, for signIn: SignIn) async throws {
+        try await client.deleteCourse(courseKey: courseKey, kind: kind, madeAt: Self.madeAt, for: signIn)
     }
 }
 
@@ -183,6 +197,7 @@ private final class FakeCourseServer: CourseSyncBackend {
     private(set) var fullResets = 0
     private(set) var resets: [Date] = []
     private(set) var uploads: [(request: PushAPI.CourseUploadRequest, addedAt: Date?)] = []
+    private(set) var deletes: [(key: String, kind: PushAPI.CourseDeleteKind?)] = []
     var failingDeletes = 0
     var afterSend: () -> Void = {}
 
@@ -218,9 +233,10 @@ private final class FakeCourseServer: CourseSyncBackend {
         rows.formUnion(keys.filter { tombstones[$0] == nil })
     }
 
-    func deleteCourse(courseKey: String, removing: Bool, madeAt: Date, for signIn: SignIn) async throws {
+    func deleteCourse(courseKey: String, kind: PushAPI.CourseDeleteKind?, madeAt: Date, for signIn: SignIn) async throws {
         guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
         defer { afterSend() }
+        deletes.append((courseKey, kind))
         if failingDeletes > 0 {
             failingDeletes -= 1
             throw URLError(.networkConnectionLost)

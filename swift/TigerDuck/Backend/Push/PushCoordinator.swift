@@ -205,8 +205,8 @@ final class PushCoordinator {
         try await apiClient.deleteAllCourses(semester: semester, madeAt: stamp, for: signIn)
     }
 
-    func deleteCourse(courseKey: String, removing: Bool, madeAt stamp: Date, for signIn: SignIn) async throws {
-        try await apiClient.deleteCourse(courseKey: courseKey, removing: removing, madeAt: stamp, for: signIn)
+    func deleteCourse(courseKey: String, kind: PushAPI.CourseDeleteKind?, madeAt stamp: Date, for signIn: SignIn) async throws {
+        try await apiClient.deleteCourse(courseKey: courseKey, kind: kind, madeAt: stamp, for: signIn)
     }
 
     func refreshRegistrationAfterAuth() {

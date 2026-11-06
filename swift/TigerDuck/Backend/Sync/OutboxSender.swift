@@ -70,12 +70,11 @@ final class OutboxSender {
         case .courseDelete(let semester, let courseNo, let stamp):
             guard isProtectedDataAvailable() else { throw CancellationError() }
             guard uploadsCourses() else { return }
-            let takesBackAHandAdd = !CourseTombstone.isHidden(
-                courseNo, semester: semester, in: Set(courses.loadDeletedCourseNos())
-            )
+            let hidden = CourseTombstone.isHidden(courseNo, semester: semester, in: Set(courses.loadDeletedCourseNos()))
+            let listedBySchool = courses.loadCourses(semester: semester).contains { $0.courseNo == courseNo }
             try await push.deleteCourse(
                 courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
-                removing: takesBackAHandAdd, madeAt: stamp, for: signIn
+                kind: !hidden ? .remove : listedBySchool ? .hide : nil, madeAt: stamp, for: signIn
             )
 
         case .courseAdd(let semester, let courseNo, let stamp):
