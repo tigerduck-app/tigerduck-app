@@ -76,13 +76,19 @@ enum ClassTableExporter {
         let name = fileName(
             title: String(localized: "feature_class_table"),
             semesterLabel: viewModel.displayLabel(for: viewModel.currentSemester),
-            // A nickname has no length limit, and a file name past 255 bytes cannot be written.
-            studentId: owner.map { String($0.prefix(40)) }
+            studentId: owner
         )
         // Drawing needs the main actor; encoding a 3x PNG and writing it does
         // not, and is the slower half.
-        return await Task.detached(priority: .userInitiated) { () -> URL? in
-            guard let data = image.pngData() else { return nil }
+        return await save(named: name) { image.pngData() }
+    }
+
+    /// Writes what `data` makes to a new folder in the temporary directory,
+    /// off the main actor, and returns its URL, or `nil` when nothing could be
+    /// made or written. Hand the URL to ``discard(_:)`` once it has been shared.
+    nonisolated static func save(named name: String, _ data: @escaping @Sendable () -> Data?) async -> URL? {
+        await Task.detached(priority: .userInitiated) { () -> URL? in
+            guard let data = data() else { return nil }
             let fileManager = FileManager.default
             removeLeftovers(fileManager)
             let directory = exportRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -120,15 +126,18 @@ enum ClassTableExporter {
         }
     }
 
-    nonisolated static func fileName(title: String, semesterLabel: String, studentId: String?) -> String {
-        let parts = [title, semesterLabel, studentId ?? ""]
+    nonisolated static func fileName(
+        title: String, semesterLabel: String, studentId: String?, pathExtension: String = "png"
+    ) -> String {
+        // A nickname has no length limit, and a file name past 255 bytes cannot be written.
+        let parts = [title, semesterLabel, String((studentId ?? "").prefix(40))]
             .map {
                 $0.components(separatedBy: unsafeFileNameCharacters).joined()
                     .split(whereSeparator: \.isWhitespace)
                     .joined(separator: "_")
             }
             .filter { !$0.isEmpty }
-        return parts.joined(separator: "_") + ".png"
+        return parts.joined(separator: "_") + "." + pathExtension
     }
 
     /// Path separators, the characters Files and FAT-formatted drives

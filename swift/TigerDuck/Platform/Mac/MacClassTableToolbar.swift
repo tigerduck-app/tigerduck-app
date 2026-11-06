@@ -95,7 +95,7 @@ struct MacClassTableToolbar: ToolbarContent {
 
     private var otherPersonActions: some View {
         let sections = ClassTableOtherPersonAction.sections
-            .map { $0.filter { $0 != .exportScreenshot } }
+            .map { $0.filter { $0 != .exportScreenshot && $0 != .downloadCalendar } }
             .filter { !$0.isEmpty }
         return Menu {
             ForEach(sections, id: \.self) { section in
@@ -117,7 +117,7 @@ struct MacClassTableToolbar: ToolbarContent {
 
     private func perform(_ action: ClassTableOtherPersonAction) {
         switch action {
-        case .exportScreenshot: break
+        case .exportScreenshot, .downloadCalendar: break
         case .importClassTable: requestImport()
         case .rename: viewModel.people.startRenamingPerson()
         case .deleteUser: viewModel.people.startDeletingPerson()
