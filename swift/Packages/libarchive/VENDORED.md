@@ -65,7 +65,10 @@ cmake -G Ninja <libarchive> -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=<iPhoneO
    included, kept for one entry. Upstream reads bodies up to 1 GiB and skips larger ones.
    A GNU sparse 1.0 map listing more than `TIGERDUCK_MAX_ENTRIES` (100,000) ranges fails as a
    format error before a node is allocated for each; upstream allows any count.
-4. `Package.swift` builds the sources with `-w`, since their warnings are upstream's.
+4. `archive_read_support_format_raw.c`: a compression filter (gzip, bzip2, xz) that ends
+   cleanly without a byte is read as one empty file; upstream finds no format in it. Empty input
+   with no filter is still refused.
+5. `Package.swift` builds the sources with `-w`, since their warnings are upstream's.
 
 ## Updating
 

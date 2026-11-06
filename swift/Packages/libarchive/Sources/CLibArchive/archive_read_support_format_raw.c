@@ -96,7 +96,12 @@ archive_read_support_format_raw(struct archive *_a)
 static int
 archive_read_format_raw_bid(struct archive_read *a, int best_bid)
 {
-	if (best_bid < 1 && __archive_read_ahead(a, 1, NULL) != NULL)
+	ssize_t avail;
+
+	/* TigerDuck: a compression filter that ends cleanly with no bytes
+	 * holds one empty file. */
+	if (best_bid < 1 && (__archive_read_ahead(a, 1, &avail) != NULL ||
+	    (avail == 0 && a->filter->code != ARCHIVE_FILTER_NONE)))
 		return (1);
 	return (-1);
 }
