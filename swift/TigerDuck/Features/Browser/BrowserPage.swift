@@ -25,8 +25,8 @@ final class BrowserPage {
     nonisolated static let downloadsRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("BrowserDownloads", isDirectory: true)
 
-    init(downloads: BrowserDownloads = BrowserDownloads()) {
-        self.downloads = downloads
+    init(downloads: BrowserDownloads? = nil) {
+        self.downloads = downloads ?? BrowserDownloads()
         let opening = BrowserData.shared.opening
         self.opening = opening
         let store = opening.store
