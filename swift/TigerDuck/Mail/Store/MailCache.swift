@@ -34,13 +34,21 @@ nonisolated final class MailCache: @unchecked Sendable {
         )
     }
 
+    private var pagesDirectory: URL { directory.appendingPathComponent("pages", isDirectory: true) }
+
     func pageURL(folder: String) -> URL {
-        directory.appendingPathComponent("pages", isDirectory: true)
-            .appendingPathComponent("\(Self.fileKey(folder)).json")
+        pagesDirectory.appendingPathComponent("\(Self.fileKey(folder)).json")
     }
 
     func loadPage(folder: String) -> MailFolderPage? {
         lock.withLock { read(MailFolderPage.self, at: pageURL(folder: folder)) }
+    }
+
+    func loadPages() -> [MailFolderPage] {
+        lock.withLock {
+            let urls = (try? FileManager.default.contentsOfDirectory(at: pagesDirectory, includingPropertiesForKeys: nil)) ?? []
+            return urls.compactMap { read(MailFolderPage.self, at: $0) }
+        }
     }
 
     func savePage(_ page: MailFolderPage, unlessWipedSince wipeCount: Int) {
