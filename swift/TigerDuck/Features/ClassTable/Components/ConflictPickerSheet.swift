@@ -10,7 +10,6 @@ struct ConflictPickerSheet: View {
     }
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let title: String
     let rows: [Row]
@@ -41,28 +40,11 @@ struct ConflictPickerSheet: View {
     }
 
     private func rowView(_ row: Row) -> some View {
-        let wrapsLines = dynamicTypeSize.isAccessibilitySize
-        return Button {
+        Button {
             onPick(row.id)
         } label: {
-            HStack(spacing: TigerDuckTheme.Spacing.md) {
-                ColorSquare(color: row.color, side: 16)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(row.title)
-                        .font(TigerDuckTheme.Typography.body.weight(.semibold))
-                        .foregroundStyle(Color.textPrimary)
-                        .lineLimit(wrapsLines ? nil : 1)
-                    Text(row.details.joined(separator: " · "))
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(Color.textSecondary)
-                        .lineLimit(wrapsLines ? nil : 1)
-                        .truncationMode(.tail)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            .padding(.vertical, TigerDuckTheme.Spacing.md)
-            .contentShape(Rectangle())
+            CourseListRow(color: row.color, title: row.title, details: row.details)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(([row.title] + row.details).joined(separator: ", ")))
@@ -86,16 +68,5 @@ extension ConflictPickerSheet.Row {
 extension ClubOccurrence {
     var details: [String] {
         [name, ClassTimeline.timeRange(from: start, to: end), location].filter { !$0.isEmpty }
-    }
-}
-
-struct ColorSquare: View {
-    let color: Color
-    let side: CGFloat
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(color)
-            .frame(width: side, height: side)
     }
 }
