@@ -571,37 +571,37 @@ struct MailComposeViewModelTests {
         #expect(model.didFinish)
     }
 
-    @Test func aFormThatFailsValidationIsNeverConfirmed() async {
+    @Test func aFormThatFailsValidationIsNotReadyToSend() async {
         let model = Self.model(MailComposeContext(mode: .new), fake: Self.fake())
         await model.prepare()
 
-        #expect(!model.confirmationIsWarranted())
+        #expect(!model.readyToSend())
         #expect(model.error != nil)
         #expect(model.errorNeedsAcknowledging)
 
         model.to = "沒有位址"
-        #expect(!model.confirmationIsWarranted())
+        #expect(!model.readyToSend())
         #expect(model.invalidRecipients == ["沒有位址"])
 
         model.to = "a@mail.ntust.edu.tw"
-        #expect(model.confirmationIsWarranted())
+        #expect(model.readyToSend())
         #expect(model.error == nil)
     }
 
-    @Test func cancellingTheConfirmationSendsNothing() async {
+    @Test func checkingReadinessSendsNothing() async {
         let fake = Self.fake()
         let model = Self.model(MailComposeContext(mode: .new), fake: fake)
         await model.prepare()
         model.to = "a@mail.ntust.edu.tw"
         model.body = "還沒寫完"
 
-        #expect(model.confirmationIsWarranted())
-        #expect(await fake.sent.isEmpty)
+        #expect(model.readyToSend())
+        #expect(await fake.calls.isEmpty)
         #expect(model.body == "還沒寫完")
         #expect(!model.didFinish)
     }
 
-    @Test func aSendInFlightCannotBeConfirmedAgain() async {
+    @Test func aSendInFlightIsNotReadyToSendAgain() async {
         let fake = Self.fake()
         let model = Self.model(MailComposeContext(mode: .new), fake: fake)
         await model.prepare()
@@ -610,10 +610,26 @@ struct MailComposeViewModelTests {
         await fake.update { $0.hold("send") }
         let send = Task { await model.send() }
         await fake.waitForArrival("send")
-        #expect(!model.confirmationIsWarranted())
+        #expect(!model.readyToSend())
         await fake.release("send")
         await send.value
         #expect(model.didFinish)
+    }
+
+    @Test func aMailWrittenBeforeTheSignInEndedIsNotReadyAndCloses() async {
+        let fake = Self.fake()
+        let account = AccountSession()
+        let model = MailComposeViewModel(
+            context: MailComposeContext(mode: .new),
+            session: MailPageSession(idleClose: .milliseconds(10), open: { fake }, onAuthFailure: { _ in }, account: account),
+            sender: Self.me, folderRoles: [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
+            prefs: InMemoryMailPreferences(), cache: SchoolMailTestDoubles.temporaryCache(), sleep: { _ in }
+        )
+        model.to = "a@mail.ntust.edu.tw"
+        account.endSignIn()
+
+        #expect(!model.readyToSend())
+        #expect(model.shouldClose)
     }
 
     @Test func repeatingTheSameFailureRaisesTheDialogAgain() async {

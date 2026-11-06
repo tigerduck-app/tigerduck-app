@@ -101,6 +101,8 @@ struct MoodleMemberView: View {
             )
             .onDisappear { Task { await mail.session.close() } }
         }
+        .safeAreaInset(edge: .bottom) { MailSendHoldBar(hold: .shared) }
+        .reopensHeldMail(.shared, isComposing: mail != nil)
         #endif
     }
 

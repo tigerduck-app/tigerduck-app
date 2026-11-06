@@ -7,22 +7,25 @@ struct MailComposeView: View {
     private enum Field: Hashable { case to, cc, bcc, subject, body }
 
     @State private var viewModel: MailComposeViewModel
-    private let mode: MailComposeMode
+    private let hold: MailSendHold
 
     @Environment(\.dismiss) private var dismiss
     @State private var showLeaveDialog = false
-    @State private var showSendDialog = false
     @State private var showFileImporter = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var pendingPicks = 0
     @FocusState private var focused: Field?
 
+    init(model: MailComposeViewModel, hold: MailSendHold) {
+        _viewModel = State(initialValue: model)
+        self.hold = hold
+    }
+
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String], events: MailboxEvents) {
         let account = MailAccountManager.shared
         let sender = MailAddress(name: account.displayName, address: account.address ?? "")
-        _viewModel = State(initialValue: MailComposeViewModel(context: context, session: session, sender: sender,
-                                                              folderRoles: folderRoles, events: events))
-        mode = context.mode
+        self.init(model: MailComposeViewModel(context: context, session: session, sender: sender,
+                                              folderRoles: folderRoles, events: events), hold: .shared)
     }
 
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String],
@@ -114,7 +117,9 @@ struct MailComposeView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        if viewModel.confirmationIsWarranted() { showSendDialog = true }
+                        guard viewModel.readyToSend() else { return }
+                        hold.hold(viewModel)
+                        dismiss()
                     } label: {
                         LoadingButtonLabel(isLoading: viewModel.isSending) {
                             Text(String(localized: "school_mail_send")).fontWeight(.semibold)
@@ -130,12 +135,6 @@ struct MailComposeView: View {
                 Button(String(localized: "settings_acknowledged")) {}
             } message: {
                 Text(viewModel.error ?? "")
-            }
-            .confirmationDialog(String(localized: "school_mail_send_confirm_title"), isPresented: $showSendDialog, titleVisibility: .visible) {
-                Button(String(localized: "school_mail_send")) {
-                    Task { await viewModel.send() }
-                }
-                Button(String(localized: "school_mail_keep_editing"), role: .cancel) {}
             }
             .confirmationDialog(String(localized: "school_mail_leave_title"), isPresented: $showLeaveDialog, titleVisibility: .visible) {
                 Button(String(localized: "school_mail_save_draft")) {
@@ -169,7 +168,7 @@ struct MailComposeView: View {
     }
 
     private var title: String {
-        switch mode {
+        switch viewModel.mode {
         case .reply: String(localized: "school_mail_reply")
         case .replyAll: String(localized: "school_mail_reply_all")
         case .forward: String(localized: "school_mail_forward")

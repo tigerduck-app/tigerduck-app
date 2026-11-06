@@ -4,7 +4,7 @@ import Observation
 
 @MainActor
 @Observable
-final class MailComposeViewModel {
+final class MailComposeViewModel: Identifiable {
     nonisolated struct Attachment: Identifiable, Equatable, Sendable {
         let id = UUID()
         var filename: String
@@ -44,6 +44,7 @@ final class MailComposeViewModel {
                                        cache: cache ?? MailAccountManager.shared.cache, sleep: sleep, now: now)
     }
 
+    var mode: MailComposeMode { context.mode }
     var to: String {
         get { draft.to }
         set { draft.to = newValue; tracking.edited.insert(.to) }
@@ -162,9 +163,8 @@ final class MailComposeViewModel {
         return recipients
     }
 
-    func confirmationIsWarranted() -> Bool {
-        guard !isSending else { return false }
-        return validate() != nil
+    func readyToSend() -> Bool {
+        !isSending && checkSignIn() && validate() != nil
     }
 
     func send() async {

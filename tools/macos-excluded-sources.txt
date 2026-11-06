@@ -385,6 +385,7 @@ MailMessageViewModel.swift
 MailMuteRuleEditor.swift
 MailNotificationSettingsView.swift
 MailPageSession.swift
+MailSendHold.swift
 MailSettingsView.swift
 SchoolMailView.swift
 
@@ -400,6 +401,7 @@ MailReadableHTML.swift
 MailRecipientRow.swift
 MailRecipientTokenField.swift
 MailRowView.swift
+MailSendHoldBar.swift
 MailSourceTextView.swift
 MailWarningBanner.swift
 MailWebViewFactory.swift
