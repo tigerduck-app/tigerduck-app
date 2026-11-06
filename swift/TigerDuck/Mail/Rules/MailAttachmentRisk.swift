@@ -11,7 +11,6 @@ nonisolated enum MailAttachmentRisk {
     static let decoyExtensions: Set<String> = [
         "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png", "gif", "txt", "zip",
     ]
-    static let archiveExtensions: Set<String> = ["zip", "rar", "7z", "tar", "gz", "tgz"]
     static let archivePasswordHints = ["密碼", "password", "解壓縮"]
 
     static func displayFilename(_ raw: String) -> String {
@@ -39,7 +38,7 @@ nonisolated enum MailAttachmentRisk {
         }
         if dangerous { return .dangerousExtension }
         let lowered = MailTextCleaner.visibleText(MailTextCleaner.clean(subjectAndBody)).lowercased()
-        if archiveExtensions.contains(ext), archivePasswordHints.contains(where: { lowered.contains($0) }) {
+        if ArchiveFormats.extensions.contains(ext), archivePasswordHints.contains(where: { lowered.contains($0) }) {
             return .encryptedArchive
         }
         return nil
