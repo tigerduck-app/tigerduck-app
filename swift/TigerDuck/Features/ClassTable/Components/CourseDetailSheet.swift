@@ -8,7 +8,7 @@ struct CourseDetailSheet: View {
 
     let course: CourseStore.Course
     let assignments: [AssignmentStore.Assignment]
-    var timeRange: String? = nil
+    var times: (start: String, end: String)? = nil
     var weekday: Int? = nil
     var periods: [String]? = nil
     /// A current-term day the sheet shows: its cards carry that day's changes and the coming ones
@@ -35,7 +35,7 @@ struct CourseDetailSheet: View {
                     VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
                         headerSection
                         CourseDetailRoomAndTime(
-                            course: course, timeRange: timeRange, weekday: weekday, periods: periods, meeting: shownMeeting
+                            course: course, times: times, weekday: weekday, periods: periods, meeting: shownMeeting
                         )
                         CourseDetailInfoRows(course: course)
                         if date != nil {

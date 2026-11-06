@@ -19,7 +19,8 @@ struct ClubActivityDetailSheet: View {
                     )
                     EmphasisCard(
                         label: String(localized: "class_table_club_time_label"),
-                        value: ClassTimeline.timeRange(from: club.start, to: club.end),
+                        value: TimeRange.text(from: club.start, to: club.end),
+                        spokenValue: TimeRange.spoken(from: club.start, to: club.end),
                         policy: policy
                     )
                 }

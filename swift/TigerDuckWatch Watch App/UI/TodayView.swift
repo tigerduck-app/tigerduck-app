@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct TodayView: View {
     @EnvironmentObject private var store: ScheduleStore
@@ -27,7 +28,7 @@ struct TodayView: View {
                         NavigationLink {
                             CourseDetailView(course: course)
                         } label: {
-                            TodayRow(course: course, policy: policy)
+                            TodayRow(course: course, policy: policy, language: store.language)
                         }
                     }
                 }
@@ -40,6 +41,7 @@ struct TodayView: View {
 private struct TodayRow: View {
     let course: WatchCourse
     let policy: WatchVisualStylePolicy
+    let language: WatchLanguage
 
     var body: some View {
         let courseColor = Color(hex: course.colorHex) ?? .accentColor
@@ -53,7 +55,11 @@ private struct TodayRow: View {
                 Text(course.name)
                     .font(.headline)
                     .lineLimit(1)
-                Text("\(course.startHHmm)–\(course.endHHmm) · \(course.classroom)")
+                Text("\(TimeRange.text(course.startHHmm, course.endHHmm)) · \(course.classroom)")
+                    .accessibilityLabel(
+                        [TimeRange.spoken(course.startHHmm, course.endHHmm) { language.string($0) }, course.classroom]
+                            .joined(separator: ", ")
+                    )
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
