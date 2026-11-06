@@ -4,23 +4,29 @@ The portal page (`subsystem.py`) answers without a session and links 學籍管�
 `stuinfosys.ntust.edu.tw/StudentInformation`, which signs in through ssoam2's OIDC and gets the
 code back by a form_post page that `NtustSsoBridge` submits. The sign-in ends on `Home/Index`,
 whose menu links 學籍資料檢視 (`Information/Index`, UTF-8); opening the system's root again runs
-the OIDC round once more, signed in or not.
+the OIDC round once more, signed in or not. After the sign-in the jar sends this host 6 cookies,
+about 6.5 KB with SSO's own, toward IIS's 16 KB request header limit
+(`BrowserSchoolSites.cookieBudget`).
 
 學籍資料檢視 has no `<table>` and loads nothing by script. The record is a Bootstrap form: one
 `div.form-group` per field, a `label.control-label` and a named `input.form-control`. Its last
 group is the advisors: a label naming 導師 and one unnamed read-only input per semester, whose
 value is a sentence holding the term and the advisor's name.
 
-The page is the student's own record: the probe prints only the advisor rows, each name cut to
-its first character unless `--show` is passed. Stderr holds the request trace (method, host,
-path, status), the page's title, ssoam2's refusal, each advisor value's format with its data
-hidden, and on a miss the page's skeleton (selectors and the kind and length of each leaf's text,
-never a field's value) with its scripts' paths. Cookies stay in memory.
+The page is the student's own record: the probe prints only the advisor rows, each name and the
+label cut to their first character unless `--show` is passed. Stderr holds the request trace
+(method, host, path, status; session-like segments blanked), the title's length, ssoam2's
+refusal (redacted, 80 characters at most), each advisor value's format with its data hidden,
+and on a miss the page's skeleton (selectors and the kind and length of each leaf's text, never
+a field's value) with its scripts' paths. Any other failure prints its exception's type alone.
+Cookies stay in memory.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import logging
 import re
@@ -42,7 +48,8 @@ SEMESTER_LABELS = ("學年", "學期")
 # 113 學年度 第 1 學期, 114學年度下學期, 1141學期: the ROC year, then the term.
 TERM = re.compile(r"(\d{2,3})\s*(?:學年度?\s*第?\s*([12一二上下])\s*學期|([12])\s*學期)")
 TERM_DIGITS = {"一": "1", "上": "1", "二": "2", "下": "2"}
-NAME_SEPARATORS = " :：為是"
+# What may stand between 導師 and the name: 導師為：, 導師是, 導師 : .
+CONNECTIVE = re.compile(r"\s*[為是]?\s*[:：]?\s*")
 TITLE = re.compile(r"\s*(?:助理教授|副教授|教授|講師|老師)$")
 # What a semester may be to be printed as is; anything else is masked like a name.
 SEMESTER_SHAPE = re.compile(r"\d{2,3}[12]")
@@ -51,8 +58,11 @@ SENTENCE_WORDS = ("助理教授", "副教授", "學年度", "學年", "學期", 
 SSO_HOST = "ssoam2.ntust.edu.tw"
 # Where ssoam2 writes why it refused a sign-in, as HTMLParser.loginErrorMessage reads it.
 SSO_ERROR_CLASSES = ("field-validation-error", "validation-summary-errors", "alert-danger", "text-danger")
+SSO_ERROR_LENGTH = 80
 # A path segment this long is a token, not a page name.
-TOKEN_LENGTH = 32
+TOKEN_LENGTH = 24
+# A segment carrying a session: a ;jsessionid= style parameter, or ASP.NET's cookieless (S(...)).
+SESSION_SEGMENT = re.compile(r";|\([A-Z]\(")
 HAN = range(0x4E00, 0xA000)
 SKELETON_DEPTH = 16
 UNSHOWN_TAGS = frozenset({"head", "script", "style", "svg", "noscript"})
@@ -77,9 +87,9 @@ def _advisor_group(soup: BeautifulSoup) -> tuple[str, list[str]] | None:
     input in the label's form group, so named inputs are never read.
     """
     label = next((tag for tag in reversed(soup.find_all("label")) if ADVISOR in _text(tag)), None)
-    if label is None:
+    group = label.find_parent(class_="form-group") if label else None
+    if group is None:
         return None
-    group = label.find_parent(class_="form-group") or label.parent
     values = [i.get("value", "").strip() for i in group.find_all("input") if not i.get("name")]
     return _text(label), [v for v in values if v]
 
@@ -90,19 +100,20 @@ def _semester_advisor(value: str) -> dict[str, str]:
     digit = (term.group(2) or term.group(3)) if term else ""
     semester = term.group(1) + TERM_DIGITS.get(digit, digit) if term else ""
     before, _, after = value.partition(ADVISOR)
-    name = re.split(r"[（(]", after.lstrip(NAME_SEPARATORS), maxsplit=1)[0]
+    after = after[CONNECTIVE.match(after).end():]
+    name = re.split(r"[（(]", after, maxsplit=1)[0]
     name = TITLE.sub("", name.strip(" ，,。."))
     if not name:
         # 王小明導師: the name runs from the term's last word to 導師.
-        name = re.split(r"學期|學年度?", before)[-1].strip(NAME_SEPARATORS)
+        name = re.split(r"學期|學年度?", before)[-1].strip(" :：")
     return {"semester": semester, "advisor": name}
 
 
 def parse_advisors(html: str) -> dict[str, object] | None:
     """The 導師 label and one semester/advisor row per input of its group.
 
-    None when no label names 導師 (a sign-in page, a redesign), which is not the same as a
-    group with no inputs.
+    None when no label in a form group names 導師 (a sign-in page, a redesign), which is not
+    the same as a group with no inputs.
     """
     found = _advisor_group(BeautifulSoup(html, "html.parser"))
     if found is None:
@@ -112,7 +123,7 @@ def parse_advisors(html: str) -> dict[str, object] | None:
 
 
 def shown(result: dict[str, object], show: bool) -> dict[str, object]:
-    """The parsed rows as printed: names masked unless `show`."""
+    """The parsed rows as printed: names and the label masked unless `show`."""
     rows = [
         {
             "semester": row["semester"]
@@ -121,7 +132,8 @@ def shown(result: dict[str, object], show: bool) -> dict[str, object]:
         }
         for row in result["rows"]
     ]
-    return {"label": result["label"], "row_count": len(rows), "rows": rows}
+    label = result["label"] if show else mask(result["label"])
+    return {"label": label, "row_count": len(rows), "rows": rows}
 
 
 def _template(value: str) -> str:
@@ -155,9 +167,11 @@ def _redact(text: str, student_id: str) -> str:
 
 
 def _path(url: httpx.URL, student_id: str) -> str:
-    """The URL's path, never its query, with the student ID and token-length segments blanked."""
+    """The URL's path, never its query, with the student ID and session-like segments blanked."""
     segments = _redact(url.path, student_id).split("/")
-    return "/".join("<token>" if len(s) >= TOKEN_LENGTH else s for s in segments)
+    return "/".join(
+        "<token>" if len(s) >= TOKEN_LENGTH or SESSION_SEGMENT.search(s) else s for s in segments
+    )
 
 
 def _trace(student_id: str, last: list[httpx.Response]) -> Callable[[httpx.Response], None]:
@@ -243,12 +257,14 @@ def _describe(resp: httpx.Response, student_id: str, structure: bool) -> None:
         f"  page {resp.url.host}{_path(resp.url, student_id)} {resp.status_code},"
         f" content-type {resp.headers.get('content-type')!r},"
         f" meta charset {meta['charset'] if meta else None!r}, decoded as {resp.encoding},"
-        f" title {title[:60]!r}, inputs {inputs}, tables {len(soup.find_all('table'))},"
+        f" title {len(title)} chars, inputs {inputs}, tables {len(soup.find_all('table'))},"
         f" captcha mentioned {'captcha' in resp.text.lower()}"
     ]
     if resp.url.host == SSO_HOST:
         errors = (_text(e) for c in SSO_ERROR_CLASSES for e in soup.find_all(class_=c))
-        lines.append(f"  sso error {next((e for e in errors if e), None)!r}")
+        # Redacted before the cut, which could otherwise leave part of the student ID.
+        error = _redact(next((e for e in errors if e), ""), student_id)[:SSO_ERROR_LENGTH]
+        lines.append(f"  sso error {error!r}")
     if structure:
         sources, urls, named = _scripts(soup)
         lines.append(f"  scripts {sources}, inline urls {urls}, {ADVISOR} in inline scripts {named}")
@@ -284,28 +300,27 @@ def _run(
     if view is None:
         return _fail(f"no {RECORDS_VIEW} link", home, student_id)
 
-    page = bridge.open(view)
+    return _present(bridge.open(view), student_id, show)
+
+
+def _present(page: httpx.Response, student_id: str, show: bool) -> int:
+    """Prints the advisor rows of 學籍資料檢視, or fails with the page's skeleton."""
     result = parse_advisors(page.text)
     if result is None:
-        return _fail(f"no label naming {ADVISOR}", page, student_id)
+        return _fail(f"no label naming {ADVISOR} in a form group", page, student_id)
+    if not result["rows"]:
+        return _fail(f"no semester under the {ADVISOR} label", page, student_id)
     _describe(page, student_id, structure=False)
     _, values = _advisor_group(BeautifulSoup(page.text, "html.parser"))
     print(_redact(f"  value formats {[_template(v) for v in values]}", student_id), file=sys.stderr)
-    host = page.url.host
-    sent = [c for c in bridge.client.cookies.jar if host.endswith(c.domain.lstrip("."))]
-    print(
-        f"  cookies for {host}: {len(sent)},"
-        f" {sum(len(c.name) + len(c.value) + 2 for c in sent)} bytes",
-        file=sys.stderr,
-    )
     print(json.dumps(shown(result, show), ensure_ascii=False, indent=2))
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m api.ntust.student_advisors")
     parser.add_argument("--show", action="store_true", help="print advisor names in full")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     # A failed sign-in logs a traceback whose URLs carry the OIDC query; the trace says enough.
     logging.getLogger("api.ntust.sso").setLevel(logging.CRITICAL)
     try:
@@ -325,7 +340,8 @@ def main() -> int:
                 f" {e.request.url.host}{_path(e.request.url, sid)}",
                 file=sys.stderr,
             )
-        except httpx.HTTPError as e:
+        except Exception as e:
+            # Only the type: an InvalidURL's or a network error's text can quote the OIDC code.
             print(f"[FAIL] {type(e).__name__}", file=sys.stderr)
     return 3
 
@@ -378,7 +394,7 @@ def _self_check() -> None:
         ],
     }, result
     assert shown(result, show=False) == {
-        "label": "歷屆導師",
+        "label": "歷○○○",
         "row_count": 3,
         "rows": [
             {"semester": "1131", "advisor": "王○○"},
@@ -386,6 +402,7 @@ def _self_check() -> None:
             {"semester": "1141", "advisor": "李○○"},
         ],
     }
+    assert shown(result, show=True)["label"] == "歷屆導師"
     assert shown(result, show=True)["rows"][2] == {"semester": "1141", "advisor": "李大華"}
 
     # The sentence spelt without spaces, with a 上/下 term, another title, a department after
@@ -401,6 +418,8 @@ def _self_check() -> None:
     assert one("114學年度下學期 導師:陳大文 老師") == {"semester": "1142", "advisor": "陳大文"}
     assert one("1141學期 導師：陳大文（資工系）") == {"semester": "1141", "advisor": "陳大文"}
     assert one("113學年度第1學期王小明導師") == {"semester": "1131", "advisor": "王小明"}
+    # 為 and 是 are connectives only right after 導師; a name may begin with either.
+    assert one("113學年度第1學期導師：是小明") == {"semester": "1131", "advisor": "是小明"}
 
     # A named input in the group is a field of the record, never a semester.
     named = (
@@ -418,13 +437,22 @@ def _self_check() -> None:
     assert parse_advisors('<label class="control-label">學號</label><input value="1">') is None
     empty = '<div class="form-group"><label>歷年導師</label><div class="col-sm-10"></div></div>'
     assert parse_advisors(empty) == {"label": "歷年導師", "rows": []}
+    # A label outside a form group is no advisor block; its parent may hold anything.
+    loose = '<div><label>歷屆導師</label><input value="113學年度第1學期導師：王小明"></div>'
+    assert parse_advisors(loose) is None
 
     # A semester that is not a term code is masked like a name.
     odd = shown({"label": "導師", "rows": [{"semester": "王小明", "advisor": "王小明"}]}, False)
     assert odd["rows"] == [{"semester": "王○○", "advisor": "王○○"}], odd
 
-    assert _path(httpx.URL("https://h.example/a/B00000000/x?code=c"), "b00000000") == "/a/<id>/x"
-    assert _path(httpx.URL("https://h.example/s/" + "t" * TOKEN_LENGTH), "b00000000") == "/s/<token>"
+    sid = "b00000000"
+    assert _path(httpx.URL("https://h.example/a/B00000000/x?code=c"), sid) == "/a/<id>/x"
+    # Segments that carry a session: 24 or more characters, a ;jsessionid=, ASP.NET's (S(...)).
+    assert _path(httpx.URL("https://h.example/s/" + "t" * 24), sid) == "/s/<token>"
+    assert _path(httpx.URL("https://h.example/app/page.jsp;jsessionid=A1/x"), sid) == "/app/<token>/x"
+    assert _path(httpx.URL("https://h.example/(S(abcdef))/a.aspx"), sid) == "/<token>/a.aspx"
+    kept = "/StudentInformation/Account/OpenIDCallback"
+    assert _path(httpx.URL("https://h.example" + kept), sid) == kept
 
     # The skeleton keeps selectors and text kinds, never the text, and folds equal neighbours.
     block = BeautifulSoup(
@@ -444,6 +472,53 @@ def _self_check() -> None:
     assert _scripts(scripts) == (
         ["/lib/grid.js"], ["/StudentInformation/Information/Tutors"], True,
     ), _scripts(scripts)
+
+    def captured(run: Callable[[], object]) -> tuple[object, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = run()
+        return rc, out.getvalue(), err.getvalue()
+
+    def answer(html: str, url: str) -> httpx.Response:
+        return httpx.Response(200, html=html, request=httpx.Request("GET", url))
+
+    view = "https://stuinfosys.ntust.edu.tw/StudentInformation/Information/Index"
+    made_up = ("測試生", "王小明", "李大華", "B00000000")
+
+    # A 導師 label with no semesters fails with the skeleton instead of printing no rows.
+    rc, out, err = captured(lambda: _present(answer(empty, view), sid, False))
+    assert rc == 3 and out == "" and "[FAIL]" in err and "skeleton" in err, (rc, out, err)
+
+    # The page prints masked rows on stdout; stderr holds the title's length, never its text,
+    # and none of the record's values.
+    title = "學籍資料檢視 - 國立臺灣科技大學 學籍管理"
+    full = f"<html><head><title>{title}</title></head><body>{page}</body></html>"
+    rc, out, err = captured(lambda: _present(answer(full, view), sid, False))
+    assert rc == 0 and json.loads(out) == shown(result, show=False), (rc, out)
+    assert f"title {len(title)} chars" in err and title not in err, err
+    assert not any(word in out + err for word in made_up), (out, err)
+
+    # ssoam2's refusal prints redacted and at most SSO_ERROR_LENGTH characters long.
+    refusal = "帳號 B00000000 " + "錯" * 100
+    login = answer(
+        f'<form id="loginForm"></form><div class="validation-summary-errors">{refusal}</div>',
+        "https://ssoam2.ntust.edu.tw/account/login",
+    )
+    _, _, err = captured(lambda: _describe(login, sid, structure=False))
+    line = next(text for text in err.splitlines() if "sso error" in text)
+    assert "<id>" in line and "B00000000" not in err and line.count("錯") < SSO_ERROR_LENGTH, line
+
+    # Any other failure prints its type alone: an InvalidURL's text can quote the OIDC code.
+    def leaky(*_: object) -> int:
+        raise httpx.InvalidURL("https://h.example/signin-oidc?code=SECRET&state=S")
+
+    real = globals()["_run"], globals()["load_creds"]
+    globals()["_run"], globals()["load_creds"] = leaky, lambda: ("B00000000", "pw")
+    try:
+        rc, out, err = captured(lambda: main([]))
+    finally:
+        globals()["_run"], globals()["load_creds"] = real
+    assert rc == 3 and out == "" and err.strip() == "[FAIL] InvalidURL", (rc, err)
     print("self-check OK")
 
 
