@@ -169,6 +169,7 @@ def write_single_files() -> None:
     (OUT / "notes.txt.gz").write_bytes(gzip.compress(NOTES, mtime=EPOCH))
     (OUT / "notes.txt.bz2").write_bytes(bz2.compress(NOTES))
     (OUT / "notes.txt.xz").write_bytes(lzma.compress(NOTES))
+    (OUT / "empty.txt.gz").write_bytes(gzip.compress(b"", mtime=EPOCH))
 
 
 def seven_zip(name: str, *options: str) -> None:

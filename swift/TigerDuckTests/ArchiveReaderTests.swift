@@ -90,6 +90,17 @@ struct ArchiveReaderTests {
         #expect(try Data(contentsOf: file) == Self.notes)
     }
 
+    @Test("an empty file compressed on its own is listed as one empty file")
+    func emptySingleFile() throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let archive = try Self.fixture("empty.txt.gz")
+        let listing = try ArchiveReader.list(archive)
+        #expect(listing.items.map(\.path) == ["empty.txt"])
+        let file = try ArchiveReader.extract(listing.items[0], from: archive, into: folder)
+        #expect(try Data(contentsOf: file).isEmpty)
+    }
+
     @Test("a file that grows past the size or ratio limit stops, leaving nothing behind",
           arguments: [ArchiveLimits(maxEntryBytes: 1 << 20), ArchiveLimits(ratioFreeBytes: 0)])
     func oversize(limits: ArchiveLimits) throws {
