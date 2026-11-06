@@ -154,6 +154,18 @@ struct StorageSettingsTests {
     }
 
     @MainActor
+    @Test func theMacsMoodleCacheRowStillCountsAndClearsMemberPictures() async throws {
+        let place = try MoodlePlace()
+        defer { place.remove() }
+        let downloads = MoodleFileDownloads(root: place.files.moodleFilesDir)
+        let data = MoodleUserData(files: place.files)
+
+        #expect(await MoodleFilesCacheSection.measure(downloads, data) == 3_300)
+        #expect(await MoodleFilesCacheSection.clear(downloads, data) == 0)
+        #expect(!FileManager.default.fileExists(atPath: place.picture.path))
+    }
+
+    @MainActor
     private struct MoodlePlace {
         let root = FileManager.default.temporaryDirectory.appending(path: "MoodlePlace-\(UUID().uuidString)", directoryHint: .isDirectory)
         let files: MoodleFiles
