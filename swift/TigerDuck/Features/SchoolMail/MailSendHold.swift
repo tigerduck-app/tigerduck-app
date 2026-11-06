@@ -1,4 +1,5 @@
 #if os(iOS)
+import Accessibility
 import Foundation
 import Observation
 import UIKit
@@ -15,26 +16,36 @@ final class MailSendHold {
         }
     }
 
+    struct BackgroundGrant {
+        let isExpired: @MainActor () -> Bool
+        let end: @MainActor () -> Void
+    }
+
     static let shared = MailSendHold()
     static let seconds: TimeInterval = 5
 
     private(set) var held: Held?
-    private(set) var reopened: MailComposeViewModel?
+    private(set) var reopened: [MailComposeViewModel] = []
     private(set) var deliveries = 0
+    @ObservationIgnored private var sending: [MailComposeViewModel] = []
     @ObservationIgnored private var countdown: Task<Void, Never>?
     @ObservationIgnored private let sleep: (Duration) async -> Void
-    @ObservationIgnored private let beginBackgroundTask: () async -> @Sendable () async -> Void
+    @ObservationIgnored private let beginBackgroundTask: @MainActor () -> BackgroundGrant
+    @ObservationIgnored private let announce: @MainActor () -> Void
     @ObservationIgnored private var listeners: [MailNotificationListener] = []
 
     init(
         sleep: @escaping (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
-        beginBackgroundTask: @escaping () async -> @Sendable () async -> Void = {
-            await AppBackgroundTask.begin(named: "School Mail send")
+        beginBackgroundTask: @escaping @MainActor () -> BackgroundGrant = {
+            let task = AppBackgroundTask(named: "School Mail send")
+            return BackgroundGrant(isExpired: { task.isExpired }, end: { task.end() })
         },
+        announce: @escaping @MainActor () -> Void = { MailSendHold.announceHold() },
         events: NotificationCenter = .default
     ) {
         self.sleep = sleep
         self.beginBackgroundTask = beginBackgroundTask
+        self.announce = announce
         // Undo is out of reach from the background, where iOS may end the app with the mail
         // still held, so it goes at once.
         listeners = [
@@ -45,35 +56,42 @@ final class MailSendHold {
         ]
     }
 
-    func hold(_ model: MailComposeViewModel) {
-        guard held?.model !== model, !model.isSending, !model.shouldClose else { return }
+    @discardableResult
+    func hold(_ model: MailComposeViewModel) -> Bool {
+        if held?.model === model { return true }
+        guard !model.isSending, !model.shouldClose else { return false }
+        if let other = held?.model, Self.sameDraft(other, model) { sendNow() }
+        if sending.contains(where: { Self.sameDraft($0, model) }) { return true }
         sendNow()
         held = Held(model: model, until: Date().addingTimeInterval(Self.seconds))
+        announce()
         countdown = Task {
             await self.sleep(.seconds(Self.seconds))
             guard !Task.isCancelled else { return }
             self.sendNow()
         }
+        return true
     }
 
     func undo() {
         guard let model = release() else { return }
-        reopened = model
+        reopened.append(model)
     }
 
     func takeReopened() -> MailComposeViewModel? {
-        defer { reopened = nil }
-        return reopened
+        reopened.isEmpty ? nil : reopened.removeFirst()
     }
 
     private func sendNow() {
         guard let model = release() else { return }
-        Task { await self.deliver(model) }
+        let grant = beginBackgroundTask()
+        sending.append(model)
+        Task { await self.deliver(model, grant: grant) }
     }
 
     private func drop() {
         _ = release()
-        reopened = nil
+        reopened.removeAll()
     }
 
     private func release() -> MailComposeViewModel? {
@@ -83,12 +101,25 @@ final class MailSendHold {
         return held?.model
     }
 
-    private func deliver(_ model: MailComposeViewModel) async {
-        let endBackgroundTask = await beginBackgroundTask()
-        await model.send()
-        await endBackgroundTask()
+    private func deliver(_ model: MailComposeViewModel, grant: BackgroundGrant) async {
+        await model.send(unless: grant.isExpired)
+        grant.end()
+        sending.removeAll { $0 === model }
         deliveries += 1
-        if !model.shouldClose { reopened = model }
+        if !model.shouldClose { reopened.append(model) }
+    }
+
+    private static func sameDraft(_ one: MailComposeViewModel, _ other: MailComposeViewModel) -> Bool {
+        guard let mine = one.draftMessage, let theirs = other.draftMessage else { return false }
+        return mine == theirs
+    }
+
+    // A high priority keeps VoiceOver from cutting the announcement for the focus change the
+    // closing composer brings.
+    static func announceHold() {
+        var text = AttributedString(String(localized: "school_mail_sending_hold"))
+        text.accessibilitySpeechAnnouncementPriority = .high
+        AccessibilityNotification.Announcement(text).post()
     }
 }
 #endif

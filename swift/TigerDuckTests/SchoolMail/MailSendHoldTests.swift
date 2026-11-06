@@ -12,6 +12,8 @@ struct MailSendHoldTests {
     final class BackgroundTasks {
         var begun = 0
         var ended = 0
+        var expired = false
+        var announced = 0
     }
 
     struct Rig {
@@ -29,20 +31,22 @@ struct MailSendHoldTests {
             sleep: { await sleeper.sleep(for: $0) },
             beginBackgroundTask: {
                 tasks.begun += 1
-                return { @MainActor in tasks.ended += 1 }
+                return MailSendHold.BackgroundGrant(isExpired: { tasks.expired }, end: { tasks.ended += 1 })
             },
+            announce: { tasks.announced += 1 },
             events: events
         )
         return Rig(hold: hold, sleeper: sleeper, events: events, tasks: tasks)
     }
 
     static func written(_ fake: FakeMailClient, to: String = "a@mail.ntust.edu.tw",
-                        account: AccountSession? = nil) async -> MailComposeViewModel {
+                        context: MailComposeContext = MailComposeContext(mode: .new), account: AccountSession? = nil,
+                        session: MailPageSession? = nil, events: MailboxEvents? = nil) async -> MailComposeViewModel {
         let model = MailComposeViewModel(
-            context: MailComposeContext(mode: .new),
-            session: MailPageSession(idleClose: .milliseconds(10), open: { fake }, onAuthFailure: { _ in }, account: account),
+            context: context,
+            session: session ?? MailPageSession(idleClose: .milliseconds(10), open: { fake }, onAuthFailure: { _ in }, account: account),
             sender: Compose.me, folderRoles: [.inbox: "INBOX", .sent: Compose.sent, .drafts: Compose.drafts],
-            prefs: InMemoryMailPreferences(), cache: SchoolMailTestDoubles.temporaryCache(), sleep: { _ in }
+            events: events, prefs: InMemoryMailPreferences(), cache: SchoolMailTestDoubles.temporaryCache(), sleep: { _ in }
         )
         await model.prepare()
         model.to = to
@@ -58,8 +62,9 @@ struct MailSendHoldTests {
         let model = await Self.written(fake)
         #expect(model.readyToSend())
 
-        rig.hold.hold(model)
+        #expect(rig.hold.hold(model))
         #expect(rig.hold.held?.model === model)
+        #expect(rig.tasks.announced == 1)
         try await rig.sleeper.waitUntilArmed()
         #expect(await rig.sleeper.requestedDurations == [.seconds(5)])
         #expect(await fake.sent.isEmpty)
@@ -136,6 +141,7 @@ struct MailSendHoldTests {
 
         rig.events.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
         #expect(rig.hold.held == nil)
+        #expect(rig.tasks.begun == 1)
         try await waitUntil { rig.hold.deliveries == 1 }
         #expect(model.didFinish)
         rig.events.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -190,14 +196,15 @@ struct MailSendHoldTests {
         let rig = Self.rig()
         let fake = Compose.fake()
         let model = await Self.written(fake)
-        rig.hold.hold(model)
-        rig.hold.hold(model)
+        #expect(rig.hold.hold(model))
+        #expect(rig.hold.hold(model))
         try await rig.sleeper.waitUntilArmed()
         #expect(await rig.sleeper.armedCount == 1)
+        #expect(rig.tasks.announced == 1)
 
         await rig.sleeper.fire()
         try await waitUntil { rig.hold.deliveries == 1 }
-        rig.hold.hold(model)
+        #expect(!rig.hold.hold(model))
         #expect(rig.hold.held == nil)
         #expect(await fake.sent.count == 1)
     }
@@ -219,6 +226,86 @@ struct MailSendHoldTests {
         await rig.sleeper.fire()
         try await waitUntil { rig.hold.deliveries == 2 }
         #expect(await fake.sent.map(\.to) == [["a@mail.ntust.edu.tw"], ["b@mail.ntust.edu.tw"]])
+    }
+
+    @Test func twoFailedSendsInARowBothComeBackInOrder() async throws {
+        let rig = Self.rig()
+        let fake = Compose.fake()
+        await fake.update { $0.sendError = .unreachable }
+        let first = await Self.written(fake)
+        let second = await Self.written(fake, to: "b@mail.ntust.edu.tw")
+        rig.hold.hold(first)
+        rig.hold.hold(second)
+        try await rig.sleeper.waitUntilArmed(atLeast: 2)
+        await rig.sleeper.fire()
+        try await waitUntil { rig.hold.deliveries == 2 }
+
+        #expect(rig.hold.takeReopened() === first)
+        #expect(rig.hold.takeReopened() === second)
+        #expect(rig.hold.takeReopened() == nil)
+    }
+
+    @Test func aDraftOpenedAgainDuringTheHoldGoesOnce() async throws {
+        let rig = Self.rig()
+        let fake = Compose.fake()
+        let draft = MailComposeContext(mode: .draft, folder: Compose.drafts, uid: 7)
+        let held = await Self.written(fake, context: draft)
+        let reopened = await Self.written(fake, context: draft)
+        let late = await Self.written(fake, context: draft)
+        rig.hold.hold(held)
+        try await rig.sleeper.waitUntilArmed()
+
+        #expect(rig.hold.hold(reopened))
+        #expect(rig.hold.held == nil)
+        #expect(rig.hold.hold(late))
+        #expect(rig.hold.held == nil)
+        try await waitUntil { rig.hold.deliveries == 1 }
+        #expect(await fake.sent.count == 1)
+        #expect(held.didFinish)
+
+        let other = await Self.written(fake, context: MailComposeContext(mode: .draft, folder: Compose.drafts, uid: 8))
+        #expect(rig.hold.hold(other))
+        #expect(rig.hold.held?.model === other)
+        rig.hold.undo()
+    }
+
+    @Test func aGrantThatRunsOutBeforeTheSendStartsSendsNothingAndReopens() async throws {
+        let rig = Self.rig()
+        let fake = Compose.fake()
+        let model = await Self.written(fake)
+        rig.hold.hold(model)
+        try await rig.sleeper.waitUntilArmed()
+        rig.tasks.expired = true
+        await rig.sleeper.fire()
+        try await waitUntil { rig.hold.deliveries == 1 }
+
+        #expect(await fake.sent.isEmpty)
+        #expect(rig.hold.takeReopened() === model)
+        #expect(model.error == String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError.generic.message)
+        #expect(rig.tasks.ended == 1)
+    }
+
+    @Test func aMailFromAComposerOwnSessionIsSentAndReportedAndItsConnectionClosesAfter() async throws {
+        let rig = Self.rig()
+        let fake = Compose.fake()
+        await fake.update { $0.appendError = .unreachable }
+        let events = MailboxEvents()
+        var notices: [String] = []
+        events.observe { if case let .sentCopyNotice(text) = $0 { notices.append(text) } }
+        let timer = ManualSleeper()
+        let session = MailPageSession(idleClose: .milliseconds(10), closesWhenIdle: true, open: { fake }, onAuthFailure: { _ in },
+                                      sleep: { await timer.sleep(for: $0) })
+        let model = await Self.written(fake, session: session, events: events)
+        rig.hold.hold(model)
+        try await rig.sleeper.waitUntilArmed()
+        await rig.sleeper.fire()
+        try await waitUntil { rig.hold.deliveries == 1 }
+
+        #expect(await fake.sent.map(\.to) == [["a@mail.ntust.edu.tw"]])
+        #expect(notices.count == 1)
+        try await timer.waitUntilArmed()
+        await timer.fire()
+        await fake.waitForArrival("logout")
     }
 }
 #endif

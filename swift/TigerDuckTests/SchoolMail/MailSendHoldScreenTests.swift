@@ -27,7 +27,7 @@ struct MailSendHoldScreenTests {
 
     private struct ListScene: View {
         let hold: MailSendHold
-        private static let subjects = ["期末專題分組", "Re: Lab report draft", "停修申請公告", "借閱到期提醒", "Club fair volunteers"]
+        static let subjects = ["期末專題分組", "Re: Lab report draft", "停修申請公告", "借閱到期提醒", "Club fair volunteers"]
 
         var body: some View {
             List(Self.subjects, id: \.self) { subject in
@@ -57,8 +57,9 @@ struct MailSendHoldScreenTests {
             defer { window.isHidden = true }
             let root = try #require(window.rootViewController?.view)
             let undoLabel = String(localized: "school_mail_undo_send")
-            try await waitUntil { accessibilityElement(labeled: undoLabel, in: root) != nil }
-            try await Task.sleep(for: .milliseconds(600))
+            try await waitUntil {
+                accessibilityElement(labeled: undoLabel, in: root).map { window.bounds.contains($0.accessibilityFrame) } ?? false
+            }
             window.saveSnapshot(as: "mail-send-hold-\(Self.language)-\(look.rawValue)")
 
             let undo = try #require(accessibilityElement(labeled: undoLabel, in: root))
@@ -86,13 +87,15 @@ struct MailSendHoldScreenTests {
             let window = try Self.show(MailComposeView(model: reopened, hold: rig.hold), look: look)
             defer { window.isHidden = true }
             let root = try #require(window.rootViewController?.view)
-            try await waitUntil { exposedAccessibilityTexts(in: root).contains { $0.contains("期末報告") } }
-            try await Task.sleep(for: .milliseconds(400))
+            var shown = ["a@mail.ntust.edu.tw", "期末報告"]
+            if look != .largestText { shown += ["老師好，附上報告。", "報告.pdf"] }
+            try await waitUntil {
+                let texts = exposedAccessibilityTexts(in: root)
+                return shown.allSatisfy { text in texts.contains { $0.contains(text) } }
+            }
             window.saveSnapshot(as: "mail-send-undone-\(Self.language)-\(look.rawValue)")
 
             let texts = exposedAccessibilityTexts(in: root)
-            var shown = ["a@mail.ntust.edu.tw", "期末報告"]
-            if look != .largestText { shown += ["老師好，附上報告。", "報告.pdf"] }
             for text in shown {
                 #expect(texts.contains { $0.contains(text) }, "\(text) in \(texts)")
             }
@@ -119,9 +122,59 @@ struct MailSendHoldScreenTests {
             #expect(try #require(sendButton()).accessibilityActivate())
             try await waitUntil { rig.hold.held != nil }
             #expect(rig.hold.held?.model === model)
-            try await Task.sleep(for: .milliseconds(500))
             #expect(window.rootViewController?.presentedViewController == nil)
             #expect(accessibilityElement(labeled: String(localized: "school_mail_send_confirm_title"), in: window) == nil)
+        }
+    }
+
+    @Test func theLastRowScrollsClearOfTheBarAtTheLargestText() async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            rig.hold.hold(await MailSendHoldTests.written(MailComposeViewModelTests.fake()))
+            defer { rig.hold.undo() }
+            let window = try Self.show(ListScene(hold: rig.hold), look: .largestText)
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController?.view)
+            let undoLabel = String(localized: "school_mail_undo_send")
+            try await waitUntil {
+                accessibilityElement(labeled: undoLabel, in: root) != nil
+                    && root.descendants(ofType: UIScrollView.self).first.map { $0.contentSize.height > 0 } ?? false
+            }
+            let list = try #require(root.descendants(ofType: UIScrollView.self).first)
+            let last = try #require(ListScene.subjects.last)
+            try await waitUntil {
+                let bottom = max(-list.adjustedContentInset.top,
+                                 list.contentSize.height - list.bounds.height + list.adjustedContentInset.bottom)
+                guard abs(list.contentOffset.y - bottom) < 0.5 else {
+                    list.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+                    return false
+                }
+                return accessibilityElement(labeled: last, in: root) != nil
+            }
+
+            let row = try #require(accessibilityElement(labeled: last, in: root)).accessibilityFrame
+            let barTop = [undoLabel, String(localized: "school_mail_sending_hold"), String(localized: "school_mail_compose")]
+                .compactMap { accessibilityElement(labeled: $0, in: root)?.accessibilityFrame.minY }.min()
+            let top = try #require(barTop)
+            #expect(row.maxY <= top, "\(row) above \(top)")
+        }
+    }
+
+    @Test func aFailedSendReopensItsComposerOverAScreenOutsideMail() async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            let fake = MailComposeViewModelTests.fake()
+            await fake.update { $0.sendError = .unreachable }
+            let window = try Self.show(Text(verbatim: "課表").heldMailHost(rig.hold), look: .light)
+            defer { window.isHidden = true }
+            rig.hold.hold(await MailSendHoldTests.written(fake))
+            try await rig.sleeper.waitUntilArmed()
+            await rig.sleeper.fire()
+
+            try await waitUntil { window.rootViewController?.presentedViewController?.viewIfLoaded != nil }
+            let sheet = try #require(window.rootViewController?.presentedViewController?.view)
+            try await waitUntil { exposedAccessibilityTexts(in: sheet).contains { $0.contains("期末報告") } }
+            #expect(rig.hold.reopened.isEmpty)
         }
     }
 }

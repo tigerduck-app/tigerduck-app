@@ -45,6 +45,7 @@ final class MailComposeViewModel: Identifiable {
     }
 
     var mode: MailComposeMode { context.mode }
+    var draftMessage: (folder: String, uid: UInt32)? { context.mode == .draft ? context.message : nil }
     var to: String {
         get { draft.to }
         set { draft.to = newValue; tracking.edited.insert(.to) }
@@ -167,7 +168,7 @@ final class MailComposeViewModel: Identifiable {
         !isSending && checkSignIn() && validate() != nil
     }
 
-    func send() async {
+    func send(unless isExpired: @escaping @MainActor () -> Bool = { false }) async {
         guard !isSending, checkSignIn(), let recipients = validate() else { return }
         let isReply = context.mode == .reply || context.mode == .replyAll
         let threading = isReply ? context.original.map(MailReplyComposer.threadingHeaders(for:)) : nil
@@ -182,7 +183,8 @@ final class MailComposeViewModel: Identifiable {
         do {
             let filing = try await MailComposeSending.send(MailComposeSending.Send(
                 message: message, messageID: messageID, from: sender.address, recipients: mail.envelopeRecipients,
-                roles: folderRoles, answered: tracking.prefillApplied && isReply ? context.message : nil, replaced: replaced
+                roles: folderRoles, answered: tracking.prefillApplied && isReply ? context.message : nil, replaced: replaced,
+                isExpired: isExpired
             ), session: session, services: services, signIn: signIn)
             if let refreshedRoles = filing.roles { adoptFolderRoles(refreshedRoles) }
             status.sentCopy = filing.outcome

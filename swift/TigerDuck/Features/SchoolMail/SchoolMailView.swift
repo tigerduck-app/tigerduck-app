@@ -163,7 +163,7 @@ struct SchoolMailView: View {
             MailComposeView(context: context, session: viewModel.session, folderRoles: viewModel.folderRoles,
                             events: viewModel.events)
         }
-        .reopensHeldMail(sendHold, isComposing: compose != nil) { await viewModel.refresh() }
+        .onChange(of: sendHold.deliveries) { Task { await viewModel.refresh() } }
         .task {
             await viewModel.refresh()
             viewModel.startPolling()

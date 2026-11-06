@@ -15,6 +15,7 @@ struct ContentView: View {
         #if os(iOS)
         .serverPushPopupHost()
         .modifier(ClassTableImportHost())
+        .heldMailHost()
         #endif
     }
 }

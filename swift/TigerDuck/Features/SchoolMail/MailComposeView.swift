@@ -117,8 +117,7 @@ struct MailComposeView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        guard viewModel.readyToSend() else { return }
-                        hold.hold(viewModel)
+                        guard viewModel.readyToSend(), hold.hold(viewModel) else { return }
                         dismiss()
                     } label: {
                         LoadingButtonLabel(isLoading: viewModel.isSending) {

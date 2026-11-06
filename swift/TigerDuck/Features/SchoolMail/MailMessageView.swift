@@ -75,7 +75,6 @@ struct MailMessageView: View {
                             onSentCopyNotice: { viewModel.reportSentCopyNotice($0) })
         }
         .safeAreaInset(edge: .bottom) { MailSendHoldBar(hold: sendHold) }
-        .reopensHeldMail(sendHold, isComposing: compose != nil)
         .alert(String(localized: "school_mail_risky_title"), isPresented: Binding(
             get: { riskyAttachment != nil }, set: { if !$0 { riskyAttachment = nil } }), presenting: riskyAttachment
         ) { pending in

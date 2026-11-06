@@ -17,14 +17,16 @@ final class AppBackgroundTask {
 
     #if os(iOS)
     private var id = UIBackgroundTaskIdentifier.invalid
+    private(set) var isExpired = false
 
-    private init(named name: String) {
+    init(named name: String) {
         id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            self?.isExpired = true
             self?.end()
         }
     }
 
-    private func end() {
+    func end() {
         guard id != .invalid else { return }
         UIApplication.shared.endBackgroundTask(id)
         id = .invalid

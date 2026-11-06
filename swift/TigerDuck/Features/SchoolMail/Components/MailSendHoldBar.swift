@@ -1,5 +1,4 @@
 #if os(iOS)
-import Accessibility
 import SwiftUI
 
 struct MailSendHoldBar: View {
@@ -58,7 +57,6 @@ private struct MailSendHoldCapsule: View {
         .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
         .glassCard(cornerRadius: TigerDuckTheme.CornerRadius.xl)
         .accessibilityElement(children: .contain)
-        .onAppear(perform: announce)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.bottom, TigerDuckTheme.Spacing.sm)
     }
@@ -89,54 +87,33 @@ private struct MailSendHoldCapsule: View {
             .frame(minHeight: 44)
             .contentShape(.rect)
     }
-
-    // A high priority keeps VoiceOver from cutting the announcement for the focus change the
-    // closing composer brings.
-    private func announce() {
-        var text = AttributedString(String(localized: "school_mail_sending_hold"))
-        text.accessibilitySpeechAnnouncementPriority = .high
-        AccessibilityNotification.Announcement(text).post()
-    }
 }
 
 extension View {
-    func reopensHeldMail(_ hold: MailSendHold, isComposing: Bool, refresh: (@MainActor () async -> Void)? = nil) -> some View {
-        modifier(MailHeldMailHost(hold: hold, isComposing: isComposing, refresh: refresh))
+    func heldMailHost(_ hold: MailSendHold = .shared) -> some View {
+        modifier(MailHeldMailHost(hold: hold))
     }
 }
 
 private struct MailHeldMailHost: ViewModifier {
     let hold: MailSendHold
-    let isComposing: Bool
-    let refresh: (@MainActor () async -> Void)?
-    @State private var isOnScreen = false
-    @State private var reopened: MailComposeViewModel?
+    @State private var shown: MailComposeViewModel?
+    @State private var hostWindow = HostWindow()
 
     func body(content: Content) -> some View {
         content
-            .onAppear {
-                isOnScreen = true
-                take()
-            }
-            .onDisappear { isOnScreen = false }
-            .onChange(of: hold.reopened == nil || isComposing) { take() }
-            .onChange(of: hold.deliveries) { refreshList() }
-            .sheet(item: $reopened, onDismiss: {
-                take()
-                refreshList()
-            }) { model in
-                MailComposeView(model: model, hold: hold)
-            }
+            .task(id: shown == nil ? hold.reopened.first?.id : nil) { await showNext() }
+            .sheet(item: $shown) { MailComposeView(model: $0, hold: hold) }
+            .readsHostWindow(into: hostWindow)
     }
 
-    private func take() {
-        guard isOnScreen, !isComposing, reopened == nil else { return }
-        reopened = hold.takeReopened()
-    }
-
-    private func refreshList() {
-        guard let refresh else { return }
-        Task { await refresh() }
+    private func showNext() async {
+        guard shown == nil, !hold.reopened.isEmpty else { return }
+        while hostWindow.isPresenting, !Task.isCancelled {
+            await hostWindow.presentationsClosed()
+        }
+        guard !Task.isCancelled else { return }
+        shown = hold.takeReopened()
     }
 }
 #endif

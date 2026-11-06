@@ -17,12 +17,14 @@ enum MailComposeSending {
         var roles: [MailFolderRole: String]
         var answered: (folder: String, uid: UInt32)?
         var replaced: (folder: String, draft: ReplacedDraft)?
+        var isExpired: @MainActor () -> Bool = { false }
     }
 
     static func send(
         _ send: Send, session: MailPageSession, services: MailComposeServices, signIn: SignIn
     ) async throws -> SentCopyFiler.Filing {
         try await session.use(for: signIn) { client -> SentCopyFiler.Filing in
+            guard !send.isExpired() else { throw CancellationError() }
             try await client.send(send.message, from: send.from, to: send.recipients)
             if let answered = send.answered {
                 try? await client.setFlag(.answered, on: true, folder: answered.folder, uids: [answered.uid], expectedUIDValidity: nil)
