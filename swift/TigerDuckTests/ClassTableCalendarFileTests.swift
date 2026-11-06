@@ -107,6 +107,18 @@ struct ClassTableCalendarFileTests {
         #expect(File.events(courses: [Self.structures()], term: closed, owner: nil).isEmpty)
     }
 
+    @Test("the menu's check finds a timed period on a weekday column without building the events")
+    func timedMeetingCheck() {
+        let untimed = [
+            SDCourse(courseNo: "GE1100001", courseName: "Thesis"),
+            SDCourse(courseNo: "GE1100002", courseName: "Practicum", schedule: [2: ["E"]]),
+            SDCourse(courseNo: "GE1100003", courseName: "Fieldwork", schedule: [0: ["1"], 8: ["2"]]),
+        ]
+        #expect(!File.hasTimedMeeting(in: []))
+        #expect(!File.hasTimedMeeting(in: untimed))
+        #expect(File.hasTimedMeeting(in: untimed + [Self.structures()]))
+    }
+
     @Test("courses with no timed period on a weekday are left out")
     func untimedCoursesLeftOut() {
         let courses = [

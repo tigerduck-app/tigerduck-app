@@ -51,6 +51,16 @@ enum ClassTableCalendarFile {
         }
     }
 
+    /// Whether any course has a timed period on one of the grid's days. The menu asks this, not
+    /// `events`, each time it draws.
+    static func hasTimedMeeting(in courses: [CourseStore.Course]) -> Bool {
+        courses.contains { course in
+            course.schedule.contains { weekday, periods in
+                weekdays.contains(weekday) && periods.contains { AppConstants.PeriodTimes.mapping[$0] != nil }
+            }
+        }
+    }
+
     /// The grid's columns, Monday to Sunday.
     private static let weekdays = 1...7
 

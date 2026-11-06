@@ -129,20 +129,23 @@ struct ClassTableHeaderMenu: View {
         } label: {
             Label(String(localized: "class_table_download_ics"), systemImage: "calendar")
         }
-        .disabled(export.isExporting || calendarEvents.isEmpty)
+        .disabled(
+            export.isExporting || calendarTerm == nil || !ClassTableCalendarFile.hasTimedMeeting(in: viewModel.courses)
+        )
     }
 
     private var calendarTerm: SchoolCalendar.Term? {
         schoolTerm(viewModel.currentSemester, viewModel.shownPerson == nil)
     }
 
-    private var calendarEvents: [ClassTableCalendarFile.Event] {
-        calendarTerm.map { ClassTableCalendarFile.events(of: viewModel, in: $0) } ?? []
-    }
-
     private func downloadCalendar() {
         guard let term = calendarTerm else { return }
-        let text = ClassTableCalendarFile.text(of: calendarEvents, in: term, now: Date())
+        let events = ClassTableCalendarFile.events(of: viewModel, in: term)
+        guard !events.isEmpty else {
+            export.showsFailed = true
+            return
+        }
+        let text = ClassTableCalendarFile.text(of: events, in: term, now: Date())
         let name = ClassTableExporter.fileName(
             title: String(localized: "feature_class_table"),
             semesterLabel: viewModel.displayLabel(for: viewModel.currentSemester),
