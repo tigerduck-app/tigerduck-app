@@ -20,7 +20,7 @@ struct ArchiveBrowser: View {
                     }
                     ToolbarItem(placement: .primaryAction) {
                         Button(action: model.shareArchive) {
-                            Label(String(localized: "school_mail_attachment_share"), systemImage: "square.and.arrow.up")
+                            Label(String(localized: "file_viewer_share"), systemImage: "square.and.arrow.up")
                         }
                     }
                 }
