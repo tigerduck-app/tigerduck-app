@@ -16,7 +16,7 @@ struct AccentGradientScreenTests {
         let size: UIContentSizeCategory?
 
         var testDescription: String { name }
-        var height: CGFloat { size == nil ? 812 : 2000 }
+        var height: CGFloat { size == nil ? 812 : 2600 }
 
         static let all = [
             Look(name: "light", style: .light, size: nil),
