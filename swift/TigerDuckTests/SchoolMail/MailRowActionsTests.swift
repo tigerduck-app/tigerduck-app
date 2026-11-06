@@ -90,6 +90,19 @@ struct MailRowActionsTests {
         await loading.value
     }
 
+    @Test func aFolderOpenedWhileTheFlagCheckRunsIsCheckedToo() async throws {
+        let h = await Self.harness(loads: false)
+        await h.fake.holdNext("storesFlagged")
+        await h.list.load()
+        await h.fake.waitForArrival("storesFlagged")
+        #expect(!h.list.targets.contains(Self.trash))
+        await h.list.select(.real(Self.trash))
+        await h.fake.release("storesFlagged")
+        await h.list.background.waitForFlagStorage()
+        #expect(h.list.canFlag(Self.trash))
+        #expect(await h.fake.calls.contains("storesFlagged \(Self.trash)"))
+    }
+
     @Test(arguments: [
         ([Flag.seen, .answered, .flagged, .deleted, .draft], true),
         ([Flag.seen, .custom("wildcard")], true),

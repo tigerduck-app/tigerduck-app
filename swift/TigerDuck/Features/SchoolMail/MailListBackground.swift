@@ -64,22 +64,30 @@ final class MailListBackground {
     func waitForWarm() async { await warmTask?.value }
 
     func learnFlagStorage(for signIn: SignIn) {
-        guard let list, flagStorageTask == nil else { return }
-        let unknown = list.targets.filter { list.folders.storesFlagged[$0] == nil }
-        guard !unknown.isEmpty else { return }
+        guard flagStorageTask == nil, !unknownFlagStorage.isEmpty else { return }
         flagStorageTask = Task { [weak self] in
             defer { self?.flagStorageTask = nil }
-            do {
-                let found = try await list.session.use(for: signIn) { client -> [String: Bool] in
-                    var found: [String: Bool] = [:]
-                    for folder in unknown { found[folder] = try await client.storesFlagged(folder: folder) }
-                    return found
+            while let self, let list = self.list, signIn.isCurrent {
+                let unknown = self.unknownFlagStorage
+                guard !unknown.isEmpty else { return }
+                do {
+                    let found = try await list.session.use(for: signIn) { client -> [String: Bool] in
+                        var found: [String: Bool] = [:]
+                        for folder in unknown { found[folder] = try await client.storesFlagged(folder: folder) }
+                        return found
+                    }
+                    if signIn.isCurrent { list.folders.storesFlagged.merge(found) { $1 } }
+                } catch {
+                    if signIn.isCurrent { AppLogger.mail.error("Flag storage check failed: \(String(describing: error), privacy: .private)") }
+                    return
                 }
-                if signIn.isCurrent { list.folders.storesFlagged.merge(found) { $1 } }
-            } catch {
-                if signIn.isCurrent { AppLogger.mail.error("Flag storage check failed: \(String(describing: error), privacy: .private)") }
             }
         }
+    }
+
+    private var unknownFlagStorage: [String] {
+        guard let list else { return [] }
+        return list.targets.filter { list.folders.storesFlagged[$0] == nil }
     }
 
     func waitForFlagStorage() async { await flagStorageTask?.value }
