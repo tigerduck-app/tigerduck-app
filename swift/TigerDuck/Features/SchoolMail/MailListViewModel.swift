@@ -11,7 +11,7 @@ final class MailListViewModel {
     }
 
     var folders = MailFolderChoice()
-    var mailbox = MailboxPages()
+    var mailbox: MailboxPages
     var status = MailListStatus()
     @ObservationIgnored let session: MailPageSession
     @ObservationIgnored let writer: MailListCacheWriter
@@ -25,6 +25,7 @@ final class MailListViewModel {
         session: MailPageSession? = nil,
         account: AccountSession? = nil,
         cache: MailCache? = nil,
+        sendHold: MailSendHold? = nil,
         noteSeenByPage: ((MailboxStatusInfo, SignIn) async -> Void)? = nil,
         signOutEvents: NotificationCenter = .default,
         warmDelay: @escaping @Sendable () async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + MailConstants.warmStartDelay) },
@@ -37,6 +38,7 @@ final class MailListViewModel {
         let session = session ?? MailPageSession(account: account)
         let cache = cache ?? MailAccountManager.shared.cache
         self.session = session
+        mailbox = MailboxPages(sendHold: sendHold ?? .shared)
         loads = MailListLoads(account: account)
         writer = MailListCacheWriter(cache: cache)
         // Starts after the warm's delay too, so the refresh that follows a paint goes first.
@@ -76,9 +78,7 @@ final class MailListViewModel {
         selection == self.selection && signIn.isCurrent
     }
 
-    var displayedRows: [MailListRow] {
-        (search.results ?? rows).filter { !mailbox.hiddenDrafts.contains($0.id) && !(unreadOnly && $0.summary.isSeen) }
-    }
+    var displayedRows: [MailListRow] { mailbox.shown(search.results ?? rows, for: account, unreadOnly: unreadOnly) }
 
     var targets: [String] { folders.targets }
     var showsAllMailChip: Bool { folders.showsAllMailChip }
@@ -116,7 +116,7 @@ final class MailListViewModel {
         folders.pickedByUser = true
         guard selection != self.selection else { return }
         folders.selection = selection
-        mailbox.removeAll(keepingHiddenDrafts: true)
+        mailbox.removeAll()
         rebuildRows()
         clearSearch()
         await background.pausingWarm {
@@ -195,7 +195,6 @@ final class MailListViewModel {
         case let .folderChanged(folder): Task { await recoverFromFolderChange(folder) }
         case let .folderRoles(roles): adoptFolderRoles(roles)
         case let .sentCopyNotice(notice): reportSentCopyNotice(notice)
-        case let .draftHidden(id, isHidden): mailbox.hideDraft(id, isHidden)
         }
     }
 

@@ -177,5 +177,32 @@ struct MailSendHoldScreenTests {
             #expect(rig.hold.reopened.isEmpty)
         }
     }
+
+    @Test func closingAReopenedDraftComposerListsTheDraftAgain() async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            let model = MailComposeViewModelTests.model(
+                MailComposeContext(mode: .draft, folder: MailComposeViewModelTests.drafts, uid: 7),
+                fake: MailComposeViewModelTests.fake()
+            )
+            await model.prepare()
+            let id = try #require(model.draftID)
+            let window = try Self.show(Text(verbatim: "課表").heldMailHost(rig.hold), look: .light)
+            defer { window.isHidden = true }
+            rig.hold.hold(model)
+            rig.hold.undo()
+
+            try await waitUntil { window.rootViewController?.presentedViewController?.viewIfLoaded != nil }
+            #expect(rig.hold.hides(id, for: model.signIn))
+            let sheet = try #require(window.rootViewController?.presentedViewController?.view)
+            let cancel = String(localized: "action_cancel")
+            let cancelButton = {
+                exposedAccessibilityElements(in: sheet).first { $0.accessibilityLabel == cancel && $0.accessibilityTraits.contains(.button) }
+            }
+            try await waitUntil { cancelButton() != nil }
+            #expect(try #require(cancelButton()).accessibilityActivate())
+            try await waitUntil { !rig.hold.hides(id, for: model.signIn) }
+        }
+    }
 }
 #endif

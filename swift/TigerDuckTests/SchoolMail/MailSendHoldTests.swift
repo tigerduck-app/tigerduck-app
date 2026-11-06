@@ -287,8 +287,8 @@ struct MailSendHoldTests {
     private typealias List = MailListViewModelTests
     private static let draft = MailListRow.ID(folder: List.drafts, uid: 7)
 
-    private static func listWithDraft() async -> List.Harness {
-        let h = List.harness(inboxCount: 2, warmDelay: {})
+    private static func listWithDraft(_ rig: Rig, account: AccountSession = AccountSession()) async -> List.Harness {
+        let h = List.harness(inboxCount: 2, warmDelay: {}, sendHold: rig.hold, account: account)
         await h.fake.update { $0.folders[List.drafts] = [FakeMailClient.message(uid: 7, subject: "期末報告", text: "老師好")] }
         await h.model.load()
         await h.model.waitForIndex()
@@ -297,7 +297,7 @@ struct MailSendHoldTests {
 
     private static func heldDraft(_ rig: Rig, on h: List.Harness) async -> MailComposeViewModel {
         let model = await Self.written(h.fake, context: MailComposeContext(mode: .draft, folder: List.drafts, uid: 7),
-                                       session: h.model.session, events: h.model.events)
+                                       session: h.model.session)
         rig.hold.hold(model)
         return model
     }
@@ -306,12 +306,12 @@ struct MailSendHoldTests {
         h.model.displayedRows.contains { $0.id == Self.draft }
     }
 
-    @Test func aHeldDraftLeavesTheDraftsListAndSearchUntilItIsUndone() async throws {
+    @Test func aHeldDraftStaysOutOfDraftsAndSearchUntilItsReopenedComposerCloses() async throws {
         let rig = Self.rig()
-        let h = await Self.listWithDraft()
+        let h = await Self.listWithDraft(rig)
         #expect(Self.listsTheDraft(h))
 
-        _ = await Self.heldDraft(rig, on: h)
+        let model = await Self.heldDraft(rig, on: h)
         #expect(!Self.listsTheDraft(h))
         await h.model.select(.real(List.drafts))
         #expect(!Self.listsTheDraft(h))
@@ -321,26 +321,45 @@ struct MailSendHoldTests {
         #expect(!Self.listsTheDraft(h))
 
         rig.hold.undo()
+        #expect(!Self.listsTheDraft(h))
+        #expect(rig.hold.takeReopened() === model)
+        #expect(!Self.listsTheDraft(h))
+        rig.hold.composerClosed(model)
         #expect(Self.listsTheDraft(h))
     }
 
-    @Test func aDraftWhoseSendFailsReopensAndIsListedAgain() async throws {
+    @Test func aDraftWhoseSendFailsIsListedAgainOnceItsComposerCloses() async throws {
         let rig = Self.rig()
-        let h = await Self.listWithDraft()
+        let h = await Self.listWithDraft(rig)
         await h.fake.update { $0.sendError = .unreachable }
         let model = await Self.heldDraft(rig, on: h)
         try await rig.sleeper.waitUntilArmed()
         await rig.sleeper.fire()
         try await waitUntil { rig.hold.deliveries == 1 }
 
+        #expect(!Self.listsTheDraft(h))
         #expect(rig.hold.takeReopened() === model)
+        rig.hold.composerClosed(model)
         #expect(Self.listsTheDraft(h))
+    }
+
+    @Test func aReopenedDraftSentAgainStaysOutWhenItsComposerCloses() async throws {
+        let rig = Self.rig()
+        let h = await Self.listWithDraft(rig)
+        let model = await Self.heldDraft(rig, on: h)
+        rig.hold.undo()
+        #expect(rig.hold.takeReopened() === model)
+
+        #expect(rig.hold.hold(model))
+        rig.hold.composerClosed(model)
+        #expect(!Self.listsTheDraft(h))
+        rig.hold.undo()
     }
 
     @Test("a draft that went out, or may have, stays out of the list", arguments: [false, true])
     func aDraftThatMayHaveGoneOutStaysGone(unconfirmed: Bool) async throws {
         let rig = Self.rig()
-        let h = await Self.listWithDraft()
+        let h = await Self.listWithDraft(rig)
         if unconfirmed { await h.fake.update { $0.sendError = .sendUnconfirmed } }
         let model = await Self.heldDraft(rig, on: h)
         try await rig.sleeper.waitUntilArmed()
@@ -349,8 +368,23 @@ struct MailSendHoldTests {
         #expect(model.didFinish != unconfirmed)
         #expect(!Self.listsTheDraft(h))
 
+        if let reopened = rig.hold.takeReopened() { rig.hold.composerClosed(reopened) }
         await h.model.refresh()
         #expect(!Self.listsTheDraft(h))
+    }
+
+    @Test func aRebuiltListStillHidesTheHeldDraftOfItsSignInOnly() async throws {
+        let rig = Self.rig()
+        let h = await Self.listWithDraft(rig)
+        _ = await Self.heldDraft(rig, on: h)
+
+        let rebuilt = await Self.listWithDraft(rig, account: h.account)
+        #expect(!Self.listsTheDraft(rebuilt))
+
+        h.account.endSignIn()
+        let next = await Self.listWithDraft(rig, account: h.account)
+        #expect(Self.listsTheDraft(next))
+        rig.hold.undo()
     }
 }
 #endif

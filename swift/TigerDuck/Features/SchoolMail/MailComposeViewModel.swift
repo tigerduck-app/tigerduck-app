@@ -21,7 +21,7 @@ final class MailComposeViewModel: Identifiable {
     @ObservationIgnored private let sender: MailAddress
     @ObservationIgnored private var folderRoles: [MailFolderRole: String]
     @ObservationIgnored private let services: MailComposeServices
-    @ObservationIgnored private let signIn: SignIn
+    @ObservationIgnored let signIn: SignIn
 
     init(
         context: MailComposeContext,
