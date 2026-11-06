@@ -222,8 +222,19 @@ final class MoodleFileDownloads {
         lhs.timeIntervalSince1970.rounded() == rhs.timeIntervalSince1970.rounded()
     }
 
+    /// A leading dot would hide the file in the Files app.
     nonisolated static func safeName(_ name: String) -> String {
-        let cleaned = name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
-        return cleaned.allSatisfy { $0 == "." } ? "file" : cleaned
+        let cleaned = String(name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_").drop { $0 == "." })
+        guard !cleaned.isEmpty else { return "file" }
+        let suffix = (cleaned as NSString).pathExtension
+        return fileName((cleaned as NSString).deletingPathExtension, suffix.isEmpty ? "" : ".\(suffix)")
+    }
+
+    /// POSIX `NAME_MAX` is 255 bytes, the limit of file systems such as ext4 that a shared copy may
+    /// land on, so the stem gives up whole characters to fit the ending.
+    nonisolated static func fileName(_ stem: String, _ ending: String) -> String {
+        var stem = stem
+        while !stem.isEmpty, stem.utf8.count + ending.utf8.count > 255 { stem.removeLast() }
+        return stem + ending
     }
 }

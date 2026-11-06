@@ -104,19 +104,20 @@ final class BrowserDownloads {
         items.removeAll { $0.state == .failed && $0.request == request }
     }
 
+    /// A ledger that cannot be read right now leaves the list as it was.
     func reload() async {
-        saved = await store.entries()
+        if let entries = try? await store.entries() { saved = entries }
     }
 
     func remove(_ entry: SavedDownloads.Entry) async {
         await store.remove(entry)
-        saved = await store.entries()
+        await reload()
     }
 
     func clear() async {
         items.removeAll { $0.state == .failed }
         await store.clear()
-        saved = await store.entries()
+        await reload()
     }
 }
 

@@ -74,7 +74,7 @@ struct BrowserDownloadsTests {
         #expect(saved == place.folder.appending(path: "講義.pdf"))
         #expect(downloads.items.isEmpty)
         #expect(downloads.saved.map(\.name) == ["講義.pdf"])
-        #expect(await place.store.entries().map(\.name) == ["講義.pdf"])
+        #expect(try await place.store.entries().map(\.name) == ["講義.pdf"])
     }
 
     @Test func aDownloadThatCannotBeMovedFails() async throws {
