@@ -212,6 +212,7 @@
 				Shared/ClassTableLayout.swift,
 				Shared/CourseBlockRoom.swift,
 				Shared/CourseCardFontScale.swift,
+				Shared/PastelColor.swift,
 				Support/Clock/AppClock.swift,
 				Support/Clock/ClockOverride.swift,
 			);
@@ -220,10 +221,17 @@
 		B244D7912FB87B590040D6FA /* Exceptions for "TigerDuckWidgets" folder in "TigerDuck" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Logic/WidgetDayLayout.swift,
 				Logic/WidgetTimelineDerivation.swift,
 				Snapshot/WidgetSnapshotStore.swift,
 				Theme/WidgetPalette.swift,
+				Views/AccessoryViews.swift,
+				Views/ClassTileParts.swift,
 				Views/LibraryShortcutView.swift,
+				Views/NextClassView.swift,
+				Views/TodayListView.swift,
+				Views/WeekGridParts.swift,
+				Views/WeekGridView.swift,
 			);
 			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
 		};
@@ -1519,7 +1527,6 @@
 					LibraryQRCache.swift,
 					LibraryRequests.swift,
 					LibraryService.swift,
-					LibraryShortcutView.swift,
 					LicenseCatalog.swift,
 					LiveActivityScenarioKind.swift,
 					LiveActivityScenarioResolver.swift,
@@ -1688,6 +1695,7 @@
 					PackedShareCodeBits.swift,
 					PageSettings.swift,
 					PageSettingsSections.swift,
+					PastelColor.swift,
 					PortalLink.swift,
 					PortalLinkFiles.swift,
 					PortalLinks.swift,
@@ -1806,7 +1814,6 @@
 					WhatsNewRepository.swift,
 					WhatsNewText.swift,
 					WidgetItem.swift,
-					WidgetPalette.swift,
 					WidgetReloadCoordinator.swift,
 					WidgetSnapshot.swift,
 					WidgetSnapshotBuilder.swift,
@@ -2096,7 +2103,6 @@
 					LibraryQRCache.swift,
 					LibraryRequests.swift,
 					LibraryService.swift,
-					LibraryShortcutView.swift,
 					LicenseCatalog.swift,
 					LiveActivityScenarioKind.swift,
 					LiveActivityScenarioResolver.swift,
@@ -2265,6 +2271,7 @@
 					PackedShareCodeBits.swift,
 					PageSettings.swift,
 					PageSettingsSections.swift,
+					PastelColor.swift,
 					PortalLink.swift,
 					PortalLinkFiles.swift,
 					PortalLinks.swift,
@@ -2383,7 +2390,6 @@
 					WhatsNewRepository.swift,
 					WhatsNewText.swift,
 					WidgetItem.swift,
-					WidgetPalette.swift,
 					WidgetReloadCoordinator.swift,
 					WidgetSnapshot.swift,
 					WidgetSnapshotBuilder.swift,

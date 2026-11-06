@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TigerDuckCore
 
 nonisolated final class WidgetSnapshotStore {
     private let defaults: UserDefaults
@@ -50,6 +51,38 @@ nonisolated final class WidgetSnapshotStore {
         } catch {
             logger.error("widget snapshot decode failed: \(error.localizedDescription, privacy: .private)")
             return nil
+        }
+    }
+
+    func readSnapshot(of personID: String?) -> WidgetSnapshot? {
+        guard let personID, let person = readPeople().first(where: { $0.id == personID }) else { return readSnapshot() }
+        return person.snapshot
+    }
+
+    func readPeople() -> [WidgetPersonSnapshot] {
+        guard let data = defaults.data(forKey: WidgetSnapshot.peopleStoreKey) else { return [] }
+        do {
+            let stored = try decoder.decode([Lenient<WidgetPersonSnapshot>].self, from: data)
+            let people = stored.compactMap(\.value)
+            if people.count != stored.count {
+                logger.warning("widget people: dropped \(stored.count - people.count, privacy: .public) undecodable entries")
+            }
+            return people.filter { $0.snapshot.version == WidgetSnapshot.currentVersion }
+        } catch {
+            logger.error("widget people decode failed: \(error.localizedDescription, privacy: .private)")
+            return []
+        }
+    }
+
+    func writePeople(_ people: [WidgetPersonSnapshot]) {
+        guard !people.isEmpty else {
+            defaults.removeObject(forKey: WidgetSnapshot.peopleStoreKey)
+            return
+        }
+        do {
+            defaults.set(try encoder.encode(people), forKey: WidgetSnapshot.peopleStoreKey)
+        } catch {
+            logger.error("widget people encode failed: \(error.localizedDescription, privacy: .private)")
         }
     }
 

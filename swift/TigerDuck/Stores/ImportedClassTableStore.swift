@@ -36,7 +36,11 @@ final class ImportedClassTableStore: AccountScoped {
     )
     private static let fileName = "imported_class_tables.json"
 
-    private(set) var people: [ImportedPerson] = []
+    private(set) var people: [ImportedPerson] = [] {
+        didSet { revision &+= 1 }
+    }
+
+    private(set) var revision = 0
 
     private(set) var shownPersonID: UUID? {
         didSet {

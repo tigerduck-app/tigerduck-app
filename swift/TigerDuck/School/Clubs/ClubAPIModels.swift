@@ -86,23 +86,15 @@ nonisolated struct ClubActivity: Decodable, Equatable, Sendable, Identifiable {
 nonisolated struct ClubAPIList<Element: Decodable & Sendable & Identifiable>: Decodable, Sendable {
     let elements: [Element]
 
-    private struct Row: Decodable {
-        let element: Element?
-
-        init(from decoder: any Decoder) throws {
-            element = try? Element(from: decoder)
-        }
-    }
-
     private enum CodingKeys: String, CodingKey {
         case data
     }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let rows = try container.decode([Row].self, forKey: .data)
+        let rows = try container.decode([Lenient<Element>].self, forKey: .data)
         var seen = Set<Element.ID>()
-        elements = rows.compactMap(\.element).filter { seen.insert($0.id).inserted }
+        elements = rows.compactMap(\.value).filter { seen.insert($0.id).inserted }
         guard rows.isEmpty || !elements.isEmpty else {
             throw DecodingError.dataCorruptedError(forKey: .data, in: container, debugDescription: "no row is readable")
         }
