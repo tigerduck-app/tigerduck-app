@@ -59,6 +59,7 @@ jobs:
               TigerDuckTests/BrowserPinnedHostsTests
               TigerDuckTests/BrowserContentRulesTests
               TigerDuckTests/BrowserDemoPageLoadTests
+              TigerDuckTests/BrowserDownloadsScreenTests
               TigerDuckTests/BrowserFindPageTests
               TigerDuckTests/BrowserPageScriptsTests
               TigerDuckTests/BrowserPageUITests

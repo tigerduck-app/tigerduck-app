@@ -472,6 +472,8 @@ BrowserChromeCollapse.swift
 BrowserData.swift
 BrowserDemoPages.swift
 BrowserDialogs.swift
+BrowserDownloads.swift
+BrowserDownloadsView.swift
 BrowserFind.swift
 BrowserFindBar.swift
 BrowserFindScript.swift
@@ -489,6 +491,10 @@ BrowserSiteSignIn.swift
 BrowserSheets.swift
 BrowserSignIn.swift
 BrowserSites.swift
+FilesFolderOpener.swift
 LinkRouting.swift
 TigerDuckBrowserView.swift
 BrowserAddressBarPicker.swift
+# The browser's downloads, kept in a folder the Files app shows; the Mac's browser saves to Downloads
+SavedDownloads.swift
+SavedDownloadFiles.swift

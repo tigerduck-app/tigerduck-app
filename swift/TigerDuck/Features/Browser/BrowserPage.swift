@@ -21,11 +21,12 @@ final class BrowserPage {
     let zoomPeek = BrowserZoomPeek()
     private(set) var site = BrowserSiteSetting()
     private var opening: BrowserData.Opening
-    let downloads = BrowserDownloads()
+    let downloads: BrowserDownloads
     nonisolated static let downloadsRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("BrowserDownloads", isDirectory: true)
 
-    init() {
+    init(downloads: BrowserDownloads = BrowserDownloads()) {
+        self.downloads = downloads
         let opening = BrowserData.shared.opening
         self.opening = opening
         let store = opening.store
@@ -114,6 +115,14 @@ final class BrowserPage {
         downloads.failed = nil
     }
 
+    func retryDownload(_ item: BrowserDownloads.Item) {
+        guard let request = item.request else { return }
+        downloads.forget(item.id)
+        failure = nil
+        downloads.failed = nil
+        webView?.load(request)
+    }
+
     /// A download never commits as a page, so the address still names the page it started from.
     static func retryRequest(failedDownload: URLRequest?, address: URL?) -> URLRequest? {
         failedDownload ?? address.map { URLRequest(url: $0) }
@@ -164,15 +173,4 @@ final class BrowserPage {
     }
 
     func expandChrome() { shown.expandChrome() }
-}
-
-@MainActor
-final class BrowserDownloads {
-    let opener = MoodleFileOpener()
-    nonisolated let folder = BrowserPage.downloadsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
-    var failed: URLRequest?
-
-    deinit {
-        try? FileManager.default.removeItem(at: folder)
-    }
 }

@@ -65,10 +65,19 @@
         <string>org.ntust.app.TigerDuck.mailRefresh</string>
     </array>
     <!-- `LinkRouting` asks canOpenURL whether the Moodle app is installed before it opens
-         a Moodle link, which iOS answers only for schemes listed here. -->
+         a Moodle link, and `FilesFolderOpener` whether the Files app opens a folder link;
+         iOS answers only for schemes listed here. -->
     <key>LSApplicationQueriesSchemes</key>
     <array>
         <string>moodlemobile</string>
+        <string>shareddocuments</string>
     </array>
+    <!-- iOS only. Together they show the app's Documents folder, where the browser keeps its
+         downloads (`SavedDownloads`), in the Files app under On My iPhone and in Finder's file
+         sharing over USB. -->
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
 </dict>
 </plist>

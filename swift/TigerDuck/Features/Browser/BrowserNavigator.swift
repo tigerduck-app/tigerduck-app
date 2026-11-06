@@ -27,7 +27,7 @@ final class BrowserShownPage {
 }
 
 @MainActor
-final class BrowserNavigator: NSObject, WKNavigationDelegate, WKDownloadDelegate {
+final class BrowserNavigator: NSObject, WKNavigationDelegate {
     private let page: BrowserPage
     /// The page's check when this web view was built, so one on the browser's own store never takes
     /// what the student accepted for a store opened at risk.
@@ -38,7 +38,7 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKDownloadDelegate
         self?.decidePolicy(for: action, in: webView) { _ in }
     }
     private var observations: [NSKeyValueObservation] = []
-    private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
+    private lazy var downloads = BrowserDownloadDelegate(page: page, certificates: certificates)
     private var signInReturnPage: URL?
     private let demoPages = BrowserDemoPages()
     private static let sessionCookieLifetime: TimeInterval = 30 * 24 * 60 * 60
@@ -174,48 +174,8 @@ final class BrowserNavigator: NSObject, WKNavigationDelegate, WKDownloadDelegate
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        download.delegate = self
+        download.delegate = downloads
         page.signIn.pageSettled()
-    }
-
-    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
-        let folder = page.downloads.folder.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else { return nil }
-        let file = folder.appendingPathComponent(MoodleFileDownloads.safeName(suggestedFilename))
-        saving[ObjectIdentifier(download)] = (file, response.mimeType)
-        return file
-    }
-
-    func downloadDidFinish(_ download: WKDownload) {
-        guard let saved = saving.removeValue(forKey: ObjectIdentifier(download)) else { return }
-        page.files.show(downloaded: saved.file, mimeType: saved.mimeType)
-    }
-
-    func download(
-        _ download: WKDownload,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        decisionHandler: @escaping @MainActor @Sendable (WKDownload.RedirectPolicy) -> Void
-    ) {
-        decisionHandler(BrowserRouting.allowsDownloadRedirect(to: request.url) ? .allow : .cancel)
-    }
-
-    func download(
-        _ download: WKDownload,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        certificates.evaluate(challenge, completionHandler: completionHandler)
-    }
-
-    func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
-        saving[ObjectIdentifier(download)] = nil
-        page.downloads.failed = download.originalRequest
-        let failure = BrowserPage.Failure.download(
-            error, refusedHosts: certificates.refusedHosts,
-            requestedHost: download.originalRequest?.url?.host(percentEncoded: false).map(TLSPinMatcher.hostName) ?? page.host
-        )
-        page.failure = certificates.offering(failure, at: BrowserPage.Failure.failingURL(of: error))
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
