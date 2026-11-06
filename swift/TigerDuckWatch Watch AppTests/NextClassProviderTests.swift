@@ -109,6 +109,16 @@ final class NextClassProviderTests: XCTestCase {
         XCTAssertEqual(afterTheLastClass?.nextDay, .tomorrow)
     }
 
+    func test_timeline_givesTheClassOnNowItsSpan() {
+        let monday = course("A", weekday: 1, start: "10:20", end: "12:10")
+
+        let entries = NextClassProvider().timeline(for: snapshot([monday]), now: mondayAt("09:00")).entries
+
+        XCTAssertNil(entries.first { $0.date == mondayAt("09:00") }?.currentSpan)
+        XCTAssertEqual(entries.first { $0.date == mondayAt("10:20") }?.currentSpan, mondayAt("10:20")...mondayAt("12:10"))
+        XCTAssertNil(entries.first { $0.date == mondayAt("12:10") }?.currentSpan)
+    }
+
     func test_relevance_risesOnlyWhenTheNextClassStartsWithin30Minutes() {
         let monday = course("A", weekday: 1, start: "10:20", end: "11:10")
         let mondayLater = course("C", weekday: 1, start: "11:20", end: "12:10")

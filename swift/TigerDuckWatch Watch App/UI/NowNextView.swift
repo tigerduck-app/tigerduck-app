@@ -17,10 +17,10 @@ struct NowNextView: View {
                             courses: snapshot.courses, now: AppClock.now(), quietDays: snapshot.quietDays
                         )
                         if let current = result.current {
-                            ClassCard(title: store.language.string("watch_now"), course: current, policy: policy)
+                            ClassCard(title: store.language.string("watch_now"), course: current, span: result.currentSpan, policy: policy)
                         }
                         if let next = result.next {
-                            ClassCard(title: result.nextDay.headline(in: store.language), course: next, policy: policy)
+                            ClassCard(title: result.nextDay.headline(in: store.language), course: next, span: nil, policy: policy)
                         }
                         if result.current == nil && result.next == nil {
                             ContentUnavailableView(
@@ -52,47 +52,48 @@ struct NowNextView: View {
     }
 }
 
-private struct ClassCard: View {
+struct ClassCard: View {
     let title: String
     let course: WatchCourse
+    let span: ClosedRange<Date>?
     let policy: WatchVisualStylePolicy
 
+    var caption: String { "\(title) · \(course.timeRange)" }
+
     var body: some View {
-        let courseColor = Color(hex: course.colorHex) ?? .accentColor
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 6) {
-                if !policy.usesTintedCardSurface {
-                    Rectangle()
-                        .fill(courseColor)
-                        .frame(width: 3)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(course.name)
-                        .font(.headline)
-                        .lineLimit(2)
-                    Text("\(course.startHHmm)–\(course.endHHmm)")
-                        .font(.subheadline)
-                        .foregroundStyle(course.dayChange?.start ?? course.dayChange?.end != nil ? AnyShapeStyle(Color.changeInk) : AnyShapeStyle(.secondary))
-                    if course.dayChange?.room != nil {
-                        Label(course.classroom, systemImage: "arrow.left.arrow.right")
-                            .labelStyle(ChangedRoomLabelStyle())
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.changeInk)
-                    } else if !course.classroom.isEmpty {
-                        Text(course.classroom)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer(minLength: 0)
+        HStack(spacing: 6) {
+            if !policy.usesTintedCardSurface {
+                Rectangle()
+                    .fill(course.color)
+                    .frame(width: 3)
             }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(caption)
+                    .font(.footnote)
+                    .foregroundStyle(course.dayChange?.start ?? course.dayChange?.end != nil ? AnyShapeStyle(Color.changeInk) : AnyShapeStyle(.secondary))
+                Text(course.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                if course.dayChange?.room != nil {
+                    Label(course.classroom, systemImage: "arrow.left.arrow.right")
+                        .labelStyle(ChangedRoomLabelStyle())
+                        .font(.callout.bold())
+                        .foregroundStyle(Color.changeInk)
+                } else if !course.classroom.isEmpty {
+                    Text(course.classroom)
+                        .font(.callout.bold())
+                        .foregroundStyle(course.color)
+                }
+                if let span {
+                    ClassCountdown(span: span, tint: course.color)
+                        .padding(.top, 6)
+                }
+            }
+            Spacer(minLength: 0)
         }
         .padding(8)
         .background(
-            policy.cardBackground(for: courseColor),
+            policy.cardBackground(for: course.color),
             in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
     }

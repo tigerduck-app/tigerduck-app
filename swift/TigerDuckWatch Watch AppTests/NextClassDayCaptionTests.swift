@@ -13,7 +13,7 @@ struct NextClassDayCaptionTests {
 
     private func entry(next: WatchCourse?, day: NextClassResolver.Day, languageTag: String? = nil) -> NextClassEntry {
         NextClassEntry(
-            date: Date(), current: nil, next: next, nextDay: day,
+            date: Date(), current: nil, next: next, nextDay: day, currentSpan: nil,
             accentHex: "#FF8800", languageTag: languageTag, relevance: nil
         )
     }

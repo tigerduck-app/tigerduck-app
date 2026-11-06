@@ -7,6 +7,7 @@ nonisolated struct NextClassEntry: TimelineEntry {
     let current: WatchCourse?
     let next: WatchCourse?
     let nextDay: NextClassResolver.Day
+    let currentSpan: ClosedRange<Date>?
     let accentHex: String
     let languageTag: String?
     let relevance: TimelineEntryRelevance?

@@ -8,7 +8,7 @@ struct CourseDetailView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
                     Rectangle()
-                        .fill(Color(hex: course.colorHex) ?? .accentColor)
+                        .fill(course.color)
                         .frame(width: 4)
                     Text(course.name)
                         .font(.headline)
