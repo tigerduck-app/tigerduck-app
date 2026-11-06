@@ -61,13 +61,13 @@ extension EnvironmentValues {
 
 enum ClassTableOtherPersonAction: Hashable {
     case exportScreenshot
-    case downloadCalendar
+    case exportCalendar
     case importClassTable
     case rename
     case deleteUser
 
     static let sections: [[ClassTableOtherPersonAction]] = [
-        [.exportScreenshot, .downloadCalendar],
+        [.exportScreenshot, .exportCalendar],
         [.importClassTable],
         [.rename, .deleteUser],
     ]
@@ -75,7 +75,7 @@ enum ClassTableOtherPersonAction: Hashable {
     var title: String {
         switch self {
         case .exportScreenshot: String(localized: "class_table_export_screenshot")
-        case .downloadCalendar: String(localized: "class_table_download_ics")
+        case .exportCalendar: String(localized: "class_table_export_ics")
         case .importClassTable: String(localized: "class_table_import")
         case .rename: String(localized: "class_table_rename_title")
         case .deleteUser: String(localized: "class_table_delete_user")
@@ -85,7 +85,7 @@ enum ClassTableOtherPersonAction: Hashable {
     var systemImage: String {
         switch self {
         case .exportScreenshot: "square.and.arrow.up"
-        case .downloadCalendar: "calendar"
+        case .exportCalendar: "calendar"
         case .importClassTable: "qrcode.viewfinder"
         case .rename: "pencil"
         case .deleteUser: "trash"

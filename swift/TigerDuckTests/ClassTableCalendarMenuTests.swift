@@ -19,14 +19,14 @@ struct ClassTableCalendarMenuTests {
 
         /// The ⋯'s items in order.
         var items: [String] {
-            let downloads = [String(localized: "class_table_export_screenshot"), String(localized: "class_table_download_ics")]
+            let exports = [String(localized: "class_table_export_screenshot"), String(localized: "class_table_export_ics")]
             return switch self {
             case .own:
                 [String(localized: "add_course_title"), String(localized: "class_table_subscribe_clubs"),
                  String(localized: "class_table_share"), String(localized: "class_table_import")]
-                    + downloads + [String(localized: "action_settings"), String(localized: "class_table_reset_title")]
+                    + exports + [String(localized: "action_settings"), String(localized: "class_table_reset_title")]
             case .other:
-                downloads + [String(localized: "class_table_import"), String(localized: "class_table_rename_title"),
+                exports + [String(localized: "class_table_import"), String(localized: "class_table_rename_title"),
                              String(localized: "action_settings"), String(localized: "class_table_delete_user")]
             }
         }
@@ -121,9 +121,9 @@ struct ClassTableCalendarMenuTests {
     }
 
     private static let menuLabel = String(localized: "class_table_more_actions")
-    private static let download = String(localized: "class_table_download_ics")
+    private static let exportItem = String(localized: "class_table_export_ics")
 
-    @Test("Download as ICS sits beside the screenshot and hands the share sheet the shown table's file",
+    @Test("Export ICS sits beside Export screenshot and hands the share sheet the shown table's file",
           arguments: Table.allCases)
     func downloadsTheShownTable(table: Table) async throws {
         try await withAccessibilityAutomation {
@@ -135,7 +135,7 @@ struct ClassTableCalendarMenuTests {
 
             let items = try await Menus.openMenu(labeled: Self.menuLabel, in: window)
             #expect(items.compactMap(\.accessibilityLabel) == table.items)
-            let item = try #require(items.first { $0.accessibilityLabel == Self.download })
+            let item = try #require(items.first { $0.accessibilityLabel == Self.exportItem })
             #expect(!item.accessibilityTraits.contains(.notEnabled))
 
             try await Menus.tap(item, in: window)
@@ -159,7 +159,7 @@ struct ClassTableCalendarMenuTests {
         }
     }
 
-    @Test("without the academic calendar's dates for the term, Download as ICS shows but is off")
+    @Test("without the academic calendar's dates for the term, Export ICS shows but is off")
     func offWithoutTheTerm() async throws {
         try await withAccessibilityAutomation {
             let folder = Folder()
@@ -167,12 +167,12 @@ struct ClassTableCalendarMenuTests {
             defer { window.isHidden = true }
 
             let items = try await Menus.openMenu(labeled: Self.menuLabel, in: window)
-            let item = try #require(items.first { $0.accessibilityLabel == Self.download })
+            let item = try #require(items.first { $0.accessibilityLabel == Self.exportItem })
             #expect(item.accessibilityTraits.contains(.notEnabled))
         }
     }
 
-    @Test("the ⋯ with Download as ICS, open at 375 points, and scrolled to the item where the menu scrolls",
+    @Test("the ⋯ with Export ICS, open at 375 points, and scrolled to the item where the menu scrolls",
           arguments: Table.allCases, Menus.Look.all)
     func openMenuPicture(table: Table, look: Menus.Look) async throws {
         try await withAccessibilityAutomation {
@@ -187,7 +187,7 @@ struct ClassTableCalendarMenuTests {
 
             // At the largest text the list scrolls. Rows it has not shown yet have estimated heights,
             // so it scrolls by index path, twice, the second time over the rows it has laid out.
-            guard let row = accessibilityElement(labeled: Self.download, in: window) as? UIView,
+            guard let row = accessibilityElement(labeled: Self.exportItem, in: window) as? UIView,
                   let cell = Self.ancestor(of: row, as: UICollectionViewCell.self),
                   let list = Self.ancestor(of: cell, as: UICollectionView.self),
                   let indexPath = list.indexPath(for: cell), list.contentSize.height > list.bounds.height else { return }

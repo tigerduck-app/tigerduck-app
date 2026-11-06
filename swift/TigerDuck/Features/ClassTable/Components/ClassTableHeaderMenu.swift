@@ -75,7 +75,7 @@ struct ClassTableHeaderMenu: View {
                 ForEach(section, id: \.self) { action in
                     if action == .exportScreenshot {
                         exportButton
-                    } else if action == .downloadCalendar {
+                    } else if action == .exportCalendar {
                         calendarButton
                     } else {
                         if action == .deleteUser { PageSettingsButton() }
@@ -93,7 +93,7 @@ struct ClassTableHeaderMenu: View {
     private func perform(_ action: ClassTableOtherPersonAction) {
         switch action {
         case .exportScreenshot: exportScreenshot()
-        case .downloadCalendar: downloadCalendar()
+        case .exportCalendar: exportCalendar()
         case .importClassTable: requestImport()
         case .rename: viewModel.people.startRenamingPerson()
         case .deleteUser: viewModel.people.startDeletingPerson()
@@ -125,9 +125,9 @@ struct ClassTableHeaderMenu: View {
 
     private var calendarButton: some View {
         Button {
-            downloadCalendar()
+            exportCalendar()
         } label: {
-            Label(String(localized: "class_table_download_ics"), systemImage: "calendar")
+            Label(String(localized: "class_table_export_ics"), systemImage: "calendar")
         }
         .disabled(
             export.isExporting || calendarTerm == nil || !ClassTableCalendarFile.hasTimedMeeting(in: viewModel.courses)
@@ -138,7 +138,7 @@ struct ClassTableHeaderMenu: View {
         schoolTerm(viewModel.currentSemester, viewModel.shownPerson == nil)
     }
 
-    private func downloadCalendar() {
+    private func exportCalendar() {
         guard let term = calendarTerm else { return }
         let events = ClassTableCalendarFile.events(of: viewModel, in: term)
         guard !events.isEmpty else {
