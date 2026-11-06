@@ -178,11 +178,12 @@ struct OverrideStampTests {
         }
     }
 
-    @Test("A holiday setting changed and changed back while its send is out stays unacknowledged for the newer time")
-    func holidayEditDuringTheSendKeepsItUnacknowledged() async throws {
+    @Test("A holiday setting changed and changed back while its send is out goes again with the newer time")
+    func holidayEditDuringTheSendGoesAgain() async throws {
         try await Self.withCleanHolidayDefaults { id, url, registration in
             let gate = SettingsAPIStub.ReplyGate()
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id), gate: gate), for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id)), for: url)
             let store = AcademicCalendarStore(clock: .isolated())
             store.setNotify(true, forHoliday: id, for: testSignIn)
             store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
@@ -194,7 +195,11 @@ struct OverrideStampTests {
             gate.open()
             await upload.value
 
-            #expect(store.unacknowledgedHolidayIDs.contains(id))
+            let stamps = try SettingsAPIStub.requests(for: url).map { try (Self.json($0)["hlc"] as? NSNumber)?.int64Value }
+            let madeAt = try #require(store.holidayEdit(id).madeAt)
+            #expect(stamps.count == 2)
+            #expect(stamps.last == PushAPI.clock(of: madeAt))
+            #expect(!store.unacknowledgedHolidayIDs.contains(id))
         }
     }
 
@@ -405,7 +410,7 @@ struct OverrideStampTests {
             try await SyncClockTests.backendAnswers(clock, at: SyncClockTests.ten)
             store.setNotify(true, forHoliday: id, for: testSignIn)
 
-            #expect(!store.applySyncedOverrides([], fetchedAt: era.current(fetchedAt), for: testSignIn))
+            #expect(!store.applySyncedOverrides([], fetchedAt: era.current(fetchedAt), era: era, for: testSignIn))
             #expect(store.optedInHolidayIDs.contains(id))
             withExtendedLifetime(coordinator) {}
         }

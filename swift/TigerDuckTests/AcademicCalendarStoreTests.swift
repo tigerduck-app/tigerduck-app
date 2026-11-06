@@ -257,3 +257,10 @@ struct AcademicCalendarStoreTests {
         #expect(events.map { AcademicCalendar.holidayID(for: $0) } == [21, 21])
     }
 }
+
+extension AcademicCalendarStore {
+    @discardableResult
+    func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date, holding held: Set<Int> = [], for signIn: SignIn) -> Bool {
+        applySyncedOverrides(ids, fetchedAt: fetchedAt, holding: held, era: clock.era, for: signIn)
+    }
+}

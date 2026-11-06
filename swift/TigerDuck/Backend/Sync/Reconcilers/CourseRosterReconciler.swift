@@ -16,14 +16,14 @@ struct CourseRosterReconciler: CategoryReconciler {
         }
         return reconcileCourses(
             serverRows: pass.coursesArray, tombstones: pass.json["course_tombstones"] as? [[String: Any]] ?? [],
-            deleting: pass.courseDeletes, adding: pass.courseAdds, fetchedAt: pass.fetchedAt, for: pass.signIn
+            deleting: pass.courseDeletes, adding: pass.courseAdds, fetchedAt: pass.fetchedAt, era: pass.era, for: pass.signIn
         )
     }
 
     @discardableResult
     private func reconcileCourses(
         serverRows: [[String: Any]], tombstones: [[String: Any]], deleting queuedDeletes: Set<String>,
-        adding: Set<String>, fetchedAt: Date, for signIn: SignIn
+        adding: Set<String>, fetchedAt: Date, era: SyncClock.Era, for signIn: SignIn
     ) -> Bool {
         let rowsBySemester = Dictionary(grouping: serverRows) { ($0["semester"] as? String) ?? "" }
             .filter { !$0.key.isEmpty }
@@ -45,7 +45,7 @@ struct CourseRosterReconciler: CategoryReconciler {
             graceNow.timeIntervalSince($0.value) < LocalEdits.courseDeleteGraceInterval
         }, for: signIn)
         let deleting = Set(app.localEdits.recentCourseDeletions.keys).union(queuedDeletes)
-        let resetAt = CourseStore.shared.loadSemesterResetAt()
+        let resetAt = CourseStore.shared.loadSemesterResetAt().mapValues(era.current)
         let ownResets = tombstonesBySemester.filter { semester, tombstones in
             tombstones.contains { ServerTombstone($0).isOwnReset(landedAt: resetAt[semester]) }
         }

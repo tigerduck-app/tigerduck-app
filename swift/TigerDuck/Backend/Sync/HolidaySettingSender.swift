@@ -9,6 +9,7 @@ final class HolidaySettingSender {
     private let push: PushCoordinator
     private let poller: RevisionPoller
     private var tail: Task<Void, Never>?
+    private static let sendsUntilLeftUnacknowledged = 2
 
     init(account: AccountSession, push: PushCoordinator, poller: RevisionPoller) {
         self.account = account
@@ -55,21 +56,24 @@ final class HolidaySettingSender {
     static func uploadHolidayOverride(
         _ holidayID: Int, from store: AcademicCalendarStore, via registration: PushRegistrationService, for signIn: SignIn
     ) async {
-        let era = store.clock.era
-        let sent = store.holidayEdit(holidayID)
-        do {
-            let reply = try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.cloudSyncEnabled }) {
-                try await registration.uploadHolidayOverride(
-                    holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? store.clock.stamp(), for: signIn
+        for _ in 0..<Self.sendsUntilLeftUnacknowledged {
+            let era = store.clock.era
+            let sent = store.holidayEdit(holidayID)
+            do {
+                let reply = try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.cloudSyncEnabled }) {
+                    try await registration.uploadHolidayOverride(
+                        holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? store.clock.stamp(), for: signIn
+                    )
+                }
+                guard store.holidayEdit(holidayID) == (sent.notify, sent.madeAt.map(era.current)) else { continue }
+                if !reply.applied { store.applyNotifyTheBackendKept(reply.notify, forHoliday: holidayID, for: signIn) }
+                store.setHolidayAcknowledged(true, holidayID: holidayID, for: signIn)
+            } catch {
+                AppLogger.sync.error(
+                    "holiday override upload failed: \(error.localizedDescription, privacy: .private)"
                 )
             }
-            guard store.holidayEdit(holidayID) == (sent.notify, sent.madeAt.map(era.current)) else { return }
-            if !reply.applied { store.applyNotifyTheBackendKept(reply.notify, forHoliday: holidayID, for: signIn) }
-            store.setHolidayAcknowledged(true, holidayID: holidayID, for: signIn)
-        } catch {
-            AppLogger.sync.error(
-                "holiday override upload failed: \(error.localizedDescription, privacy: .private)"
-            )
+            return
         }
     }
 }

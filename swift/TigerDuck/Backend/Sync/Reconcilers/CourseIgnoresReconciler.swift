@@ -13,7 +13,7 @@ struct CourseIgnoresReconciler: CategoryReconciler {
         return applyIgnoredCourses(
             server, decided: Self.serverDecidedCourses(pass.courseOverrides),
             coursesArray: pass.coursesArray, protected: pass.queuedMarkAndIgnoreKeys, deleting: pass.courseDeletes,
-            fetchedAt: pass.fetchedAt, for: pass.signIn
+            fetchedAt: pass.fetchedAt, era: pass.era, for: pass.signIn
         )
     }
 
@@ -171,12 +171,13 @@ struct CourseIgnoresReconciler: CategoryReconciler {
         protected: Set<String>,
         deleting queuedDeletes: Set<String>,
         fetchedAt: Date,
+        era: SyncClock.Era,
         for signIn: SignIn
     ) -> Bool {
         let now = Date()
         let deleting = app.localEdits.recentCourseDeletions.filter { now.timeIntervalSince($0.value) < LocalEdits.courseDeleteGraceInterval }
         let resetSemesters = app.localEdits.resettingSemesters.union(
-            CourseStore.shared.loadSemesterResetAt().filter { $0.value >= fetchedAt }.keys
+            CourseStore.shared.loadSemesterResetAt().filter { era.current($0.value) >= fetchedAt }.keys
         )
         let current = AssignmentStore.shared.loadIgnoredAssignmentCourses()
         let listed = Self.listedCourses(coursesArray)

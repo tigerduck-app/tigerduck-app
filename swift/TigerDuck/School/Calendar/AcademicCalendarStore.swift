@@ -130,9 +130,11 @@ final class AcademicCalendarStore: AccountScoped {
     }
 
     @discardableResult
-    func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date, holding held: Set<Int> = [], for signIn: SignIn) -> Bool {
+    func applySyncedOverrides(
+        _ ids: Set<Int>, fetchedAt: Date, holding held: Set<Int> = [], era: SyncClock.Era, for signIn: SignIn
+    ) -> Bool {
         guard signIn.isCurrent else { return false }
-        guard pendingHolidayUploads == 0, fetchedAt > lastHolidayEditAt else {
+        guard pendingHolidayUploads == 0, fetchedAt > era.current(lastHolidayEditAt) else {
             logger.info("holiday overrides from sync ignored — a local toggle is newer")
             return false
         }
