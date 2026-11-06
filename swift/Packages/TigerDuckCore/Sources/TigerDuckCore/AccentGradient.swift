@@ -86,3 +86,11 @@ public struct AccentGradient: Codable, Hashable, Sendable {
         value & 0xFFFFFF
     }
 }
+
+public extension KeyedDecodingContainer {
+    /// Synthesized `Decodable` conformances call this for an optional gradient, so a gradient a
+    /// newer build wrote, or a damaged one, reads as none and the rest of the value still decodes.
+    func decodeIfPresent(_ type: AccentGradient.Type, forKey key: Key) throws -> AccentGradient? {
+        try? decode(type, forKey: key)
+    }
+}
