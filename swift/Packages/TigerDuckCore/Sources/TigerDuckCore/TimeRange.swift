@@ -1,7 +1,5 @@
 import Foundation
 
-/// A class's start and end as the app, its widgets, the Watch and Live Activities all show them:
-/// `HH:mm–HH:mm`, 24-hour, with no spaces.
 public enum TimeRange {
     public static func text(_ start: String, _ end: String) -> String {
         "\(start)–\(end)"
@@ -12,7 +10,6 @@ public enum TimeRange {
         text(clock(start), clock(end))
     }
 
-    /// The side of a meeting's times that changed: a start alone stays bare, an end alone reads `–HH:mm`.
     public static func partial(start: String?, end: String?) -> String? {
         switch (start, end) {
         case let (start?, end?): text(start, end)
@@ -22,8 +19,8 @@ public enum TimeRange {
         }
     }
 
-    /// The range for VoiceOver, with the reader's word for "to": how a screen reader says the en dash
-    /// differs by language. Each target's build puts the key in its own main bundle.
+    /// A screen reader does not reliably read an en dash between two times as "to", so VoiceOver gets
+    /// the range in words. Each target's build puts the key in its own main bundle, not the package's.
     public static func spoken(
         _ start: String, _ end: String,
         localized: (LocalizedStringResource) -> String = { String(localized: $0) }
