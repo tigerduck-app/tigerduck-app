@@ -25,15 +25,12 @@ struct TodayCourseCardLayoutTests {
             window.makeKeyAndVisible()
             defer { window.isHidden = true }
 
-            func card() -> NSObject? {
-                exposedAccessibilityElements(in: window).first { $0.accessibilityLabel?.contains(course.courseName) == true }
-            }
-            try await waitUntil { card() != nil }
+            try await waitUntil { Self.card(named: course.courseName, in: window) != nil }
             try await Task.sleep(for: .milliseconds(400))
             let language = Bundle.main.preferredLocalizations.first ?? "en"
             window.saveSnapshot(as: "today-course-card-375-largest-\(language)")
 
-            let shown = try #require(card())
+            let shown = try #require(Self.card(named: course.courseName, in: window))
             let needed = UIHostingController(
                 rootView: TodayCourseCard(course: course).environment(\.dynamicTypeSize, .accessibility5)
             ).sizeThatFits(in: CGSize(width: 375, height: CGFloat.greatestFiniteMagnitude))
@@ -42,6 +39,10 @@ struct TodayCourseCardLayoutTests {
             #expect(shown.accessibilityLabel?.contains("TR-313") == true)
             #expect(shown.accessibilityLabel?.contains(TimeRange.spoken("10:20", "12:10")) == true)
         }
+    }
+
+    private static func card(named name: String, in window: UIWindow) -> NSObject? {
+        exposedAccessibilityElements(in: window).first { $0.accessibilityLabel?.contains(name) == true }
     }
 }
 #endif
