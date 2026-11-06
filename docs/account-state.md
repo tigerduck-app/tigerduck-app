@@ -37,6 +37,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 | The backend's device registration | the unregister in the sign-out calls, sent with the kept session until it lands |
 | SwiftData | holds nothing: the models are value types the caches persist |
 | School Mail's cached pages, bodies and search index | `MailCache.clearAll()`, from School Mail's sign-out (`MailAccountManager.logout()`), which its next sign-in waits for |
+| The compose screen's recipient suggestions | nothing stored: `MailComposeContacts` ranks them in memory from School Mail's cached pages and holds them for the sign-in the screen opened in (`SignInBound`) |
 
 School Mail and the library are accounts of their own, with a session and a sign-out plan each,
 which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` and

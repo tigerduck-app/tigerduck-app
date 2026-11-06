@@ -7,7 +7,6 @@ struct MailComposeView: View {
     private enum Field: Hashable { case to, cc, bcc, subject, body }
 
     @State private var viewModel: MailComposeViewModel
-    private let mode: MailComposeMode
 
     @Environment(\.dismiss) private var dismiss
     @State private var showLeaveDialog = false
@@ -20,10 +19,11 @@ struct MailComposeView: View {
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String], events: MailboxEvents) {
         let account = MailAccountManager.shared
         let sender = MailAddress(name: account.displayName, address: account.address ?? "")
-        _viewModel = State(initialValue: MailComposeViewModel(context: context, session: session, sender: sender,
-                                                              folderRoles: folderRoles, events: events))
-        mode = context.mode
+        self.init(viewModel: MailComposeViewModel(context: context, session: session, sender: sender,
+                                                  folderRoles: folderRoles, events: events))
     }
+
+    init(viewModel: MailComposeViewModel) { _viewModel = State(initialValue: viewModel) }
 
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String],
          onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void, onSentCopyNotice: @escaping (String) -> Void) {
@@ -169,7 +169,7 @@ struct MailComposeView: View {
     }
 
     private var title: String {
-        switch mode {
+        switch viewModel.mode {
         case .reply: String(localized: "school_mail_reply")
         case .replyAll: String(localized: "school_mail_reply_all")
         case .forward: String(localized: "school_mail_forward")
@@ -183,7 +183,7 @@ struct MailComposeView: View {
     }
 
     private func addressField(_ title: String, text: Binding<String>, field: Field) -> some View {
-        MailRecipientTokenField(title: title, text: text, focus: $focused, field: field)
+        MailRecipientTokenField(title: title, text: text, focus: $focused, field: field, suggest: viewModel.recipientSuggestions(for:))
     }
 
     private func addFile(_ url: URL) async {

@@ -97,5 +97,6 @@ struct MailComposeServices {
     let cache: MailCache
     let sleep: (Duration) async -> Void
     let now: () -> Date
+    let contacts: MailComposeContacts
 }
 #endif

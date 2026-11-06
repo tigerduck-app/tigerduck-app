@@ -376,6 +376,7 @@ NotificationSettingsDocument.swift
 # here is wrapped in `#if os(iOS)`; `SchoolMailAvailability.isEnabled`
 # returns false off iOS, and `.schoolMail` is listed in
 # `MacFeatureFiltering.macHiddenFeatures`, so macOS never reaches any of it.
+MailComposeContacts.swift
 MailComposeView.swift
 MailComposeViewModel.swift
 MailDateFormatter.swift
@@ -411,6 +412,7 @@ MailAccountManager.swift
 # Mail/Compose — School Mail's outgoing-message building; iOS-only,
 # see Features/SchoolMail above
 MailMessageBuilder.swift
+MailRecipientSuggestions.swift
 MailReplyComposer.swift
 MailSentCopy.swift
 
