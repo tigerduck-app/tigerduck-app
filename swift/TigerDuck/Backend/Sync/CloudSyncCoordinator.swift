@@ -178,12 +178,12 @@ final class CloudSyncCoordinator {
 
     func pendingCourseIgnoreKeys() async -> Set<String> { await edits.pendingCourseIgnoreKeys() }
 
-    func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date? = nil, for signIn: SignIn) async {
+    func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date, for signIn: SignIn) async {
         guard isOnOrTurningOn else { return }
-        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp ?? clock.stamp()), for: signIn)
+        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp), for: signIn)
     }
 
-    func deleteCourse(semester: String, courseNo: String, at stamp: Date? = nil, for signIn: SignIn) async {
+    func deleteCourse(semester: String, courseNo: String, at stamp: Date, for signIn: SignIn) async {
         await discardCourseIgnores(semester: semester, courseNo: courseNo)
         await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp, for: signIn)
         await syncTick()

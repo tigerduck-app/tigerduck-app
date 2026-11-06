@@ -100,11 +100,11 @@ extension CloudSyncCoordinator {
     }
 
     func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date? = nil) async {
-        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp, for: testSignIn)
+        await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp ?? clock.stamp(), for: testSignIn)
     }
 
     func deleteCourse(semester: String, courseNo: String, at stamp: Date? = nil) async {
-        await deleteCourse(semester: semester, courseNo: courseNo, at: stamp, for: testSignIn)
+        await deleteCourse(semester: semester, courseNo: courseNo, at: stamp ?? clock.stamp(), for: testSignIn)
     }
 
     @discardableResult

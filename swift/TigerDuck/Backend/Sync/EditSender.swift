@@ -97,11 +97,13 @@ final class EditSender {
         }
     }
 
-    func deleteBackendCourse(courseNo: String, semester: String, for signIn: SignIn) {
-        guard Defaults[.cloudSyncEnabled] else { return }
+    @discardableResult
+    func deleteBackendCourse(courseNo: String, semester: String, for signIn: SignIn) -> Task<Void, Never>? {
+        guard Defaults[.cloudSyncEnabled] else { return nil }
         localEdits.setRecentCourseDeletions(localEdits.recentCourseDeletions.merging([courseNo: Date()]) { $1 }, for: signIn)
         poller.noteActivity()
-        Task { await coordinator.deleteCourse(semester: semester, courseNo: courseNo, for: signIn) }
+        let hiddenAt = coordinator.clock.stamp()
+        return Task { await coordinator.deleteCourse(semester: semester, courseNo: courseNo, at: hiddenAt, for: signIn) }
     }
 
     @discardableResult
@@ -113,10 +115,10 @@ final class EditSender {
             resetLocally()
             return true
         }
+        let madeAt = coordinator.clock.stamp()
         let signIn = await account.startingSignIn
         if let semester { localEdits.resettingSemesters.insert(semester) }
         defer { if let semester { localEdits.resettingSemesters.remove(semester) } }
-        let madeAt = coordinator.clock.stamp()
         do {
             try await Self.resetCourses(semester: semester, on: coordinator, onServer: { [push] in
                 try await push.deleteAllCourses(semester: semester, madeAt: madeAt, for: signIn)

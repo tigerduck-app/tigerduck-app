@@ -239,6 +239,35 @@ struct CourseDeleteSyncTests {
         #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
     }
 
+    private static func makeEditSender(_ backend: Backend, clock: SyncClock) -> EditSender {
+        let push = makePush(backend, clock: clock)
+        return EditSender(
+            coordinator: makeCoordinator(backend, syncsCourseIgnores: { false }, clock: clock, push: push), push: push,
+            poller: RevisionPoller(), localEdits: LocalEdits(), account: AccountSession(signIns: testSignIns)
+        )
+    }
+
+    @Test("A hide is stamped when it is made, so a re-add straight after it is the later edit")
+    func hideIsStampedBeforeAReAddThatFollowsIt() async {
+        await withExclusiveRealDefaults {
+            let saved = Defaults[.cloudSyncEnabled]
+            defer { Defaults[.cloudSyncEnabled, for: testSignIn] = saved }
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
+            let backend = Backend()
+            let path = "sync/courses/client:1151:CS1001301?hlc=\(SyncClockTests.ten + 1)"
+            backend.answer(path)
+            let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
+            let edits = Self.makeEditSender(backend, clock: clock)
+
+            let hiding = edits.deleteBackendCourse(courseNo: "CS1001301", semester: "1151", for: testSignIn)
+            let reAddedAt = PushAPI.clock(of: clock.stamp())
+            await hiding?.value
+
+            #expect(backend.requests(path).count == 1)
+            #expect(SyncClockTests.ten + 1 < reAddedAt)
+        }
+    }
+
     @Test("Adding a course back drops its hides made before the re-add, but not one made after it while the drop was on its way")
     func reAddKeepsAHideMadeAfterIt() async {
         let coordinator = Self.makeCoordinator(Backend())
