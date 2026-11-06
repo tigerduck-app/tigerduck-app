@@ -52,6 +52,7 @@ nonisolated final class SyncClock: Sendable {
         }
     }
 
+    /// Only one process may use a store: the lock that keeps stamps apart is in memory.
     nonisolated struct Storage: Sendable {
         let load: @Sendable () -> Readings
         let save: @Sendable (Readings) -> Void

@@ -83,8 +83,12 @@ under the new value, and after one jump of the device clock land near the time e
 time within five seconds past the new value stays, as stamps issued since start there while the
 holders move theirs. A time taken before the header and stored or compared after it, as an edit on
 its way into the queue or a full sync's fetch start, moves the same way: the device notes the
-pull-backs made before it takes the time and applies those made since. A header before 2026
-or from 2100 on is not a clock and is ignored, and is never re-stamped after.
+pull-backs made before it takes the time and applies those made since. Two jumps before one
+header are the limit: a time from the smaller jump moves by the larger one's size, so it lands
+before it was made, still in order with every other time kept. Clamping every kept time to the new
+value would avoid that but tie them all, so an edit and a Use Server made after it could no longer
+be told apart. A header before 2026 or from 2100 on is not a clock and is ignored, and is
+never re-stamped after.
 
 Lost:
 - ISO-8601 strings, as the snapshot uses today: Apple's `ISO8601DateFormatter` keeps three
