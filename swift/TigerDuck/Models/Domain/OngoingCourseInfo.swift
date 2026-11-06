@@ -29,7 +29,7 @@ struct OngoingCourseInfo: Identifiable {
     }
 
     var formattedTimeRange: String {
-        ClassTimeline.timeRange(from: startMinute, to: endMinute)
+        TimeRange.text(from: startMinute, to: endMinute)
     }
 }
 

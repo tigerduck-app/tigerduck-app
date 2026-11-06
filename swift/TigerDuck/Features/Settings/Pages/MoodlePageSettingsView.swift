@@ -1,6 +1,10 @@
+import Defaults
 import SwiftUI
 
 struct MoodlePageSettingsView: View {
+    @Environment(\.settingsState) private var state
+    @Default(.moodleOpenTarget) private var openTarget
+
     var body: some View {
         List {
             Section {
@@ -15,6 +19,14 @@ struct MoodlePageSettingsView: View {
                     }
                 }
                 .settingsRow(.moodleNotifications)
+                if SettingsRow.moodleOpenIn.isShown(in: state) {
+                    Picker(SettingsRow.moodleOpenIn.label, selection: $openTarget) {
+                        Text(String(localized: "settings_moodle_open_in_app")).tag(MoodleOpenTarget.app)
+                        Text(String(localized: "settings_browser_in_app")).tag(MoodleOpenTarget.browser)
+                    }
+                    .pickerStyle(.menu)
+                    .settingsRow(.moodleOpenIn)
+                }
             }
             StorageKindSection(kind: .moodleFiles)
         }
