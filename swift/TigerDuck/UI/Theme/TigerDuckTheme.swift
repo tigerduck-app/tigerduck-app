@@ -1,6 +1,14 @@
 import SwiftUI
 import os
 
+extension DynamicTypeSize {
+    var rowLayout: AnyLayout {
+        isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
+            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
+    }
+}
+
 enum TigerDuckTheme {
     enum Spacing {
         static let xs: CGFloat = 4
