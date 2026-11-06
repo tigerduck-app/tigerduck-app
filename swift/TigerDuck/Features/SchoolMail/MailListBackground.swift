@@ -9,6 +9,7 @@ final class MailListBackground {
     private let noteSeenByPage: (MailboxStatusInfo, SignIn) async -> Void
     private var warmTask: Task<Void, Never>?
     private var warmDone = false
+    let flagStorage: MailFlagStorageCheck
     private let warmDelay: @Sendable () async -> Void
     private weak var list: MailListViewModel?
 
@@ -20,6 +21,7 @@ final class MailListBackground {
         self.indexer = indexer
         self.noteSeenByPage = noteSeenByPage
         self.warmDelay = warmDelay
+        flagStorage = MailFlagStorageCheck(list: list)
     }
 
     func startPolling(pollFirst: Bool) {
@@ -57,9 +59,11 @@ final class MailListBackground {
         cancelWarm()
         indexer.reset()
         warmDone = false
+        flagStorage.reset()
     }
 
     func waitForWarm() async { await warmTask?.value }
+
 
     var isIndexBusy: Bool { !indexer.isComplete || indexer.isDownloading }
 

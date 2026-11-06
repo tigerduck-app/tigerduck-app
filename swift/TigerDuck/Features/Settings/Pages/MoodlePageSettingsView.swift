@@ -28,7 +28,7 @@ struct MoodlePageSettingsView: View {
                     .settingsRow(.moodleOpenIn)
                 }
             }
-            StorageKindSection(kind: .moodleFiles)
+            StorageKindSection(kinds: [.moodleFiles, .moodleData])
         }
     }
 }

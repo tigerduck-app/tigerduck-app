@@ -148,6 +148,10 @@ actor LiveMailClient: MailClient {
         }
     }
 
+    func storesFlagged(folder: String) async throws -> Bool {
+        try await run { try await MailIMAPCommands.storesFlagged(folder: folder, imap: self.imap) }
+    }
+
     func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {
         guard !uids.isEmpty else { return }
         try await run {

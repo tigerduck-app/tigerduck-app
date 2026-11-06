@@ -51,6 +51,8 @@ jobs:
               TigerDuckTests/MailComposeSuggestionScreenTests
               TigerDuckTests/MailHTMLSanitizerTests/aFixedImageBoxKeepsItsRatioOnThePage(pageWidth:)
               TigerDuckTests/MailMuteSettingsScreenTests
+              TigerDuckTests/MailSwipeScreenTests
+              TigerDuckTests/MailRouteSignOutTests
               TigerDuckTests/MailSearchFooterScreenTests
               TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
               TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()
@@ -62,10 +64,12 @@ jobs:
               TigerDuckTests/BrowserPinnedHostsTests
               TigerDuckTests/BrowserContentRulesTests
               TigerDuckTests/BrowserDemoPageLoadTests
+              TigerDuckTests/BrowserDownloadsScreenTests
               TigerDuckTests/BrowserFindPageTests
               TigerDuckTests/BrowserPageScriptsTests
               TigerDuckTests/BrowserPageUITests
               TigerDuckTests/BrowserSiteSignInPageTests
+              TigerDuckTests/CalendarDayListScreenTests
               TigerDuckTests/ClassTableCalendarMenuTests
               TigerDuckTests/ClassTableShareSheetTests
               TigerDuckTests/ClassTableSwitcherTests

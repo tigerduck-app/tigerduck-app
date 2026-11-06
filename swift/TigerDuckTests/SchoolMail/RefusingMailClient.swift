@@ -38,6 +38,7 @@ actor RefusingMailClient: MailClient {
     func setFlag(
         _ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?
     ) async throws { throw refuse() }
+    func storesFlagged(folder: String) async throws -> Bool { throw refuse() }
     func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {
         throw refuse()
     }

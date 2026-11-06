@@ -8,8 +8,9 @@ struct SchoolMailView: View {
     @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = MailListViewModel()
+    @State private var rowActions = MailRowActions()
     @State private var showLoginSheet = false
-    @State private var route: MailMessageRoute?
+    @State private var openMessage = SignInBound<MailMessageRoute?>(empty: nil)
     @State private var compose: MailComposeContext?
     @State private var isSearchRevealed = false
     @State private var isOnScreen = false
@@ -31,6 +32,17 @@ struct SchoolMailView: View {
         Group {
             if account.isLoggedIn { mailList } else { signedOut }
         }
+        .modifier(MailMessageDestination(session: account.session, opened: $openMessage) { route in
+            MailMessageView(
+                route: route,
+                session: viewModel.session,
+                folderRoles: viewModel.folderRoles,
+                otherFolders: viewModel.otherFolders,
+                events: viewModel.events
+            )
+            // The browser opens as the link confirmation closes, from the view that showed it.
+            .linkRouting()
+        })
         .sheet(isPresented: $showLoginSheet) { MailLoginSheet(isPresented: $showLoginSheet) }
         .pageMenu(.mail)
         #if DEBUG
@@ -99,16 +111,7 @@ struct SchoolMailView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
-            if let notice = viewModel.sentCopyNotice {
-                MailWarningBanner(
-                    message: notice,
-                    systemImage: "tray.and.arrow.down",
-                    actionTitle: String(localized: "settings_acknowledged"),
-                    action: { viewModel.dismissSentCopyNotice() }
-                )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            }
+            MailListNotices(viewModel: viewModel)
             MailFolderChipBar(
                 roles: viewModel.folderRoles,
                 others: viewModel.otherFolders,
@@ -126,8 +129,10 @@ struct SchoolMailView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
-            MailListRowsSection(viewModel: viewModel, accentColor: app.preferences.accentColor, onOpen: open)
+            MailListRowsSection(viewModel: viewModel, actions: rowActions, accentColor: app.preferences.accentColor,
+                                policy: app.preferences.visualStylePolicy, onOpen: open)
         }
+        .modifier(MailRowActionsPresenter(list: viewModel, actions: rowActions, compose: $compose))
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
@@ -143,17 +148,6 @@ struct SchoolMailView: View {
             if text.isEmpty { viewModel.clearSearch() }
         }
         .refreshable { await viewModel.refresh(forcingIndex: true) }
-        .navigationDestination(item: $route) { route in
-            MailMessageView(
-                route: route,
-                session: viewModel.session,
-                folderRoles: viewModel.folderRoles,
-                otherFolders: viewModel.otherFolders,
-                events: viewModel.events
-            )
-            // The browser opens as the link confirmation closes, from the view that showed it.
-            .linkRouting()
-        }
         .onAppear {
             isOnScreen = true
             drainDeepLink()
@@ -182,16 +176,17 @@ struct SchoolMailView: View {
         if row.folder == viewModel.folderRoles[.drafts] {
             compose = MailComposeContext(mode: .draft, folder: row.folder, uid: row.uid)
         } else {
-            route = MailMessageRoute(folder: row.folder, uid: row.uid)
+            openMessage.set(MailMessageRoute(folder: row.folder, uid: row.uid), for: account.session.currentSignIn)
         }
     }
 
     private func drainDeepLink() {
         guard case .schoolMail(let folder, let uid, let uidValidity) = app.router.pendingDeepLink, account.isLoggedIn else { return }
         app.router.pendingDeepLink = nil
+        let signIn = account.session.currentSignIn
         Task {
             await viewModel.select(.real(folder))
-            if let uid { route = MailMessageRoute(folder: folder, uid: uid, uidValidity: uidValidity) }
+            if let uid { openMessage.set(MailMessageRoute(folder: folder, uid: uid, uidValidity: uidValidity), for: signIn) }
         }
     }
 
