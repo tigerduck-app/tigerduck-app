@@ -32,7 +32,7 @@ enum SchoolCalendar {
         guard let term = calendar.terms.first(where: { $0.code == code }) else { return nil }
         return Term(
             code: code,
-            days: QuietDayCalendar.Span(start: term.start, end: term.end),
+            days: term.days,
             quietDays: calendar.quietDays(optedIn: ownTable ? optedIn : [])
         )
     }

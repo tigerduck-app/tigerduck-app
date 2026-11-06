@@ -64,4 +64,18 @@ struct QuietDayCalendarTests {
         #expect(keys.max() == "2028-10-19")
         #expect(QuietDayCalendar(terms: [], holidays: []).quietDayKeys(from: day(2027, 10, 13), days: 373).isEmpty)
     }
+
+    @Test func aTermsWeekOneIsTheMondayToSundayWeekOfItsFirstDay() {
+        let term = span(day(2026, 9, 16), day(2027, 1, 15))
+        #expect(term.week(on: day(2026, 9, 16)) == 1)
+        #expect(term.week(on: day(2026, 9, 20, 23)) == 1)
+        #expect(term.week(on: day(2026, 9, 21)) == 2)
+        #expect(term.week(on: day(2027, 1, 15, 23)) == 18)
+    }
+
+    @Test func aDayOutsideTheTermHasNoWeek() {
+        let term = span(day(2026, 9, 16), day(2027, 1, 15))
+        #expect(term.week(on: day(2026, 9, 14)) == nil)
+        #expect(term.week(on: day(2027, 1, 16)) == nil)
+    }
 }

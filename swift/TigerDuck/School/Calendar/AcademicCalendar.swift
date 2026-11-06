@@ -8,8 +8,10 @@ nonisolated struct SemesterTerm: Codable, Equatable, Sendable {
     let start: Date
     let end: Date
 
+    var days: QuietDayCalendar.Span { QuietDayCalendar.Span(start: start, end: end) }
+
     func contains(_ day: Date) -> Bool {
-        QuietDayCalendar.Span(start: start, end: end).contains(day)
+        days.contains(day)
     }
 }
 
@@ -77,7 +79,7 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
 
     func quietDays(optedIn: Set<Int>) -> QuietDayCalendar {
         QuietDayCalendar(
-            terms: terms.map { QuietDayCalendar.Span(start: $0.start, end: $0.end) },
+            terms: terms.map(\.days),
             holidays: holidays.map { QuietDayCalendar.Holiday(id: $0.id, span: .init(start: $0.start, end: $0.end)) },
             optedIn: optedIn
         )
@@ -102,10 +104,7 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
     /// The week of term `code` that `day` falls in, week 1 being the Monday-to-Sunday week of the
     /// term's first day; nil when `day` is outside that term.
     func week(of code: String, on day: Date) -> Int? {
-        guard let term = terms.first(where: { $0.code == code }), term.contains(day) else { return nil }
-        let calendar = TaipeiTime.calendar
-        let monday = calendar.date(byAdding: .day, value: 1 - ClassTimeline.weekday(of: term.start), to: term.start)
-        return monday.flatMap { calendar.week(of: day, countingFrom: $0) }
+        terms.first { $0.code == code }?.days.week(on: day)
     }
 }
 
