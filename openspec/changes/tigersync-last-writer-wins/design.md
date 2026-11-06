@@ -128,11 +128,14 @@ the stored shape and so no migration. The backend keeps no clock state: its valu
 Lost: a separate stamp store for every local value. The outbox already holds one entry per
 field (`dedupKey`) for every unsent edit, which is all a client must remember (D12).
 
-### D4. Clients learn server time from every response
+### D4. The sync client learns server time from every response
 
 A middleware in `server/main.py` sets `X-TigerSync-Clock` on every `/v3` response, errors too.
-Clients also raise the last seen value to every stamp they read in a snapshot or write response,
-which covers values stored up to five seconds ahead.
+The client that sends stamped edits, `PushCoordinator`'s, hears every answer it reads. The
+settings document, bulletin, course catalog, course change and calendar clients do not: every
+stamped edit and its refusal go through the sync client, so their answers would only refresh a
+reading it already keeps. Clients also raise the last seen value to every stamp they read in a
+snapshot or write response, which covers values stored up to five seconds ahead.
 
 Lost:
 - A clock endpoint: one more request, and already stale when an offline edit happens.
