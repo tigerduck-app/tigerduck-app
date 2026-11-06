@@ -15,7 +15,7 @@ struct MoodlePage: Hashable {
 
     var links: (open: URL?, fallback: URL?) {
         #if os(macOS)
-        switch Defaults[.macMoodleOpenTarget] {
+        switch Defaults[.moodleOpenTarget] {
         case .app: (AppConstants.moodleDeepLink(redirectingTo: path), webURL)
         case .browser: (webURL, nil)
         }

@@ -32,6 +32,14 @@ func exposedAccessibilityLabels(in node: NSObject) -> [String] {
     return own + accessibilityChildren(of: node).flatMap { exposedAccessibilityLabels(in: $0) }
 }
 
+/// A list keeps the cells of rows it no longer shows, hidden, for reuse.
+@MainActor
+func shownListLabels(in window: UIWindow) -> [String] {
+    guard let root = window.rootViewController?.view else { return [] }
+    let shown: [UIView] = root.descendants(ofType: UICollectionView.self).first?.visibleCells ?? [root]
+    return shown.flatMap { exposedAccessibilityLabels(in: $0) }
+}
+
 @MainActor
 func exposedAccessibilityTexts(in node: NSObject) -> [String] {
     let read = [node.accessibilityLabel, node.accessibilityValue].compactMap { $0 }.filter { !$0.isEmpty }

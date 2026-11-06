@@ -8,19 +8,24 @@ extension UIView {
 }
 
 extension UIWindow {
-    /// Keeps a picture of the window for a person to look at, when the checkout has a `.out`
-    /// folder; CI's has none.
+    func saveSnapshot(as name: String) {
+        picture().saveSnapshot(as: name)
+    }
+
+    func picture() -> UIImage {
+        UIGraphicsImageRenderer(bounds: bounds).image { _ in
+            drawHierarchy(in: bounds, afterScreenUpdates: true)
+        }
+    }
+}
+
+extension UIImage {
+    /// Keeps a picture for a person to look at, when the checkout has a `.out` folder; CI's has none.
     func saveSnapshot(as name: String) {
         let out = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appending(path: ".out")
         guard FileManager.default.fileExists(atPath: out.path(percentEncoded: false)) else { return }
-        try? picture()?.write(to: out.appending(path: "\(name).png"))
-    }
-
-    func picture() -> Data? {
-        UIGraphicsImageRenderer(bounds: bounds).image { _ in
-            drawHierarchy(in: bounds, afterScreenUpdates: true)
-        }.pngData()
+        try? pngData()?.write(to: out.appending(path: "\(name).png"))
     }
 }
 #endif

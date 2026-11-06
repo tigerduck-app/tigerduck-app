@@ -183,11 +183,6 @@ struct CourseDetailSheet: View {
         await app.authService.session.withSignIn { await SchoolRefresh.assignments(authService: app.authService, for: $0) }
     }
 
-    /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile
-    /// picks the user up inside the app, and open the web page when it is not
-    /// installed. On macOS no Moodle Mac app exists and the deep link would
-    /// surface as an "unhandled URL" error, so the platform-aware
-    /// `moodleOpenURL` returns the HTTPS URL instead.
     private func openMoodleCourse() {
         guard let url = course.moodleOpenURL else { return }
         let web = course.moodleWebURL

@@ -147,9 +147,7 @@ private struct AutoProgressBar: View {
             // `ProgressView(timerInterval:)` interpolates against the real wall clock,
             // but snapshot dates are app-clock time (possibly fake), so translate the
             // endpoints to animate over the matching real-time span.
-            let realStart = AppClock.realTime(forApp: start)
-            let realTarget = AppClock.realTime(forApp: target)
-            ProgressView(timerInterval: realStart...realTarget, countsDown: false) {
+            ProgressView(timerInterval: AppClock.realTime(forApp: start...target), countsDown: false) {
                 EmptyView()
             } currentValueLabel: {
                 EmptyView()

@@ -13,38 +13,34 @@ struct BulletinRows: View {
         if viewModel.items.isEmpty {
             switch viewModel.loadState {
             case .idle, .loading:
-                centeredRow {
-                    ProgressView().padding(.vertical, 60)
-                }
+                ProgressView().padding(.vertical, 60)
+                .centeredListRow()
             case .failed(let message):
-                centeredRow {
-                    LoadFailureView(title: String(localized: "bulletin_load_failed_title"), message: message) {
-                        Task { await viewModel.refresh() }
-                    }
+                LoadFailureView(title: String(localized: "bulletin_load_failed_title"), message: message) {
+                    Task { await viewModel.refresh() }
                 }
+                .centeredListRow()
             case .loaded:
-                centeredRow {
-                    EmptyStateView(
-                        icon: "tray",
-                        title: String(localized: "bulletin_no_bulletins_title"),
-                        message: String(localized: "bulletin_no_bulletins_message")
-                    )
-                    .frame(height: 200)
-                }
-            }
-        } else if displayedItems.isEmpty {
-            centeredRow {
                 EmptyStateView(
-                    icon: unreadOnly ? "envelope.open" : "tray",
-                    title: unreadOnly
-                        ? String(localized: "bulletin_no_unread_title")
-                        : String(localized: "bulletin_no_bulletins_title"),
-                    message: viewModel.hasActiveFilter || unreadOnly
-                        ? String(localized: "bulletin_no_match_message")
-                        : String(localized: "bulletin_no_bulletins_message")
+                    icon: "tray",
+                    title: String(localized: "bulletin_no_bulletins_title"),
+                    message: String(localized: "bulletin_no_bulletins_message")
                 )
                 .frame(height: 200)
+                .centeredListRow()
             }
+        } else if displayedItems.isEmpty {
+            EmptyStateView(
+                icon: unreadOnly ? "envelope.open" : "tray",
+                title: unreadOnly
+                    ? String(localized: "bulletin_no_unread_title")
+                    : String(localized: "bulletin_no_bulletins_title"),
+                message: viewModel.hasActiveFilter || unreadOnly
+                    ? String(localized: "bulletin_no_match_message")
+                    : String(localized: "bulletin_no_bulletins_message")
+            )
+            .frame(height: 200)
+            .centeredListRow()
         } else {
             ForEach(displayedItems) { bulletin in
                 // A plain Button, not a NavigationLink, keeps the tap highlight without
@@ -89,9 +85,8 @@ struct BulletinRows: View {
             }
 
             if viewModel.isPaginating {
-                centeredRow {
-                    ProgressView().padding(.vertical, TigerDuckTheme.Spacing.md)
-                }
+                ProgressView().padding(.vertical, TigerDuckTheme.Spacing.md)
+                .centeredListRow()
             }
         }
     }
@@ -101,14 +96,5 @@ struct BulletinRows: View {
             return viewModel.filteredItems.filter { !readState.isRead($0.id) }
         }
         return viewModel.filteredItems
-    }
-
-    @ViewBuilder
-    private func centeredRow<V: View>(@ViewBuilder content: () -> V) -> some View {
-        content()
-            .frame(maxWidth: .infinity)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets())
     }
 }

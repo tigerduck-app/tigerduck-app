@@ -98,7 +98,7 @@ struct WidgetSnapshotPictureTests {
             try await waitUntil { exposedAccessibilityTexts(in: window).contains { $0.contains(expected) } }
             var shown: Data?
             try await waitUntil {
-                let picture = window.picture()
+                let picture = window.picture().pngData()
                 defer { shown = picture }
                 return picture != nil && picture == shown
             }

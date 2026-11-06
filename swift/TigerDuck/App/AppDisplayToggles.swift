@@ -8,8 +8,8 @@ struct AppDisplayToggles {
 
     /// The iPad Moodle app installed from the Mac App Store registers `moodlemobile://` too, so its
     /// users can choose the deep link.
-    var macMoodleOpenTarget: MoodleOpenTarget = Defaults[.macMoodleOpenTarget] {
-        didSet { Defaults[.macMoodleOpenTarget] = macMoodleOpenTarget }
+    var moodleOpenTarget: MoodleOpenTarget = Defaults[.moodleOpenTarget] {
+        didSet { Defaults[.moodleOpenTarget] = moodleOpenTarget }
     }
 
     var invertSliderDirection: Bool = Defaults[.invertSliderDirection] {

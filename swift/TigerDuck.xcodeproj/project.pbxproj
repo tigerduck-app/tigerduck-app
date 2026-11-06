@@ -206,6 +206,7 @@
 		B244D7902FB87B590040D6FA /* Exceptions for "TigerDuck" folder in "TigerDuckWidgetsExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Devices/Widgets/OpenLibraryPassIntent.swift,
 				Devices/Widgets/WidgetSnapshot.swift,
 				Persistence/AppUserDefaults.swift,
 				Shared/ClassTableLayout.swift,
@@ -226,6 +227,7 @@
 				Theme/WidgetPalette.swift,
 				Views/AccessoryViews.swift,
 				Views/ClassTileParts.swift,
+				Views/LibraryShortcutView.swift,
 				Views/NextClassView.swift,
 				Views/TodayListView.swift,
 				Views/WeekGridParts.swift,
@@ -257,6 +259,7 @@
 			membershipExceptions = (
 				Services/SharedAppGroup.swift,
 				Services/WatchAppLogger.swift,
+				UI/ClassCountdown.swift,
 				UI/WatchTheme.swift,
 			);
 			target = C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */;
@@ -1493,6 +1496,7 @@
 					EditSender.swift,
 					EndpointHealthCheck.swift,
 					EqualHeightCards.swift,
+					"FileManager+Bytes.swift",
 					FilterChipBar.swift,
 					FirstPullGate.swift,
 					FlowLayout.swift,
@@ -1523,6 +1527,7 @@
 					LibraryQRCache.swift,
 					LibraryRequests.swift,
 					LibraryService.swift,
+					LibraryShortcutView.swift,
 					LicenseCatalog.swift,
 					LiveActivityScenarioKind.swift,
 					LiveActivityScenarioResolver.swift,
@@ -1659,6 +1664,7 @@
 					MoodleText.swift,
 					MoodleTokenHarvest.swift,
 					MoodleTokenService.swift,
+					MoodleUserData.swift,
 					MoodleWebserviceError.swift,
 					NameAbbrService.swift,
 					NetworkMonitor.swift,
@@ -1673,6 +1679,7 @@
 					NTUSTScoreService.swift,
 					NTUSTSessionManager.swift,
 					OngoingCourseInfo.swift,
+					OpenLibraryPassIntent.swift,
 					"OpenURLAction+Fallback.swift",
 					OutboxDrain.swift,
 					OutboxErrorPolicy.swift,
@@ -2061,6 +2068,7 @@
 					EditSender.swift,
 					EndpointHealthCheck.swift,
 					EqualHeightCards.swift,
+					"FileManager+Bytes.swift",
 					FilterChipBar.swift,
 					FirstPullGate.swift,
 					FlowLayout.swift,
@@ -2091,6 +2099,7 @@
 					LibraryQRCache.swift,
 					LibraryRequests.swift,
 					LibraryService.swift,
+					LibraryShortcutView.swift,
 					LicenseCatalog.swift,
 					LiveActivityScenarioKind.swift,
 					LiveActivityScenarioResolver.swift,
@@ -2227,6 +2236,7 @@
 					MoodleText.swift,
 					MoodleTokenHarvest.swift,
 					MoodleTokenService.swift,
+					MoodleUserData.swift,
 					MoodleWebserviceError.swift,
 					NameAbbrService.swift,
 					NetworkMonitor.swift,
@@ -2241,6 +2251,7 @@
 					NTUSTScoreService.swift,
 					NTUSTSessionManager.swift,
 					OngoingCourseInfo.swift,
+					OpenLibraryPassIntent.swift,
 					"OpenURLAction+Fallback.swift",
 					OutboxDrain.swift,
 					OutboxErrorPolicy.swift,
