@@ -16,10 +16,11 @@
 # App — iOS launch before the first unlock after a restart, a state a Mac app never runs in
 AfterFirstUnlock.swift
 
-# App — iOS app-delegate, push registration and CoreMotion flip handling
+# App — iOS app and scene delegates, push registration and CoreMotion flip handling
 FlipToLibraryCoordinator.swift
 NTUSTLoginSheetHost.swift
 PushAppDelegate.swift
+QuickActionSceneDelegate.swift
 
 # App/ContentView.swift — iOS-only
 ContentView.swift
@@ -376,6 +377,7 @@ NotificationSettingsDocument.swift
 # here is wrapped in `#if os(iOS)`; `SchoolMailAvailability.isEnabled`
 # returns false off iOS, and `.schoolMail` is listed in
 # `MacFeatureFiltering.macHiddenFeatures`, so macOS never reaches any of it.
+MailComposeContacts.swift
 MailComposeView.swift
 MailComposeViewModel.swift
 MailDateFormatter.swift
@@ -411,6 +413,7 @@ MailAccountManager.swift
 # Mail/Compose — School Mail's outgoing-message building; iOS-only,
 # see Features/SchoolMail above
 MailMessageBuilder.swift
+MailRecipientSuggestions.swift
 MailReplyComposer.swift
 MailSentCopy.swift
 

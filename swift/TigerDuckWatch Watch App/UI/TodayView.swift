@@ -26,7 +26,7 @@ struct TodayView: View {
                 } else {
                     List(todaysCourses) { course in
                         NavigationLink {
-                            CourseDetailView(course: course)
+                            CourseDetailView(course: course, language: store.language)
                         } label: {
                             TodayRow(course: course, policy: policy, language: store.language)
                         }
@@ -44,11 +44,10 @@ private struct TodayRow: View {
     let language: WatchLanguage
 
     var body: some View {
-        let courseColor = Color(hex: course.colorHex) ?? .accentColor
         HStack(spacing: 8) {
             if !policy.usesTintedCardSurface {
                 Rectangle()
-                    .fill(courseColor)
+                    .fill(course.color)
                     .frame(width: 3)
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -66,7 +65,7 @@ private struct TodayRow: View {
             }
         }
         .listRowBackground(
-            policy.cardBackground(for: courseColor)
+            policy.cardBackground(for: course.color)
         )
     }
 }

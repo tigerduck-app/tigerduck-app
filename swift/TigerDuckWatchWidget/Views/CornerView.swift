@@ -7,15 +7,29 @@ struct CornerView: View {
 
     var body: some View {
         Text(label)
+            .minimumScaleFactor(0.5)
+            .widgetAccentable()
             .widgetCurvesContent()
             .containerBackground(.fill.tertiary, for: .widget)
             .widgetLabel {
-                Text(timeText)
+                if let span = entry.currentSpan, let course = entry.current {
+                    ProgressView(timerInterval: AppClock.realTime(forApp: span), countsDown: false) {
+                        EmptyView()
+                    } currentValueLabel: {
+                        EmptyView()
+                    }
+                    .tint(course.color)
+                    .widgetAccentable()
+                } else {
+                    Text(timeText)
+                }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(entry.spokenSummary)
     }
 
-    private var label: String {
-        (entry.current ?? entry.next)?.name ?? "—"
+    var label: String {
+        (entry.current ?? entry.next)?.roomOrName ?? "—"
     }
     var timeText: String {
         if let c = entry.current { return c.endHHmm }

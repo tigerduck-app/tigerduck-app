@@ -7,6 +7,7 @@ struct MailRowView: View {
     let policy: VisualStylePolicy
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .headline) private var unreadDotSize: CGFloat = 7
 
     var body: some View {
         let spacing = TigerDuckTheme.Spacing.sm
@@ -32,7 +33,7 @@ struct MailRowView: View {
     @ViewBuilder
     private var senderLine: some View {
         if !summary.isSeen {
-            Circle().fill(.tint).frame(width: 7, height: 7).accessibilityHidden(true)
+            Circle().fill(.tint).frame(width: unreadDotSize, height: unreadDotSize).accessibilityHidden(true)
         }
         Text(Self.sender(of: summary))
             .font(TigerDuckTheme.Typography.headline)

@@ -48,10 +48,12 @@ jobs:
             # or WebKit, which run in a step of their own. A Swift Testing function's identifier
             # carries its argument labels.
             on_screen_tests: >-
+              TigerDuckTests/MailComposeSuggestionScreenTests
               TigerDuckTests/MailHTMLSanitizerTests/aFixedImageBoxKeepsItsRatioOnThePage(pageWidth:)
               TigerDuckTests/MailMuteSettingsScreenTests
               TigerDuckTests/MailSwipeScreenTests
               TigerDuckTests/MailRouteSignOutTests
+              TigerDuckTests/MailSearchFooterScreenTests
               TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
               TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()
               TigerDuckTests/MailMessageViewModelTests/theWebViewIsLockedDown()
@@ -92,6 +94,7 @@ jobs:
               TigerDuckTests/MoodleMaterialsWeekPageTests
               TigerDuckTests/MoodleMemberCommonCoursesScreenTests
               TigerDuckTests/MoodleNotificationSettingsScreenTests
+              TigerDuckTests/MoodleOpenInSettingTests
               TigerDuckTests/MoodleOwnProfileTests/doneUploadsOnce()
               TigerDuckTests/MoodleOwnProfileTests/theCameraButtonFollowsTheSite()
               TigerDuckTests/MoodleOwnProfileTests/theOwnRowSaysMe()

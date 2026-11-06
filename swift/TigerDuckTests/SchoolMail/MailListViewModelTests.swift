@@ -285,6 +285,66 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count == 1)
     }
 
+    @Test func aSearchCountsTheIndexWhileItDownloadsAndListsTheNewMatchesOnceItEnds() async {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?[6].detail?.textBody = "補考在 Room 302"
+            fake.hold("searchTexts")
+        }
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        #expect(h.model.search.indexProgress == nil)
+
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.isEmpty)
+        #expect(h.model.search.indexProgress == h.model.background.indexer.progress)
+        #expect(h.model.search.indexProgress?.text(locale: Locale(identifier: "en_US")) == "0/61")
+
+        await h.fake.release("searchTexts")
+        await h.model.waitForIndex()
+        #expect(h.model.search.indexProgress == nil)
+        await h.model.waitForSearchCatchUp()
+        #expect(h.model.displayedRows.map(\.uid) == [7])
+    }
+
+    @Test func aSearchOnACompleteIndexCountsNothing() async {
+        let h = await Self.indexedHarness()
+        h.model.searchText = "公告 60"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.map(\.uid) == [60])
+        #expect(h.model.search.indexProgress == nil)
+    }
+
+    @Test func aSearchKeepsTheCountWithoutTheSpinnerOnceThePassPauses() async throws {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.hold("searchTexts")
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        h.model.searchText = "公告 60"
+        await h.model.submitSearch()
+        let footer = MailListFooter(viewModel: h.model, hasRows: true)
+        #expect(footer.showsSpinner)
+
+        h.model.stopPolling()
+        await h.fake.release("searchTexts")
+        try await waitUntil { !h.model.isSyncing }
+        #expect(h.model.search.indexProgress?.text(locale: Locale(identifier: "en_US")) == "20/61")
+        #expect(!footer.showsSpinner)
+    }
+
+    @Test func aSearchKeepsTheCountWithoutTheSpinnerAfterAFailedPass() async {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.model.load()
+        await h.model.waitForIndex()
+        h.model.searchText = "公告 60"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.map(\.uid) == [60])
+        #expect(h.model.search.indexProgress?.text(locale: Locale(identifier: "en_US")) == "0/61")
+        #expect(!MailListFooter(viewModel: h.model, hasRows: true).showsSpinner)
+    }
+
     @Test func aBatchThatLandsAfterThePageClosesCatchesTheSearchUpOnlyWhenItReopens() async throws {
         let h = Self.harness(warmDelay: {}, catchUpDelay: {})
         await h.fake.update { fake in
