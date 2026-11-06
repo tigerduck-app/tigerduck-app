@@ -32,8 +32,10 @@ struct WidgetSnapshotPictureTests {
     ]
 
     enum Shot: String, CaseIterable, Sendable {
-        case nextSmall, nextSmallBetween, nextMedium, nextMediumBetween, todayMedium, todayLarge, todayPortrait, todayPortraitBetween, todayExtraLarge
-        case weekLarge, weekPortrait, weekExtraLarge, lockInline, lockCircular, lockRectangular
+        case nextSmall, nextSmallBetween, nextMedium, nextMediumBetween, todayMedium, todayLarge, todayPortrait, todayPortraitBetween
+        case todayExtraLarge, todayExtraLargeMini, todayExtraLargePro13
+        case weekLarge, weekPortrait, weekExtraLarge, weekExtraLargeMini, weekExtraLargePro13
+        case lockInline, lockCircular, lockRectangular
     }
 
     private static var language: String { Bundle.main.preferredLocalizations.first ?? "en" }
@@ -43,7 +45,8 @@ struct WidgetSnapshotPictureTests {
         case .nextSmall, .nextSmallBetween: .systemSmall
         case .nextMedium, .nextMediumBetween, .todayMedium: .systemMedium
         case .todayLarge, .weekLarge: .systemLarge
-        case .todayExtraLarge, .weekExtraLarge: .systemExtraLarge
+        case .todayExtraLarge, .todayExtraLargeMini, .todayExtraLargePro13, .weekExtraLarge, .weekExtraLargeMini, .weekExtraLargePro13:
+            .systemExtraLarge
         case .todayPortrait, .todayPortraitBetween, .weekPortrait:
             WidgetFamily.withExtraLargePortrait([]).first
         case .lockInline: .accessoryInline
@@ -52,15 +55,24 @@ struct WidgetSnapshotPictureTests {
         }
     }
 
-    private static func size(of family: WidgetFamily) -> CGSize {
-        switch family {
+    /// Sizes from https://developer.apple.com/design/human-interface-guidelines/widgets#iOS-dimensions
+    /// for a 375 pt phone and https://developer.apple.com/design/human-interface-guidelines/widgets#iPadOS-dimensions
+    /// for the iPad canvas: 11-inch, mini and 13-inch. The tables list extra large portrait only for
+    /// visionOS, so its phone size is the large one grown by the large-to-medium step.
+    private static func size(of shot: Shot, family: WidgetFamily) -> CGSize {
+        switch shot {
+        case .todayExtraLargeMini, .weekExtraLargeMini: return CGSize(width: 634.5, height: 305.5)
+        case .todayExtraLargePro13, .weekExtraLargePro13: return CGSize(width: 860, height: 412)
+        default: break
+        }
+        return switch family {
         case .systemSmall: CGSize(width: 155, height: 155)
         case .systemMedium: CGSize(width: 329, height: 155)
         case .systemLarge: CGSize(width: 329, height: 345)
-        case .systemExtraLarge: CGSize(width: 716, height: 342)
-        case .accessoryInline: CGSize(width: 234, height: 26)
+        case .systemExtraLarge: CGSize(width: 715.5, height: 342)
+        case .accessoryInline: CGSize(width: 225, height: 26)
         case .accessoryCircular: CGSize(width: 72, height: 72)
-        case .accessoryRectangular: CGSize(width: 160, height: 72)
+        case .accessoryRectangular: CGSize(width: 157, height: 72)
         default: WidgetLayoutTests.portrait
         }
     }
@@ -78,7 +90,7 @@ struct WidgetSnapshotPictureTests {
             let derived = WidgetTimelineDerivation.derive(snapshot: snapshot, at: now)
             let (view, background, margins) = Self.content(of: shot, family: family, snapshot: snapshot, now: now, palette: palette, derived: derived)
             let window = try WidgetLayoutTests.Host.show(
-                view, size: Self.size(of: family), style: look.style, textSize: look.textSize,
+                view, size: Self.size(of: shot, family: family), style: look.style, textSize: look.textSize,
                 renderingMode: look.renderingMode, background: background, margins: margins
             )
             defer { window.isHidden = true }
@@ -101,9 +113,10 @@ struct WidgetSnapshotPictureTests {
             let upNext = WidgetTimelineDerivation.upNext(snapshot: snapshot, at: now, after: derived)
             let view = NextClassView(derived: derived, upNext: upNext, palette: palette, family: family, clock: now)
             return (AnyView(view), palette.canvas, 11)
-        case .todayMedium, .todayLarge, .todayPortrait, .todayPortraitBetween, .todayExtraLarge:
+        case .todayMedium, .todayLarge, .todayPortrait, .todayPortraitBetween, .todayExtraLarge, .todayExtraLargeMini,
+             .todayExtraLargePro13:
             return (AnyView(TodayView(snapshot: snapshot, now: now, palette: palette, family: family)), palette.canvas, 16)
-        case .weekLarge, .weekPortrait, .weekExtraLarge:
+        case .weekLarge, .weekPortrait, .weekExtraLarge, .weekExtraLargeMini, .weekExtraLargePro13:
             let view = WeekGridView(snapshot: snapshot, now: now, palette: palette, family: family)
             return (AnyView(view), palette.canvas, family == .systemLarge ? 8 : 10)
         case .lockInline:
