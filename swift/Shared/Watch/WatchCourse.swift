@@ -47,6 +47,8 @@ public nonisolated struct WatchCourse: Codable, Hashable, Identifiable, Sendable
         self.changes = changes
         self.dayChange = dayChange
     }
+
+    public var roomOrName: String { classroom.isEmpty ? name : classroom }
 }
 
 /// One day's change to a class; nil fields keep the timetable's value.

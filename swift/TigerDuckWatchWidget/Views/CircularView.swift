@@ -7,17 +7,27 @@ struct CircularView: View {
     var body: some View {
         ZStack {
             AccessoryWidgetBackground()
-            Text(monogram)
-                .font(.headline)
+            if let span = entry.currentSpan, let course = entry.current {
+                ProgressView(timerInterval: span.onRealClock, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+                .progressViewStyle(.circular)
+                .tint(course.color)
                 .widgetAccentable()
+            }
+            Text(label)
+                .font(.caption2.bold())
+                .lineLimit(2)
+                .minimumScaleFactor(0.5)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 6)
         }
         .containerBackground(.fill.tertiary, for: .widget)
     }
 
-    private var monogram: String {
-        guard let course = entry.current ?? entry.next else { return "—" }
-        let name = course.name
-        if name.isEmpty { return "?" }
-        return String(name.prefix(2))
+    var label: String {
+        (entry.current ?? entry.next)?.roomOrName ?? "—"
     }
 }
