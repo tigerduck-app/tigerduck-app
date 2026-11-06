@@ -24,7 +24,7 @@ struct ArchiveBrowserModelTests {
         defer { try? FileManager.default.removeItem(at: session) }
         await model.load()
         model.open(try Self.item(model, "docs/protocol.pdf"))
-        try await waitUntil { model.preview != nil }
+        await model.extractOpening()
         let first = try #require(model.preview)
         #expect(first.path.hasPrefix(session.path))
         #expect(first.lastPathComponent == "protocol.pdf")
@@ -39,7 +39,7 @@ struct ArchiveBrowserModelTests {
         defer { try? FileManager.default.removeItem(at: session) }
         await model.load()
         model.open(try Self.item(model, "notes.html"))
-        try await waitUntil { model.shared != nil }
+        await model.extractOpening()
         #expect(model.shared?.url.lastPathComponent == "notes.html")
         #expect(model.preview == nil)
 
@@ -61,9 +61,22 @@ struct ArchiveBrowserModelTests {
         defer { try? FileManager.default.removeItem(at: bigSession) }
         await big.load()
         big.open(try Self.item(big, "README.md"))
-        try await waitUntil { big.problem != nil }
+        await big.extractOpening()
         #expect(big.problem == .tooLarge)
         #expect(big.preview == nil)
+    }
+
+    @Test("closing the browser stops the file on its way out, leaving nothing behind")
+    func closingStops() async throws {
+        let (model, session) = try Self.model("archive-bomb.7z")
+        defer { try? FileManager.default.removeItem(at: session) }
+        await model.load()
+        model.open(try Self.item(model, "README.md"))
+        let extraction = Task { await model.extractOpening() }
+        extraction.cancel()
+        await extraction.value
+        #expect(model.preview == nil && model.problem == nil && model.opening == nil)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: session.path).isEmpty)
     }
 
     @Test("opening an archive clears the folders closed browsers left, never an open one's")
@@ -81,6 +94,12 @@ struct ArchiveBrowserModelTests {
         #expect(inner.session.path.hasPrefix(root.path))
         cache.remove(outer.session)
         #expect(!FileManager.default.fileExists(atPath: outer.session.path))
+        cache.sweep()
+        #expect(FileManager.default.fileExists(atPath: inner.session.path))
+        cache.remove(inner.session)
+        try FileManager.default.createDirectory(at: leftover, withIntermediateDirectories: true)
+        cache.sweep()
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
     }
 
     @Test("archives open in the browser by their extension; Office files and pages still go to Quick Look")

@@ -22,7 +22,7 @@ final class ArchiveBrowserModel {
 
     let archive: URL
     private(set) var phase = Phase.loading
-    private(set) var opening: Int?
+    private(set) var opening: ArchiveItem?
     var preview: URL?
     var shared: ArchiveShare?
     var problem: ArchiveProblem?
@@ -62,25 +62,24 @@ final class ArchiveBrowserModel {
             show(file)
             return
         }
-        opening = item.index
+        opening = item
+    }
+
+    /// The browser runs this as its own task, so closing the browser cancels the extraction.
+    func extractOpening() async {
+        guard let item = opening else { return }
         let archive = archive
         let session = session
         let limits = limits
-        Task { [weak self] in
-            do {
-                let file = try await Self.offMain { try ArchiveReader.extract(item, from: archive, into: session, limits: limits) }
-                self?.opened(file, item: item)
-            } catch {
-                self?.opening = nil
-                if !(error is CancellationError) { self?.problem = error as? ArchiveProblem ?? .broken }
-            }
+        do {
+            let file = try await Self.offMain { try ArchiveReader.extract(item, from: archive, into: session, limits: limits) }
+            extracted[item.index] = file
+            show(file)
+        } catch is CancellationError {
+        } catch {
+            problem = error as? ArchiveProblem ?? .broken
         }
-    }
-
-    private func opened(_ file: URL, item: ArchiveItem) {
         opening = nil
-        extracted[item.index] = file
-        show(file)
     }
 
     func shareArchive() {

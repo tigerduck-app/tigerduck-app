@@ -48,7 +48,7 @@ struct ArchiveNodeRow: View {
                             .foregroundStyle(Color.textSecondary)
                     }
                 } trailing: {
-                    if model.opening == item.index { ProgressView() }
+                    if model.opening?.index == item.index { ProgressView() }
                 }
             }
             .buttonStyle(.plain)

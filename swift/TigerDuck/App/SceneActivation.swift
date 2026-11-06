@@ -15,6 +15,7 @@ final class SceneActivation {
         startCloudSyncIfEnabled()
         #if os(iOS)
         Task { await LibraryService.signInIfCredentialed() }
+        ArchiveCache.shared.sweep()
         #endif
         app.updateNotifyCoordinator.checkInBackground()
     }

@@ -35,6 +35,7 @@ struct ArchiveBrowser: View {
             if let reason = problem.reason { Text(reason) }
         }
         .task { await model.load() }
+        .task(id: model.opening?.index) { await model.extractOpening() }
     }
 
     private var showsProblem: Binding<Bool> {
