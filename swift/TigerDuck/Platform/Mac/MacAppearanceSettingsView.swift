@@ -37,6 +37,7 @@ struct MacAppearanceSettingsView: View {
         .padding(20)
         .sheet(isPresented: $showingAccentEditor) {
             AccentGradientEditor(preferences: app.preferences)
+                .frame(minWidth: 460, idealWidth: 520, minHeight: 520, idealHeight: 560)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
