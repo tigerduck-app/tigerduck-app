@@ -24,7 +24,7 @@ struct AccentGradientEditor: View {
                 }
                 Section {
                     ForEach(Array(draft.stops.enumerated()), id: \.offset) { index, _ in
-                        stopRow(index)
+                        AccentGradientStopRow(draft: $draft, index: index)
                     }
                     .onMove { draft.stops.move(fromOffsets: $0, toOffset: $1) }
                     if draft.canAddStop { addButton }
@@ -154,38 +154,6 @@ struct AccentGradientEditor: View {
         .buttonStyle(.plain)
         .accessibilityLabel(Text(name))
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private func stopRow(_ index: Int) -> some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            if draft.isGradient {
-                Button {
-                    draft.stops.remove(at: index)
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.white, .red)
-                        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(String(localized: "action_remove"))
-            }
-            ColorPicker(
-                String(format: String(localized: "a11y_accent_gradient_stop"), index + 1),
-                selection: Binding(
-                    get: { Color(hex: UInt(draft.stops.indices.contains(index) ? draft.stops[index] : 0)) },
-                    set: { if draft.stops.indices.contains(index) { draft.stops[index] = Int($0.rgbHex) } }
-                ),
-                supportsOpacity: false
-            )
-            .labelsHidden()
-            Text(String(format: "#%06lX", readable.stops[index]))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .foregroundStyle(Color.textPrimary)
-            Spacer(minLength: 0)
-        }
     }
 
     private var addButton: some View {

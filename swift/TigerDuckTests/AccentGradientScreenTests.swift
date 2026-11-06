@@ -110,8 +110,18 @@ struct AccentGradientScreenTests {
                     elements.first { $0.accessibilityLabel == Self.label(key) }
                 }
 
-                for stop in accent.stops {
-                    #expect(labels.contains(String(format: "#%06lX", AccentContrast.readable(stop))), "\(labels)")
+                for element in elements {
+                    let actions = element.accessibilityCustomActions?.map(\.name) ?? []
+                    print("A11YEDITOR \(editing) \(look.name) \(type(of: element)) label=\(element.accessibilityLabel ?? "-") value=\(element.accessibilityValue ?? "-") traits=\(element.accessibilityTraits.rawValue) actions=\(actions)")
+                }
+                for (index, stop) in accent.stops.enumerated() {
+                    let name = String(format: Self.label("a11y_accent_gradient_stop"), index + 1)
+                    let hex = String(format: "#%06lX", stop)
+                    let well = elements.first { $0.accessibilityLabel == name }
+                    #expect(well?.accessibilityValue == hex, "\(labels)")
+                    #expect(!labels.contains(hex))
+                    let remove = [Self.label("action_remove"), name].joined(separator: ", ")
+                    #expect(labels.contains(remove) == accent.isGradient)
                 }
                 for style in AccentGradient.Style.allCases {
                     #expect((button(style.titleKey) != nil) == accent.isGradient, "\(style)")
