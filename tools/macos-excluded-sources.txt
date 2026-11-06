@@ -478,6 +478,7 @@ BrowserMenu.swift
 BrowserNavigator.swift
 BrowserPage.swift
 BrowserPageScripts.swift
+BrowserPageUI.swift
 BrowserPinnedHosts.swift
 BrowserRiskAcceptance.swift
 BrowserRouting.swift
