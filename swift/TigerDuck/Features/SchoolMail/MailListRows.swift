@@ -11,58 +11,58 @@ struct MailListRowsSection: View {
         if items.isEmpty {
             switch viewModel.loadState {
             case .idle, .loading:
-                centered { ProgressView().padding(.vertical, 60) }
+                ProgressView().padding(.vertical, 60).centeredListRow()
             case .failed(let message):
-                centered {
-                    LoadFailureView(title: String(localized: "school_mail_load_failed_title"), message: message) {
-                        Task { await viewModel.refresh() }
-                    }
+                LoadFailureView(title: String(localized: "school_mail_load_failed_title"), message: message) {
+                    Task { await viewModel.refresh() }
                 }
+                .centeredListRow()
             case .loaded:
-                centered {
-                    EmptyStateView(
-                        icon: viewModel.unreadOnly ? "envelope.open" : "tray",
-                        title: String(localized: "school_mail_empty_title"),
-                        message: String(localized: "school_mail_empty_message")
-                    )
-                    .frame(height: 200)
-                }
+                EmptyStateView(
+                    icon: viewModel.unreadOnly ? "envelope.open" : "tray",
+                    title: String(localized: "school_mail_empty_title"),
+                    message: String(localized: "school_mail_empty_message")
+                )
+                .frame(height: 200)
+                .centeredListRow()
             }
         } else {
             ForEach(items) { item in
                 MailListRowButton(row: item, viewModel: viewModel, accentColor: accentColor, onOpen: onOpen)
             }
         }
+        if !items.isEmpty || (viewModel.loadState != .idle && viewModel.loadState != .loading) {
+            MailListFooter(viewModel: viewModel, hasRows: !items.isEmpty)
+        }
+    }
+}
+
+struct MailListFooter: View {
+    let viewModel: MailListViewModel
+    let hasRows: Bool
+
+    var body: some View {
         if let progress = viewModel.search.indexProgress {
-            loadingFooter(count: progress.text())
+            spinner(count: progress.text())
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(String(localized: "school_mail_search_index_partial"))
-        } else if viewModel.isPaginating, !items.isEmpty {
-            loadingFooter(count: nil)
+        } else if viewModel.isPaginating, hasRows {
+            spinner(count: nil)
         }
     }
 
-    private func loadingFooter(count: String?) -> some View {
-        centered {
-            HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                ProgressView()
-                if let count {
-                    Text(count)
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(Color.textSecondary)
-                        .monospacedDigit()
-                }
+    private func spinner(count: String?) -> some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            ProgressView()
+            if let count {
+                Text(count)
+                    .font(TigerDuckTheme.Typography.caption)
+                    .foregroundStyle(Color.textSecondary)
+                    .monospacedDigit()
             }
-            .padding(.vertical, TigerDuckTheme.Spacing.md)
         }
-    }
-
-    private func centered<V: View>(@ViewBuilder _ content: () -> V) -> some View {
-        content()
-            .frame(maxWidth: .infinity)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets())
+        .padding(.vertical, TigerDuckTheme.Spacing.md)
+        .centeredListRow()
     }
 }
 

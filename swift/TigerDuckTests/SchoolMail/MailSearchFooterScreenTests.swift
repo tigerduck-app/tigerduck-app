@@ -1,4 +1,6 @@
 #if os(iOS)
+import Observation
+import os
 import SwiftUI
 import Testing
 import UIKit
@@ -58,6 +60,70 @@ struct MailSearchFooterScreenTests {
             try await Task.sleep(for: .milliseconds(400))
             window.saveSnapshot(as: "mail-search-done-\(look.testDescription)-\(Self.language)")
         }
+    }
+
+    @Test("the footer leaves while the list shows its own spinner")
+    func oneSpinner() async throws {
+        try await withAccessibilityAutomation {
+            let h = MailListViewModelTests.harness(warmDelay: {})
+            await h.fake.hold("searchTexts")
+            await h.model.load()
+            await h.fake.waitForArrival("searchTexts")
+            h.model.searchText = "no such mail"
+            await h.model.submitSearch()
+            #expect(h.model.displayedRows.isEmpty)
+            #expect(h.model.search.indexProgress != nil)
+
+            let window = try ClubScreensTests.show(SearchResults(model: h.model), look: ClubScreensTests.looks[0])
+            defer { window.isHidden = true }
+            let partial = String(localized: "school_mail_search_index_partial")
+            try await waitUntil { shownListLabels(in: window).contains(partial) }
+            h.model.status.loadState = .loading
+            try await waitUntil { !shownListLabels(in: window).contains(partial) }
+            h.model.status.loadState = .loaded
+            try await waitUntil { shownListLabels(in: window).contains(partial) }
+
+            h.model.stopPolling()
+            await h.fake.release("searchTexts")
+        }
+    }
+}
+
+@MainActor
+struct MailListFooterTests {
+    @Test func aTickOfTheIndexCountRedrawsTheFooterButNotTheRows() async {
+        let h = MailListViewModelTests.harness(warmDelay: {})
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?[58].summary.subject = "Room 302 改期"
+            fake.hold("searchTexts")
+        }
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.map(\.uid) == [59])
+        #expect(h.model.search.indexProgress?.done == 0)
+
+        let rowsChanged = OSAllocatedUnfairLock(initialState: false)
+        let footerChanged = OSAllocatedUnfairLock(initialState: false)
+        withObservationTracking {
+            _ = MailListRowsSection(viewModel: h.model, accentColor: .blue, onOpen: { _ in }).body
+        } onChange: { rowsChanged.withLock { $0 = true } }
+        withObservationTracking {
+            _ = MailListFooter(viewModel: h.model, hasRows: true).body
+        } onChange: { footerChanged.withLock { $0 = true } }
+
+        await h.fake.update { fake in
+            fake.release("searchTexts")
+            fake.holdNext("searchTexts")
+        }
+        await h.fake.waitForArrival("searchTexts")
+        #expect(h.model.search.indexProgress?.done == MailConstants.indexBatchSize)
+        #expect(footerChanged.withLock { $0 })
+        #expect(!rowsChanged.withLock { $0 })
+
+        h.model.stopPolling()
+        await h.fake.release("searchTexts")
     }
 }
 #endif
