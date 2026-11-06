@@ -5,7 +5,9 @@ struct CalendarTabView: View {
     var embedded = false
 
     @Environment(AppEnvironment.self) private var app
+    @Environment(\.openURL) private var openURL
     @State private var viewModel = CalendarViewModel()
+    @State private var shownAssignment: MoodleAssignmentPage?
 
     private var pageAccessState: NTUSTProtectedAccessState {
         NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: false)
@@ -25,6 +27,8 @@ struct CalendarTabView: View {
                 guard state != .loginRequired else { return }
                 viewModel.load(authService: app.authService)
             }
+            .moodleAssignmentDestination($shownAssignment)
+            .onChange(of: app.authService.session.currentSignIn) { shownAssignment = nil }
     }
 
     private var content: some View {
@@ -48,7 +52,13 @@ struct CalendarTabView: View {
 
                         DayEventListView(
                             date: viewModel.selectedDate,
-                            events: viewModel.eventsForSelectedDate
+                            events: viewModel.eventsForSelectedDate,
+                            assignment: { viewModel.assignment(for: $0) },
+                            onOpen: { assignment in
+                                MoodleAssignmentPage.open(assignment, authService: app.authService, openURL: openURL) {
+                                    shownAssignment = $0
+                                }
+                            }
                         )
                     }
                 }

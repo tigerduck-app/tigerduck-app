@@ -3,9 +3,10 @@ import SwiftUI
 
 struct EventRowView: View {
     let event: AssignmentStore.CalendarEvent
+    var showsDisclosure = false
 
     #if os(iOS)
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     #endif
 
     #if os(iOS)
@@ -42,7 +43,10 @@ struct EventRowView: View {
                     "",
                     isOn: Binding(
                         get: { holidayOverrides.contains(holidayID) },
-                        set: { app.holidays.setHolidayNotify($0, holidayID: holidayID, for: app.authService.session.currentSignIn) }
+                        set: { isOn in
+                            guard let app else { return }
+                            app.holidays.setHolidayNotify(isOn, holidayID: holidayID, for: app.authService.session.currentSignIn)
+                        }
                     )
                 )
                 .labelsHidden()
@@ -55,6 +59,13 @@ struct EventRowView: View {
             #else
             sourceLabel
             #endif
+
+            if showsDisclosure {
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(Color.textSecondary)
+                    .accessibilityHidden(true)
+            }
         }
         .cardPadding()
         .glassCard()

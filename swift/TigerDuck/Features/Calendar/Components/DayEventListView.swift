@@ -4,6 +4,8 @@ import TigerDuckCore
 struct DayEventListView: View {
     let date: Date
     let events: [AssignmentStore.CalendarEvent]
+    var assignment: (AssignmentStore.CalendarEvent) -> AssignmentStore.Assignment? = { _ in nil }
+    var onOpen: (AssignmentStore.Assignment) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
@@ -17,7 +19,15 @@ struct DayEventListView: View {
                     .frame(height: 120)
             } else {
                 ForEach(events, id: \.eventId) { event in
-                    EventRowView(event: event)
+                    if let assignment = assignment(event) {
+                        Button { onOpen(assignment) } label: {
+                            EventRowView(event: event, showsDisclosure: true)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        EventRowView(event: event)
+                    }
                 }
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
