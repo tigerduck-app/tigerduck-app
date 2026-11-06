@@ -10,6 +10,10 @@ struct MailSwipeScreenTests {
     private static var language: String { Bundle.main.preferredLocalizations.first ?? "en" }
     private static let longSubject = "115 學年度第 1 學期加退選公告：請於期限前完成線上選課並確認所有課程衝堂與學分上限 Course Add/Drop"
 
+    private static func isSettled(_ layer: CALayer) -> Bool {
+        (layer.animationKeys() ?? []).isEmpty && (layer.sublayers ?? []).allSatisfy(isSettled)
+    }
+
     private static func messages() -> [FakeMailClient.Message] {
         var flagged = FakeMailClient.message(uid: 3, name: "學生事務處 Office of Student Affairs", subject: longSubject, seen: true)
         flagged.summary.flagged = true
@@ -51,8 +55,7 @@ struct MailSwipeScreenTests {
             let window = try ClubScreensTests.show(page, look: look, height: look.textSize == .large ? 812 : 2400)
             defer { window.isHidden = true }
             let flagged = String(localized: "school_mail_flagged")
-            try await waitUntil { ClubScreensTests.shows("期末專題分組", in: window) }
-            try await Task.sleep(for: .milliseconds(400))
+            try await waitUntil { ClubScreensTests.shows("期末專題分組", in: window) && Self.isSettled(window.layer) }
             window.saveSnapshot(as: "mail-swipe-list-\(look.testDescription)-\(Self.language)")
 
             let texts = exposedAccessibilityTexts(in: window)
@@ -77,8 +80,7 @@ struct MailSwipeScreenTests {
             let titles = [
                 MailRowAction.compose(.reply), .compose(.replyAll), .compose(.forward), .toggleRead, .toggleFlag, .move, .trash,
             ].map { $0.title(for: summary) }
-            try await waitUntil { accessibilityElement(labeled: titles[6], in: window) != nil }
-            try await Task.sleep(for: .milliseconds(400))
+            try await waitUntil { accessibilityElement(labeled: titles[6], in: window) != nil && Self.isSettled(window.layer) }
             window.saveSnapshot(as: "mail-swipe-more-\(look.testDescription)-\(Self.language)")
 
             let shown = exposedAccessibilityLabels(in: window)
