@@ -146,6 +146,7 @@ final class MailMessageViewModel: Identifiable {
                 try await session.use(for: signIn) { client in
                     try await client.setFlag(.seen, on: true, folder: folder, uids: [uid], expectedUIDValidity: validity)
                 }
+                guard signIn.isCurrent else { return }
                 content.detail?.summary.isSeen = true
                 events.post(.seen(folder: folder, uid: uid, isSeen: true))
                 if folder == MailConstants.inbox, let inboxValidity = prefs.inboxUIDValidity {
@@ -153,6 +154,7 @@ final class MailMessageViewModel: Identifiable {
                 }
             }
         } catch {
+            guard signIn.isCurrent else { return }
             if (error as? MailClientError) == .folderChanged { events.post(.folderChanged(folder)) }
             let message = MailAccountManager.LoginError(error).message
             if detail == nil {
@@ -184,18 +186,18 @@ final class MailMessageViewModel: Identifiable {
             try await session.use(for: signIn) { client in
                 try await client.setFlag(.seen, on: !seen, folder: folder, uids: [uid], expectedUIDValidity: validity)
             }
+            guard signIn.isCurrent else { return }
             content.detail?.summary.isSeen = !seen
             events.post(.seen(folder: folder, uid: uid, isSeen: !seen))
-        } catch MailClientError.folderChanged {
-            activity.actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
-            events.post(.folderChanged(folder))
         } catch {
+            guard signIn.isCurrent else { return }
             activity.actionError = MailAccountManager.LoginError(error).message
+            if (error as? MailClientError) == .folderChanged { events.post(.folderChanged(folder)) }
         }
     }
 
     func move(to target: String) async -> Bool { await MailMessageActions.move(model: self, to: target) }
-    func prepareDelete() async -> Bool { await MailMessageActions.prepareDelete(model: self) }
+    func prepareDelete() async -> MailDeleteConfirmation? { await MailMessageActions.prepareDelete(model: self) }
     func delete() async -> Bool { await MailMessageActions.delete(model: self) }
 
     func adoptFolderRoles(_ roles: [MailFolderRole: String]) {

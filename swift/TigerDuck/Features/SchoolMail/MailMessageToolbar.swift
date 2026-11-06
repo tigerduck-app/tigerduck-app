@@ -44,7 +44,7 @@ struct MailMessageToolbar: ToolbarContent {
                 }
                 Section {
                     Button(role: .destructive) {
-                        Task { onDelete(await viewModel.prepareDelete() ? .permanent : .toTrash) }
+                        Task { if let kind = await viewModel.prepareDelete() { onDelete(kind) } }
                     } label: {
                         label(.trash)
                     }

@@ -83,9 +83,8 @@ final class MailRowActions {
     func trash(_ row: MailListRow, in list: MailListViewModel) async {
         let model = message(row, in: list)
         await once(model, in: list) {
-            let permanent = await model.prepareDelete()
-            guard model.signIn.isCurrent else { return false }
-            guard permanent else { return await model.delete() }
+            guard let kind = await model.prepareDelete() else { return false }
+            guard kind == .permanent else { return await model.delete() }
             deletingForever = model
             return true
         }
