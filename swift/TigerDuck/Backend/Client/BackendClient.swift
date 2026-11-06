@@ -95,18 +95,21 @@ nonisolated final class BackendClient: Sendable {
     private let session: URLSession
     private let auth: BackendAuth
     private let versionGate: APIVersionGate?
+    private let clock: SyncClock?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Backend.API")
 
     init(
         baseURL: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession = BackendClient.session,
         auth: BackendAuth = .none,
-        versionGate: APIVersionGate? = nil
+        versionGate: APIVersionGate? = nil,
+        clock: SyncClock? = .shared
     ) {
         self.baseURL = baseURL
         self.session = session
         self.auth = auth
         self.versionGate = versionGate
+        self.clock = clock
     }
 
     func hasAuthSession() async -> Bool {
@@ -169,6 +172,7 @@ nonisolated final class BackendClient: Sendable {
             : try await session.data(for: urlRequest)
         guard let http = response as? HTTPURLResponse else { throw PushAPIError.invalidResponse }
         let answer = BackendResponse(data: data, http: http)
+        if let serverClock = answer.serverClock { await clock?.hear(serverClock) }
         if (200..<300).contains(http.statusCode) || request.acceptsEveryStatus { return answer }
         let code = Self.errorCode(in: data)
         if http.statusCode == 401, request.authenticated, case .first = attempt, let sent, let signIn,

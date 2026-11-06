@@ -145,4 +145,51 @@ struct SyncClockTests {
 
         #expect(values.filter { Self.clock(of: PushAPI.date(ofClock: $0)) != $0 }.isEmpty)
     }
+
+    @Test("Every backend answer raises the last server value seen and records when it arrived, an error answer too")
+    func everyAnswerIsHeard() async throws {
+        let device = DeviceClock(Self.ten)
+        let clock = Self.makeClock(device)
+        let (client, baseURL) = Self.stubbedClient(clock)
+        SettingsAPIStub.enqueue(.init(
+            statusCode: 200, body: Data(#"{"revision":1}"#.utf8), headerFields: ["X-TigerSync-Clock": String(Self.ten + Self.minute)]
+        ), for: baseURL.appendingPathComponent("sync/revision"))
+        SettingsAPIStub.enqueue(.init(
+            statusCode: 404, body: Data(#"{"error":"not_found","message":"gone"}"#.utf8),
+            headerFields: ["X-TigerSync-Clock": String(Self.ten + 2 * Self.minute)]
+        ), for: baseURL.appendingPathComponent("sync/revision"))
+
+        _ = try await client.fetchRevision(for: testSignIn)
+        #expect(clock.readings.lastSeen == Self.ten + Self.minute)
+        device.set(Self.ten + Self.second)
+        await #expect(throws: PushAPIError.self) { try await client.fetchRevision(for: testSignIn) }
+
+        #expect(clock.readings.lastSeen == Self.ten + 2 * Self.minute)
+        #expect(clock.readings.heard == SyncClock.Heard(clock: Self.ten + 2 * Self.minute, arrivedAt: Self.ten + Self.second))
+    }
+
+    @Test("A header that arrives while protected data is unavailable changes nothing")
+    func headerIsIgnoredWhileProtectedDataIsUnavailable() async throws {
+        let stored = StoredReadings(.init(lastIssued: Self.ten, lastSeen: Self.ten))
+        let clock = Self.makeClock(DeviceClock(Self.ten), stored, readable: false)
+        let (client, baseURL) = Self.stubbedClient(clock)
+        SettingsAPIStub.enqueue(.init(
+            statusCode: 200, body: Data(#"{"revision":1}"#.utf8), headerFields: ["X-TigerSync-Clock": String(Self.ten + Self.minute)]
+        ), for: baseURL.appendingPathComponent("sync/revision"))
+
+        _ = try await client.fetchRevision(for: testSignIn)
+
+        #expect(clock.readings == SyncClock.Readings(lastIssued: Self.ten, lastSeen: Self.ten))
+    }
+
+    private static func stubbedClient(_ clock: SyncClock) -> (PushAPIClient, URL) {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = PushAPIClient(
+            baseURLProvider: { baseURL }, session: URLSession(configuration: config), auth: .signedIn { "Bearer test" },
+            clock: clock
+        )
+        return (client, baseURL)
+    }
 }

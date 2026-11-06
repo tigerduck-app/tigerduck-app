@@ -103,8 +103,8 @@ Lost:
 iOS keeps the last issued and last seen values, and the last `X-TigerSync-Clock` heard with the
 device time it arrived (for D1's cap), in `Defaults` keys behind a small
 `SyncClock` in `Backend/Sync/`. Stamping happens on a user edit, so the phone is unlocked.
-`PushAPIClient.execute` raises the last seen value from `X-TigerSync-Clock` only while protected
-data is readable, as `syncOverridesFromBackend` already checks, so a background launch before
+`BackendClient.send` raises the last seen value from `X-TigerSync-Clock` only while protected
+data is readable, as `FullSyncRunner.sync` already checks, so a background launch before
 first unlock cannot write over the stored values. The outbox keeps `SyncOp.stamp` as a `Date`
 holding the clock value; sending rounds it to whole microseconds (a `Date` resolves about 0.1
 microsecond today). Entries queued before the update keep their queue time, with no change to
