@@ -62,12 +62,11 @@ nonisolated enum MailRecipientSuggestions {
         let taken = Set(taken.map { $0.lowercased() })
         let found = contacts.map(\.address).filter { address in
             !taken.contains(address.address.lowercased())
-                && (address.address.range(of: query, options: .caseInsensitive) != nil
-                    || address.name?.range(of: query, options: .caseInsensitive) != nil)
+                && (address.address.containsSearchWord(query) || address.name?.containsSearchWord(query) == true)
         }
         let starts = { (address: MailAddress) in
             ([address.address] + (address.name ?? "").split(separator: " ").map(String.init))
-                .contains { $0.range(of: query, options: [.caseInsensitive, .anchored]) != nil }
+                .contains { $0.range(of: query, options: [.caseInsensitive, .widthInsensitive, .anchored]) != nil }
         }
         return Array((found.filter(starts) + found.filter { !starts($0) }).prefix(shown))
     }

@@ -17,7 +17,7 @@ struct MailRecipientSuggestionsTests {
                     size: 1, hasAttachments: false, isExternal: false)
     }
 
-    static func page(_ folder: String = "INBOX", _ summaries: [MailSummary]) -> MailFolderPage {
+    static func page(_ summaries: [MailSummary], in folder: String = "INBOX") -> MailFolderPage {
         MailFolderPage(folder: folder, uidValidity: 1, messageCount: summaries.count, summaries: summaries, oldestLoadedSequence: nil)
     }
 
@@ -32,7 +32,7 @@ struct MailRecipientSuggestionsTests {
     @Test func someoneTheStudentWroteToCountsTwiceAsMuchAsSomeoneWhoWrote() {
         let ranked = Self.contacts([
             Self.page([Self.mail(from: "ta@mail.example.edu.tw", name: "陳助教")]),
-            Self.page("Sent", [Self.mail(from: Self.me, to: ["\"陳志明老師\" <cmchen@mail.example.edu.tw>"])]),
+            Self.page([Self.mail(from: Self.me, to: ["\"陳志明老師\" <cmchen@mail.example.edu.tw>"])], in: "Sent"),
         ])
         #expect(ranked.map(\.address.address) == ["cmchen@mail.example.edu.tw", "ta@mail.example.edu.tw"])
         #expect(ranked.map(\.score) == [2, 1])
@@ -64,7 +64,7 @@ struct MailRecipientSuggestionsTests {
                 Self.mail(from: "gone@mail.example.edu.tw", uid: 3, deleted: true),
                 Self.mail(from: "ME@mail.example.edu.tw", to: ["me@mail.example.edu.tw", "kept@mail.example.edu.tw"], uid: 4),
             ]),
-            Self.page(Self.drafts, [Self.mail(from: Self.me, to: ["draft@mail.example.edu.tw"])]),
+            Self.page([Self.mail(from: Self.me, to: ["draft@mail.example.edu.tw"])], in: Self.drafts),
         ])
         #expect(ranked.map(\.address.address) == ["kept@mail.example.edu.tw"])
     }
@@ -89,6 +89,7 @@ struct MailRecipientSuggestionsTests {
         let contacts = [Self.contact("Bo-Han Chen", "phchen@mail.example.edu.tw"), Self.contact(nil, "Lin@mail.example.edu.tw")]
         #expect(MailRecipientSuggestions.matching(contacts, typed: "PHCHEN", taken: []).map(\.address) == ["phchen@mail.example.edu.tw"])
         #expect(MailRecipientSuggestions.matching(contacts, typed: "bo-HAN", taken: []).map(\.address) == ["phchen@mail.example.edu.tw"])
+        #expect(MailRecipientSuggestions.matching(contacts, typed: "ｐｈｃｈｅｎ", taken: []).map(\.address) == ["phchen@mail.example.edu.tw"])
         #expect(MailRecipientSuggestions.matching(contacts, typed: " lin@", taken: []).map(\.address) == ["Lin@mail.example.edu.tw"])
         #expect(MailRecipientSuggestions.matching(contacts, typed: "nobody", taken: []).isEmpty)
         #expect(MailRecipientSuggestions.matching(contacts, typed: " ", taken: []).isEmpty)
