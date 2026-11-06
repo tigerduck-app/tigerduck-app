@@ -45,7 +45,9 @@ cmake -G Ninja <libarchive> -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=<iPhoneO
 
 1. `archive_read_support_format_7zip.c`: a 7z PPMd coder asking for a model larger than
    `TIGERDUCK_MAX_PPMD_SIZE` (96 MiB) fails with `ENOMEM` instead of allocating it. The model's
-   size comes from the archive and may be up to 4 GiB.
+   size comes from the archive and may be up to 4 GiB. Each of a BCJ2 folder's three sub
+   streams, which upstream unpacks whole into memory before the first byte is read, is held to
+   the same size and fails with `E2BIG` before it is allocated.
 2. `archive_read_support_format_7zip.c`: 7z header tables are capped before they are
    allocated, and each cap fails with `E2BIG`, which the app reports as too many entries.
    Upstream allows 100,000,000 of each and any header size, and builds every table before the

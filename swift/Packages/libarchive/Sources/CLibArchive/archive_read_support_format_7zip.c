@@ -397,7 +397,8 @@ struct _7zip {
  * corrupted 7-zip files on assuming there are not so many entries in
  * the files. */
 #define UMAX_ENTRY	ARCHIVE_LITERAL_LL(100000000)
-/* TigerDuck: 96 MiB, the limit liblzma's dictionary has here too. */
+/* TigerDuck: 96 MiB, the limit liblzma's dictionary has here too, also
+ * used for each BCJ2 sub stream held in memory. */
 #define TIGERDUCK_MAX_PPMD_SIZE	((uint32_t)96 << 20)
 /* TigerDuck: the entries and header bytes an archive preview lists, the
  * Android app's 100,000 entries and the zip central directory's 16 MiB. */
@@ -4219,6 +4220,15 @@ setup_decode_folder(struct archive_read *a, struct _7z_folder *folder,
 				return (ARCHIVE_FATAL);
 			}
 
+			/* TigerDuck: refuse a sub stream larger than the
+			 * decoders may hold, before it is allocated. */
+			if ((uint64_t)zip->folder_outbytes_remaining >
+			    TIGERDUCK_MAX_PPMD_SIZE) {
+				free(b[0]); free(b[1]); free(b[2]);
+				archive_set_error(&a->archive, E2BIG,
+				    "7-Zip sub-stream too large");
+				return (ARCHIVE_FATAL);
+			}
 			/* Allocate memory for the decoded data of a sub
 			 * stream. */
 			if ((uint64_t)zip->folder_outbytes_remaining > SIZE_MAX) {
