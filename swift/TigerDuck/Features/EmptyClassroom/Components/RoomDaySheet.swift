@@ -194,7 +194,7 @@ struct RoomDaySheet: View {
         case .booked: use = String(localized: "empty_classroom_booked")
         case .course(let name, let teacher): use = teacher.isEmpty ? name : "\(name), \(teacher)"
         }
-        return [period, EmptyClassroomDayText.timeRange(of: index), use].joined(separator: ", ")
+        return [period, EmptyClassroomDayText.spokenTimeRange(of: index), use].joined(separator: ", ")
     }
 }
 

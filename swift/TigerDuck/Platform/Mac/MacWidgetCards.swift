@@ -116,7 +116,8 @@ private struct NextClassWidgetCard: View {
                 let color = TigerDuckTheme.courseColor(for: primary.courseKey)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("\(primary.start.timeString) - \(primary.end.timeString)")
+                        Text(TimeRange.text(primary.start.timeString, primary.end.timeString))
+                            .accessibilityLabel(TimeRange.spoken(primary.start.timeString, primary.end.timeString))
                             .font(.title3.monospacedDigit().weight(.semibold))
                             .foregroundStyle(.primary)
                         Spacer()
