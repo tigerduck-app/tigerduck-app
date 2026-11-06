@@ -26,7 +26,6 @@ struct WeekGridView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
     private var grid: some View {

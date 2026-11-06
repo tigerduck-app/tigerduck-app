@@ -68,6 +68,7 @@ struct TodayWidgetView: View {
         TodayView(snapshot: entry.snapshot, now: entry.appNow, palette: palette, family: family)
             .containerBackground(palette.canvas, for: .widget)
             .widgetURL(URL(string: "tigerduck://classtable"))
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 

@@ -64,8 +64,11 @@ struct WeekHeaderRow: View {
         } else {
             name
                 .foregroundStyle(isToday ? .white : palette.onSurfaceVariant)
-                .frame(width: size * 1.6, height: size * 1.6)
-                .todayMark(isToday, in: Circle(), palette: palette)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, 4)
+                .frame(minWidth: size * 1.6, minHeight: size * 1.6)
+                .todayMark(isToday, in: Capsule(), palette: palette)
         }
     }
 }

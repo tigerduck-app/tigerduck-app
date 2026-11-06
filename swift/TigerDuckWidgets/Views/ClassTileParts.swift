@@ -97,6 +97,7 @@ extension View {
     func classTile(_ tile: WidgetTile, radius: CGFloat, progress: Double?, outline: CGFloat, bottomBar: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         return background(tile.fill, in: shape)
+            .background(tile.base, in: shape)
             .overlay {
                 if progress != nil { shape.strokeBorder(tile.accent, lineWidth: outline) }
             }

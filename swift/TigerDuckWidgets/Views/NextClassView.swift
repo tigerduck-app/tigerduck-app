@@ -27,7 +27,6 @@ struct NextClassMediumView: View {
 
     @ScaledMetric(relativeTo: .headline) private var nameSize: CGFloat = 17
     @ScaledMetric(relativeTo: .subheadline) private var rowNameSize: CGFloat = 15
-    @ScaledMetric(relativeTo: .headline) private var blockHeight: CGFloat = 88
 
     var body: some View {
         Group {
@@ -57,17 +56,17 @@ struct NextClassMediumView: View {
                 ) { Text(info.day.headline()) })
             }
         }
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
     private func layout(_ block: some View) -> some View {
-        VStack(spacing: 8) {
+        ViewThatFits(in: .vertical) {
             if let upNext {
-                block.frame(height: blockHeight)
-                row(upNext)
-            } else {
-                block
+                VStack(spacing: 8) {
+                    block
+                    row(upNext)
+                }
             }
+            block
         }
     }
 
@@ -153,7 +152,9 @@ struct NextClassMediumView: View {
                 .layoutPriority(1)
         }
         .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity)
+        .fixedSize(horizontal: false, vertical: true)
         .classTile(tile, radius: 11, progress: nil, outline: 0, bottomBar: false)
         .accessibilityElement(children: .contain)
     }
@@ -199,7 +200,6 @@ struct NextClassSmallView: View {
                 )
             }
         }
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
     private func card(

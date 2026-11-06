@@ -54,7 +54,8 @@ struct WidgetPalette {
             ink: isPast ? onSurfaceVariant : ink,
             secondaryInk: isPast ? onSurfaceVariant : secondary,
             accent: isDark ? course : course.pastelOutline,
-            track: isDark ? .white.opacity(0.2) : Color.textOnPastel.opacity(0.14)
+            track: isDark ? .white.opacity(0.2) : Color.textOnPastel.opacity(0.14),
+            base: isPast ? canvas : .clear
         )
     }
 
@@ -86,6 +87,7 @@ struct WidgetTile {
     let secondaryInk: Color
     let accent: Color
     let track: Color
+    var base: Color = .clear
 }
 
 extension Color {
