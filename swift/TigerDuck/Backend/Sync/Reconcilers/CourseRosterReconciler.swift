@@ -157,11 +157,13 @@ struct CourseRosterReconciler: CategoryReconciler {
         let fetched = courses.loadCourses(semester: semester)
         let localCourses = fetched.filter { !droppedOnServer.contains($0.courseNo) }
         let left = Set(fetched.map(\.courseNo)).subtracting(localCourses.map(\.courseNo))
-        let tombstoned = tombstones.map(ServerTombstone.init).compactMap { tombstone in
-            tombstone.isOwnReset(landedAt: resetLandedAt) ? nil : tombstone.courseNo
+        let read = tombstones.map(ServerTombstone.init)
+        let tombstoned = read.compactMap { tombstone in
+            tombstone.isRemoval || tombstone.isOwnReset(landedAt: resetLandedAt) ? nil : tombstone.courseNo
         }
         let unlisted = unlistedCourses(
             in: semester, listed: serverNos, tombstoned: Set(tombstoned),
+            removed: Set(read.compactMap { $0.isRemoval ? $0.courseNo : nil }),
             fetched: Set(localCourses.map(\.courseNo)),
             handAdded: Set(userAdded.filter { CourseStore.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo)),
             droppedMerges: CourseServerRows.droppedMerges(userAdded, semester: semester, dropped: selectionDropped.union(droppedOnServer)),
@@ -206,6 +208,7 @@ struct CourseRosterReconciler: CategoryReconciler {
         in semester: String,
         listed: Set<String>,
         tombstoned: Set<String>,
+        removed: Set<String> = [],
         fetched: Set<String>,
         handAdded: Set<String>,
         droppedMerges: Set<String>,
@@ -218,8 +221,10 @@ struct CourseRosterReconciler: CategoryReconciler {
         let isShown = { (courseNo: String) in !CourseTombstone.isHidden(courseNo, semester: semester, in: hidden) }
         let byTombstone = tombstoned.filter { isGone($0) && isShown($0) }
         let termMayNotHaveReachedServer = listed.isEmpty
-        guard !termMayNotHaveReachedServer else { return (byTombstone, droppedMerges.filter(isGone)) }
-        return (byTombstone.union(fetched.filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
+        guard !termMayNotHaveReachedServer else {
+            return (byTombstone, droppedMerges.union(handAdded.intersection(removed)).filter(isGone))
+        }
+        return (byTombstone.union(fetched.subtracting(removed).filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
     }
 
     static func reenableCourseNos(
