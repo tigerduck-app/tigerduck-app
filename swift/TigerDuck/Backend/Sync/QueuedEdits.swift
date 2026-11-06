@@ -47,13 +47,10 @@ final class QueuedEdits {
     }
 
     func pendingAssignmentOverrideIds() async -> Set<String> {
-        var ids = Set<String>()
-        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
-            if case .assignmentOverride(_, let moodleAssignmentId, _, _) = entry.op {
-                ids.insert(String(moodleAssignmentId))
-            }
-        }
-        return ids
+        Set(await unsentOps().compactMap { op -> String? in
+            guard case .assignmentOverride(_, let moodleAssignmentId, _, _) = op else { return nil }
+            return String(moodleAssignmentId)
+        })
     }
 
     func holdsUnsentEdits() async -> Bool {
@@ -109,13 +106,10 @@ final class QueuedEdits {
     }
 
     func pendingCourseIgnoreKeys() async -> Set<String> {
-        var keys = Set<String>()
-        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
-            if case .courseIgnore(let semester, let courseNo, _, _, .some, _) = entry.op {
-                keys.insert(CourseTombstone.key(semester: semester, courseNo: courseNo))
-            }
-        }
-        return keys
+        Set(await unsentOps().compactMap { op -> String? in
+            guard case .courseIgnore(let semester, let courseNo, _, _, .some, _) = op else { return nil }
+            return CourseTombstone.key(semester: semester, courseNo: courseNo)
+        })
     }
 
     func courseDeletes<Fetched>(
@@ -206,8 +200,12 @@ final class QueuedEdits {
 
     func hasNewerEdit(than op: SyncOp) async -> Bool {
         let key = op.dedupKey
-        let parked = await outbox.parkedSnapshot().map(\.op)
-        let queuedThenStillEnqueuing = await outbox.snapshot().map(\.op) + overridesEnqueuing.values
-        return (parked + queuedThenStillEnqueuing).contains { $0.dedupKey == key && $0.stamp > op.stamp }
+        return await unsentOps().contains { $0.dedupKey == key && $0.stamp > op.stamp }
+    }
+
+    private func unsentOps() async -> [SyncOp] {
+        let enqueuingBeforeTheRead = Array(overridesEnqueuing.values)
+        let queuedOrParked = await outbox.queuedAndParked().map(\.op)
+        return enqueuingBeforeTheRead + queuedOrParked + overridesEnqueuing.values
     }
 }

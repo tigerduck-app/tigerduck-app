@@ -35,7 +35,7 @@ final class MarkConflicts {
             Task {
                 await AssignmentMarksReconciler.keepServerSide(
                     rereadServer: { ServerMarks(try await push.fetchFullSync(for: signIn)) },
-                    protected: { await coordinator.pendingAssignmentOverrideIds().union(coordinator.marksAndIgnoresEnqueuing) },
+                    protected: { await coordinator.pendingAssignmentOverrideIds() },
                     for: signIn,
                     assignments: .shared
                 )

@@ -153,10 +153,35 @@ struct SyncRaceTests {
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds().isEmpty)
     }
 
-    @Test("An edit on its way into the outbox is newer than one whose reply is back, though it lands during the check")
+    private actor LateLanding {
+        private var landing: Task<Void, Never>?
+        private var held: CheckedContinuation<Void, Never>?
+        private var lands = false
+
+        func follow(_ task: Task<Void, Never>) { landing = task }
+
+        func pause(at step: SyncOutbox.Pause) async {
+            switch step {
+            case .beforeEnqueue:
+                guard !lands else { return }
+                await withCheckedContinuation { held = $0 }
+            case .afterRead:
+                lands = true
+                held?.resume()
+                held = nil
+                await landing?.value
+            }
+        }
+    }
+
+    @Test("An edit on its way into the outbox is newer than one whose reply is back, though it lands just after the check reads the outbox")
     func anEditOnItsWayInIsNewerThanTheReply() async {
-        let edits = QueuedEdits(outbox: SyncOutbox(directory: FileManager.default.temporaryDirectory
-            .appendingPathComponent("SyncRaceTests-\(UUID().uuidString)", isDirectory: true)))
+        let landing = LateLanding()
+        let edits = QueuedEdits(outbox: SyncOutbox(
+            directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("SyncRaceTests-\(UUID().uuidString)", isDirectory: true),
+            pause: { await landing.pause(at: $0) }
+        ))
         let sent = SyncOp.assignmentOverride(
             moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "archived", stamp: Date(timeIntervalSince1970: 1_790_000_000)
         )
@@ -165,6 +190,7 @@ struct SyncRaceTests {
         )
 
         let enqueuing = edits.enqueueOverride(tapped, for: testSignIn)
+        await landing.follow(enqueuing)
 
         #expect(await edits.hasNewerEdit(than: sent))
         await enqueuing.value

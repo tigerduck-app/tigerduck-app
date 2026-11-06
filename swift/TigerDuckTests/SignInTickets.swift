@@ -61,7 +61,7 @@ extension BulletinAPIClient {
 }
 
 extension SyncOutbox {
-    func enqueue(_ op: SyncOp) { enqueue(op, for: testSignIn) }
+    func enqueue(_ op: SyncOp) async { await enqueue(op, for: testSignIn) }
 
     @discardableResult
     func drain(

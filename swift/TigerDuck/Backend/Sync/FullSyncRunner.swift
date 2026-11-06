@@ -160,8 +160,7 @@ final class FullSyncRunner {
 
     private func read(for signIn: SignIn) async throws -> FullSyncPass {
         let coordinator = app.cloudSyncCoordinator
-        let preFetchQueued = await coordinator.pendingAssignmentOverrideIds()
-            .union(coordinator.pendingCourseIgnoreKeys()).union(coordinator.marksAndIgnoresEnqueuing)
+        let preFetchQueued = await coordinator.pendingAssignmentOverrideIds().union(coordinator.pendingCourseIgnoreKeys())
         let preFetchCourseOverrides = await coordinator.pendingCourseOverrides()
         let editGenerationAtFetch = app.localEdits.overrideEditGeneration
         let heldHolidayIDs = AcademicCalendarStore.shared.unacknowledgedHolidayIDs
