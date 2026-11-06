@@ -152,6 +152,27 @@ struct MailRowActionsTests {
         #expect(try h.row(3).summary.isFlagged)
     }
 
+    @Test func readAndFlagChangedDuringOneRefreshBothOutlastItInTheListAndCache() async throws {
+        let h = await Self.harness()
+        await h.fake.holdNext("page")
+        let refresh = Task { await h.list.load() }
+        await h.fake.waitForArrival("page")
+        await h.fake.hold("setFlag")
+        let row = try h.row(3)
+        let reading = Task { await h.actions.toggle(.seen, row, in: h.list) }
+        let flagging = Task { await h.actions.toggle(.flagged, row, in: h.list) }
+        try await waitUntil { (try? h.row(3).summary).map { $0.isSeen && $0.isFlagged } == true }
+        await h.fake.release("page")
+        await refresh.value
+        #expect(try h.row(3).summary.isSeen && h.row(3).summary.isFlagged)
+        await h.list.waitForCacheWrites()
+        let cached = try #require(h.cache.loadPage(folder: "INBOX")?.summaries.first { $0.uid == 3 })
+        #expect(cached.isSeen && cached.isFlagged)
+        await h.fake.release("setFlag")
+        await reading.value
+        await flagging.value
+    }
+
     @Test func swipingRightTogglesReadOnTheServer() async throws {
         let h = await Self.harness()
         h.actions.perform(.toggleRead, on: try h.row(3), in: h.list)

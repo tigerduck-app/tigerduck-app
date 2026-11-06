@@ -43,16 +43,19 @@ struct MailboxPages {
         case removed
     }
 
-    private struct MailKey: Hashable {
+    private enum Field { case seen, flagged, removed }
+
+    private struct EditKey: Hashable {
         var folder: String
         var uid: UInt32
+        var field: Field
     }
 
     private(set) var pages: [String: MailFolderPage] = [:]
     private(set) var rows: [MailListRow] = []
     var cachedNotRefreshed: Set<String> = []
     private(set) var lastEdit = EditToken()
-    private var edits: [MailKey: (token: EditToken, edit: Edit)] = [:]
+    private var edits: [EditKey: (token: EditToken, edit: Edit)] = [:]
 
     subscript(folder: String) -> MailFolderPage? {
         get { pages[folder] }
@@ -87,7 +90,12 @@ struct MailboxPages {
 
     private mutating func record(_ edit: Edit, folder: String, uid: UInt32) {
         lastEdit.recordUserEdit()
-        edits[MailKey(folder: folder, uid: uid)] = (lastEdit, edit)
+        let field: Field = switch edit {
+        case .seen: .seen
+        case .flagged: .flagged
+        case .removed: .removed
+        }
+        edits[EditKey(folder: folder, uid: uid, field: field)] = (lastEdit, edit)
     }
 
     func replayingEdits(onto page: MailFolderPage, madeAfter token: EditToken) -> MailFolderPage {
