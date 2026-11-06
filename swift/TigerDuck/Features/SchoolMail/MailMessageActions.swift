@@ -3,37 +3,38 @@ import Foundation
 
 @MainActor
 enum MailMessageActions {
-    static func move(model: MailMessageViewModel, to target: String) async -> Bool {
+    static func move(model: MailMessageViewModel, to target: String, for signIn: SignIn) async -> Bool {
         let route = model.route
-        return await performMove(model: model) { client, owned in
+        return await performMove(model: model, for: signIn) { client, owned in
             try await MailMover.move(uids: [route.uid], from: route.folder, to: target, client: client, previouslyFlagged: owned)
         }
     }
 
-    static func prepareDelete(model: MailMessageViewModel) async -> Bool {
+    static func prepareDelete(model: MailMessageViewModel, for signIn: SignIn) async -> Bool {
         guard model.folderRoles[.trash] == nil, !model.isMoving else { return model.deleteIsPermanent }
         model.activity.isMoving = true
         defer { model.activity.isMoving = false }
         let known = model.folderRoles
-        let ensured = try? await model.session.use { client in
+        let ensured = try? await model.session.use(for: signIn) { client in
             await MailFolderProvisioner.ensure(.trash, in: known, client: client)
         }
         if let ensured = ensured ?? nil { model.adoptFolderRoles(ensured.roles) }
         return model.deleteIsPermanent
     }
 
-    static func delete(model: MailMessageViewModel) async -> Bool {
+    static func delete(model: MailMessageViewModel, for signIn: SignIn) async -> Bool {
         if !model.deleteIsPermanent, let trash = model.folderRoles[.trash] {
-            return await move(model: model, to: trash)
+            return await move(model: model, to: trash, for: signIn)
         }
         let route = model.route
-        return await performMove(model: model) { client, owned in
+        return await performMove(model: model, for: signIn) { client, owned in
             try await MailMover.deletePermanently(uids: [route.uid], in: route.folder, client: client, previouslyFlagged: owned)
         }
     }
 
     private static func performMove(
-        model: MailMessageViewModel, _ operation: @escaping (any MailClient, OwnedDeleted) async throws -> MailMoveResult
+        model: MailMessageViewModel, for signIn: SignIn,
+        _ operation: @escaping (any MailClient, OwnedDeleted) async throws -> MailMoveResult
     ) async -> Bool {
         guard !model.isMoving else { return false }
         let folder = model.route.folder
@@ -43,16 +44,15 @@ enum MailMessageActions {
         }
         model.activity.isMoving = true
         defer { model.activity.isMoving = false }
-        let signIn = await model.session.account.startingSignIn
         let uid = model.route.uid
         let prefs = model.stores.prefs
         let wasAlreadyDeleted = model.detail?.summary.isDeleted ?? false
         let owned = prefs.ownedDeleted(folder: folder, uidValidity: uidValidity)
         let attempt = await MailMover.attempt(
-            { try await model.session.use { client in try await operation(client, owned) } },
+            { try await model.session.use(for: signIn) { client in try await operation(client, owned) } },
             uid: uid, previouslyFlagged: owned, wasAlreadyDeleted: wasAlreadyDeleted
         ) { recover in
-            (try? await model.session.use { client in await recover(client) }) ?? nil
+            (try? await model.session.use(for: signIn) { client in await recover(client) }) ?? nil
         }
         if let pending = attempt.pending { prefs.change(for: signIn) { $0.setOwnedDeleted(pending) } }
         guard let error = attempt.error else {

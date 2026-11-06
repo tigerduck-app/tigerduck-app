@@ -191,9 +191,11 @@ final class MailMessageViewModel: Identifiable {
         }
     }
 
-    func move(to target: String) async -> Bool { await MailMessageActions.move(model: self, to: target) }
-    func prepareDelete() async -> Bool { await MailMessageActions.prepareDelete(model: self) }
-    func delete() async -> Bool { await MailMessageActions.delete(model: self) }
+    func move(to target: String) async -> Bool {
+        await MailMessageActions.move(model: self, to: target, for: session.account.startingSignIn)
+    }
+    func prepareDelete() async -> Bool { await MailMessageActions.prepareDelete(model: self, for: session.account.startingSignIn) }
+    func delete() async -> Bool { await MailMessageActions.delete(model: self, for: session.account.startingSignIn) }
 
     func adoptFolderRoles(_ roles: [MailFolderRole: String]) {
         guard roles != folderRoles else { return }

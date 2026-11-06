@@ -44,8 +44,8 @@ nonisolated enum MailRowAction: Hashable {
 final class MailRowActions {
     var sheetRow: MailListRow?
     var composing: MailComposeMode?
-    var moving: MailMessageViewModel?
-    var deletingForever: MailMessageViewModel?
+    var moving: PendingMessage?
+    var deletingForever: PendingMessage?
     @ObservationIgnored var afterSheet: (() -> Void)?
     @ObservationIgnored private var busy: Set<Work> = []
     @ObservationIgnored private let prefs: (any MailPreferences)?
@@ -61,7 +61,7 @@ final class MailRowActions {
         case .toggleRead: Task { await toggle(.seen, row, in: list) }
         case .toggleFlag: Task { await toggle(.flagged, row, in: list) }
         case .trash: Task { await trash(row, in: list) }
-        case .move: moving = message(row, in: list)
+        case .move: moving = PendingMessage(model: message(row, in: list), signIn: list.account.currentSignIn)
         case .more: sheetRow = row
         case .compose: break
         }
@@ -82,21 +82,26 @@ final class MailRowActions {
 
     func trash(_ row: MailListRow, in list: MailListViewModel) async {
         let model = message(row, in: list)
-        await once(model, in: list) {
-            if await model.prepareDelete() {
-                deletingForever = model
-                return true
-            }
-            return await model.delete()
+        let signIn = await list.account.startingSignIn
+        await once(model, for: signIn, in: list) {
+            let permanent = await MailMessageActions.prepareDelete(model: model, for: signIn)
+            guard signIn.isCurrent else { return false }
+            guard permanent else { return await MailMessageActions.delete(model: model, for: signIn) }
+            deletingForever = PendingMessage(model: model, signIn: signIn)
+            return true
         }
     }
 
-    func deleteForever(_ model: MailMessageViewModel, in list: MailListViewModel) async {
-        await once(model, in: list) { await model.delete() }
+    func deleteForever(_ pending: PendingMessage, in list: MailListViewModel) async {
+        await once(pending.model, for: pending.signIn, in: list) {
+            await MailMessageActions.delete(model: pending.model, for: pending.signIn)
+        }
     }
 
-    func move(_ model: MailMessageViewModel, to folder: String, in list: MailListViewModel) async {
-        await once(model, in: list) { await model.move(to: folder) }
+    func move(_ pending: PendingMessage, to folder: String, in list: MailListViewModel) async {
+        await once(pending.model, for: pending.signIn, in: list) {
+            await MailMessageActions.move(model: pending.model, to: folder, for: pending.signIn)
+        }
     }
 
     func compose(_ mode: MailComposeMode, row: MailListRow, in list: MailListViewModel) async -> MailComposeContext? {
@@ -105,7 +110,7 @@ final class MailRowActions {
         composing = mode
         defer { composing = nil }
         var context: MailComposeContext?
-        await once(model, in: list) {
+        await once(model, for: signIn, in: list) {
             await model.load()
             context = model.detail.map { _ in model.composeContext(mode) }
             return context != nil
@@ -113,11 +118,12 @@ final class MailRowActions {
         return signIn.isCurrent ? context : nil
     }
 
-    private func once(_ model: MailMessageViewModel, in list: MailListViewModel, _ work: () async -> Bool) async {
+    private func once(
+        _ model: MailMessageViewModel, for signIn: SignIn, in list: MailListViewModel, _ work: () async -> Bool
+    ) async {
         let key = Work(row: MailListRow.ID(folder: model.route.folder, uid: model.route.uid), flag: nil)
         guard busy.insert(key).inserted else { return }
         defer { busy.remove(key) }
-        let signIn = await list.account.startingSignIn
         let done = await work()
         guard !done, signIn.isCurrent else { return }
         if case .failed(let message) = model.loadState, model.detail == nil {
@@ -125,6 +131,12 @@ final class MailRowActions {
         } else {
             list.status.actionError = model.actionError
         }
+    }
+
+    struct PendingMessage: Identifiable {
+        let model: MailMessageViewModel
+        let signIn: SignIn
+        var id: ObjectIdentifier { model.id }
     }
 
     private struct Work: Hashable {

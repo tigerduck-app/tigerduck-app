@@ -220,10 +220,27 @@ struct MailRowActionsTests {
     @Test func withNoTrashFolderTheSwipeAsksBeforeDeletingForever() async throws {
         let h = await Self.harness(withTrash: false)
         await h.actions.trash(try h.row(3), in: h.list)
-        #expect(h.actions.deletingForever?.route.uid == 3)
+        #expect(h.actions.deletingForever?.model.route.uid == 3)
         #expect(await h.fake.calls.contains("createFolder \(Self.trash)"))
         #expect(!(await h.fake.calls).contains { $0.hasPrefix("copy") })
         #expect(await h.fake.folders["INBOX"]?.count == 3)
+    }
+
+    @Test(arguments: [false, true])
+    func aSwipeWhoseSignInEndsWhileTrashIsMadeNeitherMovesNorAsks(trashCreated: Bool) async throws {
+        let h = await Self.harness(withTrash: false)
+        if trashCreated { await h.fake.update { $0.createFolderError = nil } }
+        let row = try h.row(3)
+        await h.fake.holdNext("createFolder")
+        let swiping = Task { await h.actions.trash(row, in: h.list) }
+        await h.fake.waitForArrival("createFolder")
+        h.account.endSignIn()
+        await h.fake.release("createFolder")
+        await swiping.value
+        #expect(h.actions.deletingForever == nil)
+        #expect(!(await h.fake.calls).contains { $0.hasPrefix("copy") || $0.hasPrefix("move") || $0.hasPrefix("setFlag") })
+        #expect(await h.fake.folders["INBOX"]?.count == 3)
+        #expect(h.list.status.actionError == nil)
     }
 
     @Test func aSecondSwipeWhileTheFirstIsInFlightIsIgnored() async throws {
@@ -251,21 +268,34 @@ struct MailRowActionsTests {
     @Test func aFailedMoveKeepsTheRowAndShowsWhy() async throws {
         let h = await Self.harness()
         await h.fake.update { $0.copyError = .unreachable }
-        await h.actions.move(h.actions.message(try h.row(2), in: h.list), to: Self.course, in: h.list)
+        h.actions.perform(.move, on: try h.row(2), in: h.list)
+        await h.actions.move(try #require(h.actions.moving), to: Self.course, in: h.list)
         #expect(h.list.rows.contains { $0.uid == 2 })
         #expect(h.list.status.actionError == MailAccountManager.LoginError(MailClientError.unreachable).message)
     }
 
     @Test func aMoveThatFailsAfterTheSignInEndsShowsNoError() async throws {
         let h = await Self.harness()
-        let model = h.actions.message(try h.row(2), in: h.list)
+        h.actions.perform(.move, on: try h.row(2), in: h.list)
+        let pending = try #require(h.actions.moving)
         await h.fake.update { $0.copyError = .unreachable }
         await h.fake.holdNext("copy")
-        let moving = Task { await h.actions.move(model, to: Self.course, in: h.list) }
+        let moving = Task { await h.actions.move(pending, to: Self.course, in: h.list) }
         await h.fake.waitForArrival("copy")
         h.account.endSignIn()
         await h.fake.release("copy")
         await moving.value
+        #expect(h.list.status.actionError == nil)
+    }
+
+    @Test func aFolderChosenAfterTheSignInEndsMovesNothing() async throws {
+        let h = await Self.harness()
+        h.actions.perform(.move, on: try h.row(2), in: h.list)
+        let pending = try #require(h.actions.moving)
+        h.account.endSignIn()
+        await h.actions.move(pending, to: Self.course, in: h.list)
+        #expect(!(await h.fake.calls).contains { $0.hasPrefix("copy") || $0.hasPrefix("move") })
+        #expect(await h.fake.folders[Self.course]?.isEmpty == true)
         #expect(h.list.status.actionError == nil)
     }
 
