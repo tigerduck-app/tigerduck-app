@@ -250,7 +250,7 @@ struct BrowserPageUITests {
         func webView(_ webView: WKWebView, stop task: any WKURLSchemeTask) {}
     }
 
-    @Test("a dialog from a frame of another site, sandboxed or not, is titled with that frame's host, and the page's with the page's")
+    @Test("a dialog is titled with the host of the frame that asked, of another site or sandboxed, or with the page's when that frame has none")
     func eachFrameShowsItsOwnHost() async throws {
         let pageUI = BrowserPageUI { _, _ in }
         let dialogs = pageUI.dialogs
@@ -283,6 +283,14 @@ struct BrowserPageUITests {
         let opaque = try #require(dialogs.shown)
         #expect(opaque.host == "sandboxed.example")
         dialogs.answer(opaque, with: "")
+
+        let srcdoc = "<iframe sandbox=\"allow-scripts allow-modals\" srcdoc=\"<script>alert(`來自內嵌文件`)</script>\"></iframe>"
+        webView.evaluateJavaScript("document.body.insertAdjacentHTML('beforeend', '\(srcdoc)')", completionHandler: nil)
+        try await waitUntil { dialogs.shown != nil }
+        let hostless = try #require(dialogs.shown)
+        #expect(hostless.host == "page.example")
+        #expect(hostless.message == "來自內嵌文件")
+        dialogs.answer(hostless, with: "")
         withExtendedLifetime((pageUI, sites)) {}
     }
 

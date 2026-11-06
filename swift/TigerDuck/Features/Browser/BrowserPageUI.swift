@@ -57,14 +57,17 @@ final class BrowserPageUI: NSObject, WKUIDelegate {
         decisionHandler(.deny)
     }
 
-    /// A frame with an opaque origin, such as a sandboxed one, has no host in its origin.
+    /// A sandboxed frame's origin is opaque, with no host, and an address such as about:srcdoc has
+    /// none either; Safari then names the page's host.
     private func ask(
         _ kind: BrowserDialogs.Dialog.Kind, _ message: String, from frame: WKFrameInfo, in webView: WKWebView,
         reply: @escaping BrowserDialogs.Reply
     ) {
         self.webView = webView
-        let origin = frame.securityOrigin.host
-        let host = origin.isEmpty ? frame.request.url?.host(percentEncoded: false) ?? "" : origin
+        let hosts = [
+            frame.securityOrigin.host, frame.request.url?.host(percentEncoded: false), webView.url?.host(percentEncoded: false),
+        ]
+        let host = hosts.compactMap { $0 }.first { !$0.isEmpty } ?? ""
         dialogs.ask(BrowserDialogs.Dialog(kind: kind, host: host, message: message), reply: reply)
     }
 
