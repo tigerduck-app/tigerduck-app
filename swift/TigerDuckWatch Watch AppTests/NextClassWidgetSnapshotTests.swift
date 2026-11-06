@@ -76,10 +76,9 @@ final class NextClassWidgetSnapshotTests: XCTestCase {
     func test_picturesOfThePageAndEachFamily_withALongNameAndRoom() throws {
         let out = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appending(path: ".out")
-        // CI's checkout has no `.out` folder, so only a run on the build host keeps the pictures.
-        let keep = FileManager.default.fileExists(atPath: out.path(percentEncoded: false))
+        let outFolderExists = FileManager.default.fileExists(atPath: out.path(percentEncoded: false))
         let folder = out.appending(path: "watch-complications")
-        if keep { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+        if outFolderExists { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
         let span = Date().addingTimeInterval(-40 * 60)...Date().addingTimeInterval(70 * 60)
 
         for language in Self.pictureLanguages {
@@ -144,7 +143,7 @@ final class NextClassWidgetSnapshotTests: XCTestCase {
                     renderOnWatch(picture.view, width: picture.size?.width ?? 208, height: picture.size?.height, locale: words.locale),
                     picture.name
                 )
-                guard keep else { continue }
+                guard outFolderExists else { continue }
                 let file = folder.appending(path: "\(picture.name)-\(language.tag).png")
                 let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(file as CFURL, "public.png" as CFString, 1, nil))
                 CGImageDestinationAddImage(destination, image, nil)
