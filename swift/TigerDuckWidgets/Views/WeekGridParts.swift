@@ -89,11 +89,6 @@ struct WeekCourseBlock: View {
     var body: some View {
         let tile = palette.tile(course.colorHex, isPast: isCancelled)
         let changedTime = isCancelled ? nil : TimeRange.partial(start: change?.start, end: change?.end)
-        let spoken = [
-            course.displayName,
-            spokenTime ?? changedTime,
-            isCancelled ? String(localized: "course_card_cancelled") : classroom,
-        ]
         return VStack(alignment: .leading, spacing: 1) {
             if let changedTime {
                 Label(changedTime, systemImage: "clock.fill")
@@ -117,7 +112,18 @@ struct WeekCourseBlock: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .classTile(tile, radius: radius, progress: progress, outline: 1.5, bottomBar: true)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(spoken.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", "))
+        .accessibilityLabel(Self.spoken(course: course, classroom: classroom, change: change, times: times))
+    }
+
+    static func spoken(course: SnapshotCourse, classroom: String, change: SnapshotCourseChange?, times: PeriodTime?) -> String {
+        let isCancelled = change?.cancelled == true
+        let time = (change?.start ?? times?.start).flatMap { start in
+            (change?.end ?? times?.end).map { TimeRange.spoken(start, $0) }
+        } ?? (isCancelled ? nil : TimeRange.partial(start: change?.start, end: change?.end))
+        return [course.displayName, time, isCancelled ? String(localized: "course_card_cancelled") : classroom]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
     }
 
     private func bottom(tile: WidgetTile) -> some View {
@@ -136,11 +142,6 @@ struct WeekCourseBlock: View {
         .lineLimit(1)
         .minimumScaleFactor(0.6)
         .layoutPriority(1)
-    }
-
-    private var spokenTime: String? {
-        guard let start = change?.start ?? times?.start, let end = change?.end ?? times?.end else { return nil }
-        return TimeRange.spoken(start, end)
     }
 }
 

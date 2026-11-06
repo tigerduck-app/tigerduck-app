@@ -95,15 +95,13 @@ struct WeekGridView: View {
 
         case let .solo(course, spanCount):
             let block = Array(periods[periodIndex..<min(periodIndex + spanCount, periods.count)])
-            let change = course.change(on: dayKey(of: weekday), startingAt: block.first)
+            let meeting = meeting(of: course, weekday: weekday, periods: block)
             let isToday = weekday == ClassTimeline.weekday(of: now)
             WeekCourseBlock(
                 course: course,
-                classroom: change?.room ?? course.classroom(weekday: weekday, periods: block),
-                change: change,
-                times: snapshot.periodTimes[block[0]].flatMap { first in
-                    snapshot.periodTimes[block[block.count - 1]].map { PeriodTime(start: first.start, end: $0.end) }
-                },
+                classroom: meeting.classroom,
+                change: meeting.change,
+                times: meeting.times,
                 progress: isToday ? ongoing["\(course.courseNo)-\(block[0])"] : nil,
                 palette: palette, family: family, size: size, radius: radius
             )
@@ -112,8 +110,14 @@ struct WeekGridView: View {
 
         case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
             HStack(spacing: 1) {
-                conflictColumn(courseA, span: spanA, offset: offsetA, combinedSpan: combinedSpan, cellHeight: cellHeight)
-                conflictColumn(courseB, span: spanB, offset: offsetB, combinedSpan: combinedSpan, cellHeight: cellHeight)
+                conflictColumn(
+                    courseA, weekday: weekday, from: periodIndex, span: spanA, offset: offsetA, periods: periods,
+                    combinedSpan: combinedSpan, cellHeight: cellHeight
+                )
+                conflictColumn(
+                    courseB, weekday: weekday, from: periodIndex, span: spanB, offset: offsetB, periods: periods,
+                    combinedSpan: combinedSpan, cellHeight: cellHeight
+                )
             }
             .frame(height: height(of: combinedSpan, cellHeight), alignment: .top)
             .frame(height: cellHeight, alignment: .top)
@@ -124,8 +128,8 @@ struct WeekGridView: View {
                     ZStack(alignment: .top) {
                         ForEach(segments.filter { $0.lane == lane }) { segment in
                             conflictColumn(
-                                segment.course, span: segment.span, offset: segment.offset,
-                                combinedSpan: combinedSpan, cellHeight: cellHeight
+                                segment.course, weekday: weekday, from: periodIndex, span: segment.span,
+                                offset: segment.offset, periods: periods, combinedSpan: combinedSpan, cellHeight: cellHeight
                             )
                         }
                     }
@@ -150,11 +154,24 @@ struct WeekGridView: View {
         WidgetTimelineDerivation.dateKey(for: Self.day(of: weekday, from: now))
     }
 
+    private func meeting(
+        of course: SnapshotCourse, weekday: Int, periods block: [String]
+    ) -> (classroom: String, change: SnapshotCourseChange?, times: PeriodTime?) {
+        let change = course.change(on: dayKey(of: weekday), startingAt: block.first)
+        let times = block.first.flatMap { snapshot.periodTimes[$0] }.flatMap { first in
+            block.last.flatMap { snapshot.periodTimes[$0] }.map { PeriodTime(start: first.start, end: $0.end) }
+        }
+        return (change?.room ?? course.classroom(weekday: weekday, periods: block), change, times)
+    }
+
     private func conflictColumn(
-        _ course: SnapshotCourse, span: Int, offset: Int, combinedSpan: Int, cellHeight: CGFloat
+        _ course: SnapshotCourse, weekday: Int, from periodIndex: Int, span: Int, offset: Int, periods: [String],
+        combinedSpan: Int, cellHeight: CGFloat
     ) -> some View {
         let tile = palette.tile(course.colorHex)
         let top = offset > 0 ? height(of: offset, cellHeight) + spacing : 0
+        let start = min(periodIndex + offset, periods.count)
+        let meeting = meeting(of: course, weekday: weekday, periods: Array(periods[start..<min(start + span, periods.count)]))
         return Text(course.displayName)
             .font(.courseName(size - 1, weight: .medium))
             .foregroundStyle(tile.ink)
@@ -164,6 +181,10 @@ struct WeekGridView: View {
             .frame(maxWidth: .infinity)
             .frame(height: height(of: span, cellHeight))
             .classTile(tile, radius: radius, progress: nil, outline: 0, bottomBar: false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(WeekCourseBlock.spoken(
+                course: course, classroom: meeting.classroom, change: meeting.change, times: meeting.times
+            ))
             .padding(.top, top)
             .frame(height: height(of: combinedSpan, cellHeight), alignment: .top)
     }
