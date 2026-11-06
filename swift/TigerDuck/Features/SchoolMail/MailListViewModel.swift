@@ -19,7 +19,7 @@ final class MailListViewModel {
     @ObservationIgnored var loads: MailListLoads
     @ObservationIgnored private(set) var search: MailListSearch!
     @ObservationIgnored private(set) var background: MailListBackground!
-    @ObservationIgnored private var signOutListener: MailSignOutListener?
+    @ObservationIgnored private var signOutListener: MailNotificationListener?
 
     init(
         session: MailPageSession? = nil,
@@ -47,7 +47,7 @@ final class MailListViewModel {
         search = MailListSearch(list: self, catchUpDelay: catchUpDelay)
         indexer.onFill = { [weak self] folder in self?.search.indexDidFill(folder) }
         events.observe { [weak self] event in self?.apply(event) }
-        signOutListener = MailSignOutListener(center: signOutEvents) { [weak self] in self?.resetForAccountChange() }
+        signOutListener = MailNotificationListener(center: signOutEvents, name: MailAccountManager.didSignOut) { [weak self] in self?.resetForAccountChange() }
     }
 
     var account: AccountSession { loads.account }

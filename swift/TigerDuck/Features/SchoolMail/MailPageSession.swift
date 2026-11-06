@@ -15,7 +15,7 @@ final class MailPageSession {
     // use sees, thrown or caught, reaches this.
     private let onAuthFailure: @MainActor (SignIn) -> Void
     let account: AccountSession
-    private var signOutListener: MailSignOutListener?
+    private var signOutListener: MailNotificationListener?
 
     init(
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
@@ -29,7 +29,7 @@ final class MailPageSession {
         self.idleClose = MailIdleClose(delay: idleClose, sleep: sleep)
         self.open = open
         self.onAuthFailure = onAuthFailure
-        signOutListener = MailSignOutListener(center: signOutEvents) { [weak self] in self?.invalidateForSignOut() }
+        signOutListener = MailNotificationListener(center: signOutEvents, name: MailAccountManager.didSignOut) { [weak self] in self?.invalidateForSignOut() }
     }
 
     func use<T>(for signIn: SignIn? = nil, _ body: (any MailClient) async throws -> T) async throws -> T {

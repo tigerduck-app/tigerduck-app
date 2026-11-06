@@ -33,13 +33,13 @@ final class MailIdleClose {
     }
 }
 
-final class MailSignOutListener {
+final class MailNotificationListener {
     private let center: NotificationCenter
     nonisolated(unsafe) private var token: (any NSObjectProtocol)?
 
-    init(center: NotificationCenter, handler: @escaping @MainActor () -> Void) {
+    init(center: NotificationCenter, name: Notification.Name, handler: @escaping @MainActor () -> Void) {
         self.center = center
-        token = center.addObserver(forName: MailAccountManager.didSignOut, object: nil, queue: nil) { _ in
+        token = center.addObserver(forName: name, object: nil, queue: nil) { _ in
             MainActor.assumeIsolated { handler() }
         }
     }
