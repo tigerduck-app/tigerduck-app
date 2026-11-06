@@ -53,6 +53,23 @@ struct BrowserDownloadsScreenTests {
         return try #require(root.presentedViewController?.view)
     }
 
+    /// Nothing in the window is still being presented or pushed.
+    private static func isSettled(_ window: UIWindow) -> Bool {
+        var seen = Set<ObjectIdentifier>()
+        var controllers = window.rootViewController.map { [$0] } ?? []
+        while let controller = controllers.popLast() {
+            guard seen.insert(ObjectIdentifier(controller)).inserted else { continue }
+            guard !controller.isBeingPresented, controller.transitionCoordinator == nil else { return false }
+            controllers += controller.children + [controller.presentedViewController].compactMap { $0 }
+        }
+        return true
+    }
+
+    private static func close(_ window: UIWindow) {
+        window.rootViewController?.dismiss(animated: false)
+        window.isHidden = true
+    }
+
     private static func name(_ shot: String, _ screen: Screen) -> String {
         "browser-downloads-\(shot)-\(screen.name)-\(PageMenuScreenTests.language)"
     }
@@ -64,12 +81,12 @@ struct BrowserDownloadsScreenTests {
             let place = SavedDownloadsTests.Place()
             defer { place.remove() }
             let window = try Self.window(try await Self.page(in: place), screen: screen)
-            defer { window.isHidden = true }
+            defer { Self.close(window) }
             let title = String(localized: "browser_downloads")
             let sheet = try await Self.sheet(in: window, showing: title)
             let row = try #require(accessibilityElement(labeled: title, in: sheet))
             #expect(row.accessibilityValue == 0.25.formatted(.percent.precision(.fractionLength(0))))
-            try await waitUntil { window.isStill }
+            try await waitUntil { Self.isSettled(window) }
             window.saveSnapshot(as: Self.name("menu", screen))
 
             // The menu runs under the sheet's empty navigation bar, which must not take its first row's taps.
@@ -86,13 +103,13 @@ struct BrowserDownloadsScreenTests {
             let place = SavedDownloadsTests.Place()
             defer { place.remove() }
             let window = try Self.window(try await Self.page(in: place), screen: screen)
-            defer { window.isHidden = true }
+            defer { Self.close(window) }
             let title = String(localized: "browser_downloads")
             #expect(try #require(accessibilityElement(labeled: title, in: try await Self.sheet(in: window, showing: title)))
                 .accessibilityActivate())
             let cancel = String(localized: "browser_download_cancel")
             let sheet = try await Self.sheet(in: window, showing: cancel)
-            try await waitUntil { accessibilityElement(labeled: String(localized: "action_retry"), in: sheet) != nil && window.isStill }
+            try await waitUntil { accessibilityElement(labeled: String(localized: "action_retry"), in: sheet) != nil && Self.isSettled(window) }
             window.saveSnapshot(as: Self.name("list", screen))
 
             let texts = exposedAccessibilityTexts(in: sheet)
@@ -116,7 +133,7 @@ struct BrowserDownloadsScreenTests {
             let place = SavedDownloadsTests.Place()
             defer { place.remove() }
             let window = try Self.window(try await Self.page(in: place), screen: screen)
-            defer { window.isHidden = true }
+            defer { Self.close(window) }
             let title = String(localized: "browser_downloads")
             #expect(try #require(accessibilityElement(labeled: title, in: try await Self.sheet(in: window, showing: title)))
                 .accessibilityActivate())
@@ -131,7 +148,7 @@ struct BrowserDownloadsScreenTests {
             try await waitUntil {
                 Self.element(containing: saved, in: sheet).map { screenFrame.contains($0.accessibilityFrame) } == true
             }
-            try await waitUntil { window.isStill }
+            try await waitUntil { Self.isSettled(window) }
             let row = try #require(Self.element(containing: saved, in: sheet))
             let remove = String(localized: "action_remove")
             let actions = (row.accessibilityCustomActions ?? []).map(\.name)
@@ -142,7 +159,7 @@ struct BrowserDownloadsScreenTests {
             try await fingerTap(at: center, in: window, holding: .milliseconds(1_200))
             try await waitUntil {
                 [String(localized: "browser_download_open"), String(localized: "browser_share_short"), remove]
-                    .allSatisfy { accessibilityElement(labeled: $0, in: window) != nil } && window.isStill
+                    .allSatisfy { accessibilityElement(labeled: $0, in: window) != nil } && Self.isSettled(window)
             }
             window.saveSnapshot(as: Self.name("long-press", screen))
         }

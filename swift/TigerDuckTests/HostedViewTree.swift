@@ -5,15 +5,6 @@ extension UIView {
     func descendants<View: UIView>(ofType type: View.Type) -> [View] {
         subviews.flatMap { [$0 as? View].compactMap { $0 } + $0.descendants(ofType: type) }
     }
-
-    /// No layer under the view is animating, so a picture taken now shows where things end up.
-    var isStill: Bool { layer.isStill }
-}
-
-extension CALayer {
-    var isStill: Bool {
-        (animationKeys() ?? []).isEmpty && (sublayers ?? []).allSatisfy(\.isStill)
-    }
 }
 
 extension UIWindow {

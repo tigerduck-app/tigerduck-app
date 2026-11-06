@@ -6,8 +6,17 @@ struct BrowserDownloadsView: View {
     @State private var files = MoodleFileOpener()
     @State private var confirmsClear = false
     @State private var showsPicker = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var downloads: BrowserDownloads { page.downloads }
+
+    /// At accessibility sizes the button goes under the text, which needs the row's whole width to
+    /// wrap between words.
+    private var row: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
+            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
+    }
 
     var body: some View {
         List {
@@ -43,7 +52,7 @@ struct BrowserDownloadsView: View {
 
     private func running(_ item: BrowserDownloads.Item) -> some View {
         let amount = [item.received, item.expected].compactMap { $0.map { StorageSizes.text($0) } }.joined(separator: " / ")
-        return HStack(spacing: TigerDuckTheme.Spacing.md) {
+        return row {
             BrowserDownloadLabel(name: item.name) {
                 if let expected = item.expected, expected > 0 {
                     ProgressView(value: Double(item.received), total: Double(expected))
@@ -56,7 +65,7 @@ struct BrowserDownloadsView: View {
     }
 
     private func failed(_ item: BrowserDownloads.Item) -> some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
+        row {
             BrowserDownloadLabel(name: item.name) {
                 Text(String(localized: "browser_download_failed")).foregroundStyle(.red)
             }
@@ -69,7 +78,7 @@ struct BrowserDownloadsView: View {
         let file = downloads.store.url(of: entry)
         let open: () -> Void = { if let file { files.show(downloaded: file, mimeType: nil) } }
         let remove: () -> Void = { Task { await downloads.remove(entry) } }
-        return HStack(spacing: TigerDuckTheme.Spacing.md) {
+        return row {
             Button(action: open) {
                 BrowserDownloadLabel(name: entry.name) {
                     Text(String(format: String(localized: "browser_download_done"), StorageSizes.text(entry.size)))
@@ -119,8 +128,6 @@ private struct BrowserDownloadLabel<Status: View>: View {
 
     var body: some View {
         let isLarge = dynamicTypeSize.isAccessibilitySize
-        // At accessibility sizes the status takes the row's whole width, which it needs to wrap
-        // between words.
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
             HStack(alignment: isLarge ? .firstTextBaseline : .center, spacing: TigerDuckTheme.Spacing.md) {
                 Image(systemName: "doc")
