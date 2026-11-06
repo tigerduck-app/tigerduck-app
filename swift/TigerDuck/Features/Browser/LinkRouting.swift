@@ -11,8 +11,7 @@ nonisolated enum LinkRouting {
     }
 
     /// The browser hands any page it would not load to the system, so only those it loads open
-    /// in it. A Moodle app link opens its page in the browser, which signs in to Moodle, unless
-    /// the Moodle app is installed and chosen.
+    /// in it.
     static func destination(for url: URL, moodleAppInstalled: Bool, moodleOpenTarget: MoodleOpenTarget) -> Destination {
         if url.scheme?.lowercased() == "moodlemobile" {
             let opensApp = moodleAppInstalled && moodleOpenTarget == .app

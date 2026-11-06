@@ -16,6 +16,7 @@ nonisolated struct SettingsState: Equatable, Sendable {
     var hasFlipToLibrary = false
     var hasSchoolMail = false
     var hasWhatsNew = false
+    var hasMoodleApp = false
     var isCheckingForUpdate = false
 }
 

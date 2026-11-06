@@ -12,7 +12,7 @@ enum SettingsScreen {
         SettingsState(
             library: .init(isSignedIn: true, name: "B11000000"), mail: .init(isSignedIn: true, name: "B11000000"),
             isCloudSyncOn: true, usesEnglishClassroomNames: preferences.useEnglishClassroomAbbreviation,
-            hasFlipToLibrary: true, hasSchoolMail: true, hasWhatsNew: true
+            hasFlipToLibrary: true, hasSchoolMail: true, hasWhatsNew: true, hasMoodleApp: true
         )
     }
 
