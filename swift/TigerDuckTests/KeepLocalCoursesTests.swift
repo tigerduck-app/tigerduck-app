@@ -18,7 +18,7 @@ struct KeepLocalCoursesTests {
         )
         let roster = Self.roster("CS1", "CS2")
 
-        try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server, for: testSignIn)
+        try await SyncConflicts.keepLocalCourses([("1151", roster, [])], hiding: ["1151:CS2"], on: server, for: testSignIn)
         #expect(server.rows == ["client:1151:CS1"])
 
         try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(roster, semester: "1151"), addedAt: nil, for: testSignIn)
@@ -35,7 +35,7 @@ struct KeepLocalCoursesTests {
             tombstones: deletedOnServer ? ["client:1151:CS2": false] : [:]
         )
 
-        try await SyncConflicts.keepLocalCourses([("1151", cached)], hiding: ["1151:CS2"], on: server, for: testSignIn)
+        try await SyncConflicts.keepLocalCourses([("1151", cached, [])], hiding: ["1151:CS2"], on: server, for: testSignIn)
 
         try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(
             cached + Self.roster("CS2"), semester: "1151"
@@ -47,7 +47,7 @@ struct KeepLocalCoursesTests {
     func uncachedLegacyHiddenCourseStaysDeleted() async throws {
         let server = FakeCourseServer(rows: ["client:1151:CS1"], tombstones: ["client:1151:CS2": false])
 
-        try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"))], hiding: ["CS2"], on: server, for: testSignIn)
+        try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"), [])], hiding: ["CS2"], on: server, for: testSignIn)
 
         try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(
             Self.roster("CS1", "CS2"), semester: "1151"
@@ -62,27 +62,28 @@ struct KeepLocalCoursesTests {
         server.failingDeletes = 1
 
         await #expect(throws: URLError.self) {
-            try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server, for: testSignIn)
+            try await SyncConflicts.keepLocalCourses([("1151", roster, [])], hiding: ["1151:CS2"], on: server, for: testSignIn)
         }
-        try await SyncConflicts.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server, for: testSignIn)
+        try await SyncConflicts.keepLocalCourses([("1151", roster, [])], hiding: ["1151:CS2"], on: server, for: testSignIn)
 
         try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(roster, semester: "1151"), addedAt: nil, for: testSignIn)
         #expect(server.rows == ["client:1151:CS1"])
     }
 
-    @Test("Use Local adds back each course added by hand and still shown, stamped after its term's reset, and sends the rest as the school's")
+    @Test("Use Local adds back each course added by hand here and still shown, stamped after its term's reset, and sends the rest, a copy merged from another device's row too, as the school's")
     func useLocalAddsBackHandAddedCourses() async throws {
-        let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1151:GE1", "client:1151:EE2"])
+        let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1151:GE1", "client:1151:EE2", "client:1151:MG4"])
+        let merged = SDCourse(courseNo: "MG4", courseName: "MG4", moodleIdNumber: "1151MG4", semester: "1151")
 
         try await SyncConflicts.keepLocalCourses(
-            [("1151", Self.roster("CS1", "GE1", "EE2", "PE3"))], addedByHand: ["1151:GE1", "1151:EE2", "1151:PE3", "1142:CS1"],
+            [("1151", Self.roster("CS1"), Self.roster("GE1", "EE2", "PE3") + [merged])],
             hiding: ["1151:PE3"], on: server, for: testSignIn
         )
 
         let upload = try #require(server.uploads.first)
         let resetAt = try #require(server.resets.first)
         let addedAt = try #require(upload.addedAt)
-        #expect(upload.request.courses.map(\.courseNo) == ["CS1", "GE1", "EE2", "PE3"])
+        #expect(upload.request.courses.map(\.courseNo) == ["CS1", "GE1", "EE2", "PE3", "MG4"])
         #expect(upload.request.handAddedCourses?.map(\.courseKey) == ["client:1151:EE2", "client:1151:GE1"])
         #expect(PushAPI.clock(of: addedAt) > PushAPI.clock(of: resetAt))
         #expect(upload.request.handAddedCourses?.allSatisfy { $0.hlc == PushAPI.clock(of: addedAt) } == true)
@@ -93,7 +94,7 @@ struct KeepLocalCoursesTests {
         let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1142:CS9"])
 
         try await SyncConflicts.keepLocalCourses(
-            [("1151", Self.roster("CS1")), ("1142", [])], hiding: [], on: server, for: testSignIn
+            [("1151", Self.roster("CS1"), []), ("1142", [], [])], hiding: [], on: server, for: testSignIn
         )
 
         #expect(server.fullResets == 0)
@@ -108,7 +109,7 @@ struct KeepLocalCoursesTests {
 
         await #expect(throws: PushAPIError.self) {
             try await SyncConflicts.keepLocalCourses(
-                [("1151", Self.roster("CS1")), ("1142", Self.roster("CS9"))], hiding: [], on: server, for: signedIn.signIn
+                [("1151", Self.roster("CS1"), []), ("1142", Self.roster("CS9"), [])], hiding: [], on: server, for: signedIn.signIn
             )
         }
 
@@ -133,7 +134,7 @@ struct KeepLocalCoursesTests {
             ), for: reset)
 
             let answer = Task {
-                try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"))], hiding: [], on: server, for: testSignIn)
+                try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"), [])], hiding: [], on: server, for: testSignIn)
             }
             try await waitUntil { !SettingsAPIStub.requests(for: reset).isEmpty }
             Defaults[.cloudSyncEnabled, for: testSignIn] = false

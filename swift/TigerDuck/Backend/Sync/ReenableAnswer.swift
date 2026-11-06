@@ -57,21 +57,13 @@ enum ReenableAnswer {
             (semester: semester, fetched: CourseStore.shared.loadCourses(semester: semester),
              userAdded: CourseStore.shared.loadUserAddedCourses(semester: semester))
         }
-        let addedByHand = terms.flatMap { term in
-            let fetched = Set(term.fetched.map(\.courseNo))
-            return term.userAdded.filter { !fetched.contains($0.courseNo) }
-                .map { CourseTombstone.key(semester: term.semester, courseNo: $0.courseNo) }
-        }
         let latched = Set(terms.map(\.semester))
         localEdits.resettingSemesters.formUnion(latched)
         defer {
             localEdits.resettingSemesters.subtract(latched)
             for semester in latched { CourseStore.shared.recordSemesterReset(semester, for: signIn) }
         }
-        try await keepLocalCourses(
-            terms.map { (semester: $0.semester, courses: $0.fetched + $0.userAdded) }, addedByHand: Set(addedByHand),
-            hiding: Set(CourseStore.shared.loadDeletedCourseNos()), on: push, for: signIn
-        )
+        try await keepLocalCourses(terms, hiding: Set(CourseStore.shared.loadDeletedCourseNos()), on: push, for: signIn)
     }
 
     static func queueLocalEdits(of conflict: Conflict, edits: EditSender, for signIn: SignIn) -> [Task<Void, Never>] {
@@ -159,14 +151,14 @@ enum ReenableAnswer {
     /// The backend's term reset clears every add stamped at or before it, and the backend takes a
     /// course an upload lists outside `adds` for the school's.
     static func keepLocalCourses(
-        _ terms: [(semester: String, courses: [SDCourse])],
-        addedByHand: Set<String> = [],
+        _ terms: [(semester: String, fetched: [SDCourse], userAdded: [SDCourse])],
         hiding deletedNos: Set<String>,
         on backend: some CourseSyncBackend,
         for signIn: SignIn
     ) async throws {
         try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.uploadsCourses }) {
-            for (semester, courses) in terms {
+            for (semester, fetched, userAdded) in terms {
+                let courses = fetched + userAdded
                 let hiddenNos = CourseTombstone.courseNos(hiddenIn: semester, in: deletedNos)
                 let stubs = hiddenNos.subtracting(courses.map(\.courseNo)).sorted()
                     .map { SDCourse(courseNo: $0, courseName: $0) }
@@ -176,8 +168,8 @@ enum ReenableAnswer {
                     try await backend.deleteAllCourses(semester: semester, madeAt: resetAt, for: signIn)
                 }
                 let addedAt = max(Date(), resetAt.addingTimeInterval(Double(CourseOverridesReconciler.fillStep) / 1_000_000))
-                let adds = Set(courses.map(\.courseNo)).subtracting(hiddenNos)
-                    .filter { addedByHand.contains(CourseTombstone.key(semester: semester, courseNo: $0)) }.sorted()
+                let adds = Set(userAdded.filter { $0.userAddedOrigin == .addedHere }.map(\.courseNo))
+                    .subtracting(fetched.map(\.courseNo)).subtracting(hiddenNos).sorted()
                 var request = SchoolDataUploader.courseUploadRequest(courses + stubs, semester: semester)
                 if !adds.isEmpty {
                     request.handAddedCourses = adds.map {
