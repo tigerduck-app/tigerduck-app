@@ -11,7 +11,8 @@ nonisolated final class ArchivePass {
     private let name: String
     private let limits: ArchiveLimits
     private let deadline: ContinuousClock.Instant
-    private let buffer = UnsafeMutableRawPointer.allocate(byteCount: ArchivePass.chunk, alignment: 16)
+    private let input = UnsafeMutableRawPointer.allocate(byteCount: ArchivePass.chunk, alignment: 16)
+    private let output = UnsafeMutableRawPointer.allocate(byteCount: ArchivePass.chunk, alignment: 16)
     private var stopped: (any Error)?
     private var formatChecked = false
 
@@ -27,7 +28,8 @@ nonisolated final class ArchivePass {
     deinit {
         archive_read_free(archive)
         close(file)
-        buffer.deallocate()
+        input.deallocate()
+        output.deallocate()
     }
 
     static func run<T>(_ url: URL, limits: ArchiveLimits, _ body: (ArchivePass) throws -> T) throws -> T {
@@ -152,7 +154,7 @@ nonisolated final class ArchivePass {
         var written: Int64 = 0
         while true {
             if let stop = stop() { throw stop }
-            let count = archive_read_data(archive, buffer, Self.chunk)
+            let count = archive_read_data(archive, output, Self.chunk)
             if count == 0 { return }
             guard count > 0 else { throw problem() }
             written += Int64(count)
@@ -161,7 +163,7 @@ nonisolated final class ArchivePass {
             }
             var done = 0
             while done < count {
-                let wrote = Darwin.write(out, buffer + done, count - done)
+                let wrote = Darwin.write(out, output + done, count - done)
                 guard wrote > 0 else { throw ArchiveProblem.broken }
                 done += wrote
             }
@@ -173,8 +175,8 @@ nonisolated final class ArchivePass {
             stopped = stop
             return -1
         }
-        let count = Darwin.read(file, buffer, Self.chunk)
-        pointer.pointee = UnsafeRawPointer(buffer)
+        let count = Darwin.read(file, input, Self.chunk)
+        pointer.pointee = UnsafeRawPointer(input)
         return count
     }
 

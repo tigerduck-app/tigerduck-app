@@ -99,7 +99,8 @@ struct ArchiveReaderTests {
         let zeros = try #require(ArchiveReader.list(archive).items.first { $0.path == "zeros.bin" })
         #expect(Self.problem { _ = try ArchiveReader.extract(zeros, from: archive, into: folder, limits: limits) } == .tooLarge)
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
-        #expect(try ArchiveReader.extract(zeros, from: archive, into: folder).lastPathComponent == "zeros.bin")
+        let whole = try ArchiveReader.extract(zeros, from: archive, into: folder)
+        #expect(try Data(contentsOf: whole) == Data(count: 2 << 20))
     }
 
     @Test("past the most entries a listing holds, it stops and says so")
