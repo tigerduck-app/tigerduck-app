@@ -17,7 +17,7 @@ struct MacCourseDetailOverlay: View {
                 CourseDetailSheet(
                     course: course,
                     assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
-                    timeRange: viewModel.selection.timeRange,
+                    times: viewModel.selection.times,
                     weekday: viewModel.selection.weekday,
                     periods: viewModel.selection.coursePeriods,
                     moodlePath: $moodlePath,

@@ -61,8 +61,9 @@ struct CourseTimeCard: View {
                     Image(systemName: "clock.fill")
                         .font(.caption2)
                 }
-                Text("\(slot.start.timeString) - \(slot.end.timeString)")
+                Text(TimeRange.text(slot.start.timeString, slot.end.timeString))
                     .strikethrough(slot.isCancelled)
+                    .accessibilityLabel(TimeRange.spoken(slot.start.timeString, slot.end.timeString))
             }
         }
     }
@@ -74,7 +75,8 @@ struct CourseTimeCard: View {
             title: Text(club.name.isEmpty ? club.clubName : club.name),
             subtitle: Text(subtitle.joined(separator: " · ")), opacity: opacity
         ) {
-            Text(ClassTimeline.timeRange(from: club.start, to: club.end))
+            Text(TimeRange.text(from: club.start, to: club.end))
+                .accessibilityLabel(TimeRange.spoken(from: club.start, to: club.end))
         }
     }
 

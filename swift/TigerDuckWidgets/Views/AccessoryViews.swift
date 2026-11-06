@@ -70,7 +70,9 @@ struct AccessoryRectangularView: View {
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
                 HStack(spacing: 4) {
-                    Text("\(info.startTime)–\(info.endTime)").font(.caption2)
+                    Text(TimeRange.text(info.startTime, info.endTime))
+                        .accessibilityLabel(TimeRange.spoken(info.startTime, info.endTime))
+                        .font(.caption2)
                     if !info.classroom.isEmpty {
                         Text("·").font(.caption2)
                         Text(info.classroom).font(.caption2)

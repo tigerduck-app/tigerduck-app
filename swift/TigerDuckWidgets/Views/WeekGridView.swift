@@ -229,12 +229,7 @@ struct WeekGridView: View {
     }
 
     private static func changedTime(_ change: SnapshotCourseChange?) -> String? {
-        switch (change?.start, change?.end) {
-        case let (start?, end?): "\(start)–\(end)"
-        case let (start?, nil): start
-        case let (nil, end?): "–\(end)"
-        case (nil, nil): nil
-        }
+        TimeRange.partial(start: change?.start, end: change?.end)
     }
 
     @ViewBuilder

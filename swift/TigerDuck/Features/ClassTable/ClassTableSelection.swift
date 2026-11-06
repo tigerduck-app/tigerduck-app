@@ -23,10 +23,10 @@ struct ClassTableSelection {
     var club: ClubOccurrence?
     var clubPicker: ClubPickerTarget?
 
-    var timeRange: String? {
-        if let periods = coursePeriods { return CourseStore.Course.timeRange(periods: periods) }
+    var times: (start: String, end: String)? {
+        if let periods = coursePeriods { return CourseStore.Course.times(periods: periods) }
         guard let course, let weekday else { return nil }
-        return course.timeRange(for: weekday)
+        return course.times(for: weekday)
     }
 
     mutating func select(today course: CourseStore.Course, now: Date) {

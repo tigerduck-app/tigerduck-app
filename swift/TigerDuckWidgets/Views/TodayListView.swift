@@ -92,7 +92,8 @@ struct TodayListView: View {
                 Text(todayRow.periodRange)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(primary)
-                Text("\(todayRow.startTime)–\(todayRow.endTime)")
+                Text(TimeRange.text(todayRow.startTime, todayRow.endTime))
+                    .accessibilityLabel(TimeRange.spoken(todayRow.startTime, todayRow.endTime))
                     .font(.caption2)
                     .foregroundStyle(!todayRow.isCancelled && (change?.start ?? change?.end) != nil ? ink : secondary)
             }

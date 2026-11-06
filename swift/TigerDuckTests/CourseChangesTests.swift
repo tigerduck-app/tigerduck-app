@@ -404,8 +404,9 @@ struct CourseChangesTests {
         let today = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes))
         let nextWeek = try #require(days.last?.meetings.first)
 
-        #expect(CourseDetailChanges.changeRows(days, besides: nil).map { $0.summary } == ["TR-313", "14:40 - 16:20 · Quiz"])
-        #expect(CourseDetailChanges.changeRows(days, besides: today).map { $0.summary } == ["14:40 - 16:20 · Quiz"])
+        #expect(CourseDetailChanges.changeRows(days, besides: nil).map { $0.summary } == ["TR-313", "14:40–16:20 · Quiz"])
+        #expect(CourseDetailChanges.changeRows(days, besides: today).map { $0.summary } == ["14:40–16:20 · Quiz"])
+        #expect(CourseDetailChanges.changeRows(days, besides: nil).map { $0.spoken } == ["TR-313", "\(TimeRange.spoken("14:40", "16:20")) · Quiz"])
         #expect(CourseDetailChanges.changeRows(days, besides: nextWeek).map { $0.summary } == ["TR-313", "Quiz"])
     }
 

@@ -26,6 +26,7 @@ struct CourseDetailChanges: View {
                                 .foregroundStyle(Color.textSecondary)
                                 .fixedSize()
                             Text(row.summary)
+                                .accessibilityLabel(row.spoken)
                                 .foregroundStyle(Color.textPrimary)
                                 .lineLimit(1)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -40,33 +41,42 @@ struct CourseDetailChanges: View {
 
     static func changeRows(
         _ days: [(day: Date, meetings: [CourseTimeSlot])], besides meetingOnCards: CourseTimeSlot?
-    ) -> [(day: Date, summary: String)] {
+    ) -> [(day: Date, summary: String, spoken: String)] {
         let rows = days.lazy
             .map { day in
-                (day: day.day, summary: changeSummary(day.meetings, besides: meetingOnCards))
+                let summary = changeSummary(day.meetings, besides: meetingOnCards)
+                return (day: day.day, summary: summary.text, spoken: summary.spoken)
             }
             .filter { !$0.summary.isEmpty }
         return Array(rows.prefix(shownDays))
     }
 
-    private static func changeSummary(_ meetings: [CourseTimeSlot], besides meetingOnCards: CourseTimeSlot?) -> String {
-        var parts: [String] = []
+    private static func changeSummary(
+        _ meetings: [CourseTimeSlot], besides meetingOnCards: CourseTimeSlot?
+    ) -> (text: String, spoken: String) {
+        var parts: [(text: String, spoken: String)] = []
         for meeting in meetings {
             if let onCards = meetingOnCards, meeting.overlaps(onCards) {
-                parts += roomsOutsideTheCards(meeting, onCards)
+                parts += roomsOutsideTheCards(meeting, onCards).map { (text: $0, spoken: $0) }
                 continue
             }
             if meeting.isCancelled {
-                parts.append(String(localized: "course_card_cancelled"))
+                let cancelled = String(localized: "course_card_cancelled")
+                parts.append((text: cancelled, spoken: cancelled))
                 continue
             }
-            if meeting.hasChangedRoom { parts.append(meeting.room) }
-            if meeting.hasChangedTime { parts.append("\(meeting.start.timeString) - \(meeting.end.timeString)") }
+            if meeting.hasChangedRoom { parts.append((text: meeting.room, spoken: meeting.room)) }
+            if meeting.hasChangedTime {
+                let start = meeting.start.timeString, end = meeting.end.timeString
+                parts.append((text: TimeRange.text(start, end), spoken: TimeRange.spoken(start, end)))
+            }
         }
         var noteIds = Set<Int>()
-        parts += meetings.flatMap(\.notes).filter { noteIds.insert($0.id).inserted }.compactMap { $0.note() }
+        parts += meetings.flatMap(\.notes).filter { noteIds.insert($0.id).inserted }
+            .compactMap { $0.note() }.map { (text: $0, spoken: $0) }
         var seen = Set<String>()
-        return parts.filter { seen.insert($0).inserted }.joined(separator: " · ")
+        let shown = parts.filter { seen.insert($0.text).inserted }
+        return (shown.map { $0.text }.joined(separator: " · "), shown.map { $0.spoken }.joined(separator: " · "))
     }
 
     private static func roomsOutsideTheCards(_ meeting: CourseTimeSlot, _ onCards: CourseTimeSlot) -> [String] {
