@@ -134,7 +134,7 @@ nonisolated final class BackendClient: Sendable {
     ) async throws -> BackendResponse {
         do {
             return try await send(make(PushAPI.clock(of: stamp)))
-        } catch PushAPIError.clockAhead(let serverClock?) where serverClock < .max {
+        } catch PushAPIError.clockAhead(let serverClock?) where SyncClock.plausible.contains(serverClock) {
             if await Self.holdsResend?() == true { throw ResendHeldError() }
             return try await send(make(serverClock + 1))
         }
@@ -172,7 +172,7 @@ nonisolated final class BackendClient: Sendable {
             : try await session.data(for: urlRequest)
         guard let http = response as? HTTPURLResponse else { throw PushAPIError.invalidResponse }
         let answer = BackendResponse(data: data, http: http)
-        if let serverClock = answer.serverClock { await clock?.hear(serverClock) }
+        if let clock, let serverClock = answer.serverClock, isFromThisBackend(answer) { await clock.hear(serverClock) }
         if (200..<300).contains(http.statusCode) || request.acceptsEveryStatus { return answer }
         let code = Self.errorCode(in: data)
         if http.statusCode == 401, request.authenticated, case .first = attempt, let sent, let signIn,
@@ -187,6 +187,15 @@ nonisolated final class BackendClient: Sendable {
         logger.error("\(http.statusCode, privacy: .public) \(path, privacy: .private): \(snippet, privacy: .private)")
         await noteVersion(http.statusCode, code: code)
         throw PushAPIError.httpStatus(http.statusCode, body: snippet, accessToken: sent.map { .init(value: $0) })
+    }
+
+    /// `baseURL()` names a departing session's server while `AuthTokenManager.departing` is set.
+    private func isFromThisBackend(_ answer: BackendResponse) -> Bool {
+        guard (200..<300).contains(answer.status) || answer.status == 409,
+              let answered = answer.http.url?.host(percentEncoded: false),
+              let configured = AuthTokenManager.$departing.withValue(nil, operation: { baseURL() }).host(percentEncoded: false)
+        else { return false }
+        return TLSPinMatcher.hostName(answered) == TLSPinMatcher.hostName(configured)
     }
 
     @MainActor private func noteVersion(_ statusCode: Int, code: String?) {

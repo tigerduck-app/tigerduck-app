@@ -423,13 +423,37 @@ struct SelectionDropsTests {
             courses.recordSemesterReset(owned, at: landedAt, for: testSignIn)
             courses.recordSemesterReset(other, at: landedAt, for: testSignIn)
 
-            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), keeping: [owned], for: testSignIn)
+            courses.clearSemesterResets(
+                outlivedBy: landedAt.addingTimeInterval(120), keeping: [owned], notAfter: .distantFuture, for: testSignIn
+            )
             let left = courses.loadSemesterResetAt()
-            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), for: testSignIn)
+            courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), notAfter: .distantFuture, for: testSignIn)
 
             #expect(left[owned] == landedAt)
             #expect(left[other] == nil)
             #expect(courses.loadSemesterResetAt()[owned] == nil)
+        }
+    }
+
+    @Test("A term reset marked while the sync clock ran ahead moves to just before the next fetch and stays this device's own")
+    @MainActor
+    func resetMarkedAheadMovesBeforeTheFetch() async {
+        await withExclusiveRealDefaults {
+            let courses = Self.makeCache(fetched: [], userAdded: []).courses
+            let (ahead, recent) = ("ahead-\(UUID().uuidString)", "recent-\(UUID().uuidString)")
+            let fetchedAt = Date()
+            let resetClock = PushAPI.clock(of: fetchedAt) - 10 * 1_000_000
+            courses.recordSemesterReset(ahead, at: fetchedAt.addingTimeInterval(365 * 24 * 3600), for: testSignIn)
+            courses.recordSemesterReset(recent, at: fetchedAt.addingTimeInterval(-1), for: testSignIn)
+
+            courses.clearSemesterResets(outlivedBy: fetchedAt, keeping: [ahead], notAfter: fetchedAt.addingTimeInterval(1), for: testSignIn)
+            let left = courses.loadSemesterResetAt()
+            courses.clearSemesterResets(outlivedBy: fetchedAt.addingTimeInterval(120), notAfter: .distantFuture, for: testSignIn)
+
+            #expect(left[ahead].map { $0 < fetchedAt } == true)
+            #expect(ServerTombstone(["kind": "reset", "hlc": NSNumber(value: resetClock)]).isOwnReset(landedAt: left[ahead]))
+            #expect(left[recent] == fetchedAt.addingTimeInterval(-1))
+            #expect(courses.loadSemesterResetAt()[ahead] == nil)
         }
     }
 

@@ -50,7 +50,9 @@ time elapsed since. A device that has not heard the backend SHALL stamp uncapped
 ### Requirement: A device re-stamps an edit refused as ahead
 When the backend refuses an edit with `409 clock_ahead`, the device SHALL re-stamp that edit at
 the `X-TigerSync-Clock` value the refusal carries plus one tick and send it again. A device that
-keeps a last issued value SHALL NOT lower it to re-stamp.
+keeps a last issued value SHALL NOT lower it to re-stamp, unless the refusal's clock shows it more
+than two minutes past the backend's limit (see the requirement on a clock past the backend's reach). A refusal whose
+clock is before 2026 or from 2100 on SHALL NOT be re-stamped.
 
 #### Scenario: Edit made before the device heard the backend
 - **WHEN** a device whose clock runs a minute ahead stamps an edit before it has heard the backend, and the backend refuses the edit as ahead with its clock at 10:00:00
@@ -78,7 +80,7 @@ Every response under `/v3` SHALL carry the header `X-TigerSync-Clock` with the b
 current time as a clock value, read after the request's writes commit. A snapshot's
 `server_hlc` SHALL be read before its first query. A client SHALL raise its last seen server
 value to that header and to every clock value in a snapshot or write response it reads, and
-never lower it.
+never lower it but as a clock past the backend's reach requires.
 
 #### Scenario: Snapshot after a write
 - **WHEN** a snapshot's `server_hlc` is later than the header of a write's response
@@ -111,3 +113,13 @@ be sent with the time it was queued, converted to a clock value, rather than res
 #### Scenario: Upgrade with a queued mark
 - **WHEN** a mark queued at 09:00 is still in the outbox after the app updates at 12:00
 - **THEN** it is sent stamped 09:00
+
+### Requirement: A client brings a clock past the backend's reach back
+A header SHALL bring a client's last seen value that is more than two minutes past the header
+plus five seconds back to the header, and such a last issued value back to the header plus five
+seconds. A client SHALL ignore a header before 2026 or from 2100 on, and the header of a response
+from another host or with a status other than 2xx or 409.
+
+#### Scenario: Device clock set a year ahead and back
+- **WHEN** a device stamps an edit while its clock is a year ahead, and a response then carries the backend's clock
+- **THEN** the device's next edit is stamped at most five seconds past that clock, also after its clock is set right

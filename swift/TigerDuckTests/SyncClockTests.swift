@@ -34,6 +34,7 @@ struct SyncClockTests {
     static let ten: Int64 = 1_790_000_000_000_000
     static let second: Int64 = 1_000_000
     static let minute = 60 * second
+    static let year = 365 * 24 * 60 * minute
     static let laterThanAnyRun: Int64 = 4_000_000_000_000_000
 
     static func makeClock(
@@ -123,19 +124,46 @@ struct SyncClockTests {
         #expect(Self.clock(of: relaunched.stamp()) == issued + 1)
     }
 
-    @Test("The last server value seen never drops, and an implausible header is ignored")
-    func lastSeenNeverDrops() async {
+    @Test("An earlier answer read late keeps the last server value seen, and one further ahead than any answer could be gives way")
+    func lastSeenGivesWayOnlyWhenFarAhead() async {
         let stored = StoredReadings()
         let clock = Self.makeClock(DeviceClock(Self.ten), stored)
 
-        await clock.hear(Self.ten + 10 * Self.minute)
+        await clock.hear(Self.ten + Self.minute)
         await clock.hear(Self.ten)
-        await clock.hear(Int64.max)
-        await clock.hear(0)
+        #expect(clock.readings.lastSeen == Self.ten + Self.minute)
 
-        #expect(clock.readings.lastSeen == Self.ten + 10 * Self.minute)
-        #expect(Self.makeClock(DeviceClock(Self.ten), stored).readings.lastSeen == Self.ten + 10 * Self.minute)
+        await clock.hear(Self.ten + Self.year)
+        await clock.hear(Self.ten)
+        #expect(clock.readings.lastSeen == Self.ten)
+        #expect(Self.makeClock(DeviceClock(Self.ten), stored).readings.lastSeen == Self.ten)
         #expect(clock.readings.heard == SyncClock.Heard(clock: Self.ten, arrivedAt: Self.ten))
+    }
+
+    @Test("A header before TigerSync existed or far past any real time is not heard", arguments: [Int64(1), 0, -5, 1_000_000_000_000_000_000, .max])
+    func brokenHeaderIsIgnored(header: Int64) async {
+        let clock = Self.makeClock(DeviceClock(Self.ten), StoredReadings(.init(lastIssued: Self.ten, lastSeen: Self.ten)))
+
+        await clock.hear(header)
+
+        #expect(clock.readings == SyncClock.Readings(lastIssued: Self.ten, lastSeen: Self.ten))
+        #expect(Self.clock(of: clock.stamp()) == Self.ten + 1)
+    }
+
+    @Test("A device clock set a year ahead and back stamps within the backend's reach again once the backend answers")
+    func clockSetAheadAndBackRecovers() async {
+        let device = DeviceClock(Self.ten)
+        let clock = Self.makeClock(device)
+        await clock.hear(Self.ten)
+        device.set(Self.ten + Self.year)
+        _ = clock.stamp()
+
+        await clock.hear(Self.ten + Self.minute)
+        #expect(Self.clock(of: clock.stamp()) == Self.ten + Self.minute + SyncClock.backendLead + 1)
+
+        device.set(Self.ten + 2 * Self.minute)
+        await clock.hear(Self.ten + 2 * Self.minute)
+        #expect(Self.clock(of: clock.stamp()) == Self.ten + 2 * Self.minute + 1)
     }
 
     @Test("Stored values that read back missing or unreadable never produce a stamp at or before one already issued")
@@ -163,26 +191,61 @@ struct SyncClockTests {
         #expect(values.filter { Self.clock(of: PushAPI.date(ofClock: $0)) != $0 }.isEmpty)
     }
 
-    @Test("Every backend answer raises the last server value seen and records when it arrived, an error answer too")
-    func everyAnswerIsHeard() async throws {
+    @Test("A 2xx or 409 answer raises the last server value seen and records when it arrived, and another status does not")
+    func okAndConflictAnswersAreHeard() async throws {
         let device = DeviceClock(Self.ten)
         let clock = Self.makeClock(device)
         let (client, baseURL) = Self.stubbedClient(clock)
+        let revision = baseURL.appendingPathComponent("sync/revision")
         SettingsAPIStub.enqueue(.init(
             statusCode: 200, body: Data(#"{"revision":1}"#.utf8), headerFields: ["X-TigerSync-Clock": String(Self.ten + Self.minute)]
-        ), for: baseURL.appendingPathComponent("sync/revision"))
+        ), for: revision)
         SettingsAPIStub.enqueue(.init(
             statusCode: 404, body: Data(#"{"error":"not_found","message":"gone"}"#.utf8),
+            headerFields: ["X-TigerSync-Clock": String(Self.ten + 3 * Self.minute)]
+        ), for: revision)
+        SettingsAPIStub.enqueue(.init(
+            statusCode: 409, body: Data(#"{"error":"sync_revision_expired","message":"expired"}"#.utf8),
             headerFields: ["X-TigerSync-Clock": String(Self.ten + 2 * Self.minute)]
-        ), for: baseURL.appendingPathComponent("sync/revision"))
+        ), for: revision)
 
         _ = try await client.fetchRevision(for: testSignIn)
         #expect(clock.readings.lastSeen == Self.ten + Self.minute)
         device.set(Self.ten + Self.second)
         await #expect(throws: PushAPIError.self) { try await client.fetchRevision(for: testSignIn) }
+        #expect(clock.readings.lastSeen == Self.ten + Self.minute)
+        await #expect(throws: PushAPIError.self) { try await client.fetchRevision(for: testSignIn) }
 
         #expect(clock.readings.lastSeen == Self.ten + 2 * Self.minute)
         #expect(clock.readings.heard == SyncClock.Heard(clock: Self.ten + 2 * Self.minute, arrivedAt: Self.ten + Self.second))
+    }
+
+    @Test("An answer from another host than the client's backend is not heard: a request sent to another server, or a departing session's")
+    func otherServersAreNotHeard() async throws {
+        let clock = Self.makeClock(DeviceClock(Self.ten))
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let other = URL(string: "https://other-stub.invalid/\(UUID().uuidString)/v4")!
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = { (auth: BackendAuth) in
+            PushAPIClient(
+                baseURLProvider: { AuthTokenManager.departing?.baseURL ?? baseURL }, session: URLSession(configuration: config),
+                auth: auth, clock: clock
+            )
+        }
+        let heard = ["X-TigerSync-Clock": String(Self.ten + Self.minute)]
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data("{}".utf8), headerFields: heard),
+                                for: other.appendingPathComponent("devices/test-device"))
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"revision":1}"#.utf8), headerFields: heard),
+                                for: other.appendingPathComponent("sync/revision"))
+
+        try await client(.unbound { "Bearer test" }).unregisterDevice(deviceId: "test-device", at: other)
+        _ = try await AuthTokenManager.$departing.withValue(.init(accessToken: "A1", baseURL: other)) {
+            try await client(.signedIn { "Bearer test" }).fetchRevision(for: testSignIn)
+        }
+
+        #expect(SettingsAPIStub.requests(under: other).count == 2)
+        #expect(clock.readings == SyncClock.Readings())
     }
 
     @Test("A header that arrives while protected data is unavailable changes nothing")

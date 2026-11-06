@@ -73,7 +73,11 @@ it heard plus the device time elapsed since. An edit stamped before the device f
 backend can still be refused; the refusal carries the backend's clock, and both apps re-stamp
 the edit at that clock plus one tick and send it again. A device that keeps a last issued value
 never lowers it, so until the cap passes that value, a later edit is stamped after it and is
-refused and re-stamped the same way.
+refused and re-stamped the same way. The exception is a value more than two minutes past the
+backend's limit, longer than any request takes, as after a device clock set a year ahead: no
+stamp above the limit can have landed, so a header brings the last issued value back to its clock
+plus five seconds and the last seen value back to its clock. A header before 2026 or from 2100
+on is not a clock and is ignored, and is never re-stamped after.
 
 Lost:
 - ISO-8601 strings, as the snapshot uses today: Apple's `ISO8601DateFormatter` keeps three
@@ -438,7 +442,7 @@ Backend (`uv run pytest server/tests/` against a throwaway Postgres):
 - Migration: upgrade and downgrade on seeded rows.
 
 iOS (`xcodebuild test ... -only-testing:TigerDuckTests`):
-- `SyncClock`: stamping rule, persistence, never lowered, ignored before first unlock.
+- `SyncClock`: stamping rule, persistence, lowered only from past the backend's reach, broken headers ignored.
 - Outbox: a legacy entry keeps its stamp; entries kept while off; cleared on sign-out.
 - Requests: protocol header and stamps on every write (a stub `URLProtocol`, as
   `swift/TigerDuckTests/SettingsAPIStub.swift` does).

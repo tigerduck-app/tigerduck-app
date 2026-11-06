@@ -77,10 +77,15 @@ final class CourseFiles: AccountScoped {
         Defaults[.semesterResetAt, for: signIn][semester] = date
     }
 
-    func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = [], for signIn: SignIn) {
+    /// A reset marked after `latest` was marked while the sync clock ran ahead, and moves to just
+    /// before this fetch, so it holds no later fetch's term.
+    func clearSemesterResets(
+        outlivedBy fetchedAt: Date, keeping owned: Set<String> = [], notAfter latest: Date, for signIn: SignIn
+    ) {
         let all = loadSemesterResetAt()
-        let kept = all.filter { owned.contains($0.key) || fetchedAt.timeIntervalSince($0.value) <= Self.semesterResetGrace }
-        if kept.count != all.count {
+        let kept = all.mapValues { $0 > latest ? fetchedAt.addingTimeInterval(-0.000_001) : $0 }
+            .filter { owned.contains($0.key) || fetchedAt.timeIntervalSince($0.value) <= Self.semesterResetGrace }
+        if kept != all {
             Defaults[.semesterResetAt, for: signIn] = kept
         }
     }

@@ -12,7 +12,10 @@ nonisolated final class SyncClock: Sendable {
     /// (`MAX_CLOCK_SKEW` in https://github.com/tigerduck-app/tigerduck-backend/blob/dev/server/sync/merge.py).
     static let backendLead: Int64 = 5_000_000
     private static let overflowSafeCeiling = Int64.max / 2
-    private static let plausible: Range<Int64> = 1..<overflowSafeCeiling
+    /// TigerSync started in 2026, and a clock value past 2100 no longer survives a `Date` exactly.
+    static let plausible: Range<Int64> = 1_767_225_600_000_000..<4_102_444_800_000_000
+    // Longer than any backend request may take, so answers read out of order stay within it.
+    private static let answerSpread: Int64 = 2 * 60 * 1_000_000
 
     nonisolated struct Heard: Equatable, Sendable {
         let clock: Int64
@@ -90,13 +93,19 @@ nonisolated final class SyncClock: Sendable {
         })
     }
 
-    /// Ignored while protected data is unavailable: before the first unlock `UserDefaults` reads
-    /// as empty, and a write then would replace the stored values with lower ones.
+    /// A last stamp or last server value further ahead of `serverClock` than any answer could be,
+    /// as after a device clock set ahead, comes back to what the backend accepts: it refuses a
+    /// stamp past its clock plus `backendLead`, so no stamp above that has landed. Ignored while
+    /// protected data is unavailable: before the first unlock `UserDefaults` reads as empty, and a
+    /// write then would replace the stored values with lower ones.
     func hear(_ serverClock: Int64) async {
         let arrivedAt = PushAPI.clock(of: now())
         guard Self.plausible.contains(serverClock), await protectedDataReadable() else { return }
         update { readings in
-            readings.lastSeen = max(readings.lastSeen, serverClock)
+            let reach = serverClock + Self.backendLead
+            let farAhead = reach + Self.answerSpread
+            readings.lastSeen = readings.lastSeen > farAhead ? serverClock : max(readings.lastSeen, serverClock)
+            if readings.lastIssued > farAhead { readings.lastIssued = reach }
             readings.heard = Heard(clock: serverClock, arrivedAt: arrivedAt)
         }
     }

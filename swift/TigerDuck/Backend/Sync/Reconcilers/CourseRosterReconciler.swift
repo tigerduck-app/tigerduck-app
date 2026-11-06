@@ -49,7 +49,9 @@ struct CourseRosterReconciler: CategoryReconciler {
         let ownResets = tombstonesBySemester.filter { semester, tombstones in
             tombstones.contains { ServerTombstone($0).isOwnReset(landedAt: resetAt[semester]) }
         }
-        CourseStore.shared.clearSemesterResets(outlivedBy: fetchedAt, keeping: Set(ownResets.keys), for: signIn)
+        CourseStore.shared.clearSemesterResets(
+            outlivedBy: fetchedAt, keeping: Set(ownResets.keys), notAfter: app.cloudSyncCoordinator.clock.lowestNextMark, for: signIn
+        )
 
         for semester in semesters.sorted() {
             if app.localEdits.resettingSemesters.contains(semester) { continue }
