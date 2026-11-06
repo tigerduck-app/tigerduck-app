@@ -88,8 +88,13 @@ final class MailSendHold {
     }
 
     func composerClosed(_ model: MailComposeViewModel) {
-        guard let id = model.draftID, held?.model !== model, !sending.contains(ObjectIdentifier(model)),
-              !model.didFinish, !model.mayHaveSent else { return }
+        reopened.removeAll { $0 === model }
+        guard held?.model !== model, !sending.contains(ObjectIdentifier(model)), !model.shouldClose else { return }
+        if model.hasChanges, !model.isDiscarded {
+            reopened.insert(model, at: 0)
+            return
+        }
+        guard let id = model.draftID, !model.mayHaveSent else { return }
         hiddenDrafts.remove(HiddenDraft(id: id, signIn: model.signIn))
     }
 

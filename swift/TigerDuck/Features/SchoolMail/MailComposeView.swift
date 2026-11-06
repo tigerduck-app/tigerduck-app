@@ -139,7 +139,10 @@ struct MailComposeView: View {
                 Button(String(localized: "school_mail_save_draft")) {
                     Task { if await viewModel.saveDraft() { dismiss() } }
                 }
-                Button(String(localized: "school_mail_discard"), role: .destructive) { dismiss() }
+                Button(String(localized: "school_mail_discard"), role: .destructive) {
+                    viewModel.discard()
+                    dismiss()
+                }
                 Button(String(localized: "school_mail_keep_editing"), role: .cancel) {}
             }
             .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in

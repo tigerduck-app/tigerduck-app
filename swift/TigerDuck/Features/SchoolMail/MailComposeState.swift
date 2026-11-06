@@ -52,6 +52,7 @@ struct MailComposeStatus {
     var didFinish = false
     var signInEnded = false
     var mayHaveSent = false
+    var discarded = false
     var sentCopy: SentCopy?
 
     mutating func recipientsReportingProblems(of draft: MailComposeDraft, requireOne: Bool) -> MailRecipients.Parsed? {

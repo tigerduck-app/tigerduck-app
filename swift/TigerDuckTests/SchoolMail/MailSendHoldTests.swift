@@ -324,6 +324,7 @@ struct MailSendHoldTests {
         #expect(!Self.listsTheDraft(h))
         #expect(rig.hold.takeReopened() === model)
         #expect(!Self.listsTheDraft(h))
+        model.discard()
         rig.hold.composerClosed(model)
         #expect(Self.listsTheDraft(h))
     }
@@ -339,6 +340,7 @@ struct MailSendHoldTests {
 
         #expect(!Self.listsTheDraft(h))
         #expect(rig.hold.takeReopened() === model)
+        model.discard()
         rig.hold.composerClosed(model)
         #expect(Self.listsTheDraft(h))
     }
@@ -368,9 +370,60 @@ struct MailSendHoldTests {
         #expect(model.didFinish != unconfirmed)
         #expect(!Self.listsTheDraft(h))
 
-        if let reopened = rig.hold.takeReopened() { rig.hold.composerClosed(reopened) }
+        if unconfirmed {
+            #expect(rig.hold.takeReopened() === model)
+            model.discard()
+        }
+        rig.hold.composerClosed(model)
+        #expect(!Self.listsTheDraft(h))
         await h.model.refresh()
         #expect(!Self.listsTheDraft(h))
+    }
+
+    @Test func aReopenedComposerThatClosesUnfinishedWithEditsIsQueuedAgain() async throws {
+        let rig = Self.rig()
+        let h = await Self.listWithDraft(rig)
+        let model = await Self.heldDraft(rig, on: h)
+        rig.hold.undo()
+        #expect(rig.hold.takeReopened() === model)
+
+        rig.hold.composerClosed(model)
+        #expect(rig.hold.reopened.first === model)
+        #expect(!Self.listsTheDraft(h))
+
+        #expect(rig.hold.takeReopened() === model)
+        model.discard()
+        rig.hold.composerClosed(model)
+        #expect(rig.hold.reopened.isEmpty)
+        #expect(Self.listsTheDraft(h))
+    }
+
+    @Test func aComposerThatClosesWhileItsMailIsSendingChangesNothing() async throws {
+        let rig = Self.rig()
+        let h = await Self.listWithDraft(rig)
+        await h.fake.update { $0.hold("send") }
+        let model = await Self.heldDraft(rig, on: h)
+        model.discard()
+        try await rig.sleeper.waitUntilArmed()
+        await rig.sleeper.fire()
+        await h.fake.waitForArrival("send")
+
+        rig.hold.composerClosed(model)
+        #expect(rig.hold.reopened.isEmpty)
+        #expect(!Self.listsTheDraft(h))
+
+        await h.fake.release("send")
+        try await waitUntil { rig.hold.deliveries == 1 }
+        #expect(model.didFinish)
+        #expect(!Self.listsTheDraft(h))
+    }
+
+    @Test func onlyAWindowInUseTakesAComposerAtOnce() {
+        #expect(MailReopenTurn(.foregroundActive) == .now)
+        #expect(MailReopenTurn(.foregroundInactive) == .afterActiveWindows)
+        #expect(MailReopenTurn(nil) == .afterActiveWindows)
+        #expect(MailReopenTurn(.background) == .never)
+        #expect(MailReopenTurn(.unattached) == .never)
     }
 
     @Test func aRebuiltListStillHidesTheHeldDraftOfItsSignInOnly() async throws {

@@ -47,6 +47,8 @@ final class MailComposeViewModel: Identifiable {
     var mode: MailComposeMode { context.mode }
     var draftID: MailListRow.ID? { context.mode == .draft ? context.message.map { MailListRow.ID(folder: $0.folder, uid: $0.uid) } : nil }
     var mayHaveSent: Bool { status.mayHaveSent }
+    var isDiscarded: Bool { status.discarded }
+    func discard() { status.discarded = true }
     var to: String {
         get { draft.to }
         set { draft.to = newValue; tracking.edited.insert(.to) }
