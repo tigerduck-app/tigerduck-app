@@ -5,7 +5,8 @@ Every file is made here from made-up content: zip, tar and the compressed single
 Python's standard library, 7z with a local 7-Zip (`7z`, p7zip 17 or later), and RAR, which no
 free tool writes, by hand as stored (uncompressed) RAR 5 and RAR 4 archives following RARLAB's
 format notes (https://www.rarlab.com/technote.htm). Two 7z archives then have their decoder's
-memory request raised past what the app allows, with the header checksums fixed up after.
+memory request raised past what the app allows, with the header checksums fixed up after,
+and two more 7z headers are written by hand to declare more entries and header bytes than it lists.
 
     python3 tools/make_archive_fixtures.py
 """
@@ -219,6 +220,63 @@ def write_7z() -> None:
     patch_7z_coders("archive-big-ppmd.7z", b"\x23\x03\x04\x01\x05", b"\x06" + struct.pack("<I", 192 << 20))
 
 
+def write_bombs() -> None:
+    """A tar.bz2 and a solid 7z whose first entry, 64 MiB of zeros, packs into a few kilobytes,
+    so reaching README.md after it means unpacking all of it. 7-Zip stores files in name order."""
+    zeros = bytes(64 << 20)
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:bz2", format=tarfile.PAX_FORMAT) as archive:
+        for name, data in [("00-zeros.bin", zeros), ("README.md", README)]:
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mtime = EPOCH
+            archive.addfile(info, io.BytesIO(data))
+    (OUT / "archive-bomb.tar.bz2").write_bytes(buffer.getvalue())
+    with tempfile.TemporaryDirectory() as tmp:
+        stage = Path(tmp)
+        for name, data in [("00-zeros.bin", zeros), ("README.md", README)]:
+            (stage / name).write_bytes(data)
+            os.utime(stage / name, (EPOCH, EPOCH))
+        target = OUT / "archive-bomb.7z"
+        target.unlink(missing_ok=True)
+        subprocess.run(
+            ["7z", "a", "-bd", "-y", "-t7z", "-m0=lzma2", "-ms=on", str(target), "00-zeros.bin", "README.md"],
+            cwd=stage, check=True, stdout=subprocess.DEVNULL, env={**os.environ, "LC_ALL": "en_US.UTF-8"},
+        )
+
+
+def number_7z(value: int) -> bytes:
+    """7z's variable-length number: the first byte's leading one bits count the bytes after it."""
+    for extra in range(8):
+        high = value >> (8 * extra)
+        if high < 1 << (7 - extra):
+            return bytes([(0xFF00 >> extra) & 0xFF | high]) + value.to_bytes(8, "little")[:extra]
+    return b"\xff" + value.to_bytes(8, "little")
+
+
+def plain_7z(name: str, packed: bytes, header: bytes) -> None:
+    """A 7z of the packed bytes `packed` followed by `header`, written as is, with the start
+    header's offsets and checksums."""
+    start = struct.pack("<QQI", len(packed), len(header), zlib.crc32(header))
+    signature = b"7z\xbc\xaf\x27\x1c\x00\x04" + struct.pack("<I", zlib.crc32(start))
+    (OUT / name).write_bytes(signature + start + packed + header)
+
+
+def write_7z_tables() -> None:
+    # kHeader and kFilesInfo declaring one entry more than the app's 100,000.
+    plain_7z("archive-many-entries.7z", b"", b"\x01\x05" + number_7z(100_001) + b"\x00\x00")
+    # kEncodedHeader: one 16-byte packed stream (kPackInfo), copied by coder 00 (kUnPackInfo)
+    # into a header that claims to unpack to 32 MiB.
+    stream = bytes(16)
+    header = (
+        b"\x17"
+        + b"\x06\x00\x01\x09" + number_7z(len(stream)) + b"\x00"
+        + b"\x07\x0b\x01\x00\x01\x01\x00\x0c" + number_7z(32 << 20) + b"\x00"
+        + b"\x00"
+    )
+    plain_7z("archive-big-header.7z", stream, header)
+
+
 def vint(value: int) -> bytes:
     out = bytearray()
     while True:
@@ -299,6 +357,8 @@ def main() -> None:
     write_tars()
     write_single_files()
     write_7z()
+    write_bombs()
+    write_7z_tables()
     write_rar5()
     write_rar4()
     for path in sorted(OUT.iterdir()):

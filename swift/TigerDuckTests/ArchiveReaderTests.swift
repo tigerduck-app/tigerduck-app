@@ -139,6 +139,42 @@ struct ArchiveReaderTests {
         #expect(Self.problem { _ = try ArchiveReader.extract(readme, from: archive, into: Self.folder()) } == .tooLarge)
     }
 
+    @Test("data passed over on the way to an entry counts toward the limits, however small it packs",
+          arguments: ["archive-bomb.7z", "archive-bomb.tar.bz2"])
+    func skippedData(name: String) throws {
+        let archive = try Self.fixture(name)
+        let readme = try #require(ArchiveReader.list(archive).items.first { $0.path == "README.md" })
+        let limits = ArchiveLimits(maxScanBytes: 1 << 20)
+        #expect(Self.problem { _ = try ArchiveReader.list(archive, limits: limits) } == .tooLarge)
+        #expect(Self.problem { _ = try ArchiveReader.extract(readme, from: archive, into: Self.folder(), limits: limits) } == .tooLarge)
+    }
+
+    @Test("a zip after other bytes has its central directory measured as well")
+    func prefixedZip() throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let prefixed = folder.appending(path: "prefixed.zip")
+        try (Data(repeating: 0x4D, count: 4096) + Data(contentsOf: Self.fixture("archive-sample.zip"))).write(to: prefixed)
+        #expect(try ArchiveReader.list(prefixed).items.contains { $0.path == "README.md" })
+        #expect(Self.problem { _ = try ArchiveReader.list(prefixed, limits: ArchiveLimits(maxZipDirectoryBytes: 64)) } == .tooMany)
+    }
+
+    @Test("a 7z declaring more entries or header bytes than a preview lists is refused before reading them",
+          arguments: ["archive-many-entries.7z", "archive-big-header.7z"])
+    func sevenZipTables(name: String) throws {
+        #expect(Self.problem { _ = try ArchiveReader.list(Self.fixture(name)) } == .tooMany)
+    }
+
+    @Test("a file is not taken out into a folder that is gone, and the folder is not made again")
+    func removedFolder() throws {
+        let folder = try Self.folder()
+        try FileManager.default.removeItem(at: folder)
+        let archive = try Self.fixture("archive-sample.zip")
+        let pdf = try #require(ArchiveReader.list(archive).items.first { $0.path == "docs/protocol.pdf" })
+        #expect(throws: (any Error).self) { try ArchiveReader.extract(pdf, from: archive, into: folder) }
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+    }
+
     @Test("bytes that are no archive are unsupported, and a stopped or late pass ends")
     func notAnArchiveAndStops() async throws {
         let folder = try Self.folder()
