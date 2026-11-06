@@ -248,6 +248,7 @@
 			membershipExceptions = (
 				Services/SharedAppGroup.swift,
 				Services/WatchAppLogger.swift,
+				UI/ClassCountdown.swift,
 				UI/WatchTheme.swift,
 			);
 			target = C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */;

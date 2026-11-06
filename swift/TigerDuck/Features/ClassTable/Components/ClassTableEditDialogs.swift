@@ -13,7 +13,7 @@ struct ClassTableEditDialogs: ViewModifier {
                 CourseDetailSheet(
                     course: course,
                     assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
-                    timeRange: viewModel.selection.timeRange,
+                    times: viewModel.selection.times,
                     weekday: viewModel.selection.weekday,
                     periods: viewModel.selection.coursePeriods,
                     date: viewModel.selection.date,
