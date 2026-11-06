@@ -27,6 +27,7 @@ struct MailListBottomBar: View {
             MailSendHoldBar(hold: hold)
             if showsCompose {
                 MailComposeButton(accentColor: accentColor, action: onCompose)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .transition(.scale.combined(with: .opacity))
             }
         }
@@ -37,17 +38,23 @@ struct MailListBottomBar: View {
 private struct MailSendHoldCapsule: View {
     let held: MailSendHold.Held
     let undo: () -> Void
-    private static let ringSize: CGFloat = 30
+    @ScaledMetric(relativeTo: .subheadline) private var ringSize: CGFloat = 30
+    @ScaledMetric(relativeTo: .subheadline) private var ringWidth: CGFloat = 3
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: TigerDuckTheme.Spacing.md) {
-                status
+                ring
+                label
                 undoButton
             }
-            VStack(alignment: .trailing, spacing: 0) {
-                status.frame(maxWidth: .infinity, alignment: .leading)
-                undoButton
+            VStack(alignment: .leading, spacing: 0) {
+                label
+                HStack {
+                    ring
+                    Spacer(minLength: 0)
+                    undoButton
+                }
             }
         }
         .font(.subheadline)
@@ -61,23 +68,24 @@ private struct MailSendHoldCapsule: View {
         .padding(.bottom, TigerDuckTheme.Spacing.sm)
     }
 
-    private var status: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            TimelineView(.animation) { context in
-                ProgressRing(fraction: held.remaining(at: context.date), lineWidth: 3)
-            }
-            .overlay {
-                Image(systemName: "paperplane.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.tint)
-            }
-            .frame(width: Self.ringSize, height: Self.ringSize)
-            .accessibilityHidden(true)
-            Text(String(localized: "school_mail_sending_hold"))
-                .foregroundStyle(Color.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private var ring: some View {
+        TimelineView(.animation) { context in
+            ProgressRing(fraction: held.remaining(at: context.date), lineWidth: ringWidth)
         }
+        .overlay {
+            Image(systemName: "paperplane.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tint)
+        }
+        .frame(width: ringSize, height: ringSize)
+        .accessibilityHidden(true)
+    }
+
+    private var label: some View {
+        Text(String(localized: "school_mail_sending_hold"))
+            .foregroundStyle(Color.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var undoButton: some View {

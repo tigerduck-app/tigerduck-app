@@ -139,6 +139,9 @@ struct MailComposeButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(String(localized: "school_mail_compose"))
+        .accessibilityShowsLargeContentViewer {
+            Label(String(localized: "school_mail_compose"), systemImage: "square.and.pencil")
+        }
         .padding(.trailing, TigerDuckTheme.Spacing.lg)
         .padding(.bottom, TigerDuckTheme.Spacing.sm)
     }
