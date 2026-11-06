@@ -81,5 +81,6 @@ struct MailMessageStores {
     let cache: MailCache
     let prefs: any MailPreferences
     let notifier: MailNotifier
+    let signIn: SignIn
 }
 #endif

@@ -54,8 +54,11 @@ final class MailMessageViewModel: Identifiable {
         self.events = events ?? MailboxEvents()
         pageUIDValidity = route.uidValidity
         stores = MailMessageStores(cache: cache ?? MailAccountManager.shared.cache,
-                                   prefs: prefs ?? MailAccountManager.shared.prefs, notifier: notifier)
+                                   prefs: prefs ?? MailAccountManager.shared.prefs, notifier: notifier,
+                                   signIn: session.account.currentSignIn)
     }
+
+    var signIn: SignIn { stores.signIn }
 
     var detail: MailMessageDetail? { content.detail }
     var cachedSummary: MailSummary? { content.cachedSummary }
@@ -114,7 +117,7 @@ final class MailMessageViewModel: Identifiable {
     }
 
     func load() async {
-        let signIn = await session.account.startingSignIn
+        let signIn = signIn
         let cache = stores.cache
         let prefs = stores.prefs
         let folder = route.folder
@@ -132,7 +135,7 @@ final class MailMessageViewModel: Identifiable {
             if let cached { await apply(cached) }
         }
         do {
-            let fresh = try await session.use { client in
+            let fresh = try await session.use(for: signIn) { client in
                 try await client.detail(folder: folder, uid: uid, expectedUIDValidity: validity)
             }
             await apply(fresh)
@@ -140,7 +143,7 @@ final class MailMessageViewModel: Identifiable {
                 await Task.detached { cache.saveDetail(fresh, folder: folder, uidValidity: validity, unlessWipedSince: wipeCount) }.value
             }
             if !fresh.summary.isSeen {
-                try await session.use { client in
+                try await session.use(for: signIn) { client in
                     try await client.setFlag(.seen, on: true, folder: folder, uids: [uid], expectedUIDValidity: validity)
                 }
                 content.detail?.summary.isSeen = true
@@ -173,12 +176,12 @@ final class MailMessageViewModel: Identifiable {
     func loadSource() async { await MailMessageActions.loadSource(model: self) }
 
     func toggleSeen() async {
-        guard let seen = detail?.summary.isSeen else { return }
+        guard let seen = detail?.summary.isSeen, signIn.isCurrent else { return }
         let folder = route.folder
         let uid = route.uid
         do {
             let validity = pageUIDValidity
-            try await session.use { client in
+            try await session.use(for: signIn) { client in
                 try await client.setFlag(.seen, on: !seen, folder: folder, uids: [uid], expectedUIDValidity: validity)
             }
             content.detail?.summary.isSeen = !seen
@@ -191,11 +194,9 @@ final class MailMessageViewModel: Identifiable {
         }
     }
 
-    func move(to target: String) async -> Bool {
-        await MailMessageActions.move(model: self, to: target, for: session.account.startingSignIn)
-    }
-    func prepareDelete() async -> Bool { await MailMessageActions.prepareDelete(model: self, for: session.account.startingSignIn) }
-    func delete() async -> Bool { await MailMessageActions.delete(model: self, for: session.account.startingSignIn) }
+    func move(to target: String) async -> Bool { await MailMessageActions.move(model: self, to: target) }
+    func prepareDelete() async -> Bool { await MailMessageActions.prepareDelete(model: self) }
+    func delete() async -> Bool { await MailMessageActions.delete(model: self) }
 
     func adoptFolderRoles(_ roles: [MailFolderRole: String]) {
         guard roles != folderRoles else { return }

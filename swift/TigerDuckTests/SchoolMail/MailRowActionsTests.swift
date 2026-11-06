@@ -220,7 +220,7 @@ struct MailRowActionsTests {
     @Test func withNoTrashFolderTheSwipeAsksBeforeDeletingForever() async throws {
         let h = await Self.harness(withTrash: false)
         await h.actions.trash(try h.row(3), in: h.list)
-        #expect(h.actions.deletingForever?.model.route.uid == 3)
+        #expect(h.actions.deletingForever?.route.uid == 3)
         #expect(await h.fake.calls.contains("createFolder \(Self.trash)"))
         #expect(!(await h.fake.calls).contains { $0.hasPrefix("copy") })
         #expect(await h.fake.folders["INBOX"]?.count == 3)

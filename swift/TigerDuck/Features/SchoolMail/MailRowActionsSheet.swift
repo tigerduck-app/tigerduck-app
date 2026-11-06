@@ -120,17 +120,17 @@ struct MailRowActionsPresenter: ViewModifier {
                     choose($0, on: row)
                 }
             }
-            .sheet(item: $actions.moving) { pending in
-                MailMoveSheet(viewModel: pending.model, otherFolders: list.otherFolders, onMove: { folder in
+            .sheet(item: $actions.moving) { model in
+                MailMoveSheet(viewModel: model, otherFolders: list.otherFolders, onMove: { folder in
                     actions.moving = nil
-                    Task { await actions.move(pending, to: folder, in: list) }
+                    Task { await actions.move(model, to: folder, in: list) }
                 }, onCancel: { actions.moving = nil })
             }
             .confirmationDialog(String(localized: "school_mail_delete_forever_title"), isPresented: Binding(
                 get: { actions.deletingForever != nil }, set: { if !$0 { actions.deletingForever = nil } }
-            ), titleVisibility: .visible, presenting: actions.deletingForever) { pending in
+            ), titleVisibility: .visible, presenting: actions.deletingForever) { model in
                 Button(String(localized: "school_mail_delete"), role: .destructive) {
-                    Task { await actions.deleteForever(pending, in: list) }
+                    Task { await actions.deleteForever(model, in: list) }
                 }
             } message: { _ in
                 Text(String(localized: "school_mail_delete_forever_message"))

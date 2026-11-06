@@ -3,40 +3,40 @@ import Foundation
 
 @MainActor
 enum MailMessageActions {
-    static func move(model: MailMessageViewModel, to target: String, for signIn: SignIn) async -> Bool {
+    static func move(model: MailMessageViewModel, to target: String) async -> Bool {
         let route = model.route
-        return await performMove(model: model, for: signIn) { client, owned in
+        return await performMove(model: model) { client, owned in
             try await MailMover.move(uids: [route.uid], from: route.folder, to: target, client: client, previouslyFlagged: owned)
         }
     }
 
-    static func prepareDelete(model: MailMessageViewModel, for signIn: SignIn) async -> Bool {
+    static func prepareDelete(model: MailMessageViewModel) async -> Bool {
         guard model.folderRoles[.trash] == nil, !model.isMoving else { return model.deleteIsPermanent }
         model.activity.isMoving = true
         defer { model.activity.isMoving = false }
         let known = model.folderRoles
-        let ensured = try? await model.session.use(for: signIn) { client in
+        let ensured = try? await model.session.use(for: model.signIn) { client in
             await MailFolderProvisioner.ensure(.trash, in: known, client: client)
         }
         if let ensured = ensured ?? nil { model.adoptFolderRoles(ensured.roles) }
         return model.deleteIsPermanent
     }
 
-    static func delete(model: MailMessageViewModel, for signIn: SignIn) async -> Bool {
+    static func delete(model: MailMessageViewModel) async -> Bool {
         if !model.deleteIsPermanent, let trash = model.folderRoles[.trash] {
-            return await move(model: model, to: trash, for: signIn)
+            return await move(model: model, to: trash)
         }
         let route = model.route
-        return await performMove(model: model, for: signIn) { client, owned in
+        return await performMove(model: model) { client, owned in
             try await MailMover.deletePermanently(uids: [route.uid], in: route.folder, client: client, previouslyFlagged: owned)
         }
     }
 
     private static func performMove(
-        model: MailMessageViewModel, for signIn: SignIn,
-        _ operation: @escaping (any MailClient, OwnedDeleted) async throws -> MailMoveResult
+        model: MailMessageViewModel, _ operation: @escaping (any MailClient, OwnedDeleted) async throws -> MailMoveResult
     ) async -> Bool {
-        guard !model.isMoving else { return false }
+        let signIn = model.signIn
+        guard !model.isMoving, signIn.isCurrent else { return false }
         let folder = model.route.folder
         guard let uidValidity = model.pageUIDValidity else {
             model.activity.actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
@@ -66,7 +66,7 @@ enum MailMessageActions {
 
     static func loadSource(model: MailMessageViewModel) async {
         model.activity.sourceLoadFailed = false
-        let signIn = await model.session.account.startingSignIn
+        let signIn = model.signIn
         let cache = model.stores.cache
         let folder = model.route.folder
         let uid = model.route.uid
@@ -78,7 +78,7 @@ enum MailMessageActions {
             return
         }
         do {
-            let data = try await model.session.use { client in
+            let data = try await model.session.use(for: signIn) { client in
                 try await client.rawSource(folder: folder, uid: uid, expectedUIDValidity: validity)
             }
             let text = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
@@ -102,7 +102,7 @@ enum MailMessageActions {
         let cache = model.stores.cache
         let wipeCount = cache.wipeCount
         do {
-            let data = try await model.session.use { client in
+            let data = try await model.session.use(for: model.signIn) { client in
                 try await client.attachment(folder: folder, uid: uid, part: part, expectedUIDValidity: validity)
             }
             let filename = MailAttachmentRisk.displayFilename(part.filename ?? "attachment")

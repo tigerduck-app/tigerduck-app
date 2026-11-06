@@ -355,6 +355,22 @@ struct MailMessageViewModelTests {
         #expect(!h.model.sourceLoadFailed)
     }
 
+    @Test(arguments: ["delete", "move", "read"])
+    func anActionTakenAfterTheSignInEndsChangesNothing(action: String) async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, seen: true))
+        await h.model.load()
+        let before = await h.fake.calls.count
+        h.account.endSignIn()
+        switch action {
+        case "delete": #expect(await h.model.delete() == false)
+        case "move": #expect(await h.model.move(to: Self.trash) == false)
+        default: await h.model.toggleSeen()
+        }
+        #expect(await h.fake.calls.count == before)
+        #expect(await h.fake.folders["INBOX"]?.count == 1)
+        #expect(h.model.actionError == nil)
+    }
+
     @Test func movingToTrashRemovesItFromTheList() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         var removed: [(String, UInt32)] = []
