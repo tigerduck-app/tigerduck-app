@@ -55,13 +55,15 @@ struct StaleWriteTests {
     func moodle() {
         let folder = Folder()
 
-        folder.cache.moodle.replaceMoodleCourseIdMap(["1151CS1001301": 7], for: endedTestSignIn)
+        folder.cache.moodle.replaceMoodleCourseIdMap(["1151CS1001301": 7], enrolled: [7, 900], for: endedTestSignIn)
         folder.cache.moodle.saveMoodleData(["forum"], fetchedAt: Date(), name: "forums-7", account: "B11300000",
                                            for: endedTestSignIn)
         #expect(folder.cache.moodle.loadMoodleCourseIdMap().isEmpty)
+        #expect(folder.cache.moodle.loadEnrolledMoodleCourseIds().isEmpty)
         #expect(folder.cache.moodle.loadMoodleData([String].self, name: "forums-7", account: "B11300000") == nil)
-        folder.cache.moodle.replaceMoodleCourseIdMap(["1151CS1001301": 7], for: testSignIn)
+        folder.cache.moodle.replaceMoodleCourseIdMap(["1151CS1001301": 7], enrolled: [7, 900], for: testSignIn)
         #expect(folder.cache.moodle.loadMoodleCourseIdMap() == ["1151CS1001301": 7])
+        #expect(folder.cache.moodle.loadEnrolledMoodleCourseIds() == [7, 900])
     }
 
     @Test("A class table imported for a sign-in that has ended is not kept")

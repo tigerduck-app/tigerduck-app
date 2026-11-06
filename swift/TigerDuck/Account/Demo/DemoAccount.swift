@@ -111,8 +111,10 @@ struct DemoAccount: AccountScoped {
         }
         let context = stores.moodle(fixture?.normalizedStudentId ?? "", signIn)
         let ids = moodle.courses.map { (SDCourse.normalizedMoodleId(semester + $0.courseNo), $0.moodleId) }
-        let kept = context.cache.loadMoodleCourseIdMap()
-        context.cache.replaceMoodleCourseIdMap(kept.merging(ids, uniquingKeysWith: { _, demo in demo }), for: signIn)
+        context.cache.replaceMoodleCourseIdMap(
+            context.cache.loadMoodleCourseIdMap().merging(ids, uniquingKeysWith: { _, demo in demo }),
+            enrolled: context.cache.loadEnrolledMoodleCourseIds().union(moodle.courses.map(\.moodleId)), for: signIn
+        )
     }
 
     private func importClassmates(of fixture: DemoFixture, for signIn: SignIn) {

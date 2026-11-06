@@ -9,15 +9,16 @@ final class MoodleCourseStore {
         MoodleForumService.forumsFunction, MoodleForumService.discussionsFunction,
     ]
 
-    let courseId: Int
     let forums: MoodleFeed<MoodleTermForums>
     let materials: MoodleFeed<MoodleCourseMaterials>
     let grades: MoodleFeed<MoodleCourseGrades>
     let members: MoodleFeed<MoodleMemberList>
     let summary: MoodleFeed<MoodleCourseSummary>
     let assignments: MoodleCourseAssignments
+    let memberCourses: MoodleMemberCourses
 
     private struct Source {
+        let courseId: Int
         let termCourseIds: [Int]
         let courseCodes: [String]
         let api: MoodleCourseAPI
@@ -29,6 +30,7 @@ final class MoodleCourseStore {
     @ObservationIgnored private let forumStore: MoodleCourseForums
     @ObservationIgnored private let memberPictures: MoodleMemberPictures
 
+    var courseId: Int { source.courseId }
     private var api: MoodleCourseAPI { source.api }
     private var context: MoodleCacheContext { source.context }
     private var downloads: MoodleFileDownloads { source.downloads }
@@ -39,12 +41,12 @@ final class MoodleCourseStore {
         courseCodes: [String] = [],
         context: MoodleCacheContext,
         api: MoodleCourseAPI? = nil,
-        downloads: MoodleFileDownloads? = nil
+        downloads: MoodleFileDownloads? = nil,
+        courses: CourseStore? = nil
     ) {
-        self.courseId = courseId
         let api = api ?? .serving(context.signIn)
         let source = Source(
-            termCourseIds: Array(Set(termCourseIds).union([courseId])).sorted(),
+            courseId: courseId, termCourseIds: Array(Set(termCourseIds).union([courseId])).sorted(),
             courseCodes: courseCodes, api: api, context: context, downloads: downloads ?? .shared
         )
         self.source = source
@@ -54,7 +56,13 @@ final class MoodleCourseStore {
             cacheName: "courses/\(courseId)/materials", ttl: MoodleRefreshInterval.materials, context: context
         )
         grades = MoodleFeed(cacheName: "courses/\(courseId)/grades", ttl: MoodleRefreshInterval.grades, context: context)
-        members = MoodleFeed(cacheName: "courses/\(courseId)/members", ttl: MoodleRefreshInterval.members, context: context)
+        let members = MoodleFeed<MoodleMemberList>(
+            cacheName: "courses/\(courseId)/members", ttl: MoodleRefreshInterval.members, context: context
+        )
+        self.members = members
+        memberCourses = MoodleMemberCourses(
+            courseId: courseId, members: members, api: api, context: context, classTable: courses ?? .shared
+        )
         summary = MoodleFeed(cacheName: "courses/\(courseId)/summary", ttl: MoodleRefreshInterval.summary, context: context)
         assignments = MoodleCourseAssignments(courseId: courseId, context: context, api: api)
         forumStore = MoodleCourseForums(

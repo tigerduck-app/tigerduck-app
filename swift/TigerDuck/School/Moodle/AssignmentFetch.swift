@@ -133,9 +133,8 @@ enum AssignmentFetch {
             let currentCourses = CourseStore.shared.loadCourses(semester: currentSemester)
 
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
-            let moodleIdMapForAssignments = AssignmentRecords.moodleCourseIdMap(moodleEnrolled)
             if !Task.isCancelled {
-                CourseLookup.replaceMoodleCourseIds(moodleIdMapForAssignments, for: signIn)
+                CourseLookup.replaceMoodleCourseIds(of: moodleEnrolled, for: signIn)
             }
 
             let localCourseNos = Set(currentCourses.map(\.courseNo)).union(

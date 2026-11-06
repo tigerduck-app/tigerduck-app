@@ -17,6 +17,7 @@ nonisolated struct MoodleCourseAPI: Sendable {
         MoodleMemberList(ownId: nil, members: [])
     }
     var picture: @Sendable (_ url: URL) async throws -> Data = { _ in Data() }
+    var sharedCourses: @Sendable (_ userId: Int) async throws -> [MoodleEnrolledCourse] = { _ in [] }
     var updatePicture: @Sendable (_ jpeg: Data, _ signIn: SignIn) async throws -> Void = { _, _ in
         throw CancellationError()
     }
@@ -87,6 +88,9 @@ nonisolated struct MoodleCourseAPI: Sendable {
                 let key = try await MoodleSiteInfoService.shared.privateAccessKey(token: token)
                 return try await MoodleCourseMembersService.picture(url, accessKey: key, token: token)
             }
+        },
+        sharedCourses: { userId in
+            try await MoodleWebserviceClient.withRenewingToken { try await MoodleEnrolledCoursesService.courses(of: userId, token: $0) }
         },
         updatePicture: { jpeg, signIn in
             try await updatePicture(jpeg, for: signIn)

@@ -12,19 +12,25 @@ final class MoodleFiles: AccountScoped {
     static func forgetAccount(in storage: AccountStorage) {
         let files = MoodleFiles(folders: storage.folders)
         storage.folders.persistentFiles.remove("moodle_course_id_map.json")
+        storage.folders.persistentFiles.remove("moodle_enrolled_course_ids.json")
         try? FileManager.default.removeItem(at: files.moodleDir)
         try? FileManager.default.removeItem(at: files.moodleFilesDir)
     }
 
     /// Moodle Mobile's deep-link router honors only `?id=N` redirects reliably (the web accepts
     /// `?idnumber=`, the in-app handler does not), so deep links look the numeric id up here.
-    func replaceMoodleCourseIdMap(_ map: [String: Int], for signIn: SignIn) {
+    func replaceMoodleCourseIdMap(_ map: [String: Int], enrolled: Set<Int>, for signIn: SignIn) {
         guard signIn.isCurrent else { return }
         folders.persistentFiles.save(map, to: "moodle_course_id_map.json")
+        folders.persistentFiles.save(enrolled.sorted(), to: "moodle_enrolled_course_ids.json")
     }
 
     func loadMoodleCourseIdMap() -> [String: Int] {
         folders.persistentFiles.load("moodle_course_id_map.json") ?? [:]
+    }
+
+    func loadEnrolledMoodleCourseIds() -> Set<Int> {
+        Set(folders.persistentFiles.load("moodle_enrolled_course_ids.json") ?? [Int]())
     }
 
     func lookupMoodleCourseId(idnumber: String) -> Int? {
