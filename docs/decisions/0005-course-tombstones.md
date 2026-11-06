@@ -26,7 +26,9 @@ with no rows for the term and a tombstone for every course it held.
   (`CourseRosterReconciler.isOwnReset`), and keeps that moment while the snapshot still shows
   such a tombstone.
 - A single-course delete of a course the school lists for the term binds its author like every
-  other device: the author hides it locally, and its roster uploads leave it out.
+  other device: the author hides it locally, its roster uploads leave it out, and the outbox
+  sends the delete with `kind=hide`, so the backend hides it even when another device's add has
+  just made its row `user_added`.
 - A single-course delete of a course added by hand on this device, which has no Moodle ID, is a
   removal: the author drops it without a local hide (`CourseFiles.deleteCourse`), and the outbox
   sends the delete of a course this device does not hide with `kind=remove`. The backend then
@@ -79,8 +81,14 @@ with no rows for the term and a tombstone for every course it held.
 - The backend takes every course an upload lists outside `adds` for the school's, and turns a
   `user_added` row it lists into a school row, which a delete with no kind then hides everywhere
   and a roster drops once a reset has cleared its add. So only the add's own upload and Use
-  Local's list a course added by hand, Use Local naming each in `adds` stamped after its term's
-  reset; a class table delete sends its delete alone.
+  Local's list a course added by hand. Use Local names in `adds` each course added by hand on
+  this device (no Moodle ID, and not listed by the school here), stamped after its term's reset,
+  and sends a merged copy as the school's. A class table delete sends its delete alone.
+- Use Local's term resets clear the backend's custom names, so Use Local sends the names, and
+  the colours, of every course this device holds again, hidden ones included. The backend holds
+  no row of a hidden course, so such an edit waits in the outbox until a course upload brings
+  the row back.
 - A hand-added course deleted before this rule keeps its local hide, since nothing recorded
-  which hides came from one. So does a course a `remove` tombstone hid before the reconcile told
-  the kinds apart.
+  which hides came from one, and so does a course a `remove` tombstone hid before the reconcile
+  told the kinds apart, until the snapshot lists the course again with no delete of it queued
+  here (`CourseRosterReconciler.unhideListedCourses`).
