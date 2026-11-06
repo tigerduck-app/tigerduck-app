@@ -19,7 +19,8 @@ struct MailSendHoldScreenTests {
         window.frame = CGRect(x: 0, y: 0, width: 375, height: 812)
         window.overrideUserInterfaceStyle = look == .dark ? .dark : .light
         if look == .largestText { window.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge }
-        window.rootViewController = UIHostingController(rootView: view.tint(AppPreferences().accentColor))
+        let still = view.tint(AppPreferences().accentColor).transaction { $0.disablesAnimations = true }
+        window.rootViewController = UIHostingController(rootView: still)
         window.isHidden = false
         return window
     }
@@ -109,9 +110,13 @@ struct MailSendHoldScreenTests {
             }
             let root = try #require(window.rootViewController?.view)
             let send = String(localized: "school_mail_send")
-            try await waitUntil { accessibilityElement(labeled: send, in: root) != nil }
+            // On iOS 26 the toolbar item's host view carries the label too, and only the button activates.
+            let sendButton = {
+                exposedAccessibilityElements(in: root).first { $0.accessibilityLabel == send && $0.accessibilityTraits.contains(.button) }
+            }
+            try await waitUntil { sendButton() != nil }
 
-            #expect(try #require(accessibilityElement(labeled: send, in: root)).accessibilityActivate())
+            #expect(try #require(sendButton()).accessibilityActivate())
             try await waitUntil { rig.hold.held != nil }
             #expect(rig.hold.held?.model === model)
             try await Task.sleep(for: .milliseconds(500))
