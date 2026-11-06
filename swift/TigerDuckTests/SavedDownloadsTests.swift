@@ -8,9 +8,14 @@ import Testing
 struct SavedDownloadsTests {
     /// Counts the files the store hashes, and fails each read while `failing` is set.
     final class Reads: Sendable {
-        private let state = OSAllocatedUnfairLock(initialState: (count: 0, failing: false, valuesFailing: false))
+        private let state = OSAllocatedUnfairLock(initialState: (count: 0, failing: false, valuesFailing: false, held: false, holding: false))
 
         var count: Int { state.withLock { $0.count } }
+
+        /// True once a read has started and is waiting for `hold(false)`.
+        var isHolding: Bool { state.withLock { $0.holding } }
+
+        func hold(_ held: Bool) { state.withLock { $0.held = held } }
 
         func fail(_ failing: Bool) { state.withLock { $0.failing = failing } }
 
@@ -26,6 +31,10 @@ struct SavedDownloadsTests {
                 state.count += 1
                 if state.failing { throw CocoaError(.fileReadUnknown) }
             }
+            while state.withLock({ state in
+                state.holding = state.held
+                return state.held
+            }) { Thread.sleep(forTimeInterval: 0.005) }
             return try SavedDownloads.sha256(of: file)
         }
     }

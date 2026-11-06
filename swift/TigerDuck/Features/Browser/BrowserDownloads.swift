@@ -6,7 +6,7 @@ import WebKit
 @Observable
 final class BrowserDownloads {
     struct Item: Identifiable, Equatable {
-        enum State: Equatable { case running, failed }
+        enum State: Equatable { case running, saving, failed }
 
         let id = UUID()
         let name: String
@@ -14,8 +14,7 @@ final class BrowserDownloads {
         var received: Int64 = 0
         var expected: Int64?
         var state = State.running
-        /// A download that arrived but could not be saved, which Retry saves again.
-        var arrived: URL?
+        var unsavedFile: URL?
     }
 
     private(set) var items: [Item] = []
@@ -46,7 +45,7 @@ final class BrowserDownloads {
     }
 
     var runningShare: Double? {
-        let running = items.filter { $0.state == .running }
+        let running = items.filter { $0.state != .failed }
         guard !running.isEmpty else { return nil }
         let known = running.filter { $0.expected != nil }
         let expected = known.reduce(0) { $0 + ($1.expected ?? 0) }
@@ -75,7 +74,9 @@ final class BrowserDownloads {
 
     func finish(_ id: UUID, file: URL) async -> URL? {
         cancels[id] = nil
-        guard let name = item(id)?.name else { return nil }
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return nil }
+        items[index].state = .saving
+        let name = items[index].name
         do {
             let entry = try await store.save(file, as: name)
             items.removeAll { $0.id == id }
@@ -84,14 +85,13 @@ final class BrowserDownloads {
             return store.url(of: entry)
         } catch {
             AppLogger.breadcrumb("browser download not saved: \(error)", category: "browser")
-            if fail(id), let index = items.firstIndex(where: { $0.id == id }) { items[index].arrived = file }
+            if fail(id), let index = items.firstIndex(where: { $0.id == id }) { items[index].unsavedFile = file }
             return nil
         }
     }
 
     func saveAgain(_ id: UUID) async -> URL? {
-        guard let index = items.firstIndex(where: { $0.id == id }), let file = items[index].arrived else { return nil }
-        items[index].state = .running
+        guard let file = item(id)?.unsavedFile else { return nil }
         return await finish(id, file: file)
     }
 
@@ -104,6 +104,7 @@ final class BrowserDownloads {
     }
 
     func cancel(_ id: UUID) {
+        guard item(id)?.state == .running else { return }
         cancels.removeValue(forKey: id)?()
         items.removeAll { $0.id == id }
     }
@@ -112,7 +113,6 @@ final class BrowserDownloads {
         items.removeAll { $0.state == .failed && $0.request == request }
     }
 
-    /// A ledger that cannot be read right now leaves the list as it was.
     func reload() async {
         if let entries = try? await store.entries() { saved = entries }
     }

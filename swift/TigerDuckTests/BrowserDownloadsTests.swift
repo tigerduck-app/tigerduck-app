@@ -111,6 +111,28 @@ struct BrowserDownloadsTests {
         #expect(try String(contentsOf: kept, encoding: .utf8) == "hello")
     }
 
+    @Test func aDownloadBeingSavedCannotBeCancelledAndLandsOnce() async throws {
+        let place = SavedDownloadsTests.Place()
+        defer { place.remove() }
+        let downloads = Self.downloads(place)
+        var cancelled = false
+        let id = downloads.start("講義.pdf", request: Self.request) { cancelled = true }
+        let file = try place.download("hello")
+        place.reads.hold(true)
+
+        let saving = Task { await downloads.finish(id, file: file) }
+        try await waitUntil { place.reads.isHolding }
+        downloads.cancel(id)
+
+        #expect(downloads.item(id)?.state == .saving)
+        #expect(downloads.runningShare != nil)
+        #expect(!cancelled)
+        place.reads.hold(false)
+        #expect(await saving.value != nil)
+        #expect(downloads.items.isEmpty)
+        #expect(downloads.saved.map(\.name) == ["講義.pdf"])
+    }
+
     @Test func aCancelStopsTheDownloadAndItsFailureIsNotShown() {
         let place = SavedDownloadsTests.Place()
         defer { place.remove() }

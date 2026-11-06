@@ -7,6 +7,7 @@ struct BrowserDownloadsView: View {
     @State private var confirmsClear = false
     @State private var showsPicker = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
 
     private var downloads: BrowserDownloads { page.downloads }
 
@@ -22,7 +23,7 @@ struct BrowserDownloadsView: View {
         List {
             ForEach(downloads.items) { item in
                 switch item.state {
-                case .running: running(item)
+                case .running, .saving: running(item)
                 case .failed: failed(item)
                 }
             }
@@ -46,8 +47,14 @@ struct BrowserDownloadsView: View {
             Button(String(localized: "action_delete"), role: .destructive) { Task { await downloads.clear() } }
         }
         .task { await downloads.reload() }
+        // The student may rename or delete files in the Files app while it is open.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await downloads.reload() } }
+        }
         .moodleFilePresentation(files)
-        .sheet(isPresented: $showsPicker) { FilesFolderPicker(folder: downloads.store.folder).ignoresSafeArea() }
+        .sheet(isPresented: $showsPicker, onDismiss: { Task { await downloads.reload() } }) {
+            FilesFolderPicker(folder: downloads.store.folder).ignoresSafeArea()
+        }
     }
 
     private func running(_ item: BrowserDownloads.Item) -> some View {
@@ -60,7 +67,9 @@ struct BrowserDownloadsView: View {
                 }
                 Text(String(format: String(localized: "browser_download_progress"), amount))
             }
-            accessory("xmark.circle", String(localized: "browser_download_cancel")) { downloads.cancel(item.id) }
+            if item.state == .running {
+                accessory("xmark.circle", String(localized: "browser_download_cancel")) { downloads.cancel(item.id) }
+            }
         }
     }
 
