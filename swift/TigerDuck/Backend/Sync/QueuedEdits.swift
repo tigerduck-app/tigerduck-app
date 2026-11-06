@@ -33,6 +33,19 @@ final class QueuedEdits {
         lastColorEdit[identity, default: 0]
     }
 
+    var marksAndIgnoresEnqueuing: Set<String> {
+        Set(overridesEnqueuing.values.compactMap { op -> String? in
+            switch op {
+            case .assignmentOverride(_, let moodleAssignmentId, _, _):
+                return String(moodleAssignmentId)
+            case .courseIgnore(let semester, let courseNo, _, _, .some, _):
+                return CourseTombstone.key(semester: semester, courseNo: courseNo)
+            case .courseIgnore, .courseOverride, .courseDelete, .courseAdd:
+                return nil
+            }
+        })
+    }
+
     func pendingAssignmentOverrideIds() async -> Set<String> {
         var ids = Set<String>()
         for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
@@ -193,8 +206,8 @@ final class QueuedEdits {
 
     func hasNewerEdit(than op: SyncOp) async -> Bool {
         let key = op.dedupKey
-        let queued = await outbox.snapshot().map(\.op) + outbox.parkedSnapshot().map(\.op)
-            + overridesEnqueuing.values
-        return queued.contains { $0.dedupKey == key && $0.stamp > op.stamp }
+        let parked = await outbox.parkedSnapshot().map(\.op)
+        let queuedThenStillEnqueuing = await outbox.snapshot().map(\.op) + overridesEnqueuing.values
+        return (parked + queuedThenStillEnqueuing).contains { $0.dedupKey == key && $0.stamp > op.stamp }
     }
 }

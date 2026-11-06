@@ -192,11 +192,9 @@ struct CourseIgnoresReconciler: CategoryReconciler {
             CourseLookup.moodleCourseId(idnumber: $0)
         }
         for (course, moodleId, moodleCourseId) in missingIds {
-            Task { [coordinator = app.cloudSyncCoordinator] in
-                await coordinator.enqueueCourseIgnore(
-                    semester: course.semester, courseNo: course.courseNo, moodleId: moodleId,
-                    moodleCourseId: moodleCourseId, ignore: nil, for: signIn)
-            }
+            app.cloudSyncCoordinator.enqueueCourseIgnore(
+                semester: course.semester, courseNo: course.courseNo, moodleId: moodleId,
+                moodleCourseId: moodleCourseId, ignore: nil, for: signIn)
         }
         if !missingIds.isEmpty { app.cloudSyncCoordinator.scheduleTick(after: 1) }
 

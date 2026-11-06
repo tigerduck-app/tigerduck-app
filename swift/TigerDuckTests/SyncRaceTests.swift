@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -150,6 +151,61 @@ struct SyncRaceTests {
 
         #expect(cache.assignments.loadArchivedAssignmentIds() == ["42"])
         #expect(cache.assignments.loadLocallyCompletedAssignmentIds().isEmpty)
+    }
+
+    @Test("An edit on its way into the outbox is newer than one whose reply is back, though it lands during the check")
+    func anEditOnItsWayInIsNewerThanTheReply() async {
+        let edits = QueuedEdits(outbox: SyncOutbox(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("SyncRaceTests-\(UUID().uuidString)", isDirectory: true)))
+        let sent = SyncOp.assignmentOverride(
+            moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "archived", stamp: Date(timeIntervalSince1970: 1_790_000_000)
+        )
+        let tapped = SyncOp.assignmentOverride(
+            moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "none", stamp: Date(timeIntervalSince1970: 1_790_000_001)
+        )
+
+        let enqueuing = edits.enqueueOverride(tapped, for: testSignIn)
+
+        #expect(await edits.hasNewerEdit(than: sent))
+        await enqueuing.value
+    }
+
+    @Test("A mark or ignore setting is unsent from the tap on, before its task puts it in the outbox")
+    func aTappedMarkOrIgnoreIsUnsentAtOnce() async {
+        await withExclusiveRealDefaults {
+            let (syncWasOn, marksWereOn) = (Defaults[.cloudSyncEnabled], Defaults[.syncAssignments])
+            defer {
+                Defaults[.cloudSyncEnabled, for: testSignIn] = syncWasOn
+                Defaults[.syncAssignments] = marksWereOn
+            }
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
+            Defaults[.syncAssignments] = true
+            let taps: [@MainActor (EditSender) -> Task<Void, Never>?] = [
+                { $0.syncAssignmentOverride(moodleId: "42", status: "archived", for: testSignIn) },
+                {
+                    $0.syncCourseIgnore(
+                        semester: "1151", courseNo: "CS1", moodleIdNumber: "1151CS1", ignore: true, for: testSignIn
+                    )
+                },
+            ]
+            for tap in taps {
+                let push = Self.push(SettingsAPIStub.uniqueBaseURL())
+                let coordinator = CloudSyncCoordinator(
+                    pushCoordinator: push,
+                    outbox: SyncOutbox(directory: Self.cache().persistentDir.appendingPathComponent("outbox", isDirectory: true)),
+                    isEnabled: true, account: AccountSession(signIns: testSignIns)
+                )
+                let edits = EditSender(
+                    coordinator: coordinator, push: push, poller: RevisionPoller(), localEdits: LocalEdits(),
+                    account: AccountSession(signIns: testSignIns)
+                )
+
+                let enqueuing = tap(edits)
+
+                #expect(await coordinator.holdsUnsentEdits())
+                await enqueuing?.value
+            }
+        }
     }
 
     @Test(

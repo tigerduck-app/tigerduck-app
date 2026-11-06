@@ -123,16 +123,18 @@ final class CloudSyncCoordinator {
             customName: customName, colorHex: nil, locale: locale, stamp: Date()), for: signIn)
     }
 
+    @discardableResult
     func enqueueAssignmentOverride(
         moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String, for signIn: SignIn
-    ) async {
-        guard isOnOrTurningOn else { return }
-        let op = SyncOp.assignmentOverride(
+    ) -> Task<Void, Never>? {
+        guard isOnOrTurningOn else { return nil }
+        return edits.enqueueOverride(.assignmentOverride(
             moodleCourseId: moodleCourseId,
             moodleAssignmentId: moodleAssignmentId,
-            localStatus: localStatus, stamp: Date())
-        await outbox.enqueue(op, for: signIn)
+            localStatus: localStatus, stamp: Date()), for: signIn)
     }
+
+    var marksAndIgnoresEnqueuing: Set<String> { edits.marksAndIgnoresEnqueuing }
 
     func pendingAssignmentOverrideIds() async -> Set<String> { await edits.pendingAssignmentOverrideIds() }
 
@@ -157,11 +159,12 @@ final class CloudSyncCoordinator {
         await drain.awaitSending()
     }
 
+    @discardableResult
     func enqueueCourseIgnore(
         semester: String, courseNo: String, moodleId: String, moodleCourseId: Int?, ignore: Bool?, for signIn: SignIn
-    ) async {
-        guard isOnOrTurningOn else { return }
-        await outbox.enqueue(.courseIgnore(
+    ) -> Task<Void, Never>? {
+        guard isOnOrTurningOn else { return nil }
+        return edits.enqueueOverride(.courseIgnore(
             semester: semester, courseNo: courseNo, moodleId: moodleId,
             moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()), for: signIn)
     }

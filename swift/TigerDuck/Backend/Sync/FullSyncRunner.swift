@@ -161,7 +161,7 @@ final class FullSyncRunner {
     private func read(for signIn: SignIn) async throws -> FullSyncPass {
         let coordinator = app.cloudSyncCoordinator
         let preFetchQueued = await coordinator.pendingAssignmentOverrideIds()
-            .union(coordinator.pendingCourseIgnoreKeys()).union(app.localEdits.marksAndIgnoresEnqueuing)
+            .union(coordinator.pendingCourseIgnoreKeys()).union(coordinator.marksAndIgnoresEnqueuing)
         let preFetchCourseOverrides = await coordinator.pendingCourseOverrides()
         let editGenerationAtFetch = app.localEdits.overrideEditGeneration
         let fetchedAt = Date()
@@ -209,7 +209,7 @@ final class FullSyncRunner {
             json: json, signIn: signIn, fetchedAt: fetchedAt, policy: policy, marks: marks,
             courseOverrides: courseOverrides, serverIgnoredCourses: serverIgnoredCourses,
             localArchived: localArchived, localCompleted: localCompleted,
-            queuedMarkAndIgnoreKeys: preFetchQueued.union(app.localEdits.marksAndIgnoresEnqueuing).union(inFlight),
+            queuedMarkAndIgnoreKeys: preFetchQueued.union(coordinator.marksAndIgnoresEnqueuing).union(inFlight),
             courseDeletes: settled.deletes, courseAdds: settled.adds,
             heldCourseOverrides: coordinator.courseOverridesToHold(since: preFetchCourseOverrides),
             marksLeftFor: marksLeftFor, taken: policy.categoriesTaken(marksLeftFor: marksLeftFor),

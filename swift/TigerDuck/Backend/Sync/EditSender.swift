@@ -27,15 +27,9 @@ final class EditSender {
         AppLogger.sync.debug("override enqueue: \(moodleId, privacy: .private) → \(status, privacy: .public)")
         guard let moodleAssignmentId = Int(moodleId) else { return nil }
         localEdits.overrideEditGeneration &+= 1
-        localEdits.marksAndIgnoresEnqueuing.insert(moodleId)
-        let queued = Task { [weak self] in
-            guard let self else { return }
-            await coordinator.enqueueAssignmentOverride(
-                moodleCourseId: 0,
-                moodleAssignmentId: moodleAssignmentId,
-                localStatus: status, for: signIn)
-            localEdits.marksAndIgnoresEnqueuing.remove(moodleId)
-        }
+        let queued = coordinator.enqueueAssignmentOverride(
+            moodleCourseId: 0, moodleAssignmentId: moodleAssignmentId, localStatus: status, for: signIn
+        )
         coordinator.scheduleTick(after: 1)
         poller.noteActivity()
         return queued
@@ -48,16 +42,10 @@ final class EditSender {
         guard Defaults[.cloudSyncEnabled] else { return nil }
         let moodleId = moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 } ?? "\(semester)\(courseNo)"
         let moodleCourseId = CourseLookup.moodleCourseId(idnumber: moodleId)
-        let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
         localEdits.overrideEditGeneration &+= 1
-        localEdits.marksAndIgnoresEnqueuing.insert(key)
-        let queued = Task { [weak self] in
-            guard let self else { return }
-            await coordinator.enqueueCourseIgnore(
-                semester: semester, courseNo: courseNo, moodleId: moodleId,
-                moodleCourseId: moodleCourseId, ignore: ignore, for: signIn)
-            localEdits.marksAndIgnoresEnqueuing.remove(key)
-        }
+        let queued = coordinator.enqueueCourseIgnore(
+            semester: semester, courseNo: courseNo, moodleId: moodleId,
+            moodleCourseId: moodleCourseId, ignore: ignore, for: signIn)
         coordinator.scheduleTick(after: 1)
         poller.noteActivity()
         return queued
