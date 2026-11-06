@@ -13,7 +13,7 @@ struct NextClassDayCaptionTests {
 
     private func entry(next: WatchCourse?, day: NextClassResolver.Day, languageTag: String? = nil) -> NextClassEntry {
         NextClassEntry(
-            date: Date(), current: nil, next: next, nextDay: day,
+            date: Date(), current: nil, next: next, nextDay: day, currentSpan: nil,
             accentHex: "#FF8800", languageTag: languageTag, relevance: nil
         )
     }
@@ -54,9 +54,9 @@ struct NextClassDayCaptionTests {
     }
 
     @Test func inline_captionsTheStartTime() {
-        #expect(InlineView(entry: entry(next: tuesday, day: .tomorrow)).text == "B · \(tomorrow("08:10"))")
-        #expect(InlineView(entry: entry(next: tuesday, day: .later(weekday: 2))).text == "B · \(tue) 08:10")
-        #expect(InlineView(entry: entry(next: tuesday, day: .today)).text == "B · 08:10")
+        #expect(InlineView(entry: entry(next: tuesday, day: .tomorrow)).text == "TR-313 · \(tomorrow("08:10"))")
+        #expect(InlineView(entry: entry(next: tuesday, day: .later(weekday: 2))).text == "TR-313 · \(tue) 08:10")
+        #expect(InlineView(entry: entry(next: tuesday, day: .today)).text == "TR-313 · 08:10")
     }
 
     @Test func corner_captionsTheStartTime() {
@@ -83,7 +83,7 @@ struct NextClassDayCaptionTests {
         let tomorrow = String(format: try localizedValue("widget_tomorrow_time", in: "zh-Hant"), "08:10")
         let later = entry(next: tuesday, day: .later(weekday: 2), languageTag: "zh-Hant")
         #expect(RectangularView(entry: later).subhead == "\(tue) 08:10–09:00")
-        #expect(InlineView(entry: later).text == "B · \(tue) 08:10")
+        #expect(InlineView(entry: later).text == "TR-313 · \(tue) 08:10")
         #expect(CornerView(entry: entry(next: tuesday, day: .tomorrow, languageTag: "zh-Hant")).timeText == tomorrow)
         let none = entry(next: nil, day: .today, languageTag: "zh-Hant")
         #expect(InlineView(entry: none).text == (try localizedValue("watch_no_upcoming_classes", in: "zh-Hant")))
@@ -91,7 +91,7 @@ struct NextClassDayCaptionTests {
 
     @Test func captionKeysResolveInTheWatchAppAndTheComplication() throws {
         let keys = [
-            "watch_next", "widget_tomorrow", "widget_tomorrow_time",
+            "watch_next", "widget_tomorrow", "widget_tomorrow_time", "a11y_time_range",
             "weekday_mon_caption", "weekday_tue_caption", "weekday_wed_caption", "weekday_thu_caption",
             "weekday_fri_caption", "weekday_sat_caption", "weekday_sun_caption",
         ]
