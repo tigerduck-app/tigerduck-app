@@ -85,6 +85,7 @@ jobs:
               TigerDuckTests/MoodleCourseMembersTests/onlyRowsOnScreenAskForTheirPictures()
               TigerDuckTests/MoodleCourseSearchPageTests
               TigerDuckTests/MoodleMaterialsWeekPageTests
+              TigerDuckTests/MoodleMemberCommonCoursesScreenTests
               TigerDuckTests/MoodleNotificationSettingsScreenTests
               TigerDuckTests/MoodleOwnProfileTests/doneUploadsOnce()
               TigerDuckTests/MoodleOwnProfileTests/theCameraButtonFollowsTheSite()

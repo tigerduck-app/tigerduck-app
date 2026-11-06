@@ -146,7 +146,7 @@ enum AssignmentRecords {
         return freshAssignments
     }
 
-    private static func courseName(from fullname: String) -> String {
+    static func courseName(from fullname: String) -> String {
         let parts = fullname.components(separatedBy: " ")
         guard parts.count >= 2 else { return fullname }
 

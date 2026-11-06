@@ -30,6 +30,7 @@ struct MoodleMemberView: View {
     private var isOwn: Bool { member.id == store.members.value?.ownId }
 
     var body: some View {
+        let shared = store.memberCourses.feed(of: member)
         ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 #if os(iOS)
@@ -50,7 +51,8 @@ struct MoodleMemberView: View {
                     isOpeningPicture: isOpeningPicture,
                     openPicture: openPicture,
                     changePicture: changePicture,
-                    isUploadingPicture: isUploadingPicture
+                    isUploadingPicture: isUploadingPicture,
+                    commonCourses: store.memberCourses.terms(with: member)
                 )
                 .task(id: shown.pictureURL) { await store.loadPicture(of: shown) }
             }
@@ -60,6 +62,7 @@ struct MoodleMemberView: View {
         }
         .background(Color.backgroundPrimary)
         .moodleArticleChrome(page: .profile(userId: member.id, courseId: store.courseId))
+        .moodleAutoRefresh(every: shared.ttl, fetchedAt: { shared.fetchedAt }) { await store.memberCourses.refresh(with: member) }
         .quickLookPreview($picturePreview)
         #if os(iOS)
         .overlay(alignment: .bottomTrailing) {
@@ -199,6 +202,7 @@ struct MoodleMemberProfile: View {
     /// on a site that lists `core_user_update_picture`.
     var changePicture: (() -> Void)? = nil
     var isUploadingPicture = false
+    var commonCourses: [MoodleCommonTerm] = []
 
     private static let avatarSize: CGFloat = 88
     private static let badgeSize: CGFloat = 28
@@ -219,6 +223,9 @@ struct MoodleMemberProfile: View {
             }
             if !member.interests.isEmpty {
                 interests
+            }
+            if !commonCourses.isEmpty {
+                MoodleMemberCommonCourses(terms: commonCourses, policy: policy)
             }
         }
         .frame(maxWidth: .infinity)
