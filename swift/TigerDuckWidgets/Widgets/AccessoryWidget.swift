@@ -63,6 +63,7 @@ struct AccessoryWidgetView: View {
         .widgetURL(URL(string: "tigerduck://classtable"))
         .widgetAccentable(true)
         .containerBackground(.clear, for: .widget)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 

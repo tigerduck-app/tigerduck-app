@@ -32,7 +32,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 | Courses deleted in the last two minutes, which a full sync keeps hidden | `LocalEdits.recentCourseDeletions` holds them for one sign-in of the school `AccountSession` (`SignInBound`) |
 | Uploads, outbox and pending document pushes | `PushCoordinator.forgetUploads()`, `CloudSyncCoordinator.settleForSignOut()` |
 | Feature view models (scores, class table, empty classroom, calendar, information system, Moodle course pages) | they reload when the school `AccountSession`'s ticket changes and when `CourseStore` or `AssignmentStore` changes, which the sign-out notes |
-| Widgets and the Watch | `DeviceSurfaceSyncer` rebuilds them from the cleared caches when the stores and the sign-in state change |
+| Widgets and the Watch | `DeviceSurfaceSyncer` rebuilds them from the cleared caches when the stores and the sign-in state change; the widgets' App Group keys are `Widget-snapshot-v1` and `Widget-people-v1`, the added class tables, which an empty list removes |
 | Live Activities | `LiveActivityCoordinator.endAll()` in the sign-out calls |
 | The backend's device registration | the unregister in the sign-out calls, sent with the kept session until it lands |
 | SwiftData | holds nothing: the models are value types the caches persist |

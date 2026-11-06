@@ -25,11 +25,10 @@ struct WeekProvider: AppIntentTimelineProvider {
         let snap = WidgetSnapshotStore().readSnapshot(of: configuration.personID) ?? Self.emptySnapshot
         let now = AppClock.now()
         let appDates = [now] + WidgetDayLayout.ticks(snapshot: snap, after: now)
-        let appMidnight = TaipeiTime.calendar.startOfDay(for: now.addingTimeInterval(86_400))
         // WidgetKit interprets `.after(...)` against real wall-clock time,
         // so translate the fake-clock midnight to the real instant it maps
         // to. Identity when no debug override is active.
-        let midnight = AppClock.realTime(forApp: appMidnight)
+        let midnight = AppClock.realTime(forApp: WidgetTimelineDerivation.nextMidnight(after: now))
         return Timeline(
             entries: appDates.map { WeekEntry(date: AppClock.realTime(forApp: $0), appNow: $0, snapshot: snap) },
             policy: .after(midnight)
