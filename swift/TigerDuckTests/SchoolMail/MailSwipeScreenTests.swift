@@ -35,7 +35,7 @@ struct MailSwipeScreenTests {
                                      warmDelay: { try? await Task.sleep(for: .seconds(86_400)) },
                                      catchUpDelay: { try? await Task.sleep(for: .seconds(86_400)) })
         await list.load()
-        await list.background.waitForFlagStorage()
+        await list.background.flagStorage.wait()
         return (list, MailRowActions(prefs: InMemoryMailPreferences(), notifier: MailNotifier(center: RecordingNotificationCenter())))
     }
 

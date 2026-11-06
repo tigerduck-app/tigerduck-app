@@ -1204,7 +1204,7 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.rows).last == "收1")
 
         last = try #require(h.model.rows.last)
-        await h.model.background.waitForFlagStorage()
+        await h.model.background.flagStorage.wait()
         let before = await h.fake.calls.count
         await h.model.loadMoreIfNeeded(after: last)
         #expect(await h.fake.calls.count == before)

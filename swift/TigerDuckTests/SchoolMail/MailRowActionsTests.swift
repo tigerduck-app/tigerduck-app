@@ -43,7 +43,7 @@ struct MailRowActionsTests {
         let actions = MailRowActions(prefs: InMemoryMailPreferences(), notifier: MailNotifier(center: RecordingNotificationCenter()))
         if loads {
             await list.load()
-            await list.background.waitForFlagStorage()
+            await list.background.flagStorage.wait()
         }
         return Harness(list: list, actions: actions, fake: fake, cache: cache, account: account)
     }
@@ -57,7 +57,7 @@ struct MailRowActionsTests {
         let h = await Self.harness()
         #expect(h.list.canFlag("INBOX"))
         await h.list.load()
-        await h.list.background.waitForFlagStorage()
+        await h.list.background.flagStorage.wait()
         #expect(await h.fake.calls.filter { $0 == "storesFlagged INBOX" }.count == 1)
     }
 
@@ -75,7 +75,7 @@ struct MailRowActionsTests {
         h.account.endSignIn()
         await h.fake.release("storesFlagged")
         await loading.value
-        await h.list.background.waitForFlagStorage()
+        await h.list.background.flagStorage.wait()
         #expect(!h.list.canFlag("INBOX"))
     }
 
@@ -90,6 +90,21 @@ struct MailRowActionsTests {
         await loading.value
     }
 
+    @Test(arguments: [false, true])
+    func theNextAccountChecksItsFoldersWhileTheLastAccountsCheckIsHeld(signsOut: Bool) async throws {
+        let h = await Self.harness(loads: false)
+        await h.fake.hold("storesFlagged")
+        await h.list.load()
+        await h.fake.waitForArrival("storesFlagged")
+        h.account.endSignIn()
+        if signsOut { h.list.resetForAccountChange() }
+        await h.list.load()
+        await h.fake.release("storesFlagged")
+        await h.list.background.flagStorage.wait()
+        #expect(h.list.canFlag("INBOX"))
+        #expect(await h.fake.calls.filter { $0 == "storesFlagged INBOX" }.count == 2)
+    }
+
     @Test func aFolderOpenedWhileTheFlagCheckRunsIsCheckedToo() async throws {
         let h = await Self.harness(loads: false)
         await h.fake.holdNext("storesFlagged")
@@ -98,7 +113,7 @@ struct MailRowActionsTests {
         #expect(!h.list.targets.contains(Self.trash))
         await h.list.select(.real(Self.trash))
         await h.fake.release("storesFlagged")
-        await h.list.background.waitForFlagStorage()
+        await h.list.background.flagStorage.wait()
         #expect(h.list.canFlag(Self.trash))
         #expect(await h.fake.calls.contains("storesFlagged \(Self.trash)"))
     }

@@ -58,7 +58,7 @@ enum MailListLoader {
             list.status.serverStatus = .ok
             list.status.loadState = .loaded
             list.background.startIndexIfLoaded()
-            list.background.learnFlagStorage(for: signIn)
+            list.background.flagStorage.start(for: signIn)
         } catch {
             guard list.isCurrent(selection, signIn) else { return }
             list.status.serverStatus = .failed
