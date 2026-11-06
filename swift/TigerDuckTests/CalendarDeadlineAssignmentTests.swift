@@ -144,6 +144,8 @@ struct CalendarDeadlineAssignmentTests {
 struct CalendarDayListScreenTests {
     private static let due = TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 11, day: 10, hour: 23, minute: 59))!
     private static let longTitle = "Lab 4: HTTP/1.1 server with persistent connections and chunked transfer encoding"
+    private static let largest = ClubScreensTests.Look(style: .light, textSize: .accessibilityExtraExtraExtraLarge)
+    static let looks = ClubScreensTests.looks + [ClubScreensTests.Look(style: .dark, textSize: .accessibilityExtraExtraExtraLarge)]
 
     private static let assignment = SDAssignment(
         assignmentId: "5101", courseNo: "CS3105301", courseName: "Computer Networks", title: longTitle, dueDate: due
@@ -175,7 +177,7 @@ struct CalendarDayListScreenTests {
     }
 
     @Test("only a deadline row with its assignment is a button, kept in the page, and opens that assignment",
-          arguments: ClubScreensTests.looks)
+          arguments: looks)
     func deadlineRowOpensItsAssignment(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
             let opened = Opened()
@@ -202,6 +204,32 @@ struct CalendarDayListScreenTests {
 
             _ = deadline.accessibilityActivate()
             #expect(opened.ids == ["5101"])
+        }
+    }
+
+    @Test("at the largest text size no text of a calendar row is squeezed into a narrow column", arguments: [true, false])
+    func noTextSqueezedAtTheLargestSize(deadline: Bool) async throws {
+        try await withAccessibilityAutomation {
+            let event = deadline
+                ? AssignmentRecords.moodleCalendarEvent(Self.assignment)
+                : SDCalendarEvent(
+                    eventId: "school-evaluation", title: "Course evaluation survey opens for every undergraduate course",
+                    date: TaipeiTime.calendar.startOfDay(for: Self.due), source: .school
+                )
+            let row = EventRowView(event: event, showsDisclosure: deadline).padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            let window = try ClubScreensTests.show(row, look: Self.largest, height: 2400)
+            defer { window.isHidden = true }
+            let texts = { @MainActor in
+                exposedAccessibilityElements(in: window).filter { !($0.accessibilityLabel ?? "").isEmpty }
+            }
+            try await waitUntil { texts().contains { $0.accessibilityLabel == event.title } }
+            try await Task.sleep(for: .milliseconds(400))
+
+            for text in texts() {
+                let frame = text.accessibilityFrame
+                #expect(frame.height <= 4 * frame.width, "\(text.accessibilityLabel ?? ""): \(frame)")
+                #expect(frame.minX >= 0 && frame.maxX <= window.bounds.maxX + 0.5, "\(text.accessibilityLabel ?? ""): \(frame)")
+            }
         }
     }
 

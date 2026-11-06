@@ -12,9 +12,7 @@ struct UpcomingAssignmentRow: View {
     var body: some View {
         let status = assignment.status(now: now)
         let stacked = dynamicTypeSize.isAccessibilitySize
-        let layout = stacked
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
-            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
+        let layout = dynamicTypeSize.rowLayout
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             layout {
                 VStack(alignment: .leading, spacing: 2) {
