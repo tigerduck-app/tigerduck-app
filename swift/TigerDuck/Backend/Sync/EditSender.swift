@@ -100,7 +100,7 @@ final class EditSender {
     }
 
     func addCourses(_ serverKeys: [String], semester: String, for signIn: SignIn) {
-        let addedAt = Date()
+        let addedAt = coordinator.clock.stamp()
         Task { await coordinator.discardCourseDeletes(courseKeys: Set(serverKeys), madeBeforeAction: addedAt) }
         guard SyncPolicy.current.uploadsCourses else { return }
         let prefix = CourseTombstone.serverKey(semester: semester, courseNo: "")
@@ -111,10 +111,9 @@ final class EditSender {
 
     func deleteBackendCourse(courseNo: String, semester: String, for signIn: SignIn) {
         guard Defaults[.cloudSyncEnabled] else { return }
-        let hiddenAt = Date()
-        localEdits.setRecentCourseDeletions(localEdits.recentCourseDeletions.merging([courseNo: hiddenAt]) { $1 }, for: signIn)
+        localEdits.setRecentCourseDeletions(localEdits.recentCourseDeletions.merging([courseNo: Date()]) { $1 }, for: signIn)
         poller.noteActivity()
-        Task { await coordinator.deleteCourse(semester: semester, courseNo: courseNo, at: hiddenAt, for: signIn) }
+        Task { await coordinator.deleteCourse(semester: semester, courseNo: courseNo, for: signIn) }
     }
 
     @discardableResult
@@ -129,7 +128,7 @@ final class EditSender {
         let signIn = await account.startingSignIn
         if let semester { localEdits.resettingSemesters.insert(semester) }
         defer { if let semester { localEdits.resettingSemesters.remove(semester) } }
-        let madeAt = Date()
+        let madeAt = coordinator.clock.stamp()
         do {
             try await Self.resetCourses(semester: semester, on: coordinator, onServer: { [push] in
                 try await push.deleteAllCourses(semester: semester, madeAt: madeAt, for: signIn)
@@ -149,7 +148,7 @@ final class EditSender {
         onServer reset: () async throws -> Void, thenLocally resetLocally: () -> Void
     ) async throws {
         try await reset()
-        let serverResetLandedAt = Date()
+        let serverResetLandedAt = coordinator.clock.stamp()
         resetLocally()
         await coordinator.discardCourseIgnores(semester: semester)
         await coordinator.discardCourseDeletes(semester: semester, madeBeforeAction: serverResetLandedAt)

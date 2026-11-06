@@ -99,8 +99,8 @@ actor SyncOutbox {
     }
 
     @discardableResult
-    func discard(madeBefore scopeCutoffs: [DiscardScope: Date]) -> [SyncOp] {
-        cutoffs.keep(scopeCutoffs, notAfter: Date())
+    func discard(madeBefore scopeCutoffs: [DiscardScope: Date], notAfter now: Date) -> [SyncOp] {
+        cutoffs.keep(scopeCutoffs, notAfter: now)
         let discarding = DiscardCutoffs(scopeCutoffs)
         return discard { discarding.cutsOff($0) }
     }

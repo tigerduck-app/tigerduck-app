@@ -28,6 +28,7 @@ final class CloudSyncCoordinator {
     }
 
     @ObservationIgnored let outbox: SyncOutbox
+    @ObservationIgnored let clock: SyncClock
     @ObservationIgnored let sender: OutboxSender
     @ObservationIgnored private let edits: QueuedEdits
     @ObservationIgnored private let drain: OutboxDrain
@@ -54,15 +55,17 @@ final class CloudSyncCoordinator {
         },
         account: AccountSession = AccountSession(),
         courses: CourseStore = .shared,
-        kept: KeptValues? = nil
+        kept: KeptValues? = nil,
+        clock: SyncClock = .shared
     ) {
         self.outbox = outbox
+        self.clock = clock
         let sender = OutboxSender(
             push: pushCoordinator, addedCourseUpload: addedCourseUpload, uploadsCourses: uploadsCourses,
             isProtectedDataAvailable: isProtectedDataAvailable, courses: courses, kept: kept ?? KeptValues()
         )
         self.sender = sender
-        let edits = QueuedEdits(outbox: outbox)
+        let edits = QueuedEdits(outbox: outbox, clock: clock)
         self.edits = edits
         let drain = OutboxDrain(outbox: outbox, sender: sender, edits: edits, push: pushCoordinator, policy: .init(
             syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseIgnores: syncsCourseIgnores,
@@ -110,7 +113,7 @@ final class CloudSyncCoordinator {
         guard isOnOrTurningOn else { return nil }
         return edits.enqueueOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
-            customName: nil, colorHex: colorHex, locale: nil, stamp: Date()), for: signIn)
+            customName: nil, colorHex: colorHex, locale: nil, stamp: clock.stamp()), for: signIn)
     }
 
     @discardableResult
@@ -120,7 +123,7 @@ final class CloudSyncCoordinator {
         guard isOnOrTurningOn else { return nil }
         return edits.enqueueOverride(.courseOverride(
             semester: semester, moodleId: moodleId,
-            customName: customName, colorHex: nil, locale: locale, stamp: Date()), for: signIn)
+            customName: customName, colorHex: nil, locale: locale, stamp: clock.stamp()), for: signIn)
     }
 
     func enqueueAssignmentOverride(
@@ -130,7 +133,7 @@ final class CloudSyncCoordinator {
         let op = SyncOp.assignmentOverride(
             moodleCourseId: moodleCourseId,
             moodleAssignmentId: moodleAssignmentId,
-            localStatus: localStatus, stamp: Date())
+            localStatus: localStatus, stamp: clock.stamp())
         await outbox.enqueue(op, for: signIn)
     }
 
@@ -163,7 +166,7 @@ final class CloudSyncCoordinator {
         guard isOnOrTurningOn else { return }
         await outbox.enqueue(.courseIgnore(
             semester: semester, courseNo: courseNo, moodleId: moodleId,
-            moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()), for: signIn)
+            moodleCourseId: moodleCourseId, ignore: ignore, stamp: clock.stamp()), for: signIn)
     }
 
     func discardCourseIgnores(semester: String? = nil, courseNo: String? = nil) async {
@@ -172,12 +175,12 @@ final class CloudSyncCoordinator {
 
     func pendingCourseIgnoreKeys() async -> Set<String> { await edits.pendingCourseIgnoreKeys() }
 
-    func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date = Date(), for signIn: SignIn) async {
+    func enqueueCourseDelete(semester: String, courseNo: String, at stamp: Date? = nil, for signIn: SignIn) async {
         guard isOnOrTurningOn else { return }
-        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp), for: signIn)
+        await outbox.enqueue(.courseDelete(semester: semester, courseNo: courseNo, stamp: stamp ?? clock.stamp()), for: signIn)
     }
 
-    func deleteCourse(semester: String, courseNo: String, at stamp: Date = Date(), for signIn: SignIn) async {
+    func deleteCourse(semester: String, courseNo: String, at stamp: Date? = nil, for signIn: SignIn) async {
         await discardCourseIgnores(semester: semester, courseNo: courseNo)
         await enqueueCourseDelete(semester: semester, courseNo: courseNo, at: stamp, for: signIn)
         await syncTick()

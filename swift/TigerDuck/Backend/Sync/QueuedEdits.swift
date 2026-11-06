@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class QueuedEdits {
     private let outbox: SyncOutbox
+    private let clock: SyncClock
     private var overridesEnqueuing: [UUID: SyncOp] = [:]
     private(set) var overrideEdits = 0
     private var lastColorEdit: [String: Int] = [:]
@@ -11,8 +12,9 @@ final class QueuedEdits {
     private var addStartedOrLandedAt: [String: Date] = [:]
     private(set) var cutoffs = DiscardCutoffs()
 
-    init(outbox: SyncOutbox) {
+    init(outbox: SyncOutbox, clock: SyncClock) {
         self.outbox = outbox
+        self.clock = clock
     }
 
     func enqueueOverride(_ op: SyncOp, for signIn: SignIn) -> Task<Void, Never> {
@@ -78,14 +80,15 @@ final class QueuedEdits {
         if courseIgnores && categories.contains(.assignments) { scopes.insert(.courseIgnores) }
         overridesEnqueuing = overridesEnqueuing.filter { scopes.isDisjoint(with: $0.value.discardScopes) }
         if scopes.contains(.allCourseAdds) { addsEnqueuing = [:] }
-        let now = Date()
+        let now = clock.stamp()
         await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
     }
 
     @discardableResult
     private func discard(madeBefore scopeCutoffs: [DiscardScope: Date]) async -> [SyncOp] {
-        cutoffs.keep(scopeCutoffs, notAfter: Date())
-        return await outbox.discard(madeBefore: scopeCutoffs)
+        let next = clock.lowestNextStamp
+        cutoffs.keep(scopeCutoffs, notAfter: next)
+        return await outbox.discard(madeBefore: scopeCutoffs, notAfter: next)
     }
 
     func discardCourseIgnores(semester: String?, courseNo: String?) async {
@@ -129,9 +132,9 @@ final class QueuedEdits {
     ) -> Task<Void, Never> {
         let id = UUID()
         let key = CourseTombstone.key(semester: semester, courseNo: courseNo)
-        let stamp = Date()
+        let stamp = clock.stamp()
         addsEnqueuing[id] = key
-        addStartedOrLandedAt[key] = stamp
+        addStartedOrLandedAt[key] = Date()
         return Task {
             await outbox.enqueue(.courseAdd(semester: semester, courseNo: courseNo, stamp: stamp), for: signIn)
             addsEnqueuing[id] = nil

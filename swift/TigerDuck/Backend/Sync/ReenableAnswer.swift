@@ -153,7 +153,8 @@ enum ReenableAnswer {
         _ terms: [(semester: String, fetched: [SDCourse], userAdded: [SDCourse])],
         hiding deletedNos: Set<String>,
         on backend: some CourseSyncBackend,
-        for signIn: SignIn
+        for signIn: SignIn,
+        clock: SyncClock = .shared
     ) async throws {
         try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.uploadsCourses }) {
             for (semester, fetched, userAdded) in terms {
@@ -162,11 +163,11 @@ enum ReenableAnswer {
                 let stubs = hiddenNos.subtracting(courses.map(\.courseNo)).sorted()
                     .map { SDCourse(courseNo: $0, courseName: $0) }
                 guard !courses.isEmpty || !stubs.isEmpty else { continue }
-                let resetAt = Date()
+                let resetAt = clock.stamp()
                 if !courses.isEmpty {
                     try await backend.deleteAllCourses(semester: semester, madeAt: resetAt, for: signIn)
                 }
-                let addedAt = max(Date(), resetAt.addingTimeInterval(Double(CourseOverridesReconciler.fillStep) / 1_000_000))
+                let addedAt = clock.stamp()
                 let adds = Set(userAdded.filter { $0.userAddedOrigin == .addedHere }.map(\.courseNo))
                     .subtracting(fetched.map(\.courseNo)).subtracting(hiddenNos).sorted()
                 var request = SchoolDataUploader.courseUploadRequest(courses + stubs, semester: semester)
@@ -181,7 +182,7 @@ enum ReenableAnswer {
                 for courseNo in hiddenNos.sorted() {
                     try await backend.deleteCourse(
                         courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
-                        kind: fetched.contains { $0.courseNo == courseNo } ? .hide : nil, madeAt: Date(), for: signIn
+                        kind: fetched.contains { $0.courseNo == courseNo } ? .hide : nil, madeAt: clock.stamp(), for: signIn
                     )
                 }
             }

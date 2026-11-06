@@ -30,7 +30,8 @@ struct CourseDeleteSyncTests {
     }
 
     private static func makeCoordinator(
-        _ backend: Backend, isEnabled: Bool = true, syncsCourseIgnores: @escaping @Sendable () -> Bool = { true }
+        _ backend: Backend, isEnabled: Bool = true, syncsCourseIgnores: @escaping @Sendable () -> Bool = { true },
+        clock: SyncClock = .shared
     ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -45,7 +46,7 @@ struct CourseDeleteSyncTests {
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: Self.freshDirectory()), isEnabled: isEnabled,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: syncsCourseIgnores, syncsCourseOverrides: { _ in true },
-            uploadsCourses: { true }, account: AccountSession(signIns: testSignIns), courses: courses
+            uploadsCourses: { true }, account: AccountSession(signIns: testSignIns), courses: courses, clock: clock
         )
     }
 
@@ -204,6 +205,34 @@ struct CourseDeleteSyncTests {
 
         #expect(hidden == ["1151:EE2"])
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:EE2"])
+    }
+
+    @Test("A hide made here is sent stamped by the clock")
+    func hideIsSentWithTheClocksStamp() async {
+        let backend = Backend()
+        let path = "sync/courses/client:1151:CS1001301?hlc=\(SyncClockTests.ten + 1)"
+        backend.answer(path)
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
+        let coordinator = Self.makeCoordinator(backend, syncsCourseIgnores: { false }, clock: clock)
+
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
+
+        #expect(backend.requests(path).count == 1)
+        #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
+    }
+
+    @Test("A term reset drops a hide made while its request was out on a device whose clock is behind the backend")
+    func termResetDropsAHideStampedAheadOfTheDevice() async throws {
+        let now = PushAPI.clock(of: Date())
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(now))
+        await clock.hear(now + 10 * SyncClockTests.minute)
+        let coordinator = Self.makeCoordinator(Backend(), clock: clock)
+
+        try await EditSender.resetCourses(semester: "1151", on: coordinator, onServer: {
+            await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1")
+        }, thenLocally: {})
+
+        #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
     }
 
     @Test("Adding a course back drops its hides made before the re-add, but not one made after it while the drop was on its way")

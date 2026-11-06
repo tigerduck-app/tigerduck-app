@@ -196,6 +196,85 @@ struct OverrideStampTests {
         }
     }
 
+    private static let deviceTime = SyncClockTests.ten
+
+    @Test("An edit made here is queued with the clock's stamp and sent with it as hlc", arguments: Edit.allCases)
+    func editIsSentWithTheClocksStamp(_ edit: Edit) async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent(
+            edit == .mark ? "sync/assignments/42/override" : "sync/courses/client:1151:CS1001301/override"
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: edit == .mark ? Self.markReply : Self.courseReply), for: url)
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(Self.deviceTime))
+        let coordinator = Self.makeCoordinator(baseURL, clock: clock)
+
+        switch edit {
+        case .colour:
+            await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1001301", semester: "1151", colorHex: "#FF6B6B")?.value
+        case .name:
+            await coordinator.enqueueCourseNameOverride(
+                moodleId: "1151CS1001301", semester: "1151", customName: "Algorithms", locale: "zh"
+            )?.value
+        case .ignore:
+            await coordinator.enqueueCourseIgnore(
+                semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301", moodleCourseId: 4242, ignore: true
+            )
+        case .mark:
+            await coordinator.enqueueAssignmentOverride(moodleCourseId: 4242, moodleAssignmentId: 42, localStatus: "ignored")
+        }
+        await coordinator.syncTick()
+
+        let sent = try #require(SettingsAPIStub.requests(for: url).first)
+        #expect((try Self.json(sent)["hlc"] as? NSNumber)?.int64Value == Self.deviceTime + 1)
+        #expect(clock.readings.lastIssued == Self.deviceTime + 1)
+    }
+
+    @Test("An entry the previous release queued goes stamped with the time it was queued")
+    func entryFromThePreviousReleaseKeepsItsQueueTime() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("sync/assignments/42/override")
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url)
+        let directory = Self.outboxDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(#"""
+        [{"id":"6F9619FF-8B86-D011-B42D-00C04FC964F5","attempts":0,"op":{"assignmentOverride":{"moodleCourseId":4242,"moodleAssignmentId":42,"localStatus":"ignored","stamp":811692800.25}}}]
+        """#.utf8).write(to: directory.appendingPathComponent(OutboxFiles.fileName))
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(Self.deviceTime + SyncClockTests.minute))
+        let coordinator = Self.makeCoordinator(baseURL, clock: clock, outboxIn: directory)
+
+        await coordinator.syncTick()
+
+        let sent = try #require(SettingsAPIStub.requests(for: url).first)
+        #expect((try Self.json(sent)["hlc"] as? NSNumber)?.int64Value == 1_790_000_000_250_000)
+        #expect(await coordinator.outbox.pendingCount() == 0)
+    }
+
+    @Test("Use Server drops a colour queued just before it on a device whose clock is behind the backend")
+    func useServerDropsAnEditStampedAheadOfTheDevice() async {
+        let now = PushAPI.clock(of: Date())
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(now))
+        await clock.hear(now + 10 * SyncClockTests.minute)
+        let coordinator = Self.makeCoordinator(SettingsAPIStub.uniqueBaseURL(), clock: clock)
+
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1001301", semester: "1151", colorHex: "#FF6B6B")?.value
+        await coordinator.discardEdits(of: [.courseColors], courseIgnores: false)
+
+        #expect(await coordinator.pendingCourseOverrides().colors.isEmpty)
+    }
+
+    @Test("A colour picked after Use Server on a device whose clock is ahead of the backend stays queued")
+    func editAfterUseServerOnADeviceAheadStays() async {
+        let now = PushAPI.clock(of: Date())
+        let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(now))
+        await clock.hear(now - 60 * SyncClockTests.minute)
+        let coordinator = Self.makeCoordinator(SettingsAPIStub.uniqueBaseURL(), clock: clock)
+
+        await coordinator.discardEdits(of: [.courseColors], courseIgnores: false)
+        await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1001301", semester: "1151", colorHex: "#FF6B6B")?.value
+
+        #expect(await coordinator.pendingCourseOverrides().colors == ["1151CS1001301"])
+    }
+
     private static func withCleanHolidayDefaults(
         _ body: (_ id: Int, _ url: URL, _ registration: PushRegistrationService) async throws -> Void
     ) async throws {
@@ -225,26 +304,31 @@ struct OverrideStampTests {
         return try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
     }
 
-    private static func pushCoordinator(_ baseURL: URL) -> PushCoordinator {
+    private static func pushCoordinator(_ baseURL: URL, clock: SyncClock? = nil) -> PushCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
             baseURLProvider: { baseURL },
             session: URLSession(configuration: config),
-            authHeaderProvider: { "Bearer test" }
+            authHeaderProvider: { "Bearer test" },
+            clock: clock
         )
         return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
     }
 
-    private static func makeCoordinator(
-        _ baseURL: URL, conflictCheckOwed: @escaping @Sendable () -> Bool = { false }
-    ) -> CloudSyncCoordinator {
-        let directory = FileManager.default.temporaryDirectory
+    private nonisolated static func outboxDirectory() -> URL {
+        FileManager.default.temporaryDirectory
             .appendingPathComponent("OverrideStampTests-\(UUID().uuidString)", isDirectory: true)
-        return CloudSyncCoordinator(
-            pushCoordinator: pushCoordinator(baseURL), outbox: SyncOutbox(directory: directory), isEnabled: true,
+    }
+
+    private static func makeCoordinator(
+        _ baseURL: URL, conflictCheckOwed: @escaping @Sendable () -> Bool = { false },
+        clock: SyncClock? = nil, outboxIn directory: URL = outboxDirectory()
+    ) -> CloudSyncCoordinator {
+        CloudSyncCoordinator(
+            pushCoordinator: pushCoordinator(baseURL, clock: clock), outbox: SyncOutbox(directory: directory), isEnabled: true,
             syncsAssignmentMarks: { !conflictCheckOwed() }, syncsCourseIgnores: { !conflictCheckOwed() }, syncsCourseOverrides: { _ in !conflictCheckOwed() },
-            account: AccountSession(signIns: testSignIns)
+            account: AccountSession(signIns: testSignIns), clock: clock ?? .shared
         )
     }
 }
