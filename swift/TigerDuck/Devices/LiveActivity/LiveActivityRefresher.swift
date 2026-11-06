@@ -93,7 +93,7 @@ final class LiveActivityRefresher {
             calendar: AcademicCalendarStore.shared.calendar,
             optedInHolidayIDs: AcademicCalendarStore.shared.optedInHolidayIDs
         )
-        snapshot?.accentGradient = app.preferences.deviceAccentGradient
+        snapshot?.accentGradient = app.preferences.deviceAccents.liveActivities
         await coordinator.apply(snapshot: snapshot)
         scheduleBoundaryRefresh(
             snapshot: snapshot,

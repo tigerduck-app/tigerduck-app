@@ -11,8 +11,16 @@ struct AppDisplayToggles {
         didSet { Defaults[.accentGradient] = accentGradient }
     }
 
-    var accentGradientOnDevices: Bool = Defaults[.accentGradientOnDevices] {
-        didSet { Defaults[.accentGradientOnDevices] = accentGradientOnDevices }
+    var accentGradientOnWidgets: Bool = Defaults[.accentGradientOnWidgets] {
+        didSet { Defaults[.accentGradientOnWidgets] = accentGradientOnWidgets }
+    }
+
+    var accentGradientOnWatch: Bool = Defaults[.accentGradientOnWatch] {
+        didSet { Defaults[.accentGradientOnWatch] = accentGradientOnWatch }
+    }
+
+    var accentGradientOnLiveActivities: Bool = Defaults[.accentGradientOnLiveActivities] {
+        didSet { Defaults[.accentGradientOnLiveActivities] = accentGradientOnLiveActivities }
     }
 
     /// The iPad Moodle app installed from the Mac App Store registers `moodlemobile://` too, so its

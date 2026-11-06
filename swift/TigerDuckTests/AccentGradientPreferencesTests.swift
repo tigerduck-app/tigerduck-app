@@ -6,7 +6,10 @@ import TigerDuckCore
 @Suite(.serialized)
 @MainActor
 struct AccentGradientPreferencesTests {
-    private static let keys = ["accentColorHex", "accentGradient", "accentGradientOnDevices"]
+    private static let keys = [
+        "accentColorHex", "accentGradient", "accentGradientOnWidgets", "accentGradientOnWatch",
+        "accentGradientOnLiveActivities",
+    ]
     private static let gradient = AccentGradient(stops: [0x4B48D1, 0x9442C7, 0xD61F45], style: .angular)!
 
     private static func withSavedAccent(_ body: () throws -> Void) async rethrows {
@@ -68,20 +71,28 @@ struct AccentGradientPreferencesTests {
         }
     }
 
-    @Test("Widgets, the Watch and Live Activities get one colour unless the switch is on")
-    func devicesGetTheGradientOnlyWhenSwitchedOn() async {
+    @Test("Widgets, the Watch and Live Activities each get one colour unless their own switch is on")
+    func eachDeviceGetsTheGradientOnlyWhenItsSwitchIsOn() async {
         await Self.withSavedAccent {
             let preferences = AppPreferences()
             preferences.accent = Self.gradient
-            #expect(!preferences.accentGradientOnDevices)
-            #expect(preferences.deviceAccentGradient == nil)
+            #expect(!preferences.accentGradientOnWidgets)
+            #expect(!preferences.accentGradientOnWatch)
+            #expect(!preferences.accentGradientOnLiveActivities)
+            #expect(preferences.deviceAccents == AppPreferences.DeviceAccents())
 
-            preferences.accentGradientOnDevices = true
-            #expect(preferences.deviceAccentGradient == Self.gradient)
-            #expect(AppPreferences().deviceAccentGradient == Self.gradient)
+            preferences.accentGradientOnWidgets = true
+            #expect(preferences.deviceAccents == AppPreferences.DeviceAccents(widgets: Self.gradient))
+            preferences.accentGradientOnWatch = true
+            #expect(preferences.deviceAccents == AppPreferences.DeviceAccents(widgets: Self.gradient, watch: Self.gradient))
+            preferences.accentGradientOnWidgets = false
+            preferences.accentGradientOnLiveActivities = true
+            let watchAndLiveActivities = AppPreferences.DeviceAccents(watch: Self.gradient, liveActivities: Self.gradient)
+            #expect(preferences.deviceAccents == watchAndLiveActivities)
+            #expect(AppPreferences().deviceAccents == watchAndLiveActivities)
 
             preferences.accent = AccentGradient(color: 0x5856D6)
-            #expect(preferences.deviceAccentGradient == nil)
+            #expect(preferences.deviceAccents == AppPreferences.DeviceAccents())
             #expect(preferences.accentColorHex == 0x5856D6)
         }
     }

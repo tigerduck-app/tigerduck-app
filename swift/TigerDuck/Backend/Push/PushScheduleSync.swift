@@ -74,7 +74,7 @@ final class PushScheduleSync {
             preferences: app.liveActivity.preferences,
             cloudSyncEnabled: app.cloudSyncEnabled,
             accentHex: app.preferences.accentColorHex,
-            accentGradient: app.preferences.deviceAccentGradient,
+            accentGradient: app.preferences.deviceAccents.liveActivities,
             calendar: AcademicCalendarStore.shared.calendar,
             optedInHolidayIDs: AcademicCalendarStore.shared.optedInHolidayIDs
         )

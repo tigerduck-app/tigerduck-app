@@ -85,7 +85,10 @@ struct AccentGradientScreenTests {
                 )
                 defer { window.isHidden = true }
                 if let size = look.size { window.traitOverrides.preferredContentSizeCategory = size }
-                try await waitUntil { Screen.shows(SettingsRow.accentGradientOnDevices.label, in: host) }
+                try await waitUntil {
+                    [SettingsRow.accentGradientOnWidgets, .accentGradientOnWatch, .accentGradientOnLiveActivities]
+                        .allSatisfy { Screen.shows($0.label, in: host) }
+                }
                 let custom = try #require(accessibilityElement(labeled: Self.label("settings_accent_gradient_custom"), in: host.view))
                 #expect(custom.accessibilityTraits.contains(.selected))
                 let blue = try #require(accessibilityElement(labeled: Self.label("color_name_blue"), in: host.view))

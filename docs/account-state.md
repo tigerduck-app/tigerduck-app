@@ -66,7 +66,9 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `academicCalendarETag` | device |  |
 | defaults | `accentColorHex` | device |  |
 | defaults | `accentGradient` | device |  |
-| defaults | `accentGradientOnDevices` | device |  |
+| defaults | `accentGradientOnLiveActivities` | device |  |
+| defaults | `accentGradientOnWatch` | device |  |
+| defaults | `accentGradientOnWidgets` | device |  |
 | defaults | `alwaysShowAllPeriods` | device |  |
 | defaults | `appAppearance` | device |  |
 | defaults | `appHasBeenInstalled` | device |  |

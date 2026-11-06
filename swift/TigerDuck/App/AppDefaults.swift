@@ -28,8 +28,10 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.accentGradient,
         default: nil
     )
-    static let accentGradientOnDevices = Key<Bool>(
-        AppConstants.UserDefaultsKeys.accentGradientOnDevices,
+    static let accentGradientOnWidgets = Key<Bool>(AppConstants.UserDefaultsKeys.accentGradientOnWidgets, default: false)
+    static let accentGradientOnWatch = Key<Bool>(AppConstants.UserDefaultsKeys.accentGradientOnWatch, default: false)
+    static let accentGradientOnLiveActivities = Key<Bool>(
+        AppConstants.UserDefaultsKeys.accentGradientOnLiveActivities,
         default: false
     )
     static let browserAddressBar = Key<BrowserAddressBar>(

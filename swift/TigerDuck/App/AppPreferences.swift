@@ -35,12 +35,32 @@ final class AppPreferences {
             toggles.accentColorHex = newValue.first
         }
     }
-    var accentGradientOnDevices: Bool {
-        get { toggles.accentGradientOnDevices }
-        set { toggles.accentGradientOnDevices = newValue }
+    var accentGradientOnWidgets: Bool {
+        get { toggles.accentGradientOnWidgets }
+        set { toggles.accentGradientOnWidgets = newValue }
     }
-    var deviceAccentGradient: AccentGradient? {
-        accentGradientOnDevices && accent.isGradient ? accent : nil
+    var accentGradientOnWatch: Bool {
+        get { toggles.accentGradientOnWatch }
+        set { toggles.accentGradientOnWatch = newValue }
+    }
+    var accentGradientOnLiveActivities: Bool {
+        get { toggles.accentGradientOnLiveActivities }
+        set { toggles.accentGradientOnLiveActivities = newValue }
+    }
+
+    struct DeviceAccents: Equatable {
+        var widgets: AccentGradient?
+        var watch: AccentGradient?
+        var liveActivities: AccentGradient?
+    }
+
+    var deviceAccents: DeviceAccents {
+        let gradient = accent.isGradient ? accent : nil
+        return DeviceAccents(
+            widgets: accentGradientOnWidgets ? gradient : nil,
+            watch: accentGradientOnWatch ? gradient : nil,
+            liveActivities: accentGradientOnLiveActivities ? gradient : nil
+        )
     }
     var macMoodleOpenTarget: MoodleOpenTarget {
         get { toggles.macMoodleOpenTarget }

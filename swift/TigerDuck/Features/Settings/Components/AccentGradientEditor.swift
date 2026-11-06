@@ -31,6 +31,11 @@ struct AccentGradientEditor: View {
                 }
             }
             .formStyle(.grouped)
+            .onChange(of: draft.stops.count) { _, count in
+                AccessibilityNotification.Announcement(
+                    String(format: String(localized: "a11y_accent_gradient_stop_count"), count)
+                ).post()
+            }
             .navigationTitle(String(localized: "settings_accent_gradient_custom"))
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

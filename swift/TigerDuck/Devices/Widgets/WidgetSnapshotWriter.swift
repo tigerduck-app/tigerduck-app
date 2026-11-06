@@ -29,7 +29,7 @@ final class WidgetSnapshotWriter {
         self.init(
             isLoggedIn: { app.authService.hasStoredCredentials },
             accentColorHex: { app.preferences.accentColorHex },
-            accentGradient: { app.preferences.deviceAccentGradient },
+            accentGradient: { app.preferences.deviceAccents.widgets },
             courses: courses,
             store: store,
             coordinator: coordinator,

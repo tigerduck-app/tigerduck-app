@@ -8,7 +8,7 @@ final class DeviceSurfaceSyncer {
         var data: AppDataRevision
         var language: String
         var accentHex: Int
-        var deviceAccent: AccentGradient? = nil
+        var deviceAccents = AppPreferences.DeviceAccents()
         var visualPreset: String
         var signedIn: Bool
         var unobserved: UnobservedChanges
@@ -116,7 +116,7 @@ extension DeviceSurfaceSyncer {
             data: .current,
             language: app.preferences.appLanguage,
             accentHex: app.preferences.accentColorHex,
-            deviceAccent: app.preferences.deviceAccentGradient,
+            deviceAccents: app.preferences.deviceAccents,
             visualPreset: app.preferences.visualPreset.rawValue,
             signedIn: app.authService.hasStoredCredentials,
             unobserved: unobserved

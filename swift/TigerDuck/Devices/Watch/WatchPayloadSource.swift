@@ -11,7 +11,7 @@ extension WatchSyncCoordinator.Payload {
             visualPreset: app.preferences.visualPreset,
             quietDays: WidgetSnapshotWriter.quietDayKeys(),
             changes: .cached,
-            accentGradient: app.preferences.deviceAccentGradient
+            accentGradient: app.preferences.deviceAccents.watch
         )
     }
 }
