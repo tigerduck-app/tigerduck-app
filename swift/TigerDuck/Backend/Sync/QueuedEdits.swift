@@ -60,7 +60,7 @@ final class QueuedEdits {
 
     func pendingCourseOverrides() async -> (colors: Set<String>, names: Set<String>, edits: Int) {
         var pending: (colors: Set<String>, names: Set<String>, edits: Int) = ([], [], overrideEdits)
-        for op in await outbox.snapshot().map(\.op) + overridesEnqueuing.values {
+        for op in await unsentOps() {
             guard case .courseOverride(_, let moodleId, let customName, let colorHex, _, _) = op else { continue }
             if colorHex != nil { pending.colors.insert(moodleId) }
             if customName != nil { pending.names.insert(moodleId) }

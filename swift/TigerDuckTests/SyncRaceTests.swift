@@ -174,14 +174,18 @@ struct SyncRaceTests {
         }
     }
 
-    @Test("An edit on its way into the outbox is newer than one whose reply is back, though it lands just after the check reads the outbox")
-    func anEditOnItsWayInIsNewerThanTheReply() async {
-        let landing = LateLanding()
-        let edits = QueuedEdits(outbox: SyncOutbox(
+    private static func edits(landingLate landing: LateLanding) -> QueuedEdits {
+        QueuedEdits(outbox: SyncOutbox(
             directory: FileManager.default.temporaryDirectory
                 .appendingPathComponent("SyncRaceTests-\(UUID().uuidString)", isDirectory: true),
             pause: { await landing.pause(at: $0) }
         ))
+    }
+
+    @Test("An edit on its way into the outbox is newer than one whose reply is back, though it lands just after the check reads the outbox")
+    func anEditOnItsWayInIsNewerThanTheReply() async {
+        let landing = LateLanding()
+        let edits = Self.edits(landingLate: landing)
         let sent = SyncOp.assignmentOverride(
             moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "archived", stamp: Date(timeIntervalSince1970: 1_790_000_000)
         )
@@ -193,6 +197,18 @@ struct SyncRaceTests {
         await landing.follow(enqueuing)
 
         #expect(await edits.hasNewerEdit(than: sent))
+        await enqueuing.value
+    }
+
+    @Test("A colour on its way into the outbox is pending, though it lands just after the read")
+    func aColourOnItsWayInIsPending() async {
+        let landing = LateLanding()
+        let edits = Self.edits(landingLate: landing)
+
+        let enqueuing = edits.enqueueOverride(Self.colourEdit, for: testSignIn)
+        await landing.follow(enqueuing)
+
+        #expect(await edits.pendingCourseOverrides().colors == ["1151CS1"])
         await enqueuing.value
     }
 
