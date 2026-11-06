@@ -51,6 +51,12 @@ nonisolated final class ClockCore: @unchecked Sendable {
         }
     }
 
+    /// A frozen override reads the real clock on each call, so both ends come from one translation.
+    func realTime(forApp span: ClosedRange<Date>) -> ClosedRange<Date> {
+        let start = realTime(forApp: span.lowerBound)
+        return start...start.addingTimeInterval(span.upperBound.timeIntervalSince(span.lowerBound))
+    }
+
     func currentOverride() -> ClockOverride? {
         lock.withLock { state in
             loadPersistedIfNeeded(into: &state)
@@ -132,6 +138,8 @@ nonisolated enum AppClock {
     static func nowMillis() -> Int64 { core.nowMillis() }
 
     static func realTime(forApp appWall: Date) -> Date { core.realTime(forApp: appWall) }
+
+    static func realTime(forApp span: ClosedRange<Date>) -> ClosedRange<Date> { core.realTime(forApp: span) }
 
     static func currentOverride() -> ClockOverride? { core.currentOverride() }
 

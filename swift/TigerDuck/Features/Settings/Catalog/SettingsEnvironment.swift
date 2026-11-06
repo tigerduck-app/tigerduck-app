@@ -14,6 +14,7 @@ extension SettingsState {
         hasFlipToLibrary = LibrarySettingsView.isAvailable
         hasSchoolMail = SchoolMailAvailability.isEnabled
         hasWhatsNew = app.updateNotifyCoordinator.hasWhatsNewContent(in: app)
+        hasMoodleApp = LinkRouting.isMoodleAppInstalled
         isCheckingForUpdate = app.updateNotifyCoordinator.isCheckingForUpdate
     }
 

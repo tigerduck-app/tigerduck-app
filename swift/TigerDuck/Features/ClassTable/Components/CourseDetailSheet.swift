@@ -8,7 +8,7 @@ struct CourseDetailSheet: View {
 
     let course: CourseStore.Course
     let assignments: [AssignmentStore.Assignment]
-    var timeRange: String? = nil
+    var times: (start: String, end: String)? = nil
     var weekday: Int? = nil
     var periods: [String]? = nil
     /// A current-term day the sheet shows: its cards carry that day's changes and the coming ones
@@ -35,7 +35,7 @@ struct CourseDetailSheet: View {
                     VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
                         headerSection
                         CourseDetailRoomAndTime(
-                            course: course, timeRange: timeRange, weekday: weekday, periods: periods, meeting: shownMeeting
+                            course: course, times: times, weekday: weekday, periods: periods, meeting: shownMeeting
                         )
                         CourseDetailInfoRows(course: course)
                         if date != nil {
@@ -183,11 +183,6 @@ struct CourseDetailSheet: View {
         await app.authService.session.withSignIn { await SchoolRefresh.assignments(authService: app.authService, for: $0) }
     }
 
-    /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile
-    /// picks the user up inside the app, and open the web page when it is not
-    /// installed. On macOS no Moodle Mac app exists and the deep link would
-    /// surface as an "unhandled URL" error, so the platform-aware
-    /// `moodleOpenURL` returns the HTTPS URL instead.
     private func openMoodleCourse() {
         guard let url = course.moodleOpenURL else { return }
         let web = course.moodleWebURL

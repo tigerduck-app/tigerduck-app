@@ -28,6 +28,11 @@ enum EmptyClassroomDayText {
 
     static func timeRange(of period: Int) -> String {
         guard let range = EmptyClassroomSchedule.timeRange(of: period) else { return "" }
-        return "\(range.start)–\(range.end)"
+        return TimeRange.text(range.start, range.end)
+    }
+
+    static func spokenTimeRange(of period: Int) -> String {
+        guard let range = EmptyClassroomSchedule.timeRange(of: period) else { return "" }
+        return TimeRange.spoken(range.start, range.end)
     }
 }

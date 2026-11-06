@@ -190,15 +190,21 @@ struct PageMenuScreenTests {
         return condition()
     }
 
-    /// `tries` above one taps again when the menu does not open: on iOS 26.5 a new window's first
-    /// touch can go nowhere after another test's window presented a sheet.
     static func openMenu(
         labeled label: String, in window: UIWindow, holding: Duration = .milliseconds(50), tries: Int = 3
     ) async throws -> [NSObject] {
-        try await waitUntil { accessibilityElement(labeled: label, in: window) != nil }
+        try await openMenu(in: window, holding: holding, tries: tries) { accessibilityElement(labeled: label, in: window) }
+    }
+
+    /// `tries` above one taps again when the menu does not open: on iOS 26.5 a new window's first
+    /// touch can go nowhere after another test's window presented a sheet.
+    static func openMenu(
+        in window: UIWindow, holding: Duration = .milliseconds(50), tries: Int = 3, at button: () -> NSObject?
+    ) async throws -> [NSObject] {
+        try await waitUntil { button() != nil }
         let page = Set(exposedAccessibilityElements(in: window).compactMap(\.accessibilityLabel))
         for _ in 0..<tries {
-            try await tap(try #require(accessibilityElement(labeled: label, in: window)), in: window, holding: holding)
+            try await tap(try #require(button()), in: window, holding: holding)
             if try await holds(within: .seconds(5), { !items(in: window, besides: page).isEmpty }) { break }
         }
         try await waitUntil { !items(in: window, besides: page).isEmpty }

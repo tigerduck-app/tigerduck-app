@@ -7,6 +7,7 @@ struct ConflictPickerSheet: View {
         let color: Color
         let title: String
         let details: [String]
+        var spokenDetails: [String]? = nil
     }
 
     @Environment(\.dismiss) private var dismiss
@@ -47,7 +48,7 @@ struct ConflictPickerSheet: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(([row.title] + row.details).joined(separator: ", ")))
+        .accessibilityLabel(Text(([row.title] + (row.spokenDetails ?? row.details)).joined(separator: ", ")))
     }
 }
 
@@ -61,12 +62,19 @@ extension ConflictPickerSheet.Row {
     }
 
     init(club: ClubOccurrence) {
-        self.init(id: String(club.id), color: Color(hex: UInt(club.color)), title: club.clubName, details: club.details)
+        self.init(
+            id: String(club.id), color: Color(hex: UInt(club.color)), title: club.clubName, details: club.details,
+            spokenDetails: club.spokenDetails
+        )
     }
 }
 
 extension ClubOccurrence {
-    var details: [String] {
-        [name, ClassTimeline.timeRange(from: start, to: end), location].filter { !$0.isEmpty }
+    var details: [String] { details(time: TimeRange.text(from: start, to: end)) }
+
+    var spokenDetails: [String] { details(time: TimeRange.spoken(from: start, to: end)) }
+
+    private func details(time: String) -> [String] {
+        [name, time, location].filter { !$0.isEmpty }
     }
 }

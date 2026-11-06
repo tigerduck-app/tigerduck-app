@@ -189,7 +189,8 @@ struct SettingsScreenTests {
             state.hasFlipToLibrary = false
             state.library.isSignedIn = true
             for (page, hidden, shown) in [(PageSettings.classTable, SettingsRow.englishCourseNames, SettingsRow.showClassroom),
-                                          (.library, .flipToLibrary, .librarySignOut)] {
+                                          (.library, .flipToLibrary, .librarySignOut),
+                                          (.moodle, .moodleOpenIn, .moodleNotifications)] {
                 let (window, host) = try Screen.show(page.view, state: state)
                 defer { window.isHidden = true }
                 try await waitUntil { Screen.shows(shown.label, in: host) }
