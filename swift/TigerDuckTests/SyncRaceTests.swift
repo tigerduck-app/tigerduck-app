@@ -208,6 +208,41 @@ struct SyncRaceTests {
         }
     }
 
+    @Test("A colour or ignore setting for a course hidden here, or no longer held, is given up at the backend's 404, as no upload brings the course")
+    func courseEditNoUploadBringsIsGivenUp() async throws {
+        let ignoreOfACourseNotHeld = SyncOp.courseIgnore(
+            semester: "1151", courseNo: "CS9", moodleId: "1151CS9", moodleCourseId: 4242, ignore: true,
+            stamp: Date(timeIntervalSince1970: 1_790_000_000)
+        )
+        let cases: [(edit: SyncOp, courseNo: String, hidden: [String])] = [
+            (Self.colourEdit, "CS1", ["1151:CS1"]), (ignoreOfACourseNotHeld, "CS9", []),
+        ]
+        for (edit, courseNo, hidden) in cases {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = baseURL.appendingPathComponent("sync/courses/client:1151:\(courseNo)/override")
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 404, body: Data(#"{"error":"course_not_found","message":"no course"}"#.utf8)), for: url
+            )
+            let cache = Self.cache()
+            cache.courses.saveDeletedCourseNos(hidden, for: testSignIn)
+            let coordinator = CloudSyncCoordinator(
+                pushCoordinator: Self.push(baseURL),
+                outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
+                isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
+                syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
+                kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
+                                 courses: cache.courses, assignments: cache.assignments)
+            )
+
+            await coordinator.outbox.enqueue(edit)
+            await coordinator.syncTick()
+
+            #expect(SettingsAPIStub.requests(for: url).count == 1)
+            #expect(await coordinator.outbox.parkedSnapshot().isEmpty)
+            #expect(await !coordinator.holdsUnsentEdits())
+        }
+    }
+
     @Test(
         "A colour or name for a course the backend does not hold yet waits parked, and goes once a course upload lands",
         arguments: [colourEdit, nameEdit]
