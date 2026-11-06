@@ -114,7 +114,7 @@ nonisolated enum MoodleWebserviceClient {
     }
 }
 
-struct MoodleEnrolledCourse: Sendable {
+nonisolated struct MoodleEnrolledCourse: Codable, Sendable {
     let id: Int
     let fullname: String
     let shortname: String

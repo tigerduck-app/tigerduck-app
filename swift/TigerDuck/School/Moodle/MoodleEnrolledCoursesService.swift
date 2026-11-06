@@ -2,6 +2,7 @@ import Foundation
 
 enum MoodleEnrolledCoursesService {
     static let answerFreshness = FreshnessPolicy(lifetime: 60)
+    nonisolated static let usersCoursesFunction = "core_enrol_get_users_courses"
 
     private static var answer: (token: String?, startedAt: Date, task: Task<[MoodleEnrolledCourse], Error>)?
 
@@ -34,13 +35,26 @@ enum MoodleEnrolledCoursesService {
     private static func fetchUnshared() async throws -> [MoodleEnrolledCourse] {
         try await MoodleWebserviceClient.withRenewingToken { token in
             let userId = try await MoodleSiteInfoService.shared.userId(token: token)
-            return try await MoodleWebserviceClient.call(
-                "core_enrol_get_users_courses",
-                params: [("userid", String(userId))],
-                token: token,
-                as: [RawMoodleEnrolledCourse].self
-            ).map { $0.toMoodleEnrolledCourse() }
+            return try await courses(of: userId, token: token)
         }
+    }
+
+    /// For another user, Moodle lists only the courses the account sees them in, past terms too.
+    nonisolated static func courses(
+        of userId: Int,
+        token: String,
+        session: URLSession = MoodleWebserviceClient.session,
+        siteURL: URL = AppConstants.moodleBaseURL
+    ) async throws -> [MoodleEnrolledCourse] {
+        try await MoodleWebserviceClient.call(
+            usersCoursesFunction,
+            // Moodle otherwise counts every course's participants, which nothing here reads.
+            params: [("userid", String(userId)), ("returnusercount", "0")],
+            token: token,
+            as: [RawMoodleEnrolledCourse].self,
+            session: session,
+            siteURL: siteURL
+        ).map { $0.toMoodleEnrolledCourse() }
     }
 }
 
