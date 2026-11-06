@@ -1,9 +1,6 @@
 import Defaults
 import Foundation
 import os
-#if canImport(UIKit)
-import UIKit
-#endif
 
 nonisolated final class SyncClock: Sendable {
     static let shared = SyncClock()
@@ -50,17 +47,11 @@ nonisolated final class SyncClock: Sendable {
 
     private let storage: Storage
     private let now: @Sendable () -> Date
-    private let protectedDataReadable: @Sendable () async -> Bool
     private let held = OSAllocatedUnfairLock(initialState: Readings())
 
-    init(
-        storage: Storage = .defaults,
-        now: @escaping @Sendable () -> Date = { Date() },
-        protectedDataReadable: @escaping @Sendable () async -> Bool = { await SyncClock.isProtectedDataAvailable() }
-    ) {
+    init(storage: Storage = .defaults, now: @escaping @Sendable () -> Date = { Date() }) {
         self.storage = storage
         self.now = now
-        self.protectedDataReadable = protectedDataReadable
     }
 
     var readings: Readings {
@@ -95,12 +86,10 @@ nonisolated final class SyncClock: Sendable {
 
     /// A last stamp or last server value further ahead of `serverClock` than any answer could be,
     /// as after a device clock set ahead, comes back to what the backend accepts: it refuses a
-    /// stamp past its clock plus `backendLead`, so no stamp above that has landed. Ignored while
-    /// protected data is unavailable: before the first unlock `UserDefaults` reads as empty, and a
-    /// write then would replace the stored values with lower ones.
-    func hear(_ serverClock: Int64) async {
+    /// stamp past its clock plus `backendLead`, so no stamp above that has landed.
+    func hear(_ serverClock: Int64) {
         let arrivedAt = PushAPI.clock(of: now())
-        guard Self.plausible.contains(serverClock), await protectedDataReadable() else { return }
+        guard Self.plausible.contains(serverClock) else { return }
         update { readings in
             let reach = serverClock + Self.backendLead
             let farAhead = reach + Self.answerSpread
@@ -129,13 +118,5 @@ nonisolated final class SyncClock: Sendable {
                 plausible.contains($0.clock) && plausible.contains($0.arrivedAt)
             }
         )
-    }
-
-    static func isProtectedDataAvailable() async -> Bool {
-        #if canImport(UIKit)
-        await MainActor.run { UIApplication.shared.isProtectedDataAvailable }
-        #else
-        true
-        #endif
     }
 }

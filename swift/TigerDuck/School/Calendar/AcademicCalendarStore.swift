@@ -6,7 +6,7 @@ import os
 @MainActor
 @Observable
 final class AcademicCalendarStore: AccountScoped {
-    static let shared = AcademicCalendarStore()
+    static let shared = AcademicCalendarStore(clock: .shared)
 
     private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "AcademicCalendar"
@@ -19,7 +19,7 @@ final class AcademicCalendarStore: AccountScoped {
 
     private(set) var calendar: AcademicCalendar
 
-    init(clock: SyncClock = .shared) {
+    init(clock: SyncClock) {
         self.clock = clock
         calendar = Self.loadCached()
     }

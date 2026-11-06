@@ -103,7 +103,7 @@ nonisolated final class BackendClient: Sendable {
         session: URLSession = BackendClient.session,
         auth: BackendAuth = .none,
         versionGate: APIVersionGate? = nil,
-        clock: SyncClock? = .shared
+        clock: SyncClock? = nil
     ) {
         self.baseURL = baseURL
         self.session = session
@@ -172,7 +172,7 @@ nonisolated final class BackendClient: Sendable {
             : try await session.data(for: urlRequest)
         guard let http = response as? HTTPURLResponse else { throw PushAPIError.invalidResponse }
         let answer = BackendResponse(data: data, http: http)
-        if let clock, let serverClock = answer.serverClock, isFromThisBackend(answer) { await clock.hear(serverClock) }
+        if let clock, let serverClock = answer.serverClock, isFromThisBackend(answer) { clock.hear(serverClock) }
         if (200..<300).contains(http.statusCode) || request.acceptsEveryStatus { return answer }
         let code = Self.errorCode(in: data)
         if http.statusCode == 401, request.authenticated, case .first = attempt, let sent, let signIn,

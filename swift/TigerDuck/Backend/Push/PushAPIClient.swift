@@ -14,7 +14,7 @@ final class PushAPIClient: Sendable {
         session: URLSession? = nil,
         auth: BackendAuth = .none,
         versionGate: APIVersionGate? = nil,
-        clock: SyncClock? = .shared
+        clock: SyncClock?
     ) {
         self.init(backend: BackendClient(
             baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: auth, versionGate: versionGate,

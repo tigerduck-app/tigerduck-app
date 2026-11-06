@@ -477,7 +477,7 @@ struct TimeSliderViewModelTests {
         let saved = Defaults[.academicCalendarCache]
         defer { Defaults[.academicCalendarCache] = saved }
         Defaults[.academicCalendarCache] = try JSONEncoder().encode(calendar)
-        return AcademicCalendarStore()
+        return AcademicCalendarStore(clock: .isolated())
     }
 
     private func makeMockSlot(courseNo: String, start: Date, end: Date) -> CourseTimeSlot {

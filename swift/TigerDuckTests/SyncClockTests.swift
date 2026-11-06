@@ -37,10 +37,8 @@ struct SyncClockTests {
     static let year = 365 * 24 * 60 * minute
     static let laterThanAnyRun: Int64 = 4_000_000_000_000_000
 
-    static func makeClock(
-        _ device: DeviceClock, _ stored: StoredReadings = StoredReadings(), readable: Bool = true
-    ) -> SyncClock {
-        SyncClock(storage: stored.storage, now: { device.now }, protectedDataReadable: { readable })
+    static func makeClock(_ device: DeviceClock, _ stored: StoredReadings = StoredReadings()) -> SyncClock {
+        SyncClock(storage: stored.storage, now: { device.now })
     }
 
     private static func clock(of date: Date) -> Int64 { PushAPI.clock(of: date) }
@@ -51,7 +49,7 @@ struct SyncClockTests {
         let clock = Self.makeClock(device)
         #expect(Self.clock(of: clock.stamp()) == Self.ten + 1)
 
-        await clock.hear(Self.ten + 5 * Self.minute)
+        clock.hear(Self.ten + 5 * Self.minute)
         #expect(Self.clock(of: clock.stamp()) == Self.ten + 5 * Self.minute + 1)
 
         let issuedLater = Self.makeClock(DeviceClock(Self.ten), StoredReadings(.init(lastIssued: Self.ten + 60 * Self.minute)))
@@ -62,7 +60,7 @@ struct SyncClockTests {
     func lowestNextMarkSitsBetweenMarks(backendMinutesAhead: Int64) async {
         let device = DeviceClock(Self.ten)
         let clock = Self.makeClock(device)
-        await clock.hear(Self.ten + backendMinutesAhead * Self.minute)
+        clock.hear(Self.ten + backendMinutesAhead * Self.minute)
 
         let before = clock.mark()
         let reading = clock.lowestNextMark
@@ -94,7 +92,7 @@ struct SyncClockTests {
         #expect(Self.clock(of: unheard.stamp()) == Self.ten + Self.minute + 1)
 
         let heard = Self.makeClock(device)
-        await heard.hear(Self.ten)
+        heard.hear(Self.ten)
         #expect(Self.clock(of: heard.stamp()) == Self.ten + 5 * Self.second + 1)
 
         device.set(Self.ten + Self.minute + 10 * Self.second)
@@ -106,7 +104,7 @@ struct SyncClockTests {
         let clock = Self.makeClock(DeviceClock(Self.ten + Self.minute))
         let beforeHearing = Self.clock(of: clock.stamp())
 
-        await clock.hear(Self.ten)
+        clock.hear(Self.ten)
 
         #expect(Self.clock(of: clock.stamp()) == beforeHearing + 1)
         #expect(clock.readings.lastSeen == Self.ten)
@@ -129,12 +127,12 @@ struct SyncClockTests {
         let stored = StoredReadings()
         let clock = Self.makeClock(DeviceClock(Self.ten), stored)
 
-        await clock.hear(Self.ten + Self.minute)
-        await clock.hear(Self.ten)
+        clock.hear(Self.ten + Self.minute)
+        clock.hear(Self.ten)
         #expect(clock.readings.lastSeen == Self.ten + Self.minute)
 
-        await clock.hear(Self.ten + Self.year)
-        await clock.hear(Self.ten)
+        clock.hear(Self.ten + Self.year)
+        clock.hear(Self.ten)
         #expect(clock.readings.lastSeen == Self.ten)
         #expect(Self.makeClock(DeviceClock(Self.ten), stored).readings.lastSeen == Self.ten)
         #expect(clock.readings.heard == SyncClock.Heard(clock: Self.ten, arrivedAt: Self.ten))
@@ -144,7 +142,7 @@ struct SyncClockTests {
     func brokenHeaderIsIgnored(header: Int64) async {
         let clock = Self.makeClock(DeviceClock(Self.ten), StoredReadings(.init(lastIssued: Self.ten, lastSeen: Self.ten)))
 
-        await clock.hear(header)
+        clock.hear(header)
 
         #expect(clock.readings == SyncClock.Readings(lastIssued: Self.ten, lastSeen: Self.ten))
         #expect(Self.clock(of: clock.stamp()) == Self.ten + 1)
@@ -154,15 +152,15 @@ struct SyncClockTests {
     func clockSetAheadAndBackRecovers() async {
         let device = DeviceClock(Self.ten)
         let clock = Self.makeClock(device)
-        await clock.hear(Self.ten)
+        clock.hear(Self.ten)
         device.set(Self.ten + Self.year)
         _ = clock.stamp()
 
-        await clock.hear(Self.ten + Self.minute)
+        clock.hear(Self.ten + Self.minute)
         #expect(Self.clock(of: clock.stamp()) == Self.ten + Self.minute + SyncClock.backendLead + 1)
 
         device.set(Self.ten + 2 * Self.minute)
-        await clock.hear(Self.ten + 2 * Self.minute)
+        clock.hear(Self.ten + 2 * Self.minute)
         #expect(Self.clock(of: clock.stamp()) == Self.ten + 2 * Self.minute + 1)
     }
 
@@ -248,20 +246,6 @@ struct SyncClockTests {
         #expect(clock.readings == SyncClock.Readings())
     }
 
-    @Test("A header that arrives while protected data is unavailable changes nothing")
-    func headerIsIgnoredWhileProtectedDataIsUnavailable() async throws {
-        let stored = StoredReadings(.init(lastIssued: Self.ten, lastSeen: Self.ten))
-        let clock = Self.makeClock(DeviceClock(Self.ten), stored, readable: false)
-        let (client, baseURL) = Self.stubbedClient(clock)
-        SettingsAPIStub.enqueue(.init(
-            statusCode: 200, body: Data(#"{"revision":1}"#.utf8), headerFields: ["X-TigerSync-Clock": String(Self.ten + Self.minute)]
-        ), for: baseURL.appendingPathComponent("sync/revision"))
-
-        _ = try await client.fetchRevision(for: testSignIn)
-
-        #expect(clock.readings == SyncClock.Readings(lastIssued: Self.ten, lastSeen: Self.ten))
-    }
-
     private static func stubbedClient(_ clock: SyncClock) -> (PushAPIClient, URL) {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let config = URLSessionConfiguration.ephemeral
@@ -276,6 +260,6 @@ struct SyncClockTests {
 
 extension SyncClock {
     static func isolated() -> SyncClock {
-        SyncClock(storage: SyncClockTests.StoredReadings().storage, protectedDataReadable: { true })
+        SyncClock(storage: SyncClockTests.StoredReadings().storage)
     }
 }

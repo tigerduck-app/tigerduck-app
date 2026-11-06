@@ -363,9 +363,9 @@ final class SyncConflicts {
 
     static func keepLocalCourses(
         _ terms: [(semester: String, fetched: [SDCourse], userAdded: [SDCourse])], hiding deletedNos: Set<String>,
-        on backend: some CourseSyncBackend, for signIn: SignIn
+        on backend: some CourseSyncBackend, for signIn: SignIn, clock: SyncClock
     ) async throws {
-        try await ReenableAnswer.keepLocalCourses(terms, hiding: deletedNos, on: backend, for: signIn)
+        try await ReenableAnswer.keepLocalCourses(terms, hiding: deletedNos, on: backend, for: signIn, clock: clock)
     }
 }
 

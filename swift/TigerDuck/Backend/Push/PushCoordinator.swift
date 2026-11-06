@@ -69,7 +69,8 @@ final class PushCoordinator {
         self.isProtectedDataAvailable = isProtectedDataAvailable ?? { true }
         #endif
         let resolvedClient = apiClient
-            ?? authTokenManager.map { PushAPIClient(backend: BackendClient(auth: $0.backendAuth)) } ?? PushAPIClient()
+            ?? authTokenManager.map { PushAPIClient(backend: BackendClient(auth: $0.backendAuth, clock: .shared)) }
+            ?? PushAPIClient(clock: nil)
         self.apiClient = resolvedClient
         self.uploads = BackendUploads(client: resolvedClient, ledger: self.ledger)
         self.registration = PushRegistrationService(

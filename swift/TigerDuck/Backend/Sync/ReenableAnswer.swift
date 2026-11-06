@@ -157,7 +157,7 @@ enum ReenableAnswer {
         hiding deletedNos: Set<String>,
         on backend: some CourseSyncBackend,
         for signIn: SignIn,
-        clock: SyncClock = .shared
+        clock: SyncClock
     ) async throws {
         try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.uploadsCourses }) {
             for (semester, fetched, userAdded) in terms {

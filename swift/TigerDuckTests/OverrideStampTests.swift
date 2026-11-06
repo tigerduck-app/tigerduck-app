@@ -143,7 +143,7 @@ struct OverrideStampTests {
         try await Self.withCleanHolidayDefaults { id, url, registration in
             SettingsAPIStub.enqueue(Attempts.clockAhead, for: url)
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id)), for: url)
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             store.setNotify(true, forHoliday: id, for: testSignIn)
             store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
 
@@ -163,7 +163,7 @@ struct OverrideStampTests {
             var refused = Attempts.clockAhead
             refused.gate = gate
             SettingsAPIStub.enqueue(refused, for: url)
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             store.setNotify(true, forHoliday: id, for: testSignIn)
             store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
 
@@ -183,7 +183,7 @@ struct OverrideStampTests {
         try await Self.withCleanHolidayDefaults { id, url, registration in
             let gate = SettingsAPIStub.ReplyGate()
             SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id), gate: gate), for: url)
-            let store = AcademicCalendarStore()
+            let store = AcademicCalendarStore(clock: .isolated())
             store.setNotify(true, forHoliday: id, for: testSignIn)
             store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
 
@@ -274,7 +274,7 @@ struct OverrideStampTests {
     @Test("Use Server drops a colour queued just before it on a device whose clock is behind the backend")
     func useServerDropsAnEditStampedAheadOfTheDevice() async {
         let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
-        await clock.hear(SyncClockTests.laterThanAnyRun)
+        clock.hear(SyncClockTests.laterThanAnyRun)
         let coordinator = Self.makeCoordinator(SettingsAPIStub.uniqueBaseURL(), clock: clock)
 
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1001301", semester: "1151", colorHex: "#FF6B6B")?.value
@@ -286,7 +286,7 @@ struct OverrideStampTests {
     @Test("A colour picked after Use Server on a device whose clock is ahead of the backend stays queued")
     func editAfterUseServerOnADeviceAheadStays() async {
         let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
-        await clock.hear(SyncClockTests.ten - 60 * SyncClockTests.minute)
+        clock.hear(SyncClockTests.ten - 60 * SyncClockTests.minute)
         let coordinator = Self.makeCoordinator(SettingsAPIStub.uniqueBaseURL(), clock: clock)
 
         await coordinator.discardEdits(of: [.courseColors], courseIgnores: false)

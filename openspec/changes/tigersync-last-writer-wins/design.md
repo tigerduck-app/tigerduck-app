@@ -106,13 +106,15 @@ Lost:
 
 iOS keeps the last issued and last seen values, and the last `X-TigerSync-Clock` heard with the
 device time it arrived (for D1's cap), in `Defaults` keys behind a small
-`SyncClock` in `Backend/Sync/`. Stamping happens on a user edit, so the phone is unlocked.
-`BackendClient.send` raises the last seen value from `X-TigerSync-Clock` only while protected
-data is readable, as `FullSyncRunner.sync` already checks, so a background launch before
-first unlock cannot write over the stored values. A local time compared with stamps or with a
-full sync's fetch (a term reset's landing, a course add's start or landing, a holiday edit) is a
-`SyncClock.mark()`, the later of the device clock and a new stamp, and the fetch reads
-`lowestNextMark`. The outbox keeps `SyncOp.stamp` as a `Date`
+`SyncClock` in `Backend/Sync/`. `BackendClient.send` raises the last seen value from the
+`X-TigerSync-Clock` of a 2xx or 409 answer from its own backend's host, never a departing
+session's server. Every client that hears and every caller that stamps belongs to
+`AppEnvironment`, which a launch before the first unlock does not build
+(`docs/decisions/0024-launch-before-first-unlock.md`), so neither can write over the stored values
+with the empty ones `UserDefaults` reads then. A course add's start or landing is a stamp,
+which a full sync compares with `lowestNextStamp` read at its fetch. A term reset's landing and a
+holiday edit are a `SyncClock.mark()`, the later of the device clock and a new stamp, which the
+fetch compares with its `lowestNextMark`. The outbox keeps `SyncOp.stamp` as a `Date`
 holding the clock value; sending rounds it to whole microseconds (a `Date` resolves about 0.1
 microsecond today). Entries queued before the update keep their queue time, with no change to
 the stored shape and so no migration. The backend keeps no clock state: its value is its time.

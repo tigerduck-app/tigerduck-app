@@ -307,7 +307,7 @@ struct CourseAddSyncTests {
         let backend = Backend()
         backend.answer(200)
         let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
-        await clock.hear(SyncClockTests.laterThanAnyRun)
+        clock.hear(SyncClockTests.laterThanAnyRun)
         let cache = Self.makeCache(userAdded: [Self.art()])
         let coordinator = Self.makeCoordinator(backend, cache: cache, clock: clock)
 
@@ -325,7 +325,7 @@ struct CourseAddSyncTests {
         let backend = Backend()
         backend.answer(200)
         let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten + 10 * SyncClockTests.minute))
-        await clock.hear(SyncClockTests.ten)
+        clock.hear(SyncClockTests.ten)
         let cache = Self.makeCache(userAdded: [Self.art()])
         let coordinator = Self.makeCoordinator(backend, cache: cache, clock: clock)
 

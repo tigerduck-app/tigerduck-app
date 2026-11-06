@@ -229,7 +229,7 @@ struct CourseDeleteSyncTests {
     @Test("A term reset drops a hide made while its request was out on a device whose clock is behind the backend")
     func termResetDropsAHideStampedAheadOfTheDevice() async throws {
         let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
-        await clock.hear(SyncClockTests.laterThanAnyRun)
+        clock.hear(SyncClockTests.laterThanAnyRun)
         let coordinator = Self.makeCoordinator(Backend(), clock: clock)
 
         try await EditSender.resetCourses(semester: "1151", on: coordinator, onServer: {
@@ -281,7 +281,7 @@ struct CourseDeleteSyncTests {
             let resetClock = SyncClockTests.laterThanAnyRun + 1
             backend.answer("sync/courses?semester=1151&hlc=\(resetClock)")
             let clock = SyncClockTests.makeClock(SyncClockTests.DeviceClock(SyncClockTests.ten))
-            await clock.hear(SyncClockTests.laterThanAnyRun)
+            clock.hear(SyncClockTests.laterThanAnyRun)
 
             #expect(await Self.makeEditSender(backend, clock: clock).deleteBackendCourses(semester: "1151"))
 

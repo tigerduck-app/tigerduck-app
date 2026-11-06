@@ -18,7 +18,7 @@ struct KeepLocalCoursesTests {
         )
         let roster = Self.roster("CS1", "CS2")
 
-        try await SyncConflicts.keepLocalCourses([("1151", roster, [])], hiding: ["1151:CS2"], on: server, for: testSignIn)
+        try await SyncConflicts.keepLocalCourses([("1151", roster, [])], hiding: ["1151:CS2"], on: server, for: testSignIn, clock: .isolated())
         #expect(server.rows == ["client:1151:CS1"])
 
         try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(roster, semester: "1151"), addedAt: nil, for: testSignIn)
@@ -35,7 +35,7 @@ struct KeepLocalCoursesTests {
             tombstones: deletedOnServer ? ["client:1151:CS2": false] : [:]
         )
 
-        try await SyncConflicts.keepLocalCourses([("1151", cached, [])], hiding: ["1151:CS2"], on: server, for: testSignIn)
+        try await SyncConflicts.keepLocalCourses([("1151", cached, [])], hiding: ["1151:CS2"], on: server, for: testSignIn, clock: .isolated())
 
         try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(
             cached + Self.roster("CS2"), semester: "1151"
@@ -47,7 +47,7 @@ struct KeepLocalCoursesTests {
     func uncachedLegacyHiddenCourseStaysDeleted() async throws {
         let server = FakeCourseServer(rows: ["client:1151:CS1"], tombstones: ["client:1151:CS2": false])
 
-        try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"), [])], hiding: ["CS2"], on: server, for: testSignIn)
+        try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"), [])], hiding: ["CS2"], on: server, for: testSignIn, clock: .isolated())
 
         try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(
             Self.roster("CS1", "CS2"), semester: "1151"
@@ -62,9 +62,9 @@ struct KeepLocalCoursesTests {
         server.failingDeletes = 1
 
         await #expect(throws: URLError.self) {
-            try await SyncConflicts.keepLocalCourses([("1151", roster, [])], hiding: ["1151:CS2"], on: server, for: testSignIn)
+            try await SyncConflicts.keepLocalCourses([("1151", roster, [])], hiding: ["1151:CS2"], on: server, for: testSignIn, clock: .isolated())
         }
-        try await SyncConflicts.keepLocalCourses([("1151", roster, [])], hiding: ["1151:CS2"], on: server, for: testSignIn)
+        try await SyncConflicts.keepLocalCourses([("1151", roster, [])], hiding: ["1151:CS2"], on: server, for: testSignIn, clock: .isolated())
 
         try await server.uploadCourses(SchoolDataUploader.courseUploadRequest(roster, semester: "1151"), addedAt: nil, for: testSignIn)
         #expect(server.rows == ["client:1151:CS1"])
@@ -77,7 +77,7 @@ struct KeepLocalCoursesTests {
 
         try await SyncConflicts.keepLocalCourses(
             [("1151", Self.roster("CS1"), Self.roster("GE1", "EE2", "PE3") + [merged])],
-            hiding: ["1151:PE3"], on: server, for: testSignIn
+            hiding: ["1151:PE3"], on: server, for: testSignIn, clock: .isolated()
         )
 
         let upload = try #require(server.uploads.first)
@@ -96,7 +96,7 @@ struct KeepLocalCoursesTests {
 
         try await SyncConflicts.keepLocalCourses(
             [("1151", Self.roster("CS1", "CS2"), [merged])], hiding: ["1151:CS2", "1151:MG4", "1151:XX9"],
-            on: server, for: testSignIn
+            on: server, for: testSignIn, clock: .isolated()
         )
 
         #expect(server.deletes.map { "\($0.key) \($0.kind?.rawValue ?? "none")" }
@@ -108,7 +108,7 @@ struct KeepLocalCoursesTests {
         let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1142:CS9"])
 
         try await SyncConflicts.keepLocalCourses(
-            [("1151", Self.roster("CS1"), []), ("1142", [], [])], hiding: [], on: server, for: testSignIn
+            [("1151", Self.roster("CS1"), []), ("1142", [], [])], hiding: [], on: server, for: testSignIn, clock: .isolated()
         )
 
         #expect(server.fullResets == 0)
@@ -123,7 +123,7 @@ struct KeepLocalCoursesTests {
 
         await #expect(throws: PushAPIError.self) {
             try await SyncConflicts.keepLocalCourses(
-                [("1151", Self.roster("CS1"), []), ("1142", Self.roster("CS9"), [])], hiding: [], on: server, for: signedIn.signIn
+                [("1151", Self.roster("CS1"), []), ("1142", Self.roster("CS9"), [])], hiding: [], on: server, for: signedIn.signIn, clock: .isolated()
             )
         }
 
@@ -148,7 +148,7 @@ struct KeepLocalCoursesTests {
             ), for: reset)
 
             let answer = Task {
-                try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"), [])], hiding: [], on: server, for: testSignIn)
+                try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"), [])], hiding: [], on: server, for: testSignIn, clock: .isolated())
             }
             try await waitUntil { !SettingsAPIStub.requests(for: reset).isEmpty }
             Defaults[.cloudSyncEnabled, for: testSignIn] = false

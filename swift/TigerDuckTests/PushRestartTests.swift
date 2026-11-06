@@ -13,7 +13,7 @@ struct PushRestartTests {
         let client = PushAPIClient(
             baseURLProvider: { baseURL },
             session: URLSession(configuration: config),
-            auth: .unbound { authHeader }
+            auth: .unbound { authHeader }, clock: .isolated()
         )
         return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
     }
