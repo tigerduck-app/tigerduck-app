@@ -5,7 +5,7 @@ import Testing
 struct SettingsCatalogTests {
     static let everyRowShown = SettingsState(
         library: .init(isSignedIn: true), usesEnglishClassroomNames: true,
-        hasFlipToLibrary: true, hasSchoolMail: true, hasWhatsNew: true
+        hasFlipToLibrary: true, hasSchoolMail: true, hasWhatsNew: true, hasMoodleApp: true
     )
 
     @Test("every row has a translated title and every page has a row")
@@ -39,7 +39,7 @@ struct SettingsCatalogTests {
         #expect(Self.found(.englishClassroomNames, in: noClassroomNames))
 
         let bare = SettingsState()
-        for row in [SettingsRow.flipToLibrary, .librarySignOut, .mailNotifications, .mailAccount, .whatsNew] {
+        for row in [SettingsRow.flipToLibrary, .librarySignOut, .mailNotifications, .mailAccount, .whatsNew, .moodleOpenIn] {
             #expect(!Self.found(row, in: bare))
         }
         #expect(!PageSettings.library.isShown(in: bare))

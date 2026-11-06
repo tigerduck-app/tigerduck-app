@@ -90,6 +90,7 @@ jobs:
               TigerDuckTests/MoodleMaterialsWeekPageTests
               TigerDuckTests/MoodleMemberCommonCoursesScreenTests
               TigerDuckTests/MoodleNotificationSettingsScreenTests
+              TigerDuckTests/MoodleOpenInSettingTests
               TigerDuckTests/MoodleOwnProfileTests/doneUploadsOnce()
               TigerDuckTests/MoodleOwnProfileTests/theCameraButtonFollowsTheSite()
               TigerDuckTests/MoodleOwnProfileTests/theOwnRowSaysMe()
