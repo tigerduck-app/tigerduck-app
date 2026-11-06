@@ -211,12 +211,12 @@ struct TodayTimelineView: View {
                         ForEach(Array(hours), id: \.self) { hour in
                             hourMark(hour, width: geometry.size.width).offset(y: y(hour * 60))
                         }
-                        let lanes = Self.lanes(of: rows)
+                        let lanes = OverlapLanes.assign(rows.map { (start: $0.start, end: $0.end) })
                         let laneWidth = (geometry.size.width - gutter - 4) / CGFloat(max(lanes.count, 1))
                         ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
                             card(item, height: max(CGFloat(item.end - item.start) * perMinute - 2, 14))
                                 .frame(width: laneWidth - 2)
-                                .offset(x: gutter + 4 + CGFloat(lanes.lane[index]) * laneWidth, y: y(item.start) + 1)
+                                .offset(x: gutter + 4 + CGFloat(lanes.lanes[index]) * laneWidth, y: y(item.start) + 1)
                         }
                         if let minute = WidgetDayLayout.nowLine(rows: rows, now: now) {
                             nowLine(minute, width: geometry.size.width).offset(y: y(minute))
@@ -300,18 +300,5 @@ struct TodayTimelineView: View {
         .frame(height: height, alignment: tall ? .topLeading : .leading)
         .classTile(tile, radius: tall ? 10 : 8, progress: item.progress, outline: 2, bottomBar: false)
         .accessibilityElement(children: .combine)
-    }
-
-    static func lanes(of rows: [WidgetClassRow]) -> (lane: [Int], count: Int) {
-        var laneEnds: [Int] = []
-        let lane = rows.map { row in
-            if let free = laneEnds.firstIndex(where: { $0 <= row.start }) {
-                laneEnds[free] = row.end
-                return free
-            }
-            laneEnds.append(row.end)
-            return laneEnds.count - 1
-        }
-        return (lane, laneEnds.count)
     }
 }
