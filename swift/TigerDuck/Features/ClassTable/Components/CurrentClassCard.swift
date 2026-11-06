@@ -42,6 +42,7 @@ struct CurrentClassCard: View {
                 .tint(info.course.color)
 
             Text(info.formattedTimeRange)
+                .accessibilityLabel(TimeRange.spoken(from: info.startMinute, to: info.endMinute))
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
         }

@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -33,7 +34,7 @@ struct CourseDetailRoomAndTime: View {
 
     private static func changedTime(_ meeting: CourseTimeSlot) -> String? {
         if meeting.isCancelled { return String(localized: "course_card_cancelled") }
-        return meeting.hasChangedTime ? "\(meeting.start.timeString) - \(meeting.end.timeString)" : nil
+        return meeting.hasChangedTime ? TimeRange.text(meeting.start.timeString, meeting.end.timeString) : nil
     }
 
     private var classroomValue: String {
