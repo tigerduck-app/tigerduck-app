@@ -47,7 +47,7 @@ final class MailRowActions {
     var moving: MailMessageViewModel?
     var deletingForever: MailMessageViewModel?
     @ObservationIgnored var afterSheet: (() -> Void)?
-    @ObservationIgnored private var busy: Set<MailListRow.ID> = []
+    @ObservationIgnored private var busy: Set<Work> = []
     @ObservationIgnored private let prefs: (any MailPreferences)?
     @ObservationIgnored private let notifier: MailNotifier?
 
@@ -58,8 +58,8 @@ final class MailRowActions {
 
     func perform(_ action: MailRowAction, on row: MailListRow, in list: MailListViewModel) {
         switch action {
-        case .toggleRead: Task { await list.toggleRead(row) }
-        case .toggleFlag: Task { await list.toggleFlag(row) }
+        case .toggleRead: Task { await toggle(.seen, row, in: list) }
+        case .toggleFlag: Task { await toggle(.flagged, row, in: list) }
         case .trash: Task { await trash(row, in: list) }
         case .move: moving = message(row, in: list)
         case .more: sheetRow = row
@@ -71,6 +71,13 @@ final class MailRowActions {
         let route = MailMessageRoute(folder: row.folder, uid: row.uid, uidValidity: list.mailbox[row.folder]?.uidValidity)
         return MailMessageViewModel(route: route, session: list.session, folderRoles: list.folderRoles, events: list.events,
                                     cache: list.writer.cache, prefs: prefs, notifier: notifier ?? MailChecker.shared.notifier)
+    }
+
+    func toggle(_ flag: MailFlag, _ row: MailListRow, in list: MailListViewModel) async {
+        let key = Work(row: row.id, flag: flag)
+        guard busy.insert(key).inserted else { return }
+        defer { busy.remove(key) }
+        await MailListFlags.toggle(flag, of: row, list: list)
     }
 
     func trash(_ row: MailListRow, in list: MailListViewModel) async {
@@ -94,6 +101,7 @@ final class MailRowActions {
 
     func compose(_ mode: MailComposeMode, row: MailListRow, in list: MailListViewModel) async -> MailComposeContext? {
         let model = message(row, in: list)
+        let signIn = await list.account.startingSignIn
         composing = mode
         defer { composing = nil }
         var context: MailComposeContext?
@@ -102,13 +110,13 @@ final class MailRowActions {
             context = model.detail.map { _ in model.composeContext(mode) }
             return context != nil
         }
-        return context
+        return signIn.isCurrent ? context : nil
     }
 
     private func once(_ model: MailMessageViewModel, in list: MailListViewModel, _ work: () async -> Bool) async {
-        let id = MailListRow.ID(folder: model.route.folder, uid: model.route.uid)
-        guard busy.insert(id).inserted else { return }
-        defer { busy.remove(id) }
+        let key = Work(row: MailListRow.ID(folder: model.route.folder, uid: model.route.uid), flag: nil)
+        guard busy.insert(key).inserted else { return }
+        defer { busy.remove(key) }
         let signIn = await list.account.startingSignIn
         let done = await work()
         guard !done, signIn.isCurrent else { return }
@@ -117,6 +125,11 @@ final class MailRowActions {
         } else {
             list.status.actionError = model.actionError
         }
+    }
+
+    private struct Work: Hashable {
+        let row: MailListRow.ID
+        let flag: MailFlag?
     }
 }
 #endif

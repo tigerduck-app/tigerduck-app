@@ -31,6 +31,7 @@ enum MailListFlags {
             await list.recoverFromFolderChange(folder)
         } catch {
             mark(edit(flag, !on), folder: folder, uids: uids, list: list)
+            list.status.actionError = MailAccountManager.LoginError(error).message
         }
     }
 

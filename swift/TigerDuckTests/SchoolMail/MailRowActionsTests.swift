@@ -86,22 +86,39 @@ struct MailRowActionsTests {
 
     @Test func flaggingMarksTheRowAndStoresTheFlagOnTheServer() async throws {
         let h = await Self.harness()
-        await h.list.toggleFlag(try h.row(3))
+        await h.actions.toggle(.flagged, try h.row(3), in: h.list)
         #expect(try h.row(3).summary.isFlagged)
         #expect(await h.fake.calls.contains("setFlag flagged true [3]"))
         #expect(await h.fake.folders["INBOX"]?.first { $0.summary.uid == 3 }?.summary.isFlagged == true)
         await h.list.waitForCacheWrites()
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.first { $0.uid == 3 }?.isFlagged == true)
 
-        await h.list.toggleFlag(try h.row(3))
+        await h.actions.toggle(.flagged, try h.row(3), in: h.list)
         #expect(try !h.row(3).summary.isFlagged)
         #expect(await h.fake.calls.contains("setFlag flagged false [3]"))
     }
 
-    @Test func aRefusedFlagPutsTheRowBack() async throws {
+    @Test(arguments: [MailFlag.seen, .flagged])
+    func aRefusedTogglePutsTheRowBackAndShowsWhy(flag: MailFlag) async throws {
         let h = await Self.harness()
-        await h.fake.update { $0.setFlagError = .unreachable }
-        await h.list.toggleFlag(try h.row(3))
+        await h.fake.update { $0.setFlagError = .protocolError("NO") }
+        await h.actions.toggle(flag, try h.row(3), in: h.list)
+        #expect(try !h.row(3).summary.isSeen && !h.row(3).summary.isFlagged)
+        #expect(h.list.status.actionError == MailAccountManager.LoginError(MailClientError.protocolError("NO")).message)
+    }
+
+    @Test func aSecondToggleWhileTheFirstIsInFlightIsIgnored() async throws {
+        let h = await Self.harness()
+        await h.fake.update { $0.setFlagError = .protocolError("NO") }
+        await h.fake.holdNext("setFlag")
+        let row = try h.row(3)
+        let first = Task { await h.actions.toggle(.flagged, row, in: h.list) }
+        await h.fake.waitForArrival("setFlag")
+        await h.fake.stopHolding("setFlag")
+        await h.actions.toggle(.flagged, try h.row(3), in: h.list)
+        await h.fake.release("setFlag")
+        await first.value
+        #expect(await h.fake.calls.filter { $0.hasPrefix("setFlag flagged") }.count == 1)
         #expect(try !h.row(3).summary.isFlagged)
     }
 
@@ -111,7 +128,7 @@ struct MailRowActionsTests {
         await h.fake.holdNext("page")
         let refresh = Task { await h.list.load() }
         await h.fake.waitForArrival("page")
-        let flagging = Task { await h.list.toggleFlag(row) }
+        let flagging = Task { await h.actions.toggle(.flagged, row, in: h.list) }
         try await waitUntil { (try? h.row(3).summary.isFlagged) == true }
         await h.fake.release("page")
         await refresh.value
@@ -211,6 +228,18 @@ struct MailRowActionsTests {
         #expect(context.original?.subject == "公告 3")
         #expect(context.original?.bodyText.contains("body") == true)
         #expect(h.actions.composing == nil)
+    }
+
+    @Test func aReplyWhoseMailArrivesAfterTheSignInEndsOpensNothing() async throws {
+        let h = await Self.harness()
+        let row = try h.row(2)
+        await h.fake.holdNext("detail")
+        let replying = Task { await h.actions.compose(.reply, row: row, in: h.list) }
+        await h.fake.waitForArrival("detail")
+        h.account.endSignIn()
+        await h.fake.release("detail")
+        #expect(await replying.value == nil)
+        #expect(h.list.status.actionError == nil)
     }
 
     @Test func aReplyWhoseMailCannotLoadOpensNothingAndShowsWhy() async throws {

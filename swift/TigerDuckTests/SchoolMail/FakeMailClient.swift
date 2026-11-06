@@ -73,6 +73,10 @@ actor FakeMailClient: MailClient {
         heldCommands.insert(command)
     }
 
+    func stopHolding(_ command: String) {
+        heldCommands.remove(command)
+    }
+
     func release(_ command: String) {
         heldCommands.remove(command)
         for gate in releaseGates.removeValue(forKey: command) ?? [] { gate.resume() }

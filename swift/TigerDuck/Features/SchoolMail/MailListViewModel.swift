@@ -143,8 +143,6 @@ final class MailListViewModel {
     func clearSearch() { search.clear() }
 
     func canFlag(_ folder: String) -> Bool { folders.storesFlagged[folder] == true }
-    func toggleRead(_ row: MailListRow) async { await MailListFlags.toggle(.seen, of: row, list: self) }
-    func toggleFlag(_ row: MailListRow) async { await MailListFlags.toggle(.flagged, of: row, list: self) }
     func markAllRead(for signIn: SignIn) async { await MailListFlags.markAllRead(for: signIn, list: self) }
 
     func markSeenLocally(folder: String, uid: UInt32, seen: Bool = true) {
