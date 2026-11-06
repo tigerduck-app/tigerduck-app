@@ -250,6 +250,21 @@ struct SyncRaceTests {
         }
     }
 
+    private static func syncingCoordinator(_ baseURL: URL, cache: TestCache) -> CloudSyncCoordinator {
+        CloudSyncCoordinator(
+            pushCoordinator: push(baseURL),
+            outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
+            isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
+            syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
+            kept: KeptValues(policy: policy([]), colors: CourseColorStore(files: cache.colors),
+                             courses: cache.courses, assignments: cache.assignments)
+        )
+    }
+
+    private static let courseNotFound = SettingsAPIStub.StubResponse(
+        statusCode: 404, body: Data(#"{"error":"course_not_found","message":"no course"}"#.utf8)
+    )
+
     @Test(
         "A colour or ignore setting for a course this device no longer holds is given up at the backend's 404, as no upload brings the course",
         arguments: [
@@ -266,18 +281,9 @@ struct SyncRaceTests {
     func courseEditNoUploadBringsIsGivenUp(_ edit: SyncOp) async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS9/override")
-        SettingsAPIStub.enqueue(
-            .init(statusCode: 404, body: Data(#"{"error":"course_not_found","message":"no course"}"#.utf8)), for: url
-        )
+        SettingsAPIStub.enqueue(Self.courseNotFound, for: url)
         let cache = Self.cache()
-        let coordinator = CloudSyncCoordinator(
-            pushCoordinator: Self.push(baseURL),
-            outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
-            isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
-            syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
-            kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
-                             courses: cache.courses, assignments: cache.assignments)
-        )
+        let coordinator = Self.syncingCoordinator(baseURL, cache: cache)
 
         await coordinator.outbox.enqueue(edit)
         await coordinator.syncTick()
@@ -299,9 +305,7 @@ struct SyncRaceTests {
     func courseEditBeforeItsCourseWaitsForTheUpload(_ edit: SyncOp, hidden: Bool) async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
-        SettingsAPIStub.enqueue(
-            .init(statusCode: 404, body: Data(#"{"error":"course_not_found","message":"no course"}"#.utf8)), for: url
-        )
+        SettingsAPIStub.enqueue(Self.courseNotFound, for: url)
         SettingsAPIStub.enqueue(
             .init(statusCode: 200, body: Data(
                 ##"{"color_hex":"#4ECDC4","custom_names":{"zh":"Algorithms"},"ignore_assignments":true,"applied":["color_hex","custom_name","ignore_assignments"]}"##.utf8
@@ -309,14 +313,7 @@ struct SyncRaceTests {
         )
         let cache = Self.cache()
         if hidden { cache.courses.saveDeletedCourseNos([CourseTombstone.key(semester: "1151", courseNo: "CS1")], for: testSignIn) }
-        let coordinator = CloudSyncCoordinator(
-            pushCoordinator: Self.push(baseURL),
-            outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
-            isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
-            syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
-            kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
-                             courses: cache.courses, assignments: cache.assignments)
-        )
+        let coordinator = Self.syncingCoordinator(baseURL, cache: cache)
 
         await coordinator.outbox.enqueue(edit)
         await coordinator.syncTick()
@@ -337,6 +334,25 @@ struct SyncRaceTests {
             if !settled { try await Task.sleep(for: .milliseconds(20)) }
         }
         #expect(settled)
+    }
+
+    @Test(
+        "A colour, name or ignore setting whose course the backend lacks waits parked while this device has no course list cached for the term",
+        arguments: [colourEdit, nameEdit, ignoreEdit]
+    )
+    func courseEditWithNoCachedCoursesWaits(_ edit: SyncOp) async {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
+        SettingsAPIStub.enqueue(Self.courseNotFound, for: url)
+        let cache = Self.cache()
+        cache.courses.clearCourses(semester: "1151", for: testSignIn)
+        let coordinator = Self.syncingCoordinator(baseURL, cache: cache)
+
+        await coordinator.outbox.enqueue(edit)
+        await coordinator.syncTick()
+
+        #expect(SettingsAPIStub.requests(for: url).count == 1)
+        #expect(await coordinator.outbox.parkedSnapshot().count == 1)
     }
 
     private static let resetClock = PushAPI.clock(of: Date(timeIntervalSince1970: 1_790_000_000))

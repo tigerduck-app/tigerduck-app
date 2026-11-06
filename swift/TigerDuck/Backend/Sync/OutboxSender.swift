@@ -39,7 +39,7 @@ final class OutboxSender {
                 throw CourseKeyUnknownError()
             }
             let resolvedLocale = customName != nil ? (locale ?? Locale.current.language.languageCode?.identifier) : nil
-            guard let reply = try await sendOrGiveUp(courseNo, semester: term, {
+            guard let reply = try await sendOrGiveUp("courseOverride", courseNo, semester: term, {
                 try await push.patchCourseOverride(
                     courseKey: courseKey, colorHex: colorHex, customName: customName, locale: resolvedLocale, madeAt: stamp,
                     for: signIn
@@ -62,7 +62,7 @@ final class OutboxSender {
             }
 
         case .courseIgnore(let semester, let courseNo, _, let moodleCourseId, let ignore, let stamp):
-            guard let reply = try await sendOrGiveUp(courseNo, semester: semester, {
+            guard let reply = try await sendOrGiveUp("courseIgnore", courseNo, semester: semester, {
                 try await push.patchCourseOverride(
                     courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
                     ignoreAssignments: ignore, moodleCourseId: moodleCourseId, madeAt: stamp, for: signIn
@@ -101,15 +101,21 @@ final class OutboxSender {
     }
 
     private func sendOrGiveUp(
-        _ courseNo: String, semester: String, _ send: () async throws -> PushAPI.CourseOverrideResponse
+        _ kind: String, _ courseNo: String, semester: String, _ send: () async throws -> PushAPI.CourseOverrideResponse
     ) async throws -> PushAPI.CourseOverrideResponse? {
         do {
             return try await send()
         } catch PushAPIError.courseNotFound {
-            guard !held(in: semester).contains(where: { $0.courseNo == courseNo }) else { throw PushAPIError.courseNotFound }
-            AppLogger.sync.info("[outbox] gave up a course setting for a course this device no longer holds")
+            guard noLongerHolds(courseNo, in: semester) else { throw PushAPIError.courseNotFound }
+            AppLogger.sync.warning("[outbox] gave up \(kind, privacy: .public) for a course this device no longer holds")
+            AppLogger.captureError(PushAPIError.courseNotFound, context: ["phase": "cloudSync.outbox.giveUp", "op": kind])
             return nil
         }
+    }
+
+    private func noLongerHolds(_ courseNo: String, in term: String) -> Bool {
+        guard let roster = courses.loadCoursesIfCached(semester: term) else { return false }
+        return !(roster + courses.loadUserAddedCourses(semester: term)).contains { $0.courseNo == courseNo }
     }
 
     private func held(in term: String) -> [SDCourse] {

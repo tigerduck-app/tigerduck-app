@@ -63,8 +63,14 @@ which no upload can bring.
 - **THEN** the colour is sent again after a course upload, such as the one that shows it again
 
 #### Scenario: The course is no longer held here
-- **WHEN** a course colour gets 404 for a course this device no longer holds
-- **THEN** the colour leaves the queue and is not sent again
+- **WHEN** a course colour, name or ignore setting gets 404 for a course missing from this device's
+  cached course list for its term and from the courses added here
+- **THEN** the setting leaves the queue and is not sent again
+
+#### Scenario: The term's course list is not cached here
+- **WHEN** a course colour, name or ignore setting gets 404 and this device has no course list
+  cached for that term
+- **THEN** the setting waits and is sent again after the next course upload
 
 ### Requirement: One send per channel at a time
 A channel SHALL have at most one request in flight. A newer state SHALL wait for that request's
