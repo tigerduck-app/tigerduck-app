@@ -1,5 +1,6 @@
 import ActivityKit
 import SwiftUI
+import TigerDuckCore
 import WidgetKit
 
 struct TigerDuckLiveActivityLiveActivity: Widget {
@@ -15,7 +16,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 6) {
                         Circle()
-                            .fill(hexColor(snapshot.accentHex))
+                            .fill(accentFill(snapshot))
                             .frame(width: 8, height: 8)
                         Text(statusLabel(for: snapshot.scenario))
                             .font(.footnote.weight(.semibold))
@@ -71,7 +72,7 @@ private struct LockScreenView: View {
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(hexColor(snapshot.accentHex))
+                        .fill(accentFill(snapshot))
                         .frame(width: 8, height: 8)
                     Text(statusLabel(for: snapshot.scenario))
                         .font(.footnote.weight(.semibold))
@@ -153,7 +154,7 @@ private struct AutoProgressBar: View {
             } currentValueLabel: {
                 EmptyView()
             }
-            .tint(hexColor(snapshot.accentHex))
+            .tint(accentFill(snapshot))
             .scaleEffect(x: 1, y: 1.2, anchor: .center)
             .padding(.vertical, 6)
         }
@@ -297,6 +298,10 @@ private extension View {
             self
         }
     }
+}
+
+private func accentFill(_ snapshot: LiveActivitySnapshot) -> AnyShapeStyle {
+    snapshot.accentGradient?.shapeStyle(color: hexColor) ?? AnyShapeStyle(hexColor(snapshot.accentHex))
 }
 
 private func hexColor(_ hex: Int) -> Color {

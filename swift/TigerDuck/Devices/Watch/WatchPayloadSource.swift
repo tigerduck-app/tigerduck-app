@@ -10,7 +10,8 @@ extension WatchSyncCoordinator.Payload {
             languageTag: app.preferences.appLanguage == LanguageManager.system ? nil : app.preferences.appLanguage,
             visualPreset: app.preferences.visualPreset,
             quietDays: WidgetSnapshotWriter.quietDayKeys(),
-            changes: .cached
+            changes: .cached,
+            accentGradient: app.preferences.deviceAccentGradient
         )
     }
 }

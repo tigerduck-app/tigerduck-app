@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 // watchOS has `PKPassLibrary` but not the iOS-only `requestAutomaticPassPresentationSuppression`
 // (checked against the watchOS 11 SDK), so nothing stops a side-button double-press from opening
@@ -95,7 +96,7 @@ struct LibraryQRView: View {
                     .stroke(Color.secondary.opacity(0.3), lineWidth: 2)
                 Circle()
                     .trim(from: 0, to: CGFloat(viewModel.countdown) / 30.0)
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .stroke(countdownRingStyle, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.linear(duration: 1), value: viewModel.countdown)
             }
@@ -115,6 +116,11 @@ struct LibraryQRView: View {
             }
         }
         .padding(.horizontal, 2)
+    }
+
+    private var countdownRingStyle: AnyShapeStyle {
+        store.snapshot?.accentGradient?.shapeStyle { Color(hex: String(format: "#%06lX", $0)) ?? .accentColor }
+            ?? AnyShapeStyle(Color.accentColor)
     }
 
     private func errorRow(_ message: String) -> some View {

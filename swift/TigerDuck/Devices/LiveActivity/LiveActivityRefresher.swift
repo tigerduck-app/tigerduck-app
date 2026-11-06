@@ -83,7 +83,7 @@ final class LiveActivityRefresher {
         let now = AppClock.now()
         let courses = courseProvider.currentCourses()
         let assignments = AssignmentStore.shared.loadAssignments()
-        let snapshot = scenarioResolver.resolve(
+        var snapshot = scenarioResolver.resolve(
             courses: courses,
             assignments: assignments,
             preferences: preferences,
@@ -93,6 +93,7 @@ final class LiveActivityRefresher {
             calendar: AcademicCalendarStore.shared.calendar,
             optedInHolidayIDs: AcademicCalendarStore.shared.optedInHolidayIDs
         )
+        snapshot?.accentGradient = app.preferences.deviceAccentGradient
         await coordinator.apply(snapshot: snapshot)
         scheduleBoundaryRefresh(
             snapshot: snapshot,

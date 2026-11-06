@@ -57,7 +57,7 @@ struct NextClassView: View {
                 Text(String(localized: "widget_ongoing"))
                     .font(.caption2.weight(.bold))
                     .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(palette.highlight, in: RoundedRectangle(cornerRadius: 6))
+                    .background(palette.highlightFill, in: RoundedRectangle(cornerRadius: 6))
                     .foregroundStyle(.white)
                 if additionalCount > 0 {
                     Text("+\(additionalCount)")
@@ -84,7 +84,7 @@ struct NextClassView: View {
             Text(String(localized: "widget_ongoing"))
                 .font(.caption.weight(.bold))
                 .padding(.horizontal, 8).padding(.vertical, 2)
-                .background(palette.highlight, in: RoundedRectangle(cornerRadius: 8))
+                .background(palette.highlightFill, in: RoundedRectangle(cornerRadius: 8))
                 .foregroundStyle(.white)
             Text(info.course.displayName)
                 .font(.system(size: title3Base * userScale, weight: .bold))

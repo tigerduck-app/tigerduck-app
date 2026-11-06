@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TigerDuckCore
 
 @MainActor
 final class DeviceSurfaceSyncer {
@@ -7,6 +8,7 @@ final class DeviceSurfaceSyncer {
         var data: AppDataRevision
         var language: String
         var accentHex: Int
+        var deviceAccent: AccentGradient? = nil
         var visualPreset: String
         var signedIn: Bool
         var unobserved: UnobservedChanges
@@ -114,6 +116,7 @@ extension DeviceSurfaceSyncer {
             data: .current,
             language: app.preferences.appLanguage,
             accentHex: app.preferences.accentColorHex,
+            deviceAccent: app.preferences.deviceAccentGradient,
             visualPreset: app.preferences.visualPreset.rawValue,
             signedIn: app.authService.hasStoredCredentials,
             unobserved: unobserved

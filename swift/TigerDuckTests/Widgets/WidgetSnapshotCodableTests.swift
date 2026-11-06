@@ -49,6 +49,7 @@ struct WidgetSnapshotCodableTests {
         #expect(snapshot.version == 1)
         #expect(!snapshot.courses.isEmpty)
         #expect(snapshot.courses.allSatisfy { $0.classroomMap.isEmpty })
+        #expect(snapshot.accentGradient == nil)
     }
 
     @Test func classroomMap_roundTrips() throws {

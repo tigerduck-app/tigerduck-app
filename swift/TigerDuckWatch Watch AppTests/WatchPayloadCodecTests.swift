@@ -1,3 +1,4 @@
+import TigerDuckCore
 import XCTest
 @testable import TigerDuckWatch_Watch_App
 
@@ -105,6 +106,34 @@ final class WatchPayloadCodecTests: XCTestCase {
         XCTAssertEqual(decoded.visualPreset, .default)
         XCTAssertNil(decoded.clockOverrideJSON)
         XCTAssertEqual(decoded.quietDays, [])
+    }
+
+    func test_accentGradient_roundTrips() throws {
+        let gradient = try XCTUnwrap(AccentGradient(stops: [0x8A87FF, 0xB35CEB, 0xF0507A], style: .angular))
+        let snapshot = WatchSnapshot(
+            courses: [sampleCourse()], accentHex: "#8A87FF", syncedAtMs: 1,
+            loggedIn: true, languageTag: nil, accentGradient: gradient
+        )
+        let decoded = try WatchPayloadCodec.decode(WatchPayloadCodec.encode(snapshot))
+        XCTAssertEqual(decoded, snapshot)
+        let cached = try JSONDecoder().decode(WatchSnapshot.self, from: JSONEncoder().encode(snapshot))
+        XCTAssertEqual(cached.accentGradient, gradient)
+    }
+
+    func test_payloadWithoutAGradient_drawsOneColour() throws {
+        let dict = try WatchPayloadCodec.encode(sampleSnapshot())
+        XCTAssertNil(dict[WatchWireFormat.Key.accentGradient])
+        XCTAssertNil(try WatchPayloadCodec.decode(dict).accentGradient)
+        let legacyJSON = Data(#"{"version":1,"courses":[],"accentHex":"#FF8800","syncedAtMs":1,"loggedIn":true}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(WatchSnapshot.self, from: legacyJSON).accentGradient)
+    }
+
+    func test_unreadableGradient_drawsOneColour() throws {
+        var dict = try WatchPayloadCodec.encode(sampleSnapshot())
+        dict[WatchWireFormat.Key.accentGradient] = Data(#"{"stops":[],"style":"linear","direction":"leftToRight"}"#.utf8)
+        let decoded = try WatchPayloadCodec.decode(dict)
+        XCTAssertNil(decoded.accentGradient)
+        XCTAssertEqual(decoded.accentHex, "#FF8800")
     }
 
     func test_quietDaysAndSkippedDates_roundTrip() throws {

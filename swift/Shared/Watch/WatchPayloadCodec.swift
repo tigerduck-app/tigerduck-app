@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 public enum WatchPayloadCodec {
 
@@ -47,6 +48,9 @@ public enum WatchPayloadCodec {
         }
         if !snapshot.quietDays.isEmpty {
             dict[WatchWireFormat.Key.quietDays] = snapshot.quietDays.sorted()
+        }
+        if let gradient = snapshot.accentGradient {
+            dict[WatchWireFormat.Key.accentGradient] = try JSONEncoder().encode(gradient)
         }
         return dict
     }
@@ -98,6 +102,8 @@ public enum WatchPayloadCodec {
         let preset      = presetRaw.flatMap(VisualPreset.init(rawValue:)) ?? .default
         let clockJSON   = dict[WatchWireFormat.Key.clockOverride] as? String
         let quietDays   = dict[WatchWireFormat.Key.quietDays] as? [String] ?? []
+        let gradient    = (dict[WatchWireFormat.Key.accentGradient] as? Data)
+            .flatMap { try? JSONDecoder().decode(AccentGradient.self, from: $0) }
 
         return WatchSnapshot(
             version: version,
@@ -108,7 +114,8 @@ public enum WatchPayloadCodec {
             languageTag: languageTag,
             visualPreset: preset,
             clockOverrideJSON: clockJSON,
-            quietDays: Set(quietDays)
+            quietDays: Set(quietDays),
+            accentGradient: gradient
         )
     }
 

@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let version: Int
@@ -11,6 +12,7 @@ nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let activeWeekdays: [Int]
     let activePeriodIds: [String]
     var quietDayKeys: [String]? = nil
+    var accentGradient: AccentGradient? = nil
 
     static let currentVersion = 1
     static let storeKey = "Widget-snapshot-v1"

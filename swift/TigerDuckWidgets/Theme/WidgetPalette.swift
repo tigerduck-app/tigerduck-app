@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 import WidgetKit
 
 /// Outside `.fullColor` the system composites the widget over its own material (a tinted home
@@ -13,6 +14,7 @@ struct WidgetPalette {
     let onSurfaceVariant: Color
     let emptyCell: Color
     let highlight: Color
+    let highlightFill: AnyShapeStyle
     let changeInk: Color
     let isFullColor: Bool
 
@@ -30,6 +32,8 @@ struct WidgetPalette {
             onSurfaceVariant: base.onSurfaceVariant,
             emptyCell: isFullColor ? base.emptyCell : Color.white.opacity(0.10),
             highlight: Color(widgetHex: snapshot.accentColorHex),
+            highlightFill: snapshot.accentGradient?.shapeStyle { Color(widgetHex: UInt32($0)) }
+                ?? AnyShapeStyle(Color(widgetHex: snapshot.accentColorHex)),
             changeInk: base.changeInk,
             isFullColor: isFullColor
         )
@@ -42,6 +46,7 @@ struct WidgetPalette {
         onSurfaceVariant: Color(widgetHex: 0x6E6E73),
         emptyCell: Color(widgetHex: 0xECECEC),
         highlight: .blue,
+        highlightFill: AnyShapeStyle(.blue),
         changeInk: Color(widgetHex: 0x7C2D12),
         isFullColor: true
     )
@@ -53,6 +58,7 @@ struct WidgetPalette {
         onSurfaceVariant: Color(widgetHex: 0x8E8E93),
         emptyCell: Color(widgetHex: 0x2C2C2E),
         highlight: .blue,
+        highlightFill: AnyShapeStyle(.blue),
         changeInk: Color(widgetHex: 0xFDBA74),
         isFullColor: true
     )

@@ -81,7 +81,7 @@ struct WeekGridView: View {
                         .font(.system(size: 7 * fontScale, weight: .bold))
                         .foregroundStyle(palette.onSurfaceVariant)
                     Rectangle()
-                        .fill(weekday == todayWeekday ? palette.highlight : Color.clear)
+                        .fill(weekday == todayWeekday ? palette.highlightFill : AnyShapeStyle(Color.clear))
                         .frame(height: 1.5)
                 }
                 .frame(maxWidth: .infinity)

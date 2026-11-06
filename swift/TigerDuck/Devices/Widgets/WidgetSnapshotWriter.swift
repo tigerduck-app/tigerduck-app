@@ -11,6 +11,7 @@ final class WidgetSnapshotWriter {
     private let coordinator: WidgetReloadCoordinator
     private let isLoggedIn: @MainActor () -> Bool
     private let accentColorHex: @MainActor () -> Int
+    private let accentGradient: @MainActor () -> AccentGradient?
     private let courseProvider: CanonicalCourseProvider
     private let courses: CourseStore
     private let isProtectedDataAvailable: @MainActor () -> Bool
@@ -28,6 +29,7 @@ final class WidgetSnapshotWriter {
         self.init(
             isLoggedIn: { app.authService.hasStoredCredentials },
             accentColorHex: { app.preferences.accentColorHex },
+            accentGradient: { app.preferences.deviceAccentGradient },
             courses: courses,
             store: store,
             coordinator: coordinator,
@@ -38,6 +40,7 @@ final class WidgetSnapshotWriter {
     init(
         isLoggedIn: @escaping @MainActor () -> Bool,
         accentColorHex: @escaping @MainActor () -> Int,
+        accentGradient: @escaping @MainActor () -> AccentGradient? = { nil },
         courses: CourseStore? = nil,
         store: WidgetSnapshotStore? = nil,
         coordinator: WidgetReloadCoordinator? = nil,
@@ -51,6 +54,7 @@ final class WidgetSnapshotWriter {
         #endif
         self.isLoggedIn = isLoggedIn
         self.accentColorHex = accentColorHex
+        self.accentGradient = accentGradient
         self.courses = courses ?? .shared
         self.store = store ?? WidgetSnapshotStore()
         self.coordinator = coordinator ?? WidgetReloadCoordinator()
@@ -89,7 +93,8 @@ final class WidgetSnapshotWriter {
                 accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: accentColorHex())),
                 now: AppClock.now(),
                 quietDayKeys: Self.quietDayKeys(),
-                changes: .cached
+                changes: .cached,
+                accentGradient: accentGradient()
             )
         )
         if !forceReload, let stored = store.readSnapshot(), Self.hasSameContent(snapshot, as: stored) {
