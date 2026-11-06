@@ -134,6 +134,25 @@ struct WidgetLayoutTests {
         }
     }
 
+    @Test func overlappingWeekBlocksReadTheirTimesAndRooms() async throws {
+        try await withAccessibilityAutomation {
+            let overlap = Fixtures.course("ZZ3001", "Synthetic Overlap", "RB-301", [3: ["3", "4"]], 0xE74C3C)
+            let snapshot = Fixtures.snapshot(courses: Fixtures.week() + [overlap])
+            let view = WeekGridView(snapshot: snapshot, now: Fixtures.wednesday(9, 0), palette: Host.palette(), family: .systemLarge)
+            let window = try Host.show(view, size: Self.large, margins: 8)
+            defer { window.isHidden = true }
+            let first = try #require(AppConstants.PeriodTimes.mapping["3"])
+            let last = try #require(AppConstants.PeriodTimes.mapping["4"])
+            let spoken = TimeRange.spoken(first.start, last.end)
+
+            let texts = try await Host.texts(in: window, waitingFor: "Synthetic Overlap")
+
+            for (name, room) in [("Synthetic Overlap", "RB-301"), ("資料結構與演算法", "TR-412")] {
+                #expect(texts.contains { $0.contains(name) && $0.contains(spoken) && $0.contains(room) }, "\(texts)")
+            }
+        }
+    }
+
     @Test(arguments: [(11, 32), (16, 0)])
     func theNextClassWidgetKeepsEachRoomWholeWhileTheNameGivesWay(hour: Int, minute: Int) async throws {
         try await withAccessibilityAutomation {

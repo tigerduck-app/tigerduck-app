@@ -38,6 +38,20 @@ struct WidgetNextClassTests {
         #expect(state(at: 16, 0).1?.course.displayName == "通識：科技、社會與永續發展導論")
     }
 
+    @Test func twoClassesAtOnceShowEachOnce() throws {
+        let earlier = Fixtures.course("ZZ1001", "Synthetic Earlier", "RB-101", [3: ["1", "2"]], 0x3498DB)
+        let later = Fixtures.course("ZZ1002", "Synthetic Later", "RB-102", [3: ["2"]], 0xF39C12)
+        let snapshot = Fixtures.snapshot(courses: [later, earlier])
+        let now = Fixtures.wednesday(9, 30)
+
+        let derived = WidgetTimelineDerivation.derive(snapshot: snapshot, at: now)
+        let upNext = WidgetTimelineDerivation.upNext(snapshot: snapshot, at: now, after: derived)
+
+        guard case .ongoing(let infos) = derived else { Issue.record("\(derived)"); return }
+        #expect(infos.first?.course.displayName == "Synthetic Later")
+        #expect(upNext?.course.displayName == "Synthetic Earlier")
+    }
+
     @Test func tomorrowsFirstClassComesAlone() {
         let (derived, upNext) = state(at: 18, 0)
         guard case .tomorrowFirst(let info) = derived else { Issue.record("\(derived)"); return }
