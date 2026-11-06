@@ -57,7 +57,7 @@ enum MoodleCourseLink {
 
     static func openURL(idnumber: String?) -> URL? {
         #if os(macOS)
-        switch Defaults[.macMoodleOpenTarget] {
+        switch Defaults[.moodleOpenTarget] {
         case .app: return deepLink(idnumber: idnumber)
         case .browser: return webURL(idnumber: idnumber)
         }

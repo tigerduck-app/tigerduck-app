@@ -14,8 +14,10 @@ struct LinkRoutingTests {
     ])
     func aSchoolPageOpensInTheBrowser(_ address: String) {
         let page = Self.url(address)
-        #expect(LinkRouting.destination(for: page, moodleAppInstalled: false) == .browser(page))
-        #expect(LinkRouting.destination(for: page, moodleAppInstalled: true) == .browser(page))
+        for target in MoodleOpenTarget.allCases {
+            #expect(LinkRouting.destination(for: page, moodleAppInstalled: false, moodleOpenTarget: target) == .browser(page))
+            #expect(LinkRouting.destination(for: page, moodleAppInstalled: true, moodleOpenTarget: target) == .browser(page))
+        }
     }
 
     @Test(arguments: [
@@ -33,7 +35,7 @@ struct LinkRoutingTests {
     ])
     func anyOtherLinkGoesToTheSystem(_ address: String) {
         let link = Self.url(address)
-        #expect(LinkRouting.destination(for: link, moodleAppInstalled: false) == .system(link))
+        #expect(LinkRouting.destination(for: link, moodleAppInstalled: false, moodleOpenTarget: .app) == .system(link))
     }
 
     @Test(arguments: [
@@ -41,10 +43,13 @@ struct LinkRoutingTests {
         ("/mod/assign/view.php?id=12345&action=grading", "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=12345&action=grading"),
         ("/my/", "https://moodle2.ntust.edu.tw/my/"),
     ])
-    func aMoodleLinkOpensTheAppOrElseTheBrowser(path: String, page: String) throws {
+    func aMoodleLinkOpensWhereTheSettingSaysWhileTheAppIsInstalled(path: String, page: String) throws {
         let link = try #require(AppConstants.moodleDeepLink(redirectingTo: path))
-        #expect(LinkRouting.destination(for: link, moodleAppInstalled: true) == .system(link))
-        #expect(LinkRouting.destination(for: link, moodleAppInstalled: false) == .browser(Self.url(page)))
+        let inBrowser = LinkRouting.Destination.browser(Self.url(page))
+        #expect(LinkRouting.destination(for: link, moodleAppInstalled: true, moodleOpenTarget: .app) == .system(link))
+        #expect(LinkRouting.destination(for: link, moodleAppInstalled: true, moodleOpenTarget: .browser) == inBrowser)
+        #expect(LinkRouting.destination(for: link, moodleAppInstalled: false, moodleOpenTarget: .app) == inBrowser)
+        #expect(LinkRouting.destination(for: link, moodleAppInstalled: false, moodleOpenTarget: .browser) == inBrowser)
     }
 
     @Test(arguments: [
@@ -54,13 +59,15 @@ struct LinkRoutingTests {
     ])
     func aMoodleLinkWithNoMoodlePageStaysWithTheSystem(_ address: String) {
         let link = Self.url(address)
-        #expect(LinkRouting.destination(for: link, moodleAppInstalled: false) == .system(link))
+        for target in MoodleOpenTarget.allCases {
+            #expect(LinkRouting.destination(for: link, moodleAppInstalled: false, moodleOpenTarget: target) == .system(link))
+        }
     }
 
     @MainActor @Test func aMoodleFileLinkFromTheWebServiceOpensSignedInInTheBrowser() {
         let link = Self.url("https://moodle2.ntust.edu.tw/webservice/pluginfile.php/123/mod_forum/attachment/4/notes.docx?token=t0k")
         let page = Self.url("https://moodle2.ntust.edu.tw/pluginfile.php/123/mod_forum/attachment/4/notes.docx")
-        #expect(LinkRouting.destination(for: MoodlePage.browserURL(link), moodleAppInstalled: false) == .browser(page))
+        #expect(LinkRouting.destination(for: MoodlePage.browserURL(link), moodleAppInstalled: false, moodleOpenTarget: .app) == .browser(page))
     }
 }
 #endif

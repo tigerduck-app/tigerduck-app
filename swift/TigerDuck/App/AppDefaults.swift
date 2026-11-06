@@ -33,12 +33,9 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.browserAppearance,
         default: .automatic
     )
-    /// Mac-only. Default `.browser` because the iPad Moodle app isn't
-    /// installed by default on Mac; sending the user there before they
-    /// opt in would fail with "no app handles this URL".
-    static let macMoodleOpenTarget = Key<MoodleOpenTarget>(
-        AppConstants.UserDefaultsKeys.macMoodleOpenTarget,
-        default: .browser
+    static let moodleOpenTarget = Key<MoodleOpenTarget>(
+        AppConstants.UserDefaultsKeys.moodleOpenTarget,
+        default: .platformDefault
     )
     static let showAbsoluteAssignmentTime = Key<Bool>(
         AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime,

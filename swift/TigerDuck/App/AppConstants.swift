@@ -72,7 +72,7 @@ nonisolated enum AppConstants {
         static let browserAppearance = "browserAppearance"
         static let browserZoom = "browserZoom"
         static let browserDesktopSites = "browserDesktopSites"
-        static let macMoodleOpenTarget = "macMoodleOpenTarget"
+        static let moodleOpenTarget = "macMoodleOpenTarget"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
         static let alwaysShowAllPeriods = "alwaysShowPeriodsABC"
         static let showClassroomInClassTable = "showClassroomInClassTable"
