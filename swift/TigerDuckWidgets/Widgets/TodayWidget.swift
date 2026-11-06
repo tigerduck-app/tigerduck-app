@@ -24,10 +24,7 @@ struct TodayProvider: AppIntentTimelineProvider {
     func timeline(for configuration: ChooseClassTableIntent, in context: Context) async -> Timeline<TodayEntry> {
         let snap = WidgetSnapshotStore().readSnapshot(of: configuration.personID) ?? Self.emptySnapshot
         let now = AppClock.now()
-        let dates = Set(
-            WidgetTimelineDerivation.entryDates(snapshot: snap, after: now)
-                + WidgetDayLayout.ticks(snapshot: snap, after: now)
-        ).sorted()
+        let dates = WidgetDayLayout.timelineDates(snapshot: snap, after: now)
         // `entryDates` are app-clock boundaries, but WidgetKit schedules entries on the real
         // clock. Stamp each entry with the real-time equivalent and carry the app-clock boundary
         let entries = dates.map { appDate in

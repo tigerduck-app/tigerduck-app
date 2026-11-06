@@ -21,6 +21,25 @@ struct WidgetDayLayoutTests {
         #expect(rows[2...].allSatisfy { $0.phase == .upcoming })
     }
 
+    @Test func theTimelineMeetsEachClassAtItsStartAndEnd() {
+        let now = Fixtures.wednesday(9, 0)
+        let moved = SnapshotCourseChange(
+            day: WidgetTimelineDerivation.dateKey(for: now), periods: ["8"], cancelled: false, room: nil, start: "15:33", end: "16:27"
+        )
+        let course = SnapshotCourse(
+            courseNo: "ZZ4001", displayName: "Synthetic Moved", classroom: "RB-401", schedule: [3: ["8"]], colorHex: 0x2ECC71,
+            changes: [moved], meetingChanges: [moved]
+        )
+
+        let dates = WidgetDayLayout.timelineDates(snapshot: Fixtures.snapshot(courses: Fixtures.week() + [course]), after: now)
+
+        let minutes = dates.map { TaipeiTime.calendar.dateComponents([.hour, .minute], from: $0) }.map { ($0.hour ?? 0) * 60 + ($0.minute ?? 0) }
+        #expect(dates.first == now)
+        #expect(minutes.contains(15 * 60 + 33))
+        #expect(minutes.contains(16 * 60 + 27))
+        #expect(dates == dates.sorted())
+    }
+
     @Test func aClassIsOverAtItsEnd() {
         let rows = rows(at: 12, 10)
         #expect(rows[1].phase == .past)

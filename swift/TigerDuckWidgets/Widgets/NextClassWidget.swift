@@ -30,9 +30,7 @@ struct NextClassProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextClassEntry>) -> Void) {
         let snap = store.readSnapshot() ?? Self.emptySnapshot
         let now = AppClock.now()
-        let dates = Set(
-            WidgetTimelineDerivation.entryDates(snapshot: snap, after: now) + WidgetDayLayout.ticks(snapshot: snap, after: now)
-        ).sorted()
+        let dates = WidgetDayLayout.timelineDates(snapshot: snap, after: now)
         // `entryDates` are app-clock boundaries (possibly fake), but WidgetKit schedules entries
         // on the real clock. Derive the state from the app-clock date and stamp the entry with its
         // real-time equivalent so the timeline still advances under a fake-clock override.

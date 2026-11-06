@@ -24,7 +24,7 @@ struct WeekProvider: AppIntentTimelineProvider {
     func timeline(for configuration: ChooseClassTableIntent, in context: Context) async -> Timeline<WeekEntry> {
         let snap = WidgetSnapshotStore().readSnapshot(of: configuration.personID) ?? Self.emptySnapshot
         let now = AppClock.now()
-        let appDates = [now] + WidgetDayLayout.ticks(snapshot: snap, after: now)
+        let appDates = WidgetDayLayout.timelineDates(snapshot: snap, after: now)
         // WidgetKit interprets `.after(...)` against real wall-clock time,
         // so translate the fake-clock midnight to the real instant it maps
         // to. Identity when no debug override is active.

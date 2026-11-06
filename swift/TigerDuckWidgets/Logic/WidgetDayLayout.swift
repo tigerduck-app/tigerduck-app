@@ -68,6 +68,10 @@ enum WidgetDayLayout {
 
     /// WidgetKit redraws a widget only at its timeline entries, so progress bars and the now line
     /// need one every few minutes between the class boundaries.
+    static func timelineDates(snapshot: WidgetSnapshot, after now: Date) -> [Date] {
+        Set(WidgetTimelineDerivation.entryDates(snapshot: snapshot, after: now) + ticks(snapshot: snapshot, after: now)).sorted()
+    }
+
     static func ticks(snapshot: WidgetSnapshot, after now: Date) -> [Date] {
         guard let hours = hours(of: rows(snapshot: snapshot, on: now, now: now)) else { return [] }
         let dayStart = TaipeiTime.calendar.startOfDay(for: now)
