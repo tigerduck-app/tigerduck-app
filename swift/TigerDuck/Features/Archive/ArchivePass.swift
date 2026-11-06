@@ -101,10 +101,9 @@ nonisolated final class ArchivePass {
         return entry
     }
 
-    // libarchive skips an entry by unpacking it, out of reach of stop(), unless it can seek past
-    // it: a zip or plain tar entry of known size. A 7z skips without unpacking until an entry is
-    // read, and then unpacks everything skipped before it. An encrypted entry can only be skipped.
-    // Any tar entry may carry data, a GNU 'D' directory too; RAR 5 refuses to read a directory's.
+    // libarchive skips by unpacking, beyond stop(), unless it seeks past a zip or plain tar entry
+    // of known size; a 7z unpacks what it skipped once an entry is read. An encrypted entry can only
+    // be skipped, RAR 5 refuses a directory's data, and any tar entry may have data (GNU 'D').
     private func drains(_ entry: OpaquePointer, listing: Bool) -> Bool {
         guard archive_entry_is_encrypted(entry) == 0 else { return false }
         let family = archive_format(archive) & ARCHIVE_FORMAT_BASE_MASK
