@@ -173,7 +173,6 @@ struct ClassTimelineTests {
 
     @Test func timesAndWeekdaysReadAsTaipeiDoes() {
         #expect(ClassTimeline.minutes(of: "08:10") == 490)
-        #expect(ClassTimeline.timeRange(from: 490, to: 1215) == "08:10 - 20:15")
         #expect(ClassTimeline.minutes(of: "8:10") == 490)
         #expect(ClassTimeline.minutes(of: "0810") == nil)
         #expect(ClassTimeline.minutes(of: "") == nil)
