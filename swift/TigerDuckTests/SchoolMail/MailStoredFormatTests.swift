@@ -35,6 +35,7 @@ struct MailStoredFormatTests {
         #expect(page.summaries.map(\.uid) == [42])
         #expect(page.summaries.first?.subject == "Exam")
         #expect(page.summaries.first?.isSeen == true)
+        #expect(page.summaries.first?.isFlagged == false)
 
         cache.savePage(page, unlessWipedSince: cache.wipeCount)
         let written = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
@@ -48,6 +49,21 @@ struct MailStoredFormatTests {
         let summary = try #require((payload["summaries"] as? [[String: Any]])?.first)
         #expect(summary["uid"] as? Int == 42)
         #expect(summary["isSeen"] as? Bool == true)
+        #expect(summary["flagged"] == nil)
+    }
+
+    @Test func aFlaggedSummaryIsWrittenWithItsFlagAndReadsBackFlagged() throws {
+        let directory = try Self.directory()
+        let cache = MailCache(directory: directory, account: { Self.account })
+        var summary = SchoolMailTestDoubles.summary(uid: 42)
+        summary.flagged = true
+        cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 7, messageCount: 1, summaries: [summary],
+                                      oldestLoadedSequence: nil), unlessWipedSince: cache.wipeCount)
+
+        #expect(cache.loadPage(folder: "INBOX")?.summaries.first?.isFlagged == true)
+        let written = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: cache.pageURL(folder: "INBOX"))) as? [String: Any])
+        let payload = try #require(written["payload"] as? [String: Any])
+        #expect((payload["summaries"] as? [[String: Any]])?.first?["flagged"] as? Bool == true)
     }
 
     @Test func aSearchIndexInTheStoredLayoutAnswersAndIsWrittenTheSameWay() throws {

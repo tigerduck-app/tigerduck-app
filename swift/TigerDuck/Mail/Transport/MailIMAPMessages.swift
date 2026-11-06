@@ -69,7 +69,8 @@ nonisolated enum MailIMAPMessages {
             size: info.size,
             hasAttachments: info.parts.contains(where: isAttachment),
             isExternal: fromAddress.map { !MailSchoolDomain.isSchoolDomain(MailSchoolDomain.domain(ofAddress: $0)) } ?? false,
-            arrivedAt: info.internalDate
+            arrivedAt: info.internalDate,
+            flagged: info.flags.contains(.flagged)
         )
     }
 

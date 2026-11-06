@@ -91,6 +91,16 @@ nonisolated enum MailIMAPCommands {
         try await imap.store(flags: [flag.swiftMailFlag], on: MailIMAPFetch.uidSet(uids), operation: on ? .add : .remove)
     }
 
+    /// SELECT, as a read-only EXAMINE lists no permanent flags (RFC 3501 §6.3.2).
+    static func storesFlagged(folder: String, imap: IMAPServer) async throws -> Bool {
+        storesFlagged(permanentFlags: try await imap.selectMailbox(folder).permanentFlags)
+    }
+
+    /// SwiftMail reports PERMANENTFLAGS' `\*` (RFC 3501 §7.1) as `.custom("wildcard")`.
+    static func storesFlagged(permanentFlags: [Flag]) -> Bool {
+        permanentFlags.contains(.flagged) || permanentFlags.contains(.custom("wildcard"))
+    }
+
     static func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32, imap: IMAPServer) async throws {
         try await select(folder, expecting: expectedUIDValidity, imap: imap)
         try await imap.copy(messages: MailIMAPFetch.uidSet(uids), to: target)
@@ -168,6 +178,7 @@ private extension MailFlag {
         switch self {
         case .seen: .seen
         case .answered: .answered
+        case .flagged: .flagged
         case .deleted: .deleted
         case .draft: .draft
         }
