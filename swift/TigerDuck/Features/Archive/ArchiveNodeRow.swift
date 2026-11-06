@@ -28,6 +28,7 @@ struct ArchiveNodeRow: View {
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(Color.textSecondary)
                     }
+                    .frame(minWidth: 30, alignment: .trailing)
                 }
             }
             .buttonStyle(.plain)

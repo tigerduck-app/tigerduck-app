@@ -27,6 +27,11 @@ struct ArchiveScreensTests {
         }
     }
 
+    private static func barTitle(in view: UIView) -> String? {
+        if let bar = view as? UINavigationBar, let title = bar.topItem?.title, !title.isEmpty { return title }
+        return view.subviews.lazy.compactMap(barTitle(in:)).first
+    }
+
     @Test("the top of an archive lists its folders with their counts, then its files", arguments: ClubScreensTests.looks)
     func root(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
@@ -74,7 +79,9 @@ struct ArchiveScreensTests {
             try Self.staysInWindow([Self.longName], in: window)
             _ = accessibilityElement(labeled: Self.longName, in: window)?.accessibilityActivate()
             try await waitUntil { window.rootViewController?.presentedViewController != nil }
-            try await Task.sleep(for: .seconds(1))
+            let shown = try #require(window.rootViewController?.presentedViewController)
+            // Quick Look titles its bar once the file has loaded.
+            for _ in 0..<50 where Self.barTitle(in: shown.view) == nil { try await Task.sleep(for: .milliseconds(100)) }
             try await Self.save(window, "file", look)
             window.rootViewController?.dismiss(animated: false)
         }
