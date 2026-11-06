@@ -179,7 +179,7 @@ private struct TodayCourseCard: View {
     var progress: Double? = nil
 
     private var periods: String {
-        course.timeRange(for: AppClock.now().scheduleWeekday)?.replacingOccurrences(of: " - ", with: "-") ?? ""
+        course.timeRange(for: AppClock.now().scheduleWeekday) ?? ""
     }
 
     private var isActive: Bool {

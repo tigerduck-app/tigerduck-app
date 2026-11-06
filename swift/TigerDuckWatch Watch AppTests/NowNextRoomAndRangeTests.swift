@@ -17,10 +17,12 @@ struct NowNextRoomAndRangeTests {
         )
     }
 
-    private func entry(current: WatchCourse? = nil, next: WatchCourse? = nil) -> NextClassEntry {
+    private func entry(
+        current: WatchCourse? = nil, next: WatchCourse? = nil, day: NextClassResolver.Day = .today, languageTag: String? = nil
+    ) -> NextClassEntry {
         NextClassEntry(
-            date: Date(), current: current, next: next, nextDay: .today, currentSpan: nil,
-            accentHex: "#FF8800", languageTag: nil, relevance: nil
+            date: Date(), current: current, next: next, nextDay: day, currentSpan: nil,
+            accentHex: "#FF8800", languageTag: languageTag, relevance: nil
         )
     }
 
@@ -30,10 +32,17 @@ struct NowNextRoomAndRangeTests {
     }
 
     private let policy = WatchVisualStylePolicy(preset: .default)
+    private let zh = WatchLanguage(tag: "zh-Hant")
 
     @Test func thePageCaptionsEachClassWithItsRange() {
-        #expect(ClassCard(title: "現在", course: course(), span: nil, policy: policy).caption == "現在 · 10:20–12:10")
-        #expect(ClassCard(title: "下一堂", course: course(), span: nil, policy: policy).caption == "下一堂 · 10:20–12:10")
+        #expect(ClassCard(title: "現在", course: course(), span: nil, policy: policy, language: zh).caption == "現在 · 10:20–12:10")
+        #expect(ClassCard(title: "下一堂", course: course(), span: nil, policy: policy, language: zh).caption == "下一堂 · 10:20–12:10")
+    }
+
+    @Test func voiceOverReadsEachRangeInWords() {
+        #expect(ClassCard(title: "現在", course: course(), span: nil, policy: policy, language: zh).spokenCaption == "現在, 10:20 至 12:10")
+        #expect(RectangularView(entry: entry(current: course(), languageTag: "zh-Hant")).spokenSubhead == "10:20 至 12:10")
+        #expect(RectangularView(entry: entry(next: course(), day: .tomorrow, languageTag: "zh-Hant")).spokenSubhead == "明天 10:20 至 12:10")
     }
 
     @Test func theInlineComplicationShowsOnlyTheRoom() {

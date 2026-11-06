@@ -188,7 +188,7 @@ final class SDCourse: Identifiable {
               let last = sorted.last,
               let firstTime = AppConstants.PeriodTimes.mapping[first],
               let lastTime = AppConstants.PeriodTimes.mapping[last] else { return nil }
-        return "\(firstTime.start) - \(lastTime.end)"
+        return TimeRange.text(firstTime.start, lastTime.end)
     }
 
     func block(

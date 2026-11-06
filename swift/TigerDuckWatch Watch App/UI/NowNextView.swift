@@ -17,10 +17,16 @@ struct NowNextView: View {
                             courses: snapshot.courses, now: AppClock.now(), quietDays: snapshot.quietDays
                         )
                         if let current = result.current {
-                            ClassCard(title: store.language.string("watch_now"), course: current, span: result.currentSpan, policy: policy)
+                            ClassCard(
+                                title: store.language.string("watch_now"), course: current, span: result.currentSpan,
+                                policy: policy, language: store.language
+                            )
                         }
                         if let next = result.next {
-                            ClassCard(title: result.nextDay.headline(in: store.language), course: next, span: nil, policy: policy)
+                            ClassCard(
+                                title: result.nextDay.headline(in: store.language), course: next, span: nil,
+                                policy: policy, language: store.language
+                            )
                         }
                         if result.current == nil && result.next == nil {
                             ContentUnavailableView(
@@ -57,8 +63,10 @@ struct ClassCard: View {
     let course: WatchCourse
     let span: ClosedRange<Date>?
     let policy: WatchVisualStylePolicy
+    let language: WatchLanguage
 
-    var caption: String { "\(title) · \(course.timeRange)" }
+    var caption: String { "\(title) · \(TimeRange.text(course.startHHmm, course.endHHmm))" }
+    var spokenCaption: String { "\(title), \(TimeRange.spoken(course.startHHmm, course.endHHmm) { language.string($0) })" }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -69,6 +77,7 @@ struct ClassCard: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(caption)
+                    .accessibilityLabel(spokenCaption)
                     .font(.footnote)
                     .foregroundStyle(course.dayChange?.start ?? course.dayChange?.end != nil ? AnyShapeStyle(Color.changeInk) : AnyShapeStyle(.secondary))
                 Text(course.name)

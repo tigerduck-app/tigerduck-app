@@ -43,7 +43,4 @@ extension ClosedRange<Date> {
 
 extension WatchCourse {
     var color: Color { Color(hex: colorHex) ?? .accentColor }
-
-    // shortcut: stands in for the shared HH:mm–HH:mm formatter; switch to it when refactor/time-range-format merges.
-    var timeRange: String { "\(startHHmm)–\(endHHmm)" }
 }

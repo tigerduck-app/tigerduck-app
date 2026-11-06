@@ -96,8 +96,11 @@ final class NextClassWidgetSnapshotTests: XCTestCase {
             )
             let policy = WatchVisualStylePolicy(preset: .default)
             let page = VStack(spacing: 12) {
-                ClassCard(title: words.string("watch_now"), course: now, span: span, policy: policy)
-                ClassCard(title: NextClassResolver.Day.today.headline(in: words), course: next, span: nil, policy: policy)
+                ClassCard(title: words.string("watch_now"), course: now, span: span, policy: policy, language: words)
+                ClassCard(
+                    title: NextClassResolver.Day.today.headline(in: words), course: next, span: nil, policy: policy,
+                    language: words
+                )
             }
             .padding(.horizontal, 8)
             .frame(width: 208, alignment: .top)

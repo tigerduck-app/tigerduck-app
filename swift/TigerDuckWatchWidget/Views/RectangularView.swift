@@ -16,6 +16,7 @@ struct RectangularView: View {
                         .layoutPriority(1)
                 }
                 Text(room == nil ? subhead : " · \(subhead)")
+                    .accessibilityLabel(spokenSubhead)
                     .minimumScaleFactor(0.75)
                     .foregroundStyle(displayCourse?.dayChange?.start ?? displayCourse?.dayChange?.end != nil ? AnyShapeStyle(Color.changeInk) : AnyShapeStyle(.secondary))
             }
@@ -52,7 +53,14 @@ struct RectangularView: View {
     private var headline: String { displayCourse?.name ?? entry.language.string("watch_no_upcoming_classes") }
     var subhead: String {
         guard let c = displayCourse else { return "—" }
-        return entry.current == nil ? entry.nextDay.inlineCaption(c.timeRange, in: entry.language) : c.timeRange
+        return captioned(TimeRange.text(c.startHHmm, c.endHHmm))
+    }
+    var spokenSubhead: String {
+        guard let c = displayCourse else { return "—" }
+        return captioned(TimeRange.spoken(c.startHHmm, c.endHHmm) { entry.language.string($0) })
+    }
+    private func captioned(_ range: String) -> String {
+        entry.current == nil ? entry.nextDay.inlineCaption(range, in: entry.language) : range
     }
     var room: String? {
         guard let c = displayCourse, !c.classroom.isEmpty else { return nil }

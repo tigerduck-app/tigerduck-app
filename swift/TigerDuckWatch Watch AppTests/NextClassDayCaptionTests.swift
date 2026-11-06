@@ -91,7 +91,7 @@ struct NextClassDayCaptionTests {
 
     @Test func captionKeysResolveInTheWatchAppAndTheComplication() throws {
         let keys = [
-            "watch_next", "widget_tomorrow", "widget_tomorrow_time",
+            "watch_next", "widget_tomorrow", "widget_tomorrow_time", "a11y_time_range",
             "weekday_mon_caption", "weekday_tue_caption", "weekday_wed_caption", "weekday_thu_caption",
             "weekday_fri_caption", "weekday_sat_caption", "weekday_sun_caption",
         ]

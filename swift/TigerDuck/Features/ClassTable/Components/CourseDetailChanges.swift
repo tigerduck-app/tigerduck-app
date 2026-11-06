@@ -61,7 +61,7 @@ struct CourseDetailChanges: View {
                 continue
             }
             if meeting.hasChangedRoom { parts.append(meeting.room) }
-            if meeting.hasChangedTime { parts.append("\(meeting.start.timeString) - \(meeting.end.timeString)") }
+            if meeting.hasChangedTime { parts.append(TimeRange.text(meeting.start.timeString, meeting.end.timeString)) }
         }
         var noteIds = Set<Int>()
         parts += meetings.flatMap(\.notes).filter { noteIds.insert($0.id).inserted }.compactMap { $0.note() }

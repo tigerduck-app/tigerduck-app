@@ -1,5 +1,6 @@
 import Defaults
 import SwiftUI
+import TigerDuckCore
 
 struct TimetableSoloCell: View {
     let viewModel: ClassTableViewModel
@@ -92,19 +93,17 @@ struct TimetableSoloCell: View {
     private enum MeetingText {
         static func changedTime(_ meeting: CourseTimeSlot) -> String? {
             guard !meeting.isCancelled else { return nil }
-            switch (meeting.originalStart != nil, meeting.originalEnd != nil) {
-            case (true, true): return "\(meeting.start.timeString)–\(meeting.end.timeString)"
-            case (true, false): return meeting.start.timeString
-            case (false, true): return "–\(meeting.end.timeString)"
-            case (false, false): return nil
-            }
+            return TimeRange.partial(
+                start: meeting.originalStart == nil ? nil : meeting.start.timeString,
+                end: meeting.originalEnd == nil ? nil : meeting.end.timeString
+            )
         }
 
         static func spoken(_ meeting: CourseTimeSlot?) -> [String] {
             guard let meeting else { return [] }
             let state = meeting.isCancelled
                 ? [String(localized: "course_card_cancelled")]
-                : meeting.hasChangedTime ? ["\(meeting.start.timeString) - \(meeting.end.timeString)"] : []
+                : meeting.hasChangedTime ? [TimeRange.spoken(meeting.start.timeString, meeting.end.timeString)] : []
             return state + meeting.notes.compactMap { $0.note() }
         }
     }

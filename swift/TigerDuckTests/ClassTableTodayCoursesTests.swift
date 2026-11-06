@@ -28,7 +28,7 @@ struct ClassTableTodayCoursesTests {
         )
 
         #expect([untimed, mixed].coursesForToday().map(\.courseNo) == ["TEST300"])
-        #expect(mixed.timeRange(for: 1) == "08:10 - 10:00")
+        #expect(mixed.timeRange(for: 1) == "08:10–10:00")
         #expect(untimed.timeRange(for: 1) == nil)
     }
 
