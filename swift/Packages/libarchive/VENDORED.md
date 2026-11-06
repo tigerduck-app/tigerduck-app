@@ -46,12 +46,17 @@ cmake -G Ninja <libarchive> -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=<iPhoneO
 1. `archive_read_support_format_7zip.c`: a 7z PPMd coder asking for a model larger than
    `TIGERDUCK_MAX_PPMD_SIZE` (96 MiB) fails with `ENOMEM` instead of allocating it. The model's
    size comes from the archive and may be up to 4 GiB.
-2. `archive_read_support_format_7zip.c`: a 7z header declaring more than
-   `TIGERDUCK_MAX_ENTRIES` (100,000) entries or substreams fails with `E2BIG` before a table per
-   entry is allocated, and an encoded header that unpacks to more than
-   `TIGERDUCK_MAX_HEADER_SIZE` (16 MiB) fails with `E2BIG` before it is unpacked. Upstream
-   allows 100,000,000 entries and any header size, and builds the whole table before the first
-   entry is read.
+2. `archive_read_support_format_7zip.c`: 7z header tables are capped before they are
+   allocated, and each cap fails with `E2BIG`, which the app reports as too many entries.
+   Upstream allows 100,000,000 of each and any header size, and builds every table before the
+   first entry is read.
+   - `TIGERDUCK_MAX_HEADER_SIZE` (16 MiB): the header's size in the start header
+     (`next_header_size`), checked before any of it is read, and the size an encoded header
+     unpacks to, checked before it is unpacked.
+   - `TIGERDUCK_MAX_ENTRIES` (100,000): the counts of files (`numFiles`), folders
+     (`numFolders`), packed streams (`numPackStreams`) and unpacked substreams
+     (`unpack_streams`). Every other table, including the digests, is sized by one of these
+     counts or by the header's bytes.
 3. `Package.swift` builds the sources with `-w`, since their warnings are upstream's.
 
 ## Updating

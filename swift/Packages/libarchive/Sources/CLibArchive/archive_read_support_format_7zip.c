@@ -2316,6 +2316,11 @@ read_PackInfo(struct archive_read *a, struct _7z_pack_info *pi)
 		return (-1);
 	if (pi->numPackStreams == 0)
 		return (-1);
+	/* TigerDuck: refuse before allocating a table per stream. */
+	if (pi->numPackStreams > TIGERDUCK_MAX_ENTRIES) {
+		errno = E2BIG;
+		return (-1);
+	}
 
 	/*
 	 * Read PackSizes[num]
@@ -2551,6 +2556,11 @@ read_CodersInfo(struct archive_read *a, struct _7z_coders_info *ci)
 	 */
 	if (parse_7zip_size(a, &(ci->numFolders)) < 0)
 		goto failed;
+	/* TigerDuck: refuse before allocating a table per folder. */
+	if (ci->numFolders > TIGERDUCK_MAX_ENTRIES) {
+		errno = E2BIG;
+		goto failed;
+	}
 	/*
 	 * Each folder is encoded by at least one byte in the coders
 	 * list that follows, so a folder count larger than the bytes
@@ -3358,6 +3368,10 @@ decode_encoded_header_info(struct archive_read *a, struct _7z_stream_info *si)
 		if (errno == ENOMEM)
 			archive_set_error(&a->archive, -1,
 			    "Couldn't allocate memory");
+		/* TigerDuck: keep the entry caps' reason. */
+		else if (errno == E2BIG)
+			archive_set_error(&a->archive, E2BIG,
+			    "Too many 7-Zip entries");
 		else
 			archive_set_error(&a->archive, -1,
 			    "Malformed 7-Zip archive");
@@ -3466,6 +3480,11 @@ slurp_central_directory(struct archive_read *a, struct _7zip *zip,
 	next_header_size = archive_le64dec(p + 20);
 	if (next_header_size < 0) {
 		archive_set_error(&a->archive, -1, "Malformed 7-Zip archive");
+		return (ARCHIVE_FATAL);
+	}
+	/* TigerDuck: refuse a header larger than an archive preview lists. */
+	if ((uint64_t)next_header_size > TIGERDUCK_MAX_HEADER_SIZE) {
+		archive_set_error(&a->archive, E2BIG, "7-Zip header too large");
 		return (ARCHIVE_FATAL);
 	}
 	next_header_crc = archive_le32dec(p + 28);
