@@ -14,9 +14,8 @@ nonisolated enum LinkRouting {
     /// in it.
     static func destination(for url: URL, moodleAppInstalled: Bool, moodleOpenTarget: MoodleOpenTarget) -> Destination {
         if url.scheme?.lowercased() == "moodlemobile" {
-            let opensApp = moodleAppInstalled && moodleOpenTarget == .app
-            guard !opensApp, let page = moodlePage(in: url) else { return .system(url) }
-            return .browser(page)
+            if moodleAppInstalled && moodleOpenTarget == .app { return .system(url) }
+            return .browser(moodlePage(in: url) ?? AppConstants.moodleBaseURL)
         }
         return BrowserRouting.decision(for: url) == .load ? .browser(url) : .system(url)
     }

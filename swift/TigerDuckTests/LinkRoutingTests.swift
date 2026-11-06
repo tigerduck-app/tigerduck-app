@@ -57,10 +57,36 @@ struct LinkRoutingTests {
         "moodlemobile://https://moodle2.ntust.edu.tw?redirect=//evil.example/",
         "moodlemobile://https://moodle2.ntust.edu.tw?redirect=https://evil.example/",
     ])
-    func aMoodleLinkWithNoMoodlePageStaysWithTheSystem(_ address: String) {
+    func aMoodleLinkWithNoMoodlePageOpensMoodlesHomeUnlessTheAppTakesIt(_ address: String) {
         let link = Self.url(address)
+        let home = LinkRouting.Destination.browser(AppConstants.moodleBaseURL)
+        #expect(LinkRouting.destination(for: link, moodleAppInstalled: true, moodleOpenTarget: .app) == .system(link))
+        #expect(LinkRouting.destination(for: link, moodleAppInstalled: true, moodleOpenTarget: .browser) == home)
         for target in MoodleOpenTarget.allCases {
-            #expect(LinkRouting.destination(for: link, moodleAppInstalled: false, moodleOpenTarget: target) == .system(link))
+            #expect(LinkRouting.destination(for: link, moodleAppInstalled: false, moodleOpenTarget: target) == home)
+        }
+    }
+
+    @Test(arguments: [
+        "/%5Cevil.example",
+        "/%5C%5Cevil.example",
+        "/%09/evil.example",
+        "/%0A/evil.example",
+        "//evil.example",
+        "%2F%2Fevil.example",
+        "/%2F%2Fevil.example",
+        "https%3A%2F%2Fevil.example",
+        "javascript%3Aalert(1)",
+    ])
+    func aCraftedRedirectStaysOnMoodle(_ redirect: String) throws {
+        let link = Self.url("moodlemobile://https://moodle2.ntust.edu.tw?redirect=\(redirect)")
+        let moodle = try #require(AppConstants.moodleBaseURL.host)
+        for target in MoodleOpenTarget.allCases {
+            guard case .browser(let page) = LinkRouting.destination(for: link, moodleAppInstalled: false, moodleOpenTarget: target)
+            else { Issue.record("\(redirect) left the browser"); continue }
+            #expect(page.scheme == "https")
+            #expect(page.host.map(TLSPinMatcher.hostName) == TLSPinMatcher.hostName(moodle))
+            #expect(page == AppConstants.moodleBaseURL || page.absoluteString.hasPrefix(AppConstants.moodleBaseURL.absoluteString + "/"))
         }
     }
 
