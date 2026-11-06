@@ -151,6 +151,24 @@ struct AcademicCalendarStoreTests {
         }
     }
 
+    @Test("a toggle still uploading when the sync's fetch began outlives that snapshot, though its upload lands first")
+    func toggleUploadingAtTheFetchOutlivesTheSnapshot() {
+        Self.withCleanHolidayDefaults {
+            let store = AcademicCalendarStore()
+            store.setNotify(true, forHoliday: 9, for: testSignIn)
+            store.setHolidayAcknowledged(false, holidayID: 9, for: testSignIn)
+            store.beginHolidayUpload()
+            let uploadingAtFetch = store.unacknowledgedHolidayIDs
+            let fetchedAt = Date().addingTimeInterval(1)
+            store.setHolidayAcknowledged(true, holidayID: 9, for: testSignIn)
+            store.endHolidayUpload()
+
+            store.applySyncedOverrides([1], fetchedAt: fetchedAt, holding: uploadingAtFetch, for: testSignIn)
+
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 9])
+        }
+    }
+
     @Test("a pull that replaces a holiday setting drops its edit time, and one it leaves keeps it")
     func pullDropsTheEditTimeOfAReplacedSetting() {
         Self.withCleanHolidayDefaults {

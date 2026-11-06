@@ -31,6 +31,7 @@ final class NotificationSettingsSyncer {
         guard let client = await client(signIn), stillQueued() else { return .unsettled }
 
         let local = NotificationSettingsSync.LocalPreferences(from: preferences)
+        let turnOns = NotificationSettingsSync.sectionTurnOns
         var sent: [String: Any] = [:]
         do {
             let result = try await NotificationSettingsSync.push(
@@ -44,7 +45,7 @@ final class NotificationSettingsSyncer {
                 recordOnServer: { sent = $0 }
             )
             guard result == .landed, stillQueued() else { return .unsettled }
-            NotificationSettingsSync.mergeSentFields(sent, of: local, for: signIn)
+            NotificationSettingsSync.mergeSentFields(sent, of: local, turnOnsAtStart: turnOns, for: signIn)
             if NotificationSettingsSync.canClearPendingMarker(
                 result,
                 sent: local,
@@ -71,6 +72,7 @@ final class NotificationSettingsSyncer {
             guard let self, Defaults[.cloudSyncEnabled] else { return .finished }
             let signIn = await AccountSession.school.startingSignIn
             guard let client = await self.client(signIn), stillQueued() else { return .finished }
+            let turnOns = NotificationSettingsSync.sectionTurnOns
 
             do {
                 let outcome = try await NotificationSettingsReconcile.reconcile(
@@ -82,7 +84,9 @@ final class NotificationSettingsSyncer {
                     isPushPending: { Defaults[.notificationSettingsPushPending] },
                     isCurrent: stillQueued,
                     source: NotificationSettingsPushQueue.source(snapshot, linksBeforeSnapshot: linksBeforeSnapshot),
-                    recordSynced: { NotificationSettingsSync.recordSyncedSections($1, of: $0, for: signIn) }
+                    recordSynced: {
+                        NotificationSettingsSync.recordSyncedSections($1, of: $0, turnOnsAtStart: turnOns, for: signIn)
+                    }
                 )
                 switch outcome {
                 case .settled:

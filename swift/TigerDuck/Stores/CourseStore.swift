@@ -68,6 +68,11 @@ final class CourseStore {
         return files.loadCourses(semester: semester)
     }
 
+    func loadCoursesIfCached(semester: String) -> [SDCourse]? {
+        observe()
+        return files.loadCoursesIfCached(semester: semester)
+    }
+
     func loadUserAddedCourses() -> [SDCourse] {
         observe()
         return files.loadUserAddedCourses()

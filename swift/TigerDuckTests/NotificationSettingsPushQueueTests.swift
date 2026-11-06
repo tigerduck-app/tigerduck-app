@@ -485,4 +485,101 @@ struct NotificationSettingsPushQueueTests {
             return
         }
     }
+
+    private static func withSyncOn(_ body: (SignIn) async throws -> Void) async rethrows {
+        let signIn = AccountSession.school.currentSignIn
+        let syncWasOn = Defaults[.cloudSyncEnabled]
+        let remindersWereOn = Defaults[.syncAssignmentReminders]
+        let liveActivityWasOn = Defaults[.syncLiveActivity]
+        let pendingWas = Defaults[.notificationSettingsPushPending]
+        let copyWas = Defaults[.notificationSettingsSyncedPreferences]
+        let everyFieldWas = Defaults[.notificationSettingsPushSendsEveryField]
+        defer {
+            Defaults[.cloudSyncEnabled, for: signIn] = syncWasOn
+            Defaults[.syncAssignmentReminders] = remindersWereOn
+            Defaults[.syncLiveActivity] = liveActivityWasOn
+            Defaults[.notificationSettingsPushPending, for: signIn] = pendingWas
+            Defaults[.notificationSettingsSyncedPreferences, for: signIn] = copyWas
+            Defaults[.notificationSettingsPushSendsEveryField, for: signIn] = everyFieldWas
+        }
+        Defaults[.cloudSyncEnabled, for: signIn] = true
+        Defaults[.syncAssignmentReminders] = true
+        Defaults[.syncLiveActivity] = true
+        Defaults[.notificationSettingsPushPending, for: signIn] = false
+        NotificationSettingsSync.forget()
+        try await body(signIn)
+    }
+
+    private static func clientTurningOnLiveActivity(
+        _ baseURL: URL, store: LiveActivityPreferencesStore, lead: TimeInterval, for signIn: SignIn
+    ) -> SettingsDocumentClient {
+        let url = NotificationSettingsFixtures.documentURL(baseURL)
+        return SettingsAPIStub.makeClient(baseURL: baseURL, authHeaderProvider: {
+            await MainActor.run {
+                guard SettingsAPIStub.requests(for: url).count == 1 else { return }
+                store.classPreparingLeadTime = lead
+                NotificationSettingsSync.sectionTurnedOn(.liveActivity, local: .init(from: store), for: signIn)
+            }
+            return nil
+        })
+    }
+
+    @Test("a section turned off, edited and on again while a push is out keeps the copy its turn-on made, so the edit gives way")
+    func aTurnOnDuringAPushKeepsItsCopy() async throws {
+        Self.resetQueue()
+        defer { Self.resetQueue() }
+        try await NotificationSettingsFixtures.withStore { store in
+            try await Self.withSyncOn { signIn in
+                store.classPreparingLeadTime = 900
+                NotificationSettingsSync.seedSyncedCopyOnSignIn(from: .init(from: store), for: signIn)
+                store.classPreparingLeadTime = 1800
+                let baseURL = SettingsAPIStub.uniqueBaseURL()
+                let url = NotificationSettingsFixtures.documentURL(baseURL)
+                SettingsAPIStub.enqueue(try NotificationSettingsFixtures.found([:], revision: 1), for: url)
+                SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 2), for: url)
+                let client = Self.clientTurningOnLiveActivity(baseURL, store: store, lead: 3600, for: signIn)
+                let syncer = NotificationSettingsSyncer(preferences: store) { _ in client }
+
+                await syncer.push()
+
+                #expect(NotificationSettingsSync.lastSyncedPreferences?.classPreparingLeadTime == 3600)
+                try #require(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
+                let written = try NotificationSettingsFixtures.sentDocument(SettingsAPIStub.requests(for: url)[1])
+                SettingsAPIStub.enqueue(try NotificationSettingsFixtures.found(written, revision: 2), for: url)
+                SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 3), for: url)
+                await syncer.push()
+                #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT", "GET"])
+            }
+        }
+    }
+
+    @Test("a section turned on while a reconcile's write is out keeps the copy its turn-on made")
+    func aTurnOnDuringAReconcileWriteKeepsItsCopy() async throws {
+        Self.resetQueue()
+        defer { Self.resetQueue() }
+        try await NotificationSettingsFixtures.withStore { store in
+            try await Self.withSyncOn { signIn in
+                store.isAssignmentReminderEnabled = false
+                store.classPreparingLeadTime = 1800
+                NotificationSettingsSync.seedSyncedCopyOnSignIn(from: .init(from: store), for: signIn)
+                let baseURL = SettingsAPIStub.uniqueBaseURL()
+                let url = NotificationSettingsFixtures.documentURL(baseURL)
+                SettingsAPIStub.enqueue(
+                    try NotificationSettingsFixtures.found(
+                        ["assignments": ["enabled": true], "courses": ["enabled": true]], revision: 1
+                    ),
+                    for: url
+                )
+                SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 2), for: url)
+                let client = Self.clientTurningOnLiveActivity(baseURL, store: store, lead: 3600, for: signIn)
+                let syncer = NotificationSettingsSyncer(preferences: store) { _ in client }
+
+                await syncer.reconcile().value
+
+                #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
+                #expect(NotificationSettingsSync.lastSyncedPreferences?.classPreparingLeadTime == 3600)
+                #expect(NotificationSettingsSync.lastSyncedPreferences?.isAssignmentReminderEnabled == true)
+            }
+        }
+    }
 }

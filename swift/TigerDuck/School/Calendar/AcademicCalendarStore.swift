@@ -123,7 +123,7 @@ final class AcademicCalendarStore: AccountScoped {
     }
 
     @discardableResult
-    func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date, for signIn: SignIn) -> Bool {
+    func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date, holding held: Set<Int> = [], for signIn: SignIn) -> Bool {
         guard signIn.isCurrent else { return false }
         guard pendingHolidayUploads == 0, fetchedAt > lastHolidayEditAt else {
             logger.info("holiday overrides from sync ignored — a local toggle is newer")
@@ -131,7 +131,7 @@ final class AcademicCalendarStore: AccountScoped {
         }
         let local = optedInHolidayIDs
         var merged = ids
-        for id in unacknowledgedHolidayIDs {
+        for id in unacknowledgedHolidayIDs.union(held) {
             if local.contains(id) { merged.insert(id) } else { merged.remove(id) }
         }
         guard merged != local else { return false }
