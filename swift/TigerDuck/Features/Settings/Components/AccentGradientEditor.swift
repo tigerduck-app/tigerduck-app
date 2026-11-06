@@ -158,7 +158,8 @@ struct AccentGradientEditor: View {
     }
 
     private func stopRow(_ index: Int) -> some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
+        let name = String(format: String(localized: "a11y_accent_gradient_stop"), index + 1)
+        return HStack(spacing: TigerDuckTheme.Spacing.md) {
             Button {
                 draft.stops.remove(at: index)
             } label: {
@@ -170,7 +171,7 @@ struct AccentGradientEditor: View {
             .disabled(!draft.isGradient)
             .accessibilityLabel(String(localized: "action_remove"))
             ColorPicker(
-                String(format: String(localized: "a11y_accent_gradient_stop"), index + 1),
+                name,
                 selection: Binding(
                     get: { Color(hex: UInt(draft.stops.indices.contains(index) ? draft.stops[index] : 0)) },
                     set: { if draft.stops.indices.contains(index) { draft.stops[index] = Int($0.rgbHex) } }
@@ -178,6 +179,7 @@ struct AccentGradientEditor: View {
                 supportsOpacity: false
             )
             .labelsHidden()
+            .accessibilityLabel(Text(name))
             Text(String(format: "#%06lX", readable.stops[index]))
                 .monospacedDigit()
                 .lineLimit(1)

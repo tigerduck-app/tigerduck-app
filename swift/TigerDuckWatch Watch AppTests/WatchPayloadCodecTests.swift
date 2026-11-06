@@ -124,7 +124,7 @@ final class WatchPayloadCodecTests: XCTestCase {
         let dict = try WatchPayloadCodec.encode(sampleSnapshot())
         XCTAssertNil(dict[WatchWireFormat.Key.accentGradient])
         XCTAssertNil(try WatchPayloadCodec.decode(dict).accentGradient)
-        let legacyJSON = Data(#"{"version":1,"courses":[],"accentHex":"#FF8800","syncedAtMs":1,"loggedIn":true}"#.utf8)
+        let legacyJSON = Data(##"{"version":1,"courses":[],"accentHex":"#FF8800","syncedAtMs":1,"loggedIn":true}"##.utf8)
         XCTAssertNil(try JSONDecoder().decode(WatchSnapshot.self, from: legacyJSON).accentGradient)
     }
 

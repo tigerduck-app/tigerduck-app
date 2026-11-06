@@ -53,15 +53,16 @@ struct AccentGradientScreenTests {
         }
     }
 
-    private static func window(_ view: some View, look: Look) throws -> UIWindow {
+    private static func window(_ view: some View, look: Look) throws -> (UIWindow, UIViewController) {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 375, height: look.height)
         window.overrideUserInterfaceStyle = look.style
-        window.rootViewController = UIHostingController(rootView: view)
+        let host = UIHostingController(rootView: view)
+        window.rootViewController = host
         if let size = look.size { window.traitOverrides.preferredContentSizeCategory = size }
         window.isHidden = false
-        return window
+        return (window, host)
     }
 
     private static func save(_ window: UIWindow, as name: String, look: Look) {
@@ -98,24 +99,28 @@ struct AccentGradientScreenTests {
     func editor(editing: Editing, look: Look) async throws {
         try await withAccessibilityAutomation {
             try await Self.withAccent(editing.accent) { preferences in
-                let window = try Self.window(AccentGradientEditor(preferences: preferences).tint(preferences.accentStyle), look: look)
+                let (window, host) = try Self.window(AccentGradientEditor(preferences: preferences).tint(preferences.accentStyle), look: look)
                 defer { window.isHidden = true }
                 let accent = editing.accent
-                let stops = (1...accent.stops.count).map {
-                    String(format: Self.label("a11y_accent_gradient_stop"), $0)
+                let add = Self.label("action_add")
+                try await waitUntil { Screen.elements(in: host).contains { $0.accessibilityLabel == add } }
+                let elements = Screen.elements(in: host)
+                let labels = elements.compactMap(\.accessibilityLabel)
+                @MainActor func button(_ key: LocalizedStringResource) -> NSObject? {
+                    elements.first { $0.accessibilityLabel == Self.label(key) }
                 }
-                try await waitUntil { stops.allSatisfy { accessibilityElement(labeled: $0, in: window) != nil } }
 
+                for stop in 1...accent.stops.count {
+                    let name = String(format: Self.label("a11y_accent_gradient_stop"), stop)
+                    #expect(labels.contains(name), "\(labels)")
+                }
                 for style in AccentGradient.Style.allCases {
-                    let button = accessibilityElement(labeled: Self.label(style.titleKey), in: window)
-                    #expect((button != nil) == accent.isGradient, "\(style)")
-                    #expect((button?.accessibilityTraits.contains(.selected) ?? false) == (accent.isGradient && style == accent.style))
+                    #expect((button(style.titleKey) != nil) == accent.isGradient, "\(style)")
+                    #expect((button(style.titleKey)?.accessibilityTraits.contains(.selected) ?? false) == (accent.isGradient && style == accent.style))
                 }
                 for direction in AccentGradient.Direction.allCases {
-                    let button = accessibilityElement(labeled: Self.label(direction.titleKey), in: window)
-                    #expect((button != nil) == (accent.isGradient && accent.style == .linear), "\(direction)")
+                    #expect((button(direction.titleKey) != nil) == (accent.isGradient && accent.style == .linear), "\(direction)")
                 }
-                #expect(accessibilityElement(labeled: Self.label("action_add"), in: window) != nil)
                 Self.save(window, as: "editor-\(editing.rawValue)", look: look)
             }
         }
