@@ -4,18 +4,18 @@ The portal page (`subsystem.py`) answers without a session and links 學籍管�
 `stuinfosys.ntust.edu.tw/StudentInformation`, which signs in through ssoam2's OIDC and gets the
 code back by a form_post page that `NtustSsoBridge` submits. The sign-in ends on `Home/Index`,
 whose menu links 學籍資料檢視 (`Information/Index`, UTF-8); opening the system's root again runs
-the OIDC round once more, signed in or not. 學籍資料檢視 shows the student's record in named form
-inputs and, at its bottom, each semester's advisor.
+the OIDC round once more, signed in or not.
 
-That advisor block is no `<table>`: the page has none. `parse_advisors` reads a th-headed table,
-so on the real page it finds nothing, and the probe prints the page's skeleton (selectors and the
-kind and length of each leaf's text, never the text) and its scripts' paths, from which the
-block's parser is to be written.
+學籍資料檢視 has no `<table>` and loads nothing by script. The record is a Bootstrap form: one
+`div.form-group` per field, a `label.control-label` and a named `input.form-control`. Its last
+group is the advisors: a label naming 導師 and one unnamed read-only input per semester, whose
+value is a sentence holding the term and the advisor's name.
 
-The page is the student's own record: the probe prints only the advisor table, each name cut to
+The page is the student's own record: the probe prints only the advisor rows, each name cut to
 its first character unless `--show` is passed. Stderr holds the request trace (method, host,
-path, status), the page's title, ssoam2's refusal and shapes, and no other page text. Cookies
-stay in memory.
+path, status), the page's title, ssoam2's refusal, each advisor value's format with its data
+hidden, and on a miss the page's skeleton (selectors and the kind and length of each leaf's text,
+never a field's value) with its scripts' paths. Cookies stay in memory.
 """
 
 from __future__ import annotations
@@ -39,8 +39,15 @@ RECORDS_SYSTEM = "學籍管理系統"
 RECORDS_VIEW = "學籍資料檢視"
 ADVISOR = "導師"
 SEMESTER_LABELS = ("學年", "學期")
-# What a semester cell may hold to be printed as is; anything else is masked like a name.
-SEMESTER_SHAPE = re.compile(r"[0-9\s/學年度第期上下暑H-]+")
+# 113 學年度 第 1 學期, 114學年度下學期, 1141學期: the ROC year, then the term.
+TERM = re.compile(r"(\d{2,3})\s*(?:學年度?\s*第?\s*([12一二上下])\s*學期|([12])\s*學期)")
+TERM_DIGITS = {"一": "1", "上": "1", "二": "2", "下": "2"}
+NAME_SEPARATORS = " :：為是"
+TITLE = re.compile(r"\s*(?:助理教授|副教授|教授|講師|老師)$")
+# What a semester may be to be printed as is; anything else is masked like a name.
+SEMESTER_SHAPE = re.compile(r"\d{2,3}[12]")
+# The sentence's own words, which a value's printed format keeps; longer words first.
+SENTENCE_WORDS = ("助理教授", "副教授", "學年度", "學年", "學期", "導師", "教授", "講師", "老師", "第")
 SSO_HOST = "ssoam2.ntust.edu.tw"
 # Where ssoam2 writes why it refused a sign-in, as HTMLParser.loginErrorMessage reads it.
 SSO_ERROR_CLASSES = ("field-validation-error", "validation-summary-errors", "alert-danger", "text-danger")
@@ -49,6 +56,7 @@ TOKEN_LENGTH = 32
 HAN = range(0x4E00, 0xA000)
 SKELETON_DEPTH = 16
 UNSHOWN_TAGS = frozenset({"head", "script", "style", "svg", "noscript"})
+FIELD_TAGS = frozenset({"input", "textarea", "select"})
 # A quoted path or address in a script, cut before any query.
 URL_LITERAL = re.compile(r"""["'`](/[\w/.-]+|https?://[^"'`\s?]+)""")
 
@@ -62,51 +70,49 @@ def _text(node: Tag) -> str:
     return " ".join(node.get_text(" ", strip=True).split())
 
 
-def _rows(table: Tag) -> list[list[Tag]]:
-    """The table's own rows as cell lists, without the rows of tables nested in it."""
-    return [
-        tr.find_all(["th", "td"], recursive=False)
-        for tr in table.find_all("tr")
-        if tr.find_parent("table") is table
-    ]
+def _advisor_group(soup: BeautifulSoup) -> tuple[str, list[str]] | None:
+    """The last label naming 導師 and the values of its group's unnamed inputs.
+
+    The record's own fields are named inputs; each semester's advisor is an unnamed read-only
+    input in the label's form group, so named inputs are never read.
+    """
+    label = next((tag for tag in reversed(soup.find_all("label")) if ADVISOR in _text(tag)), None)
+    if label is None:
+        return None
+    group = label.find_parent(class_="form-group") or label.parent
+    values = [i.get("value", "").strip() for i in group.find_all("input") if not i.get("name")]
+    return _text(label), [v for v in values if v]
+
+
+def _semester_advisor(value: str) -> dict[str, str]:
+    """One semester's sentence as a term code (1131) and the advisor's name."""
+    term = TERM.search(value)
+    digit = (term.group(2) or term.group(3)) if term else ""
+    semester = term.group(1) + TERM_DIGITS.get(digit, digit) if term else ""
+    before, _, after = value.partition(ADVISOR)
+    name = re.split(r"[（(]", after.lstrip(NAME_SEPARATORS), maxsplit=1)[0]
+    name = TITLE.sub("", name.strip(" ，,。."))
+    if not name:
+        # 王小明導師: the name runs from the term's last word to 導師.
+        name = re.split(r"學期|學年度?", before)[-1].strip(NAME_SEPARATORS)
+    return {"semester": semester, "advisor": name}
 
 
 def parse_advisors(html: str) -> dict[str, object] | None:
-    """Headers and semester/advisor rows of the last table whose `<th>` row names 導師.
+    """The 導師 label and one semester/advisor row per input of its group.
 
-    None when the page has no such table (a sign-in page, a redesign), which is not the same as
-    a table with no rows. Only an all-`<th>` row counts as headers, so a `<th>導師</th><td>`
-    pair elsewhere on the page is never read as one.
+    None when no label names 導師 (a sign-in page, a redesign), which is not the same as a
+    group with no inputs.
     """
-    soup = BeautifulSoup(html, "html.parser")
-    for table in reversed(soup.find_all("table")):
-        rows = _rows(table)
-        for at, cells in enumerate(rows):
-            if not cells or any(cell.name != "th" for cell in cells):
-                continue
-            headers = [_text(cell) for cell in cells]
-            advisor = next((i for i, h in enumerate(headers) if ADVISOR in h), None)
-            if advisor is None:
-                continue
-            semester = [
-                i for i, h in enumerate(headers)
-                if i != advisor and any(label in h for label in SEMESTER_LABELS)
-            ]
-            semesters = []
-            for row in rows[at + 1:]:
-                if len(row) != len(headers):
-                    continue
-                texts = [_text(cell) for cell in row]
-                semesters.append({
-                    "semester": " ".join(texts[i] for i in semester if texts[i]),
-                    "advisor": texts[advisor],
-                })
-            return {"headers": headers, "rows": semesters}
-    return None
+    found = _advisor_group(BeautifulSoup(html, "html.parser"))
+    if found is None:
+        return None
+    label, values = found
+    return {"label": label, "rows": [_semester_advisor(v) for v in values]}
 
 
 def shown(result: dict[str, object], show: bool) -> dict[str, object]:
-    """The parsed table as printed: names masked unless `show`."""
+    """The parsed rows as printed: names masked unless `show`."""
     rows = [
         {
             "semester": row["semester"]
@@ -115,7 +121,22 @@ def shown(result: dict[str, object], show: bool) -> dict[str, object]:
         }
         for row in result["rows"]
     ]
-    return {"headers": result["headers"], "row_count": len(rows), "rows": rows}
+    return {"label": result["label"], "row_count": len(rows), "rows": rows}
+
+
+def _template(value: str) -> str:
+    """A value's format without its data: the sentence's words kept, other Han ○, digits 9."""
+    out, i = [], 0
+    while i < len(value):
+        word = next((w for w in SENTENCE_WORDS if value.startswith(w, i)), None)
+        if word:
+            out.append(word)
+            i += len(word)
+            continue
+        ch = value[i]
+        out.append("○" if ord(ch) in HAN else "9" if ch.isdigit() else "a" if ch.isalpha() else ch)
+        i += 1
+    return "".join(out)
 
 
 def _link(resp: httpx.Response, name: str) -> str | None:
@@ -152,7 +173,7 @@ def _trace(student_id: str, last: list[httpx.Response]) -> Callable[[httpx.Respo
 
 
 def _kind(text: str) -> str:
-    """Text as its kind and length: c Han, d digits, x other, e empty; `*` marks 導師."""
+    """Text as its kind and length: c Han, d digits, x other, e empty; `*` marks 導師, `#` a term."""
     if not text:
         return "e"
     if text.isdigit():
@@ -161,7 +182,11 @@ def _kind(text: str) -> str:
         kind = "c"
     else:
         kind = "x"
-    return f"{kind}{len(text)}" + ("*" if ADVISOR in text else "")
+    return (
+        f"{kind}{len(text)}"
+        + ("*" if ADVISOR in text else "")
+        + ("#" if any(label in text for label in SEMESTER_LABELS) else "")
+    )
 
 
 def _selector(tag: Tag) -> str:
@@ -176,6 +201,9 @@ def _selector(tag: Tag) -> str:
 
 def _skeleton(el: Tag, depth: int = SKELETON_DEPTH) -> str:
     """The element tree as selectors and text kinds, never the text; equal neighbours fold."""
+    if el.name in FIELD_TAGS and el.get("name"):
+        # A field of the record: its name says what it is, and its value is the student's.
+        return _selector(el)
     if el.name == "input":
         own = el.get("value", "")
     else:
@@ -259,8 +287,10 @@ def _run(
     page = bridge.open(view)
     result = parse_advisors(page.text)
     if result is None:
-        return _fail("no table with a <th> row naming 導師", page, student_id)
+        return _fail(f"no label naming {ADVISOR}", page, student_id)
     _describe(page, student_id, structure=False)
+    _, values = _advisor_group(BeautifulSoup(page.text, "html.parser"))
+    print(_redact(f"  value formats {[_template(v) for v in values]}", student_id), file=sys.stderr)
     host = page.url.host
     sent = [c for c in bridge.client.cookies.jar if host.endswith(c.domain.lstrip("."))]
     print(
@@ -305,53 +335,92 @@ def _self_check() -> None:
     assert mask("A") == "A" and mask("") == ""
     assert parse_advisors("<html><form id='loginForm'></form></html>") is None
 
-    # Made-up names. A key-value row naming 導師 sits above the semester table, and a layout
-    # table wraps it; neither may be read as the table.
+    # Made-up data in the page's structure: the record's named fields, a checkbox group, then
+    # the advisor group, one unnamed read-only input per semester.
     page = """
-    <ul class="navbar-right"><li><a class="nav-link" href="#">測試生</a></li></ul>
-    <div class="box"><div class="box-body">
-      <table class="table"><tr><th>姓名</th><td>測試生</td><th>導師</th><td>陳大文</td></tr></table>
-    </div></div>
-    <table class="layout"><tr><td>
-      <div class="box"><div class="box-body">
-        <table class="table">
-          <thead><tr><th>學年度</th><th>學期</th><th>導師</th></tr></thead>
-          <tbody>
-            <tr><td>113</td><td>1</td><td>王小明</td></tr>
-            <tr><td>113</td><td>2</td><td>李 大華</td></tr>
-            <tr><td colspan="3">備註</td></tr>
-          </tbody>
-        </table>
+    <form id="logoutForm" method="post" action="/StudentInformation/Account/Logout">
+      <input name="__RequestVerificationToken" type="hidden" value="t">
+      <ul class="nav navbar-nav navbar-right"><li class="mr-3"><a><span class="text-success">測試生</span></a></li></ul>
+    </form>
+    <div class="container border"><div class="row justify-content-center">
+      <div class="col-sm-12"><div class="form-group">
+        <label class="control-label col-sm-2 font-weight-bold text-info">學號</label>
+        <div class="col-sm-10"><input class="form-control text-box single-line" id="StudentNo" name="StudentNo" type="text" value="B00000000"></div>
       </div></div>
-    </td></tr></table>
+      <div class="col-sm-12"><div class="form-group">
+        <label class="control-label col-sm-2 font-weight-bold text-info">學生姓名</label>
+        <div class="col-sm-10"><input class="form-control text-box single-line" id="StudentName" name="StudentName" type="text" value="測試生"></div>
+      </div></div>
+      <div class="col-sm-12"><div class="form-group">
+        <label class="control-label col-sm-2 font-weight-bold text-info">身分類別</label>
+        <div class="col-sm-10"><div class="ml-3"><div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox"><label class="form-check-label">一般生</label>
+        </div></div></div>
+      </div></div>
+      <div class="col-sm-12"><div class="form-group">
+        <label class="control-label col-sm-2 font-weight-bold text-info">歷屆導師</label>
+        <div class="col-sm-10">
+          <input class="form-control" type="text" value="113 學年度第 1 學期 導師為：王小明老師" readonly>
+          <input class="form-control" type="text" value="113 學年度第 2 學期 導師為：王小明老師" readonly>
+          <input class="form-control" type="text" value="114 學年度第 1 學期 導師為：李大華老師" readonly>
+        </div>
+      </div></div>
+    </div></div>
+    <div class="container mt-2"><div class="row justify-content-center"></div></div>
     """
     result = parse_advisors(page)
     assert result == {
-        "headers": ["學年度", "學期", "導師"],
+        "label": "歷屆導師",
         "rows": [
-            {"semester": "113 1", "advisor": "王小明"},
-            {"semester": "113 2", "advisor": "李 大華"},
+            {"semester": "1131", "advisor": "王小明"},
+            {"semester": "1132", "advisor": "王小明"},
+            {"semester": "1141", "advisor": "李大華"},
         ],
     }, result
     assert shown(result, show=False) == {
-        "headers": ["學年度", "學期", "導師"],
-        "row_count": 2,
+        "label": "歷屆導師",
+        "row_count": 3,
         "rows": [
-            {"semester": "113 1", "advisor": "王○○"},
-            {"semester": "113 2", "advisor": "李○○○"},
+            {"semester": "1131", "advisor": "王○○"},
+            {"semester": "1132", "advisor": "王○○"},
+            {"semester": "1141", "advisor": "李○○"},
         ],
     }
-    assert shown(result, show=True)["rows"][0] == {"semester": "113 1", "advisor": "王小明"}
+    assert shown(result, show=True)["rows"][2] == {"semester": "1141", "advisor": "李大華"}
 
-    # A key-value row naming 導師 is no header row; its values would print as headers.
-    assert parse_advisors("<table><tr><th>導師</th><td>陳大文</td></tr></table>") is None
+    # The sentence spelt without spaces, with a 上/下 term, another title, a department after
+    # the name, or the name before 導師.
+    def one(value: str) -> dict[str, str]:
+        group = (
+            '<div class="form-group"><label class="control-label">歷年導師</label>'
+            f'<div class="col-sm-10"><input class="form-control" value="{value}"></div></div>'
+        )
+        return parse_advisors(group)["rows"][0]
 
-    # A table with headers and no semesters is [], not None.
-    empty = "<table><tr><th>學年期</th><th>導師</th></tr><tr><td colspan='2'>查無資料</td></tr></table>"
-    assert parse_advisors(empty) == {"headers": ["學年期", "導師"], "rows": []}
+    assert one("113學年度第2學期導師：李大華") == {"semester": "1132", "advisor": "李大華"}
+    assert one("114學年度下學期 導師:陳大文 老師") == {"semester": "1142", "advisor": "陳大文"}
+    assert one("1141學期 導師：陳大文（資工系）") == {"semester": "1141", "advisor": "陳大文"}
+    assert one("113學年度第1學期王小明導師") == {"semester": "1131", "advisor": "王小明"}
 
-    # A semester cell that is not a semester is masked like a name.
-    odd = shown({"headers": ["學期導師"], "rows": [{"semester": "王小明", "advisor": "王小明"}]}, False)
+    # A named input in the group is a field of the record, never a semester.
+    named = (
+        '<div class="form-group"><label>歷年導師</label><input name="TutorId" value="T0001">'
+        '<input class="form-control" value="113學年度第1學期導師：王小明"></div>'
+    )
+    assert parse_advisors(named)["rows"] == [{"semester": "1131", "advisor": "王小明"}]
+
+    # A value's printed format keeps the sentence's words and hides its data.
+    assert _template("113 學年度第 1 學期 導師為：王小明老師") == "999 學年度第 9 學期 導師○：○○○老師"
+    assert _template("1141學期導師:Ann Lee 副教授") == "9999學期導師:aaa aaa 副教授"
+
+    # No 導師 label is a missing block (a sign-in page, a redesign); a label with no inputs is
+    # a record with no advisors yet.
+    assert parse_advisors('<label class="control-label">學號</label><input value="1">') is None
+    empty = '<div class="form-group"><label>歷年導師</label><div class="col-sm-10"></div></div>'
+    assert parse_advisors(empty) == {"label": "歷年導師", "rows": []}
+
+    # A semester that is not a term code is masked like a name.
+    odd = shown({"label": "導師", "rows": [{"semester": "王小明", "advisor": "王小明"}]}, False)
     assert odd["rows"] == [{"semester": "王○○", "advisor": "王○○"}], odd
 
     assert _path(httpx.URL("https://h.example/a/B00000000/x?code=c"), "b00000000") == "/a/<id>/x"
@@ -366,7 +435,7 @@ def _self_check() -> None:
         "html.parser",
     )
     skeleton = _skeleton(block.div)
-    assert skeleton == "div.tutors[h5:c2* div.row[span:d4 span:c3]x2 input@StudentName:c3]", skeleton
+    assert skeleton == "div.tutors[h5:c2* div.row[span:d4 span:c3]x2 input@StudentName]", skeleton
     scripts = BeautifulSoup(
         '<script src="/lib/grid.js?v=1"></script>'
         '<script>$.get("/StudentInformation/Information/Tutors?id=1"); var c = "導師";</script>',
