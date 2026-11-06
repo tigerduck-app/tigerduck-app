@@ -1,4 +1,3 @@
-import QuickLook
 import SwiftUI
 #if canImport(AppKit)
 import AppKit
@@ -139,7 +138,7 @@ private struct MoodleFilePresentation: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .quickLookPreview($opener.preview, in: opener.previewItems)
+            .filePreview($opener.preview, in: opener.previewItems)
             #if os(iOS)
             .sheet(item: $opener.shared) { item in
                 ShareSheet(url: item.url)

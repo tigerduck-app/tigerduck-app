@@ -1,5 +1,4 @@
 #if os(iOS)
-import QuickLook
 import SwiftUI
 import UIKit
 
@@ -64,7 +63,7 @@ struct MailMessageView: View {
             )
         }
         .sheet(item: $shareItem) { item in ShareSheet(url: item.url).presentationDetents([.medium, .large]) }
-        .quickLookPreview($previewURL)
+        .filePreview($previewURL)
         .sheet(isPresented: $showMoveSheet) {
             MailMoveSheet(viewModel: viewModel, otherFolders: otherFolders, onMove: move, onCancel: { showMoveSheet = false })
         }

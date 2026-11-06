@@ -46,6 +46,16 @@ HostWindow.swift
 UINavigationController+Swipeback.swift
 View+ScrollSafeGesture.swift
 
+# Features/Archive — the archive browser and its libarchive reader, which only the iOS app links;
+# the Mac hands an archive to Quick Look as before
+ArchiveBrowser.swift
+ArchiveBrowserModel.swift
+ArchiveCache.swift
+ArchiveNodeRow.swift
+ArchivePass.swift
+ArchiveReader.swift
+ArchiveTree.swift
+
 # Features/Bulletins and Stores/Bulletins — iOS bulletin surfaces
 BulletinNotificationSettingsView.swift
 BulletinSubscriptionsStore.swift
