@@ -71,18 +71,22 @@ struct StorageSettingsScreenTests {
             defer { window.isHidden = true }
             try await waitUntil { accessibilityElement(labeled: Self.bar, in: host.view) != nil }
             let list = try #require(host.view.descendants(ofType: UICollectionView.self).first)
+            var seen = Set<StorageKind>()
             for part in 0..<8 {
                 list.layoutIfNeeded()
                 #expect(list.contentSize.width <= list.bounds.width + 0.5)
                 window.saveSnapshot(as: "storage-\(screen.name)-\(part)-\(PageMenuScreenTests.language)")
+                let texts = exposedAccessibilityTexts(in: host.view)
+                seen.formUnion(StorageKind.allCases.filter { kind in
+                    texts.contains(kind.title)
+                        || accessibilityElement(labeled: String(format: String(localized: "settings_storage_delete_kind"), kind.title), in: host.view) != nil
+                })
                 let end = list.contentSize.height + list.adjustedContentInset.bottom - list.bounds.height
                 let next = min(list.contentOffset.y + list.bounds.height * 0.8, end)
                 guard next > list.contentOffset.y + 1 else { break }
                 list.setContentOffset(CGPoint(x: 0, y: next), animated: false)
             }
-            for kind in StorageKind.allCases {
-                #expect(exposedAccessibilityTexts(in: host.view).contains(kind.title) || (try? button(kind, in: host)) != nil, "\(kind)")
-            }
+            #expect(seen == Set(StorageKind.allCases), "\(Set(StorageKind.allCases).subtracting(seen))")
         }
     }
 
