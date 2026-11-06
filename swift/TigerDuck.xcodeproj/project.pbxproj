@@ -11,6 +11,7 @@
 		42B9BC032F90EBFA00D3B5A1 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
 		42B9BC142F90EBFB00D3B5A1 /* TigerDuckLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		42D2EEAD2F73B4B300973752 /* tigerduck.icon in Resources */ = {isa = PBXBuildFile; fileRef = 42D2EEAC2F73B4B300973752 /* tigerduck.icon */; };
+		A2C41B0330AA000100000001 /* CLibArchive in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = A2C41B0230AA000100000001 /* CLibArchive */; };
 		44361EB2FDF34C1180AAA293 /* SwiftMail in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = 286A28B6C50C02BAA1C53862 /* SwiftMail */; };
 		60A0A00130AA000100000001 /* Valet in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20130AA000100000001 /* Valet */; };
 		60A0A00230AA000100000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20230AA000100000001 /* SwiftSoup */; };
@@ -366,6 +367,7 @@
 				60A0A00230AA000100000001 /* SwiftSoup in Frameworks */,
 				60A0A00130AA000100000001 /* Valet in Frameworks */,
 				44361EB2FDF34C1180AAA293 /* SwiftMail in Frameworks */,
+				A2C41B0330AA000100000001 /* CLibArchive in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -516,6 +518,7 @@
 				60A0A20530AA000100000001 /* MarkdownUI */,
 				286A28B6C50C02BAA1C53862 /* SwiftMail */,
 				DC0DE00230AA000100000001 /* TigerDuckCore */,
+				A2C41B0230AA000100000001 /* CLibArchive */,
 			);
 			productName = TigerDuck;
 			productReference = 424C46562F6E763C009D1DDA /* TigerDuck.app */;
@@ -833,6 +836,8 @@
 				60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 				E8CC3E13C4358E9783C31871 /* XCLocalSwiftPackageReference "Packages/SwiftMail" */,
 				DC0DE00130AA000100000001 /* XCLocalSwiftPackageReference "Packages/TigerDuckCore" */,
+				A2C41B0130AA000100000001 /* XCLocalSwiftPackageReference "Packages/libarchive" */,
+				A2C41B0130AA000100000002 /* XCLocalSwiftPackageReference "Packages/xz" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 424C46572F6E763C009D1DDA /* Products */;
@@ -3039,6 +3044,14 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/TigerDuckCore;
 		};
+		A2C41B0130AA000100000001 /* XCLocalSwiftPackageReference "Packages/libarchive" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/libarchive;
+		};
+		A2C41B0130AA000100000002 /* XCLocalSwiftPackageReference "Packages/xz" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/xz;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -3077,6 +3090,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A2C41B0230AA000100000001 /* CLibArchive */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CLibArchive;
+		};
 		286A28B6C50C02BAA1C53862 /* SwiftMail */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SwiftMail;

@@ -1,0 +1,4 @@
+module CLZMA {
+    header "lzma.h"
+    export *
+}

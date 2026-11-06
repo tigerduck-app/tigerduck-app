@@ -197,6 +197,8 @@ tigerduck-app/
 │   ├── TigerDuckWatchWidget/           # Apple Watch 複雜功能 (Complication)
 │   ├── TigerDuckTests/                 # 單元測試（Swift Testing + XCTest，含 Widget / Watch 邏輯）
 │   ├── Packages/SwiftMail/             # 校園信箱使用的 IMAP / SMTP 套件（vendored）
+│   ├── Packages/libarchive/            # 壓縮檔預覽使用的 libarchive 讀取器（vendored）
+│   ├── Packages/xz/                    # libarchive 讀 7z、xz 用的 LZMA 解碼器（vendored）
 │   ├── ci_scripts/                     # Xcode Cloud post-clone（抓子模組）
 │   └── Shared/                         # 跨 target 共用程式碼（感測器、Watch 通訊、Theme）
 ├── api-poc/                            # 第三方 API 驗證腳本（NTUST / Moodle / Calendar）

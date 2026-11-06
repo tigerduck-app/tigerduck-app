@@ -197,6 +197,8 @@ tigerduck-app/
 │   ├── TigerDuckWatchWidget/           # Apple Watch complication
 │   ├── TigerDuckTests/                 # Unit tests (Swift Testing + XCTest, incl. widget / watch logic)
 │   ├── Packages/SwiftMail/             # Vendored IMAP / SMTP package used by School Mail
+│   ├── Packages/libarchive/            # Vendored libarchive readers used by archive preview
+│   ├── Packages/xz/                    # Vendored LZMA decoders libarchive reads 7z and xz with
 │   ├── ci_scripts/                     # Xcode Cloud post-clone hook (fetches submodules)
 │   └── Shared/                         # Cross-target shared code (sensors, Watch comms, theme)
 ├── api-poc/                            # Third-party API validation scripts (NTUST / Moodle / Calendar)
