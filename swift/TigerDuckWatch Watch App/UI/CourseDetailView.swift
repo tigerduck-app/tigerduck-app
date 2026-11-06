@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct CourseDetailView: View {
     let course: WatchCourse
@@ -13,7 +14,7 @@ struct CourseDetailView: View {
                     Text(course.name)
                         .font(.headline)
                 }
-                LabeledRow(symbol: "clock", text: "\(course.startHHmm)–\(course.endHHmm)")
+                LabeledRow(symbol: "clock", text: TimeRange.text(course.startHHmm, course.endHHmm))
                 if !course.classroom.isEmpty {
                     LabeledRow(symbol: "mappin.and.ellipse", text: course.classroom)
                 }
