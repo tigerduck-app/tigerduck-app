@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// A course as a list shows it: its colour, its name and a line of details.
 struct CourseListRow: View {
     let color: Color
     let title: String

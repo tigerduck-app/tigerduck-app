@@ -25,7 +25,6 @@ struct MoodleMemberCoursesTests {
 
     private nonisolated static let me = member(ownId, "B11399001 @ Tiger Duck")
     private nonisolated static let classmate = member(43, "B11399002 @ Duck Tiger")
-    /// The page's own course, which every member shares.
     private nonisolated static let thisCourse = moodle(courseId, "1141CS1001301", "CS1001301 Data Structures")
     private nonisolated static let algorithms = moodle(30001, "1141CS2001301", "CS2001301 Algorithms")
 
@@ -108,7 +107,6 @@ struct MoodleMemberCoursesTests {
         )
     }
 
-    /// The account's own Moodle courses, as the class table's course fetch keeps them.
     private static func ownCourses(_ courses: [MoodleEnrolledCourse], in folder: Folder) {
         folder.cache.moodle.replaceMoodleCourseIdMap(AssignmentRecords.moodleCourseIdMap(courses), for: testSignIn)
     }
@@ -288,7 +286,7 @@ struct MoodleMemberCoursesTests {
         let otherAccount = Self.store(folder, site: Site(), account: "B11399002")
         #expect(otherAccount.memberCourses.terms(with: Self.classmate).isEmpty)
 
-        // The Moodle store alone: the whole school sign-out also resets the process's shared browser data.
+        // On iOS 26.5 the full sign-out's removal of the browser's WebKit store can crash the test process.
         MoodleFiles.forgetAccount(in: AccountStorage(folders: folder.cache.folders))
         #expect(Self.kept(folder) == nil)
         #expect(Self.store(folder, site: Site()).memberCourses.terms(with: Self.classmate).isEmpty)
@@ -309,8 +307,8 @@ struct MoodleMemberCoursesTests {
         let names = { store.memberCourses.terms(with: Self.classmate).flatMap(\.courses).map(\.name) }
         #expect(names() == ["Algorithms"])
 
-        // Written past the store the page reads, so its revision stays and a read would show the new name.
-        CourseStore(folders: folder.cache.folders).saveCourses(
+        let anotherCourseStore = CourseStore(folders: folder.cache.folders)
+        anotherCourseStore.saveCourses(
             [Self.classCourse("CS2001301", "Advanced Algorithms", by: "Wang", in: "1141")], semester: "1141", for: testSignIn
         )
         #expect(names() == ["Algorithms"])
@@ -451,7 +449,6 @@ struct MoodleMemberCommonCoursesScreenTests {
 
     private static var language: String { Bundle.main.preferredLocalizations.first ?? "en" }
 
-    /// The member page's scroll view and margins around the profile.
     private static func page(_ terms: [MoodleCommonTerm]) -> some View {
         ScrollView {
             MoodleMemberProfile(

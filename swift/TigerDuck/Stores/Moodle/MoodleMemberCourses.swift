@@ -1,8 +1,6 @@
 import Foundation
 import TigerDuckCore
 
-/// The courses the account shares with each member of a course, which Moodle answers one member
-/// at a time.
 @MainActor
 final class MoodleMemberCourses {
     private let courseId: Int
@@ -39,15 +37,13 @@ final class MoodleMemberCourses {
         return feed
     }
 
-    /// Keeps only the courses the account is enrolled in too, as Moodle also lists those it can
-    /// merely see, such as open ones. Only an answer is written, so a site without the call or a
-    /// failed ask is asked again on the next open.
     func refresh(with member: MoodleMember) async {
         let own = Set(context.cache.loadMoodleCourseIdMap().values)
         guard isSomeoneElse(member), !own.isEmpty,
               (try? await api.functions())?.contains(MoodleEnrolledCoursesService.usersCoursesFunction) == true
         else { return }
         await feed(of: member).refresh { [api] in
+            // Moodle also lists another user's courses the account can merely see, such as open ones.
             try await api.sharedCourses(member.id).filter { own.contains($0.id) }
         }
     }
@@ -66,7 +62,6 @@ final class MoodleMemberCourses {
         return terms
     }
 
-    /// False until the member list names the account, so no page counts as someone else's by default.
     private func isSomeoneElse(_ member: MoodleMember) -> Bool {
         guard let ownId = members.value?.ownId else { return false }
         return member.id != ownId
@@ -74,7 +69,6 @@ final class MoodleMemberCourses {
 }
 
 nonisolated struct MoodleCommonTerm: Identifiable, Equatable {
-    /// Nil for the courses whose Moodle id names no term.
     let term: String?
     let courses: [MoodleCommonCourse]
 
@@ -85,13 +79,11 @@ nonisolated struct MoodleCommonCourse: Identifiable, Equatable {
     let id: Int
     let name: String
     let details: [String]
-    /// The course number its colour is kept under, or the Moodle id for a course of no term.
     let colorKey: String
 }
 
 @MainActor
 extension MoodleCommonTerm {
-    /// The newest term first and the courses of no term last, each term's courses by name.
     static func terms(
         of shared: [MoodleEnrolledCourse], besides courseId: Int, classTable: (_ term: String) -> [CourseStore.Course]
     ) -> [MoodleCommonTerm] {
@@ -112,8 +104,6 @@ extension MoodleCommonTerm {
 
 @MainActor
 extension MoodleCommonCourse {
-    /// Under the name the class table gives it in its term, else Moodle's; `table` is nil for a
-    /// course of no term.
     static func listing(_ course: MoodleEnrolledCourse, inTermOf table: [CourseStore.Course]?) -> MoodleCommonCourse {
         let moodleName = AssignmentRecords.courseName(from: course.fullname)
         guard let table else {
