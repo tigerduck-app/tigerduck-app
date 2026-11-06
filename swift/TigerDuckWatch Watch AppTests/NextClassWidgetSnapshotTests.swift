@@ -94,6 +94,17 @@ final class NextClassWidgetSnapshotTests: XCTestCase {
                 date: Date(), current: nil, next: next, nextDay: .tomorrow, currentSpan: nil,
                 accentHex: "#FF8800", languageTag: language.tag, relevance: nil
             )
+            let farRoom = pictureCourse(name: language.next, room: "IB-1005 階梯教室", color: "#F5A623", start: "09:10", end: "12:00")
+            let beforeFarRoom = NextClassEntry(
+                date: Date(), current: nil, next: farRoom, nextDay: .tomorrow, currentSpan: nil,
+                accentHex: "#FF8800", languageTag: language.tag, relevance: nil
+            )
+            let threeHours = Date().addingTimeInterval(-60 * 60)...Date().addingTimeInterval(120 * 60)
+            let threeHourClass = pictureCourse(name: language.now, room: "TR-412", color: "#4ECDC4", start: "09:10", end: "12:10")
+            let longClass = NextClassEntry(
+                date: Date(), current: threeHourClass, next: nil, nextDay: .today, currentSpan: threeHours,
+                accentHex: "#FF8800", languageTag: language.tag, relevance: nil
+            )
             let policy = WatchVisualStylePolicy(preset: .default)
             let page = VStack(spacing: 12) {
                 ClassCard(title: words.string("watch_now"), course: now, span: span, policy: policy, language: words)
@@ -110,20 +121,18 @@ final class NextClassWidgetSnapshotTests: XCTestCase {
                 ("page-largest-text", AnyView(page.dynamicTypeSize(.accessibility3)), nil),
                 ("rectangular", AnyView(RectangularView(entry: during)), CGSize(width: 193, height: 82)),
                 ("rectangular-next", AnyView(RectangularView(entry: before)), CGSize(width: 193, height: 82)),
+                ("rectangular-next-long-room", AnyView(RectangularView(entry: beforeFarRoom)), CGSize(width: 193, height: 82)),
+                ("rectangular-3h", AnyView(RectangularView(entry: longClass)), CGSize(width: 193, height: 82)),
                 ("circular", AnyView(CircularView(entry: during)), CGSize(width: 50, height: 50)),
                 ("corner", AnyView(CornerView(entry: during)), CGSize(width: 38, height: 38)),
                 ("inline", AnyView(InlineView(entry: during)), CGSize(width: 180, height: 20)),
                 ("inline-next", AnyView(InlineView(entry: before)), CGSize(width: 180, height: 20)),
             ]
             for picture in pictures {
-                let framed = picture.view
-                    .frame(width: picture.size?.width ?? 208, height: picture.size?.height, alignment: .topLeading)
-                    .background(.black)
-                    .environment(\.colorScheme, .dark)
-                    .environment(\.locale, words.locale)
-                let renderer = ImageRenderer(content: framed)
-                renderer.scale = 2
-                let image = try XCTUnwrap(renderer.cgImage, picture.name)
+                let image = try XCTUnwrap(
+                    renderOnWatch(picture.view, width: picture.size?.width ?? 208, height: picture.size?.height, locale: words.locale),
+                    picture.name
+                )
                 guard keep else { continue }
                 let file = folder.appending(path: "\(picture.name)-\(language.tag).png")
                 let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(file as CFURL, "public.png" as CFString, 1, nil))

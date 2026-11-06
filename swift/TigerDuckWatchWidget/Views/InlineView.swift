@@ -7,6 +7,7 @@ struct InlineView: View {
 
     var body: some View {
         Text(text)
+            .widgetAccentable()
             .containerBackground(.fill.tertiary, for: .widget)
     }
 

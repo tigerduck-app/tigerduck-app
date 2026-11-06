@@ -45,6 +45,13 @@ struct NowNextRoomAndRangeTests {
         #expect(RectangularView(entry: entry(next: course(), day: .tomorrow, languageTag: "zh-Hant")).spokenSubhead == "明天 10:20 至 12:10")
     }
 
+    @Test func voiceOverHearsTheRoomAndTheRangeOnTheCornerAndCircular() throws {
+        #expect(entry(current: course(), languageTag: "zh-Hant").spokenSummary == "TR-412, 10:20 至 12:10")
+        #expect(entry(next: course(), day: .tomorrow, languageTag: "zh-Hant").spokenSummary == "TR-412, 明天 10:20 至 12:10")
+        let none = try localizedValue("watch_no_upcoming_classes", in: "zh-Hant")
+        #expect(entry(languageTag: "zh-Hant").spokenSummary == none)
+    }
+
     @Test func theInlineComplicationShowsOnlyTheRoom() {
         #expect(InlineView(entry: entry(current: course())).text == "TR-412")
         #expect(InlineView(entry: entry(next: course())).text == "TR-412 · 10:20")

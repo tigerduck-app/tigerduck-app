@@ -10,26 +10,36 @@ struct RectangularView: View {
             Text(headline)
                 .font(.headline)
                 .lineLimit(1)
-            HStack(spacing: 0) {
+            if let span = entry.currentSpan, let course = entry.current {
+                HStack(spacing: 0) {
+                    if let room {
+                        roomText(room)
+                            .layoutPriority(1)
+                    }
+                    timeText(room == nil ? subhead : " · \(subhead)")
+                }
+                .lineLimit(1)
+                ClassCountdown(span: span, tint: course.color)
+                    .padding(.top, 4)
+            } else {
                 if let room {
                     roomText(room)
-                        .layoutPriority(1)
+                        .lineLimit(1)
                 }
-                Text(room == nil ? subhead : " · \(subhead)")
-                    .accessibilityLabel(spokenSubhead)
-                    .minimumScaleFactor(0.75)
-                    .foregroundStyle(displayCourse?.dayChange?.start ?? displayCourse?.dayChange?.end != nil ? AnyShapeStyle(Color.changeInk) : AnyShapeStyle(.secondary))
-            }
-            .font(.subheadline)
-            .lineLimit(1)
-            if let span = entry.currentSpan, let course = entry.current {
-                ClassCountdown(span: span, tint: course.color)
-                    .widgetAccentable()
-                    .padding(.top, 4)
+                timeText(subhead)
+                    .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(.fill.tertiary, for: .widget)
+    }
+
+    private func timeText(_ text: String) -> some View {
+        Text(text)
+            .accessibilityLabel(spokenSubhead)
+            .font(.subheadline)
+            .minimumScaleFactor(0.75)
+            .foregroundStyle(displayCourse?.dayChange?.start ?? displayCourse?.dayChange?.end != nil ? AnyShapeStyle(Color.changeInk) : AnyShapeStyle(.secondary))
     }
 
     @ViewBuilder
@@ -53,14 +63,11 @@ struct RectangularView: View {
     private var headline: String { displayCourse?.name ?? entry.language.string("watch_no_upcoming_classes") }
     var subhead: String {
         guard let c = displayCourse else { return "—" }
-        return captioned(TimeRange.text(c.startHHmm, c.endHHmm))
+        return entry.captioned(TimeRange.text(c.startHHmm, c.endHHmm))
     }
     var spokenSubhead: String {
         guard let c = displayCourse else { return "—" }
-        return captioned(TimeRange.spoken(c.startHHmm, c.endHHmm) { entry.language.string($0) })
-    }
-    private func captioned(_ range: String) -> String {
-        entry.current == nil ? entry.nextDay.inlineCaption(range, in: entry.language) : range
+        return entry.captioned(TimeRange.spoken(c.startHHmm, c.endHHmm) { entry.language.string($0) })
     }
     var room: String? {
         guard let c = displayCourse, !c.classroom.isEmpty else { return nil }

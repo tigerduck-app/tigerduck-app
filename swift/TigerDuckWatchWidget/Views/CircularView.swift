@@ -8,7 +8,7 @@ struct CircularView: View {
         ZStack {
             AccessoryWidgetBackground()
             if let span = entry.currentSpan, let course = entry.current {
-                ProgressView(timerInterval: span.onRealClock, countsDown: false) {
+                ProgressView(timerInterval: AppClock.realTime(forApp: span), countsDown: false) {
                     EmptyView()
                 } currentValueLabel: {
                     EmptyView()
@@ -23,7 +23,10 @@ struct CircularView: View {
                 .minimumScaleFactor(0.5)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 6)
+                .widgetAccentable()
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(entry.spokenSummary)
         .containerBackground(.fill.tertiary, for: .widget)
     }
 
