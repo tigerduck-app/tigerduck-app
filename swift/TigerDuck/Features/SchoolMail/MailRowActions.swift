@@ -68,7 +68,7 @@ final class MailRowActions {
     }
 
     func message(_ row: MailListRow, in list: MailListViewModel) -> MailMessageViewModel {
-        let route = MailMessageRoute(folder: row.folder, uid: row.uid, uidValidity: list.mailbox[row.folder]?.uidValidity)
+        let route = MailMessageRoute(folder: row.folder, uid: row.uid, uidValidity: row.uidValidity)
         return MailMessageViewModel(route: route, session: list.session, folderRoles: list.folderRoles, events: list.events,
                                     cache: list.writer.cache, prefs: prefs, notifier: notifier ?? MailChecker.shared.notifier)
     }

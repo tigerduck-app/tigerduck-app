@@ -73,7 +73,7 @@ struct MailSwipeScreenTests {
         try await withAccessibilityAutomation {
             var summary = FakeMailClient.message(uid: 9, name: "電子計算機中心", subject: "您的信箱容量已使用 98%", seen: true).summary
             summary.flagged = false
-            let row = MailListRow(folder: "INBOX", summary: summary)
+            let row = MailListRow(folder: "INBOX", uidValidity: 1, summary: summary)
             let sheet = MailRowActionsSheet(row: row, canFlag: true, composing: nil, onAction: { _ in })
             let window = try ClubScreensTests.show(sheet, look: look, height: look.textSize == .large ? 640 : 1800)
             defer { window.isHidden = true }
@@ -102,7 +102,7 @@ struct MailSwipeScreenTests {
     func moreSheetWithoutFlag() async throws {
         try await withAccessibilityAutomation {
             let summary = FakeMailClient.message(uid: 9, name: "電子計算機中心", seen: true).summary
-            let sheet = MailRowActionsSheet(row: MailListRow(folder: "INBOX", summary: summary), canFlag: false,
+            let sheet = MailRowActionsSheet(row: MailListRow(folder: "INBOX", uidValidity: 1, summary: summary), canFlag: false,
                                             composing: nil, onAction: { _ in })
             let window = try ClubScreensTests.show(sheet, look: ClubScreensTests.looks[0], height: 640)
             defer { window.isHidden = true }

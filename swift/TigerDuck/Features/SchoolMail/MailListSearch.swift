@@ -68,7 +68,7 @@ final class MailListSearch {
                 }
                 guard list.isCurrent(selection, signIn), generation == generations.latest else { return }
                 known.noteGone(newest, summaries, folder: folder)
-                found += summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
+                found += summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, uidValidity: validity, summary: $0) }
                 unfetched[folder] = (validity, Array(matched.uids.dropFirst(newest.count)))
             } catch MailClientError.folderChanged {
                 guard list.isCurrent(selection, signIn) else { return }
@@ -78,7 +78,7 @@ final class MailListSearch {
                 serverFailed = true
                 let uids = Set(matched.uids)
                 found += (list.mailbox[folder]?.summaries ?? []).filter { uids.contains($0.uid) }
-                    .map { MailListRow(folder: folder, summary: $0) }
+                    .map { MailListRow(folder: folder, uidValidity: validity, summary: $0) }
                 unfetched[folder] = (validity, [])
                 usedFallback = true
             }
@@ -178,7 +178,7 @@ final class MailListSearch {
             known.noteGone(batch, summaries, folder: folder)
             known.unfetched[folder]?.uids.removeAll { batch.contains($0) }
             let shown = Set(current.map(\.id))
-            let rows = summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
+            let rows = summaries.filter { !$0.isDeleted }.map { MailListRow(folder: folder, uidValidity: uidValidity, summary: $0) }
                 .filter { !shown.contains($0.id) }
             if !rows.isEmpty { results = list.ordered(current + rows) }
             return .shown

@@ -349,5 +349,36 @@ struct MailRowActionsTests {
         h.actions.perform(.more, on: try h.row(1), in: h.list)
         #expect(h.actions.sheetRow?.uid == 1)
     }
+
+    enum SheetChoice: CaseIterable { case trash, deleteForever, move, flag, read }
+
+    @Test(arguments: SheetChoice.allCases)
+    func aSheetChoiceAfterTheFolderIsRecreatedLeavesTheMailThatReusedItsUIDAlone(choice: SheetChoice) async throws {
+        let h = await Self.harness(withTrash: choice != .deleteForever)
+        h.actions.perform(.more, on: try h.row(3), in: h.list)
+        let row = try #require(h.actions.sheetRow)
+        await h.fake.update {
+            $0.uidValidity["INBOX"] = 2
+            $0.folders["INBOX"] = [FakeMailClient.message(uid: 3, subject: "其他")]
+        }
+        await h.list.load()
+        #expect(h.list.mailbox["INBOX"]?.uidValidity == 2)
+
+        switch choice {
+        case .trash, .deleteForever:
+            await h.actions.trash(row, in: h.list)
+            if let model = h.actions.deletingForever { await h.actions.deleteForever(model, in: h.list) }
+        case .move:
+            h.actions.perform(.move, on: row, in: h.list)
+            await h.actions.move(try #require(h.actions.moving), to: Self.course, in: h.list)
+        case .flag: await h.actions.toggle(.flagged, row, in: h.list)
+        case .read: await h.actions.toggle(.seen, row, in: h.list)
+        }
+
+        let other = try #require(await h.fake.folders["INBOX"]?.first?.summary)
+        #expect(other.subject == "其他")
+        #expect(!other.isSeen && !other.isFlagged && !other.isDeleted)
+        #expect(await h.fake.folders[Self.course]?.isEmpty == true)
+    }
 }
 #endif

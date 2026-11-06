@@ -171,7 +171,7 @@ struct MailboxPages {
         var collected: [MailListRow] = []
         for folder in folders {
             guard let page = pages[folder] else { continue }
-            collected += page.summaries.map { MailListRow(folder: folder, summary: $0) }
+            collected += page.summaries.map { MailListRow(folder: folder, uidValidity: page.uidValidity, summary: $0) }
         }
         rows = newestFirst ? collected.sorted(by: Self.newestFirst) : collected
     }
