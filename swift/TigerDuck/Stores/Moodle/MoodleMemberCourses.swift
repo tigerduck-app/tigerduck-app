@@ -9,13 +9,25 @@ final class MoodleMemberCourses {
     private let members: MoodleFeed<MoodleMemberList>
     private let api: MoodleCourseAPI
     private let context: MoodleCacheContext
+    private let classTable: CourseStore
     private var feeds: [Int: MoodleFeed<[MoodleEnrolledCourse]>] = [:]
+    private var grouped: [Int: Grouped] = [:]
 
-    init(courseId: Int, members: MoodleFeed<MoodleMemberList>, api: MoodleCourseAPI, context: MoodleCacheContext) {
+    private struct Grouped {
+        let fetchedAt: Date?
+        let classTableRevision: Int
+        let terms: [MoodleCommonTerm]
+    }
+
+    init(
+        courseId: Int, members: MoodleFeed<MoodleMemberList>, api: MoodleCourseAPI, context: MoodleCacheContext,
+        classTable: CourseStore
+    ) {
         self.courseId = courseId
         self.members = members
         self.api = api
         self.context = context
+        self.classTable = classTable
     }
 
     func feed(of member: MoodleMember) -> MoodleFeed<[MoodleEnrolledCourse]> {
@@ -27,24 +39,38 @@ final class MoodleMemberCourses {
         return feed
     }
 
+    /// Keeps only the courses the account is enrolled in too, as Moodle also lists those it can
+    /// merely see, such as open ones. Only an answer is written, so a site without the call or a
+    /// failed ask is asked again on the next open.
     func refresh(with member: MoodleMember) async {
-        guard !isOwn(member) else { return }
+        let own = Set(context.cache.loadMoodleCourseIdMap().values)
+        guard isSomeoneElse(member), !own.isEmpty,
+              (try? await api.functions())?.contains(MoodleEnrolledCoursesService.usersCoursesFunction) == true
+        else { return }
         await feed(of: member).refresh { [api] in
-            try await api.ifAllowed(MoodleEnrolledCoursesService.usersCoursesFunction, else: []) {
-                try await api.sharedCourses(member.id)
-            }
+            try await api.sharedCourses(member.id).filter { own.contains($0.id) }
         }
     }
 
-    /// Nil `classTable` reads the account's class table.
-    func terms(with member: MoodleMember, classTable: ((_ term: String) -> [CourseStore.Course])? = nil) -> [MoodleCommonTerm] {
-        guard !isOwn(member), let shared = feed(of: member).value else { return [] }
-        return MoodleCommonTerm.terms(
-            of: shared, besides: courseId, classTable: classTable ?? { CourseStore.shared.loadCourses(semester: $0) }
-        )
+    func terms(with member: MoodleMember) -> [MoodleCommonTerm] {
+        guard isSomeoneElse(member) else { return [] }
+        let feed = feed(of: member)
+        let revision = classTable.revision
+        if let kept = grouped[member.id], kept.fetchedAt == feed.fetchedAt, kept.classTableRevision == revision {
+            return kept.terms
+        }
+        let terms = feed.value.map { shared in
+            MoodleCommonTerm.terms(of: shared, besides: courseId) { classTable.loadCourses(semester: $0) }
+        } ?? []
+        grouped[member.id] = Grouped(fetchedAt: feed.fetchedAt, classTableRevision: revision, terms: terms)
+        return terms
     }
 
-    private func isOwn(_ member: MoodleMember) -> Bool { member.id == members.value?.ownId }
+    /// False until the member list names the account, so no page counts as someone else's by default.
+    private func isSomeoneElse(_ member: MoodleMember) -> Bool {
+        guard let ownId = members.value?.ownId else { return false }
+        return member.id != ownId
+    }
 }
 
 nonisolated struct MoodleCommonTerm: Identifiable, Equatable {

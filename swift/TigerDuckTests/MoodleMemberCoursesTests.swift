@@ -43,6 +43,7 @@ struct MoodleMemberCoursesTests {
             MoodleCourseMembersService.membersFunction, MoodleEnrolledCoursesService.usersCoursesFunction,
         ]
         private var _shared: [MoodleEnrolledCourse] = []
+        private var _ownId: Int? = MoodleMemberCoursesTests.ownId
         private var _calls: [Int] = []
 
         func set(functions: Set<String>? = nil, shared: [MoodleEnrolledCourse]? = nil) {
@@ -50,6 +51,10 @@ struct MoodleMemberCoursesTests {
                 if let functions { _functions = functions }
                 if let shared { _shared = shared }
             }
+        }
+
+        func setOwnId(_ id: Int?) {
+            lock.withLock { _ownId = id }
         }
 
         var calls: [Int] { lock.withLock { _calls } }
@@ -62,7 +67,7 @@ struct MoodleMemberCoursesTests {
                 markViewed: { _, _ in },
                 members: { _ in
                     MoodleMemberList(
-                        ownId: MoodleMemberCoursesTests.ownId,
+                        ownId: self.lock.withLock { self._ownId },
                         members: [MoodleMemberCoursesTests.me, MoodleMemberCoursesTests.classmate]
                     )
                 },
@@ -98,8 +103,18 @@ struct MoodleMemberCoursesTests {
             courseId: courseId,
             termCourseIds: [courseId],
             context: MoodleCacheContext(account: account, cache: folder.cache.moodle, signIn: signedIn.signIn),
-            api: site.api(before: before)
+            api: site.api(before: before),
+            courses: folder.cache.courses
         )
+    }
+
+    /// The account's own Moodle courses, as the class table's course fetch keeps them.
+    private static func ownCourses(_ courses: [MoodleEnrolledCourse], in folder: Folder) {
+        folder.cache.moodle.replaceMoodleCourseIdMap(AssignmentRecords.moodleCourseIdMap(courses), for: testSignIn)
+    }
+
+    private static func kept(_ folder: Folder, account: String = "B11399001") -> [MoodleEnrolledCourse]? {
+        folder.cache.moodle.loadMoodleData([MoodleEnrolledCourse].self, name: "members/43/courses", account: account)?.value
     }
 
     @Test("courses in common list by term, newest first, under the class table's name, and leave out the page's course")
@@ -174,6 +189,7 @@ struct MoodleMemberCoursesTests {
     @Test("the account's own page asks Moodle for nothing and lists no courses in common")
     func yourself() async {
         let folder = Folder()
+        Self.ownCourses([Self.thisCourse, Self.algorithms], in: folder)
         let site = Site()
         site.set(shared: [Self.thisCourse, Self.algorithms])
         let store = Self.store(folder, site: site)
@@ -182,12 +198,79 @@ struct MoodleMemberCoursesTests {
         await store.memberCourses.refresh(with: Self.me)
 
         #expect(site.calls.isEmpty)
-        #expect(store.memberCourses.terms(with: Self.me, classTable: Self.table()).isEmpty)
+        #expect(store.memberCourses.terms(with: Self.me).isEmpty)
+    }
+
+    @Test("until the member list names the account, no page asks Moodle or lists courses in common, not even kept ones")
+    func accountNotNamedYet() async {
+        let folder = Folder()
+        Self.ownCourses([Self.thisCourse, Self.algorithms], in: folder)
+        let site = Site()
+        site.set(shared: [Self.thisCourse, Self.algorithms])
+        let named = Self.store(folder, site: site)
+        await named.refreshMembers()
+        await named.memberCourses.refresh(with: Self.classmate)
+        #expect(!named.memberCourses.terms(with: Self.classmate).isEmpty)
+
+        let unnamed = Site()
+        unnamed.setOwnId(nil)
+        unnamed.set(shared: [Self.thisCourse, Self.algorithms])
+        let elsewhere = Folder()
+        Self.ownCourses([Self.thisCourse, Self.algorithms], in: elsewhere)
+        let neverListed = Self.store(elsewhere, site: unnamed)
+        await neverListed.memberCourses.refresh(with: Self.me)
+        let listedWithoutAccount = Self.store(folder, site: unnamed)
+        await listedWithoutAccount.refreshMembers()
+        await listedWithoutAccount.memberCourses.refresh(with: Self.me)
+        await listedWithoutAccount.memberCourses.refresh(with: Self.classmate)
+
+        #expect(unnamed.calls.isEmpty)
+        #expect(neverListed.memberCourses.terms(with: Self.me).isEmpty)
+        #expect(listedWithoutAccount.memberCourses.terms(with: Self.me).isEmpty)
+        #expect(listedWithoutAccount.memberCourses.terms(with: Self.classmate).isEmpty)
+    }
+
+    @Test("a member's courses the account is not enrolled in, such as an open one, are neither listed nor kept")
+    func onlyCoursesBothAreIn() async {
+        let folder = Folder()
+        Self.ownCourses([Self.thisCourse, Self.algorithms], in: folder)
+        let site = Site()
+        site.set(shared: [Self.thisCourse, Self.algorithms, Self.moodle(777, "1141GE0000001", "GE0000001 Open Lectures")])
+        let store = Self.store(folder, site: site)
+        await store.refreshMembers()
+
+        await store.memberCourses.refresh(with: Self.classmate)
+
+        #expect(store.memberCourses.terms(with: Self.classmate) == [MoodleCommonTerm(term: "1141", courses: [
+            MoodleCommonCourse(id: 30001, name: "Algorithms", details: ["CS2001301"], colorKey: "CS2001301"),
+        ])])
+        #expect(Self.kept(folder)?.map(\.id) == [Self.courseId, 30001])
+    }
+
+    @Test("without the account's own course list nothing is asked, kept or listed, and the page asks once the list is there")
+    func ownListMissing() async {
+        let folder = Folder()
+        let site = Site()
+        site.set(shared: [Self.thisCourse, Self.algorithms])
+        let store = Self.store(folder, site: site)
+        await store.refreshMembers()
+
+        await store.memberCourses.refresh(with: Self.classmate)
+
+        #expect(site.calls.isEmpty)
+        #expect(Self.kept(folder) == nil)
+        #expect(store.memberCourses.terms(with: Self.classmate).isEmpty)
+
+        Self.ownCourses([Self.thisCourse, Self.algorithms], in: folder)
+        await store.memberCourses.refresh(with: Self.classmate)
+        #expect(site.calls == [43])
+        #expect(!store.memberCourses.terms(with: Self.classmate).isEmpty)
     }
 
     @Test("a member's courses in common come from Moodle, show from the account's cache the next time and go at its sign-out")
     func keptForTheAccount() async {
         let folder = Folder()
+        Self.ownCourses([Self.thisCourse, Self.algorithms], in: folder)
         let site = Site()
         site.set(shared: [Self.thisCourse, Self.algorithms])
         let store = Self.store(folder, site: site)
@@ -199,20 +282,50 @@ struct MoodleMemberCoursesTests {
             MoodleCommonCourse(id: 30001, name: "Algorithms", details: ["CS2001301"], colorKey: "CS2001301"),
         ])]
         #expect(site.calls == [43])
-        #expect(store.memberCourses.terms(with: Self.classmate, classTable: Self.table()) == expected)
+        #expect(store.memberCourses.terms(with: Self.classmate) == expected)
         let reopened = Self.store(folder, site: Site())
-        #expect(reopened.memberCourses.terms(with: Self.classmate, classTable: Self.table()) == expected)
+        #expect(reopened.memberCourses.terms(with: Self.classmate) == expected)
         let otherAccount = Self.store(folder, site: Site(), account: "B11399002")
-        #expect(otherAccount.memberCourses.terms(with: Self.classmate, classTable: Self.table()).isEmpty)
+        #expect(otherAccount.memberCourses.terms(with: Self.classmate).isEmpty)
 
         // The Moodle store alone: the whole school sign-out also resets the process's shared browser data.
         MoodleFiles.forgetAccount(in: AccountStorage(folders: folder.cache.folders))
-        #expect(Self.store(folder, site: Site()).memberCourses.terms(with: Self.classmate, classTable: Self.table()).isEmpty)
+        #expect(Self.kept(folder) == nil)
+        #expect(Self.store(folder, site: Site()).memberCourses.terms(with: Self.classmate).isEmpty)
+    }
+
+    @Test("the courses are grouped again only when the member's courses or the class table change")
+    func groupedOncePerChange() async {
+        let folder = Folder()
+        Self.ownCourses([Self.thisCourse, Self.algorithms], in: folder)
+        folder.cache.courses.saveCourses(
+            [Self.classCourse("CS2001301", "Algorithms", by: "Wang", in: "1141")], semester: "1141", for: testSignIn
+        )
+        let site = Site()
+        site.set(shared: [Self.thisCourse, Self.algorithms])
+        let store = Self.store(folder, site: site)
+        await store.refreshMembers()
+        await store.memberCourses.refresh(with: Self.classmate)
+        let names = { store.memberCourses.terms(with: Self.classmate).flatMap(\.courses).map(\.name) }
+        #expect(names() == ["Algorithms"])
+
+        // Written past the store the page reads, so its revision stays and a read would show the new name.
+        CourseStore(folders: folder.cache.folders).saveCourses(
+            [Self.classCourse("CS2001301", "Advanced Algorithms", by: "Wang", in: "1141")], semester: "1141", for: testSignIn
+        )
+        #expect(names() == ["Algorithms"])
+
+        folder.cache.courses.filesChangedElsewhere()
+        #expect(names() == ["Advanced Algorithms"])
+        site.set(shared: [Self.thisCourse])
+        await store.memberCourses.refresh(with: Self.classmate)
+        #expect(names().isEmpty)
     }
 
     @Test("courses in common that land after a sign-out are neither shown nor kept")
     func signOutWhileFetching() async throws {
         let folder = Folder()
+        Self.ownCourses([Self.thisCourse, Self.algorithms], in: folder)
         let signedIn = TestSignIn()
         let answer = ManualSleeper()
         let site = Site()
@@ -226,14 +339,14 @@ struct MoodleMemberCoursesTests {
         await answer.fire()
         await refresh.value
 
-        #expect(store.memberCourses.terms(with: Self.classmate, classTable: Self.table()).isEmpty)
-        let kept = folder.cache.moodle.loadMoodleData([MoodleEnrolledCourse].self, name: "members/43/courses", account: "B11399001")
-        #expect(kept == nil)
+        #expect(store.memberCourses.terms(with: Self.classmate).isEmpty)
+        #expect(Self.kept(folder) == nil)
     }
 
-    @Test("a site that does not allow the call is asked nothing, and the member page lists no courses in common")
+    @Test("a site that does not allow the call is asked nothing and keeps nothing, so the next open asks again")
     func gatedByFunctions() async {
         let folder = Folder()
+        Self.ownCourses([Self.thisCourse, Self.algorithms], in: folder)
         let site = Site()
         site.set(functions: [MoodleCourseMembersService.membersFunction], shared: [Self.algorithms])
         let store = Self.store(folder, site: site)
@@ -242,8 +355,30 @@ struct MoodleMemberCoursesTests {
         await store.memberCourses.refresh(with: Self.classmate)
 
         #expect(site.calls.isEmpty)
-        #expect(store.memberCourses.feed(of: Self.classmate).status == .ok)
-        #expect(store.memberCourses.terms(with: Self.classmate, classTable: Self.table()).isEmpty)
+        #expect(store.memberCourses.feed(of: Self.classmate).fetchedAt == nil)
+        #expect(Self.kept(folder) == nil)
+        #expect(store.memberCourses.terms(with: Self.classmate).isEmpty)
+
+        site.set(functions: [MoodleCourseMembersService.membersFunction, MoodleEnrolledCoursesService.usersCoursesFunction])
+        await store.memberCourses.refresh(with: Self.classmate)
+        #expect(site.calls == [43])
+    }
+
+    @Test("an ask that fails keeps nothing, so the next open asks again, and the page lists no courses in common")
+    func failedAskKeepsNothing() async {
+        let folder = Folder()
+        Self.ownCourses([Self.thisCourse, Self.algorithms], in: folder)
+        let site = Site()
+        site.set(shared: [Self.algorithms])
+        let store = Self.store(folder, site: site) { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
+        await store.refreshMembers()
+
+        await store.memberCourses.refresh(with: Self.classmate)
+
+        #expect(site.calls == [43])
+        #expect(store.memberCourses.feed(of: Self.classmate).fetchedAt == nil)
+        #expect(Self.kept(folder) == nil)
+        #expect(store.memberCourses.terms(with: Self.classmate).isEmpty)
     }
 }
 

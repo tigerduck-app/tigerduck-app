@@ -41,7 +41,8 @@ final class MoodleCourseStore {
         courseCodes: [String] = [],
         context: MoodleCacheContext,
         api: MoodleCourseAPI? = nil,
-        downloads: MoodleFileDownloads? = nil
+        downloads: MoodleFileDownloads? = nil,
+        courses: CourseStore? = nil
     ) {
         let api = api ?? .serving(context.signIn)
         let source = Source(
@@ -59,7 +60,9 @@ final class MoodleCourseStore {
             cacheName: "courses/\(courseId)/members", ttl: MoodleRefreshInterval.members, context: context
         )
         self.members = members
-        memberCourses = MoodleMemberCourses(courseId: courseId, members: members, api: api, context: context)
+        memberCourses = MoodleMemberCourses(
+            courseId: courseId, members: members, api: api, context: context, classTable: courses ?? .shared
+        )
         summary = MoodleFeed(cacheName: "courses/\(courseId)/summary", ttl: MoodleRefreshInterval.summary, context: context)
         assignments = MoodleCourseAssignments(courseId: courseId, context: context, api: api)
         forumStore = MoodleCourseForums(
