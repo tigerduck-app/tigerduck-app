@@ -140,5 +140,40 @@ struct MoodleAssignmentPage: Hashable {
         hasher.combine(ObjectIdentifier(store))
         hasher.combine(courseName)
     }
+
+    static func open(
+        _ assignment: AssignmentStore.Assignment, authService: AuthService, openURL: OpenURLAction, show: (MoodleAssignmentPage) -> Void
+    ) {
+        if let context = MoodleCacheContext.signedIn(authService, for: authService.session.currentSignIn),
+           let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context),
+           let entry = store.assignments.entry(for: assignment) {
+            show(MoodleAssignmentPage(entry: entry, store: store, courseName: assignment.displayCourseName))
+        } else if let url = assignment.moodleDeepLink {
+            let web = assignment.moodleWebURL
+            Task { await openURL(url, fallback: web) }
+        }
+    }
+}
+
+extension View {
+    func moodleAssignmentDestination(_ page: Binding<MoodleAssignmentPage?>) -> some View {
+        modifier(MoodleAssignmentDestination(page: page))
+    }
+}
+
+private struct MoodleAssignmentDestination: ViewModifier {
+    @Binding var page: MoodleAssignmentPage?
+
+    @Environment(AppEnvironment.self) private var app
+
+    func body(content: Content) -> some View {
+        content.navigationDestination(item: $page) { page in
+            MoodleAssignmentView(
+                store: page.store, entry: page.entry, courseName: page.courseName,
+                policy: app.preferences.visualStylePolicy, accent: app.preferences.accentColor
+            )
+            .moodleLinkOpening()
+        }
+    }
 }
 #endif

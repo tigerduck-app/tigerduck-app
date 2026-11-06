@@ -25,7 +25,7 @@ enum AssignmentRecords {
 
     static func moodleCalendarEvent(_ assignment: SDAssignment) -> SDCalendarEvent {
         SDCalendarEvent(
-            eventId: "moodle-\(assignment.assignmentId)",
+            eventId: assignment.calendarEventId,
             title: assignment.displayTitle,
             date: assignment.dueDate,
             source: .moodle

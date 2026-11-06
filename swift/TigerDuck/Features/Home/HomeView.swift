@@ -60,13 +60,7 @@ struct HomeView: View {
         .navigationDestination(item: $selectedFeature) { feature in
             HomeFeatureDestination(feature: feature)
         }
-        .navigationDestination(item: $viewModel.sheets.shownAssignment) { page in
-            MoodleAssignmentView(
-                store: page.store, entry: page.entry, courseName: page.courseName,
-                policy: app.preferences.visualStylePolicy, accent: app.preferences.accentColor
-            )
-            .moodleLinkOpening()
-        }
+        .moodleAssignmentDestination($viewModel.sheets.shownAssignment)
         .onChange(of: app.authService.session.currentSignIn) {
             viewModel.sheets.closeAssignment()
         }
@@ -152,16 +146,8 @@ struct HomeView: View {
     }
 
     private func openAssignment(_ assignment: AssignmentStore.Assignment, closingSheet: Bool = true) {
-        if let context = MoodleCacheContext.signedIn(app.authService, for: app.authService.session.currentSignIn),
-           let store = MoodleCourseStore.forAssignment(assignment.assignmentId, context: context),
-           let entry = store.assignments.entry(for: assignment) {
-            viewModel.sheets.show(
-                MoodleAssignmentPage(entry: entry, store: store, courseName: assignment.displayCourseName),
-                closingSheet: closingSheet
-            )
-        } else if let url = assignment.moodleDeepLink {
-            let web = assignment.moodleWebURL
-            Task { await openURL(url, fallback: web) }
+        MoodleAssignmentPage.open(assignment, authService: app.authService, openURL: openURL) {
+            viewModel.sheets.show($0, closingSheet: closingSheet)
         }
     }
 }

@@ -31,8 +31,7 @@ final class HomeViewModel {
         TigerDuckTheme.ensureAssignments(courses: courses, for: AccountSession.school.currentSignIn)
         allCourses = courses
         todayCourses = courses.coursesForToday()
-        let currentCourseNos = Set(courses.map(\.courseNo))
-        assignments.all = currentCourseNos.isEmpty ? all : all.filter { currentCourseNos.contains($0.courseNo) }
+        assignments.all = all.ofTimetable(courses)
         assignments.recompute()
     }
 
