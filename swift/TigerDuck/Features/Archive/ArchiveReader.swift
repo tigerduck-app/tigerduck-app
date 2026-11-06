@@ -81,26 +81,33 @@ nonisolated enum ArchiveReader {
     }
 }
 
-/// libarchive holds every record of a zip's central directory, which it reads from where the
-/// end record says it starts up to the end record, however many records that record declares.
+/// libarchive holds every record of a zip's central directory before the first entry. Like its
+/// seekable zip reader, this finds the last end record in the file's final 16 KiB, wherever the
+/// file starts, and measures the records libarchive would read up to it.
 nonisolated enum ArchiveZipDirectory {
+    private static let searched = 16 << 10
     private static let endRecordSize = 22
 
     static func check(_ file: Int32, size: Int64, limit: Int64) throws {
-        guard let head = read(file, at: 0, count: 2), head == [0x50, 0x4B] else { return }
-        let tailSize = Int(min(size, Int64(endRecordSize + 0xFFFF)))
-        guard let tail = read(file, at: size - Int64(tailSize), count: tailSize),
+        let tailSize = Int(min(size, Int64(searched)))
+        let tailAt = size - Int64(tailSize)
+        guard let tail = read(file, at: tailAt, count: tailSize),
               let at = stride(from: tailSize - endRecordSize, through: 0, by: -1)
                 .first(where: { word(tail, $0, 4) == 0x0605_4B50 }) else { return }
-        let end = size - Int64(tailSize) + Int64(at)
-        var start = Int64(word(tail, at + 16, 4))
-        if at >= 20, word(tail, at - 20, 4) == 0x0706_4B50 {
-            let recordAt = Int64(bitPattern: word(tail, at - 12, 8))
-            guard recordAt >= 0, let record = read(file, at: recordAt, count: 56),
-                  word(record, 0, 4) == 0x0606_4B50 else { return }
-            start = Int64(bitPattern: word(record, 48, 8))
+        var span: Int64 = 0
+        let directorySize = Int64(word(tail, at + 12, 4))
+        if word(tail, at + 4, 2) == 0, word(tail, at + 6, 2) == 0, word(tail, at + 8, 2) == word(tail, at + 10, 2),
+           Int64(word(tail, at + 16, 4)) + directorySize <= tailAt + Int64(at) {
+            span = directorySize
         }
-        if end - min(max(start, 0), end) > limit { throw ArchiveProblem.tooMany }
+        if at >= 20, word(tail, at - 20, 4) == 0x0706_4B50, word(tail, at - 16, 4) == 0, word(tail, at - 4, 4) == 1 {
+            let recordAt = Int64(bitPattern: word(tail, at - 12, 8))
+            if let record = read(file, at: recordAt, count: 56), word(record, 0, 4) == 0x0606_4B50 {
+                let directoryAt = Int64(bitPattern: word(record, 48, 8))
+                if directoryAt >= 0 { span = max(span, recordAt - directoryAt) }
+            }
+        }
+        if span > limit { throw ArchiveProblem.tooMany }
     }
 
     private static func read(_ file: Int32, at offset: Int64, count: Int) -> [UInt8]? {

@@ -399,6 +399,10 @@ struct _7zip {
 #define UMAX_ENTRY	ARCHIVE_LITERAL_LL(100000000)
 /* TigerDuck: 96 MiB, the limit liblzma's dictionary has here too. */
 #define TIGERDUCK_MAX_PPMD_SIZE	((uint32_t)96 << 20)
+/* TigerDuck: the entries and header bytes an archive preview lists, the
+ * Android app's 100,000 entries and the zip central directory's 16 MiB. */
+#define TIGERDUCK_MAX_ENTRIES	100000
+#define TIGERDUCK_MAX_HEADER_SIZE	((uint64_t)16 << 20)
 
 /* Don't try to read more than 16 MB at a time */
 #define MAX_READ	16 * 1024 * 1024
@@ -2699,6 +2703,11 @@ read_SubStreamsInfo(struct archive_read *a, struct _7z_substream_info *ss,
 
 	if (unpack_streams > UMAX_ENTRY)
 		return (-1);
+	/* TigerDuck: refuse before allocating a table per stream. */
+	if (unpack_streams > TIGERDUCK_MAX_ENTRIES) {
+		errno = E2BIG;
+		return (-1);
+	}
 
 	if (type != kSize) {
 		for (i = 0; i < numFolders; i++) {
@@ -2985,6 +2994,11 @@ read_Header(struct archive_read *a, struct _7z_header_info *h,
 
 	if (parse_7zip_size(a, &(zip->numFiles)) < 0)
 		return (-1);
+	/* TigerDuck: refuse before allocating a table per entry. */
+	if (zip->numFiles > TIGERDUCK_MAX_ENTRIES) {
+		errno = E2BIG;
+		return (-1);
+	}
 	if (!files_info_numfiles_is_sane(zip))
 		return (-1);
 
@@ -3519,7 +3533,15 @@ slurp_central_directory(struct archive_read *a, struct _7zip *zip,
 			if (r == 0) {
 				zip->header_bytes_remaining =
 					zip->folder_outbytes_remaining;
-				r = seek_pack(a);
+				/* TigerDuck: refuse a header that unpacks larger
+				 * than an archive preview lists. */
+				if ((uint64_t)zip->header_bytes_remaining >
+				    TIGERDUCK_MAX_HEADER_SIZE) {
+					archive_set_error(&a->archive, E2BIG,
+					    "7-Zip header too large");
+					r = -1;
+				} else
+					r = seek_pack(a);
 			}
 		}
 		/* Clean up StreamsInfo. */
@@ -3540,6 +3562,10 @@ slurp_central_directory(struct archive_read *a, struct _7zip *zip,
 			if (errno == ENOMEM)
 				archive_set_error(&a->archive, -1,
 				    "Couldn't allocate memory");
+			/* TigerDuck: keep the entry caps' reason. */
+			else if (errno == E2BIG)
+				archive_set_error(&a->archive, E2BIG,
+				    "Too many 7-Zip entries");
 			else
 				archive_set_error(&a->archive, -1,
 				    "Damaged 7-Zip archive");

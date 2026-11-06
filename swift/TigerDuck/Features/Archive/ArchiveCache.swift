@@ -22,13 +22,19 @@ final class ArchiveCache {
     }
 
     func open(_ archive: URL) -> OpenedArchive {
+        sweep()
+        let name = UUID().uuidString
+        inUse.insert(name)
+        let session = root.appending(path: name, directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
+        return OpenedArchive(url: archive, session: session)
+    }
+
+    func sweep() {
         let folders = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
         for folder in folders where !inUse.contains(folder.lastPathComponent) {
             try? FileManager.default.removeItem(at: folder)
         }
-        let name = UUID().uuidString
-        inUse.insert(name)
-        return OpenedArchive(url: archive, session: root.appending(path: name, directoryHint: .isDirectory))
     }
 
     func remove(_ session: URL) {

@@ -46,9 +46,15 @@ cmake -G Ninja <libarchive> -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=<iPhoneO
 1. `archive_read_support_format_7zip.c`: a 7z PPMd coder asking for a model larger than
    `TIGERDUCK_MAX_PPMD_SIZE` (96 MiB) fails with `ENOMEM` instead of allocating it. The model's
    size comes from the archive and may be up to 4 GiB.
+2. `archive_read_support_format_7zip.c`: a 7z header declaring more than
+   `TIGERDUCK_MAX_ENTRIES` (100,000) entries or substreams fails with `E2BIG` before a table per
+   entry is allocated, and an encoded header that unpacks to more than
+   `TIGERDUCK_MAX_HEADER_SIZE` (16 MiB) fails with `E2BIG` before it is unpacked. Upstream
+   allows 100,000,000 entries and any header size, and builds the whole table before the first
+   entry is read.
 
 ## Updating
 
-Copy the same files from the new release over these, keep the change above, run CMake again for
+Copy the same files from the new release over these, keep the changes above, run CMake again for
 `config.h`, then run `ArchiveReaderTests`. Read the release notes for security fixes: this code
 reads untrusted files.

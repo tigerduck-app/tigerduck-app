@@ -9,20 +9,19 @@ nonisolated final class ArchivePass {
     private let file: Int32
     private let size: Int64
     private let name: String
-    private let limits: ArchiveLimits
-    private let deadline: ContinuousClock.Instant
+    private var budget: ArchiveBudget
     private let input = UnsafeMutableRawPointer.allocate(byteCount: ArchivePass.chunk, alignment: 16)
     private let output = UnsafeMutableRawPointer.allocate(byteCount: ArchivePass.chunk, alignment: 16)
     private var stopped: (any Error)?
     private var formatChecked = false
+    private var drainsEntry = false
 
     private init(archive: OpaquePointer, file: Int32, size: Int64, name: String, limits: ArchiveLimits) {
         self.archive = archive
         self.file = file
         self.size = size
         self.name = name
-        self.limits = limits
-        deadline = .now + limits.timeLimit
+        budget = ArchiveBudget(limits: limits, deadline: .now + limits.timeLimit)
     }
 
     deinit {
@@ -83,6 +82,10 @@ nonisolated final class ArchivePass {
     }
 
     func nextEntry() throws -> OpaquePointer? {
+        // The raw reader has one entry, and skipping it would unpack the whole file.
+        if formatChecked, archive_format(archive) == ARCHIVE_FORMAT_RAW { return nil }
+        if drainsEntry { try drain() }
+        if let stop = stop() { throw stop }
         var entry: OpaquePointer?
         let result = archive_read_next_header(archive, &entry)
         if result == ARCHIVE_EOF { return nil }
@@ -94,7 +97,29 @@ nonisolated final class ArchivePass {
                 throw ArchiveProblem.unsupported
             }
         }
+        drainsEntry = drains(entry)
         return entry
+    }
+
+    // libarchive skips an entry by unpacking it, out of reach of stop(), unless it can seek past
+    // it: a zip or plain tar entry of known size. An encrypted entry can only be skipped.
+    private func drains(_ entry: OpaquePointer) -> Bool {
+        guard archive_entry_is_encrypted(entry) == 0 else { return false }
+        let family = archive_format(archive) & ARCHIVE_FORMAT_BASE_MASK
+        let seeks = archive_filter_count(archive) < 2 && archive_entry_size_is_set(entry) != 0
+            && (family == ARCHIVE_FORMAT_ZIP || family == ARCHIVE_FORMAT_TAR)
+        return !seeks
+    }
+
+    private func drain() throws {
+        while true {
+            if let stop = stop() { throw stop }
+            let count = archive_read_data(archive, output, Self.chunk)
+            // A warning comes at the end of an entry whose checksum is off, which fails on opening.
+            if count == 0 || count == Int(ARCHIVE_WARN) { return }
+            guard count > 0 else { throw problem() }
+            budget.scanned += Int64(count)
+        }
     }
 
     func path(of entry: OpaquePointer) -> String? {
@@ -132,7 +157,7 @@ nonisolated final class ArchivePass {
 
     func writeData(to folder: URL, name: String) throws -> URL {
         let directory = folder.appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
         let target = directory.appending(path: name, directoryHint: .notDirectory)
         let out = Darwin.open(target.path(percentEncoded: false), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
         guard out >= 0 else {
@@ -150,6 +175,7 @@ nonisolated final class ArchivePass {
     }
 
     private func copyData(to out: Int32) throws {
+        let limits = budget.limits
         let (ratioLimit, overflow) = max(size, 1).multipliedReportingOverflow(by: limits.maxRatio)
         var written: Int64 = 0
         while true {
@@ -158,6 +184,7 @@ nonisolated final class ArchivePass {
             if count == 0 { return }
             guard count > 0 else { throw problem() }
             written += Int64(count)
+            budget.scanned += Int64(count)
             if written > limits.maxEntryBytes || (written > limits.ratioFreeBytes && !overflow && written > ratioLimit) {
                 throw ArchiveProblem.tooLarge
             }
@@ -193,7 +220,7 @@ nonisolated final class ArchivePass {
 
     private func stop() -> (any Error)? {
         if Task.isCancelled { return CancellationError() }
-        if ContinuousClock.now > deadline || archive_filter_bytes(archive, 0) > limits.maxScanBytes {
+        if ContinuousClock.now > budget.deadline || budget.scanned > budget.limits.maxScanBytes {
             return ArchiveProblem.tooLarge
         }
         return nil
@@ -202,6 +229,7 @@ nonisolated final class ArchivePass {
     private func problem() -> any Error {
         if let stopped { return stopped }
         if archive_errno(archive) == ENOMEM { return ArchiveProblem.tooLarge }
+        if archive_errno(archive) == E2BIG { return ArchiveProblem.tooMany }
         let message = archive_error_string(archive).map { String(cString: $0) } ?? ""
         if message.localizedCaseInsensitiveContains("encrypt") || message.localizedCaseInsensitiveContains("passphrase") {
             return ArchiveProblem.password
@@ -211,5 +239,11 @@ nonisolated final class ArchivePass {
         }
         return ArchiveProblem.broken
     }
+}
+
+private nonisolated struct ArchiveBudget {
+    let limits: ArchiveLimits
+    let deadline: ContinuousClock.Instant
+    var scanned: Int64 = 0
 }
 #endif
