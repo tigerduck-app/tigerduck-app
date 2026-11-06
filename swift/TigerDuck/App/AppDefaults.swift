@@ -142,6 +142,10 @@ nonisolated extension Defaults.Keys {
     static let syncAssignmentReminders = Key<Bool>("syncAssignmentReminders", default: true)
     static let syncLiveActivity = Key<Bool>("syncLiveActivity", default: true)
     static let syncPreferencesPushPending = Key<Bool>("syncPreferencesPushPending", default: false)
+    static let syncClockLastIssued = Key<Int64>("syncClockLastIssued", default: 0)
+    static let syncClockLastSeen = Key<Int64>("syncClockLastSeen", default: 0)
+    static let syncClockHeard = Key<Int64?>("syncClockHeard")
+    static let syncClockHeardAt = Key<Int64?>("syncClockHeardAt")
 
     static let academicCalendarCache = Key<Data>("academicCalendarCache", default: Data())
     static let academicCalendarETag = Key<String>("academicCalendarETag", default: "")

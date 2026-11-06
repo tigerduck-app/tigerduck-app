@@ -286,7 +286,11 @@ enum PushAPI {
     }
 
     nonisolated static func clock(of date: Date) -> Int64 {
-        Int64((date.timeIntervalSince1970 * 1_000_000).rounded(.down))
+        Int64((date.timeIntervalSince1970 * 1_000_000).rounded())
+    }
+
+    nonisolated static func date(ofClock clock: Int64) -> Date {
+        Date(timeIntervalSince1970: Double(clock) / 1_000_000)
     }
 
     nonisolated struct AssignmentUploadEntry: Encodable, Sendable {

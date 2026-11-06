@@ -141,6 +141,10 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `ssoLoginTimestamp` | school | `swift/TigerDuck/School/NTUST/NTUSTSessionManager.swift` `cancelTasksAndForgetSignIn` |
 | defaults | `syncAssignmentReminders` | device |  |
 | defaults | `syncAssignments` | device |  |
+| defaults | `syncClockHeard` | device |  |
+| defaults | `syncClockHeardAt` | device |  |
+| defaults | `syncClockLastIssued` | device |  |
+| defaults | `syncClockLastSeen` | device |  |
 | defaults | `syncCourseColors` | device |  |
 | defaults | `syncCourseNames` | device |  |
 | defaults | `syncCourses` | device |  |
