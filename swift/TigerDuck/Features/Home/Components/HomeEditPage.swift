@@ -54,6 +54,15 @@ struct HomeEditPage<Header: View>: View {
         // The handle sits above the outline, which is mostly its header, instead of covering it.
         return VStack(spacing: 0) {
             SectionDragHandle()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(section.displayTitle)
+                .reorderAccessibilityActions(
+                    section.id,
+                    shown: sections.map(\.id),
+                    currentIDs: sectionIDs,
+                    moveAction: moveSections,
+                    onPersist: viewModel.layout.saveSectionLayout
+                )
             sectionOutline(section)
         }
         .overlay(alignment: .topTrailing) {
@@ -83,13 +92,19 @@ struct HomeEditPage<Header: View>: View {
                 containerID: sectionDragContainerID,
                 activePayload: $activeSectionDrag,
                 didReorder: $didReorderSection,
-                currentIDs: { viewModel.layout.sections.map(\.id) },
-                moveAction: { fromOffsets, destination in
-                    viewModel.layout.sections.move(fromOffsets: fromOffsets, toOffset: destination)
-                },
+                currentIDs: sectionIDs,
+                moveAction: moveSections,
                 onPersist: viewModel.layout.saveSectionLayout
             )
         )
+    }
+
+    private func sectionIDs() -> [String] {
+        viewModel.layout.sections.map(\.id)
+    }
+
+    private func moveSections(_ offsets: IndexSet, to destination: Int) {
+        viewModel.layout.sections.move(fromOffsets: offsets, toOffset: destination)
     }
 
     @ViewBuilder
@@ -100,6 +115,7 @@ struct HomeEditPage<Header: View>: View {
         case .quickWidgets, .custom:
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
                 SectionHeader(title: section.title)
+                    .accessibilityHidden(true)
                 WidgetGridView(
                     widgets: Binding(
                         get: { viewModel.layout.sections.first { $0.id == section.id }?.widgets ?? [] },
@@ -138,6 +154,7 @@ private struct SectionPlaceholder: View {
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             SectionHeader(title: section.displayTitle)
+                .accessibilityHidden(true)
 
             Group {
                 if section.type == .todayCourses {
