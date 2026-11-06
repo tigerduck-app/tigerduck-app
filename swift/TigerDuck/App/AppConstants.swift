@@ -72,7 +72,7 @@ nonisolated enum AppConstants {
         static let browserAppearance = "browserAppearance"
         static let browserZoom = "browserZoom"
         static let browserDesktopSites = "browserDesktopSites"
-        // Mac installs already hold the choice under this name.
+        // Keep this storage key stable so existing Mac preferences remain readable.
         static let moodleOpenTarget = "macMoodleOpenTarget"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
         static let alwaysShowAllPeriods = "alwaysShowPeriodsABC"
