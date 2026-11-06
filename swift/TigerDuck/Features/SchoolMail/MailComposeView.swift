@@ -7,14 +7,19 @@ struct MailComposeView: View {
     private enum Field: Hashable { case to, cc, bcc, subject, body }
 
     @State private var viewModel: MailComposeViewModel
+    private let hold: MailSendHold
 
     @Environment(\.dismiss) private var dismiss
     @State private var showLeaveDialog = false
-    @State private var showSendDialog = false
     @State private var showFileImporter = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var pendingPicks = 0
     @FocusState private var focused: Field?
+
+    init(viewModel: MailComposeViewModel, hold: MailSendHold? = nil) {
+        _viewModel = State(initialValue: viewModel)
+        self.hold = hold ?? .shared
+    }
 
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String], events: MailboxEvents) {
         let account = MailAccountManager.shared
@@ -22,8 +27,6 @@ struct MailComposeView: View {
         self.init(viewModel: MailComposeViewModel(context: context, session: session, sender: sender,
                                                   folderRoles: folderRoles, events: events))
     }
-
-    init(viewModel: MailComposeViewModel) { _viewModel = State(initialValue: viewModel) }
 
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String],
          onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void, onSentCopyNotice: @escaping (String) -> Void) {
@@ -114,7 +117,8 @@ struct MailComposeView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        if viewModel.confirmationIsWarranted() { showSendDialog = true }
+                        guard viewModel.readyToSend(), hold.hold(viewModel) else { return }
+                        dismiss()
                     } label: {
                         LoadingButtonLabel(isLoading: viewModel.isSending) {
                             Text(String(localized: "school_mail_send")).fontWeight(.semibold)
@@ -131,17 +135,14 @@ struct MailComposeView: View {
             } message: {
                 Text(viewModel.error ?? "")
             }
-            .confirmationDialog(String(localized: "school_mail_send_confirm_title"), isPresented: $showSendDialog, titleVisibility: .visible) {
-                Button(String(localized: "school_mail_send")) {
-                    Task { await viewModel.send() }
-                }
-                Button(String(localized: "school_mail_keep_editing"), role: .cancel) {}
-            }
             .confirmationDialog(String(localized: "school_mail_leave_title"), isPresented: $showLeaveDialog, titleVisibility: .visible) {
                 Button(String(localized: "school_mail_save_draft")) {
                     Task { if await viewModel.saveDraft() { dismiss() } }
                 }
-                Button(String(localized: "school_mail_discard"), role: .destructive) { dismiss() }
+                Button(String(localized: "school_mail_discard"), role: .destructive) {
+                    viewModel.discard()
+                    dismiss()
+                }
                 Button(String(localized: "school_mail_keep_editing"), role: .cancel) {}
             }
             .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in

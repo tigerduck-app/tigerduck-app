@@ -4,7 +4,7 @@ import Observation
 
 @MainActor
 @Observable
-final class MailComposeViewModel {
+final class MailComposeViewModel: Identifiable {
     nonisolated struct Attachment: Identifiable, Equatable, Sendable {
         let id = UUID()
         var filename: String
@@ -16,12 +16,12 @@ final class MailComposeViewModel {
     private(set) var status = MailComposeStatus()
     @ObservationIgnored private var tracking = MailComposeTracking()
     @ObservationIgnored let events: MailboxEvents
-    @ObservationIgnored private let context: MailComposeContext
+    @ObservationIgnored let context: MailComposeContext
     @ObservationIgnored private let session: MailPageSession
     @ObservationIgnored private let sender: MailAddress
     @ObservationIgnored private var folderRoles: [MailFolderRole: String]
     @ObservationIgnored private let services: MailComposeServices
-    @ObservationIgnored private let signIn: SignIn
+    @ObservationIgnored let signIn: SignIn
 
     init(
         context: MailComposeContext,
@@ -45,6 +45,7 @@ final class MailComposeViewModel {
             MailComposeContacts(signIn: signIn, own: sender.address, cache: cache, roles: folderRoles, now: now))
     }
 
+    func discard() { status.discarded = true }
     var to: String {
         get { draft.to }
         set { draft.to = newValue; tracking.edited.insert(.to) }
@@ -166,12 +167,11 @@ final class MailComposeViewModel {
         return recipients
     }
 
-    func confirmationIsWarranted() -> Bool {
-        guard !isSending else { return false }
-        return validate() != nil
+    func readyToSend() -> Bool {
+        !isSending && checkSignIn() && validate() != nil
     }
 
-    func send() async {
+    func send(unless isExpired: @escaping @MainActor () -> Bool = { false }) async {
         guard !isSending, checkSignIn(), let recipients = validate() else { return }
         let isReply = context.mode == .reply || context.mode == .replyAll
         let threading = isReply ? context.original.map(MailReplyComposer.threadingHeaders(for:)) : nil
@@ -186,7 +186,8 @@ final class MailComposeViewModel {
         do {
             let filing = try await MailComposeSending.send(MailComposeSending.Send(
                 message: message, messageID: messageID, from: sender.address, recipients: mail.envelopeRecipients,
-                roles: folderRoles, answered: tracking.prefillApplied && isReply ? context.message : nil, replaced: replaced
+                roles: folderRoles, answered: tracking.prefillApplied && isReply ? context.message : nil, replaced: replaced,
+                isExpired: isExpired
             ), session: session, services: services, signIn: signIn)
             if let refreshedRoles = filing.roles { adoptFolderRoles(refreshedRoles) }
             status.sentCopy = filing.outcome
@@ -195,6 +196,7 @@ final class MailComposeViewModel {
         } catch where !signIn.isCurrent {
             status.signInEnded = true
         } catch MailClientError.sendUnconfirmed {
+            status.mayHaveSent = true
             status.error = String(localized: "school_mail_send_unconfirmed")
         } catch {
             status.error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError(error).message

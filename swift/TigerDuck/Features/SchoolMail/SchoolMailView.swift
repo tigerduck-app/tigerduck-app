@@ -16,6 +16,7 @@ struct SchoolMailView: View {
     @State private var isOnScreen = false
     @FocusState private var isSearchFocused: Bool
     private let account = MailAccountManager.shared
+    private let sendHold = MailSendHold.shared
 
     var body: some View {
         Group {
@@ -138,13 +139,9 @@ struct SchoolMailView: View {
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .scrollDismissesKeyboard(.immediately)
         .safeAreaInset(edge: .bottom, alignment: .trailing) {
-            ZStack {
-                if !isSearchFocused {
-                    MailComposeButton(accentColor: app.preferences.accentColor) { compose = MailComposeContext(mode: .new) }
-                        .transition(.scale.combined(with: .opacity))
-                }
+            MailListBottomBar(hold: sendHold, showsCompose: !isSearchFocused, accentColor: app.preferences.accentColor) {
+                compose = MailComposeContext(mode: .new)
             }
-            .animation(.snappy, value: isSearchFocused)
         }
         .pullToRevealSearch(isRevealed: $isSearchRevealed, isActive: isSearchFocused || !viewModel.searchText.isEmpty)
         .onChange(of: viewModel.searchText) { _, text in
@@ -160,6 +157,7 @@ struct SchoolMailView: View {
             MailComposeView(context: context, session: viewModel.session, folderRoles: viewModel.folderRoles,
                             events: viewModel.events)
         }
+        .onChange(of: sendHold.deliveries) { Task { await viewModel.refresh() } }
         .task {
             await viewModel.refresh()
             viewModel.startPolling()

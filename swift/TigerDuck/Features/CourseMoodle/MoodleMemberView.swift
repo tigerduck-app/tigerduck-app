@@ -99,8 +99,8 @@ struct MoodleMemberView: View {
                 onFolderRolesChanged: { _ in },
                 onSentCopyNotice: { sentCopyNotice = $0 }
             )
-            .onDisappear { Task { await mail.session.close() } }
         }
+        .safeAreaInset(edge: .bottom) { MailSendHoldBar(hold: .shared) }
         #endif
     }
 
@@ -388,7 +388,7 @@ private struct ProfileEditorPage: Identifiable {
 
 private struct MemberMail: Identifiable {
     let context: MailComposeContext
-    let session = MailPageSession()
+    let session = MailPageSession(closesWhenIdle: true)
 
     var id: UUID { context.id }
 }

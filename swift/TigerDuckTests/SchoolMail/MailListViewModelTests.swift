@@ -32,7 +32,9 @@ struct MailListViewModelTests {
         open: (() async throws -> any MailClient)? = nil,
         signOutEvents: NotificationCenter = NotificationCenter(),
         warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) },
-        catchUpDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) }
+        catchUpDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) },
+        sendHold: MailSendHold? = nil,
+        account: AccountSession = AccountSession()
     ) -> Harness {
         let inbox = (UInt32(1)...inboxCount).map { FakeMailClient.message(uid: $0, subject: "公告 \($0)", seen: $0 % 2 == 0) }
         var folders: [String: [FakeMailClient.Message]] = [
@@ -46,11 +48,11 @@ struct MailListViewModelTests {
         let fake = FakeMailClient(folders: folders)
         let cache = SchoolMailTestDoubles.temporaryCache()
         let seen = SeenLog()
-        let account = AccountSession()
         let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake },
                                       onAuthFailure: { _ in seen.authFailures += 1 }, signOutEvents: signOutEvents,
                                       account: account)
-        let model = MailListViewModel(session: session, account: account, cache: cache, noteSeenByPage: { status, _ in seen.noted.append(status) },
+        let model = MailListViewModel(session: session, account: account, cache: cache, sendHold: sendHold,
+                                      noteSeenByPage: { status, _ in seen.noted.append(status) },
                                       signOutEvents: signOutEvents, warmDelay: warmDelay, catchUpDelay: catchUpDelay)
         return Harness(model: model, fake: fake, cache: cache, seen: seen, account: account)
     }

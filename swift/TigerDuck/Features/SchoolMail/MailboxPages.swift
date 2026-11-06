@@ -56,6 +56,11 @@ struct MailboxPages {
     var cachedNotRefreshed: Set<String> = []
     private(set) var lastEdit = EditToken()
     private var edits: [EditKey: (token: EditToken, edit: Edit)] = [:]
+    private let sendHold: MailSendHold
+
+    init(sendHold: MailSendHold) {
+        self.sendHold = sendHold
+    }
 
     subscript(folder: String) -> MailFolderPage? {
         get { pages[folder] }
@@ -67,6 +72,11 @@ struct MailboxPages {
         rows = []
         cachedNotRefreshed = []
         edits = [:]
+    }
+
+    func shown(_ rows: [MailListRow], for account: AccountSession, unreadOnly: Bool) -> [MailListRow] {
+        let signIn = account.currentSignIn
+        return rows.filter { !sendHold.hides($0.id, for: signIn) && !(unreadOnly && $0.summary.isSeen) }
     }
 
     mutating func drop(_ folder: String) {

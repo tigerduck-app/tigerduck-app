@@ -151,7 +151,7 @@ nonisolated enum MailIMAPCommands {
 nonisolated enum MailSMTP {
     static func send(
         _ message: Data, from sender: String, to recipients: [String], studentID: String, password: String,
-        config: MailServerConfig
+        config: MailServerConfig, unless isExpired: @escaping @MainActor () -> Bool
     ) async throws {
         let smtp = SMTPServer(
             host: config.smtpHost,
@@ -163,6 +163,8 @@ nonisolated enum MailSMTP {
         do {
             try await smtp.connect()
             try await smtp.login(username: studentID, password: password)
+            // Once DATA starts the server may deliver the message, so this is the last point to stop.
+            if await isExpired() { throw CancellationError() }
             try await smtp.sendRawMessage(message, from: EmailAddress(address: sender),
                                           to: recipients.map { EmailAddress(address: $0) })
             try? await smtp.disconnect()

@@ -338,9 +338,12 @@ actor FakeMailClient: MailClient {
         return (folders[folder] ?? []).contains { $0.messageID == messageID }
     }
 
-    func send(_ message: Data, from sender: String, to recipients: [String]) async throws {
+    func send(
+        _ message: Data, from sender: String, to recipients: [String], unless isExpired: @escaping @MainActor () -> Bool
+    ) async throws {
         calls.append("send")
         await gate("send")
+        if await isExpired() { throw CancellationError() }
         if let sendError { throw sendError }
         sent.append((message, sender, recipients))
         if let autoSaveSentTo {
