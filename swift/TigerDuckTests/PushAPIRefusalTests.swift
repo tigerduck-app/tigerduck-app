@@ -78,27 +78,31 @@ struct PushAPIRefusalTests {
     func anAheadRefusalFromALeftServerIsNotResent() async throws {
         let left = SettingsAPIStub.uniqueBaseURL()
         let switchedTo = URL(string: "https://other-stub.invalid/\(UUID().uuidString)/v4")!
-        let reads = OSAllocatedUnfairLock(initialState: 0)
+        let current = OSAllocatedUnfairLock(initialState: left)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let client = PushAPIClient(
-            baseURLProvider: { reads.withLock { $0 += 1; return $0 == 1 ? left : switchedTo } },
+            baseURLProvider: { current.withLock { $0 } },
             session: URLSession(configuration: config), authHeaderProvider: { "Bearer B1" }
         )
         let madeAt = Date(timeIntervalSince1970: 1_790_000_000)
         let path = "sync/courses/client:1151:CS1001301"
         let hlc = [URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: madeAt)))]
+        let gate = SettingsAPIStub.ReplyGate()
         SettingsAPIStub.enqueue(
             .init(
                 statusCode: 409, body: Data(#"{"error":"clock_ahead","message":"ahead"}"#.utf8),
-                headerFields: ["X-TigerSync-Clock": String(SyncClockTests.ten)]
+                headerFields: ["X-TigerSync-Clock": String(SyncClockTests.ten)], gate: gate
             ),
             for: left.appendingPathComponent(path).appending(queryItems: hlc)
         )
 
-        await #expect(throws: PushAPIError.self) {
-            try await client.deleteCourse(courseKey: "client:1151:CS1001301", madeAt: madeAt, for: testSignIn)
-        }
+        let deleting = Task { try await client.deleteCourse(courseKey: "client:1151:CS1001301", madeAt: madeAt, for: testSignIn) }
+        try await waitUntil { !SettingsAPIStub.requests(under: left).isEmpty }
+        current.withLock { $0 = switchedTo }
+        gate.open()
+
+        await #expect(throws: PushAPIError.self) { try await deleting.value }
 
         #expect(SettingsAPIStub.requests(under: left).count == 1)
         #expect(SettingsAPIStub.requests(under: switchedTo).isEmpty)

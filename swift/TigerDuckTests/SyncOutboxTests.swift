@@ -222,6 +222,29 @@ struct SyncOutboxTests {
         #expect(await outbox.snapshot().map(\.attempts) == [0])
     }
 
+    @Test("A pull-back during a drain moves the edits that drain keeps and parks")
+    func aPullBackDuringADrainMovesWhatItKeepsAndParks() async {
+        let outbox = Self.makeOutbox()
+        let ahead = PushAPI.date(ofClock: SyncClockTests.ten + SyncClockTests.year)
+        let pullBack = SyncClock.PullBack(ceiling: SyncClockTests.ten, top: SyncClockTests.ten + SyncClockTests.year)
+        let kept = SyncOp.assignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored", stamp: ahead)
+        let parked = SyncOp.assignmentOverride(moodleCourseId: 0, moodleAssignmentId: 43, localStatus: "ignored", stamp: ahead)
+        await outbox.enqueue(kept)
+        await outbox.enqueue(parked)
+        for _ in 1..<SyncOutbox.maxAttempts {
+            await outbox.drain(holding: { $0.dedupKey == kept.dedupKey }) { _ in throw PushAPIError.httpStatus(422, body: "") }
+        }
+
+        await outbox.drain { op in
+            if op.dedupKey == parked.dedupKey { await outbox.restamp(after: pullBack) }
+            throw PushAPIError.httpStatus(422, body: "")
+        }
+
+        let moved = pullBack.restamped(ahead)
+        #expect(await outbox.snapshot().map(\.op.stamp) == [moved])
+        #expect(await outbox.parkedSnapshot().map(\.op.stamp) == [moved])
+    }
+
     nonisolated private final class ReadGate: @unchecked Sendable {
         private let lock = NSLock()
         private var locked = true
