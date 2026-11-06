@@ -293,6 +293,19 @@ struct SavedDownloadsTests {
         #expect(place.supportFiles() == ["saved_downloads.json": text])
     }
 
+    @Test func aLedgerFromANewerAppIsLeftAloneWhateverItsShape() async throws {
+        let place = Place()
+        defer { place.remove() }
+        let text = #"{"version":2,"entries":{"notes.txt":{"size":5}}}"#
+        try place.writeLedger(text)
+
+        #expect(try await place.store.entries().isEmpty)
+        let saved = try await place.store.save(try place.download("a"), as: "a.pdf")
+
+        #expect(place.exists(saved.name))
+        #expect(place.supportFiles() == ["saved_downloads.json": text])
+    }
+
     @Test func aLedgerThatCannotBeWrittenLeavesTheDownloadWhereItWas() async throws {
         let place = Place()
         defer { place.remove() }

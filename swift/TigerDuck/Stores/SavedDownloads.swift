@@ -49,9 +49,6 @@ actor SavedDownloads {
         return folder.appending(path: name, directoryHint: .notDirectory)
     }
 
-    /// The record is written before the file moves and taken back if the move fails, so a file
-    /// never lands without one. Under a ledger from a newer app the file lands unrecorded, the
-    /// student's to keep.
     func save(_ file: URL, as name: String, at date: Date = .now) throws -> Entry {
         let current: SavedDownloadFiles.Ledger<Entry> = try ledger.load()
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
@@ -60,18 +57,25 @@ actor SavedDownloads {
         let free = Self.freeName(for: name) { FileManager.default.fileExists(atPath: folder.appending(path: $0).path(percentEncoded: false)) }
         let target = folder.appending(path: free, directoryHint: .notDirectory)
         var entry = Entry(name: free, size: size, sha256: sha256, saved: date)
-        let others = current.entries.filter { $0.name != free }
-        if !current.isNewer { try ledger.save(others + [entry]) }
-        do {
+        guard !current.isNewer else {
             try FileManager.default.moveItem(at: file, to: target)
-        } catch {
-            if !current.isNewer { try? ledger.save(others) }
-            throw error
+            return entry
         }
-        guard !current.isNewer else { return entry }
+        let others = current.entries.filter { $0.name != free }
+        try moveRecordingFirst(file, to: target, entry, besides: others)
         entry.modified = try? values(target).contentModificationDate
         try? ledger.save(others + [entry])
         return entry
+    }
+
+    private func moveRecordingFirst(_ file: URL, to target: URL, _ entry: Entry, besides others: [Entry]) throws {
+        try ledger.save(others + [entry])
+        do {
+            try FileManager.default.moveItem(at: file, to: target)
+        } catch {
+            try? ledger.save(others)
+            throw error
+        }
     }
 
     /// A record whose file is gone or changed leaves the ledger, and the file stays the student's.

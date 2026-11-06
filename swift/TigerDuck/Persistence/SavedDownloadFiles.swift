@@ -28,8 +28,10 @@ nonisolated struct SavedDownloadFiles: Sendable {
             return Ledger(entries: [])
         }
         do {
-            let stored = try JSONDecoder().decode(Stored<Entry>.self, from: data)
-            return Ledger(entries: stored.entries.compactMap(\.value), isNewer: stored.version > Self.version)
+            guard try JSONDecoder().decode(Version.self, from: data).version <= Self.version else {
+                return Ledger(entries: [], isNewer: true)
+            }
+            return Ledger(entries: try JSONDecoder().decode(Stored<Entry>.self, from: data).entries.compactMap(\.value))
         } catch {
             AppLogger.captureError(error, context: ["phase": "savedDownloads.load.decode"])
             try FileManager.default.moveItem(at: file, to: directory.appending(path: Self.name + "." + UUID().uuidString))
@@ -49,8 +51,11 @@ private struct Written<Entry: Encodable>: Encodable {
     let entries: [Entry]
 }
 
-private struct Stored<Entry: Decodable>: Decodable {
+private struct Version: Decodable {
     let version: Int
+}
+
+private struct Stored<Entry: Decodable>: Decodable {
     let entries: [SkippableRecord<Entry>]
 }
 
