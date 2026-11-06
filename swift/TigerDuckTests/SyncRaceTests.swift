@@ -234,46 +234,53 @@ struct SyncRaceTests {
         }
     }
 
-    @Test("A colour or ignore setting for a course hidden here, or no longer held, is given up at the backend's 404, as no upload brings the course")
-    func courseEditNoUploadBringsIsGivenUp() async throws {
-        let ignoreOfACourseNotHeld = SyncOp.courseIgnore(
-            semester: "1151", courseNo: "CS9", moodleId: "1151CS9", moodleCourseId: 4242, ignore: true,
-            stamp: Date(timeIntervalSince1970: 1_790_000_000)
-        )
-        let cases: [(edit: SyncOp, courseNo: String, hidden: [String])] = [
-            (Self.colourEdit, "CS1", ["1151:CS1"]), (ignoreOfACourseNotHeld, "CS9", []),
+    @Test(
+        "A colour or ignore setting for a course this device no longer holds is given up at the backend's 404, as no upload brings the course",
+        arguments: [
+            SyncOp.courseOverride(
+                semester: "1151", moodleId: "1151CS9", customName: nil, colorHex: "#4ECDC4", locale: nil,
+                stamp: Date(timeIntervalSince1970: 1_790_000_000)
+            ),
+            SyncOp.courseIgnore(
+                semester: "1151", courseNo: "CS9", moodleId: "1151CS9", moodleCourseId: 4242, ignore: true,
+                stamp: Date(timeIntervalSince1970: 1_790_000_000)
+            ),
         ]
-        for (edit, courseNo, hidden) in cases {
-            let baseURL = SettingsAPIStub.uniqueBaseURL()
-            let url = baseURL.appendingPathComponent("sync/courses/client:1151:\(courseNo)/override")
-            SettingsAPIStub.enqueue(
-                .init(statusCode: 404, body: Data(#"{"error":"course_not_found","message":"no course"}"#.utf8)), for: url
-            )
-            let cache = Self.cache()
-            cache.courses.saveDeletedCourseNos(hidden, for: testSignIn)
-            let coordinator = CloudSyncCoordinator(
-                pushCoordinator: Self.push(baseURL),
-                outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
-                isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
-                syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
-                kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
-                                 courses: cache.courses, assignments: cache.assignments)
-            )
+    )
+    func courseEditNoUploadBringsIsGivenUp(_ edit: SyncOp) async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS9/override")
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 404, body: Data(#"{"error":"course_not_found","message":"no course"}"#.utf8)), for: url
+        )
+        let cache = Self.cache()
+        let coordinator = CloudSyncCoordinator(
+            pushCoordinator: Self.push(baseURL),
+            outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
+            isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
+            syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
+            kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
+                             courses: cache.courses, assignments: cache.assignments)
+        )
 
-            await coordinator.outbox.enqueue(edit)
-            await coordinator.syncTick()
+        await coordinator.outbox.enqueue(edit)
+        await coordinator.syncTick()
 
-            #expect(SettingsAPIStub.requests(for: url).count == 1)
-            #expect(await coordinator.outbox.parkedSnapshot().isEmpty)
-            #expect(await !coordinator.holdsUnsentEdits())
-        }
+        #expect(SettingsAPIStub.requests(for: url).count == 1)
+        #expect(await coordinator.outbox.parkedSnapshot().isEmpty)
+        #expect(await !coordinator.holdsUnsentEdits())
     }
 
-    @Test(
-        "A colour or name for a course the backend does not hold yet waits parked, and goes once a course upload lands",
-        arguments: [colourEdit, nameEdit]
+    private nonisolated static let ignoreEdit = SyncOp.courseIgnore(
+        semester: "1151", courseNo: "CS1", moodleId: "1151CS1", moodleCourseId: 4242, ignore: true,
+        stamp: Date(timeIntervalSince1970: 1_790_000_000)
     )
-    func courseEditBeforeItsCourseWaitsForTheUpload(_ edit: SyncOp) async throws {
+
+    @Test(
+        "A colour, name or ignore setting for a course the backend does not hold yet, shown or hidden here, waits parked, and goes once a course upload lands",
+        arguments: [colourEdit, nameEdit, ignoreEdit], [false, true]
+    )
+    func courseEditBeforeItsCourseWaitsForTheUpload(_ edit: SyncOp, hidden: Bool) async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
         SettingsAPIStub.enqueue(
@@ -281,10 +288,11 @@ struct SyncRaceTests {
         )
         SettingsAPIStub.enqueue(
             .init(statusCode: 200, body: Data(
-                ##"{"color_hex":"#4ECDC4","custom_names":{"zh":"Algorithms"},"ignore_assignments":false,"applied":["color_hex","custom_name"]}"##.utf8
+                ##"{"color_hex":"#4ECDC4","custom_names":{"zh":"Algorithms"},"ignore_assignments":true,"applied":["color_hex","custom_name","ignore_assignments"]}"##.utf8
             )), for: url
         )
         let cache = Self.cache()
+        if hidden { cache.courses.saveDeletedCourseNos([CourseTombstone.key(semester: "1151", courseNo: "CS1")], for: testSignIn) }
         let coordinator = CloudSyncCoordinator(
             pushCoordinator: Self.push(baseURL),
             outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
@@ -313,34 +321,6 @@ struct SyncRaceTests {
             if !settled { try await Task.sleep(for: .milliseconds(20)) }
         }
         #expect(settled)
-    }
-
-    @Test("An ignore setting for a course the backend does not hold yet waits parked like a colour")
-    func ignoreBeforeItsCourseWaitsForTheUpload() async throws {
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let url = baseURL.appendingPathComponent("sync/courses/client:1151:CS1/override")
-        SettingsAPIStub.enqueue(
-            .init(statusCode: 404, body: Data(#"{"error":"course_not_found","message":"no course"}"#.utf8)), for: url
-        )
-        let cache = Self.cache()
-        let coordinator = CloudSyncCoordinator(
-            pushCoordinator: Self.push(baseURL),
-            outbox: SyncOutbox(directory: cache.persistentDir.appendingPathComponent("outbox", isDirectory: true)),
-            isEnabled: true, syncsAssignmentMarks: { true }, syncsCourseIgnores: { true },
-            syncsCourseOverrides: { _ in true }, account: AccountSession(signIns: testSignIns), courses: cache.courses,
-            kept: KeptValues(policy: Self.policy([]), colors: CourseColorStore(files: cache.colors),
-                             courses: cache.courses, assignments: cache.assignments)
-        )
-
-        await coordinator.outbox.enqueue(.courseIgnore(
-            semester: "1151", courseNo: "CS1", moodleId: "1151CS1", moodleCourseId: 4242, ignore: true,
-            stamp: Date(timeIntervalSince1970: 1_790_000_000)
-        ))
-        await coordinator.syncTick()
-
-        #expect(SettingsAPIStub.requests(for: url).count == 1)
-        #expect(await coordinator.outbox.pendingCount() == 0)
-        #expect(await coordinator.outbox.parkedSnapshot().map(\.op.dedupKey) == ["ci|1151|1151CS1"])
     }
 
     private static let resetClock = PushAPI.clock(of: Date(timeIntervalSince1970: 1_790_000_000))

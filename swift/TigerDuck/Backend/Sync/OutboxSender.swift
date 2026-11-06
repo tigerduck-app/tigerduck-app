@@ -92,8 +92,7 @@ final class OutboxSender {
     func courseKey(semester: String, identity: String) -> (key: String, term: String, courseNo: String)? {
         let terms = [semester] + SemesterCatalog.availableSemesters().filter { $0 != semester }
         for term in terms {
-            let held = courses.loadCourses(semester: term) + courses.loadUserAddedCourses(semester: term)
-            if let course = held.first(where: { Self.identity(of: $0, semester: term) == identity }) {
+            if let course = held(in: term).first(where: { Self.identity(of: $0, semester: term) == identity }) {
                 return (CourseTombstone.serverKey(semester: term, courseNo: course.courseNo), term, course.courseNo)
             }
         }
@@ -107,11 +106,14 @@ final class OutboxSender {
         do {
             return try await send()
         } catch PushAPIError.courseNotFound {
-            let heldAndShown = CanonicalCourseProvider(courses: courses).currentCourses(semester: semester)
-            guard !heldAndShown.contains(where: { $0.courseNo == courseNo }) else { throw PushAPIError.courseNotFound }
-            AppLogger.sync.info("[outbox] gave up a course setting for a course no upload brings")
+            guard !held(in: semester).contains(where: { $0.courseNo == courseNo }) else { throw PushAPIError.courseNotFound }
+            AppLogger.sync.info("[outbox] gave up a course setting for a course this device no longer holds")
             return nil
         }
+    }
+
+    private func held(in term: String) -> [SDCourse] {
+        courses.loadCourses(semester: term) + courses.loadUserAddedCourses(semester: term)
     }
 
     nonisolated static func identity(semester: String, courseNo: String, moodleIdNumber: String?) -> String {
