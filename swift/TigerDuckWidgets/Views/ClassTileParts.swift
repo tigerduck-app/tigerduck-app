@@ -2,11 +2,6 @@ import SwiftUI
 import TigerDuckCore
 import WidgetKit
 
-// shortcut: a local copy until refactor/time-range-format merges; its shared formatter replaces this.
-func widgetTimeRange(_ start: String, _ end: String) -> String {
-    "\(start)–\(end)"
-}
-
 extension Font {
     static func courseName(_ size: CGFloat, weight: Font.Weight) -> Font {
         .system(size: size * CGFloat(CourseCardFontScale.renderScale(CourseCardFontScaleStore().read())), weight: weight)

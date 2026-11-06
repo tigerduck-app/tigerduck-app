@@ -74,6 +74,7 @@ struct WeekCourseBlock: View {
     let course: SnapshotCourse
     let classroom: String
     let change: SnapshotCourseChange?
+    let times: PeriodTime?
     let progress: Double?
     let palette: WidgetPalette
     let family: WidgetFamily
@@ -84,9 +85,10 @@ struct WeekCourseBlock: View {
         let isCancelled = change?.cancelled == true
         let tile = palette.tile(course.colorHex, isPast: isCancelled)
         return VStack(alignment: .leading, spacing: 1) {
-            if !isCancelled, let time = Self.changedTime(change) {
+            if !isCancelled, let time = TimeRange.partial(start: change?.start, end: change?.end) {
                 Label(time, systemImage: "clock.fill")
                     .labelStyle(ChangedValueLabelStyle())
+                    .accessibilityLabel(spokenChangedTime ?? time)
                     .font(.system(size: size - 2, weight: .semibold).monospacedDigit())
                     .foregroundStyle(palette.changeInk)
                     .lineLimit(1)
@@ -120,13 +122,9 @@ struct WeekCourseBlock: View {
         .accessibilityElement(children: .combine)
     }
 
-    static func changedTime(_ change: SnapshotCourseChange?) -> String? {
-        switch (change?.start, change?.end) {
-        case let (start?, end?): widgetTimeRange(start, end)
-        case let (start?, nil): start
-        case let (nil, end?): "–\(end)"
-        case (nil, nil): nil
-        }
+    private var spokenChangedTime: String? {
+        guard let start = change?.start ?? times?.start, let end = change?.end ?? times?.end else { return nil }
+        return TimeRange.spoken(start, end)
     }
 }
 

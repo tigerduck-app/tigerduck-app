@@ -83,7 +83,8 @@ struct NextClassMediumView: View {
                     .font(.courseName(nameSize, weight: .bold))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(widgetTimeRange(start, end))
+                Text(TimeRange.text(start, end))
+                    .accessibilityLabel(TimeRange.spoken(start, end))
                     .font(.footnote.weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(timeChanged ? palette.changeInk : tile.secondaryInk)
@@ -143,7 +144,8 @@ struct NextClassMediumView: View {
                 nameFont: .courseName(rowNameSize, weight: .medium), roomFont: .headline.weight(.bold),
                 ink: tile.ink, changeInk: palette.changeInk
             )
-            Text(widgetTimeRange(info.startTime, info.endTime))
+            Text(TimeRange.text(info.startTime, info.endTime))
+                .accessibilityLabel(TimeRange.spoken(info.startTime, info.endTime))
                 .font(.footnote.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(timeChanged ? palette.changeInk : tile.secondaryInk)
@@ -228,7 +230,8 @@ struct NextClassSmallView: View {
                 ProgressCapsule(progress: progress, tile: tile)
                     .padding(.bottom, 4)
             }
-            Text(end.isEmpty ? start : widgetTimeRange(start, end))
+            Text(end.isEmpty ? start : TimeRange.text(start, end))
+                .accessibilityLabel(end.isEmpty ? start : TimeRange.spoken(start, end))
                 .font(.caption.weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(timeChanged ? palette.changeInk : tile.secondaryInk)

@@ -111,6 +111,8 @@ private struct TodayColumnRow: View {
             }
             .monospacedDigit()
             .fixedSize()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(TimeRange.spoken(row.startTime, row.endTime))
             VStack(alignment: .leading, spacing: 4) {
                 NameRoomLine(
                     name: row.course.displayName, room: row.classroom, roomChanged: row.change?.room != nil,
@@ -281,7 +283,10 @@ struct TodayTimelineView: View {
         VStack(alignment: .leading, spacing: 2) {
             line
             if tall {
-                Text(row.isCancelled ? String(localized: "course_card_cancelled") : widgetTimeRange(row.startTime, row.endTime))
+                Text(row.isCancelled ? String(localized: "course_card_cancelled") : TimeRange.text(row.startTime, row.endTime))
+                    .accessibilityLabel(
+                        row.isCancelled ? String(localized: "course_card_cancelled") : TimeRange.spoken(row.startTime, row.endTime)
+                    )
                     .font(.caption)
                     .monospacedDigit()
                     .foregroundStyle(row.change?.start ?? row.change?.end != nil ? palette.changeInk : tile.secondaryInk)

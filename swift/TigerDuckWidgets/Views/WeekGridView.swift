@@ -102,6 +102,9 @@ struct WeekGridView: View {
                 course: course,
                 classroom: change?.room ?? course.classroom(weekday: weekday, periods: block),
                 change: change,
+                times: snapshot.periodTimes[block[0]].flatMap { first in
+                    snapshot.periodTimes[block[block.count - 1]].map { PeriodTime(start: first.start, end: $0.end) }
+                },
                 progress: isToday ? ongoing["\(course.courseNo)-\(block[0])"] : nil,
                 palette: palette, family: family, size: size, radius: radius
             )
