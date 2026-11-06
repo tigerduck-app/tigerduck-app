@@ -81,7 +81,7 @@ nonisolated final class ArchivePass {
         guard opened == ARCHIVE_OK else { throw problem() }
     }
 
-    func nextEntry() throws -> OpaquePointer? {
+    func nextEntry(listing: Bool = false) throws -> OpaquePointer? {
         // The raw reader has one entry, and skipping it would unpack the whole file.
         if formatChecked, archive_format(archive) == ARCHIVE_FORMAT_RAW { return nil }
         if drainsEntry { try drain() }
@@ -97,17 +97,19 @@ nonisolated final class ArchivePass {
                 throw ArchiveProblem.unsupported
             }
         }
-        drainsEntry = drains(entry)
+        drainsEntry = drains(entry, listing: listing)
         return entry
     }
 
     // libarchive skips an entry by unpacking it, out of reach of stop(), unless it can seek past
-    // it: a zip or plain tar entry of known size. An encrypted entry can only be skipped.
-    private func drains(_ entry: OpaquePointer) -> Bool {
-        guard archive_entry_is_encrypted(entry) == 0 else { return false }
+    // it: a zip or plain tar entry of known size. A 7z skips without unpacking until an entry is
+    // read, and then unpacks everything skipped before it. An encrypted entry can only be skipped.
+    private func drains(_ entry: OpaquePointer, listing: Bool) -> Bool {
+        guard archive_entry_is_encrypted(entry) == 0, archive_entry_filetype(entry) == S_IFREG else { return false }
         let family = archive_format(archive) & ARCHIVE_FORMAT_BASE_MASK
-        let seeks = archive_filter_count(archive) < 2 && archive_entry_size_is_set(entry) != 0
-            && (family == ARCHIVE_FORMAT_ZIP || family == ARCHIVE_FORMAT_TAR)
+        guard archive_filter_count(archive) < 2 else { return true }
+        if family == ARCHIVE_FORMAT_7ZIP { return !listing }
+        let seeks = archive_entry_size_is_set(entry) != 0 && (family == ARCHIVE_FORMAT_ZIP || family == ARCHIVE_FORMAT_TAR)
         return !seeks
     }
 

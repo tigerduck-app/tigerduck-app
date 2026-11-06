@@ -139,14 +139,19 @@ struct ArchiveReaderTests {
         #expect(Self.problem { _ = try ArchiveReader.extract(readme, from: archive, into: Self.folder()) } == .tooLarge)
     }
 
-    @Test("data passed over on the way to an entry counts toward the limits, however small it packs",
-          arguments: ["archive-bomb.7z", "archive-bomb.tar.bz2"])
-    func skippedData(name: String) throws {
-        let archive = try Self.fixture(name)
-        let readme = try #require(ArchiveReader.list(archive).items.first { $0.path == "README.md" })
+    @Test("data passed over on the way to an entry counts toward the limits, however small it packs")
+    func skippedData() throws {
         let limits = ArchiveLimits(maxScanBytes: 1 << 20)
-        #expect(Self.problem { _ = try ArchiveReader.list(archive, limits: limits) } == .tooLarge)
-        #expect(Self.problem { _ = try ArchiveReader.extract(readme, from: archive, into: Self.folder(), limits: limits) } == .tooLarge)
+        let tar = try Self.fixture("archive-bomb.tar.bz2")
+        #expect(Self.problem { _ = try ArchiveReader.list(tar, limits: limits) } == .tooLarge)
+        // A 7z lists without unpacking anything.
+        #expect(try ArchiveReader.list(Self.fixture("archive-bomb.7z"), limits: limits).items.count == 2)
+        for name in ["archive-bomb.7z", "archive-bomb.tar.bz2"] {
+            let archive = try Self.fixture(name)
+            let readme = try #require(ArchiveReader.list(archive).items.first { $0.path == "README.md" })
+            let problem = Self.problem { _ = try ArchiveReader.extract(readme, from: archive, into: Self.folder(), limits: limits) }
+            #expect(problem == .tooLarge, "\(name)")
+        }
     }
 
     @Test("a zip after other bytes has its central directory measured as well")

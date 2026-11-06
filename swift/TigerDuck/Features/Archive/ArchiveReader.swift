@@ -39,7 +39,7 @@ nonisolated enum ArchiveReader {
         try ArchivePass.run(archive, limits: limits) { pass in
             var items: [ArchiveItem] = []
             var index = 0
-            while let entry = try pass.nextEntry() {
+            while let entry = try pass.nextEntry(listing: true) {
                 defer { index += 1 }
                 guard let path = pass.path(of: entry) else { continue }
                 if items.count == limits.maxItems { return ArchiveListing(items: items, truncated: true) }
