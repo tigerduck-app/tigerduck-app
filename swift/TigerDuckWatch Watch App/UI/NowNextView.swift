@@ -17,10 +17,13 @@ struct NowNextView: View {
                             courses: snapshot.courses, now: AppClock.now(), quietDays: snapshot.quietDays
                         )
                         if let current = result.current {
-                            ClassCard(title: store.language.string("watch_now"), course: current, policy: policy)
+                            ClassCard(title: store.language.string("watch_now"), course: current, policy: policy, language: store.language)
                         }
                         if let next = result.next {
-                            ClassCard(title: result.nextDay.headline(in: store.language), course: next, policy: policy)
+                            ClassCard(
+                                title: result.nextDay.headline(in: store.language), course: next, policy: policy,
+                                language: store.language
+                            )
                         }
                         if result.current == nil && result.next == nil {
                             ContentUnavailableView(
@@ -56,6 +59,7 @@ private struct ClassCard: View {
     let title: String
     let course: WatchCourse
     let policy: WatchVisualStylePolicy
+    let language: WatchLanguage
 
     var body: some View {
         let courseColor = Color(hex: course.colorHex) ?? .accentColor
@@ -73,7 +77,8 @@ private struct ClassCard: View {
                     Text(course.name)
                         .font(.headline)
                         .lineLimit(2)
-                    Text("\(course.startHHmm)–\(course.endHHmm)")
+                    Text(TimeRange.text(course.startHHmm, course.endHHmm))
+                        .accessibilityLabel(TimeRange.spoken(course.startHHmm, course.endHHmm) { language.string($0) })
                         .font(.subheadline)
                         .foregroundStyle(course.dayChange?.start ?? course.dayChange?.end != nil ? AnyShapeStyle(Color.changeInk) : AnyShapeStyle(.secondary))
                     if course.dayChange?.room != nil {

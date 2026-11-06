@@ -36,7 +36,7 @@ struct RectangularView: View {
     private var headline: String { displayCourse?.name ?? entry.language.string("watch_no_upcoming_classes") }
     var subhead: String {
         guard let c = displayCourse else { return "—" }
-        let range = "\(c.startHHmm)–\(c.endHHmm)"
+        let range = TimeRange.text(c.startHHmm, c.endHHmm)
         return entry.current == nil ? entry.nextDay.inlineCaption(range, in: entry.language) : range
     }
     private var displayRoom: String? {

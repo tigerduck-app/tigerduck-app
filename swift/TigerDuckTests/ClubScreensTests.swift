@@ -162,7 +162,7 @@ struct ClubScreensTests {
             try await Task.sleep(for: .milliseconds(400))
             Self.save(window, as: "detail-\(look.testDescription)")
 
-            for text in [club.clubName, club.name, club.location, "19:00 - 21:00", String(localized: "class_table_club_activity_type_meeting")] {
+            for text in [club.clubName, club.name, club.location, "19:00–21:00", String(localized: "class_table_club_activity_type_meeting")] {
                 #expect(Self.shows(text, in: window), "\(text)")
             }
         }
@@ -275,7 +275,7 @@ struct ClubScreensTests {
                 Self.save(window, as: "time-machine-\(look.testDescription)")
 
                 #expect(Self.shows("\(club.clubName) · \(club.location)", in: window))
-                #expect(Self.shows("19:00 - 21:00", in: window))
+                #expect(Self.shows("19:00 to 21:00", in: window))
                 let card = try #require(exposedAccessibilityElements(in: window).first {
                     $0.accessibilityLabel?.contains(club.name) == true
                 })

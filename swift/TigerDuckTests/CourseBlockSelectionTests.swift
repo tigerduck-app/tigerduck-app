@@ -33,7 +33,7 @@ struct CourseBlockSelectionTests {
         let viewModel = ClassTableViewModel()
         viewModel.selectCourse(course, weekday: 1, periodId: "8")
         #expect(viewModel.selection.coursePeriods == ["7", "8"])
-        #expect(viewModel.selection.timeRange == "14:20 - 16:20")
+        #expect(viewModel.selection.timeRange == "14:20–16:20")
         #expect(CourseDetailRoomAndTime.classroom(of: course, weekday: 1, periods: viewModel.selection.coursePeriods) == "IB-503")
     }
 
@@ -50,7 +50,7 @@ struct CourseBlockSelectionTests {
         let info = try #require([course].ongoingCourses(at: Self.mondayAt1030, changes: .empty).first)
         let viewModel = ClassTableViewModel()
         viewModel.selectOngoing(info)
-        #expect(viewModel.selection.timeRange == "10:20 - 12:10")
+        #expect(viewModel.selection.timeRange == "10:20–12:10")
         #expect(CourseDetailRoomAndTime.classroom(of: course, weekday: 1, periods: viewModel.selection.coursePeriods) == "TR-313")
     }
 
@@ -71,7 +71,7 @@ struct CourseBlockSelectionTests {
             viewModel.courses = [course]
             viewModel.selectCourse(course, weekday: 1, periodId: "6")
             #expect(viewModel.selection.coursePeriods == ["3", "4", "6", "7"])
-            #expect(viewModel.selection.timeRange == "10:20 - 15:10")
+            #expect(viewModel.selection.timeRange == "10:20–15:10")
         }
     }
 
