@@ -41,7 +41,6 @@ struct ChooseClassTableIntent: WidgetConfigurationIntent {
     @Parameter(title: LocalizedStringResource("widget_class_table_choice"))
     var classTable: ClassTableEntity?
 
-    /// Nil for the user's own table, which a widget placed before it could be configured also shows.
     var personID: String? {
         classTable?.id == ClassTableEntity.ownID ? nil : classTable?.id
     }
