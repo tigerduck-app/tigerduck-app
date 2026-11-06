@@ -131,10 +131,11 @@ struct BrowserDownloadsScreenTests {
                 Self.element(containing: saved, in: sheet).map { screenFrame.contains($0.accessibilityFrame) } == true
             }
             try await Task.sleep(for: .milliseconds(600))
-            // iOS 27 puts the row's actions on its button, iOS 26 elsewhere in the row.
+            let row = try #require(Self.element(containing: saved, in: sheet))
             let remove = String(localized: "action_remove")
-            #expect(Self.offers(remove, in: sheet))
-            let frame = try #require(Self.element(containing: saved, in: sheet)).accessibilityFrame
+            // With accessibility automation on, iOS 26 gives the row's swipe action to no element.
+            if #available(iOS 27, *) { #expect((row.accessibilityCustomActions ?? []).contains { $0.name == remove }) }
+            let frame = row.accessibilityFrame
             let center = window.convert(CGPoint(x: frame.midX, y: frame.midY), from: window.screen.coordinateSpace)
             try await fingerTap(at: center, in: window, holding: .milliseconds(1_200))
             try await waitUntil {
@@ -144,11 +145,6 @@ struct BrowserDownloadsScreenTests {
             try await Task.sleep(for: .milliseconds(800))
             window.saveSnapshot(as: Self.name("long-press", screen))
         }
-    }
-
-    private static func offers(_ action: String, in node: NSObject) -> Bool {
-        (node.accessibilityCustomActions ?? []).contains { $0.name == action }
-            || accessibilityChildren(of: node).contains { offers(action, in: $0) }
     }
 
     private static func element(containing text: String, in view: UIView) -> NSObject? {
