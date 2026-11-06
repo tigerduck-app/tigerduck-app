@@ -252,8 +252,10 @@ static const size_t xattr_limit = 16 * 1048576; /* Longest xattr: 16MiB */
 static const size_t fflags_limit = 512; /* Longest fflags */
 static const size_t acl_limit = 131072; /* Longest textual ACL: 128kiB */
 static const int64_t entry_limit = 0xfffffffffffffffLL; /* 2^60 bytes = 1 ExbiByte */
-/* TigerDuck: the pax extension body an archive preview reads for one entry. */
+/* TigerDuck: the pax extension body an archive preview reads for one entry,
+ * and the GNU sparse 1.0 ranges it reads for one, as many as it lists entries. */
 #define TIGERDUCK_MAX_PAX_SIZE	((int64_t)1 << 20)
+#define TIGERDUCK_MAX_ENTRIES	100000
 
 int
 archive_read_support_format_gnutar(struct archive *a)
@@ -3496,6 +3498,12 @@ gnu_sparse_10_read(struct archive_read *a, struct tar *tar, int64_t *unconsumed)
 	entries = gnu_sparse_10_atol(a, tar, &remaining, unconsumed);
 	if (entries < 0)
 		return (ARCHIVE_FATAL);
+	/* TigerDuck: refuse the map before a node per range is allocated. */
+	if (entries > TIGERDUCK_MAX_ENTRIES) {
+		archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
+		    "Too many sparse ranges");
+		return (ARCHIVE_FATAL);
+	}
 	/* Parse the individual entries. */
 	while (entries-- > 0) {
 		/* Parse offset/size */

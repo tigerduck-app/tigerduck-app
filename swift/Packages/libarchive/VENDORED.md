@@ -47,7 +47,7 @@ cmake -G Ninja <libarchive> -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=<iPhoneO
    `TIGERDUCK_MAX_PPMD_SIZE` (96 MiB) fails with `ENOMEM` instead of allocating it. The model's
    size comes from the archive and may be up to 4 GiB. Each of a BCJ2 folder's three sub
    streams, which upstream unpacks whole into memory before the first byte is read, is held to
-   the same size and fails with `E2BIG` before it is allocated.
+   the same size and fails with `ENOMEM` before it is allocated.
 2. `archive_read_support_format_7zip.c`: 7z header tables are capped before they are
    allocated, and each cap fails with `E2BIG`, which the app reports as too many entries.
    Upstream allows 100,000,000 of each and any header size, and builds every table before the
@@ -63,6 +63,8 @@ cmake -G Ninja <libarchive> -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=<iPhoneO
    than `TIGERDUCK_MAX_PAX_SIZE` (1 MiB) fails as a format error before any of it is read. Each
    entry has at most one of each, so this also caps the attributes, extended attributes
    included, kept for one entry. Upstream reads bodies up to 1 GiB and skips larger ones.
+   A GNU sparse 1.0 map listing more than `TIGERDUCK_MAX_ENTRIES` (100,000) ranges fails as a
+   format error before a node is allocated for each; upstream allows any count.
 4. `Package.swift` builds the sources with `-w`, since their warnings are upstream's.
 
 ## Updating
