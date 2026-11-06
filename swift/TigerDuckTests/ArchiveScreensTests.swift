@@ -85,7 +85,7 @@ struct ArchiveScreensTests {
             try await waitUntil { window.rootViewController?.presentedViewController != nil }
             let shown = try #require(window.rootViewController?.presentedViewController)
             // Quick Look titles its bar once the file has loaded.
-            try await waitUntil { Self.barTitle(in: shown.view) != nil }
+            try await waitUntil { shown.transitionCoordinator == nil && Self.barTitle(in: shown.view) != nil }
             window.saveSnapshot(as: "archive-file-\(look.testDescription)-\(Self.language)")
             window.rootViewController?.dismiss(animated: false)
         }
