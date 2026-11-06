@@ -43,8 +43,11 @@ final class ArchiveBrowserModel {
         let archive = archive
         let limits = limits
         do {
-            let listing = try await Self.offMain { try ArchiveReader.list(archive, limits: limits) }
-            phase = .listed(ArchiveTree(listing.items), truncatedAt: listing.truncated ? listing.items.count : nil)
+            let (tree, cut) = try await Self.offMain {
+                let listing = try ArchiveReader.list(archive, limits: limits)
+                return (try ArchiveTree(listing.items, maxFolders: limits.maxItems), listing.truncated)
+            }
+            phase = .listed(tree, truncatedAt: cut || tree.truncated ? tree.placed : nil)
         } catch is CancellationError {
             started = false
         } catch {

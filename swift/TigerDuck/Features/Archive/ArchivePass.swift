@@ -136,7 +136,9 @@ nonisolated final class ArchivePass {
             return ArchiveReader.normalized((name as NSString).deletingPathExtension)
         }
         guard let raw = archive_entry_pathname(entry) else { return nil }
-        return ArchiveReader.normalized(MailCharset.decode(Data(bytes: raw, count: strlen(raw)), label: nil))
+        let length = strnlen(raw, ArchiveReader.maxPathBytes + 1)
+        guard length <= ArchiveReader.maxPathBytes else { return nil }
+        return ArchiveReader.normalized(MailCharset.decode(Data(bytes: raw, count: length), label: nil))
     }
 
     func item(_ entry: OpaquePointer, index: Int, path: String) -> ArchiveItem {

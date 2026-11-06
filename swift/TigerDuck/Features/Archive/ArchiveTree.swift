@@ -23,20 +23,30 @@ nonisolated enum ArchiveNode: Hashable, Identifiable, Sendable {
 nonisolated struct ArchiveTree: Sendable {
     private var folders: [String: [String: ArchiveNode]] = ["": [:]]
     private var files: [String: [ArchiveNode]] = [:]
+    private(set) var placed = 0
+    private(set) var truncated = false
 
-    init(_ items: [ArchiveItem]) {
+    init(_ items: [ArchiveItem], maxFolders: Int = .max) throws {
         for item in items {
+            try Task.checkCancellation()
             let parts = item.path.split(separator: "/").map(String.init)
-            let depth = item.isDirectory ? parts.count : parts.count - 1
-            for level in 0..<depth {
-                let parent = parts[..<level].joined(separator: "/")
-                let path = parts[...level].joined(separator: "/")
-                folders[parent, default: [:]][path] = .folder(path: path, name: parts[level])
-                if folders[path] == nil { folders[path] = [:] }
+            var parent = ""
+            var added: [(parent: String, path: String, name: String)] = []
+            for name in parts.prefix(item.isDirectory ? parts.count : parts.count - 1) {
+                let path = parent.isEmpty ? name : parent + "/" + name
+                if folders[path] == nil { added.append((parent, path, name)) }
+                parent = path
             }
-            if !item.isDirectory {
-                files[parts.dropLast().joined(separator: "/"), default: []].append(.file(item))
+            guard folders.count - 1 + added.count <= maxFolders else {
+                truncated = true
+                return
             }
+            for folder in added {
+                folders[folder.parent, default: [:]][folder.path] = .folder(path: folder.path, name: folder.name)
+                folders[folder.path] = [:]
+            }
+            if !item.isDirectory { files[parent, default: []].append(.file(item)) }
+            placed += 1
         }
     }
 

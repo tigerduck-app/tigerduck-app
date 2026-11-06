@@ -35,6 +35,9 @@ nonisolated struct ArchiveLimits: Sendable {
 }
 
 nonisolated enum ArchiveReader {
+    static let maxPathDepth = 64
+    static let maxPathBytes = 1_024
+
     static func list(_ archive: URL, limits: ArchiveLimits = ArchiveLimits()) throws -> ArchiveListing {
         try ArchivePass.run(archive, limits: limits) { pass in
             var items: [ArchiveItem] = []
@@ -69,7 +72,7 @@ nonisolated enum ArchiveReader {
     static func normalized(_ path: String) -> String? {
         let parts = path.replacingOccurrences(of: "\\", with: "/")
             .split(separator: "/").filter { $0 != "." }
-        guard !parts.contains("..") else { return nil }
+        guard !parts.contains(".."), parts.count <= maxPathDepth else { return nil }
         let joined = parts.joined(separator: "/")
         return joined.isEmpty ? nil : joined
     }
