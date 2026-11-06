@@ -25,6 +25,7 @@ enum WidgetDerivedState: nonisolated Equatable, Sendable {
         let day: Day
         let classroom: String
         var change: SnapshotCourseChange? = nil
+        var endTime = ""
     }
 
     typealias Day = ClassDay
@@ -137,16 +138,39 @@ enum WidgetTimelineDerivation {
 
         let found = schedule.timeline.nowAndNext(at: date)
         guard let next = found.next else { return .noMoreClasses }
-        let row = schedule.row(next)
-        let info = WidgetDerivedState.NextInfo(
+        let info = nextInfo(schedule.row(next), day: found.day)
+        return found.day == .today ? .nextToday(info) : .tomorrowFirst(info)
+    }
+
+    static func upNext(snapshot: WidgetSnapshot, at date: Date, after derived: WidgetDerivedState) -> WidgetDerivedState.NextInfo? {
+        let from: Date
+        switch derived {
+        case .ongoing:
+            from = date
+        case .nextToday(let info):
+            guard let start = ClassTimeline.minutes(of: info.startTime),
+                  let time = TaipeiTime.calendar.date(byAdding: .minute, value: start, to: TaipeiTime.calendar.startOfDay(for: date))
+            else { return nil }
+            from = time
+        case .tomorrowFirst, .signInRequired, .noMoreClasses:
+            return nil
+        }
+        let schedule = WidgetSchedule(snapshot)
+        let found = schedule.timeline.nowAndNext(at: from)
+        guard found.day == .today, let next = found.next else { return nil }
+        return nextInfo(schedule.row(next), day: .today)
+    }
+
+    private static func nextInfo(_ row: TodayRow, day: ClassDay) -> WidgetDerivedState.NextInfo {
+        WidgetDerivedState.NextInfo(
             course: row.course,
             startTime: row.startTime,
             periodRange: row.periods[0],
-            day: found.day,
+            day: day,
             classroom: row.classroom,
-            change: row.change
+            change: row.change,
+            endTime: row.endTime
         )
-        return found.day == .today ? .nextToday(info) : .tomorrowFirst(info)
     }
 
     private static func ongoingInfo(_ row: TodayRow, at date: Date) -> WidgetDerivedState.OngoingInfo {

@@ -50,23 +50,8 @@ extension Color {
     static let badgeRedText = adaptive(light: Color(hex: 0xD70015), dark: Color(hex: 0xFF7A72))
     /// A value the school changed for one day, such as a moved room or a new start time.
     static let changeInk = adaptive(light: Color(hex: 0x7C2D12), dark: Color(hex: 0xFDBA74))
-    static let textOnPastel = Color(hex: 0x1A1A1A)
-    static let textOnPastelSecondary = Color(hex: 0x1A1A1A, alpha: 0.8)
     static let rowBand = Color.primary.opacity(0.08)
     static let rowBandAlternate = Color.primary.opacity(0.04)
-
-    var pastel: Color { mixed(toward: 1, by: 0.65) }
-
-    var pastelOutline: Color { mixed(toward: 0, by: 0.5) }
-
-    private func mixed(toward target: Float, by share: Float) -> Color {
-        var resolved = resolve(in: EnvironmentValues())
-        resolved.red += (target - resolved.red) * share
-        resolved.green += (target - resolved.green) * share
-        resolved.blue += (target - resolved.blue) * share
-        resolved.opacity = 1
-        return Color(resolved)
-    }
 
     static let moodleBlue = Color(hex: 0x007AFF)
     static let schoolOrange = Color(hex: 0xFF9500)

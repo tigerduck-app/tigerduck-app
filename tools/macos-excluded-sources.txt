@@ -492,3 +492,13 @@ BrowserSites.swift
 LinkRouting.swift
 TigerDuckBrowserView.swift
 BrowserAddressBarPicker.swift
+
+# TigerDuckWidgets — the widgets' layouts, which the app compiles only for the phone tests that draw them
+AccessoryViews.swift
+ClassTileParts.swift
+NextClassView.swift
+TodayListView.swift
+WeekGridParts.swift
+WeekGridView.swift
+WidgetDayLayout.swift
+WidgetPalette.swift

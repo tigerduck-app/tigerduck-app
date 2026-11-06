@@ -4,148 +4,238 @@ import TigerDuckCore
 
 struct NextClassView: View {
     let derived: WidgetDerivedState
+    var upNext: WidgetDerivedState.NextInfo? = nil
     let palette: WidgetPalette
     let family: WidgetFamily
-
-    private let userScale: CGFloat = CGFloat(CourseCardFontScale.renderScale(CourseCardFontScaleStore().read()))
-
-    @ScaledMetric(relativeTo: .subheadline) private var subheadlineBase: CGFloat = 15
-    @ScaledMetric(relativeTo: .title3) private var title3Base: CGFloat = 20
+    var clock: Date? = nil
 
     var body: some View {
-        switch derived {
-        case .signInRequired:
-            signInBody
-        case .ongoing(let infos):
-            ongoingBody(infos: infos)
-        case .nextToday(let info):
-            nextBody(info: info)
-        case .tomorrowFirst(let info):
-            nextBody(info: info)
-        case .noMoreClasses:
-            emptyBody
-        }
-    }
-
-    private var isCompact: Bool { family == .systemSmall }
-
-    private var signInBody: some View {
-        Text(String(localized: "widget_sign_in"))
-            .font(.callout)
-            .foregroundStyle(palette.onSurfaceVariant)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private func ongoingBody(infos: [WidgetDerivedState.OngoingInfo]) -> some View {
-        if isCompact {
-            compactOngoing(first: infos[0], additionalCount: infos.count - 1)
-        } else if infos.count >= 2 {
-            VStack(spacing: 10) {
-                ongoingCard(info: infos[0])
-                ongoingCard(info: infos[1])
-            }
+        if family == .systemSmall {
+            NextClassSmallView(derived: derived, palette: palette)
         } else {
-            ongoingCard(info: infos[0])
+            NextClassMediumView(derived: derived, upNext: upNext, palette: palette, clock: clock)
         }
     }
+}
 
-    private func compactOngoing(first info: WidgetDerivedState.OngoingInfo, additionalCount: Int) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(String(localized: "widget_ongoing"))
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(palette.highlight, in: RoundedRectangle(cornerRadius: 6))
-                    .foregroundStyle(.white)
-                if additionalCount > 0 {
-                    Text("+\(additionalCount)")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(palette.onSurfaceVariant)
-                }
+struct NextClassMediumView: View {
+    let derived: WidgetDerivedState
+    let upNext: WidgetDerivedState.NextInfo?
+    let palette: WidgetPalette
+    /// Nil counts down on the device's clock, which WidgetKit keeps current between entries.
+    let clock: Date?
+
+    @ScaledMetric(relativeTo: .headline) private var nameSize: CGFloat = 17
+    @ScaledMetric(relativeTo: .subheadline) private var rowNameSize: CGFloat = 15
+    @ScaledMetric(relativeTo: .headline) private var blockHeight: CGFloat = 88
+
+    var body: some View {
+        Group {
+            switch derived {
+            case .signInRequired:
+                TodayMessage(key: "widget_sign_in", palette: palette)
+            case .noMoreClasses:
+                Text(String(localized: "widget_no_more_classes"))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(palette.onSurface)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .ongoing(let infos):
+                let info = infos[0]
+                layout(block(
+                    course: info.course, room: info.classroom, change: info.change, start: info.startTime,
+                    end: info.endTime, progress: info.progress
+                ) { EmptyView() })
+            case .nextToday(let info):
+                layout(block(
+                    course: info.course, room: info.classroom, change: info.change, start: info.startTime,
+                    end: info.endTime, progress: nil
+                ) { countdown(to: info.startTime) })
+            case .tomorrowFirst(let info):
+                layout(block(
+                    course: info.course, room: info.classroom, change: info.change, start: info.startTime,
+                    end: info.endTime, progress: nil
+                ) { Text(info.day.headline()) })
             }
-            Text(info.course.displayName)
-                .font(.system(size: subheadlineBase * userScale, weight: .bold))
-                .foregroundStyle(palette.onSurface)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(String.localizedStringWithFormat(
-                String(localized: "widget_until_time"), info.endTime))
-                .font(.caption)
-                .foregroundStyle(info.change?.end != nil ? palette.changeInk : palette.onSurfaceVariant)
-                .lineLimit(1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
-    private func ongoingCard(info: WidgetDerivedState.OngoingInfo) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(String(localized: "widget_ongoing"))
-                .font(.caption.weight(.bold))
-                .padding(.horizontal, 8).padding(.vertical, 2)
-                .background(palette.highlight, in: RoundedRectangle(cornerRadius: 8))
-                .foregroundStyle(.white)
-            Text(info.course.displayName)
-                .font(.system(size: title3Base * userScale, weight: .bold))
-                .foregroundStyle(palette.onSurface)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-            Text("\(info.startTime)–\(info.endTime)  \(info.periodRange)")
-                .font(.caption)
-                .foregroundStyle(info.change?.start ?? info.change?.end != nil ? palette.changeInk : palette.onSurfaceVariant)
-            room(info.classroom, changed: info.change?.room != nil)
-            Spacer(minLength: 4)
-            ProgressView(value: info.progress)
-                .progressViewStyle(.linear)
-                .tint(palette.highlight)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func nextBody(info: WidgetDerivedState.NextInfo) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if !isCompact {
-                Text(info.day.headline())
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(palette.onSurfaceVariant)
+    private func layout(_ block: some View) -> some View {
+        VStack(spacing: 8) {
+            if let upNext {
+                block.frame(height: blockHeight)
+                row(upNext)
+            } else {
+                block
             }
-            Text(info.course.displayName)
-                .font(.system(
-                    size: (isCompact ? subheadlineBase : title3Base) * userScale,
-                    weight: .bold
-                ))
-                .foregroundStyle(palette.onSurface)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-            Text(info.startTime)
-                .font(.caption)
-                .foregroundStyle(info.change?.start != nil ? palette.changeInk : palette.onSurfaceVariant)
-            room(info.classroom, changed: info.change?.room != nil)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func block(
+        course: SnapshotCourse, room: String, change: SnapshotCourseChange?, start: String, end: String,
+        progress: Double?, @ViewBuilder trailing: () -> some View
+    ) -> some View {
+        let tile = palette.tile(course.colorHex)
+        let timeChanged = (change?.start ?? change?.end) != nil
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(course.displayName)
+                    .font(.courseName(nameSize, weight: .bold))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(widgetTimeRange(start, end))
+                    .font(.footnote.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(timeChanged ? palette.changeInk : tile.secondaryInk)
+                    .fixedSize()
+                    .layoutPriority(1)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                WidgetRoom(
+                    room: room, changed: change?.room != nil, font: .title.weight(.bold),
+                    ink: tile.ink, changeInk: palette.changeInk
+                )
+                .minimumScaleFactor(0.5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+                trailing()
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            Spacer(minLength: 0)
+            if let progress {
+                ProgressCapsule(progress: progress, tile: tile)
+            }
+        }
+        .foregroundStyle(tile.ink)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .classTile(tile, radius: 11, progress: progress, outline: 2, bottomBar: false)
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
-    private func room(_ room: String, changed: Bool) -> some View {
-        if changed {
-            Label(room, systemImage: "arrow.left.arrow.right")
-                .labelStyle(ChangedValueLabelStyle())
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(palette.changeInk)
-                .lineLimit(1)
-        } else if !room.isEmpty {
-            Text(room)
-                .font(.caption)
-                .foregroundStyle(palette.onSurfaceVariant)
+    private func countdown(to start: String) -> some View {
+        if let minutes = ClassTimeline.minutes(of: start),
+           let startDate = TaipeiTime.calendar.date(
+               byAdding: .minute, value: minutes, to: TaipeiTime.calendar.startOfDay(for: clock ?? AppClock.now())
+           ) {
+            if #available(iOS 18, macOS 15, *) {
+                if let clock {
+                    Text(clock, format: .reference(to: startDate))
+                } else {
+                    Text(.currentDate, format: .reference(to: startDate))
+                }
+            } else {
+                Text(startDate, style: .relative)
+            }
         }
     }
 
-    private var emptyBody: some View {
-        Text(String(localized: "widget_no_more_classes"))
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(palette.onSurface)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private func row(_ info: WidgetDerivedState.NextInfo) -> some View {
+        let tile = palette.tile(info.course.colorHex)
+        let timeChanged = (info.change?.start ?? info.change?.end) != nil
+        return HStack(spacing: 8) {
+            NameRoomLine(
+                name: info.course.displayName, room: info.classroom, roomChanged: info.change?.room != nil,
+                nameFont: .courseName(rowNameSize, weight: .medium), roomFont: .headline.weight(.bold),
+                ink: tile.ink, changeInk: palette.changeInk
+            )
+            Text(widgetTimeRange(info.startTime, info.endTime))
+                .font(.footnote.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(timeChanged ? palette.changeInk : tile.secondaryInk)
+                .fixedSize()
+                .layoutPriority(1)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .classTile(tile, radius: 11, progress: nil, outline: 0, bottomBar: false)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+struct NextClassSmallView: View {
+    let derived: WidgetDerivedState
+    let palette: WidgetPalette
+
+    @ScaledMetric(relativeTo: .headline) private var nameSize: CGFloat = 17
+
+    static func background(of derived: WidgetDerivedState, palette: WidgetPalette) -> Color {
+        switch derived {
+        case .ongoing(let infos): palette.isFullColor ? palette.tile(infos[0].course.colorHex).fill : .clear
+        case .nextToday(let info), .tomorrowFirst(let info):
+            palette.isFullColor ? palette.tile(info.course.colorHex).fill : .clear
+        case .signInRequired, .noMoreClasses: palette.canvas
+        }
+    }
+
+    var body: some View {
+        Group {
+            switch derived {
+            case .signInRequired:
+                TodayMessage(key: "widget_sign_in", palette: palette)
+            case .noMoreClasses:
+                Text(String(localized: "widget_no_more_classes"))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(palette.onSurface)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .ongoing(let infos):
+                let info = infos[0]
+                let label = infos.count > 1 ? "\(String(localized: "widget_ongoing")) +\(infos.count - 1)" : String(localized: "widget_ongoing")
+                card(
+                    label: label, course: info.course, room: info.classroom, change: info.change,
+                    start: info.startTime, end: info.endTime, progress: info.progress
+                )
+            case .nextToday(let info), .tomorrowFirst(let info):
+                card(
+                    label: info.day.headline(), course: info.course, room: info.classroom, change: info.change,
+                    start: info.startTime, end: info.endTime, progress: nil
+                )
+            }
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+    }
+
+    private func card(
+        label: String, course: SnapshotCourse, room: String, change: SnapshotCourseChange?,
+        start: String, end: String, progress: Double?
+    ) -> some View {
+        let tile = palette.tile(course.colorHex)
+        let timeChanged = (change?.start ?? change?.end) != nil
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tile.secondaryInk)
+                .lineLimit(1)
+            Text(course.displayName)
+                .font(.courseName(nameSize, weight: .bold))
+                .foregroundStyle(tile.ink)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+                .padding(.top, 2)
+            WidgetRoom(
+                room: room, changed: change?.room != nil, font: .title2.weight(.bold), ink: tile.ink,
+                changeInk: palette.changeInk
+            )
+            .minimumScaleFactor(0.5)
+            .layoutPriority(1)
+            Spacer(minLength: 4)
+            if let progress {
+                ProgressCapsule(progress: progress, tile: tile)
+                    .padding(.bottom, 4)
+            }
+            Text(end.isEmpty ? start : widgetTimeRange(start, end))
+                .font(.caption.weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(timeChanged ? palette.changeInk : tile.secondaryInk)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .combine)
     }
 }
 
