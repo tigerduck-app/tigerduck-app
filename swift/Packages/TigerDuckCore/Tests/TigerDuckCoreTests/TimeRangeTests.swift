@@ -39,4 +39,11 @@ struct TimeRangeTests {
         #expect(TimeRange.times(ofLiveActivitySubtitle: "10:20–12:10") == nil)
         #expect(TimeRange.times(ofLiveActivitySubtitle: "") == nil)
     }
+
+    @Test func aSubtitleIsReadAsTimesOnlyWhenBothSidesAreTimes() {
+        #expect(TimeRange.times(ofLiveActivitySubtitle: "10:20 - 12:10").map { [$0.start, $0.end] } == ["10:20", "12:10"])
+        #expect(TimeRange.times(ofLiveActivitySubtitle: "Intro - Lab") == nil)
+        #expect(TimeRange.times(ofLiveActivitySubtitle: "10:20 -  12:10") == nil)
+        #expect(TimeRange.times(ofLiveActivitySubtitle: "10:20 - Lab") == nil)
+    }
 }
