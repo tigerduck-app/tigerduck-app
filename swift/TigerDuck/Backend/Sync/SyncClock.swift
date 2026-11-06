@@ -92,7 +92,8 @@ nonisolated final class SyncClock: Sendable {
         held.withLock { Self.merged($0, storage.load()) }
     }
 
-    /// Every stamp issued before this read is below it, and every one issued after is not.
+    /// Every stamp issued before this read is below it, and every one issued after is not, once a
+    /// pull-back between them is applied with `Era.current`.
     var lowestNextStamp: Date {
         PushAPI.date(ofClock: min(readings.lastIssued, Self.overflowSafeCeiling - 1) + 1)
     }
@@ -103,7 +104,8 @@ nonisolated final class SyncClock: Sendable {
         max(now(), stamp())
     }
 
-    /// Every mark taken before this read is at or below it, and every one taken after is at or above it.
+    /// Every mark taken before this read is at or below it, and every one taken after is at or above
+    /// it, once a pull-back between them is applied with `Era.current`.
     var lowestNextMark: Date {
         max(now(), lowestNextStamp)
     }
