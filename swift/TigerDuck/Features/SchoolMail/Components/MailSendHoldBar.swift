@@ -125,35 +125,67 @@ private struct MailHeldMailHost: ViewModifier {
     }
 
     private static let inactiveWindowDelay: Duration = .milliseconds(500)
+    private static let presentationPoll: Duration = .milliseconds(100)
 
     let hold: MailSendHold
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
     @State private var shown: MailComposeViewModel?
     @State private var hostWindow = HostWindow()
     @State private var activations = 0
+
+    private var turn: MailReopenTurn { MailReopenTurn(hostWindow.window?.windowScene?.activationState) }
 
     func body(content: Content) -> some View {
         content
             .task(id: Wait(next: shown == nil ? hold.reopened.first?.id : nil, activations: activations)) { await showNext() }
             .onReceive(NotificationCenter.default.publisher(for: UIScene.didActivateNotification)) { _ in activations += 1 }
-            .sheet(item: $shown) { model in
-                MailComposeView(viewModel: model, hold: hold)
-                    .onDisappear { hold.composerClosed(model) }
-            }
             .readsHostWindow(into: hostWindow)
     }
 
     private func showNext() async {
         guard shown == nil, let next = hold.reopened.first else { return }
-        while hostWindow.isPresenting, !Task.isCancelled {
-            await hostWindow.presentationsClosed()
-        }
-        switch MailReopenTurn(hostWindow.window?.windowScene?.activationState) {
+        switch turn {
         case .now: break
         case .afterActiveWindows: try? await AppClock.sleep(until: ContinuousClock.now + Self.inactiveWindowDelay)
         case .never: return
         }
-        guard !Task.isCancelled, shown == nil, hold.reopened.first === next else { return }
+        guard turn != .never, let top = await presenter(),
+              !Task.isCancelled, shown == nil, hold.reopened.first === next
+        else { return }
+        // SwiftUI presents a sheet only from a view with nothing presented, and a sheet such as a
+        // course's may stay open under the composer.
+        let composer = UIHostingController(rootView: MailReopenedComposer(model: next, hold: hold, app: app) {
+            hold.composerClosed(next)
+            shown = nil
+        })
+        top.present(composer, animated: true)
+        guard composer.presentingViewController != nil else { return }
         shown = hold.takeReopened()
+    }
+
+    /// UIKit presents nothing during a transition, and closes a composer over an alert along with the alert.
+    private func presenter() async -> UIViewController? {
+        while !Task.isCancelled, let top = hostWindow.topmostPresented {
+            guard top is UIAlertController || top.transitionCoordinator != nil else { return top }
+            try? await AppClock.sleep(until: ContinuousClock.now + Self.presentationPoll)
+        }
+        return nil
+    }
+}
+
+/// A view UIKit presents does not inherit the root's environment.
+private struct MailReopenedComposer: View {
+    let model: MailComposeViewModel
+    let hold: MailSendHold
+    let app: AppEnvironment?
+    let closed: () -> Void
+
+    var body: some View {
+        MailComposeView(viewModel: model, hold: hold)
+            .tint(app.map { AccentPreview.shared.tint(saved: $0.preferences.accentColor) })
+            .appAppearance()
+            .environment(app)
+            .onDisappear(perform: closed)
     }
 }
 #endif

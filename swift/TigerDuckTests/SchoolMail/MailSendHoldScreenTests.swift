@@ -178,6 +178,24 @@ struct MailSendHoldScreenTests {
         }
     }
 
+    @Test func anUndoneComposerOpensOverASheetThatStaysOpen() async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            let screen = Text(verbatim: "課表").sheet(isPresented: .constant(true)) { Text(verbatim: "課程") }
+            let window = try Self.show(screen.heldMailHost(rig.hold), look: .light)
+            defer { window.isHidden = true }
+            try await waitUntil { window.rootViewController?.presentedViewController != nil }
+            rig.hold.hold(await MailSendHoldTests.written(MailComposeViewModelTests.fake()))
+            rig.hold.undo()
+
+            try await waitUntil { window.rootViewController?.presentedViewController?.presentedViewController?.viewIfLoaded != nil }
+            let composer = try #require(window.rootViewController?.presentedViewController?.presentedViewController)
+            try await waitUntil { exposedAccessibilityTexts(in: composer.view).contains { $0.contains("期末報告") } }
+            #expect(composer.isModalInPresentation)
+            #expect(rig.hold.reopened.isEmpty)
+        }
+    }
+
     @Test func closingAReopenedDraftComposerListsTheDraftAgain() async throws {
         try await withAccessibilityAutomation {
             let rig = MailSendHoldTests.rig()
