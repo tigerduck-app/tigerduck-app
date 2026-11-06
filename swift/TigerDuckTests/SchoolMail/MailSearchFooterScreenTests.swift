@@ -24,7 +24,7 @@ struct MailSearchFooterScreenTests {
         }
     }
 
-    @Test("a search on an index still downloading ends in its count, which gives way to the new matches once the pass ends",
+    @Test("a search on an incomplete index ends in its count, spinning only while the pass runs, until the new matches arrive",
           arguments: ClubScreensTests.looks)
     func footer(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
@@ -52,7 +52,16 @@ struct MailSearchFooterScreenTests {
             try await Task.sleep(for: .milliseconds(400))
             window.saveSnapshot(as: "mail-search-partial-\(look.testDescription)-\(Self.language)")
 
+            h.model.stopPolling()
             await h.fake.release("searchTexts")
+            try await waitUntil { !h.model.isSyncing }
+            #expect(h.model.search.indexProgress?.text() == MailConstants.indexBatchSize.formatted() + "/" + 2_000.formatted())
+            #expect(shownListLabels(in: window).contains(partial))
+            try await Task.sleep(for: .milliseconds(400))
+            window.saveSnapshot(as: "mail-search-paused-\(look.testDescription)-\(Self.language)")
+
+            h.model.startPolling()
+            defer { h.model.stopPolling() }
             await h.model.waitForIndex()
             await h.model.waitForSearchCatchUp()
             try await waitUntil { !shownListLabels(in: window).contains(partial) && showsLateMatch() }

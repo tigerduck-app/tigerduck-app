@@ -34,7 +34,7 @@ final class MailListSearch {
     var indexProgress: MailIndexProgress? {
         guard let list, isShowingResults else { return nil }
         let indexer = list.background.indexer
-        guard indexer.isDownloading, list.targets.contains(where: { !indexer.isIndexed($0) }) else { return nil }
+        guard list.targets.contains(where: { !indexer.isIndexed($0) }) else { return nil }
         return indexer.progress
     }
 

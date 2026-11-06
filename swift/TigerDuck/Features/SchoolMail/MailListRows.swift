@@ -41,19 +41,25 @@ struct MailListFooter: View {
     let viewModel: MailListViewModel
     let hasRows: Bool
 
+    var showsSpinner: Bool {
+        (hasRows && viewModel.isPaginating)
+            || (viewModel.search.indexProgress != nil && viewModel.background.indexer.isDownloading)
+    }
+
     var body: some View {
-        if let progress = viewModel.search.indexProgress {
-            spinner(count: progress.text())
+        let progress = viewModel.search.indexProgress
+        if let progress, showsSpinner || progress.total != nil {
+            row(count: progress.text())
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(String(localized: "school_mail_search_index_partial"))
-        } else if viewModel.isPaginating, hasRows {
-            spinner(count: nil)
+        } else if showsSpinner {
+            row(count: nil)
         }
     }
 
-    private func spinner(count: String?) -> some View {
+    private func row(count: String?) -> some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
-            ProgressView()
+            if showsSpinner { ProgressView() }
             if let count {
                 Text(count)
                     .font(TigerDuckTheme.Typography.caption)
