@@ -9,7 +9,6 @@ struct TermWeekTests {
         TaipeiTime.calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
     }
 
-    /// 1151 starts on Wednesday 16 September and ends on Friday 15 January.
     private static let calendar = AcademicCalendar(
         revision: 1,
         terms: [
