@@ -1,15 +1,17 @@
 import Foundation
+import TigerDuckCore
 
 enum WidgetSnapshotBuilder {
     struct Input {
-        let courses: [SDCourse]
-        let customNames: [String: String]
+        var courses: [SDCourse]
+        var customNames: [String: String]
         let colorMap: [String: UInt32]
         let isLoggedIn: Bool
         let accentColorHex: UInt32
         let now: Date
         var quietDayKeys: Set<String> = []
         var changes: CourseChanges = .empty
+        var term: QuietDayCalendar.Span? = nil
     }
 
     static func build(_ input: Input) -> WidgetSnapshot {
@@ -37,7 +39,8 @@ enum WidgetSnapshotBuilder {
             periodOrder: AppConstants.Periods.chronologicalOrder,
             activeWeekdays: computeActiveWeekdays(input.courses),
             activePeriodIds: computeActivePeriodIds(input.courses),
-            quietDayKeys: Array(input.quietDayKeys).sorted()
+            quietDayKeys: Array(input.quietDayKeys).sorted(),
+            term: input.term
         )
     }
 

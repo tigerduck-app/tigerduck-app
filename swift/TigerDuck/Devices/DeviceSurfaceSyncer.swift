@@ -9,6 +9,7 @@ final class DeviceSurfaceSyncer {
         var accentHex: Int
         var visualPreset: String
         var signedIn: Bool
+        var importedTables = 0
         var unobserved: UnobservedChanges
 
         func differsOnlyInVisualPreset(from other: Fingerprint) -> Bool {
@@ -116,6 +117,7 @@ extension DeviceSurfaceSyncer {
             accentHex: app.preferences.accentColorHex,
             visualPreset: app.preferences.visualPreset.rawValue,
             signedIn: app.authService.hasStoredCredentials,
+            importedTables: ImportedClassTableStore.shared.revision,
             unobserved: unobserved
         )
     }

@@ -53,6 +53,34 @@ nonisolated final class WidgetSnapshotStore {
         }
     }
 
+    func readSnapshot(of personID: String?) -> WidgetSnapshot? {
+        guard let personID, let person = readPeople().first(where: { $0.id == personID }) else { return readSnapshot() }
+        return person.snapshot
+    }
+
+    func readPeople() -> [WidgetPersonSnapshot] {
+        guard let data = defaults.data(forKey: WidgetSnapshot.peopleStoreKey) else { return [] }
+        do {
+            return try decoder.decode([WidgetPersonSnapshot].self, from: data)
+                .filter { $0.snapshot.version == WidgetSnapshot.currentVersion }
+        } catch {
+            logger.error("widget people decode failed: \(error.localizedDescription, privacy: .private)")
+            return []
+        }
+    }
+
+    func writePeople(_ people: [WidgetPersonSnapshot]) {
+        guard !people.isEmpty else {
+            defaults.removeObject(forKey: WidgetSnapshot.peopleStoreKey)
+            return
+        }
+        do {
+            defaults.set(try encoder.encode(people), forKey: WidgetSnapshot.peopleStoreKey)
+        } catch {
+            logger.error("widget people encode failed: \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
     func writeSnapshot(_ snapshot: WidgetSnapshot?) {
         guard let snapshot else {
             defaults.removeObject(forKey: WidgetSnapshot.storeKey)

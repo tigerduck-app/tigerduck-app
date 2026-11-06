@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let version: Int
@@ -11,10 +12,18 @@ nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let activeWeekdays: [Int]
     let activePeriodIds: [String]
     var quietDayKeys: [String]? = nil
+    var term: QuietDayCalendar.Span? = nil
 
     static let currentVersion = 1
     static let storeKey = "Widget-snapshot-v1"
+    static let peopleStoreKey = "Widget-people-v1"
     static let appGroupIdentifier = "group.org.ntust.app.TigerDuck"
+}
+
+nonisolated struct WidgetPersonSnapshot: Codable, Equatable, Hashable, Sendable {
+    let id: String
+    let name: String
+    var snapshot: WidgetSnapshot
 }
 
 nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
