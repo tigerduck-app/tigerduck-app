@@ -96,6 +96,13 @@ struct MailComposeSuggestionScreenTests {
         }
     }
 
+    static func cellsSettled(in window: UIWindow) -> Bool {
+        guard let list = window.descendants(ofType: UICollectionView.self).first else { return false }
+        return list.visibleCells.allSatisfy { cell in
+            cell.layer.presentation().map { $0.frame == cell.layer.frame && $0.opacity == cell.layer.opacity } ?? true
+        }
+    }
+
     @Test("typing in To lists the matches under it, each read name then address, and a pick becomes its bubble",
           arguments: ClubScreensTests.looks)
     func suggestAndPick(look: ClubScreensTests.Look) async throws {
@@ -118,7 +125,7 @@ struct MailComposeSuggestionScreenTests {
                 #expect(label.hasPrefix(name) && label.hasSuffix(address), "\(label)")
             }
             #expect(accessibilityElement(labeled: String(localized: "a11y_school_mail_recipient_suggestions"), in: window) != nil)
-            try await Task.sleep(for: .milliseconds(400))
+            try await waitUntil { Self.cellsSettled(in: window) }
             window.saveSnapshot(as: "mail-suggest-\(look.testDescription)-\(Self.language)")
 
             _ = rows.first?.accessibilityActivate()
@@ -126,7 +133,7 @@ struct MailComposeSuggestionScreenTests {
             try await waitUntil { Self.rows(in: window).isEmpty }
             #expect(accessibilityElement(labeled: "陳怡君 <yichun@mail.example.edu.tw> ×", in: window) != nil)
             #expect(window.descendants(ofType: UITextField.self).first?.isFirstResponder == true)
-            try await Task.sleep(for: .milliseconds(400))
+            try await waitUntil { Self.cellsSettled(in: window) }
             window.saveSnapshot(as: "mail-picked-\(look.testDescription)-\(Self.language)")
         }
     }
