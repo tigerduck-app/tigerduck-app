@@ -251,12 +251,7 @@ private struct MoodleDownloadMark: View {
                 .foregroundStyle(Color.textSecondary)
         case .downloading(let progress):
             ZStack {
-                Circle()
-                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 2)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(.tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+                ProgressRing(fraction: progress, lineWidth: 2)
                 Image(systemName: "stop.fill")
                     .font(.system(size: 7))
                     .foregroundStyle(.tint)
