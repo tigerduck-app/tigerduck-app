@@ -92,6 +92,7 @@ final class BrowserPage {
         } else if failure != nil, let request = Self.retryRequest(failedDownload: downloads.failed, address: address) {
             failure = nil
             downloads.failed = nil
+            downloads.forgetFailures(of: request)
             webView?.load(request)
         } else {
             webView?.reload()
@@ -117,7 +118,7 @@ final class BrowserPage {
 
     func retryDownload(_ item: BrowserDownloads.Item) {
         guard let request = item.request else { return }
-        downloads.forget(item.id)
+        downloads.forgetFailures(of: request)
         failure = nil
         downloads.failed = nil
         webView?.load(request)

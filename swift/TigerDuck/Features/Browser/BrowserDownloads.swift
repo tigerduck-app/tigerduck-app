@@ -97,11 +97,11 @@ final class BrowserDownloads {
 
     func cancel(_ id: UUID) {
         cancels.removeValue(forKey: id)?()
-        forget(id)
+        items.removeAll { $0.id == id }
     }
 
-    func forget(_ id: UUID) {
-        items.removeAll { $0.id == id }
+    func forgetFailures(of request: URLRequest) {
+        items.removeAll { $0.state == .failed && $0.request == request }
     }
 
     func reload() async {

@@ -117,6 +117,21 @@ struct BrowserDownloadsTests {
         #expect(downloads.canClear)
     }
 
+    @Test func aRetryForgetsTheFailedRowsOfItsRequestOnly() {
+        let place = SavedDownloadsTests.Place()
+        defer { place.remove() }
+        let downloads = Self.downloads(place)
+        let other = URLRequest(url: URL(string: "https://moodle2.ntust.edu.tw/pluginfile.php/2/mod_resource/content/1/other.pdf")!)
+        _ = downloads.fail(downloads.start("week3.pptx", request: Self.request) {})
+        let otherFailure = downloads.start("other.pdf", request: other) {}
+        _ = downloads.fail(otherFailure)
+        let running = downloads.start("week3.pptx", request: Self.request) {}
+
+        downloads.forgetFailures(of: Self.request)
+
+        #expect(downloads.items.map(\.id) == [running, otherFailure])
+    }
+
     @Test func clearingDeletesSavedFilesAndFailuresButKeepsWhatIsRunning() async throws {
         let place = SavedDownloadsTests.Place()
         defer { place.remove() }
