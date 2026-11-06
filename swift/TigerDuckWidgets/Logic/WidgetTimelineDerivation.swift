@@ -104,6 +104,14 @@ struct WidgetSchedule {
 
     func courseIndex(of item: ScheduledClass) -> Int { sources[item.meeting].course }
 
+    func held(on date: Date) -> [ScheduledClass] {
+        timeline.classes(on: date).filter { !$0.isCancelled }
+    }
+
+    func ongoing(at date: Date) -> [ScheduledClass] {
+        firstPerCourseInCourseOrder(ClassTimeline.running(at: date, in: held(on: date)))
+    }
+
     func firstPerCourseInCourseOrder(_ classes: [ScheduledClass]) -> [ScheduledClass] {
         var seen = Set<Int>()
         return classes
@@ -130,8 +138,7 @@ enum WidgetTimelineDerivation {
         guard !snapshot.courses.isEmpty else { return .noMoreClasses }
 
         let schedule = WidgetSchedule(snapshot)
-        let today = schedule.timeline.classes(on: date).filter { !$0.isCancelled }
-        let ongoing = schedule.firstPerCourseInCourseOrder(ClassTimeline.running(at: date, in: today))
+        let ongoing = schedule.ongoing(at: date)
         if !ongoing.isEmpty {
             return .ongoing(ongoing.map { ongoingInfo(schedule.row($0), at: date) })
         }
@@ -143,22 +150,23 @@ enum WidgetTimelineDerivation {
     }
 
     static func upNext(snapshot: WidgetSnapshot, at date: Date, after derived: WidgetDerivedState) -> WidgetDerivedState.NextInfo? {
-        let from: Date
+        let schedule = WidgetSchedule(snapshot)
         switch derived {
         case .ongoing:
-            from = date
+            guard let shown = schedule.ongoing(at: date).first,
+                  let next = schedule.held(on: date).first(where: { $0 != shown && $0.end > date })
+            else { return nil }
+            return nextInfo(schedule.row(next), day: .today)
         case .nextToday(let info):
             guard let start = ClassTimeline.minutes(of: info.startTime),
                   let time = TaipeiTime.calendar.date(byAdding: .minute, value: start, to: TaipeiTime.calendar.startOfDay(for: date))
             else { return nil }
-            from = time
+            let found = schedule.timeline.nowAndNext(at: time)
+            guard found.day == .today, let next = found.next else { return nil }
+            return nextInfo(schedule.row(next), day: .today)
         case .tomorrowFirst, .signInRequired, .noMoreClasses:
             return nil
         }
-        let schedule = WidgetSchedule(snapshot)
-        let found = schedule.timeline.nowAndNext(at: from)
-        guard found.day == .today, let next = found.next else { return nil }
-        return nextInfo(schedule.row(next), day: .today)
     }
 
     private static func nextInfo(_ row: TodayRow, day: ClassDay) -> WidgetDerivedState.NextInfo {
