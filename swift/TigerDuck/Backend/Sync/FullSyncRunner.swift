@@ -164,6 +164,7 @@ final class FullSyncRunner {
             .union(coordinator.pendingCourseIgnoreKeys()).union(coordinator.marksAndIgnoresEnqueuing)
         let preFetchCourseOverrides = await coordinator.pendingCourseOverrides()
         let editGenerationAtFetch = app.localEdits.overrideEditGeneration
+        let heldHolidayIDs = AcademicCalendarStore.shared.unacknowledgedHolidayIDs
         let fetchedAt = Date()
         let (json, fetchedDeletes) = try await coordinator.courseDeletes(around: {
             try await app.pushCoordinator.fetchFullSync(for: signIn)
@@ -212,6 +213,7 @@ final class FullSyncRunner {
             queuedMarkAndIgnoreKeys: preFetchQueued.union(coordinator.marksAndIgnoresEnqueuing).union(inFlight),
             courseDeletes: settled.deletes, courseAdds: settled.adds,
             heldCourseOverrides: coordinator.courseOverridesToHold(since: preFetchCourseOverrides),
+            heldHolidayIDs: heldHolidayIDs,
             marksLeftFor: marksLeftFor, taken: policy.categoriesTaken(marksLeftFor: marksLeftFor),
             reset: reset, editGenerationAtFetch: editGenerationAtFetch
         )
@@ -306,6 +308,7 @@ struct FullSyncPass {
     let courseDeletes: Set<String>
     let courseAdds: Set<String>
     let heldCourseOverrides: (colors: Set<String>, names: Set<String>)
+    let heldHolidayIDs: Set<Int>
     let marksLeftFor: SyncPolicy.MarksLeftReason?
     let taken: Set<SyncCategory>
     let reset: (apply: Bool, remember: Date)
