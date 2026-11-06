@@ -54,7 +54,7 @@ struct MacGeneralSettingsView: View {
             CourseAbbreviationSection(preferences: preferences)
 
             Section(String(localized: "desktop_settings_section_links")) {
-                Picker(String(localized: "desktop_settings_moodle_open_in"), selection: $preferences.macMoodleOpenTarget) {
+                Picker(String(localized: "desktop_settings_moodle_open_in"), selection: $preferences.moodleOpenTarget) {
                     Text(String(localized: "desktop_settings_moodle_open_in_browser")).tag(MoodleOpenTarget.browser)
                     Text(String(localized: "desktop_settings_moodle_open_in_app")).tag(MoodleOpenTarget.app)
                 }

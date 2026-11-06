@@ -88,6 +88,6 @@ struct TimetableClubBlock: View {
     }
 
     static func spoken(_ club: ClubOccurrence) -> String {
-        ([club.clubName] + club.details).joined(separator: ", ")
+        ([club.clubName] + club.spokenDetails).joined(separator: ", ")
     }
 }

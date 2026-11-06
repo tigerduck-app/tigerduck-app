@@ -28,8 +28,8 @@ struct ClassTableTodayCoursesTests {
         )
 
         #expect([untimed, mixed].coursesForToday().map(\.courseNo) == ["TEST300"])
-        #expect(mixed.timeRange(for: 1) == "08:10 - 10:00")
-        #expect(untimed.timeRange(for: 1) == nil)
+        #expect(mixed.times(for: 1).map { [$0.start, $0.end] } == ["08:10", "10:00"])
+        #expect(untimed.times(for: 1) == nil)
     }
 
     @Test func dayWithoutClasses_showsNothing() {

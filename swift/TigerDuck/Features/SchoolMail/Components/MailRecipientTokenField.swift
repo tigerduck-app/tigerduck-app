@@ -27,11 +27,18 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
     @Binding var text: String
     let focus: FocusState<Focus?>.Binding
     let field: Focus
+    let suggest: (String) -> [MailAddress]
 
     @State private var tokens: [String] = []
     @State private var draft = ""
 
     var body: some View {
+        row
+        let matches = focus.wrappedValue == field ? suggest(draft) : []
+        if !matches.isEmpty { suggestions(matches) }
+    }
+
+    private var row: some View {
         HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.xs) {
             Text(title)
                 .foregroundStyle(.secondary)
@@ -68,6 +75,40 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         .onChange(of: focus.wrappedValue) { _, now in
             if now != field { finishDraft() }
         }
+    }
+
+    private func suggestions(_ matches: [MailAddress]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(matches.enumerated()), id: \.element.address) { index, address in
+                if index > 0 { Divider() }
+                Button { pick(address) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(highlighted(address.name ?? address.address))
+                        if address.name != nil {
+                            Text(highlighted(address.address))
+                                .font(.subheadline)
+                                .foregroundStyle(Color.textSecondary)
+                        }
+                    }
+                    .typesettingLanguage(MailRecipient.unhyphenatedLanguage)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, TigerDuckTheme.Spacing.sm)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("a11y_school_mail_recipient_suggestions"))
+    }
+
+    private func highlighted(_ text: String) -> AttributedString {
+        var shown = AttributedString(text)
+        let typed = draft.trimmingCharacters(in: .whitespaces)
+        if !typed.isEmpty, let match = shown.range(of: typed, options: [.caseInsensitive, .widthInsensitive]) {
+            shown[match].inlinePresentationIntent = .stronglyEmphasized
+        }
+        return shown
     }
 
     private static var bubbleShape: RoundedRectangle {
@@ -118,6 +159,13 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         tokens.append(token)
         draft = ""
         publish()
+    }
+
+    private func pick(_ address: MailAddress) {
+        tokens.append(MailRecipients.format(address))
+        draft = ""
+        publish()
+        focus.wrappedValue = field
     }
 
     private func edit(at index: Int) {

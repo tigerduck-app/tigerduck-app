@@ -101,7 +101,7 @@ final class SDAssignment {
 
     var moodleOpenURL: URL? {
         #if os(macOS)
-        switch Defaults[.macMoodleOpenTarget] {
+        switch Defaults[.moodleOpenTarget] {
         case .app: return moodleDeepLink
         case .browser: return moodleWebURL
         }

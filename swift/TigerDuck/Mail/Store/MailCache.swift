@@ -28,19 +28,34 @@ nonisolated final class MailCache: @unchecked Sendable {
         let wipes = OSAllocatedUnfairLock(initialState: 0)
         self.wipes = wipes
         searchIndex = MailSearchIndex(
-            url: directory.appendingPathComponent("search-index.sqlite"),
+            url: directory.appendingPathComponent(Self.searchIndexName),
             account: account,
             wipeCount: { wipes.withLock { $0 } }
         )
     }
 
+    private var pagesDirectory: URL { directory.appendingPathComponent("pages", isDirectory: true) }
+
     func pageURL(folder: String) -> URL {
-        directory.appendingPathComponent("pages", isDirectory: true)
-            .appendingPathComponent("\(Self.fileKey(folder)).json")
+        pagesDirectory.appendingPathComponent("\(Self.fileKey(folder)).json")
     }
 
     func loadPage(folder: String) -> MailFolderPage? {
         lock.withLock { read(MailFolderPage.self, at: pageURL(folder: folder)) }
+    }
+
+    func loadPages() -> [MailFolderPage] {
+        let urls = lock.withLock {
+            (try? FileManager.default.contentsOfDirectory(at: pagesDirectory, includingPropertiesForKeys: nil)) ?? []
+        }
+        var pages: [MailFolderPage] = []
+        for url in urls {
+            guard !Task.isCancelled else { return [] }
+            guard let data = lock.withLock({ try? Data(contentsOf: url) }),
+                  let page = files.decoded(MailFolderPage.self, from: data) else { continue }
+            pages.append(page)
+        }
+        return pages
     }
 
     func savePage(_ page: MailFolderPage, unlessWipedSince wipeCount: Int) {
@@ -50,7 +65,11 @@ nonisolated final class MailCache: @unchecked Sendable {
         }
     }
 
-    private var bodiesDirectory: URL { directory.appendingPathComponent("bodies", isDirectory: true) }
+    private static let bodiesName = "bodies"
+    private static let attachmentsName = "attachments"
+    private static let searchIndexName = "search-index.sqlite"
+
+    private var bodiesDirectory: URL { directory.appendingPathComponent(Self.bodiesName, isDirectory: true) }
 
     private func bodyURL(folder: String, uidValidity: UInt32, uid: UInt32) -> URL {
         bodiesDirectory.appendingPathComponent("\(Self.fileKey(folder))-\(uidValidity)-\(uid).json")
@@ -111,7 +130,7 @@ nonisolated final class MailCache: @unchecked Sendable {
     }
 
     func temporaryFileURL(filename: String) throws -> URL {
-        let attachments = directory.appendingPathComponent("attachments", isDirectory: true)
+        let attachments = directory.appendingPathComponent(Self.attachmentsName, isDirectory: true)
         let cutoff = Date().addingTimeInterval(-MailConstants.openedAttachmentLifetime)
         lock.withLock { removeEntries(in: attachments, modifiedBefore: cutoff) }
         let folder = attachments.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -139,19 +158,34 @@ nonisolated final class MailCache: @unchecked Sendable {
     }
 
     func totalBytes() -> Int {
+        lock.withLock { FileManager.default.bytes(at: directory) }
+    }
+
+    nonisolated enum Part: Sendable {
+        case lists, messages, attachments
+    }
+
+    func bytes(in part: Part) -> Int {
+        lock.withLock { entries(of: part).reduce(0) { $0 + FileManager.default.bytes(at: $1) } }
+    }
+
+    func clear(_ part: Part) {
         lock.withLock {
-            let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey]
-            guard let files = FileManager.default.enumerator(
-                at: directory, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in true }
-            ) else { return 0 }
-            var total = 0
-            for case let url as URL in files {
-                guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true else {
-                    continue
-                }
-                total += values.fileSize ?? 0
+            wipes.withLock { $0 += 1 }
+            let remove = { for entry in self.entries(of: part) { try? FileManager.default.removeItem(at: entry) } }
+            if part == .messages { searchIndex.close(thenRemove: remove) } else { remove() }
+        }
+    }
+
+    private func entries(of part: Part) -> [URL] {
+        let entries = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        return entries.filter { entry in
+            let name = entry.lastPathComponent
+            return switch name {
+            case Self.attachmentsName: part == .attachments
+            case Self.bodiesName: part == .messages
+            default: part == (name.hasPrefix(Self.searchIndexName) ? .messages : .lists)
             }
-            return total
         }
     }
 

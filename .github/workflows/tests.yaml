@@ -48,8 +48,10 @@ jobs:
             # or WebKit, which run in a step of their own. A Swift Testing function's identifier
             # carries its argument labels.
             on_screen_tests: >-
+              TigerDuckTests/MailComposeSuggestionScreenTests
               TigerDuckTests/MailHTMLSanitizerTests/aFixedImageBoxKeepsItsRatioOnThePage(pageWidth:)
               TigerDuckTests/MailMuteSettingsScreenTests
+              TigerDuckTests/MailSearchFooterScreenTests
               TigerDuckTests/MailMessageViewModelTests/aLightModeSwitchReusesTheInstalledRules()
               TigerDuckTests/MailMessageViewModelTests/inlineImagesThatArriveLaterReachThePage()
               TigerDuckTests/MailMessageViewModelTests/theWebViewIsLockedDown()
@@ -60,6 +62,7 @@ jobs:
               TigerDuckTests/BrowserPinnedHostsTests
               TigerDuckTests/BrowserContentRulesTests
               TigerDuckTests/BrowserDemoPageLoadTests
+              TigerDuckTests/BrowserDownloadsScreenTests
               TigerDuckTests/BrowserFindPageTests
               TigerDuckTests/BrowserPageScriptsTests
               TigerDuckTests/BrowserPageUITests
@@ -91,6 +94,7 @@ jobs:
               TigerDuckTests/MoodleMaterialsWeekPageTests
               TigerDuckTests/MoodleMemberCommonCoursesScreenTests
               TigerDuckTests/MoodleNotificationSettingsScreenTests
+              TigerDuckTests/MoodleOpenInSettingTests
               TigerDuckTests/MoodleOwnProfileTests/doneUploadsOnce()
               TigerDuckTests/MoodleOwnProfileTests/theCameraButtonFollowsTheSite()
               TigerDuckTests/MoodleOwnProfileTests/theOwnRowSaysMe()
@@ -109,6 +113,7 @@ jobs:
               TigerDuckTests/TigerSyncLinksSectionTests
               TigerDuckTests/TimeSliderAccessibilityTests
               TigerDuckTests/TLSPinPromptTests
+              TigerDuckTests/TodayCourseCardLayoutTests
               TigerDuckTests/WhatsNewPagerTests
           # The watch app is a companion app with its own scheme and destination; Xcode pairs the
           # watch simulator with a phone one. The scheme builds the phone app for running only:

@@ -13,6 +13,7 @@ struct ClassroomTimeBar: View {
             dayMenu
             Spacer(minLength: 0)
             Text(EmptyClassroomDayText.timeRange(of: period))
+                .accessibilityLabel(EmptyClassroomDayText.spokenTimeRange(of: period))
                 .font(.subheadline.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(policy.secondaryTextColor)
@@ -111,7 +112,7 @@ struct PeriodChipRow: View {
     }
 
     private func accessibilityValue(_ index: Int) -> String {
-        let times = EmptyClassroomDayText.timeRange(of: index)
+        let times = EmptyClassroomDayText.spokenTimeRange(of: index)
         guard index == current else { return times }
         return "\(times), \(String(localized: "home_time_slider_now"))"
     }

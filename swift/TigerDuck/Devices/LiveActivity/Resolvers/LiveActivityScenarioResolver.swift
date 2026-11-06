@@ -64,7 +64,7 @@ struct LiveActivityScenarioResolver {
         LiveActivitySnapshot(
             scenario: .inClass,
             title: slot.title,
-            subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
+            subtitle: TimeRange.liveActivitySubtitle(slot.start.timeString, slot.end.timeString),
             locationText: slot.room,
             instructor: nonEmpty(slot.instructor),
             countdownTarget: slot.end,
@@ -81,7 +81,7 @@ struct LiveActivityScenarioResolver {
         LiveActivitySnapshot(
             scenario: .classPreparing,
             title: slot.title,
-            subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
+            subtitle: TimeRange.liveActivitySubtitle(slot.start.timeString, slot.end.timeString),
             locationText: slot.room,
             instructor: nonEmpty(slot.instructor),
             countdownTarget: slot.start,

@@ -101,20 +101,33 @@ final class MoodleFileDownloads {
         revision += 1
     }
 
+    nonisolated static let picturesFolder = "pictures"
+
     nonisolated func measure() async -> Int {
         let root = root
-        return await Task.detached { Self.totalBytes(in: root) }.value
+        return await Task.detached { Self.downloaded(in: root).reduce(0) { $0 + FileManager.default.bytes(at: $1) } }.value
     }
 
     func clear() async -> Int {
         cancelAll()
         let root = root
         let left = await Task.detached {
-            try? FileManager.default.removeItem(at: root)
-            return Self.totalBytes(in: root)
+            let downloaded = Self.downloaded(in: root)
+            for file in downloaded { try? FileManager.default.removeItem(at: file) }
+            return downloaded.reduce(0) { $0 + FileManager.default.bytes(at: $1) }
         }.value
         revision += 1
         return left
+    }
+
+    private nonisolated static func downloaded(in root: URL) -> [URL] {
+        let files = FileManager.default
+        let accounts = (try? files.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        return accounts.flatMap { account -> [URL] in
+            guard (try? account.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { return [account] }
+            let entries = (try? files.contentsOfDirectory(at: account, includingPropertiesForKeys: nil)) ?? []
+            return entries.filter { $0.lastPathComponent != picturesFolder }
+        }
     }
 
     func removeOutdated(_ files: [(file: MoodleFile, location: URL)]) {
@@ -130,19 +143,6 @@ final class MoodleFileDownloads {
             }
         }
         if changed { revision += 1 }
-    }
-
-    nonisolated static func totalBytes(in root: URL) -> Int {
-        let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey]
-        guard let files = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in true }
-        ) else { return 0 }
-        var total = 0
-        for case let url as URL in files {
-            guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true else { continue }
-            total += values.fileSize ?? 0
-        }
-        return total
     }
 
     private func transfer(
@@ -222,8 +222,27 @@ final class MoodleFileDownloads {
         lhs.timeIntervalSince1970.rounded() == rhs.timeIntervalSince1970.rounded()
     }
 
+    /// A leading dot would hide the file in the Files app.
     nonisolated static func safeName(_ name: String) -> String {
-        let cleaned = name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
-        return cleaned.allSatisfy { $0 == "." } ? "file" : cleaned
+        let cleaned = String(name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_").drop { $0 == "." })
+        guard !cleaned.isEmpty else { return "file" }
+        let (stem, suffix) = nameParts(cleaned)
+        return fileName(stem, suffix)
+    }
+
+    /// The stem and the extension with its dot; an extension longer than any real one stays in the
+    /// stem, where it can be shortened.
+    nonisolated static func nameParts(_ name: String) -> (stem: String, suffix: String) {
+        let suffix = (name as NSString).pathExtension
+        guard !suffix.isEmpty, suffix.utf8.count <= 32 else { return (name, "") }
+        return ((name as NSString).deletingPathExtension, "." + suffix)
+    }
+
+    /// POSIX `NAME_MAX` is 255 bytes, the limit of file systems such as ext4 that a shared copy may
+    /// land on, so the stem gives up whole characters to fit the ending.
+    nonisolated static func fileName(_ stem: String, _ ending: String) -> String {
+        var stem = stem
+        while !stem.isEmpty, stem.utf8.count + ending.utf8.count > 255 { stem.removeLast() }
+        return stem + ending
     }
 }

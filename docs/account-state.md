@@ -23,7 +23,8 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 |---|---|
 | School session cookies, the Moodle and SSO cookies | `AuthService.endSchoolSession(departing:)` and `MoodleTokenService.signOut()` |
 | Shared URL cache and the in-app browser's website data | `AccountSignOutCleanup.clearAllCachedPages`, in the sign-out calls a sign-in waits for |
-| The TigerDuck browser's website data, in a store of its own on disk, and the files it saved | `BrowserData.reset()`, the school's `AccountScoped` store, and at each sign-in in `AuthService.login`; what it could not remove the next browser clears before it loads (`browserDataState`) |
+| The TigerDuck browser's website data, in a store of its own on disk, and its downloads still in flight | `BrowserData.reset()`, the school's `AccountScoped` store, and at each sign-in in `AuthService.login`; what it could not remove the next browser clears before it loads (`browserDataState`) |
+| The TigerDuck browser's finished downloads, in the Documents folder the Files app shows, and their ledger (`saved_downloads.json`) | kept at a sign-out and an account switch, like the device's own files; the student deletes them in Files, or in the app (the downloads list or Storage), which deletes only a file that still matches its recorded SHA-256 (`SavedDownloads`); a ledger the app cannot decode is kept beside it under a new name, and one from a newer app is left as it is |
 | Delivered notifications of the account | `AuthService.logout()` and again at the end of the sign-out calls; School Mail's thread stays |
 | Answers shared between callers (Moodle enrolment, classroom usage, enrolled course numbers) | `AuthService.endSchoolSession(departing:)` |
 | Imported class tables of the account (`imported_class_tables.json`) | `ImportedClassTableStore.forgetAccount(in:)` deletes the file by name, and `removeAll()` empties the store in memory, both in `SignOutPlan.school(_:)` |
@@ -37,6 +38,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 | The backend's device registration | the unregister in the sign-out calls, sent with the kept session until it lands |
 | SwiftData | holds nothing: the models are value types the caches persist |
 | School Mail's cached pages, bodies and search index | `MailCache.clearAll()`, from School Mail's sign-out (`MailAccountManager.logout()`), which its next sign-in waits for |
+| The compose screen's recipient suggestions | nothing stored: `MailComposeContacts` ranks them in memory from School Mail's cached pages and holds them for the sign-in the screen opened in (`SignInBound`) |
 
 School Mail and the library are accounts of their own, with a session and a sign-out plan each,
 which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` and
@@ -115,7 +117,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `libraryStoredPasswordRefusals` | library | `swift/TigerDuck/Account/StoredPasswordLockoutBackoff.swift` `library` |
 | defaults | `libraryStoredPasswordRefusedAt` | library | `swift/TigerDuck/Account/StoredPasswordLockoutBackoff.swift` `library` |
 | defaults | `macConfiguredTabsData` | device |  |
-| defaults | `macMoodleOpenTarget` | device |  |
+| defaults | `moodleOpenTarget` | device |  |
 | defaults | `notificationSettingsPushPending` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSyncer.swift` `cancelPushes` |
 | defaults | `notificationSettingsPushSendsEveryField` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSync.swift` `forget` |
 | defaults | `notificationSettingsSyncedPreferences` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSync.swift` `forget` |
@@ -172,6 +174,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | cache | `picked_course_colors.json` | school | `swift/TigerDuck/Persistence/CourseColorFiles.swift` `forgetAccount` |
 | cache | `portal_links_*` | school | `swift/TigerDuck/Persistence/PortalLinkFiles.swift` `forgetAccount` |
 | cache | `score_report_*` | school | `swift/TigerDuck/Persistence/ScoreReportFiles.swift` `forgetAccount` |
+| cache | `saved_downloads.json` | device |  |
 | cache | `selection_dropped.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
 | cache | `server_dropped.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
 | cache | `user_added_courses.json` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
