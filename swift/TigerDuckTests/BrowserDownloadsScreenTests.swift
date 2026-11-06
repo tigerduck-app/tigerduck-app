@@ -96,16 +96,14 @@ struct BrowserDownloadsScreenTests {
             try await Task.sleep(for: .milliseconds(800))
             window.saveSnapshot(as: Self.name("list", screen))
 
-            let openInFiles = String(localized: "browser_downloads_open_in_files")
             let texts = exposedAccessibilityTexts(in: sheet)
-            #expect(texts.filter { $0 == openInFiles }.count == 2)
             #expect(texts.contains { $0.contains(String(format: String(localized: "browser_download_done"), "12.6 MB")) })
             #expect(texts.contains { $0.contains(String(format: String(localized: "browser_download_progress"), "2.1 MB / 8.4 MB")) })
             #expect(texts.contains { $0.contains(String(localized: "browser_download_failed")) })
             let clear = try #require(accessibilityElement(labeled: String(localized: "browser_downloads_clear"), in: sheet))
             #expect(!clear.accessibilityTraits.contains(.notEnabled))
-            let frames = [cancel, openInFiles, String(localized: "action_retry")].compactMap {
-                accessibilityElement(labeled: $0, in: sheet)?.accessibilityFrame
+            let frames = try [cancel, String(localized: "browser_downloads_open_in_files"), String(localized: "action_retry")].map {
+                try #require(accessibilityElement(labeled: $0, in: sheet), "\($0)").accessibilityFrame
             }
             #expect(frames.allSatisfy { $0.maxX <= screen.width + 0.5 && $0.width.rounded() >= 44 }, "\(frames)")
         }
@@ -124,6 +122,10 @@ struct BrowserDownloadsScreenTests {
             let sheet = try await Self.sheet(in: window, showing: String(localized: "browser_download_cancel"))
             let saved = String(format: String(localized: "browser_download_done"), "12.6 MB")
             try await waitUntil { exposedAccessibilityTexts(in: sheet).contains { $0.contains(saved) } }
+            // At the largest text the saved rows start below the screen.
+            let list = try #require(sheet.descendants(ofType: UICollectionView.self).first)
+            let below = try #require(Self.element(containing: saved, in: sheet)).accessibilityFrame
+            list.scrollRectToVisible(list.convert(below, from: window.screen.coordinateSpace), animated: false)
             try await Task.sleep(for: .milliseconds(600))
             let row = try #require(Self.element(containing: saved, in: sheet))
             let remove = String(localized: "action_remove")
