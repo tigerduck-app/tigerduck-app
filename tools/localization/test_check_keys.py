@@ -111,6 +111,15 @@ Repo(descriptionKey: "description_prop_key")
 '''
         self.assertEqual(set(keys_in(src)), {"title_prop_key", "description_prop_key"})
 
+    def test_a_static_property_is_no_argument_label(self):
+        src = '''
+struct OpenPass: OpenIntent { static let title: LocalizedStringResource = "static_title_key" }
+struct Row { static let height = 44; let nameKey: LocalizedStringResource }
+Section(title: "IMAP", value: 993)
+Row(nameKey: "row_name_key")
+'''
+        self.assertEqual(set(keys_in(src)), {"static_title_key", "row_name_key"})
+
     def test_key_held_in_a_plain_string_is_not_read(self):
         src = '''
 struct Repo { let descriptionKey: String }

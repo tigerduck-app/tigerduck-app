@@ -74,6 +74,7 @@ KEY_INITS = {
     "String": "localized",
 }
 LSK_TYPES = {"LocalizedStringKey"}
+STATIC_MODIFIER = re.compile(r"\b(?:static|class)\b")
 VALUE_TYPES = {"LocalizedStringResource", "String.LocalizationValue", "LocalizationValue"}
 
 
@@ -274,7 +275,9 @@ class Helpers:
     def _properties(self, text: str) -> None:
         for m in re.finditer(rf"\b(?:let|var)\s+({IDENT})\s*:\s*([\w.?]+)", text):
             kind = key_type(m.group(2))
-            if kind:
+            modifiers = max(text.rfind(c, 0, m.start()) for c in "\n;{}") + 1
+            # A type's own property, such as an App Intent's `static let title`, is no initialiser's label.
+            if kind and not STATIC_MODIFIER.search(text, modifiers, m.start()):
                 self.labels[m.group(1)] = kind
 
 
