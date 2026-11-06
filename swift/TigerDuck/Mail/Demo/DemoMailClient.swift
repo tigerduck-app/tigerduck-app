@@ -197,7 +197,9 @@ actor DemoMailClient: MailClient {
         (folders[folder] ?? []).contains { $0.messageID == messageID }
     }
 
-    func send(_ message: Data, from sender: String, to recipients: [String]) async throws {}
+    func send(
+        _ message: Data, from sender: String, to recipients: [String], unless isExpired: @escaping @MainActor () -> Bool
+    ) async throws {}
 
     private func find(folder: String, uid: UInt32) throws -> Stored {
         guard let stored = folders[folder]?.first(where: { $0.summary.uid == uid }) else {

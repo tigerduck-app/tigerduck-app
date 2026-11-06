@@ -24,8 +24,7 @@ enum MailComposeSending {
         _ send: Send, session: MailPageSession, services: MailComposeServices, signIn: SignIn
     ) async throws -> SentCopyFiler.Filing {
         try await session.use(for: signIn) { client -> SentCopyFiler.Filing in
-            guard !send.isExpired() else { throw CancellationError() }
-            try await client.send(send.message, from: send.from, to: send.recipients)
+            try await client.send(send.message, from: send.from, to: send.recipients, unless: send.isExpired)
             if let answered = send.answered {
                 try? await client.setFlag(.answered, on: true, folder: answered.folder, uids: [answered.uid], expectedUIDValidity: nil)
             }

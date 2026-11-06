@@ -261,6 +261,24 @@ struct MailSendHoldTests {
         #expect(rig.tasks.ended == 1)
     }
 
+    @Test func aGrantThatRunsOutWhileTheServerConnectsSendsNothingAndReopens() async throws {
+        let rig = Self.rig()
+        let fake = Compose.fake()
+        await fake.hold("send")
+        let model = await Self.written(fake)
+        rig.hold.hold(model)
+        try await rig.sleeper.waitUntilArmed()
+        await rig.sleeper.fire()
+        await fake.waitForArrival("send")
+        rig.tasks.expired = true
+        await fake.release("send")
+        try await waitUntil { rig.hold.deliveries == 1 }
+
+        #expect(await fake.sent.isEmpty)
+        #expect(rig.hold.takeReopened() === model)
+        #expect(model.error == String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError.generic.message)
+    }
+
     @Test func aMailFromAComposerOwnSessionIsSentAndReportedAndItsConnectionClosesAfter() async throws {
         let rig = Self.rig()
         let fake = Compose.fake()

@@ -44,7 +44,9 @@ protocol MailClient: Actor {
     func createFolder(_ name: String) async throws
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool
-    func send(_ message: Data, from sender: String, to recipients: [String]) async throws
+    func send(
+        _ message: Data, from sender: String, to recipients: [String], unless isExpired: @escaping @MainActor () -> Bool
+    ) async throws
 }
 
 extension MailClient {
