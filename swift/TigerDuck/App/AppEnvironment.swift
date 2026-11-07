@@ -183,6 +183,7 @@ final class AppEnvironment {
     private func runPendingMigrations() {
         SemesterAttributionCacheMigration.runIfNeeded()
         SyncedAccountSeedMigration.runIfNeeded(signedIn: authService.hasStoredCredentials)
+        HolidayEditTimeMoveMigration.runIfNeeded()
         CourseColorPickSeedMigration.runIfNeeded()
         StoredPasswordLatchRetryMigration.runIfNeeded()
         LibraryPasswordLatchRetryMigration.runIfNeeded()

@@ -34,15 +34,12 @@ final class AcademicCalendarStore: AccountScoped {
 
     func holidayEdit(_ holidayID: Int) -> (notify: Bool, madeAt: EditTime?) {
         let key = String(holidayID)
-        return (
-            optedInHolidayIDs.contains(holidayID),
-            Defaults[.holidayOverrideEditClocks][key] ?? Defaults[.holidayOverrideEditTimes][key].map { EditTime(wall: $0) }
-        )
+        return (optedInHolidayIDs.contains(holidayID), Defaults[.holidayOverrideEditClocks][key])
     }
 
     func forgetHolidayOverrides() {
         Defaults.reset(
-            .holidayNotifyOverrides, .holidayOverridesAwaitingUpload, .holidayOverrideEditTimes, .holidayOverrideEditClocks
+            .holidayNotifyOverrides, .holidayOverridesAwaitingUpload, .holidayOverrideEditClocks
         )
         lastHolidayEditAt = .distantPast
     }
@@ -111,7 +108,6 @@ final class AcademicCalendarStore: AccountScoped {
         Defaults[.holidayNotifyOverrides, for: signIn] = Array(ids).sorted()
         let madeAt = EditTime.now()
         lastHolidayEditAt = madeAt.wall
-        Defaults[.holidayOverrideEditTimes, for: signIn][String(holidayID)] = madeAt.wall
         Defaults[.holidayOverrideEditClocks, for: signIn][String(holidayID)] = madeAt
         return true
     }
@@ -145,7 +141,6 @@ final class AcademicCalendarStore: AccountScoped {
         guard merged != local else { return false }
         Defaults[.holidayNotifyOverrides, for: signIn] = merged.sorted()
         let replaced = Set(merged.symmetricDifference(local).map(String.init))
-        Defaults[.holidayOverrideEditTimes, for: signIn] = Defaults[.holidayOverrideEditTimes].filter { !replaced.contains($0.key) }
         Defaults[.holidayOverrideEditClocks, for: signIn] = Defaults[.holidayOverrideEditClocks].filter { !replaced.contains($0.key) }
         NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
         return true
@@ -155,7 +150,6 @@ final class AcademicCalendarStore: AccountScoped {
         guard signIn.isCurrent else { return }
         var ids = Set(Defaults[.holidayNotifyOverrides])
         if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }
-        Defaults[.holidayOverrideEditTimes, for: signIn][String(holidayID)] = nil
         Defaults[.holidayOverrideEditClocks, for: signIn][String(holidayID)] = nil
         guard ids != Set(Defaults[.holidayNotifyOverrides]) else { return }
         Defaults[.holidayNotifyOverrides, for: signIn] = ids.sorted()

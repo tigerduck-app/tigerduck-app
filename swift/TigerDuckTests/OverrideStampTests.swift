@@ -368,14 +368,13 @@ struct OverrideStampTests {
         try await withExclusiveRealDefaults {
             let saved = (
                 Defaults[.holidayNotifyOverrides], Defaults[.holidayOverridesAwaitingUpload],
-                Defaults[.holidayOverrideEditTimes], Defaults[.holidayOverrideEditClocks], Defaults[.cloudSyncEnabled]
+                Defaults[.holidayOverrideEditClocks], Defaults[.cloudSyncEnabled]
             )
             defer {
                 Defaults[.holidayNotifyOverrides, for: testSignIn] = saved.0
                 Defaults[.holidayOverridesAwaitingUpload, for: testSignIn] = saved.1
-                Defaults[.holidayOverrideEditTimes, for: testSignIn] = saved.2
-                Defaults[.holidayOverrideEditClocks, for: testSignIn] = saved.3
-                Defaults[.cloudSyncEnabled, for: testSignIn] = saved.4
+                Defaults[.holidayOverrideEditClocks, for: testSignIn] = saved.2
+                Defaults[.cloudSyncEnabled, for: testSignIn] = saved.3
             }
             Defaults[.cloudSyncEnabled, for: testSignIn] = true
             let baseURL = SettingsAPIStub.uniqueBaseURL()
