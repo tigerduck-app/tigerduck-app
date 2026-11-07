@@ -8,31 +8,35 @@ import Testing
 @MainActor
 struct ClassTablePeriodVisibilityTests {
     @Test func flippingTheToggle_widensTheGridWithoutAReload() async throws {
-        let saved = Defaults[.alwaysShowAllPeriods]
-        defer { Defaults[.alwaysShowAllPeriods] = saved }
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.alwaysShowAllPeriods]
+            defer { Defaults[.alwaysShowAllPeriods] = saved }
 
-        Defaults[.alwaysShowAllPeriods] = false
-        let viewModel = ClassTableViewModel()
-        #expect(viewModel.grid.activePeriods(withClubs: false).map(\.id) == AppConstants.Periods.defaultVisible)
+            Defaults[.alwaysShowAllPeriods] = false
+            let viewModel = ClassTableViewModel()
+            #expect(viewModel.grid.activePeriods(withClubs: false).map(\.id) == AppConstants.Periods.defaultVisible)
 
-        Defaults[.alwaysShowAllPeriods] = true
+            Defaults[.alwaysShowAllPeriods] = true
 
-        try await waitUntil { viewModel.grid.showsAllPeriods }
-        #expect(viewModel.grid.activePeriods(withClubs: false).map(\.id) == AppConstants.Periods.chronologicalOrder)
+            try await waitUntil { viewModel.grid.showsAllPeriods }
+            #expect(viewModel.grid.activePeriods(withClubs: false).map(\.id) == AppConstants.Periods.chronologicalOrder)
+        }
     }
 
     @Test func flippingTheToggle_clearsTheCellRoleCache() async throws {
-        let saved = Defaults[.alwaysShowAllPeriods]
-        defer { Defaults[.alwaysShowAllPeriods] = saved }
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.alwaysShowAllPeriods]
+            defer { Defaults[.alwaysShowAllPeriods] = saved }
 
-        Defaults[.alwaysShowAllPeriods] = false
-        let viewModel = ClassTableViewModel()
-        _ = viewModel.grid.cellRole(weekday: 1, periodIndex: 0, withClubs: false)
-        #expect(!viewModel.grid.cellRoleCache.isEmpty)
+            Defaults[.alwaysShowAllPeriods] = false
+            let viewModel = ClassTableViewModel()
+            _ = viewModel.grid.cellRole(weekday: 1, periodIndex: 0, withClubs: false)
+            #expect(!viewModel.grid.cellRoleCache.isEmpty)
 
-        Defaults[.alwaysShowAllPeriods] = true
+            Defaults[.alwaysShowAllPeriods] = true
 
-        try await waitUntil { viewModel.grid.cellRoleCache.isEmpty }
+            try await waitUntil { viewModel.grid.cellRoleCache.isEmpty }
+        }
     }
 
     /// Set from `withObservationTracking`'s `onChange`, which is `@Sendable`.
