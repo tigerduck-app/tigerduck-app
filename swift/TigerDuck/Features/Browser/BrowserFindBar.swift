@@ -46,6 +46,7 @@ struct BrowserFindBar: View {
             .browserGlass(in: Capsule())
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.bottom, focused ? TigerDuckTheme.Spacing.md : 0)
         .onAppear { focused = true }
         // The bar stays on screen while it slides away, and the keyboard goes down with it.
         .onChange(of: find.isActive) { _, active in if !active { focused = false } }
