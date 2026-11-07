@@ -105,27 +105,37 @@ struct OverrideStampTests {
     [{"id":"6F9619FF-8B86-D011-B42D-00C04FC964F5","attempts":0,"op":{"assignmentOverride":{"moodleCourseId":4242,"moodleAssignmentId":42,"localStatus":"ignored","stamp":811692800.5}}}]
     """#
 
-    @Test("An edit made while the send of an earlier edit of its field was out ages from that send's answer, and an older edit sent later does not")
-    func editMadeDuringAnEarlierSendAgesFromItsAnswer() async throws {
+    @Test("An edit made after the earlier send of its field went out ages from that send's end; one made before it went out, or older, keeps its own age")
+    func editMadeDuringAnEarlierSendAgesFromItsEnd() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let reply = SettingsAPIStub.StubResponse(statusCode: 200, body: Self.markReply)
-        for _ in 0..<3 { SettingsAPIStub.enqueue(reply, for: baseURL.appendingPathComponent("sync/assignments/42/override")) }
-        SettingsAPIStub.enqueue(reply, for: baseURL.appendingPathComponent("sync/assignments/43/override"))
-        let at = { (seconds: TimeInterval) in EditTime(wall: Date(timeIntervalSince1970: 1_790_000_000 + seconds)) }
-        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010))
+        let url = Self.url(.mark, baseURL)
+        for _ in 0..<4 { SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url) }
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010), step: 1)
         let client = Self.client(baseURL, clock: { clock.now() })
-        let mark = { (id: String, madeAt: EditTime) in
-            _ = try await client.patchAssignmentOverride(moodleAssignmentId: id, localStatus: "ignored", madeAt: madeAt, for: testSignIn)
-        }
 
-        try await mark("42", at(0))
-        clock.set(Date(timeIntervalSince1970: 1_790_000_012))
-        try await mark("42", at(5))
-        try await mark("43", at(5))
-        try await mark("42", at(-1))
+        try await Self.mark(0, on: client)
+        try await Self.mark(10.5, on: client)
+        try await Self.mark(11.5, on: client)
+        try await Self.mark(-1, on: client)
 
-        let ages = try SettingsAPIStub.requests(under: baseURL).map { try (Self.json($0)["age_ms"] as? NSNumber)?.int64Value }
-        #expect(ages == [10_000, 2_000, 7_000, 13_000])
+        #expect(try Self.sentAges(url) == [10_000, 1_000, 2_500, 17_000])
+    }
+
+    @Test("A retry of an edit that aged from an earlier send's end ages from it again")
+    func retryKeepsTheTimeItAgedFrom() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.url(.mark, baseURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url)
+        SettingsAPIStub.enqueue(.noReply, for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url)
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010), step: 1)
+        let client = Self.client(baseURL, clock: { clock.now() })
+
+        try await Self.mark(0, on: client)
+        await #expect(throws: URLError.self) { try await Self.mark(10.5, on: client) }
+        try await Self.mark(10.5, on: client)
+
+        #expect(try Self.sentAges(url) == [10_000, 1_000, 3_000])
     }
 
     @Test("An edit of a field waits for the earlier send of that field to be answered, and ages from that answer")
@@ -142,7 +152,7 @@ struct OverrideStampTests {
 
         let first = Task { try await Self.mark(0, on: client) }
         try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
-        let second = Task { try await Self.mark(5, on: client) }
+        let second = Task { try await Self.mark(11, on: client) }
         clock.set(Date(timeIntervalSince1970: 1_790_000_012))
         gate.open()
         try await first.value
@@ -157,14 +167,13 @@ struct OverrideStampTests {
         let url = Self.url(.mark, baseURL)
         SettingsAPIStub.enqueue(.noReply, for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url)
-        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010))
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010), step: 1)
         let client = Self.client(baseURL, clock: { clock.now() })
 
         await #expect(throws: URLError.self) { try await Self.mark(0, on: client) }
-        clock.set(Date(timeIntervalSince1970: 1_790_000_012))
-        try await Self.mark(5, on: client)
+        try await Self.mark(10.5, on: client)
 
-        #expect(try Self.sentAges(url) == [10_000, 2_000])
+        #expect(try Self.sentAges(url) == [10_000, 1_000])
     }
 
     @Test("The answer to an older edit of a field does not replace the answer to a newer one")
@@ -172,16 +181,14 @@ struct OverrideStampTests {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.url(.mark, baseURL)
         for _ in 0..<3 { SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url) }
-        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010))
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010), step: 1)
         let client = Self.client(baseURL, clock: { clock.now() })
 
         try await Self.mark(5, on: client)
-        clock.set(Date(timeIntervalSince1970: 1_790_000_011))
         try await Self.mark(0, on: client)
-        clock.set(Date(timeIntervalSince1970: 1_790_000_012))
-        try await Self.mark(7, on: client)
+        try await Self.mark(10.5, on: client)
 
-        #expect(try Self.sentAges(url) == [5_000, 11_000, 2_000])
+        #expect(try Self.sentAges(url) == [5_000, 12_000, 3_000])
     }
 
     @Test("An answer to one sign-in's edit does not age the next sign-in's edit of that field")
@@ -245,7 +252,7 @@ struct OverrideStampTests {
 
         let hide = Task { try await client.deleteCourse(courseKey: "client:1151:CS1001301", madeAt: at(0), for: testSignIn) }
         try await waitUntil { SettingsAPIStub.requests(under: baseURL).count == 1 }
-        let resetting = Task { try await client.deleteAllCourses(semester: "1151", madeAt: at(5), for: testSignIn) }
+        let resetting = Task { try await client.deleteAllCourses(semester: "1151", madeAt: at(11), for: testSignIn) }
         clock.set(Date(timeIntervalSince1970: 1_790_000_012))
         gate.open()
         try await hide.value
