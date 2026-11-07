@@ -16,6 +16,7 @@ struct MoodleFileRowTests {
             "SLIDES.PDF": "PDF",
             "Week 3 lecture notes.pptx": "PPTX",
             "data.7z": "7Z",
+            "Week 3 lecture.mp3": "MP3",
             "lab4.tar": "TAR",
             "lab4.tar.gz": "TGZ",
             "lab4.TAR.GZ": "TGZ",
@@ -30,9 +31,12 @@ struct MoodleFileRowTests {
         }
     }
 
-    @Test("a name without an extension of one to five ASCII letters or digits has no type")
+    @Test("a name without an extension of one to five ASCII letters or digits, one of them a letter, has no type")
     func noTypeLabel() {
-        for name in ["Makefile", "file.", "notes.markdown", ".bashrc", "slides.pdf?forcedownload=1", "report.ｐｄｆ", ""] {
+        for name in [
+            "Makefile", "file.", "notes.markdown", ".bashrc", "slides.pdf?forcedownload=1", "report.ｐｄｆ", "",
+            "Chapter 1.2", "lab4.001",
+        ] {
             #expect(MoodleFileKind.typeLabel(of: name) == nil, "\(name)")
         }
     }

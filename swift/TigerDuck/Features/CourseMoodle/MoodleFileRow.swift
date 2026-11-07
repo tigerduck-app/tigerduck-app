@@ -78,7 +78,7 @@ nonisolated enum MoodleFileKind: Equatable {
         let lowered = fileName.lowercased()
         if let tar = tarLabels.first(where: { lowered.hasSuffix($0.key) }) { return tar.value }
         let ext = (fileName as NSString).pathExtension
-        guard ext.wholeMatch(of: /[A-Za-z0-9]{1,5}/) != nil else { return nil }
+        guard ext.wholeMatch(of: /[A-Za-z0-9]{1,5}/) != nil, ext.contains(where: \.isLetter) else { return nil }
         return ext.uppercased()
     }
 }
