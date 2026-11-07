@@ -187,8 +187,8 @@ extension BrowserSiteSignIn {
         }
     }
 
-    /// What the browser loads to open `start`: its site's sign-in link where it has one, with the
-    /// host's cookies gone once they pass `BrowserSchoolSites.cookieBudget`.
+    /// What the browser loads to open `start`: its site's sign-in link where it has one, without the
+    /// cookies `BrowserSchoolSites.cookiesToDrop` names.
     static func opening(_ start: URL, for signIn: SignIn, in store: WKWebsiteDataStore) async -> URL {
         let opening = signIn.isDemo ? start : BrowserSchoolSites.signInLink(for: start) ?? start
         for cookie in BrowserSchoolSites.cookiesToDrop(from: await store.httpCookieStore.allCookies(), opening: opening) {
