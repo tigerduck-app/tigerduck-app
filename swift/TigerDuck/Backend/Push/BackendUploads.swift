@@ -39,7 +39,7 @@ final class BackendUploads {
         _ request: PushAPI.CourseUploadRequest,
         semester: String,
         resend: Bool,
-        addedAt stamp: Date?,
+        addedAt: EditTime?,
         for signIn: SignIn,
         while wanted: @escaping @MainActor () -> Bool
     ) async throws -> Bool {
@@ -52,7 +52,7 @@ final class BackendUploads {
             pausesAfterRefusal: true,
             for: signIn, while: wanted
         ) {
-            try await client.uploadCourses(request, addedAt: stamp, for: signIn)
+            try await client.uploadCourses(request, addedAt: addedAt, for: signIn)
         } == .sent
         if sent { onCoursesUploaded() }
         return sent

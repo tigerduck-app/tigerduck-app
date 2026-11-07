@@ -51,8 +51,6 @@ nonisolated struct BackendResponse: Sendable {
 
     var status: Int { http.statusCode }
 
-    var serverClock: Int64? { http.value(forHTTPHeaderField: BackendClient.clockHeader).flatMap(Int64.init) }
-
     func decoded<Response: Decodable>(_ type: Response.Type) throws -> Response {
         do {
             return try BackendClient.decoder.decode(type, from: data)
@@ -85,28 +83,34 @@ nonisolated struct BackendAuth: Sendable {
     static let none = BackendAuth.unbound { nil }
 }
 
-nonisolated struct ResendHeldError: Error {}
-
 nonisolated final class BackendClient: Sendable {
     static let apiVersion = "v4"
-    static let clockHeader = "X-TigerSync-Clock"
 
     let baseURL: @Sendable () -> URL
     private let session: URLSession
     private let auth: BackendAuth
     private let versionGate: APIVersionGate?
+    private let editClock: @Sendable () -> EditTime
+    typealias SendSpan = (edit: EditTime, start: EditTime, end: EditTime)
+    typealias SendEndObserver = @Sendable (_ key: String, _ span: SendSpan, _ signIn: SignIn) -> Void
+    private static let keptSpans = 32
+    private let sendSpans = OSAllocatedUnfairLock<(signIn: SignIn?, byKey: [String: [SendSpan]])>(initialState: (nil, [:]))
+    private let sendEndObservers = OSAllocatedUnfairLock<[SendEndObserver]>(initialState: [])
+    private let keyLocks = OSAllocatedUnfairLock<[String: AsyncSerialLock]>(initialState: [:])
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Backend.API")
 
     init(
         baseURL: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession = BackendClient.session,
         auth: BackendAuth = .none,
-        versionGate: APIVersionGate? = nil
+        versionGate: APIVersionGate? = nil,
+        editClock: @escaping @Sendable () -> EditTime = { EditTime.now() }
     ) {
         self.baseURL = baseURL
         self.session = session
         self.auth = auth
         self.versionGate = versionGate
+        self.editClock = editClock
     }
 
     func hasAuthSession() async -> Bool {
@@ -114,27 +118,84 @@ nonisolated final class BackendClient: Sendable {
     }
 
     func send(_ request: BackendRequest) async throws -> BackendResponse {
-        try await send(request, as: .first)
+        try await send(request, as: .first) { request }
     }
 
     func send<Response: Decodable>(_ request: BackendRequest, as type: Response.Type) async throws -> Response {
         try await send(request).decoded(type)
     }
 
-    @TaskLocal static var holdsResend: (@Sendable () async -> Bool)?
+    /// Sends a user's edit with its `age_ms`, measured once the request's token is in hand; the
+    /// backend stamps the edit with the time it arrives less that age. A send waits for the earlier
+    /// send of its `key`. An edit made after an earlier send of its key first went out ages from that
+    /// send's end, answered or failed, so it lands after it whatever the two sends' network delays.
+    /// The latest end, kept with a queued edit across a relaunch, of a send of its key made during.
+    @TaskLocal static var ageFloor: EditTime?
 
-    /// Sends an edit stamped with its own time. A 409 `clock_ahead` is answered once by stamping
-    /// it again one tick after the backend's clock, which that reply carries, unless
-    /// `holdsResend` holds it.
-    func sendStamped(
-        at stamp: Date, _ make: @Sendable (_ hlc: Int64) throws -> BackendRequest
-    ) async throws -> BackendResponse {
-        do {
-            return try await send(make(PushAPI.clock(of: stamp)))
-        } catch PushAPIError.clockAhead(let serverClock?) where serverClock < .max {
-            if await Self.holdsResend?() == true { throw ResendHeldError() }
-            return try await send(make(serverClock + 1))
+    /// Called as each stamped send ends, with its key and span, so an edit queued meanwhile can keep
+    /// the span's end past a relaunch.
+    func observeSendEnds(_ observer: @escaping SendEndObserver) {
+        sendEndObservers.withLock { $0.append(observer) }
+    }
+
+    static func floor(of edit: EditTime, raisedFrom floor: EditTime?, by span: SendSpan) -> EditTime? {
+        guard span.edit != edit, span.start.seconds(until: edit) >= 0, (floor ?? edit).seconds(until: span.end) > 0 else {
+            return nil
         }
+        return span.end
+    }
+
+    func sendStamped(
+        _ key: String, madeAt edit: EditTime, for signIn: SignIn,
+        _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
+    ) async throws -> BackendResponse {
+        let lock = keyLocks.withLock { locks in
+            if let lock = locks[key] { return lock }
+            let lock = AsyncSerialLock()
+            locks[key] = lock
+            return lock
+        }
+        await lock.acquire()
+        do {
+            let response = try await sendHolding(key, madeAt: edit, for: signIn, make)
+            await lock.release()
+            return response
+        } catch {
+            await lock.release()
+            throw error
+        }
+    }
+
+    private func sendHolding(
+        _ key: String, madeAt edit: EditTime, for signIn: SignIn,
+        _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
+    ) async throws -> BackendResponse {
+        let spans = sendSpans.withLock { $0.signIn == signIn ? $0.byKey[key] ?? [] : [] }
+        let floor = Self.ageFloor.flatMap { edit.seconds(until: $0) > 0 ? $0 : nil } ?? edit
+        let origin = spans.filter { $0.edit != edit && $0.start.seconds(until: edit) >= 0 }
+            .reduce(floor) { latest, span in latest.seconds(until: span.end) > 0 ? span.end : latest }
+        var started: EditTime?
+        // A send that failed with no answer may still have reached the backend, so it counts too.
+        defer {
+            if let started { remember(edit, startedAt: started, endedAt: editClock(), as: key, for: signIn) }
+        }
+        return try await send(try make(0), as: .first) {
+            let now = editClock()
+            if started == nil { started = now }
+            return try make(origin.ageMilliseconds(at: now))
+        }
+    }
+
+    private func remember(_ edit: EditTime, startedAt start: EditTime, endedAt end: EditTime, as key: String, for signIn: SignIn) {
+        let span: SendSpan = (edit, start, end)
+        sendSpans.withLock { state in
+            if state.signIn != signIn { state = (signIn, [:]) }
+            var spans = state.byKey[key] ?? []
+            spans.removeAll { start.seconds(until: $0.start) >= 0 && $0.end.seconds(until: end) >= 0 }
+            spans.append(span)
+            state.byKey[key] = Array(spans.suffix(Self.keptSpans))
+        }
+        for observer in sendEndObservers.withLock({ $0 }) { observer(key, span, signIn) }
     }
 
     private enum Attempt {
@@ -149,21 +210,26 @@ nonisolated final class BackendClient: Sendable {
         }
     }
 
-    private func send(_ request: BackendRequest, as attempt: Attempt) async throws -> BackendResponse {
-        var urlRequest = try makeURLRequest(request)
+    private func send(
+        _ shape: BackendRequest, as attempt: Attempt, building build: () throws -> BackendRequest
+    ) async throws -> BackendResponse {
+        var authorization: String?
         var sent: String?
         var signIn: SignIn?
-        if request.signIn?.isCurrent == false { throw PushAPIError.notSignedIn }
-        if request.authenticated {
+        if shape.signIn?.isCurrent == false { throw PushAPIError.notSignedIn }
+        if shape.authenticated {
             if let header = await auth.header(), !header.value.isEmpty {
-                if header.signIn != attempt.signIn(of: request) { throw PushAPIError.notSignedIn }
-                urlRequest.setValue(header.value, forHTTPHeaderField: "Authorization")
+                if header.signIn != attempt.signIn(of: shape) { throw PushAPIError.notSignedIn }
+                authorization = header.value
                 sent = header.value.split(separator: " ").last.map(String.init)
                 signIn = header.signIn
-            } else if !request.sendsWithoutSession {
+            } else if !shape.sendsWithoutSession {
                 throw PushAPIError.notSignedIn
             }
         }
+        let request = try build()
+        var urlRequest = try makeURLRequest(request)
+        if let authorization { urlRequest.setValue(authorization, forHTTPHeaderField: "Authorization") }
         let (data, response) = request.postsCredentials
             ? try await session.data(for: urlRequest, delegate: CredentialPostDelegate())
             : try await session.data(for: urlRequest)
@@ -173,9 +239,8 @@ nonisolated final class BackendClient: Sendable {
         let code = Self.errorCode(in: data)
         if http.statusCode == 401, request.authenticated, case .first = attempt, let sent, let signIn,
            await auth.recover(sent, code, signIn) {
-            return try await send(request, as: .replay(after401For: signIn))
+            return try await send(shape, as: .replay(after401For: signIn), building: build)
         }
-        if http.statusCode == 409, code == "clock_ahead" { throw PushAPIError.clockAhead(serverClock: answer.serverClock) }
         if http.statusCode == 409, code == "sync_revision_expired" { throw PushAPIError.syncRevisionExpired }
         if request.returnedStatuses.contains(http.statusCode) { return answer }
         let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""

@@ -49,7 +49,7 @@ struct BackendClientTests {
         let client = PushAPIClient(baseURLProvider: { base }, session: Self.stubSession(), authHeaderProvider: { "Bearer A0" })
 
         let reply = try await client.patchCourseOverride(
-            courseKey: "client:1151:AB/12", colorHex: "#FF6B6B", customName: nil, locale: nil, madeAt: Date(), for: testSignIn
+            courseKey: "client:1151:AB/12", colorHex: "#FF6B6B", customName: nil, locale: nil, madeAt: .now(), for: testSignIn
         )
 
         #expect(reply.applied == [.colorHex])

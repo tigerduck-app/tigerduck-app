@@ -424,6 +424,7 @@ struct SyncRaceTests {
         let body = try #require(SettingsAPIStub.requests(for: url).first.flatMap(SettingsAPIStub.bodyData(from:)))
         let sent = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect((sent["hlc"] as? NSNumber)?.int64Value == PushAPI.clock(of: fill.stamp))
+        #expect(sent["age_ms"] == nil)
         #expect(sent["color_hex"] as? String == "#FF6B6B")
         #expect(colors.map["CS1"] == Self.teal)
         let moved = try #require(colors.map["CS2"])

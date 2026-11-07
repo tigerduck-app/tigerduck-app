@@ -16,7 +16,7 @@ struct UnchangedUploadTests {
     private static func courses(_ entries: PushAPI.CourseUploadEntry..., adds: [String] = [])
         -> PushAPI.CourseUploadRequest {
         PushAPI.CourseUploadRequest(
-            courses: entries, handAddedCourses: adds.isEmpty ? nil : adds.map { PushAPI.CourseAdd(courseKey: $0, hlc: 1) }
+            courses: entries, handAddedCourses: adds.isEmpty ? nil : adds.map { PushAPI.CourseAdd(courseKey: $0) }
         )
     }
 
@@ -121,7 +121,7 @@ struct UnchangedUploadTests {
         #expect(backend.uploads == 1)
 
         #expect(try await coordinator.uploadCoursesIfChanged(
-            Self.courses(Self.entry("CS1"), adds: ["client:1151:CS1"]), semester: "1151", addedAt: Date(),
+            Self.courses(Self.entry("CS1"), adds: ["client:1151:CS1"]), semester: "1151", addedAt: .now(),
             for: testSignIn))
         #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", resend: true, for: testSignIn))
         coordinator.forgetUploads(semester: "1151")
@@ -220,7 +220,7 @@ struct UnchangedUploadTests {
             try await coordinator.uploadCoursesIfChanged(list, semester: "1151", resend: true, for: testSignIn)
         }
         #expect(try await coordinator.uploadCoursesIfChanged(
-            Self.courses(Self.entry("CS1"), adds: ["client:1151:CS1"]), semester: "1151", addedAt: Date(),
+            Self.courses(Self.entry("CS1"), adds: ["client:1151:CS1"]), semester: "1151", addedAt: .now(),
             for: testSignIn))
         coordinator.forgetUploads(semester: "1151")
         #expect(try await coordinator.uploadCoursesIfChanged(list, semester: "1151", for: testSignIn))

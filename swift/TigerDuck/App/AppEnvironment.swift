@@ -52,6 +52,7 @@ final class AppEnvironment {
     init() {
         let purge = FreshInstallKeychainPurge.runIfFreshInstall()
         if purge != .itemsLeft { BareKeychainItemMoveMigration.runIfNeeded() }
+        OutboxEditTimeFillMigration.runIfNeeded()
         DemoAccount.resumeAtLaunch(in: .school)
 
         let authService = AuthService(session: .school)
@@ -183,6 +184,8 @@ final class AppEnvironment {
     private func runPendingMigrations() {
         SemesterAttributionCacheMigration.runIfNeeded()
         SyncedAccountSeedMigration.runIfNeeded(signedIn: authService.hasStoredCredentials)
+        HolidayEditTimeMoveMigration.runIfNeeded()
+        SemesterResetClockSeedMigration.runIfNeeded()
         CourseColorPickSeedMigration.runIfNeeded()
         StoredPasswordLatchRetryMigration.runIfNeeded()
         LibraryPasswordLatchRetryMigration.runIfNeeded()

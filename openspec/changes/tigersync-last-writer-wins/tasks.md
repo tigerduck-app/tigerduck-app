@@ -31,18 +31,18 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 - [x] 2.7 Rewrite the tombstone conventions in `server/AGENTS.md` for both protocols; verify the pull request's CI passes and review finds the text matches the code
 - [x] 2.8 Make a removal of a school row clear only its `added_at`, and make a reset clear a hand-added row whose add it covers even when an override field is newer (design.md D10); verify tests for a removal arriving after the roster, both arrival orders, and a newer colour on an older hand-add
 - [x] 2.9 Refuse membership and override edits stamped at a covering reset too, not only before it (design.md D10); verify a test of a colour stamped at the reset arriving after it
+- [ ] 2.10 Stamp an edit sent with `age_ms` at its arrival less the age, clamped to 0 through 365 days, never refused as ahead, on every route that takes `hlc` (design.md D1, D5); verify tests for each route, both clamps and a retry with a larger age
 
 ## 3. Backend release
 
 - [ ] 3.1 Release the backend with groups 1 and 2 through its usual dev to main pull request, and have the owner deploy it; verify on the deployed backend that a response carries `X-TigerSync-Clock` and that a released iOS and Android build still sync a colour, a mark and a hide
 
-## 4. iOS PR: the clock and stamped edits
+## 4. iOS PR: edit ages
 
-- [ ] 4.1 Add `SyncClock` in `swift/TigerDuck/Backend/Sync/` with the stamping rule, its cap for a clock ahead of the backend (design.md D1) and its `Defaults` keys, assigned to the macOS build as root AGENTS.md requires; verify Swift Testing cases for the rule, two edits in one microsecond, a clock a minute ahead with and without a header heard, relaunch and a last seen value that never drops, and `python3 tools/check_macos_sources.py`
-- [ ] 4.5 On `409 clock_ahead`, re-stamp the edit at the refusal's `X-TigerSync-Clock` plus one tick and resend it, leaving the last issued value as it is (design.md D1); verify a test of an edit stamped before the first header that is refused, re-stamped and accepted
-- [ ] 4.2 Raise the last seen value from `X-TigerSync-Clock` in `PushAPIClient.execute`, and record the header with the device time it arrived, while protected data is readable; verify a test with a stub `URLProtocol` and one that ignores the header with protected data unavailable
-- [ ] 4.3 Stamp every outbox op through `SyncClock` and send its stamp as `hlc` on the override PATCHes and the course DELETE; keep the stored shape so queued entries send their queue time; verify tests on the request bodies and on an entry decoded from today's file format
-- [ ] 4.4 Send the edit's stamp on the holiday PUT, including from `retryUnacknowledgedHolidayOverrides`; verify a test that a retried PUT carries the original stamp
+- [x] 4.1 Add `EditTime` in `swift/TigerDuck/Backend/Sync/`, an edit's wall time and clock since boot, with its age at a send (design.md D1), assigned to the macOS build as root AGENTS.md requires; verify Swift Testing cases for an age within one boot though the time was set, across a restart, never negative, and `python3 tools/check_macos_sources.py`
+- [x] 4.2 Send `age_ms`, measured at every send and retry in `BackendClient.sendStamped`, in place of `hlc` on the override PATCHes, the holiday PUT, the course DELETE, the reset and the upload's `adds`, an edit made during an earlier send of its key aging from that send's answer; keep `hlc` for an automatic colour; remove the `409 clock_ahead` re-stamp; verify request tests for each write, a retry and an edit made while one is in flight
+- [x] 4.3 Keep each outbox entry's `EditTime` beside its stamp and a holiday setting's clock since boot, an entry in today's file format aging from its stamp by the wall clock; verify a test that decodes that format
+- [x] 4.4 Compare no device time with a backend time: know an own reset by the `reset_hlc` its DELETE answered, and keep queued course adds and hides through a reset made elsewhere for the backend to refuse or take; verify tests for each
 
 ## 5. iOS PR: per-field pull and unsent edits
 
@@ -73,7 +73,7 @@ tests run with the `TigerDuckTests` command in the root AGENTS.md. Android work 
 
 ## 10. Android (its maintainer, after group 3)
 
-- [ ] 10.1 Persist the clock with design.md D1's cap for a clock ahead, read `X-TigerSync-Clock`, and send `X-TigerSync-Protocol: 2` and each edit's stamp from `push/PushApiClient.kt` and `push/SyncApiClient.kt`; verify `./gradlew :app:testPlayDebugUnitTest`
+- [ ] 10.1 Send `X-TigerSync-Protocol: 2` and each edit's `age_ms` by design.md D1 from `push/PushApiClient.kt` and `push/SyncApiClient.kt`; verify `./gradlew :app:testPlayDebugUnitTest`
 - [ ] 10.2 Add a persisted queue of stamped unsent edits, one per field, kept while sync or the category is off; verify unit tests for an offline edit surviving a process restart
 - [ ] 10.3 Apply the snapshot per field (design.md D12) in `HomeBackendSync.pull`, rebuild `CourseSyncReconciler` on tombstones, kinds and resets, and remove the per-assignment conflict dialog; verify the reconciler tests cover each #689 case
 - [ ] 10.4 Pull before the school fetch in `HomeViewModel` and `BackgroundSyncWorker`; verify a unit test of the order

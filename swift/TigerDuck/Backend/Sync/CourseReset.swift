@@ -9,12 +9,13 @@ enum CourseReset {
         return (takesCourses && server > lastSeen, server)
     }
 
+    /// The backend refuses a queued add or hide older than the reset, so each one still queued keeps
+    /// its course here for the backend to settle.
     static func apply(
-        at resetAt: Date, courses: CourseStore, on coordinator: CloudSyncCoordinator, for signIn: SignIn,
+        fetchedAt: Date, courses: CourseStore, on coordinator: CloudSyncCoordinator, for signIn: SignIn,
         mayWrite: () -> Bool
-    ) async throws -> Set<String> {
-        let dropped = await coordinator.dropCourseEdits(madeBeforeReset: resetAt)
-        let adding = await coordinator.courseAddKeys(unlandedAt: resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin))
+    ) async throws {
+        let adding = await coordinator.courseAddKeys(unlandedAt: fetchedAt)
         let deleting = await coordinator.pendingCourseDeleteKeys()
         guard mayWrite() else { throw FullSyncAbandoned() }
         let added = adding.compactMap(CourseTombstone.parts(of:))
@@ -22,6 +23,5 @@ enum CourseReset {
             added.contains { $0.courseNo == course.courseNo && CourseStore.userAddedCourse(course, belongsTo: $0.semester) }
         }, for: signIn)
         courses.saveDeletedCourseNos(courses.loadDeletedCourseNos().filter(deleting.contains), for: signIn)
-        return dropped
     }
 }

@@ -64,7 +64,7 @@ struct CourseAddSyncTests {
 
     private static func deleteURL(_ backend: Backend, _ courseNo: String, kind: String? = nil) -> URL {
         backend.baseURL.appendingPathComponent("sync/courses/client:1151:\(courseNo)").appending(
-            queryItems: [URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: Self.hiddenAt)))]
+            queryItems: [URLQueryItem(name: "age_ms", value: "2000")]
                 + (kind.map { [URLQueryItem(name: "kind", value: $0)] } ?? [])
         )
     }
@@ -115,7 +115,8 @@ struct CourseAddSyncTests {
         #expect(json["force_keys"] == nil)
         let adds = json["adds"] as? [[String: Any]]
         #expect(adds?.compactMap { $0["course_key"] as? String } == ["client:1151:GE1010001"])
-        #expect(adds?.first?["hlc"] as? Int64 != nil)
+        #expect(adds?.first?["age_ms"] as? Int64 != nil)
+        #expect(adds?.first?["hlc"] == nil)
         let sent = (json["courses"] as? [[String: Any]])?.compactMap { $0["course_no"] as? String }
         #expect(sent == ["GE1010001"])
         #expect(await coordinator.courseAddKeys(unlandedAt: fetchedAt) == ["1151:GE1010001"])
@@ -282,10 +283,9 @@ struct CourseAddSyncTests {
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
     }
 
-    @Test("A reset made elsewhere wipes the hand-added and hidden courses but keeps those an add or hide made after it still sends")
-    func resetElsewhereKeepsTheCoursesOfLaterEdits() async throws {
-        let resetAt = Date().addingTimeInterval(-3600)
-        let early = resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin - 60)
+    @Test("A reset made elsewhere wipes the hand-added and hidden courses but keeps every one an add or hide queued here still sends, made before the reset or after it, for the backend to settle")
+    func resetElsewhereKeepsTheCoursesOfQueuedEdits() async throws {
+        let early = Date().addingTimeInterval(-7200)
         let courses = ["GE1010001", "GE2", "GE3"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }
         let cache = Self.makeCache(userAdded: courses, hidden: ["1151:PE4", "1151:PE5", "1151:PE6"])
         let outbox = SyncOutbox(directory: Self.freshDirectory())
@@ -295,10 +295,12 @@ struct CourseAddSyncTests {
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE5", stamp: early))
         let coordinator = Self.makeCoordinator(Backend(), cache: cache, outbox: outbox)
 
-        #expect(try await CourseReset.apply(at: resetAt, courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { true }) == ["1151:PE5"])
+        try await CourseReset.apply(fetchedAt: Date(), courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { true })
 
-        #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
-        #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
+        #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001", "GE2"])
+        #expect(cache.courses.loadDeletedCourseNos().sorted() == ["1151:PE4", "1151:PE5"])
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:PE4", "1151:PE5"])
+        #expect(await coordinator.courseAddKeys(unlandedAt: .distantFuture) == ["1151:GE1010001", "1151:GE2"])
         #expect(SchoolDataUploader.addedCourseUpload(semester: "1151", courseNo: "GE1010001", courses: cache.courses) != nil)
     }
 
@@ -308,7 +310,7 @@ struct CourseAddSyncTests {
         let coordinator = Self.makeCoordinator(Backend(), cache: cache)
 
         await #expect(throws: FullSyncAbandoned.self) {
-            try await CourseReset.apply(at: Date(), courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { false })
+            try await CourseReset.apply(fetchedAt: Date(), courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { false })
         }
 
         #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
@@ -372,6 +374,18 @@ struct CourseAddSyncTests {
 
         #expect(unlisted.hide == ["GE1010001"])
         #expect(unlisted.drop.isEmpty)
+    }
+
+    @Test("An empty term the backend reset drops a course added here whose add is not on its way, as an add older than the reset is refused",
+          arguments: [false, true])
+    func resetTermDropsAHandAddedCourseItDoesNotList(adding: Bool) {
+        let unlisted = CourseRosterReconciler.unlistedCourses(
+            in: "1151", listed: [], tombstoned: [], fetched: ["CS1001301"], handAdded: ["MA1010003"],
+            droppedMerges: [], hidden: [], adding: adding ? ["1151:MA1010003"] : [], termWasReset: true
+        )
+
+        #expect(unlisted.hide.isEmpty)
+        #expect(unlisted.drop == (adding ? [] : ["MA1010003"]))
     }
 
     @Test("An add the server keeps failing with 5xx spends its attempts and parks, so the ops behind it still go")

@@ -362,16 +362,18 @@ final class SyncConflicts {
 
     static func keepLocalCourses(
         _ terms: [(semester: String, fetched: [SDCourse], userAdded: [SDCourse])], hiding deletedNos: Set<String>,
-        on backend: some CourseSyncBackend, for signIn: SignIn
+        on backend: some CourseSyncBackend, for signIn: SignIn,
+        noteReset: (_ semester: String, _ resetClock: Int64?) -> Void = { _, _ in }
     ) async throws {
-        try await ReenableAnswer.keepLocalCourses(terms, hiding: deletedNos, on: backend, for: signIn)
+        try await ReenableAnswer.keepLocalCourses(terms, hiding: deletedNos, on: backend, for: signIn, noteReset: noteReset)
     }
 }
 
 protocol CourseSyncBackend {
-    func deleteAllCourses(semester: String?, madeAt: Date, for signIn: SignIn) async throws
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?, for signIn: SignIn) async throws
-    func deleteCourse(courseKey: String, kind: PushAPI.CourseDeleteKind?, madeAt: Date, for signIn: SignIn) async throws
+    @discardableResult
+    func deleteAllCourses(semester: String?, madeAt: EditTime, for signIn: SignIn) async throws -> Int64?
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: EditTime?, for signIn: SignIn) async throws
+    func deleteCourse(courseKey: String, kind: PushAPI.CourseDeleteKind?, madeAt: EditTime, for signIn: SignIn) async throws
 }
 
 extension PushCoordinator: CourseSyncBackend {}

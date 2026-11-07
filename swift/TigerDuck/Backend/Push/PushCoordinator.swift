@@ -34,7 +34,7 @@ struct PushDiagnostic: Sendable {
 @MainActor
 final class PushCoordinator {
     private let identity: PushIdentity
-    private let apiClient: PushAPIClient
+    let apiClient: PushAPIClient
     let ledger: SendLedger
     let registration: PushRegistrationService
     private let uploads: BackendUploads
@@ -147,25 +147,25 @@ final class PushCoordinator {
     }
 
     func patchAssignmentOverride(
-        moodleAssignmentId: String, localStatus: String, madeAt stamp: Date, for signIn: SignIn
+        moodleAssignmentId: String, localStatus: String, madeAt: EditTime, for signIn: SignIn
     ) async throws -> PushAPI.AssignmentOverrideResponse {
         try await apiClient.patchAssignmentOverride(
-            moodleAssignmentId: moodleAssignmentId, localStatus: localStatus, madeAt: stamp, for: signIn
+            moodleAssignmentId: moodleAssignmentId, localStatus: localStatus, madeAt: madeAt, for: signIn
         )
     }
 
     func patchCourseOverride(
         courseKey: String, colorHex: String? = nil, customName: String? = nil, locale: String? = nil,
-        ignoreAssignments: Bool? = nil, moodleCourseId: Int? = nil, madeAt stamp: Date, for signIn: SignIn
+        ignoreAssignments: Bool? = nil, moodleCourseId: Int? = nil, madeAt: EditTime, for signIn: SignIn
     ) async throws -> PushAPI.CourseOverrideResponse {
         try await apiClient.patchCourseOverride(
             courseKey: courseKey, colorHex: colorHex, customName: customName, locale: locale,
-            ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, madeAt: stamp, for: signIn
+            ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, madeAt: madeAt, for: signIn
         )
     }
 
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil, for signIn: SignIn) async throws {
-        try await apiClient.uploadCourses(request, addedAt: stamp, for: signIn)
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: EditTime? = nil, for signIn: SignIn) async throws {
+        try await apiClient.uploadCourses(request, addedAt: addedAt, for: signIn)
     }
 
     nonisolated static let unchangedUploadInterval = BackendUploads.unchangedUploadInterval
@@ -176,11 +176,11 @@ final class PushCoordinator {
     }
 
     func uploadCoursesIfChanged(
-        _ request: PushAPI.CourseUploadRequest, semester: String, resend: Bool = false, addedAt stamp: Date? = nil,
+        _ request: PushAPI.CourseUploadRequest, semester: String, resend: Bool = false, addedAt: EditTime? = nil,
         for signIn: SignIn, while wanted: @escaping @MainActor () -> Bool = { true }
     ) async throws -> Bool {
         try await uploads.uploadCoursesIfChanged(
-            request, semester: semester, resend: resend, addedAt: stamp, for: signIn, while: wanted
+            request, semester: semester, resend: resend, addedAt: addedAt, for: signIn, while: wanted
         )
     }
 
@@ -201,12 +201,12 @@ final class PushCoordinator {
         BackendUploads.fingerprint(of: request)
     }
 
-    func deleteAllCourses(semester: String? = nil, madeAt stamp: Date, for signIn: SignIn) async throws {
-        try await apiClient.deleteAllCourses(semester: semester, madeAt: stamp, for: signIn)
+    func deleteAllCourses(semester: String? = nil, madeAt: EditTime, for signIn: SignIn) async throws -> Int64? {
+        try await apiClient.deleteAllCourses(semester: semester, madeAt: madeAt, for: signIn)
     }
 
-    func deleteCourse(courseKey: String, kind: PushAPI.CourseDeleteKind?, madeAt stamp: Date, for signIn: SignIn) async throws {
-        try await apiClient.deleteCourse(courseKey: courseKey, kind: kind, madeAt: stamp, for: signIn)
+    func deleteCourse(courseKey: String, kind: PushAPI.CourseDeleteKind?, madeAt: EditTime, for signIn: SignIn) async throws {
+        try await apiClient.deleteCourse(courseKey: courseKey, kind: kind, madeAt: madeAt, for: signIn)
     }
 
     func refreshRegistrationAfterAuth() {

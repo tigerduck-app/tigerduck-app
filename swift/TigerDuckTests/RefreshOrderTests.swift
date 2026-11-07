@@ -18,7 +18,7 @@ struct RefreshOrderTests {
         }
 
         func uploadCoursesIfChanged(
-            _ request: PushAPI.CourseUploadRequest, semester: String, resend: Bool, addedAt stamp: Date?,
+            _ request: PushAPI.CourseUploadRequest, semester: String, resend: Bool, addedAt: EditTime?,
             for signIn: SignIn, while wanted: @escaping @MainActor () -> Bool
         ) async throws -> Bool {
             log.events.append("upload")

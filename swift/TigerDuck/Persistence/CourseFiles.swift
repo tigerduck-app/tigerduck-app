@@ -19,7 +19,7 @@ final class CourseFiles: AccountScoped {
             persistent.remove(name)
         }
         storage.folders.removeCacheFiles { $0.hasPrefix("courses_") }
-        Defaults.reset(.semesterResetAt)
+        Defaults.reset(.semesterResetAt, .semesterResetClocks)
     }
 
     /// The NTUST API returns `CourseName` and `CourseTeacher` in the request's language, so the
@@ -73,8 +73,13 @@ final class CourseFiles: AccountScoped {
         Defaults[.semesterResetAt]
     }
 
-    func recordSemesterReset(_ semester: String, at date: Date = Date(), for signIn: SignIn) {
+    func loadSemesterResetClocks() -> [String: Int64] {
+        Defaults[.semesterResetClocks]
+    }
+
+    func recordSemesterReset(_ semester: String, at date: Date = Date(), clock: Int64?, for signIn: SignIn) {
         Defaults[.semesterResetAt, for: signIn][semester] = date
+        Defaults[.semesterResetClocks, for: signIn][semester] = clock
     }
 
     func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = [], for signIn: SignIn) {
@@ -82,6 +87,7 @@ final class CourseFiles: AccountScoped {
         let kept = all.filter { owned.contains($0.key) || fetchedAt.timeIntervalSince($0.value) <= Self.semesterResetGrace }
         if kept.count != all.count {
             Defaults[.semesterResetAt, for: signIn] = kept
+            Defaults[.semesterResetClocks, for: signIn] = loadSemesterResetClocks().filter { kept[$0.key] != nil }
         }
     }
 

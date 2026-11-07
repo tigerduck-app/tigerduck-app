@@ -22,9 +22,9 @@ with no rows for the term and a tombstone for every course it held.
 - A reset tombstone does not bind the device that wrote it, by the backend's rule: the next
   roster upload lifts the reset tombstones of the keys it names. `/v4` names no device on a
   tombstone, so the reconcile skips one of kind `reset` whose `hlc`, the reset's stamp, is at or
-  before the moment this device's own reset of the term landed
-  (`CourseRosterReconciler.isOwnReset`), and keeps that moment while the snapshot still shows
-  such a tombstone.
+  before the `reset_hlc` the backend answered this device's own reset of the term with
+  (`ServerTombstone.isOwnReset`), and keeps that answer while the snapshot still shows such a
+  tombstone.
 - A single-course delete of a course the school lists for the term binds its author like every
   other device: the author hides it locally, its roster uploads leave it out, and the outbox
   sends the delete with `kind=hide`, so the backend hides it even when another device's add has
@@ -41,7 +41,10 @@ with no rows for the term and a tombstone for every course it held.
   when deleted here; its delete goes with no kind, which the backend takes as a removal of a
   `user_added` row and a hide of any other.
 - A term with no server rows (a first sync, or another device mid-reset) is uploaded from what
-  the tombstones leave visible, instead of being read as deleted elsewhere.
+  the tombstones leave visible, instead of being read as deleted elsewhere. Once the backend has
+  reset the term (`term_resets` or `courses_reset_hlc`), a course added here that it does not
+  list goes unless its add is still on its way, since the backend refuses an add older than the
+  reset.
 - The resetting device keeps the term in `resettingSemesters` across the DELETE and the local
   reset, and stamps the reset once the DELETE lands (`CourseFiles.recordSemesterReset`), so a
   snapshot fetched before then is never reconciled into the term.
@@ -70,19 +73,19 @@ with no rows for the term and a tombstone for every course it held.
   delete lands. Until then the server still lists it, and the reconcile keeps it hidden here for
   as long as its delete is queued (`CloudSyncCoordinator.pendingCourseDeleteKeys`). A hand-added
   course whose delete the outbox gives up on comes back, as nothing hides it.
-- The outbox sends a course delete with the time the hide was made (`hlc`), and a course add as
-  a protocol-2 upload of that course alone with its time in `adds`. The backend applies either
-  only when that time is later than the course's last add, hide and reset, so an edit that waited
-  in the outbox, or a retry after a lost reply, does not undo a newer one from another device
-  (tigerduck-app/tigerduck-app#689). One the backend refuses as ahead of its clock goes again
-  stamped one tick after the backend's clock. A delete reads its kind from this device's hides
+- The outbox sends a course delete with its age (`age_ms`), and a course add as a protocol-2
+  upload of that course alone with its age in `adds`; the backend stamps each with the time it
+  arrives less its age, which is when it was made. The backend applies either only when that
+  stamp is later than the course's last add, hide and reset, so an edit that waited in the
+  outbox, or a retry after a lost reply, does not undo a newer one from another device
+  (tigerduck-app/tigerduck-app#689). A delete reads its kind from this device's hides
   as it goes, so it waits while protected data is locked, and it is dropped unsent once course
   uploads are off, as an add is.
 - The backend takes every course an upload lists outside `adds` for the school's, and turns a
   `user_added` row it lists into a school row, which a delete with no kind then hides everywhere
   and a roster drops once a reset has cleared its add. So only the add's own upload and Use
   Local's list a course added by hand. Use Local names in `adds` each course added by hand on
-  this device (no Moodle ID, and not listed by the school here), stamped after its term's reset,
+  this device (no Moodle ID, and not listed by the school here), made after its term's reset answered,
   and sends a merged copy as the school's. A class table delete sends its delete alone.
 - Use Local's term resets clear the backend's custom names, so Use Local sends the names, and
   the colours, of every course this device holds again, hidden ones included. The backend holds

@@ -97,17 +97,17 @@ final class FullSyncRunner {
     }
 
     func settleQueuedCourseEdits(
-        deleting: Set<String>, reset: (apply: Bool, remember: Date), for signIn: SignIn
+        deleting: Set<String>, reset: (apply: Bool, remember: Date), fetchedAt: Date, for signIn: SignIn
     ) async throws -> Set<String> {
         guard reset.apply else { return deleting }
-        let dropped = try await CourseReset.apply(
-            at: reset.remember, courses: .shared, on: app.cloudSyncCoordinator, for: signIn,
+        try await CourseReset.apply(
+            fetchedAt: fetchedAt, courses: .shared, on: app.cloudSyncCoordinator, for: signIn,
             mayWrite: { self.mayWrite(for: signIn) }
         )
         SyncProgress.noteCoursesReset(reset.remember, for: signIn)
         app.localEdits.setRecentCourseDeletions([:], for: signIn)
         AppLogger.sync.info("[sync] courses reset detected (reset=\(String(describing: reset.remember), privacy: .public)), wiped local state")
-        return deleting.subtracting(dropped)
+        return deleting
     }
 
     private func run() async -> FullSyncOutcome {
@@ -193,7 +193,7 @@ final class FullSyncRunner {
         )
         let settled = try await Self.settleCourseEditsThenReadPolicy(
             fetchedDeletes, takingCourses: takesCourses,
-            settle: { try await self.settleQueuedCourseEdits(deleting: $0, reset: reset, for: signIn) },
+            settle: { try await self.settleQueuedCourseEdits(deleting: $0, reset: reset, fetchedAt: fetchedAt, for: signIn) },
             adds: { await coordinator.courseAddKeys(unlandedAt: fetchedAt) },
             mayWrite: { mayWrite(for: signIn) }, policy: { SyncPolicy.current }
         )

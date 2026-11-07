@@ -25,11 +25,7 @@ nonisolated enum PushAPNsEnv {
 nonisolated enum PushDeviceModel {
     static let current: String? = {
         #if os(macOS)
-        var size = 0
-        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else { return nil }
-        var buffer = [UInt8](repeating: 0, count: size)
-        guard sysctlbyname("hw.model", &buffer, &size, nil, 0) == 0 else { return nil }
-        return String(decoding: buffer.prefix { $0 != 0 }, as: UTF8.self)
+        return Sysctl.text(named: "hw.model")
         #else
         if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
             return simulated
@@ -149,9 +145,9 @@ actor PushRegistrationService {
     }
 
     func uploadHolidayOverride(
-        holidayID: Int, notify: Bool, madeAt stamp: Date, for signIn: SignIn
+        holidayID: Int, notify: Bool, madeAt: EditTime, for signIn: SignIn
     ) async throws -> PushAPI.HolidayOverrideResponse {
-        try await requests.apiClient.putHolidayOverride(holidayID: holidayID, notify: notify, madeAt: stamp, for: signIn)
+        try await requests.apiClient.putHolidayOverride(holidayID: holidayID, notify: notify, madeAt: madeAt, for: signIn)
     }
 
     func updateServerPushOptOut(_ optOut: Bool) async throws {

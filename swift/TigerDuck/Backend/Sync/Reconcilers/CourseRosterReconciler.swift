@@ -16,14 +16,15 @@ struct CourseRosterReconciler: CategoryReconciler {
         }
         return reconcileCourses(
             serverRows: pass.coursesArray, tombstones: pass.json["course_tombstones"] as? [[String: Any]] ?? [],
-            deleting: pass.courseDeletes, adding: pass.courseAdds, fetchedAt: pass.fetchedAt, for: pass.signIn
+            deleting: pass.courseDeletes, adding: pass.courseAdds, fetchedAt: pass.fetchedAt, snapshot: pass.json,
+            for: pass.signIn
         )
     }
 
     @discardableResult
     private func reconcileCourses(
         serverRows: [[String: Any]], tombstones: [[String: Any]], deleting queuedDeletes: Set<String>,
-        adding: Set<String>, fetchedAt: Date, for signIn: SignIn
+        adding: Set<String>, fetchedAt: Date, snapshot json: [String: Any], for signIn: SignIn
     ) -> Bool {
         let rowsBySemester = Dictionary(grouping: serverRows) { ($0["semester"] as? String) ?? "" }
             .filter { !$0.key.isEmpty }
@@ -46,8 +47,9 @@ struct CourseRosterReconciler: CategoryReconciler {
         }, for: signIn)
         let deleting = Set(app.localEdits.recentCourseDeletions.keys).union(queuedDeletes)
         let resetAt = CourseStore.shared.loadSemesterResetAt()
+        let resetClocks = CourseStore.shared.loadSemesterResetClocks()
         let ownResets = tombstonesBySemester.filter { semester, tombstones in
-            tombstones.contains { ServerTombstone($0).isOwnReset(landedAt: resetAt[semester]) }
+            tombstones.contains { ServerTombstone($0).isOwnReset(resetClock: resetClocks[semester]) }
         }
         CourseStore.shared.clearSemesterResets(outlivedBy: fetchedAt, keeping: Set(ownResets.keys), for: signIn)
 
@@ -57,7 +59,8 @@ struct CourseRosterReconciler: CategoryReconciler {
             let term = Self.readTerm(
                 semester, rows: rowsBySemester[semester] ?? [], tombstones: tombstonesBySemester[semester] ?? [],
                 selectionDropped: Set(selectionDropped[semester] ?? []), userAdded: userAdded, hidden: deletedNos,
-                adding: adding, resetLandedAt: resetAt[semester],
+                adding: adding, resetClock: resetClocks[semester],
+                termWasReset: CourseOverridesReconciler.coveringReset(json, semester: semester) != nil,
                 liveAnswer: studentId.flatMap { CourseSelectionService.lastAnswer(studentId: $0, semester: semester) },
                 courses: .shared
             )
@@ -147,7 +150,8 @@ struct CourseRosterReconciler: CategoryReconciler {
     static func readTerm(
         _ semester: String, rows termRows: [[String: Any]], tombstones: [[String: Any]],
         selectionDropped: Set<String>, userAdded: [SDCourse], hidden: Set<String>, adding: Set<String>,
-        resetLandedAt: Date? = nil, liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore
+        resetClock: Int64? = nil, termWasReset: Bool = false, liveAnswer: CourseSelectionService.LiveAnswer?,
+        courses: CourseStore
     ) -> TermRead {
         let droppedOnServer = CourseServerRows.droppedOnServer(termRows, liveAnswer: liveAnswer)
         let rows = CourseServerRows.keptRows(
@@ -159,7 +163,7 @@ struct CourseRosterReconciler: CategoryReconciler {
         let left = Set(fetched.map(\.courseNo)).subtracting(localCourses.map(\.courseNo))
         let read = tombstones.map(ServerTombstone.init)
         let tombstoned = read.compactMap { tombstone in
-            tombstone.isRemoval || tombstone.isOwnReset(landedAt: resetLandedAt) ? nil : tombstone.courseNo
+            tombstone.isRemoval || tombstone.isOwnReset(resetClock: resetClock) ? nil : tombstone.courseNo
         }
         let unlisted = unlistedCourses(
             in: semester, listed: serverNos, tombstoned: Set(tombstoned),
@@ -167,7 +171,7 @@ struct CourseRosterReconciler: CategoryReconciler {
             fetched: Set(localCourses.map(\.courseNo)),
             handAdded: Set(userAdded.filter { CourseStore.userAddedCourse($0, belongsTo: semester) }.map(\.courseNo)),
             droppedMerges: CourseServerRows.droppedMerges(userAdded, semester: semester, dropped: selectionDropped.union(droppedOnServer)),
-            hidden: hidden, adding: adding
+            hidden: hidden, adding: adding, termWasReset: termWasReset
         )
         return TermRead(
             rows: rows, serverNos: serverNos, localCourses: localCourses, left: left, unlisted: unlisted,
@@ -213,7 +217,8 @@ struct CourseRosterReconciler: CategoryReconciler {
         handAdded: Set<String>,
         droppedMerges: Set<String>,
         hidden: Set<String>,
-        adding: Set<String>
+        adding: Set<String>,
+        termWasReset: Bool = false
     ) -> (hide: Set<String>, drop: Set<String>) {
         let isGone = { (courseNo: String) in
             !listed.contains(courseNo) && !adding.contains(CourseTombstone.key(semester: semester, courseNo: courseNo))
@@ -222,7 +227,8 @@ struct CourseRosterReconciler: CategoryReconciler {
         let byTombstone = tombstoned.filter { isGone($0) && isShown($0) }
         let termMayNotHaveReachedServer = listed.isEmpty
         guard !termMayNotHaveReachedServer else {
-            return (byTombstone, droppedMerges.union(handAdded.intersection(removed)).filter(isGone))
+            let handAddedGone = termWasReset ? handAdded : handAdded.intersection(removed)
+            return (byTombstone, droppedMerges.union(handAddedGone).filter(isGone))
         }
         return (byTombstone.union(fetched.subtracting(removed).filter { isGone($0) && isShown($0) }), handAdded.filter(isGone))
     }

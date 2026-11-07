@@ -15,13 +15,7 @@ enum OutboxErrorPolicy {
 
     static func keepsWithoutAttempt(_ error: Error, for op: SyncOp) -> Bool {
         if case .courseAdd = op, case PushAPIError.httpStatus(_, _, _) = error { return false }
-        if case .courseDelete = op, isStampConflict(error) { return true }
         return keepsWithoutAttempt(error)
-    }
-
-    private static func isStampConflict(_ error: Error) -> Bool {
-        guard case PushAPIError.httpStatus(409, _, _) = error else { return false }
-        return true
     }
 
     static func keepsWithoutAttempt(_ error: Error) -> Bool {

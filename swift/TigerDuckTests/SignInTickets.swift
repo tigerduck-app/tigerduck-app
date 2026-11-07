@@ -1,4 +1,5 @@
 import Foundation
+import os
 @testable import TigerDuck
 
 /// The sign-ins of `testSignIn`, which no test ends.
@@ -43,10 +44,36 @@ extension PushAPIClient {
         session: URLSession? = nil,
         authHeaderProvider: @escaping @Sendable () async -> String?,
         versionGate: APIVersionGate? = nil,
-        signIns: SignInSeries = testSignIns
+        signIns: SignInSeries = testSignIns,
+        editClock: @escaping @Sendable () -> EditTime = { EditTime.testNow }
     ) {
         self.init(baseURLProvider: baseURLProvider, session: session, auth: .signedIn(in: signIns, authHeaderProvider),
-                  versionGate: versionGate)
+                  versionGate: versionGate, editClock: editClock)
+    }
+}
+
+extension EditTime {
+    /// Two seconds after the 1_790_000_000 most tests stamp their edits at, so the ages a test client
+    /// sends, and the URLs that carry them, are fixed.
+    static let testNow = EditTime(wall: Date(timeIntervalSince1970: 1_790_000_002))
+}
+
+nonisolated final class TestEditClock: Sendable {
+    private let state: OSAllocatedUnfairLock<(base: Date, reads: Int)>
+    private let step: TimeInterval
+
+    init(_ base: Date, step: TimeInterval = 0) {
+        state = OSAllocatedUnfairLock(initialState: (base, 0))
+        self.step = step
+    }
+
+    func set(_ base: Date) { state.withLock { $0 = (base, 0) } }
+
+    func now() -> EditTime {
+        state.withLock { state in
+            defer { state.reads += 1 }
+            return EditTime(wall: state.base.addingTimeInterval(Double(state.reads) * step))
+        }
     }
 }
 
@@ -68,7 +95,7 @@ extension SyncOutbox {
         holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
         execute: @Sendable (SyncOp) async throws -> Void
     ) async -> Bool {
-        await drain(for: testSignIn, holding: isHeld) { op, _ in try await execute(op) }
+        await drain(for: testSignIn, holding: isHeld) { op, _, _ in try await execute(op) }
     }
 }
 

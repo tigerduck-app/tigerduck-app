@@ -90,6 +90,13 @@ nonisolated enum SyncOp: Codable, Sendable {
         }
     }
 
+    var sendKey: String {
+        switch self {
+        case .assignmentOverride(_, let moodleAssignmentId, _, _): PushAPIClient.markKey(String(moodleAssignmentId))
+        case .courseOverride, .courseIgnore, .courseDelete, .courseAdd: PushAPIClient.courseWrites
+        }
+    }
+
     var stamp: Date {
         switch self {
         case .courseOverride(_, _, _, _, _, let stamp), .assignmentOverride(_, _, _, let stamp),
@@ -146,8 +153,36 @@ nonisolated struct OutboxEntry: Codable, Sendable {
     let op: SyncOp
     var attempts: Int
     var signIn: SignIn?
+    let madeAt: EditTime
+    var floor: EditTime? = nil
+
+    func withFloor(_ floor: EditTime?) -> OutboxEntry {
+        var entry = self
+        entry.floor = floor
+        return entry
+    }
+
+    mutating func raiseFloor(of key: String, after span: BackendClient.SendSpan) -> Bool {
+        guard op.sendKey == key, let raised = BackendClient.floor(of: madeAt, raisedFrom: floor, by: span) else { return false }
+        floor = raised
+        return true
+    }
 
     private enum CodingKeys: String, CodingKey {
-        case id, op, attempts
+        case id, op, attempts, madeAt, floor
+    }
+}
+
+nonisolated extension OutboxEntry {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        op = try container.decode(SyncOp.self, forKey: .op)
+        attempts = try container.decode(Int.self, forKey: .attempts)
+        signIn = nil
+        // At a launch while the phone is locked the outbox reads its files once they are readable,
+        // which can be before OutboxEditTimeFillMigration, which runs at launch, has filled them in.
+        madeAt = try container.decodeIfPresent(EditTime.self, forKey: .madeAt) ?? EditTime(wall: op.stamp)
+        floor = try container.decodeIfPresent(EditTime.self, forKey: .floor)
     }
 }

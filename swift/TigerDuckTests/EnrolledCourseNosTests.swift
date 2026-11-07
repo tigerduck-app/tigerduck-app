@@ -337,34 +337,32 @@ struct SelectionDropsTests {
         #expect(unlisted.drop == ["EE2005301"])
     }
 
-    @Test("A pull between this device's term reset and the roster after it hides none of the term's courses")
+    @Test("A pull between this device's term reset and the roster after it hides none of the term's courses, told by the reset time the backend answered")
     @MainActor
     func ownResetBindsNothingBeforeTheRoster() {
-        let resetMadeAt = Date(timeIntervalSince1970: 1_800_000_000)
-        let resetLandedAt = resetMadeAt.addingTimeInterval(0.4)
+        let resetClock: Int64 = 1_800_000_000_400_000
         let fetched: Set<String> = ["CS1001301", "MA1010003"]
-        let tombstones = { (kind: String, stamped: Date) -> [[String: Any]] in
+        let tombstones = { (kind: String, stamped: Int64) -> [[String: Any]] in
             fetched.sorted().map {
-                ["course_key": "client:1151:\($0)", "course_no": $0, "semester": "1151", "kind": kind,
-                 "hlc": PushAPI.clock(of: stamped)]
+                ["course_key": "client:1151:\($0)", "course_no": $0, "semester": "1151", "kind": kind, "hlc": stamped]
             }
         }
-        let read = { (tombstones: [[String: Any]], landedAt: Date?) in
+        let read = { (tombstones: [[String: Any]], ownReset: Int64?) in
             CourseRosterReconciler.readTerm(
                 "1151", rows: [], tombstones: tombstones, selectionDropped: [], userAdded: [], hidden: [], adding: [],
-                resetLandedAt: landedAt, liveAnswer: nil,
+                resetClock: ownReset, liveAnswer: nil,
                 courses: Self.makeCache(fetched: fetched.sorted(), userAdded: []).courses
             )
         }
 
-        let own = read(tombstones("reset", resetMadeAt), resetLandedAt)
+        let own = read(tombstones("reset", resetClock), resetClock)
         #expect(own.unlisted.hide.isEmpty)
         #expect(own.serverHoldsNothing)
         #expect(own.localCourses.map(\.courseNo) == fetched.sorted())
-        #expect(read(tombstones("reset", resetLandedAt.addingTimeInterval(30)), resetLandedAt).unlisted.hide == fetched)
-        #expect(read(tombstones("reset", resetMadeAt), nil).unlisted.hide == fetched)
-        #expect(read(tombstones("hide", resetMadeAt), resetLandedAt).unlisted.hide == fetched)
-        #expect(read(tombstones("remove", resetMadeAt), resetLandedAt).unlisted.hide.isEmpty)
+        #expect(read(tombstones("reset", resetClock + 30_000_000), resetClock).unlisted.hide == fetched)
+        #expect(read(tombstones("reset", resetClock), nil).unlisted.hide == fetched)
+        #expect(read(tombstones("hide", resetClock), resetClock).unlisted.hide == fetched)
+        #expect(read(tombstones("remove", resetClock), resetClock).unlisted.hide.isEmpty)
     }
 
     private static func tombstones(_ courseNos: [String], kind: String) -> [[String: Any]] {
@@ -420,16 +418,19 @@ struct SelectionDropsTests {
             let courses = Self.makeCache(fetched: [], userAdded: []).courses
             let (owned, other) = ("own-\(UUID().uuidString)", "other-\(UUID().uuidString)")
             let landedAt = Date()
-            courses.recordSemesterReset(owned, at: landedAt, for: testSignIn)
-            courses.recordSemesterReset(other, at: landedAt, for: testSignIn)
+            courses.recordSemesterReset(owned, at: landedAt, clock: 7, for: testSignIn)
+            courses.recordSemesterReset(other, at: landedAt, clock: 8, for: testSignIn)
 
             courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), keeping: [owned], for: testSignIn)
-            let left = courses.loadSemesterResetAt()
+            let left = (courses.loadSemesterResetAt(), courses.loadSemesterResetClocks())
             courses.clearSemesterResets(outlivedBy: landedAt.addingTimeInterval(120), for: testSignIn)
 
-            #expect(left[owned] == landedAt)
-            #expect(left[other] == nil)
+            #expect(left.0[owned] == landedAt)
+            #expect(left.1[owned] == 7)
+            #expect(left.0[other] == nil)
+            #expect(left.1[other] == nil)
             #expect(courses.loadSemesterResetAt()[owned] == nil)
+            #expect(courses.loadSemesterResetClocks()[owned] == nil)
         }
     }
 

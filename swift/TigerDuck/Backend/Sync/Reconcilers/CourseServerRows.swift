@@ -23,9 +23,9 @@ nonisolated struct ServerTombstone {
         hlc = (row["hlc"] as? NSNumber)?.int64Value
     }
 
-    func isOwnReset(landedAt resetLandedAt: Date?) -> Bool {
-        guard isReset, let resetLandedAt, let hlc else { return false }
-        return hlc <= PushAPI.clock(of: resetLandedAt)
+    func isOwnReset(resetClock: Int64?) -> Bool {
+        guard isReset, let resetClock, let hlc else { return false }
+        return hlc <= resetClock
     }
 }
 
