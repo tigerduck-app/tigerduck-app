@@ -63,6 +63,17 @@ struct BrowserSchoolSitesTests {
         #expect(BrowserSchoolSites.cookiesToDrop(from: jar, opening: start).isEmpty)
     }
 
+    @Test func aSignInLinkIsOnlyAtItsHostsDefaultPortWithNoUser() {
+        #expect(BrowserSchoolSites.isSignInLink(Self.url("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login")))
+        for address in [
+            "https://sa02.ntust.edu.tw:8443/WebCounseling/OAuth2/Login",
+            "https://user@sa02.ntust.edu.tw/WebCounseling/OAuth2/Login",
+            "https://user:secret@sa02.ntust.edu.tw/WebCounseling/OAuth2/Login",
+        ] {
+            #expect(!BrowserSchoolSites.isSignInLink(Self.url(address)), "\(address)")
+        }
+    }
+
     @Test func courseQueryOpensThroughItsSignInButtonsAddress() {
         let link = BrowserSchoolSites.signInLink(for: Self.url("https://querycourse.ntust.edu.tw/QueryCourse/"))
         #expect(link?.absoluteString

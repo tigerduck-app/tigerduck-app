@@ -34,7 +34,8 @@ nonisolated enum BrowserSchoolSites {
 
     /// Whether `url` is one of the sign-in links ``signInLink(for:)`` gives, whatever its query.
     static func isSignInLink(_ url: URL) -> Bool {
-        guard url.scheme?.lowercased() == "https", let host = BrowserRouting.host(of: url) else { return false }
+        guard url.scheme?.lowercased() == "https", url.port == nil, url.user == nil, url.password == nil,
+              let host = BrowserRouting.host(of: url) else { return false }
         let path = url.path(percentEncoded: true).lowercased()
         return signInLinks.contains { BrowserRouting.host(of: $0) == host && $0.path(percentEncoded: true).lowercased() == path }
     }
