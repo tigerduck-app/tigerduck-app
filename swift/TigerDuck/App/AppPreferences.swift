@@ -1,5 +1,6 @@
 import Defaults
 import SwiftUI
+import TigerDuckCore
 
 @MainActor
 @Observable
@@ -26,6 +27,40 @@ final class AppPreferences {
     var accentColorHex: Int {
         get { toggles.accentColorHex }
         set { toggles.accentColorHex = newValue }
+    }
+    var accent: AccentGradient {
+        get { AccentGradient.saved(toggles.accentGradient, accentHex: toggles.accentColorHex) }
+        set {
+            toggles.accentGradient = newValue.isGradient ? newValue : nil
+            toggles.accentColorHex = newValue.first
+        }
+    }
+    var accentGradientOnWidgets: Bool {
+        get { toggles.accentGradientOnWidgets }
+        set { toggles.accentGradientOnWidgets = newValue }
+    }
+    var accentGradientOnWatch: Bool {
+        get { toggles.accentGradientOnWatch }
+        set { toggles.accentGradientOnWatch = newValue }
+    }
+    var accentGradientOnLiveActivities: Bool {
+        get { toggles.accentGradientOnLiveActivities }
+        set { toggles.accentGradientOnLiveActivities = newValue }
+    }
+
+    struct DeviceAccents: Equatable {
+        var widgets: AccentGradient?
+        var watch: AccentGradient?
+        var liveActivities: AccentGradient?
+    }
+
+    var deviceAccents: DeviceAccents {
+        let gradient = accent.isGradient ? accent : nil
+        return DeviceAccents(
+            widgets: accentGradientOnWidgets ? gradient : nil,
+            watch: accentGradientOnWatch ? gradient : nil,
+            liveActivities: accentGradientOnLiveActivities ? gradient : nil
+        )
     }
     var moodleOpenTarget: MoodleOpenTarget {
         get { toggles.moodleOpenTarget }
@@ -164,6 +199,10 @@ final class AppPreferences {
     #endif
 
     var accentColor: Color { Self.accentColor(hex: accentColorHex) }
+
+    var accentStyle: AnyShapeStyle { accent.shapeStyle(color: Self.accentColor(hex:)) }
+
+    var accentTint: AnyShapeStyle { accent.tintStyle(color: Self.accentColor(hex:)) }
 
     static func accentColor(hex: Int) -> Color {
         let rgb = Int(UInt(bitPattern: hex) & 0xFFFFFF)

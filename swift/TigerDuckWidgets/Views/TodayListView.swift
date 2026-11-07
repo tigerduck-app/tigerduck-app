@@ -249,11 +249,11 @@ struct TodayTimelineView: View {
     private func nowLine(_ minute: Int, width: CGFloat) -> some View {
         ZStack(alignment: .leading) {
             Rectangle()
-                .fill(palette.highlight)
+                .fill(palette.highlightFill)
                 .frame(width: width - gutter, height: 2)
                 .offset(x: gutter)
             Circle()
-                .fill(palette.highlight)
+                .fill(palette.highlightFill)
                 .frame(width: 8, height: 8)
                 .offset(x: gutter - 4)
             Text(String(format: "%02d:%02d", minute / 60, minute % 60))

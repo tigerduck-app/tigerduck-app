@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 nonisolated struct LiveActivitySnapshot: Codable, Equatable, Hashable, Sendable {
     let scenario: LiveActivityScenarioKind
@@ -18,6 +19,7 @@ nonisolated struct LiveActivitySnapshot: Codable, Equatable, Hashable, Sendable 
     /// so an unchanged class encodes as before and the server passes the keys on untouched.
     var roomChanged: Bool? = nil
     var timeChanged: Bool? = nil
+    var accentGradient: AccentGradient? = nil
 
     /// activity and the follow-up inClass activity are distinct as far as
     /// ActivityKit is concerned — PTS cannot update an existing activity, so

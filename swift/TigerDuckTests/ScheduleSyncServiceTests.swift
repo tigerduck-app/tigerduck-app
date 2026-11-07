@@ -93,6 +93,27 @@ struct ScheduleSyncServiceTests {
         #expect(events.isEmpty)
     }
 
+    @Test("Every event carries the gradient the inputs give it, and none without")
+    func theGradientReachesEveryEvent() throws {
+        let ctx = Self.context()
+        let course = Self.makeCourse(
+            courseNo: "CS202", name: "Compilers", weekdayToPeriods: [2: ["3", "4"]], context: ctx
+        )
+        let now = Self.tuesdayAt(8)
+        let end = now.addingTimeInterval(48 * 3600)
+        var inputs = Self.defaultInputs(courses: [course])
+        let plain = ScheduleSyncService.buildEvents(inputs: inputs, now: now, horizonEnd: end)
+        let gradient = try #require(AccentGradient(stops: [0x4A90E2, 0xD61F45], style: .radial))
+        inputs.accentGradient = gradient
+
+        let tinted = ScheduleSyncService.buildEvents(inputs: inputs, now: now, horizonEnd: end)
+
+        #expect(!plain.isEmpty)
+        #expect(plain.allSatisfy { $0.snapshot.accentGradient == nil })
+        #expect(tinted.map(\.sourceId) == plain.map(\.sourceId))
+        #expect(tinted.allSatisfy { $0.snapshot.accentGradient == gradient && $0.snapshot.accentHex == 0x4A90E2 })
+    }
+
     @Test func unavailableLiveActivity_uploadsNoEvents() async {
         let ctx = Self.context()
         let course = Self.makeCourse(

@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TigerDuckCore
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -20,6 +21,7 @@ final class ScheduleSyncService {
         var nextTerm: (code: String, courses: [SDCourse])?
         var calendar: AcademicCalendar = .empty
         var optedInHolidayIDs: Set<Int> = []
+        var accentGradient: AccentGradient?
     }
 
     private let identity: PushIdentity
@@ -87,6 +89,12 @@ final class ScheduleSyncService {
     ) -> [PushAPI.ScheduleEvent] {
         guard inputs.liveActivityAvailable else { return [] }
 
+        func tinted(_ snapshot: LiveActivitySnapshot) -> LiveActivitySnapshot {
+            var snapshot = snapshot
+            snapshot.accentGradient = inputs.accentGradient
+            return snapshot
+        }
+
         var events: [PushAPI.ScheduleEvent] = []
 
         let resolver = timelineResolver ?? CourseTimelineResolver()
@@ -116,7 +124,7 @@ final class ScheduleSyncService {
                         sourceId: snapshot.sourceId,
                         scenario: .classPreparing,
                         fireAt: AppClock.realTime(forApp: fireAt),
-                        snapshot: snapshot
+                        snapshot: tinted(snapshot)
                     ))
                 }
             }
@@ -131,7 +139,7 @@ final class ScheduleSyncService {
                     sourceId: snapshot.sourceId,
                     scenario: .inClass,
                     fireAt: AppClock.realTime(forApp: slot.start),
-                    snapshot: snapshot
+                    snapshot: tinted(snapshot)
                 ))
             }
         }
@@ -156,7 +164,7 @@ final class ScheduleSyncService {
                     sourceId: snapshot.sourceId,
                     scenario: .assignmentUrgent,
                     fireAt: AppClock.realTime(forApp: fireAt),
-                    snapshot: snapshot
+                    snapshot: tinted(snapshot)
                 ))
             }
         }
@@ -216,6 +224,7 @@ extension ScheduleSyncService.Inputs {
         preferences: LiveActivityPreferencesStore,
         cloudSyncEnabled: Bool,
         accentHex: Int,
+        accentGradient: AccentGradient? = nil,
         calendar: AcademicCalendar,
         optedInHolidayIDs: Set<Int>
     ) {
@@ -237,6 +246,7 @@ extension ScheduleSyncService.Inputs {
             calendar: calendar,
             optedInHolidayIDs: optedInHolidayIDs
         )
+        self.accentGradient = accentGradient
         let later = CourseSelectionService.semesterCode(on: now.addingTimeInterval(ScheduleSyncService.horizon), calendar: calendar)
         if later != term { nextTerm = (later, courses(later)) }
     }

@@ -56,18 +56,19 @@ struct ArchiveScreensTests {
         }
     }
 
-    @Test("a folder of an archive lists its files with their dates and sizes", arguments: looks)
+    @Test("a folder of an archive lists its files with their dates, sizes and types", arguments: looks)
     func folder(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
             let (browser, session) = try Self.browser("lab4_starter.zip", path: [ArchiveFolder(path: "docs", name: "docs")])
             defer { try? FileManager.default.removeItem(at: session) }
-            let window = try ClubScreensTests.show(browser, look: look)
+            let window = try ClubScreensTests.show(browser, look: look, height: 1200)
             defer { window.isHidden = true }
             try await waitUntil { accessibilityElement(labeled: "protocol.pdf", in: window) != nil }
             try await Self.save(window, "folder", look, title: "docs")
 
             let pdf = try #require(accessibilityElement(labeled: "protocol.pdf", in: window))
             #expect(pdf.accessibilityValue?.contains("11/03") == true || pdf.accessibilityValue?.contains("2026") == true)
+            #expect(pdf.accessibilityValue?.hasSuffix(" · PDF") == true)
             try Self.staysInWindow(["diagram.png", "protocol.pdf", "report_template.docx", "rubric.pdf"], in: window)
         }
     }

@@ -54,7 +54,8 @@ nonisolated extension SettingsRow {
     var place: SettingsPlace {
         switch self {
         case .schoolAccount, .libraryAccount, .mailAccount: .section(.account)
-        case .accentColor, .visualPreset, .colorTheme, .tabBar: .section(.appearance)
+        case .accentColor, .accentGradientOnWidgets, .accentGradientOnWatch, .accentGradientOnLiveActivities,
+             .visualPreset, .colorTheme, .tabBar: .section(.appearance)
         case .tigerSync: .section(.tigerSync)
         case .notificationPermissions: .section(.notificationPermissions)
         case .language: .section(.language)

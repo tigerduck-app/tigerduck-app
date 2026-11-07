@@ -2,7 +2,8 @@ import SwiftUI
 
 nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
     case schoolAccount, libraryAccount, mailAccount
-    case accentColor, visualPreset, colorTheme, tabBar
+    case accentColor, accentGradientOnWidgets, accentGradientOnWatch, accentGradientOnLiveActivities
+    case visualPreset, colorTheme, tabBar
     case tigerSync
     case notificationPermissions
     case language
@@ -27,6 +28,9 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
         case .libraryAccount: "settings_account_library_system"
         case .mailAccount: "school_mail_account_title"
         case .accentColor: "settings_accent_color"
+        case .accentGradientOnWidgets: "settings_accent_gradient_on_widgets"
+        case .accentGradientOnWatch: "settings_accent_gradient_on_watch"
+        case .accentGradientOnLiveActivities: "settings_accent_gradient_on_live_activities"
         case .visualPreset: "settings_visual_preset_label"
         case .colorTheme: "settings_color_theme"
         case .tabBar: "tab_editor_title"
