@@ -157,12 +157,13 @@ struct CourseDeleteSyncTests {
         #expect(await outbox.parkedSnapshot().isEmpty)
     }
 
-    @Test("A term reset goes with its age and hands back the reset time the backend answered")
-    func termResetHandsBackItsResetTime() async throws {
+    @Test("A term reset goes with its age and hands back the reset time the backend answered, none when it kept a newer reset",
+          arguments: [true, false])
+    func termResetHandsBackItsResetTime(applied: Bool) async throws {
         let backend = Backend()
         backend.answer(
             "sync/courses?semester=1151&age_ms=2000",
-            .init(statusCode: 200, body: Data(#"{"deleted":1,"applied":true,"reset_hlc":1790000000000000}"#.utf8))
+            .init(statusCode: 200, body: Data(#"{"deleted":1,"applied":\#(applied),"reset_hlc":1790000000000000}"#.utf8))
         )
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
@@ -173,7 +174,7 @@ struct CourseDeleteSyncTests {
 
         let resetClock = try await client.deleteAllCourses(semester: "1151", madeAt: EditTime(wall: Self.hiddenAt), for: testSignIn)
 
-        #expect(resetClock == 1_790_000_000_000_000)
+        #expect(resetClock == (applied ? 1_790_000_000_000_000 : nil))
         #expect(backend.requests("sync/courses?semester=1151&age_ms=2000").map(\.httpMethod) == ["DELETE"])
     }
 

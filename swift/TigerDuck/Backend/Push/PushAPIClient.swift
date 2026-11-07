@@ -178,7 +178,8 @@ final class PushAPIClient: Sendable {
         }
     }
 
-    /// The reset time the backend answered (`reset_hlc`), which its reset tombstones carry.
+    /// The reset time the backend answered (`reset_hlc`), which its reset tombstones carry; none when
+    /// it kept a newer reset, whose time the answer carries instead.
     func deleteAllCourses(semester: String? = nil, madeAt: EditTime, for signIn: SignIn) async throws -> Int64? {
         let answer = try await backend.sendStamped(["reset:\(semester ?? "")"], madeAt: madeAt, for: signIn) { age in
             var request = BackendRequest("DELETE", "sync", "courses").sent(for: signIn)
@@ -186,7 +187,13 @@ final class PushAPIClient: Sendable {
                 + [URLQueryItem(name: "age_ms", value: String(age))]
             return request
         }
-        return ((try? answer.jsonObject())?["reset_hlc"] as? NSNumber)?.int64Value
+        let json = try? answer.jsonObject()
+        guard json?["applied"] as? Bool != false else { return nil }
+        guard let resetClock = (json?["reset_hlc"] as? NSNumber)?.int64Value else {
+            logger.error("Push.API term reset answered without reset_hlc")
+            return nil
+        }
+        return resetClock
     }
 
     /// The backend reads `kind=remove` as taking back a hand-add, which hides the course nowhere, and
