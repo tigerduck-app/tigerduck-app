@@ -80,7 +80,8 @@ a backend time anywhere (owner's decision of 2026-11-07, replacing the device cl
   ended, answered or failed. An edit counts its age from the latest end among the spans of other
   edits that started before it was made, so an edit made while another was in flight lands after
   it whatever the two network delays (`BackendClient.sendStamped`). The spans belong to the
-  sign-in that sent them. Every course write
+  sign-in that sent them. As a span ends, an outbox entry or holiday setting of its key made since
+  it started keeps the span's end as a floor saved with it, so it ages from there after a relaunch. Every course write
   and term reset shares one key, as a reset clears what was stamped before it. The age is read
   once the request's token is in hand, after any refresh it waited on.
 - Responses keep `X-TigerSync-Clock`, `server_hlc`, `reset_hlc` and every `*_hlc`, for
