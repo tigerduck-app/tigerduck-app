@@ -74,19 +74,35 @@ struct BrowserSiteSignIn {
     /// nothing unless the fields share one form that posts to the page's own origin, and the
     /// password only beside the stored student id, never beside one the student typed.
     nonisolated static let fill = """
-    if (location.origin !== origin || location.pathname !== path) return false;
     const field = (name) => Array.prototype.find.call(
       document.getElementsByName(name), (element) => element instanceof HTMLInputElement && element.form !== null);
-    const id = field(studentIdField), secret = passwordField === null ? null : field(passwordField);
-    if (!id || (passwordField !== null && (!secret || secret.type !== 'password' || secret.form !== id.form))) return false;
-    if (new URL(id.form.action).origin !== origin) return false;
-    const fills = secret && (!id.value || id.value === studentId) ? [[id, studentId], [secret, password]] : [[id, studentId]];
-    for (const [element, value] of fills) {
-      if (element.value) continue;
+    const formAction = Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, 'action').get;
+    const controlAction = (element) => Object.getOwnPropertyDescriptor(
+      element instanceof HTMLButtonElement ? HTMLButtonElement.prototype : HTMLInputElement.prototype, 'formAction').get;
+    const checked = (before) => {
+      if (location.origin !== origin || location.pathname !== path) return null;
+      const id = field(studentIdField), secret = passwordField === null ? null : field(passwordField);
+      if (!id || (passwordField !== null && (!secret || secret.type !== 'password' || secret.form !== id.form))) return null;
+      const own = (getter, element) => new URL(getter.call(element)).origin === origin;
+      if (!own(formAction, id.form)) return null;
+      const controls = Document.prototype.querySelectorAll.call(document, 'button, input');
+      if (Array.prototype.some.call(controls, (element) => element.form === id.form && !own(controlAction(element), element))) return null;
+      if (before && (id !== before.id || secret !== before.secret || id.form !== before.form || id.value !== studentId)) return null;
+      return { id, secret, form: id.form };
+    };
+    const fill = (element, value) => {
       element.value = value;
       element.dispatchEvent(new Event('input', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
-    }
+    };
+    const before = checked(null);
+    if (!before) return false;
+    const { id, secret } = before;
+    const withPassword = secret && (!id.value || id.value === studentId);
+    if (!id.value) fill(id, studentId);
+    if (!withPassword) return true;
+    if (!checked(before)) return false;
+    if (!secret.value) fill(secret, password);
     return true;
     """
 
