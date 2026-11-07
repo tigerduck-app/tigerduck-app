@@ -233,6 +233,7 @@ nonisolated extension AccountKeys {
     static let holidayNotifyOverrides = AccountKey<[Int]>("holidayNotifyOverrides", default: [])
     /// When each holiday's setting last changed here, keyed by holiday id; its upload sends it.
     static let holidayOverrideEditTimes = AccountKey<[String: Date]>("holidayOverrideEditTimes", default: [:])
+    static let holidayOverrideEditUptimes = AccountKey<[String: Double]>("holidayOverrideEditUptimes", default: [:])
     static let holidayOverridesAwaitingUpload = AccountKey<[Int]>(
         "holidayOverridesAwaitingUpload", default: []
     )
@@ -262,5 +263,6 @@ nonisolated extension AccountKeys {
     static let pendingConflictCategories = AccountKey<Set<SyncCategory>>("pendingConflictCategories", default: [])
     static let schoolDataSyncedAt = AccountKey<Date?>("schoolDataSyncedAt")
     static let semesterResetAt = AccountKey<[String: Date]>("semesterResetAt", default: [:])
+    static let semesterResetClocks = AccountKey<[String: Int64]>("semesterResetClocks", default: [:])
     static let ssoLoginTimestamp = AccountKey<Double?>(AppConstants.UserDefaultsKeys.ssoLoginTimestamp)
 }

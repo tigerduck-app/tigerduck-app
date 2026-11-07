@@ -149,9 +149,9 @@ actor PushRegistrationService {
     }
 
     func uploadHolidayOverride(
-        holidayID: Int, notify: Bool, madeAt stamp: Date, for signIn: SignIn
+        holidayID: Int, notify: Bool, madeAt: EditTime, for signIn: SignIn
     ) async throws -> PushAPI.HolidayOverrideResponse {
-        try await requests.apiClient.putHolidayOverride(holidayID: holidayID, notify: notify, madeAt: stamp, for: signIn)
+        try await requests.apiClient.putHolidayOverride(holidayID: holidayID, notify: notify, madeAt: madeAt, for: signIn)
     }
 
     func updateServerPushOptOut(_ optOut: Bool) async throws {

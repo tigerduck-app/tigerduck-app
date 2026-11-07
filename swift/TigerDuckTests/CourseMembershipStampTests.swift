@@ -10,24 +10,10 @@ struct CourseMembershipStampTests {
 
     struct Attempt: Sendable {
         let reply: SettingsAPIStub.StubResponse
-        let sentStamp: String
         var landed: Bool { reply.statusCode == 200 }
 
-        static let serverClock = "1789999000000000"
-        static let lands = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)), sentStamp: CourseMembershipStampTests.hlc)
-        static let loses = Attempt(reply: .noReply, sentStamp: CourseMembershipStampTests.hlc)
-        static let refusedAsAhead = Attempt(
-            reply: .init(
-                statusCode: 409, body: Data(#"{"error":"clock_ahead","message":"ahead"}"#.utf8),
-                headerFields: ["X-TigerSync-Clock": serverClock]
-            ),
-            sentStamp: CourseMembershipStampTests.hlc
-        )
-        static let otherConflict = Attempt(
-            reply: .init(statusCode: 409, body: Data(#"{"error":"something_else","message":"other"}"#.utf8)),
-            sentStamp: CourseMembershipStampTests.hlc
-        )
-        static let landsRestamped = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)), sentStamp: "1789999000000001")
+        static let lands = Attempt(reply: .init(statusCode: 200, body: Data("{}".utf8)))
+        static let loses = Attempt(reply: .noReply)
     }
 
     struct Case: Sendable, CustomTestStringConvertible {
@@ -36,27 +22,19 @@ struct CourseMembershipStampTests {
         let attempts: [Attempt]
 
         static let all = [
-            Case(testDescription: "A hide queued before a re-add elsewhere goes with the time it was made",
+            Case(testDescription: "A hide queued before a re-add elsewhere goes with its age",
                  edit: .hide, attempts: [.lands]),
-            Case(testDescription: "A hide whose reply was lost goes again with the same time",
+            Case(testDescription: "A hide whose reply was lost goes again with its age",
                  edit: .hide, attempts: [.loses, .lands]),
-            Case(testDescription: "A hide stamped ahead of the server's clock goes again stamped one tick after that clock",
-                 edit: .hide, attempts: [.refusedAsAhead, .landsRestamped]),
-            Case(testDescription: "A hide answered with another conflict stays queued with its time",
-                 edit: .hide, attempts: [.otherConflict, .otherConflict]),
-            Case(testDescription: "An add queued before a hide or reset elsewhere goes with the time it was made",
+            Case(testDescription: "An add queued before a hide or reset elsewhere goes with its age",
                  edit: .add, attempts: [.lands]),
-            Case(testDescription: "An add whose reply was lost goes again with the same time",
+            Case(testDescription: "An add whose reply was lost goes again with its age",
                  edit: .add, attempts: [.loses, .lands]),
-            Case(testDescription: "An add stamped ahead of the server's clock goes again stamped one tick after that clock",
-                 edit: .add, attempts: [.refusedAsAhead, .landsRestamped]),
-            Case(testDescription: "An add answered with another conflict stays queued with its time",
-                 edit: .add, attempts: [.otherConflict, .otherConflict]),
         ]
     }
 
     private static let madeAt = Date(timeIntervalSince1970: 1_790_000_000.5)
-    fileprivate static let hlc = "1790000000500000"
+    private static let age = "1500"
     private static let key = "client:1151:GE1010001"
 
     @Test(arguments: Case.all)
@@ -65,11 +43,9 @@ struct CourseMembershipStampTests {
         let path = baseURL.appendingPathComponent(
             example.edit == .hide ? "sync/courses/\(Self.key)" : "sync/courses/upload"
         )
-        let stamped = { (hlc: String) in
-            example.edit == .hide ? path.appending(queryItems: [URLQueryItem(name: "hlc", value: hlc)]) : path
-        }
+        let stamped = example.edit == .hide ? path.appending(queryItems: [URLQueryItem(name: "age_ms", value: Self.age)]) : path
         for attempt in example.attempts {
-            SettingsAPIStub.enqueue(attempt.reply, for: stamped(attempt.sentStamp))
+            SettingsAPIStub.enqueue(attempt.reply, for: stamped)
         }
         let coordinator = Self.makeCoordinator(baseURL, hidingTheCourse: example.edit == .hide)
 
@@ -84,57 +60,18 @@ struct CourseMembershipStampTests {
 
         let sent = SettingsAPIStub.requests(under: baseURL)
         #expect(sent.count == example.attempts.count)
-        for (request, attempt) in zip(sent, example.attempts) {
+        for request in sent {
             switch example.edit {
             case .hide:
-                #expect(request.url == stamped(attempt.sentStamp))
+                #expect(request.url == stamped)
             case .add:
-                try Self.expectAdd(request, hlc: attempt.sentStamp)
+                try Self.expectAdd(request)
             }
         }
         #expect(await coordinator.outbox.pendingCount() == (example.attempts.last?.landed == true ? 0 : 1))
     }
 
-    enum Hold: Sendable, CaseIterable { case courseSyncOff, dataLocked }
-
-    @MainActor
-    private final class Switch {
-        var on = false
-    }
-
-    @Test("An add or hide refused as ahead waits when course sync turns off or data locks during its first send",
-          arguments: Hold.allCases, [Edit.add, .hide])
-    func aheadEditWaitsForAHoldStartedDuringTheSend(_ hold: Hold, _ edit: Edit) async throws {
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let url = edit == .add
-            ? baseURL.appendingPathComponent("sync/courses/upload")
-            : baseURL.appendingPathComponent("sync/courses/\(Self.key)").appending(queryItems: [URLQueryItem(name: "hlc", value: Self.hlc)])
-        var refused = Attempt.refusedAsAhead.reply
-        let gate = SettingsAPIStub.ReplyGate()
-        refused.gate = gate
-        SettingsAPIStub.enqueue(refused, for: url)
-        let held = Switch()
-        let coordinator = Self.makeCoordinator(
-            baseURL, hidingTheCourse: edit == .hide,
-            uploadsCourses: { !(hold == .courseSyncOff && held.on) },
-            isProtectedDataAvailable: { !(hold == .dataLocked && held.on) }
-        )
-        switch edit {
-        case .add: await coordinator.outbox.enqueue(.courseAdd(semester: "1151", courseNo: "GE1010001", stamp: Self.madeAt))
-        case .hide: await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE1010001", at: Self.madeAt)
-        }
-
-        let tick = Task { await coordinator.syncTick() }
-        try await waitUntil { !SettingsAPIStub.requests(for: url).isEmpty }
-        held.on = true
-        gate.open()
-        await tick.value
-
-        #expect(SettingsAPIStub.requests(under: baseURL).count == 1)
-        #expect(await coordinator.outbox.snapshot().map(\.attempts) == [0])
-    }
-
-    private static func expectAdd(_ request: URLRequest, hlc: String) throws {
+    private static func expectAdd(_ request: URLRequest) throws {
         let body = try #require(SettingsAPIStub.bodyData(from: request))
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["force_keys"] == nil)
@@ -142,7 +79,8 @@ struct CourseMembershipStampTests {
         let adds = json["adds"] as? [[String: Any]]
         #expect(adds?.count == 1)
         #expect(adds?.first?["course_key"] as? String == key)
-        #expect((adds?.first?["hlc"] as? NSNumber)?.int64Value == Int64(hlc))
+        #expect((adds?.first?["age_ms"] as? NSNumber)?.int64Value == Int64(age))
+        #expect(adds?.first?["hlc"] == nil)
     }
 
     private static func makeCoordinator(

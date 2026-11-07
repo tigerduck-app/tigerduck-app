@@ -151,8 +151,12 @@ final class CourseStore {
         write(signIn) { $0.saveServerDroppedNos($0.loadServerDroppedNos(semester: semester).subtracting(liveRoster), semester: semester) }
     }
 
-    func recordSemesterReset(_ semester: String, at date: Date = Date(), for signIn: SignIn) {
-        files.recordSemesterReset(semester, at: date, for: signIn)
+    func loadSemesterResetClocks() -> [String: Int64] {
+        files.loadSemesterResetClocks()
+    }
+
+    func recordSemesterReset(_ semester: String, at date: Date = Date(), clock: Int64?, for signIn: SignIn) {
+        files.recordSemesterReset(semester, at: date, clock: clock, for: signIn)
     }
 
     func clearSemesterResets(outlivedBy fetchedAt: Date, keeping owned: Set<String> = [], for signIn: SignIn) {

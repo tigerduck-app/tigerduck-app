@@ -32,16 +32,19 @@ final class OutboxSender {
 
     var sendsMembershipEdits: Bool { isProtectedDataAvailable() && uploadsCourses() }
 
-    func send(_ op: SyncOp, for signIn: SignIn, hasNewerQueuedEdit: @MainActor (SyncOp) async -> Bool) async throws {
+    func send(
+        _ op: SyncOp, madeAt: EditTime? = nil, for signIn: SignIn, hasNewerQueuedEdit: @MainActor (SyncOp) async -> Bool
+    ) async throws {
+        let madeAt = madeAt ?? EditTime(wall: op.stamp)
         switch op {
-        case .courseOverride(let semester, let moodleId, let customName, let colorHex, let locale, let stamp):
+        case .courseOverride(let semester, let moodleId, let customName, let colorHex, let locale, _):
             guard let (courseKey, term, courseNo) = courseKey(semester: semester, identity: moodleId) else {
                 throw CourseKeyUnknownError()
             }
             let resolvedLocale = customName != nil ? (locale ?? Locale.current.language.languageCode?.identifier) : nil
             guard let reply = try await sendOrGiveUp("courseOverride", courseNo, semester: term, {
                 try await push.patchCourseOverride(
-                    courseKey: courseKey, colorHex: colorHex, customName: customName, locale: resolvedLocale, madeAt: stamp,
+                    courseKey: courseKey, colorHex: colorHex, customName: customName, locale: resolvedLocale, madeAt: madeAt,
                     for: signIn
                 )
             }) else { return }
@@ -53,42 +56,41 @@ final class OutboxSender {
                 kept.nameKept(reply.customNames[resolvedLocale], courseNo: courseNo, locale: resolvedLocale, for: signIn)
             }
 
-        case .assignmentOverride(_, let moodleAssignmentId, let localStatus, let stamp):
+        case .assignmentOverride(_, let moodleAssignmentId, let localStatus, _):
             let reply = try await push.patchAssignmentOverride(
-                moodleAssignmentId: String(moodleAssignmentId), localStatus: localStatus, madeAt: stamp, for: signIn
+                moodleAssignmentId: String(moodleAssignmentId), localStatus: localStatus, madeAt: madeAt, for: signIn
             )
             if !reply.applied, !(await hasNewerQueuedEdit(op)) {
                 kept.markKept(reply.localStatus, assignmentId: String(moodleAssignmentId), for: signIn)
             }
 
-        case .courseIgnore(let semester, let courseNo, _, let moodleCourseId, let ignore, let stamp):
+        case .courseIgnore(let semester, let courseNo, _, let moodleCourseId, let ignore, _):
             guard let reply = try await sendOrGiveUp("courseIgnore", courseNo, semester: semester, {
                 try await push.patchCourseOverride(
                     courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
-                    ignoreAssignments: ignore, moodleCourseId: moodleCourseId, madeAt: stamp, for: signIn
+                    ignoreAssignments: ignore, moodleCourseId: moodleCourseId, madeAt: madeAt, for: signIn
                 )
             }) else { return }
             if ignore != nil, !reply.applied.contains(.ignoreAssignments), !(await hasNewerQueuedEdit(op)) {
                 kept.ignoreKept(reply.ignoreAssignments, key: CourseTombstone.key(semester: semester, courseNo: courseNo), for: signIn)
             }
 
-        case .courseDelete(let semester, let courseNo, let stamp):
+        case .courseDelete(let semester, let courseNo, _):
             guard isProtectedDataAvailable() else { throw CancellationError() }
             guard uploadsCourses() else { return }
             let hidden = CourseTombstone.isHidden(courseNo, semester: semester, in: Set(courses.loadDeletedCourseNos()))
             let listedBySchool = courses.loadCourses(semester: semester).contains { $0.courseNo == courseNo }
             try await push.deleteCourse(
                 courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo),
-                kind: !hidden ? .remove : listedBySchool ? .hide : nil, madeAt: stamp, for: signIn
+                kind: !hidden ? .remove : listedBySchool ? .hide : nil, madeAt: madeAt, for: signIn
             )
 
-        case .courseAdd(let semester, let courseNo, let stamp):
+        case .courseAdd(let semester, let courseNo, _):
             guard isProtectedDataAvailable() else { throw CancellationError() }
             guard var request = addedCourseUpload(semester, courseNo) else { return }
-            let key = CourseTombstone.serverKey(semester: semester, courseNo: courseNo)
-            request.handAddedCourses = [PushAPI.CourseAdd(courseKey: key, hlc: PushAPI.clock(of: stamp))]
+            request.handAddedCourses = [PushAPI.CourseAdd(courseKey: CourseTombstone.serverKey(semester: semester, courseNo: courseNo))]
             guard try await push.uploadCoursesIfChanged(
-                request, semester: semester, addedAt: stamp, for: signIn, while: uploadsCourses
+                request, semester: semester, addedAt: madeAt, for: signIn, while: uploadsCourses
             ) else { return }
             onCourseAddLanded(CourseTombstone.key(semester: semester, courseNo: courseNo))
         }

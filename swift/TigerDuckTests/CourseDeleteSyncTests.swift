@@ -22,7 +22,7 @@ struct CourseDeleteSyncTests {
     }
 
     private static let hiddenAt = Date(timeIntervalSince1970: 1_790_000_000)
-    private static let path = "sync/courses/client:1151:CS1001301?hlc=\(PushAPI.clock(of: hiddenAt))"
+    private static let path = "sync/courses/client:1151:CS1001301?age_ms=2000"
 
     private static func freshDirectory() -> URL {
         FileManager.default.temporaryDirectory
@@ -157,16 +157,24 @@ struct CourseDeleteSyncTests {
         #expect(await outbox.parkedSnapshot().isEmpty)
     }
 
-    @Test("A delete answered 409 with a code other than clock_ahead stays queued without spending an attempt")
-    func deleteAnsweredAnotherConflictStays() async {
-        let outbox = SyncOutbox(directory: Self.freshDirectory())
-        await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "CS1001301", stamp: Date()))
+    @Test("A term reset goes with its age and hands back the reset time the backend answered")
+    func termResetHandsBackItsResetTime() async throws {
+        let backend = Backend()
+        backend.answer(
+            "sync/courses?semester=1151&age_ms=2000",
+            .init(statusCode: 200, body: Data(#"{"deleted":1,"applied":true,"reset_hlc":1790000000000000}"#.utf8))
+        )
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = PushAPIClient(
+            baseURLProvider: { [baseURL = backend.baseURL] in baseURL }, session: URLSession(configuration: config),
+            authHeaderProvider: { "Bearer test" }
+        )
 
-        for _ in 0...SyncOutbox.maxAttempts {
-            await outbox.drain { _ in throw PushAPIError.httpStatus(409, body: #"{"error":"something_else","message":"something_else"}"#) }
-        }
+        let resetClock = try await client.deleteAllCourses(semester: "1151", madeAt: EditTime(wall: Self.hiddenAt), for: testSignIn)
 
-        #expect(await outbox.snapshot().map(\.attempts) == [0])
+        #expect(resetClock == 1_790_000_000_000_000)
+        #expect(backend.requests("sync/courses?semester=1151&age_ms=2000").map(\.httpMethod) == ["DELETE"])
     }
 
     @Test("A course added back drops its own queued delete, and a reset its term's or every term's")

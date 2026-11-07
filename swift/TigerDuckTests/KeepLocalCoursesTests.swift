@@ -1,4 +1,3 @@
-import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -70,7 +69,7 @@ struct KeepLocalCoursesTests {
         #expect(server.rows == ["client:1151:CS1"])
     }
 
-    @Test("Use Local adds back each course added by hand here and still shown, stamped after its term's reset, and sends the rest, a copy merged from another device's row too, as the school's")
+    @Test("Use Local adds back each course added by hand here and still shown, made after its term's reset answered, and sends the rest, a copy merged from another device's row too, as the school's")
     func useLocalAddsBackHandAddedCourses() async throws {
         let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1151:GE1", "client:1151:EE2", "client:1151:MG4"])
         let merged = SDCourse(courseNo: "MG4", courseName: "MG4", moodleIdNumber: "1151MG4", semester: "1151")
@@ -85,8 +84,20 @@ struct KeepLocalCoursesTests {
         let addedAt = try #require(upload.addedAt)
         #expect(upload.request.courses.map(\.courseNo) == ["CS1", "GE1", "EE2", "PE3", "MG4"])
         #expect(upload.request.handAddedCourses?.map(\.courseKey) == ["client:1151:EE2", "client:1151:GE1"])
-        #expect(PushAPI.clock(of: addedAt) > PushAPI.clock(of: resetAt))
-        #expect(upload.request.handAddedCourses?.allSatisfy { $0.hlc == PushAPI.clock(of: addedAt) } == true)
+        #expect(resetAt.seconds(until: addedAt) >= 0)
+        #expect(upload.request.handAddedCourses?.allSatisfy { $0.ageMs == nil } == true)
+    }
+
+    @Test("Use Local notes the reset time the backend answered for each term it resets")
+    func notesEachTermsResetTime() async throws {
+        let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1142:CS9"])
+        var noted: [String: Int64?] = [:]
+
+        try await SyncConflicts.keepLocalCourses(
+            [("1151", Self.roster("CS1"), []), ("1142", [], [])], hiding: [], on: server, for: testSignIn
+        ) { noted[$0] = $1 }
+
+        #expect(noted == ["1151": FakeCourseServer.resetClock])
     }
 
     @Test("Use Local hides a course the school lists here as kind=hide, and any other course hidden here with no kind")
@@ -129,65 +140,6 @@ struct KeepLocalCoursesTests {
 
         #expect(server.rows == ["client:1142:CS9"])
     }
-
-    @Test("Use Local holds a reset refused as ahead once cloud sync turns off during its first send")
-    func aheadResetWaitsOnceSyncTurnsOff() async throws {
-        try await withExclusiveRealDefaults {
-            let saved = Defaults[.cloudSyncEnabled]
-            defer { Defaults[.cloudSyncEnabled, for: testSignIn] = saved }
-            Defaults[.cloudSyncEnabled, for: testSignIn] = true
-            let server = StampedCourseServer()
-            let reset = server.baseURL.appendingPathComponent("sync/courses").appending(queryItems: [
-                URLQueryItem(name: "semester", value: "1151"),
-                URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: StampedCourseServer.madeAt))),
-            ])
-            let gate = SettingsAPIStub.ReplyGate()
-            SettingsAPIStub.enqueue(.init(
-                statusCode: 409, body: Data(#"{"error":"clock_ahead","message":"ahead"}"#.utf8),
-                headerFields: ["X-TigerSync-Clock": "1789999000000000"], gate: gate
-            ), for: reset)
-
-            let answer = Task {
-                try await SyncConflicts.keepLocalCourses([("1151", Self.roster("CS1"), [])], hiding: [], on: server, for: testSignIn)
-            }
-            try await waitUntil { !SettingsAPIStub.requests(for: reset).isEmpty }
-            Defaults[.cloudSyncEnabled, for: testSignIn] = false
-            gate.open()
-
-            await #expect(throws: ResendHeldError.self) { try await answer.value }
-            #expect(SettingsAPIStub.requests(under: server.baseURL).count == 1)
-        }
-    }
-}
-
-/// Sends through the real client, every edit stamped with `madeAt`, so a test can stub its URL.
-@MainActor
-private final class StampedCourseServer: CourseSyncBackend {
-    static let madeAt = Date(timeIntervalSince1970: 1_790_000_000)
-    let baseURL: URL
-    private let client: PushAPIClient
-
-    init() {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SettingsAPIStub.self]
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
-        self.baseURL = baseURL
-        client = PushAPIClient(
-            baseURLProvider: { baseURL }, session: URLSession(configuration: config), authHeaderProvider: { "Bearer test" }
-        )
-    }
-
-    func deleteAllCourses(semester: String?, madeAt: Date, for signIn: SignIn) async throws {
-        try await client.deleteAllCourses(semester: semester, madeAt: Self.madeAt, for: signIn)
-    }
-
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?, for signIn: SignIn) async throws {
-        try await client.uploadCourses(request, addedAt: addedAt, for: signIn)
-    }
-
-    func deleteCourse(courseKey: String, kind: PushAPI.CourseDeleteKind?, madeAt: Date, for signIn: SignIn) async throws {
-        try await client.deleteCourse(courseKey: courseKey, kind: kind, madeAt: Self.madeAt, for: signIn)
-    }
 }
 
 @MainActor
@@ -195,8 +147,9 @@ private final class FakeCourseServer: CourseSyncBackend {
     private(set) var rows: Set<String>
     private(set) var tombstones: [String: Bool]
     private(set) var fullResets = 0
-    private(set) var resets: [Date] = []
-    private(set) var uploads: [(request: PushAPI.CourseUploadRequest, addedAt: Date?)] = []
+    static let resetClock: Int64 = 1_790_000_000_000_000
+    private(set) var resets: [EditTime] = []
+    private(set) var uploads: [(request: PushAPI.CourseUploadRequest, addedAt: EditTime?)] = []
     private(set) var deletes: [(key: String, kind: PushAPI.CourseDeleteKind?)] = []
     var failingDeletes = 0
     var afterSend: () -> Void = {}
@@ -206,7 +159,7 @@ private final class FakeCourseServer: CourseSyncBackend {
         self.tombstones = tombstones
     }
 
-    func deleteAllCourses(semester: String?, madeAt: Date, for signIn: SignIn) async throws {
+    func deleteAllCourses(semester: String?, madeAt: EditTime, for signIn: SignIn) async throws -> Int64? {
         guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
         defer { afterSend() }
         resets.append(madeAt)
@@ -214,16 +167,17 @@ private final class FakeCourseServer: CourseSyncBackend {
             fullResets += 1
             rows = []
             tombstones = [:]
-            return
+            return Self.resetClock
         }
         let prefix = "client:\(semester):"
         let removed = rows.filter { $0.hasPrefix(prefix) }
         rows.subtract(removed)
         for key in tombstones.keys where key.hasPrefix(prefix) { tombstones[key] = true }
         for key in removed { tombstones[key] = true }
+        return Self.resetClock
     }
 
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: Date?, for signIn: SignIn) async throws {
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: EditTime?, for signIn: SignIn) async throws {
         guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
         defer { afterSend() }
         uploads.append((request, addedAt))
@@ -233,7 +187,7 @@ private final class FakeCourseServer: CourseSyncBackend {
         rows.formUnion(keys.filter { tombstones[$0] == nil })
     }
 
-    func deleteCourse(courseKey: String, kind: PushAPI.CourseDeleteKind?, madeAt: Date, for signIn: SignIn) async throws {
+    func deleteCourse(courseKey: String, kind: PushAPI.CourseDeleteKind?, madeAt: EditTime, for signIn: SignIn) async throws {
         guard signIn.isCurrent else { throw PushAPIError.notSignedIn }
         defer { afterSend() }
         deletes.append((courseKey, kind))

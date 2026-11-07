@@ -57,11 +57,9 @@ final class HolidaySettingSender {
     ) async {
         let sent = store.holidayEdit(holidayID)
         do {
-            let reply = try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.cloudSyncEnabled }) {
-                try await registration.uploadHolidayOverride(
-                    holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? Date(), for: signIn
-                )
-            }
+            let reply = try await registration.uploadHolidayOverride(
+                holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? .now(), for: signIn
+            )
             guard store.holidayEdit(holidayID) == sent else { return }
             if !reply.applied { store.applyNotifyTheBackendKept(reply.notify, forHoliday: holidayID, for: signIn) }
             store.setHolidayAcknowledged(true, holidayID: holidayID, for: signIn)

@@ -43,7 +43,7 @@ struct SyncOutboxTests {
         let drained = TestSignIn()
         let sent = OSAllocatedUnfairLock<[SignIn]>(initialState: [])
 
-        await outbox.drain(for: drained.signIn) { _, signIn in sent.withLock { $0.append(signIn) } }
+        await outbox.drain(for: drained.signIn) { _, _, signIn in sent.withLock { $0.append(signIn) } }
 
         #expect(sent.withLock { $0 } == [drained.signIn, made.signIn])
     }

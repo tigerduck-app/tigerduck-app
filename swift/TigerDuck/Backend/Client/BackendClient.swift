@@ -51,8 +51,6 @@ nonisolated struct BackendResponse: Sendable {
 
     var status: Int { http.statusCode }
 
-    var serverClock: Int64? { http.value(forHTTPHeaderField: BackendClient.clockHeader).flatMap(Int64.init) }
-
     func decoded<Response: Decodable>(_ type: Response.Type) throws -> Response {
         do {
             return try BackendClient.decoder.decode(type, from: data)
@@ -85,28 +83,29 @@ nonisolated struct BackendAuth: Sendable {
     static let none = BackendAuth.unbound { nil }
 }
 
-nonisolated struct ResendHeldError: Error {}
-
 nonisolated final class BackendClient: Sendable {
     static let apiVersion = "v4"
-    static let clockHeader = "X-TigerSync-Clock"
 
     let baseURL: @Sendable () -> URL
     private let session: URLSession
     private let auth: BackendAuth
     private let versionGate: APIVersionGate?
+    private let editClock: @Sendable () -> EditTime
+    private let answered = OSAllocatedUnfairLock<[String: (edit: EditTime, at: EditTime)]>(initialState: [:])
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Backend.API")
 
     init(
         baseURL: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession = BackendClient.session,
         auth: BackendAuth = .none,
-        versionGate: APIVersionGate? = nil
+        versionGate: APIVersionGate? = nil,
+        editClock: @escaping @Sendable () -> EditTime = { EditTime.now() }
     ) {
         self.baseURL = baseURL
         self.session = session
         self.auth = auth
         self.versionGate = versionGate
+        self.editClock = editClock
     }
 
     func hasAuthSession() async -> Bool {
@@ -121,20 +120,24 @@ nonisolated final class BackendClient: Sendable {
         try await send(request).decoded(type)
     }
 
-    @TaskLocal static var holdsResend: (@Sendable () async -> Bool)?
-
-    /// Sends an edit stamped with its own time. A 409 `clock_ahead` is answered once by stamping
-    /// it again one tick after the backend's clock, which that reply carries, unless
-    /// `holdsResend` holds it.
+    /// Sends a user's edit with its `age_ms`, measured as it goes out; the backend stamps the edit
+    /// with the time it arrives less that age. An edit made while an earlier edit of one of its
+    /// `keys` was on its way ages from that send's answer, so it lands after it whatever the two
+    /// sends' network delays.
     func sendStamped(
-        at stamp: Date, _ make: @Sendable (_ hlc: Int64) throws -> BackendRequest
+        _ keys: [String], madeAt edit: EditTime, _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
     ) async throws -> BackendResponse {
-        do {
-            return try await send(make(PushAPI.clock(of: stamp)))
-        } catch PushAPIError.clockAhead(let serverClock?) where serverClock < .max {
-            if await Self.holdsResend?() == true { throw ResendHeldError() }
-            return try await send(make(serverClock + 1))
+        let since = answered.withLock { answers in
+            keys.compactMap { answers[$0] }
+                .filter { $0.edit.seconds(until: edit) > 0 && edit.seconds(until: $0.at) > 0 }
+                .map(\.at)
+        }.reduce(edit) { latest, answer in latest.seconds(until: answer) > 0 ? answer : latest }
+        let response = try await send(make(since.ageMilliseconds(at: editClock())))
+        let answeredAt = editClock()
+        answered.withLock { answers in
+            for key in keys { answers[key] = (edit, answeredAt) }
         }
+        return response
     }
 
     private enum Attempt {
@@ -175,7 +178,6 @@ nonisolated final class BackendClient: Sendable {
            await auth.recover(sent, code, signIn) {
             return try await send(request, as: .replay(after401For: signIn))
         }
-        if http.statusCode == 409, code == "clock_ahead" { throw PushAPIError.clockAhead(serverClock: answer.serverClock) }
         if http.statusCode == 409, code == "sync_revision_expired" { throw PushAPIError.syncRevisionExpired }
         if request.returnedStatuses.contains(http.statusCode) { return answer }
         let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""

@@ -146,8 +146,11 @@ nonisolated struct OutboxEntry: Codable, Sendable {
     let op: SyncOp
     var attempts: Int
     var signIn: SignIn?
+    var madeAt: EditTime?
+
+    var editTime: EditTime { madeAt ?? EditTime(wall: op.stamp) }
 
     private enum CodingKeys: String, CodingKey {
-        case id, op, attempts
+        case id, op, attempts, madeAt
     }
 }

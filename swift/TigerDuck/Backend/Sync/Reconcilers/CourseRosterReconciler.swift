@@ -46,8 +46,9 @@ struct CourseRosterReconciler: CategoryReconciler {
         }, for: signIn)
         let deleting = Set(app.localEdits.recentCourseDeletions.keys).union(queuedDeletes)
         let resetAt = CourseStore.shared.loadSemesterResetAt()
+        let resetClocks = CourseStore.shared.loadSemesterResetClocks()
         let ownResets = tombstonesBySemester.filter { semester, tombstones in
-            tombstones.contains { ServerTombstone($0).isOwnReset(landedAt: resetAt[semester]) }
+            tombstones.contains { ServerTombstone($0).isOwnReset(resetClock: resetClocks[semester]) }
         }
         CourseStore.shared.clearSemesterResets(outlivedBy: fetchedAt, keeping: Set(ownResets.keys), for: signIn)
 
@@ -57,7 +58,7 @@ struct CourseRosterReconciler: CategoryReconciler {
             let term = Self.readTerm(
                 semester, rows: rowsBySemester[semester] ?? [], tombstones: tombstonesBySemester[semester] ?? [],
                 selectionDropped: Set(selectionDropped[semester] ?? []), userAdded: userAdded, hidden: deletedNos,
-                adding: adding, resetLandedAt: resetAt[semester],
+                adding: adding, resetClock: resetClocks[semester],
                 liveAnswer: studentId.flatMap { CourseSelectionService.lastAnswer(studentId: $0, semester: semester) },
                 courses: .shared
             )
@@ -147,7 +148,7 @@ struct CourseRosterReconciler: CategoryReconciler {
     static func readTerm(
         _ semester: String, rows termRows: [[String: Any]], tombstones: [[String: Any]],
         selectionDropped: Set<String>, userAdded: [SDCourse], hidden: Set<String>, adding: Set<String>,
-        resetLandedAt: Date? = nil, liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore
+        resetClock: Int64? = nil, liveAnswer: CourseSelectionService.LiveAnswer?, courses: CourseStore
     ) -> TermRead {
         let droppedOnServer = CourseServerRows.droppedOnServer(termRows, liveAnswer: liveAnswer)
         let rows = CourseServerRows.keptRows(
@@ -159,7 +160,7 @@ struct CourseRosterReconciler: CategoryReconciler {
         let left = Set(fetched.map(\.courseNo)).subtracting(localCourses.map(\.courseNo))
         let read = tombstones.map(ServerTombstone.init)
         let tombstoned = read.compactMap { tombstone in
-            tombstone.isRemoval || tombstone.isOwnReset(landedAt: resetLandedAt) ? nil : tombstone.courseNo
+            tombstone.isRemoval || tombstone.isOwnReset(resetClock: resetClock) ? nil : tombstone.courseNo
         }
         let unlisted = unlistedCourses(
             in: semester, listed: serverNos, tombstoned: Set(tombstoned),

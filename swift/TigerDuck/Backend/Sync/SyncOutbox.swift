@@ -49,7 +49,7 @@ actor SyncOutbox {
         let key = op.dedupKey
         entries.removeAll { $0.op.dedupKey == key }
         parked.removeAll { $0.op.dedupKey == key }
-        entries.append(OutboxEntry(id: UUID(), op: op, attempts: 0, signIn: signIn))
+        entries.append(OutboxEntry(id: UUID(), op: op, attempts: 0, signIn: signIn, madeAt: .stamped(op.stamp)))
         persist()
     }
 
@@ -144,7 +144,7 @@ actor SyncOutbox {
     func drain(
         for signIn: SignIn,
         holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
-        execute: @Sendable (SyncOp, SignIn) async throws -> Void
+        execute: @Sendable (SyncOp, EditTime, SignIn) async throws -> Void
     ) async -> Bool {
         loadIfNeeded()
         let snapshot = entries
@@ -179,14 +179,9 @@ actor SyncOutbox {
             }
 
             do {
-                try await execute(entry.op, entry.signIn ?? signIn)
+                try await execute(entry.op, entry.editTime, entry.signIn ?? signIn)
             } catch {
                 guard clearGeneration == startGeneration else { return entries.isEmpty }
-                if error is ResendHeldError {
-                    kept.append(entry)
-                    index += 1
-                    continue
-                }
                 if OutboxErrorPolicy.keepsWithoutAttempt(error, for: entry.op) {
                     mergeAndStore(retainRemainder: index)
                     return false

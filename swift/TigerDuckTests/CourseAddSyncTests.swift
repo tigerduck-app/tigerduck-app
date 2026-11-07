@@ -64,7 +64,7 @@ struct CourseAddSyncTests {
 
     private static func deleteURL(_ backend: Backend, _ courseNo: String, kind: String? = nil) -> URL {
         backend.baseURL.appendingPathComponent("sync/courses/client:1151:\(courseNo)").appending(
-            queryItems: [URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: Self.hiddenAt)))]
+            queryItems: [URLQueryItem(name: "age_ms", value: "2000")]
                 + (kind.map { [URLQueryItem(name: "kind", value: $0)] } ?? [])
         )
     }
@@ -115,7 +115,8 @@ struct CourseAddSyncTests {
         #expect(json["force_keys"] == nil)
         let adds = json["adds"] as? [[String: Any]]
         #expect(adds?.compactMap { $0["course_key"] as? String } == ["client:1151:GE1010001"])
-        #expect(adds?.first?["hlc"] as? Int64 != nil)
+        #expect(adds?.first?["age_ms"] as? Int64 != nil)
+        #expect(adds?.first?["hlc"] == nil)
         let sent = (json["courses"] as? [[String: Any]])?.compactMap { $0["course_no"] as? String }
         #expect(sent == ["GE1010001"])
         #expect(await coordinator.courseAddKeys(unlandedAt: fetchedAt) == ["1151:GE1010001"])
