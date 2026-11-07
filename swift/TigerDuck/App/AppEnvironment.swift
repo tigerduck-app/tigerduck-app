@@ -184,6 +184,7 @@ final class AppEnvironment {
         SemesterAttributionCacheMigration.runIfNeeded()
         SyncedAccountSeedMigration.runIfNeeded(signedIn: authService.hasStoredCredentials)
         HolidayEditTimeMoveMigration.runIfNeeded()
+        SemesterResetClockSeedMigration.runIfNeeded()
         CourseColorPickSeedMigration.runIfNeeded()
         StoredPasswordLatchRetryMigration.runIfNeeded()
         LibraryPasswordLatchRetryMigration.runIfNeeded()
