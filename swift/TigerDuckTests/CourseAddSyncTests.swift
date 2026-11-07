@@ -376,6 +376,18 @@ struct CourseAddSyncTests {
         #expect(unlisted.drop.isEmpty)
     }
 
+    @Test("An empty term the backend reset drops a course added here whose add is not on its way, as an add older than the reset is refused",
+          arguments: [false, true])
+    func resetTermDropsAHandAddedCourseItDoesNotList(adding: Bool) {
+        let unlisted = CourseRosterReconciler.unlistedCourses(
+            in: "1151", listed: [], tombstoned: [], fetched: ["CS1001301"], handAdded: ["MA1010003"],
+            droppedMerges: [], hidden: [], adding: adding ? ["1151:MA1010003"] : [], termWasReset: true
+        )
+
+        #expect(unlisted.hide.isEmpty)
+        #expect(unlisted.drop == (adding ? [] : ["MA1010003"]))
+    }
+
     @Test("An add the server keeps failing with 5xx spends its attempts and parks, so the ops behind it still go")
     func failingAddDoesNotHoldTheQueue() async {
         let backend = Backend()

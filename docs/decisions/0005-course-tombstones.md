@@ -41,7 +41,10 @@ with no rows for the term and a tombstone for every course it held.
   when deleted here; its delete goes with no kind, which the backend takes as a removal of a
   `user_added` row and a hide of any other.
 - A term with no server rows (a first sync, or another device mid-reset) is uploaded from what
-  the tombstones leave visible, instead of being read as deleted elsewhere.
+  the tombstones leave visible, instead of being read as deleted elsewhere. Once the backend has
+  reset the term (`term_resets` or `courses_reset_hlc`), a course added here that it does not
+  list goes unless its add is still on its way, since the backend refuses an add older than the
+  reset.
 - The resetting device keeps the term in `resettingSemesters` across the DELETE and the local
   reset, and stamps the reset once the DELETE lands (`CourseFiles.recordSemesterReset`), so a
   snapshot fetched before then is never reconciled into the term.
