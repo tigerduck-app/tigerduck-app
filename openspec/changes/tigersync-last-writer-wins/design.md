@@ -61,28 +61,39 @@ called. Bulletin state is per device and not part of TigerSync.
 
 ## 2. Decisions
 
-### D1. The clock is one integer of microseconds
+### D1. The backend stamps each edit; a device sends the edit's age
 
-A value is `int64` microseconds since the Unix epoch; a device stamps an edit with
-`max(device now, last server value seen, last value issued) + 1`, which is the owner's rule plus
-the last issued value so a device never repeats a value.
+A stamp is `int64` microseconds since the Unix epoch on the backend's clock. A device sends each
+edit's age, `age_ms`: the milliseconds from the edit to this send, measured on the device at
+every send and every retry, in the place `hlc` went (body field or query parameter). The backend
+takes the arrival time once per request and stamps the edit
+`arrival_us - clamp(age_ms, 0, 365 days) * 1000`. The edit time and the send time come from one
+device, so its clock's offset from the backend cancels out, and no device time is compared with
+a backend time anywhere (owner's decision of 2026-11-07, replacing the device clock of PR #1003).
 
-The backend refuses a stamp more than five seconds ahead of its time (D5), so a device caps
-`device now` at its estimate of the backend's time plus five seconds: the last `X-TigerSync-Clock`
-it heard plus the device time elapsed since. An edit stamped before the device first heard the
-backend can still be refused; the refusal carries the backend's clock, and both apps re-stamp
-the edit at that clock plus one tick and send it again. A device that keeps a last issued value
-never lowers it, so until the cap passes that value, a later edit is stamped after it and is
-refused and re-stamped the same way.
+- The age reads the clock since boot, which counts sleep and does not move when the time is set,
+  when the edit and the send happen in the same boot, and the wall-clock difference otherwise; a
+  negative age is 0. iOS gives an app no boot id, so `EditTime` takes a later boot from the wall
+  time at boot moving on by more than the clock since boot read at the edit.
+- Per key: when the answer to an earlier send of the same key arrived after this edit was made,
+  the age counts from that answer's arrival, so a second edit made while the first was in flight
+  lands after it whatever the two network delays (`BackendClient.sendStamped`).
+- Responses keep `X-TigerSync-Clock`, `server_hlc`, `reset_hlc` and every `*_hlc`, for
+  acknowledgments (D12) and for comparing backend times with backend times.
+- An automatic course colour is the one write sent with `hlc`: its time is one the snapshot names
+  (the term's latest reset or the stored colour, plus 1 ms), on the backend's own clock, which every
+  device computes alike so the first fill to land wins.
 
 Lost:
+- A device clock (`SyncClock`): a stamp of `max(device now, last server value seen, last value
+  issued) + 1`, capped at the backend's clock plus five seconds, re-stamped after
+  `409 clock_ahead`, and pulled back with every stored time when the device clock ran ahead. Each
+  of those placed device times on the backend's time line, and each review round found another
+  case.
+- Backend arrival time alone: a late offline edit would beat a newer one.
 - ISO-8601 strings, as the snapshot uses today: Apple's `ISO8601DateFormatter` keeps three
   fractional digits, so two edits within a millisecond would collide and a value Python returns
   with six digits would not round-trip.
-- A classic HLC pair (wall time, counter): two wire fields and two columns per field, for an
-  edit rate where the counter never matters; folding the counter into the microseconds is what
-  the owner's "+1 tick" does.
-- Backend-assigned times: today's arrival order, which lets a late offline edit win.
 
 ### D2. Stamps live in the timestamp columns that exist
 
@@ -98,44 +109,35 @@ Lost:
   times per field that can disagree.
 - One JSONB stamp map per row: `apply_field` and every SQL filter would parse JSON.
 
-### D3. Where each side keeps its clock
+### D3. Where each side keeps edit times
 
-iOS keeps the last issued and last seen values, and the last `X-TigerSync-Clock` heard with the
-device time it arrived (for D1's cap), in `Defaults` keys behind a small
-`SyncClock` in `Backend/Sync/`. Stamping happens on a user edit, so the phone is unlocked.
-`PushAPIClient.execute` raises the last seen value from `X-TigerSync-Clock` only while protected
-data is readable, as `syncOverridesFromBackend` already checks, so a background launch before
-first unlock cannot write over the stored values. The outbox keeps `SyncOp.stamp` as a `Date`
-holding the clock value; sending rounds it to whole microseconds (a `Date` resolves about 0.1
-microsecond today). Entries queued before the update keep their queue time, with no change to
-the stored shape and so no migration. The backend keeps no clock state: its value is its time.
+Neither side keeps clock state. iOS keeps each unsent edit's time: the outbox keeps `SyncOp.stamp`
+(the wall time of the edit) and beside it `OutboxEntry.madeAt`, an `EditTime` with the clock since
+boot; an entry an earlier build wrote has none and ages by the wall clock from its stamp. A
+holiday setting keeps its edit time and clock since boot in `Defaults`. The backend's stamps are
+its own times.
 
 Lost: a separate stamp store for every local value. The outbox already holds one entry per
 field (`dedupKey`) for every unsent edit, which is all a client must remember (D12).
 
-### D4. Clients learn server time from every response
+### D4. Every response carries the backend's clock
 
-A middleware in `server/main.py` sets `X-TigerSync-Clock` on every `/v3` response, errors too.
-Clients also raise the last seen value to every stamp they read in a snapshot or write response,
-which covers values stored up to five seconds ahead.
+A middleware in `server/main.py` sets `X-TigerSync-Clock` on every `/v3` and `/v4` response,
+errors too. Clients do not stamp with it (D1); D12 compares it with a snapshot's `server_hlc`,
+two backend times.
 
-Lost:
-- A clock endpoint: one more request, and already stale when an offline edit happens.
-- Snapshot stamps alone: an account with no stamped field yet would never learn server time.
+Lost: a clock endpoint, which only a device clock needed.
 
-### D5. Skew allowance of five seconds; later stamps are refused
+### D5. No stamp is ahead of the backend
 
-The backend accepts a stamp up to five seconds after its own time (a module constant in
-`server/sync/merge.py`) and refuses a later one with `409 clock_ahead`, writing nothing. Five
-seconds absorbs ordinary NTP drift, so an honest device is never refused. The backend stores only
-the value a device sent, so a retry after a lost response carries the stored stamp and changes
-nothing (D7). Released apps send no stamp and are never refused (D8).
+A stamp from `age_ms` is never later than its arrival, so the backend never answers
+`409 clock_ahead` to it. A retry after a lost response sends a larger age and lands at almost the
+same stamp, apart by the difference of the two network delays, so it cannot beat an edit made
+meanwhile on another device. A request with `hlc` keeps the five-second refusal until both apps
+send `age_ms`; a later backend change then requires `age_ms` on `/v4`, keeping `hlc` for the
+automatic colour (D1) and D13's zero stamps. Released apps send no stamp and are never refused (D8).
 
-Lost:
-- Clamping to `min(value, now + 5 s)`: each send of the same edit would be clamped again, later
-  each time, so a retry after a lost response could beat an edit made meanwhile.
-- Zero skew, as `clamp_ts` does today (the owner asked for a small allowance), and a config
-  setting (no operator would tune it).
+Lost: refusing and re-stamping a time ahead of the backend, which only a device clock needed.
 
 ### D6. Atomicity through the per-user sync lock
 
@@ -297,7 +299,8 @@ Lost:
 `categoriesSyncedOnce` already records which categories a device has synced. For a category in
 it, unstamped local values are a copy of old server state: they are not sent, and the snapshot
 replaces them. For a category not in it, the device queues each local value stamped 0, which
-fills only fields the backend holds no stamp for. This is a rule for every first sync, not a
+fills only fields the backend holds no stamp for (sent as `hlc` 0, a backend time, as an
+automatic colour's is). This is a rule for every first sync, not a
 one-time migration, so it lives in `AppState+BackendSync.swift`, not `Migrations/`.
 
 Lost:
@@ -347,18 +350,19 @@ hints only (`UserChangeLog` in `server/sync/models/state.py`).
 ## 3. API changes
 
 All `/v3` responses add `X-TigerSync-Clock: <int>`. New clients send `X-TigerSync-Protocol: 2`;
-their writes need a stamp (422 without). Responses only add fields, so released apps read them as
+their writes need `age_ms` (D1), or `hlc` until a later backend change requires `age_ms` on `/v4`
+(422 with neither). Responses only add fields, so released apps read them as
 before; the stamps below are returned with or without the header, and only the tombstone window
 and kinds, the upload `adds` and the delete `kind` depend on it.
 
 | Endpoint | Request (protocol 2) | Response adds |
 |---|---|---|
-| `PATCH /v3/sync/assignments/{moodle_assignment_id}/override` | `hlc` | `local_status`, `local_status_hlc`, `applied` |
-| `PATCH /v3/sync/courses/{moodle_id}/override` | `hlc` for the fields sent | `color_hex_hlc`, `custom_names_hlc` (locale to stamp), `ignore_assignments_hlc`, `applied` (field names) |
-| `PUT /v3/sync/holiday-overrides/{holiday_id}` | `hlc` | `hlc`, `applied` |
-| `DELETE /v3/sync/courses/{course_key}` | `?hlc=&kind=hide\|remove` | `applied`, `hlc` |
-| `DELETE /v3/sync/courses[?semester=]` | `?hlc=` | `reset_hlc` |
-| `POST /v3/sync/courses/upload` | `adds: [{course_key, hlc}]` (max 50) in place of `force_keys` | `adds: [{course_key, applied, hlc}]` |
+| `PATCH /v3/sync/assignments/{moodle_assignment_id}/override` | `age_ms` | `local_status`, `local_status_hlc`, `applied` |
+| `PATCH /v3/sync/courses/{moodle_id}/override` | `age_ms` for the fields sent; an automatic colour `hlc` | `color_hex_hlc`, `custom_names_hlc` (locale to stamp), `ignore_assignments_hlc`, `applied` (field names) |
+| `PUT /v3/sync/holiday-overrides/{holiday_id}` | `age_ms` | `hlc`, `applied` |
+| `DELETE /v3/sync/courses/{course_key}` | `?age_ms=&kind=hide\|remove` | `applied`, `hlc` |
+| `DELETE /v3/sync/courses[?semester=]` | `?age_ms=` | `reset_hlc` |
+| `POST /v3/sync/courses/upload` | `adds: [{course_key, age_ms}]` (max 50) in place of `force_keys` | `adds: [{course_key, applied, hlc}]` |
 | `GET /v3/sync/full` | header only | `server_hlc`; `*_hlc` beside each stamped field; `courses[].added_hlc`; every tombstone with `hlc` and `kind` (`hide`, `remove`, `reset`); `term_resets` (semester to stamp); `courses_reset_hlc`; `holiday_overrides[].hlc` |
 
 `POST /v3/sync/assignments/upload`, `GET /v3/sync` and `GET /v3/sync/revision` keep their shape.
@@ -379,8 +383,8 @@ Backend, one Alembic revision, additive:
 Downgrade drops what the upgrade added; today's code ignores the new columns, so a code rollback
 needs no data rollback. Rows kept as `none` read correctly in today's code.
 
-Devices: nothing is rewritten. The outbox's stamps are the queue times (D3); unstamped values
-follow D13.
+Devices: nothing is rewritten. An outbox entry queued before the update ages by the wall clock
+from its stamp (D3); unstamped values follow D13.
 
 Rollout:
 1. Backend ships both protocols and deploys; released apps see today's behavior, plus the
@@ -395,11 +399,10 @@ Rollout:
 
 Read-only survey for its maintainer; Android owns the implementation.
 
-- Clock: persist last issued, last seen and the last header heard with its device time, for
-  D1's cap (`data/preferences/AppPreferences`), read
-  `X-TigerSync-Clock` and send `X-TigerSync-Protocol: 2` in `push/PushApiClient.kt` and
-  `push/SyncApiClient.kt`.
-- Writes carry the edit's stamp: `patchAssignmentOverride`, `patchCourseOverride`,
+- Edit ages: send `X-TigerSync-Protocol: 2` in `push/PushApiClient.kt` and
+  `push/SyncApiClient.kt`, and each edit's `age_ms` by D1 (`SystemClock.elapsedRealtime()` within
+  one boot); no device clock is kept.
+- Writes carry the edit's age: `patchAssignmentOverride`, `patchCourseOverride`,
   `putHolidayOverride`, `deleteCourse` (with `kind`), `deleteAllCourses`, and `uploadCourses`
   with `adds` (`push/CourseUploadPayload.kt`).
 - Unsent edits: in-flight ids live in memory (`HomeSyncState.pendingOverrides`), so an edit made
@@ -417,8 +420,9 @@ Read-only survey for its maintainer; Android owns the implementation.
 ## 6. Test plan
 
 Backend (`uv run pytest server/tests/` against a throwaway Postgres):
-- Clock: refuse past now + 5 s with `clock_ahead` and nothing written, old values kept,
-  microsecond round trip, header on 200, 404, 409 and 422.
+- Clock: an `age_ms` edit stamped at its arrival less its age, clamped at both ends, never
+  refused as ahead; `hlc` refused past now + 5 s with `clock_ahead` and nothing written;
+  microsecond round trip; header on 200, 404, 409 and 422.
 - Merge: later wins, tie keeps, same content raises the stamp without a change log entry, a
   field without a stamp takes 0, per-locale names.
 - Concurrency: two sessions writing one field at once; the later stamp is stored.
@@ -435,9 +439,12 @@ Backend (`uv run pytest server/tests/` against a throwaway Postgres):
 - Migration: upgrade and downgrade on seeded rows.
 
 iOS (`xcodebuild test ... -only-testing:TigerDuckTests`):
-- `SyncClock`: stamping rule, persistence, never lowered, ignored before first unlock.
-- Outbox: a legacy entry keeps its stamp; entries kept while off; cleared on sign-out.
-- Requests: protocol header and stamps on every write (a stub `URLProtocol`, as
+- `EditTime`: an age within one boot by the clock since boot though the time was set, across a
+  restart by the wall clock, never negative.
+- Outbox: a legacy entry ages from its stamp by the wall clock; entries kept while off; cleared
+  on sign-out.
+- Requests: protocol header and `age_ms` on every write, measured again at each retry, and from
+  an earlier send's answer per key (a stub `URLProtocol`, as
   `swift/TigerDuckTests/SettingsAPIStub.swift` does).
 - Pull: held when queued, held while the snapshot's `server_hlc` is not later than the ack's
   header, otherwise adopted, absence after a hide or reset included; a write response does not
@@ -456,11 +463,10 @@ backend, for colour, mark, hide and reset.
 
 ## Risks / Trade-offs
 
-- [A device whose clock is behind loses to edits made elsewhere during the lag while offline]
-  → stamps never fall below the last server value seen, so the window is at most the clock's lag
-  and at most the time since that device last synced; accepted with last-writer-wins.
-- [A clock up to five seconds ahead beats a later honest edit inside that window] → the skew
-  constant; anything further ahead is refused and re-stamped.
+- [The time is set between an edit and its send in another boot] → the age is off by the change;
+  within one boot the clock since boot ignores it.
+- [Two devices edit one field within a network delay of each other] → the backend orders them
+  by arrival less age, which the delays can swap; accepted with last-writer-wins.
 - [An old app's late retry wins over a newer edit] → today's behavior, ends as apps update (D8).
 - [Local changes made while sync was off before the update lose to the server, and without the
   prompt (D15) cannot be kept] → the owner's oldest rule; D13 still fills fields the server

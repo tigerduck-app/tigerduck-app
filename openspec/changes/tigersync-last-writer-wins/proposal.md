@@ -12,12 +12,12 @@ apps and the backend share.
 
 ## What Changes
 
-- Every user edit carries a hybrid logical clock (HLC) value, per item and per field. Views,
-  school fetches and bulk uploads never stamp anything. Deletions and resets are timestamped
-  tombstones.
+- Every user edit is stamped by the backend, per item and per field, at the time it arrives less
+  the edit's age the device sends (`age_ms`), so no device clock reaches the backend's time line.
+  Views, school fetches and bulk uploads never stamp anything. Deletions and resets are
+  timestamped tombstones.
 - The backend keeps the newer value per field, comparing and writing under the user's sync lock.
   Equal content with another timestamp keeps the value and the later time, with no prompt.
-  A timestamp more than five seconds ahead of server time is refused, and the device re-stamps it.
 - The override, course delete, course reset, course upload and holiday endpoints accept the
   clock; `/v3/sync/full` returns it for every field and tombstone, and keeps every tombstone
   instead of the last 30 days. Every `/v3` response carries the server clock.
