@@ -36,11 +36,24 @@ struct SyncOutboxTests {
         let at = { (seconds: TimeInterval) in EditTime(wall: Date(timeIntervalSince1970: 1_790_000_000 + seconds)) }
 
         await outbox.drain { _ in
-            await outbox.raiseFloors(of: PushAPIClient.courseWrites, after: (edit: at(0), start: at(1), end: at(12)))
+            await outbox.raiseFloors(of: PushAPIClient.courseWrites, after: (edit: at(0), start: at(1), end: at(12)), for: testSignIn)
             throw PushAPIError.courseNotFound
         }
 
         #expect(await outbox.parkedSnapshot().map(\.floor) == [at(12)])
+    }
+
+    @Test("The end of a send made in a sign-in that has ended raises no floor of the queued edits")
+    func aSendOfAnEndedSignInRaisesNoFloor() async {
+        let outbox = Self.makeOutbox()
+        await outbox.enqueue(Self.colour, for: testSignIn)
+        let span = (edit: EditTime(wall: .distantPast), start: EditTime(wall: .distantPast), end: EditTime(wall: .distantFuture))
+
+        await outbox.raiseFloors(of: PushAPIClient.courseWrites, after: span, for: endedTestSignIn)
+        #expect(await outbox.snapshot().map(\.floor) == [nil])
+
+        await outbox.raiseFloors(of: PushAPIClient.courseWrites, after: span, for: testSignIn)
+        #expect(await outbox.snapshot().map(\.floor) == [span.end])
     }
 
     @Test("An edit made in a sign-in that has ended is not queued")

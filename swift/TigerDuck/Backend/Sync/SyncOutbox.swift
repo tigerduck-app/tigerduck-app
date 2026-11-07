@@ -207,12 +207,12 @@ actor SyncOutbox {
         return entries.isEmpty
     }
 
-    func raiseFloors(of key: String, after span: BackendClient.SendSpan) {
+    func raiseFloors(of key: String, after span: BackendClient.SendSpan, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         loadIfNeeded()
-        var raised = false
-        for index in entries.indices { raised = entries[index].raiseFloor(of: key, after: span) || raised }
-        for index in parked.indices { raised = parked[index].raiseFloor(of: key, after: span) || raised }
-        if raised { persist() }
+        let raised = entries.indices.map { entries[$0].raiseFloor(of: key, after: span) }
+            + parked.indices.map { parked[$0].raiseFloor(of: key, after: span) }
+        if raised.contains(true) { persist() }
     }
 
     private func giveUp(on entry: OutboxEntry, after error: Error) {

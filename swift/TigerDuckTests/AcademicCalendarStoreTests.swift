@@ -73,16 +73,18 @@ struct AcademicCalendarStoreTests {
         try await withExclusiveRealDefaults {
             let saved = (
                 Defaults[.holidayNotifyOverrides], Defaults[.holidayOverridesAwaitingUpload],
-                Defaults[.holidayOverrideEditClocks]
+                Defaults[.holidayOverrideEditClocks], Defaults[.holidayOverrideEditFloors]
             )
             defer {
                 Defaults[.holidayNotifyOverrides, for: testSignIn] = saved.0
                 Defaults[.holidayOverridesAwaitingUpload, for: testSignIn] = saved.1
                 Defaults[.holidayOverrideEditClocks, for: testSignIn] = saved.2
+                Defaults[.holidayOverrideEditFloors, for: testSignIn] = saved.3
             }
             Defaults[.holidayNotifyOverrides, for: testSignIn] = []
             Defaults[.holidayOverridesAwaitingUpload, for: testSignIn] = []
             Defaults[.holidayOverrideEditClocks, for: testSignIn] = [:]
+            Defaults[.holidayOverrideEditFloors, for: testSignIn] = [:]
             try await body()
         }
     }
@@ -184,6 +186,22 @@ struct AcademicCalendarStoreTests {
             #expect(store.holidayEdit(9).notify == false)
             #expect(store.holidayEdit(9).madeAt == nil)
             #expect(store.holidayEdit(5).madeAt != nil)
+        }
+    }
+
+    @Test("the end of a send made in a sign-in that has ended raises no floor of a holiday setting")
+    func aSendOfAnEndedSignInRaisesNoHolidayFloor() async {
+        await Self.withCleanHolidayDefaults {
+            let store = AcademicCalendarStore()
+            store.setNotify(true, forHoliday: 9, for: testSignIn)
+            let key = PushAPIClient.holidayKey(9)
+            let span = (edit: EditTime(wall: .distantPast), start: EditTime(wall: .distantPast), end: EditTime(wall: .distantFuture))
+
+            store.raiseHolidayEditFloor(onSendOf: key, span, for: endedTestSignIn)
+            #expect(store.holidayEditFloor(9) == nil)
+
+            store.raiseHolidayEditFloor(onSendOf: key, span, for: testSignIn)
+            #expect(store.holidayEditFloor(9) == span.end)
         }
     }
 
