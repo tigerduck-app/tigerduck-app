@@ -166,10 +166,13 @@ struct BrowserSessionSignInTests {
         #expect(browser.kept.isEmpty)
     }
 
-    @Test func aSignOutWhileTheLinksSessionGoesKeepsTheCookiesOut() async {
+    @Test func aSignOutWhileTheLinksSessionGoesStopsBeforeTheNextAndKeepsTheCookiesOut() async {
         let browser = Browser()
         let account = TestSignIn()
-        browser.jar += [Self.cookie(".AspNet.Cookies", "sa02.ntust.edu.tw", "site")]
+        browser.jar += [
+            Self.cookie(".AspNet.Cookies", "sa02.ntust.edu.tw", "site"),
+            Self.cookie("ASP.NET_SessionId", "sa02.ntust.edu.tw", "site", secure: false),
+        ]
         browser.onDrop = { account.signOut() }
 
         #expect(!(await browser.signIn(account.signIn, to: Self.url("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login"))))

@@ -38,7 +38,10 @@ struct BrowserSessionSignIn {
         let signedIn = await browserCookies()
         guard isCurrent() else { return false }
         if BrowserSchoolSites.isSignInLink(target) {
-            for cookie in BrowserSchoolSites.cookiesToDrop(from: signedIn, opening: target) { await dropCookie(cookie) }
+            for cookie in BrowserSchoolSites.cookiesToDrop(from: signedIn, opening: target) {
+                guard isCurrent() else { return false }
+                await dropCookie(cookie)
+            }
         }
         guard passed, isCurrent() else { return false }
         signedIn.filter { BrowserRouting.isSignInCookie($0, for: target) }.forEach(keepCookie)
