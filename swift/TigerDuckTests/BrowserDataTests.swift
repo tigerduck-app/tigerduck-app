@@ -1,4 +1,5 @@
 #if os(iOS)
+import Foundation
 import Testing
 @testable import TigerDuck
 
@@ -98,6 +99,15 @@ struct BrowserDataTests {
         await preparing.value
         await removal?.value
         #expect(disk.state == .empty)
+    }
+
+    @Test func aRemovalAsTheLaunchsFirstWebKitCallDeletesTheStore() async throws {
+        let id = UUID()
+        let folder = BrowserData.storeFolder(id)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        #expect(await BrowserData.removeStore(id))
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
     }
 }
 #endif

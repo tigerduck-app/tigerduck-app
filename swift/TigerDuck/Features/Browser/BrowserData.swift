@@ -103,9 +103,13 @@ final class BrowserData: AccountScoped {
     }
 
     /// WebKit refuses while a web view still has the store, as a browser that is closing does.
-    private static func removeStore() async -> Bool {
+    static func removeStore(_ id: UUID = storeID) async -> Bool {
+        // A removal reports back through WebKit's main run loop, which only a store or web view sets
+        // up; as a launch's first WebKit call it crashes. Asking for the default store sets it up.
+        // https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/WebsiteData/Cocoa/WebsiteDataStoreCocoa.mm
+        _ = WKWebsiteDataStore.default()
         do {
-            try await WKWebsiteDataStore.remove(forIdentifier: storeID)
+            try await WKWebsiteDataStore.remove(forIdentifier: id)
             return true
         } catch {
             AppLogger.breadcrumb("browser store in use; clearing its data instead", category: "browser")
