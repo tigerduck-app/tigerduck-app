@@ -26,6 +26,23 @@ struct SyncOutboxTests {
         }
     }
 
+    @Test("An entry parked after its send keeps a floor raised while the send was out")
+    func parkedEntryKeepsAFloorRaisedDuringItsSend() async {
+        let outbox = Self.makeOutbox()
+        await outbox.enqueue(.courseOverride(
+            semester: "1151", moodleId: "1151CS1001301", customName: nil, colorHex: "#FF6B6B", locale: nil,
+            stamp: Date(timeIntervalSince1970: 1_790_000_005)
+        ), for: testSignIn)
+        let at = { (seconds: TimeInterval) in EditTime(wall: Date(timeIntervalSince1970: 1_790_000_000 + seconds)) }
+
+        await outbox.drain { _ in
+            await outbox.raiseFloors(of: PushAPIClient.courseWrites, after: (edit: at(0), start: at(1), end: at(12)))
+            throw PushAPIError.courseNotFound
+        }
+
+        #expect(await outbox.parkedSnapshot().map(\.floor) == [at(12)])
+    }
+
     @Test("An edit made in a sign-in that has ended is not queued")
     func anEditOfAnEndedSignInIsNotQueued() async {
         let outbox = Self.makeOutbox()

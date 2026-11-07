@@ -158,9 +158,7 @@ actor SyncOutbox {
             kept.append(contentsOf: snapshot[fromIndex...])
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
             let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
-            let floors = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0.floor) })
-            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) && floors.keys.contains($0.id) }
-                .map { $0.withFloor(floors[$0.id] ?? $0.floor) } + newlyEnqueued
+            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) }.compactMap(withLiveFloor) + newlyEnqueued
             parked.removeAll { freshKeys.contains($0.op.dedupKey) }
             persist()
         }
@@ -234,9 +232,13 @@ actor SyncOutbox {
     }
 
     private func park(_ entry: OutboxEntry) {
-        guard entries.contains(where: { $0.id == entry.id }) else { return }
+        guard let live = withLiveFloor(entry) else { return }
         parked.removeAll { $0.op.dedupKey == entry.op.dedupKey }
-        parked.append(entry)
+        parked.append(live)
+    }
+
+    private func withLiveFloor(_ entry: OutboxEntry) -> OutboxEntry? {
+        entries.first { $0.id == entry.id }.map { entry.withFloor($0.floor) }
     }
 
     private func loadIfNeeded() {
