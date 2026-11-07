@@ -113,6 +113,7 @@ struct AccentGradientScreenTests {
                     let toggle = try #require(accessibilityElement(labeled: row.label, in: host.view))
                     #expect(toggle.accessibilityTraits.contains(.notEnabled) == !editing.accent.isGradient, "\(row)")
                 }
+                Self.save(window, as: "switches-\(editing.rawValue)", look: Look.all[0])
             }
         }
     }
