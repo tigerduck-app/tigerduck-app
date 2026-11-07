@@ -14,7 +14,7 @@ struct OverrideStampTests {
             let landed = SettingsAPIStub.StubResponse(statusCode: 200, body: body)
             switch self {
             case .lands: return [(landed, 1500)]
-            case .lostReplyThenLands: return [(.noReply, 1500), (landed, 2500)]
+            case .lostReplyThenLands: return [(.noReply, 1500), (landed, 3500)]
             }
         }
     }
@@ -151,6 +151,22 @@ struct OverrideStampTests {
         #expect(try Self.sentAges(url) == [10_000, 0])
     }
 
+    @Test("An edit made while the earlier send of its field failed with no answer ages from that failure, as the backend may have taken it")
+    func editAgesFromAnEarlierSendThatGotNoAnswer() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.url(.mark, baseURL)
+        SettingsAPIStub.enqueue(.noReply, for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url)
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010))
+        let client = Self.client(baseURL, clock: { clock.now() })
+
+        await #expect(throws: URLError.self) { try await Self.mark(0, on: client) }
+        clock.set(Date(timeIntervalSince1970: 1_790_000_012))
+        try await Self.mark(5, on: client)
+
+        #expect(try Self.sentAges(url) == [10_000, 2_000])
+    }
+
     @Test("The answer to an older edit of a field does not replace the answer to a newer one")
     func olderEditsAnswerKeepsTheNewerOne() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
@@ -265,7 +281,7 @@ struct OverrideStampTests {
                 #expect(json["notify"] as? Bool == true)
                 #expect(json["hlc"] == nil)
             }
-            #expect(try sent.map { try (Self.json($0)["age_ms"] as? NSNumber)?.int64Value } == [5000, 6000])
+            #expect(try sent.map { try (Self.json($0)["age_ms"] as? NSNumber)?.int64Value } == [5000, 7000])
             #expect(!relaunched.unacknowledgedHolidayIDs.contains(id))
         }
     }

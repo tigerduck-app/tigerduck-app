@@ -156,15 +156,17 @@ nonisolated final class BackendClient: Sendable {
         let since = earlier.flatMap { answer in
             answer.edit.seconds(until: edit) > 0 && edit.seconds(until: answer.at) > 0 ? answer.at : nil
         } ?? edit
-        let response = try await send(try make(0), as: .first) { try make(since.ageMilliseconds(at: editClock())) }
-        let answeredAt = editClock()
-        answered.withLock { state in
-            if state.signIn != signIn { state = (signIn, [:]) }
-            if state.byKey[key].map({ $0.edit.seconds(until: edit) >= 0 }) ?? true {
-                state.byKey[key] = (edit, answeredAt)
+        // A send that failed with no answer may still have reached the backend, so it counts too.
+        defer {
+            let answeredAt = editClock()
+            answered.withLock { state in
+                if state.signIn != signIn { state = (signIn, [:]) }
+                if state.byKey[key].map({ $0.edit.seconds(until: edit) >= 0 }) ?? true {
+                    state.byKey[key] = (edit, answeredAt)
+                }
             }
         }
-        return response
+        return try await send(try make(0), as: .first) { try make(since.ageMilliseconds(at: editClock())) }
     }
 
     private enum Attempt {
