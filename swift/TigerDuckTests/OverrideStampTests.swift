@@ -183,24 +183,27 @@ struct OverrideStampTests {
         #expect(try Self.sentAges(url) == [10_000, 7_000])
     }
 
-    @Test("A send replayed with a refreshed token goes with its age measured again")
-    func replayWithARefreshedTokenMeasuresTheAgeAgain() async throws {
+    @Test("A send measures its age once its token is in hand, which may wait on a refresh, and again when replayed with a refreshed one")
+    func ageIsMeasuredOnceTheTokenIsInHand() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.url(.mark, baseURL)
         SettingsAPIStub.enqueue(.init(statusCode: 401, body: Data(#"{"error":"token_expired"}"#.utf8)), for: url)
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url)
-        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_002), step: 1)
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_002))
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
+        let refreshing = BackendAuth(header: {
+            clock.set(clock.now().wall.addingTimeInterval(5))
+            return ("Bearer test", testSignIn)
+        }, recover: { _, _, _ in true })
         let client = PushAPIClient(
-            baseURLProvider: { baseURL }, session: URLSession(configuration: config),
-            auth: BackendAuth(header: { ("Bearer test", testSignIn) }, recover: { _, _, _ in true }),
+            baseURLProvider: { baseURL }, session: URLSession(configuration: config), auth: refreshing,
             editClock: { clock.now() }
         )
 
         try await Self.mark(0, on: client)
 
-        #expect(try Self.sentAges(url) == [2_000, 3_000])
+        #expect(try Self.sentAges(url) == [7_000, 12_000])
     }
 
     @Test("A holiday setting whose send failed goes again after a relaunch, aged from when it was made")

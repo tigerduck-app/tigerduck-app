@@ -116,17 +116,17 @@ nonisolated final class BackendClient: Sendable {
     }
 
     func send(_ request: BackendRequest) async throws -> BackendResponse {
-        try await send({ request }, as: .first)
+        try await send(request, as: .first) { request }
     }
 
     func send<Response: Decodable>(_ request: BackendRequest, as type: Response.Type) async throws -> Response {
         try await send(request).decoded(type)
     }
 
-    /// Sends a user's edit with its `age_ms`, measured as it goes out; the backend stamps the edit
-    /// with the time it arrives less that age. A send waits for the earlier send of each of its
-    /// `keys`, and an edit made while that send was on its way ages from its answer, so it lands
-    /// after it whatever the two sends' network delays.
+    /// Sends a user's edit with its `age_ms`, measured once the request's token is in hand; the
+    /// backend stamps the edit with the time it arrives less that age. A send waits for the earlier
+    /// send of each of its `keys`, and an edit made while that send was on its way ages from its
+    /// answer, so it lands after it whatever the two sends' network delays.
     func sendStamped(
         _ keys: [String], madeAt edit: EditTime, for signIn: SignIn,
         _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
@@ -159,7 +159,7 @@ nonisolated final class BackendClient: Sendable {
                 .filter { $0.edit.seconds(until: edit) > 0 && edit.seconds(until: $0.at) > 0 }
                 .map(\.at)
         }.reduce(edit) { latest, answer in latest.seconds(until: answer) > 0 ? answer : latest }
-        let response = try await send({ try make(since.ageMilliseconds(at: editClock())) }, as: .first)
+        let response = try await send(try make(0), as: .first) { try make(since.ageMilliseconds(at: editClock())) }
         let answeredAt = editClock()
         answered.withLock { state in
             if state.signIn != signIn { state = (signIn, [:]) }
@@ -182,22 +182,26 @@ nonisolated final class BackendClient: Sendable {
         }
     }
 
-    private func send(_ make: () throws -> BackendRequest, as attempt: Attempt) async throws -> BackendResponse {
-        let request = try make()
-        var urlRequest = try makeURLRequest(request)
+    private func send(
+        _ shape: BackendRequest, as attempt: Attempt, building build: () throws -> BackendRequest
+    ) async throws -> BackendResponse {
+        var authorization: String?
         var sent: String?
         var signIn: SignIn?
-        if request.signIn?.isCurrent == false { throw PushAPIError.notSignedIn }
-        if request.authenticated {
+        if shape.signIn?.isCurrent == false { throw PushAPIError.notSignedIn }
+        if shape.authenticated {
             if let header = await auth.header(), !header.value.isEmpty {
-                if header.signIn != attempt.signIn(of: request) { throw PushAPIError.notSignedIn }
-                urlRequest.setValue(header.value, forHTTPHeaderField: "Authorization")
+                if header.signIn != attempt.signIn(of: shape) { throw PushAPIError.notSignedIn }
+                authorization = header.value
                 sent = header.value.split(separator: " ").last.map(String.init)
                 signIn = header.signIn
-            } else if !request.sendsWithoutSession {
+            } else if !shape.sendsWithoutSession {
                 throw PushAPIError.notSignedIn
             }
         }
+        let request = try build()
+        var urlRequest = try makeURLRequest(request)
+        if let authorization { urlRequest.setValue(authorization, forHTTPHeaderField: "Authorization") }
         let (data, response) = request.postsCredentials
             ? try await session.data(for: urlRequest, delegate: CredentialPostDelegate())
             : try await session.data(for: urlRequest)
@@ -207,7 +211,7 @@ nonisolated final class BackendClient: Sendable {
         let code = Self.errorCode(in: data)
         if http.statusCode == 401, request.authenticated, case .first = attempt, let sent, let signIn,
            await auth.recover(sent, code, signIn) {
-            return try await send(make, as: .replay(after401For: signIn))
+            return try await send(shape, as: .replay(after401For: signIn), building: build)
         }
         if http.statusCode == 409, code == "sync_revision_expired" { throw PushAPIError.syncRevisionExpired }
         if request.returnedStatuses.contains(http.statusCode) { return answer }
