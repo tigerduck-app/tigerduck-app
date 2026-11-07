@@ -4,6 +4,7 @@ final class MoodleFiles: AccountScoped {
     static let shared = MoodleFiles()
 
     private let folders: CacheFolders
+    var placedPictureRevisions = SignInBound<[URL: Int]>(empty: [:])
 
     init(folders: CacheFolders = .app) {
         self.folders = folders

@@ -439,7 +439,7 @@ struct MoodleCourseAssignmentsTests {
         #expect(!MoodleCourseAssignments.records(in: Self.context(folder)).isEmpty)
         #expect(cachedSubmission(folder, of: 701) != nil)
 
-        folder.cache.forgetAccount()
+        await withExclusiveRealDefaults { folder.cache.forgetAccount() }
 
         #expect(MoodleCourseAssignments.records(in: Self.context(folder)).isEmpty)
         #expect(cachedSubmission(folder, of: 701) == nil)

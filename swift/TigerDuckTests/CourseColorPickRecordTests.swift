@@ -77,7 +77,7 @@ struct CourseColorPickRecordTests {
 
     @Test("the picks outlive a relaunch and go with the account's colours at a sign-out")
     @MainActor
-    func thePicksFollowTheAccount() {
+    func thePicksFollowTheAccount() async {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("CourseColorPickRecordTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -85,7 +85,7 @@ struct CourseColorPickRecordTests {
         Self.makeColors(at: root).notePickedCourseColor("CS1010002")
         #expect(Self.makeColors(at: root).loadPickedCourseColors() == ["CS1010001", "CS1010002"])
 
-        TestCache(folders: Self.folders(at: root)).forgetAccount()
+        await withExclusiveRealDefaults { TestCache(folders: Self.folders(at: root)).forgetAccount() }
 
         #expect(Self.makeColors(at: root).loadPickedCourseColors().isEmpty)
     }
