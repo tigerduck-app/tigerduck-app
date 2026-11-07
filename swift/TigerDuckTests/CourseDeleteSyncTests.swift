@@ -22,7 +22,7 @@ struct CourseDeleteSyncTests {
     }
 
     private static let hiddenAt = Date(timeIntervalSince1970: 1_790_000_000)
-    private static let path = "sync/courses/client:1151:CS1001301?hlc=\(PushAPI.clock(of: hiddenAt))"
+    private static let path = "sync/courses/client:1151:CS1001301?age_ms=2000"
 
     private static func freshDirectory() -> URL {
         FileManager.default.temporaryDirectory
@@ -157,16 +157,25 @@ struct CourseDeleteSyncTests {
         #expect(await outbox.parkedSnapshot().isEmpty)
     }
 
-    @Test("A delete answered 409 with a code other than clock_ahead stays queued without spending an attempt")
-    func deleteAnsweredAnotherConflictStays() async {
-        let outbox = SyncOutbox(directory: Self.freshDirectory())
-        await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "CS1001301", stamp: Date()))
+    @Test("A term reset goes with its age and hands back the reset time the backend answered, none when it kept a newer reset",
+          arguments: [true, false])
+    func termResetHandsBackItsResetTime(applied: Bool) async throws {
+        let backend = Backend()
+        backend.answer(
+            "sync/courses?semester=1151&age_ms=2000",
+            .init(statusCode: 200, body: Data(#"{"deleted":1,"applied":\#(applied),"reset_hlc":1790000000000000}"#.utf8))
+        )
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = PushAPIClient(
+            baseURLProvider: { [baseURL = backend.baseURL] in baseURL }, session: URLSession(configuration: config),
+            authHeaderProvider: { "Bearer test" }
+        )
 
-        for _ in 0...SyncOutbox.maxAttempts {
-            await outbox.drain { _ in throw PushAPIError.httpStatus(409, body: #"{"error":"something_else","message":"something_else"}"#) }
-        }
+        let resetClock = try await client.deleteAllCourses(semester: "1151", madeAt: EditTime(wall: Self.hiddenAt), for: testSignIn)
 
-        #expect(await outbox.snapshot().map(\.attempts) == [0])
+        #expect(resetClock == (applied ? 1_790_000_000_000_000 : nil))
+        #expect(backend.requests("sync/courses?semester=1151&age_ms=2000").map(\.httpMethod) == ["DELETE"])
     }
 
     @Test("A course added back drops its own queued delete, and a reset its term's or every term's")
@@ -237,38 +246,23 @@ struct CourseDeleteSyncTests {
         }
     }
 
-    @Test("A reset made elsewhere drops the course adds and deletes made here before it, one still on its way in too, and keeps those made after it or within the skew margin")
-    func resetElsewhereDropsTheCourseEditsBeforeIt() async {
-        let coordinator = Self.makeCoordinator(Backend())
-        let reset = Date()
-        let margin = CloudSyncCoordinator.clockSkewMargin
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: reset.addingTimeInterval(-margin - 60))
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "MA5", at: reset.addingTimeInterval(-margin + 60))
-        await coordinator.enqueueCourseDelete(semester: "1142", courseNo: "EE2", at: reset.addingTimeInterval(60))
-        await coordinator.outbox.enqueue(.courseAdd(
-            semester: "1151", courseNo: "GE3", stamp: reset.addingTimeInterval(-margin - 60)
-        ))
-        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1", moodleId: "1151CS1",
-                                              moodleCourseId: nil, ignore: true)
+    @Test("A hide the backend refuses, as older than a reset or an add made elsewhere, leaves the queue, so the course shows once the server lists it")
+    func refusedHideIsReleasedOnceListed() async {
+        let backend = Backend()
+        backend.answer(
+            Self.path, .init(statusCode: 200, body: Data(#"{"deleted":0,"applied":false,"hlc":1790000001000000}"#.utf8))
+        )
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
+        var hidden: Set<String> = ["1151:CS1001301"]
 
-        #expect(await coordinator.dropCourseEdits(madeBeforeReset: reset) == ["1151:CS1"])
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "PE4", at: reset.addingTimeInterval(-margin - 1))
+        let released = CourseRosterReconciler.unhideListedCourses(
+            ["CS1001301"], semester: "1151", deleting: await coordinator.pendingCourseDeleteKeys(), in: &hidden
+        )
 
-        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:MA5", "1142:EE2"])
-        #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
-        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1"])
-    }
-
-    @Test("A full sync after a reset made elsewhere drops the deletes made here before the server's reset time, and keeps one made after it but before the sync")
-    func fullSyncAfterAResetElsewhereDropsTheDeletesBeforeIt() async {
-        let coordinator = Self.makeCoordinator(Backend())
-        let resetAt = Date().addingTimeInterval(-3600)
-        let margin = CloudSyncCoordinator.clockSkewMargin
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: resetAt.addingTimeInterval(-margin - 60))
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "EE2", at: resetAt.addingTimeInterval(600))
-
-        #expect(await coordinator.dropCourseEdits(madeBeforeReset: resetAt) == ["1151:CS1"])
-        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:EE2"])
+        #expect(backend.requests(Self.path).map(\.httpMethod) == ["DELETE"])
+        #expect(released)
+        #expect(hidden.isEmpty)
     }
 
     @Test("A full sync shows a hidden course the server lists again only once no delete of it from here may be on its way")

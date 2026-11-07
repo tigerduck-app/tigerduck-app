@@ -11,8 +11,9 @@ up. Retry and refresh policies and new features belong with the feature.
    `AppUserDefaults.standard`, so deleting the file removes it.
 3. `AppEnvironment.runPendingMigrations()` runs them once per launch from `AppEnvironment.init()`;
    one that moves Keychain items launch code reads runs earlier there, before `AuthService` is
-   built. One that finds protected data unreadable, as on a locked phone, may run itself again
-   once it becomes readable, since unlocking resumes the process instead of launching it again.
+   built, as does one that rewrites the outbox files, before `CloudSyncCoordinator` reads them.
+   One that finds protected data unreadable, as on a locked phone, may run itself again once it
+   becomes readable, since unlocking resumes the process instead of launching it again.
 4. A migration stays until no install can launch with data older than it. The backend's
    `app_version_retired` floor alone does not show that: a user below it can update straight to
    the newest app. Deleting a migration therefore needs, in the same change, a path for such an

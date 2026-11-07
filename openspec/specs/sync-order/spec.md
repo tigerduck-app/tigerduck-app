@@ -29,8 +29,9 @@ has not sent yet survives the pull. A local edit SHALL be sent at once, without 
 - **THEN** it sends no course upload until that pull has been applied
 
 ### Requirement: Every edit is sent with its own time
-Each write of a user's edit to the backend SHALL carry the time the edit was made (`hlc`), however
-late it is sent, so the backend keeps the newest edit across devices.
+Each write of a user's edit to the backend SHALL carry the edit's age (`age_ms`), from which the
+backend stamps it with the time it was made, however late it is sent, so the backend keeps the
+newest edit across devices.
 
 #### Scenario: A queued edit sent late
 - **WHEN** device B's mark edit waits in its outbox while device A makes a newer edit of the same mark, and B's edit is sent afterwards

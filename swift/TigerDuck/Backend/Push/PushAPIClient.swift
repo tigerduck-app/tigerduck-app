@@ -13,10 +13,12 @@ final class PushAPIClient: Sendable {
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
         auth: BackendAuth = .none,
-        versionGate: APIVersionGate? = nil
+        versionGate: APIVersionGate? = nil,
+        editClock: @escaping @Sendable () -> EditTime = { EditTime.now() }
     ) {
         self.init(backend: BackendClient(
-            baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: auth, versionGate: versionGate
+            baseURL: baseURLProvider, session: session ?? BackendClient.session, auth: auth, versionGate: versionGate,
+            editClock: editClock
         ))
     }
 
@@ -40,12 +42,20 @@ final class PushAPIClient: Sendable {
         _ = try await backend.send(request)
     }
 
+    /// A term reset clears the term's courses and their fields stamped before it, so every course
+    /// write and reset goes in one order, each made during the one before aging from its answer.
+    nonisolated static let courseWrites = "courses"
+
+    nonisolated static func markKey(_ moodleAssignmentId: String) -> String { "mark:\(moodleAssignmentId)" }
+
+    nonisolated static func holidayKey(_ holidayID: Int) -> String { "holiday:\(holidayID)" }
+
     func putHolidayOverride(
-        holidayID: Int, notify: Bool, madeAt stamp: Date, for signIn: SignIn
+        holidayID: Int, notify: Bool, madeAt: EditTime, for signIn: SignIn
     ) async throws -> PushAPI.HolidayOverrideResponse {
-        try await backend.sendStamped(at: stamp) { hlc in
+        try await backend.sendStamped(Self.holidayKey(holidayID), madeAt: madeAt, for: signIn) { age in
             try BackendRequest("PUT", segments: ["sync", "holiday-overrides", String(holidayID)])
-                .json(PushAPI.HolidayOverrideRequest(notify: notify, hlc: hlc)).sent(for: signIn)
+                .json(PushAPI.HolidayOverrideRequest(notify: notify, ageMs: age)).sent(for: signIn)
         }.decoded(PushAPI.HolidayOverrideResponse.self)
     }
 
@@ -113,12 +123,12 @@ final class PushAPIClient: Sendable {
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String,
-        madeAt stamp: Date,
+        madeAt: EditTime,
         for signIn: SignIn
     ) async throws -> PushAPI.AssignmentOverrideResponse {
-        try await backend.sendStamped(at: stamp) { hlc in
+        try await backend.sendStamped(Self.markKey(moodleAssignmentId), madeAt: madeAt, for: signIn) { age in
             try BackendRequest("PATCH", segments: ["sync", "assignments", moodleAssignmentId, "override"])
-                .json(PushAPI.AssignmentOverrideRequest(localStatus: localStatus, hlc: hlc)).sent(for: signIn)
+                .json(PushAPI.AssignmentOverrideRequest(localStatus: localStatus, ageMs: age)).sent(for: signIn)
         }.decoded(PushAPI.AssignmentOverrideResponse.self)
     }
 
@@ -130,14 +140,14 @@ final class PushAPIClient: Sendable {
         locale: String? = nil,
         ignoreAssignments: Bool? = nil,
         moodleCourseId: Int? = nil,
-        madeAt stamp: Date,
+        madeAt: EditTime,
         for signIn: SignIn
     ) async throws -> PushAPI.CourseOverrideResponse {
         do {
-            return try await backend.sendStamped(at: stamp) { hlc in
+            return try await backend.sendStamped(Self.courseWrites, madeAt: madeAt, for: signIn) { age in
                 try BackendRequest("PATCH", segments: ["sync", "courses", courseKey, "override"]).json(PushAPI.CourseOverrideRequest(
                     colorHex: colorHex, customName: customName, locale: locale,
-                    ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, hlc: hlc
+                    ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, ageMs: age
                 )).sent(for: signIn)
             }.decoded(PushAPI.CourseOverrideResponse.self)
         } catch let error as PushAPIError {
@@ -146,36 +156,59 @@ final class PushAPIClient: Sendable {
         }
     }
 
-    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt stamp: Date? = nil, for signIn: SignIn) async throws {
-        guard let stamp, let adds = request.handAddedCourses, !adds.isEmpty else {
+    /// An automatic colour goes with the time its snapshot named
+    /// (`CourseOverridesReconciler.deterministicFillStamp`), a backend time every device reads alike,
+    /// so it is sent as that `hlc` rather than as an age.
+    func fillCourseColor(
+        courseKey: String, colorHex: String, stampedAt clock: Int64, for signIn: SignIn
+    ) async throws -> PushAPI.CourseOverrideResponse {
+        try await backend.send(
+            BackendRequest("PATCH", segments: ["sync", "courses", courseKey, "override"]).json(PushAPI.CourseOverrideRequest(
+                colorHex: colorHex, customName: nil, locale: nil, hlc: clock
+            )).sent(for: signIn),
+            as: PushAPI.CourseOverrideResponse.self
+        )
+    }
+
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest, addedAt: EditTime? = nil, for signIn: SignIn) async throws {
+        guard let addedAt, let adds = request.handAddedCourses, !adds.isEmpty else {
             _ = try await backend.send(BackendRequest("POST", "sync", "courses", "upload").json(request).sent(for: signIn))
             return
         }
-        _ = try await backend.sendStamped(at: stamp) { hlc in
+        _ = try await backend.sendStamped(Self.courseWrites, madeAt: addedAt, for: signIn) { age in
             var stamped = request
-            stamped.handAddedCourses = adds.map { PushAPI.CourseAdd(courseKey: $0.courseKey, hlc: hlc) }
+            stamped.handAddedCourses = adds.map { PushAPI.CourseAdd(courseKey: $0.courseKey, ageMs: age) }
             return try BackendRequest("POST", "sync", "courses", "upload").json(stamped).sent(for: signIn)
         }
     }
 
-    func deleteAllCourses(semester: String? = nil, madeAt stamp: Date, for signIn: SignIn) async throws {
-        _ = try await backend.sendStamped(at: stamp) { hlc in
+    /// The reset time the backend answered (`reset_hlc`), which its reset tombstones carry; none when
+    /// it kept a newer reset, whose time the answer carries instead.
+    func deleteAllCourses(semester: String? = nil, madeAt: EditTime, for signIn: SignIn) async throws -> Int64? {
+        let answer = try await backend.sendStamped(Self.courseWrites, madeAt: madeAt, for: signIn) { age in
             var request = BackendRequest("DELETE", "sync", "courses").sent(for: signIn)
             request.query = (semester.map { [URLQueryItem(name: "semester", value: $0)] } ?? [])
-                + [URLQueryItem(name: "hlc", value: String(hlc))]
+                + [URLQueryItem(name: "age_ms", value: String(age))]
             return request
         }
+        let json = try? answer.jsonObject()
+        guard json?["applied"] as? Bool != false else { return nil }
+        guard let resetClock = (json?["reset_hlc"] as? NSNumber)?.int64Value else {
+            logger.error("Push.API term reset answered without reset_hlc")
+            return nil
+        }
+        return resetClock
     }
 
     /// The backend reads `kind=remove` as taking back a hand-add, which hides the course nowhere, and
     /// `kind=hide` as a hide, of a `user_added` row too. With no kind it removes a `user_added` row and
     /// hides any other key, one it holds no row of too.
     func deleteCourse(
-        courseKey: String, kind: PushAPI.CourseDeleteKind? = nil, madeAt stamp: Date, for signIn: SignIn
+        courseKey: String, kind: PushAPI.CourseDeleteKind? = nil, madeAt: EditTime, for signIn: SignIn
     ) async throws {
-        _ = try await backend.sendStamped(at: stamp) { hlc in
+        _ = try await backend.sendStamped(Self.courseWrites, madeAt: madeAt, for: signIn) { age in
             var request = BackendRequest("DELETE", segments: ["sync", "courses", courseKey]).sent(for: signIn)
-            request.query = [URLQueryItem(name: "hlc", value: String(hlc))]
+            request.query = [URLQueryItem(name: "age_ms", value: String(age))]
                 + (kind.map { [URLQueryItem(name: "kind", value: $0.rawValue)] } ?? [])
             return request
         }
@@ -219,7 +252,6 @@ enum PushAPIError: Error, LocalizedError {
     case invalidResponse
     case httpStatus(Int, body: String, accessToken: RedactedToken? = nil)
     case syncRevisionExpired
-    case clockAhead(serverClock: Int64?)
     case courseNotFound
     case notSignedIn
 
@@ -230,7 +262,6 @@ enum PushAPIError: Error, LocalizedError {
         case .invalidResponse: return "Push server returned a non-HTTP response."
         case .httpStatus(let code, let body, _): return "Push server returned HTTP \(code): \(body)"
         case .syncRevisionExpired: return "Push server has compacted the changes asked for."
-        case .clockAhead: return "Push server refused a time ahead of its clock."
         case .courseNotFound: return "Push server does not hold the course yet."
         case .notSignedIn: return String(localized: "common_auto_sign_in_failed")
         }

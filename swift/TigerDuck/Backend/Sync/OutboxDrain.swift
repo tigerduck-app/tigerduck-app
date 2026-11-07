@@ -86,18 +86,9 @@ final class OutboxDrain {
                     || (customName != nil && !syncsOverrides(.courseNames))
             }
         }
-        await outbox.drain(for: signIn, holding: isHeld) { [weak self] op, madeIn in
+        await outbox.drain(for: signIn, holding: isHeld) { [weak self] op, madeAt, madeIn in
             guard let self else { throw CancellationError() }
-            try await BackendClient.$holdsResend.withValue({ await self.holdsResend(op, isHeld) }) {
-                try await self.execute(op, for: madeIn)
-            }
-        }
-    }
-
-    private func holdsResend(_ op: SyncOp, _ isHeld: @Sendable (SyncOp) -> Bool) -> Bool {
-        switch op {
-        case .courseAdd, .courseDelete: return !sender.sendsMembershipEdits
-        case .courseOverride, .assignmentOverride, .courseIgnore: return isHeld(op)
+            try await self.execute(op, madeAt: madeAt, for: madeIn)
         }
     }
 
@@ -106,28 +97,25 @@ final class OutboxDrain {
         for fill in fills {
             guard sends(for: signIn), policy.syncsCourseOverrides(.courseColors) else { return }
             do {
-                let syncsOverrides = policy.syncsCourseOverrides
-                let reply = try await BackendClient.$holdsResend.withValue({ !syncsOverrides(.courseColors) }) {
-                    try await push.patchCourseOverride(
-                        courseKey: fill.courseKey, colorHex: fill.colorHex, madeAt: fill.stamp, for: signIn
-                    )
-                }
+                let reply = try await push.apiClient.fillCourseColor(
+                    courseKey: fill.courseKey, colorHex: fill.colorHex, stampedAt: PushAPI.clock(of: fill.stamp), for: signIn
+                )
                 guard !reply.applied.contains(.colorHex), edits.editCountAtLastColorEdit(of: fill.identity) <= editsBefore else { continue }
                 sender.kept.colorKept(reply.colorHex, courseNo: fill.courseNo, for: signIn)
-            } catch is ResendHeldError {
-                return
             } catch {
                 logger.error("course colour fill failed: \(error.localizedDescription, privacy: .private)")
             }
         }
     }
 
-    private func execute(_ op: SyncOp, for signIn: SignIn) async throws {
+    private func execute(_ op: SyncOp, madeAt: EditTime, for signIn: SignIn) async throws {
         guard sends(for: signIn) else { throw CancellationError() }
         guard !edits.cutoffs.cutsOff(op) else { return }
         let request = Task {
             do {
-                try await self.sender.send(op, for: signIn, hasNewerQueuedEdit: { await self.edits.hasNewerEdit(than: $0) })
+                try await self.sender.send(
+                    op, madeAt: madeAt, for: signIn, hasNewerQueuedEdit: { await self.edits.hasNewerEdit(than: $0) }
+                )
             } catch let error where Self.isUnauthorized(error) {
                 throw SyncOutboxAuthError(statusCode: 401)
             }

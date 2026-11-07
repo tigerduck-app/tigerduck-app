@@ -104,7 +104,8 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `hasCompletedOnboarding` | device |  |
 | defaults | `hasPickedClassReminderLead` | device |  |
 | defaults | `holidayNotifyOverrides` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
-| defaults | `holidayOverrideEditTimes` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
+| defaults | `holidayOverrideEditClocks` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
+| defaults | `holidayOverrideEditFloors` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
 | defaults | `holidayOverridesAwaitingUpload` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
 | defaults | `homeAssignmentFilter` | device |  |
 | defaults | `homeSectionLayoutData` | device |  |
@@ -136,6 +137,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `pushServerURLOverride` | device |  |
 | defaults | `schoolDataSyncedAt` | school | `swift/TigerDuck/Account/SchoolAccountKeys.swift` `forgetAccount` |
 | defaults | `semesterResetAt` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
+| defaults | `semesterResetClocks` | school | `swift/TigerDuck/Persistence/CourseFiles.swift` `forgetAccount` |
 | defaults | `serverPushUserOptOut` | device |  |
 | defaults | `showAbsoluteAssignmentTime` | device |  |
 | defaults | `showAssignmentScenario` | device |  |

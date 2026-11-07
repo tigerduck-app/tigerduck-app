@@ -73,6 +73,9 @@ final class CloudSyncCoordinator {
             push: pushCoordinator, outbox: outbox, edits: edits, drain: drain, isEnabled: isEnabled
         )
         sender.onCourseAddLanded = { [weak edits] key in edits?.noteCourseAddLanded(key) }
+        pushCoordinator.apiClient.backend.observeSendEnds { key, span, signIn in
+            Task { await outbox.raiseFloors(of: key, after: span, for: signIn) }
+        }
     }
 
     func followPreference() {
@@ -202,11 +205,6 @@ final class CloudSyncCoordinator {
     func courseAddKeys(unlandedAt date: Date) async -> Set<String> { await edits.courseAddKeys(unlandedAt: date) }
 
     nonisolated static let clockSkewMargin: TimeInterval = 2 * 60
-
-    @discardableResult
-    func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
-        await edits.dropCourseEdits(madeBeforeReset: resetAt)
-    }
 
     func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil, madeBeforeAction cutoff: Date) async {
         await edits.discardCourseDeletes(semester: semester, courseKeys: courseKeys, madeBeforeAction: cutoff)

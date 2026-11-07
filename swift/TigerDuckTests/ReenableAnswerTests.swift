@@ -46,8 +46,8 @@ struct ReenableAnswerTests {
         #expect(app.pending.isEmpty)
     }
 
-    @Test("Course requests that fail, or wait as course sync went off, keep the courses pending, and the rest is let go of",
-          arguments: [URLError(.notConnectedToInternet), ResendHeldError()] as [any Error])
+    @Test("Course requests that fail keep the courses pending, and the rest is let go of",
+          arguments: [URLError(.notConnectedToInternet)] as [any Error])
     func failedCourseRequestsKeepTheCoursesPending(_ failure: any Error) async {
         let app = AnswerProbe(pending: [.courses, .courseNames])
         app.sendCourses = { throw failure }

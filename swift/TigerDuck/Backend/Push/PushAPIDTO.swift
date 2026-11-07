@@ -43,7 +43,12 @@ enum PushAPI {
 
     nonisolated struct HolidayOverrideRequest: Encodable, Sendable {
         let notify: Bool
-        let hlc: Int64
+        let ageMs: Int64
+
+        enum CodingKeys: String, CodingKey {
+            case notify
+            case ageMs = "age_ms"
+        }
     }
 
     nonisolated struct HolidayOverrideResponse: Decodable, Sendable {
@@ -168,11 +173,11 @@ enum PushAPI {
 
     nonisolated struct AssignmentOverrideRequest: Encodable, Sendable {
         let localStatus: String
-        let hlc: Int64
+        let ageMs: Int64
 
         enum CodingKeys: String, CodingKey {
             case localStatus = "local_status"
-            case hlc
+            case ageMs = "age_ms"
         }
     }
 
@@ -192,7 +197,8 @@ enum PushAPI {
         let locale: String?
         var ignoreAssignments: Bool? = nil
         var moodleCourseId: Int? = nil
-        var hlc: Int64
+        var ageMs: Int64? = nil
+        var hlc: Int64? = nil
 
         enum CodingKeys: String, CodingKey {
             case colorHex = "color_hex"
@@ -200,6 +206,7 @@ enum PushAPI {
             case locale
             case ignoreAssignments = "ignore_assignments"
             case moodleCourseId = "moodle_course_id"
+            case ageMs = "age_ms"
             case hlc
         }
     }
@@ -272,11 +279,11 @@ enum PushAPI {
 
     nonisolated struct CourseAdd: Encodable, Sendable {
         let courseKey: String
-        let hlc: Int64
+        var ageMs: Int64? = nil
 
         enum CodingKeys: String, CodingKey {
             case courseKey = "course_key"
-            case hlc
+            case ageMs = "age_ms"
         }
     }
 

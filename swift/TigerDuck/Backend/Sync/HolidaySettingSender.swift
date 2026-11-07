@@ -14,6 +14,13 @@ final class HolidaySettingSender {
         self.account = account
         self.push = push
         self.poller = poller
+        Self.keepEndsOfSends(on: push.apiClient.backend)
+    }
+
+    static func keepEndsOfSends(on backend: BackendClient) {
+        backend.observeSendEnds { key, span, signIn in
+            Task { @MainActor in AcademicCalendarStore.shared.raiseHolidayEditFloor(onSendOf: key, span, for: signIn) }
+        }
     }
 
     func setHolidayNotify(_ notify: Bool, holidayID: Int, for signIn: SignIn) {
@@ -57,9 +64,9 @@ final class HolidaySettingSender {
     ) async {
         let sent = store.holidayEdit(holidayID)
         do {
-            let reply = try await BackendClient.$holdsResend.withValue({ !SyncPolicy.current.cloudSyncEnabled }) {
+            let reply = try await BackendClient.$ageFloor.withValue(store.holidayEditFloor(holidayID)) {
                 try await registration.uploadHolidayOverride(
-                    holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? Date(), for: signIn
+                    holidayID: holidayID, notify: sent.notify, madeAt: sent.madeAt ?? .now(), for: signIn
                 )
             }
             guard store.holidayEdit(holidayID) == sent else { return }

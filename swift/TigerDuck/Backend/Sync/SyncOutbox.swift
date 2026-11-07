@@ -49,7 +49,7 @@ actor SyncOutbox {
         let key = op.dedupKey
         entries.removeAll { $0.op.dedupKey == key }
         parked.removeAll { $0.op.dedupKey == key }
-        entries.append(OutboxEntry(id: UUID(), op: op, attempts: 0, signIn: signIn))
+        entries.append(OutboxEntry(id: UUID(), op: op, attempts: 0, signIn: signIn, madeAt: .stamped(op.stamp)))
         persist()
     }
 
@@ -144,7 +144,7 @@ actor SyncOutbox {
     func drain(
         for signIn: SignIn,
         holding isHeld: @Sendable (SyncOp) -> Bool = { _ in false },
-        execute: @Sendable (SyncOp, SignIn) async throws -> Void
+        execute: @Sendable (SyncOp, EditTime, SignIn) async throws -> Void
     ) async -> Bool {
         loadIfNeeded()
         let snapshot = entries
@@ -158,17 +158,14 @@ actor SyncOutbox {
             kept.append(contentsOf: snapshot[fromIndex...])
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
             let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
-            let stillQueued = Set(entries.map(\.id))
-            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) && stillQueued.contains($0.id) }
-                + newlyEnqueued
+            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) }.compactMap(withLiveFloor) + newlyEnqueued
             parked.removeAll { freshKeys.contains($0.op.dedupKey) }
             persist()
         }
 
         while index < snapshot.count {
             guard clearGeneration == startGeneration else { return entries.isEmpty }
-            let entry = snapshot[index]
-            guard entries.contains(where: { $0.id == entry.id }) else {
+            guard let entry = entries.first(where: { $0.id == snapshot[index].id }) else {
                 index += 1
                 continue
             }
@@ -179,14 +176,11 @@ actor SyncOutbox {
             }
 
             do {
-                try await execute(entry.op, entry.signIn ?? signIn)
+                try await BackendClient.$ageFloor.withValue(entry.floor) {
+                    try await execute(entry.op, entry.madeAt, entry.signIn ?? signIn)
+                }
             } catch {
                 guard clearGeneration == startGeneration else { return entries.isEmpty }
-                if error is ResendHeldError {
-                    kept.append(entry)
-                    index += 1
-                    continue
-                }
                 if OutboxErrorPolicy.keepsWithoutAttempt(error, for: entry.op) {
                     mergeAndStore(retainRemainder: index)
                     return false
@@ -213,6 +207,14 @@ actor SyncOutbox {
         return entries.isEmpty
     }
 
+    func raiseFloors(of key: String, after span: BackendClient.SendSpan, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        loadIfNeeded()
+        let raised = entries.indices.map { entries[$0].raiseFloor(of: key, after: span) }
+            + parked.indices.map { parked[$0].raiseFloor(of: key, after: span) }
+        if raised.contains(true) { persist() }
+    }
+
     private func giveUp(on entry: OutboxEntry, after error: Error) {
         let kind: String
         let parks: Bool
@@ -230,9 +232,13 @@ actor SyncOutbox {
     }
 
     private func park(_ entry: OutboxEntry) {
-        guard entries.contains(where: { $0.id == entry.id }) else { return }
+        guard let live = withLiveFloor(entry) else { return }
         parked.removeAll { $0.op.dedupKey == entry.op.dedupKey }
-        parked.append(entry)
+        parked.append(live)
+    }
+
+    private func withLiveFloor(_ entry: OutboxEntry) -> OutboxEntry? {
+        entries.first { $0.id == entry.id }.map { entry.withFloor($0.floor) }
     }
 
     private func loadIfNeeded() {
