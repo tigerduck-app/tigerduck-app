@@ -246,6 +246,25 @@ struct CourseDeleteSyncTests {
         }
     }
 
+    @Test("A hide the backend refuses, as older than a reset or an add made elsewhere, leaves the queue, so the course shows once the server lists it")
+    func refusedHideIsReleasedOnceListed() async {
+        let backend = Backend()
+        backend.answer(
+            Self.path, .init(statusCode: 200, body: Data(#"{"deleted":0,"applied":false,"hlc":1790000001000000}"#.utf8))
+        )
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
+        var hidden: Set<String> = ["1151:CS1001301"]
+
+        let released = CourseRosterReconciler.unhideListedCourses(
+            ["CS1001301"], semester: "1151", deleting: await coordinator.pendingCourseDeleteKeys(), in: &hidden
+        )
+
+        #expect(backend.requests(Self.path).map(\.httpMethod) == ["DELETE"])
+        #expect(released)
+        #expect(hidden.isEmpty)
+    }
+
     @Test("A full sync shows a hidden course the server lists again only once no delete of it from here may be on its way")
     func listedCourseStaysHiddenWhileItsDeleteMayBeOnItsWay() {
         var hidden: Set<String> = ["1151:CS1", "1151:EE2", "1151:GE3", "PE4", "1142:MA5"]
