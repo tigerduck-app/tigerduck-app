@@ -215,7 +215,7 @@ struct MoodleMaterialsTests {
         let copy = try #require(await store.download(Self.syllabusRef.file, in: Self.syllabusRef.owner))
         #expect(FileManager.default.fileExists(atPath: copy.path))
 
-        folder.cache.forgetAccount()
+        await withExclusiveRealDefaults { folder.cache.forgetAccount() }
 
         #expect(!FileManager.default.fileExists(atPath: folder.cache.moodleFilesDir.path))
         #expect(folder.cache.moodle.loadMoodleData(MoodleCourseMaterials.self, name: "courses/20119/materials", account: "B11399001") == nil)

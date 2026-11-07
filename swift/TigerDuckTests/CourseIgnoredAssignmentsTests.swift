@@ -171,10 +171,10 @@ struct CourseIgnoredAssignmentsTests {
     }
 
     @Test("Sign-out clears the setting")
-    func signOutClearsTheSetting() {
+    func signOutClearsTheSetting() async {
         let cache = Self.cacheIgnoringCS1()
 
-        cache.forgetAccount()
+        await withExclusiveRealDefaults { cache.forgetAccount() }
 
         #expect(cache.assignments.loadIgnoredAssignmentCourses().isEmpty)
     }

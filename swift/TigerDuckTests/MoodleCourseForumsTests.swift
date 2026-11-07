@@ -406,7 +406,7 @@ struct MoodleCourseForumsTests {
         await store.discussions(of: Self.qanda).refresh()
         await store.refreshThread(of: Self.discussion(801))
 
-        folder.cache.forgetAccount()
+        await withExclusiveRealDefaults { folder.cache.forgetAccount() }
         let afterSignOut = Self.store(folder, site: Site())
         #expect(afterSignOut.discussions(of: Self.qanda).list == nil)
         #expect(afterSignOut.thread(of: Self.discussion(801)).value == nil)
