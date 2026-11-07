@@ -76,8 +76,8 @@ a backend time anywhere (owner's decision of 2026-11-07, replacing the device cl
   negative age is 0. `EditTime` tells boots apart by the kernel's `kern.bootsessionuuid`; an edit
   without one ages by the wall clock.
 - Per key: a send waits for the earlier send of the same key to end, and each key keeps the
-  spans of its recent sends, from when a send first measured its age to when its last attempt
-  ended, answered or failed. An edit counts its age from the latest end among the spans of other
+  spans of its recent attempts, each from when it first measured its age (a 401 replay inside it
+  included) to when it ended, answered or failed. An edit counts its age from the latest end among the spans of other
   edits that started before it was made, so an edit made while another was in flight lands after
   it whatever the two network delays (`BackendClient.sendStamped`). The spans belong to the
   sign-in that sent them. As a span ends, an outbox entry or holiday setting of its key made since
@@ -119,7 +119,8 @@ Lost:
 
 Neither side keeps clock state. iOS keeps each unsent edit's time: the outbox keeps `SyncOp.stamp`
 (the wall time of the edit) and beside it `OutboxEntry.madeAt`, an `EditTime` with the clock since
-boot; an entry an earlier build wrote has none and ages by the wall clock from its stamp. A
+boot; `OutboxEditTimeFillMigration` gives an entry an earlier build wrote its stamp as a
+wall-clock edit time. A
 holiday setting keeps its edit time and clock since boot in `Defaults`. The backend's stamps are
 its own times.
 
