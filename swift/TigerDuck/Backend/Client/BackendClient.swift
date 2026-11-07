@@ -91,8 +91,9 @@ nonisolated final class BackendClient: Sendable {
     private let auth: BackendAuth
     private let versionGate: APIVersionGate?
     private let editClock: @Sendable () -> EditTime
-    private typealias SentEdit = (edit: EditTime, origin: EditTime, started: EditTime, ended: EditTime)
-    private let lastSends = OSAllocatedUnfairLock<(signIn: SignIn?, byKey: [String: SentEdit])>(initialState: (nil, [:]))
+    private typealias SendSpan = (edit: EditTime, start: EditTime, end: EditTime)
+    private static let keptSpans = 32
+    private let sendSpans = OSAllocatedUnfairLock<(signIn: SignIn?, byKey: [String: [SendSpan]])>(initialState: (nil, [:]))
     private let keyLocks = OSAllocatedUnfairLock<[String: AsyncSerialLock]>(initialState: [:])
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Backend.API")
 
@@ -124,8 +125,8 @@ nonisolated final class BackendClient: Sendable {
 
     /// Sends a user's edit with its `age_ms`, measured once the request's token is in hand; the
     /// backend stamps the edit with the time it arrives less that age. A send waits for the earlier
-    /// send of its `key`. An edit made after that send went out ages from its end, so it lands after
-    /// it whatever the two sends' network delays, and a retry ages from where its last attempt did.
+    /// send of its `key`. An edit made after an earlier send of its key first went out ages from that
+    /// send's end, answered or failed, so it lands after it whatever the two sends' network delays.
     func sendStamped(
         _ key: String, madeAt edit: EditTime, for signIn: SignIn,
         _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
@@ -151,30 +152,29 @@ nonisolated final class BackendClient: Sendable {
         _ key: String, madeAt edit: EditTime, for signIn: SignIn,
         _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
     ) async throws -> BackendResponse {
-        let origin = Self.ageOrigin(of: edit, after: lastSends.withLock { $0.signIn == signIn ? $0.byKey[key] : nil })
+        let spans = sendSpans.withLock { $0.signIn == signIn ? $0.byKey[key] ?? [] : [] }
+        let origin = spans.filter { $0.edit != edit && $0.start.seconds(until: edit) >= 0 }
+            .reduce(edit) { latest, span in latest.seconds(until: span.end) > 0 ? span.end : latest }
         var started: EditTime?
         // A send that failed with no answer may still have reached the backend, so it counts too.
         defer {
-            if let started { remember((edit, origin, started, editClock()), as: key, for: signIn) }
+            if let started { remember(edit, startedAt: started, endedAt: editClock(), as: key, for: signIn) }
         }
         return try await send(try make(0), as: .first) {
             let now = editClock()
-            started = now
+            if started == nil { started = now }
             return try make(origin.ageMilliseconds(at: now))
         }
     }
 
-    private static func ageOrigin(of edit: EditTime, after earlier: SentEdit?) -> EditTime {
-        guard let earlier else { return edit }
-        if earlier.edit == edit { return earlier.origin }
-        guard earlier.started.seconds(until: edit) >= 0, edit.seconds(until: earlier.ended) > 0 else { return edit }
-        return earlier.ended
-    }
-
-    private func remember(_ sent: SentEdit, as key: String, for signIn: SignIn) {
-        lastSends.withLock { state in
+    private func remember(_ edit: EditTime, startedAt: EditTime, endedAt end: EditTime, as key: String, for signIn: SignIn) {
+        sendSpans.withLock { state in
             if state.signIn != signIn { state = (signIn, [:]) }
-            if state.byKey[key].map({ $0.edit.seconds(until: sent.edit) >= 0 }) ?? true { state.byKey[key] = sent }
+            var spans = state.byKey[key] ?? []
+            let start = spans.first { $0.edit == edit }?.start ?? startedAt
+            spans.removeAll { $0.edit == edit || (start.seconds(until: $0.start) >= 0 && $0.end.seconds(until: end) >= 0) }
+            spans.append((edit, start, end))
+            state.byKey[key] = Array(spans.suffix(Self.keptSpans))
         }
     }
 

@@ -121,6 +121,54 @@ struct OverrideStampTests {
         #expect(try Self.sentAges(url) == [10_000, 1_000, 2_500, 17_000])
     }
 
+    @Test("An edit made while a send of its key was out ages from that send's end, though another send of the key went in between")
+    func editAgesFromTheSendItWasMadeDuring() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let course = { (key: String) in baseURL.appendingPathComponent("sync/courses/\(key)/override") }
+        for key in ["client:1151:CS1001301", "client:1151:EE2005301", "client:1151:CS1001301"] {
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.courseReply), for: course(key))
+        }
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010), step: 1)
+        let client = Self.client(baseURL, clock: { clock.now() })
+        let colour = { (key: String, seconds: TimeInterval) in
+            _ = try await client.patchCourseOverride(
+                courseKey: key, colorHex: "#FF6B6B",
+                madeAt: EditTime(wall: Date(timeIntervalSince1970: 1_790_000_000 + seconds)), for: testSignIn
+            )
+        }
+
+        try await colour("client:1151:CS1001301", 0)
+        try await colour("client:1151:EE2005301", 10.5)
+        try await colour("client:1151:CS1001301", 10.6)
+
+        let ages = try SettingsAPIStub.requests(under: baseURL).map { try (Self.json($0)["age_ms"] as? NSNumber)?.int64Value }
+        #expect(ages == [10_000, 1_000, 3_000])
+    }
+
+    @Test("An edit made during a send's first attempt ages from that send's end, though the send was replayed with a refreshed token")
+    func editMadeBeforeAReplayAgesFromTheSendsEnd() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.url(.mark, baseURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 401, body: Data(#"{"error":"token_expired"}"#.utf8)), for: url)
+        for _ in 0..<2 { SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url) }
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010))
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let refreshing = BackendAuth(header: {
+            clock.set(clock.now().wall.addingTimeInterval(5))
+            return ("Bearer test", testSignIn)
+        }, recover: { _, _, _ in true })
+        let client = PushAPIClient(
+            baseURLProvider: { baseURL }, session: URLSession(configuration: config), auth: refreshing,
+            editClock: { clock.now() }
+        )
+
+        try await Self.mark(0, on: client)
+        try await Self.mark(17, on: client)
+
+        #expect(try Self.sentAges(url) == [15_000, 20_000, 5_000])
+    }
+
     @Test("A retry of an edit that aged from an earlier send's end ages from it again")
     func retryKeepsTheTimeItAgedFrom() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
