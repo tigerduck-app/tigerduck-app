@@ -10,14 +10,15 @@ nonisolated enum BrowserSchoolSites {
     /// on `.ntust.edu.tw`.
     static let cookieBudget = 8 * 1024
 
-    /// The cookies of `url`'s own host, when all the cookies the browser would send it pass
-    /// ``cookieBudget``.
+    /// The cookies of `url`'s own host that a request to it carries, when all the cookies the browser
+    /// would send it pass ``cookieBudget``, or when `url` is a sign-in link, which its site offers
+    /// only to a browser signed out of it.
     static func cookiesToDrop(from cookies: [HTTPCookie], opening url: URL) -> [HTTPCookie] {
         guard let host = BrowserRouting.host(of: url) else { return [] }
         let path = url.path(percentEncoded: true)
         let sent = cookies.filter { isSent($0, to: host, path: path.isEmpty ? "/" : path) }
         let size = sent.reduce(0) { $0 + $1.name.utf8.count + $1.value.utf8.count + 2 }
-        guard size > cookieBudget else { return [] }
+        guard size > cookieBudget || isSignInLink(url) else { return [] }
         return sent.filter { $0.domain.lowercased().trimmingPrefix(".") == host }
     }
 
@@ -30,6 +31,15 @@ nonisolated enum BrowserSchoolSites {
 
     /// The hosts whose sign-in links go through SSO, which the browser holds to their pins.
     static let signInLinkHosts = Set(signInButtons.keys.map(\.host))
+
+    /// Whether `url` is one of the sign-in links ``signInLink(for:)`` gives, whatever its query.
+    static func isSignInLink(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https", let host = BrowserRouting.host(of: url) else { return false }
+        let path = url.path(percentEncoded: true).lowercased()
+        return signInLinks.contains { BrowserRouting.host(of: $0) == host && $0.path(percentEncoded: true).lowercased() == path }
+    }
+
+    private static let signInLinks = signInButtons.compactMap { URL(string: "https://\($0.key.host)\($0.key.path)").flatMap($0.value) }
 
     private struct SignInPage: Hashable {
         let host: String
