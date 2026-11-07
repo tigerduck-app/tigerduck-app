@@ -73,12 +73,14 @@ a backend time anywhere (owner's decision of 2026-11-07, replacing the device cl
 
 - The age reads the clock since boot, which counts sleep and does not move when the time is set,
   when the edit and the send happen in the same boot, and the wall-clock difference otherwise; a
-  negative age is 0. iOS gives an app no boot id, so `EditTime` takes a later boot from the wall
-  time at boot moving on by more than the clock since boot read at the edit.
+  negative age is 0. `EditTime` tells boots apart by the kernel's `kern.bootsessionuuid`; an edit
+  without one ages by the wall clock.
 - Per key: a send waits for the earlier send of the same key to be answered, and when that
   answer arrived after this edit was made, the age counts from its arrival, so a second edit made
   while the first was in flight lands after it whatever the two network delays
-  (`BackendClient.sendStamped`). Answers belong to the sign-in that sent them.
+  (`BackendClient.sendStamped`). Answers belong to the sign-in that sent them. Every course write
+  and term reset shares one key, as a reset clears what was stamped before it. The age is read
+  once the request's token is in hand, after any refresh it waited on.
 - Responses keep `X-TigerSync-Clock`, `server_hlc`, `reset_hlc` and every `*_hlc`, for
   acknowledgments (D12) and for comparing backend times with backend times.
 - An automatic course colour is the one write sent with `hlc`: its time is one the snapshot names
