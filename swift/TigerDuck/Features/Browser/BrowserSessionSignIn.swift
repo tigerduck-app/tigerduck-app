@@ -17,6 +17,7 @@ struct BrowserSessionSignIn {
     var renewSession: (SignIn) async -> Bool
     var appJars: () -> [[HTTPCookie]] = { [HTTPCookieStorage.shared, SchoolWeb.schoolCookies].map { $0.cookies ?? [] } }
     var keepCookie: (HTTPCookie) -> Void = { HTTPCookieStorage.shared.setCookie($0) }
+    var dropCookie: (HTTPCookie) async -> Void = { _ in }
     var storeResets: () -> Int = { BrowserData.shared.storeResets }
 
     func signIn(for signIn: SignIn, to target: URL) async -> Bool {
@@ -32,9 +33,14 @@ struct BrowserSessionSignIn {
             guard isCurrent() else { return false }
             await putCookie(cookie)
         }
-        guard isCurrent(), await runPage(BrowserRouting.signInEntry(for: target), target) else { return false }
+        guard isCurrent() else { return false }
+        let passed = await runPage(BrowserRouting.signInEntry(for: target), target)
         let signedIn = await browserCookies()
         guard isCurrent() else { return false }
+        if BrowserSchoolSites.isSignInLink(target) {
+            for cookie in BrowserSchoolSites.cookiesToDrop(from: signedIn, opening: target) { await dropCookie(cookie) }
+        }
+        guard passed else { return false }
         signedIn.filter { BrowserRouting.isSignInCookie($0, for: target) }.forEach(keepCookie)
         return !BrowserRouting.isMoodleReturnPage(target) || BrowserRouting.hasMoodleSession(signedIn)
     }
@@ -61,7 +67,8 @@ extension BrowserSessionSignIn {
             renewSession: { signIn in
                 guard let auth else { return true }
                 return await auth.ensureAuthenticated(for: signIn)
-            }
+            },
+            dropCookie: { await store.httpCookieStore.deleteCookie($0) }
         )
     }
 }

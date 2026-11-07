@@ -8,8 +8,8 @@ struct BrowserSessionSignInTests {
     private static let site = URL(string: "https://stuinfosys.ntust.edu.tw/StudentInformation")!
     private static let moodle = URL(string: "https://moodle2.ntust.edu.tw/my/")!
 
-    private static func cookie(_ name: String, _ domain: String, _ value: String = "v", secure: Bool = true) -> HTTPCookie {
-        var properties: [HTTPCookiePropertyKey: Any] = [.name: name, .value: value, .domain: domain, .path: "/"]
+    private static func cookie(_ name: String, _ domain: String, _ value: String = "v", secure: Bool = true, path: String = "/") -> HTTPCookie {
+        var properties: [HTTPCookiePropertyKey: Any] = [.name: name, .value: value, .domain: domain, .path: path]
         if secure { properties[.secure] = "TRUE" }
         return HTTPCookie(properties: properties)!
     }
@@ -36,6 +36,8 @@ struct BrowserSessionSignInTests {
         var put: [HTTPCookie] = []
         var pages: [(entry: URL, target: URL)] = []
         var kept: [HTTPCookie] = []
+        var jar = BrowserSessionSignInTests.browserJar
+        var dropped: [HTTPCookie] = []
         var resets = 0
         var passes = true
         var duringPage: () -> Void = {}
@@ -51,7 +53,7 @@ struct BrowserSessionSignInTests {
         func signIn(_ signIn: SignIn = TestSignIn().signIn, to target: URL) async -> Bool {
             let sessionSignIn = BrowserSessionSignIn(
                 putCookie: { self.put.append($0); self.onPut() },
-                browserCookies: { BrowserSessionSignInTests.browserJar },
+                browserCookies: { self.jar },
                 runPage: { entry, target in
                     self.pages.append((entry, target))
                     self.duringPage()
@@ -68,6 +70,7 @@ struct BrowserSessionSignInTests {
                 },
                 appJars: { self.sessionIsLive ? BrowserSessionSignInTests.appJars : [] },
                 keepCookie: { self.kept.append($0) },
+                dropCookie: { self.dropped.append($0) },
                 storeResets: { self.resets }
             )
             return await sessionSignIn.signIn(for: signIn, to: target)
@@ -181,6 +184,32 @@ struct BrowserSessionSignInTests {
         #expect(!(await browser.signIn(to: Self.moodle)))
 
         #expect(browser.kept.isEmpty)
+    }
+
+    /// The browser loads a site's sign-in link again once the hidden page is done with it, and
+    /// WebCounseling offers that link only to a browser signed out of it.
+    @Test func aSiteEnteredByItsSignInLinkIsLeftSignedOutForTheLinkToLoadAgain() async {
+        let link = Self.url("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login")
+        let browser = Browser()
+        browser.jar += [
+            Self.cookie(".AspNet.Cookies", "sa02.ntust.edu.tw", "site"),
+            Self.cookie("ASP.NET_SessionId", "sa02.ntust.edu.tw", "site", secure: false),
+            Self.cookie("ASP.NET_SessionId", "sa02.ntust.edu.tw", "classroom", secure: false, path: "/classroom_user"),
+        ]
+
+        #expect(await browser.signIn(to: link))
+        #expect(browser.pages.map(\.entry) == [link])
+        #expect(browser.dropped.map(\.name) == [".AspNet.Cookies", "ASP.NET_SessionId"])
+        #expect(browser.kept.map(\.value) == ["renewed"])
+
+        // A page stopped after the site signed in leaves the same session behind.
+        browser.passes = false
+        #expect(!(await browser.signIn(to: link)))
+        #expect(browser.dropped.count == 4)
+
+        browser.passes = true
+        #expect(await browser.signIn(to: Self.url("https://sa02.ntust.edu.tw/WebCounseling/Front_Index/FrontIndex/Index")))
+        #expect(browser.dropped.count == 4)
     }
 
     @Test func aPageThatStoppedAtAPasswordKeepsNothing() async {
