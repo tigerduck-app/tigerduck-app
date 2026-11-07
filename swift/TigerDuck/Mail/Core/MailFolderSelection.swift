@@ -28,6 +28,7 @@ nonisolated struct MailListRow: Identifiable, Hashable, Sendable {
     }
 
     var folder: String
+    var uidValidity: UInt32
     var summary: MailSummary
 
     var uid: UInt32 { summary.uid }

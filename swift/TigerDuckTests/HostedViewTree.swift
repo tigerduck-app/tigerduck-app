@@ -9,9 +9,13 @@ extension UIView {
 
 extension UIWindow {
     func saveSnapshot(as name: String) {
+        picture().saveSnapshot(as: name)
+    }
+
+    func picture() -> UIImage {
         UIGraphicsImageRenderer(bounds: bounds).image { _ in
             drawHierarchy(in: bounds, afterScreenUpdates: true)
-        }.saveSnapshot(as: name)
+        }
     }
 }
 

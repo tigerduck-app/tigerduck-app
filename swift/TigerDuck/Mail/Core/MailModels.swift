@@ -127,6 +127,9 @@ nonisolated struct MailSummary: Codable, Hashable, Sendable {
     var isExternal: Bool
     /// IMAP INTERNALDATE (RFC 3501 §2.3.3), when the server took the mail.
     var arrivedAt: Date? = nil
+    var flagged: Bool? = nil
+
+    var isFlagged: Bool { flagged == true }
 }
 
 nonisolated struct MailFlags: Equatable, Sendable {

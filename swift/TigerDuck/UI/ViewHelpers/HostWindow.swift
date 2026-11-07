@@ -3,6 +3,12 @@ import SwiftUI
 import UIKit
 
 extension UIViewController {
+    var topmostPresented: UIViewController {
+        var top = self
+        while let next = top.presentedViewController, !next.isBeingDismissed { top = next }
+        return top
+    }
+
     func closePresentations(then: @escaping (_ closedAll: Bool) -> Void) {
         var next = presentedViewController
         while let shown = next {
@@ -24,6 +30,8 @@ final class HostWindow {
     private var rootOrForegroundRoot: UIViewController? { (window ?? Self.foreground)?.rootViewController }
 
     var isPresenting: Bool { rootOrForegroundRoot?.presentedViewController != nil }
+
+    var topmostPresented: UIViewController? { rootOrForegroundRoot?.topmostPresented }
 
     func closePresentations(then: @escaping (_ closedAll: Bool) -> Void) {
         guard let root = rootOrForegroundRoot else { return then(true) }

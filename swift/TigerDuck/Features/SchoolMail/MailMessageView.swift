@@ -1,5 +1,4 @@
 #if os(iOS)
-import QuickLook
 import SwiftUI
 import UIKit
 
@@ -7,6 +6,7 @@ struct MailMessageView: View {
     @State private var viewModel: MailMessageViewModel
     private let session: MailPageSession
     private let otherFolders: [String]
+    private let sendHold = MailSendHold.shared
 
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
@@ -64,7 +64,7 @@ struct MailMessageView: View {
             )
         }
         .sheet(item: $shareItem) { item in ShareSheet(url: item.url).presentationDetents([.medium, .large]) }
-        .quickLookPreview($previewURL)
+        .filePreview($previewURL)
         .sheet(isPresented: $showMoveSheet) {
             MailMoveSheet(viewModel: viewModel, otherFolders: otherFolders, onMove: move, onCancel: { showMoveSheet = false })
         }
@@ -73,6 +73,7 @@ struct MailMessageView: View {
                             onFolderRolesChanged: { viewModel.adoptFolderRoles($0) },
                             onSentCopyNotice: { viewModel.reportSentCopyNotice($0) })
         }
+        .safeAreaInset(edge: .bottom) { MailSendHoldBar(hold: sendHold) }
         .alert(String(localized: "school_mail_risky_title"), isPresented: Binding(
             get: { riskyAttachment != nil }, set: { if !$0 { riskyAttachment = nil } }), presenting: riskyAttachment
         ) { pending in
@@ -175,10 +176,7 @@ struct MailMessageView: View {
     }
 
     private func startCompose(_ mode: MailComposeMode) {
-        compose = MailComposeContext(
-            mode: mode, folder: viewModel.route.folder, uid: viewModel.route.uid, original: viewModel.original,
-            attachments: mode == .forward ? viewModel.detail?.attachments ?? [] : []
-        )
+        compose = viewModel.composeContext(mode)
     }
 
     private func openLink(_ href: String) {

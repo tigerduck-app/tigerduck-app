@@ -18,7 +18,7 @@ nonisolated protocol MailCaughtRejection {
 }
 
 nonisolated enum MailFlag: String, Codable, Sendable {
-    case seen, answered, deleted, draft
+    case seen, answered, flagged, deleted, draft
 }
 
 protocol MailClient: Actor {
@@ -38,13 +38,16 @@ protocol MailClient: Actor {
     func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32)
     func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: MailSearchText]
     func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws
+    func storesFlagged(folder: String) async throws -> Bool
     func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws
     func deletedUIDs(folder: String, expectedUIDValidity: UInt32) async throws -> Set<UInt32>
     func expunge(folder: String, expectedUIDValidity: UInt32) async throws
     func createFolder(_ name: String) async throws
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool
-    func send(_ message: Data, from sender: String, to recipients: [String]) async throws
+    func send(
+        _ message: Data, from sender: String, to recipients: [String], unless isExpired: @escaping @MainActor () -> Bool
+    ) async throws
 }
 
 extension MailClient {

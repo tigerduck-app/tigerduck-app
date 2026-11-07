@@ -11,7 +11,7 @@ final class MailListViewModel {
     }
 
     var folders = MailFolderChoice()
-    var mailbox = MailboxPages()
+    var mailbox: MailboxPages
     var status = MailListStatus()
     @ObservationIgnored let session: MailPageSession
     @ObservationIgnored let writer: MailListCacheWriter
@@ -19,12 +19,13 @@ final class MailListViewModel {
     @ObservationIgnored var loads: MailListLoads
     @ObservationIgnored private(set) var search: MailListSearch!
     @ObservationIgnored private(set) var background: MailListBackground!
-    @ObservationIgnored private var signOutListener: MailSignOutListener?
+    @ObservationIgnored private var signOutListener: MailNotificationListener?
 
     init(
         session: MailPageSession? = nil,
         account: AccountSession? = nil,
         cache: MailCache? = nil,
+        sendHold: MailSendHold? = nil,
         noteSeenByPage: ((MailboxStatusInfo, SignIn) async -> Void)? = nil,
         signOutEvents: NotificationCenter = .default,
         warmDelay: @escaping @Sendable () async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + MailConstants.warmStartDelay) },
@@ -37,6 +38,7 @@ final class MailListViewModel {
         let session = session ?? MailPageSession(account: account)
         let cache = cache ?? MailAccountManager.shared.cache
         self.session = session
+        mailbox = MailboxPages(sendHold: sendHold ?? .shared)
         loads = MailListLoads(account: account)
         writer = MailListCacheWriter(cache: cache)
         // Starts after the warm's delay too, so the refresh that follows a paint goes first.
@@ -47,7 +49,7 @@ final class MailListViewModel {
         search = MailListSearch(list: self, catchUpDelay: catchUpDelay)
         indexer.onFill = { [weak self] folder in self?.search.indexDidFill(folder) }
         events.observe { [weak self] event in self?.apply(event) }
-        signOutListener = MailSignOutListener(center: signOutEvents) { [weak self] in self?.resetForAccountChange() }
+        signOutListener = MailNotificationListener(center: signOutEvents, name: MailAccountManager.didSignOut) { [weak self] in self?.resetForAccountChange() }
     }
 
     var account: AccountSession { loads.account }
@@ -76,10 +78,7 @@ final class MailListViewModel {
         selection == self.selection && signIn.isCurrent
     }
 
-    var displayedRows: [MailListRow] {
-        let base = search.results ?? rows
-        return unreadOnly ? base.filter { !$0.summary.isSeen } : base
-    }
+    var displayedRows: [MailListRow] { mailbox.shown(search.results ?? rows, for: account, unreadOnly: unreadOnly) }
 
     var targets: [String] { folders.targets }
     var showsAllMailChip: Bool { folders.showsAllMailChip }
@@ -142,43 +141,11 @@ final class MailListViewModel {
     func submitSearch() async { await search.submit() }
     func clearSearch() { search.clear() }
 
-    func toggleRead(_ row: MailListRow) async {
-        await setSeen(!row.summary.isSeen, folder: row.folder, uids: [row.uid])
-    }
+    func canFlag(_ folder: String) -> Bool { folders.storesFlagged[folder] == true }
+    func markAllRead(for signIn: SignIn) async { await MailListFlags.markAllRead(for: signIn, list: self) }
 
-    func markAllRead(for signIn: SignIn) async {
-        for (folder, rows) in Dictionary(grouping: displayedRows.filter { !$0.summary.isSeen }, by: \.folder) where signIn.isCurrent {
-            await setSeen(true, folder: folder, uids: rows.map(\.uid), for: signIn)
-        }
-    }
-
-    private func setSeen(_ seen: Bool, folder: String, uids: [UInt32], for given: SignIn? = nil) async {
-        markSeenLocally(folder: folder, uids: uids, seen: seen)
-        let validity = mailbox[folder]?.uidValidity
-        let signIn = if let given { given } else { await account.startingSignIn }
-        do {
-            try await session.use(for: signIn) { client in
-                try await client.setFlag(.seen, on: seen, folder: folder, uids: uids, expectedUIDValidity: validity)
-            }
-        } catch where !signIn.isCurrent {
-        } catch MailClientError.folderChanged {
-            markSeenLocally(folder: folder, uids: uids, seen: !seen)
-            await recoverFromFolderChange(folder)
-        } catch {
-            markSeenLocally(folder: folder, uids: uids, seen: !seen)
-        }
-    }
-
-    func markSeenLocally(folder: String, uid: UInt32, seen: Bool = true) { markSeenLocally(folder: folder, uids: [uid], seen: seen) }
-
-    private func markSeenLocally(folder: String, uids: [UInt32], seen: Bool) {
-        guard targets.contains(folder) else { return }
-        for uid in uids {
-            mailbox.markSeen(folder: folder, uid: uid, seen: seen)
-            search.markSeen(folder: folder, uid: uid, seen: seen)
-        }
-        rebuildRows()
-        if let page = mailbox[folder] { writer.save(page) }
+    func markSeenLocally(folder: String, uid: UInt32, seen: Bool = true) {
+        MailListFlags.mark(.seen(seen), folder: folder, uids: [uid], list: self)
     }
 
     func removeLocally(folder: String, uid: UInt32) {

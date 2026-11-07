@@ -400,7 +400,7 @@ struct WidgetTimelineDerivationTests {
         let snap = snapshot(courses: [gone, later])
 
         #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .nextToday(.init(
-            course: later, startTime: "10:20", periodRange: "C", day: .today, classroom: ""
+            course: later, startTime: "10:20", periodRange: "C", day: .today, classroom: "", endTime: "11:10"
         )))
         #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).map(\.isCancelled) == [true, false])
         let nextWeek = TaipeiTime.calendar.date(byAdding: .day, value: 7, to: now)!
@@ -422,7 +422,8 @@ struct WidgetTimelineDerivationTests {
         let snap = snapshot(courses: [split])
 
         #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .nextToday(.init(
-            course: split, startTime: "10:20", periodRange: "C", day: .today, classroom: "R9", change: moved
+            course: split, startTime: "10:20", periodRange: "C", day: .today, classroom: "R9", change: moved,
+            endTime: "11:10"
         )))
         let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: now)
         #expect(rows.map(\.periods) == [["A", "B"], ["C"]])
@@ -439,7 +440,8 @@ struct WidgetTimelineDerivationTests {
         let snap = snapshot(courses: [moved])
 
         #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .nextToday(.init(
-            course: moved, startTime: "09:40", periodRange: "B", day: .today, classroom: "R9", change: change
+            course: moved, startTime: "09:40", periodRange: "B", day: .today, classroom: "R9", change: change,
+            endTime: "10:00"
         )))
         if case .ongoing(let list) = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 45)) {
             #expect(list.map(\.startTime) == ["09:40"])

@@ -47,6 +47,16 @@ HostWindow.swift
 UINavigationController+Swipeback.swift
 View+ScrollSafeGesture.swift
 
+# Features/Archive — the archive browser and its libarchive reader, which only the iOS app links;
+# the Mac hands an archive to Quick Look as before
+ArchiveBrowser.swift
+ArchiveBrowserModel.swift
+ArchiveCache.swift
+ArchiveNodeRow.swift
+ArchivePass.swift
+ArchiveReader.swift
+ArchiveTree.swift
+
 # Features/Bulletins and Stores/Bulletins — iOS bulletin surfaces
 BulletinNotificationSettingsView.swift
 BulletinSubscriptionsStore.swift
@@ -387,6 +397,7 @@ MailMessageViewModel.swift
 MailMuteRuleEditor.swift
 MailNotificationSettingsView.swift
 MailPageSession.swift
+MailSendHold.swift
 MailSettingsView.swift
 SchoolMailView.swift
 
@@ -402,6 +413,7 @@ MailReadableHTML.swift
 MailRecipientRow.swift
 MailRecipientTokenField.swift
 MailRowView.swift
+MailSendHoldBar.swift
 MailSourceTextView.swift
 MailWarningBanner.swift
 MailWebViewFactory.swift
@@ -475,6 +487,8 @@ BrowserChromeCollapse.swift
 BrowserData.swift
 BrowserDemoPages.swift
 BrowserDialogs.swift
+BrowserDownloads.swift
+BrowserDownloadsView.swift
 BrowserFind.swift
 BrowserFindBar.swift
 BrowserFindScript.swift
@@ -492,6 +506,21 @@ BrowserSiteSignIn.swift
 BrowserSheets.swift
 BrowserSignIn.swift
 BrowserSites.swift
+FilesFolderOpener.swift
 LinkRouting.swift
 TigerDuckBrowserView.swift
 BrowserAddressBarPicker.swift
+# The browser's downloads, kept in a folder the Files app shows; the Mac's browser saves to Downloads
+SavedDownloads.swift
+SavedDownloadFiles.swift
+
+# TigerDuckWidgets — the widgets' layouts, which the app compiles only for the phone tests that draw them
+AccessoryViews.swift
+ClassTileParts.swift
+LibraryShortcutView.swift
+NextClassView.swift
+TodayListView.swift
+WeekGridParts.swift
+WeekGridView.swift
+WidgetDayLayout.swift
+WidgetPalette.swift

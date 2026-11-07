@@ -84,6 +84,8 @@ final class SDAssignment {
         return .overdueAcceptable
     }
 
+    var calendarEventId: String { "moodle-\(assignmentId)" }
+
     var moodleDeepLink: URL? {
         guard let moodleUrl,
               let targetURL = URL(string: moodleUrl) else {

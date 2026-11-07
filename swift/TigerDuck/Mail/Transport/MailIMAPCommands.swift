@@ -91,6 +91,16 @@ nonisolated enum MailIMAPCommands {
         try await imap.store(flags: [flag.swiftMailFlag], on: MailIMAPFetch.uidSet(uids), operation: on ? .add : .remove)
     }
 
+    /// SELECT, as a read-only EXAMINE lists no permanent flags (RFC 3501 §6.3.2).
+    static func storesFlagged(folder: String, imap: IMAPServer) async throws -> Bool {
+        storesFlagged(permanentFlags: try await imap.selectMailbox(folder).permanentFlags)
+    }
+
+    /// SwiftMail reports PERMANENTFLAGS' `\*` (RFC 3501 §7.1) as `.custom("wildcard")`.
+    static func storesFlagged(permanentFlags: [Flag]) -> Bool {
+        permanentFlags.contains(.flagged) || permanentFlags.contains(.custom("wildcard"))
+    }
+
     static func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32, imap: IMAPServer) async throws {
         try await select(folder, expecting: expectedUIDValidity, imap: imap)
         try await imap.copy(messages: MailIMAPFetch.uidSet(uids), to: target)
@@ -141,7 +151,7 @@ nonisolated enum MailIMAPCommands {
 nonisolated enum MailSMTP {
     static func send(
         _ message: Data, from sender: String, to recipients: [String], studentID: String, password: String,
-        config: MailServerConfig
+        config: MailServerConfig, unless isExpired: @escaping @MainActor () -> Bool
     ) async throws {
         let smtp = SMTPServer(
             host: config.smtpHost,
@@ -153,6 +163,8 @@ nonisolated enum MailSMTP {
         do {
             try await smtp.connect()
             try await smtp.login(username: studentID, password: password)
+            // Once DATA starts the server may deliver the message, so this is the last point to stop.
+            if await isExpired() { throw CancellationError() }
             try await smtp.sendRawMessage(message, from: EmailAddress(address: sender),
                                           to: recipients.map { EmailAddress(address: $0) })
             try? await smtp.disconnect()
@@ -168,6 +180,7 @@ private extension MailFlag {
         switch self {
         case .seen: .seen
         case .answered: .answered
+        case .flagged: .flagged
         case .deleted: .deleted
         case .draft: .draft
         }

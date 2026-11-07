@@ -4,7 +4,7 @@ import Foundation
 /// has not chosen to keep classes on. With no term known, every day is in session.
 public struct QuietDayCalendar: Sendable {
     /// Taipei days from `start` to `end`, both included.
-    public struct Span: Hashable, Sendable {
+    public struct Span: Codable, Hashable, Sendable {
         public let start: Date
         public let end: Date
 
@@ -16,6 +16,14 @@ public struct QuietDayCalendar: Sendable {
         public func contains(_ day: Date) -> Bool {
             let start = TaipeiTime.calendar.startOfDay(for: day)
             return start >= self.start && start <= end
+        }
+
+        public func week(on day: Date) -> Int? {
+            let calendar = TaipeiTime.calendar
+            guard contains(day),
+                  let monday = calendar.date(byAdding: .day, value: 1 - ClassTimeline.weekday(of: start), to: start)
+            else { return nil }
+            return calendar.week(of: day, countingFrom: monday)
         }
     }
 

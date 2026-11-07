@@ -15,10 +15,11 @@ final class MailPageSession {
     // use sees, thrown or caught, reaches this.
     private let onAuthFailure: @MainActor (SignIn) -> Void
     let account: AccountSession
-    private var signOutListener: MailSignOutListener?
+    private var signOutListener: MailNotificationListener?
 
     init(
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
+        closesWhenIdle: Bool = false,
         open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() },
         onAuthFailure: @escaping @MainActor (SignIn) -> Void = { MailAccountManager.shared.handleAuthFailure(for: $0) },
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await AppClock.sleep(until: ContinuousClock.now + $0) },
@@ -26,10 +27,10 @@ final class MailPageSession {
         account: AccountSession? = nil
     ) {
         self.account = account ?? MailAccountManager.shared.session
-        self.idleClose = MailIdleClose(delay: idleClose, sleep: sleep)
+        self.idleClose = MailIdleClose(delay: idleClose, sleep: sleep, afterEveryUse: closesWhenIdle)
         self.open = open
         self.onAuthFailure = onAuthFailure
-        signOutListener = MailSignOutListener(center: signOutEvents) { [weak self] in self?.invalidateForSignOut() }
+        signOutListener = MailNotificationListener(center: signOutEvents, name: MailAccountManager.didSignOut) { [weak self] in self?.invalidateForSignOut() }
     }
 
     func use<T>(for signIn: SignIn? = nil, _ body: (any MailClient) async throws -> T) async throws -> T {
@@ -112,7 +113,7 @@ final class MailPageSession {
         guard inFlight == 0 else { return }
         if pendingDrop {
             await close()
-        } else if isReleased {
+        } else if isReleased || idleClose.afterEveryUse {
             armClose()
         }
     }

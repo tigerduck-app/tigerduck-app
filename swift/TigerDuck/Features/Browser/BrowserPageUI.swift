@@ -76,8 +76,7 @@ final class BrowserPageUI: NSObject, WKUIDelegate {
     /// warning, and takes a web view under a full-screen presentation, as Quick Look's, out of its window.
     private func present(_ dialog: BrowserDialogs.Dialog) {
         guard dialog == dialogs.shown else { return }
-        guard var top = webView?.window?.rootViewController else { return dialogs.answer(dialog, with: nil) }
-        while let next = top.presentedViewController, !next.isBeingDismissed { top = next }
+        guard let top = webView?.window?.rootViewController?.topmostPresented else { return dialogs.answer(dialog, with: nil) }
         if let transition = top.transitionCoordinator {
             _ = transition.animate(alongsideTransition: nil) { [weak self] _ in self?.present(dialog) }
             return

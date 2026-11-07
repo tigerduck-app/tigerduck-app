@@ -21,11 +21,12 @@ final class BrowserPage {
     let zoomPeek = BrowserZoomPeek()
     private(set) var site = BrowserSiteSetting()
     private var opening: BrowserData.Opening
-    let downloads = BrowserDownloads()
+    let downloads: BrowserDownloads
     nonisolated static let downloadsRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("BrowserDownloads", isDirectory: true)
 
-    init() {
+    init(downloads: BrowserDownloads? = nil) {
+        self.downloads = downloads ?? BrowserDownloads()
         let opening = BrowserData.shared.opening
         self.opening = opening
         let store = opening.store
@@ -91,6 +92,7 @@ final class BrowserPage {
         } else if failure != nil, let request = Self.retryRequest(failedDownload: downloads.failed, address: address) {
             failure = nil
             downloads.failed = nil
+            downloads.forgetFailures(of: request)
             webView?.load(request)
         } else {
             webView?.reload()
@@ -112,6 +114,18 @@ final class BrowserPage {
         opening = BrowserData.Opening(store: .nonPersistent(), resets: opening.resets, openedAtRisk: refusal.pageToOpen)
         failure = nil
         downloads.failed = nil
+    }
+
+    func retryDownload(_ item: BrowserDownloads.Item) {
+        if item.unsavedFile != nil {
+            Task { if let kept = await downloads.saveAgain(item.id) { files.show(downloaded: kept, mimeType: nil) } }
+            return
+        }
+        guard let request = item.request else { return }
+        downloads.forgetFailures(of: request)
+        failure = nil
+        downloads.failed = nil
+        webView?.load(request)
     }
 
     /// A download never commits as a page, so the address still names the page it started from.
@@ -164,15 +178,4 @@ final class BrowserPage {
     }
 
     func expandChrome() { shown.expandChrome() }
-}
-
-@MainActor
-final class BrowserDownloads {
-    let opener = MoodleFileOpener()
-    nonisolated let folder = BrowserPage.downloadsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
-    var failed: URLRequest?
-
-    deinit {
-        try? FileManager.default.removeItem(at: folder)
-    }
 }
