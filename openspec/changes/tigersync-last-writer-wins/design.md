@@ -75,11 +75,12 @@ a backend time anywhere (owner's decision of 2026-11-07, replacing the device cl
   when the edit and the send happen in the same boot, and the wall-clock difference otherwise; a
   negative age is 0. `EditTime` tells boots apart by the kernel's `kern.bootsessionuuid`; an edit
   without one ages by the wall clock.
-- Per key: a send waits for the earlier send of the same key to end. An edit made after that
-  send measured its age counts its age from the send's end, answered or failed, so a second edit
-  made while the first was in flight lands after it whatever the two network delays; an edit made
-  before keeps its own age, and a retry counts from where its last attempt did
-  (`BackendClient.sendStamped`). These times belong to the sign-in that sent them. Every course write
+- Per key: a send waits for the earlier send of the same key to end, and each key keeps the
+  spans of its recent sends, from when a send first measured its age to when its last attempt
+  ended, answered or failed. An edit counts its age from the latest end among the spans of other
+  edits that started before it was made, so an edit made while another was in flight lands after
+  it whatever the two network delays (`BackendClient.sendStamped`). The spans belong to the
+  sign-in that sent them. Every course write
   and term reset shares one key, as a reset clears what was stamped before it. The age is read
   once the request's token is in hand, after any refresh it waited on.
 - Responses keep `X-TigerSync-Clock`, `server_hlc`, `reset_hlc` and every `*_hlc`, for
