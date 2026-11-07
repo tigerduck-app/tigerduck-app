@@ -169,6 +169,23 @@ struct OverrideStampTests {
         #expect(try Self.sentAges(url) == [15_000, 20_000, 5_000])
     }
 
+    @Test("Each attempt of a send is a span of its own, so an edit made between two attempts of another ages from neither")
+    func editBetweenTwoAttemptsKeepsItsOwnAge() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.url(.mark, baseURL)
+        SettingsAPIStub.enqueue(.noReply, for: url)
+        for _ in 0..<2 { SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url) }
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010), step: 1)
+        let client = Self.client(baseURL, clock: { clock.now() })
+
+        await #expect(throws: URLError.self) { try await Self.mark(0, on: client) }
+        clock.set(Date(timeIntervalSince1970: 1_790_000_020))
+        try await Self.mark(0, on: client)
+        try await Self.mark(15, on: client)
+
+        #expect(try Self.sentAges(url) == [10_000, 20_000, 7_000])
+    }
+
     @Test("A retry of an edit that aged from an earlier send's end ages from it again")
     func retryKeepsTheTimeItAgedFrom() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()

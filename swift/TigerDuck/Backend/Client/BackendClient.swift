@@ -186,15 +186,14 @@ nonisolated final class BackendClient: Sendable {
         }
     }
 
-    private func remember(_ edit: EditTime, startedAt: EditTime, endedAt end: EditTime, as key: String, for signIn: SignIn) {
-        let span = sendSpans.withLock { state in
+    private func remember(_ edit: EditTime, startedAt start: EditTime, endedAt end: EditTime, as key: String, for signIn: SignIn) {
+        let span: SendSpan = (edit, start, end)
+        sendSpans.withLock { state in
             if state.signIn != signIn { state = (signIn, [:]) }
             var spans = state.byKey[key] ?? []
-            let start = spans.first { $0.edit == edit }?.start ?? startedAt
-            spans.removeAll { $0.edit == edit || (start.seconds(until: $0.start) >= 0 && $0.end.seconds(until: end) >= 0) }
-            spans.append((edit, start, end))
+            spans.removeAll { start.seconds(until: $0.start) >= 0 && $0.end.seconds(until: end) >= 0 }
+            spans.append(span)
             state.byKey[key] = Array(spans.suffix(Self.keptSpans))
-            return (edit, start, end) as SendSpan
         }
         for observer in sendEndObservers.withLock({ $0 }) { observer(key, span, signIn) }
     }
