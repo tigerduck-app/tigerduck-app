@@ -9,6 +9,7 @@ struct MacAppearanceSettingsView: View {
     @State private var showingAccentEditor = false
 
     var body: some View {
+        @Bindable var preferences = app.preferences
         Form {
             Section {
                 Picker(String(localized: "settings_color_theme"), selection: $appearance) {
@@ -27,6 +28,8 @@ struct MacAppearanceSettingsView: View {
                         .padding(4)
                 }
                 .padding(.vertical, 4)
+                Toggle(String(localized: "settings_accent_gradient_on_widgets"), isOn: $preferences.accentGradientOnWidgets)
+                    .disabled(!preferences.accent.isGradient)
             }
 
             Section {
