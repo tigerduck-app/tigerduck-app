@@ -6,24 +6,28 @@ import Foundation
 nonisolated struct EditTime: Codable, Equatable, Sendable {
     let wall: Date
     var sinceBoot: TimeInterval? = nil
+    var boot: String? = nil
+
+    /// The kernel's `kern.bootsessionuuid`, new at every boot.
+    static let currentBoot = Sysctl.text(named: "kern.bootsessionuuid")
 
     static func now() -> EditTime {
-        EditTime(wall: Date(), sinceBoot: TimeInterval(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1_000_000_000)
+        EditTime(
+            wall: Date(), sinceBoot: TimeInterval(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1_000_000_000,
+            boot: currentBoot
+        )
     }
 
     static func stamped(_ wall: Date) -> EditTime {
         let now = now()
-        let sinceBoot = now.sinceBoot.map { $0 - now.wall.timeIntervalSince(wall) }
-        return EditTime(wall: wall, sinceBoot: sinceBoot.flatMap { $0 > 0 ? $0 : nil })
+        guard let sinceBoot = now.sinceBoot.map({ $0 - now.wall.timeIntervalSince(wall) }), sinceBoot > 0 else {
+            return EditTime(wall: wall)
+        }
+        return EditTime(wall: wall, sinceBoot: sinceBoot, boot: now.boot)
     }
 
     func seconds(until later: EditTime) -> TimeInterval {
-        // iOS gives an app no boot id. A later boot starts after this one has run `start` seconds,
-        // so the wall time at boot moves on by more than that; setting the time moves it by the change.
-        if let start = sinceBoot, let end = later.sinceBoot, end >= start,
-           later.wall.addingTimeInterval(-end).timeIntervalSince(wall.addingTimeInterval(-start)) < start {
-            return end - start
-        }
+        if let boot, boot == later.boot, let start = sinceBoot, let end = later.sinceBoot { return end - start }
         return later.wall.timeIntervalSince(wall)
     }
 

@@ -34,14 +34,15 @@ final class AcademicCalendarStore: AccountScoped {
 
     func holidayEdit(_ holidayID: Int) -> (notify: Bool, madeAt: EditTime?) {
         let key = String(holidayID)
-        return (optedInHolidayIDs.contains(holidayID), Defaults[.holidayOverrideEditTimes][key].map {
-            EditTime(wall: $0, sinceBoot: Defaults[.holidayOverrideEditUptimes][key])
-        })
+        return (
+            optedInHolidayIDs.contains(holidayID),
+            Defaults[.holidayOverrideEditClocks][key] ?? Defaults[.holidayOverrideEditTimes][key].map { EditTime(wall: $0) }
+        )
     }
 
     func forgetHolidayOverrides() {
         Defaults.reset(
-            .holidayNotifyOverrides, .holidayOverridesAwaitingUpload, .holidayOverrideEditTimes, .holidayOverrideEditUptimes
+            .holidayNotifyOverrides, .holidayOverridesAwaitingUpload, .holidayOverrideEditTimes, .holidayOverrideEditClocks
         )
         lastHolidayEditAt = .distantPast
     }
@@ -111,7 +112,7 @@ final class AcademicCalendarStore: AccountScoped {
         let madeAt = EditTime.now()
         lastHolidayEditAt = madeAt.wall
         Defaults[.holidayOverrideEditTimes, for: signIn][String(holidayID)] = madeAt.wall
-        Defaults[.holidayOverrideEditUptimes, for: signIn][String(holidayID)] = madeAt.sinceBoot
+        Defaults[.holidayOverrideEditClocks, for: signIn][String(holidayID)] = madeAt
         return true
     }
 
@@ -145,7 +146,7 @@ final class AcademicCalendarStore: AccountScoped {
         Defaults[.holidayNotifyOverrides, for: signIn] = merged.sorted()
         let replaced = Set(merged.symmetricDifference(local).map(String.init))
         Defaults[.holidayOverrideEditTimes, for: signIn] = Defaults[.holidayOverrideEditTimes].filter { !replaced.contains($0.key) }
-        Defaults[.holidayOverrideEditUptimes, for: signIn] = Defaults[.holidayOverrideEditUptimes].filter { !replaced.contains($0.key) }
+        Defaults[.holidayOverrideEditClocks, for: signIn] = Defaults[.holidayOverrideEditClocks].filter { !replaced.contains($0.key) }
         NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
         return true
     }
@@ -155,7 +156,7 @@ final class AcademicCalendarStore: AccountScoped {
         var ids = Set(Defaults[.holidayNotifyOverrides])
         if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }
         Defaults[.holidayOverrideEditTimes, for: signIn][String(holidayID)] = nil
-        Defaults[.holidayOverrideEditUptimes, for: signIn][String(holidayID)] = nil
+        Defaults[.holidayOverrideEditClocks, for: signIn][String(holidayID)] = nil
         guard ids != Set(Defaults[.holidayNotifyOverrides]) else { return }
         Defaults[.holidayNotifyOverrides, for: signIn] = ids.sorted()
         NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)

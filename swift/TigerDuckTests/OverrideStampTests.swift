@@ -81,7 +81,9 @@ struct OverrideStampTests {
         await SyncOutbox(directory: directory).enqueue(
             .assignmentOverride(moodleCourseId: 4242, moodleAssignmentId: 42, localStatus: "ignored", stamp: Date())
         )
-        #expect(await SyncOutbox(directory: directory).snapshot().first?.madeAt?.sinceBoot != nil)
+        let reread = await SyncOutbox(directory: directory).snapshot().first?.madeAt
+        #expect(reread?.sinceBoot != nil)
+        #expect(reread?.boot != nil)
 
         let earlier = FileManager.default.temporaryDirectory
             .appendingPathComponent("OverrideStampTests-\(UUID().uuidString)", isDirectory: true)
@@ -247,6 +249,7 @@ struct OverrideStampTests {
             store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
             let madeAt = try #require(store.holidayEdit(id).madeAt)
             #expect(madeAt.sinceBoot != nil)
+            #expect(madeAt.boot != nil)
             clock.set(madeAt.wall.addingTimeInterval(5))
 
             await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration, for: testSignIn)
@@ -294,13 +297,13 @@ struct OverrideStampTests {
         try await withExclusiveRealDefaults {
             let saved = (
                 Defaults[.holidayNotifyOverrides], Defaults[.holidayOverridesAwaitingUpload],
-                Defaults[.holidayOverrideEditTimes], Defaults[.holidayOverrideEditUptimes], Defaults[.cloudSyncEnabled]
+                Defaults[.holidayOverrideEditTimes], Defaults[.holidayOverrideEditClocks], Defaults[.cloudSyncEnabled]
             )
             defer {
                 Defaults[.holidayNotifyOverrides, for: testSignIn] = saved.0
                 Defaults[.holidayOverridesAwaitingUpload, for: testSignIn] = saved.1
                 Defaults[.holidayOverrideEditTimes, for: testSignIn] = saved.2
-                Defaults[.holidayOverrideEditUptimes, for: testSignIn] = saved.3
+                Defaults[.holidayOverrideEditClocks, for: testSignIn] = saved.3
                 Defaults[.cloudSyncEnabled, for: testSignIn] = saved.4
             }
             Defaults[.cloudSyncEnabled, for: testSignIn] = true

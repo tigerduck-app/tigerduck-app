@@ -9,6 +9,7 @@ extension MoodleOpenTarget: Defaults.Serializable, Defaults.PreferRawRepresentab
 extension VisualPreset: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension AppAppearance: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension AccentGradient: Defaults.Serializable {}
+extension EditTime: Defaults.Serializable {}
 
 nonisolated extension Defaults.Keys {
     static let hasCompletedOnboarding = Key<Bool>(
@@ -246,7 +247,7 @@ nonisolated extension AccountKeys {
     static let holidayNotifyOverrides = AccountKey<[Int]>("holidayNotifyOverrides", default: [])
     /// When each holiday's setting last changed here, keyed by holiday id; its upload sends it.
     static let holidayOverrideEditTimes = AccountKey<[String: Date]>("holidayOverrideEditTimes", default: [:])
-    static let holidayOverrideEditUptimes = AccountKey<[String: Double]>("holidayOverrideEditUptimes", default: [:])
+    static let holidayOverrideEditClocks = AccountKey<[String: EditTime]>("holidayOverrideEditClocks", default: [:])
     static let holidayOverridesAwaitingUpload = AccountKey<[Int]>(
         "holidayOverridesAwaitingUpload", default: []
     )
