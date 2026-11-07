@@ -180,7 +180,7 @@ struct MoodleCourseMembersTests {
         await Self.store(folder, site: Site()).refreshMembers()
         #expect(cached(folder) != nil)
 
-        folder.cache.forgetAccount()
+        await withExclusiveRealDefaults { folder.cache.forgetAccount() }
 
         #expect(cached(folder) == nil)
         #expect(Self.store(folder, site: Site()).sectionRows.isEmpty)
@@ -707,7 +707,7 @@ struct MoodleCourseMembersTests {
         let preview = try #require(await store.picturePreview(of: member))
         #expect(!pictures(folder).isEmpty)
 
-        folder.cache.forgetAccount()
+        await withExclusiveRealDefaults { folder.cache.forgetAccount() }
 
         #expect(!FileManager.default.fileExists(atPath: folder.cache.moodleFilesDir.path))
         #expect(!FileManager.default.fileExists(atPath: preview.path))

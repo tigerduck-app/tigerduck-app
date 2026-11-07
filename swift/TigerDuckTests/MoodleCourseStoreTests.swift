@@ -194,7 +194,7 @@ struct MoodleCourseStoreTests {
         await store.refreshForums()
         #expect(folder.cache.moodle.loadMoodleData(MoodleTermForums.self, name: "forums", account: "B11399001") != nil)
 
-        folder.cache.forgetAccount()
+        await withExclusiveRealDefaults { folder.cache.forgetAccount() }
 
         #expect(folder.cache.moodle.loadMoodleData(MoodleTermForums.self, name: "forums", account: "B11399001") == nil)
         #expect(Self.store(folder, site: Site()).sectionRows.isEmpty)
@@ -548,7 +548,7 @@ struct MoodleCourseStoreTests {
         #expect(again.grades.status == .ok)
         #expect(Self.store(folder, site: Site(), account: "B11399002").grades.value == nil)
 
-        folder.cache.forgetAccount()
+        await withExclusiveRealDefaults { folder.cache.forgetAccount() }
 
         #expect(Self.store(folder, site: Site()).grades.value == nil)
     }
@@ -813,7 +813,7 @@ struct MoodleCourseStoreTests {
         await Self.store(folder, site: Site()).refreshSummary()
         #expect(Self.summaryOnDisk(folder) == Self.summary)
 
-        folder.cache.forgetAccount()
+        await withExclusiveRealDefaults { folder.cache.forgetAccount() }
         #expect(Self.summaryOnDisk(folder) == nil)
         #expect(Self.store(folder, site: Site()).shownSummary == nil)
 

@@ -137,6 +137,77 @@ struct BrowserSiteSignInPageTests {
         #expect(await values(elsewhere, ["UserName", "Password"]) == ["", ""])
     }
 
+    private func passwords(afterId event: String, mutation: String, form html: String = BrowserSiteSignInPageTests.ethicsForm) async throws -> [String]? {
+        let webView = await page(html, at: Self.ethics, script: """
+        const form = document.forms[0], [id] = document.getElementsByName('UserName'), [original] = document.getElementsByName('Password');
+        id.addEventListener('\(event)', () => { if (id.value === 'B00000001') { \(mutation) } });
+        """)
+        await signIn.pageFinished(in: webView)
+        return try await webView.callAsyncJavaScript(
+            "return [original, ...document.getElementsByName('Password')].map((field) => field.value)", contentWorld: .page) as? [String]
+    }
+
+    private static let elsewhere = "https://elsewhere.test/collect"
+    private static let otherForm = "document.body.appendChild(Object.assign(document.createElement('form'), { id: 'other' }));"
+
+    @Test(arguments: ["input", "change"], [
+        "form.action = '\(elsewhere)'",
+        "form.elements['Password'].type = 'text'",
+        "form.elements['Password'].replaceWith(Object.assign(document.createElement('input'), { name: 'Password', type: 'password' }))",
+        "document.body.appendChild(form.elements['Password'])",
+        "id.value = 'M11000000'",
+        "history.pushState(null, '', '/elsewhere')",
+        "form.elements['Password'].value = 'typed'",
+        "document.head.appendChild(Object.assign(document.createElement('base'), { href: 'https://elsewhere.test/' }))",
+        "\(otherForm) id.setAttribute('form', 'other')",
+        "\(otherForm) form.elements['Password'].setAttribute('form', 'other')",
+        "form.querySelector('[type=submit]').setAttribute('formaction', '\(elsewhere)')",
+    ]) func aHandlerOnTheIdsEventsCannotMakeTheScriptWriteThePasswordIntoAChangedForm(event: String, mutation: String) async throws {
+        let password = try await passwords(afterId: event, mutation: mutation)
+        #expect(password?.contains("not-a-password") == false)
+    }
+
+    @Test(arguments: ["input", "change"]) func aHandlerThatChangesNothingLeavesThePasswordFilled(event: String) async throws {
+        #expect(try await passwords(afterId: event, mutation: "") == ["not-a-password", "not-a-password"])
+    }
+
+    private static let submit = "<input type=\"submit\""
+
+    @Test(arguments: [
+        "<input type=\"image\" formaction=\"\(elsewhere)\">",
+        "<input type=\"submit\" formaction=\"\(elsewhere)\">",
+        "<button formaction=\"\(elsewhere)\">send</button>",
+        "<input name=\"elements\" type=\"hidden\"><button formaction=\"\(elsewhere)\">send</button>",
+    ]) func aControlThatSendsTheFormElsewhereGetsNoPassword(control: String) async throws {
+        let form = Self.ethicsForm.replacingOccurrences(of: Self.submit, with: control + Self.submit)
+        #expect(try await passwords(afterId: "input", mutation: "", form: form)?.contains("not-a-password") == false)
+    }
+
+    @Test func aButtonOutsideTheFormThatSendsItElsewhereGetsNoPassword() async throws {
+        let form = Self.ethicsForm.replacingOccurrences(of: "<form ", with: "<form id=\"f\" ")
+            + "<button form=\"f\" formaction=\"\(Self.elsewhere)\">send</button>"
+        #expect(try await passwords(afterId: "input", mutation: "", form: form)?.contains("not-a-password") == false)
+    }
+
+    @Test func aFormactionOfThePagesOwnOriginOrOfAnotherFormStillFills() async throws {
+        let own = Self.ethicsForm.replacingOccurrences(of: Self.submit, with: "<button formaction=\"/other\">send</button>" + Self.submit)
+        #expect(try await passwords(afterId: "input", mutation: "", form: own) == ["not-a-password", "not-a-password"])
+        let another = Self.ethicsForm + "<form action=\"/b\"><button formaction=\"\(Self.elsewhere)\">send</button></form>"
+        #expect(try await passwords(afterId: "input", mutation: "", form: another) == ["not-a-password", "not-a-password"])
+    }
+
+    @Test(arguments: ["input", "change"]) func aFormactionAddedByTheHandlerOnAButtonGetsNoPassword(event: String) async throws {
+        let form = Self.ethicsForm.replacingOccurrences(of: Self.submit, with: "<button>send</button>" + Self.submit)
+        let password = try await passwords(
+            afterId: event, mutation: "form.querySelector('button').setAttribute('formaction', '\(Self.elsewhere)')", form: form)
+        #expect(password?.contains("not-a-password") == false)
+    }
+
+    @Test func aControlNamedActionDoesNotHideTheFormsOwnAction() async throws {
+        let form = Self.ethicsForm.replacingOccurrences(of: "<img id", with: "<input name=\"action\" type=\"hidden\"><img id")
+        #expect(try await passwords(afterId: "input", mutation: "", form: form) == ["not-a-password", "not-a-password"])
+    }
+
     @Test func aPageElsewhereOrAPasswordFieldThatIsNotOneGetsNothing() async {
         let elsewhere = URL(string: "https://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/other")!
         let other = await page(Self.ethicsForm, at: elsewhere)

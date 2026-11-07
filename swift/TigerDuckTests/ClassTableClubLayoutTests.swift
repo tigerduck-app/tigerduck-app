@@ -127,6 +127,9 @@ struct ClassTableClubLayoutTests {
     @Test("a club's day opens its row and its weekend column, which the export leaves out")
     func rowsAndColumns() async throws {
         try await withExclusiveRealDefaults {
+            let saved = Defaults[.alwaysShowAllPeriods]
+            defer { Defaults[.alwaysShowAllPeriods] = saved }
+            Defaults[.alwaysShowAllPeriods] = false
             let stores = try ClubMock.stores(dates: Self.dates)
             defer { ClubMock.reset(stores) }
             let grid = ClassTableGrid(clubFeed: stores.feed)
@@ -205,6 +208,9 @@ struct ClassTableClubLayoutTests {
     @Test("the export lays a conflict out on its own rows, whether or not a club opens period 5")
     func exportConflictRows() async throws {
         try await withExclusiveRealDefaults {
+            let saved = Defaults[.alwaysShowAllPeriods]
+            defer { Defaults[.alwaysShowAllPeriods] = saved }
+            Defaults[.alwaysShowAllPeriods] = false
             let stores = try ClubMock.stores(dates: Self.dates)
             defer { ClubMock.reset(stores) }
             let model = Self.model(stores)

@@ -59,7 +59,7 @@ struct ScheduleSendNowTests {
             await push.syncNow { Self.inputs }
             returned = true
         }
-        try await waitUntil(timeout: .seconds(5)) { backend.sent().count == 1 }
+        try await waitUntil { backend.sent().count == 1 }
         try await Task.sleep(for: .milliseconds(200))
         #expect(!returned)
 
@@ -196,7 +196,7 @@ struct ScheduleSendNowTests {
         let push = Self.coordinator(backend)
         push.enable()
         let send = Task { await push.syncNow { Self.inputs } }
-        try await waitUntil(timeout: .seconds(5)) { backend.sent().count == 1 }
+        try await waitUntil { backend.sent().count == 1 }
 
         push.refreshRegistrationAfterAuth()
         reply.open()
