@@ -45,7 +45,7 @@ final class MoodleMemberPictures {
         }.value
         guard case let (image, staged)? = changed else { return }
         if let staged {
-            guard AccountPictureFolder.place(staged, at: file, revision: revision, for: context.signIn) else { return }
+            guard AccountPictureFolder.place(staged, at: file, revision: revision, in: context.cache, for: context.signIn) else { return }
         } else {
             guard context.signIn.isCurrent else { return }
         }
@@ -141,8 +141,6 @@ final class MoodleMemberPictures {
 
 @MainActor
 private enum AccountPictureFolder {
-    private static var placedRevisions = SignInBound<[URL: Int]>(empty: [:])
-
     static func file(of member: MoodleMember, url: URL, account: String, in cache: MoodleFiles) -> URL {
         let account = folderName(account)
         let studentId = folderName(member.studentId ?? "")
@@ -181,22 +179,18 @@ private enum AccountPictureFolder {
         }
     }
 
-    static func place(_ staged: URL, at file: URL, revision: Int, for signIn: SignIn) -> Bool {
+    static func place(_ staged: URL, at file: URL, revision: Int, in cache: MoodleFiles, for signIn: SignIn) -> Bool {
         let files = FileManager.default
-        guard signIn.isCurrent, isNewestRevision(revision, for: file) else {
+        guard signIn.isCurrent, revision >= cache.placedPictureRevisions.value[file, default: 0] else {
             try? files.removeItem(at: staged)
             return false
         }
-        var placed = placedRevisions.value
+        var placed = cache.placedPictureRevisions.value
         placed[file] = revision
-        placedRevisions.set(placed, for: signIn)
+        cache.placedPictureRevisions.set(placed, for: signIn)
         try? files.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? files.removeItem(at: file)
         if (try? files.moveItem(at: staged, to: file)) == nil { try? files.removeItem(at: staged) }
         return true
-    }
-
-    private static func isNewestRevision(_ revision: Int, for file: URL) -> Bool {
-        revision >= placedRevisions.value[file, default: 0]
     }
 }
