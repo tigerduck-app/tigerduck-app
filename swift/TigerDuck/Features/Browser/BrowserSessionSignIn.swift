@@ -40,7 +40,7 @@ struct BrowserSessionSignIn {
         if BrowserSchoolSites.isSignInLink(target) {
             for cookie in BrowserSchoolSites.cookiesToDrop(from: signedIn, opening: target) { await dropCookie(cookie) }
         }
-        guard passed else { return false }
+        guard passed, isCurrent() else { return false }
         signedIn.filter { BrowserRouting.isSignInCookie($0, for: target) }.forEach(keepCookie)
         return !BrowserRouting.isMoodleReturnPage(target) || BrowserRouting.hasMoodleSession(signedIn)
     }

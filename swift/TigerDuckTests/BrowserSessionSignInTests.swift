@@ -42,6 +42,7 @@ struct BrowserSessionSignInTests {
         var passes = true
         var duringPage: () -> Void = {}
         var onPut: () -> Void = {}
+        var onDrop: () -> Void = {}
         /// The app's SSO session: a lapsed one is renewed once, when `renews`.
         var sessionIsLive = true
         var renews = true
@@ -70,7 +71,7 @@ struct BrowserSessionSignInTests {
                 },
                 appJars: { self.sessionIsLive ? BrowserSessionSignInTests.appJars : [] },
                 keepCookie: { self.kept.append($0) },
-                dropCookie: { self.dropped.append($0) },
+                dropCookie: { self.dropped.append($0); self.onDrop() },
                 storeResets: { self.resets }
             )
             return await sessionSignIn.signIn(for: signIn, to: target)
@@ -162,6 +163,18 @@ struct BrowserSessionSignInTests {
         #expect(!(await browser.signIn(account.signIn, to: Self.site)))
 
         #expect(browser.pages.count == 1)
+        #expect(browser.kept.isEmpty)
+    }
+
+    @Test func aSignOutWhileTheLinksSessionGoesKeepsTheCookiesOut() async {
+        let browser = Browser()
+        let account = TestSignIn()
+        browser.jar += [Self.cookie(".AspNet.Cookies", "sa02.ntust.edu.tw", "site")]
+        browser.onDrop = { account.signOut() }
+
+        #expect(!(await browser.signIn(account.signIn, to: Self.url("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login"))))
+
+        #expect(browser.dropped.count == 1)
         #expect(browser.kept.isEmpty)
     }
 
