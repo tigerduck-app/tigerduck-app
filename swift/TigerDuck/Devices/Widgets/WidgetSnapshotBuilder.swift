@@ -12,6 +12,7 @@ enum WidgetSnapshotBuilder {
         var quietDayKeys: Set<String> = []
         var changes: CourseChanges = .empty
         var term: QuietDayCalendar.Span? = nil
+        var accentGradient: AccentGradient? = nil
     }
 
     static func build(_ input: Input) -> WidgetSnapshot {
@@ -41,7 +42,8 @@ enum WidgetSnapshotBuilder {
             activeWeekdays: computeActiveWeekdays(input.courses),
             activePeriodIds: computeActivePeriodIds(input.courses),
             quietDayKeys: Array(input.quietDayKeys).sorted(),
-            term: input.term
+            term: input.term,
+            accentGradient: input.accentGradient
         )
     }
 

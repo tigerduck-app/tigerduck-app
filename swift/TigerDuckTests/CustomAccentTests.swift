@@ -1,5 +1,6 @@
 import SwiftUI
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -39,6 +40,18 @@ struct CustomAccentTests {
         #expect(AccentContrast.readable(hex) == hex)
     }
 
+    @Test("Apply keeps the colours the editor opened with and makes only new picks readable")
+    func applyKeepsTheOpeningColours() {
+        let cyan = AccentGradient(color: 0x5AC8FA)
+        #expect(AccentGradientEditor.applied(cyan, opening: cyan) == cyan)
+
+        var added = cyan
+        added.stops.append(0xFFFFFF)
+        added.stops.swapAt(0, 1)
+        let applied = AccentGradientEditor.applied(added, opening: cyan)
+        #expect(applied.stops == [AccentContrast.readable(0xFFFFFF), 0x5AC8FA])
+    }
+
     @Test("A preset reads on the light cards in light mode and keeps its tone in dark mode",
           arguments: AppPreferences.themeColors.map(\.hex))
     func presetReadsInBothModes(hex: Int) {
@@ -59,66 +72,6 @@ struct CustomAccentTests {
     )
     func hexRoundTrip(hex: UInt32) {
         #expect(Color(hex: UInt(hex)).rgbHex == hex)
-    }
-
-    @Test("Opening the picker on the saved accent saves nothing")
-    func openingSavesNothing() {
-        let preview = AccentPreview()
-
-        #expect(preview.preview(0x007AFF, saved: 0x007AFF) == nil)
-        #expect(preview.hex == nil)
-    }
-
-    @Test("Opening the picker on a preset saves nothing, a pale one included",
-          arguments: AppPreferences.themeColors.map(\.hex))
-    func openingOnAPresetSavesNothing(hex: Int) {
-        let preview = AccentPreview()
-        let opening = Int(CustomAccentPicker.openingColour(saved: hex).rgbHex)
-
-        #expect(preview.preview(opening, saved: hex) == nil)
-    }
-
-    @Test("A pick is drawn readable and saved as drawn")
-    func pickIsSavedReadable() throws {
-        let preview = AccentPreview()
-
-        let saved = preview.preview(0xFFFFFF, saved: 0x007AFF)
-
-        #expect(saved == AccentContrast.readable(0xFFFFFF))
-        #expect(preview.shownHex(saved: 0x007AFF) == saved)
-        #expect(preview.isCustom(saved: 0x007AFF))
-        #expect(preview.takeForSaving(try #require(saved)))
-        #expect(preview.hex == nil)
-    }
-
-    @Test("A preset chosen before the save keeps the save from replacing it")
-    func presetBeatsPendingSave() throws {
-        let preview = AccentPreview()
-        let pending = try #require(preview.preview(0xFFFFFF, saved: 0x007AFF))
-
-        preview.clear()
-
-        #expect(!preview.takeForSaving(pending))
-        #expect(!preview.isCustom(saved: 0x007AFF))
-    }
-
-    @Test("Only the latest pick is saved")
-    func latestPickWins() throws {
-        let preview = AccentPreview()
-        let older = try #require(preview.preview(0x5856D6, saved: 0x007AFF))
-        let newer = try #require(preview.preview(0x8E44AD, saved: 0x007AFF))
-
-        #expect(!preview.takeForSaving(older))
-        #expect(preview.takeForSaving(newer))
-    }
-
-    @Test("Dragging back to the saved accent drops the preview")
-    func backToSavedDropsPreview() {
-        let preview = AccentPreview()
-        _ = preview.preview(0x5856D6, saved: 0x007AFF)
-
-        #expect(preview.preview(0x007AFF, saved: 0x007AFF) == nil)
-        #expect(preview.hex == nil)
     }
 
     private static func contrast(_ first: Int, _ second: Int) -> Double {
