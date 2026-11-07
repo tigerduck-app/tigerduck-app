@@ -95,6 +95,7 @@ jobs:
               TigerDuckTests/MoodleCourseMembersTests/aRowTellsTheDepartmentAfterTheStudentId()
               TigerDuckTests/MoodleCourseMembersTests/onlyRowsOnScreenAskForTheirPictures()
               TigerDuckTests/MoodleCourseSearchPageTests
+              TigerDuckTests/MoodleFileRowScreenTests
               TigerDuckTests/MoodleMaterialsWeekPageTests
               TigerDuckTests/MoodleMemberCommonCoursesScreenTests
               TigerDuckTests/MoodleNotificationSettingsScreenTests
