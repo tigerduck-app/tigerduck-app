@@ -98,6 +98,25 @@ struct AccentGradientScreenTests {
         }
     }
 
+    @Test("the gradient switches are dimmed while the accent is one colour", arguments: [Editing.oneStop, .linear])
+    func switchesNeedAGradient(editing: Editing) async throws {
+        try await withAccessibilityAutomation {
+            try await Self.withAccent(editing.accent) { preferences in
+                let (window, host) = try Screen.show(
+                    SettingsList(sheets: SettingsSheetState()), state: Screen.allOpenButSchool(preferences),
+                    preferences: preferences, width: 375, height: 812, style: .light
+                )
+                defer { window.isHidden = true }
+                let switches = [SettingsRow.accentGradientOnWidgets, .accentGradientOnWatch, .accentGradientOnLiveActivities]
+                try await waitUntil { switches.allSatisfy { Screen.shows($0.label, in: host) } }
+                for row in switches {
+                    let toggle = try #require(accessibilityElement(labeled: row.label, in: host.view))
+                    #expect(toggle.accessibilityTraits.contains(.notEnabled) == !editing.accent.isGradient, "\(row)")
+                }
+            }
+        }
+    }
+
     @Test("the editor shows the style and direction only for a gradient", arguments: Editing.allCases, Look.all)
     func editor(editing: Editing, look: Look) async throws {
         try await withAccessibilityAutomation {

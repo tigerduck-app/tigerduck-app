@@ -24,12 +24,15 @@ struct SettingsAppearanceSection: View {
                 }
             }
             .settingsRow(.accentColor)
-            Toggle(SettingsRow.accentGradientOnWidgets.label, isOn: $preferences.accentGradientOnWidgets)
-                .settingsRow(.accentGradientOnWidgets)
-            Toggle(SettingsRow.accentGradientOnWatch.label, isOn: $preferences.accentGradientOnWatch)
-                .settingsRow(.accentGradientOnWatch)
-            Toggle(SettingsRow.accentGradientOnLiveActivities.label, isOn: $preferences.accentGradientOnLiveActivities)
-                .settingsRow(.accentGradientOnLiveActivities)
+            Group {
+                Toggle(SettingsRow.accentGradientOnWidgets.label, isOn: $preferences.accentGradientOnWidgets)
+                    .settingsRow(.accentGradientOnWidgets)
+                Toggle(SettingsRow.accentGradientOnWatch.label, isOn: $preferences.accentGradientOnWatch)
+                    .settingsRow(.accentGradientOnWatch)
+                Toggle(SettingsRow.accentGradientOnLiveActivities.label, isOn: $preferences.accentGradientOnLiveActivities)
+                    .settingsRow(.accentGradientOnLiveActivities)
+            }
+            .disabled(!preferences.accent.isGradient)
             Picker(SettingsRow.visualPreset.label, selection: $preferences.visualPreset) {
                 ForEach(VisualPreset.allCases) { preset in
                     Text(preset.displayName).tag(preset)
