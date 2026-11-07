@@ -90,6 +90,13 @@ nonisolated enum SyncOp: Codable, Sendable {
         }
     }
 
+    var sendKey: String {
+        switch self {
+        case .assignmentOverride(_, let moodleAssignmentId, _, _): PushAPIClient.markKey(String(moodleAssignmentId))
+        case .courseOverride, .courseIgnore, .courseDelete, .courseAdd: PushAPIClient.courseWrites
+        }
+    }
+
     var stamp: Date {
         switch self {
         case .courseOverride(_, _, _, _, _, let stamp), .assignmentOverride(_, _, _, let stamp),
@@ -147,10 +154,23 @@ nonisolated struct OutboxEntry: Codable, Sendable {
     var attempts: Int
     var signIn: SignIn?
     var madeAt: EditTime?
+    var floor: EditTime? = nil
 
     var editTime: EditTime { madeAt ?? EditTime(wall: op.stamp) }
 
+    func withFloor(_ floor: EditTime?) -> OutboxEntry {
+        var entry = self
+        entry.floor = floor
+        return entry
+    }
+
+    mutating func raiseFloor(of key: String, after span: BackendClient.SendSpan) -> Bool {
+        guard op.sendKey == key, let raised = BackendClient.floor(of: editTime, raisedFrom: floor, by: span) else { return false }
+        floor = raised
+        return true
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case id, op, attempts, madeAt
+        case id, op, attempts, madeAt, floor
     }
 }

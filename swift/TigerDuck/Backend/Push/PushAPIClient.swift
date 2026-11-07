@@ -44,12 +44,16 @@ final class PushAPIClient: Sendable {
 
     /// A term reset clears the term's courses and their fields stamped before it, so every course
     /// write and reset goes in one order, each made during the one before aging from its answer.
-    private static let courseWrites = "courses"
+    nonisolated static let courseWrites = "courses"
+
+    nonisolated static func markKey(_ moodleAssignmentId: String) -> String { "mark:\(moodleAssignmentId)" }
+
+    nonisolated static func holidayKey(_ holidayID: Int) -> String { "holiday:\(holidayID)" }
 
     func putHolidayOverride(
         holidayID: Int, notify: Bool, madeAt: EditTime, for signIn: SignIn
     ) async throws -> PushAPI.HolidayOverrideResponse {
-        try await backend.sendStamped("holiday:\(holidayID)", madeAt: madeAt, for: signIn) { age in
+        try await backend.sendStamped(Self.holidayKey(holidayID), madeAt: madeAt, for: signIn) { age in
             try BackendRequest("PUT", segments: ["sync", "holiday-overrides", String(holidayID)])
                 .json(PushAPI.HolidayOverrideRequest(notify: notify, ageMs: age)).sent(for: signIn)
         }.decoded(PushAPI.HolidayOverrideResponse.self)
@@ -122,7 +126,7 @@ final class PushAPIClient: Sendable {
         madeAt: EditTime,
         for signIn: SignIn
     ) async throws -> PushAPI.AssignmentOverrideResponse {
-        try await backend.sendStamped("mark:\(moodleAssignmentId)", madeAt: madeAt, for: signIn) { age in
+        try await backend.sendStamped(Self.markKey(moodleAssignmentId), madeAt: madeAt, for: signIn) { age in
             try BackendRequest("PATCH", segments: ["sync", "assignments", moodleAssignmentId, "override"])
                 .json(PushAPI.AssignmentOverrideRequest(localStatus: localStatus, ageMs: age)).sent(for: signIn)
         }.decoded(PushAPI.AssignmentOverrideResponse.self)

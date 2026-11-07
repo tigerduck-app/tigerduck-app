@@ -73,6 +73,9 @@ final class CloudSyncCoordinator {
             push: pushCoordinator, outbox: outbox, edits: edits, drain: drain, isEnabled: isEnabled
         )
         sender.onCourseAddLanded = { [weak edits] key in edits?.noteCourseAddLanded(key) }
+        pushCoordinator.apiClient.backend.observeSendEnds { key, span, _ in
+            Task { await outbox.raiseFloors(of: key, after: span) }
+        }
     }
 
     func followPreference() {

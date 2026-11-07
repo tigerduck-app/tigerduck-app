@@ -91,9 +91,11 @@ nonisolated final class BackendClient: Sendable {
     private let auth: BackendAuth
     private let versionGate: APIVersionGate?
     private let editClock: @Sendable () -> EditTime
-    private typealias SendSpan = (edit: EditTime, start: EditTime, end: EditTime)
+    typealias SendSpan = (edit: EditTime, start: EditTime, end: EditTime)
+    typealias SendEndObserver = @Sendable (_ key: String, _ span: SendSpan, _ signIn: SignIn) -> Void
     private static let keptSpans = 32
     private let sendSpans = OSAllocatedUnfairLock<(signIn: SignIn?, byKey: [String: [SendSpan]])>(initialState: (nil, [:]))
+    private let sendEndObservers = OSAllocatedUnfairLock<[SendEndObserver]>(initialState: [])
     private let keyLocks = OSAllocatedUnfairLock<[String: AsyncSerialLock]>(initialState: [:])
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Backend.API")
 
@@ -127,6 +129,22 @@ nonisolated final class BackendClient: Sendable {
     /// backend stamps the edit with the time it arrives less that age. A send waits for the earlier
     /// send of its `key`. An edit made after an earlier send of its key first went out ages from that
     /// send's end, answered or failed, so it lands after it whatever the two sends' network delays.
+    /// The latest end, kept with a queued edit across a relaunch, of a send of its key made during.
+    @TaskLocal static var ageFloor: EditTime?
+
+    /// Called as each stamped send ends, with its key and span, so an edit queued meanwhile can keep
+    /// the span's end past a relaunch.
+    func observeSendEnds(_ observer: @escaping SendEndObserver) {
+        sendEndObservers.withLock { $0.append(observer) }
+    }
+
+    static func floor(of edit: EditTime, raisedFrom floor: EditTime?, by span: SendSpan) -> EditTime? {
+        guard span.edit != edit, span.start.seconds(until: edit) >= 0, (floor ?? edit).seconds(until: span.end) > 0 else {
+            return nil
+        }
+        return span.end
+    }
+
     func sendStamped(
         _ key: String, madeAt edit: EditTime, for signIn: SignIn,
         _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
@@ -153,8 +171,9 @@ nonisolated final class BackendClient: Sendable {
         _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
     ) async throws -> BackendResponse {
         let spans = sendSpans.withLock { $0.signIn == signIn ? $0.byKey[key] ?? [] : [] }
+        let floor = Self.ageFloor.flatMap { edit.seconds(until: $0) > 0 ? $0 : nil } ?? edit
         let origin = spans.filter { $0.edit != edit && $0.start.seconds(until: edit) >= 0 }
-            .reduce(edit) { latest, span in latest.seconds(until: span.end) > 0 ? span.end : latest }
+            .reduce(floor) { latest, span in latest.seconds(until: span.end) > 0 ? span.end : latest }
         var started: EditTime?
         // A send that failed with no answer may still have reached the backend, so it counts too.
         defer {
@@ -168,14 +187,16 @@ nonisolated final class BackendClient: Sendable {
     }
 
     private func remember(_ edit: EditTime, startedAt: EditTime, endedAt end: EditTime, as key: String, for signIn: SignIn) {
-        sendSpans.withLock { state in
+        let span = sendSpans.withLock { state in
             if state.signIn != signIn { state = (signIn, [:]) }
             var spans = state.byKey[key] ?? []
             let start = spans.first { $0.edit == edit }?.start ?? startedAt
             spans.removeAll { $0.edit == edit || (start.seconds(until: $0.start) >= 0 && $0.end.seconds(until: end) >= 0) }
             spans.append((edit, start, end))
             state.byKey[key] = Array(spans.suffix(Self.keptSpans))
+            return (edit, start, end) as SendSpan
         }
+        for observer in sendEndObservers.withLock({ $0 }) { observer(key, span, signIn) }
     }
 
     private enum Attempt {

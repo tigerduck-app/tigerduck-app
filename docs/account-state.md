@@ -105,6 +105,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `hasPickedClassReminderLead` | device |  |
 | defaults | `holidayNotifyOverrides` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
 | defaults | `holidayOverrideEditClocks` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
+| defaults | `holidayOverrideEditFloors` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
 | defaults | `holidayOverridesAwaitingUpload` | school | `swift/TigerDuck/School/Calendar/AcademicCalendarStore.swift` `forgetHolidayOverrides` |
 | defaults | `homeAssignmentFilter` | device |  |
 | defaults | `homeSectionLayoutData` | device |  |

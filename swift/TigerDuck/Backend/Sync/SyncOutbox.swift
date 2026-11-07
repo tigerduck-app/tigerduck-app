@@ -158,17 +158,16 @@ actor SyncOutbox {
             kept.append(contentsOf: snapshot[fromIndex...])
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
             let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
-            let stillQueued = Set(entries.map(\.id))
-            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) && stillQueued.contains($0.id) }
-                + newlyEnqueued
+            let floors = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0.floor) })
+            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) && floors.keys.contains($0.id) }
+                .map { $0.withFloor(floors[$0.id] ?? $0.floor) } + newlyEnqueued
             parked.removeAll { freshKeys.contains($0.op.dedupKey) }
             persist()
         }
 
         while index < snapshot.count {
             guard clearGeneration == startGeneration else { return entries.isEmpty }
-            let entry = snapshot[index]
-            guard entries.contains(where: { $0.id == entry.id }) else {
+            guard let entry = entries.first(where: { $0.id == snapshot[index].id }) else {
                 index += 1
                 continue
             }
@@ -179,7 +178,9 @@ actor SyncOutbox {
             }
 
             do {
-                try await execute(entry.op, entry.editTime, entry.signIn ?? signIn)
+                try await BackendClient.$ageFloor.withValue(entry.floor) {
+                    try await execute(entry.op, entry.editTime, entry.signIn ?? signIn)
+                }
             } catch {
                 guard clearGeneration == startGeneration else { return entries.isEmpty }
                 if OutboxErrorPolicy.keepsWithoutAttempt(error, for: entry.op) {
@@ -206,6 +207,14 @@ actor SyncOutbox {
 
         mergeAndStore(retainRemainder: snapshot.count)
         return entries.isEmpty
+    }
+
+    func raiseFloors(of key: String, after span: BackendClient.SendSpan) {
+        loadIfNeeded()
+        var raised = false
+        for index in entries.indices { raised = entries[index].raiseFloor(of: key, after: span) || raised }
+        for index in parked.indices { raised = parked[index].raiseFloor(of: key, after: span) || raised }
+        if raised { persist() }
     }
 
     private func giveUp(on entry: OutboxEntry, after error: Error) {

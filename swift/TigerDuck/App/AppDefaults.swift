@@ -247,6 +247,7 @@ nonisolated extension AccountKeys {
     static let holidayNotifyOverrides = AccountKey<[Int]>("holidayNotifyOverrides", default: [])
     /// When each holiday's setting last changed here, keyed by holiday id; its upload sends it.
     static let holidayOverrideEditClocks = AccountKey<[String: EditTime]>("holidayOverrideEditClocks", default: [:])
+    static let holidayOverrideEditFloors = AccountKey<[String: EditTime]>("holidayOverrideEditFloors", default: [:])
     static let holidayOverridesAwaitingUpload = AccountKey<[Int]>(
         "holidayOverridesAwaitingUpload", default: []
     )

@@ -341,6 +341,77 @@ struct OverrideStampTests {
         }
     }
 
+    @Test("A queued edit made while a send of its key was out keeps that send's end through a relaunch")
+    func queuedEditKeepsTheEndOfTheSendItWasMadeDuring() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.url(.mark, baseURL)
+        let gate = SettingsAPIStub.ReplyGate()
+        var held = SettingsAPIStub.StubResponse(statusCode: 200, body: Self.markReply)
+        held.gate = gate
+        SettingsAPIStub.enqueue(held, for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OverrideStampTests-\(UUID().uuidString)", isDirectory: true)
+        let mark = { (seconds: TimeInterval) in
+            SyncOp.assignmentOverride(
+                moodleCourseId: 4242, moodleAssignmentId: 42, localStatus: "ignored",
+                stamp: Date(timeIntervalSince1970: 1_790_000_000 + seconds)
+            )
+        }
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010))
+        let coordinator = Self.makeCoordinator(baseURL, clock: { clock.now() }, outbox: SyncOutbox(directory: directory))
+        await coordinator.outbox.enqueue(mark(0), for: testSignIn)
+
+        let tick = Task { await coordinator.syncTick() }
+        try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
+        await coordinator.outbox.enqueue(mark(11), for: testSignIn)
+        clock.set(Date(timeIntervalSince1970: 1_790_000_012))
+        gate.open()
+        await tick.value
+        var floor: EditTime?
+        for _ in 0..<12_000 where floor == nil {
+            floor = await coordinator.outbox.snapshot().first?.floor
+            if floor == nil { try await Task.sleep(for: .milliseconds(5)) }
+        }
+        #expect(floor == EditTime(wall: Date(timeIntervalSince1970: 1_790_000_012)))
+        let relaunchClock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_014))
+        await Self.makeCoordinator(baseURL, clock: { relaunchClock.now() }, outbox: SyncOutbox(directory: directory)).syncTick()
+
+        #expect(try Self.sentAges(url) == [10_000, 2_000])
+    }
+
+    @Test("A holiday setting changed while its earlier send was out keeps that send's end through a relaunch")
+    func holidayEditKeepsTheEndOfTheSendItWasMadeDuring() async throws {
+        let clock = TestEditClock(Date())
+        try await Self.withCleanHolidayDefaults { id, url, _ in
+            let gate = SettingsAPIStub.ReplyGate()
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id), gate: gate), for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.holidayReply(id)), for: url)
+            let base = url.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            let push = Self.pushCoordinator(base, clock: { clock.now() })
+            HolidaySettingSender.keepEndsOfSends(on: push.apiClient.backend)
+            let registration = push.registration
+            let store = AcademicCalendarStore()
+            store.setNotify(true, forHoliday: id, for: testSignIn)
+            store.setHolidayAcknowledged(false, holidayID: id, for: testSignIn)
+            clock.set(try #require(store.holidayEdit(id).madeAt).wall)
+
+            let upload = Task { await HolidaySettingSender.uploadHolidayOverride(id, from: store, via: registration, for: testSignIn) }
+            try await waitUntil { !SettingsAPIStub.requests(for: url).isEmpty }
+            store.setNotify(false, forHoliday: id, for: testSignIn)
+            let changed = try #require(store.holidayEdit(id).madeAt)
+            clock.set(changed.wall.addingTimeInterval(5))
+            gate.open()
+            await upload.value
+            try await waitUntil { store.holidayEditFloor(id) != nil }
+            let relaunchClock = TestEditClock(changed.wall.addingTimeInterval(7))
+            let relaunched = Self.pushCoordinator(base, clock: { relaunchClock.now() }).registration
+            await HolidaySettingSender.uploadHolidayOverride(id, from: AcademicCalendarStore(), via: relaunched, for: testSignIn)
+
+            #expect(try SettingsAPIStub.requests(for: url).map { try (Self.json($0)["age_ms"] as? NSNumber)?.int64Value } == [0, 2_000])
+        }
+    }
+
     @Test("A holiday setting changed and changed back while its send is out stays unacknowledged for the newer time")
     func holidayEditDuringTheSendKeepsItUnacknowledged() async throws {
         try await Self.withCleanHolidayDefaults { id, url, registration in
