@@ -9,6 +9,7 @@ struct DeviceSurfaceSyncerTests {
     @Observable
     final class Inputs {
         var accent = 0x007AFF
+        var deviceAccents = AppPreferences.DeviceAccents()
         var preset = "default"
     }
 
@@ -33,8 +34,8 @@ struct DeviceSurfaceSyncerTests {
             ),
             fingerprint: { [inputs] unobserved in
                 .init(
-                    data: data, language: "zh", accentHex: inputs.accent, visualPreset: inputs.preset,
-                    signedIn: true, unobserved: unobserved
+                    data: data, language: "zh", accentHex: inputs.accent, deviceAccents: inputs.deviceAccents,
+                    visualPreset: inputs.preset, signedIn: true, unobserved: unobserved
                 )
             },
             center: center,
@@ -56,6 +57,20 @@ struct DeviceSurfaceSyncerTests {
         #expect(calls.widgets == [false])
         #expect(calls.liveActivity == 1)
         #expect(await sleeper.requestedDurations == [DeviceSurfaceSyncer.debounce, DeviceSurfaceSyncer.debounce])
+        withExtendedLifetime(syncer) {}
+    }
+
+    @Test("a gradient sent to one device, keeping its first stop, refreshes all three")
+    func aDeviceGradientRefreshesEverySurface() async throws {
+        let syncer = makeSyncer()
+
+        inputs.deviceAccents.watch = AccentGradient(stops: [0x007AFF, 0xAF52DE])
+        try await sleeper.waitUntilArmed()
+        await sleeper.fire()
+
+        try await waitUntil { calls.watch == 1 }
+        #expect(calls.widgets == [false])
+        #expect(calls.liveActivity == 1)
         withExtendedLifetime(syncer) {}
     }
 

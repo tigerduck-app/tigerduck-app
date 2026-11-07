@@ -99,7 +99,7 @@ struct TigerDuckApp: App {
                 .updateRequiredAlert()
                 .linkRouting()
                 .tlsPinPrompt()
-                .tint(AccentPreview.shared.tint(saved: app.preferences.accentColor))
+                .tint(app.preferences.accentTint)
                 .appAppearance()
                 .environment(app)
                 .onAppear {
@@ -249,7 +249,7 @@ struct TigerDuckApp: App {
                 // Environments do not cross scene boundaries, so this window gets neither
                 // MacSettingsScene's tint nor the main window's; without this its links
                 // would use the system accent instead of the chosen one.
-                .tint(AccentPreview.shared.tint(saved: app.preferences.accentColor))
+                .tint(app.preferences.accentTint)
                 .appAppearance()
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)

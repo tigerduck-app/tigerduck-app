@@ -151,7 +151,7 @@ private extension View {
         if !isToday {
             self
         } else if palette.isFullColor {
-            background(palette.highlight, in: shape)
+            background(palette.highlightFill, in: shape)
         } else {
             overlay { shape.strokeBorder(.white, lineWidth: 1.5) }
         }
