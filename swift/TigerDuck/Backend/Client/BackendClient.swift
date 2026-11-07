@@ -125,45 +125,42 @@ nonisolated final class BackendClient: Sendable {
 
     /// Sends a user's edit with its `age_ms`, measured once the request's token is in hand; the
     /// backend stamps the edit with the time it arrives less that age. A send waits for the earlier
-    /// send of each of its `keys`, and an edit made while that send was on its way ages from its
-    /// answer, so it lands after it whatever the two sends' network delays.
+    /// send of its `key`, and an edit made while that send was on its way ages from its answer, so
+    /// it lands after it whatever the two sends' network delays.
     func sendStamped(
-        _ keys: [String], madeAt edit: EditTime, for signIn: SignIn,
+        _ key: String, madeAt edit: EditTime, for signIn: SignIn,
         _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
     ) async throws -> BackendResponse {
-        let locks = keyLocks.withLock { locks in
-            Set(keys).sorted().map { key in
-                if let lock = locks[key] { return lock }
-                let lock = AsyncSerialLock()
-                locks[key] = lock
-                return lock
-            }
+        let lock = keyLocks.withLock { locks in
+            if let lock = locks[key] { return lock }
+            let lock = AsyncSerialLock()
+            locks[key] = lock
+            return lock
         }
-        for lock in locks { await lock.acquire() }
+        await lock.acquire()
         do {
-            let response = try await sendHolding(keys, madeAt: edit, for: signIn, make)
-            for lock in locks { await lock.release() }
+            let response = try await sendHolding(key, madeAt: edit, for: signIn, make)
+            await lock.release()
             return response
         } catch {
-            for lock in locks { await lock.release() }
+            await lock.release()
             throw error
         }
     }
 
     private func sendHolding(
-        _ keys: [String], madeAt edit: EditTime, for signIn: SignIn,
+        _ key: String, madeAt edit: EditTime, for signIn: SignIn,
         _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
     ) async throws -> BackendResponse {
-        let since = answered.withLock { state in
-            state.signIn != signIn ? [] : keys.compactMap { state.byKey[$0] }
-                .filter { $0.edit.seconds(until: edit) > 0 && edit.seconds(until: $0.at) > 0 }
-                .map(\.at)
-        }.reduce(edit) { latest, answer in latest.seconds(until: answer) > 0 ? answer : latest }
+        let earlier = answered.withLock { state in state.signIn == signIn ? state.byKey[key] : nil }
+        let since = earlier.flatMap { answer in
+            answer.edit.seconds(until: edit) > 0 && edit.seconds(until: answer.at) > 0 ? answer.at : nil
+        } ?? edit
         let response = try await send(try make(0), as: .first) { try make(since.ageMilliseconds(at: editClock())) }
         let answeredAt = editClock()
         answered.withLock { state in
             if state.signIn != signIn { state = (signIn, [:]) }
-            for key in keys where state.byKey[key].map({ $0.edit.seconds(until: edit) >= 0 }) ?? true {
+            if state.byKey[key].map({ $0.edit.seconds(until: edit) >= 0 }) ?? true {
                 state.byKey[key] = (edit, answeredAt)
             }
         }

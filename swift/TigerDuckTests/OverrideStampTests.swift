@@ -206,6 +206,36 @@ struct OverrideStampTests {
         #expect(try Self.sentAges(url) == [7_000, 12_000])
     }
 
+    @Test("A term reset waits for a course delete still on its way, and ages from its answer")
+    func resetWaitsForACourseDeleteOnItsWay() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let delete = baseURL.appendingPathComponent("sync/courses/client:1151:CS1001301")
+            .appending(queryItems: [URLQueryItem(name: "age_ms", value: "10000")])
+        let reset = baseURL.appendingPathComponent("sync/courses").appending(queryItems: [
+            URLQueryItem(name: "semester", value: "1151"), URLQueryItem(name: "age_ms", value: "0"),
+        ])
+        let gate = SettingsAPIStub.ReplyGate()
+        var held = SettingsAPIStub.StubResponse(statusCode: 200, body: Data(#"{"applied":true,"hlc":1}"#.utf8))
+        held.gate = gate
+        SettingsAPIStub.enqueue(held, for: delete)
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: Data(#"{"deleted":1,"applied":true,"reset_hlc":2}"#.utf8)), for: reset
+        )
+        let at = { (seconds: TimeInterval) in EditTime(wall: Date(timeIntervalSince1970: 1_790_000_000 + seconds)) }
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010))
+        let client = Self.client(baseURL, clock: { clock.now() })
+
+        let hide = Task { try await client.deleteCourse(courseKey: "client:1151:CS1001301", madeAt: at(0), for: testSignIn) }
+        try await waitUntil { SettingsAPIStub.requests(under: baseURL).count == 1 }
+        let resetting = Task { try await client.deleteAllCourses(semester: "1151", madeAt: at(5), for: testSignIn) }
+        clock.set(Date(timeIntervalSince1970: 1_790_000_012))
+        gate.open()
+        try await hide.value
+
+        #expect(try await resetting.value == 2)
+        #expect(SettingsAPIStub.requests(under: baseURL).map(\.url?.query) == ["age_ms=10000", "semester=1151&age_ms=0"])
+    }
+
     @Test("A holiday setting whose send failed goes again after a relaunch, aged from when it was made")
     func holidayRetryCarriesTheEditTime() async throws {
         let clock = TestEditClock(Date(), step: 1)
