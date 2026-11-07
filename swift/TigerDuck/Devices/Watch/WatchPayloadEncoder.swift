@@ -12,7 +12,8 @@ enum WatchPayloadEncoder {
         languageTag: String?,
         visualPreset: VisualPreset,
         quietDays: Set<String> = [],
-        changes: CourseChanges = .empty
+        changes: CourseChanges = .empty,
+        accentGradient: AccentGradient? = nil
     ) -> WatchSnapshot {
         let watchCourses = loggedIn
             ? courses.flatMap { flatten($0, customNames: customNames, changes: changes) }
@@ -26,7 +27,8 @@ enum WatchPayloadEncoder {
             languageTag: languageTag,
             visualPreset: visualPreset,
             clockOverrideJSON: encodedClockOverride(),
-            quietDays: quietDays
+            quietDays: quietDays,
+            accentGradient: accentGradient
         )
     }
 

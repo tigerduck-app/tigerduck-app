@@ -3,6 +3,7 @@ import UIKit
 import WatchConnectivity
 import Combine
 import os
+import TigerDuckCore
 
 protocol WatchSessionPushing: AnyObject {
     var isPaired: Bool { get }
@@ -30,6 +31,7 @@ final class WatchSyncCoordinator: NSObject {
         let visualPreset: VisualPreset
         var quietDays: Set<String> = []
         var changes: CourseChanges = .empty
+        var accentGradient: AccentGradient?
     }
 
     private struct Pending {
@@ -142,13 +144,15 @@ final class WatchSyncCoordinator: NSObject {
         visualPreset: VisualPreset,
         quietDays: Set<String> = [],
         changes: CourseChanges = .empty,
+        accentGradient: AccentGradient? = nil,
         force: Bool = false
     ) {
         let snapshot = { (syncedAt: Date) in
             WatchPayloadEncoder.encode(
                 courses: courses, customNames: customNames, accentHex: accentHex,
                 syncedAt: syncedAt, loggedIn: loggedIn, languageTag: languageTag,
-                visualPreset: visualPreset, quietDays: quietDays, changes: changes
+                visualPreset: visualPreset, quietDays: quietDays, changes: changes,
+                accentGradient: accentGradient
             )
         }
         if !force, pending.snapshot == nil, let last = pending.lastDelivered, snapshot(last.syncedAt) == last {
@@ -192,7 +196,8 @@ final class WatchSyncCoordinator: NSObject {
             self.pending.force = false
             self.push(courses: p.courses, customNames: p.customNames, accentHex: p.accentHex,
                       loggedIn: p.loggedIn, languageTag: p.languageTag,
-                      visualPreset: p.visualPreset, quietDays: p.quietDays, changes: p.changes, force: force)
+                      visualPreset: p.visualPreset, quietDays: p.quietDays, changes: p.changes,
+                      accentGradient: p.accentGradient, force: force)
         }
     }
 }

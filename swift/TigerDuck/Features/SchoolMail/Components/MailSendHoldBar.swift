@@ -182,7 +182,7 @@ private struct MailReopenedComposer: View {
 
     var body: some View {
         MailComposeView(viewModel: model, hold: hold)
-            .tint(app.map { AccentPreview.shared.tint(saved: $0.preferences.accentColor) })
+            .tint(app?.preferences.accentTint)
             .appAppearance()
             .environment(app)
             .onDisappear(perform: closed)

@@ -13,6 +13,7 @@ nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let activePeriodIds: [String]
     var quietDayKeys: [String]? = nil
     var term: QuietDayCalendar.Span? = nil
+    var accentGradient: AccentGradient? = nil
 
     static let currentVersion = 1
     static let storeKey = "Widget-snapshot-v1"

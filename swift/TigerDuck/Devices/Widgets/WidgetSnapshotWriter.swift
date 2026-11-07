@@ -9,7 +9,7 @@ final class WidgetSnapshotWriter {
     private let store: WidgetSnapshotStore
     private let coordinator: WidgetReloadCoordinator
     private let isLoggedIn: @MainActor () -> Bool
-    private let accentColorHex: @MainActor () -> Int
+    private let accent: @MainActor () -> (hex: Int, gradient: AccentGradient?)
     private let courseProvider: CanonicalCourseProvider
     private let courses: CourseStore
     private let isProtectedDataAvailable: @MainActor () -> Bool
@@ -28,6 +28,7 @@ final class WidgetSnapshotWriter {
         self.init(
             isLoggedIn: { app.authService.hasStoredCredentials },
             accentColorHex: { app.preferences.accentColorHex },
+            accentGradient: { app.preferences.deviceAccents.widgets },
             courses: courses,
             store: store,
             coordinator: coordinator,
@@ -38,6 +39,7 @@ final class WidgetSnapshotWriter {
     init(
         isLoggedIn: @escaping @MainActor () -> Bool,
         accentColorHex: @escaping @MainActor () -> Int,
+        accentGradient: @escaping @MainActor () -> AccentGradient? = { nil },
         courses: CourseStore? = nil,
         store: WidgetSnapshotStore? = nil,
         coordinator: WidgetReloadCoordinator? = nil,
@@ -54,7 +56,7 @@ final class WidgetSnapshotWriter {
         self.isProtectedDataAvailable = isProtectedDataAvailable ?? { true }
         #endif
         self.isLoggedIn = isLoggedIn
-        self.accentColorHex = accentColorHex
+        self.accent = { (accentColorHex(), accentGradient()) }
         self.courses = courses ?? .shared
         self.store = store ?? WidgetSnapshotStore()
         self.coordinator = coordinator ?? WidgetReloadCoordinator()
@@ -87,16 +89,18 @@ final class WidgetSnapshotWriter {
         let colorMap = CourseColorStore.shared.files.loadCourseColorMap()
         let now = AppClock.now()
         let (calendar, optedIn) = schoolCalendar()
+        let (accentHex, accentGradient) = accent()
         let input = WidgetSnapshotBuilder.Input(
             courses: courseProvider.currentCourses(semester: semester),
             customNames: courses.loadCourseCustomNamesFlat(),
             colorMap: colorMap,
             isLoggedIn: isLoggedIn(),
-            accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: accentColorHex())),
+            accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: accentHex)),
             now: now,
             quietDayKeys: Self.quietDayKeys(calendar: calendar, optedIn: optedIn, now: now),
             changes: .cached,
-            term: calendar.terms.first { $0.code == semester }?.days
+            term: calendar.terms.first { $0.code == semester }?.days,
+            accentGradient: accentGradient
         )
         let snapshot = WidgetSnapshotBuilder.build(input)
         let people = importedPeople().map { person in
