@@ -21,8 +21,7 @@ final class SettingsSheetState {
 struct SettingsSheets: ViewModifier {
     @Bindable var state: SettingsSheetState
 
-    @Environment(AppEnvironment.self) private var app
-    @Environment(AppPreferences.self) private var preferences
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
 
     func body(content: Content) -> some View {
         content
@@ -30,10 +29,11 @@ struct SettingsSheets: ViewModifier {
                 TabEditorView()
             }
             .sheet(isPresented: $state.showingAccentEditor) {
-                AccentGradientEditor(preferences: preferences)
+                if let app { AccentGradientEditor(preferences: app.preferences) }
             }
             .alert(String(localized: "action_sign_out"), isPresented: $state.confirmsSignOut) {
                 Button(String(localized: "action_sign_out"), role: .destructive) {
+                    guard let app else { return }
                     SignOutPlan.school(app).run()
                 }
                 Button(String(localized: "action_cancel"), role: .cancel) {}
@@ -46,7 +46,7 @@ struct SettingsSheets: ViewModifier {
                     subtitle: String(localized: "settings_library_account_subtitle"),
                     usernamePlaceholder: String(localized: "sign_in_student_id"),
                     passwordPlaceholder: String(localized: "sign_in_password"),
-                    initialUsername: app.authService.storedStudentId ?? "",
+                    initialUsername: app?.authService.storedStudentId ?? "",
                     isLoggingIn: state.libIsLoggingIn,
                     loginError: state.libLoginError,
                     onLogin: { username, password in
@@ -58,7 +58,7 @@ struct SettingsSheets: ViewModifier {
                                     username: username,
                                     password: password
                                 )
-                                app.library.noteChange()
+                                app?.library.noteChange()
                                 state.showLibraryLogin = false
                             } catch {
                                 state.libLoginError = error.localizedDescription
@@ -81,7 +81,7 @@ struct SettingsSheets: ViewModifier {
                 isPresented: $state.showManualUpdateCheckResultAlert,
                 actions: {
                     Button(String(localized: "action_got_it"), role: .cancel) {
-                        app.updateNotifyCoordinator.lastManualCheckResult = nil
+                        app?.updateNotifyCoordinator.lastManualCheckResult = nil
                     }
                 },
                 message: {
@@ -99,7 +99,7 @@ struct SettingsSheets: ViewModifier {
 
     #if os(iOS)
     private var manualCheckResultAlertTitle: String {
-        switch app.updateNotifyCoordinator.lastManualCheckResult {
+        switch app?.updateNotifyCoordinator.lastManualCheckResult {
         case .upToDate: return String(localized: "update_up_to_date_title")
         case .failed: return String(localized: "update_check_failed_title")
         case .offered, nil: return ""
@@ -107,7 +107,7 @@ struct SettingsSheets: ViewModifier {
     }
 
     private var manualCheckResultAlertMessage: String {
-        switch app.updateNotifyCoordinator.lastManualCheckResult {
+        switch app?.updateNotifyCoordinator.lastManualCheckResult {
         case .upToDate:
             return String(format: NSLocalizedString(
                 "update_up_to_date_message",

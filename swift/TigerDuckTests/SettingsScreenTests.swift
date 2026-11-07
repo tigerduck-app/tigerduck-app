@@ -241,6 +241,47 @@ struct SettingsScreenTests {
         }
     }
 
+    @Test("More's gear opens the Settings view More builds")
+    func settingsFromMoresGear() async throws {
+        try await withAccessibilityAutomation {
+            let window = try MoreScreen.window(
+                width: 402, height: 874,
+                settings: SettingsView().environment(\.settingsState, Screen.closed).environment(AppPreferences()),
+                feature: EmptyView()
+            )
+            window.makeKeyAndVisible()
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController)
+            try await waitUntil { MoreScreen.gear(in: window) != nil }
+
+            #expect(MoreScreen.gear(in: window)?.accessibilityActivate() == true)
+
+            let accent = String(localized: "settings_accent_gradient_custom")
+            try await waitUntil { Screen.link(labeled: accent, in: root) != nil }
+            #expect(Screen.depth(in: root) == 2)
+        }
+    }
+
+    @Test("Settings' sheets, pushed as More pushes Settings, need no environment object but the app")
+    func sheetsNeedOnlyTheApp() async throws {
+        try await withAccessibilityAutomation {
+            let label = "Settings sheets host"
+            let window = try MoreScreen.window(
+                width: 402, height: 874,
+                settings: Text(verbatim: label).modifier(SettingsSheets(state: SettingsSheetState())),
+                feature: EmptyView()
+            )
+            window.makeKeyAndVisible()
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController)
+            try await waitUntil { MoreScreen.gear(in: window) != nil }
+
+            #expect(MoreScreen.gear(in: window)?.accessibilityActivate() == true)
+
+            try await waitUntil { Screen.depth(in: root) == 2 && accessibilityElement(labeled: label, in: root.view) != nil }
+        }
+    }
+
     private struct GateOutsideAPage: Error {}
 }
 
