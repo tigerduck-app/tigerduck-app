@@ -13,7 +13,6 @@ public struct AccentGradient: Codable, Hashable, Sendable {
 
     public static let stopCounts = 1...5
 
-    /// A change that leaves no stop or more than five is undone.
     public var stops: [Int] {
         didSet { stops = Self.stopCounts.contains(stops.count) ? stops.map(Self.rgb) : oldValue }
     }
