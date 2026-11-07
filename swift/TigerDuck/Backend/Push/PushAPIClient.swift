@@ -45,7 +45,7 @@ final class PushAPIClient: Sendable {
     func putHolidayOverride(
         holidayID: Int, notify: Bool, madeAt: EditTime, for signIn: SignIn
     ) async throws -> PushAPI.HolidayOverrideResponse {
-        try await backend.sendStamped(["holiday:\(holidayID)"], madeAt: madeAt) { age in
+        try await backend.sendStamped(["holiday:\(holidayID)"], madeAt: madeAt, for: signIn) { age in
             try BackendRequest("PUT", segments: ["sync", "holiday-overrides", String(holidayID)])
                 .json(PushAPI.HolidayOverrideRequest(notify: notify, ageMs: age)).sent(for: signIn)
         }.decoded(PushAPI.HolidayOverrideResponse.self)
@@ -118,7 +118,7 @@ final class PushAPIClient: Sendable {
         madeAt: EditTime,
         for signIn: SignIn
     ) async throws -> PushAPI.AssignmentOverrideResponse {
-        try await backend.sendStamped(["mark:\(moodleAssignmentId)"], madeAt: madeAt) { age in
+        try await backend.sendStamped(["mark:\(moodleAssignmentId)"], madeAt: madeAt, for: signIn) { age in
             try BackendRequest("PATCH", segments: ["sync", "assignments", moodleAssignmentId, "override"])
                 .json(PushAPI.AssignmentOverrideRequest(localStatus: localStatus, ageMs: age)).sent(for: signIn)
         }.decoded(PushAPI.AssignmentOverrideResponse.self)
@@ -140,7 +140,7 @@ final class PushAPIClient: Sendable {
             ignoreAssignments.map { _ in "ignore:\(courseKey)" },
         ].compactMap { $0 }
         do {
-            return try await backend.sendStamped(keys, madeAt: madeAt) { age in
+            return try await backend.sendStamped(keys, madeAt: madeAt, for: signIn) { age in
                 try BackendRequest("PATCH", segments: ["sync", "courses", courseKey, "override"]).json(PushAPI.CourseOverrideRequest(
                     colorHex: colorHex, customName: customName, locale: locale,
                     ignoreAssignments: ignoreAssignments, moodleCourseId: moodleCourseId, ageMs: age
@@ -171,7 +171,7 @@ final class PushAPIClient: Sendable {
             _ = try await backend.send(BackendRequest("POST", "sync", "courses", "upload").json(request).sent(for: signIn))
             return
         }
-        _ = try await backend.sendStamped(adds.map { "course:\($0.courseKey)" }, madeAt: addedAt) { age in
+        _ = try await backend.sendStamped(adds.map { "course:\($0.courseKey)" }, madeAt: addedAt, for: signIn) { age in
             var stamped = request
             stamped.handAddedCourses = adds.map { PushAPI.CourseAdd(courseKey: $0.courseKey, ageMs: age) }
             return try BackendRequest("POST", "sync", "courses", "upload").json(stamped).sent(for: signIn)
@@ -180,7 +180,7 @@ final class PushAPIClient: Sendable {
 
     /// The reset time the backend answered (`reset_hlc`), which its reset tombstones carry.
     func deleteAllCourses(semester: String? = nil, madeAt: EditTime, for signIn: SignIn) async throws -> Int64? {
-        let answer = try await backend.sendStamped(["reset:\(semester ?? "")"], madeAt: madeAt) { age in
+        let answer = try await backend.sendStamped(["reset:\(semester ?? "")"], madeAt: madeAt, for: signIn) { age in
             var request = BackendRequest("DELETE", "sync", "courses").sent(for: signIn)
             request.query = (semester.map { [URLQueryItem(name: "semester", value: $0)] } ?? [])
                 + [URLQueryItem(name: "age_ms", value: String(age))]
@@ -195,7 +195,7 @@ final class PushAPIClient: Sendable {
     func deleteCourse(
         courseKey: String, kind: PushAPI.CourseDeleteKind? = nil, madeAt: EditTime, for signIn: SignIn
     ) async throws {
-        _ = try await backend.sendStamped(["course:\(courseKey)"], madeAt: madeAt) { age in
+        _ = try await backend.sendStamped(["course:\(courseKey)"], madeAt: madeAt, for: signIn) { age in
             var request = BackendRequest("DELETE", segments: ["sync", "courses", courseKey]).sent(for: signIn)
             request.query = [URLQueryItem(name: "age_ms", value: String(age))]
                 + (kind.map { [URLQueryItem(name: "kind", value: $0.rawValue)] } ?? [])

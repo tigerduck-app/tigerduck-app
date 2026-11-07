@@ -126,6 +126,83 @@ struct OverrideStampTests {
         #expect(ages == [10_000, 2_000, 7_000, 13_000])
     }
 
+    @Test("An edit of a field waits for the earlier send of that field to be answered, and ages from that answer")
+    func editWaitsForTheEarlierSendOfItsField() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.url(.mark, baseURL)
+        let gate = SettingsAPIStub.ReplyGate()
+        var held = SettingsAPIStub.StubResponse(statusCode: 200, body: Self.markReply)
+        held.gate = gate
+        SettingsAPIStub.enqueue(held, for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url)
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010))
+        let client = Self.client(baseURL, clock: { clock.now() })
+
+        let first = Task { try await Self.mark(0, on: client) }
+        try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
+        let second = Task { try await Self.mark(5, on: client) }
+        clock.set(Date(timeIntervalSince1970: 1_790_000_012))
+        gate.open()
+        try await first.value
+        try await second.value
+
+        #expect(try Self.sentAges(url) == [10_000, 0])
+    }
+
+    @Test("The answer to an older edit of a field does not replace the answer to a newer one")
+    func olderEditsAnswerKeepsTheNewerOne() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.url(.mark, baseURL)
+        for _ in 0..<3 { SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url) }
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010))
+        let client = Self.client(baseURL, clock: { clock.now() })
+
+        try await Self.mark(5, on: client)
+        clock.set(Date(timeIntervalSince1970: 1_790_000_011))
+        try await Self.mark(0, on: client)
+        clock.set(Date(timeIntervalSince1970: 1_790_000_012))
+        try await Self.mark(7, on: client)
+
+        #expect(try Self.sentAges(url) == [5_000, 11_000, 2_000])
+    }
+
+    @Test("An answer to one sign-in's edit does not age the next sign-in's edit of that field")
+    func answerDoesNotCarryToTheNextSignIn() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.url(.mark, baseURL)
+        for _ in 0..<2 { SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url) }
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_010))
+        let signIns = SignInSeries()
+        let client = Self.client(baseURL, signIns: signIns, clock: { clock.now() })
+
+        try await Self.mark(0, on: client, for: signIns.currentSignIn)
+        signIns.end()
+        clock.set(Date(timeIntervalSince1970: 1_790_000_012))
+        try await Self.mark(5, on: client, for: signIns.currentSignIn)
+
+        #expect(try Self.sentAges(url) == [10_000, 7_000])
+    }
+
+    @Test("A send replayed with a refreshed token goes with its age measured again")
+    func replayWithARefreshedTokenMeasuresTheAgeAgain() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.url(.mark, baseURL)
+        SettingsAPIStub.enqueue(.init(statusCode: 401, body: Data(#"{"error":"token_expired"}"#.utf8)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.markReply), for: url)
+        let clock = TestEditClock(Date(timeIntervalSince1970: 1_790_000_002), step: 1)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = PushAPIClient(
+            baseURLProvider: { baseURL }, session: URLSession(configuration: config),
+            auth: BackendAuth(header: { ("Bearer test", testSignIn) }, recover: { _, _, _ in true }),
+            editClock: { clock.now() }
+        )
+
+        try await Self.mark(0, on: client)
+
+        #expect(try Self.sentAges(url) == [2_000, 3_000])
+    }
+
     @Test("A holiday setting whose send failed goes again after a relaunch, aged from when it was made")
     func holidayRetryCarriesTheEditTime() async throws {
         let clock = TestEditClock(Date(), step: 1)
@@ -214,15 +291,31 @@ struct OverrideStampTests {
         )
     }
 
-    private static func client(_ baseURL: URL, clock: @escaping @Sendable () -> EditTime) -> PushAPIClient {
+    private static func client(
+        _ baseURL: URL, signIns: SignInSeries = testSignIns, clock: @escaping @Sendable () -> EditTime
+    ) -> PushAPIClient {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         return PushAPIClient(
             baseURLProvider: { baseURL },
             session: URLSession(configuration: config),
             authHeaderProvider: { "Bearer test" },
+            signIns: signIns,
             editClock: clock
         )
+    }
+
+    private static func mark(
+        _ seconds: TimeInterval, on client: PushAPIClient, for signIn: SignIn = testSignIn
+    ) async throws {
+        _ = try await client.patchAssignmentOverride(
+            moodleAssignmentId: "42", localStatus: "ignored",
+            madeAt: EditTime(wall: Date(timeIntervalSince1970: 1_790_000_000 + seconds)), for: signIn
+        )
+    }
+
+    private static func sentAges(_ url: URL) throws -> [Int64?] {
+        try SettingsAPIStub.requests(for: url).map { try (Self.json($0)["age_ms"] as? NSNumber)?.int64Value }
     }
 
     private static func pushCoordinator(

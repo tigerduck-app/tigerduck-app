@@ -91,7 +91,10 @@ nonisolated final class BackendClient: Sendable {
     private let auth: BackendAuth
     private let versionGate: APIVersionGate?
     private let editClock: @Sendable () -> EditTime
-    private let answered = OSAllocatedUnfairLock<[String: (edit: EditTime, at: EditTime)]>(initialState: [:])
+    private let answered = OSAllocatedUnfairLock<(signIn: SignIn?, byKey: [String: (edit: EditTime, at: EditTime)])>(
+        initialState: (nil, [:])
+    )
+    private let keyLocks = OSAllocatedUnfairLock<[String: AsyncSerialLock]>(initialState: [:])
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Backend.API")
 
     init(
@@ -113,7 +116,7 @@ nonisolated final class BackendClient: Sendable {
     }
 
     func send(_ request: BackendRequest) async throws -> BackendResponse {
-        try await send(request, as: .first)
+        try await send({ request }, as: .first)
     }
 
     func send<Response: Decodable>(_ request: BackendRequest, as type: Response.Type) async throws -> Response {
@@ -121,21 +124,48 @@ nonisolated final class BackendClient: Sendable {
     }
 
     /// Sends a user's edit with its `age_ms`, measured as it goes out; the backend stamps the edit
-    /// with the time it arrives less that age. An edit made while an earlier edit of one of its
-    /// `keys` was on its way ages from that send's answer, so it lands after it whatever the two
-    /// sends' network delays.
+    /// with the time it arrives less that age. A send waits for the earlier send of each of its
+    /// `keys`, and an edit made while that send was on its way ages from its answer, so it lands
+    /// after it whatever the two sends' network delays.
     func sendStamped(
-        _ keys: [String], madeAt edit: EditTime, _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
+        _ keys: [String], madeAt edit: EditTime, for signIn: SignIn,
+        _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
     ) async throws -> BackendResponse {
-        let since = answered.withLock { answers in
-            keys.compactMap { answers[$0] }
+        let locks = keyLocks.withLock { locks in
+            Set(keys).sorted().map { key in
+                if let lock = locks[key] { return lock }
+                let lock = AsyncSerialLock()
+                locks[key] = lock
+                return lock
+            }
+        }
+        for lock in locks { await lock.acquire() }
+        do {
+            let response = try await sendHolding(keys, madeAt: edit, for: signIn, make)
+            for lock in locks { await lock.release() }
+            return response
+        } catch {
+            for lock in locks { await lock.release() }
+            throw error
+        }
+    }
+
+    private func sendHolding(
+        _ keys: [String], madeAt edit: EditTime, for signIn: SignIn,
+        _ make: @Sendable (_ ageMs: Int64) throws -> BackendRequest
+    ) async throws -> BackendResponse {
+        let since = answered.withLock { state in
+            state.signIn != signIn ? [] : keys.compactMap { state.byKey[$0] }
                 .filter { $0.edit.seconds(until: edit) > 0 && edit.seconds(until: $0.at) > 0 }
                 .map(\.at)
         }.reduce(edit) { latest, answer in latest.seconds(until: answer) > 0 ? answer : latest }
-        let response = try await send(make(since.ageMilliseconds(at: editClock())))
+        let response = try await send({ try make(since.ageMilliseconds(at: editClock())) }, as: .first)
         let answeredAt = editClock()
-        answered.withLock { answers in
-            for key in keys { answers[key] = (edit, answeredAt) }
+        answered.withLock { state in
+            if state.signIn != signIn { state = (signIn, [:]) }
+            for key in keys where state.byKey[key].map({ $0.edit.seconds(until: edit) >= 0 }) ?? true {
+                state.byKey[key] = (edit, answeredAt)
+            }
         }
         return response
     }
@@ -152,7 +182,8 @@ nonisolated final class BackendClient: Sendable {
         }
     }
 
-    private func send(_ request: BackendRequest, as attempt: Attempt) async throws -> BackendResponse {
+    private func send(_ make: () throws -> BackendRequest, as attempt: Attempt) async throws -> BackendResponse {
+        let request = try make()
         var urlRequest = try makeURLRequest(request)
         var sent: String?
         var signIn: SignIn?
@@ -176,7 +207,7 @@ nonisolated final class BackendClient: Sendable {
         let code = Self.errorCode(in: data)
         if http.statusCode == 401, request.authenticated, case .first = attempt, let sent, let signIn,
            await auth.recover(sent, code, signIn) {
-            return try await send(request, as: .replay(after401For: signIn))
+            return try await send(make, as: .replay(after401For: signIn))
         }
         if http.statusCode == 409, code == "sync_revision_expired" { throw PushAPIError.syncRevisionExpired }
         if request.returnedStatuses.contains(http.statusCode) { return answer }
