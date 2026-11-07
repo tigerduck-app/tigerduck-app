@@ -1,5 +1,6 @@
 import SwiftUI
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -37,6 +38,18 @@ struct CustomAccentTests {
     @Test("A custom colour that reads already is kept", arguments: [0x007AFF, 0x5856D6, 0xAF52DE])
     func readableColourKept(hex: Int) {
         #expect(AccentContrast.readable(hex) == hex)
+    }
+
+    @Test("Apply keeps the colours the editor opened with and makes only new picks readable")
+    func applyKeepsTheOpeningColours() {
+        let cyan = AccentGradient(color: 0x5AC8FA)
+        #expect(AccentGradientEditor.applied(cyan, opening: cyan) == cyan)
+
+        var added = cyan
+        added.stops.append(0xFFFFFF)
+        added.stops.swapAt(0, 1)
+        let applied = AccentGradientEditor.applied(added, opening: cyan)
+        #expect(applied.stops == [AccentContrast.readable(0xFFFFFF), 0x5AC8FA])
     }
 
     @Test("A preset reads on the light cards in light mode and keeps its tone in dark mode",

@@ -6,9 +6,11 @@ struct AccentGradientEditor: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var draft: AccentGradient
+    private let opening: AccentGradient
 
     init(preferences: AppPreferences) {
         self.preferences = preferences
+        opening = preferences.accent
         _draft = State(initialValue: preferences.accent)
     }
 
@@ -59,10 +61,12 @@ struct AccentGradientEditor: View {
         }
     }
 
-    private var readable: AccentGradient {
-        var readable = draft
-        readable.stops = draft.stops.map(AccentContrast.readable)
-        return readable
+    private var readable: AccentGradient { Self.applied(draft, opening: opening) }
+
+    static func applied(_ draft: AccentGradient, opening: AccentGradient) -> AccentGradient {
+        var applied = draft
+        applied.stops = draft.stops.map { opening.stops.contains($0) ? $0 : AccentContrast.readable($0) }
+        return applied
     }
 
     private func fill(_ accent: AccentGradient) -> AnyShapeStyle {
