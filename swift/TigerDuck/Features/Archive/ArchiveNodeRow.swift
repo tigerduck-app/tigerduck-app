@@ -80,8 +80,7 @@ struct ArchiveNodeRow: View {
     }
 
     private func subline(_ item: ArchiveItem) -> String {
-        let size = item.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
-        return [item.modified?.moodleDateString(now: now), size].compactMap(\.self).joined(separator: " · ")
+        MoodleFileRow.subline(name: item.name, size: item.size, modified: item.modified, now: now)
     }
 }
 #endif
