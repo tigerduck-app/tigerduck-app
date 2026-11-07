@@ -161,8 +161,19 @@ struct TLSPinPromptTests {
 
             try await Self.activate(String(localized: "tls_pin_mismatch_show_details"), in: sheet)
             try await Self.activate(String(localized: "tls_pin_mismatch_view_certificate"), in: sheet)
+            let rows = try Self.mismatch.certificates.flatMap { certificate in
+                let notBefore = try #require(certificate.notBefore), notAfter = try #require(certificate.notAfter)
+                return [
+                    certificate.name, certificate.sha256Fingerprint,
+                    "\(notBefore.fullDateString) – \(notAfter.fullDateString)",
+                ]
+            }
             let root = String(localized: "tls_certificate_root")
-            try await waitUntil { accessibilityElement(labeled: root, in: sheet) != nil }
+            try await waitUntil {
+                let texts = exposedAccessibilityTexts(in: sheet)
+                return accessibilityElement(labeled: root, in: sheet) != nil
+                    && rows.allSatisfy { row in texts.contains { $0.contains(row) } }
+            }
 
             let texts = exposedAccessibilityTexts(in: sheet)
             #expect(texts.contains("api.lib.ntust.edu.tw"))
@@ -170,11 +181,8 @@ struct TLSPinPromptTests {
             for button in [String(localized: "action_cancel"), String(localized: "action_continue")] {
                 #expect(accessibilityElement(labeled: button, in: sheet) != nil, "\(button) is gone from the list")
             }
-            for certificate in Self.mismatch.certificates {
-                #expect(texts.contains { $0.contains(certificate.name) })
-                #expect(texts.contains { $0.contains(certificate.sha256Fingerprint) })
-                let notBefore = try #require(certificate.notBefore), notAfter = try #require(certificate.notAfter)
-                #expect(texts.contains { $0.contains("\(notBefore.fullDateString) – \(notAfter.fullDateString)") })
+            for row in rows {
+                #expect(texts.contains { $0.contains(row) }, "\(row) is missing")
             }
         }
     }
