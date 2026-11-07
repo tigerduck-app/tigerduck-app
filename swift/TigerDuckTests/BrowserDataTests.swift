@@ -101,7 +101,7 @@ struct BrowserDataTests {
         #expect(disk.state == .empty)
     }
 
-    @Test func aRemovalAsTheLaunchsFirstWebKitCallDeletesTheStore() async throws {
+    @Test func removingAStoreDeletesItsFolder() async throws {
         let id = UUID()
         let folder = BrowserData.storeFolder(id)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
