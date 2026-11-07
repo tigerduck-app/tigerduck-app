@@ -71,6 +71,16 @@ nonisolated enum MoodleFileKind: Equatable {
         case .archive, .text, .other: .gray
         }
     }
+
+    private static let tarLabels = [".tar.gz": "TGZ", ".tar.bz2": "TBZ2", ".tar.xz": "TXZ"]
+
+    static func typeLabel(of fileName: String) -> String? {
+        let lowered = fileName.lowercased()
+        if let tar = tarLabels.first(where: { lowered.hasSuffix($0.key) }) { return tar.value }
+        let ext = (fileName as NSString).pathExtension
+        guard ext.wholeMatch(of: /[A-Za-z0-9]{1,5}/) != nil, ext.contains(where: \.isLetter) else { return nil }
+        return ext.uppercased()
+    }
 }
 
 struct MoodleFileRow: View {
@@ -126,9 +136,15 @@ struct MoodleFileRow: View {
     }
 
     private var subline: String {
-        let size = ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file)
-        guard let modified = file.modified else { return size }
-        return "\(modified.moodleDateString(now: now)) · \(size)"
+        Self.subline(name: file.name, size: Int64(file.size), modified: file.modified, now: now)
+    }
+
+    static func subline(name: String, size: Int64?, modified: Date?, now: Date) -> String {
+        [
+            modified?.moodleDateString(now: now),
+            size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) },
+            MoodleFileKind.typeLabel(of: name),
+        ].compactMap(\.self).joined(separator: " · ")
     }
 
     private var accessibilityValue: String {
