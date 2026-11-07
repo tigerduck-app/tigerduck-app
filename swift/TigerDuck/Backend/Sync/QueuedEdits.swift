@@ -92,10 +92,9 @@ final class QueuedEdits {
         await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, now) }))
     }
 
-    @discardableResult
-    private func discard(madeBefore scopeCutoffs: [DiscardScope: Date]) async -> [SyncOp] {
+    private func discard(madeBefore scopeCutoffs: [DiscardScope: Date]) async {
         cutoffs.keep(scopeCutoffs, notAfter: Date())
-        return await outbox.discard(madeBefore: scopeCutoffs)
+        await outbox.discard(madeBefore: scopeCutoffs)
     }
 
     func discardCourseIgnores(semester: String?, courseNo: String?) async {
@@ -160,15 +159,6 @@ final class QueuedEdits {
         return keys.union(addStartedOrLandedAt.filter { $0.value >= date }.keys)
     }
 
-    func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
-        let cutoff = resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin)
-        let dropped = await discard(madeBefore: [.allCourseAdds: cutoff, .allCourseDeletes: cutoff])
-        return Self.courseKeys(of: dropped.filter { op in
-            if case .courseDelete = op { return true }
-            return false
-        })
-    }
-
     func discardCourseDeletes(semester: String?, courseKeys: Set<String>?, madeBeforeAction cutoff: Date) async {
         let serverPrefix = CourseTombstone.serverKey(of: "")
         let scopes = courseKeys.map { keys in
@@ -180,17 +170,6 @@ final class QueuedEdits {
             }
         } ?? [semester.map { .courseDeletes(term: $0) } ?? .allCourseDeletes]
         await discard(madeBefore: Dictionary(uniqueKeysWithValues: scopes.map { ($0, cutoff) }))
-    }
-
-    private nonisolated static func courseKeys(of ops: [SyncOp]) -> Set<String> {
-        Set(ops.compactMap { op -> String? in
-            switch op {
-            case .courseAdd(let semester, let courseNo, _), .courseDelete(let semester, let courseNo, _):
-                return CourseTombstone.key(semester: semester, courseNo: courseNo)
-            case .courseOverride, .assignmentOverride, .courseIgnore:
-                return nil
-            }
-        })
     }
 
     func forgetDiscards() {

@@ -203,11 +203,6 @@ final class CloudSyncCoordinator {
 
     nonisolated static let clockSkewMargin: TimeInterval = 2 * 60
 
-    @discardableResult
-    func dropCourseEdits(madeBeforeReset resetAt: Date) async -> Set<String> {
-        await edits.dropCourseEdits(madeBeforeReset: resetAt)
-    }
-
     func discardCourseDeletes(semester: String? = nil, courseKeys: Set<String>? = nil, madeBeforeAction cutoff: Date) async {
         await edits.discardCourseDeletes(semester: semester, courseKeys: courseKeys, madeBeforeAction: cutoff)
     }
