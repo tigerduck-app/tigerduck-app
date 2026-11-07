@@ -46,6 +46,8 @@ Each rule below has one home; call it instead of writing the rule again.
 - Today's classes, now and next: `ClassTimeline` in TigerDuckCore.
 - Days without classes, from the terms and holidays: `QuietDayCalendar` in TigerDuckCore.
 - Taipei dates: `TaipeiTime` in TigerDuckCore.
+- A class time range on any screen, widget, Watch face or Live Activity, and its VoiceOver form:
+  `TimeRange` in TigerDuckCore.
 - What this device may send or apply: `Backend/Sync/SyncPolicy.swift`.
 - Whether an upload already went out: `Backend/Sync/SendLedger.swift`.
 - Requests to the TigerDuck backend: `Backend/Client/BackendClient.swift`.

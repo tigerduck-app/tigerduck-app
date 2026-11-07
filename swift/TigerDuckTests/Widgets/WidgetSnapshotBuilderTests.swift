@@ -144,4 +144,15 @@ struct WidgetSnapshotBuilderTests {
             SnapshotCourseChange(day: "2026-11-05", periods: ["2", "3", "4"], cancelled: false, room: "TR-411", start: nil, end: nil),
         ])
     }
+
+    @Test func aCourseWithNoChosenColourGetsTheColourTheAppShows() {
+        let courseNos = ["MA2001", "CS1001301", "ZZ9999999"]
+        let app = ColorState(load: { [:] }, save: { _ in }, notePick: { _ in }, forgetPicks: {})
+        let snapshot = WidgetSnapshotBuilder.build(.init(
+            courses: courseNos.map { SDCourse(courseNo: $0, courseName: "Synthetic Course") },
+            customNames: [:], colorMap: [:], isLoggedIn: true, accentColorHex: 0x007AFF, now: Date()
+        ))
+
+        #expect(snapshot.courses.map(\.colorHex) == courseNos.map { app.hex(for: $0, palette: TigerDuckTheme.coursePaletteHexes) })
+    }
 }

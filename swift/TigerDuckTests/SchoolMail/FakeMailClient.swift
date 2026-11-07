@@ -35,7 +35,9 @@ actor FakeMailClient: MailClient {
     var rawSourceError: MailClientError?
     var copyError: MailClientError?
     var setFlagError: MailClientError?
+    var foldersStoringFlagged: Set<String>?
     var deletedUIDsError: MailClientError?
+    var undeletedUIDsError: MailClientError?
     var createFolderError: MailClientError?
     var createdFolderName: String?
     var listFoldersError: MailClientError?
@@ -70,6 +72,10 @@ actor FakeMailClient: MailClient {
     func holdNext(_ command: String) {
         arrivedCommands.remove(command)
         heldCommands.insert(command)
+    }
+
+    func stopHolding(_ command: String) {
+        heldCommands.remove(command)
     }
 
     func release(_ command: String) {
@@ -232,6 +238,7 @@ actor FakeMailClient: MailClient {
     func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
         calls.append("undeletedUIDs \(folder)")
         await gate("undeletedUIDs")
+        if let undeletedUIDsError { throw undeletedUIDsError }
         return ((folders[folder] ?? []).map(\.summary).filter { !$0.isDeleted }.map(\.uid), uidValidity[folder] ?? 1)
     }
 
@@ -258,11 +265,18 @@ actor FakeMailClient: MailClient {
             switch flag {
             case .seen: messages[index].summary.isSeen = on
             case .answered: messages[index].summary.isAnswered = on
+            case .flagged: messages[index].summary.flagged = on
             case .deleted: messages[index].summary.isDeleted = on
             case .draft: break
             }
         }
         folders[folder] = messages
+    }
+
+    func storesFlagged(folder: String) async throws -> Bool {
+        calls.append("storesFlagged \(folder)")
+        await gate("storesFlagged")
+        return foldersStoringFlagged?.contains(folder) ?? true
     }
 
     func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {
@@ -324,9 +338,12 @@ actor FakeMailClient: MailClient {
         return (folders[folder] ?? []).contains { $0.messageID == messageID }
     }
 
-    func send(_ message: Data, from sender: String, to recipients: [String]) async throws {
+    func send(
+        _ message: Data, from sender: String, to recipients: [String], unless isExpired: @escaping @MainActor () -> Bool
+    ) async throws {
         calls.append("send")
         await gate("send")
+        if await isExpired() { throw CancellationError() }
         if let sendError { throw sendError }
         sent.append((message, sender, recipients))
         if let autoSaveSentTo {

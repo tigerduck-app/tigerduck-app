@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TigerDuckCore
 
 nonisolated struct OutboxFiles: Sendable {
     static let fileName = "outbox.json"
@@ -48,13 +49,6 @@ nonisolated struct OutboxFiles: Sendable {
         }
     }
 
-    private struct FailableEntry: Decodable {
-        let entry: OutboxEntry?
-        init(from decoder: Decoder) throws {
-            entry = try? OutboxEntry(from: decoder)
-        }
-    }
-
     private func loadEntries(_ fileName: String) -> [OutboxEntry]? {
         let url = directory.appendingPathComponent(fileName)
         let data: Data
@@ -63,11 +57,11 @@ nonisolated struct OutboxFiles: Sendable {
         } catch {
             return FileManager.default.fileExists(atPath: url.path) ? nil : []
         }
-        guard let wrapped = try? JSONDecoder().decode([FailableEntry].self, from: data) else {
+        guard let wrapped = try? JSONDecoder().decode([Lenient<OutboxEntry>].self, from: data) else {
             logger.warning("\(fileName, privacy: .public) decode failed — starting empty")
             return []
         }
-        let entries = wrapped.compactMap(\.entry)
+        let entries = wrapped.compactMap(\.value)
         if entries.count != wrapped.count {
             logger.warning("\(fileName, privacy: .public): dropped \(wrapped.count - entries.count, privacy: .public) undecodable entries")
         }

@@ -107,4 +107,5 @@ bold, labels or emphasis words) of Swift comments in CI and, in Claude Code, aft
   `swift/Shared/`, the Watch app and the app folder that its membership exceptions in
   `project.pbxproj` list, so a file they come to need joins that list. The Watch app also
   compiles the complication's entry, provider and views, for `TigerDuckWatch Watch AppTests`.
-- `swift/Packages/SwiftMail/` is vendored; read its `VENDORED.md` before changing it.
+- `swift/Packages/SwiftMail/`, `swift/Packages/libarchive/` and `swift/Packages/xz/` are vendored;
+  read the package's `VENDORED.md` before changing it.

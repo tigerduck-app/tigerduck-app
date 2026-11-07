@@ -108,19 +108,12 @@ struct MoodleCourseSearchPageTests {
         return window
     }
 
-    /// A list keeps the cells of rows it no longer shows, hidden, for reuse.
-    private static func labels(in window: UIWindow) -> [String] {
-        guard let root = window.rootViewController?.view else { return [] }
-        let shown: [UIView] = root.descendants(ofType: UICollectionView.self).first?.visibleCells ?? [root]
-        return shown.flatMap { exposedAccessibilityLabels(in: $0) }
-    }
-
     private static func shows(_ text: String, in window: UIWindow) -> Bool {
-        labels(in: window).contains { $0.contains(text) }
+        shownListLabels(in: window).contains { $0.contains(text) }
     }
 
     private static func showsCard(titled title: String, in window: UIWindow) -> Bool {
-        labels(in: window).contains { $0.hasPrefix("\(title),") }
+        shownListLabels(in: window).contains { $0.hasPrefix("\(title),") }
     }
 
     private static func expectNoOverflow(in window: UIWindow, sourceLocation: SourceLocation = #_sourceLocation) throws {

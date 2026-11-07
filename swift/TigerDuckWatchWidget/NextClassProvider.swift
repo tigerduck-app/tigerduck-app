@@ -12,6 +12,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
             current: nil,
             next: Self.sampleCourse(),
             nextDay: .today,
+            currentSpan: nil,
             accentHex: WatchSnapshot.defaultAccentHex,
             languageTag: nil,
             relevance: nil
@@ -79,6 +80,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
             current: r.current,
             next: r.next,
             nextDay: r.nextDay,
+            currentSpan: r.currentSpan,
             accentHex: snapshot?.accentHex ?? WatchSnapshot.defaultAccentHex,
             languageTag: snapshot?.languageTag,
             relevance: relevance(for: r, now: appNow)

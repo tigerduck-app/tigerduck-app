@@ -1,5 +1,4 @@
 import Foundation
-import os
 import TigerDuckCore
 #if canImport(UIKit)
 import UIKit
@@ -10,13 +9,13 @@ final class WidgetSnapshotWriter {
     private let store: WidgetSnapshotStore
     private let coordinator: WidgetReloadCoordinator
     private let isLoggedIn: @MainActor () -> Bool
-    private let accentColorHex: @MainActor () -> Int
-    private let accentGradient: @MainActor () -> AccentGradient?
+    private let accent: @MainActor () -> (hex: Int, gradient: AccentGradient?)
     private let courseProvider: CanonicalCourseProvider
     private let courses: CourseStore
     private let isProtectedDataAvailable: @MainActor () -> Bool
+    private let importedPeople: @MainActor () -> [ImportedPerson]
+    private let schoolCalendar: @MainActor () -> (calendar: AcademicCalendar, optedIn: Set<Int>)
     private var owesForcedReload = false
-    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "WidgetWriter")
 
 
     convenience init(
@@ -45,7 +44,11 @@ final class WidgetSnapshotWriter {
         store: WidgetSnapshotStore? = nil,
         coordinator: WidgetReloadCoordinator? = nil,
         courseProvider: CanonicalCourseProvider? = nil,
-        isProtectedDataAvailable: (@MainActor () -> Bool)? = nil
+        isProtectedDataAvailable: (@MainActor () -> Bool)? = nil,
+        importedPeople: @escaping @MainActor () -> [ImportedPerson] = { ImportedClassTableStore.shared.people },
+        schoolCalendar: @escaping @MainActor () -> (calendar: AcademicCalendar, optedIn: Set<Int>) = {
+            (AcademicCalendarStore.shared.calendar, AcademicCalendarStore.shared.optedInHolidayIDs)
+        }
     ) {
         #if os(iOS)
         self.isProtectedDataAvailable = isProtectedDataAvailable ?? { UIApplication.shared.isProtectedDataAvailable }
@@ -53,12 +56,13 @@ final class WidgetSnapshotWriter {
         self.isProtectedDataAvailable = isProtectedDataAvailable ?? { true }
         #endif
         self.isLoggedIn = isLoggedIn
-        self.accentColorHex = accentColorHex
-        self.accentGradient = accentGradient
+        self.accent = { (accentColorHex(), accentGradient()) }
         self.courses = courses ?? .shared
         self.store = store ?? WidgetSnapshotStore()
         self.coordinator = coordinator ?? WidgetReloadCoordinator()
         self.courseProvider = courseProvider ?? CanonicalCourseProvider()
+        self.importedPeople = importedPeople
+        self.schoolCalendar = schoolCalendar
     }
 
     private static let outsideTermHorizonDays = 366 + 7
@@ -81,26 +85,41 @@ final class WidgetSnapshotWriter {
         }
         let forceReload = forceReload || owesForcedReload
         owesForcedReload = false
-        let courses = courseProvider.currentCourses()
-        let customNames = self.courses.loadCourseCustomNamesFlat()
+        let semester = CourseSelectionService.currentSemesterCode()
         let colorMap = CourseColorStore.shared.files.loadCourseColorMap()
-        let snapshot = WidgetSnapshotBuilder.build(
-            .init(
-                courses: courses,
-                customNames: customNames,
-                colorMap: colorMap,
-                isLoggedIn: isLoggedIn(),
-                accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: accentColorHex())),
-                now: AppClock.now(),
-                quietDayKeys: Self.quietDayKeys(),
-                changes: .cached,
-                accentGradient: accentGradient()
-            )
+        let now = AppClock.now()
+        let (calendar, optedIn) = schoolCalendar()
+        let (accentHex, accentGradient) = accent()
+        let input = WidgetSnapshotBuilder.Input(
+            courses: courseProvider.currentCourses(semester: semester),
+            customNames: courses.loadCourseCustomNamesFlat(),
+            colorMap: colorMap,
+            isLoggedIn: isLoggedIn(),
+            accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: accentHex)),
+            now: now,
+            quietDayKeys: Self.quietDayKeys(calendar: calendar, optedIn: optedIn, now: now),
+            changes: .cached,
+            term: calendar.terms.first { $0.code == semester }?.days,
+            accentGradient: accentGradient
         )
-        if !forceReload, let stored = store.readSnapshot(), Self.hasSameContent(snapshot, as: stored) {
-            return
+        let snapshot = WidgetSnapshotBuilder.build(input)
+        let people = importedPeople().map { person in
+            var friend = input
+            friend.courses = person.courses(in: semester)
+            friend.customNames = [:]
+            friend.quietDayKeys = Self.quietDayKeys(calendar: calendar, optedIn: [], now: now)
+            return WidgetPersonSnapshot(
+                id: person.id.uuidString, name: person.nickname, snapshot: WidgetSnapshotBuilder.build(friend)
+            )
         }
+        let storedPeople = store.readPeople()
+        let peopleChanged = people.count != storedPeople.count || !zip(people, storedPeople).allSatisfy {
+            $0.id == $1.id && $0.name == $1.name && Self.hasSameContent($0.snapshot, as: $1.snapshot)
+        }
+        let ownChanged = store.readSnapshot().map { !Self.hasSameContent(snapshot, as: $0) } ?? true
+        guard forceReload || ownChanged || peopleChanged else { return }
         store.writeSnapshot(snapshot)
+        store.writePeople(people)
         coordinator.requestReload()
     }
 

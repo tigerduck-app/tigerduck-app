@@ -355,6 +355,76 @@ struct MailMessageViewModelTests {
         #expect(!h.model.sourceLoadFailed)
     }
 
+    @Test(arguments: ["delete", "move", "read"])
+    func anActionTakenAfterTheSignInEndsChangesNothing(action: String) async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, seen: true))
+        await h.model.load()
+        let before = await h.fake.calls.count
+        h.account.endSignIn()
+        switch action {
+        case "delete": #expect(await h.model.delete() == false)
+        case "move": #expect(await h.model.move(to: Self.trash) == false)
+        default: await h.model.toggleSeen()
+        }
+        #expect(await h.fake.calls.count == before)
+        #expect(await h.fake.folders["INBOX"]?.count == 1)
+        #expect(h.model.actionError == nil)
+    }
+
+    @Test func aMarkReadThatLandsAfterTheSignInEndsPostsAndClearsNothing() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        var events: [String] = []
+        h.model.events.observe { events.append("\($0)") }
+        await h.fake.holdNext("setFlag")
+        let load = Task { await h.model.load() }
+        await h.fake.waitForArrival("setFlag")
+        h.account.endSignIn()
+        await h.fake.release("setFlag")
+        await load.value
+        #expect(events.isEmpty)
+        #expect(h.center.removed.isEmpty)
+        #expect(h.model.actionError == nil)
+    }
+
+    @Test func aReadToggleThatLandsAfterTheSignInEndsPostsNothing() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, seen: true))
+        await h.model.load()
+        var events: [String] = []
+        h.model.events.observe { events.append("\($0)") }
+        await h.fake.holdNext("setFlag")
+        let toggling = Task { await h.model.toggleSeen() }
+        await h.fake.waitForArrival("setFlag")
+        h.account.endSignIn()
+        await h.fake.release("setFlag")
+        await toggling.value
+        #expect(events.isEmpty)
+        #expect(h.model.actionError == nil)
+    }
+
+    @Test(arguments: [false, true])
+    func aMoveThatLandsAfterTheSignInEndsPostsAndShowsNothing(fails: Bool) async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        var events: [String] = []
+        h.model.events.observe { events.append("\($0)") }
+        if fails { await h.fake.update { $0.copyError = .folderChanged } }
+        await h.fake.holdNext("copy")
+        let moving = Task { await h.model.move(to: Self.trash) }
+        await h.fake.waitForArrival("copy")
+        h.account.endSignIn()
+        await h.fake.release("copy")
+        _ = await moving.value
+        #expect(events.isEmpty)
+        #expect(h.model.actionError == nil)
+    }
+
+    @Test func aDeleteStartedAfterTheSignInEndsAsksNothing() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        h.account.endSignIn()
+        #expect(await h.model.prepareDelete() == nil)
+    }
+
     @Test func movingToTrashRemovesItFromTheList() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         var removed: [(String, UInt32)] = []

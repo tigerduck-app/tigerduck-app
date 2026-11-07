@@ -171,15 +171,15 @@ struct TodayCourseCarousel: View {
     }
 }
 
-private struct TodayCourseCard: View {
+struct TodayCourseCard: View {
     static let width: CGFloat = 140
 
     let course: CourseStore.Course
     var showBadge: Bool = false
     var progress: Double? = nil
 
-    private var periods: String {
-        course.timeRange(for: AppClock.now().scheduleWeekday)?.replacingOccurrences(of: " - ", with: "-") ?? ""
+    private var times: (start: String, end: String)? {
+        course.times(for: AppClock.now().scheduleWeekday)
     }
 
     private var isActive: Bool {
@@ -216,7 +216,8 @@ private struct TodayCourseCard: View {
                     .tint(course.color)
             }
 
-            Text(periods)
+            Text(times.map { TimeRange.text($0.start, $0.end) } ?? "")
+                .accessibilityLabel(times.map { TimeRange.spoken($0.start, $0.end) } ?? "")
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
         }

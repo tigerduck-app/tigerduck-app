@@ -16,7 +16,7 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
     case mailNotifications, mailDisplayName, mailStorage
     case flipToLibrary, librarySignOut
     case addressBar, websiteData
-    case moodleNotifications, moodleStorage
+    case moodleNotifications, moodleOpenIn, moodleStorage
 
     var id: Self { self }
 
@@ -66,6 +66,7 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
         case .librarySignOut: "settings_library_sign_out"
         case .addressBar: "browser_address_bar"
         case .moodleNotifications: "moodle_notification_settings_title"
+        case .moodleOpenIn: "settings_moodle_open_in"
         }
     }
 }

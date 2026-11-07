@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuckWatch_Watch_App
 
 /// The string `localization`'s own lproj in the Watch app holds for `key`, whatever the test run's language.
@@ -30,5 +31,10 @@ struct WatchLanguageTests {
     @Test func aFormatFillsTheTemplateOfTheTagsLanguage() throws {
         let minutes = String(format: try localizedValue("watch_relative_minutes_ago_short", in: "zh-Hant"), 5)
         #expect(WatchLanguage(tag: "zh-Hant").format("watch_relative_minutes_ago_short", 5) == minutes)
+    }
+
+    @Test func aSpokenTimeRangeFollowsTheLanguageChosenOnThePhone() {
+        let zh = WatchLanguage(tag: "zh-Hant")
+        #expect(TimeRange.spoken("10:20", "12:10") { zh.string($0) } == "10:20 至 12:10")
     }
 }

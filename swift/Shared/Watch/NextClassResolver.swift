@@ -7,6 +7,7 @@ public nonisolated enum NextClassResolver {
         public let current: WatchCourse?
         public let next: WatchCourse?
         public let nextDay: Day
+        public let currentSpan: ClosedRange<Date>?
     }
 
     public typealias Day = ClassDay
@@ -14,7 +15,10 @@ public nonisolated enum NextClassResolver {
     public static func resolve(courses: [WatchCourse], now: Date, quietDays: Set<String> = []) -> Result {
         let schedule = WatchSchedule(courses: courses, quietDays: quietDays)
         let found = schedule.timeline.nowAndNext(at: now)
-        return Result(current: found.current.map(schedule.course), next: found.next.map(schedule.course), nextDay: found.day)
+        return Result(
+            current: found.current.map(schedule.course), next: found.next.map(schedule.course), nextDay: found.day,
+            currentSpan: found.current.map { $0.start...$0.end }
+        )
     }
 
     public static func todaysClasses(courses: [WatchCourse], now: Date, quietDays: Set<String>) -> [WatchCourse] {

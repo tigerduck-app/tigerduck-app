@@ -32,7 +32,9 @@ struct MailListViewModelTests {
         open: (() async throws -> any MailClient)? = nil,
         signOutEvents: NotificationCenter = NotificationCenter(),
         warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) },
-        catchUpDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) }
+        catchUpDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) },
+        sendHold: MailSendHold? = nil,
+        account: AccountSession = AccountSession()
     ) -> Harness {
         let inbox = (UInt32(1)...inboxCount).map { FakeMailClient.message(uid: $0, subject: "公告 \($0)", seen: $0 % 2 == 0) }
         var folders: [String: [FakeMailClient.Message]] = [
@@ -46,11 +48,11 @@ struct MailListViewModelTests {
         let fake = FakeMailClient(folders: folders)
         let cache = SchoolMailTestDoubles.temporaryCache()
         let seen = SeenLog()
-        let account = AccountSession()
         let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake },
                                       onAuthFailure: { _ in seen.authFailures += 1 }, signOutEvents: signOutEvents,
                                       account: account)
-        let model = MailListViewModel(session: session, account: account, cache: cache, noteSeenByPage: { status, _ in seen.noted.append(status) },
+        let model = MailListViewModel(session: session, account: account, cache: cache, sendHold: sendHold,
+                                      noteSeenByPage: { status, _ in seen.noted.append(status) },
                                       signOutEvents: signOutEvents, warmDelay: warmDelay, catchUpDelay: catchUpDelay)
         return Harness(model: model, fake: fake, cache: cache, seen: seen, account: account)
     }
@@ -283,6 +285,66 @@ struct MailListViewModelTests {
         await h.model.waitForSearchCatchUp()
         #expect(h.model.displayedRows.map(\.uid) == [55, 7])
         #expect(await h.fake.calls.filter { $0 == "undeletedUIDs INBOX" }.count == 1)
+    }
+
+    @Test func aSearchCountsTheIndexWhileItDownloadsAndListsTheNewMatchesOnceItEnds() async {
+        let h = Self.harness(warmDelay: {}, catchUpDelay: {})
+        await h.fake.update { fake in
+            fake.folders["INBOX"]?[6].detail?.textBody = "補考在 Room 302"
+            fake.hold("searchTexts")
+        }
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        #expect(h.model.search.indexProgress == nil)
+
+        h.model.searchText = "room 302"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.isEmpty)
+        #expect(h.model.search.indexProgress == h.model.background.indexer.progress)
+        #expect(h.model.search.indexProgress?.text(locale: Locale(identifier: "en_US")) == "0/61")
+
+        await h.fake.release("searchTexts")
+        await h.model.waitForIndex()
+        #expect(h.model.search.indexProgress == nil)
+        await h.model.waitForSearchCatchUp()
+        #expect(h.model.displayedRows.map(\.uid) == [7])
+    }
+
+    @Test func aSearchOnACompleteIndexCountsNothing() async {
+        let h = await Self.indexedHarness()
+        h.model.searchText = "公告 60"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.map(\.uid) == [60])
+        #expect(h.model.search.indexProgress == nil)
+    }
+
+    @Test func aSearchKeepsTheCountWithoutTheSpinnerOnceThePassPauses() async throws {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.hold("searchTexts")
+        await h.model.load()
+        await h.fake.waitForArrival("searchTexts")
+        h.model.searchText = "公告 60"
+        await h.model.submitSearch()
+        let footer = MailListFooter(viewModel: h.model, hasRows: true)
+        #expect(footer.showsSpinner)
+
+        h.model.stopPolling()
+        await h.fake.release("searchTexts")
+        try await waitUntil { !h.model.isSyncing }
+        #expect(h.model.search.indexProgress?.text(locale: Locale(identifier: "en_US")) == "20/61")
+        #expect(!footer.showsSpinner)
+    }
+
+    @Test func aSearchKeepsTheCountWithoutTheSpinnerAfterAFailedPass() async {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.update { $0.searchTextsError = .serverBusy }
+        await h.model.load()
+        await h.model.waitForIndex()
+        h.model.searchText = "公告 60"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.map(\.uid) == [60])
+        #expect(h.model.search.indexProgress?.text(locale: Locale(identifier: "en_US")) == "0/61")
+        #expect(!MailListFooter(viewModel: h.model, hasRows: true).showsSpinner)
     }
 
     @Test func aBatchThatLandsAfterThePageClosesCatchesTheSearchUpOnlyWhenItReopens() async throws {
@@ -527,7 +589,7 @@ struct MailListViewModelTests {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
         let unread = try #require(h.model.rows.first { !$0.summary.isSeen })
-        await h.model.toggleRead(unread)
+        await MailListFlags.toggle(.seen, of: unread, list: h.model)
         #expect(h.model.rows.first { $0.uid == unread.uid }?.summary.isSeen == true)
         #expect(await h.fake.calls.contains("setFlag seen true [\(unread.uid)]"))
     }
@@ -757,7 +819,7 @@ struct MailListViewModelTests {
         await h.model.load()
         let unread = try #require(h.model.rows.first { !$0.summary.isSeen })
         await h.fake.update { $0.setFlagError = .folderChanged }
-        await h.model.toggleRead(unread)
+        await MailListFlags.toggle(.seen, of: unread, list: h.model)
         #expect(h.model.rows.first { $0.uid == unread.uid }?.summary.isSeen == unread.summary.isSeen)
         #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 2)
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == h.model.rows.count)
@@ -773,7 +835,7 @@ struct MailListViewModelTests {
             $0.setFlagError = .folderChanged
             $0.pageError = .unreachable
         }
-        await h.model.toggleRead(unread)
+        await MailListFlags.toggle(.seen, of: unread, list: h.model)
         #expect(h.cache.loadPage(folder: "INBOX") == nil)
     }
 
@@ -1167,14 +1229,14 @@ struct MailListViewModelTests {
 
         let inboxRow = try #require(h.model.rows.first { $0.folder == "INBOX" && $0.uid == 3 })
         #expect(inboxRow.summary.isSeen == false)
-        await h.model.toggleRead(inboxRow)
+        await MailListFlags.toggle(.seen, of: inboxRow, list: h.model)
         #expect(h.model.rows.first { $0.id == inboxRow.id }?.summary.isSeen == true)
         #expect(h.model.rows.first { $0.folder == Self.sent && $0.uid == 3 }?.summary.isSeen == false)
         #expect(await h.fake.folders["INBOX"]?.first { $0.summary.uid == 3 }?.summary.isSeen == true)
         #expect(await h.fake.folders[Self.sent]?.first { $0.summary.uid == 3 }?.summary.isSeen == false)
 
         let sentRow = try #require(h.model.rows.first { $0.folder == Self.sent && $0.uid == 1 })
-        await h.model.toggleRead(sentRow)
+        await MailListFlags.toggle(.seen, of: sentRow, list: h.model)
         #expect(h.model.rows.first { $0.id == sentRow.id }?.summary.isSeen == true)
         #expect(await h.fake.folders[Self.sent]?.first { $0.summary.uid == 1 }?.summary.isSeen == true)
         #expect(await h.fake.folders["INBOX"]?.first { $0.summary.uid == 1 }?.summary.isSeen == false)
@@ -1204,6 +1266,7 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.rows).last == "收1")
 
         last = try #require(h.model.rows.last)
+        await h.model.background.flagStorage.wait()
         let before = await h.fake.calls.count
         await h.model.loadMoreIfNeeded(after: last)
         #expect(await h.fake.calls.count == before)

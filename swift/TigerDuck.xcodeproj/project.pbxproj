@@ -11,6 +11,7 @@
 		42B9BC032F90EBFA00D3B5A1 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
 		42B9BC142F90EBFB00D3B5A1 /* TigerDuckLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		42D2EEAD2F73B4B300973752 /* tigerduck.icon in Resources */ = {isa = PBXBuildFile; fileRef = 42D2EEAC2F73B4B300973752 /* tigerduck.icon */; };
+		A2C41B0330AA000100000001 /* CLibArchive in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = A2C41B0230AA000100000001 /* CLibArchive */; };
 		44361EB2FDF34C1180AAA293 /* SwiftMail in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = 286A28B6C50C02BAA1C53862 /* SwiftMail */; };
 		60A0A00130AA000100000001 /* Valet in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20130AA000100000001 /* Valet */; };
 		60A0A00230AA000100000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20230AA000100000001 /* SwiftSoup */; };
@@ -208,11 +209,13 @@
 		B244D7902FB87B590040D6FA /* Exceptions for "TigerDuck" folder in "TigerDuckWidgetsExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Devices/Widgets/OpenLibraryPassIntent.swift,
 				Devices/Widgets/WidgetSnapshot.swift,
 				Persistence/AppUserDefaults.swift,
 				Shared/ClassTableLayout.swift,
 				Shared/CourseBlockRoom.swift,
 				Shared/CourseCardFontScale.swift,
+				Shared/PastelColor.swift,
 				Support/Clock/AppClock.swift,
 				Support/Clock/ClockOverride.swift,
 				"UI/Theme/AccentGradient+ShapeStyle.swift",
@@ -222,8 +225,17 @@
 		B244D7912FB87B590040D6FA /* Exceptions for "TigerDuckWidgets" folder in "TigerDuck" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Logic/WidgetDayLayout.swift,
 				Logic/WidgetTimelineDerivation.swift,
 				Snapshot/WidgetSnapshotStore.swift,
+				Theme/WidgetPalette.swift,
+				Views/AccessoryViews.swift,
+				Views/ClassTileParts.swift,
+				Views/LibraryShortcutView.swift,
+				Views/NextClassView.swift,
+				Views/TodayListView.swift,
+				Views/WeekGridParts.swift,
+				Views/WeekGridView.swift,
 			);
 			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
 		};
@@ -251,6 +263,7 @@
 			membershipExceptions = (
 				Services/SharedAppGroup.swift,
 				Services/WatchAppLogger.swift,
+				UI/ClassCountdown.swift,
 				UI/WatchTheme.swift,
 			);
 			target = C3D0F1102FC0A00000AE2430 /* TigerDuckWatchWidgetExtension */;
@@ -369,6 +382,7 @@
 				60A0A00230AA000100000001 /* SwiftSoup in Frameworks */,
 				60A0A00130AA000100000001 /* Valet in Frameworks */,
 				44361EB2FDF34C1180AAA293 /* SwiftMail in Frameworks */,
+				A2C41B0330AA000100000001 /* CLibArchive in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -519,6 +533,7 @@
 				60A0A20530AA000100000001 /* MarkdownUI */,
 				286A28B6C50C02BAA1C53862 /* SwiftMail */,
 				DC0DE00230AA000100000001 /* TigerDuckCore */,
+				A2C41B0230AA000100000001 /* CLibArchive */,
 			);
 			productName = TigerDuck;
 			productReference = 424C46562F6E763C009D1DDA /* TigerDuck.app */;
@@ -836,6 +851,8 @@
 				60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 				E8CC3E13C4358E9783C31871 /* XCLocalSwiftPackageReference "Packages/SwiftMail" */,
 				DC0DE00130AA000100000001 /* XCLocalSwiftPackageReference "Packages/TigerDuckCore" */,
+				A2C41B0130AA000100000001 /* XCLocalSwiftPackageReference "Packages/libarchive" */,
+				A2C41B0130AA000100000002 /* XCLocalSwiftPackageReference "Packages/xz" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 424C46572F6E763C009D1DDA /* Products */;
@@ -1335,6 +1352,7 @@
 					AppURLs.swift,
 					AppUserDefaults.swift,
 					AppVersion.swift,
+					ArchiveFormats.swift,
 					"Array+Assignments.swift",
 					"Array+PeriodOrder.swift",
 					ASCIIText.swift,
@@ -1490,6 +1508,8 @@
 					EditSender.swift,
 					EndpointHealthCheck.swift,
 					EqualHeightCards.swift,
+					"FileManager+Bytes.swift",
+					FilePreview.swift,
 					FilterChipBar.swift,
 					FirstPullGate.swift,
 					FlowLayout.swift,
@@ -1573,6 +1593,7 @@
 					MailComposeState.swift,
 					MailCSSColor.swift,
 					MailErrorClass.swift,
+					MailFlagStorageCheck.swift,
 					MailHref.swift,
 					MailIdleClose.swift,
 					MailIMAPCommands.swift,
@@ -1584,16 +1605,20 @@
 					MailLinkCheck.swift,
 					MailListBackground.swift,
 					MailListCacheWriter.swift,
+					MailListFlags.swift,
 					MailListHeader.swift,
 					MailListLoader.swift,
 					MailListRows.swift,
 					MailListSearch.swift,
 					MailMessageActions.swift,
+					MailMessageDestination.swift,
 					MailMessageParts.swift,
 					MailMessageRenderer.swift,
 					MailMessageState.swift,
 					MailMessageToolbar.swift,
 					MailRecipients.swift,
+					MailRowActions.swift,
+					MailRowActionsSheet.swift,
 					MailSchoolDomain.swift,
 					MailSearchText.swift,
 					MailSettingsStore.swift,
@@ -1656,6 +1681,7 @@
 					MoodleText.swift,
 					MoodleTokenHarvest.swift,
 					MoodleTokenService.swift,
+					MoodleUserData.swift,
 					MoodleWebserviceError.swift,
 					NameAbbrService.swift,
 					NetworkMonitor.swift,
@@ -1670,6 +1696,7 @@
 					NTUSTScoreService.swift,
 					NTUSTSessionManager.swift,
 					OngoingCourseInfo.swift,
+					OpenLibraryPassIntent.swift,
 					"OpenURLAction+Fallback.swift",
 					OutboxDrain.swift,
 					OutboxErrorPolicy.swift,
@@ -1681,9 +1708,11 @@
 					PackedShareCodeBits.swift,
 					PageSettings.swift,
 					PageSettingsSections.swift,
+					PastelColor.swift,
 					PortalLink.swift,
 					PortalLinkFiles.swift,
 					PortalLinks.swift,
+					ProgressRing.swift,
 					PushAPIClient.swift,
 					PushAPIDTO.swift,
 					PushCoordinator.swift,
@@ -1905,6 +1934,7 @@
 					AppURLs.swift,
 					AppUserDefaults.swift,
 					AppVersion.swift,
+					ArchiveFormats.swift,
 					"Array+Assignments.swift",
 					"Array+PeriodOrder.swift",
 					ASCIIText.swift,
@@ -2060,6 +2090,8 @@
 					EditSender.swift,
 					EndpointHealthCheck.swift,
 					EqualHeightCards.swift,
+					"FileManager+Bytes.swift",
+					FilePreview.swift,
 					FilterChipBar.swift,
 					FirstPullGate.swift,
 					FlowLayout.swift,
@@ -2143,6 +2175,7 @@
 					MailComposeState.swift,
 					MailCSSColor.swift,
 					MailErrorClass.swift,
+					MailFlagStorageCheck.swift,
 					MailHref.swift,
 					MailIdleClose.swift,
 					MailIMAPCommands.swift,
@@ -2154,16 +2187,20 @@
 					MailLinkCheck.swift,
 					MailListBackground.swift,
 					MailListCacheWriter.swift,
+					MailListFlags.swift,
 					MailListHeader.swift,
 					MailListLoader.swift,
 					MailListRows.swift,
 					MailListSearch.swift,
 					MailMessageActions.swift,
+					MailMessageDestination.swift,
 					MailMessageParts.swift,
 					MailMessageRenderer.swift,
 					MailMessageState.swift,
 					MailMessageToolbar.swift,
 					MailRecipients.swift,
+					MailRowActions.swift,
+					MailRowActionsSheet.swift,
 					MailSchoolDomain.swift,
 					MailSearchText.swift,
 					MailSettingsStore.swift,
@@ -2226,6 +2263,7 @@
 					MoodleText.swift,
 					MoodleTokenHarvest.swift,
 					MoodleTokenService.swift,
+					MoodleUserData.swift,
 					MoodleWebserviceError.swift,
 					NameAbbrService.swift,
 					NetworkMonitor.swift,
@@ -2240,6 +2278,7 @@
 					NTUSTScoreService.swift,
 					NTUSTSessionManager.swift,
 					OngoingCourseInfo.swift,
+					OpenLibraryPassIntent.swift,
 					"OpenURLAction+Fallback.swift",
 					OutboxDrain.swift,
 					OutboxErrorPolicy.swift,
@@ -2251,9 +2290,11 @@
 					PackedShareCodeBits.swift,
 					PageSettings.swift,
 					PageSettingsSections.swift,
+					PastelColor.swift,
 					PortalLink.swift,
 					PortalLinkFiles.swift,
 					PortalLinks.swift,
+					ProgressRing.swift,
 					PushAPIClient.swift,
 					PushAPIDTO.swift,
 					PushCoordinator.swift,
@@ -3048,6 +3089,14 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/TigerDuckCore;
 		};
+		A2C41B0130AA000100000001 /* XCLocalSwiftPackageReference "Packages/libarchive" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/libarchive;
+		};
+		A2C41B0130AA000100000002 /* XCLocalSwiftPackageReference "Packages/xz" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/xz;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -3086,6 +3135,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A2C41B0230AA000100000001 /* CLibArchive */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CLibArchive;
+		};
 		286A28B6C50C02BAA1C53862 /* SwiftMail */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SwiftMail;

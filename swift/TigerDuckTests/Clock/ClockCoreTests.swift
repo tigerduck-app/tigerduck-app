@@ -83,6 +83,26 @@ struct ClockCoreTests {
         #expect(abs(realTarget.timeIntervalSince(expected)) < 0.001)
     }
 
+    @Test func realTimeForAppSpan_frozen_startsAtTheDeltaAndKeepsTheLength() {
+        let core = makeCore()
+        let fake = Date(timeIntervalSince1970: 1_700_000_000)
+        core.setOverride(override(fake, frozen: true))
+        let span = core.realTime(forApp: fake.addingTimeInterval(60)...fake.addingTimeInterval(3_060))
+        #expect(span.lowerBound.timeIntervalSinceNow > 59)
+        #expect(span.lowerBound.timeIntervalSinceNow < 61)
+        #expect(span.upperBound.timeIntervalSince(span.lowerBound) == 3_000)
+    }
+
+    @Test func realTimeForAppSpan_ticking_translatesBothEndsByOffset() {
+        let core = makeCore()
+        let fake = Date(timeIntervalSince1970: 1_700_000_000)
+        let savedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        core.setOverride(override(fake, frozen: false, savedAtReal: savedAt))
+        let span = core.realTime(forApp: fake...fake.addingTimeInterval(600))
+        #expect(abs(span.lowerBound.timeIntervalSince(savedAt)) < 0.001)
+        #expect(abs(span.upperBound.timeIntervalSince(savedAt.addingTimeInterval(600))) < 0.001)
+    }
+
     @Test func versionIncrementsOnEachSetOverride() {
         let core = makeCore()
         let v1 = core.version()

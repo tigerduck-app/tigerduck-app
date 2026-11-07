@@ -62,9 +62,9 @@ final class AppPreferences {
             liveActivities: accentGradientOnLiveActivities ? gradient : nil
         )
     }
-    var macMoodleOpenTarget: MoodleOpenTarget {
-        get { toggles.macMoodleOpenTarget }
-        set { toggles.macMoodleOpenTarget = newValue }
+    var moodleOpenTarget: MoodleOpenTarget {
+        get { toggles.moodleOpenTarget }
+        set { toggles.moodleOpenTarget = newValue }
     }
     var invertSliderDirection: Bool {
         get { toggles.invertSliderDirection }

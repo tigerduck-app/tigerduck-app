@@ -7,22 +7,25 @@ struct MailComposeView: View {
     private enum Field: Hashable { case to, cc, bcc, subject, body }
 
     @State private var viewModel: MailComposeViewModel
-    private let mode: MailComposeMode
+    private let hold: MailSendHold
 
     @Environment(\.dismiss) private var dismiss
     @State private var showLeaveDialog = false
-    @State private var showSendDialog = false
     @State private var showFileImporter = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var pendingPicks = 0
     @FocusState private var focused: Field?
 
+    init(viewModel: MailComposeViewModel, hold: MailSendHold? = nil) {
+        _viewModel = State(initialValue: viewModel)
+        self.hold = hold ?? .shared
+    }
+
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String], events: MailboxEvents) {
         let account = MailAccountManager.shared
         let sender = MailAddress(name: account.displayName, address: account.address ?? "")
-        _viewModel = State(initialValue: MailComposeViewModel(context: context, session: session, sender: sender,
-                                                              folderRoles: folderRoles, events: events))
-        mode = context.mode
+        self.init(viewModel: MailComposeViewModel(context: context, session: session, sender: sender,
+                                                  folderRoles: folderRoles, events: events))
     }
 
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String],
@@ -114,7 +117,8 @@ struct MailComposeView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        if viewModel.confirmationIsWarranted() { showSendDialog = true }
+                        guard viewModel.readyToSend(), hold.hold(viewModel) else { return }
+                        dismiss()
                     } label: {
                         LoadingButtonLabel(isLoading: viewModel.isSending) {
                             Text(String(localized: "school_mail_send")).fontWeight(.semibold)
@@ -131,17 +135,14 @@ struct MailComposeView: View {
             } message: {
                 Text(viewModel.error ?? "")
             }
-            .confirmationDialog(String(localized: "school_mail_send_confirm_title"), isPresented: $showSendDialog, titleVisibility: .visible) {
-                Button(String(localized: "school_mail_send")) {
-                    Task { await viewModel.send() }
-                }
-                Button(String(localized: "school_mail_keep_editing"), role: .cancel) {}
-            }
             .confirmationDialog(String(localized: "school_mail_leave_title"), isPresented: $showLeaveDialog, titleVisibility: .visible) {
                 Button(String(localized: "school_mail_save_draft")) {
                     Task { if await viewModel.saveDraft() { dismiss() } }
                 }
-                Button(String(localized: "school_mail_discard"), role: .destructive) { dismiss() }
+                Button(String(localized: "school_mail_discard"), role: .destructive) {
+                    viewModel.discard()
+                    dismiss()
+                }
                 Button(String(localized: "school_mail_keep_editing"), role: .cancel) {}
             }
             .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
@@ -164,12 +165,13 @@ struct MailComposeView: View {
                 if closes { dismiss() }
             }
             .task { await viewModel.prepare() }
+            .task { await viewModel.contacts.load() }
             .interactiveDismissDisabled(viewModel.hasChanges || viewModel.isSending)
         }
     }
 
     private var title: String {
-        switch mode {
+        switch viewModel.mode {
         case .reply: String(localized: "school_mail_reply")
         case .replyAll: String(localized: "school_mail_reply_all")
         case .forward: String(localized: "school_mail_forward")
@@ -183,7 +185,7 @@ struct MailComposeView: View {
     }
 
     private func addressField(_ title: String, text: Binding<String>, field: Field) -> some View {
-        MailRecipientTokenField(title: title, text: text, focus: $focused, field: field)
+        MailRecipientTokenField(title: title, text: text, focus: $focused, field: field, suggest: viewModel.recipientSuggestions(for:))
     }
 
     private func addFile(_ url: URL) async {

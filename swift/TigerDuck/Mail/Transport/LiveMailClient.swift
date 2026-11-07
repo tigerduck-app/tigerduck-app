@@ -148,6 +148,10 @@ actor LiveMailClient: MailClient {
         }
     }
 
+    func storesFlagged(folder: String) async throws -> Bool {
+        try await run { try await MailIMAPCommands.storesFlagged(folder: folder, imap: self.imap) }
+    }
+
     func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {
         guard !uids.isEmpty else { return }
         try await run {
@@ -182,10 +186,12 @@ actor LiveMailClient: MailClient {
         try await run { try await MailIMAPCommands.containsMessageID(messageID, in: folder, imap: self.imap) }
     }
 
-    func send(_ message: Data, from sender: String, to recipients: [String]) async throws {
+    func send(
+        _ message: Data, from sender: String, to recipients: [String], unless isExpired: @escaping @MainActor () -> Bool
+    ) async throws {
         guard let credentials else { throw MailClientError.authenticationFailed }
         try await MailSMTP.send(message, from: sender, to: recipients, studentID: credentials.studentID,
-                                password: credentials.password, config: config)
+                                password: credentials.password, config: config, unless: isExpired)
     }
 
     @discardableResult

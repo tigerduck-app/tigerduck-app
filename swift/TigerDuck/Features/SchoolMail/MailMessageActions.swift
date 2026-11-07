@@ -10,16 +10,18 @@ enum MailMessageActions {
         }
     }
 
-    static func prepareDelete(model: MailMessageViewModel) async -> Bool {
-        guard model.folderRoles[.trash] == nil, !model.isMoving else { return model.deleteIsPermanent }
-        model.activity.isMoving = true
-        defer { model.activity.isMoving = false }
-        let known = model.folderRoles
-        let ensured = try? await model.session.use { client in
-            await MailFolderProvisioner.ensure(.trash, in: known, client: client)
+    static func prepareDelete(model: MailMessageViewModel) async -> MailDeleteConfirmation? {
+        if model.folderRoles[.trash] == nil, !model.isMoving {
+            model.activity.isMoving = true
+            defer { model.activity.isMoving = false }
+            let known = model.folderRoles
+            let ensured = try? await model.session.use(for: model.signIn) { client in
+                await MailFolderProvisioner.ensure(.trash, in: known, client: client)
+            }
+            if let ensured = ensured ?? nil { model.adoptFolderRoles(ensured.roles) }
         }
-        if let ensured = ensured ?? nil { model.adoptFolderRoles(ensured.roles) }
-        return model.deleteIsPermanent
+        guard model.signIn.isCurrent else { return nil }
+        return model.deleteIsPermanent ? .permanent : .toTrash
     }
 
     static func delete(model: MailMessageViewModel) async -> Bool {
@@ -35,7 +37,8 @@ enum MailMessageActions {
     private static func performMove(
         model: MailMessageViewModel, _ operation: @escaping (any MailClient, OwnedDeleted) async throws -> MailMoveResult
     ) async -> Bool {
-        guard !model.isMoving else { return false }
+        let signIn = model.signIn
+        guard !model.isMoving, signIn.isCurrent else { return false }
         let folder = model.route.folder
         guard let uidValidity = model.pageUIDValidity else {
             model.activity.actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
@@ -43,18 +46,18 @@ enum MailMessageActions {
         }
         model.activity.isMoving = true
         defer { model.activity.isMoving = false }
-        let signIn = await model.session.account.startingSignIn
         let uid = model.route.uid
         let prefs = model.stores.prefs
         let wasAlreadyDeleted = model.detail?.summary.isDeleted ?? false
         let owned = prefs.ownedDeleted(folder: folder, uidValidity: uidValidity)
         let attempt = await MailMover.attempt(
-            { try await model.session.use { client in try await operation(client, owned) } },
+            { try await model.session.use(for: signIn) { client in try await operation(client, owned) } },
             uid: uid, previouslyFlagged: owned, wasAlreadyDeleted: wasAlreadyDeleted
         ) { recover in
-            (try? await model.session.use { client in await recover(client) }) ?? nil
+            (try? await model.session.use(for: signIn) { client in await recover(client) }) ?? nil
         }
         if let pending = attempt.pending { prefs.change(for: signIn) { $0.setOwnedDeleted(pending) } }
+        guard signIn.isCurrent else { return attempt.error == nil }
         guard let error = attempt.error else {
             model.events.post(.removed(folder: folder, uid: uid))
             return true
@@ -66,7 +69,7 @@ enum MailMessageActions {
 
     static func loadSource(model: MailMessageViewModel) async {
         model.activity.sourceLoadFailed = false
-        let signIn = await model.session.account.startingSignIn
+        let signIn = model.signIn
         let cache = model.stores.cache
         let folder = model.route.folder
         let uid = model.route.uid
@@ -78,7 +81,7 @@ enum MailMessageActions {
             return
         }
         do {
-            let data = try await model.session.use { client in
+            let data = try await model.session.use(for: signIn) { client in
                 try await client.rawSource(folder: folder, uid: uid, expectedUIDValidity: validity)
             }
             let text = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
@@ -87,6 +90,7 @@ enum MailMessageActions {
                 await Task.detached { cache.saveSource(text, folder: folder, uidValidity: validity, uid: uid, unlessWipedSince: wipeCount) }.value
             }
         } catch {
+            guard signIn.isCurrent else { return }
             model.activity.actionError = MailAccountManager.LoginError(error).message
             model.activity.sourceLoadFailed = true
         }
@@ -102,7 +106,7 @@ enum MailMessageActions {
         let cache = model.stores.cache
         let wipeCount = cache.wipeCount
         do {
-            let data = try await model.session.use { client in
+            let data = try await model.session.use(for: model.signIn) { client in
                 try await client.attachment(folder: folder, uid: uid, part: part, expectedUIDValidity: validity)
             }
             let filename = MailAttachmentRisk.displayFilename(part.filename ?? "attachment")
@@ -110,6 +114,7 @@ enum MailMessageActions {
                 try cache.saveAttachment(data, filename: filename, unlessWipedSince: wipeCount)
             }.value
         } catch {
+            guard model.signIn.isCurrent else { return nil }
             model.activity.actionError = MailAccountManager.LoginError(error).message
             return nil
         }
