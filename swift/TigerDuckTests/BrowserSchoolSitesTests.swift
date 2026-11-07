@@ -50,6 +50,30 @@ struct BrowserSchoolSitesTests {
         #expect(BrowserSchoolSites.cookiesToDrop(from: otherHosts, opening: Self.url("https://stuinfosys.ntust.edu.tw")).count == 6)
     }
 
+    /// WebCounseling keeps its sign-in in `.AspNet.Cookies` on the host's whole path, with an expiry,
+    /// and offers its sign-in link only to a browser signed out of it.
+    @Test(arguments: ["https://querycourse.ntust.edu.tw/QueryCourse/", "https://sa02.ntust.edu.tw/WebCounseling/", "https://sa.ntust.edu.tw/Dorm/"])
+    func aSignInLinkOpensWithoutItsSitesSessionHoweverSmall(_ address: String) throws {
+        let start = Self.url(address)
+        let host = try #require(start.host())
+        let link = try #require(BrowserSchoolSites.signInLink(for: start))
+        let jar = [Self.sso, Self.cookie(".AspNet.Cookies", host, size: 900), Self.cookie("ASP.NET_SessionId", host, size: 24, path: "/classroom_user")]
+
+        #expect(BrowserSchoolSites.cookiesToDrop(from: jar, opening: link).map(\.name) == [".AspNet.Cookies"])
+        #expect(BrowserSchoolSites.cookiesToDrop(from: jar, opening: start).isEmpty)
+    }
+
+    @Test func aSignInLinkIsOnlyAtItsHostsDefaultPortWithNoUser() {
+        #expect(BrowserSchoolSites.isSignInLink(Self.url("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login")))
+        for address in [
+            "https://sa02.ntust.edu.tw:8443/WebCounseling/OAuth2/Login",
+            "https://user@sa02.ntust.edu.tw/WebCounseling/OAuth2/Login",
+            "https://user:secret@sa02.ntust.edu.tw/WebCounseling/OAuth2/Login",
+        ] {
+            #expect(!BrowserSchoolSites.isSignInLink(Self.url(address)), "\(address)")
+        }
+    }
+
     @Test func courseQueryOpensThroughItsSignInButtonsAddress() {
         let link = BrowserSchoolSites.signInLink(for: Self.url("https://querycourse.ntust.edu.tw/QueryCourse/"))
         #expect(link?.absoluteString
