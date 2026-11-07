@@ -52,6 +52,7 @@ final class AppEnvironment {
     init() {
         let purge = FreshInstallKeychainPurge.runIfFreshInstall()
         if purge != .itemsLeft { BareKeychainItemMoveMigration.runIfNeeded() }
+        OutboxEditTimeFillMigration.runIfNeeded()
         DemoAccount.resumeAtLaunch(in: .school)
 
         let authService = AuthService(session: .school)

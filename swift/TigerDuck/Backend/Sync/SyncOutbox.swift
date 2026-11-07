@@ -177,7 +177,7 @@ actor SyncOutbox {
 
             do {
                 try await BackendClient.$ageFloor.withValue(entry.floor) {
-                    try await execute(entry.op, entry.editTime, entry.signIn ?? signIn)
+                    try await execute(entry.op, entry.madeAt, entry.signIn ?? signIn)
                 }
             } catch {
                 guard clearGeneration == startGeneration else { return entries.isEmpty }
