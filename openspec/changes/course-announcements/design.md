@@ -119,7 +119,7 @@ foreign key (the import loads terms `semester_terms` may not have), imported in 
   visible-from, attachment flag, classifier release, scores (jsonb), labels, route (`unclassified`,
   `not_sent`, `sent`). Stored with `INSERT ... ON CONFLICT DO UPDATE ... WHERE excluded.modified >
   course_announcements.modified`, so polling and the import can run in any order. The same
-  transaction marks older versions' pending items and queued or running extractions `superseded`,
+  transaction marks older versions' pending and info items and queued or running extractions `superseded`,
   whatever the new version's route.
 - `course_announcement_extractions`: per announcement version: version (`modified`), model, raw
   output (jsonb), certain, status (`queued`, `running`, `done`, `failed`, `superseded`), attempts,
@@ -156,8 +156,8 @@ Every minute, while no bulletin is pending by `claim_pending_bulletins`' own con
 under its attempt limit), the job claims one queued extraction, the newest post first, in a short transaction (`running`),
 calls the LLM with no transaction open, and stores the result only if the extraction is still
 `running` and the announcement is still at that version; otherwise the result is discarded. Storing a
-result marks the pending items of every earlier extraction of the announcement `superseded`, so a
-same-version re-extract leaves one actionable set. Across announcements nothing is superseded: an item is marked contradicted while a later
+result marks the pending and info items of every earlier extraction of the announcement `superseded`, so a
+same-version re-extract leaves one actionable set and one set of exams and make-up classes. Across announcements nothing is superseded: an item is marked contradicted while a later
 announcement of the course holds its day as usual or holds a different change of that day and kind,
 recomputed for the course's pending items whenever one of its announcements is stored or extracted,
 so storage order does not matter. Losing option: superseding the earlier items (a group-only or

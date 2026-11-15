@@ -93,7 +93,7 @@ belong to every course code its Moodle course lists (merged sections).
 
 ### Requirement: Newer versions retire older results
 
-Storing a newer version SHALL at once supersede the pending items and unfinished extractions of older
+Storing a newer version SHALL at once supersede the pending and info items and unfinished extractions of older
 versions, whatever the new version's route.
 
 #### Scenario: Edit no longer about classes
@@ -184,7 +184,7 @@ queue every current-term announcement the route rule selects, for a model change
 ### Requirement: Stored extraction results
 
 A result SHALL be stored only if the announcement is still at the version that was sent, and each
-stored result SHALL supersede the pending items of every earlier extraction of the announcement.
+stored result SHALL supersede the pending and info items of every earlier extraction of the announcement.
 
 #### Scenario: Re-extracted with another model
 - **WHEN** an announcement with pending items is extracted again at the same version
