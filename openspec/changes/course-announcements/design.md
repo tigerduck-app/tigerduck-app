@@ -153,7 +153,7 @@ the classifier service, and the local LLM keeps the text on the host).
 ### D7. Extraction job
 
 Every minute, while no bulletin is pending by `claim_pending_bulletins`' own condition (pending and
-under its attempt limit), the job claims one queued extraction in a short transaction (`running`),
+under its attempt limit), the job claims one queued extraction, the newest post first, in a short transaction (`running`),
 calls the LLM with no transaction open, and stores the result only if the extraction is still
 `running` and the announcement is still at that version; otherwise the result is discarded. Storing a
 result marks the pending items of every earlier extraction of the announcement `superseded`, so a
@@ -172,9 +172,10 @@ would reset the first one's live claim).
 ### D8. One validation for `course_changes`, in the database
 
 The portal's clash and meeting rules from `_check` (range coverage, period overlap, a start or end
-change naming one meeting's periods, periods that meet that day) move into a database function next to
-`course_class_days`, which both the portal and the automatic writer call under the same advisory lock
-and `FOR KEY SHARE` on the term. The other checks (evidence, term bounds, class day, stated weekday 「（三）」
+change naming one meeting's periods, periods that meet that day, a day with no class or a holiday)
+move into the database function `course_change_violations` next to `course_class_days`, which both
+the portal and the automatic writer call under the same advisory lock and `FOR KEY SHARE` on the
+term. The other checks (evidence, term bounds, stated weekday 「（三）」
 週三 星期三 Wed, label agreement at the service's threshold, certainty, group and visibility) are
 server code. Losing options: a second copy of the rules in `server/` (they drift, and a duplicate kind
 row breaks `meeting_changes`); asking the LLM to judge its own facts (no reliable confidence).
@@ -210,7 +211,7 @@ writes, to a local path outside any repository, ids, Moodle course id, course co
 message HTML, times, group, visible-from and the attachment flag, with no author fields. A backend
 command in the container reads it, refuses it if any record has an author field, classifies in batches
 through the service, stores through the D5 upsert, and queues extraction for current-term
-announcements the route rule selects; the same command with `--reextract` queues the whole current
+announcements the route rule selects (polling queues only current-term versions too); the same command with `--reextract` queues the whole current
 term for a model change. Losing option: loading the precomputed predictions (a second text-conversion
 path and scores from outside the service).
 
@@ -222,7 +223,7 @@ first backend pull request.
 
 ## Risks / Trade-offs
 
-- [The 4B local model resolves dates wrongly or invents facts] → checks gate every write, shadow mode
+- [The local model resolves dates wrongly or invents facts] → checks gate every write, shadow mode
   until the owner enables automatic apply, applied rows change only by review, and rejected items stay
   for evaluating a replacement model.
 - [Benchmark ran on masked text, production sends unmasked text] → the masks replace only URLs, emails
@@ -236,7 +237,9 @@ first backend pull request.
   attachment flag.
 - [The classifier service has no authentication] → reachable only through `host.docker.internal` and
   firewalled, like the LLM server.
-- [An edit to an old announcement beyond the first page is missed] → operators can re-extract.
+- [An edit to an old announcement beyond the first page is missed: Moodle's `forum_update_post`
+  leaves the discussion's `timemodified` unchanged, so the edit does not bring it back to the first
+  page] → accepted; operators can re-extract.
 - [Turning automatic apply off needs a container restart] → accepted by the owner; the Moodle suspend
   stops new polls at once.
 
@@ -260,5 +263,8 @@ belongs with reverting the portal PR that calls it.
 
 ## Open Questions
 
-- Which LLM model serves extraction long term; a different model changes a setting and a re-extract
-  run, not this design.
+- An announcement classified only after its term has ended is never extracted. Whether a past term
+  needs extraction is the owner's call.
+
+Resolved: extraction uses the shared local LLM service (Qwen3.5-9B, 6-bit MLX) through
+`TIGERDUCK_LLM_MODEL`; a different model changes that setting and needs a re-extract run.

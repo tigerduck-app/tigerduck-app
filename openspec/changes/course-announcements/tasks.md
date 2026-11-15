@@ -6,15 +6,15 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
 
 ## 1. PR (backend): shared JSON-schema LLM client and glossary
 
-- [ ] 1.1 Move the HTTP, caller-given `json_schema` response format, retry and backoff code of
+- [x] 1.1 Move the HTTP, caller-given `json_schema` response format, retry and backoff code of
   `server/bulletins/llm/openai_compat.py::OpenAICompatibleProvider` into a client that returns parsed
   JSON and raises errors with a code and HTTP status only, and rebuild the bulletin provider on it.
   Check: the bulletin LLM tests and `server/tests/test_metrics.py` pass
   (`uv run pytest server/tests -k "bulletin or llm or metrics"`).
-- [ ] 1.2 Test the client with a fake transport: the schema reaches the request, invalid JSON is
+- [x] 1.2 Test the client with a fake transport: the schema reaches the request, invalid JSON is
   retried twice with backoff then raises, and neither the captured log nor the exception contains the
   model output or prompt. Check: the new test passes.
-- [ ] 1.3 Add `GLOSSARY.md` at the backend root (design D12). Check: reviewed in the PR.
+- [x] 1.3 Add `GLOSSARY.md` at the backend root (design D12). Check: reviewed in the PR.
 
 ## 2. PR (classifier repository): release in `/health`
 
@@ -24,48 +24,48 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
 
 ## 3. PR (backend): course list, storage, polling and classification
 
-- [ ] 3.1 Add `deploy/launchd/ai.tigerduck.classifier.plist` and a section in
+- [x] 3.1 Add `deploy/launchd/ai.tigerduck.classifier.plist` and a section in
   `deploy/launchd/README.md` on `deploy/install.sh <tag>`. Check:
   `plutil -lint deploy/launchd/ai.tigerduck.classifier.plist`.
-- [ ] 3.2 Add settings `announcement_classifier_url` (unset disables the feature),
+- [x] 3.2 Add settings `announcement_classifier_url` (unset disables the feature),
   `course_announcement_requests_per_minute` (20) and `course_announcements_auto_apply` (false) to
   `server/config.py`, `.env.example` and `server/AGENTS.md`. Check: a settings test reads each from its
   `TIGERDUCK_` variable.
-- [ ] 3.3 Add the models and a migration for `user_moodle_courses`, `course_announcement_courses`,
+- [x] 3.3 Add the models and a migration for `user_moodle_courses`, `course_announcement_courses`,
   `course_announcements`, `course_announcement_extractions`, `course_announcement_items` and
   `course_changes.source_announcement_id` (design D5), with the upsert condition and the one-live-
   extraction index. Check: `uv run pytest server/tests/test_migrations_metadata.py` and a new
   `server/tests/test_migration_course_announcements.py` that upgrades and downgrades.
-- [ ] 3.4 Store each user's enrolled Moodle courses from the list `moodle_assignments` runs already
+- [x] 3.4 Store each user's enrolled Moodle courses from the list `moodle_assignments` runs already
   fetch. Check: an executor test finds the rows after a run and no extra Moodle request.
-- [ ] 3.5 Let `RequestBudget` take its request observer, add the course announcement counter, and move
+- [x] 3.5 Let `RequestBudget` take its request observer, add the course announcement counter, and move
   `_has_syncing_device` where the poller can share it. Check: budget tests for each observer and the
   existing executor tests pass.
-- [ ] 3.6 Add `mod_forum_get_forums_by_courses` and `mod_forum_get_forum_discussions` through
+- [x] 3.6 Add `mod_forum_get_forums_by_courses` and `mod_forum_get_forum_discussions` through
   `_checked_call` on a client with the second budget. First confirm from Moodle's source the discussion
   order (pinned, starred, latest activity), group-limited and future-visible posts, and the effect of
   `perpage`, and cite the source in a comment. Check: fake-transport tests for both calls, a pinned
   forum that still shows a new post, `groupid` and `timestart` parsed, and token scrubbing in errors.
-- [ ] 3.7 Add the classifier client (batches of up to 64, split on 413, threshold and release from
+- [x] 3.7 Add the classifier client (batches of up to 64, split on 413, threshold and release from
   `/health`) and a recording fake. Check: tests for a batch, a 413 split, a 400 and the service down.
-- [ ] 3.8 Build the poll job: current-term courses from `user_moodle_courses` with `_course_nos`,
+- [x] 3.8 Build the poll job: current-term courses from `user_moodle_courses` with `_course_nos`,
   eligible holders, the recency tiers, most-overdue-first within the budget, `is_moodle_available`,
   skipping while either budget is paused, pausing both on a rate limit, and the next holder on
   `MoodleTokenInvalid` or `MoodleRefused` without marking the credential. Check: tests for each tier
   boundary, the manual suspend, selection order, holder eligibility, both pause paths and holder
   fallback with no credential change.
-- [ ] 3.9 Build ingest: the upsert by later `modified`, superseding older versions' pending items and
+- [x] 3.9 Build ingest: the upsert by later `modified`, superseding older versions' pending items and
   unfinished extractions in the same transaction, merged course codes, no author fields, raw subject
   and message kept until classified, a classify-pending step each tick, and the route rule. Check:
   tests for new, edited (including an edit routed `not_sent` superseding a pending item), older,
   unchanged, merged sections, classifier down then up without a second Moodle fetch, and the route
   rule at 0.10, 0.90 and a confident fact label.
-- [ ] 3.10 Register the poll job in `build_scheduler` only when the classifier URL and the credential
+- [x] 3.10 Register the poll job in `build_scheduler` only when the classifier URL and the credential
   cipher are set. Check: a scheduler test for each combination.
 
 ## 4. PR (backend): one `course_changes` validation for portal and server
 
-- [ ] 4.1 Move the clash and meeting rules of `portal/app/routes/course_changes.py::_check` into a
+- [x] 4.1 Move the clash and meeting rules of `portal/app/routes/course_changes.py::_check` into a
   database function next to `course_class_days` (migration plus model SQL), keep the portal's advisory
   lock and `FOR KEY SHARE`, and call the function from the portal. Check: the existing portal
   course-changes tests pass unchanged, plus a test of the function on a range covering a day, period
