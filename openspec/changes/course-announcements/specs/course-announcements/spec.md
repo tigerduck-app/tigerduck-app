@@ -163,10 +163,19 @@ the model that produced it.
 ### Requirement: Extraction failures
 
 An extraction that fails after the client's retries SHALL be retried on up to 3 later ticks with
-growing intervals and then shown as failed. An operator SHALL be able to queue any announcement for
-extraction again, and a command SHALL queue every current-term announcement the route rule selects,
-for a model change. A result SHALL be stored only if the announcement is still at the version that was
-sent.
+growing intervals and then shown as failed; one interrupted by a restart SHALL be retried the same
+way. An operator SHALL be able to queue any announcement for extraction again, and a command SHALL
+queue every current-term announcement the route rule selects, for a model change. A result SHALL be
+stored only if the announcement is still at the version that was sent, and each stored result SHALL
+supersede the pending items of every earlier extraction of the announcement.
+
+#### Scenario: Restart during extraction
+- **WHEN** the backend restarts while an extraction is waiting on the LLM
+- **THEN** that extraction is attempted again on a later tick and counts as one failed attempt
+
+#### Scenario: Re-extracted with another model
+- **WHEN** an announcement with pending items is extracted again at the same version
+- **THEN** its earlier pending items become superseded and only the new items can be approved
 
 #### Scenario: Extraction keeps failing
 - **WHEN** extraction of an announcement fails on its first attempt and on 3 later ticks
@@ -244,8 +253,13 @@ as such.
 
 With automatic apply on, an add item SHALL be written to `course_changes` with the announcement as its
 source, `course-announcements` as the actor and an audit entry, only when every add item of the same
-announcement passes every check and no item of this announcement for that course, day and kind was
-rejected or removed before. Replace and remove items SHALL always wait for review.
+announcement passes every check, the announcement has no replace or remove item, and no item of this
+announcement for that course, day and kind was rejected or removed before. Replace and remove items
+SHALL always wait for review.
+
+#### Scenario: Corrected date with automatic apply on
+- **WHEN** automatic apply is on and an edit moves an applied cancellation from 11/18 to 11/25
+- **THEN** the remove item for 11/18 and the add item for 11/25 both wait for review
 
 #### Scenario: Automatic apply on
 - **WHEN** automatic apply is on and a cancellation passes every check

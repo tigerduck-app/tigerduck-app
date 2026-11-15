@@ -18,10 +18,9 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
 
 ## 2. PR (classifier repository): release in `/health`
 
-- [ ] 2.1 In `tigerduck-app/announcement-classifier`, have `deploy/install.sh` write the tag to
-  `model/RELEASE` and `scripts/serve.py` return it as `release` in `/health`, and cut a release.
-  Check: `scripts/test_serve.py` asserts the field, and a fresh-clone `install.sh` run prints
-  `serve.py ok`.
+- [x] 2.1 In `tigerduck-app/announcement-classifier`, have `deploy/install.sh` write the tag to
+  `model/RELEASE` and `scripts/serve.py` return it as `release` in `/health` (existing releases work
+  with the new script). Check: `scripts/test_serve.py` asserts the field with and without the file.
 
 ## 3. PR (backend): course list, storage, polling and classification
 
@@ -77,9 +76,11 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
   1.1, storing the model and raw output. Check: fake-LLM tests for a cancellation, a room change, a
   held-as-usual notice, an exam and an invalid answer.
 - [ ] 5.2 Add the extraction job of design D7: bulletins first by `claim_pending_bulletins`' condition,
-  one claim per tick, no transaction during the call, version check before storing, retries at 1, 4
-  and 16 ticks, then `failed`; operator-queued re-extraction. Check: tests for bulletin-first, a stuck
-  bulletin at its attempt limit not blocking, edit during extraction, the retry schedule and failure.
+  one claim per tick, no transaction during the call, version check before storing, earlier pending
+  items superseded on store, retries at 1, 4 and 16 ticks, then `failed`, a claim older than 10
+  minutes counted as a failed attempt; operator-queued re-extraction. Check: tests for bulletin-first,
+  a stuck bulletin at its attempt limit not blocking, edit during extraction, a same-version
+  re-extract superseding earlier items, an abandoned claim recovered, the retry schedule and failure.
 - [ ] 5.3 Add the checks of design D8 per course code, calling the 4.1 function. Check: one test per
   check, including a clash with a range change and a group-limited post.
 - [ ] 5.4 Turn extractions into items: add, replace and remove per course code; remove for an applied
@@ -88,10 +89,11 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
   extraction and by a daily pass in Taipei time. Check: tests for each action, the withdrawn
   cancellation, skipped codes and both past paths.
 - [ ] 5.5 Add apply: shadow mode marks passing add items; with automatic apply on, apply an
-  announcement's add items only when all of them pass and none matches an earlier rejected or removed
-  item, through the 4.1 function under the advisory lock, with the source id, the actor and an
-  `admin_audit_log` row. Check: tests for shadow mode, auto apply, one failing item holding the
-  announcement, no re-apply after an operator deletion, and the audit row.
+  announcement's add items only when all of them pass, the announcement has no replace or remove item,
+  and none matches an earlier rejected or removed item, through the 4.1 function under the advisory
+  lock, with the source id, the actor and an `admin_audit_log` row. Check: tests for shadow mode, auto
+  apply, one failing item holding the announcement, a corrected date holding its add, no re-apply
+  after an operator deletion, and the audit row.
 - [ ] 5.6 Keep `/v4/calendar/course-changes` responses unchanged by the new column. Check: the
   calendar API tests pass and a test asserts the response fields.
 
@@ -101,8 +103,9 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
   (search, extraction filter including results that differ from the previous model, pagination), one
   announcement's detail, the review list, approve, reject with a reason, and queue re-extraction. Each
   write route locks its item, refuses non-pending items with 409 and calls `await audit(` itself; each
-  GET is classified as a personal read. Check: route tests for double approve, stale approve and
-  reject-then-approve, and `portal/tests/test_audit_coverage.py`.
+  GET is classified as a personal read. Check: route tests for double approve, stale approve (a newer
+  version and a same-version re-extract), reject-then-approve, and
+  `portal/tests/test_audit_coverage.py`.
 - [ ] 6.2 Let the course-changes create and update calls carry an optional item id for edit and
   approve, and have their edit and delete routes mark a sourced change's item `edited` or `removed`.
   Check: route tests for each path.

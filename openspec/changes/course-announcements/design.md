@@ -153,9 +153,14 @@ the classifier service, and the local LLM keeps the text on the host).
 Every minute, while no bulletin is pending by `claim_pending_bulletins`' own condition (pending and
 under its attempt limit), the job claims one queued extraction in a short transaction (`running`),
 calls the LLM with no transaction open, and stores the result only if the extraction is still
-`running` and the announcement is still at that version; otherwise the result is discarded. A failed
-attempt sets the next attempt 1, 4 and 16 ticks later, then `failed`. Losing option: a batch per tick
-(one slot is shared with bulletins, and a long batch holds them back).
+`running` and the announcement is still at that version; otherwise the result is discarded. Storing a
+result marks the pending items of every earlier extraction of the announcement `superseded`, so a
+same-version re-extract leaves one actionable set. A failed attempt sets the next attempt 1, 4 and 16
+ticks later, then `failed`. A claim older than 10 minutes (longer than the client's three 120 s
+attempts) is treated as a failed attempt by the next tick, which recovers extractions a restart
+interrupted. Losing options: a batch per tick (one slot is shared with bulletins, and a long batch
+holds them back); resetting every `running` row at startup (a second backend process during a deploy
+would reset the first one's live claim).
 
 ### D8. One validation for `course_changes`, in the database
 
