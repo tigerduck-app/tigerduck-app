@@ -217,6 +217,17 @@ course says is held as usual).
   held as usual
 - **THEN** a remove item for the 11/18 change waits for review
 
+### Requirement: Later announcements retire earlier pending items
+
+When an announcement is stored with a held-as-usual date, pending items of earlier announcements of
+the same course for that day SHALL be superseded; when it is stored with a course change, pending
+items of earlier announcements of the same course for that day and kind SHALL be superseded.
+
+#### Scenario: Withdrawn before review
+- **WHEN** a cancellation on 11/18 from one announcement waits for review in shadow mode and a later
+  announcement of the course says 11/18 is held as usual
+- **THEN** the pending cancellation is superseded and can no longer be approved
+
 ### Requirement: Skipped codes and informational facts
 
 A course code that no TigerDuck student has a schedule for SHALL get no item and SHALL be listed as

@@ -88,8 +88,9 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
 - [ ] 5.4 Turn extractions into items: add, replace and remove per course code; remove for an applied
   change the new extraction lacks or a held-as-usual date (from this or a later announcement of the
   course) covers; skipped codes without a TigerDuck schedule; makeups and exams as `info`; past at
-  extraction and by a daily pass in Taipei time. Check: tests for each action, the withdrawn
-  cancellation, skipped codes and both past paths.
+  extraction and by a daily pass in Taipei time. Earlier announcements' pending items for a held-as-usual day, or the same day and kind, are
+  superseded. Check: tests for each action, the withdrawn cancellation (applied, and pending in shadow
+  mode), a later change superseding an earlier pending one, skipped codes and both past paths.
 - [ ] 5.5 Add apply: shadow mode marks passing add items; with automatic apply on, apply an
   announcement's add items only when all of them pass, the announcement has no replace or remove item,
   and none matches an earlier rejected or removed item, through the 4.1 function under the advisory
