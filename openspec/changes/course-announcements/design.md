@@ -119,7 +119,7 @@ foreign key (the import loads terms `semester_terms` may not have), imported in 
   visible-from, attachment flag, classifier release, scores (jsonb), labels, route (`unclassified`,
   `not_sent`, `sent`). Stored with `INSERT ... ON CONFLICT DO UPDATE ... WHERE excluded.modified >
   course_announcements.modified`, so polling and the import can run in any order. The same
-  transaction marks older versions' pending items and queued or running extractions `superseded`,
+  transaction marks older versions' pending and info items and queued or running extractions `superseded`,
   whatever the new version's route.
 - `course_announcement_extractions`: per announcement version: version (`modified`), model, raw
   output (jsonb), certain, status (`queued`, `running`, `done`, `failed`, `superseded`), attempts,
@@ -153,11 +153,11 @@ the classifier service, and the local LLM keeps the text on the host).
 ### D7. Extraction job
 
 Every minute, while no bulletin is pending by `claim_pending_bulletins`' own condition (pending and
-under its attempt limit), the job claims one queued extraction in a short transaction (`running`),
+under its attempt limit), the job claims one queued extraction, the newest post first, in a short transaction (`running`),
 calls the LLM with no transaction open, and stores the result only if the extraction is still
 `running` and the announcement is still at that version; otherwise the result is discarded. Storing a
-result marks the pending items of every earlier extraction of the announcement `superseded`, so a
-same-version re-extract leaves one actionable set. Across announcements nothing is superseded: an item is marked contradicted while a later
+result marks the pending and info items of every earlier extraction of the announcement `superseded`, so a
+same-version re-extract leaves one actionable set and one set of exams and make-up classes. Across announcements nothing is superseded: an item is marked contradicted while a later
 announcement of the course holds its day as usual or holds a different change of that day and kind,
 recomputed for the course's pending items whenever one of its announcements is stored or extracted,
 so storage order does not matter. Losing option: superseding the earlier items (a group-only or
@@ -172,9 +172,10 @@ would reset the first one's live claim).
 ### D8. One validation for `course_changes`, in the database
 
 The portal's clash and meeting rules from `_check` (range coverage, period overlap, a start or end
-change naming one meeting's periods, periods that meet that day) move into a database function next to
-`course_class_days`, which both the portal and the automatic writer call under the same advisory lock
-and `FOR KEY SHARE` on the term. The other checks (evidence, term bounds, class day, stated weekday 「（三）」
+change naming one meeting's periods, periods that meet that day, a day with no class or a holiday)
+move into the database function `course_change_violations` next to `course_class_days`, which both
+the portal and the automatic writer call under the same advisory lock and `FOR KEY SHARE` on the
+term. The other checks (evidence, term bounds, stated weekday 「（三）」
 週三 星期三 Wed, label agreement at the service's threshold, certainty, group and visibility) are
 server code. Losing options: a second copy of the rules in `server/` (they drift, and a duplicate kind
 row breaks `meeting_changes`); asking the LLM to judge its own facts (no reliable confidence).
@@ -188,7 +189,8 @@ portal, every review action locks its item `FOR UPDATE` and refuses with 409 any
 whose extraction's version is not the announcement's current one;
 approve runs the same parse, D8 check, write and `audit(...)` as the course-changes routes; edit and
 approve opens the existing change dialog prefilled, and its save carries the item id. Deleting or
-editing a sourced change in Course changes marks its item `removed` or `edited`. Losing options: a
+editing a sourced change in Course changes marks its item `removed` or `edited`, and a delete
+marks the pending replace and remove items naming the change `superseded`. Losing options: a
 portal toggle (the owner chose to flip the value in `.env` and recreate the containers; the portal's
 Moodle suspend still stops polling at once); a separate approve-with-edits endpoint (a second
 validation path).
@@ -210,8 +212,9 @@ writes, to a local path outside any repository, ids, Moodle course id, course co
 message HTML, times, group, visible-from and the attachment flag, with no author fields. A backend
 command in the container reads it, refuses it if any record has an author field, classifies in batches
 through the service, stores through the D5 upsert, and queues extraction for current-term
-announcements the route rule selects; the same command with `--reextract` queues the whole current
-term for a model change. Losing option: loading the precomputed predictions (a second text-conversion
+announcements the route rule selects (polling queues only current-term versions too); the same command with `--reextract` queues the whole current
+term for a model change. Both also queue an announcement a course change came from whatever its
+route, so an edit that drops the change can still remove it. Losing option: loading the precomputed predictions (a second text-conversion
 path and scores from outside the service).
 
 ### D12. Glossary
@@ -222,7 +225,7 @@ first backend pull request.
 
 ## Risks / Trade-offs
 
-- [The 4B local model resolves dates wrongly or invents facts] → checks gate every write, shadow mode
+- [The local model resolves dates wrongly or invents facts] → checks gate every write, shadow mode
   until the owner enables automatic apply, applied rows change only by review, and rejected items stay
   for evaluating a replacement model.
 - [Benchmark ran on masked text, production sends unmasked text] → the masks replace only URLs, emails
@@ -236,7 +239,9 @@ first backend pull request.
   attachment flag.
 - [The classifier service has no authentication] → reachable only through `host.docker.internal` and
   firewalled, like the LLM server.
-- [An edit to an old announcement beyond the first page is missed] → operators can re-extract.
+- [An edit to an old announcement beyond the first page is missed: Moodle's `forum_update_post`
+  leaves the discussion's `timemodified` unchanged, so the edit does not bring it back to the first
+  page] → accepted; operators can re-extract.
 - [Turning automatic apply off needs a container restart] → accepted by the owner; the Moodle suspend
   stops new polls at once.
 
@@ -260,5 +265,8 @@ belongs with reverting the portal PR that calls it.
 
 ## Open Questions
 
-- Which LLM model serves extraction long term; a different model changes a setting and a re-extract
-  run, not this design.
+- An announcement classified only after its term has ended is never extracted. Whether a past term
+  needs extraction is the owner's call.
+
+Resolved: extraction uses the shared local LLM service (Qwen3.5-9B, 6-bit MLX) through
+`TIGERDUCK_LLM_MODEL`; a different model changes that setting and needs a re-extract run.

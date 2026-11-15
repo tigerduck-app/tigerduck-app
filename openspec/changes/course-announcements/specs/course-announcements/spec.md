@@ -93,7 +93,7 @@ belong to every course code its Moodle course lists (merged sections).
 
 ### Requirement: Newer versions retire older results
 
-Storing a newer version SHALL at once supersede the pending items and unfinished extractions of older
+Storing a newer version SHALL at once supersede the pending and info items and unfinished extractions of older
 versions, whatever the new version's route.
 
 #### Scenario: Edit no longer about classes
@@ -153,6 +153,16 @@ An announcement version SHALL be sent to the LLM for extraction when any of `exa
 - **WHEN** `materials` scores 0.97 and every exam or class label scores below 0.10
 - **THEN** the announcement is not sent and is listed as not sent
 
+### Requirement: Edits of an announcement a change came from
+
+A new version of an announcement a course change came from SHALL be sent whatever its scores, so
+its extraction can ask to remove the change.
+
+#### Scenario: Cancellation edited away
+- **WHEN** a cancellation taken from an announcement is in course changes and the teacher edits the
+  post down to a materials notice
+- **THEN** the edit is still sent to the LLM, and a remove item for that change waits for review
+
 ### Requirement: Extraction output
 
 The LLM SHALL return, under a JSON schema the server enforces, the exam and class labels that apply,
@@ -184,7 +194,7 @@ queue every current-term announcement the route rule selects, for a model change
 ### Requirement: Stored extraction results
 
 A result SHALL be stored only if the announcement is still at the version that was sent, and each
-stored result SHALL supersede the pending items of every earlier extraction of the announcement.
+stored result SHALL supersede the pending and info items of every earlier extraction of the announcement.
 
 #### Scenario: Re-extracted with another model
 - **WHEN** an announcement with pending items is extracted again at the same version
