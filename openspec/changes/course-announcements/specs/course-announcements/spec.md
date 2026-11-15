@@ -165,13 +165,16 @@ the model that produced it.
 An extraction that fails after the client's retries SHALL be retried on up to 3 later ticks with
 growing intervals and then shown as failed; one interrupted by a restart SHALL be retried the same
 way. An operator SHALL be able to queue any announcement for extraction again, and a command SHALL
-queue every current-term announcement the route rule selects, for a model change. A result SHALL be
-stored only if the announcement is still at the version that was sent, and each stored result SHALL
-supersede the pending items of every earlier extraction of the announcement.
+queue every current-term announcement the route rule selects, for a model change.
 
 #### Scenario: Restart during extraction
 - **WHEN** the backend restarts while an extraction is waiting on the LLM
 - **THEN** that extraction is attempted again on a later tick and counts as one failed attempt
+
+### Requirement: Stored extraction results
+
+A result SHALL be stored only if the announcement is still at the version that was sent, and each
+stored result SHALL supersede the pending items of every earlier extraction of the announcement.
 
 #### Scenario: Re-extracted with another model
 - **WHEN** an announcement with pending items is extracted again at the same version
