@@ -54,10 +54,12 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
   `MoodleTokenInvalid` or `MoodleRefused` without marking the credential. Check: tests for each tier
   boundary, the manual suspend, selection order, holder eligibility, both pause paths and holder
   fallback with no credential change.
-- [ ] 3.9 Build ingest: the upsert by later `modified`, merged course codes, no author fields, raw
-  subject and message kept until classified, a classify-pending step each tick, and the route rule.
-  Check: tests for new, edited, older, unchanged, merged sections, classifier down then up without a
-  second Moodle fetch, and the route rule at 0.10, 0.90 and a confident fact label.
+- [ ] 3.9 Build ingest: the upsert by later `modified`, superseding older versions' pending items and
+  unfinished extractions in the same transaction, merged course codes, no author fields, raw subject
+  and message kept until classified, a classify-pending step each tick, and the route rule. Check:
+  tests for new, edited (including an edit routed `not_sent` superseding a pending item), older,
+  unchanged, merged sections, classifier down then up without a second Moodle fetch, and the route
+  rule at 0.10, 0.90 and a confident fact label.
 - [ ] 3.10 Register the poll job in `build_scheduler` only when the classifier URL and the credential
   cipher are set. Check: a scheduler test for each combination.
 

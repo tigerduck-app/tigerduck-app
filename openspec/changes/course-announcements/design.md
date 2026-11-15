@@ -118,7 +118,9 @@ foreign key (the import loads terms `semester_terms` may not have), imported in 
   subject and message (cleared once classified), subject, converted text, posted, modified, group,
   visible-from, attachment flag, classifier release, scores (jsonb), labels, route (`unclassified`,
   `not_sent`, `sent`). Stored with `INSERT ... ON CONFLICT DO UPDATE ... WHERE excluded.modified >
-  course_announcements.modified`, so polling and the import can run in any order.
+  course_announcements.modified`, so polling and the import can run in any order. The same
+  transaction marks older versions' pending items and queued or running extractions `superseded`,
+  whatever the new version's route.
 - `course_announcement_extractions`: per announcement version: version (`modified`), model, raw
   output (jsonb), certain, status (`queued`, `running`, `done`, `failed`, `superseded`), attempts,
   next attempt, error code. A unique partial index allows one live extraction per version.
@@ -177,7 +179,8 @@ row breaks `meeting_changes`); asking the LLM to judge its own facts (no reliabl
 `TIGERDUCK_COURSE_ANNOUNCEMENTS_AUTO_APPLY` (default false) is read at start. Automatic writes call
 the D8 function, insert with `created_by`/`updated_by` `course-announcements` and the source id, and
 write an `admin_audit_log` row with that actor, as `server/auth/retirement.py` does for its job. In the
-portal, every review action locks its item `FOR UPDATE` and refuses anything not `pending` with 409;
+portal, every review action locks its item `FOR UPDATE` and refuses with 409 anything not `pending` or
+whose extraction's version is not the announcement's current one;
 approve runs the same parse, D8 check, write and `audit(...)` as the course-changes routes; edit and
 approve opens the existing change dialog prefilled, and its save carries the item id. Deleting or
 editing a sourced change in Course changes marks its item `removed` or `edited`. Losing options: a

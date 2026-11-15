@@ -91,6 +91,16 @@ belong to every course code its Moodle course lists (merged sections).
 - **WHEN** a discussion has replies
 - **THEN** only its first post is stored and classified
 
+### Requirement: Newer versions retire older results
+
+Storing a newer version SHALL at once supersede the pending items and unfinished extractions of older
+versions, whatever the new version's route.
+
+#### Scenario: Edit no longer about classes
+- **WHEN** an announcement with a pending cancellation is edited and the new version is not sent to
+  the LLM
+- **THEN** the pending cancellation is superseded and can no longer be approved
+
 ### Requirement: Stored announcement fields
 
 Stored announcements SHALL keep the title and the converted text the classifier returns, the post and
