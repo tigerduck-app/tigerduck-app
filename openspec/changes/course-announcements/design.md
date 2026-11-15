@@ -189,7 +189,8 @@ portal, every review action locks its item `FOR UPDATE` and refuses with 409 any
 whose extraction's version is not the announcement's current one;
 approve runs the same parse, D8 check, write and `audit(...)` as the course-changes routes; edit and
 approve opens the existing change dialog prefilled, and its save carries the item id. Deleting or
-editing a sourced change in Course changes marks its item `removed` or `edited`. Losing options: a
+editing a sourced change in Course changes marks its item `removed` or `edited`, and a delete
+marks the pending replace and remove items naming the change `superseded`. Losing options: a
 portal toggle (the owner chose to flip the value in `.env` and recreate the containers; the portal's
 Moodle suspend still stops polling at once); a separate approve-with-edits endpoint (a second
 validation path).
@@ -212,7 +213,8 @@ message HTML, times, group, visible-from and the attachment flag, with no author
 command in the container reads it, refuses it if any record has an author field, classifies in batches
 through the service, stores through the D5 upsert, and queues extraction for current-term
 announcements the route rule selects (polling queues only current-term versions too); the same command with `--reextract` queues the whole current
-term for a model change. Losing option: loading the precomputed predictions (a second text-conversion
+term for a model change. Both also queue an announcement a course change came from whatever its
+route, so an edit that drops the change can still remove it. Losing option: loading the precomputed predictions (a second text-conversion
 path and scores from outside the service).
 
 ### D12. Glossary

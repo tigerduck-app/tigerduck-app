@@ -153,6 +153,16 @@ An announcement version SHALL be sent to the LLM for extraction when any of `exa
 - **WHEN** `materials` scores 0.97 and every exam or class label scores below 0.10
 - **THEN** the announcement is not sent and is listed as not sent
 
+### Requirement: Edits of an announcement a change came from
+
+A new version of an announcement a course change came from SHALL be sent whatever its scores, so
+its extraction can ask to remove the change.
+
+#### Scenario: Cancellation edited away
+- **WHEN** a cancellation taken from an announcement is in course changes and the teacher edits the
+  post down to a materials notice
+- **THEN** the edit is still sent to the LLM, and a remove item for that change waits for review
+
 ### Requirement: Extraction output
 
 The LLM SHALL return, under a JSON schema the server enforces, the exam and class labels that apply,

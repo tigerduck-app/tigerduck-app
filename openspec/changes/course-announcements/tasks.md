@@ -73,33 +73,33 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
 
 ## 5. PR (backend): extraction, checks, items and apply
 
-- [ ] 5.1 Add the extraction prompt (the benchmarked rules without the mask sentence, plus the
+- [x] 5.1 Add the extraction prompt (the benchmarked rules without the mask sentence, plus the
   held-as-usual rule) and schema (the benchmarked schema plus `held_as_usual` dates) on the client from
   1.1, storing the model and raw output. Check: fake-LLM tests for a cancellation, a room change, a
   held-as-usual notice, an exam and an invalid answer.
-- [ ] 5.2 Add the extraction job of design D7: bulletins first by `claim_pending_bulletins`' condition,
+- [x] 5.2 Add the extraction job of design D7: bulletins first by `claim_pending_bulletins`' condition,
   one claim per tick, no transaction during the call, version check before storing, earlier pending
   items superseded on store, retries at 1, 4 and 16 ticks, then `failed`, a claim older than 10
   minutes counted as a failed attempt; operator-queued re-extraction. Check: tests for bulletin-first,
   a stuck bulletin at its attempt limit not blocking, edit during extraction, a same-version
   re-extract superseding earlier items, an abandoned claim recovered, the retry schedule and failure.
-- [ ] 5.3 Add the checks of design D8 per course code, calling the 4.1 function, plus the
+- [x] 5.3 Add the checks of design D8 per course code, calling the 4.1 function, plus the
   contradiction mark of 5.4. Check: one test per check, including a clash with a range change and a
   group-limited post.
-- [ ] 5.4 Turn extractions into items: add, replace and remove per course code; remove for an applied
+- [x] 5.4 Turn extractions into items: add, replace and remove per course code; remove for an applied
   change the new extraction lacks or a held-as-usual date (from this or a later announcement of the
   course) covers; skipped codes without a TigerDuck schedule; makeups and exams as `info`; past at
   extraction and by a daily pass in Taipei time. The contradiction mark across announcements, recomputed for the course's pending items on every
   store or extraction. Check: tests for each action, the withdrawn cancellation (applied, and pending
   in shadow mode), an older announcement re-extracted after a later held-as-usual one, a group-only
   later post, skipped codes and both past paths.
-- [ ] 5.5 Add apply: shadow mode marks passing add items; with automatic apply on, apply an
+- [x] 5.5 Add apply: shadow mode marks passing add items; with automatic apply on, apply an
   announcement's add items only when all of them pass, the announcement has no replace or remove item,
   and none matches an earlier rejected or removed item, through the 4.1 function under the advisory
   lock, with the source id, the actor and an `admin_audit_log` row. Check: tests for shadow mode, auto
   apply, one failing item holding the announcement, a corrected date holding its add, no re-apply
   after an operator deletion, and the audit row.
-- [ ] 5.6 Keep `/v4/calendar/course-changes` responses unchanged by the new column. Check: the
+- [x] 5.6 Keep `/v4/calendar/course-changes` responses unchanged by the new column. Check: the
   calendar API tests pass and a test asserts the response fields.
 
 ## 6. PR (backend): portal Course announcements page
@@ -122,24 +122,24 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
 
 ## 7. PR (backend) and private repository: history import
 
-- [ ] 7.1 Add the backend import command of design D11, with `--reextract`. Check: tests with an
+- [x] 7.1 Add the backend import command of design D11, with `--reextract`. Check: tests with an
   invented export for a first run, a second run that stores and queues nothing, an author field that
   stops the run, a run alongside a poll of the same announcement, and `--reextract`.
-- [ ] 7.2 Add the export script to `tigerduck-app/announcement-classifier-data`, writing to a local
+- [x] 7.2 Add the export script to `tigerduck-app/announcement-classifier-data`, writing to a local
   path outside every repository. Check: run it locally and confirm with a key scan that no record has
   an author field.
 
 ## 8. Release and rollout (owner's go-ahead at each step)
 
-- [ ] 8.1 Install the classifier on xs-mac from the 2.1 release, load the plist, and add port 40002 to
+- [x] 8.1 Install the classifier on xs-mac from the 2.1 release, load the plist, and add port 40002 to
   the post-boot check. Check: `/health` reports the release on the host and through
   `host.docker.internal` from the backend container.
-- [ ] 8.2 Release the backend with a `MIGRATE.md` section and deploy it with the classifier URL set,
+- [x] 8.2 Release the backend with a `MIGRATE.md` section and deploy it with the classifier URL set,
   appending `TIGERDUCK_COURSE_ANNOUNCEMENTS_AUTO_APPLY=false` to xs-mac's `.env` without reading the
   file (a key-count check may confirm the key is absent). Check: the post-deploy check passes, logs
   show poll ticks, and `tigerduck_course_announcement_moodle_requests_total` grows by at most 20 a
   minute.
-- [ ] 8.3 Run the history import. Check: read-only counts of stored announcements and queued
+- [x] 8.3 Run the history import. Check: read-only counts of stored announcements and queued
   extractions in production.
 - [ ] 8.4 After two weeks in shadow mode, compare the items marked as passing with operator decisions
   and let the owner decide on automatic apply. Check: the owner's decision recorded where it is
