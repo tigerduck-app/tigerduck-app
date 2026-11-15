@@ -217,16 +217,29 @@ course says is held as usual).
   held as usual
 - **THEN** a remove item for the 11/18 change waits for review
 
-### Requirement: Later announcements retire earlier pending items
+### Requirement: Contradictions across announcements
 
-When an announcement is stored with a held-as-usual date, pending items of earlier announcements of
-the same course for that day SHALL be superseded; when it is stored with a course change, pending
-items of earlier announcements of the same course for that day and kind SHALL be superseded.
+An item SHALL be marked contradicted while another announcement of the same course, posted later,
+says its day is held as usual or holds a different change of the same day and kind. The mark SHALL
+be computed against every stored announcement whatever order they were stored or extracted in, kept
+current whenever an announcement of the course is stored or extracted, and shown with the
+contradicting announcement. A contradicted item SHALL NOT apply automatically; an operator still
+decides it.
 
 #### Scenario: Withdrawn before review
 - **WHEN** a cancellation on 11/18 from one announcement waits for review in shadow mode and a later
   announcement of the course says 11/18 is held as usual
-- **THEN** the pending cancellation is superseded and can no longer be approved
+- **THEN** the pending cancellation is marked contradicted, showing the later announcement
+
+#### Scenario: Older announcement extracted again
+- **WHEN** a later announcement already said 11/18 is held as usual and an earlier announcement's
+  cancellation for 11/18 is extracted again
+- **THEN** the new cancellation item is marked contradicted and does not apply automatically
+
+#### Scenario: Group-only post
+- **WHEN** a later post limited to one Moodle group says 11/18 is held as usual
+- **THEN** the earlier whole-course cancellation is marked contradicted and stays for the operator to
+  decide
 
 ### Requirement: Skipped codes and informational facts
 
@@ -245,11 +258,11 @@ or change `course_changes`.
 
 ### Requirement: Checks before an add item applies
 
-An add item SHALL pass only when every check passes. The checks SHALL test that the evidence occurs
-verbatim in the text given to the LLM, the dates fall within the term and on class days of the course,
-a weekday the text states matches the date, the change fits the `course_changes` rules including
-clashes with existing changes, the classifier and the LLM agree on cancellation versus other change,
-the LLM marked it certain, and the post is visible to the whole course from its post time.
+An add item SHALL pass only when every check passes: the evidence occurs verbatim in the text given
+to the LLM; the dates fall within the term and on class days; a stated weekday matches the date; the
+change fits the `course_changes` rules including clashes; the classifier and the LLM agree on
+cancellation versus other change; the LLM marked it certain; the post is visible to the whole course
+from its post time; and the item is not contradicted.
 
 #### Scenario: Not a class day
 - **WHEN** an extracted change falls on a Thursday and the course meets Monday and Wednesday

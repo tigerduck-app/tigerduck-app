@@ -83,14 +83,16 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
   minutes counted as a failed attempt; operator-queued re-extraction. Check: tests for bulletin-first,
   a stuck bulletin at its attempt limit not blocking, edit during extraction, a same-version
   re-extract superseding earlier items, an abandoned claim recovered, the retry schedule and failure.
-- [ ] 5.3 Add the checks of design D8 per course code, calling the 4.1 function. Check: one test per
-  check, including a clash with a range change and a group-limited post.
+- [ ] 5.3 Add the checks of design D8 per course code, calling the 4.1 function, plus the
+  contradiction mark of 5.4. Check: one test per check, including a clash with a range change and a
+  group-limited post.
 - [ ] 5.4 Turn extractions into items: add, replace and remove per course code; remove for an applied
   change the new extraction lacks or a held-as-usual date (from this or a later announcement of the
   course) covers; skipped codes without a TigerDuck schedule; makeups and exams as `info`; past at
-  extraction and by a daily pass in Taipei time. Earlier announcements' pending items for a held-as-usual day, or the same day and kind, are
-  superseded. Check: tests for each action, the withdrawn cancellation (applied, and pending in shadow
-  mode), a later change superseding an earlier pending one, skipped codes and both past paths.
+  extraction and by a daily pass in Taipei time. The contradiction mark across announcements, recomputed for the course's pending items on every
+  store or extraction. Check: tests for each action, the withdrawn cancellation (applied, and pending
+  in shadow mode), an older announcement re-extracted after a later held-as-usual one, a group-only
+  later post, skipped codes and both past paths.
 - [ ] 5.5 Add apply: shadow mode marks passing add items; with automatic apply on, apply an
   announcement's add items only when all of them pass, the announcement has no replace or remove item,
   and none matches an earlier rejected or removed item, through the 4.1 function under the advisory
