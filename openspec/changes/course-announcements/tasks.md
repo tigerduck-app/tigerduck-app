@@ -104,17 +104,17 @@ and LLM clients and invented announcement text; none reach the school, Moodle or
 
 ## 6. PR (backend): portal Course announcements page
 
-- [ ] 6.1 Add `portal/app/routes/course_announcements.py` mounted in `main.py`: term announcements
+- [x] 6.1 Add `portal/app/routes/course_announcements.py` mounted in `main.py`: term announcements
   (search, extraction filter including results that differ from the previous model, pagination), one
   announcement's detail, the review list, approve, reject with a reason, and queue re-extraction. Each
   write route locks its item, refuses non-pending items with 409 and calls `await audit(` itself; each
   GET is classified as a personal read. Check: route tests for double approve, stale approve (a newer
   version and a same-version re-extract), reject-then-approve, and
   `portal/tests/test_audit_coverage.py`.
-- [ ] 6.2 Let the course-changes create and update calls carry an optional item id for edit and
+- [x] 6.2 Let the course-changes create and update calls carry an optional item id for edit and
   approve, and have their edit and delete routes mark a sourced change's item `edited` or `removed`.
   Check: route tests for each path.
-- [ ] 6.3 Build `portal/web/src/pages/course-announcements.tsx` from the approved mock with the NAV
+- [x] 6.3 Build `portal/web/src/pages/course-announcements.tsx` from the approved mock with the NAV
   entry, route and types: item actions, the existing change for a clash or replace, skipped codes,
   text and evidence behind the reveal. Check: the portal web build, type check and lint pass, and
   headless Chromium screenshots at desktop and 375 px with long subjects and three-digit counts show
