@@ -65,7 +65,6 @@ struct ScoreView: View {
         }
         .sheet(item: $selectedCourse) { course in
             ScoreCourseDetailSheet(course: course, policy: app.preferences.visualStylePolicy)
-                .presentationDetents([.medium, .large])
         }
     }
 

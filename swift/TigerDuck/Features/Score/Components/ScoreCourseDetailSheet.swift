@@ -7,6 +7,7 @@ struct ScoreCourseDetailSheet: View {
     var courses: CourseStore = .shared
 
     @State private var rosterCourse: CourseRoster?
+    @State private var detent: PresentationDetent = .medium
 
     var body: some View {
         ScrollView {
@@ -24,7 +25,9 @@ struct ScoreCourseDetailSheet: View {
             .padding(.bottom, TigerDuckTheme.Spacing.lg)
         }
         .background(Color.backgroundPrimary)
+        .flickClosesSheet(at: detent)
         .toastHost()
+        .presentationDetents([.medium, .large], selection: $detent)
         .onAppear(perform: resolveRosterCourse)
     }
 
