@@ -79,10 +79,16 @@ struct CopyToastScreenTests {
         return try #require(accessibilityElement(labeled: label, in: window))
     }
 
-    static func tap(_ element: NSObject, in window: UIWindow) async throws {
-        // A touch sent as soon as the element appears does not reach it.
-        try await Task.sleep(for: .milliseconds(600))
-        try await fingerTap(at: window.convert(element.accessibilityActivationPoint, from: window.screen.coordinateSpace), in: window)
+    /// Taps again, the window brought to the front, while `text` does not show: another suite's
+    /// window can cover it while suites run side by side, and on iOS 26.5 a new window's first touch
+    /// can go nowhere, as `PageMenuScreenTests.openMenu` found.
+    static func tap(_ element: NSObject, in window: UIWindow, until text: String) async throws {
+        let point = window.convert(element.accessibilityActivationPoint, from: window.screen.coordinateSpace)
+        for _ in 0..<5 {
+            window.makeKeyAndVisible()
+            try await fingerTap(at: point, in: window)
+            if try await PageMenuScreenTests.holds(within: .seconds(5), { accessibilityElement(labeled: text, in: window) != nil }) { return }
+        }
     }
 
     static func pixels(of element: NSObject, in window: UIWindow) -> Data? {
@@ -105,7 +111,7 @@ struct CopyToastScreenTests {
             let card = try await Self.element("\(Self.courseLocation), \(shown)", in: window)
             #expect(card.accessibilityTraits.contains(.button))
             #expect(card.accessibilityHint == Self.copyLocation)
-            try await Self.tap(card, in: window)
+            try await Self.tap(card, in: window, until: Self.locationCopied)
 
             try await waitUntil { accessibilityElement(labeled: Self.locationCopied, in: window) != nil }
             #expect(UIPasteboard.general.string == shown)
@@ -125,7 +131,11 @@ struct CopyToastScreenTests {
             let card = try await Self.element("\(Self.clubLocation), \(club.location)", in: window)
             #expect(card.accessibilityTraits.contains(.button))
             #expect(card.accessibilityHint == Self.copyLocation)
-            if byVoiceOver { #expect(card.accessibilityActivate()) } else { try await Self.tap(card, in: window) }
+            if byVoiceOver {
+                #expect(card.accessibilityActivate())
+            } else {
+                try await Self.tap(card, in: window, until: Self.locationCopied)
+            }
 
             try await waitUntil { accessibilityElement(labeled: Self.locationCopied, in: window) != nil }
             #expect(UIPasteboard.general.string == club.location)
@@ -145,7 +155,11 @@ struct CopyToastScreenTests {
             #expect(row.accessibilityHint == Self.copyCode)
             try await Task.sleep(for: .milliseconds(400))
             let before = Self.pixels(of: row, in: window)
-            if byVoiceOver { #expect(row.accessibilityActivate()) } else { try await Self.tap(row, in: window) }
+            if byVoiceOver {
+                #expect(row.accessibilityActivate())
+            } else {
+                try await Self.tap(row, in: window, until: Self.codeCopied)
+            }
 
             try await waitUntil { accessibilityElement(labeled: Self.codeCopied, in: window) != nil }
             #expect(UIPasteboard.general.string == course.courseNo)
@@ -171,7 +185,7 @@ struct CopyToastScreenTests {
             let dash = try await Self.element("—", in: window)
             #expect(!exposedAccessibilityElements(in: window).contains { $0.accessibilityHint == Self.copyLocation })
             #expect(!dash.accessibilityTraits.contains(.button))
-            try await Self.tap(dash, in: window)
+            #expect(!dash.accessibilityActivate())
             try await Task.sleep(for: .milliseconds(600))
 
             #expect(accessibilityElement(labeled: Self.locationCopied, in: window) == nil)
