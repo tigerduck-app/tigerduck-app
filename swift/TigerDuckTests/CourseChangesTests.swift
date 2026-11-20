@@ -21,12 +21,12 @@ struct CourseChangesTests {
         SDCourse(courseNo: "CC900", courseName: "Compilers", classroom: "T4-501", schedule: [4: ["2", "3", "4", "7", "8"]])
     }
 
-    private static func row(
-        _ id: Int, _ kind: String, periods: [String]? = nil, days: [String] = ["2026-11-05"],
+    static func row(
+        _ id: Int, _ kind: String, course: String = "CC900", periods: [String]? = nil, days: [String] = ["2026-11-05"],
         values: [String: String] = [:]
     ) -> [String: Any] {
         var row: [String: Any] = [
-            "id": id, "course_no": "CC900", "kind": kind, "mode": "day", "day": days[0],
+            "id": id, "course_no": course, "kind": kind, "mode": "day", "day": days[0],
             "from": NSNull(), "to": NSNull(), "excluded_weekdays": [Int](), "periods": periods.map { $0 as Any } ?? NSNull(),
             "class_days": days, "room": NSNull(), "start": NSNull(), "end": NSNull(),
             "note_zh": NSNull(), "note_en": NSNull(), "updated_at": "2026-10-29T14:03:00+08:00",
@@ -35,8 +35,12 @@ struct CourseChangesTests {
         return row
     }
 
-    private static func feed(_ rows: [[String: Any]]) -> Data {
+    static func feed(_ rows: [[String: Any]]) -> Data {
         try! JSONSerialization.data(withJSONObject: ["term": "1151", "changes": rows] as [String: Any])
+    }
+
+    private static func feedURL(_ base: URL) -> URL {
+        URL(string: base.absoluteString + "/calendar/course-changes?kinds=assessment,online")!
     }
 
     private static func changes(_ rows: [[String: Any]]) throws -> CourseChanges {
@@ -490,6 +494,120 @@ struct CourseChangesTests {
         #expect(offset(851) == nil)
     }
 
+    private static let midterm = ["note_zh": "期中考", "note_en": "Midterm exam"]
+
+    private static func local(_ zh: String, _ en: String) -> String {
+        Locale.current.language.languageCode?.identifier == "zh" ? zh : en
+    }
+
+    @Test func anAssessmentMarksOnlyTheMeetingOfItsDayAndAnUnnamedOneIsDropped() throws {
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["2", "3", "4"], values: Self.midterm),
+            Self.row(2, "assessment", periods: ["7", "8"]),
+        ])
+
+        #expect(Self.slots(changes).map { $0.assessment?.id } == [1, nil])
+        #expect(Self.slots(changes).map(\.notes) == [[], []])
+        let nextWeek = Self.thursday.addingTimeInterval(7 * 86400)
+        #expect(Self.slots(changes, on: nextWeek).allSatisfy { $0.assessment == nil })
+        let meeting = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["3"], on: Self.thursday, changes: changes))
+        #expect(meeting.assessment?.note() == Self.local("期中考", "Midterm exam"))
+    }
+
+    @Test func aCancellationWinsOverAnAssessmentAndAnExamKeepsItsNewRoom() throws {
+        let changes = try Self.changes([
+            Self.row(1, "assessment", values: Self.midterm),
+            Self.row(2, "cancelled", periods: ["7", "8"]),
+            Self.row(3, "room", periods: ["2", "3", "4"], values: ["room": "TR-313"]),
+        ])
+
+        let slots = Self.slots(changes)
+        #expect(slots.map(\.isCancelled) == [false, true])
+        #expect(slots.map { $0.assessment?.id } == [1, nil])
+        #expect(slots[0].hasChangedRoom && slots[0].room == "TR-313")
+        let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
+        let parts = [
+            "TR-313", String(localized: "course_card_cancelled"), String(localized: "course_change_assessment"),
+            Self.local("期中考", "Midterm exam"),
+        ]
+        #expect(CourseDetailChanges.changeRows(days, besides: nil).map(\.summary) == [parts.joined(separator: " · ")])
+    }
+
+    @Test func anOnlineClassTakesTheRoomsPlaceAndSplitsAMeetingAsARoomChangeDoes() throws {
+        let online = String(localized: "course_change_online")
+        let whole = try Self.changes([Self.row(1, "online", periods: ["7", "8"])])
+        let part = try Self.changes([Self.row(1, "online", periods: ["4"], values: ["note_zh": "", "note_en": ""])])
+
+        #expect(Self.slots(whole).map(\.room) == ["T4-501", online])
+        #expect(Self.slots(whole).map(\.hasChangedRoom) == [false, true])
+        #expect(Self.slots(part).map(\.periods) == [["2", "3"], ["4"], ["7", "8"]])
+        #expect(Self.slots(part).map(\.room) == ["T4-501", online, "T4-501"])
+        let meeting = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2"], on: Self.thursday, changes: part))
+        #expect(meeting.room == online && meeting.online?.id == 1)
+    }
+
+    @Test func theChangesListNamesTheAssessmentAndTheOnlineClassEvenForTheShownMeeting() throws {
+        let (assessment, online) = (String(localized: "course_change_assessment"), String(localized: "course_change_online"))
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["2", "3", "4"], values: Self.midterm),
+            Self.row(2, "online", periods: ["7", "8"], days: ["2026-11-12"],
+                     values: ["note_zh": "請自行學習 Module 5", "note_en": "Study Module 5 on your own"]),
+            Self.row(3, "online", days: ["2026-11-19"]),
+            Self.row(4, "assessment", days: ["2026-11-26"], values: Self.midterm),
+            Self.row(5, "cancelled", days: ["2026-11-26"]),
+        ])
+        let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
+        let today = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes))
+        let rows = [
+            "\(assessment) · \(Self.local("期中考", "Midterm exam"))",
+            "\(online) · \(Self.local("請自行學習 Module 5", "Study Module 5 on your own"))",
+            online,
+            String(localized: "course_card_cancelled"),
+        ]
+
+        #expect(CourseDetailChanges.changeRows(days, besides: nil).map(\.summary) == rows)
+        #expect(CourseDetailChanges.changeRows(days, besides: today).map(\.summary) == rows)
+    }
+
+    @Test func aMeetingWithOnlyAnAssessmentSendsNoClassChangeToTheWidgetsAndTheWatch() throws {
+        let changes = try Self.changes([Self.row(1, "assessment", values: Self.midterm)])
+
+        #expect(CourseTimeSlot.changedClasses(of: Self.course(), on: Self.thursday, changes: changes).isEmpty)
+        #expect(WidgetSnapshotBuilder.snapshotChanges(of: Self.course(), changes: changes).isEmpty)
+        #expect(WidgetSnapshotBuilder.snapshotMeetingChanges(of: Self.course(), changes: changes).isEmpty)
+    }
+
+    @Test func theStoreAsksForAssessmentsAndOnlineClassesAndReplacesTheNotesAnOlderBuildStored() async throws {
+        let savedCache = Defaults[.courseChangesCache]
+        let savedTag = Defaults[.courseChangesETag]
+        defer {
+            Defaults[.courseChangesCache] = savedCache
+            Defaults[.courseChangesETag] = savedTag
+        }
+        Defaults[.courseChangesCache] = Self.feed([Self.row(1, "note", values: ["note_zh": "期中考", "note_en": "期中考"])])
+        Defaults[.courseChangesETag] = #"W/"notes""#
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.feedURL(base)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let store = CourseChangeStore(
+            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+        )
+        SettingsAPIStub.enqueue(
+            .init(
+                statusCode: 200, body: Self.feed([Self.row(1, "assessment", values: Self.midterm)]),
+                headerFields: ["ETag": #"W/"kinds""#]
+            ),
+            for: url
+        )
+
+        #expect(await store.refresh())
+        #expect(SettingsAPIStub.requests(for: url).map { $0.url?.query } == ["kinds=assessment,online"])
+        let stored = CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday)
+        #expect(stored.map(\.kind) == [.assessment])
+        #expect(Defaults[.courseChangesETag] == #"W/"kinds""#)
+    }
+
     @Test func theStoreSendsItsETagKeepsItsCopyOnA304AndReplacesItOnA200() async throws {
         let savedCache = Defaults[.courseChangesCache]
         let savedTag = Defaults[.courseChangesETag]
@@ -500,7 +618,7 @@ struct CourseChangesTests {
         Defaults[.courseChangesCache] = Data()
         Defaults[.courseChangesETag] = ""
         let base = SettingsAPIStub.uniqueBaseURL()
-        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
+        let url = Self.feedURL(base)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let store = CourseChangeStore(
@@ -538,7 +656,7 @@ struct CourseChangesTests {
         Defaults[.courseChangesCache] = Data("not a feed".utf8)
         Defaults[.courseChangesETag] = #"W/"a""#
         let base = SettingsAPIStub.uniqueBaseURL()
-        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
+        let url = Self.feedURL(base)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let store = CourseChangeStore(
@@ -562,7 +680,7 @@ struct CourseChangesTests {
             Defaults[.courseChangesETag] = savedTag
         }
         let base = SettingsAPIStub.uniqueBaseURL()
-        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
+        let url = Self.feedURL(base)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let store = CourseChangeStore(
@@ -588,7 +706,7 @@ struct CourseChangesTests {
 
     @Test func theStoreAsksNothingBeforeOnboardingEnds() async {
         let base = SettingsAPIStub.uniqueBaseURL()
-        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
+        let url = Self.feedURL(base)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let store = CourseChangeStore(

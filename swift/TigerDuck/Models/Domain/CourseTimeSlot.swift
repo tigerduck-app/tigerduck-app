@@ -49,8 +49,10 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
     var color: Color { TigerDuckTheme.courseColor(for: courseKey) }
     var isCancelled: Bool { changes.contains { $0.kind == .cancelled } }
     var notes: [CourseChange] { changes.filter { $0.kind == .note } }
+    var assessment: CourseChange? { isCancelled ? nil : changes.first { $0.kind == .assessment } }
+    var online: CourseChange? { changes.first { $0.kind == .online } }
     var room: String {
-        changes.first { $0.kind == .room }?.room ?? timetableRoom(of: periods)
+        changes.lazy.compactMap(\.changedRoom).first ?? timetableRoom(of: periods)
     }
     var isSkippedOrCancelled: Bool { isCancelled || isSkipped }
 
@@ -65,7 +67,7 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
     func course(in courses: [SDCourse]) -> SDCourse? {
         courses.first { $0.courseNo == courseKey }
     }
-    var hasChangedRoom: Bool { changes.contains { $0.kind == .room } }
+    var hasChangedRoom: Bool { changes.contains { $0.changedRoom != nil } }
     var hasChangedTime: Bool { originalStart != nil || originalEnd != nil }
 
     /// A timetable meeting on one day as the school changed it, its fragments merged back. A
@@ -86,7 +88,7 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
     /// the day's slots show them.
     static func changedClasses(of course: SDCourse, on date: Date, changes: CourseChanges = .cached) -> [CourseTimeSlot] {
         CourseMeeting.meetings(of: course, on: date, changes: changes)
-            .filter { meeting in meeting.changes.contains { $0.kind != .note } }
+            .filter { meeting in meeting.changes.contains { $0.kind != .note && $0.kind != .assessment } }
             .flatMap { $0.slots() }
     }
 

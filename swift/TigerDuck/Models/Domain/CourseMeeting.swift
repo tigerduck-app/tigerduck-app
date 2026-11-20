@@ -17,7 +17,7 @@ struct CourseMeeting {
     }
 
     func room(_ period: String) -> String? {
-        changes.first { $0.kind == .room && $0.covers(period) }?.room
+        changes.lazy.filter { $0.covers(period) }.compactMap(\.changedRoom).first
     }
 
     func slots() -> [CourseTimeSlot] {
