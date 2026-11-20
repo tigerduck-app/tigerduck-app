@@ -32,6 +32,20 @@ struct ExpiredReminderTests {
         #expect(center.delivered.map(\.identifier) == ["not-due"])
     }
 
+    @Test("A reminder due within the next minute goes already; one due later stays")
+    func aReminderDueWithinTheLeewayGoes() async {
+        let now = 2_000_000_000
+        let leeway = Int(reminderDueLeeway)
+        let center = DeliveredNotificationsStub([
+            ("at-the-leeway", "assignment", Self.reminder(dueEpoch: String(now + leeway))),
+            ("past-the-leeway", "assignment", Self.reminder(dueEpoch: String(now + leeway + 1))),
+        ])
+
+        await center.removeExpiredReminders(now: Date(timeIntervalSince1970: TimeInterval(now)))
+
+        #expect(center.delivered.map(\.identifier) == ["past-the-leeway"])
+    }
+
     @Test("Class reminders, bulletins, school mail and operator pushes stay, even with a past due_epoch")
     func otherKindsStay() async {
         let past = String(Self.epoch(hoursFromNow: -1))
