@@ -11,9 +11,15 @@ enum TigerDuckLauncher {
     static func main() {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             UnitTestHostApp.main()
-        } else {
-            TigerDuckApp.main()
+            return
         }
+        #if DEBUG && os(iOS)
+        if ProcessInfo.processInfo.arguments.contains(UITestFixtureApp.classTableSwitcher) {
+            UITestFixtureApp.main()
+            return
+        }
+        #endif
+        TigerDuckApp.main()
     }
 }
 
