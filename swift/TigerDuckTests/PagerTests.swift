@@ -27,6 +27,18 @@ struct PagerTests {
         }
     }
 
+    /// A width a fraction of a point over a whole one, as a layout can offer, from the window's edge
+    /// as the calendar's grid starts.
+    struct ManyPages: View {
+        @Bindable var pager: Probe
+
+        var body: some View {
+            Pager(count: 2_400, index: $pager.index, position: $pager.position) { Text(verbatim: "\($0)") }
+                .frame(width: 375 + 1.0 / 2_400)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     /// A finger's drag reaches the scroll view as a frame-by-frame offset between the delegate
     /// calls that begin and end it.
     @MainActor final class Finger {
@@ -93,6 +105,33 @@ struct PagerTests {
             scrollView.setContentOffset(CGPoint(x: 2 * scrollView.bounds.width, y: 0), animated: true)
             try await waitUntil { pager.index == 2 }
         }
+    }
+
+    @Test func theVisiblePagesAreBothPagesInADragAndOneAtRest() async throws {
+        let pager = Probe()
+        let (window, scrollView) = try await host(Host(pager: pager))
+        defer { window.isHidden = true }
+        let finger = Finger(scrollView)
+
+        finger.touchDown()
+        try await finger.move(to: 0.3)
+        try await waitUntil { pager.position.visiblePages == 0...1 }
+        try await finger.move(to: 1)
+        finger.lift()
+        try await waitUntil { pager.position.visiblePages == 1...1 && pager.position.settledPage == 1 }
+    }
+
+    @Test func aPagerOfManyPagesOpensOnItsSettledPageInPagesAsWideAsItself() async throws {
+        let pager = Probe()
+        pager.index = 1_500
+        pager.position = PagerPosition(page: 1_500)
+        let (window, scrollView) = try await host(ManyPages(pager: pager))
+        defer { window.isHidden = true }
+
+        try await waitUntil { Finger(scrollView).isResting(on: 1_500) }
+        #expect(scrollView.contentSize.width == 2_400 * scrollView.bounds.width)
+        #expect(pager.index == 1_500)
+        #expect(pager.position.settledPage == 1_500)
     }
 
     @Test func theButtonsMoveThePagerAfterAScrollThatIsNotADrag() async throws {
@@ -195,7 +234,7 @@ struct PagerTests {
     }
 
     /// Without a scene the host builds no `UIScrollView`.
-    private func host(_ host: Host) async throws -> (UIWindow, UIScrollView) {
+    private func host(_ host: some View) async throws -> (UIWindow, UIScrollView) {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.rootViewController = UIHostingController(rootView: host)
