@@ -62,6 +62,7 @@ Each rule below has one home; call it instead of writing the rule again.
 - What a launch, a return to the app and a sign-in run, and in which order:
   `App/SceneActivation.swift`.
 - Widget, Watch and Live Activity refresh: `Devices/DeviceSurfaceSyncer.swift`.
+- Copying text to the pasteboard on iOS and macOS: `Support/Pasteboard.swift`.
 
 ## Anti-patterns
 
