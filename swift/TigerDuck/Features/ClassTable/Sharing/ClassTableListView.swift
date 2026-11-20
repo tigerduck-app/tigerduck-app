@@ -98,7 +98,7 @@ struct ClassTableListRows: UIViewRepresentable {
             ) { [weak self] header, _, indexPath in
                 guard let placement = self?.dataSource?.sectionIdentifier(for: indexPath.section) else { return }
                 var content = header.defaultContentConfiguration()
-                content.text = String(localized: placement.title)
+                content.text = String(localized: placement.titleKey)
                 header.contentConfiguration = content
             }
             let dataSource = UICollectionViewDiffableDataSource<ImportedPerson.Placement, Row>(collectionView: view) {
@@ -159,7 +159,7 @@ struct ClassTableListRows: UIViewRepresentable {
         func actions(for id: UUID) -> [UIAccessibilityCustomAction] {
             guard let placement = person(id)?.placement else { return [] }
             let moves = ImportedPerson.Placement.allCases.filter { $0 != placement }.map { target in
-                UIAccessibilityCustomAction(name: String(localized: target.title)) { [weak self] _ in
+                UIAccessibilityCustomAction(name: String(localized: target.titleKey)) { [weak self] _ in
                     self?.move(id, to: target, before: nil)
                     return true
                 }
