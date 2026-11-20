@@ -119,6 +119,18 @@ struct CalendarMonthSwipeScreenTests {
             return exposedAccessibilityElements(in: window).first { $0.accessibilityLabel == sunday }?.accessibilityFrame
         }
 
+        /// UIKit gives VoiceOver this text to speak after an accessibility page scroll.
+        var scrollStatus: String? {
+            pager.perform(NSSelectorFromString("_accessibilityScrollStatus"))?.takeUnretainedValue() as? String
+        }
+
+        /// VoiceOver's three-finger swipe left reaches the scroll view as this accessibility action.
+        func scrollLeftPageAsVoiceOverDoes() -> Bool {
+            let action = NSSelectorFromString("accessibilityScrollLeftPage")
+            typealias Perform = @convention(c) (AnyObject, Selector) -> Bool
+            return unsafeBitCast(pager.method(for: action), to: Perform.self)(pager, action)
+        }
+
         func swipe(_ fraction: CGFloat, over duration: Duration = .milliseconds(250)) async throws {
             window.makeKeyAndVisible()
             let travel = grid.width * fraction
@@ -243,7 +255,7 @@ struct CalendarMonthSwipeScreenTests {
         }
     }
 
-    @Test("VoiceOver reaches the days of the month shown, a tap selects one, and a scroll that is not a drag turns the month")
+    @Test("VoiceOver reaches the days of the month shown, a tap selects one, and its page scroll turns the month and names it")
     func voiceOver() async throws {
         try await withAccessibilityAutomation {
             let screen = try await Self.show(on: Self.december)
@@ -257,10 +269,13 @@ struct CalendarMonthSwipeScreenTests {
             try await screen.tap(day)
             try await waitUntil { screen.model.selectedDate == CalendarMonthPageTests.month(2026, 12, day: 24) }
 
-            // VoiceOver's three-finger swipe scrolls the pager by a page without a drag.
-            screen.pager.setContentOffset(CGPoint(x: screen.pager.contentOffset.x + screen.pager.bounds.width, y: 0), animated: true)
+            #expect(screen.scrollLeftPageAsVoiceOverDoes())
             try await screen.settle(on: Self.january)
             #expect(screen.element(on: CalendarMonthPageTests.month(2027, 1, day: 31)) != nil)
+            if #available(iOS 26, *) {
+                let status = screen.scrollStatus
+                #expect(status == Self.title(of: Self.january))
+            }
         }
     }
 

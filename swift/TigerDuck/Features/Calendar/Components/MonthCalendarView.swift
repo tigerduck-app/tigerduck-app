@@ -55,6 +55,10 @@ struct MonthCalendarView: View {
                         MonthGrid(days: CalendarViewModel.buildCalendarDays(for: CalendarViewModel.month(atPage: page)), viewModel: viewModel)
                             .frame(maxHeight: .infinity, alignment: .top)
                     }
+                    .modifier(ScrollStatus(text: monthTitle))
+                    // An animated height stops VoiceOver's page scroll partway, so the pager takes its
+                    // new height at once and only the views around it animate.
+                    .transaction(value: weeks) { $0.animation = nil }
                 }
         }
         .onChange(of: page) { _, page in
@@ -109,6 +113,18 @@ private struct MonthGrid: View {
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+}
+
+private struct ScrollStatus: ViewModifier {
+    let text: String
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.accessibilityScrollStatus(text)
+        } else {
+            content
+        }
     }
 }
 
