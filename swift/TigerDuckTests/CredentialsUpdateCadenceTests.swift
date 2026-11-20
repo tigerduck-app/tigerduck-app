@@ -7,9 +7,10 @@ struct CredentialsUpdateCadenceTests {
     @Test("a new or changed token goes at once, an unchanged one only after an hour")
     func cadence() {
         let now = Date()
-        #expect(PushCoordinator.credentialsUpdateIsDue(accepted: nil, fingerprint: 1, now: now))
-        #expect(PushCoordinator.credentialsUpdateIsDue(accepted: (2, now - 60), fingerprint: 1, now: now))
-        #expect(!PushCoordinator.credentialsUpdateIsDue(accepted: (1, now - 60), fingerprint: 1, now: now))
-        #expect(PushCoordinator.credentialsUpdateIsDue(accepted: (1, now - 3600), fingerprint: 1, now: now))
+        let hourly = SendLedger.Resend.after(3600)
+        #expect(SendLedger.isDue(accepted: nil, fingerprint: "a", resend: hourly, now: now))
+        #expect(SendLedger.isDue(accepted: ("b", now - 60), fingerprint: "a", resend: hourly, now: now))
+        #expect(!SendLedger.isDue(accepted: ("a", now - 60), fingerprint: "a", resend: hourly, now: now))
+        #expect(SendLedger.isDue(accepted: ("a", now - 3600), fingerprint: "a", resend: hourly, now: now))
     }
 }

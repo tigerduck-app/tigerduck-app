@@ -8,10 +8,10 @@ struct SyncConflictAlertTests {
     @Test("Closing the assignment conflict alert without a button hides it and answers nothing")
     func closingTheAlertUnansweredHidesIt() {
         let shown = ShownSyncConflicts()
-        shown.conflicts = [AppState.SyncConflictItem(
+        shown.conflicts = [SyncConflicts.SyncConflictItem(
             id: "42", kind: "Assignment", label: "Lab 1", localStatus: "ignored", serverStatus: "locally_completed"
         )]
-        let isPresented = AppState.syncConflictAlertIsPresented(
+        let isPresented = SyncConflicts.syncConflictAlertIsPresented(
             Binding(get: { shown.conflicts }, set: { shown.conflicts = $0 })
         )
         #expect(isPresented.wrappedValue)
@@ -25,5 +25,5 @@ struct SyncConflictAlertTests {
 
 @MainActor
 private final class ShownSyncConflicts {
-    var conflicts: [AppState.SyncConflictItem] = []
+    var conflicts: [SyncConflicts.SyncConflictItem] = []
 }

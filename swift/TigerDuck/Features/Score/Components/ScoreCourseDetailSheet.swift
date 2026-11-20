@@ -1,11 +1,12 @@
 import SwiftUI
+import TigerDuckCore
 
 struct ScoreCourseDetailSheet: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     let course: CourseGrade
 
-    @State private var rosterCourse: SDCourse?
+    @State private var rosterCourse: CourseRoster?
 
     var body: some View {
         NavigationStack {
@@ -53,29 +54,29 @@ struct ScoreCourseDetailSheet: View {
                 .foregroundStyle(gradeColor)
         }
         .padding(TigerDuckTheme.Spacing.md)
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
     @ViewBuilder
-    private func rosterSection(_ roster: SDCourse) -> some View {
+    private func rosterSection(_ roster: CourseRoster) -> some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
             if !roster.instructor.isEmpty {
-                InfoRow(label: String(localized: "course_detail_instructor_label"), value: roster.instructor)
+                DetailInfoRow(label: String(localized: "course_detail_instructor_label"), value: roster.instructor)
             }
             if roster.maxCount > 0 {
-                InfoRow(
+                DetailInfoRow(
                     label: String(localized: "score_course_detail_enrollment_label"),
                     value: "\(roster.enrolledCount) / \(roster.maxCount)"
                 )
             }
-            let classroomText = SDCourse.dedup(roster.classroom)
+            let classroomText = roster.classroom
             if !classroomText.isEmpty {
-                InfoRow(label: String(localized: "course_detail_classroom_label"), value: classroomText)
+                DetailInfoRow(label: String(localized: "course_detail_classroom_label"), value: classroomText)
             }
             let scheduleCode = formatScheduleCode(roster.schedule)
             if !scheduleCode.isEmpty {
-                InfoRow(label: String(localized: "score_course_detail_schedule_label"), value: scheduleCode)
+                DetailInfoRow(label: String(localized: "score_course_detail_schedule_label"), value: scheduleCode)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -91,7 +92,7 @@ struct ScoreCourseDetailSheet: View {
             Spacer()
         }
         .padding(TigerDuckTheme.Spacing.md)
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
@@ -104,24 +105,14 @@ struct ScoreCourseDetailSheet: View {
                 .foregroundStyle(Color.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(TigerDuckTheme.Spacing.md)
-                .presetCard(policy: appState.visualStylePolicy)
+                .presetCard(policy: app.preferences.visualStylePolicy)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
     }
 
     private func resolveRosterCourse() {
         guard rosterCourse == nil else { return }
-        let semesterMatches = DataCache.shared.loadCourses(semester: course.term)
-        if let match = semesterMatches.first(where: { $0.courseNo == course.code }) {
-            rosterCourse = match
-            return
-        }
-        let userAdded = DataCache.shared.loadUserAddedCourses()
-        if let match = userAdded.first(where: {
-            $0.courseNo == course.code && ($0.semester == course.term || $0.semester.isEmpty)
-        }) {
-            rosterCourse = match
-        }
+        rosterCourse = CourseRoster.find(courseNo: course.code, term: course.term)
     }
 
     /// Day-code mapping aligned with `CourseLookupService.parseNodeToSchedule`:
@@ -149,9 +140,7 @@ struct ScoreCourseDetailSheet: View {
     }
 
     private var displayTerm: String {
-        guard course.term.count == 4 else { return course.term }
-        let year = String(course.term.prefix(3))
-        let sem = String(course.term.suffix(1))
+        guard case let (year, sem)? = AcademicTerm.displayParts(of: course.term) else { return course.term }
         let label = sem == "1"
             ? String(localized: "score_semester_first")
             : sem == "2"
@@ -181,24 +170,6 @@ struct ScoreCourseDetailSheet: View {
             return course.isPassStatusPassed ? TigerDuckTheme.Tint.teal : TigerDuckTheme.Tint.red
         case .graded:
             return ScoreColor.grade(course.grade)
-        }
-    }
-}
-
-private struct InfoRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textSecondary)
-            Spacer()
-            Text(value)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textPrimary)
-                .multilineTextAlignment(.trailing)
         }
     }
 }

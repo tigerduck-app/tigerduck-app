@@ -17,5 +17,5 @@ jobs:
           # for a pull_request event is the merge ref, and the merged result is
           # what would ship a file nobody assigned to a platform.
 
-      - name: Check every app-target source is assigned to a platform
+      - name: Check the macOS source arrays match the sources minus the exclusion list
         run: python3 tools/check_macos_sources.py

@@ -34,8 +34,8 @@ struct ClassTableSwitcherTests {
 
     private static func people(_ folder: Folder) throws -> People {
         let store = ImportedClassTableStore(fileURL: folder.file, signedInStudentId: { "B11300000" })
-        let ming = try #require(store.add(code("B11300001"), nickname: "Ming", courses: [:]))
-        let hua = try #require(store.add(code("B11300002"), nickname: "Hua", courses: [:]))
+        let ming = try #require(store.add(code("B11300001"), nickname: "Ming", courses: [:], for: testSignIn))
+        let hua = try #require(store.add(code("B11300002"), nickname: "Hua", courses: [:], for: testSignIn))
         return People(store: store, ming: ming, hua: hua)
     }
 
@@ -284,11 +284,14 @@ struct ClassTableSwitcherTests {
         #expect(recognizer.startedOnClassTable)
     }
 
-    @Test("someone else's menu has export, import, rename and delete user, and nothing else")
+    @Test("someone else's menu has the screenshot and calendar exports, import, rename and delete user, and nothing else")
     func otherPersonMenu() {
-        #expect(ClassTableOtherPersonAction.sections == [[.exportScreenshot], [.importClassTable], [.rename, .deleteUser]])
+        #expect(ClassTableOtherPersonAction.sections == [
+            [.exportScreenshot, .exportCalendar], [.importClassTable], [.rename, .deleteUser],
+        ])
         #expect(ClassTableOtherPersonAction.sections.joined().map(\.title) == [
             String(localized: "class_table_export_screenshot"),
+            String(localized: "class_table_export_ics"),
             String(localized: "class_table_import"),
             String(localized: "class_table_rename_title"),
             String(localized: "class_table_delete_user"),

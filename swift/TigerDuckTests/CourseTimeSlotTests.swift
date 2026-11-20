@@ -1,10 +1,11 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
 struct CourseTimeSlotTests {
-    private static let tuesday = AppConstants.taipeiCalendar.date(
+    private static let tuesday = TaipeiTime.calendar.date(
         from: DateComponents(year: 2026, month: 9, day: 22, hour: 9)
     )!
 
@@ -39,7 +40,7 @@ struct CourseTimeSlotTests {
             on: Self.tuesday,
             isClassDay: { _ in true }
         )
-        #expect(slots.map(\.course.courseNo) == ["CS102"])
+        #expect(slots.map(\.courseKey) == ["CS102"])
     }
 
     @Test func aSlotIdTellsWhetherItsClassIsSkipped() {

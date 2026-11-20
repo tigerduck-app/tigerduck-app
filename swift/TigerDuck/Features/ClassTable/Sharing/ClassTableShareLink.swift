@@ -26,38 +26,37 @@ nonisolated enum ClassTableShareLink {
 
 /// A share link that came before its import could open, with no one signed in or onboarding not
 /// finished, held until both are done. It is kept in memory only, so quitting the app loses it.
-/// A newer link replaces it, and a sign-out, which moves `AuthService.loginGeneration`, drops it.
 @Observable
 final class HeldShareLink {
     struct Link: Equatable {
         let id = UUID()
         let text: String
-        let loginGeneration: Int
+        let signIn: SignIn
     }
 
     static let shared = HeldShareLink()
 
     private(set) var link: Link?
 
-    func arrived(_ text: String, loginGeneration: Int) {
-        link = Link(text: text, loginGeneration: loginGeneration)
+    func arrived(_ text: String, signIn: SignIn) {
+        link = Link(text: text, signIn: signIn)
     }
 
     /// Imports are filed under the signed-in account, which also tells the user's own code apart,
     /// and until onboarding ends there is no class table to open them over.
-    static func mayOpen(in appState: AppState) -> Bool {
-        appState.hasCompletedOnboarding && appState.authService.hasStoredCredentials
+    static func mayOpen(in app: AppEnvironment) -> Bool {
+        app.hasCompletedOnboarding && app.authService.hasStoredCredentials
     }
 
-    func take(in appState: AppState) -> String? {
-        take(mayOpen: Self.mayOpen(in: appState), loginGeneration: appState.authService.loginGeneration)
+    func take(in app: AppEnvironment) -> String? {
+        take(mayOpen: Self.mayOpen(in: app))
     }
 
     /// The held link's text, taken, once it may open; nil while it may not, and for one that
     /// came before a sign-out, which this drops.
-    func take(mayOpen: Bool, loginGeneration: Int) -> String? {
+    func take(mayOpen: Bool) -> String? {
         guard let link else { return nil }
-        guard link.loginGeneration == loginGeneration else {
+        guard link.signIn.isCurrent else {
             self.link = nil
             return nil
         }

@@ -20,15 +20,15 @@ struct CourseAddSyncTests {
             .appendingPathComponent("CourseAddSyncTests-\(UUID().uuidString)", isDirectory: true)
     }
 
-    private static func makeCache(userAdded: [SDCourse], portal: [SDCourse] = [], hidden: [String] = []) -> DataCache {
+    private static func makeCache(userAdded: [SDCourse], portal: [SDCourse] = [], hidden: [String] = []) -> TestCache {
         let root = freshDirectory()
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
-        cache.saveCourses(portal, semester: "1151")
-        cache.saveUserAddedCourses(userAdded)
-        cache.saveDeletedCourseNos(hidden)
+        cache.courses.saveCourses(portal, semester: "1151", for: testSignIn)
+        cache.courses.saveUserAddedCourses(userAdded, for: testSignIn)
+        cache.courses.saveDeletedCourseNos(hidden, for: testSignIn)
         return cache
     }
 
@@ -44,17 +44,28 @@ struct CourseAddSyncTests {
     }
 
     private static func makeCoordinator(
-        _ backend: Backend, cache: DataCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory()),
+        _ backend: Backend, cache: TestCache, outbox: SyncOutbox = SyncOutbox(directory: freshDirectory()),
         push: PushCoordinator? = nil, uploadsCourses: @escaping @MainActor () -> Bool = { true },
         isProtectedDataAvailable: @escaping @MainActor () -> Bool = { true },
-        loginGeneration: @escaping @MainActor () -> Int = { 0 }
+        account: AccountSession = AccountSession(signIns: testSignIns),
+        whileReading: @escaping @MainActor () -> Void = {}
     ) -> CloudSyncCoordinator {
         CloudSyncCoordinator(
             pushCoordinator: push ?? makePush(backend), outbox: outbox, isEnabled: true,
             syncsAssignmentMarks: { true }, syncsCourseIgnores: { true }, syncsCourseOverrides: { _ in true },
-            addedCourseUpload: { AppState.addedCourseUpload(semester: $0, courseNo: $1, cache: cache, colors: [:]) },
+            addedCourseUpload: {
+                whileReading()
+                return SchoolDataUploader.addedCourseUpload(semester: $0, courseNo: $1, courses: cache.courses)
+            },
             uploadsCourses: uploadsCourses, isProtectedDataAvailable: isProtectedDataAvailable,
-            loginGeneration: loginGeneration
+            account: account, courses: cache.courses
+        )
+    }
+
+    private static func deleteURL(_ backend: Backend, _ courseNo: String, kind: String? = nil) -> URL {
+        backend.baseURL.appendingPathComponent("sync/courses/client:1151:\(courseNo)").appending(
+            queryItems: [URLQueryItem(name: "age_ms", value: "2000")]
+                + (kind.map { [URLQueryItem(name: "kind", value: $0)] } ?? [])
         )
     }
 
@@ -87,7 +98,7 @@ struct CourseAddSyncTests {
         #expect(backend.uploads.count == 1)
         #expect(await coordinator.holdsUnsentEdits())
         let adding = await coordinator.courseAddKeys(unlandedAt: fetchedAt)
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: ["CS1001301"], tombstoned: ["GE1010001"], fetched: ["CS1001301"],
             handAdded: ["GE1010001"], droppedMerges: [], hidden: [], adding: adding
         )
@@ -101,7 +112,11 @@ struct CourseAddSyncTests {
         let upload = try #require(backend.uploads.last)
         let body = try #require(SettingsAPIStub.bodyData(from: upload))
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
-        #expect(json["force_keys"] as? [String] == ["client:1151:GE1010001"])
+        #expect(json["force_keys"] == nil)
+        let adds = json["adds"] as? [[String: Any]]
+        #expect(adds?.compactMap { $0["course_key"] as? String } == ["client:1151:GE1010001"])
+        #expect(adds?.first?["age_ms"] as? Int64 != nil)
+        #expect(adds?.first?["hlc"] == nil)
         let sent = (json["courses"] as? [[String: Any]])?.compactMap { $0["course_no"] as? String }
         #expect(sent == ["GE1010001"])
         #expect(await coordinator.courseAddKeys(unlandedAt: fetchedAt) == ["1151:GE1010001"])
@@ -115,10 +130,10 @@ struct CourseAddSyncTests {
         let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
 
-        await coordinator.discardEdits(of: ["course_colors", "course_names", "assignments"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.courseColors, .courseNames, .assignments], courseIgnores: true)
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()) == ["1151:GE1010001"])
 
-        await coordinator.discardEdits(of: ["courses"], courseIgnores: false)
+        await coordinator.discardEdits(of: [.courses], courseIgnores: false)
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
     }
 
@@ -159,14 +174,13 @@ struct CourseAddSyncTests {
     @Test("A course add is not sent once the login has changed since its list was read")
     func addOfAnEarlierLoginIsNotSent() async {
         let backend = Backend()
-        let signedOut = Switch()
-        signedOut.isOn = false
+        let account = AccountSession()
         let coordinator = Self.makeCoordinator(
             backend, cache: Self.makeCache(userAdded: [Self.art()]),
-            loginGeneration: { defer { signedOut.isOn = true }; return signedOut.isOn ? 1 : 0 }
+            account: account, whileReading: { account.endSignIn() }
         )
 
-        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001", for: account.currentSignIn).value
 
         #expect(backend.uploads.isEmpty)
     }
@@ -261,7 +275,7 @@ struct CourseAddSyncTests {
         let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
 
         let add = coordinator.addCourse(semester: "1151", courseNo: "GE1010001")
-        await coordinator.discardEdits(of: ["courses"], courseIgnores: false)
+        await coordinator.discardEdits(of: [.courses], courseIgnores: false)
         await add.value
 
         #expect(backend.uploads.isEmpty)
@@ -269,10 +283,9 @@ struct CourseAddSyncTests {
         #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
     }
 
-    @Test("A reset made elsewhere wipes the hand-added and hidden courses but keeps those an add or hide made after it still sends")
-    func resetElsewhereKeepsTheCoursesOfLaterEdits() async {
-        let resetAt = Date().addingTimeInterval(-3600)
-        let early = resetAt.addingTimeInterval(-CloudSyncCoordinator.clockSkewMargin - 60)
+    @Test("A reset made elsewhere wipes the hand-added and hidden courses but keeps every one an add or hide queued here still sends, made before the reset or after it, for the backend to settle")
+    func resetElsewhereKeepsTheCoursesOfQueuedEdits() async throws {
+        let early = Date().addingTimeInterval(-7200)
         let courses = ["GE1010001", "GE2", "GE3"].map { SDCourse(courseNo: $0, courseName: $0, semester: "1151") }
         let cache = Self.makeCache(userAdded: courses, hidden: ["1151:PE4", "1151:PE5", "1151:PE6"])
         let outbox = SyncOutbox(directory: Self.freshDirectory())
@@ -282,11 +295,13 @@ struct CourseAddSyncTests {
         await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "PE5", stamp: early))
         let coordinator = Self.makeCoordinator(Backend(), cache: cache, outbox: outbox)
 
-        #expect(await AppState.applyCourseReset(at: resetAt, cache: cache, on: coordinator, mayWrite: { true }) == ["1151:PE5"])
+        try await CourseReset.apply(fetchedAt: Date(), courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { true })
 
-        #expect(cache.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
-        #expect(cache.loadDeletedCourseNos() == ["1151:PE4"])
-        #expect(AppState.addedCourseUpload(semester: "1151", courseNo: "GE1010001", cache: cache, colors: [:]) != nil)
+        #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001", "GE2"])
+        #expect(cache.courses.loadDeletedCourseNos().sorted() == ["1151:PE4", "1151:PE5"])
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:PE4", "1151:PE5"])
+        #expect(await coordinator.courseAddKeys(unlandedAt: .distantFuture) == ["1151:GE1010001", "1151:GE2"])
+        #expect(SchoolDataUploader.addedCourseUpload(semester: "1151", courseNo: "GE1010001", courses: cache.courses) != nil)
     }
 
     @Test("A reset made elsewhere leaves the hand-added and hidden courses alone when the sync may no longer write, as behind the lock screen")
@@ -294,10 +309,12 @@ struct CourseAddSyncTests {
         let cache = Self.makeCache(userAdded: [Self.art()], hidden: ["1151:PE4"])
         let coordinator = Self.makeCoordinator(Backend(), cache: cache)
 
-        #expect(await AppState.applyCourseReset(at: Date(), cache: cache, on: coordinator, mayWrite: { false }) == nil)
+        await #expect(throws: FullSyncAbandoned.self) {
+            try await CourseReset.apply(fetchedAt: Date(), courses: cache.courses, on: coordinator, for: testSignIn, mayWrite: { false })
+        }
 
-        #expect(cache.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
-        #expect(cache.loadDeletedCourseNos() == ["1151:PE4"])
+        #expect(cache.courses.loadUserAddedCourses().map(\.courseNo) == ["GE1010001"])
+        #expect(cache.courses.loadDeletedCourseNos() == ["1151:PE4"])
     }
 
     @Test("An add the server keeps refusing is parked, so a full sync still keeps its course and tries it again")
@@ -339,7 +356,7 @@ struct CourseAddSyncTests {
             ? ["1151:GE1010001", "1151:EE2005301", "1151:MA1010003"]
             : ["1142:GE1010001", "1142:EE2005301", "1142:MA1010003"]
 
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: ["CS1001301"], tombstoned: ["GE1010001"], fetched: ["CS1001301", "EE2005301"],
             handAdded: ["MA1010003"], droppedMerges: [], hidden: [], adding: Set(keys)
         )
@@ -350,7 +367,7 @@ struct CourseAddSyncTests {
 
     @Test("An empty term's snapshot hides only by tombstone, and a course hidden already is not hidden again")
     func emptyTermHidesOnlyByTombstone() {
-        let unlisted = AppState.unlistedCourses(
+        let unlisted = CourseRosterReconciler.unlistedCourses(
             in: "1151", listed: [], tombstoned: ["GE1010001", "PE1010002"], fetched: ["CS1001301"],
             handAdded: ["MA1010003"], droppedMerges: [], hidden: ["1151:PE1010002"], adding: []
         )
@@ -359,14 +376,27 @@ struct CourseAddSyncTests {
         #expect(unlisted.drop.isEmpty)
     }
 
+    @Test("An empty term the backend reset drops a course added here whose add is not on its way, as an add older than the reset is refused",
+          arguments: [false, true])
+    func resetTermDropsAHandAddedCourseItDoesNotList(adding: Bool) {
+        let unlisted = CourseRosterReconciler.unlistedCourses(
+            in: "1151", listed: [], tombstoned: [], fetched: ["CS1001301"], handAdded: ["MA1010003"],
+            droppedMerges: [], hidden: [], adding: adding ? ["1151:MA1010003"] : [], termWasReset: true
+        )
+
+        #expect(unlisted.hide.isEmpty)
+        #expect(unlisted.drop == (adding ? [] : ["MA1010003"]))
+    }
+
     @Test("An add the server keeps failing with 5xx spends its attempts and parks, so the ops behind it still go")
     func failingAddDoesNotHoldTheQueue() async {
         let backend = Backend()
         for _ in 0..<SyncOutbox.maxAttempts { backend.answer(503) }
-        let deleteURL = backend.baseURL.appendingPathComponent("sync/courses/client:1151:CS1001301")
-            .appending(queryItems: [URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: Self.hiddenAt)))])
+        let deleteURL = Self.deleteURL(backend, "CS1001301")
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"deleted": 1}"#.utf8)), for: deleteURL)
-        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(userAdded: [Self.art()]))
+        let coordinator = Self.makeCoordinator(
+            backend, cache: Self.makeCache(userAdded: [Self.art()], hidden: ["1151:CS1001301"])
+        )
 
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
         await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
@@ -405,16 +435,15 @@ struct CourseAddSyncTests {
 
         await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
 
-        let sameList = AppState.courseUploadRequest([Self.art()], semester: "1151", forceKeys: [], colors: [:])
-        #expect(try await !push.uploadCoursesIfChanged(sameList, semester: "1151", isCurrent: { true }))
+        let sameList = SchoolDataUploader.courseUploadRequest([Self.art()], semester: "1151")
+        #expect(try await !push.uploadCoursesIfChanged(sameList, semester: "1151", for: testSignIn))
         #expect(backend.uploads.count == 1)
     }
 
-    @Test("A course added back while its delete is being sent goes up once that delete has landed")
+    @Test("A course added back while its removal is being sent goes up once that removal has landed")
     func addGoesAfterAnInFlightDelete() async throws {
         let backend = Backend()
-        let deleteURL = backend.baseURL.appendingPathComponent("sync/courses/client:1151:GE1010001")
-            .appending(queryItems: [URLQueryItem(name: "hlc", value: String(PushAPI.clock(of: Self.hiddenAt)))])
+        let deleteURL = Self.deleteURL(backend, "GE1010001", kind: "remove")
         let gate = SettingsAPIStub.ReplyGate()
         SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"deleted": 1}"#.utf8), gate: gate), for: deleteURL)
         backend.answer(200)
@@ -430,5 +459,81 @@ struct CourseAddSyncTests {
         try await waitUntil(timeout: .seconds(10)) { backend.uploads.count == 1 }
         let order = SettingsAPIStub.requests(under: backend.baseURL).map(\.httpMethod)
         #expect(order == ["DELETE", "POST"])
+    }
+
+    @Test("A course removed before its add went is removed on the server, never hidden, and its add is dropped unsent")
+    func removalOfAnUnsentAdd() async {
+        let backend = Backend()
+        backend.answer(503)
+        let removal = Self.deleteURL(backend, "GE1010001", kind: "remove")
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"deleted": 0, "applied": true}"#.utf8)), for: removal)
+        let cache = Self.makeCache(userAdded: [Self.art()])
+        let coordinator = Self.makeCoordinator(backend, cache: cache)
+        await coordinator.addCourse(semester: "1151", courseNo: "GE1010001").value
+
+        cache.courses.apply(.removeAddedByHand(courseNo: "GE1010001", semester: "1151"), for: testSignIn)
+        await coordinator.deleteCourse(semester: "1151", courseNo: "GE1010001", at: Self.hiddenAt)
+
+        #expect(SettingsAPIStub.requests(under: backend.baseURL).map(\.httpMethod) == ["POST", "DELETE"])
+        #expect(SettingsAPIStub.requests(for: removal).count == 1)
+        #expect(!(await coordinator.holdsUnsentEdits()))
+    }
+
+    @Test("A hide of a course the school lists here goes as kind=hide, and a hide of a copy merged from another device's row with no kind")
+    func hideOfASchoolCourseNamesItsKind() async {
+        let backend = Backend()
+        let hide = Self.deleteURL(backend, "CS1001301", kind: "hide")
+        let mergedHide = Self.deleteURL(backend, "EE2005301")
+        for url in [hide, mergedHide] {
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"deleted": 1}"#.utf8)), for: url)
+        }
+        let portal = [SDCourse(courseNo: "CS1001301", courseName: "Programming", moodleIdNumber: "1151CS1001301", semester: "1151")]
+        let coordinator = Self.makeCoordinator(backend, cache: Self.makeCache(
+            userAdded: [], portal: portal, hidden: ["1151:CS1001301", "1151:EE2005301"]
+        ))
+
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
+        await coordinator.deleteCourse(semester: "1151", courseNo: "EE2005301", at: Self.hiddenAt)
+
+        #expect(SettingsAPIStub.requests(for: hide).count == 1)
+        #expect(SettingsAPIStub.requests(for: mergedHide).count == 1)
+        #expect(!(await coordinator.holdsUnsentEdits()))
+    }
+
+    @Test("A course delete that comes due once course uploads are off is dropped unsent")
+    func deleteAfterAnOptOutIsDropped() async {
+        let backend = Backend()
+        let uploads = Switch()
+        uploads.isOn = false
+        let coordinator = Self.makeCoordinator(
+            backend, cache: Self.makeCache(userAdded: [], hidden: ["1151:CS1001301"]), uploadsCourses: { uploads.isOn }
+        )
+
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
+
+        #expect(SettingsAPIStub.requests(under: backend.baseURL).isEmpty)
+        #expect(!(await coordinator.holdsUnsentEdits()))
+    }
+
+    @Test("A course delete waits while protected data is locked, as whether the course is hidden here is read as it goes")
+    func deleteWaitsBehindTheLock() async {
+        let backend = Backend()
+        let hide = Self.deleteURL(backend, "CS1001301")
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"deleted": 1}"#.utf8)), for: hide)
+        let unlocked = Switch()
+        unlocked.isOn = false
+        let coordinator = Self.makeCoordinator(
+            backend, cache: Self.makeCache(userAdded: [], hidden: ["1151:CS1001301"]), isProtectedDataAvailable: { unlocked.isOn }
+        )
+
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
+
+        #expect(SettingsAPIStub.requests(under: backend.baseURL).isEmpty)
+        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:CS1001301"])
+
+        unlocked.isOn = true
+        await coordinator.syncTick()
+        #expect(SettingsAPIStub.requests(for: hide).count == 1)
+        #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
     }
 }

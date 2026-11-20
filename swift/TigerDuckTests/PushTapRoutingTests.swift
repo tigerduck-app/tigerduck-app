@@ -7,22 +7,22 @@ import Testing
 struct PushTapRoutingTests {
 
     @Test func aSubscriptionBulletinOpensTheBulletin() {
-        let link = AppState.bulletinDeepLink(from: ["kind": "bulletin", "bulletin_id": "4821"])
+        let link = DeepLink.bulletinLink(from: ["kind": "bulletin", "bulletin_id": "4821"])
         #expect(link == .bulletin(4821))
     }
 
     @Test func aCustomPushBulletinOpensTheBulletin() {
         // A Double-tagged NSNumber, which `as? Int` does not accept.
-        let link = AppState.bulletinDeepLink(
+        let link = DeepLink.bulletinLink(
             from: ["kind": "custom_push_bulletin", "bulletin_id": NSNumber(value: 77.0)]
         )
         #expect(link == .bulletin(77))
     }
 
     @Test func otherKindsAndBadIdsOpenNoBulletin() {
-        #expect(AppState.bulletinDeepLink(from: ["kind": "custom_push_popup", "bulletin_id": 1]) == nil)
-        #expect(AppState.bulletinDeepLink(from: ["kind": "bulletin"]) == nil)
-        #expect(AppState.bulletinDeepLink(from: ["kind": "bulletin", "bulletin_id": "abc"]) == nil)
+        #expect(DeepLink.bulletinLink(from: ["kind": "custom_push_popup", "bulletin_id": 1]) == nil)
+        #expect(DeepLink.bulletinLink(from: ["kind": "bulletin"]) == nil)
+        #expect(DeepLink.bulletinLink(from: ["kind": "bulletin", "bulletin_id": "abc"]) == nil)
     }
 
     private static let assignments = [
@@ -39,7 +39,7 @@ struct PushTapRoutingTests {
     ]
 
     @Test func anAssignmentReminderFindsItsAssignment() {
-        let found = AppState.remindedAssignment(
+        let found = DeepLink.remindedAssignment(
             from: ["kind": "assignment_reminder", "moodle_assignment_id": "902", "moodle_course_id": "0"],
             in: Self.assignments
         )
@@ -48,15 +48,15 @@ struct PushTapRoutingTests {
     }
 
     @Test func aReminderFindsNothingItDoesNotName() {
-        #expect(AppState.remindedAssignment(
+        #expect(DeepLink.remindedAssignment(
             from: ["kind": "assignment_reminder", "moodle_assignment_id": "903"],
             in: Self.assignments
         ) == nil)
-        #expect(AppState.remindedAssignment(
+        #expect(DeepLink.remindedAssignment(
             from: ["kind": "bulletin", "moodle_assignment_id": "901"],
             in: Self.assignments
         ) == nil)
-        #expect(AppState.remindedAssignment(from: ["kind": "assignment_reminder"], in: Self.assignments) == nil)
+        #expect(DeepLink.remindedAssignment(from: ["kind": "assignment_reminder"], in: Self.assignments) == nil)
     }
 }
 #endif

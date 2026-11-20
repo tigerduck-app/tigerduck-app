@@ -32,7 +32,7 @@
 
 ## 6. Retire released versions (after groups 4 and 5 ship)
 
-- [ ] 6.1 With the owner, set the minimum app version and date; answer sync requests from devices below it with 410; verify an old-version request gets 410 and iOS 2.0.2+ shows the update alert
+- [ ] 6.1 With the owner, set the minimum app version and date; answer sync requests from devices below it with 410 and `{"error": "app_version_retired"}`; verify an old-version request gets 410 and iOS 2.0.2+ shows the update alert
 
 ## Workflow follow-up
 

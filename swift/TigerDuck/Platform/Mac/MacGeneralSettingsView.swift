@@ -1,11 +1,9 @@
 #if os(macOS)
 import SwiftUI
 import AppKit
-import Defaults
 
 struct MacGeneralSettingsView: View {
-    @Environment(AppState.self) private var appState
-    @Default(.outlineRequiredCourses) private var outlineRequiredCourses
+    @Environment(AppEnvironment.self) private var app
 
     private static let languageTags: [String] = LanguageManager.supportedLocaleTags()
         .sorted {
@@ -14,10 +12,10 @@ struct MacGeneralSettingsView: View {
         }
 
     var body: some View {
-        @Bindable var state = appState
+        @Bindable var preferences = app.preferences
         Form {
             Section(String(localized: "desktop_settings_section_interface")) {
-                Picker(String(localized: "settings_language"), selection: $state.appLanguage) {
+                Picker(String(localized: "settings_language"), selection: $preferences.appLanguage) {
                     Text(String(localized: "settings_language_follow_system")).tag(LanguageManager.system)
                     ForEach(Self.languageTags, id: \.self) { tag in
                         Text(LanguageManager.displayName(for: tag)).tag(tag)
@@ -45,29 +43,18 @@ struct MacGeneralSettingsView: View {
                 .buttonStyle(.plain)
             }
 
-            Section(String(localized: "settings_section_display")) {
-                Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $state.showAbsoluteAssignmentTime)
-                Toggle(
-                    String(localized: "settings_show_classroom_on_class_table"),
-                    isOn: $state.showClassroomInClassTable
-                )
-                Toggle(String(localized: "settings_outline_required_courses"), isOn: $outlineRequiredCourses)
-                Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $state.alwaysShowAllPeriods)
+            Section(String(localized: PageSettings.home.titleKey)) {
+                HomeDisplayToggles(preferences: preferences)
             }
 
-            Section(String(localized: "settings_section_abbreviation")) {
-                Toggle(String(localized: "settings_use_english_course_abbreviation"), isOn: $state.useEnglishCourseAbbreviation)
-                Toggle(String(localized: "settings_use_english_classroom_abbreviation"), isOn: $state.useEnglishClassroomAbbreviation)
-                Picker(String(localized: "settings_classroom_mandarin_display"), selection: $state.classroomMandarinDisplay) {
-                    Text(String(localized: "settings_classroom_mandarin_display_original")).tag("original")
-                    Text(String(localized: "settings_classroom_mandarin_display_pinyin")).tag("pinyin")
-                    Text(String(localized: "settings_classroom_mandarin_display_translated")).tag("translated")
-                }
-                .pickerStyle(.menu)
+            Section(String(localized: PageSettings.classTable.titleKey)) {
+                ClassTableDisplayToggles(preferences: preferences)
             }
+
+            CourseAbbreviationSection(preferences: preferences)
 
             Section(String(localized: "desktop_settings_section_links")) {
-                Picker(String(localized: "desktop_settings_moodle_open_in"), selection: $state.macMoodleOpenTarget) {
+                Picker(String(localized: "desktop_settings_moodle_open_in"), selection: $preferences.moodleOpenTarget) {
                     Text(String(localized: "desktop_settings_moodle_open_in_browser")).tag(MoodleOpenTarget.browser)
                     Text(String(localized: "desktop_settings_moodle_open_in_app")).tag(MoodleOpenTarget.app)
                 }

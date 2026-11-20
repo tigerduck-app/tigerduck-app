@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 struct BuildingDirectoryTests {
@@ -45,7 +46,7 @@ struct BuildingDirectoryTests {
 
 @MainActor
 struct ClassStopTests {
-    private static let wednesday = AppConstants.taipeiCalendar.date(
+    private static let wednesday = TaipeiTime.calendar.date(
         from: DateComponents(year: 2026, month: 10, day: 14, hour: 9)
     ) ?? .distantPast
 

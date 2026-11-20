@@ -2,7 +2,7 @@ import SwiftUI
 
 struct AssignmentReminderSettingsView: View {
     @Bindable var store: LiveActivityPreferencesStore
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
         Form {
@@ -22,10 +22,10 @@ struct AssignmentReminderSettingsView: View {
             }
             .disabled(!store.isAssignmentReminderEnabled)
         }
-        .navigationTitle(String(localized: "live_activity_settings_assignment_notification_header"))
+        .navigationTitle(SettingsRow.assignmentReminders.label)
         .task {
-            appState.reconcileNotificationSettings()
-            await appState.requestNotificationAuthorization()
+            app.notificationSettings.reconcile()
+            await app.liveActivity.requestNotificationAuthorization()
         }
     }
 

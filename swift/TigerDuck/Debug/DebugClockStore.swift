@@ -11,7 +11,7 @@ struct DebugClockStore {
     private let defaults: UserDefaults
 
     init() {
-        self.defaults = UserDefaults(suiteName: Self.suiteName) ?? .standard
+        self.defaults = AppUserDefaults.suite(Self.suiteName) ?? .standard
     }
 
     func load() -> ClockOverride? {

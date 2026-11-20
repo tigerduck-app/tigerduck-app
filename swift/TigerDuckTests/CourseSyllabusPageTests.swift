@@ -46,24 +46,12 @@ struct CourseSyllabusPageTests {
 
             #expect(accessibilityElement(labeled: teaching, in: root) != nil)
             try await Task.sleep(for: .milliseconds(400))
-            Self.save(window, as: "course-syllabus-\(style == .dark ? "dark" : "light")")
+            window.saveSnapshot(as: "course-syllabus-\(style == .dark ? "dark" : "light")")
         }
     }
 
     private static func spoken(_ parts: [(String, Double)]) -> String {
         parts.map { "\($0.0) \(($0.1 / 100).formatted(.percent))" }.formatted()
-    }
-
-    /// Keeps a picture of the page for a person to look at, when the checkout has a `.out` folder;
-    /// CI's has none.
-    private static func save(_ window: UIWindow, as name: String, file: String = #filePath) {
-        let out = URL(filePath: file).deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().appending(path: ".out")
-        guard FileManager.default.fileExists(atPath: out.path(percentEncoded: false)) else { return }
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }
-        try? image.pngData()?.write(to: out.appending(path: "\(name).png"))
     }
 }
 #endif

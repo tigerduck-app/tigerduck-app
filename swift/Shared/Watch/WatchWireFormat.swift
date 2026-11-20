@@ -13,6 +13,7 @@ nonisolated public enum WatchWireFormat {
         public static let visualPreset = "visualPreset"
         public static let clockOverride = "clockOverride"
         public static let quietDays = "quietDays"
+        public static let accentGradient = "accentGradient"
     }
 
     public enum MessageKind {

@@ -2,6 +2,7 @@
 import Defaults
 import SwiftUI
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -59,6 +60,44 @@ struct FlipToLibraryGateTests {
         #expect(!FlipToLibraryGate.offerWaits(sheetPresented: false, notifySheetPending: false))
         #expect(FlipToLibraryGate.offerWaits(sheetPresented: true, notifySheetPending: false))
         #expect(FlipToLibraryGate.offerWaits(sheetPresented: false, notifySheetPending: true))
+    }
+
+    @Test("the flip opens the library weekdays from 08:10 to before 23:30, Taipei time")
+    func weekdayHours() {
+        // 2026-11-02 is a Monday.
+        #expect(FlipToLibraryGate.opensLibrary(at: taipei(day: 2, 8, 10)))
+        #expect(!FlipToLibraryGate.opensLibrary(at: taipei(day: 2, 8, 9, 59)))
+        #expect(!FlipToLibraryGate.opensLibrary(at: taipei(day: 2, 23, 30)))
+        #expect(FlipToLibraryGate.opensLibrary(at: taipei(day: 2, 23, 29, 59)))
+    }
+
+    @Test("the flip opens the library weekends from 08:30 to before 21:30, Taipei time", arguments: [7, 8])
+    func weekendHours(day: Int) {
+        // 2026-11-07 is a Saturday, 2026-11-08 a Sunday.
+        #expect(FlipToLibraryGate.opensLibrary(at: taipei(day: day, 8, 30)))
+        #expect(!FlipToLibraryGate.opensLibrary(at: taipei(day: day, 8, 29, 59)))
+        #expect(!FlipToLibraryGate.opensLibrary(at: taipei(day: day, 21, 30)))
+        #expect(FlipToLibraryGate.opensLibrary(at: taipei(day: day, 21, 29, 59)))
+    }
+
+    @Test("the hours are Taipei's whatever the device's time zone")
+    func hoursFollowTaipeiTime() throws {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = try #require(TimeZone(identifier: "UTC"))
+        func atUTC(day: Int, _ hour: Int) throws -> Date {
+            try #require(utc.date(from: DateComponents(year: 2026, month: 11, day: day, hour: hour)))
+        }
+        // Monday 01:00 UTC is Monday 09:00 in Taipei.
+        #expect(FlipToLibraryGate.opensLibrary(at: try atUTC(day: 2, 1)))
+        // Monday 16:00 UTC is Tuesday 00:00 in Taipei.
+        #expect(!FlipToLibraryGate.opensLibrary(at: try atUTC(day: 2, 16)))
+        // Saturday 14:00 UTC is Saturday 22:00 in Taipei, past the weekend hours.
+        #expect(!FlipToLibraryGate.opensLibrary(at: try atUTC(day: 7, 14)))
+    }
+
+    private func taipei(day: Int, _ hour: Int, _ minute: Int, _ second: Int = 0) -> Date {
+        let parts = DateComponents(year: 2026, month: 11, day: day, hour: hour, minute: minute, second: second)
+        return TaipeiTime.calendar.date(from: parts) ?? .distantPast
     }
 }
 #endif

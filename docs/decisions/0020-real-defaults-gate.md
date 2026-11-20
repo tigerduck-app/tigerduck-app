@@ -15,11 +15,11 @@ under test reads and writes directly, not through a seam:
 - `cloudSyncEnabled`, which every registration of `PushRegistrationService` sends.
 - `DefaultTabsPinMigration`, and `UpdateNotifyCoordinator.checkManually()`, which stamps
   `lastUpdateCheckAt` and, for an unreadable store version, `lastReportedUnparseableStoreVersion`.
-- `AppState.forgetSyncProgress()`, which sign-out runs on `pendingConflictCategories`,
+- `SignOutCheck.forgetSyncProgress()`, which sign-out runs on `pendingConflictCategories`,
   `assignmentMarksSyncedOnce`, `lastSeenCoursesResetAt` and `categoriesSyncedOnce`;
-  `AppState.recordFullSync`, which reads the four category switches and writes the last two;
+  `FullSyncRunner.recordFullSync`, which reads the four category switches and writes the last two;
   `SyncedAccountSeedMigration`, which writes `categoriesSyncedOnce` or runs `forgetSyncProgress()`;
-  `AppState.markForReenableCheck`, which reads `categoriesSyncedOnce` and
+  `SyncConflicts.markForReenableCheck`, which reads `categoriesSyncedOnce` and
   writes the pending categories; and `CloudSyncCoordinator`'s default holds on marks and course
   settings, which read the pending categories and the Assignments and Courses switches.
 - `SSOLoginService.storedPasswordRefusals`, which holds a school sign-in or a Moodle token harvest

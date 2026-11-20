@@ -104,7 +104,7 @@ struct MailPageSessionTests {
     @Test func anAuthenticationRejectionFromInsideAUseIsReported() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         var failures = 0
-        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { failures += 1 })
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { _ in failures += 1 })
         await #expect(throws: MailClientError.self) {
             try await session.use { _ in throw MailClientError.authenticationFailed }
         }
@@ -114,11 +114,41 @@ struct MailPageSessionTests {
     @Test func anOrdinaryFailureIsNotReportedAsAnAuthenticationRejection() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         var failures = 0
-        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { failures += 1 })
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { _ in failures += 1 })
         await #expect(throws: MailClientError.self) {
             try await session.use { _ in throw MailClientError.serverBusy }
         }
         #expect(failures == 0)
+    }
+
+    private struct CaughtRejection: MailCaughtRejection {
+        var rejectedPassword: Bool
+    }
+
+    @Test func aRejectionTheBodyCaughtIsReportedLikeAThrownOne() async throws {
+        let fake = FakeMailClient(folders: ["INBOX": []])
+        var failures = 0
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { _ in failures += 1 })
+        _ = try await session.use { _ in CaughtRejection(rejectedPassword: false) }
+        #expect(failures == 0)
+        _ = try await session.use { _ in CaughtRejection(rejectedPassword: true) }
+        #expect(failures == 1)
+    }
+
+    @Test func workForASignInThatEndedOpensNoConnection() async throws {
+        let account = AccountSession()
+        var opens = 0
+        let session = MailPageSession(idleClose: .seconds(30), open: {
+            opens += 1
+            return FakeMailClient(folders: [:])
+        }, account: account)
+        let ended = await account.startingSignIn
+        account.endSignIn()
+
+        await #expect(throws: CancellationError.self) { try await session.use(for: ended) { _ in } }
+        #expect(opens == 0)
+        _ = try await session.use(for: await account.startingSignIn) { _ in }
+        #expect(opens == 1)
     }
 
     private final class Opener {
@@ -142,9 +172,12 @@ struct MailPageSessionTests {
     @Test func aSignOutClosesTheHeldConnectionAtOnce() async throws {
         let center = NotificationCenter()
         let opener = Opener(first: FakeMailClient(folders: ["INBOX": []]), second: FakeMailClient(folders: ["INBOX": []]))
-        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() }, signOutEvents: center)
+        let account = AccountSession()
+        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() }, signOutEvents: center,
+                                      account: account)
         _ = try await session.use { _ in }
 
+        account.endSignIn()
         center.post(name: MailAccountManager.didSignOut, object: nil)
         await opener.first.waitForArrival("logout")
         #expect(await opener.first.calls.contains("logout"))
@@ -163,7 +196,8 @@ struct MailPageSessionTests {
             cache: SchoolMailTestDoubles.temporaryCache(),
             signOutEvents: center
         )
-        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, signOutEvents: center)
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, signOutEvents: center,
+                                      account: manager.session)
         _ = try await session.use { _ in }
         manager.logout()
         await fake.waitForArrival("logout")
@@ -173,11 +207,14 @@ struct MailPageSessionTests {
     @Test func anOpenOvertakenByASignOutIsClosedNotAdopted() async throws {
         let center = NotificationCenter()
         let opener = Opener(first: FakeMailClient(folders: ["INBOX": []]), second: FakeMailClient(folders: ["INBOX": []]))
-        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() }, signOutEvents: center)
+        let account = AccountSession()
+        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() }, signOutEvents: center,
+                                      account: account)
         await opener.first.hold("login")
         let use = Task { try await session.use { $0 } }
         await opener.first.waitForArrival("login")
 
+        account.endSignIn()
         center.post(name: MailAccountManager.didSignOut, object: nil)
         await opener.first.release("login")
 
@@ -185,6 +222,25 @@ struct MailPageSessionTests {
         #expect(await opener.first.calls.contains("logout"))
         let next = try await session.use { $0 }
         #expect(next === opener.second)
+    }
+
+    @Test("an open a sign-in of the same account overtook leaves nothing behind, so the next use opens again")
+    func anOpenASignInOvertookLeavesNothingBehind() async throws {
+        let opener = Opener(first: FakeMailClient(folders: ["INBOX": []]), second: FakeMailClient(folders: ["INBOX": []]))
+        let account = AccountSession()
+        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() },
+                                      signOutEvents: NotificationCenter(), account: account)
+        await opener.first.hold("login")
+        let use = Task { try await session.use { $0 } }
+        await opener.first.waitForArrival("login")
+
+        account.endSignIn()
+        await opener.first.release("login")
+
+        await #expect(throws: CancellationError.self) { _ = try await use.value }
+        let next = try await session.use { $0 }
+        #expect(next === opener.second)
+        #expect(opener.count == 2)
     }
 
     @Test func aSignOutElsewhereLeavesTheSessionAlone() async throws {

@@ -102,14 +102,14 @@ struct EndpointOverrideTests {
         #expect(!PushServerConfig.isPrivateOrLoopbackHost("::ffff:8.8.8.8"))
     }
 
-    @Test("one server is the same backend in any host or scheme case and with a trailing slash")
+    @Test("one server is the same backend in any host or scheme case, with a trailing slash, and under /v3 or /v4")
     func sameBackendIgnoresSpelling() {
         let url = { URL(string: $0)! }
         let inUse = url("https://api.tigerduck.app/v3")
         #expect(AuthTokenManager.isSameBackend(inUse, url("https://api.tigerduck.app/v3/")))
         #expect(AuthTokenManager.isSameBackend(inUse, url("HTTPS://API.TigerDuck.app/v3")))
         #expect(AuthTokenManager.isSameBackend(url("http://192.168.1.5:40000/v3"), url("http://192.168.1.5:40000/v3//")))
-        #expect(!AuthTokenManager.isSameBackend(inUse, url("https://api.tigerduck.app/v4")))
+        #expect(AuthTokenManager.isSameBackend(inUse, url("https://api.tigerduck.app/v4")))
         #expect(!AuthTokenManager.isSameBackend(inUse, url("https://api.tigerduck.app/V3")))
         #expect(!AuthTokenManager.isSameBackend(inUse, url("https://api.tigerduck.app:8443/v3")))
         #expect(!AuthTokenManager.isSameBackend(inUse, url("http://api.tigerduck.app/v3")))
@@ -127,5 +127,26 @@ struct EndpointOverrideTests {
         #expect(health("https://example.com") == "https://example.com/health")
         #expect(health("http://192.168.1.5:40000/v3") == "http://192.168.1.5:40000/health")
         #expect(health("https://example.com/v3?x=1#y") == "https://example.com/health")
+    }
+
+    @Test("a server is a TigerDuck backend only when /version names the /v4 base path the app calls")
+    func probeNeedsTheV4BasePath() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let session = URLSession(configuration: config)
+        let versions: [(String, EndpointHealthCheck.Result)] = [
+            (#"{"version":"3.10.1","api_base_path":"/v3"}"#, .notTigerDuck),
+            (#"{"version":"4.0.0","api_base_path":"/v3","api_v4_base_path":"/v4"}"#, .ok),
+        ]
+        for (version, result) in versions {
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let health = try #require(EndpointHealthCheck.healthURL(for: base))
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Data(#"{"status":"ok"}"#.utf8)), for: health)
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Data(version.utf8)), for: try #require(EndpointHealthCheck.versionURL(for: base))
+            )
+
+            #expect(await EndpointHealthCheck.probe(base, session: session) == result)
+        }
     }
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import TigerDuckCore
 
 struct GPATrendChart: View {
     let points: [GPATrendPoint]
@@ -21,10 +22,18 @@ struct GPATrendChart: View {
     private let ringFill = Color.backgroundPrimary
     #endif
 
+    private var series: GPATrendSeries { GPATrendSeries(points: points, scope: scope) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
             chart
-            summaryRow(for: resolvedSelection)
+            GPATrendSummary(
+                point: resolvedSelection, isPicked: selectedTerm != nil, series: series,
+                primaryText: primaryText, secondaryText: secondaryText
+            )
+            .contentTransition(.numericText())
+            .animation(Self.summaryAnimation(reduceMotion: reduceMotion), value: selectedTerm)
+            .animation(Self.summaryAnimation(reduceMotion: reduceMotion), value: scope)
         }
         .onChange(of: points.map(\.term)) { _, newTerms in
             if let term = selectedTerm, !newTerms.contains(term) {
@@ -33,28 +42,9 @@ struct GPATrendChart: View {
         }
     }
 
-    private var publishedRuns: [[GPATrendPoint]] {
-        var runs: [[GPATrendPoint]] = [[]]
-        for point in points {
-            if point.isProvisional {
-                if !runs[runs.count - 1].isEmpty { runs.append([]) }
-            } else {
-                runs[runs.count - 1].append(point)
-            }
-        }
-        return runs.filter { !$0.isEmpty }
-    }
-
-    private var provisionalSegments: [[GPATrendPoint]] {
-        points.indices.compactMap { index in
-            guard points[index].isProvisional else { return nil }
-            return index > 0 ? [points[index - 1], points[index]] : [points[index]]
-        }
-    }
-
     private var chart: some View {
         Chart {
-            ForEach(Array(publishedRuns.enumerated()), id: \.offset) { run, segment in
+            ForEach(Array(series.publishedRuns.enumerated()), id: \.offset) { run, segment in
                 ForEach(segment) { point in
                     if let value = gpa(for: point) {
                         LineMark(x: xValue(point.term), y: yValue(value), series: .value("Series", "published-\(run)"))
@@ -65,7 +55,7 @@ struct GPATrendChart: View {
                 }
             }
 
-            ForEach(Array(provisionalSegments.enumerated()), id: \.offset) { run, segment in
+            ForEach(Array(series.provisionalSegments.enumerated()), id: \.offset) { run, segment in
                 ForEach(segment) { point in
                     if let value = gpa(for: point) {
                         LineMark(x: xValue(point.term), y: yValue(value), series: .value("Series", "provisional-\(run)"))
@@ -97,7 +87,7 @@ struct GPATrendChart: View {
                     .zIndex(10)
             }
         }
-        .chartYScale(domain: yDomain)
+        .chartYScale(domain: series.yDomain)
         .chartYAxis {
             AxisMarks(position: .leading)
         }
@@ -154,50 +144,8 @@ struct GPATrendChart: View {
         }
     }
 
-    @ViewBuilder
-    private func summaryRow(for point: GPATrendPoint?) -> some View {
-        let source = point ?? points.last
-        HStack(spacing: TigerDuckTheme.Spacing.lg) {
-            summaryCell(
-                title: gpaTitle(for: source),
-                value: formatGPA(source.flatMap(gpa))
-            )
-            summaryCell(
-                title: String(localized: "score_rank_class"),
-                value: formatRank(source.map(rank)?.classRank)
-            )
-            summaryCell(
-                title: String(localized: "score_ranking_dept_label"),
-                value: formatRank(source.map(rank)?.deptRank)
-            )
-            Spacer()
-        }
-        .contentTransition(.numericText())
-        .animation(Self.summaryAnimation(reduceMotion: reduceMotion), value: selectedTerm)
-        .animation(Self.summaryAnimation(reduceMotion: reduceMotion), value: scope)
-    }
-
     static func summaryAnimation(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .smoothSpring
-    }
-
-    private func gpaTitle(for point: GPATrendPoint?) -> String {
-        let base = selectedTerm != nil
-            ? String(format: String(localized: "score_gpa_term_label"), displayTerm(point?.term ?? ""))
-            : String(localized: "score_gpa_latest")
-        guard point?.isProvisional == true else { return base }
-        return base + " · " + String(localized: "score_gpa_provisional")
-    }
-
-    private func summaryCell(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(TigerDuckTheme.Typography.caption2)
-                .foregroundStyle(secondaryText)
-            Text(value)
-                .font(TigerDuckTheme.Typography.headline.monospacedDigit())
-                .foregroundStyle(primaryText)
-        }
     }
 
     /// Map a tap/drag location to the closest term by plot-area
@@ -248,44 +196,6 @@ struct GPATrendChart: View {
     }
 
     private func gpa(for point: GPATrendPoint) -> Double? {
-        rank(point).gpa
-    }
-
-    private func rank(_ point: GPATrendPoint) -> RankingStats {
-        switch scope {
-        case .semester:   return point.semester
-        case .cumulative: return point.cumulative
-        }
-    }
-
-    private var yDomain: ClosedRange<Double> {
-        let values = points.compactMap { gpa(for: $0) }
-        guard let minV = values.min(), let maxV = values.max() else {
-            return 0...4.3
-        }
-        let lower = max(0, minV - 0.3)
-        let upper = min(4.3, maxV + 0.3)
-        return lower...upper
-    }
-
-    private func formatGPA(_ value: Double?) -> String {
-        guard let value else { return "—" }
-        return String(format: "%.2f", value)
-    }
-
-    private func formatRank(_ value: Int?) -> String {
-        value.map(String.init) ?? "—"
-    }
-
-    private func displayTerm(_ code: String) -> String {
-        guard code.count == 4 else { return code }
-        let year = String(code.prefix(3))
-        let sem = String(code.suffix(1))
-        let label = sem == "1"
-            ? String(localized: "score_semester_first_short")
-            : sem == "2"
-                ? String(localized: "score_semester_second_short")
-                : sem
-        return "\(year)-\(label)"
+        series.gpa(for: point)
     }
 }

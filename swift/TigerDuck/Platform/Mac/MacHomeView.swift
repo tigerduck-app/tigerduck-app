@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct MacHomeView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var cacheRevision: Int = 0
 
     var body: some View {
@@ -12,18 +12,10 @@ struct MacHomeView: View {
             content
                 .macReadableContent(maxWidth: MacContentWidth.standard)
         }
-        .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
+        .onChange(of: AppDataRevision.current) {
             cacheRevision &+= 1
         }
-        .alert(
-            String(localized: "sync_conflict_title"),
-            isPresented: AppState.syncConflictAlertIsPresented(Bindable(appState).syncConflicts)
-        ) {
-            Button(String(localized: "sync_conflict_use_server")) { appState.resolveSyncConflicts(keepLocal: false) }
-            Button(String(localized: "sync_conflict_use_local")) { appState.resolveSyncConflicts(keepLocal: true) }
-        } message: {
-            Text(appState.syncConflictAlertMessage)
-        }
+        .syncConflictAlert(app)
     }
 
     private var content: some View {

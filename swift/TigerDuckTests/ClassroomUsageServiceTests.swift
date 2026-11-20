@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -8,7 +9,7 @@ struct ClassroomUsageServiceTests {
 
     @MainActor
     private final class Account {
-        var generation = 1
+        let session = AccountSession()
         var signIns = 0
         var signInAttempts = 0
         var now = Date()
@@ -28,10 +29,9 @@ struct ClassroomUsageServiceTests {
             service = ClassroomUsageService(
                 session: URLSession(configuration: config),
                 queryURL: url,
-                sessionGeneration: { account.generation },
-                signIn: { _, _, generation in
+                signIn: { _, credentials in
                     account.signInAttempts += 1
-                    guard generation == account.generation else { throw CancellationError() }
+                    guard credentials.signIn.isCurrent else { throw CancellationError() }
                     account.signIns += 1
                     return true
                 },
@@ -70,19 +70,19 @@ struct ClassroomUsageServiceTests {
             return fields
         }
 
-        func usage(on day: Date, isToday: Bool = false, force: Bool = false, generation: Int? = nil) async throws -> CampusUsage {
+        func usage(on day: Date, isToday: Bool = false, force: Bool = false, signIn: SignIn? = nil) async throws -> CampusUsage {
             try await service.usage(
                 on: day, isToday: isToday, force: force,
                 credentials: .init(
                     studentId: "B00000000", password: "not-a-password",
-                    generation: generation ?? account.generation
+                    signIn: signIn ?? account.session.signIns.currentSignIn
                 )
             ).usage
         }
     }
 
     private static func day(_ month: Int, _ day: Int) -> Date {
-        AppConstants.taipeiCalendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: 9)) ?? .distantPast
+        TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: 9)) ?? .distantPast
     }
 
     @Test("the site's last answer is kept for every screen until a new school session")
@@ -102,7 +102,7 @@ struct ClassroomUsageServiceTests {
         _ = try await harness.usage(on: Self.day(10, 14))
         #expect(harness.service.siteStatus == .failed)
 
-        harness.account.generation += 1
+        harness.account.session.endSignIn()
         #expect(harness.service.keptUsage(on: Self.day(10, 14)) == nil)
         #expect(harness.service.siteStatus == .unknown)
     }
@@ -194,7 +194,7 @@ struct ClassroomUsageServiceTests {
 
         let read = Task { try await harness.usage(on: Self.day(10, 14)) }
         try await waitUntil { harness.requests.count == 3 }
-        harness.account.generation += 1
+        harness.account.session.endSignIn()
         gate.open()
 
         await #expect(throws: CancellationError.self) { try await read.value }
@@ -257,7 +257,7 @@ struct ClassroomUsageServiceTests {
         harness.serveFirstDay()
         _ = try await harness.usage(on: Self.day(10, 14))
 
-        harness.account.generation += 1
+        harness.account.session.endSignIn()
 
         #expect(harness.service.keptUsage(on: Self.day(10, 14))?.usage == nil)
         harness.serveFirstDay()
@@ -289,6 +289,7 @@ struct ClassroomUsageServiceTests {
 
         let read = Task { try await harness.usage(on: Self.day(10, 15)) }
         try await waitUntil { harness.requests.count == 5 }
+        harness.account.session.endSignIn()
         harness.service.forget()
         gate.open()
 
@@ -315,6 +316,7 @@ struct ClassroomUsageServiceTests {
 
         let read = Task { try await harness.usage(on: Self.day(10, 15)) }
         try await waitUntil { harness.requests.count == 7 }
+        harness.account.session.endSignIn()
         harness.service.forget()
         gate.open()
 
@@ -328,14 +330,14 @@ struct ClassroomUsageServiceTests {
         let gate = SettingsAPIStub.ReplyGate()
         harness.serve(Pages.signInPage, gate: gate)
         harness.serve(Pages.signInPage)
-        let departed = harness.account.generation
+        let departed = harness.account.session.signIns.currentSignIn
 
-        let first = Task { try await harness.usage(on: Self.day(10, 14), generation: departed) }
+        let first = Task { try await harness.usage(on: Self.day(10, 14), signIn: departed) }
         try await waitUntil { harness.requests.count == 1 }
-        let second = Task { try await harness.usage(on: Self.day(10, 15), generation: departed) }
+        let second = Task { try await harness.usage(on: Self.day(10, 15), signIn: departed) }
         for _ in 0..<5 { await Task.yield() }
         harness.service.forget()
-        harness.account.generation += 1
+        harness.account.session.endSignIn()
         gate.open()
 
         await #expect(throws: (any Error).self) { try await first.value }
@@ -425,6 +427,7 @@ struct ClassroomUsageServiceTests {
 
         let read = Task { try await harness.usage(on: Self.day(10, 14)) }
         try await waitUntil { harness.requests.count == 3 }
+        harness.account.session.endSignIn()
         harness.service.forget()
         gate.open()
 

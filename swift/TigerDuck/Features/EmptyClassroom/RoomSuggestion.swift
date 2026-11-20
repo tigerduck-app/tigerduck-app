@@ -11,11 +11,10 @@ nonisolated struct ClassStop: Equatable, Sendable {
 extension ClassStop {
     static func stops(from slots: [CourseTimeSlot], rawRoom: (String) -> String) -> [ClassStop] {
         slots.flatMap { slot -> [ClassStop] in
-            let weekday = slot.date.scheduleWeekday
             var runs: [(moved: String?, key: String, positions: [Int])] = []
             for (position, period) in slot.periods.enumerated() {
                 let moved = slot.changes.first { $0.kind == .room && $0.covers(period) }?.room
-                let key = moved ?? slot.course.classroom(weekday: weekday, period: period)
+                let key = moved ?? slot.timetableRoom(period: period)
                 if let last = runs.last, last.key == key {
                     runs[runs.count - 1].positions.append(position)
                 } else {
@@ -35,7 +34,7 @@ extension ClassStop {
                 } ?? originals.compactMap { EmptyClassroomSchedule.periodIDs.firstIndex(of: $0) }
                 return stop(
                     slot,
-                    shown: run.moved ?? slot.course.classroom(weekday: weekday, periods: originals),
+                    shown: run.moved ?? slot.timetableRoom(of: originals),
                     periods: periods,
                     rawRoom: rawRoom
                 )
@@ -49,7 +48,7 @@ extension ClassStop {
         guard let first = periods.min(), let last = periods.max() else { return nil }
         let room = CourseBlockRoom.split(shown).first ?? shown
         return ClassStop(
-            course: slot.course.displayName,
+            course: slot.title,
             room: room,
             place: RoomPlace(room: rawRoom(room)),
             firstPeriod: first,

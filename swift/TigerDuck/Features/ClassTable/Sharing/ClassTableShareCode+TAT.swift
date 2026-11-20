@@ -53,7 +53,7 @@ nonisolated extension ClassTableShareCode {
     /// and periods. A course code TAT cannot hold, any but nine characters long, is left out;
     /// nil when no course is left or the student ID is longer than TAT's nine characters.
     @MainActor
-    static func encodeTAT(studentId: String, semester: String, courses: [SDCourse]) -> String? {
+    static func encodeTAT(studentId: String, semester: String, courses: [CourseStore.Course]) -> String? {
         let id = studentId.uppercased()
         let term = semester.uppercased()
         guard id.utf8.count <= tatStudentIdLength, isUpperAlphanumerics(id[...]), isSemester(term[...]) else {
@@ -62,7 +62,7 @@ nonisolated extension ClassTableShareCode {
         var written = Set<String>()
         let chunks = courses.compactMap { course -> String? in
             let courseNo = course.courseNo.uppercased()
-            guard courseNo.utf8.count == tatCourseNoLength, CourseSelectionService.isCourseNo(courseNo[...]),
+            guard courseNo.utf8.count == tatCourseNoLength, SchoolTerms.isCourseNo(courseNo[...]),
                   written.insert(courseNo).inserted else { return nil }
             return courseNo + course.schedule.keys.sorted().map { weekday in
                 tatDay(weekday, periods: course.schedule[weekday] ?? [])

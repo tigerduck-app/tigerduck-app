@@ -5,10 +5,10 @@ struct BulletinCardView: View {
     let taxonomy: BulletinTaxonomyStore
     var isRead: Bool = true
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
-        let policy = appState.visualStylePolicy
+        let policy = app.preferences.visualStylePolicy
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
             topRow
             titleRow

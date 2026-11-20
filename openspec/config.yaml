@@ -5,8 +5,6 @@ context: |
   Write every artifact in English.
   Specs may cite code paths. Code comments must never cite a change name, an openspec/ path or a
   spec section, because archiving moves the files.
-  Use a change only for work that spans sessions, changes the architecture, or needs both
-  maintainers to agree. Smaller work goes through plan mode or /feature-dev.
 
 rules:
   proposal:

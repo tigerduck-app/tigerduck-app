@@ -1,11 +1,12 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @Suite("Calendar event all-day")
 struct CalendarEventAllDayTests {
 
-    private static let midnight = AppConstants.taipeiCalendar.date(
+    private static let midnight = TaipeiTime.calendar.date(
         from: DateComponents(year: 2026, month: 9, day: 14)
     )!
     private static let afternoon = midnight.addingTimeInterval(14 * 3600)

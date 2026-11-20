@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct SuggestionSection: View {
     let suggestion: RoomSuggestion
@@ -52,7 +53,7 @@ struct SuggestionSection: View {
     private func freeSpan(_ span: ClosedRange<Int>) -> some View {
         let start = EmptyClassroomSchedule.timeRange(of: span.lowerBound)?.start ?? ""
         let end = EmptyClassroomSchedule.timeRange(of: span.upperBound)?.end ?? ""
-        return Text("\(start)–\(end)")
+        return Text(TimeRange.text(start, end))
             .font(.headline)
             .monospacedDigit()
             .foregroundStyle(Color.green)

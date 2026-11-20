@@ -9,10 +9,11 @@ struct PushRestartTests {
     ) -> PushCoordinator {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
+        // A sign-out unregisters with the departing session's header, which names no sign-in.
         let client = PushAPIClient(
             baseURLProvider: { baseURL },
             session: URLSession(configuration: config),
-            authHeaderProvider: { authHeader }
+            auth: .unbound { authHeader }
         )
         return PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
     }

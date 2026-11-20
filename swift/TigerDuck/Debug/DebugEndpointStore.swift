@@ -95,7 +95,7 @@ nonisolated enum DebugEndpointStore {
 nonisolated final class KeychainReadCache: Sendable {
     private struct State {
         var value: String??
-        var generation = 0
+        var revision = 0
     }
 
     private let load: @Sendable () throws -> String?
@@ -115,12 +115,12 @@ nonisolated final class KeychainReadCache: Sendable {
     }
 
     func value() -> String? {
-        let (cached, generation) = state.withLock { ($0.value, $0.generation) }
+        let (cached, revision) = state.withLock { ($0.value, $0.revision) }
         if let cached { return cached }
         let loaded: String?
         do { loaded = try load() } catch { return nil }
         state.withLock { state in
-            if state.generation == generation { state.value = .some(loaded) }
+            if state.revision == revision { state.value = .some(loaded) }
         }
         return loaded
     }
@@ -128,7 +128,7 @@ nonisolated final class KeychainReadCache: Sendable {
     func forget() {
         state.withLock { state in
             state.value = nil
-            state.generation &+= 1
+            state.revision &+= 1
         }
     }
 }

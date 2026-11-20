@@ -75,12 +75,12 @@ struct ClassTableShareLinkTests {
     func heldUntilItMayOpen() {
         let held = HeldShareLink()
 
-        held.arrived("A", loginGeneration: 3)
+        held.arrived("A", signIn: testSignIn)
 
-        #expect(held.take(mayOpen: false, loginGeneration: 3) == nil)
+        #expect(held.take(mayOpen: false) == nil)
         #expect(held.link?.text == "A", "still held")
-        #expect(held.take(mayOpen: true, loginGeneration: 3) == "A")
-        #expect(held.take(mayOpen: true, loginGeneration: 3) == nil)
+        #expect(held.take(mayOpen: true) == "A")
+        #expect(held.take(mayOpen: true) == nil)
         #expect(held.link == nil)
     }
 
@@ -88,21 +88,23 @@ struct ClassTableShareLinkTests {
     func newerLinkReplaces() {
         let held = HeldShareLink()
 
-        held.arrived("A", loginGeneration: 3)
-        held.arrived("B", loginGeneration: 3)
+        held.arrived("A", signIn: testSignIn)
+        held.arrived("B", signIn: testSignIn)
 
-        #expect(held.take(mayOpen: true, loginGeneration: 3) == "B")
-        #expect(held.take(mayOpen: true, loginGeneration: 3) == nil)
+        #expect(held.take(mayOpen: true) == "B")
+        #expect(held.take(mayOpen: true) == nil)
     }
 
     @Test("a sign-out drops a held link, so it does not open after the next sign-in")
     func signOutDrops() {
         let held = HeldShareLink()
-        held.arrived("A", loginGeneration: 3)
+        let account = TestSignIn()
+        held.arrived("A", signIn: account.signIn)
+        account.signOut()
 
-        #expect(held.take(mayOpen: false, loginGeneration: 4) == nil)
+        #expect(held.take(mayOpen: false) == nil)
 
         #expect(held.link == nil)
-        #expect(held.take(mayOpen: true, loginGeneration: 4) == nil)
+        #expect(held.take(mayOpen: true) == nil)
     }
 }

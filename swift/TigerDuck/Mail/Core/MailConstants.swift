@@ -1,0 +1,47 @@
+#if os(iOS)
+import Foundation
+
+nonisolated enum MailConstants {
+    static let host = "mail.ntust.edu.tw"
+    static let imapPort = 993
+    static let smtpPort = 465
+    static let addressDomain = "mail.ntust.edu.tw"
+    static let inbox = "INBOX"
+    static let webmailURL = URL(string: "https://mail.ntust.edu.tw")!
+
+    static let pagePollInterval: TimeInterval = 60
+    static let foregroundCheckThrottle: TimeInterval = 60
+    static let pageSize = 50
+    static let cachedPageRows = 200
+    static let bodyCacheLimitBytes = 20 * 1024 * 1024
+    static let openedAttachmentLifetime: TimeInterval = 24 * 60 * 60
+    static let maxEncodedMessageBytes = 50 * 1024 * 1024
+    static let maxInlineImageBytes = 5 * 1024 * 1024
+    static let maxLocalParseBytes = maxEncodedMessageBytes
+    static let notificationCollapseThreshold = 5
+    static let connectionIdleClose: TimeInterval = 30
+    static let sentCopyDedupeDelay: Duration = .seconds(3)
+    static let diagnosticsLimit = 10
+    static let emptyWindowWalkbackPages = 4
+    static let warmPageSize = 20
+    static let warmStartDelay: Duration = .milliseconds(500)
+    static let bodyPrefetchLimit = 5
+    static let indexBatchSize = 20
+    static let indexResyncInterval: TimeInterval = 15 * 60
+    static let indexRetryDelay: TimeInterval = 60
+    static let searchCatchUpInterval: Duration = .seconds(3)
+    static let searchTextPartBytes = 256 * 1024
+
+    static let backgroundTaskIdentifier = "org.ntust.app.TigerDuck.mailRefresh"
+    static let backgroundEarliestBegin: TimeInterval = 15 * 60
+    static let valetIdentifier = "org.ntust.app.TigerDuck.mail"
+    static let notificationThread = "schoolMail"
+    static let notificationKind = "school_mail"
+
+    static func address(forStudentID studentID: String) -> String {
+        let identifier = studentID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !identifier.contains("@") else { return identifier }
+        return "\(identifier)@\(MailServerConfig.effective.addressDomain)"
+    }
+}
+#endif

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 /// A time of day reads on a 24-hour clock in every locale, as the class times do: a 12-hour
@@ -7,7 +8,7 @@ import Testing
 /// (https://github.com/tigerduck-app/tigerduck-app/issues/724).
 struct TimeStringTests {
     private static func taipei(_ hour: Int, _ minute: Int) -> Date {
-        AppConstants.taipeiCalendar.date(
+        TaipeiTime.calendar.date(
             from: DateComponents(year: 2026, month: 10, day: 13, hour: hour, minute: minute)
         )!
     }
@@ -20,9 +21,9 @@ struct TimeStringTests {
         #expect(Self.taipei(0, 5).formatted(style) == "00:05")
     }
 
-    /// Arabic and Persian write digits of their own, which a time and a Moodle list's stamp keep
+    /// Bengali and Marathi write digits of their own, which a time and a Moodle list's stamp keep
     /// out (https://github.com/tigerduck-app/tigerduck-app/pull/757). The device's locale is the
-    /// test run's, so `-testLanguage ar -testRegion SA`, or `fa` and `IR`, reads one set to them.
+    /// test run's, so `-testLanguage bn -testRegion BD`, or `mr` and `IN`, reads one set to them.
     @Test("a locale with digits of its own still reads 20:03")
     func westernDigits() {
         #expect(Self.taipei(20, 3).timeString == "20:03")

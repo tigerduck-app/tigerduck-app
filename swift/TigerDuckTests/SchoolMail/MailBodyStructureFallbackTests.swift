@@ -8,7 +8,7 @@ import Testing
 ///
 /// Mail2000 sometimes describes a message in a way no IMAP parser can read. NIOIMAP does not
 /// fail the FETCH but reports `MessageAttribute.BodyStructure.invalid`, kept by vendored patch 6
-/// as `MessageInfo.bodyStructureUnusable`. With `parts` empty, `LiveMailClient.detail` finds no
+/// as `MessageInfo.bodyStructureUnusable`. With `parts` empty, `MailIMAPFetch.detail` finds no
 /// body or attachments: the screen would show only the source, and `MailWarnings`, which reads
 /// the subject and body, could not raise the delivery-failure warning. On that path only, the
 /// client fetches the whole message and parses the MIME itself, as Android's Angus Mail does.
@@ -31,39 +31,39 @@ struct MailBodyStructureFallbackTests {
     @Test func onlyAnUnusableStructureEarnsAWholeMessageDownload() {
         var usable = Self.unusableStructureInfo()
         usable.bodyStructureUnusable = false
-        #expect(!LiveMailClient.recoversByLocalParse(usable))
-        #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo()))
+        #expect(!MailIMAPMessages.recoversByLocalParse(usable))
+        #expect(MailIMAPMessages.recoversByLocalParse(Self.unusableStructureInfo()))
     }
 
     @Test func theMailThatPromptedThisRecoveryIsActuallyRecovered() {
-        #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: 28 * 1024 * 1024)))
+        #expect(MailIMAPMessages.recoversByLocalParse(Self.unusableStructureInfo(size: 28 * 1024 * 1024)))
     }
 
     @Test func aMessageOverTheCeilingIsNotDownloadedWhole() {
         let cap = MailConstants.maxLocalParseBytes
-        #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: cap)))
-        #expect(!LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: cap + 1)))
+        #expect(MailIMAPMessages.recoversByLocalParse(Self.unusableStructureInfo(size: cap)))
+        #expect(!MailIMAPMessages.recoversByLocalParse(Self.unusableStructureInfo(size: cap + 1)))
     }
 
     @Test func bothDetailFetchesCarryWhatTheCeilingAndTheFlagNeed() {
-        for options in [LiveMailClient.detailOptions, LiveMailClient.summaryOptions] {
+        for options in [MailIMAPFetch.detailOptions, LiveMailClient.summaryOptions] {
             #expect(options.contains(.bodyStructure))
             #expect(options.contains(.size))
         }
     }
 
     @Test func anUnknownSizeIsNotReadAsOversized() {
-        #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: nil)))
+        #expect(MailIMAPMessages.recoversByLocalParse(Self.unusableStructureInfo(size: nil)))
     }
 
     @Test func theBodyIsRecoveredByParsingTheMessageLocally() throws {
         let raw = try SchoolMailFixtures.rawEML("bounce-multipart")
         let info = Self.unusableStructureInfo()
-        let summary = try #require(LiveMailClient.summary(from: info))
+        let summary = try #require(MailIMAPMessages.summary(from: info))
         #expect(info.parts.isEmpty)
         #expect(!summary.hasAttachments)
 
-        let detail = try #require(LiveMailClient.localDetail(summary: summary, info: info, raw: raw))
+        let detail = try #require(MailIMAPMessages.localDetail(summary: summary, info: info, raw: raw))
         let text = try #require(detail.textBody)
         #expect(text.contains("The following addresses had delivery errors"))
         #expect(text.contains("B10000001@mail.ntust.edj.tw"))
@@ -79,8 +79,8 @@ struct MailBodyStructureFallbackTests {
 
     @Test func aLocalParseThatFindsNothingEitherIsNotDressedUpAsARecovery() throws {
         let info = Self.unusableStructureInfo()
-        let summary = try #require(LiveMailClient.summary(from: info))
-        #expect(LiveMailClient.localDetail(summary: summary, info: info, raw: Data()) == nil)
+        let summary = try #require(MailIMAPMessages.summary(from: info))
+        #expect(MailIMAPMessages.localDetail(summary: summary, info: info, raw: Data()) == nil)
     }
 
     @Test func theLocalParseAppliesTheAppsCharsetRules() throws {
@@ -88,7 +88,7 @@ struct MailBodyStructureFallbackTests {
         let message = try EMLParser.parse(raw)
         let part = try #require(message.parts.first)
         #expect(
-            LiveMailClient.decodedText(of: part)?
+            MailIMAPMessages.decodedText(of: part)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) == "中文郵件"
         )
     }
@@ -96,12 +96,12 @@ struct MailBodyStructureFallbackTests {
     @Test func theRecoveredBodyEarnsTheMistypedRecipientWarning() throws {
         let raw = try SchoolMailFixtures.rawEML("bounce-multipart")
         let info = Self.unusableStructureInfo()
-        let summary = try #require(LiveMailClient.summary(from: info))
-        let detail = try #require(LiveMailClient.localDetail(summary: summary, info: info, raw: raw))
+        let summary = try #require(MailIMAPMessages.summary(from: info))
+        let detail = try #require(MailIMAPMessages.localDetail(summary: summary, info: info, raw: raw))
 
-        #expect(MailWarnings.isBounce(returnPath: detail.returnPath))
-        #expect(MailWarnings.mentionsMistypedSchoolAddress(try #require(detail.textBody)))
-        #expect(MailWarnings.isMistypedSchoolMailDomain("mail.ntust.edj.tw"))
+        #expect(MailSchoolDomain.isBounce(returnPath: detail.returnPath))
+        #expect(MailSchoolDomain.mentionsMistypedSchoolAddress(try #require(detail.textBody)))
+        #expect(MailSchoolDomain.isMistypedSchoolMailDomain("mail.ntust.edj.tw"))
 
         let warnings = MailWarnings.evaluate(MailWarningInput(
             fromAddress: detail.summary.fromAddress ?? "",
@@ -130,11 +130,11 @@ struct MailBodyStructureFallbackTests {
     @Test func theParseFailedBannerIsGoneAndTheWarningIsOn() async throws {
         let raw = try SchoolMailFixtures.rawEML("bounce-multipart")
         let info = Self.unusableStructureInfo()
-        let summary = try #require(LiveMailClient.summary(from: info))
+        let summary = try #require(MailIMAPMessages.summary(from: info))
         var summaryWithUID = summary
         summaryWithUID.uid = 9
         let recovered = try #require(
-            LiveMailClient.localDetail(summary: summaryWithUID, info: info, raw: raw)
+            MailIMAPMessages.localDetail(summary: summaryWithUID, info: info, raw: raw)
         )
 
         let harness = MailMessageViewModelTests.harness(
@@ -142,7 +142,7 @@ struct MailBodyStructureFallbackTests {
         )
         await harness.model.load()
         #expect(harness.model.loadState == .loaded)
-        #expect(!harness.model.parseFailed)
+        #expect(!harness.model.hasNothingRenderable)
         #expect(harness.model.mode == .plain)
         #expect(harness.model.warnings.contains(.mistypedRecipient))
     }
@@ -153,7 +153,7 @@ struct MailBodyStructureFallbackTests {
             FakeMailClient.message(uid: 11, text: nil, html: nil)
         )
         await harness.model.load()
-        #expect(harness.model.parseFailed)
+        #expect(harness.model.hasNothingRenderable)
         #expect(harness.model.mode == .source)
     }
 }

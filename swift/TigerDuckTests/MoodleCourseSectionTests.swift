@@ -24,11 +24,11 @@ struct MoodleCourseSectionTests {
             courseCodes: ["1141CS3105301", "CS3105301"],
             context: MoodleCacheContext(
                 account: "B11399001",
-                cache: DataCache(
+                cache: TestCache(
                     cacheDir: root.appendingPathComponent("cache", isDirectory: true),
                     persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
-                ),
-                isCurrent: { true }
+                ).moodle,
+                signIn: testSignIn
             ),
             api: MoodleCourseAPI(
                 functions: {
@@ -101,7 +101,7 @@ struct MoodleCourseSectionTests {
         #expect(store.announcementPages == nil)
         #expect(store.forumsFetchedAt != nil)
         #expect(hasSpinner(MoodleFirstLoadView(failure: nil, retry: {})))
-        #expect(!hasSpinner(MoodleAnnouncementsView(store: store) { _ in }))
+        #expect(!hasSpinner(MoodleAnnouncementsView(store: store, policy: Self.policy) { _ in }))
     }
 
     private func hasSpinner(_ view: some View) -> Bool {

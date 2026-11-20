@@ -11,6 +11,16 @@ nonisolated struct TLSPinSet: Equatable, Sendable {
     let domains: [Domain]
     let pins: Set<String>
     let expiresAt: Date
+
+    func replaced(byDocumentSet listed: TLSPinSet?) -> TLSPinSet {
+        guard let listed else { return self }
+        let laterExpiry = max(expiresAt, listed.expiresAt)
+        return TLSPinSet(id: id, domains: listed.domains, pins: listed.pins, expiresAt: laterExpiry)
+    }
+
+    func adding(_ accepted: [String]) -> TLSPinSet {
+        TLSPinSet(id: id, domains: domains, pins: pins.union(accepted), expiresAt: expiresAt)
+    }
 }
 
 /// The pins built into this build, the fallback when no signed document applies.
@@ -51,6 +61,19 @@ nonisolated enum TLSPinTable {
                 "Douxi77vs4G+Ib/BogbTFymEYq0QSFXwSgVCaZcI09Q=",
             ],
             expiresAt: date("2027-05-04")
+        ),
+        // ISRG's four roots, X1, X2, Root YR and Root YE: clubs.ntust.edu.tw serves Let's Encrypt,
+        // which changes intermediates often, and each of them chains to one of these.
+        TLSPinSet(
+            id: "clubs",
+            domains: [.init(name: "clubs.ntust.edu.tw", includeSubdomains: false)],
+            pins: [
+                "C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=",
+                "diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=",
+                "fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=",
+                "sCkq5UWXjg+7mKu9lMhhYF5bGLsy7VI/UNW3tccdR7w=",
+            ],
+            expiresAt: date("2027-07-21")
         ),
     ]
 

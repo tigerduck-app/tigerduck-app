@@ -71,21 +71,24 @@ final class RejectingNotificationCenter: MailNotificationCenter, @unchecked Send
 
 final class AccountSwitchingNotificationCenter: MailNotificationCenter, @unchecked Sendable {
     private let lock = NSLock()
-    private let prefs: any MailPreferences
+    private let prefs: InMemoryMailPreferences
+    private let session: AccountSession
     private let signedInDuringAdd: String?
     private var _requests: [UNNotificationRequest] = []
     private var _requestsAtRemoveAll: [Int] = []
     var requests: [UNNotificationRequest] { lock.withLock { _requests } }
     var requestsAtRemoveAll: [Int] { lock.withLock { _requestsAtRemoveAll } }
 
-    init(prefs: any MailPreferences, signedInDuringAdd: String?) {
+    init(prefs: InMemoryMailPreferences, session: AccountSession, signedInDuringAdd: String?) {
         self.prefs = prefs
+        self.session = session
         self.signedInDuringAdd = signedInDuringAdd
     }
 
     func add(_ request: UNNotificationRequest) async throws {
         lock.withLock { _requests.append(request) }
         prefs.studentID = signedInDuringAdd
+        await session.endSignIn()
     }
 
     func removeDelivered(withIdentifiers identifiers: [String]) {}
@@ -93,11 +96,11 @@ final class AccountSwitchingNotificationCenter: MailNotificationCenter, @uncheck
 }
 
 final class MarkerMovingNotificationCenter: MailNotificationCenter, @unchecked Sendable {
-    private let prefs: any MailPreferences
+    private let prefs: InMemoryMailPreferences
     private let moveTo: UInt32
     private let validity: UInt32?
 
-    init(prefs: any MailPreferences, moveTo: UInt32, validity: UInt32? = nil) {
+    init(prefs: InMemoryMailPreferences, moveTo: UInt32, validity: UInt32? = nil) {
         self.prefs = prefs
         self.moveTo = moveTo
         self.validity = validity
@@ -115,9 +118,12 @@ struct MailCheckerTests {
     struct Harness {
         let checker: MailChecker
         let prefs: InMemoryMailPreferences
+        let session: AccountSession
         let fake: FakeMailClient
         let center: RecordingNotificationCenter
         let authFailures: Counter
+
+        var signIn: SignIn { session.signIns.currentSignIn }
     }
 
     static func harness(inbox: [FakeMailClient.Message], validity: UInt32? = 1, marker: UInt32? = nil,
@@ -129,18 +135,20 @@ struct MailCheckerTests {
         let fake = FakeMailClient(folders: ["INBOX": inbox])
         let center = RecordingNotificationCenter()
         let authFailures = Counter()
+        let session = AccountSession()
         let checker = MailChecker(
             prefs: prefs,
+            session: session,
             notifier: MailNotifier(center: center),
             openSession: { fake },
-            onAuthFailure: {
+            onAuthFailure: { _ in
                 prefs.authFailed = true
                 await authFailures.increment()
             },
             cache: cache,
             notificationsDenied: { notificationsDenied }
         )
-        return Harness(checker: checker, prefs: prefs, fake: fake, center: center, authFailures: authFailures)
+        return Harness(checker: checker, prefs: prefs, session: session, fake: fake, center: center, authFailures: authFailures)
     }
 
     @Test func theFirstCheckOnlySetsTheBaseline() async {
@@ -187,9 +195,10 @@ struct MailCheckerTests {
         let center = OrderingNotificationCenter(prefs: prefs)
         let checker = MailChecker(
             prefs: prefs,
+            session: AccountSession(),
             notifier: MailNotifier(center: center),
             openSession: { fake },
-            onAuthFailure: { prefs.authFailed = true }
+            onAuthFailure: { _ in prefs.authFailed = true }
         )
         #expect(await checker.check(trigger: .backgroundTask) == .newMail(1))
         #expect(center.wasCalled)
@@ -220,16 +229,16 @@ struct MailCheckerTests {
 
     @Test func theOpenListMovesTheMarkerUpButNeverBack() async {
         let h = Self.harness(inbox: [], marker: 5)
-        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 1, uidNext: 8))
+        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 1, uidNext: 8), for: h.signIn)
         #expect(h.prefs.inboxNextUID == 8)
-        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 1, uidNext: 6))
+        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 1, uidNext: 6), for: h.signIn)
         #expect(h.prefs.inboxNextUID == 8)
         #expect(h.center.requests.isEmpty)
     }
 
     @Test func theOpenListAdoptsANewGeneration() async {
         let h = Self.harness(inbox: [], marker: 5)
-        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 2, uidNext: 3))
+        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 2, uidNext: 3), for: h.signIn)
         #expect(h.prefs.inboxUIDValidity == 2)
         #expect(h.prefs.inboxNextUID == 3)
     }
@@ -237,7 +246,17 @@ struct MailCheckerTests {
     @Test func theOpenListWritesNothingSignedOut() async {
         let h = Self.harness(inbox: [], marker: 5)
         h.prefs.studentID = nil
-        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 1, uidNext: 8))
+        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 1, uidNext: 8), for: h.signIn)
+        #expect(h.prefs.inboxNextUID == 5)
+    }
+
+    @Test func theOpenListWritesNothingForASignInThatEnded() async {
+        let h = Self.harness(inbox: [], marker: 5)
+        let signIn = h.signIn
+        await h.session.endSignIn()
+        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 1, uidNext: 8), for: signIn)
+        await h.checker.noteSeenByPage(MailboxStatusInfo(uidValidity: 2, uidNext: 3), for: signIn)
+        #expect(h.prefs.inboxUIDValidity == 1)
         #expect(h.prefs.inboxNextUID == 5)
     }
 
@@ -248,8 +267,8 @@ struct MailCheckerTests {
         prefs.inboxNextUID = 3
         let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 3)]])
         let center = MarkerMovingNotificationCenter(prefs: prefs, moveTo: 9)
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { fake }, onAuthFailure: {})
+        let checker = MailChecker(prefs: prefs, session: AccountSession(), notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { _ in })
         #expect(await checker.check(trigger: .foreground) == .newMail(1))
         #expect(prefs.inboxNextUID == 9)
     }
@@ -261,8 +280,8 @@ struct MailCheckerTests {
         prefs.inboxNextUID = 3
         let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 3), FakeMailClient.message(uid: 4)]])
         let center = MarkerMovingNotificationCenter(prefs: prefs, moveTo: 2, validity: 2)
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { fake }, onAuthFailure: {})
+        let checker = MailChecker(prefs: prefs, session: AccountSession(), notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { _ in })
         #expect(await checker.check(trigger: .foreground) == .newMail(2))
         #expect(prefs.inboxUIDValidity == 2)
         #expect(prefs.inboxNextUID == 2)
@@ -313,11 +332,13 @@ struct MailCheckerTests {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
         let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 1)]])
+        let session = AccountSession()
         let checker = MailChecker(
-            prefs: prefs, notifier: MailNotifier(center: RecordingNotificationCenter()),
-            openSession: { fake }, onAuthFailure: {},
+            prefs: prefs, session: session, notifier: MailNotifier(center: RecordingNotificationCenter()),
+            openSession: { fake }, onAuthFailure: { _ in },
             notificationsDenied: {
                 prefs.studentID = nil
+                await session.endSignIn()
                 return false
             }
         )
@@ -353,8 +374,8 @@ struct MailCheckerTests {
             FakeMailClient.message(uid: 10), FakeMailClient.message(uid: 11), FakeMailClient.message(uid: 12),
         ]])
         let center = RejectingNotificationCenter(rejecting: ["school-mail-1-11"])
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { fake }, onAuthFailure: {})
+        let checker = MailChecker(prefs: prefs, session: AccountSession(), notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { _ in })
 
         #expect(await checker.check(trigger: .backgroundTask) == .newMail(3))
         #expect(center.accepted == ["school-mail-1-10", "school-mail-1-12"])
@@ -376,8 +397,8 @@ struct MailCheckerTests {
         ]])
         let center = RejectingNotificationCenter(rejecting: ["school-mail-1-11"],
                                                  error: UNError(.notificationsNotAllowed))
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { fake }, onAuthFailure: {})
+        let checker = MailChecker(prefs: prefs, session: AccountSession(), notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { _ in })
 
         #expect(await checker.check(trigger: .backgroundTask) == .newMail(3))
         #expect(prefs.inboxNextUID == 13)
@@ -393,8 +414,8 @@ struct MailCheckerTests {
         let inbox = (UInt32(1)...6).map { FakeMailClient.message(uid: $0) }
         let center = RejectingNotificationCenter(rejecting: [MailNotifier.summaryIdentifier],
                                                  error: UNError(.notificationsNotAllowed))
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { FakeMailClient(folders: ["INBOX": inbox]) }, onAuthFailure: {})
+        let checker = MailChecker(prefs: prefs, session: AccountSession(), notifier: MailNotifier(center: center),
+                                  openSession: { FakeMailClient(folders: ["INBOX": inbox]) }, onAuthFailure: { _ in })
 
         #expect(await checker.check(trigger: .backgroundTask) == .newMail(6))
         #expect(prefs.inboxNextUID == 7)
@@ -407,8 +428,8 @@ struct MailCheckerTests {
         prefs.inboxNextUID = 1
         let inbox = (UInt32(1)...6).map { FakeMailClient.message(uid: $0) }
         let center = RejectingNotificationCenter(rejecting: [MailNotifier.summaryIdentifier])
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { FakeMailClient(folders: ["INBOX": inbox]) }, onAuthFailure: {})
+        let checker = MailChecker(prefs: prefs, session: AccountSession(), notifier: MailNotifier(center: center),
+                                  openSession: { FakeMailClient(folders: ["INBOX": inbox]) }, onAuthFailure: { _ in })
 
         #expect(await checker.check(trigger: .backgroundTask) == .newMail(6))
         #expect(center.accepted.isEmpty)
@@ -421,6 +442,7 @@ struct MailCheckerTests {
         let check = Task { await h.checker.check(trigger: .backgroundTask) }
         await h.fake.waitForArrival("status")
         h.prefs.studentID = nil
+        await h.session.endSignIn()
         await h.fake.releaseStatus()
 
         #expect(await check.value == .skippedSignedOut)
@@ -429,15 +451,29 @@ struct MailCheckerTests {
         #expect(h.prefs.diagnostics.isEmpty)
     }
 
+    @Test func aCheckInFlightPostsNothingOnceMailNotificationsAreTurnedOff() async {
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 5)], marker: 3)
+        await h.fake.update { $0.holdStatus = true }
+        let check = Task { await h.checker.check(trigger: .backgroundTask) }
+        await h.fake.waitForArrival("status")
+        h.prefs.notificationsEnabled = false
+        await h.fake.releaseStatus()
+
+        #expect(await check.value == .skippedDisabled)
+        #expect(h.center.requests.isEmpty)
+        #expect(h.prefs.inboxNextUID == 3)
+    }
+
     @Test func aCheckDoesNotAdvanceTheMarkerOfAnAccountThatSignedInMidRun() async {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
         prefs.inboxUIDValidity = 1
         prefs.inboxNextUID = 3
         let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 3), FakeMailClient.message(uid: 4)]])
-        let center = AccountSwitchingNotificationCenter(prefs: prefs, signedInDuringAdd: "B29999999")
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { fake }, onAuthFailure: { prefs.authFailed = true })
+        let session = AccountSession()
+        let center = AccountSwitchingNotificationCenter(prefs: prefs, session: session, signedInDuringAdd: "B29999999")
+        let checker = MailChecker(prefs: prefs, session: session, notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { _ in prefs.authFailed = true })
 
         #expect(await checker.check(trigger: .backgroundTask) == .skippedSignedOut)
         #expect(prefs.inboxNextUID == 3)
@@ -450,9 +486,10 @@ struct MailCheckerTests {
         prefs.inboxUIDValidity = 1
         prefs.inboxNextUID = 3
         let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 3), FakeMailClient.message(uid: 4)]])
-        let center = AccountSwitchingNotificationCenter(prefs: prefs, signedInDuringAdd: nil)
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { fake }, onAuthFailure: { prefs.authFailed = true })
+        let session = AccountSession()
+        let center = AccountSwitchingNotificationCenter(prefs: prefs, session: session, signedInDuringAdd: nil)
+        let checker = MailChecker(prefs: prefs, session: session, notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { _ in prefs.authFailed = true })
 
         #expect(await checker.check(trigger: .backgroundTask) == .skippedSignedOut)
         #expect(center.requests.count == 2)
@@ -468,17 +505,12 @@ struct MailCheckerTests {
         let check = Task { await h.checker.check(trigger: .backgroundTask) }
         await h.fake.waitForArrival("status")
         h.prefs.studentID = "B29999999"
+        await h.session.endSignIn()
         await h.fake.releaseStatus()
 
         #expect(await check.value == .skippedSignedOut)
         #expect(await h.authFailures.value == 0)
         #expect(h.prefs.authFailed == false)
-    }
-
-    @Test func resultsOnlyApplyToTheAccountThatStartedTheCheck() {
-        #expect(MailChecker.resultsStillApply(startedAs: "B10000000", current: "B10000000"))
-        #expect(!MailChecker.resultsStillApply(startedAs: "B10000000", current: nil))
-        #expect(!MailChecker.resultsStillApply(startedAs: "B10000000", current: "B29999999"))
     }
 
     @Test func notifierHelpers() async {
@@ -586,6 +618,7 @@ struct MailCheckerTests {
         let check = Task { await h.checker.check(trigger: .backgroundTask) }
         await h.fake.waitForArrival("detail")
         h.prefs.studentID = nil
+        await h.session.endSignIn()
         await h.fake.release("detail")
         _ = await check.value
         #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 4) == nil)
@@ -607,12 +640,12 @@ struct MailCheckerTests {
 
     @Test(arguments: [MailClientError.unreachable, .certificateRejected, .authenticationFailed, .serverBusy])
     func connectionErrorsEndThePrefetch(error: MailClientError) {
-        #expect(MailChecker.endsPrefetch(error))
+        #expect(MailErrorClass(error).endsTheRun)
     }
 
     @Test(arguments: [MailClientError.protocolError("x"), .folderChanged, .searchUnsupported])
     func messageErrorsDoNotEndThePrefetch(error: MailClientError) {
-        #expect(!MailChecker.endsPrefetch(error))
+        #expect(!MailErrorClass(error).endsTheRun)
     }
 
     @Test(arguments: [MailCheckTrigger.page, .foreground, .backgroundTask])

@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct MacMoreView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     @State private var path = NavigationPath()
 
@@ -35,10 +35,10 @@ struct MacMoreView: View {
                     .navigationTitle(feature.displayName)
             }
         }
-        .onChange(of: appState.pendingMoreDeepLink, initial: true) { _, page in
+        .onChange(of: app.router.pendingMoreDeepLink, initial: true) { _, page in
             guard let page else { return }
             path = NavigationPath([page])
-            appState.pendingMoreDeepLink = nil
+            app.router.pendingMoreDeepLink = nil
         }
     }
 

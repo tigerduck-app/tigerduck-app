@@ -1,89 +1,102 @@
 import SwiftUI
 
+enum LibraryAccess: Equatable {
+    case signedOut
+    case signingIn
+    case signedIn(username: String?)
+
+    static var stored: LibraryAccess {
+        LibraryAccount.hasAccount ? .signedIn(username: LibraryAccount.username) : .signedOut
+    }
+}
+
 @Observable
 final class LibraryViewModel {
-    var qrCodeImage: UIImage?
-    var qrPayload: String?
-    private(set) var codeFetchedAt: Date?
-    var countdown: Int = 30
-    var isLoadingQR = false
-    var errorMessage: String?
+    private struct ShownCode {
+        var image: UIImage?
+        var payload: String?
+        var fetchedAt: Date?
+        var isLoading = false
+    }
 
-    var isLoggedIn = false
-    var isLoggingIn = false
-    private(set) var signedInUsername: String?
+    private struct Failure {
+        let message: String
+        let retriesOnItsOwn: Bool
+    }
 
-    var onLibraryStateChanged: (() -> Void)?
-
-    /// The wait after a failed code request, which the page lets the user cut short.
-    var isWaitingToRetry: Bool { isLoggedIn && errorMessage != nil }
-
-    @ObservationIgnored var fetchCode: @MainActor () async throws -> String = { try await LibraryService.generateQRCode() }
-
+    private(set) var access = LibraryAccess.signedOut
+    private var code = ShownCode()
+    private var failure: Failure?
     var libUsername = ""
     var libPassword = ""
+    var onLibraryStateChanged: (() -> Void)?
 
-    private var refreshTimer: Timer?
-    private var countdownTimer: Timer?
+    @ObservationIgnored let cycle = LibraryCodeCycle()
     private var hasLoaded = false
     private var isShowing = false
+    @ObservationIgnored nonisolated(unsafe) private var observers: [any NSObjectProtocol] = []
 
-    private var consecutiveErrors = 0
-    @ObservationIgnored var backoffSchedule: [TimeInterval] = [60, 120, 300]
-    @ObservationIgnored var refreshInterval: TimeInterval = 30
+    var isLoggedIn: Bool { if case .signedIn = access { true } else { false } }
 
-    @ObservationIgnored nonisolated(unsafe) private var accountObserver: (any NSObjectProtocol)?
-    @ObservationIgnored nonisolated(unsafe) private var signInObserver: (any NSObjectProtocol)?
+    var isLoggingIn: Bool { access == .signingIn }
+
+    var signedInUsername: String? { if case .signedIn(let username) = access { username } else { nil } }
+
+    var qrCodeImage: UIImage? { get { code.image } set { code.image = newValue } }
+    var qrPayload: String? { get { code.payload } set { code.payload = newValue } }
+    var codeFetchedAt: Date? { code.fetchedAt }
+    var isLoadingQR: Bool { get { code.isLoading } set { code.isLoading = newValue } }
+    var countdown: Int { get { cycle.countdown } set { cycle.countdown = newValue } }
+    var fetchCode: @MainActor () async throws -> String { get { cycle.fetchCode } set { cycle.fetchCode = newValue } }
+    var backoffSchedule: [TimeInterval] { get { cycle.backoffSchedule } set { cycle.backoffSchedule = newValue } }
+    var refreshInterval: TimeInterval { get { cycle.refreshInterval } set { cycle.refreshInterval = newValue } }
+
+    var errorMessage: String? { failure?.message }
+
+    var isWaitingToRetry: Bool { isLoggedIn && failure?.retriesOnItsOwn == true }
 
     init() {
         // `queue: nil` delivers synchronously on the posting thread, and
         // `LibraryService` posts from the main actor — so the code is off the
         // screen before the sign-out that invalidated it even returns.
-        accountObserver = NotificationCenter.default.addObserver(
-            forName: LibraryService.accountDidChange, object: nil, queue: nil
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.dropCodeForAccountChange() }
-        }
-        signInObserver = NotificationCenter.default.addObserver(
-            forName: LibraryService.signInDidChange, object: nil, queue: nil
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.followSignInElsewhere() }
-        }
+        observers = [
+            NotificationCenter.default.addObserver(forName: LibraryAccount.didChange, object: nil, queue: nil) { [weak self] _ in
+                MainActor.assumeIsolated { self?.dropCodeForAccountChange() }
+            },
+            NotificationCenter.default.addObserver(forName: LibraryAccount.signInDidChange, object: nil, queue: nil) { [weak self] _ in
+                MainActor.assumeIsolated { self?.followSignInElsewhere() }
+            },
+        ]
     }
 
     func load() {
         guard !hasLoaded else { return }
         hasLoaded = true
-        isLoggedIn = LibraryService.hasAccount
-        signedInUsername = LibraryService.storedUsername
-
-        libUsername = Self.prefilledUsername
+        access = .stored
+        libUsername = LibraryAccount.suggestedUsername
     }
 
     func onAppear() {
         isShowing = true
-        if !isLoggedIn && LibraryService.hasAccount {
-            isLoggedIn = true
+        if !isLoggedIn && LibraryAccount.hasAccount {
+            access = .signedIn(username: LibraryAccount.username)
             startQRRefreshCycle()
             return
         }
-        if hasLoaded && isLoggedIn && !LibraryService.isTokenValid {
-            qrCodeImage = nil
-            qrPayload = nil
-            codeFetchedAt = nil
-            isLoadingQR = false
+        if hasLoaded && isLoggedIn && !LibraryAccount.isTokenValid {
+            code = ShownCode()
             LibraryQRCache.shared.clear()
             LibraryQRImageCache.shared.clear()
             stopTimers()
-            if LibraryService.canSignInWithStoredCredentials {
+            if LibraryAccount.canSignInWithStoredCredentials {
                 startQRRefreshCycle()
             } else {
-                isLoggedIn = false
+                access = .signedOut
                 onLibraryStateChanged?()
             }
             return
         }
-        if hasLoaded && isLoggedIn && refreshTimer == nil {
+        if hasLoaded && isLoggedIn && !cycle.isScheduled {
             startQRRefreshCycle()
         }
     }
@@ -96,73 +109,65 @@ final class LibraryViewModel {
 
     func retryNow() {
         guard isWaitingToRetry else { return }
-        errorMessage = nil
+        failure = nil
         startQRRefreshCycle()
     }
 
-    func loginAndStart() {
+    func loginAndStart(signIn: (@MainActor @Sendable (String, String) async throws -> Void)? = nil) {
         let trimmedUsername = libUsername.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedUsername.isEmpty, !libPassword.isEmpty, !isLoggingIn else { return }
-        isLoggingIn = true
+        access = .signingIn
+        let signIn = signIn ?? { try await LibraryAccount.signIn(username: $0, password: $1) }
         Task { @MainActor in
-            errorMessage = nil
+            failure = nil
             do {
-                try await LibraryService.login(
-                    username: trimmedUsername.uppercased(),
-                    password: libPassword
-                )
+                try await signIn(trimmedUsername.uppercased(), libPassword)
                 libPassword = ""
-                isLoggedIn = true
-                isLoggingIn = false
-                signedInUsername = LibraryService.storedUsername
+                access = .signedIn(username: LibraryAccount.username)
                 startQRRefreshCycle()
                 onLibraryStateChanged?()
             } catch {
-                errorMessage = error.localizedDescription
+                failure = Failure(message: error.localizedDescription, retriesOnItsOwn: false)
                 libPassword = ""
-                isLoggingIn = false
+                if access == .signingIn { access = .signedOut }
             }
         }
     }
 
     private func fetchAndDisplayQR() {
+        let signIn = AccountSession.library.currentSignIn
         Task { @MainActor in
             runShownCodesClock()
-            isLoadingQR = qrCodeImage == nil
-            errorMessage = nil
-            let generation = LibraryService.loginGeneration
+            code.isLoading = code.image == nil
+            failure = nil
             do {
-                let payload = try await fetchCode()
-                let image = await Task.detached(priority: .userInitiated) {
-                    LibraryQRRenderer.image(from: payload)
-                }.value
-                guard LibraryService.loginGeneration == generation else { return }
+                let payload = try await cycle.fetchCode()
+                let image = await Self.render(payload)
+                guard signIn.isCurrent else { return }
                 LibraryQRCache.shared.store(payload)
                 if let image { LibraryQRImageCache.shared.store(image, for: payload) }
-                qrPayload = payload
-                codeFetchedAt = LibraryQRCache.shared.fetchedAt
-                qrCodeImage = image
-                isLoadingQR = false
-                consecutiveErrors = 0
+                code = ShownCode(image: image, payload: payload, fetchedAt: LibraryQRCache.shared.fetchedAt)
+                cycle.noteSuccess()
                 restartCountdown()
             } catch {
-                guard LibraryService.loginGeneration == generation else { return }
-                errorMessage = error.localizedDescription
-                isLoadingQR = false
-                if !LibraryService.hasAccount {
+                guard signIn.isCurrent else { return }
+                code.isLoading = false
+                if !LibraryAccount.hasAccount {
+                    failure = Failure(message: error.localizedDescription, retriesOnItsOwn: false)
                     showSignInForm()
                 } else {
-                    consecutiveErrors += 1
-                    rescheduleAfterError()
+                    failure = Failure(message: error.localizedDescription, retriesOnItsOwn: true)
+                    let pause = cycle.noteFailure()
+                    cycle.schedule(after: pause) { [weak self] in self?.startQRRefreshCycle() }
                 }
             }
         }
     }
 
     private func showSignInForm() {
-        isLoggedIn = false
-        consecutiveErrors = 0
-        codeFetchedAt = nil
+        access = .signedOut
+        cycle.noteSuccess()
+        code.fetchedAt = nil
         LibraryQRCache.shared.clear()
         LibraryQRImageCache.shared.clear()
         stopTimers()
@@ -170,86 +175,57 @@ final class LibraryViewModel {
     }
 
     private func followSignInElsewhere() {
-        if isLoggedIn, !LibraryService.hasAccount {
-            errorMessage = nil
+        if isLoggedIn, !LibraryAccount.hasAccount {
+            failure = nil
             showSignInForm()
-        } else if hasLoaded, !isLoggedIn, !isLoggingIn, LibraryService.hasAccount {
-            isLoggedIn = true
-            signedInUsername = LibraryService.storedUsername
-            errorMessage = nil
+        } else if hasLoaded, !isLoggedIn, !isLoggingIn, LibraryAccount.hasAccount {
+            access = .signedIn(username: LibraryAccount.username)
+            failure = nil
             libPassword = ""
             onLibraryStateChanged?()
             if isShowing { startQRRefreshCycle() }
         }
     }
 
-    private func rescheduleAfterError() {
-        let idx = min(consecutiveErrors - 1, backoffSchedule.count - 1)
-        let interval = backoffSchedule[max(0, idx)]
-        refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
-            self?.startQRRefreshCycle()
-        }
-    }
-
     private func startQRRefreshCycle() {
-        refreshTimer?.invalidate()
+        cycle.cancelSchedule()
         let cache = LibraryQRCache.shared
-        if let payload = cache.reusable() {
-            let remaining = cache.remaining()
-            codeFetchedAt = cache.fetchedAt
-            if qrPayload != payload || qrCodeImage == nil {
-                qrPayload = payload
-                if let memoized = LibraryQRImageCache.shared.image(for: payload) {
-                    qrCodeImage = memoized
-                    isLoadingQR = false
-                } else {
-                    isLoadingQR = qrCodeImage == nil
-                    let generation = LibraryService.loginGeneration
-                    Task { @MainActor in
-                        let image = await Task.detached(priority: .userInitiated) {
-                            LibraryQRRenderer.image(from: payload)
-                        }.value
-                        guard qrPayload == payload else { return }
-                        guard LibraryService.loginGeneration == generation else { return }
-                        if let image { LibraryQRImageCache.shared.store(image, for: payload) }
-                        qrCodeImage = image
-                        isLoadingQR = false
-                    }
-                }
-            }
-            restartCountdown(from: remaining)
-            refreshTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(remaining), repeats: false) { [weak self] _ in
-                self?.startQRRefreshCycle()
-            }
+        guard let payload = cache.reusable() else {
+            fetchAndDisplayQR()
+            cycle.schedule(after: cycle.refreshInterval, repeats: true) { [weak self] in self?.fetchAndDisplayQR() }
             return
         }
-
-        fetchAndDisplayQR()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
-            self?.fetchAndDisplayQR()
+        let remaining = cache.remaining()
+        code.fetchedAt = cache.fetchedAt
+        if code.payload != payload || code.image == nil {
+            code.payload = payload
+            if let memoized = LibraryQRImageCache.shared.image(for: payload) {
+                code.image = memoized
+                code.isLoading = false
+            } else {
+                code.isLoading = code.image == nil
+                let signIn = AccountSession.library.currentSignIn
+                Task { @MainActor in
+                    let image = await Self.render(payload)
+                    guard code.payload == payload, signIn.isCurrent else { return }
+                    if let image { LibraryQRImageCache.shared.store(image, for: payload) }
+                    code.image = image
+                    code.isLoading = false
+                }
+            }
         }
+        restartCountdown(from: remaining)
+        cycle.schedule(after: TimeInterval(remaining)) { [weak self] in self?.startQRRefreshCycle() }
     }
 
     private func restartCountdown(from seconds: Int = LibraryQRCache.lifetime) {
-        countdown = seconds
-        countdownTimer?.invalidate()
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in
-                if self.countdown > 0 {
-                    self.countdown -= 1
-                } else {
-                    self.dropExpiredCode()
-                }
-            }
-        }
+        cycle.restartCountdown(from: seconds) { [weak self] in self?.dropExpiredCode() }
     }
 
     /// A request runs the clock from when the shown code was issued, as reopening the page keeps
     /// that code's expiry.
     private func runShownCodesClock() {
-        let age = codeFetchedAt.map { Int(Date().timeIntervalSince($0)) } ?? .max
+        let age = code.fetchedAt.map { Int(Date().timeIntervalSince($0)) } ?? .max
         if age > LibraryQRCache.lifetime {
             dropExpiredCode()
         } else {
@@ -259,41 +235,30 @@ final class LibraryViewModel {
 
     /// A code past its time no longer scans, so it leaves the page while a request is slow or failed.
     private func dropExpiredCode() {
-        countdownTimer?.invalidate()
-        countdownTimer = nil
-        qrCodeImage = nil
-        qrPayload = nil
+        cycle.stopCountdown()
+        code.image = nil
+        code.payload = nil
     }
 
     private func dropCodeForAccountChange() {
         stopTimers()
-        qrCodeImage = nil
-        qrPayload = nil
-        codeFetchedAt = nil
-        isLoadingQR = false
-        consecutiveErrors = 0
-        isLoggedIn = LibraryService.hasAccount
-        signedInUsername = LibraryService.storedUsername
-        libUsername = Self.prefilledUsername
+        code = ShownCode()
+        cycle.noteSuccess()
+        if access != .signingIn { access = .stored }
+        libUsername = LibraryAccount.suggestedUsername
         libPassword = ""
     }
 
-    private static var prefilledUsername: String {
-        LibraryService.storedUsername
-            ?? KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId)
-            ?? ""
+    private nonisolated static func render(_ payload: String) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) { LibraryQRRenderer.image(from: payload) }.value
     }
 
     func stopTimers() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-        countdownTimer?.invalidate()
-        countdownTimer = nil
+        cycle.stop()
     }
 
     deinit {
-        stopTimers()
-        if let accountObserver { NotificationCenter.default.removeObserver(accountObserver) }
-        if let signInObserver { NotificationCenter.default.removeObserver(signInObserver) }
+        cycle.stop()
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
     }
 }

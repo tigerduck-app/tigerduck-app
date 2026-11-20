@@ -9,7 +9,7 @@ Class-table cells on a phone are narrow, so a setting scales the course-name fon
 range, 0.6…1.2× in slider units that render sites multiply by `baselineMultiplier` (1.4).
 `CourseCardFontScaleStore` keeps the value in the App Group `UserDefaults` suite
 (`group.org.ntust.app.TigerDuck`) so the widget extension reads what the app writes, and
-`AppState.courseCardFontScale` writes the snapped value and asks `WidgetReloadCoordinator` for a
+`AppPreferences.courseCardFontScale` writes the snapped value and asks `WidgetReloadCoordinator` for a
 debounced timeline reload. The same sources build the native macOS app and its widgets, and the
 Watch app shows the day's classes too.
 

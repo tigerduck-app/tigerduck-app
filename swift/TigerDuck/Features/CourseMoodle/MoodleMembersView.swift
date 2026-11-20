@@ -243,38 +243,11 @@ struct MoodleMembersView: View {
         let isShown = true
         #endif
         if isShown {
-            searchField
+            MoodleSearchField(query: $query, isFocused: $isSearchFocused)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .listRowInsets(rowInsets)
         }
-    }
-
-    private var searchField: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.sm) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(Color.textSecondary)
-                .accessibilityHidden(true)
-            TextField(String(localized: "action_search"), text: $query)
-                .textFieldStyle(.plain)
-                .autocorrectionDisabled()
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
-                .submitLabel(.search)
-                .focused($isSearchFocused)
-            if !query.isEmpty {
-                Button { query = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "action_clear_text"))
-            }
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.md)
-        .padding(.vertical, TigerDuckTheme.Spacing.sm)
-        .background(Capsule().fill(.fill.tertiary))
     }
 }
 

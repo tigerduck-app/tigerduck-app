@@ -1,11 +1,11 @@
 import SwiftUI
+import TigerDuckCore
 
 struct FluidGlassTrackView: View {
     var viewModel: TimeSliderViewModel
     var invertDirection: Bool = false
     var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
     @State private var lastDragX: CGFloat = 0
-    @Environment(\.layoutDirection) private var layoutDirection
 
     private let trackHeight = TimeSliderMetrics.fluidTrackHeight
 
@@ -13,7 +13,6 @@ struct FluidGlassTrackView: View {
         GeometryReader { geo in
             let width = geo.size.width
             let centerX = width / 2
-            let rtlFactor: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
 
             ZStack {
                 if #available(iOS 26, *) {
@@ -25,16 +24,16 @@ struct FluidGlassTrackView: View {
                         .fill(.ultraThinMaterial)
                 }
 
-                tickMarks(centerX: centerX, visibleWidth: width, rtlFactor: rtlFactor)
+                tickMarks(centerX: centerX, visibleWidth: width)
 
-                ForEach(viewModel.timeSlots) { slot in
+                ForEach(viewModel.items) { slot in
                     let startOffset = viewModel.xOffset(for: slot.start)
                     let endOffset = viewModel.xOffset(for: slot.end)
                     let segWidth = max(TimeSliderMetrics.minimumFluidBlockWidth, endOffset - startOffset)
-                    let segCenterX = centerX + rtlFactor * (startOffset + endOffset) / 2
+                    let segCenterX = centerX + (startOffset + endOffset) / 2
 
                     if segCenterX + segWidth / 2 > -50 && segCenterX - segWidth / 2 < width + 50 {
-                        let isActive = viewModel.selectedTime >= slot.start && viewModel.selectedTime <= slot.end
+                        let isActive = slot.isOn(at: viewModel.selectedTime)
                         let segOpacity = isActive
                             ? policy.timeSliderActiveSegmentOpacity
                             : policy.timeSliderInactiveSegmentOpacity
@@ -51,11 +50,11 @@ struct FluidGlassTrackView: View {
                             topTrailingRadius: top
                         )
                         segment
-                            .fill(slot.course.color.opacity(slot.isCancelled ? 0.06 : segOpacity))
+                            .fill(slot.color.opacity(slot.isCancelled ? 0.06 : segOpacity))
                             .overlay {
                                 if slot.isCancelled {
                                     segment.strokeBorder(
-                                        slot.course.color.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                                        slot.color.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2])
                                     )
                                 }
                             }
@@ -82,9 +81,8 @@ struct FluidGlassTrackView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        let rawDelta = value.translation.width - lastDragX
+                        let dx = value.translation.width - lastDragX
                         lastDragX = value.translation.width
-                        let dx = layoutDirection == .rightToLeft ? -rawDelta : rawDelta
                         viewModel.onDragChanged(dx: dx, invertDirection: invertDirection)
                     }
                     .onEnded { _ in
@@ -96,7 +94,7 @@ struct FluidGlassTrackView: View {
     }
 
     @ViewBuilder
-    private func tickMarks(centerX: CGFloat, visibleWidth: CGFloat, rtlFactor: CGFloat) -> some View {
+    private func tickMarks(centerX: CGFloat, visibleWidth: CGFloat) -> some View {
         let markerInterval = TimeSliderMetrics.markerIntervalMinutes * 60
         let majorInterval = TimeSliderMetrics.majorMarkerIntervalMinutes * 60
 
@@ -112,7 +110,7 @@ struct FluidGlassTrackView: View {
             var t = firstMarker
             while t <= rangeEnd {
                 let markerDate = Date(timeIntervalSinceReferenceDate: t)
-                let x = centerX + rtlFactor * viewModel.xOffset(for: markerDate)
+                let x = centerX + viewModel.xOffset(for: markerDate)
 
                 if x > -10 && x < size.width + 10 {
                     let isMajor = t.truncatingRemainder(dividingBy: majorInterval) == 0
@@ -147,8 +145,8 @@ struct FluidGlassTrackView: View {
         guard policy.timeSliderUsesCourseColoredThumb else {
             return Color.textPrimary
         }
-        if case .inClass(let slots) = viewModel.currentCourseState, let slot = slots.first(where: { !$0.isCancelled }) {
-            return slot.course.color
+        if case .inClass(let slots) = viewModel.currentState, let slot = slots.first(where: { !$0.isCancelled }) {
+            return slot.color
         }
         return Color.textPrimary
     }

@@ -15,7 +15,7 @@ import Testing
 /// quoting the name as RFC 3501 allows. Mail2000 echoes the section uppercased and quoted again,
 /// and the response stops being IMAP. The responses here go through `IMAPClientHandler`, the
 /// NIO handler SwiftMail installs on its own channel, so a failing case produces the real
-/// `IMAPDecoderError` that `LiveMailClient.map(_:)` receives.
+/// `IMAPDecoderError` that `MailIMAPErrors.map(_:)` receives.
 struct MailFetchSectionTests {
 
     static func fetchResponse(section: String, literal: String) -> String {
@@ -110,27 +110,27 @@ struct MailFetchSectionTests {
 
     @Test func aDecodeFailureIsAProtocolErrorNotAnUnreachableServer() throws {
         let error = try Self.decodeFailure(Self.mail2000Echo)
-        #expect(LiveMailClient.map(error) == .protocolError(String(describing: error)))
+        #expect(MailIMAPErrors.map(error) == .protocolError(String(describing: error)))
     }
 
     @Test func aSendWhoseAcceptanceIsUnknownIsUnconfirmed() {
         let ambiguous = SMTPSendError(phase: .content, acceptance: .ambiguous, reason: .connectionLost)
         let notAccepted = SMTPSendError(phase: .content, acceptance: .notAccepted, reason: .connectionLost)
-        #expect(LiveMailClient.map(ambiguous) == .sendUnconfirmed)
-        #expect(LiveMailClient.map(notAccepted) != .sendUnconfirmed)
+        #expect(MailIMAPErrors.map(ambiguous) == .sendUnconfirmed)
+        #expect(MailIMAPErrors.map(notAccepted) != .sendUnconfirmed)
     }
 
     @Test func genuinelyNetworkShapedErrorsStayUnreachable() {
-        #expect(LiveMailClient.map(IMAPError.timeout) == .unreachable)
-        #expect(LiveMailClient.map(IMAPError.connectionFailed("connection reset by peer")) == .unreachable)
-        #expect(LiveMailClient.map(URLError(.notConnectedToInternet)) == .unreachable)
-        #expect(LiveMailClient.map(URLError(.timedOut)) == .unreachable)
+        #expect(MailIMAPErrors.map(IMAPError.timeout) == .unreachable)
+        #expect(MailIMAPErrors.map(IMAPError.connectionFailed("connection reset by peer")) == .unreachable)
+        #expect(MailIMAPErrors.map(URLError(.notConnectedToInternet)) == .unreachable)
+        #expect(MailIMAPErrors.map(URLError(.timedOut)) == .unreachable)
     }
 
     @Test func theDetailFetchSendsNoQuotedHeaderFieldList() {
         let command = FetchMessageInfoRequest.wireCommand(
-            options: LiveMailClient.detailOptions,
-            headerFields: LiveMailClient.detailHeaderFields
+            options: MailIMAPFetch.detailOptions,
+            headerFields: MailIMAPFetch.detailHeaderFields
         )
         #expect(command.contains("BODY.PEEK[HEADER]"))
         #expect(!command.contains("HEADER.FIELDS"))
@@ -140,8 +140,8 @@ struct MailFetchSectionTests {
     @Test func theDetailFetchStillAsksForTheHeaderSectionThatCarriesReferences() {
         // ENVELOPE has In-Reply-To but never References, so dropping the header section
         // altogether would silently break reply threading.
-        #expect(LiveMailClient.detailOptions.contains(.fullHeader))
-        #expect(LiveMailClient.detailHeaderFields == nil)
+        #expect(MailIMAPFetch.detailOptions.contains(.fullHeader))
+        #expect(MailIMAPFetch.detailHeaderFields == nil)
     }
 
     @Test func theNamedFieldListIsTheShapeThatWentWrong() {
@@ -154,16 +154,16 @@ struct MailFetchSectionTests {
 
     @Test func aProtocolErrorRetriesTheDetailFetchWithoutTheHeaderSection() throws {
         let decodeError = try Self.decodeFailure(Self.mail2000Echo)
-        #expect(LiveMailClient.detailRetriesWithoutHeaderSection(after: decodeError))
-        #expect(LiveMailClient.detailRetriesWithoutHeaderSection(after: MailClientError.protocolError("NO")))
+        #expect(MailIMAPFetch.detailRetriesWithoutHeaderSection(after: decodeError))
+        #expect(MailIMAPFetch.detailRetriesWithoutHeaderSection(after: MailClientError.protocolError("NO")))
     }
 
     @Test func aFailureASecondFetchCannotFixIsNotRetried() {
-        #expect(!LiveMailClient.detailRetriesWithoutHeaderSection(after: MailClientError.unreachable))
-        #expect(!LiveMailClient.detailRetriesWithoutHeaderSection(after: MailClientError.authenticationFailed))
-        #expect(!LiveMailClient.detailRetriesWithoutHeaderSection(after: MailClientError.certificateRejected))
-        #expect(!LiveMailClient.detailRetriesWithoutHeaderSection(after: MailClientError.serverBusy))
-        #expect(!LiveMailClient.detailRetriesWithoutHeaderSection(after: MailClientError.folderChanged))
+        #expect(!MailIMAPFetch.detailRetriesWithoutHeaderSection(after: MailClientError.unreachable))
+        #expect(!MailIMAPFetch.detailRetriesWithoutHeaderSection(after: MailClientError.authenticationFailed))
+        #expect(!MailIMAPFetch.detailRetriesWithoutHeaderSection(after: MailClientError.certificateRejected))
+        #expect(!MailIMAPFetch.detailRetriesWithoutHeaderSection(after: MailClientError.serverBusy))
+        #expect(!MailIMAPFetch.detailRetriesWithoutHeaderSection(after: MailClientError.folderChanged))
     }
 
     @Test func theFallbackFetchIsTheOneTheMessageListAlreadySucceedsWith() {

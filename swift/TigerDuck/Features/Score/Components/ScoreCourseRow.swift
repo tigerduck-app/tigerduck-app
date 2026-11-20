@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ScoreCourseRow: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     let course: CourseGrade
     let onTap: () -> Void

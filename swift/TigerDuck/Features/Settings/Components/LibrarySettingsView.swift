@@ -4,23 +4,28 @@ import UIKit
 #endif
 
 struct LibrarySettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppPreferences.self) private var preferences
+    @Environment(\.settingsState) private var state
 
     var body: some View {
-        @Bindable var appState = appState
+        @Bindable var preferences = preferences
         List {
-            Section {
-                Toggle(
-                    String(localized: "settings_flip_to_library_title"),
-                    isOn: Self.flipSwitch($appState.flipToLibraryEnabled, signedIn: appState.isLibraryLoggedIn)
-                )
-                .disabled(!appState.isLibraryLoggedIn)
-            } footer: {
-                Text(String(localized: "settings_flip_to_library_summary"))
+            if SettingsRow.flipToLibrary.isShown(in: state) {
+                Section {
+                    Toggle(
+                        SettingsRow.flipToLibrary.label,
+                        isOn: Self.flipSwitch($preferences.flipToLibraryEnabled, signedIn: state.library.isSignedIn)
+                    )
+                    .settingsRow(.flipToLibrary)
+                } footer: {
+                    VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
+                        Text(String(localized: "settings_flip_to_library_summary"))
+                        Text(String(localized: "settings_flip_to_library_closed_note"))
+                    }
+                }
             }
+            LibrarySignOutSection()
         }
-        .navigationTitle(String(localized: "settings_library_related_features"))
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     static func flipSwitch(_ enabled: Binding<Bool>, signedIn: Bool) -> Binding<Bool> {
@@ -42,5 +47,20 @@ struct LibrarySettingsView: View {
         #else
         false
         #endif
+    }
+}
+
+struct LibrarySignOutSection: View {
+    @Environment(AppEnvironment.self) private var app: AppEnvironment?
+    @Environment(\.settingsState) private var state
+
+    var body: some View {
+        if SettingsRow.librarySignOut.isShown(in: state) {
+            Section {
+                Button(SettingsRow.librarySignOut.label, role: .destructive) {
+                    app?.library.logout()
+                }
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 @MainActor
@@ -43,12 +44,12 @@ struct WidgetTimelineDerivationTests {
         var components = DateComponents()
         components.year = 2024; components.month = 1; components.day = 1
         components.hour = hour; components.minute = minute
-        return WidgetTaipei.calendar.date(from: components)!
+        return TaipeiTime.calendar.date(from: components)!
     }
 
     private func dayKey(_ offset: Int, after date: Date) -> String {
         WidgetTimelineDerivation.dateKey(
-            for: WidgetTaipei.calendar.date(byAdding: .day, value: offset, to: date)!
+            for: TaipeiTime.calendar.date(byAdding: .day, value: offset, to: date)!
         )
     }
 
@@ -168,7 +169,7 @@ struct WidgetTimelineDerivationTests {
     @Test func skippedTomorrow_advancesToDayAfter() {
         let now = monday(18, 0)
         let tomorrowKey = WidgetTimelineDerivation.dateKey(
-            for: WidgetTaipei.calendar.date(byAdding: .day, value: 1, to: now)!
+            for: TaipeiTime.calendar.date(byAdding: .day, value: 1, to: now)!
         )
         let snap = snapshot(courses: [
             course(courseNo: "A", displayName: "TuesSkip", weekday: 2, periods: ["B"], skippedDates: [tomorrowKey]),
@@ -254,7 +255,7 @@ struct WidgetTimelineDerivationTests {
     }
 
     @Test func nextMidnight_isTaipeiMidnight() {
-        let taipei = WidgetTaipei.calendar
+        let taipei = TaipeiTime.calendar
         let lateEvening = taipei.date(from: DateComponents(year: 2026, month: 9, day: 22, hour: 23, minute: 30))!
         let midnight = taipei.date(from: DateComponents(year: 2026, month: 9, day: 23))!
         #expect(WidgetTimelineDerivation.nextMidnight(after: lateEvening) == midnight)
@@ -265,7 +266,7 @@ struct WidgetTimelineDerivationTests {
     @Test func holidayTomorrow_advancesToTheNextClassDay() {
         let now = monday(18, 0)
         let tomorrowKey = WidgetTimelineDerivation.dateKey(
-            for: WidgetTaipei.calendar.date(byAdding: .day, value: 1, to: now)!
+            for: TaipeiTime.calendar.date(byAdding: .day, value: 1, to: now)!
         )
         var snap = snapshot(courses: [
             course(courseNo: "A", displayName: "TuesClass", weekday: 2, periods: ["B"]),
@@ -399,10 +400,10 @@ struct WidgetTimelineDerivationTests {
         let snap = snapshot(courses: [gone, later])
 
         #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .nextToday(.init(
-            course: later, startTime: "10:20", periodRange: "C", day: .today, classroom: ""
+            course: later, startTime: "10:20", periodRange: "C", day: .today, classroom: "", endTime: "11:10"
         )))
         #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).map(\.isCancelled) == [true, false])
-        let nextWeek = WidgetTaipei.calendar.date(byAdding: .day, value: 7, to: now)!
+        let nextWeek = TaipeiTime.calendar.date(byAdding: .day, value: 7, to: now)!
         if case .ongoing(let list) = WidgetTimelineDerivation.derive(snapshot: snap, at: nextWeek) {
             #expect(list.map(\.course.courseNo) == ["A"])
         } else {
@@ -421,7 +422,8 @@ struct WidgetTimelineDerivationTests {
         let snap = snapshot(courses: [split])
 
         #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .nextToday(.init(
-            course: split, startTime: "10:20", periodRange: "C", day: .today, classroom: "R9", change: moved
+            course: split, startTime: "10:20", periodRange: "C", day: .today, classroom: "R9", change: moved,
+            endTime: "11:10"
         )))
         let rows = WidgetTimelineDerivation.todayRows(snapshot: snap, at: now)
         #expect(rows.map(\.periods) == [["A", "B"], ["C"]])
@@ -438,7 +440,8 @@ struct WidgetTimelineDerivationTests {
         let snap = snapshot(courses: [moved])
 
         #expect(WidgetTimelineDerivation.derive(snapshot: snap, at: now) == .nextToday(.init(
-            course: moved, startTime: "09:40", periodRange: "B", day: .today, classroom: "R9", change: change
+            course: moved, startTime: "09:40", periodRange: "B", day: .today, classroom: "R9", change: change,
+            endTime: "10:00"
         )))
         if case .ongoing(let list) = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 45)) {
             #expect(list.map(\.startTime) == ["09:40"])
@@ -458,7 +461,7 @@ struct WidgetTimelineDerivationTests {
             changes: [changed(["A"], on: now, start: "12:00", end: "12:50")]
         )
         let snap = snapshot(courses: [split])
-        let sunday = WidgetTaipei.calendar.date(byAdding: .day, value: -1, to: monday(20, 0))!
+        let sunday = TaipeiTime.calendar.date(byAdding: .day, value: -1, to: monday(20, 0))!
 
         guard case .nextToday(let today) = WidgetTimelineDerivation.derive(snapshot: snap, at: now),
               case .tomorrowFirst(let tomorrow) = WidgetTimelineDerivation.derive(snapshot: snap, at: sunday) else {

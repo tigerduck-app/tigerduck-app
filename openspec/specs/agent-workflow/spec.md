@@ -28,14 +28,6 @@ gets by listing the directory.
 - **WHEN** a pull request adds a directory tree or a list of files to an AGENTS.md
 - **THEN** review asks for it to be removed
 
-### Requirement: New work does not grow AppState
-The app AGENTS.md SHALL tell agents not to add responsibilities to `AppState`, and to keep
-feature state in the feature's view model or service.
-
-#### Scenario: Agent adds feature state
-- **WHEN** an agent plans to add a stored property for one feature to `AppState`
-- **THEN** the app AGENTS.md rule directs it to the feature's own view model or service
-
 ### Requirement: Plans are committed
 Plans for work that spans sessions, changes the architecture, or needs both maintainers to agree
 SHALL be OpenSpec changes under `openspec/changes/`, committed and reviewed like code. No tool
@@ -99,3 +91,16 @@ xcode-build-server so `swift-lsp` can resolve the Xcode project.
 #### Scenario: New machine
 - **WHEN** a maintainer sets up a new machine
 - **THEN** following the root AGENTS.md gives them a working `openspec` command, telemetry off, and `swift-lsp` without false errors
+
+### Requirement: New work uses the shared homes
+The app AGENTS.md SHALL list the home of every shared rule and the size budget, and direct agents to
+put new state in the feature's view model or the store that owns the data, never in a new
+coordinator that spans features.
+
+#### Scenario: Agent adds feature state
+- **WHEN** an agent plans to add state that one feature needs
+- **THEN** the app AGENTS.md directs it to that feature's view model, or to the store when other features read the same data
+
+#### Scenario: Agent needs a shared rule
+- **WHEN** an agent needs a rule another feature already uses, such as whether data may be sent
+- **THEN** the app AGENTS.md line for that rule names the type and path to call

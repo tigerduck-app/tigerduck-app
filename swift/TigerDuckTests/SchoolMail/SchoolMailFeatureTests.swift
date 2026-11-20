@@ -27,31 +27,31 @@ struct SchoolMailFeatureTests {
     }
 
     @Test func mailNotificationsRouteToTheMessage() {
-        let link = AppState.schoolMailDeepLink(from: ["kind": "school_mail", "folder": "INBOX", "uid": 42, "uidValidity": 7])
+        let link = DeepLink.schoolMailLink(from: ["kind": "school_mail", "folder": "INBOX", "uid": 42, "uidValidity": 7])
         #expect(link == .schoolMail(folder: "INBOX", uid: 42, uidValidity: 7))
     }
 
     @Test func summaryAndSignInNotificationsOpenTheList() {
-        #expect(AppState.schoolMailDeepLink(from: ["kind": "school_mail"]) == .schoolMail(folder: "INBOX", uid: nil))
-        #expect(AppState.schoolMailDeepLink(from: ["kind": "custom_push_bulletin"]) == nil)
+        #expect(DeepLink.schoolMailLink(from: ["kind": "school_mail"]) == .schoolMail(folder: "INBOX", uid: nil))
+        #expect(DeepLink.schoolMailLink(from: ["kind": "custom_push_bulletin"]) == nil)
     }
 
     @Test func uidParsesFromADoubleTaggedNSNumber() {
         // NSNumber(value: 42.0)'s objCType is 'd' (double); `as? Int` fails on it the same way
         // TigerDuckApp's bulletinId(from:) doc comment describes for bulletin_id.
-        let link = AppState.schoolMailDeepLink(from: ["kind": "school_mail", "uid": NSNumber(value: 42.0)])
+        let link = DeepLink.schoolMailLink(from: ["kind": "school_mail", "uid": NSNumber(value: 42.0)])
         #expect(link == .schoolMail(folder: "INBOX", uid: 42))
     }
 
     @Test func uidParsesFromADecimalString() {
-        let link = AppState.schoolMailDeepLink(from: ["kind": "school_mail", "uid": "42"])
+        let link = DeepLink.schoolMailLink(from: ["kind": "school_mail", "uid": "42"])
         #expect(link == .schoolMail(folder: "INBOX", uid: 42))
     }
 
     @Test func outOfRangeOrNonNumericUIDOpensTheList() {
-        #expect(AppState.schoolMailDeepLink(from: ["kind": "school_mail", "uid": "-1"]) == .schoolMail(folder: "INBOX", uid: nil))
-        #expect(AppState.schoolMailDeepLink(from: ["kind": "school_mail", "uid": "not-a-number"]) == .schoolMail(folder: "INBOX", uid: nil))
-        #expect(AppState.schoolMailDeepLink(from: ["kind": "school_mail", "uid": "99999999999"]) == .schoolMail(folder: "INBOX", uid: nil))
+        #expect(DeepLink.schoolMailLink(from: ["kind": "school_mail", "uid": "-1"]) == .schoolMail(folder: "INBOX", uid: nil))
+        #expect(DeepLink.schoolMailLink(from: ["kind": "school_mail", "uid": "not-a-number"]) == .schoolMail(folder: "INBOX", uid: nil))
+        #expect(DeepLink.schoolMailLink(from: ["kind": "school_mail", "uid": "99999999999"]) == .schoolMail(folder: "INBOX", uid: nil))
     }
 
     @Test(arguments: [

@@ -22,10 +22,16 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
    but it performs no validation of its own.
 
    The shipped app is correct only because its verifier does the whole job itself:
-   `Services/Mail/Transport/MailTLSVerifier.swift` runs `SecTrustCreateWithCertificates` +
+   `swift/TigerDuck/Mail/Transport/MailTLSVerifier.swift` runs `SecTrustCreateWithCertificates` +
    `SecPolicyCreateSSL(true, host)` + `SecTrustEvaluateWithError` **before** it looks at pins.
    A pin-only verifier written on the assumption that something else still checks the chain and
    the hostname would ship a client that validates neither.
+
+   NIOSSL invokes the callback on the connection's event loop and its documentation says the
+   callback must not block there. `SecTrustEvaluateWithError` can block, on revocation and
+   intermediate fetches among others, so `MailTLSConfiguration.customVerificationCallback` runs
+   the verifier on a global dispatch queue and completes NIOSSL's promise from there, as that
+   documentation allows.
 2. `MailCharsetResolver` — an overridable charset-label → `String.Encoding` hook for
    RFC 2047 header decoding *and* message body decoding, so the app's Appendix A.5
    rules (Big5-as-HKSCS, GBK-as-GB18030, …) apply to sender names, subjects, and

@@ -6,77 +6,80 @@ import WebKit
 @Observable
 final class BrowserPage {
     enum Failure: Equatable {
-        case certificate(host: String)
+        /// With the page the student may open at risk, once the refused leaf is known.
+        case certificate(host: String, refusal: BrowserRiskAcceptance.Refusal? = nil)
         case unreachable(host: String)
     }
 
-    fileprivate(set) var url: URL?
-    fileprivate(set) var title = ""
-    fileprivate(set) var canGoBack = false
-    fileprivate(set) var canGoForward = false
-    fileprivate(set) var isLoading = false
-    fileprivate(set) var progress = 0.0
-    fileprivate(set) var isCollapsed = false
+    let shown = BrowserShownPage()
     var failure: Failure?
-    @ObservationIgnored fileprivate var failedDownload: URLRequest?
+    private(set) var certificates = BrowserCertificateCheck()
     var outside: URL?
-    /// The page the browser opened with, which the bars name until a page commits.
-    fileprivate(set) var start: URL?
 
     let signIn: BrowserSignIn
     let find = BrowserFind()
     let zoomPeek = BrowserZoomPeek()
-    fileprivate(set) var zoom = BrowserZoom.standard
-    fileprivate(set) var isDesktopSite = false
-    let store: WKWebsiteDataStore
-    let generation: Int
-    let files = MoodleFileOpener()
-    /// This browser's saved files, removed with it; `BrowserData.reset()` removes every browser's.
-    nonisolated let downloads = BrowserPage.downloadsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    private(set) var site = BrowserSiteSetting()
+    private var opening: BrowserData.Opening
+    let downloads: BrowserDownloads
     nonisolated static let downloadsRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("BrowserDownloads", isDirectory: true)
-    @ObservationIgnored fileprivate weak var webView: WKWebView?
-    @ObservationIgnored private var collapse = BrowserChromeCollapse()
 
-    init() {
-        let data = BrowserData.shared
-        let store = data.store
-        self.store = store
-        generation = data.generation
+    init(downloads: BrowserDownloads? = nil) {
+        self.downloads = downloads ?? BrowserDownloads()
+        let opening = BrowserData.shared.opening
+        self.opening = opening
+        let store = opening.store
         signIn = BrowserSignIn(
             hasSession: { BrowserRouting.hasMoodleSession(await store.httpCookieStore.allCookies()) },
             signedInURL: { target in
-                let url = await MoodleAutologinService.shared.url(for: target)
+                let url = await SchoolWeb.signedIn(target)
                 return url == target ? nil : url
             }
         )
     }
 
-    deinit {
-        try? FileManager.default.removeItem(at: downloads)
-    }
+    var store: WKWebsiteDataStore { opening.store }
+    var storeResets: Int { opening.resets }
+    var url: URL? { shown.url }
+    var title: String { shown.title }
+    var canGoBack: Bool { shown.canGoBack }
+    var canGoForward: Bool { shown.canGoForward }
+    var isLoading: Bool { shown.isLoading }
+    var progress: Double { shown.progress }
+    var isCollapsed: Bool { shown.isCollapsed }
+    var files: MoodleFileOpener { downloads.opener }
+    var zoom: Int { site.zoom }
+    var isDesktopSite: Bool { site.isDesktop }
+    private var webView: WKWebView? { shown.webView }
 
     /// The address the bars, the sheet, Copy and Share go by: a one-time sign-in link stands for
     /// the page it signs in to, as its key must never leave the browser.
     var address: URL? {
-        guard let shown = url ?? start else { return nil }
+        guard let shown = url ?? self.shown.start else { return nil }
         return BrowserRouting.isMoodleSignInLink(shown) ? signIn.target ?? AppConstants.moodleBaseURL : shown
     }
 
     var host: String { address?.host(percentEncoded: false) ?? "" }
 
+    var sheetAddress: URL? { refusalToOpenAtRisk?.pageToOpen ?? address }
+
+    var openedAtRisk: URL? { opening.openedAtRisk }
+    var isAtRisk: Bool { openedAtRisk != nil }
+
     var serverTrust: SecTrust? { webView?.serverTrust }
 
     enum Connection { case secure, refused, unknown }
 
-    /// Only a page that loaded over a trusted connection is called secure.
-    var connection: Connection { Self.connection(failure: failure, hasTrust: serverTrust != nil) }
+    /// Only a page that loaded over a trusted connection is called secure, and none in a browser
+    /// the student opened a page in at their own risk.
+    var connection: Connection { Self.connection(failure: failure, hasTrust: serverTrust != nil, isAtRisk: isAtRisk) }
 
-    static func connection(failure: Failure?, hasTrust: Bool) -> Connection {
+    static func connection(failure: Failure?, hasTrust: Bool, isAtRisk: Bool = false) -> Connection {
         switch failure {
         case .certificate: .refused
         case .unreachable: .unknown
-        case nil: hasTrust ? .secure : .unknown
+        case nil: hasTrust && !isAtRisk ? .secure : .unknown
         }
     }
 
@@ -86,13 +89,43 @@ final class BrowserPage {
     func reloadOrStop() {
         if isLoading {
             webView?.stopLoading()
-        } else if failure != nil, let request = Self.retryRequest(failedDownload: failedDownload, address: address) {
+        } else if failure != nil, let request = Self.retryRequest(failedDownload: downloads.failed, address: address) {
             failure = nil
-            failedDownload = nil
+            downloads.failed = nil
+            downloads.forgetFailures(of: request)
             webView?.load(request)
         } else {
             webView?.reload()
         }
+    }
+
+    var refusalToOpenAtRisk: BrowserRiskAcceptance.Refusal? {
+        guard case .certificate(_, let refusal?) = failure else { return nil }
+        return refusal
+    }
+
+    /// Opens the refused page again, its leaf let through, in a new store that starts empty, keeps
+    /// nothing on disk and goes with this browser. The browser stays in that store, wherever the
+    /// page leads, and no sign-in runs in it again; `TigerDuckBrowserView` builds a web view on it.
+    func openAtRisk() {
+        guard let refusal = refusalToOpenAtRisk else { return }
+        signIn.close()
+        certificates = certificates.accepting(refusal)
+        opening = BrowserData.Opening(store: .nonPersistent(), resets: opening.resets, openedAtRisk: refusal.pageToOpen)
+        failure = nil
+        downloads.failed = nil
+    }
+
+    func retryDownload(_ item: BrowserDownloads.Item) {
+        if item.unsavedFile != nil {
+            Task { if let kept = await downloads.saveAgain(item.id) { files.show(downloaded: kept, mimeType: nil) } }
+            return
+        }
+        guard let request = item.request else { return }
+        downloads.forgetFailures(of: request)
+        failure = nil
+        downloads.failed = nil
+        webView?.load(request)
     }
 
     /// A download never commits as a page, so the address still names the page it started from.
@@ -111,25 +144,25 @@ final class BrowserPage {
     func zoomOut() { BrowserZoom.smaller(than: zoom).map(setZoom) }
     func resetZoom() { setZoom(BrowserZoom.standard) }
 
+    /// A page opened at risk keeps its host's saved zoom and desktop choice, which outlive its store.
     private func setZoom(_ percent: Int) {
-        guard !host.isEmpty, let webView else { return }
-        BrowserSites.stored.setZoom(percent, for: host)
+        guard !host.isEmpty, !isAtRisk, let webView else { return }
+        BrowserSites.change(for: AccountSession.school.currentSignIn) { $0.setZoom(percent, for: host) }
         BrowserPageScripts.addScripts(to: webView.configuration.userContentController)
         applySiteSettings()
     }
 
     /// The page loads again, as its site sends a desktop layout only to a new request.
     func setDesktopSite(_ isDesktop: Bool) {
-        guard !host.isEmpty else { return }
-        BrowserSites.stored.setDesktop(isDesktop, for: host)
-        isDesktopSite = isDesktop
+        guard !host.isEmpty, !isAtRisk else { return }
+        BrowserSites.change(for: AccountSession.school.currentSignIn) { $0.setDesktop(isDesktop, for: host) }
+        site.isDesktop = isDesktop
         webView?.reload()
     }
 
-    fileprivate func applySiteSettings() {
+    func applySiteSettings() {
         let sites = BrowserSites.stored
-        zoom = sites.zoom(for: host)
-        isDesktopSite = sites.isDesktop(host)
+        site = BrowserSiteSetting(zoom: sites.zoom(for: host), isDesktop: sites.isDesktop(host))
         // A page back from the history cache keeps the zoom it was left with.
         webView?.evaluateJavaScript(BrowserPageScripts.zoom(sites.zoom))
     }
@@ -144,290 +177,5 @@ final class BrowserPage {
         controller.present(animated: true)
     }
 
-    func expandChrome() {
-        collapse.expand()
-        isCollapsed = false
-    }
-
-    fileprivate func scrolled(to offset: CGFloat) {
-        collapse.scrolled(to: offset)
-        if isCollapsed != collapse.isCollapsed { isCollapsed = collapse.isCollapsed }
-    }
-}
-
-/// The web view's delegate: routes each navigation, turns Moodle's sign-in page into a sign-in,
-/// applies the app's TLS pins and keeps ``BrowserPage`` current.
-@MainActor
-final class BrowserNavigator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
-    private let page: BrowserPage
-    private var observations: [NSKeyValueObservation] = []
-    private var refusedHosts: Set<String> = []
-    private var saving: [ObjectIdentifier: (file: URL, mimeType: String?)] = [:]
-    /// The Moodle page asked for last, which a sign-in its navigation ran into goes on to.
-    private var lastRequested: URL?
-    /// How long the store keeps Moodle's session cookie on disk; Moodle's own timeout ends it sooner.
-    private static let sessionKept: TimeInterval = 30 * 24 * 60 * 60
-
-    init(page: BrowserPage) {
-        self.page = page
-    }
-
-    func makeView(opening start: URL) -> UIView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = page.store
-        let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.allowsBackForwardNavigationGestures = true
-        webView.navigationDelegate = self
-        webView.uiDelegate = self
-        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        let container = UIView()
-        webView.frame = container.bounds
-        container.addSubview(webView)
-        page.webView = webView
-        page.start = start
-        observe(webView)
-
-        let store = page.store
-        page.signIn.load = { [weak webView] in webView?.load(URLRequest(url: $0)) }
-        page.signIn.signInWithSession = { [weak container] in
-            await BrowserSessionSignIn(store: store, host: container).signIn()
-        }
-        page.find.run = { [weak webView] in await webView?.runFind($0) }
-        Task {
-            await BrowserData.shared.prepare()
-            // A sign-in or sign-out has come since this browser opened, and it is closing.
-            guard BrowserData.shared.generation == page.generation else { return }
-            // Until asked for its records, the store answers with no cookies, not those on disk.
-            _ = await store.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
-            await BrowserPageScripts.install(in: configuration.userContentController)
-            await page.signIn.open(start)
-        }
-        return container
-    }
-
-    private func observe(_ webView: WKWebView) {
-        let page = page
-        func track<Value>(_ key: KeyPath<WKWebView, Value>, _ apply: @escaping (WKWebView) -> Void) {
-            observations.append(webView.observe(key, options: [.initial]) { view, _ in
-                MainActor.assumeIsolated { apply(view) }
-            })
-        }
-        track(\.url) { if page.url != $0.url { page.url = $0.url } }
-        track(\.title) { if page.title != $0.title ?? "" { page.title = $0.title ?? "" } }
-        track(\.canGoBack) { if page.canGoBack != $0.canGoBack { page.canGoBack = $0.canGoBack } }
-        track(\.canGoForward) { if page.canGoForward != $0.canGoForward { page.canGoForward = $0.canGoForward } }
-        track(\.isLoading) { if page.isLoading != $0.isLoading { page.isLoading = $0.isLoading } }
-        track(\.estimatedProgress) { if page.progress != $0.estimatedProgress { page.progress = $0.estimatedProgress } }
-        observations.append(webView.scrollView.observe(\.contentOffset) { scrollView, _ in
-            MainActor.assumeIsolated {
-                guard scrollView.isTracking || scrollView.isDecelerating else { return }
-                page.scrolled(to: scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
-            }
-        })
-    }
-
-    func webView(
-        _ webView: WKWebView,
-        decidePolicyFor action: WKNavigationAction,
-        preferences: WKWebpagePreferences,
-        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
-    ) {
-        if action.targetFrame?.isMainFrame != false, let host = action.request.url?.host(percentEncoded: false) {
-            preferences.preferredContentMode = BrowserSites.stored.isDesktop(host) ? .desktop : .mobile
-        }
-        decidePolicy(for: action, in: webView) { decisionHandler($0, preferences) }
-    }
-
-    private func decidePolicy(
-        for action: WKNavigationAction,
-        in webView: WKWebView,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
-    ) {
-        guard let url = action.request.url else { return decisionHandler(.cancel) }
-        if BrowserRouting.isMoodleLogout(url) { return decisionHandler(.cancel) }
-        if let frame = action.targetFrame, !frame.isMainFrame { return decisionHandler(.allow) }
-        if BrowserRouting.isMoodleSignInPage(url) {
-            decisionHandler(.cancel)
-            let current = webView.url.flatMap { BrowserRouting.isMoodleReturnPage($0) ? $0 : nil }
-            page.signIn.reachedSignInPage(returningTo: lastRequested ?? current ?? AppConstants.moodleBaseURL)
-            return
-        }
-        switch BrowserRouting.decision(for: url, byLinkTap: action.navigationType == .linkActivated) {
-        case .load:
-            // No target frame means a new window, and the browser has only this one.
-            guard action.targetFrame != nil else {
-                decisionHandler(.cancel)
-                webView.load(action.request)
-                return
-            }
-            if BrowserRouting.isMoodleReturnPage(url) { lastRequested = url }
-            page.failure = nil
-            page.failedDownload = nil
-            decisionHandler(.allow)
-        case .openOutside(let outside):
-            decisionHandler(.cancel)
-            page.outside = outside
-        case .handOff(let mail):
-            decisionHandler(.cancel)
-            UIApplication.shared.open(mail)
-        case .refuse:
-            decisionHandler(.cancel)
-        }
-    }
-
-    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
-        let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
-        let action = BrowserRouting.responseAction(
-            canShow: navigationResponse.canShowMIMEType, contentDisposition: disposition, isMainFrame: navigationResponse.isForMainFrame
-        )
-        return action == .download ? .download : .allow
-    }
-
-    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        download.delegate = self
-        // The load ends here without finishing, which would leave a sign-in that led to it showing.
-        page.signIn.pageSettled()
-    }
-
-    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
-        // A folder each, so two files of one name both keep theirs.
-        let folder = page.downloads.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else { return nil }
-        let file = folder.appendingPathComponent(MoodleFileDownloads.safeName(suggestedFilename))
-        saving[ObjectIdentifier(download)] = (file, response.mimeType)
-        return file
-    }
-
-    func downloadDidFinish(_ download: WKDownload) {
-        guard let saved = saving.removeValue(forKey: ObjectIdentifier(download)) else { return }
-        page.files.show(downloaded: saved.file, mimeType: saved.mimeType)
-    }
-
-    func download(
-        _ download: WKDownload,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        decisionHandler: @escaping @MainActor @Sendable (WKDownload.RedirectPolicy) -> Void
-    ) {
-        decisionHandler(BrowserRouting.allowsDownloadRedirect(to: request.url) ? .allow : .cancel)
-    }
-
-    func download(
-        _ download: WKDownload,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        pin(challenge, completionHandler: completionHandler)
-    }
-
-    func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
-        saving[ObjectIdentifier(download)] = nil
-        page.failedDownload = download.originalRequest
-        page.failure = Self.downloadFailure(
-            for: error, refusedHosts: refusedHosts,
-            requestedHost: download.originalRequest?.url?.host(percentEncoded: false) ?? page.host
-        )
-    }
-
-    /// A refused certificate names the host that sent it, which a redirect may have changed;
-    /// anything else, a stop included, blames the host the download was asked of.
-    nonisolated static func downloadFailure(for error: any Error, refusedHosts: Set<String>, requestedHost: String) -> BrowserPage.Failure {
-        let failure = failure(for: error, refusedHosts: refusedHosts)
-        if case .certificate = failure, let failure { return failure }
-        return .unreachable(host: requestedHost)
-    }
-
-    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        page.applySiteSettings()
-    }
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        lastRequested = nil
-        page.signIn.pageSettled()
-        Task { await keepSession() }
-        if page.find.isActive { Task { await page.find.search() } }
-    }
-
-    private func keepSession() async {
-        let cookies = page.store.httpCookieStore
-        let expiry = Date.now.addingTimeInterval(Self.sessionKept)
-        let lasting = await cookies.allCookies().compactMap { BrowserRouting.lastingSession($0, until: expiry) }
-        // A sign-in or sign-out since has emptied this store for the departing account.
-        guard BrowserData.shared.generation == page.generation else { return }
-        for cookie in lasting { await cookies.setCookie(cookie) }
-    }
-
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
-        failed(with: error)
-    }
-
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
-        failed(with: error)
-    }
-
-    private func failed(with error: any Error) {
-        guard let failure = Self.failure(for: error, refusedHosts: refusedHosts) else { return }
-        page.failedDownload = nil
-        page.failure = failure
-        page.signIn.pageSettled()
-    }
-
-    /// What a failed main-frame load shows; nil for a load the browser itself stopped.
-    nonisolated static func failure(for error: any Error, refusedHosts: Set<String>) -> BrowserPage.Failure? {
-        let error = error as NSError
-        let host = (error.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.host(percentEncoded: false) ?? ""
-        if refusedHosts.contains(host) || error.domain == NSURLErrorDomain && (-1206 ... -1200).contains(error.code) {
-            return .certificate(host: host)
-        }
-        // Cancelled, or WebKitErrorFrameLoadInterruptedByPolicyChange after a policy cancel.
-        let stopped = (error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled)
-            || (error.domain == "WebKitErrorDomain" && error.code == 102)
-        return stopped ? nil : .unreachable(host: host)
-    }
-
-    func webView(
-        _ webView: WKWebView,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        pin(challenge, completionHandler: completionHandler)
-    }
-
-    private func pin(
-        _ challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        let host = challenge.protectionSpace.host
-        TLSPinningDelegate.shared.evaluate(challenge) { disposition, credential in
-            Task { @MainActor in
-                if disposition == .cancelAuthenticationChallenge { self.refusedHosts.insert(host) }
-                completionHandler(disposition, credential)
-            }
-        }
-    }
-
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        if let address = Self.pageToRestore(url: webView.url, address: page.address) {
-            webView.load(URLRequest(url: address))
-        } else {
-            webView.reload()
-        }
-    }
-
-    /// What a page whose web content process ended loads, or nil to reload it: a reload does
-    /// nothing without a URL, and a one-time sign-in link must not be loaded again.
-    nonisolated static func pageToRestore(url: URL?, address: URL?) -> URL? {
-        guard let url, !BrowserRouting.isMoodleSignInLink(url) else { return address }
-        return nil
-    }
-
-    func webView(
-        _ webView: WKWebView,
-        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
-        initiatedByFrame frame: WKFrameInfo,
-        type: WKMediaCaptureType,
-        decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void
-    ) {
-        decisionHandler(.deny)
-    }
+    func expandChrome() { shown.expandChrome() }
 }

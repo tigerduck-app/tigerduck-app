@@ -60,84 +60,55 @@ struct PushAPIDTOTests {
 
     @Test("decoding sync_assignment_reminders and sync_live_activity from the wire populates both properties")
     func responseDecodesNewFieldsFromTheirWireKeys() throws {
-        let json = Data("""
-        {
-          "device_id": "abc-123",
-          "server_push_enabled": true,
-          "sync_courses": true,
-          "sync_course_colors": true,
-          "sync_course_names": true,
-          "sync_assignments": true,
-          "sync_assignment_reminders": false,
-          "sync_live_activity": true,
-          "cloud_sync_enabled": true
-        }
-        """.utf8)
-
-        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
+        let response = try JSONDecoder().decode(
+            PushAPI.DevicePreferencesResponse.self, from: Self.preferencesReply(#""sync_assignment_reminders": false"#)
+        )
 
         #expect(response.syncAssignmentReminders == false)
         #expect(response.syncLiveActivity == true)
     }
 
-    @Test("a response from a backend without the two fields still decodes")
-    func responseWithoutNewFieldsStillDecodes() throws {
-        let json = Data("""
-        {
-          "device_id": "abc-123",
-          "server_push_enabled": true,
-          "sync_courses": true,
-          "sync_course_colors": true,
-          "sync_course_names": true,
-          "sync_assignments": true,
-          "cloud_sync_enabled": false
+    @Test("a preferences reply without one of the device's switches does not decode, as /v4 sends them all")
+    func aReplyWithoutASwitchDoesNotDecode() {
+        for key in ["sync_assignment_reminders", "sync_live_activity", "bulletin_push_enabled"] {
+            let json = Data(String(decoding: Self.preferencesReply(), as: UTF8.self)
+                .replacingOccurrences(of: #""\#(key)": true,"#, with: "").utf8)
+            #expect(throws: DecodingError.self) {
+                try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
+            }
         }
-        """.utf8)
+    }
 
-        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
+    @Test("a course override reply without ignore_assignments does not decode, so the outbox keeps the edit")
+    func aCourseOverrideReplyWithoutTheIgnoreFlagDoesNotDecode() throws {
+        let full = Data(#"{"color_hex":null,"custom_names":{},"ignore_assignments":true,"applied":[]}"#.utf8)
+        #expect(try JSONDecoder().decode(PushAPI.CourseOverrideResponse.self, from: full).ignoreAssignments)
+        let missing = Data(#"{"color_hex":null,"custom_names":{},"applied":[]}"#.utf8)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(PushAPI.CourseOverrideResponse.self, from: missing)
+        }
+    }
 
-        #expect(response.syncAssignmentReminders == nil)
-        #expect(response.syncLiveActivity == nil)
-        #expect(response.cloudSyncEnabled == false)
+    private static func preferencesReply(_ override: String? = nil) -> Data {
+        var fields = [
+            #""device_id": "abc-123""#, #""server_push_enabled": true"#, #""sync_courses": true"#,
+            #""sync_course_colors": true"#, #""sync_course_names": true"#, #""sync_assignments": true"#,
+            #""sync_assignment_reminders": true"#, #""sync_live_activity": true"#, #""bulletin_push_enabled": true"#,
+            #""cloud_sync_enabled": true"#,
+        ]
+        if let override, let key = override.split(separator: ":").first {
+            fields = fields.map { $0.hasPrefix(key + ":") ? override : $0 }
+        }
+        return Data("{\(fields.joined(separator: ", "))}".utf8)
     }
 
     @Test("decoding bulletin_push_enabled from the wire populates bulletinPushEnabled")
     func responseDecodesBulletinPushEnabledFromItsWireKey() throws {
-        let json = Data("""
-        {
-          "device_id": "abc-123",
-          "server_push_enabled": true,
-          "sync_courses": true,
-          "sync_course_colors": true,
-          "sync_course_names": true,
-          "sync_assignments": true,
-          "cloud_sync_enabled": true,
-          "bulletin_push_enabled": false
-        }
-        """.utf8)
-
-        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
+        let response = try JSONDecoder().decode(
+            PushAPI.DevicePreferencesResponse.self, from: Self.preferencesReply(#""bulletin_push_enabled": false"#)
+        )
 
         #expect(response.bulletinPushEnabled == false)
-    }
-
-    @Test("a response without bulletin_push_enabled still decodes, leaving the field nil")
-    func responseWithoutBulletinPushEnabledStillDecodes() throws {
-        let json = Data("""
-        {
-          "device_id": "abc-123",
-          "server_push_enabled": true,
-          "sync_courses": true,
-          "sync_course_colors": true,
-          "sync_course_names": true,
-          "sync_assignments": true,
-          "cloud_sync_enabled": true
-        }
-        """.utf8)
-
-        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
-
-        #expect(response.bulletinPushEnabled == nil)
     }
 
     @Test("encoding bulletin_push_enabled on the register request produces its wire key")
@@ -153,7 +124,8 @@ struct PushAPIDTOTests {
             push_token: nil,
             cloud_sync_enabled: nil,
             bulletin_push_enabled: false,
-            server_push_enabled: nil
+            server_push_enabled: nil,
+            device_secret: nil
         )
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -176,7 +148,8 @@ struct PushAPIDTOTests {
             push_token: nil,
             cloud_sync_enabled: nil,
             bulletin_push_enabled: nil,
-            server_push_enabled: true
+            server_push_enabled: true,
+            device_secret: nil
         )
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -199,7 +172,8 @@ struct PushAPIDTOTests {
             push_token: nil,
             cloud_sync_enabled: nil,
             bulletin_push_enabled: nil,
-            server_push_enabled: nil
+            server_push_enabled: nil,
+            device_secret: nil
         )
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -207,5 +181,32 @@ struct PushAPIDTOTests {
         )
 
         #expect(object["device_model"] as? String == "iPhone17,3")
+    }
+
+    @Test("encoding the device secret on both device requests produces device_secret, and none leaves it out")
+    func deviceRequestsEncodeTheSecretToItsWireKey() throws {
+        func encoded(_ secret: String?) throws -> (anonymous: [String: Any], register: [String: Any]) {
+            let anonymous = PushAPI.AnonymousDeviceRequest(
+                device_id: "device-1", platform: "apple", device_class: "iphone", push_token: nil,
+                bundle_id: "org.ntust.app.TigerDuck", server_push_enabled: nil, device_secret: secret
+            )
+            let register = PushAPI.DeviceRegisterRequest(
+                client_device_id: "device-1", platform: "ios", device_class: nil, app_version: nil,
+                os_version: nil, device_model: nil, locale: nil, push_token: nil, cloud_sync_enabled: nil,
+                bulletin_push_enabled: nil, server_push_enabled: nil, device_secret: secret
+            )
+            return try (
+                #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(anonymous)) as? [String: Any]),
+                #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(register)) as? [String: Any])
+            )
+        }
+
+        let withSecret = try encoded("secret-1")
+        let without = try encoded(nil)
+
+        #expect(withSecret.anonymous["device_secret"] as? String == "secret-1")
+        #expect(withSecret.register["device_secret"] as? String == "secret-1")
+        #expect(without.anonymous["device_secret"] == nil)
+        #expect(without.register["device_secret"] == nil)
     }
 }

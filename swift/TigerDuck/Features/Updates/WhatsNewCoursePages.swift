@@ -86,14 +86,14 @@ struct WhatsNewMoodleSectionsDemo: View {
             shownRows = 0
             while !Task.isCancelled {
                 for row in 1...Self.rows.count {
-                    try? await Task.sleep(for: .milliseconds(260))
+                    try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(260))
                     guard !Task.isCancelled else { return }
                     withAnimation(.snappy(duration: 0.3)) { shownRows = row }
                 }
-                try? await Task.sleep(for: .seconds(2.2))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(2.2))
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeOut(duration: 0.3)) { shownRows = 0 }
-                try? await Task.sleep(for: .milliseconds(450))
+                try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(450))
             }
         }
         .accessibilityElement(children: .ignore)
@@ -128,13 +128,13 @@ struct WhatsNewClassReminderDemo: View {
             var step = 0
             while !Task.isCancelled {
                 withAnimation(.snappy(duration: 0.25)) { lead = Self.sequence[step % Self.sequence.count] }
-                try? await Task.sleep(for: .milliseconds(350))
+                try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(350))
                 guard !Task.isCancelled else { return }
                 withAnimation(.snappy(duration: 0.35)) { showsBanner = true }
-                try? await Task.sleep(for: .seconds(1.8))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.8))
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeIn(duration: 0.2)) { showsBanner = false }
-                try? await Task.sleep(for: .milliseconds(300))
+                try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(300))
                 step += 1
             }
         }
@@ -251,7 +251,7 @@ struct WhatsNewWatchComplicationDemo: View {
             guard isCurrent else { return }
             index = 0
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2.4))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(2.4))
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.35)) { index = (index + 1) % Self.classes.count }
             }

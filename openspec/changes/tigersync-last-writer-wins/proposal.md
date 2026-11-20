@@ -12,12 +12,12 @@ apps and the backend share.
 
 ## What Changes
 
-- Every user edit carries a hybrid logical clock (HLC) value, per item and per field. Views,
-  school fetches and bulk uploads never stamp anything. Deletions and resets are timestamped
-  tombstones.
+- Every user edit is stamped by the backend, per item and per field, at the time it arrives less
+  the edit's age the device sends (`age_ms`), so no device clock reaches the backend's time line.
+  Views, school fetches and bulk uploads never stamp anything. Deletions and resets are
+  timestamped tombstones.
 - The backend keeps the newer value per field, comparing and writing under the user's sync lock.
   Equal content with another timestamp keeps the value and the later time, with no prompt.
-  A timestamp more than five seconds ahead of server time is refused, and the device re-stamps it.
 - The override, course delete, course reset, course upload and holiday endpoints accept the
   clock; `/v3/sync/full` returns it for every field and tombstone, and keeps every tombstone
   instead of the last 30 days. Every `/v3` response carries the server clock.
@@ -28,8 +28,8 @@ apps and the backend share.
 - Course membership becomes a user layer over the school roster: adds, hides and removals carry
   the clock, a term reset is one timestamp, and a school upload never brings back what the user
   hid. A reset no longer depends on which device wrote it.
-- iOS: refresh runs local state, then TigerSync, then course selection, Moodle and grades. The
-  outbox becomes the record of unsent edits, kept while TigerSync or a category is off.
+- iOS: the outbox becomes the record of unsent edits, kept while TigerSync or a category is off.
+  The refresh order is refactor-v4's D13.
 - **BREAKING (UI)**: the per-assignment conflict alert and the re-enable "Use Server / Use Local"
   prompt go away.
 - The `fix/course-outbox-ordering` fixes (#689) ship first in a patch release; the iOS course
@@ -44,8 +44,8 @@ apps and the backend share.
 - `tigersync-merge`: per-item, per-field last-writer-wins on the backend and in the apps:
   inventory of synced fields, tombstones and resets, compatibility with released apps, and
   migration of existing server and device data.
-- `tigersync-refresh-order`: the order of local state, TigerSync and the school fetches on
-  launch and refresh, and the school base layer under user overrides.
+- `tigersync-refresh-order`: one refresh at a time, which triggers fetch from the school, and the
+  school base layer under user overrides.
 
 ### Modified Capabilities
 
@@ -71,7 +71,7 @@ None. No existing spec covers sync.
   `server/routes/sync/{courses,uploads,snapshot}.py`, `server/routes/holiday_overrides.py`,
   `server/sync/serializers.py`, `server/main.py`, `server/sync/models/courses.py`, one Alembic
   migration, tests under `server/tests/`.
-- iOS: `swift/TigerDuck/Services/CloudSync/`, `Services/Push/PushAPIClient.swift`,
+- iOS: `swift/TigerDuck/Backend/Sync/`, `Backend/Push/PushAPIClient.swift`,
   `App/AppState+BackendSync.swift`, `+Conflicts.swift`, `+CourseReconcile.swift`,
   `+RevisionPolling.swift`, the refresh entry points (`HomeView`, `TigerDuckApp`, `MacRootView`),
   settings views that host the prompts, tests in `swift/TigerDuckTests/`.

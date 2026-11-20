@@ -15,11 +15,11 @@ BUILD_ONLY names the ones left out on purpose, with the reason. BUNDLED
 names material that ships inside the app bundle without being a package at
 all, which no dependency graph would ever mention.
 
-One list covers every target. Only the main app target has a non-empty
-packageProductDependencies — the watch app, the widgets and the Live
-Activity extension link no packages of their own — so the iPhone's page is
-already the whole story. Check that again if a watch-only dependency is
-ever added.
+One list covers every target. Besides APP_PACKAGES, which every target links,
+only the main app target has a non-empty packageProductDependencies — the
+watch app, the widgets and the Live Activity extension link no packages of
+their own — so the iPhone's page is already the whole story. Check that
+again if a watch-only dependency is ever added.
 
 Regenerate after adding, removing or updating a package:
 
@@ -102,7 +102,19 @@ LOCAL_PACKAGE_NOTES: dict[str, str] = {
         "A patched copy of Cocoanetics/SwiftMail 1.11.0 kept in this repository "
         "and built from source, so there is no released version to name."
     ),
+    # Packages/libarchive/VENDORED.md and Packages/xz/VENDORED.md likewise.
+    "libarchive": (
+        "The archive readers of libarchive 3.8.11, which open zip, 7z, RAR, tar, "
+        "gzip, bzip2 and xz files, kept in this repository and built from source."
+    ),
+    "xz": (
+        "The LZMA decoders of XZ Utils 5.8.4 (liblzma), which libarchive reads 7z "
+        "and xz files with, kept in this repository and built from source."
+    ),
 }
+# Local packages that hold the app's own code. The app's licence, which the
+# page shows first, covers them, so they are not listed as packages.
+APP_PACKAGES = {"TigerDuckCore"}
 LOCAL_PACKAGE_NOTE = (
     "A Swift package kept in this repository and built from source rather "
     "than resolved from a release, so there is no version to name."
@@ -113,6 +125,10 @@ LICENSE_OVERRIDES = {
     # COPYING opens with cmark's own BSD-2-Clause, then the MIT terms of the
     # houdini, buffer and utf8 code it includes.
     "swift-cmark": "BSD-2-Clause AND MIT",
+    # COPYING is libarchive's BSD-2-Clause; its BLAKE2 files are taken under CC0.
+    "libarchive": "BSD-2-Clause AND CC0-1.0",
+    # liblzma's LICENSE is XZ Utils' COPYING.0BSD.
+    "xz": "0BSD",
 }
 
 LICENSE_FILE = re.compile(r"^(licen[cs]e|copying)(\.(md|txt))?$", re.IGNORECASE)
@@ -132,7 +148,7 @@ def local_packages() -> list[Path]:
     paths = re.findall(
         r"isa = XCLocalSwiftPackageReference;\s*relativePath = \"?([^\";]+)\"?;", text
     )
-    return [(PROJECT.parent / p).resolve() for p in paths]
+    return [(PROJECT.parent / p).resolve() for p in paths if Path(p).name not in APP_PACKAGES]
 
 
 def repo_name(location: str) -> str:

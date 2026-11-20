@@ -50,25 +50,21 @@ enum ClassTableExporter {
     /// explicitly.
     static func render(
         viewModel: ClassTableViewModel,
-        appState: AppState,
+        app: AppEnvironment,
         colorScheme: ColorScheme,
         dynamicTypeSize: DynamicTypeSize,
-        layoutDirection: LayoutDirection,
         legibilityWeight: LegibilityWeight?,
         differentiateWithoutColor: Bool
     ) async -> URL? {
-        let owner = viewModel.shownPerson?.nickname ?? appState.authService.storedStudentId
+        let owner = viewModel.shownPerson?.nickname ?? app.authService.storedStudentId
         let content = ClassTableExportView(
             viewModel: viewModel,
             owner: owner,
             differentiateWithoutColor: differentiateWithoutColor
         )
-            .environment(appState)
+            .environment(app)
             .environment(\.colorScheme, colorScheme)
             .environment(\.dynamicTypeSize, dynamicTypeSize)
-            // A right-to-left language mirrors the page's grid; the empty
-            // environment would draw it left-to-right.
-            .environment(\.layoutDirection, layoutDirection)
             // Bold Text. Differentiate Without Color cannot be set here, so
             // it rides on the view instead.
             .environment(\.legibilityWeight, legibilityWeight)
@@ -80,13 +76,17 @@ enum ClassTableExporter {
         let name = fileName(
             title: String(localized: "feature_class_table"),
             semesterLabel: viewModel.displayLabel(for: viewModel.currentSemester),
-            // A nickname has no length limit, and a file name past 255 bytes cannot be written.
-            studentId: owner.map { String($0.prefix(40)) }
+            studentId: owner
         )
         // Drawing needs the main actor; encoding a 3x PNG and writing it does
         // not, and is the slower half.
-        return await Task.detached(priority: .userInitiated) { () -> URL? in
-            guard let data = image.pngData() else { return nil }
+        return await save(named: name) { image.pngData() }
+    }
+
+    /// Hand the URL to ``discard(_:)`` once it has been shared.
+    nonisolated static func save(named name: String, _ data: @escaping @Sendable () -> Data?) async -> URL? {
+        await Task.detached(priority: .userInitiated) { () -> URL? in
+            guard let data = data() else { return nil }
             let fileManager = FileManager.default
             removeLeftovers(fileManager)
             let directory = exportRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -124,15 +124,18 @@ enum ClassTableExporter {
         }
     }
 
-    nonisolated static func fileName(title: String, semesterLabel: String, studentId: String?) -> String {
-        let parts = [title, semesterLabel, studentId ?? ""]
+    nonisolated static func fileName(
+        title: String, semesterLabel: String, studentId: String?, pathExtension: String = "png"
+    ) -> String {
+        // A nickname has no length limit, and a file name past 255 bytes cannot be written.
+        let parts = [title, semesterLabel, String((studentId ?? "").prefix(40))]
             .map {
                 $0.components(separatedBy: unsafeFileNameCharacters).joined()
                     .split(whereSeparator: \.isWhitespace)
                     .joined(separator: "_")
             }
             .filter { !$0.isEmpty }
-        return parts.joined(separator: "_") + ".png"
+        return parts.joined(separator: "_") + "." + pathExtension
     }
 
     /// Path separators, the characters Files and FAT-formatted drives

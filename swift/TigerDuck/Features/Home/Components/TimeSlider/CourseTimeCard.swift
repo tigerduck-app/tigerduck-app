@@ -1,8 +1,10 @@
 import SwiftUI
+import TigerDuckCore
 
 struct CourseTimeCard: View {
-    let state: CourseState
+    let state: ClassState<TimeSliderItem>
     let onSelect: ((CourseTimeSlot) -> Void)?
+    var onSelectClub: ((ClubOccurrence) -> Void)? = nil
     var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
 
     var body: some View {
@@ -10,78 +12,105 @@ struct CourseTimeCard: View {
             switch state {
             case .inClass(let slots):
                 ForEach(slots) { slot in
-                    cardContent(slot: slot, opacity: 1.0)
+                    cardContent(item: slot, opacity: 1.0)
                         .frame(maxWidth: slots.count > 1 ? .infinity : nil)
                 }
             case .between(let prev, let next):
                 if let prev {
-                    cardContent(slot: prev, opacity: 0.5)
+                    cardContent(item: prev, opacity: 0.5)
                         .frame(maxWidth: .infinity)
                 }
                 if let next {
-                    cardContent(slot: next, opacity: 0.5)
+                    cardContent(item: next, opacity: 0.5)
                         .frame(maxWidth: .infinity)
                 }
             case .beforeFirst(let next):
-                cardContent(slot: next, opacity: 0.5)
+                cardContent(item: next, opacity: 0.5)
             case .afterLast(let prev):
-                cardContent(slot: prev, opacity: 0.5)
+                cardContent(item: prev, opacity: 0.5)
             }
         }
         .animation(.smooth(duration: 0.35), value: state)
     }
 
     @ViewBuilder
-    private func cardContent(slot: CourseTimeSlot, opacity: Double) -> some View {
+    private func cardContent(item: TimeSliderItem, opacity: Double) -> some View {
         // `scrollSafeTapAction` wraps the surface in a real `Button` so the first tap
         // inside Home's ScrollView opens the detail sheet instead of being swallowed
         // (iOS 18 arbitration). `Button` supplies the `.isButton` trait and hit shape.
-        cardSurface(slot: slot, opacity: opacity)
-            .scrollSafeTapAction { onSelect?(slot) }
-            .accessibilityHint(Text(String(localized: "a11y_course_card_open_details_hint")))
+        switch item {
+        case .course(let slot):
+            cardSurface(slot: slot, opacity: opacity)
+                .scrollSafeTapAction { onSelect?(slot) }
+                .accessibilityHint(Text(String(localized: "a11y_course_card_open_details_hint")))
+        case .club(let piece, let day):
+            clubSurface(piece.occurrence, on: day, opacity: opacity)
+                .scrollSafeTapAction { onSelectClub?(piece.occurrence) }
+                .accessibilityHint(Text(String(localized: "a11y_club_activity_open_details_hint")))
+        }
     }
 
-    @ViewBuilder
     private func cardSurface(slot: CourseTimeSlot, opacity: Double) -> some View {
-        let course = slot.course
-        let isToday = AppConstants.taipeiCalendar.isDateInToday(slot.date)
         let showsChangedTime = slot.hasChangedTime && !slot.isCancelled
+        return cardSurface(
+            tint: slot.color, date: slot.date, timeColor: showsChangedTime ? Color.changeInk : timeRangeColor,
+            title: Text(slot.title).strikethrough(slot.isCancelled), subtitle: subtitle(for: slot), opacity: opacity
+        ) {
+            HStack(spacing: 3) {
+                if showsChangedTime {
+                    Image(systemName: "clock.fill")
+                        .font(.caption2)
+                }
+                Text(TimeRange.text(slot.start.timeString, slot.end.timeString))
+                    .strikethrough(slot.isCancelled)
+                    .accessibilityLabel(TimeRange.spoken(slot.start.timeString, slot.end.timeString))
+            }
+        }
+    }
 
+    private func clubSurface(_ club: ClubOccurrence, on day: Date, opacity: Double) -> some View {
+        let subtitle = [club.name.isEmpty ? "" : club.clubName, club.location].filter { !$0.isEmpty }
+        return cardSurface(
+            tint: Color(hex: UInt(club.color)), date: day, timeColor: timeRangeColor,
+            title: Text(club.name.isEmpty ? club.clubName : club.name),
+            subtitle: Text(subtitle.joined(separator: " · ")), opacity: opacity
+        ) {
+            Text(TimeRange.text(from: club.start, to: club.end))
+                .accessibilityLabel(TimeRange.spoken(from: club.start, to: club.end))
+        }
+    }
+
+    private func cardSurface(
+        tint: Color, date: Date, timeColor: Color, title: Text, subtitle: Text, opacity: Double,
+        @ViewBuilder time: () -> some View
+    ) -> some View {
         HStack(alignment: .top, spacing: 10) {
             if policy.courseColorUsage == .smallAccent {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(course.color)
+                    .fill(tint)
                     .frame(width: 3)
                     .padding(.vertical, 2)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    HStack(spacing: 3) {
-                        if showsChangedTime {
-                            Image(systemName: "clock.fill")
-                                .font(.caption2)
-                        }
-                        Text("\(slot.start.timeString) - \(slot.end.timeString)")
-                            .strikethrough(slot.isCancelled)
-                    }
+                    time()
                         .font(.caption.bold())
-                        .foregroundStyle(showsChangedTime ? Color.changeInk : timeRangeColor)
+                        .foregroundStyle(timeColor)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .layoutPriority(1)
                     Spacer(minLength: 4)
-                    if !isToday {
-                        Self.dateLabel(from: slot.date)
+                    if !TaipeiTime.calendar.isDateInToday(date) {
+                        Self.dateLabel(from: date)
                     }
                 }
 
-                Text(course.displayName)
+                title
                     .font(.headline)
-                    .strikethrough(slot.isCancelled)
-                    .foregroundStyle(courseNameColor(for: course))
+                    .foregroundStyle(courseNameColor)
                     .lineLimit(1)
-                subtitle(for: slot)
+                subtitle
                     .font(.caption)
                     .foregroundStyle(subtitleColor)
                     .lineLimit(1)
@@ -90,7 +119,7 @@ struct CourseTimeCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(CourseCardSurfaceModifier(tint: course.color, policy: policy))
+        .modifier(CourseCardSurfaceModifier(tint: tint, policy: policy))
         .opacity(opacity)
     }
 
@@ -99,7 +128,7 @@ struct CourseTimeCard: View {
             return Text(String(localized: "course_card_cancelled")).fontWeight(.semibold)
         }
         let classroom = slot.room.trimmingCharacters(in: .whitespaces)
-        let instructor = slot.course.instructor.trimmingCharacters(in: .whitespaces)
+        let instructor = slot.instructor.trimmingCharacters(in: .whitespaces)
         let room = slot.hasChangedRoom && !classroom.isEmpty
             ? Text("\(Image(systemName: "arrow.left.arrow.right")) \(Text(classroom).fontWeight(.semibold))")
                 .foregroundStyle(Color.changeInk)
@@ -126,7 +155,7 @@ struct CourseTimeCard: View {
         }
     }
 
-    private func courseNameColor(for course: SDCourse) -> Color {
+    private var courseNameColor: Color {
         switch policy.courseColorUsage {
         case .primarySurface: return Color.textPrimary
         case .smallAccent: return .primary
@@ -138,7 +167,7 @@ struct CourseTimeCard: View {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = AppConstants.taipeiTimeZone
+        f.timeZone = TaipeiTime.timeZone
         f.dateFormat = "M/d"
         return f
     }()

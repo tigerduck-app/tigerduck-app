@@ -13,7 +13,7 @@ struct CourseOverrideHoldTests {
             ["moodle_id": "1151CS2", "color_hex": "#4ECDC4"],
         ]
 
-        let colors = AppState.serverCourseColors(rows, courseNos: Self.courseNos, holding: ["1151CS1"])
+        let colors = CourseOverridesReconciler.serverCourseColors(rows, courseNos: Self.courseNos, holding: ["1151CS1"])
 
         #expect(colors.map(\.courseNo) == ["CS2"])
     }
@@ -26,7 +26,7 @@ struct CourseOverrideHoldTests {
         ]
         let local = ["CS1": ["en": "New"], "CS2": ["en": "Mine", "zh": "Gone"]]
 
-        let names = AppState.courseNamesAfterPull(
+        let names = CourseOverridesReconciler.courseNamesAfterPull(
             rows, courseNos: Self.courseNos, local: local, holding: ["1151CS1"]
         )
 
@@ -40,7 +40,7 @@ struct CourseOverrideHoldTests {
             ["moodle_id": "1151CS2", "custom_names": ["zh": "", "en": "X"]],
         ]
 
-        let mismatches = AppState.courseNameMismatches(rows, courseNos: Self.courseNos, local: ["CS2": ["en": "X"]])
+        let mismatches = SyncConflicts.courseNameMismatches(rows, courseNos: Self.courseNos, local: ["CS2": ["en": "X"]])
 
         #expect(mismatches.isEmpty)
     }
@@ -49,7 +49,7 @@ struct CourseOverrideHoldTests {
     func aDifferentNameIsAConflict() {
         let rows: [[String: Any]] = [["moodle_id": "1151CS1", "custom_names": ["zh": "", "en": "X"]]]
 
-        let mismatches = AppState.courseNameMismatches(
+        let mismatches = SyncConflicts.courseNameMismatches(
             rows, courseNos: Self.courseNos, local: ["CS1": ["en": "Y"], "CS2": ["zh": "Z"]]
         )
 

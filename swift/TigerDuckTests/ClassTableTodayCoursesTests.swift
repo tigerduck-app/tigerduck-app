@@ -13,14 +13,28 @@ struct ClassTableTodayCoursesTests {
 
     @Test func classDay_showsTodaysCourses() {
         let viewModel = ClassTableViewModel(isClassDay: { _ in true })
-        viewModel.currentSemesterCourses = [Self.everyDay]
+        viewModel.today.courses = [Self.everyDay]
 
         #expect(viewModel.todayCourses.map(\.courseNo) == ["TEST100"])
     }
 
+    @Test("A period with no time on the timetable is no class on today's list or in a time range")
+    func untimedPeriod_countsNowhere() {
+        let untimed = SDCourse(
+            courseNo: "TEST200", courseName: "Untimed", schedule: Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["E"]) })
+        )
+        let mixed = SDCourse(
+            courseNo: "TEST300", courseName: "Mixed", schedule: Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["E", "2", "1"]) })
+        )
+
+        #expect([untimed, mixed].coursesForToday().map(\.courseNo) == ["TEST300"])
+        #expect(mixed.times(for: 1).map { [$0.start, $0.end] } == ["08:10", "10:00"])
+        #expect(untimed.times(for: 1) == nil)
+    }
+
     @Test func dayWithoutClasses_showsNothing() {
         let viewModel = ClassTableViewModel(isClassDay: { _ in false })
-        viewModel.currentSemesterCourses = [Self.everyDay]
+        viewModel.today.courses = [Self.everyDay]
 
         #expect(viewModel.todayCourses.isEmpty)
     }

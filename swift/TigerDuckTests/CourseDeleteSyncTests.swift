@@ -22,7 +22,7 @@ struct CourseDeleteSyncTests {
     }
 
     private static let hiddenAt = Date(timeIntervalSince1970: 1_790_000_000)
-    private static let path = "sync/courses/client:1151:CS1001301?hlc=\(PushAPI.clock(of: hiddenAt))"
+    private static let path = "sync/courses/client:1151:CS1001301?age_ms=2000"
 
     private static func freshDirectory() -> URL {
         FileManager.default.temporaryDirectory
@@ -40,14 +40,17 @@ struct CourseDeleteSyncTests {
             authHeaderProvider: { "Bearer test" }
         )
         let push = PushCoordinator(identity: PushIdentity(uuid: "test-device"), apiClient: client)
+        let courses = CourseStore(folders: CacheFolders(root: Self.freshDirectory()))
+        courses.saveDeletedCourseNos(["1151:CS1001301"], for: testSignIn)
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: Self.freshDirectory()), isEnabled: isEnabled,
-            syncsAssignmentMarks: { true }, syncsCourseIgnores: syncsCourseIgnores, syncsCourseOverrides: { _ in true }
+            syncsAssignmentMarks: { true }, syncsCourseIgnores: syncsCourseIgnores, syncsCourseOverrides: { _ in true },
+            uploadsCourses: { true }, account: AccountSession(signIns: testSignIns), courses: courses
         )
     }
 
     private static let colourReply = Data(
-        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##.utf8
+        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"ignore_assignments":false,"updated_at":"2026-10-12T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"##.utf8
     )
 
     @Test("Deleting a course drops its own settings still queued, and queues its delete and sends it")
@@ -71,12 +74,12 @@ struct CourseDeleteSyncTests {
     func deleteQueuedDuringADrainGoesAfterIt() async throws {
         let backend = Backend()
         let gate = SettingsAPIStub.ReplyGate()
-        backend.answer("sync/courses/1151EE2005301/override", .init(statusCode: 200, body: Self.colourReply, gate: gate))
+        backend.answer("sync/courses/client:1151:EE2005301/override", .init(statusCode: 200, body: Self.colourReply, gate: gate))
         backend.answer(Self.path)
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseColorOverride(moodleId: "1151EE2005301", semester: "1151", colorHex: "#FF6B6B")?.value
         let drain = Task { await coordinator.syncTick() }
-        try await waitUntil { !backend.requests("sync/courses/1151EE2005301/override").isEmpty }
+        try await waitUntil { !backend.requests("sync/courses/client:1151:EE2005301/override").isEmpty }
 
         await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
         gate.open()
@@ -154,16 +157,25 @@ struct CourseDeleteSyncTests {
         #expect(await outbox.parkedSnapshot().isEmpty)
     }
 
-    @Test("A delete answered 409 with a code other than clock_ahead stays queued without spending an attempt")
-    func deleteAnsweredAnotherConflictStays() async {
-        let outbox = SyncOutbox(directory: Self.freshDirectory())
-        await outbox.enqueue(.courseDelete(semester: "1151", courseNo: "CS1001301", stamp: Date()))
+    @Test("A term reset goes with its age and hands back the reset time the backend answered, none when it kept a newer reset",
+          arguments: [true, false])
+    func termResetHandsBackItsResetTime(applied: Bool) async throws {
+        let backend = Backend()
+        backend.answer(
+            "sync/courses?semester=1151&age_ms=2000",
+            .init(statusCode: 200, body: Data(#"{"deleted":1,"applied":\#(applied),"reset_hlc":1790000000000000}"#.utf8))
+        )
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let client = PushAPIClient(
+            baseURLProvider: { [baseURL = backend.baseURL] in baseURL }, session: URLSession(configuration: config),
+            authHeaderProvider: { "Bearer test" }
+        )
 
-        for _ in 0...SyncOutbox.maxAttempts {
-            await outbox.drain { _ in throw PushAPIError.httpStatus(409, body: #"{"detail":"something_else"}"#) }
-        }
+        let resetClock = try await client.deleteAllCourses(semester: "1151", madeAt: EditTime(wall: Self.hiddenAt), for: testSignIn)
 
-        #expect(await outbox.snapshot().map(\.attempts) == [0])
+        #expect(resetClock == (applied ? 1_790_000_000_000_000 : nil))
+        #expect(backend.requests("sync/courses?semester=1151&age_ms=2000").map(\.httpMethod) == ["DELETE"])
     }
 
     @Test("A course added back drops its own queued delete, and a reset its term's or every term's")
@@ -176,13 +188,13 @@ struct CourseDeleteSyncTests {
         await coordinator.enqueueCourseIgnore(semester: "1142", courseNo: "GE3", moodleId: "1142GE3",
                                               moodleCourseId: nil, ignore: true)
 
-        await coordinator.discardCourseDeletes(courseKeys: ["client:1142:GE3"], madeBefore: Date())
+        await coordinator.discardCourseDeletes(courseKeys: ["client:1142:GE3"], madeBeforeAction: Date())
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:CS1", "1151:EE2", "1142:CS1"])
 
-        await coordinator.discardCourseDeletes(semester: "1151", madeBefore: Date())
+        await coordinator.discardCourseDeletes(semester: "1151", madeBeforeAction: Date())
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1142:CS1"])
 
-        await coordinator.discardCourseDeletes(madeBefore: Date())
+        await coordinator.discardCourseDeletes(madeBeforeAction: Date())
         #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1142:GE3"])
     }
@@ -192,7 +204,7 @@ struct CourseDeleteSyncTests {
         let coordinator = Self.makeCoordinator(Backend())
         var hidden: Set<String> = []
 
-        try await AppState.resetCourses(semester: "1151", on: coordinator, onServer: {
+        try await EditSender.resetCourses(semester: "1151", on: coordinator, onServer: {
             hidden.insert("1151:CS1")
             await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: Date())
         }, thenLocally: { hidden.removeAll() })
@@ -211,7 +223,7 @@ struct CourseDeleteSyncTests {
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: addedAt.addingTimeInterval(-60))
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "EE2", at: hiddenAfter)
 
-        await coordinator.discardCourseDeletes(courseKeys: ["client:1151:CS1", "client:1151:EE2", "client:1151:GE3"], madeBefore: addedAt)
+        await coordinator.discardCourseDeletes(courseKeys: ["client:1151:CS1", "client:1151:EE2", "client:1151:GE3"], madeBeforeAction: addedAt)
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE3", at: hiddenAfter)
 
         #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:EE2", "1151:GE3"])
@@ -221,71 +233,56 @@ struct CourseDeleteSyncTests {
     func hideDuringTheEnableWindowIsQueued() async {
         await withExclusiveRealDefaults {
             let saved = Defaults[.cloudSyncEnabled]
-            defer { Defaults[.cloudSyncEnabled] = saved }
+            defer { Defaults[.cloudSyncEnabled, for: testSignIn] = saved }
             let coordinator = Self.makeCoordinator(Backend(), isEnabled: false)
 
-            Defaults[.cloudSyncEnabled] = false
+            Defaults[.cloudSyncEnabled, for: testSignIn] = false
             await coordinator.deleteCourse(semester: "1151", courseNo: "EE2005301")
             #expect(await coordinator.pendingCourseDeleteKeys().isEmpty)
 
-            Defaults[.cloudSyncEnabled] = true
+            Defaults[.cloudSyncEnabled, for: testSignIn] = true
             await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301")
             #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:CS1001301"])
         }
     }
 
-    @Test("A reset made elsewhere drops the course adds and deletes made here before it, one still on its way in too, and keeps those made after it or within the skew margin")
-    func resetElsewhereDropsTheCourseEditsBeforeIt() async {
-        let coordinator = Self.makeCoordinator(Backend())
-        let reset = Date()
-        let margin = CloudSyncCoordinator.clockSkewMargin
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: reset.addingTimeInterval(-margin - 60))
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "MA5", at: reset.addingTimeInterval(-margin + 60))
-        await coordinator.enqueueCourseDelete(semester: "1142", courseNo: "EE2", at: reset.addingTimeInterval(60))
-        await coordinator.outbox.enqueue(.courseAdd(
-            semester: "1151", courseNo: "GE3", stamp: reset.addingTimeInterval(-margin - 60)
-        ))
-        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1", moodleId: "1151CS1",
-                                              moodleCourseId: nil, ignore: true)
+    @Test("A hide the backend refuses, as older than a reset or an add made elsewhere, leaves the queue, so the course shows once the server lists it")
+    func refusedHideIsReleasedOnceListed() async {
+        let backend = Backend()
+        backend.answer(
+            Self.path, .init(statusCode: 200, body: Data(#"{"deleted":0,"applied":false,"hlc":1790000001000000}"#.utf8))
+        )
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.deleteCourse(semester: "1151", courseNo: "CS1001301", at: Self.hiddenAt)
+        var hidden: Set<String> = ["1151:CS1001301"]
 
-        #expect(await coordinator.dropCourseEdits(madeBeforeReset: reset) == ["1151:CS1"])
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "PE4", at: reset.addingTimeInterval(-margin - 1))
+        let released = CourseRosterReconciler.unhideListedCourses(
+            ["CS1001301"], semester: "1151", deleting: await coordinator.pendingCourseDeleteKeys(), in: &hidden
+        )
 
-        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:MA5", "1142:EE2"])
-        #expect(await coordinator.courseAddKeys(unlandedAt: Date()).isEmpty)
-        #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1"])
-    }
-
-    @Test("A full sync after a reset made elsewhere drops the deletes made here before the server's reset time, and keeps one made after it but before the sync")
-    func fullSyncAfterAResetElsewhereDropsTheDeletesBeforeIt() async {
-        let coordinator = Self.makeCoordinator(Backend())
-        let resetAt = Date().addingTimeInterval(-3600)
-        let margin = CloudSyncCoordinator.clockSkewMargin
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "CS1", at: resetAt.addingTimeInterval(-margin - 60))
-        await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "EE2", at: resetAt.addingTimeInterval(600))
-
-        #expect(await coordinator.dropCourseEdits(madeBeforeReset: resetAt) == ["1151:CS1"])
-        #expect(await coordinator.pendingCourseDeleteKeys() == ["1151:EE2"])
+        #expect(backend.requests(Self.path).map(\.httpMethod) == ["DELETE"])
+        #expect(released)
+        #expect(hidden.isEmpty)
     }
 
     @Test("A full sync shows a hidden course the server lists again only once no delete of it from here may be on its way")
     func listedCourseStaysHiddenWhileItsDeleteMayBeOnItsWay() {
         var hidden: Set<String> = ["1151:CS1", "1151:EE2", "1151:GE3", "PE4", "1142:MA5"]
 
-        let changed = AppState.unhideListedCourses(
+        let changed = CourseRosterReconciler.unhideListedCourses(
             ["CS1", "EE2", "GE3", "PE4", "MA5", "PH6"], semester: "1151", deleting: ["1151:EE2", "GE3", "1142:CS1"],
             in: &hidden
         )
 
         #expect(changed)
         #expect(hidden == ["1151:EE2", "1151:GE3", "1142:MA5"])
-        #expect(!AppState.unhideListedCourses(["EE2"], semester: "1151", deleting: ["1151:EE2"], in: &hidden))
+        #expect(!CourseRosterReconciler.unhideListedCourses(["EE2"], semester: "1151", deleting: ["1151:EE2"], in: &hidden))
     }
 
     @Test("A full sync takes in a course only the server lists only once no delete of it from here may be on its way")
     func listedCourseIsMergedOnlyOnceNoDeleteIsOnItsWay() {
         let merges = { (courseNo: String) in
-            AppState.mergesListedCourse(
+            CourseRosterReconciler.mergesListedCourse(
                 courseNo, semester: "1151", hidden: ["1151:GE3"], deleting: ["1151:CS1", "EE2", "1142:MA5"]
             )
         }
@@ -299,37 +296,70 @@ struct CourseDeleteSyncTests {
 
     @Test("Adding back a hidden course the class table still shows sends it with its key forced")
     func addingBackAStillShownHiddenCourseUploadsIt() {
-        let savedHidden = DataCache.shared.loadDeletedCourseNos()
-        defer { DataCache.shared.saveDeletedCourseNos(savedHidden) }
         let folder = Self.freshDirectory()
         defer { try? FileManager.default.removeItem(at: folder) }
-        let viewModel = ClassTableViewModel(importedTables: ImportedClassTableStore(
+        let courses = CourseStore(folders: CacheFolders(root: folder))
+        let viewModel = ClassTableViewModel(courses: courses, importedTables: ImportedClassTableStore(
             fileURL: folder.appendingPathComponent("imported_class_tables.json"), signedInStudentId: { "B11300000" }
         ))
         let course = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: viewModel.currentSemester)
         viewModel.courses = [course]
-        viewModel.deletedCourseNos = [CourseTombstone.key(semester: viewModel.currentSemester, courseNo: "GE1010001")]
+        courses.saveDeletedCourseNos([CourseTombstone.key(semester: viewModel.currentSemester, courseNo: "GE1010001")], for: testSignIn)
         var added: [String] = []
-        viewModel.onCourseAdded = { _, _, courseNo in added.append(courseNo) }
+        viewModel.editor.sync.courseAdded = { _, _, courseNo in added.append(courseNo) }
 
-        #expect(!viewModel.addCourse(course))
+        #expect(!viewModel.editor.addCourse(course))
 
         #expect(added == ["GE1010001"])
-        #expect(viewModel.deletedCourseNos.isEmpty)
+        #expect(viewModel.editor.deletedCourseNos.isEmpty)
+    }
+
+    @Test("A term reset still resets the term here when the class table closes while the backend delete runs")
+    func resetOutlivesTheClassTable() async throws {
+        let folder = Self.freshDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let courses = CourseStore(folders: CacheFolders(root: folder))
+        var viewModel: ClassTableViewModel? = ClassTableViewModel(courses: courses, importedTables: ImportedClassTableStore(
+            fileURL: folder.appendingPathComponent("imported_class_tables.json"), signedInStudentId: { "B11300000" }
+        ))
+        let editor = try #require(viewModel?.editor)
+        let semester = try #require(viewModel?.currentSemester)
+        let added = SDCourse(courseNo: "GE1010001", courseName: "Art", semester: semester)
+        courses.apply(.addByHand(added, semester: semester), for: testSignIn)
+        let backend = ResetBackend()
+        editor.sync.resetBackendCourses = { _, resetLocally in
+            await backend.delete()
+            resetLocally()
+            return false
+        }
+        weak var released = viewModel
+
+        editor.resetCourses(authService: AuthService(
+            keychainHasCredentials: { false }, notificationCenter: NotificationCenter(), schoolSignIn: { _, _, _ in false }
+        ))
+        try await waitUntil { backend.entered }
+        viewModel = nil
+        backend.finish()
+        try await waitUntil { released == nil }
+
+        #expect(courses.loadUserAddedCourses(semester: semester).isEmpty)
+        #expect(editor.dialogs.showResetFailedAlert)
+        editor.startRecolor(added)
+        #expect(editor.dialogs.courseToRecolor == nil)
     }
 
     @Test("The courses re-enable check counts a course whose delete is queued as gone from the server")
     func queuedDeleteIsNoServerOnlyCourse() {
         let counts = { (deleting: Set<String>) in
-            AppState.coursesOnOneSide(server: ["CS1", "EE2"], local: ["CS1", "GE3"], semester: "1151", deleting: deleting)
+            SyncConflicts.coursesOnOneSide(server: ["CS1", "EE2"], local: ["CS1", "GE3"], semester: "1151", deleting: deleting)
                 .map { [$0.localOnly, $0.serverOnly] }
         }
 
         #expect(counts([]) == [1, 1])
         #expect(counts(["1151:EE2"]) == [1, 0])
         #expect(counts(["1142:EE2"]) == [1, 1])
-        #expect(AppState.coursesOnOneSide(server: ["EE2"], local: ["CS1"], semester: "1151", deleting: ["1151:EE2"]) == nil)
-        #expect(AppState.coursesOnOneSide(server: ["EE2"], local: [], semester: "1151", deleting: []) == nil)
+        #expect(SyncConflicts.coursesOnOneSide(server: ["EE2"], local: ["CS1"], semester: "1151", deleting: ["1151:EE2"]) == nil)
+        #expect(SyncConflicts.coursesOnOneSide(server: ["EE2"], local: [], semester: "1151", deleting: []) == nil)
     }
 
     @Test("The courses re-enable check reads a course a roster dropped as gone from both sides, unless added by hand here")
@@ -342,23 +372,39 @@ struct CourseDeleteSyncTests {
         ]
         let addedHere = [SDCourse(courseNo: "GE3", courseName: "GE3", semester: "1151")]
 
-        let compared = AppState.reenableCourseNos(
+        let compared = CourseRosterReconciler.reenableCourseNos(
             rows, semester: "1151", local: ["CS1", "EE2", "GE3"], userAdded: addedHere, liveAnswer: nil
         )
 
         #expect(compared.server == ["CS1", "GE3"])
         #expect(compared.local == ["CS1", "GE3"])
-        #expect(AppState.coursesOnOneSide(server: compared.server, local: compared.local, semester: "1151", deleting: [])
+        #expect(SyncConflicts.coursesOnOneSide(server: compared.server, local: compared.local, semester: "1151", deleting: [])
             .map { [$0.localOnly, $0.serverOnly] } == [0, 0])
     }
 
     @Test("A course whose delete is queued keeps this device's setting through a pull, in its own term only")
     func queuedDeleteKeepsTheLocalSetting() {
-        let left = AppState.courseKeysPullLeaves(
+        let left = CourseIgnoresReconciler.courseKeysPullLeaves(
             ["1151:CS1", "1142:CS1", "1151:EE2"], deleting: ["1151:CS1", "EE2"], resetSemesters: []
         )
 
         #expect(left == ["1151:CS1", "1151:EE2"])
+    }
+}
+
+@MainActor
+private final class ResetBackend {
+    private(set) var entered = false
+    private var waiting: CheckedContinuation<Void, Never>?
+
+    func delete() async {
+        entered = true
+        await withCheckedContinuation { waiting = $0 }
+    }
+
+    func finish() {
+        waiting?.resume()
+        waiting = nil
     }
 }
 

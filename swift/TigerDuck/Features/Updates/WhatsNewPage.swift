@@ -3,20 +3,20 @@ import SwiftUI
 struct WhatsNewPage: Identifiable {
     let id: String
     let kind: Kind
-    let isApplicable: @MainActor (AppState) -> Bool
+    let isApplicable: @MainActor (AppEnvironment) -> Bool
 
     enum Kind {
         case feature(Content)
         case optIn(Content, confirm: WhatsNewText, decline: WhatsNewText,
-                   apply: @MainActor (AppState) -> Void)
+                   apply: @MainActor (AppEnvironment) -> Void)
         case permission(Content, confirm: WhatsNewText, decline: WhatsNewText,
-                        request: @MainActor (AppState) async -> Void)
+                        request: @MainActor (AppEnvironment) async -> Void)
         case choice(Content, options: [ChoiceOption],
-                    current: @MainActor (AppState) -> String,
-                    select: @MainActor (AppState, String) -> Void)
+                    current: @MainActor (AppEnvironment) -> String,
+                    select: @MainActor (AppEnvironment, String) -> Void)
         case toggle(Content, label: WhatsNewText,
-                    get: @MainActor (AppState) -> Bool,
-                    set: @MainActor (AppState, Bool) -> Void)
+                    get: @MainActor (AppEnvironment) -> Bool,
+                    set: @MainActor (AppEnvironment, Bool) -> Void)
         case custom(showsNextButton: Bool, content: @MainActor (WhatsNewPageContext) -> AnyView)
     }
 
@@ -42,11 +42,11 @@ struct WhatsNewPage: Identifiable {
         }
     }
 
-    static let alwaysApplicable: @MainActor (AppState) -> Bool = { _ in true }
+    static let alwaysApplicable: @MainActor (AppEnvironment) -> Bool = { _ in true }
 }
 
 struct WhatsNewPageContext {
-    let appState: AppState
+    let app: AppEnvironment
     let language: WhatsNewLanguage
     let advance: @MainActor () -> Void
 }
@@ -70,7 +70,7 @@ extension WhatsNewPage {
         visual: WhatsNewVisual?,
         title: WhatsNewText,
         body: WhatsNewText,
-        isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable
+        isApplicable: @escaping @MainActor (AppEnvironment) -> Bool = alwaysApplicable
     ) -> WhatsNewPage {
         WhatsNewPage(
             id: id,
@@ -86,8 +86,8 @@ extension WhatsNewPage {
         body: WhatsNewText,
         confirm: WhatsNewText,
         decline: WhatsNewText,
-        isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable,
-        apply: @escaping @MainActor (AppState) -> Void
+        isApplicable: @escaping @MainActor (AppEnvironment) -> Bool = alwaysApplicable,
+        apply: @escaping @MainActor (AppEnvironment) -> Void
     ) -> WhatsNewPage {
         WhatsNewPage(
             id: id,
@@ -106,8 +106,8 @@ extension WhatsNewPage {
         body: WhatsNewText,
         confirm: WhatsNewText,
         decline: WhatsNewText,
-        isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable,
-        request: @escaping @MainActor (AppState) async -> Void
+        isApplicable: @escaping @MainActor (AppEnvironment) -> Bool = alwaysApplicable,
+        request: @escaping @MainActor (AppEnvironment) async -> Void
     ) -> WhatsNewPage {
         WhatsNewPage(
             id: id,
@@ -125,9 +125,9 @@ extension WhatsNewPage {
         title: WhatsNewText,
         body: WhatsNewText,
         options: [ChoiceOption],
-        isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable,
-        current: @escaping @MainActor (AppState) -> String,
-        select: @escaping @MainActor (AppState, String) -> Void
+        isApplicable: @escaping @MainActor (AppEnvironment) -> Bool = alwaysApplicable,
+        current: @escaping @MainActor (AppEnvironment) -> String,
+        select: @escaping @MainActor (AppEnvironment, String) -> Void
     ) -> WhatsNewPage {
         WhatsNewPage(
             id: id,
@@ -145,9 +145,9 @@ extension WhatsNewPage {
         title: WhatsNewText,
         body: WhatsNewText,
         label: WhatsNewText,
-        isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable,
-        get: @escaping @MainActor (AppState) -> Bool,
-        set: @escaping @MainActor (AppState, Bool) -> Void
+        isApplicable: @escaping @MainActor (AppEnvironment) -> Bool = alwaysApplicable,
+        get: @escaping @MainActor (AppEnvironment) -> Bool,
+        set: @escaping @MainActor (AppEnvironment, Bool) -> Void
     ) -> WhatsNewPage {
         WhatsNewPage(
             id: id,
@@ -162,7 +162,7 @@ extension WhatsNewPage {
     static func custom<Page: View>(
         id: String,
         showsNextButton: Bool = true,
-        isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable,
+        isApplicable: @escaping @MainActor (AppEnvironment) -> Bool = alwaysApplicable,
         @ViewBuilder content: @escaping @MainActor (WhatsNewPageContext) -> Page
     ) -> WhatsNewPage {
         WhatsNewPage(

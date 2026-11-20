@@ -45,6 +45,30 @@ struct PushAppDelegateTests {
     /// which the real limits would take for a slow sync.
     private static let wideLimits = (answer: Duration.seconds(600), send: Duration.seconds(590))
 
+    private static func delegate(_ notifications: DeliveredNotificationsStub? = nil) -> PushAppDelegate {
+        let delegate = PushAppDelegate(appEvents: NotificationCenter())
+        delegate.syncTriggerLimits = wideLimits
+        delegate.deliveredNotifications = notifications ?? DeliveredNotificationsStub()
+        return delegate
+    }
+
+    private static func remindersDueAndNot() -> DeliveredNotificationsStub {
+        let now = Int(AppClock.now().timeIntervalSince1970)
+        return DeliveredNotificationsStub([
+            ("due", "assignment", ["kind": "assignment_reminder", "due_epoch": String(now - 3600)]),
+            ("not-due", "assignment", ["kind": "assignment_reminder", "due_epoch": String(now + 3600)]),
+            ("bulletin", "other", ["kind": "bulletin", "bulletin_id": "7"]),
+        ])
+    }
+
+    private static func answer(_ delegate: PushAppDelegate, _ userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
+        await withCheckedContinuation { continuation in
+            delegate.application(UIApplication.shared, didReceiveRemoteNotification: userInfo) {
+                continuation.resume(returning: $0)
+            }
+        }
+    }
+
     @Test("The app declares the Remote notifications background mode, so a sync trigger reaches it in the background")
     func theAppDeclaresRemoteNotifications() {
         let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
@@ -54,8 +78,7 @@ struct PushAppDelegateTests {
     @Test("A sync trigger is answered with what its sync came to",
           arguments: [(FullSyncOutcome.synced, UIBackgroundFetchResult.newData), (.skipped, .noData), (.failed, .failed)])
     func aSyncTriggerIsAnsweredWithItsOutcome(outcome: FullSyncOutcome, expected: UIBackgroundFetchResult) async {
-        let delegate = PushAppDelegate()
-        delegate.syncTriggerLimits = Self.wideLimits
+        let delegate = Self.delegate()
         delegate.onSyncTrigger = { outcome }
 
         let result = await withCheckedContinuation { continuation in
@@ -72,8 +95,7 @@ struct PushAppDelegateTests {
     /// schedule, whose request can take longer (https://github.com/tigerduck-app/tigerduck-app/issues/663).
     @Test("What must not wait for the next launch runs after the sync and before the answer: the widgets, then the send")
     func whatMustNotWaitRunsBeforeTheAnswer() async {
-        let delegate = PushAppDelegate()
-        delegate.syncTriggerLimits = Self.wideLimits
+        let delegate = Self.delegate()
         let events = Events()
         delegate.onSyncTrigger = {
             events.record("sync")
@@ -189,7 +211,7 @@ struct PushAppDelegateTests {
 
     @Test("A sync trigger runs under the delegate's limits")
     func aSyncTriggerRunsUnderTheDelegatesLimits() async {
-        let delegate = PushAppDelegate()
+        let delegate = Self.delegate()
         delegate.syncTriggerLimits = (answer: .milliseconds(20), send: .milliseconds(10))
         delegate.onSyncTrigger = {
             try? await Task.sleep(for: .seconds(5))
@@ -205,23 +227,77 @@ struct PushAppDelegateTests {
         #expect(result == .failed)
     }
 
-    @Test("Another push, or a sync trigger before a sync is bound, is answered at once with no data")
-    func otherPushesAreAnsweredWithNoData() {
-        let delegate = PushAppDelegate()
-        var results: [UIBackgroundFetchResult] = []
+    @Test("Another push, or a sync trigger before a sync is bound, is answered with no data")
+    func otherPushesAreAnsweredWithNoData() async {
+        let delegate = Self.delegate()
 
-        delegate.application(UIApplication.shared, didReceiveRemoteNotification: ["kind": "sync_trigger"]) {
-            results.append($0)
-        }
+        let unbound = await Self.answer(delegate, ["kind": "sync_trigger"])
         delegate.onSyncTrigger = {
             Issue.record("a push that is no sync trigger ran a sync")
             return .synced
         }
-        delegate.application(UIApplication.shared, didReceiveRemoteNotification: ["kind": "bulletin"]) {
-            results.append($0)
+        let other = await Self.answer(delegate, ["kind": "bulletin"])
+
+        #expect([unbound, other] == [.noData, .noData])
+    }
+
+    /// iOS may suspend the app as soon as a background push is answered.
+    @Test("Any background push removes the reminders already due before it is answered, whether its sync runs, fails or is not bound",
+          arguments: [("bulletin", FullSyncOutcome?.some(.synced)), ("sync_trigger", nil), ("sync_trigger", .failed), ("sync_trigger", .synced)])
+    func anyBackgroundPushRemovesDueRemindersBeforeTheAnswer(kind: String, sync: FullSyncOutcome?) async {
+        let center = Self.remindersDueAndNot()
+        let delegate = Self.delegate(center)
+        if let sync { delegate.onSyncTrigger = { sync } }
+        var leftWhenAnswered: [String]?
+
+        _ = await withCheckedContinuation { continuation in
+            delegate.application(UIApplication.shared, didReceiveRemoteNotification: ["kind": kind]) {
+                leftWhenAnswered = center.delivered.map(\.identifier)
+                continuation.resume(returning: $0)
+            }
         }
 
-        #expect(results == [.noData, .noData])
+        #expect(leftWhenAnswered == ["not-due", "bulletin"])
+    }
+
+    @Test("A read of the delivered notifications that stalls does not hold the sync, and the answer waits for both")
+    func aStalledReadDoesNotHoldTheSync() async throws {
+        let released = StateSignal(false)
+        let center = Self.remindersDueAndNot()
+        center.beforeReading = { await released.wait(until: { $0 }) }
+        let delegate = Self.delegate(center)
+        let events = Events()
+        let answers = Answers()
+        delegate.onSyncTrigger = {
+            events.record("sync")
+            return .synced
+        }
+        delegate.beforeAnsweringSyncTrigger = { events.record("widgets") }
+
+        delegate.application(
+            UIApplication.shared, didReceiveRemoteNotification: ["kind": "sync_trigger"], fetchCompletionHandler: answers.record
+        )
+        try await waitUntil { events.all == ["sync", "widgets"] }
+        let answeredBeforeTheRead = !answers.results.isEmpty
+        released.value = true
+        try await waitUntil { !answers.results.isEmpty }
+
+        #expect(!answeredBeforeTheRead)
+        #expect(answers.results == [.newData])
+        #expect(center.delivered.map(\.identifier) == ["not-due", "bulletin"])
+    }
+
+    @Test("Becoming active removes the reminders already due")
+    func becomingActiveRemovesDueReminders() async throws {
+        let appEvents = NotificationCenter()
+        let center = Self.remindersDueAndNot()
+        let delegate = PushAppDelegate(appEvents: appEvents)
+        delegate.deliveredNotifications = center
+
+        appEvents.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+
+        try await waitUntil { center.delivered.map(\.identifier) == ["not-due", "bulletin"] }
+        withExtendedLifetime(delegate) {}
     }
 }
 #endif

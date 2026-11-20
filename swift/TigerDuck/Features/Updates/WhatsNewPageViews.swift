@@ -11,14 +11,14 @@ struct WhatsNewPageContentView: View {
             WhatsNewTemplateBody(content: content) { EmptyView() }
         case .choice(let content, let options, let current, let select):
             WhatsNewTemplateBody(content: content) {
-                WhatsNewChoicePicker(options: options, initial: current(context.appState)) {
-                    select(context.appState, $0)
+                WhatsNewChoicePicker(options: options, initial: current(context.app)) {
+                    select(context.app, $0)
                 }
             }
         case .toggle(let content, let label, let get, let set):
             WhatsNewTemplateBody(content: content) {
-                WhatsNewToggleRow(label: label.resolved(for: context.language), initial: get(context.appState)) {
-                    set(context.appState, $0)
+                WhatsNewToggleRow(label: label.resolved(for: context.language), initial: get(context.app)) {
+                    set(context.app, $0)
                 }
             }
         case .custom(_, let build):

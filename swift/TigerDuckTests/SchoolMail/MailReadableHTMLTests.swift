@@ -81,7 +81,7 @@ struct MailReadableHTMLTests {
     @Test func onAMidToneTheBetterOfWhiteAndBlackIsTheFix() {
         let page = Self.readable(##"<p style="background-color: #777777; color: #808080">Notice</p>"##)
         #expect(page.html(on: .app) == ##"<p style="background-color: #777777; color: #000000">Notice</p>"##)
-        #expect(MailReadableHTML.readable(RGBA(0x000000), on: RGBA(0x777777)) == nil)
+        #expect(MailCSSColor.readable(RGBA(0x000000), on: RGBA(0x777777)) == nil)
     }
 
     @Test func textOverABackgroundImageKeepsItsColour() {
@@ -175,21 +175,21 @@ struct MailReadableHTMLTests {
     }
 
     @Test func aFixKeepsTheHue() {
-        #expect(MailReadableHTML.readable(RGBA(0x1F497D), on: RGBA(0x000000)) == RGBA(0x6B98D2))
-        #expect(MailReadableHTML.readable(RGBA(0xFFFF00), on: RGBA(0xFFFFFF)) == RGBA(0x5C5C00))
+        #expect(MailCSSColor.readable(RGBA(0x1F497D), on: RGBA(0x000000)) == RGBA(0x6B98D2))
+        #expect(MailCSSColor.readable(RGBA(0xFFFF00), on: RGBA(0xFFFFFF)) == RGBA(0x5C5C00))
     }
 
     @Test func everyFixReachesTheTarget() {
         for background in [0x000000, 0xFFFFFF, 0x777777, 0x3366CC, 0xFFFF00, 0x123456] as [UInt32] {
             let page = RGBA(background)
-            let best = max(MailReadableHTML.contrast(RGBA(0xFFFFFF), page), MailReadableHTML.contrast(RGBA(0x000000), page))
-            let target = min(MailReadableHTML.minimumContrast, best)
+            let best = max(MailCSSColor.contrast(RGBA(0xFFFFFF), page), MailCSSColor.contrast(RGBA(0x000000), page))
+            let target = min(MailCSSColor.minimumContrast, best)
             for value in stride(from: 0, through: 0xFFFFFF, by: 0x3F1F) {
                 let text = RGBA(UInt32(value))
-                let ratio = MailReadableHTML.contrast(text, page)
-                if let fixed = MailReadableHTML.readable(text, on: page) {
+                let ratio = MailCSSColor.contrast(text, page)
+                if let fixed = MailCSSColor.readable(text, on: page) {
                     #expect(ratio < target, "\(text.css) on \(page.css)")
-                    #expect(MailReadableHTML.contrast(fixed, page) >= target, "\(text.css) on \(page.css)")
+                    #expect(MailCSSColor.contrast(fixed, page) >= target, "\(text.css) on \(page.css)")
                 } else {
                     #expect(ratio >= target, "\(text.css) on \(page.css)")
                 }
@@ -198,7 +198,7 @@ struct MailReadableHTMLTests {
         for level in 0...255 {
             let grey = RGBA(UInt32(level) * 0x010101)
             for page in [RGBA(0x000000), RGBA(0xFFFFFF)] {
-                guard let fixed = MailReadableHTML.readable(grey, on: page) else { continue }
+                guard let fixed = MailCSSColor.readable(grey, on: page) else { continue }
                 #expect(fixed.red == fixed.green && fixed.green == fixed.blue, "\(grey.css) became \(fixed.css)")
             }
         }
@@ -260,15 +260,15 @@ struct MailReadableHTMLTests {
         "rgb(51 51 51 / 100%)", "rgba(51 51 51 / 1)", "rgb(5.1e1, +51, 51.0)", "rgba(51, 51, 51, .999e3)",
     ])
     func everyCSSFormOfAColourIsRead(value: String) {
-        #expect(MailReadableHTML.parse(value[...], legacy: false) == RGBA(0x333333))
+        #expect(MailCSSColor.parse(value[...], legacy: false) == RGBA(0x333333))
     }
 
     @Test func namedAndTranslucentColoursAreRead() {
-        #expect(MailReadableHTML.parse("DarkSlateGray", legacy: false) == RGBA(0x2F4F4F))
-        #expect(MailReadableHTML.parse("rebeccapurple", legacy: true) == RGBA(0x663399))
-        #expect(MailReadableHTML.parse("transparent", legacy: false)?.alpha == 0)
-        #expect(MailReadableHTML.parse("rgba(255, 0, 0, 50%)", legacy: false) == RGBA(red: 1, green: 0, blue: 0, alpha: 0.5))
-        #expect(MailReadableHTML.parse("#ff000080", legacy: false) == RGBA(red: 1, green: 0, blue: 0, alpha: 128.0 / 255))
+        #expect(MailCSSColor.parse("DarkSlateGray", legacy: false) == RGBA(0x2F4F4F))
+        #expect(MailCSSColor.parse("rebeccapurple", legacy: true) == RGBA(0x663399))
+        #expect(MailCSSColor.parse("transparent", legacy: false)?.alpha == 0)
+        #expect(MailCSSColor.parse("rgba(255, 0, 0, 50%)", legacy: false) == RGBA(red: 1, green: 0, blue: 0, alpha: 0.5))
+        #expect(MailCSSColor.parse("#ff000080", legacy: false) == RGBA(red: 1, green: 0, blue: 0, alpha: 128.0 / 255))
     }
 
     @Test(arguments: [
@@ -277,17 +277,17 @@ struct MailReadableHTMLTests {
         "rgb(51., 51, 51)", "rgb(51.e0, 51, 51)", "rgb(51e, 51, 51)", "rgb(., 51, 51)", "#３３３",
     ])
     func formsThisCannotReadAreNotGuessed(value: String) {
-        #expect(MailReadableHTML.parse(value[...], legacy: false) == nil)
+        #expect(MailCSSColor.parse(value[...], legacy: false) == nil)
     }
 
     /// `bgcolor` and `<font color>` follow HTML's legacy colour rules, which read `#333333ff` or
     /// `rgb()` as some other colour, so only the forms both rules agree on are read there.
     @Test func bgcolorAndFontColorTakeOnlyTheFormsHTMLReadsAsCSSDoes() {
-        #expect(MailReadableHTML.parse("#333", legacy: true) == RGBA(0x333333))
-        #expect(MailReadableHTML.parse("#333333", legacy: true) == RGBA(0x333333))
-        #expect(MailReadableHTML.parse("DarkSlateGray", legacy: true) == RGBA(0x2F4F4F))
+        #expect(MailCSSColor.parse("#333", legacy: true) == RGBA(0x333333))
+        #expect(MailCSSColor.parse("#333333", legacy: true) == RGBA(0x333333))
+        #expect(MailCSSColor.parse("DarkSlateGray", legacy: true) == RGBA(0x2F4F4F))
         for value in ["#333f", "#333333ff", "rgb(51, 51, 51)", "333333"] {
-            #expect(MailReadableHTML.parse(value[...], legacy: true) == nil, "\(value)")
+            #expect(MailCSSColor.parse(value[...], legacy: true) == nil, "\(value)")
         }
     }
 

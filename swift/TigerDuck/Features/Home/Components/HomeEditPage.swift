@@ -34,7 +34,7 @@ struct HomeEditPage<Header: View>: View {
                     containerID: sectionDragContainerID,
                     activePayload: $activeSectionDrag,
                     didReorder: $didReorderSection,
-                    onPersist: viewModel.saveSectionLayout
+                    onPersist: viewModel.layout.saveSectionLayout
                 )
             )
             .contentShape(Rectangle())
@@ -44,7 +44,7 @@ struct HomeEditPage<Header: View>: View {
             ReorderDropSupport.finalizeDrop(
                 activePayload: $activeSectionDrag,
                 didReorder: $didReorderSection,
-                onPersist: viewModel.saveSectionLayout
+                onPersist: viewModel.layout.saveSectionLayout
             )
         }
     }
@@ -54,12 +54,21 @@ struct HomeEditPage<Header: View>: View {
         // The handle sits above the outline, which is mostly its header, instead of covering it.
         return VStack(spacing: 0) {
             SectionDragHandle()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(section.displayTitle)
+                .reorderAccessibilityActions(
+                    section.id,
+                    shown: sections.map(\.id),
+                    currentIDs: sectionIDs,
+                    moveAction: moveSections,
+                    onPersist: viewModel.layout.saveSectionLayout
+                )
             sectionOutline(section)
         }
         .overlay(alignment: .topTrailing) {
             Button {
                 withAnimation(reduceMotion ? nil : .smoothSpring) {
-                    viewModel.removeSection(section)
+                    viewModel.layout.removeSection(section)
                 }
             } label: {
                 Image(systemName: "xmark.circle.fill")
@@ -83,13 +92,19 @@ struct HomeEditPage<Header: View>: View {
                 containerID: sectionDragContainerID,
                 activePayload: $activeSectionDrag,
                 didReorder: $didReorderSection,
-                currentIDs: { viewModel.sections.map(\.id) },
-                moveAction: { fromOffsets, destination in
-                    viewModel.sections.move(fromOffsets: fromOffsets, toOffset: destination)
-                },
-                onPersist: viewModel.saveSectionLayout
+                currentIDs: sectionIDs,
+                moveAction: moveSections,
+                onPersist: viewModel.layout.saveSectionLayout
             )
         )
+    }
+
+    private func sectionIDs() -> [String] {
+        viewModel.layout.sections.map(\.id)
+    }
+
+    private func moveSections(_ offsets: IndexSet, to destination: Int) {
+        viewModel.layout.sections.move(fromOffsets: offsets, toOffset: destination)
     }
 
     @ViewBuilder
@@ -100,12 +115,13 @@ struct HomeEditPage<Header: View>: View {
         case .quickWidgets, .custom:
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
                 SectionHeader(title: section.title)
+                    .accessibilityHidden(true)
                 WidgetGridView(
                     widgets: Binding(
-                        get: { viewModel.sections.first { $0.id == section.id }?.widgets ?? [] },
+                        get: { viewModel.layout.sections.first { $0.id == section.id }?.widgets ?? [] },
                         set: { newWidgets in
-                            if let index = viewModel.sections.firstIndex(where: { $0.id == section.id }) {
-                                viewModel.sections[index].widgets = newWidgets
+                            if let index = viewModel.layout.sections.firstIndex(where: { $0.id == section.id }) {
+                                viewModel.layout.sections[index].widgets = newWidgets
                             }
                         }
                     ),
@@ -113,10 +129,10 @@ struct HomeEditPage<Header: View>: View {
                     dragContainerID: section.id,
                     onRemove: { widget in
                         withAnimation(reduceMotion ? nil : .smoothSpring) {
-                            viewModel.removeWidget(from: section.id, widget: widget)
+                            viewModel.layout.removeWidget(from: section.id, widget: widget)
                         }
                     },
-                    onReorder: viewModel.saveSectionLayout
+                    onReorder: viewModel.layout.saveSectionLayout
                 )
             }
         }
@@ -138,6 +154,7 @@ private struct SectionPlaceholder: View {
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             SectionHeader(title: section.displayTitle)
+                .accessibilityHidden(true)
 
             Group {
                 if section.type == .todayCourses {

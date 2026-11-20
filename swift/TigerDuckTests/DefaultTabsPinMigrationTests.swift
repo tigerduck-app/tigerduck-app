@@ -43,7 +43,7 @@ struct DefaultTabsPinMigrationTests {
             Defaults[.hasCompletedOnboarding] = true
 
             #expect(DefaultTabsPinMigration.runIfNeeded())
-            #expect(AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]) == [.home, .classTable, .calendar])
+            #expect(AppPreferences.decodeConfiguredTabs(Defaults[.configuredTabsData]) == [.home, .classTable, .calendar])
             #expect(UserDefaults.standard.bool(forKey: doneKey))
 
             Defaults[.configuredTabsData] = nil
@@ -110,7 +110,7 @@ struct DefaultTabsPinMigrationTests {
 
     @Test func theKeptBarIsTheOldDefaultAndDecodes() throws {
         let data = try JSONEncoder().encode(DefaultTabsPinMigration.previousDefaultTabs)
-        #expect(AppState.decodeConfiguredTabs(data) == [.home, .classTable, .calendar])
+        #expect(AppPreferences.decodeConfiguredTabs(data) == [.home, .classTable, .calendar])
     }
 }
 #endif

@@ -16,7 +16,7 @@ struct ClassTableImportConfirmView: View {
                         #endif
                 }
                 Section {
-                    ForEach(ClassTableImportModel.rows(for: code), id: \.title) { row in
+                    ForEach(ClassTableImportSummary.rows(for: code), id: \.title) { row in
                         LabeledContent(row.title, value: row.value)
                     }
                 }

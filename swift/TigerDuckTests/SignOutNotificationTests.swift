@@ -14,7 +14,7 @@ struct SignOutNotificationTests {
             ("new-mail", MailConstants.notificationThread),
         ])
 
-        await AuthService.removeAccountNotifications(from: center)
+        await AccountSignOutCleanup.removeAccountNotifications(from: center)
 
         #expect(center.delivered.map(\.identifier) == ["new-mail"])
     }
@@ -30,7 +30,7 @@ struct SignOutNotificationTests {
         cache.storeCachedResponse(CachedURLResponse(response: response, data: Data("<p>B11399001</p>".utf8)), for: request)
         try #require(cache.cachedResponse(for: request) != nil)
 
-        await AuthService.forgetSchoolPages(cache: cache, clearBrowser: {})
+        await AccountSignOutCleanup.clearAllCachedPages(cache: cache, clearBrowser: {})
 
         #expect(cache.cachedResponse(for: request) == nil)
     }
@@ -42,20 +42,21 @@ struct SignOutNotificationTests {
             notificationCenter: NotificationCenter(),
             moodleTokens: MoodleTokenService(
                 storedCredentials: { nil }, tokens: .init(load: { nil }, save: { _ in }, drop: {}),
-                harvest: { _, _ in throw CancellationError() }
+                harvest: { _, _ in throw CancellationError() },
+                signIns: SignInSeries()
             ),
-            schoolSignIn: { _, _ in false },
+            schoolSignIn: { _, _, _ in false },
             endSchoolSession: { _ in }
         )
         auth.accountNotifications = center
 
         try await withExclusiveRealDefaults {
             let saved = Defaults[.ntustCredentialsPresent]
-            defer { Defaults[.ntustCredentialsPresent] = saved }
+            defer { Defaults[.ntustCredentialsPresent, for: testSignIn] = saved }
             try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
                 auth.logout()
                 try await waitUntil { center.delivered.isEmpty }
-                await auth.startSignOutCalls { center.delivered.append(("class-reminder", "course")) }.value
+                await auth.startSignOutCalls { center.delivered.append(("class-reminder", "course", [:])) }.value
             }
         }
 
@@ -65,14 +66,20 @@ struct SignOutNotificationTests {
 
 @MainActor
 final class DeliveredNotificationsStub: DeliveredNotificationCenter {
-    var delivered: [(identifier: String, thread: String)]
+    var delivered: [(identifier: String, thread: String, userInfo: [AnyHashable: Any])]
+    var beforeReading: (@MainActor () async -> Void)?
 
-    init(_ delivered: [(identifier: String, thread: String)] = []) {
+    init(_ delivered: [(identifier: String, thread: String, userInfo: [AnyHashable: Any])]) {
         self.delivered = delivered
     }
 
-    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)] {
-        delivered
+    convenience init(_ delivered: [(identifier: String, thread: String)] = []) {
+        self.init(delivered.map { ($0.identifier, $0.thread, [:]) })
+    }
+
+    func deliveredNotificationDetails() async -> [(identifier: String, thread: String, userInfo: [AnyHashable: Any])] {
+        await beforeReading?()
+        return delivered
     }
 
     func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {

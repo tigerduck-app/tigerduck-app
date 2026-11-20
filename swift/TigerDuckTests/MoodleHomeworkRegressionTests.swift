@@ -42,7 +42,7 @@ struct MoodleHomeworkRegressionTests {
                     autologinURL: "https://moodle2.ntust.edu.tw/admin/tool/mobile/autologin.php"
                 )
             },
-            signInGeneration: { 0 },
+            account: AccountSession(),
             sleep: { await ManualSleeper().sleep(for: $0) }
         )
     }
@@ -126,7 +126,7 @@ struct MoodleHomeworkRegressionTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MoodleHomeworkRegressionTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -136,11 +136,11 @@ struct MoodleHomeworkRegressionTests {
         let courseA = SDCourse(courseNo: "AAA001", courseName: "Course A", semester: semA)
         let courseB = SDCourse(courseNo: "BBB002", courseName: "Course B", semester: semB)
 
-        cache.saveCourses([courseA], semester: semA)
-        cache.saveCourses([courseB], semester: semB)
+        cache.courses.saveCourses([courseA], semester: semA, for: testSignIn)
+        cache.courses.saveCourses([courseB], semester: semB, for: testSignIn)
 
-        let loadedA = cache.loadCourses(semester: semA)
-        let loadedB = cache.loadCourses(semester: semB)
+        let loadedA = cache.courses.loadCourses(semester: semA)
+        let loadedB = cache.courses.loadCourses(semester: semB)
 
         #expect(loadedA.map(\.courseNo) == ["AAA001"])
         #expect(loadedB.map(\.courseNo) == ["BBB002"])
@@ -174,7 +174,7 @@ struct MoodleHomeworkRegressionTests {
 
         #expect(course.courseNos == ["AS5140701", "CS5140701"])
         #expect(course.idnumbers == ["1151AS5140701", "1151CS5140701"])
-        #expect(AppServiceBridge.moodleCourseIdMap([course]) == [
+        #expect(AssignmentRecords.moodleCourseIdMap([course]) == [
             "1151AS5140701": 19739,
             "1151CS5140701": 19739,
         ])
@@ -220,7 +220,7 @@ struct MoodleHomeworkRegressionTests {
             assignId: 1, cmId: 1, courseId: 10, name: "HW1", dueDate: Date(timeIntervalSince1970: 1_790_000_000),
             cutoffDate: nil, allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
         )
-        let rows = AppServiceBridge.assignments(
+        let rows = AssignmentRecords.assignments(
             from: [record],
             moodleCoursesById: [10: MoodleEnrolledCourse(id: 10, fullname: "3N1010003 機器學習", shortname: "",
                                                          idnumber: "11513N1010003", startDate: nil, endDate: nil)],
@@ -242,7 +242,7 @@ struct MoodleHomeworkRegressionTests {
                 allowSubmissionsFromDate: nil, intro: "", noSubmissions: false
             )
         }
-        let rows = AppServiceBridge.assignments(
+        let rows = AssignmentRecords.assignments(
             from: records,
             moodleCoursesById: [:],
             courseNoByMoodleId: [:],
@@ -313,17 +313,17 @@ struct MoodleHomeworkRegressionTests {
         )
 
         #expect(
-            AppServiceBridge.assignmentCourseNo(
+            AssignmentRecords.assignmentCourseNo(
                 for: coListed, localCourseNos: ["CS5140701", "CS3025301"]
             ) == "CS5140701"
         )
         #expect(
-            AppServiceBridge.assignmentCourseNo(
+            AssignmentRecords.assignmentCourseNo(
                 for: coListed, localCourseNos: ["AS5140701"]
             ) == "AS5140701"
         )
         #expect(
-            AppServiceBridge.assignmentCourseNo(for: coListed, localCourseNos: []) == "AS5140701"
+            AssignmentRecords.assignmentCourseNo(for: coListed, localCourseNos: []) == "AS5140701"
         )
     }
 
@@ -345,8 +345,8 @@ struct MoodleHomeworkRegressionTests {
             endDate: nil
         )
 
-        #expect(AppServiceBridge.moodleCourseIdMap([coListed, ownsTheAlias])["1151BB2222701"] == 200)
-        #expect(AppServiceBridge.moodleCourseIdMap([ownsTheAlias, coListed])["1151BB2222701"] == 200)
+        #expect(AssignmentRecords.moodleCourseIdMap([coListed, ownsTheAlias])["1151BB2222701"] == 200)
+        #expect(AssignmentRecords.moodleCourseIdMap([ownsTheAlias, coListed])["1151BB2222701"] == 200)
     }
 
     @Test func moodleEnrolledCourse_emptyIdnumberYieldsEmptyDerivedFields() {
@@ -379,21 +379,16 @@ struct MoodleHomeworkRegressionTests {
         #expect(summer.semester == "114H")
         #expect(summer.courseNo == "GD3115301")
         #expect(summer.idnumbers == ["114hGD3115301"])
-        #expect(AppServiceBridge.moodleCourseIdMap([summer]) == ["114HGD3115301": 3])
+        #expect(AssignmentRecords.moodleCourseIdMap([summer]) == ["114HGD3115301": 3])
         #expect(SDCourse.normalizedMoodleId("114hGD3115301") == "114HGD3115301")
         #expect(SDCourse.normalizedMoodleId("1151AS5140701") == "1151AS5140701")
         #expect(SDCourse.normalizedMoodleId("moodle:42") == "moodle:42")
         #expect(SDCourse.courseNoFromMoodleId("114hGD3115301") == "GD3115301")
     }
 
-    @Test func semesterPrefix_acceptsTermCodesAndRejectsEverythingElse() {
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "1151AS5140701") == "1151")
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "114hGD3115301") == "114H")
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "114HGD3115301") == "114H")
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "moodle:42") == nil)
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "1151") == nil)
-        #expect(SDCourse.semesterPrefix(ofMoodleId: "") == nil)
+    @Test func courseNoFromMoodleId_keepsAnIdWithoutATermPrefix() {
         #expect(SDCourse.courseNoFromMoodleId("moodle:42") == "moodle:42")
+        #expect(SDCourse.courseNoFromMoodleId("1151") == "1151")
     }
 
     @Test func moodleSubmissionStatus_isSubmittedReflectsServerStatus() {
@@ -761,12 +756,12 @@ struct MoodleHomeworkRegressionTests {
             dueDate: now.addingTimeInterval(5400)
         )
         let viewModel = HomeViewModel()
-        viewModel.allAssignmentsCache = [ignored, later, sooner]
+        viewModel.assignments.all = [ignored, later, sooner]
 
-        viewModel.assignmentFilter = .ignored
+        viewModel.assignments.filter = .ignored
 
-        #expect(viewModel.upcomingAssignments.map(\.assignmentId) == ["ignored"])
-        #expect(viewModel.assignmentsFor(courseNo: "CS1").map(\.assignmentId) == ["sooner", "later"])
+        #expect(viewModel.assignments.upcoming.map(\.assignmentId) == ["ignored"])
+        #expect(viewModel.assignments.unfinished(for: "CS1").map(\.assignmentId) == ["sooner", "later"])
     }
 #endif
 

@@ -46,7 +46,7 @@ struct MoodleAssignmentsView: View {
         }
     }
 
-    static func shownStatus(of assignment: SDAssignment, now: Date) -> AssignmentStatus? {
+    static func shownStatus(of assignment: AssignmentStore.Assignment, now: Date) -> AssignmentStatus? {
         switch assignment.moodleStatus(now: now) {
         case .submitted: .submitted
         case .submittedLate: .submittedLate
@@ -81,9 +81,7 @@ private struct MoodleAssignmentRow: View {
 
     var body: some View {
         let stacked = dynamicTypeSize.isAccessibilitySize
-        let layout = stacked
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs))
-            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
+        let layout = dynamicTypeSize.rowLayout
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             layout {
                 Text(row.entry.record.name.decodingHTMLEntities())

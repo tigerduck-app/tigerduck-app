@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct MacOtherSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var endpointVM = DebugEndpointViewModel()
 
     var body: some View {
@@ -59,7 +59,7 @@ struct MacOtherSettingsView: View {
 
                 HStack {
                     Button {
-                        Task { await endpointVM.save { await EndpointChangeSignOut(appState: appState).notes() } }
+                        Task { await endpointVM.save { await EndpointChangeSignOut(app: app).notes() } }
                     } label: {
                         if endpointVM.isChecking {
                             Text(String(localized: "settings_api_endpoint_checking"))
@@ -70,7 +70,7 @@ struct MacOtherSettingsView: View {
                     .disabled(endpointVM.isChecking || endpointVM.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     Spacer()
                     Button(String(localized: "settings_api_endpoint_reset_action"), role: .destructive) {
-                        Task { await endpointVM.resetToDefault { await EndpointChangeSignOut(appState: appState).notes() } }
+                        Task { await endpointVM.resetToDefault { await EndpointChangeSignOut(app: app).notes() } }
                     }
                     .disabled(endpointVM.isChecking || endpointVM.storedOverride == nil)
                 }

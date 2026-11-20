@@ -38,7 +38,7 @@ struct LibraryTabAddMigrationTests {
     }
 
     private static var storedBar: [AppFeature]? {
-        AppState.decodeConfiguredTabs(Defaults[.configuredTabsData])
+        AppPreferences.decodeConfiguredTabs(Defaults[.configuredTabsData])
     }
 
     @Test func aBarWithRoomGetsLibraryLeftOfMoreOnce() async throws {

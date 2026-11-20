@@ -63,15 +63,15 @@ struct CourseTombstoneMigrationTests {
 struct MisfiledServerRowTests {
     @MainActor
     @Test func rowWhoseMoodleIdNamesAnotherTermIsNotFiledHere() {
-        #expect(!AppState.isFiled(["moodle_id": "1151CS1"], under: "1142"))
-        #expect(AppState.isFiled(["moodle_id": "1142CS1"], under: "1142"))
-        #expect(AppState.isFiled(["moodle_id": "114HCS1"], under: "114H"))
+        #expect(!CourseServerRows.isFiled(["moodle_id": "1151CS1"], under: "1142"))
+        #expect(CourseServerRows.isFiled(["moodle_id": "1142CS1"], under: "1142"))
+        #expect(CourseServerRows.isFiled(["moodle_id": "114HCS1"], under: "114H"))
         // Moodle spells a summer term "114h", NTUST spells it "114H"; the
         // raw compare this replaced filed every summer row under another term.
-        #expect(AppState.isFiled(["moodle_id": "114hCS1"], under: "114H"))
-        #expect(!AppState.isFiled(["moodle_id": "113hCS1"], under: "114H"))
-        #expect(AppState.isFiled(["moodle_id": "moodle:42"], under: "1142"))
-        #expect(AppState.isFiled([:], under: "1142"))
+        #expect(CourseServerRows.isFiled(["moodle_id": "114hCS1"], under: "114H"))
+        #expect(!CourseServerRows.isFiled(["moodle_id": "113hCS1"], under: "114H"))
+        #expect(CourseServerRows.isFiled(["moodle_id": "moodle:42"], under: "1142"))
+        #expect(CourseServerRows.isFiled([:], under: "1142"))
     }
 }
 
@@ -85,7 +85,7 @@ struct ServerRowCourseMetadataTests {
     ]
 
     @Test func rebuildingAnExistingRowKeepsItsDimensionAndDuration() {
-        let course = AppState.course(fromServerRow: Self.row, courseNo: "GE1001",
+        let course = CourseServerRows.course(fromServerRow: Self.row, courseNo: "GE1001",
                                      semester: "1151", name: "通識課",
                                      dimension: "C", allYear: "全學年", requireOption: "E")
         #expect(course.dimension == "C")
@@ -96,7 +96,7 @@ struct ServerRowCourseMetadataTests {
     }
 
     @Test func aFreshServerRowLeavesTheMetadataEmpty() {
-        let course = AppState.course(fromServerRow: Self.row, courseNo: "GE1001",
+        let course = CourseServerRows.course(fromServerRow: Self.row, courseNo: "GE1001",
                                      semester: "1151", name: nil)
         #expect(course.dimension.isEmpty)
         #expect(course.allYear.isEmpty)

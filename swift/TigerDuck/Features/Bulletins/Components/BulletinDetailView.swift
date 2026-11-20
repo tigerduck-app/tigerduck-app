@@ -14,13 +14,12 @@ struct BulletinDetailView: View {
     let taxonomy: BulletinTaxonomyStore
     var readState: BulletinReadStateStore? = nil
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
     @State private var detail: BulletinAPI.BulletinDetail?
     @State private var loadError: String?
     @State private var isLoading: Bool = false
 
-    private static let apiClient: BulletinAPIClient = BulletinAPIClient()
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Detail")
 
     var body: some View {
@@ -45,7 +44,7 @@ struct BulletinDetailView: View {
                 .padding(.trailing, TigerDuckTheme.Spacing.lg)
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
-        .navigationBarBackButtonHidden(true)
+        .hidesBackButtonKeepingEdgeSwipe()
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .task(id: bulletin.id) {
@@ -170,12 +169,12 @@ struct BulletinDetailView: View {
     }
 
     private var bulletinMarkdownTheme: Theme {
-        .bulletin(accent: appState.accentColor)
+        .bulletin(accent: app.preferences.accentColor)
     }
 
     private func loadDetail() async {
         guard detail == nil else { return }
-        if let cached = DataCache.shared.loadBulletinDetail(id: bulletin.id) {
+        if let cached = BulletinDetails.cached(id: bulletin.id) {
             detail = cached
         }
         let hadCached = detail != nil
@@ -183,9 +182,7 @@ struct BulletinDetailView: View {
         loadError = nil
         defer { isLoading = false }
         do {
-            let fresh = try await Self.apiClient.getBulletin(id: bulletin.id)
-            detail = fresh
-            DataCache.shared.saveBulletinDetail(fresh)
+            detail = try await BulletinDetails.fetch(id: bulletin.id, for: await AccountSession.school.startingSignIn)
         } catch {
             logger.error("detail load failed id=\(bulletin.id, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
             if !hadCached {

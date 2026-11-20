@@ -152,6 +152,18 @@ struct MailIndexerTests {
         #expect(await h.fake.calls.filter { $0.hasPrefix("undeletedUIDs INBOX") }.count == 3)
     }
 
+    @Test func mailThatArrivesDuringAPassRunsTheNextPassAtOnce() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.hold("searchTexts")
+        h.indexer.startIfDue(folders: ["INBOX"])
+        await h.fake.waitForArrival("searchTexts")
+        h.indexer.noteNewMail()
+        await h.fake.release("searchTexts")
+        await h.indexer.waitForPass()
+        await h.indexer.waitForPass()
+        #expect(await h.passes() == 2)
+    }
+
     @Test func aLostConnectionEndsThePassAndLeavesItDue() async {
         let h = Self.harness(inboxCount: 3)
         await h.fake.update { $0.searchTextsError = .unreachable }

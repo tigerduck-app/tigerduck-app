@@ -4,7 +4,7 @@ import Testing
 
 @MainActor
 struct RefreshedCourseDataTests {
-    private static let display = AppServiceBridge.CourseDisplayPreferences(
+    private static let display = CourseDetails.CourseDisplayPreferences(
         language: "zh",
         courseAbbrEnabled: false,
         classroomAbbrEnabled: false,
@@ -41,7 +41,7 @@ struct RefreshedCourseDataTests {
         moodle: MoodleEnrolledCourse?,
         lookup: () async throws -> [CourseSearchResult]
     ) async -> CourseData? {
-        await AppServiceBridge.refreshedCourseData(
+        await CourseDetails.refreshedCourseData(
             courseNo: "CS1001301",
             semester: "1151",
             cached: cached,

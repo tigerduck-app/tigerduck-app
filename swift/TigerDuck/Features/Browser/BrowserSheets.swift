@@ -15,7 +15,7 @@ struct BrowserSheetView: View {
     let showsNavigation: Bool
     let afterClosing: (@escaping () -> Void) -> Void
 
-    @State private var showsCertificate: Bool
+    @State private var pushed: Bool
     @State private var height: CGFloat = 160
 
     init(page: BrowserPage, sheet: BrowserSheet, showsNavigation: Bool, afterClosing: @escaping (@escaping () -> Void) -> Void) {
@@ -23,30 +23,37 @@ struct BrowserSheetView: View {
         self.sheet = sheet
         self.showsNavigation = showsNavigation
         self.afterClosing = afterClosing
-        _showsCertificate = State(initialValue: sheet == .certificate)
+        _pushed = State(initialValue: sheet == .certificate)
     }
 
     var body: some View {
-        Group {
-            if sheet == .more {
-                BrowserMenu(page: page, showsNavigation: showsNavigation, afterClosing: afterClosing)
-                    .fittedHeight($height)
-            } else {
-                NavigationStack {
-                    BrowserAddressView(page: page, showsCertificate: $showsCertificate)
-                        .fittedHeight($height)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                        .background(Color(uiColor: .systemGroupedBackground))
-                        // The content runs under the empty bar, which stays shown: a push that brings
-                        // a hidden bar in lays it out too high until the push ends.
-                        .ignoresSafeArea(.container, edges: .top)
-                        .navigationDestination(isPresented: $showsCertificate) {
-                            BrowserCertificateView(chain: BrowserCertificate.chain(of: page.connection == .secure ? page.serverTrust : nil))
-                        }
+        NavigationStack {
+            // Scrolls once large text makes it taller than the screen, where the sheet stops.
+            ScrollView {
+                Group {
+                    if sheet == .more {
+                        BrowserMenu(page: page, showsNavigation: showsNavigation, afterClosing: afterClosing) { pushed = true }
+                    } else {
+                        BrowserAddressView(page: page, showsCertificate: $pushed, afterClosing: afterClosing)
+                    }
                 }
+                .fittedHeight($height)
             }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Color(uiColor: .systemGroupedBackground))
+                // The content runs under the empty bar, which stays shown: a push that brings
+                // a hidden bar in lays it out too high until the push ends.
+                .ignoresSafeArea(.container, edges: .top)
+                .navigationDestination(isPresented: $pushed) {
+                    if sheet == .more {
+                        BrowserDownloadsView(page: page)
+                    } else {
+                        BrowserCertificateView(chain: BrowserCertificate.chain(of: page.connection == .secure ? page.serverTrust : nil))
+                    }
+                }
         }
-        .presentationDetents(showsCertificate ? [.large] : [.height(height)])
+        .presentationDetents(pushed ? [.large] : [.height(height)])
         .presentationDragIndicator(.visible)
         .centeredPlacement()
         .presentationBackground(Color(uiColor: .systemGroupedBackground))
@@ -73,11 +80,12 @@ private extension View {
 private struct BrowserAddressView: View {
     let page: BrowserPage
     @Binding var showsCertificate: Bool
+    let afterClosing: (@escaping () -> Void) -> Void
     @State private var signedIn = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(page.address?.absoluteString ?? "")
+            Text(page.sheetAddress?.absoluteString ?? "")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
@@ -122,6 +130,20 @@ private struct BrowserAddressView: View {
                 Spacer(minLength: 0)
             }
             .padding(TigerDuckTheme.Spacing.lg)
+            if page.refusalToOpenAtRisk != nil {
+                Divider().padding(.leading, 52)
+                Button { afterClosing { page.openAtRisk() } } label: {
+                    HStack(spacing: TigerDuckTheme.Spacing.md) {
+                        Image(systemName: "lock.open").frame(width: 24)
+                        Text(String(localized: "browser_certificate_accept_risk")).fontWeight(.semibold)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(.red)
+                    .padding(TigerDuckTheme.Spacing.lg)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            }
         } else {
             Button { showsCertificate = true } label: {
                 HStack(spacing: TigerDuckTheme.Spacing.md) {
@@ -162,10 +184,10 @@ private struct BrowserCertificateView: View {
             if chain.indices.contains(selected) {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(String(localized: "browser_certificate_copy"), systemImage: copied ? "checkmark" : "doc.on.doc") {
-                        UIPasteboard.general.string = Self.summary(of: chain[selected])
+                        Pasteboard.copy(Self.summary(of: chain[selected]))
                         copied = true
                         Task {
-                            try? await Task.sleep(for: .seconds(1.4))
+                            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.4))
                             copied = false
                         }
                     }

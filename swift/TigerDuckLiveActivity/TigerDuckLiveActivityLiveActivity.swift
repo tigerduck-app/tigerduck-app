@@ -1,5 +1,6 @@
 import ActivityKit
 import SwiftUI
+import TigerDuckCore
 import WidgetKit
 
 struct TigerDuckLiveActivityLiveActivity: Widget {
@@ -15,7 +16,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 6) {
                         Circle()
-                            .fill(hexColor(snapshot.accentHex))
+                            .fill(accentFill(snapshot))
                             .frame(width: 8, height: 8)
                         Text(statusLabel(for: snapshot.scenario))
                             .font(.footnote.weight(.semibold))
@@ -71,7 +72,7 @@ private struct LockScreenView: View {
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(hexColor(snapshot.accentHex))
+                        .fill(accentFill(snapshot))
                         .frame(width: 8, height: 8)
                     Text(statusLabel(for: snapshot.scenario))
                         .font(.footnote.weight(.semibold))
@@ -146,14 +147,12 @@ private struct AutoProgressBar: View {
             // `ProgressView(timerInterval:)` interpolates against the real wall clock,
             // but snapshot dates are app-clock time (possibly fake), so translate the
             // endpoints to animate over the matching real-time span.
-            let realStart = AppClock.realTime(forApp: start)
-            let realTarget = AppClock.realTime(forApp: target)
-            ProgressView(timerInterval: realStart...realTarget, countsDown: false) {
+            ProgressView(timerInterval: AppClock.realTime(forApp: start...target), countsDown: false) {
                 EmptyView()
             } currentValueLabel: {
                 EmptyView()
             }
-            .tint(hexColor(snapshot.accentHex))
+            .tint(snapshot.accentGradient?.tintStyle(color: hexColor) ?? AnyShapeStyle(hexColor(snapshot.accentHex)))
             .scaleEffect(x: 1, y: 1.2, anchor: .center)
             .padding(.vertical, 6)
         }
@@ -202,7 +201,7 @@ private struct MetadataRowView: View {
                 HStack(spacing: 4) {
                     if !snapshot.subtitle.isEmpty {
                         Image(systemName: "clock.fill")
-                        Text(snapshot.subtitle)
+                        classTime(snapshot.subtitle)
                     }
                 }
                 .changed(snapshot.timeChanged == true, ink: changeInk(colorScheme))
@@ -221,6 +220,12 @@ private struct MetadataRowView: View {
         .foregroundStyle(.secondary)
         .lineLimit(1)
         .frame(maxWidth: .infinity)
+    }
+
+    private func classTime(_ subtitle: String) -> Text {
+        guard let times = TimeRange.times(ofLiveActivitySubtitle: subtitle) else { return Text(subtitle) }
+        return Text(TimeRange.text(times.start, times.end))
+            .accessibilityLabel(TimeRange.spoken(times.start, times.end))
     }
 }
 
@@ -297,6 +302,10 @@ private extension View {
             self
         }
     }
+}
+
+private func accentFill(_ snapshot: LiveActivitySnapshot) -> AnyShapeStyle {
+    snapshot.accentGradient?.shapeStyle(color: hexColor) ?? AnyShapeStyle(hexColor(snapshot.accentHex))
 }
 
 private func hexColor(_ hex: Int) -> Color {

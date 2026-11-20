@@ -75,10 +75,10 @@ struct WhatsNewClassTableSwitchDemo: View {
             guard isCurrent else { return }
             showsFriend = false
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1.4))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.4))
                 guard !Task.isCancelled else { return }
                 taps += 1
-                try? await Task.sleep(for: .milliseconds(450))
+                try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(450))
                 guard !Task.isCancelled else { return }
                 showsFriend.toggle()
             }
@@ -200,20 +200,20 @@ struct WhatsNewIgnoreAssignmentsDemo: View {
             highlights = false
             while !Task.isCancelled {
                 ignored = false
-                try? await Task.sleep(for: .seconds(1.3))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.3))
                 guard !Task.isCancelled else { return }
                 withAnimation(.snappy(duration: 0.25)) { showsMenu = true }
-                try? await Task.sleep(for: .milliseconds(700))
+                try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(700))
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.15)) { highlights = true }
-                try? await Task.sleep(for: .milliseconds(350))
+                try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(350))
                 guard !Task.isCancelled else { return }
                 withAnimation(.snappy(duration: 0.25)) {
                     showsMenu = false
                     highlights = false
                     ignored = true
                 }
-                try? await Task.sleep(for: .seconds(2.2))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(2.2))
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.25)) { ignored = false }
             }
