@@ -7,30 +7,35 @@ struct MailComposeView: View {
     private enum Field: Hashable { case to, cc, bcc, subject, body }
 
     @State private var viewModel: MailComposeViewModel
-    private let mode: MailComposeMode
+    private let hold: MailSendHold
 
     @Environment(\.dismiss) private var dismiss
     @State private var showLeaveDialog = false
-    @State private var showSendDialog = false
     @State private var showFileImporter = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var pendingPicks = 0
     @FocusState private var focused: Field?
 
-    init(
-        context: MailComposeContext,
-        session: MailPageSession,
-        folderRoles: [MailFolderRole: String],
-        onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void,
-        onSentCopyNotice: @escaping (String) -> Void
-    ) {
+    init(viewModel: MailComposeViewModel, hold: MailSendHold? = nil) {
+        _viewModel = State(initialValue: viewModel)
+        self.hold = hold ?? .shared
+    }
+
+    init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String], events: MailboxEvents) {
         let account = MailAccountManager.shared
         let sender = MailAddress(name: account.displayName, address: account.address ?? "")
-        let model = MailComposeViewModel(context: context, session: session, sender: sender, folderRoles: folderRoles)
-        model.onFolderRolesChanged = onFolderRolesChanged
-        model.onSentCopyNotice = onSentCopyNotice
-        _viewModel = State(initialValue: model)
-        mode = context.mode
+        self.init(viewModel: MailComposeViewModel(context: context, session: session, sender: sender,
+                                                  folderRoles: folderRoles, events: events))
+    }
+
+    init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String],
+         onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void, onSentCopyNotice: @escaping (String) -> Void) {
+        let events = MailboxEvents()
+        events.observe { event in
+            if case let .folderRoles(roles) = event { onFolderRolesChanged(roles) }
+            if case let .sentCopyNotice(notice) = event { onSentCopyNotice(notice) }
+        }
+        self.init(context: context, session: session, folderRoles: folderRoles, events: events)
     }
 
     var body: some View {
@@ -112,7 +117,8 @@ struct MailComposeView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        if viewModel.confirmationIsWarranted() { showSendDialog = true }
+                        guard viewModel.readyToSend(), hold.hold(viewModel) else { return }
+                        dismiss()
                     } label: {
                         LoadingButtonLabel(isLoading: viewModel.isSending) {
                             Text(String(localized: "school_mail_send")).fontWeight(.semibold)
@@ -129,17 +135,14 @@ struct MailComposeView: View {
             } message: {
                 Text(viewModel.error ?? "")
             }
-            .confirmationDialog(String(localized: "school_mail_send_confirm_title"), isPresented: $showSendDialog, titleVisibility: .visible) {
-                Button(String(localized: "school_mail_send")) {
-                    Task { await viewModel.send() }
-                }
-                Button(String(localized: "school_mail_keep_editing"), role: .cancel) {}
-            }
             .confirmationDialog(String(localized: "school_mail_leave_title"), isPresented: $showLeaveDialog, titleVisibility: .visible) {
                 Button(String(localized: "school_mail_save_draft")) {
                     Task { if await viewModel.saveDraft() { dismiss() } }
                 }
-                Button(String(localized: "school_mail_discard"), role: .destructive) { dismiss() }
+                Button(String(localized: "school_mail_discard"), role: .destructive) {
+                    viewModel.discard()
+                    dismiss()
+                }
                 Button(String(localized: "school_mail_keep_editing"), role: .cancel) {}
             }
             .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
@@ -158,16 +161,17 @@ struct MailComposeView: View {
                     pendingPicks -= 1
                 }
             }
-            .onChange(of: viewModel.didFinish) { _, finished in
-                if finished { dismiss() }
+            .onChange(of: viewModel.shouldClose) { _, closes in
+                if closes { dismiss() }
             }
             .task { await viewModel.prepare() }
+            .task { await viewModel.contacts.load() }
             .interactiveDismissDisabled(viewModel.hasChanges || viewModel.isSending)
         }
     }
 
     private var title: String {
-        switch mode {
+        switch viewModel.mode {
         case .reply: String(localized: "school_mail_reply")
         case .replyAll: String(localized: "school_mail_reply_all")
         case .forward: String(localized: "school_mail_forward")
@@ -181,55 +185,22 @@ struct MailComposeView: View {
     }
 
     private func addressField(_ title: String, text: Binding<String>, field: Field) -> some View {
-        MailRecipientTokenField(title: title, text: text, focus: $focused, field: field)
+        MailRecipientTokenField(title: title, text: text, focus: $focused, field: field, suggest: viewModel.recipientSuggestions(for:))
     }
 
     private func addFile(_ url: URL) async {
-        let picked = await Task.detached {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let data = Self.readBounded(url) else { return nil as (Data, String, String)? }
-            let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-            return (data, mimeType, url.lastPathComponent)
-        }.value
-        guard let (data, mimeType, filename) = picked else {
+        guard let picked = await MailComposeFiles.read(url) else {
             viewModel.attachmentReadFailed()
             return
         }
-        viewModel.addAttachment(filename: filename, mimeType: mimeType, data: data)
-    }
-
-    private nonisolated static func readBounded(_ url: URL) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        return readBounded(read: handle.read(upToCount:))
-    }
-
-    nonisolated static func readBounded(read: (Int) throws -> Data?) -> Data? {
-        var data = Data()
-        do {
-            while let chunk = try read(1024 * 1024), !chunk.isEmpty {
-                data.append(chunk)
-                guard data.count <= MailConstants.maxEncodedMessageBytes else { return nil }
-            }
-        } catch {
-            return nil
-        }
-        return data
+        viewModel.addAttachment(filename: picked.filename, mimeType: picked.mimeType, data: picked.data)
     }
 
     private func addPhotos(_ items: [PhotosPickerItem]) async {
-        var anyFailed = false
-        for (index, item) in items.enumerated() {
-            guard let data = try? await item.loadTransferable(type: Data.self) else {
-                anyFailed = true
-                continue
-            }
-            let type = item.supportedContentTypes.first
-            let ext = type?.preferredFilenameExtension ?? "jpg"
-            viewModel.addAttachment(filename: "IMG_\(index + 1).\(ext)", mimeType: type?.preferredMIMEType ?? "image/jpeg", data: data)
+        let unreadable = await MailComposeFiles.loadPhotos(items) { filename, mimeType, data in
+            viewModel.addAttachment(filename: filename, mimeType: mimeType, data: data)
         }
-        if anyFailed { viewModel.attachmentReadFailed() }
+        if !unreadable.isEmpty { viewModel.attachmentReadFailed() }
         photoItems = []
     }
 }

@@ -4,7 +4,7 @@ import Testing
 @MainActor
 struct TestHostTests {
 
-    @Test func testHostBuildsNoAppState() {
+    @Test func testHostBuildsNoAppEnvironment() {
         #expect(CloudSyncCoordinator.shared == nil)
     }
 }

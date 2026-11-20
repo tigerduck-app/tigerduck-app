@@ -104,7 +104,7 @@ final class DevMailServerSettings {
 
     var draft: MailServerOverrideSettings
 
-    private(set) var generation = 0
+    private(set) var revision = 0
 
     init(
         store: DevMailServerOverride = .shared,
@@ -120,7 +120,7 @@ final class DevMailServerSettings {
 
     static func applyRefusal(for draft: MailServerOverrideSettings) -> String? {
         guard draft.isEnabled, let settings = draft.normalized else { return nil }
-        let school = [settings.imapHost, settings.smtpHost].filter(DevMailConnectionProbe.isSchoolHost)
+        let school = [settings.imapHost, settings.smtpHost].filter(DevMailProbeDraft.isSchoolHost)
         guard !school.isEmpty else { return nil }
         return """
         \(Array(Set(school)).sorted().joined(separator: ", ")) is an NTUST host, and an override \
@@ -150,7 +150,7 @@ final class DevMailServerSettings {
         store.save(settings)
         guard store.effectiveConfig != before else { return false }
         resetMailState()
-        generation += 1
+        revision += 1
         return true
     }
 }

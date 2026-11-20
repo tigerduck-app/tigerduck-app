@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import TigerDuckCore
 
 @Observable
 @MainActor
@@ -31,19 +32,25 @@ final class ScoreViewModel {
 
     private struct RefreshOwner: Equatable {
         let studentId: String
-        let generation: Int
+        let signIn: SignIn
     }
 
     var rankingScope: RankingScope = .semester
 
     var collapsedTerms: Set<String> = []
 
+    @ObservationIgnored private let reports: ScoreReports
+
+    init(reports: ScoreReports = ScoreReports()) {
+        self.reports = reports
+    }
+
     private func apply(_ newReport: ScoreReport, cachedAt date: Date) {
         report = newReport
         cachedAt = date
         groupedCourses = Dictionary(grouping: newReport.courses, by: \.term)
             .map { (term: $0.key, courses: $0.value.sorted { ($0.index ?? 0) < ($1.index ?? 0) }) }
-            .sorted { $0.term > $1.term }
+            .sorted { AcademicTerm.precedes($1.term, $0.term) }
         gpaTrend = GPATrendPoint.trend(for: newReport)
         applyDefaultCollapseRule()
     }
@@ -61,13 +68,14 @@ final class ScoreViewModel {
         showCachedReport(for: studentId)
         guard studentId != nil else { return }
 
-        Task { await self.refresh(authService: authService, force: false) }
+        let signIn = authService.session.currentSignIn
+        Task { await self.refresh(authService: authService, force: false, for: signIn) }
     }
 
     func showCachedReport(for studentId: String?) {
         switchAccount(to: studentId)
         guard let studentId, report == .empty,
-              let cached = NTUSTScoreService.cachedScoreReport(studentId: studentId) else { return }
+              let cached = reports.cached(studentId: studentId) else { return }
         apply(cached.report, cachedAt: cached.cachedAt)
     }
 
@@ -88,56 +96,50 @@ final class ScoreViewModel {
         // Pinned to MainActor: `refresh` writes `manager.loadingState` and `@Observable` state that
         // SwiftUI reads on main, and a `Task` without an actor inherits the enclosing isolation, so
         // it could resume on a background executor after the network await.
+        let signIn = authService.session.currentSignIn
         Task { @MainActor [weak self] in
-            await self?.refresh(authService: authService, force: force)
+            await self?.refresh(authService: authService, force: force, for: signIn)
         }
     }
 
-    func refresh(authService: AuthService, force: Bool = true) async {
-        let generation = authService.loginGeneration
+    func refresh(authService: AuthService, force: Bool = true, for signIn: SignIn) async {
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
             switchAccount(to: nil)
             errorMessage = String(localized: "common_not_signed_in")
             return
         }
-        let session = NTUSTSessionManager.shared.session
+        guard !signIn.isDemo else {
+            switchAccount(to: studentId)
+            return
+        }
         await refresh(
             for: studentId,
-            generation: generation,
-            isCurrent: { [weak authService] in authService?.loginGeneration == generation },
+            signIn: signIn,
             isReachable: { await NetworkMonitor.shared.isReachable() },
-            fetch: {
-                try await NTUSTScoreService.fetchScoreReport(
-                    session: session,
-                    studentId: studentId,
-                    password: password,
-                    forceRefresh: force,
-                    persistGuard: { @Sendable [weak authService] in
-                        authService?.loginGeneration == generation
-                    }
-                )
+            fetch: { [reports] in
+                try await reports.fetch(studentId: studentId, password: password, force: force, for: signIn)
             }
         )
     }
 
     func refresh(
         for studentId: String,
-        generation: Int,
-        isCurrent: () -> Bool,
+        signIn: SignIn,
         isReachable: () async -> Bool,
         fetch: () async throws -> (report: ScoreReport, cachedAt: Date),
-        indicator manager: LoadingIndicator = NTUSTSessionManager.shared,
+        reports override: ScoreReports? = nil,
         tracker: ServerStatusTracker? = nil
     ) async {
+        let manager = (override ?? reports).indicator
         switchAccount(to: studentId)
-        let owner = RefreshOwner(studentId: studentId, generation: generation)
+        let owner = RefreshOwner(studentId: studentId, signIn: signIn)
         guard inFlightRefresh != owner else { return }
         inFlightRefresh = owner
         defer { if inFlightRefresh == owner { inFlightRefresh = nil } }
         errorMessage = nil
         let reachable = await isReachable()
-        guard isCurrent(), inFlightRefresh == owner else { return }
+        guard signIn.isCurrent, inFlightRefresh == owner else { return }
         guard reachable else {
             let message = String(localized: "error_network_unavailable")
             errorMessage = message
@@ -156,7 +158,7 @@ final class ScoreViewModel {
         } catch {
             outcome = .failure(error)
         }
-        guard isCurrent(), inFlightRefresh == owner else {
+        guard signIn.isCurrent, inFlightRefresh == owner else {
             if manager.loadingStarts == starts, manager.loadingState == .loading {
                 manager.loadingState = .loaded
             }
@@ -188,10 +190,7 @@ final class ScoreViewModel {
 
     private func applyDefaultCollapseRule() {
         let terms = Set(report.courses.map(\.term))
-        let latest = terms.max { lhs, rhs in
-            if let l = Int(lhs), let r = Int(rhs) { return l < r }
-            return lhs < rhs
-        }
+        let latest = terms.max(by: AcademicTerm.precedes)
         guard let latest else { return }
         guard collapsedTerms.isEmpty else {
             collapsedTerms = collapsedTerms.intersection(terms)

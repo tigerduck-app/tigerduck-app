@@ -49,16 +49,18 @@ struct NotificationSettingsReconcileTests {
         syncAssignments: Bool = true,
         syncLiveActivity: Bool = true,
         isPushPending: () -> Bool = { false },
-        source: NotificationSettingsSync.DocumentSource = .read
+        source: NotificationSettingsSync.DocumentSource = .read,
+        recordSynced: (NotificationSettingsSync.LocalPreferences, Set<NotificationSettingsSync.OwnedSection>) -> Void = { _, _ in }
     ) async throws -> NotificationSettingsSync.ReconcileOutcome {
-        try await NotificationSettingsSync.reconcile(
+        try await NotificationSettingsReconcile.reconcile(
             store: store,
             client: client,
             cloudSyncEnabled: cloudSyncEnabled,
             syncAssignmentRemindersEnabled: syncAssignments,
             syncLiveActivityEnabled: syncLiveActivity,
             isPushPending: isPushPending,
-            source: source
+            source: source,
+            recordSynced: recordSynced
         )
     }
 
@@ -444,7 +446,7 @@ struct NotificationSettingsReconcileTests {
 
             let outcome = try await Self.reconcile(
                 store, client: SettingsAPIStub.makeClient(baseURL: baseURL),
-                source: .snapshot((document: document, revision: 7))
+                source: .snapshot(.stored(document: document, revision: 7))
             )
 
             #expect(outcome == .settled(adopted: [.assignments, .liveActivity, .courses], seeded: []))
@@ -463,7 +465,7 @@ struct NotificationSettingsReconcileTests {
             SettingsAPIStub.enqueue(try Fixtures.written(revision: 1), for: url)
 
             let outcome = try await Self.reconcile(
-                store, client: SettingsAPIStub.makeClient(baseURL: baseURL), source: .snapshot(nil)
+                store, client: SettingsAPIStub.makeClient(baseURL: baseURL), source: .snapshot(.neverWritten)
             )
 
             #expect(outcome == .settled(adopted: [], seeded: [.assignments, .liveActivity, .courses]))
@@ -473,22 +475,91 @@ struct NotificationSettingsReconcileTests {
         }
     }
 
+    @Test("a settled reconcile keeps what it settled as the synced copy, not an edit made during its write")
+    func settledReconcileRecordsWhatItSettled() async throws {
+        try await Fixtures.withStore { store in
+            Self.setDeviceValues(store)
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = Fixtures.documentURL(baseURL)
+            SettingsAPIStub.enqueue(
+                try Fixtures.found(["assignments": Self.serverAssignments(), "courses": Self.serverCourses()], revision: 3),
+                for: url
+            )
+            SettingsAPIStub.enqueue(try Fixtures.written(revision: 4), for: url)
+            let client = SettingsAPIStub.makeClient(baseURL: baseURL, authHeaderProvider: {
+                await MainActor.run {
+                    if SettingsAPIStub.requests(for: url).count == 1 { store.classPreparingLeadTime = 600 }
+                }
+                return nil
+            })
+            var recorded: NotificationSettingsSync.LocalPreferences?
+
+            let outcome = try await Self.reconcile(store, client: client, recordSynced: { copy, _ in recorded = copy })
+
+            #expect(outcome == .settled(adopted: [.assignments, .courses], seeded: [.liveActivity]))
+            #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
+            #expect(store.classPreparingLeadTime == 600)
+            #expect(recorded?.classPreparingLeadTime == 1800)
+            #expect(recorded?.isAssignmentReminderEnabled == true)
+            #expect(recorded?.classReminderLeadMinutes == 5)
+        }
+    }
+
+    @Test("a reconcile records only the sections it synced, so a section turned on during its write keeps its new copy")
+    func reconcileRecordsOnlyItsSections() async throws {
+        try await Fixtures.withStore { store in
+            let savedCopy = Defaults[.notificationSettingsSyncedPreferences]
+            defer { Defaults[.notificationSettingsSyncedPreferences, for: testSignIn] = savedCopy }
+            Self.setDeviceValues(store)
+            NotificationSettingsSync.forget()
+            NotificationSettingsSync.seedSyncedCopyOnSignIn(from: .init(from: store), for: testSignIn)
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let url = Fixtures.documentURL(baseURL)
+            SettingsAPIStub.enqueue(try Fixtures.found(["assignments": Self.serverAssignments()], revision: 3), for: url)
+            SettingsAPIStub.enqueue(try Fixtures.written(revision: 4), for: url)
+            let client = SettingsAPIStub.makeClient(baseURL: baseURL, authHeaderProvider: {
+                await MainActor.run {
+                    if SettingsAPIStub.requests(for: url).count == 1 {
+                        store.classPreparingLeadTime = 600
+                        NotificationSettingsSync.sectionTurnedOn(.liveActivity, local: .init(from: store), for: testSignIn)
+                    }
+                }
+                return nil
+            })
+            let turnOns = NotificationSettingsSync.sectionTurnOns
+
+            let outcome = try await Self.reconcile(
+                store,
+                client: client,
+                syncLiveActivity: false,
+                recordSynced: {
+                    NotificationSettingsSync.recordSyncedSections($1, of: $0, turnOnsAtStart: turnOns, for: testSignIn)
+                }
+            )
+
+            #expect(outcome == .settled(adopted: [.assignments], seeded: [.courses]))
+            #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET", "PUT"])
+            #expect(NotificationSettingsSync.lastSyncedPreferences?.classPreparingLeadTime == 600)
+            #expect(NotificationSettingsSync.lastSyncedPreferences?.isAssignmentReminderEnabled == true)
+        }
+    }
+
     @Test("a snapshot gives its notification document, none, or nothing to go on")
     func documentSourceFromTheSnapshot() throws {
         let entry: [String: Any] = ["namespace": "notification", "document": ["assignments": ["enabled": true]], "revision": 7]
-        guard case .snapshot(let copy?) = NotificationSettingsSync.documentSource(fromSnapshot: ["settings_documents": [entry]]) else {
+        guard case .snapshot(.stored(let copy, let revision)) = NotificationSettingsReconcile.documentSource(fromSnapshot: ["settings_documents": [entry]]) else {
             Issue.record("the snapshot's document was not used")
             return
         }
-        #expect(copy.revision == 7)
-        let document = try #require(try JSONSerialization.jsonObject(with: copy.document) as? [String: Any])
+        #expect(revision == 7)
+        let document = try #require(try JSONSerialization.jsonObject(with: copy) as? [String: Any])
         #expect((document["assignments"] as? [String: Any])?["enabled"] as? Bool == true)
 
-        guard case .snapshot(nil) = NotificationSettingsSync.documentSource(fromSnapshot: ["settings_documents": []]) else {
+        guard case .snapshot(.neverWritten) = NotificationSettingsReconcile.documentSource(fromSnapshot: ["settings_documents": []]) else {
             Issue.record("an account without the document should be seeded")
             return
         }
-        guard case .read = NotificationSettingsSync.documentSource(fromSnapshot: [:]) else {
+        guard case .read = NotificationSettingsReconcile.documentSource(fromSnapshot: [:]) else {
             Issue.record("an older backend's snapshot carries no documents, so the reconcile reads")
             return
         }

@@ -1,7 +1,8 @@
 import SwiftUI
+import TigerDuckCore
 
 struct SemesterSection: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     let term: String
     let courses: [CourseGrade]
@@ -28,7 +29,7 @@ struct SemesterSection: View {
                 }
             }
         }
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
@@ -69,9 +70,7 @@ struct SemesterSection: View {
     }
 
     private var displayTerm: String {
-        guard term.count == 4 else { return term }
-        let year = String(term.prefix(3))
-        let sem = String(term.suffix(1))
+        guard case let (year, sem)? = AcademicTerm.displayParts(of: term) else { return term }
         let label = sem == "1"
             ? String(localized: "score_semester_first_short")
             : sem == "2"

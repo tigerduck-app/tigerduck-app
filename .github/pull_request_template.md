@@ -2,7 +2,7 @@
 
 ## Summary
 
-<!-- What changes and why. Link the issue it closes: Closes #123 -->
+<!-- What changes and why. Link the issue with `Part of #123`; a release pull request to `main` closes its issues with `Closes #123` -->
 
 ## Testing
 

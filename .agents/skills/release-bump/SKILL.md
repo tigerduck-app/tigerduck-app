@@ -1,6 +1,6 @@
 ---
 name: release-bump
-description: Use when bumping TigerDuck's marketing version (vX.Y.Z) — bumps project.pbxproj (marketing version and build number), adds the in-app whatsnew.json entry, refreshes the README.md + README.en.md version badge, creates a single chore(release) commit, and after the tag publishes the bilingual GitHub release. Trigger on phrases like "bump version", "升版", "release X.Y.Z", "發 release", or whenever pbxproj's MARKETING_VERSION changes are staged.
+description: Use when bumping TigerDuck's marketing version (vX.Y.Z) or only its build number, or preparing a dev → main release pull request — runs the local review every bump waits for, bumps project.pbxproj (marketing version and build number), adds the in-app whatsnew.json entry, refreshes the README.md + README.en.md version badge, creates a single chore(release) commit, and after the tag publishes the bilingual GitHub release. Trigger on phrases like "bump version", "bump the build number", "升版", "release X.Y.Z", "發 release", or whenever pbxproj's MARKETING_VERSION or CURRENT_PROJECT_VERSION changes are staged.
 ---
 
 # TigerDuck Release Bump
@@ -11,14 +11,18 @@ End-to-end checklist for cutting a new TigerDuck App Store release. The whole lo
 
 - User says "bump version to X.Y.Z" / "升版到 X.Y.Z" / "release X.Y.Z"
 - User says "新版本送出" / "版本送出了" and asks to update README
-- A diff already stages `swift/TigerDuck.xcodeproj/project.pbxproj` with a `MARKETING_VERSION` change
+- A diff already stages `swift/TigerDuck.xcodeproj/project.pbxproj` with a `MARKETING_VERSION` or `CURRENT_PROJECT_VERSION` change
+- User asks for a build-number-only bump, or a `dev` → `main` pull request needs one
 - User says "幫我 commit" and the diff is exactly a version bump
 
 ## Inputs
 
 Gather from the user only if not already obvious:
 
-1. **Target version** `X.Y.Z` — auto-detect if pbxproj is already staged (read the `+` lines)
+1. **Target version** `X.Y.Z` — auto-detect if pbxproj is already staged (read the `+` lines).
+   It is one SemVer step above `origin/main`: patch + 1, minor + 1 with patch 0, or a higher
+   major with the rest 0 (the major follows the backend API's). Kept unchanged, the build number
+   rises by exactly 1 instead. `version-bumped.yaml` fails a `dev` → `main` pull request otherwise.
 2. **Highlights** for `whatsnew.json` and the GitHub release — auto-extract from `git log <prev-tag>..HEAD` if the user hasn't dictated them
 3. **Build number** — current `CURRENT_PROJECT_VERSION` + 1, unless the user names one
 

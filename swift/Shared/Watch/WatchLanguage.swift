@@ -15,16 +15,16 @@ public nonisolated struct WatchLanguage: Equatable, Sendable {
         tag.map(Locale.init(identifier:)) ?? .current
     }
 
-    public func string(_ key: String, bundle: Bundle = .main) -> String {
-        let system = bundle.localizedString(forKey: key, value: nil, table: nil)
+    public func string(_ key: LocalizedStringResource, bundle: Bundle = .main) -> String {
+        let system = bundle.localizedString(forKey: key.key, value: nil, table: nil)
         guard let tag,
               let localization = Bundle.preferredLocalizations(from: bundle.localizations, forPreferences: [tag]).first,
               let lproj = bundle.path(forResource: localization, ofType: "lproj").flatMap(Bundle.init(path:))
         else { return system }
-        return lproj.localizedString(forKey: key, value: system, table: nil)
+        return lproj.localizedString(forKey: key.key, value: system, table: nil)
     }
 
-    public func format(_ key: String, _ arguments: CVarArg...) -> String {
+    public func format(_ key: LocalizedStringResource, _ arguments: CVarArg...) -> String {
         String(format: string(key), locale: locale, arguments: arguments)
     }
 }

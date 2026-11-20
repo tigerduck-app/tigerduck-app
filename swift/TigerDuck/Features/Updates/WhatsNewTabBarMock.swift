@@ -4,7 +4,7 @@ import SwiftUI
 struct WhatsNewTabBarChangeDemo: View {
     let after: @MainActor ([AppFeature]) -> [AppFeature]
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.whatsNewLanguage) private var language
     @Environment(\.whatsNewPageIsCurrent) private var isCurrent
     @State private var held: [AppFeature]?
@@ -18,7 +18,7 @@ struct WhatsNewTabBarChangeDemo: View {
     }
 
     var body: some View {
-        let before = held ?? appState.configuredTabs
+        let before = held ?? app.preferences.configuredTabs
         let offered = after(before)
         Group {
             if before == offered {
@@ -42,7 +42,7 @@ struct WhatsNewTabBarChangeDemo: View {
             }
         }
         .onChange(of: isCurrent, initial: true) { _, isCurrent in
-            if isCurrent { held = appState.configuredTabs }
+            if isCurrent { held = app.preferences.configuredTabs }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenDescription(before: before, after: offered))

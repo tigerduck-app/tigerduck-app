@@ -29,7 +29,7 @@ struct BrowserFindPageTests {
         await withCheckedContinuation { loader.loaded = $0; webView.loadHTMLString("<head>\(head)</head><body>\(body)</body>", baseURL: nil) }
         withExtendedLifetime(loader) {}
         let find = BrowserFind()
-        find.run = { [weak webView] in await webView?.runFind($0) }
+        find.runInPage = { [weak webView] in await webView?.runFind($0) }
         return (webView, find)
     }
 
@@ -76,7 +76,7 @@ struct BrowserFindPageTests {
         await find.next()
         #expect(await evaluate(webView, "return document.querySelector('[data-tigerduck-find-light]') === null") as? Bool == true)
         // A match the script gives back is one the browser scrolls to.
-        #expect(await webView.runFind(["action": "select", "index": 1]) as? [Double] == nil)
+        #expect(await webView.runFind(.select(index: 1)) as? [String: Double] == nil)
     }
 
     @Test func matchesAPhraseSplitByFormattingButNotAcrossALineBreakOrBlock() async {

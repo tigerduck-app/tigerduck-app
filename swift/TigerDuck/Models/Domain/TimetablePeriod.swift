@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 struct TimetablePeriod: Identifiable, Hashable {
     let id: String
@@ -6,6 +7,12 @@ struct TimetablePeriod: Identifiable, Hashable {
     let endTime: String
 
     var displayLabel: String { id }
+
+    /// Minutes after midnight.
+    var minutes: (start: Int, end: Int)? {
+        guard let start = ClassTimeline.minutes(of: startTime), let end = ClassTimeline.minutes(of: endTime) else { return nil }
+        return (start, end)
+    }
 
     static let standard: [TimetablePeriod] = AppConstants.Periods.defaultVisible.compactMap { periodID in
         guard let times = AppConstants.PeriodTimes.mapping[periodID] else { return nil }

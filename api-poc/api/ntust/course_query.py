@@ -33,7 +33,8 @@ KEPT_HEADERS = (
     "content-length", "transfer-encoding", "connection", "keep-alive", "server",
     "x-powered-by", "alt-svc",
 )
-# 3 holds the alliance courses (3N NTNU, 3T NTU), split so no query nears the 120 s timeout.
+# 3 holds the alliance courses (3N NTNU, 3T NTU), which OnleyNTUST=1 leaves out; it is split so
+# no query nears the 120 s timeout.
 SWEEP_PREFIXES = (*string.ascii_uppercase, "0", "1", "2", "3N", "3T", "4", "5", "6", "7", "8", "9")
 
 

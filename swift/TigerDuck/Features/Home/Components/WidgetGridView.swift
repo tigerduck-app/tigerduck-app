@@ -46,11 +46,29 @@ struct WidgetGridView: View {
 
     @ViewBuilder
     private func widgetCell(_ widget: WidgetItem) -> some View {
-        let card = cardContent(widget)
-
         if isEditing {
             let payload = widgetDragPayload(for: widget)
-            card
+            cardContent(widget)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(widget.feature.displayName)
+                .reorderAccessibilityActions(
+                    widget.id,
+                    shown: widgetIDs(),
+                    currentIDs: widgetIDs,
+                    moveAction: moveWidgets,
+                    onPersist: { onReorder?() }
+                )
+                .overlay(alignment: .topLeading) {
+                    Button { onRemove?(widget) } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.white, .red)
+                            .font(.title3)
+                    }
+                    .accessibilityLabel(String(localized: "action_remove"))
+                    .accessibilityValue(widget.feature.displayName)
+                    .offset(x: -6, y: -6)
+                }
+                .opacity(activeWidgetDrag?.id == widget.id ? 0.35 : 1)
                 .draggable(payload) {
                     WidgetDragPreview(widget: widget)
                         .onAppear { activeWidgetDrag = payload }
@@ -63,39 +81,31 @@ struct WidgetGridView: View {
                         containerID: dragContainerID,
                         activePayload: $activeWidgetDrag,
                         didReorder: $didReorder,
-                        currentIDs: { widgets.map(\.id) },
-                        moveAction: { fromOffsets, destination in
-                            widgets.move(fromOffsets: fromOffsets, toOffset: destination)
-                        },
+                        currentIDs: widgetIDs,
+                        moveAction: moveWidgets,
                         onPersist: { onReorder?() }
                     )
                 )
         } else {
             // A real `Button` wins the first press against the enclosing scroll view on
             // iOS 18. See View+ScrollSafeGesture.
-            card
+            cardContent(widget)
                 .scrollSafeTapAction { onTap?(widget.feature) }
         }
     }
 
-    @ViewBuilder
     private func cardContent(_ widget: WidgetItem) -> some View {
         WidgetContainer(feature: widget.feature, size: widget.size) {
             SimpleWidgetContent(feature: widget.feature, size: widget.size)
         }
-        .overlay(alignment: .topLeading) {
-            if isEditing {
-                Button { onRemove?(widget) } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.white, .red)
-                        .font(.title3)
-                }
-                .accessibilityLabel(String(localized: "action_remove"))
-                .accessibilityValue(widget.feature.displayName)
-                .offset(x: -6, y: -6)
-            }
-        }
-        .opacity(activeWidgetDrag?.id == widget.id ? 0.35 : 1)
+    }
+
+    private func widgetIDs() -> [String] {
+        widgets.map(\.id)
+    }
+
+    private func moveWidgets(_ offsets: IndexSet, to destination: Int) {
+        widgets.move(fromOffsets: offsets, toOffset: destination)
     }
 
     private func widgetDragPayload(for widget: WidgetItem) -> ReorderDragPayload {

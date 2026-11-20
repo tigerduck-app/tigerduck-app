@@ -2,15 +2,15 @@
 import SwiftUI
 
 struct MacSidebarSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     private var pinned: [AppFeature] {
-        appState.macConfiguredTabs.filter { $0.isAvailableOnMac }
+        app.preferences.macConfiguredTabs.filter { $0.isAvailableOnMac }
     }
 
     private var available: [AppFeature] {
         AppFeature.allCases.filter {
-            $0.isImplemented && $0.isAvailableOnMac && !appState.macConfiguredTabs.contains($0)
+            $0.isImplemented && $0.isAvailableOnMac && !app.preferences.macConfiguredTabs.contains($0)
         }
     }
 
@@ -128,12 +128,12 @@ struct MacSidebarSettingsView: View {
     }
 
     private func pin(_ feature: AppFeature) {
-        guard !appState.macConfiguredTabs.contains(feature) else { return }
-        appState.macConfiguredTabs.append(feature)
+        guard !app.preferences.macConfiguredTabs.contains(feature) else { return }
+        app.preferences.macConfiguredTabs.append(feature)
     }
 
     private func unpin(_ feature: AppFeature) {
-        appState.macConfiguredTabs.removeAll { $0 == feature }
+        app.preferences.macConfiguredTabs.removeAll { $0 == feature }
     }
 
     private func moveUp(at index: Int) {
@@ -149,10 +149,10 @@ struct MacSidebarSettingsView: View {
     }
 
     private func rearrange(_ mutate: (inout [AppFeature]) -> Void) {
-        var visible = appState.macConfiguredTabs.filter { $0.isAvailableOnMac }
-        let hidden = appState.macConfiguredTabs.filter { !$0.isAvailableOnMac }
+        var visible = app.preferences.macConfiguredTabs.filter { $0.isAvailableOnMac }
+        let hidden = app.preferences.macConfiguredTabs.filter { !$0.isAvailableOnMac }
         mutate(&visible)
-        appState.macConfiguredTabs = visible + hidden
+        app.preferences.macConfiguredTabs = visible + hidden
     }
 }
 

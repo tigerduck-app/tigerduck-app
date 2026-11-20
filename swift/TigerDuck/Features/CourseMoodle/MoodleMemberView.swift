@@ -8,7 +8,7 @@ struct MoodleMemberView: View {
     let store: MoodleCourseStore
     let member: MoodleMember
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.openURL) private var openURL
     @State private var picturePreview: URL?
     @State private var isOpeningPicture = false
@@ -30,6 +30,7 @@ struct MoodleMemberView: View {
     private var isOwn: Bool { member.id == store.members.value?.ownId }
 
     var body: some View {
+        let shared = store.memberCourses.feed(of: member)
         ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 #if os(iOS)
@@ -45,12 +46,13 @@ struct MoodleMemberView: View {
                 MoodleMemberProfile(
                     member: shown,
                     picture: shown.pictureURL.flatMap { store.pictures[$0] },
-                    policy: appState.visualStylePolicy,
+                    policy: app.preferences.visualStylePolicy,
                     writeTo: writeTo,
                     isOpeningPicture: isOpeningPicture,
                     openPicture: openPicture,
                     changePicture: changePicture,
-                    isUploadingPicture: isUploadingPicture
+                    isUploadingPicture: isUploadingPicture,
+                    commonCourses: store.memberCourses.terms(with: member)
                 )
                 .task(id: shown.pictureURL) { await store.loadPicture(of: shown) }
             }
@@ -60,6 +62,7 @@ struct MoodleMemberView: View {
         }
         .background(Color.backgroundPrimary)
         .moodleArticleChrome(page: .profile(userId: member.id, courseId: store.courseId))
+        .moodleAutoRefresh(every: shared.ttl, fetchedAt: { shared.fetchedAt }) { await store.memberCourses.refresh(with: member) }
         .quickLookPreview($picturePreview)
         #if os(iOS)
         .overlay(alignment: .bottomTrailing) {
@@ -96,8 +99,8 @@ struct MoodleMemberView: View {
                 onFolderRolesChanged: { _ in },
                 onSentCopyNotice: { sentCopyNotice = $0 }
             )
-            .onDisappear { Task { await mail.session.close() } }
         }
+        .safeAreaInset(edge: .bottom) { MailSendHoldBar(hold: .shared) }
         #endif
     }
 
@@ -199,6 +202,7 @@ struct MoodleMemberProfile: View {
     /// on a site that lists `core_user_update_picture`.
     var changePicture: (() -> Void)? = nil
     var isUploadingPicture = false
+    var commonCourses: [MoodleCommonTerm] = []
 
     private static let avatarSize: CGFloat = 88
     private static let badgeSize: CGFloat = 28
@@ -219,6 +223,9 @@ struct MoodleMemberProfile: View {
             }
             if !member.interests.isEmpty {
                 interests
+            }
+            if !commonCourses.isEmpty {
+                MoodleMemberCommonCourses(terms: commonCourses, policy: policy)
             }
         }
         .frame(maxWidth: .infinity)
@@ -381,7 +388,7 @@ private struct ProfileEditorPage: Identifiable {
 
 private struct MemberMail: Identifiable {
     let context: MailComposeContext
-    let session = MailPageSession()
+    let session = MailPageSession(closesWhenIdle: true)
 
     var id: UUID { context.id }
 }

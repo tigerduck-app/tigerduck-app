@@ -1,8 +1,8 @@
 import Foundation
 
-struct SourceRepository: Identifiable, Hashable {
+struct SourceRepository: Identifiable {
     let slug: String
-    let descriptionKey: String
+    let descriptionKey: LocalizedStringResource
     let url: URL
     let isCurrent: Bool
 

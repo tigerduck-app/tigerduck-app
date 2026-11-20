@@ -2,10 +2,10 @@
 import SwiftUI
 
 private struct MacUpdatePrompt: ViewModifier {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     func body(content: Content) -> some View {
-        let coordinator = appState.updateNotifyCoordinator
+        let coordinator = app.updateNotifyCoordinator
         let notice = MacUpdateNotice(coordinator: coordinator)
         return content.alert(
             notice?.title ?? "",

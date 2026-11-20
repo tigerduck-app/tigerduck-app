@@ -3,7 +3,7 @@ import SwiftUI
 
 struct LiveActivitySettingsView: View {
     @Bindable var store: LiveActivityPreferencesStore
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @State private var showResetConfirmation = false
     @State private var resetFeedbackTrigger = 0
@@ -99,7 +99,7 @@ struct LiveActivitySettingsView: View {
         }
         .navigationTitle(String(localized: "live_activity_settings_nav_title"))
         .task {
-            appState.reconcileNotificationSettings()
+            app.notificationSettings.reconcile()
             refreshLiveActivityAuthorization()
         }
         .onChange(of: scenePhase) { _, newPhase in

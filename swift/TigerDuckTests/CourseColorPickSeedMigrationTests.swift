@@ -14,11 +14,11 @@ struct CourseColorPickSeedMigrationTests {
         UserDefaults.standard.removeObject(forKey: doneKey)
     }
 
-    private func makeCache() -> DataCache {
-        DataCache(
-            cacheDir: root.appendingPathComponent("cache", isDirectory: true),
-            persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
-        )
+    private func makeColors() -> CourseColorFiles {
+        CourseColorFiles(folders: CacheFolders(
+            cache: root.appendingPathComponent("cache", isDirectory: true),
+            persistent: root.appendingPathComponent("persistent", isDirectory: true)
+        ))
     }
 
     private func cleanUp() {
@@ -29,33 +29,33 @@ struct CourseColorPickSeedMigrationTests {
     @Test("every colour from before counts as picked, beside the picks noted since, and only once")
     func coloursFromBeforeCountAsPicked() {
         defer { cleanUp() }
-        let cache = makeCache()
-        cache.saveCourseColorMap(["CS1010001": 0x123456, "CS1010002": 0x654321])
-        cache.notePickedCourseColor("CS1010003")
+        let colors = makeColors()
+        colors.saveCourseColorMap(["CS1010001": 0x123456, "CS1010002": 0x654321])
+        colors.notePickedCourseColor("CS1010003")
 
-        CourseColorPickSeedMigration.runIfNeeded(cache: cache)
-        #expect(cache.loadPickedCourseColors() == ["CS1010001", "CS1010002", "CS1010003"])
+        CourseColorPickSeedMigration.runIfNeeded(files: colors)
+        #expect(colors.loadPickedCourseColors() == ["CS1010001", "CS1010002", "CS1010003"])
 
-        cache.savePickedCourseColors([])
-        CourseColorPickSeedMigration.runIfNeeded(cache: cache)
-        #expect(cache.loadPickedCourseColors().isEmpty)
+        colors.savePickedCourseColors([])
+        CourseColorPickSeedMigration.runIfNeeded(files: colors)
+        #expect(colors.loadPickedCourseColors().isEmpty)
     }
 
     @Test("a colour map that cannot be read yet waits for a launch that can read it")
     func anUnreadableMapWaitsForALaterLaunch() throws {
         defer { cleanUp() }
-        let cache = makeCache()
-        cache.saveCourseColorMap(["CS1010001": 0x123456])
+        let colors = makeColors()
+        colors.saveCourseColorMap(["CS1010001": 0x123456])
         // Mode 000 stands in for the lock screen: the file is there and does not open.
         let file = root.appendingPathComponent("persistent/course_color_map.json")
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
 
-        CourseColorPickSeedMigration.runIfNeeded(cache: cache, center: NotificationCenter())
+        CourseColorPickSeedMigration.runIfNeeded(files: colors, center: NotificationCenter())
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
-        #expect(cache.loadPickedCourseColors().isEmpty)
+        #expect(colors.loadPickedCourseColors().isEmpty)
 
-        CourseColorPickSeedMigration.runIfNeeded(cache: cache)
-        #expect(cache.loadPickedCourseColors() == ["CS1010001"])
+        CourseColorPickSeedMigration.runIfNeeded(files: colors)
+        #expect(colors.loadPickedCourseColors() == ["CS1010001"])
     }
 
     /// Unlocking resumes the process that read the map as locked, so the seed cannot wait for the
@@ -68,23 +68,23 @@ struct CourseColorPickSeedMigrationTests {
     @MainActor
     func anUnreadableMapIsSeededOnceItReads(readable: Notification.Name) throws {
         defer { cleanUp() }
-        let cache = makeCache()
+        let colors = makeColors()
         let center = NotificationCenter()
-        cache.saveCourseColorMap(["CS1010001": 0x123456])
+        colors.saveCourseColorMap(["CS1010001": 0x123456])
         let file = root.appendingPathComponent("persistent/course_color_map.json")
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
 
-        CourseColorPickSeedMigration.runIfNeeded(cache: cache, center: center)
+        CourseColorPickSeedMigration.runIfNeeded(files: colors, center: center)
         center.post(name: readable, object: nil)
-        #expect(cache.loadPickedCourseColors().isEmpty)
+        #expect(colors.loadPickedCourseColors().isEmpty)
 
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
         center.post(name: readable, object: nil)
-        #expect(cache.loadPickedCourseColors() == ["CS1010001"])
+        #expect(colors.loadPickedCourseColors() == ["CS1010001"])
 
-        cache.savePickedCourseColors([])
+        colors.savePickedCourseColors([])
         center.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
         center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
-        #expect(cache.loadPickedCourseColors().isEmpty)
+        #expect(colors.loadPickedCourseColors().isEmpty)
     }
 }

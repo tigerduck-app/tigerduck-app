@@ -3,6 +3,7 @@ import Foundation
 import SwiftUI
 import Testing
 import UIKit
+import TigerDuckCore
 @testable import TigerDuck
 
 struct MailMuteRulesTests {
@@ -17,7 +18,7 @@ struct MailMuteRulesTests {
 
     /// A Taipei time, the zone quiet hours use. 2026-10-23 is a Friday.
     private static func at(day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
-        AppConstants.taipeiCalendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
+        TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
     }
 
     private static func rule(_ field: MailMuteRule.Field, _ op: MailMuteRule.Operator, _ value: String) -> MailMuteRule {
@@ -92,7 +93,7 @@ struct MailMuteRulesTests {
 
     @Test func settingsSurviveEncoding() throws {
         var settings = MailMuteSettings()
-        settings.quietHours = MailQuietHours(isEnabled: true, start: 22 * 60 + 30, end: 6 * 60, weekdays: [2, 3])
+        settings.quietHours = MailQuietHours(isEnabled: true, startMinute: 22 * 60 + 30, endMinute: 6 * 60, weekdays: [2, 3])
         settings.presets = [.moodleSubmission]
         settings.rules = [Self.rule(.toOrCc, .is, "a@b.c")]
         let decoded = try JSONDecoder().decode(MailMuteSettings.self, from: JSONEncoder().encode(settings))
@@ -104,7 +105,7 @@ struct MailMuteRulesTests {
             {"quietHours":{"isEnabled":true,"end":360},"rules":[{"field":"subject","op":"is","value":"Digest"}]}
             """#.utf8)
         let decoded = try JSONDecoder().decode(MailMuteSettings.self, from: stored)
-        #expect(decoded.quietHours == MailQuietHours(isEnabled: true, start: 23 * 60, end: 360, weekdays: Set(1...7)))
+        #expect(decoded.quietHours == MailQuietHours(isEnabled: true, startMinute: 23 * 60, endMinute: 360, weekdays: Set(1...7)))
         #expect(decoded.presets.isEmpty)
         #expect(decoded.rules.map(\.field) == [.subject])
         #expect(decoded.rules.map(\.op) == [.is])
@@ -112,10 +113,17 @@ struct MailMuteRulesTests {
         #expect(try JSONDecoder().decode(MailMuteSettings.self, from: Data("{}".utf8)) == MailMuteSettings())
     }
 
+    @Test func quietHoursKeepTheirStoredKeys() throws {
+        let encoded = try JSONEncoder().encode(MailQuietHours(isEnabled: true, startMinute: 60, endMinute: 120))
+        let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        #expect(Set(object.keys) == ["isEnabled", "start", "end", "weekdays"])
+        #expect(object["start"] as? Int == 60)
+    }
+
     // MARK: Quiet hours
 
     @Test func aWindowInsideOneDay() {
-        let quiet = MailQuietHours(isEnabled: true, start: 13 * 60, end: 14 * 60)
+        let quiet = MailQuietHours(isEnabled: true, startMinute: 13 * 60, endMinute: 14 * 60)
         #expect(!quiet.contains(Self.at(day: 23, 12, 59)))
         #expect(quiet.contains(Self.at(day: 23, 13)))
         #expect(quiet.contains(Self.at(day: 23, 13, 59)))
@@ -145,7 +153,7 @@ struct MailMuteRulesTests {
 
     @Test func offOrEmptyWindowsQuietNothing() {
         #expect(!MailQuietHours().contains(Self.at(day: 23, 23, 30)))
-        #expect(!MailQuietHours(isEnabled: true, start: 60, end: 60).contains(Self.at(day: 23, 1)))
+        #expect(!MailQuietHours(isEnabled: true, startMinute: 60, endMinute: 60).contains(Self.at(day: 23, 1)))
         #expect(!MailQuietHours(isEnabled: true, weekdays: []).contains(Self.at(day: 23, 23, 30)))
     }
 
@@ -194,8 +202,8 @@ struct MailMuteRulesTests {
             Self.message(uid: 4, from: "bulletin@mail.ntust.edu.tw", arrivedAt: Self.at(day: 23, 12)),
         ]])
         let center = RejectingNotificationCenter(rejecting: ["school-mail-1-3"])
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { fake }, onAuthFailure: {})
+        let checker = MailChecker(prefs: prefs, session: AccountSession(), notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { _ in })
         #expect(await checker.check(trigger: .backgroundTask) == .newMail(1))
         #expect(prefs.inboxNextUID == 3)
 
@@ -217,8 +225,8 @@ struct MailMuteRulesTests {
             Self.message(uid: 4, from: "bulletin@mail.ntust.edu.tw", arrivedAt: Self.at(day: 23, 12)),
         ]])
         let center = RejectingNotificationCenter(rejecting: ["school-mail-1-3"])
-        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
-                                  openSession: { fake }, onAuthFailure: {})
+        let checker = MailChecker(prefs: prefs, session: AccountSession(), notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { _ in })
         _ = await checker.check(trigger: .backgroundTask)
         await fake.update { $0.folders["INBOX"]?[1].summary.isSeen = true }
         _ = await checker.check(trigger: .backgroundTask)
@@ -244,7 +252,7 @@ struct MailMuteRulesTests {
     @MainActor @Test func signingOutForgetsTheRules() async {
         let h = MailAccountManagerTests.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")
-        h.manager.muteSettings.presets = [.bulletin]
+        MailNotificationSettingsView.muteBinding(for: h.manager).wrappedValue.presets = [.bulletin]
         #expect(h.prefs.muteSettings.presets == [.bulletin])
         h.manager.logout()
         #expect(h.manager.muteSettings == MailMuteSettings())
@@ -255,12 +263,12 @@ struct MailMuteRulesTests {
         let suiteName = "MailMuteRulesTests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
         defer { suite.removePersistentDomain(forName: suiteName) }
-        let prefs = DefaultsMailPreferences(defaults: suite)
+        let prefs = MailSettingsStore(defaults: suite)
         #expect(prefs.muteSettings == MailMuteSettings())
         prefs.muteSettings.rules = [Self.rule(.subject, .contains, "ad")]
-        #expect(DefaultsMailPreferences(defaults: suite).muteSettings.rules.map(\.value) == ["ad"])
+        #expect(MailSettingsStore(defaults: suite).muteSettings.rules.map(\.value) == ["ad"])
         prefs.inboxMutedUIDs = MailMutedUIDs(uidValidity: 7, uids: [4, 9])
-        #expect(DefaultsMailPreferences(defaults: suite).inboxMutedUIDs == MailMutedUIDs(uidValidity: 7, uids: [4, 9]))
+        #expect(MailSettingsStore(defaults: suite).inboxMutedUIDs == MailMutedUIDs(uidValidity: 7, uids: [4, 9]))
         prefs.reset()
         #expect(prefs.muteSettings == MailMuteSettings())
         #expect(prefs.inboxMutedUIDs == nil)

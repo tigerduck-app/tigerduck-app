@@ -5,10 +5,16 @@ import Testing
 
 @MainActor
 struct ScoreViewModelAccountTests {
-    private final class SignIn: Sendable {
-        private let signedIn = OSAllocatedUnfairLock(initialState: true)
-        var isCurrent: Bool { signedIn.withLock { $0 } }
-        func signOut() { signedIn.withLock { $0 = false } }
+    @MainActor
+    private final class Account {
+        private let session = AccountSession()
+        let signIn: SignIn
+
+        init() {
+            signIn = session.signIns.currentSignIn
+        }
+
+        func signOut() { session.endSignIn() }
     }
 
     @MainActor
@@ -70,33 +76,31 @@ struct ScoreViewModelAccountTests {
 
     private static func withCachedReport(_ body: (String) -> Void) {
         let studentId = testStudentId()
-        DataCache.shared.saveScoreReport(report(for: studentId), studentId: studentId)
-        defer { DataCache.shared.invalidateScoreReport(studentId: studentId) }
+        ScoreReportFiles.shared.saveScoreReport(report(for: studentId), studentId: studentId)
+        defer { ScoreReportFiles.shared.invalidateScoreReport(studentId: studentId) }
         body(studentId)
     }
 
     private static func withCachedReport(_ body: (String) async throws -> Void) async rethrows {
         let studentId = testStudentId()
-        DataCache.shared.saveScoreReport(report(for: studentId), studentId: studentId)
-        defer { DataCache.shared.invalidateScoreReport(studentId: studentId) }
+        ScoreReportFiles.shared.saveScoreReport(report(for: studentId), studentId: studentId)
+        defer { ScoreReportFiles.shared.invalidateScoreReport(studentId: studentId) }
         try await body(studentId)
     }
 
     private static func refresh(
         _ model: ScoreViewModel,
         for studentId: String,
-        generation: Int = 1,
-        signIn: SignIn,
+        signIn: Account,
         school: School,
         indicator: Indicator? = nil
     ) async {
         await model.refresh(
             for: studentId,
-            generation: generation,
-            isCurrent: { signIn.isCurrent },
+            signIn: signIn.signIn,
             isReachable: { await school.probe() },
             fetch: { await school.fetch(report(for: studentId)) },
-            indicator: indicator ?? Indicator()
+            reports: ScoreReports(indicator: indicator ?? Indicator())
         )
     }
 
@@ -107,9 +111,7 @@ struct ScoreViewModelAccountTests {
         let readAt = Date().addingTimeInterval(-3 * 3600)
 
         await model.refresh(
-            for: studentId,
-            generation: 1,
-            isCurrent: { true },
+            for: studentId, signIn: testSignIn,
             isReachable: { await school.probe() },
             fetch: { await school.fetch(Self.report(for: studentId), cachedAt: readAt) }
         )
@@ -118,14 +120,34 @@ struct ScoreViewModelAccountTests {
         #expect(model.cachedAt == readAt)
     }
 
+    @Test func termsListNewestFirstWithAPaddedYearBefore100LastAndOnlyTheNewestOpen() async {
+        let model = ScoreViewModel()
+        let studentId = Self.testStudentId()
+        let school = School()
+        var report = Self.report(for: studentId)
+        var older = report.courses[0]
+        older.term = "99 1"
+        report.courses.append(older)
+        let fetched = report
+
+        await model.refresh(
+            for: studentId, signIn: testSignIn,
+            isReachable: { await school.probe() },
+            fetch: { await school.fetch(fetched) }
+        )
+
+        #expect(model.groupedCourses.map(\.term) == ["1151", "1142", "99 1"])
+        #expect(model.collapsedTerms == ["1142", "99 1"])
+    }
+
     @Test func theDayLongCacheAnswersWithTheTimeItWasRead() async throws {
         try await Self.withCachedReport { studentId in
-            let cached = try #require(DataCache.shared.loadScoreReport(studentId: studentId))
+            let cached = try #require(ScoreReportFiles.shared.loadScoreReport(studentId: studentId))
             let config = URLSessionConfiguration.ephemeral
             config.protocolClasses = [OfflineURLProtocol.self]
 
             let fetched = try await NTUSTScoreService.fetchScoreReport(
-                session: URLSession(configuration: config), studentId: studentId, password: "unused"
+                session: URLSession(configuration: config), studentId: studentId, password: "unused", for: testSignIn
             )
 
             #expect(fetched.report == cached.report)
@@ -178,7 +200,7 @@ struct ScoreViewModelAccountTests {
 
     @Test func aFetchThatASignOutOvertookStaysOffTheScreen() async throws {
         let model = ScoreViewModel()
-        let signIn = SignIn()
+        let signIn = Account()
         let school = School()
         school.holdsFetch = true
         let refresh = Task { await Self.refresh(model, for: Self.testStudentId(), signIn: signIn, school: school) }
@@ -194,7 +216,7 @@ struct ScoreViewModelAccountTests {
 
     @Test func aSignOutDuringTheReachabilityProbeStopsTheFetch() async throws {
         let model = ScoreViewModel()
-        let signIn = SignIn()
+        let signIn = Account()
         let school = School()
         school.holdsProbe = true
         let refresh = Task { await Self.refresh(model, for: Self.testStudentId(), signIn: signIn, school: school) }
@@ -212,17 +234,17 @@ struct ScoreViewModelAccountTests {
         let model = ScoreViewModel()
         let previous = Self.testStudentId()
         let next = Self.testStudentId()
-        let departing = SignIn()
+        let departing = Account()
         let slowSchool = School()
         slowSchool.holdsFetch = true
         let first = Task {
-            await Self.refresh(model, for: previous, generation: 1, signIn: departing, school: slowSchool)
+            await Self.refresh(model, for: previous, signIn: departing, school: slowSchool)
         }
         try await waitUntil { slowSchool.isHolding }
 
         departing.signOut()
         model.showCachedReport(for: next)
-        await Self.refresh(model, for: next, generation: 2, signIn: SignIn(), school: School())
+        await Self.refresh(model, for: next, signIn: Account(), school: School())
         #expect(model.report.student == next)
 
         slowSchool.release()
@@ -234,12 +256,12 @@ struct ScoreViewModelAccountTests {
     @Test func aDiscardedFetchLeavesTheNextAccountsProgressAlone() async throws {
         let model = ScoreViewModel()
         let indicator = Indicator()
-        let departing = SignIn()
+        let departing = Account()
         let slowSchool = School()
         slowSchool.holdsFetch = true
         let first = Task {
             await Self.refresh(
-                model, for: Self.testStudentId(), generation: 1, signIn: departing, school: slowSchool, indicator: indicator
+                model, for: Self.testStudentId(), signIn: departing, school: slowSchool, indicator: indicator
             )
         }
         try await waitUntil { slowSchool.isHolding }
@@ -249,7 +271,7 @@ struct ScoreViewModelAccountTests {
         nextSchool.holdsFetch = true
         let next = Task {
             await Self.refresh(
-                model, for: Self.testStudentId(), generation: 2, signIn: SignIn(), school: nextSchool, indicator: indicator
+                model, for: Self.testStudentId(), signIn: Account(), school: nextSchool, indicator: indicator
             )
         }
         try await waitUntil { nextSchool.isHolding }
@@ -264,13 +286,13 @@ struct ScoreViewModelAccountTests {
 
     @Test func aDiscardedFetchLeavesTheNextAccountsOfflineErrorAlone() async throws {
         let model = ScoreViewModel()
-        let departing = SignIn()
+        let departing = Account()
         let slowSchool = School()
         slowSchool.holdsFetch = true
         let indicator = Indicator()
         let first = Task {
             await Self.refresh(
-                model, for: Self.testStudentId(), generation: 1, signIn: departing, school: slowSchool, indicator: indicator
+                model, for: Self.testStudentId(), signIn: departing, school: slowSchool, indicator: indicator
             )
         }
         try await waitUntil { slowSchool.isHolding }
@@ -279,7 +301,7 @@ struct ScoreViewModelAccountTests {
         let offline = School()
         offline.isOnline = false
         await Self.refresh(
-            model, for: Self.testStudentId(), generation: 2, signIn: SignIn(), school: offline, indicator: indicator
+            model, for: Self.testStudentId(), signIn: Account(), school: offline, indicator: indicator
         )
         let offlineState = indicator.loadingState
         slowSchool.release()
@@ -292,7 +314,7 @@ struct ScoreViewModelAccountTests {
     @Test func aSecondRefreshForTheSameSignInSharesTheFirst() async throws {
         let model = ScoreViewModel()
         let student = Self.testStudentId()
-        let signIn = SignIn()
+        let signIn = Account()
         let school = School()
         school.holdsFetch = true
         let first = Task { await Self.refresh(model, for: student, signIn: signIn, school: school) }

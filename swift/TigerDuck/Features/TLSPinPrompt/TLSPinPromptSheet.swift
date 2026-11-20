@@ -9,6 +9,7 @@ struct TLSPinPromptSheet: View {
 
     @State private var showsDetails = false
     @State private var showsCertificates = false
+    @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .title) private var badgeSize: CGFloat = 60
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
@@ -28,15 +29,18 @@ struct TLSPinPromptSheet: View {
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
             }
             .scrollBounceBehavior(.basedOnSize)
+            .safeAreaInset(edge: .bottom) { buttons }
             .navigationDestination(isPresented: $showsCertificates) {
+                // A pushed list ignores an inset set on the stack, and its last rows would sit
+                // under the buttons, so each page sets its own.
                 TLSCertificateList(prompt: prompt) { showsCertificates = false }
+                    .safeAreaInset(edge: .bottom) { buttons }
             }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
-        // On the stack, so the certificate list keeps both answers too.
-        .safeAreaInset(edge: .bottom) { buttons }
+        .background { escapeCloses }
         #if os(iOS)
         .presentationDetents([.medium, .large], selection: $detent)
         .onAppear { if dynamicTypeSize.isAccessibilitySize { detent = .large } }
@@ -85,40 +89,38 @@ struct TLSPinPromptSheet: View {
         }
     }
 
+    /// A disclosure in a capsule like Cancel and Continue, so VoiceOver reads it expanded or
+    /// collapsed.
     private var details: some View {
-        DisclosureGroup(isExpanded: $showsDetails) {
-            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-                Text(String(
-                    format: String(localized: "tls_pin_mismatch_details"),
-                    prompt.host, prompt.domains.formatted(.list(type: .and, width: .narrow))
-                ))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Divider()
-                Button {
-                    showsCertificates = true
-                } label: {
-                    HStack {
-                        Text(String(localized: "tls_pin_mismatch_view_certificate"))
-                            .foregroundStyle(.tint)
-                        Spacer()
-                        Image(systemName: "chevron.forward")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                            .accessibilityHidden(true)
-                    }
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
+        let title = String(localized: "tls_pin_mismatch_show_details")
+        return DisclosureGroup(isExpanded: $showsDetails) {
+            Text(String(
+                format: String(localized: "tls_pin_mismatch_details"),
+                prompt.host, prompt.domains.formatted(.list(type: .and, width: .narrow))
+            ))
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                showsCertificates = true
+            } label: {
+                capsuleLabel(String(localized: "tls_pin_mismatch_view_certificate"), systemImage: "chevron.forward")
             }
-            .padding(.top, TigerDuckTheme.Spacing.md)
+            .promptButtonStyle(prominent: false)
         } label: {
-            Text(String(localized: "tls_pin_mismatch_show_details"))
-                .foregroundStyle(.primary)
+            Text(title)
         }
-        .padding(TigerDuckTheme.Spacing.lg)
-        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
+        .disclosureGroupStyle(CapsuleDisclosure(title: title))
+        .buttonBorderShape(.capsule)
+    }
+
+    private func capsuleLabel(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: TigerDuckTheme.Spacing.xs) {
+            Text(title)
+            Image(systemName: systemImage)
+                .font(.footnote.weight(.semibold))
+                .accessibilityHidden(true)
+        }
     }
 
     private var buttons: some View {
@@ -145,7 +147,17 @@ struct TLSPinPromptSheet: View {
     private var cancelButton: some View {
         Button(action: onCancel) { buttonLabel(String(localized: "action_cancel")) }
             .promptButtonStyle(prominent: false)
+    }
+
+    /// A sheet takes Escape only through a cancel button. This one closes the sheet unanswered, as
+    /// a swipe does, where Cancel would answer.
+    private var escapeCloses: some View {
+        Button("") { dismiss() }
             .keyboardShortcut(.cancelAction)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     private var continueButton: some View {
@@ -216,7 +228,77 @@ private struct TLSCertificateList: View {
     }
 }
 
+private struct CapsuleDisclosure: DisclosureGroupStyle {
+    let title: String
+
+    func makeBody(configuration: Configuration) -> some View {
+        let toggle = { withAnimation { configuration.isExpanded.toggle() } }
+        VStack(spacing: TigerDuckTheme.Spacing.md) {
+            Button(action: toggle) {
+                HStack(spacing: TigerDuckTheme.Spacing.xs) {
+                    configuration.label
+                    Image(systemName: "chevron.down")
+                        .font(.footnote.weight(.semibold))
+                        .rotationEffect(.degrees(configuration.isExpanded ? 180 : 0))
+                        .accessibilityHidden(true)
+                }
+            }
+            .promptButtonStyle(prominent: false)
+            .expandedStatus(configuration.isExpanded, label: title, action: toggle)
+            if configuration.isExpanded { configuration.content }
+        }
+    }
+}
+
+#if os(iOS)
+/// A button for VoiceOver with an expanded status. SwiftUI keeps the view in no window, so it
+/// takes no touches.
+private struct ExpandableElement: UIViewRepresentable {
+    let label: String
+    let isExpanded: Bool
+    let action: () -> Void
+
+    func makeUIView(context: Context) -> Element {
+        let element = Element()
+        element.isAccessibilityElement = true
+        element.accessibilityTraits = .button
+        return element
+    }
+
+    func updateUIView(_ element: Element, context: Context) {
+        element.accessibilityLabel = label
+        element.accessibilityExpandedStatus = isExpanded ? .expanded : .collapsed
+        element.action = action
+    }
+
+    final class Element: UIView {
+        var action: () -> Void = {}
+
+        override func accessibilityActivate() -> Bool {
+            action()
+            return true
+        }
+    }
+}
+#endif
+
 private extension View {
+    /// Below iOS 27, SwiftUI gives no element, not even a `DisclosureGroup`, an expanded status
+    /// (https://developer.apple.com/documentation/objectivec/nsobject-swift.class/accessibilityexpandedstatus),
+    /// so VoiceOver reads a UIKit stand-in there. iOS 27 reads the disclosure's own button.
+    @ViewBuilder
+    func expandedStatus(_ isExpanded: Bool, label: String, action: @escaping () -> Void) -> some View {
+        #if os(iOS)
+        if #available(iOS 27, *) {
+            self
+        } else {
+            accessibilityRepresentation { ExpandableElement(label: label, isExpanded: isExpanded, action: action) }
+        }
+        #else
+        self
+        #endif
+    }
+
     @ViewBuilder
     func promptButtonStyle(prominent: Bool) -> some View {
         if #available(iOS 26, macOS 26, *) {

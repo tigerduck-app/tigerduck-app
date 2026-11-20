@@ -1,13 +1,14 @@
 import Defaults
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 // Serialized because the feed and store tests write the stored feed that every slot build reads.
 @MainActor
 @Suite("Course changes", .serialized)
 struct CourseChangesTests {
-    private static let thursday = AppConstants.taipeiCalendar.date(
+    private static let thursday = TaipeiTime.calendar.date(
         from: DateComponents(year: 2026, month: 11, day: 5, hour: 7)
     )!
 
@@ -64,11 +65,26 @@ struct CourseChangesTests {
 
         let thatDay = changes.changes(courseNo: "CC900", on: Self.thursday)
         #expect(changes.term == "1151")
-        #expect(thatDay.map(\.id) == [42, 45])
-        #expect(thatDay.last?.noteEn == "期中考")
-        #expect(changes.changes(courseNo: "CC900", on: Self.at("23:59")).map(\.id) == [42, 45])
+        #expect(thatDay.map(\.id) == [45, 42])
+        #expect(thatDay.first?.noteEn == "期中考")
+        #expect(changes.changes(courseNo: "CC900", on: Self.at("23:59")).map(\.id) == [45, 42])
         #expect(changes.changes(courseNo: "CC901", on: Self.thursday).isEmpty)
         #expect(Self.slots(changes).map(\.id) == ["CC900_20261105_2", "CC900_20261105_7"])
+    }
+
+    @Test func theNewestOfTwoRowsOfAKindWinsInAnyFeedOrder() throws {
+        let rows = [
+            Self.row(1, "start", periods: ["2", "3", "4"], values: ["start": "08:30"]),
+            Self.row(2, "start", periods: ["2", "3", "4"], values: ["start": "08:40"]),
+            Self.row(3, "room", periods: ["2", "3", "4"], values: ["room": "TR-313"]),
+            Self.row(4, "room", periods: ["2", "3", "4"], values: ["room": "TR-414"]),
+        ]
+
+        for feed in [rows, Array(rows.reversed())] {
+            let slot = try #require(Self.slots(try Self.changes(feed)).first)
+            #expect(slot.start == Self.at("08:40"))
+            #expect(slot.room == "TR-414")
+        }
     }
 
     @Test func aCancellationWithoutPeriodsCancelsEveryMeetingThatDayOnly() throws {
@@ -315,12 +331,12 @@ struct CourseChangesTests {
 
     @Test func theClassTableRunsAWeekFromToday() {
         let wednesday = Self.thursday.addingTimeInterval(-86400 + 6 * 3600)
-        let shown = (1...7).map { ClassTableViewModel.columnDate(weekday: $0, today: wednesday) }
+        let shown = (1...7).map { ClassTableViewModel.nextDate(onWeekday: $0, from: wednesday) }
 
-        #expect(shown.map { SharedTaipei.dayKey(for: $0) } == [
+        #expect(shown.map { TaipeiTime.dayKey(for: $0) } == [
             "2026-11-09", "2026-11-10", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08",
         ])
-        #expect(shown.allSatisfy { $0 == AppConstants.taipeiCalendar.startOfDay(for: $0) })
+        #expect(shown.allSatisfy { $0 == TaipeiTime.calendar.startOfDay(for: $0) })
     }
 
     @Test func aMeetingIsCancelledOnlyWhenEveryPeriodOfItIs() throws {
@@ -363,7 +379,7 @@ struct CourseChangesTests {
 
     @Test func theChangesListShowsUpcomingDaysEarliestFirstAndAtMostEight() throws {
         let thursdays = (-1...9).map { offset in
-            SharedTaipei.dayKey(for: Self.thursday.addingTimeInterval(Double(offset) * 7 * 86400))
+            TaipeiTime.dayKey(for: Self.thursday.addingTimeInterval(Double(offset) * 7 * 86400))
         }
         let changes = try Self.changes(
             thursdays.reversed().enumerated().map { Self.row($0.offset, "cancelled", days: [$0.element]) }
@@ -371,10 +387,10 @@ struct CourseChangesTests {
         )
 
         let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.at("23:00"), changes: changes)
-        #expect(days.map { SharedTaipei.dayKey(for: $0.day) } == Array(thursdays[1...]))
+        #expect(days.map { TaipeiTime.dayKey(for: $0.day) } == Array(thursdays[1...]))
         #expect(days.allSatisfy { $0.meetings.count == 2 && $0.meetings.allSatisfy { $0.isCancelled } })
-        let rows = CourseDetailSheet.changeRows(days, besides: nil)
-        #expect(rows.map { SharedTaipei.dayKey(for: $0.day) } == Array(thursdays[1...8]))
+        let rows = CourseDetailChanges.changeRows(days, besides: nil)
+        #expect(rows.map { TaipeiTime.dayKey(for: $0.day) } == Array(thursdays[1...8]))
         #expect(rows.allSatisfy { $0.summary == String(localized: "course_card_cancelled") })
     }
 
@@ -388,9 +404,10 @@ struct CourseChangesTests {
         let today = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes))
         let nextWeek = try #require(days.last?.meetings.first)
 
-        #expect(CourseDetailSheet.changeRows(days, besides: nil).map { $0.summary } == ["TR-313", "14:40 - 16:20 · Quiz"])
-        #expect(CourseDetailSheet.changeRows(days, besides: today).map { $0.summary } == ["14:40 - 16:20 · Quiz"])
-        #expect(CourseDetailSheet.changeRows(days, besides: nextWeek).map { $0.summary } == ["TR-313", "Quiz"])
+        #expect(CourseDetailChanges.changeRows(days, besides: nil).map { $0.summary } == ["TR-313", "14:40–16:20 · Quiz"])
+        #expect(CourseDetailChanges.changeRows(days, besides: today).map { $0.summary } == ["14:40–16:20 · Quiz"])
+        #expect(CourseDetailChanges.changeRows(days, besides: nil).map { $0.spoken } == ["TR-313", "\(TimeRange.spoken("14:40", "16:20")) · Quiz"])
+        #expect(CourseDetailChanges.changeRows(days, besides: nextWeek).map { $0.summary } == ["TR-313", "Quiz"])
     }
 
     @Test func aTappedClassShowsItsOwnChangesWhileATimetableBlockShowsItsMeeting() throws {
@@ -410,8 +427,8 @@ struct CourseChangesTests {
         let block = try #require(shown(nil, periods: ["2", "3", "4"]))
         #expect(block.periods == ["2", "3", "4"] && !block.isCancelled && block.room == "TR-313")
         let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
-        #expect(CourseDetailSheet.changeRows(days, besides: shown(slots[2])).isEmpty)
-        #expect(CourseDetailSheet.changeRows(days, besides: shown(slots[0])).map(\.summary) == ["TR-313"])
+        #expect(CourseDetailChanges.changeRows(days, besides: shown(slots[2])).isEmpty)
+        #expect(CourseDetailChanges.changeRows(days, besides: shown(slots[0])).map(\.summary) == ["TR-313"])
     }
 
     @Test func theCurrentClassIsTheChangedOneAndACancelledClassIsNotRunning() throws {
@@ -427,8 +444,8 @@ struct CourseChangesTests {
         let viewModel = ClassTableViewModel()
         viewModel.selectOngoing(piece)
         let opened = CourseDetailSheet.shownMeeting(
-            of: Self.course(), slot: viewModel.selectedSlot, periods: viewModel.selectedCoursePeriods,
-            on: viewModel.selectedDate, changes: partly
+            of: Self.course(), slot: viewModel.selection.currentClassSlot, periods: viewModel.selection.coursePeriods,
+            on: viewModel.selection.date, changes: partly
         )
         #expect(piece.periods == ["2", "3"] && opened == nil)
         #expect([Self.course()].ongoingCourses(at: Self.at("14:30"), changes: changes).isEmpty)
@@ -462,7 +479,7 @@ struct CourseChangesTests {
     @Test func theTimeLineCrossesAPeriodByItsShareAndSitsInTheGapBetweenTwo() {
         let periods = [(start: 490, end: 540), (start: 550, end: 600), (start: 800, end: 850)]
         func offset(_ minute: Int) -> CGFloat? {
-            TimetableGridView.nowLineOffset(minute: minute, periods: periods, rowPitch: 55, cellHeight: 52)
+            TimetableNowLine.offset(minute: minute, periods: periods, rowPitch: 55, cellHeight: 52)
         }
 
         #expect(offset(489) == nil)

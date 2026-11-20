@@ -16,11 +16,11 @@ struct LibraryPasswordLatchRetryMigrationTests {
             for (key, value) in saved {
                 if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
             }
-            LibraryService.storedPasswordRefusals = savedRefusals
+            LibraryService.setStoredPasswordRefusals(savedRefusals, for: testSignIn)
         }
         defaults.removeObject(forKey: doneKey)
         if latched { defaults.set(true, forKey: latchKey) } else { defaults.removeObject(forKey: latchKey) }
-        LibraryService.storedPasswordRefusals = (0, nil)
+        LibraryService.setStoredPasswordRefusals((0, nil), for: testSignIn)
         try await body()
     }
 
@@ -32,7 +32,7 @@ struct LibraryPasswordLatchRetryMigrationTests {
 
                 #expect(LibraryService.storedPasswordPostIsDue(now: now))
                 #expect(UserDefaults.standard.object(forKey: Self.latchKey) == nil)
-                LibraryService.storedPasswordRefusals = (LibraryService.storedPasswordRefusals.count + 1, now)
+                LibraryService.setStoredPasswordRefusals((LibraryService.storedPasswordRefusals.count + 1, now), for: testSignIn)
                 #expect(!LibraryService.storedPasswordPostIsDue(now: now.addingTimeInterval(6 * 60 * 60 - 1)))
                 #expect(LibraryService.storedPasswordPostIsDue(now: now.addingTimeInterval(6 * 60 * 60)))
             }

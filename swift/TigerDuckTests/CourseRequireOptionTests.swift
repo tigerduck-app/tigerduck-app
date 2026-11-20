@@ -16,13 +16,13 @@ struct CourseRequireOptionTests {
     }
 
     @Test func theLookupCarriesTheFirstValueAnyRowHas() async {
-        let row = await AppServiceBridge.refreshedCourseData(
+        let row = await CourseDetails.refreshedCourseData(
             courseNo: "CS1003301",
             semester: "1151",
             cached: nil,
             moodle: nil,
             grade: nil,
-            display: AppServiceBridge.CourseDisplayPreferences(
+            display: CourseDetails.CourseDisplayPreferences(
                 language: "zh", courseAbbrEnabled: false, classroomAbbrEnabled: false,
                 classroomMandarinDisplay: "original"
             )
@@ -36,7 +36,7 @@ struct CourseRequireOptionTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("CourseRequireOptionTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let cache = DataCache(
+        let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
@@ -44,9 +44,9 @@ struct CourseRequireOptionTests {
                                 requireOption: "R")
         let unknown = SDCourse(courseNo: "GE1001", courseName: "通識課", semester: "1151")
 
-        cache.saveUserAddedCourses([required, unknown])
+        cache.courses.saveUserAddedCourses([required, unknown], for: testSignIn)
 
-        let loaded = cache.loadUserAddedCourses()
+        let loaded = cache.courses.loadUserAddedCourses()
         #expect(loaded.first { $0.courseNo == "CS1003301" }?.requireOption == "R")
         #expect(loaded.first { $0.courseNo == "GE1001" }?.requireOption == "")
     }
@@ -60,10 +60,10 @@ struct CourseRequireOptionTests {
     }
 
     @Test func theDetailRowNamesOnlyRequiredAndElective() {
-        #expect(CourseDetailSheet.requireOptionText("R") == String(localized: "course_detail_require_option_required"))
-        #expect(CourseDetailSheet.requireOptionText("e") == String(localized: "course_detail_require_option_elective"))
-        #expect(CourseDetailSheet.requireOptionText("") == nil)
-        #expect(CourseDetailSheet.requireOptionText("X") == nil)
+        #expect(CourseDetailInfoRows.requireOptionText("R") == String(localized: "course_detail_require_option_required"))
+        #expect(CourseDetailInfoRows.requireOptionText("e") == String(localized: "course_detail_require_option_elective"))
+        #expect(CourseDetailInfoRows.requireOptionText("") == nil)
+        #expect(CourseDetailInfoRows.requireOptionText("X") == nil)
     }
 
     @Test func requiredCoursesAreNotOutlinedUntilTheUserTurnsItOn() {

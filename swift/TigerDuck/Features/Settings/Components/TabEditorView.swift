@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct TabEditorView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tabs: [AppFeature] = []
@@ -162,14 +162,14 @@ struct TabEditorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "tab_editor_apply_action")) {
-                        appState.configuredTabs = tabs
+                        app.preferences.configuredTabs = tabs
                         dismiss()
                     }
                 }
             }
         }
         .onAppear {
-            tabs = appState.configuredTabs
+            tabs = app.preferences.configuredTabs
         }
     }
 

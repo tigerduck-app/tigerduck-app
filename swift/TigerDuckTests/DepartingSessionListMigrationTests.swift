@@ -17,7 +17,7 @@ struct DepartingSessionListMigrationTests {
         let converted = stored
         let manager = AuthTokenManager(
             baseURLProvider: { URL(string: "https://api.example.test/v3")! },
-            deviceUUID: "test-device",
+            deviceUUID: { "test-device" },
             tokens: .init(load: { $0 == AuthTokenManager.departingSessionKey ? converted : nil }, save: { _, _ in }, delete: { _ in })
         )
         #expect(manager.departingSessionBackends == [URL(string: "https://api.example.test/v3")!])

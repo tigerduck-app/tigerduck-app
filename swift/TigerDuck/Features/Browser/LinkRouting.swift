@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 import UIKit
 
@@ -10,12 +11,11 @@ nonisolated enum LinkRouting {
     }
 
     /// The browser hands any page it would not load to the system, so only those it loads open
-    /// in it. Without the Moodle app, a Moodle app link opens its page in the browser, which
-    /// signs in to Moodle.
-    static func destination(for url: URL, moodleAppInstalled: Bool) -> Destination {
+    /// in it.
+    static func destination(for url: URL, moodleAppInstalled: Bool, moodleOpenTarget: MoodleOpenTarget) -> Destination {
         if url.scheme?.lowercased() == "moodlemobile" {
-            guard !moodleAppInstalled, let page = moodlePage(in: url) else { return .system(url) }
-            return .browser(page)
+            if moodleAppInstalled && moodleOpenTarget == .app { return .system(url) }
+            return .browser(moodlePage(in: url) ?? AppConstants.moodleBaseURL)
         }
         return BrowserRouting.decision(for: url) == .load ? .browser(url) : .system(url)
     }
@@ -27,6 +27,11 @@ nonisolated enum LinkRouting {
               let path = text[start...].removingPercentEncoding,
               path.hasPrefix("/"), !path.hasPrefix("//") else { return nil }
         return URL(string: path, relativeTo: AppConstants.moodleBaseURL)?.absoluteURL
+    }
+
+    // canOpenURL answers for moodlemobile because Info.plist lists it in LSApplicationQueriesSchemes.
+    @MainActor static var isMoodleAppInstalled: Bool {
+        UIApplication.shared.canOpenURL(URL.knownGood("moodlemobile://"))
     }
 }
 
@@ -50,9 +55,10 @@ private struct LinkRoutingHost: ViewModifier {
     }
 
     private func route(_ url: URL) -> OpenURLAction.Result {
-        // canOpenURL answers for moodlemobile because Info.plist lists it in LSApplicationQueriesSchemes.
-        let installed = url.scheme?.lowercased() == "moodlemobile" && UIApplication.shared.canOpenURL(url)
-        switch LinkRouting.destination(for: url, moodleAppInstalled: installed) {
+        let installed = url.scheme?.lowercased() == "moodlemobile" && LinkRouting.isMoodleAppInstalled
+        switch LinkRouting.destination(
+            for: url, moodleAppInstalled: installed, moodleOpenTarget: Defaults[.moodleOpenTarget]
+        ) {
         case .browser(let url): page = BrowserLink(url: url)
         case .system(let url): openOutside(url)
         }

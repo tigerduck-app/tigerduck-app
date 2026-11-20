@@ -3,7 +3,7 @@ import SwiftUI
 import UserNotifications
 
 struct OnboardingView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var currentPage = 0
     @State private var studentId = ""
@@ -13,12 +13,8 @@ struct OnboardingView: View {
     @State private var syncEnabled = true
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
     @State private var notificationRequestInFlight = false
-    @Environment(\.openURL) private var openURL
-    @State private var showEndpointSheet = false
     @Environment(\.scenePhase) private var scenePhase
-    @FocusState private var focusedField: Field?
-
-    private enum Field { case studentId, password }
+    @FocusState private var focusedField: OnboardingLoginPage.Field?
 
     private enum Page: Int, CaseIterable {
         case welcome, privacy, cloudSync, watchOS, login, notifications, ready
@@ -35,13 +31,36 @@ struct OnboardingView: View {
     var body: some View {
         TabView(selection: $currentPage) {
             welcomePage.tag(Page.welcome.rawValue)
-            privacyPage.tag(Page.privacy.rawValue)
-            cloudSyncPage.tag(Page.cloudSync.rawValue)
+            OnboardingPrivacyPage(
+                agreedPrivacy: $agreedPrivacy,
+                agreedDeletion: $agreedDeletion,
+                isCurrent: currentPage == Page.privacy.rawValue,
+                onNext: { go(to: .cloudSync) }
+            )
+            .tag(Page.privacy.rawValue)
+            OnboardingCloudSyncPage(syncEnabled: $syncEnabled) {
+                app.cloudSyncPreference.setEnabled(syncEnabled, for: app.authService.session.currentSignIn)
+                go(to: showsWatchPage ? .watchOS : .login)
+            }
+            .tag(Page.cloudSync.rawValue)
             if showsWatchPage {
                 watchOSPage.tag(Page.watchOS.rawValue)
             }
-            loginPage.tag(Page.login.rawValue)
-            notificationsPage.tag(Page.notifications.rawValue)
+            OnboardingLoginPage(
+                studentId: $studentId,
+                password: $password,
+                focusedField: $focusedField,
+                onSkip: { go(to: .notifications) },
+                onSignedIn: { go(to: .notifications) }
+            )
+            .tag(Page.login.rawValue)
+            OnboardingNotificationsPage(
+                status: notificationStatus,
+                isRequesting: notificationRequestInFlight,
+                onRequest: { Task { await requestNotifications() } },
+                onNext: { go(to: .ready) }
+            )
+            .tag(Page.notifications.rawValue)
             readyPage.tag(Page.ready.rawValue)
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
@@ -63,6 +82,10 @@ struct OnboardingView: View {
                 Task { await refreshNotificationStatus() }
             }
         }
+    }
+
+    private func go(to page: Page) {
+        withAnimation(reduceMotion ? nil : .default) { currentPage = page.rawValue }
     }
 
     private var welcomePage: some View {
@@ -102,7 +125,7 @@ struct OnboardingView: View {
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     Button(String(localized: "action_next")) {
-                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.privacy.rawValue }
+                        go(to: .privacy)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -113,182 +136,6 @@ struct OnboardingView: View {
 
     private var hasAgreedToTerms: Bool { agreedPrivacy && agreedDeletion }
 
-    private var privacyPage: some View {
-        OnboardingPageView(
-            icon: "lock.shield.fill",
-            title: String(localized: "onboarding_privacy_title"),
-            subtitle: String(localized: "onboarding_privacy_subtitle"),
-            accentColor: .blue,
-            iconAnimation: .layerFlash,
-            justifiesSubtitle: true,
-            content: {
-                Grid(alignment: .leading, horizontalSpacing: TigerDuckTheme.Spacing.md, verticalSpacing: TigerDuckTheme.Spacing.md) {
-                    privacyCheckboxRow(
-                        isOn: $agreedPrivacy,
-                        label: String(localized: "onboarding_privacy_policy_label"),
-                        destination: AppURLs.privacyPolicy
-                    )
-                    privacyCheckboxRow(
-                        isOn: $agreedDeletion,
-                        label: String(localized: "onboarding_privacy_delete_account_label"),
-                        destination: AppURLs.deleteAccount
-                    )
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            },
-            actions: {
-                VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                    Text(String(localized: "onboarding_privacy_continue_hint"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .opacity(hasAgreedToTerms ? 0 : 1)
-
-                    Button(String(localized: "action_next")) {
-                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.cloudSync.rawValue }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(!hasAgreedToTerms)
-                }
-            }
-        )
-        .background(
-            PagingScrollLock(isLocked: currentPage == Page.privacy.rawValue && !hasAgreedToTerms)
-                .allowsHitTesting(false)
-        )
-    }
-
-    private func privacyCheckboxRow(
-        isOn: Binding<Bool>, label: String, destination: URL
-    ) -> some View {
-        GridRow {
-            Button {
-                isOn.wrappedValue.toggle()
-            } label: {
-                Image(systemName: isOn.wrappedValue ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(isOn.wrappedValue ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textSecondary))
-                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-            }
-            .buttonStyle(.plain)
-            .sensoryFeedback(.selection, trigger: isOn.wrappedValue)
-            .accessibilityRepresentation {
-                Toggle(label, isOn: isOn)
-            }
-
-            Link(label, destination: destination)
-                .font(.callout)
-        }
-    }
-
-    private var cloudSyncPage: some View {
-        OnboardingPageView(
-            icon: "arrow.triangle.2.circlepath.icloud.fill",
-            title: String(localized: "onboarding_sync_title"),
-            subtitle: String(localized: "onboarding_sync_subtitle"),
-            accentColor: .cyan,
-            content: {
-                VStack(spacing: TigerDuckTheme.Spacing.md) {
-                    cloudSyncInfoRows
-
-                    Toggle(isOn: $syncEnabled) {
-                        Text(String(localized: "onboarding_sync_toggle_label"))
-                            .font(.callout.weight(.semibold))
-                    }
-                    .toggleStyle(.switch)
-                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-
-                    if !syncEnabled {
-                        Label(
-                            String(localized: "onboarding_sync_disabled_note"),
-                            systemImage: "info.circle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .multilineTextAlignment(.leading)
-                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                    }
-
-                    VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                        Link(destination: AppURLs.learnMoreTigerSync) {
-                            Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
-                                .font(.caption)
-                        }
-                        Link(destination: AppURLs.privacyPolicy) {
-                            Label(String(localized: "onboarding_privacy_policy_label"), systemImage: "hand.raised.fill")
-                                .font(.caption)
-                        }
-                        Link(destination: AppURLs.deleteAccount) {
-                            Label(String(localized: "onboarding_privacy_delete_account_label"), systemImage: "trash")
-                                .font(.caption)
-                        }
-                    }
-                    .padding(.top, TigerDuckTheme.Spacing.sm)
-                }
-            },
-            actions: {
-                Button(String(localized: "action_next")) {
-                    Defaults[.cloudSyncEnabled] = syncEnabled
-                    let nextPage = showsWatchPage ? Page.watchOS.rawValue : Page.login.rawValue
-                    withAnimation(reduceMotion ? nil : .default) { currentPage = nextPage }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var cloudSyncInfoRows: some View {
-        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-            cloudSyncInfoRow(
-                icon: "checkmark.circle.fill",
-                color: .green,
-                text: String(localized: "onboarding_sync_shared_student_id")
-            )
-            cloudSyncInfoRow(
-                icon: "checkmark.circle.fill",
-                color: .green,
-                text: String(localized: "onboarding_sync_shared_moodle_token")
-            )
-            cloudSyncInfoRow(
-                icon: "checkmark.circle.fill",
-                color: .green,
-                text: String(localized: "onboarding_sync_shared_device_id")
-            )
-            cloudSyncInfoRow(
-                icon: "checkmark.circle.fill",
-                color: .green,
-                text: String(localized: "onboarding_sync_shared_courses")
-            )
-            cloudSyncInfoRow(
-                icon: "checkmark.circle.fill",
-                color: .green,
-                text: String(localized: "onboarding_sync_shared_assignments")
-            )
-            cloudSyncInfoRow(
-                icon: "xmark.circle.fill",
-                color: .red,
-                text: String(localized: "onboarding_sync_not_shared_password")
-            )
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-    }
-
-    private func cloudSyncInfoRow(icon: String, color: Color, text: String) -> some View {
-        HStack(spacing: TigerDuckTheme.Spacing.sm) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-                .font(.callout)
-            Text(text)
-                .font(.callout)
-                .foregroundStyle(Color.textSecondary)
-        }
-    }
-
     private var watchOSPage: some View {
         OnboardingPageView(
             icon: "applewatch",
@@ -297,210 +144,10 @@ struct OnboardingView: View {
             accentColor: .red
         ) {
             Button(String(localized: "action_next")) {
-                withAnimation(reduceMotion ? nil : .default) { currentPage = Page.login.rawValue }
+                go(to: .login)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-        }
-    }
-
-    private var loginPage: some View {
-        let isSignedIn = appState.authService.hasStoredCredentials
-
-        return OnboardingPageView(
-            icon: "person.badge.key.fill",
-            title: String(localized: "onboarding_sign_in_title"),
-            subtitle: String(localized: "onboarding_sign_in_subtitle"),
-            accentColor: .green,
-            content: {
-                VStack(spacing: TigerDuckTheme.Spacing.md) {
-                    VStack(spacing: 1) {
-                        HStack(spacing: TigerDuckTheme.Spacing.md) {
-                            Image(systemName: "person.fill")
-                                .foregroundStyle(.secondary)
-                                .frame(width: 20)
-                            TextField(String(localized: "sign_in_student_id"), text: $studentId)
-                                .keyboardType(.asciiCapable)
-                                .focused($focusedField, equals: .studentId)
-                                .textContentType(.username)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.characters)
-                                .submitLabel(.next)
-                                .onSubmit { focusedField = .password }
-                        }
-                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                        .padding(.vertical, TigerDuckTheme.Spacing.md)
-                        .background(.fill.quaternary, in: .rect(topLeadingRadius: TigerDuckTheme.CornerRadius.md, topTrailingRadius: TigerDuckTheme.CornerRadius.md))
-
-                        Divider()
-                            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-
-                        HStack(spacing: TigerDuckTheme.Spacing.md) {
-                            Image(systemName: "lock.fill")
-                                .foregroundStyle(.secondary)
-                                .frame(width: 20)
-                            PasswordField(
-                                placeholder: String(localized: "sign_in_password"),
-                                text: $password,
-                                focusBinding: $focusedField,
-                                focusValue: .password,
-                                onSubmit: { submitLogin() }
-                            )
-                        }
-                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                        .padding(.vertical, TigerDuckTheme.Spacing.md)
-                        .background(.fill.quaternary, in: .rect(bottomLeadingRadius: TigerDuckTheme.CornerRadius.md, bottomTrailingRadius: TigerDuckTheme.CornerRadius.md))
-                    }
-                    .frame(maxWidth: 320)
-
-                    if let error = appState.authService.loginError {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-
-                    if isSignedIn {
-                        Label(
-                            String(localized: "action_done"),
-                            systemImage: "checkmark.circle.fill"
-                        )
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.green)
-                    }
-                }
-            },
-            actions: {
-                VStack(spacing: TigerDuckTheme.Spacing.md) {
-                    Button(String(localized: "settings_check_server_status")) {
-                        openURL(AppURLs.serverStatus)
-                    }
-                    .foregroundStyle(Color.textSecondary)
-
-                    Button(String(localized: "onboarding_custom_endpoint_button")) {
-                        showEndpointSheet = true
-                    }
-                    .foregroundStyle(Color.textSecondary)
-
-                    Button(String(localized: "onboarding_skip_for_now")) {
-                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.notifications.rawValue }
-                    }
-                    .foregroundStyle(Color.textSecondary)
-
-                    Button {
-                        submitLogin()
-                    } label: {
-                        LoadingButtonLabel(
-                            isLoading: appState.authService.isLoggingIn,
-                            tint: .white
-                        ) {
-                            Text(String(localized: "onboarding_sign_in_button"))
-                                .font(.callout.weight(.semibold))
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(studentId.isEmpty || password.isEmpty || appState.authService.isLoggingIn)
-                }
-            }
-        )
-        .sheet(isPresented: $showEndpointSheet) {
-            NavigationStack {
-                DebugEndpointView()
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button(String(localized: "action_done")) { showEndpointSheet = false }
-                        }
-                    }
-            }
-        }
-    }
-
-    private func submitLogin() {
-        #if canImport(UIKit)
-        UIApplication.dismissKeyboard()
-        #endif
-        focusedField = nil
-        let trimmedId = studentId.trimmingCharacters(in: .whitespaces)
-        let trimmedPwd = password.trimmingCharacters(in: .whitespaces)
-        guard !trimmedId.isEmpty, !trimmedPwd.isEmpty, !appState.authService.isLoggingIn else { return }
-        Task {
-            let success = await appState.authService.login(
-                studentId: trimmedId, password: trimmedPwd
-            )
-            if success { withAnimation(reduceMotion ? nil : .default) { currentPage = Page.notifications.rawValue } }
-        }
-    }
-
-    private var notificationsPage: some View {
-        OnboardingPageView(
-            icon: "bell.badge.fill",
-            title: String(localized: "onboarding_permissions_title"),
-            subtitle: String(localized: "onboarding_permissions_subtitle"),
-            accentColor: .orange,
-            content: {
-                VStack(spacing: TigerDuckTheme.Spacing.md) {
-                    notificationStatusRow
-
-                    #if canImport(UIKit)
-                    if notificationStatus == .denied {
-                        Button(String(localized: "action_go_to_settings")) {
-                            if let url = URL(string: UIApplication.openSettingsURLString) {
-                                UIApplication.shared.open(url)
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                    }
-                    #endif
-                }
-            },
-            actions: {
-                VStack(spacing: TigerDuckTheme.Spacing.md) {
-                    Button(String(localized: "onboarding_skip_for_now")) {
-                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.ready.rawValue }
-                    }
-                    .foregroundStyle(Color.textSecondary)
-
-                    if notificationStatus != .notDetermined {
-                        Button(String(localized: "action_next")) {
-                            withAnimation(reduceMotion ? nil : .default) { currentPage = Page.ready.rawValue }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                    }
-                }
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var notificationStatusRow: some View {
-        switch notificationStatus {
-        case .authorized, .provisional, .ephemeral:
-            Label(String(localized: "bulletin_push_status_registration_done"), systemImage: "checkmark.circle.fill")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.green)
-        case .denied:
-            Label(String(localized: "bulletin_push_status_denied"), systemImage: "xmark.octagon.fill")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.red)
-        case .notDetermined:
-            Button {
-                Task { await requestNotifications() }
-            } label: {
-                LoadingButtonLabel(
-                    isLoading: notificationRequestInFlight,
-                    tint: .white
-                ) {
-                    Label(String(localized: "action_allow"), systemImage: "bell.fill")
-                        .font(.callout.weight(.semibold))
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(notificationRequestInFlight)
-        @unknown default:
-            EmptyView()
         }
     }
 
@@ -511,7 +158,7 @@ struct OnboardingView: View {
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await refreshNotificationStatus()
         guard granted else { return }
-        appState.enablePushServer()
+        app.pushSchedule.enablePushServer()
     }
 
     private func refreshNotificationStatus() async {
@@ -527,96 +174,11 @@ struct OnboardingView: View {
             accentColor: .onboardingAccent
         ) {
             Button(String(localized: "onboarding_start_button")) {
-                appState.completeOnboarding()
+                app.completeOnboarding()
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(appState.authService.isLoggingIn)
+            .disabled(app.authService.isLoggingIn)
         }
     }
 }
-
-#if canImport(UIKit)
-/// Refuses forward drags on the page-style `TabView`'s own scroll view and leaves backward ones
-/// alone. `scrollDisabled` does not reach the page-style pager, hence the UIKit walk to find it.
-///
-/// `isScrollEnabled = false` while locked would freeze both directions, so a user who had not
-/// ticked the boxes could not swipe back to Welcome either. The tick gates only forward motion,
-/// so the pager stays scrollable and the forward drag is cancelled instead.
-struct PagingScrollLock: UIViewRepresentable {
-    let isLocked: Bool
-
-    /// Whether a drag of `translationX` points at the *next* page.
-    ///
-    /// Pulled out of the gesture handler so the mirroring has a test: a
-    /// page-style `TabView` reverses under a right-to-left language, so the
-    /// same finger movement that advances in English goes back in Arabic,
-    /// and the app ships four right-to-left locales.
-    static func isForwardDrag(translationX: CGFloat, isRTL: Bool) -> Bool {
-        isRTL ? translationX > 0 : translationX < 0
-    }
-
-    func makeUIView(context: Context) -> LockView {
-        let view = LockView()
-        view.isUserInteractionEnabled = false
-        return view
-    }
-
-    func updateUIView(_ view: LockView, context: Context) {
-        view.isLocked = isLocked
-    }
-
-    final class LockView: UIView {
-        var isLocked = false
-
-        private(set) weak var attachedPager: UIScrollView?
-        private var hasJudgedDrag = false
-
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            attachToPager()
-        }
-
-        private func attachToPager() {
-            guard attachedPager == nil else { return }
-            var candidate = superview
-            while let view = candidate {
-                if let scrollView = view as? UIScrollView {
-                    attachedPager = scrollView
-                    scrollView.panGestureRecognizer.addTarget(
-                        self, action: #selector(pagerDidPan)
-                    )
-                    return
-                }
-                candidate = view.superview
-            }
-        }
-
-        @objc private func pagerDidPan(_ recognizer: UIPanGestureRecognizer) {
-            guard let pager = attachedPager else { return }
-            guard recognizer.state == .changed else {
-                hasJudgedDrag = false
-                return
-            }
-            guard isLocked, !hasJudgedDrag else { return }
-
-            let dx = recognizer.translation(in: pager).x
-            guard abs(dx) > 4 else { return }
-            hasJudgedDrag = true
-
-            let isRTL = pager.effectiveUserInterfaceLayoutDirection == .rightToLeft
-            guard PagingScrollLock.isForwardDrag(translationX: dx, isRTL: isRTL) else { return }
-
-            // Turning scrolling off and straight back on cancels the pan in
-            // flight; the pager snaps back to the page it started on.
-            pager.isScrollEnabled = false
-            pager.isScrollEnabled = true
-        }
-    }
-}
-#else
-private struct PagingScrollLock: View {
-    let isLocked: Bool
-    var body: some View { EmptyView() }
-}
-#endif

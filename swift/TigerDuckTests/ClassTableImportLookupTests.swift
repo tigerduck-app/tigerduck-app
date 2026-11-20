@@ -4,7 +4,7 @@ import Testing
 
 @MainActor
 struct ClassTableImportLookupTests {
-    private static let display = AppServiceBridge.CourseDisplayPreferences(
+    private static let display = CourseDetails.CourseDisplayPreferences(
         language: "zh", courseAbbrEnabled: false, classroomAbbrEnabled: false, classroomMandarinDisplay: "original"
     )
 
@@ -19,7 +19,7 @@ struct ClassTableImportLookupTests {
 
     @Test("a code the course query does not know is left out, in the code's order otherwise")
     func unknownCourseIsSkipped() async throws {
-        let courses = try await AppServiceBridge.importedCourses(
+        let courses = try await CourseDetails.importedCourses(
             semester: "1151", courseNos: ["MA1010001", "XX1010001", "CS1010001"], display: Self.display
         ) { courseNo in
             switch courseNo {
@@ -39,7 +39,7 @@ struct ClassTableImportLookupTests {
     @Test("one failed query fails the whole term")
     func failureThrows() async {
         await #expect(throws: URLError.self) {
-            try await AppServiceBridge.importedCourses(
+            try await CourseDetails.importedCourses(
                 semester: "1151", courseNos: ["MA1010001", "CS1010001"], display: Self.display
             ) { courseNo in
                 if courseNo == "CS1010001" { throw URLError(.notConnectedToInternet) }
@@ -53,7 +53,7 @@ struct ClassTableImportLookupTests {
         let kept = SDCourse(
             courseNo: "XX1010001", courseName: "Kept", credits: 2, classroom: "", schedule: [2: ["5"]], semester: "1151"
         )
-        let refreshed = try #require(await AppServiceBridge.refreshImportedCourses(
+        let refreshed = try #require(await CourseDetails.refreshImportedCourses(
             semester: "1151", courseNos: ["MA1010001", "XX1010001", "EE1010001"], current: [kept], display: Self.display
         ) { courseNo in
             switch courseNo {
@@ -65,7 +65,7 @@ struct ClassTableImportLookupTests {
         #expect(refreshed.map(\.courseNo) == ["MA1010001", "XX1010001"])
         #expect(refreshed.map(\.courseName) == ["微積分", "Kept"])
 
-        let none = await AppServiceBridge.refreshImportedCourses(
+        let none = await CourseDetails.refreshImportedCourses(
             semester: "1151", courseNos: ["MA1010001", "XX1010001"], current: [kept], display: Self.display
         ) { _ in throw URLError(.notConnectedToInternet) }
         #expect(none == nil)
@@ -75,7 +75,7 @@ struct ClassTableImportLookupTests {
     func refreshedLabelsStayOutOfOwnCache() async throws {
         let code = "QQ" + UUID().uuidString.prefix(7)
         #expect(NameAbbrService.shared.rawName(for: code) == nil)
-        _ = await AppServiceBridge.refreshImportedCourses(
+        _ = await CourseDetails.refreshImportedCourses(
             semester: "1151", courseNos: [code], current: [], display: Self.display
         ) { [Self.result($0, "Refreshed label")] }
 
@@ -86,7 +86,7 @@ struct ClassTableImportLookupTests {
     func importedLabelsStayOutOfOwnCache() async throws {
         let code = "QQ" + UUID().uuidString.prefix(7)
         #expect(NameAbbrService.shared.rawName(for: code) == nil)
-        _ = try await AppServiceBridge.importedCourses(semester: "1151", courseNos: [code], display: Self.display) {
+        _ = try await CourseDetails.importedCourses(semester: "1151", courseNos: [code], display: Self.display) {
             [Self.result($0, "Imported label")]
         }
 

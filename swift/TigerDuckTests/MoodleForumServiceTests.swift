@@ -242,7 +242,7 @@ struct MoodleForumServiceTests {
     func invalidatedViewToken(wait: TokenWait) async throws {
         let old = UUID().uuidString
         let replacement = UUID().uuidString
-        let current = OSAllocatedUnfairLock(initialState: true)
+        let current = TestSignIn()
         let gate = ManualSleeper()
         Self.answer(#"{"errorcode":"invalidtoken","exception":"moodle_exception","message":"Expired"}"#,
                     function: MoodleForumService.viewDiscussionFunction, token: old)
@@ -260,11 +260,11 @@ struct MoodleForumServiceTests {
         )
         let event = Task {
             try await MoodleCourseAPI.markDiscussionViewed(
-                801, isCurrent: { current.withLock { $0 } }, tokens: tokens, session: Self.session(), siteURL: Self.site
+                801, for: current.signIn, tokens: tokens, session: Self.session(), siteURL: Self.site
             )
         }
         try await gate.waitUntilArmed()
-        current.withLock { $0 = false }
+        current.signOut()
         await gate.fire()
 
         await #expect(throws: CancellationError.self) { try await event.value }
@@ -277,18 +277,27 @@ struct MoodleForumServiceTests {
     func invalidatedViewRetry() async throws {
         let token = UUID().uuidString
         let endpoint = Self.endpoint(MoodleForumService.viewDiscussionFunction, token: token)
-        Self.answer(#"{"errorcode":"accessexception","exception":"moodle_exception","message":"Access denied"}"#,
-                    function: MoodleForumService.viewDiscussionFunction, token: token)
+        let refused = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(.init(
+            statusCode: 200,
+            body: Data(#"{"errorcode":"accessexception","exception":"moodle_exception","message":"Access denied"}"#.utf8),
+            gate: refused
+        ), for: endpoint)
         Self.answer(#"{"status":true,"warnings":[]}"#,
                     function: MoodleForumService.viewDiscussionFunction, token: token)
+        let signedIn = TestSignIn()
         let tokens = MoodleWebserviceClient.TokenSource(stored: { token }, renew: { _ in token })
-
-        await #expect(throws: CancellationError.self) {
+        let view = Task {
             try await MoodleCourseAPI.markDiscussionViewed(
-                801, isCurrent: { SettingsAPIStub.requests(for: endpoint).isEmpty },
-                tokens: tokens, session: Self.session(), siteURL: Self.site
+                801, for: signedIn.signIn, tokens: tokens, session: Self.session(), siteURL: Self.site
             )
         }
+        try await waitUntil { !SettingsAPIStub.requests(for: endpoint).isEmpty }
+
+        signedIn.signOut()
+        refused.open()
+
+        await #expect(throws: CancellationError.self) { try await view.value }
         #expect(SettingsAPIStub.requests(for: endpoint).count == 1)
     }
 
@@ -300,7 +309,7 @@ struct MoodleForumServiceTests {
         let tokens = MoodleWebserviceClient.TokenSource(stored: { token }, renew: { _ in token })
 
         try await MoodleCourseAPI.markDiscussionViewed(
-            801, isCurrent: { true }, tokens: tokens, session: Self.session(), siteURL: Self.site
+            801, for: testSignIn, tokens: tokens, session: Self.session(), siteURL: Self.site
         )
 
         #expect(SettingsAPIStub.requests(for: Self.endpoint(MoodleForumService.viewDiscussionFunction, token: token)).count == 1)

@@ -1,13 +1,15 @@
 #if os(macOS)
 import Defaults
 import SwiftUI
+import TigerDuckCore
 
 struct MacAppearanceSettingsView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @Default(.appAppearance) private var appearance
-    @State private var isConfirmingReassign = false
+    @State private var showingAccentEditor = false
 
     var body: some View {
+        @Bindable var preferences = app.preferences
         Form {
             Section {
                 Picker(String(localized: "settings_color_theme"), selection: $appearance) {
@@ -19,43 +21,35 @@ struct MacAppearanceSettingsView: View {
 
             Section(String(localized: "settings_accent_color")) {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                    ForEach(AppState.themeColors, id: \.hex) { entry in
+                    ForEach(AppPreferences.themeColors, id: \.hex) { entry in
                         accentSwatch(hex: entry.hex, nameKey: entry.nameKey)
                     }
-                    CustomAccentPicker(appState: appState, size: 32)
+                    CustomAccentButton(preferences: app.preferences, size: 32) { showingAccentEditor = true }
                         .padding(4)
                 }
                 .padding(.vertical, 4)
+                Toggle(String(localized: "settings_accent_gradient_on_widgets"), isOn: $preferences.accentGradientOnWidgets)
+                    .disabled(!preferences.accent.isGradient)
             }
 
             Section {
-                Button(String(localized: "settings_reset_course_colors")) {
-                    isConfirmingReassign = true
-                }
+                ReassignCourseColorsButton()
             }
         }
         .formStyle(.grouped)
         .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .alert(
-            String(localized: "settings_reset_course_colors_confirm_title"),
-            isPresented: $isConfirmingReassign
-        ) {
-            Button(String(localized: "action_confirm"), role: .destructive) {
-                appState.reassignAllCourseColors()
-            }
-            Button(String(localized: "action_cancel"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "settings_reset_course_colors_confirm_message"))
+        .sheet(isPresented: $showingAccentEditor) {
+            AccentGradientEditor(preferences: app.preferences)
+                .frame(minWidth: 460, idealWidth: 520, minHeight: 520, idealHeight: 560)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func accentSwatch(hex: Int, nameKey: String) -> some View {
+    private func accentSwatch(hex: Int, nameKey: LocalizedStringResource) -> some View {
         let color = Color(hex: UInt(bitPattern: Int(hex)))
-        let isSelected = AccentPreview.shared.shownHex(saved: appState.accentColorHex) == hex
+        let isSelected = app.preferences.accent == AccentGradient(color: hex)
         return Button {
-            AccentPreview.shared.clear()
-            appState.accentColorHex = hex
+            app.preferences.accent = AccentGradient(color: hex)
         } label: {
             ZStack {
                 Circle()
@@ -74,7 +68,7 @@ struct MacAppearanceSettingsView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(String(localized: String.LocalizationValue(nameKey))))
+        .accessibilityLabel(Text(nameKey))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

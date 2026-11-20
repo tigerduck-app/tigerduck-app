@@ -31,12 +31,13 @@ struct EmptyClassroomLayoutTests {
         let service = ClassroomUsageService(
             session: URLSession(configuration: config),
             queryURL: URL(string: "https://cour01.stub.invalid/\(UUID().uuidString)/classroom_usecondition.aspx")!,
-            sessionGeneration: { 1 },
-            signIn: { _, _, _ in true }
+            signIn: { _, _ in true }
         )
         return EmptyClassroomViewModel(
-            service: service, holidays: { _ in [] }, isInSession: { _ in true }, isClassDay: { _ in true },
-            courses: { [] }, rawRoom: { $0 }
+            calendar: EmptyClassroomCalendar(
+                holidays: { _ in [] }, isInSession: { _ in true }, isClassDay: { _ in true }, courses: { [] }, rawRoom: { $0 }
+            ),
+            loader: EmptyClassroomLoader(service: service)
         )
     }
 

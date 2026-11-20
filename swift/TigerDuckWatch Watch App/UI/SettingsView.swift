@@ -15,7 +15,7 @@ struct SettingsView: View {
                 }
                 HStack {
                     Image(systemName: "clock")
-                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                    TimelineView(.everyMinute) { context in
                         Text(lastSyncedText(now: context.date))
                             .font(.subheadline)
                     }

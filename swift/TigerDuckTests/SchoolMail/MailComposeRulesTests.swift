@@ -182,10 +182,20 @@ struct MailComposeRulesTests {
     }
 
     @Test func formatsAddressesForTheForwardHeader() {
-        #expect(MailReplyComposer.formatted(MailAddress(name: "教務處", address: "a@mail.ntust.edu.tw")) == "教務處 <a@mail.ntust.edu.tw>")
-        #expect(MailReplyComposer.formatted(MailAddress(name: nil, address: "b@x.tw")) == "b@x.tw")
-        #expect(MailReplyComposer.formatted(nil as MailAddress?) == "")
-        #expect(MailReplyComposer.formatted([MailAddress(name: nil, address: "b@x.tw"), MailAddress(name: "D", address: "d@x.tw")]) == "b@x.tw, D <d@x.tw>")
+        #expect(MailRecipients.format(MailAddress(name: "教務處", address: "a@mail.ntust.edu.tw")) == "教務處 <a@mail.ntust.edu.tw>")
+        #expect(MailRecipients.format(MailAddress(name: nil, address: "b@x.tw")) == "b@x.tw")
+        #expect(MailRecipients.format([MailAddress(name: nil, address: "b@x.tw"), MailAddress(name: "D", address: "d@x.tw")]) == "b@x.tw, D <d@x.tw>")
+    }
+
+    @Test func aPrefilledRecipientFieldParsesBackToTheSameAddresses() {
+        let addresses = [
+            MailAddress(name: #"x\y, z"#, address: "a@y.tw"),
+            MailAddress(name: #""a, b"#, address: "q@y.tw"),
+            MailAddress(name: "王小明 (CS)", address: "wang@y.tw"),
+        ]
+        let parsed = MailRecipients.parse(MailRecipients.format(addresses))
+        #expect(parsed.invalid.isEmpty)
+        #expect(parsed.addresses == addresses)
     }
 
     @Test func formattedRecipientsRoundTripThroughAddressParsing() {
@@ -195,7 +205,7 @@ struct MailComposeRulesTests {
             MailAddress(name: "王小明", address: "wang@y.tw"),
             MailAddress(name: nil, address: "bare@y.tw"),
         ]
-        #expect(MailAddress.parseList(MailReplyComposer.formatted(addresses)) == addresses)
+        #expect(MailAddress.parseList(MailRecipients.format(addresses)) == addresses)
     }
 
     @Test func replyGoesToReplyToAndReplyAllCopiesTheRest() {
@@ -232,8 +242,8 @@ struct MailComposeRulesTests {
         #expect(all.to.isEmpty)
         #expect(all.cc.isEmpty)
 
-        #expect(MailReplyComposer.formatted(all.to + all.cc).isEmpty)
-        #expect(MailReplyComposer.formatted(daemon) == "Mail Deliver System")
+        #expect(MailRecipients.format(all.to + all.cc).isEmpty)
+        #expect(MailRecipients.format(daemon) == "Mail Deliver System")
         #expect(!MailReplyComposer.forwardBody(of: original, dateText: "2026/09/18").contains("<>"))
         #expect(MailReplyComposer.forwardBody(of: original, dateText: "2026/09/18").contains("Mail Deliver System"))
     }

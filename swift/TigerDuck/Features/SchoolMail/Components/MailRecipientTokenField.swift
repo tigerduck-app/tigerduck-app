@@ -3,24 +3,10 @@ import SwiftUI
 
 nonisolated enum MailRecipientTokens {
     static func consume(_ typed: String) -> (finished: [String], remainder: String) {
-        var finished: [String] = []
-        var current = ""
-        var inQuotes = false
-        var inAngle = false
-        for character in typed {
-            if character == "\"" { inQuotes.toggle() }
-            if character == "<", !inQuotes { inAngle = true }
-            if character == ">", !inQuotes { inAngle = false }
-            let separates = !inQuotes && !inAngle
-                && (character == "," || character == ";" || (character == " " && current.contains("@")))
-            if separates {
-                if let token = current.trimmingCharacters(in: .whitespaces).mailNonEmpty { finished.append(token) }
-                current = ""
-            } else {
-                current.append(character)
-            }
+        let pieces = MailAddress.splitTopLevel(typed) { character, current in
+            character == "," || character == ";" || (character == " " && current.contains("@"))
         }
-        return (finished, String(current.drop { $0 == " " }))
+        return (pieces.dropLast().compactMap(trimmed), String(pieces.last?.drop { $0 == " " } ?? ""))
     }
 
     static func compose(_ tokens: [String], draft: String) -> String {
@@ -28,27 +14,11 @@ nonisolated enum MailRecipientTokens {
     }
 
     static func tokens(of value: String) -> [String] {
-        let (finished, remainder) = consumeSeparatorsOnly(value)
-        return finished + [remainder].compactMap { $0.trimmingCharacters(in: .whitespaces).mailNonEmpty }
+        MailAddress.splitTopLevel(value).compactMap(trimmed)
     }
 
-    private static func consumeSeparatorsOnly(_ value: String) -> (finished: [String], remainder: String) {
-        var finished: [String] = []
-        var current = ""
-        var inQuotes = false
-        var inAngle = false
-        for character in value {
-            if character == "\"" { inQuotes.toggle() }
-            if character == "<", !inQuotes { inAngle = true }
-            if character == ">", !inQuotes { inAngle = false }
-            if (character == "," || character == ";") && !inQuotes && !inAngle {
-                if let token = current.trimmingCharacters(in: .whitespaces).mailNonEmpty { finished.append(token) }
-                current = ""
-            } else {
-                current.append(character)
-            }
-        }
-        return (finished, current)
+    private static func trimmed(_ token: String) -> String? {
+        token.trimmingCharacters(in: .whitespaces).mailNonEmpty
     }
 }
 
@@ -57,11 +27,18 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
     @Binding var text: String
     let focus: FocusState<Focus?>.Binding
     let field: Focus
+    let suggest: (String) -> [MailAddress]
 
     @State private var tokens: [String] = []
     @State private var draft = ""
 
     var body: some View {
+        row
+        let matches = focus.wrappedValue == field ? suggest(draft) : []
+        if !matches.isEmpty { suggestions(matches) }
+    }
+
+    private var row: some View {
         HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.xs) {
             Text(title)
                 .foregroundStyle(.secondary)
@@ -100,12 +77,46 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         }
     }
 
+    private func suggestions(_ matches: [MailAddress]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(matches.enumerated()), id: \.element.address) { index, address in
+                if index > 0 { Divider() }
+                Button { pick(address) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(highlighted(address.name ?? address.address))
+                        if address.name != nil {
+                            Text(highlighted(address.address))
+                                .font(.subheadline)
+                                .foregroundStyle(Color.textSecondary)
+                        }
+                    }
+                    .typesettingLanguage(MailRecipient.unhyphenatedLanguage)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, TigerDuckTheme.Spacing.sm)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("a11y_school_mail_recipient_suggestions"))
+    }
+
+    private func highlighted(_ text: String) -> AttributedString {
+        var shown = AttributedString(text)
+        let typed = draft.trimmingCharacters(in: .whitespaces)
+        if !typed.isEmpty, let match = shown.range(of: typed, options: [.caseInsensitive, .widthInsensitive]) {
+            shown[match].inlinePresentationIntent = .stronglyEmphasized
+        }
+        return shown
+    }
+
     private static var bubbleShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md, style: .continuous)
     }
 
     private func bubble(_ token: String, at index: Int) -> some View {
-        let valid = MailComposeViewModel.sendableAddress(token) != nil
+        let valid = MailRecipients.sendableAddress(token) != nil
         return HStack(spacing: 0) {
             Text(verbatim: token)
                 .fixedSize(horizontal: false, vertical: true)
@@ -148,6 +159,13 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         tokens.append(token)
         draft = ""
         publish()
+    }
+
+    private func pick(_ address: MailAddress) {
+        tokens.append(MailRecipients.format(address))
+        draft = ""
+        publish()
+        focus.wrappedValue = field
     }
 
     private func edit(at index: Int) {

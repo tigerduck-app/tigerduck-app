@@ -4,7 +4,7 @@ struct MoodleForumsView: View {
     let store: MoodleCourseStore
     let open: (MoodleCourseRoute) -> Void
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
 
     var body: some View {
         ScrollView {
@@ -53,13 +53,14 @@ struct MoodleForumsView: View {
                 .moodleRowHover()
             }
         }
-        .presetCard(policy: appState.visualStylePolicy)
+        .presetCard(policy: app.preferences.visualStylePolicy)
     }
 }
 
 struct MoodleForumView: View {
     let store: MoodleCourseStore
     let forum: MoodleForum
+    let policy: VisualStylePolicy
     let open: (MoodleCourseRoute) -> Void
 
     var body: some View {
@@ -67,6 +68,7 @@ struct MoodleForumView: View {
             pages: store.discussions(of: forum),
             title: forum.name,
             page: .forum(cmid: forum.cmid),
+            policy: policy,
             showsFooter: true
         ) { open(.discussion($0, in: forum)) }
     }

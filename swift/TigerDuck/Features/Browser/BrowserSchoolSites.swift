@@ -1,0 +1,107 @@
+import Foundation
+
+/// What the browser does for the school sites that SSO's redirect alone does not sign in, or
+/// that a signed-in session breaks.
+nonisolated enum BrowserSchoolSites {
+    /// The school's IIS answers 400 to a request whose headers pass 16 KB, http.sys's default
+    /// `MaxRequestBytes`. The apps that share a host, as stuinfosys's do, each keep a 4 KB
+    /// session on the host's whole path, so a third one signed in breaks them all. Past half that,
+    /// a page opens with its host's cookies gone and signs in again through SSO, whose session is
+    /// on `.ntust.edu.tw`.
+    static let cookieBudget = 8 * 1024
+
+    /// The cookies of `url`'s own host that a request to it carries, when all the cookies the browser
+    /// would send it pass ``cookieBudget``, or when `url` is a sign-in link, which its site offers
+    /// only to a browser signed out of it.
+    static func cookiesToDrop(from cookies: [HTTPCookie], opening url: URL) -> [HTTPCookie] {
+        guard let host = BrowserRouting.host(of: url) else { return [] }
+        let path = url.path(percentEncoded: true)
+        let sent = cookies.filter { isSent($0, to: host, path: path.isEmpty ? "/" : path) }
+        let size = sent.reduce(0) { $0 + $1.name.utf8.count + $1.value.utf8.count + 2 }
+        guard size > cookieBudget || isSignInLink(url) else { return [] }
+        return sent.filter { $0.domain.lowercased().trimmingPrefix(".") == host }
+    }
+
+    /// What the sign-in button of a page that opens signed out loads, for the sites whose landing
+    /// page waits for that tap; it goes through SSO and comes back to the site signed in.
+    static func signInLink(for url: URL) -> URL? {
+        guard url.scheme?.lowercased() == "https", url.query == nil, let host = BrowserRouting.host(of: url) else { return nil }
+        return signInButtons[SignInPage(host: host, path: url.path(percentEncoded: true).lowercased())]?(url)
+    }
+
+    /// The hosts whose sign-in links go through SSO, which the browser holds to their pins.
+    static let signInLinkHosts = Set(signInButtons.keys.map(\.host))
+
+    /// Whether `url` is one of the sign-in links ``signInLink(for:)`` gives, whatever its query.
+    static func isSignInLink(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https", url.port == nil, url.user == nil, url.password == nil,
+              let host = BrowserRouting.host(of: url) else { return false }
+        let path = url.path(percentEncoded: true).lowercased()
+        return signInLinks.contains { BrowserRouting.host(of: $0) == host && $0.path(percentEncoded: true).lowercased() == path }
+    }
+
+    private static let signInLinks = signInButtons.compactMap { URL(string: "https://\($0.key.host)\($0.key.path)").flatMap($0.value) }
+
+    private struct SignInPage: Hashable {
+        let host: String
+        let path: String
+    }
+
+    private static let signInButtons: [SignInPage: (URL) -> URL?] = [
+        SignInPage(host: "querycourse.ntust.edu.tw", path: "/querycourse/"): { page in
+            // The button passes the page it is on, as encodeURIComponent writes it.
+            let page = page.absoluteString.addingPercentEncoding(withAllowedCharacters: uriComponent) ?? ""
+            return URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/api//OAuth2/Login?returnUrl=" + page)
+        },
+        SignInPage(host: "sa02.ntust.edu.tw", path: "/webcounseling/"): { _ in
+            URL.knownGood("https://sa02.ntust.edu.tw/WebCounseling/OAuth2/Login")
+        },
+        SignInPage(host: "sa.ntust.edu.tw", path: "/dorm/"): { _ in URL.knownGood("https://sa.ntust.edu.tw/Dorm/OAuth2/Login") },
+    ]
+
+    /// A sign-in form of a site's own: the names of its student id and password fields, which the
+    /// browser fills. Its CAPTCHA and its submit stay the student's.
+    struct SignInForm: Equatable {
+        let studentId: String
+        /// Nil where the site's password is not the school's.
+        let password: String?
+    }
+
+    /// The form the page at `url` signs in with, for the exact https origins and paths listed.
+    static func signInForm(at url: URL) -> SignInForm? {
+        guard let page = page(of: url) else { return nil }
+        return signInForms[page.origin + page.path]
+    }
+
+    /// The origin and path a page script compares with `location.origin` and `location.pathname`.
+    static func page(of url: URL) -> (origin: String, path: String)? {
+        guard url.scheme == "https", url.port == nil, url.user == nil, url.password == nil,
+              let host = url.host(percentEncoded: false)?.lowercased() else { return nil }
+        return ("https://" + host, url.path(percentEncoded: true))
+    }
+
+    /// The credit program system's landing page, whose sign-in popup posts to `api/tokens`.
+    static let tokenSignInPage = "https://cour01.ntust.edu.tw/DMP_student/"
+
+    /// The hosts the browser gives the stored password to, in a form fill or a token post.
+    static let passwordHosts = Set(
+        (signInForms.filter { $0.value.password != nil }.keys + [tokenSignInPage]).compactMap { URL(string: $0)?.host() }
+    )
+
+    private static let signInForms: [String: SignInForm] = [
+        "https://stuinfosys.ntust.edu.tw/Authenticate/Account/EnrollStudent/ethicscourse": SignInForm(studentId: "UserName", password: "Password"),
+        "https://stuinfosys.ntust.edu.tw/Authenticate/SSOAccount/Index/SSOcgesocial": SignInForm(studentId: "UserName", password: "Password"),
+        "https://cardsystem.ntust.edu.tw/std/index.php/user/login": SignInForm(studentId: "id", password: "password"),
+        "https://studentpay.ntust.edu.tw/": SignInForm(studentId: "studentno", password: "password"),
+        // Its sign-in page says its password is the career development site's, not the school's.
+        "https://suggestionbox.ntust.edu.tw/login": SignInForm(studentId: "account", password: nil),
+    ]
+
+    private static let uriComponent = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
+
+    private static func isSent(_ cookie: HTTPCookie, to host: String, path: String) -> Bool {
+        let domain = cookie.domain.lowercased()
+        let matches = domain.trimmingPrefix(".") == host || domain.hasPrefix(".") && host.hasSuffix(domain)
+        return matches && path.hasPrefix(cookie.path)
+    }
+}

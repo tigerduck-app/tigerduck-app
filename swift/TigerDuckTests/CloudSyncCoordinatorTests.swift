@@ -22,7 +22,7 @@ struct CloudSyncCoordinatorTests {
     private static func makeCoordinator(
         _ backend: Backend,
         syncsAssignmentMarks: (@Sendable () -> Bool)? = { true },
-        syncsCourseOverrides: @escaping @Sendable (String) -> Bool = { _ in true },
+        syncsCourseOverrides: @escaping @Sendable (SyncCategory) -> Bool = { _ in true },
         authHeader: @escaping @Sendable () async -> String? = { "Bearer test" }
     ) -> CloudSyncCoordinator {
         let config = URLSessionConfiguration.ephemeral
@@ -36,15 +36,16 @@ struct CloudSyncCoordinatorTests {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("CloudSyncCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
         guard let syncsAssignmentMarks else {
-            return CloudSyncCoordinator(pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true)
+            return CloudSyncCoordinator(pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true,
+                                        account: AccountSession(signIns: testSignIns))
         }
         return CloudSyncCoordinator(
             pushCoordinator: push, outbox: SyncOutbox(directory: directory), isEnabled: true,
-            syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseOverrides: syncsCourseOverrides
+            syncsAssignmentMarks: syncsAssignmentMarks, syncsCourseOverrides: syncsCourseOverrides, account: AccountSession(signIns: testSignIns)
         )
     }
 
-    private static let markReply = #"{"id":1,"local_status":"ignored","updated_at":"2026-10-12T00:00:00+00:00"}"#
+    private static let markReply = #"{"id":1,"local_status":"ignored","local_status_hlc":1,"applied":true}"#
 
     @Test("A tick with nothing queued sends no request")
     func emptyTickSendsNothing() async {
@@ -138,10 +139,10 @@ struct CloudSyncCoordinatorTests {
         #expect(await coordinator.holdsUnsentEdits())
     }
 
-    @Test("Clearing a mark leaves the outbox after one request, though its reply is not the row")
+    @Test("Clearing a mark leaves the outbox after one request")
     func clearedMarkIsSentOnce() async {
         let backend = Backend()
-        backend.answer("sync/assignments/42/override", body: #"{"deleted": true}"#)
+        backend.answer("sync/assignments/42/override", body: #"{"local_status":"none","local_status_hlc":1,"applied":true}"#)
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "none")
 
@@ -155,7 +156,7 @@ struct CloudSyncCoordinatorTests {
     @Test("With the Assignments switch off a queued mark waits, and a queued colour still goes")
     func switchOffHoldsQueuedMarks() async {
         let backend = Backend()
-        backend.answer("sync/courses/1151CS1001301/override", body: Self.colourReply)
+        backend.answer("sync/courses/client:1151:CS1001301/override", body: Self.colourReply)
         backend.answer("sync/assignments/42/override", body: Self.markReply)
         let syncsMarks = OSAllocatedUnfairLock(initialState: false)
         let coordinator = Self.makeCoordinator(backend) { syncsMarks.withLock { $0 } }
@@ -167,7 +168,7 @@ struct CloudSyncCoordinatorTests {
         }
 
         await coordinator.syncTick()
-        #expect(backend.requests("sync/courses/1151CS1001301/override").count == 1)
+        #expect(backend.requests("sync/courses/client:1151:CS1001301/override").count == 1)
         #expect(backend.requests("sync/assignments/42/override").isEmpty)
         #expect(await coordinator.outbox.pendingCount() == 1)
 
@@ -180,9 +181,9 @@ struct CloudSyncCoordinatorTests {
     @Test("A colour or name edit waits in the outbox while its re-enable check is pending, and goes once that is settled")
     func colourAndNameEditsWaitForTheirReenableCheck() async {
         let backend = Backend()
-        backend.answer("sync/courses/1151CS1/override", body: Self.colourReply)
-        backend.answer("sync/courses/1151EE2/override", body: Self.colourReply)
-        let pending = OSAllocatedUnfairLock<Set<String>>(initialState: ["course_colors"])
+        backend.answer("sync/courses/client:1151:CS1/override", body: Self.colourReply)
+        backend.answer("sync/courses/client:1151:EE2/override", body: Self.colourReply)
+        let pending = OSAllocatedUnfairLock<Set<SyncCategory>>(initialState: [.courseColors])
         let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { category in
             !pending.withLock { $0.contains(category) }
         })
@@ -192,13 +193,13 @@ struct CloudSyncCoordinatorTests {
         )?.value
 
         await coordinator.syncTick()
-        #expect(backend.requests("sync/courses/1151CS1/override").isEmpty)
-        #expect(backend.requests("sync/courses/1151EE2/override").count == 1)
+        #expect(backend.requests("sync/courses/client:1151:CS1/override").isEmpty)
+        #expect(backend.requests("sync/courses/client:1151:EE2/override").count == 1)
         #expect(await coordinator.pendingCourseOverrides().colors == ["1151CS1"])
 
-        pending.withLock { $0 = ["course_names"] }
+        pending.withLock { $0 = [.courseNames] }
         await coordinator.syncTick()
-        #expect(backend.requests("sync/courses/1151CS1/override").count == 1)
+        #expect(backend.requests("sync/courses/client:1151:CS1/override").count == 1)
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
@@ -208,16 +209,16 @@ struct CloudSyncCoordinatorTests {
         let gate = SettingsAPIStub.ReplyGate()
         SettingsAPIStub.enqueue(
             .init(statusCode: 200, body: Data(Self.colourReply.utf8), gate: gate),
-            for: backend.url("sync/courses/1151CS1/override")
+            for: backend.url("sync/courses/client:1151:CS1/override")
         )
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
         let drain = Task { await coordinator.syncTick() }
-        try await waitUntil { !backend.requests("sync/courses/1151CS1/override").isEmpty }
+        try await waitUntil { !backend.requests("sync/courses/client:1151:CS1/override").isEmpty }
 
         let answered = OSAllocatedUnfairLock(initialState: false)
         let useServer = Task {
-            await coordinator.discardEdits(of: ["course_colors"], courseIgnores: false)
+            await coordinator.discardEdits(of: [.courseColors], courseIgnores: false)
             answered.withLock { $0 = true }
         }
         try await Task.sleep(for: .milliseconds(300))
@@ -236,12 +237,12 @@ struct CloudSyncCoordinatorTests {
         let gate = SettingsAPIStub.ReplyGate()
         SettingsAPIStub.enqueue(
             .init(statusCode: 200, body: Data(Self.colourReply.utf8), gate: gate),
-            for: backend.url("sync/courses/1151CS1/override")
+            for: backend.url("sync/courses/client:1151:CS1/override")
         )
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
         let drain = Task { await coordinator.syncTick() }
-        try await waitUntil { !backend.requests("sync/courses/1151CS1/override").isEmpty }
+        try await waitUntil { !backend.requests("sync/courses/client:1151:CS1/override").isEmpty }
 
         let ended = OSAllocatedUnfairLock(initialState: false)
         let watcher = Task {
@@ -262,7 +263,7 @@ struct CloudSyncCoordinatorTests {
     @Test("Use Server drops a colour edit a drain picked just before it, though its request had not started")
     func useServerDropsAnEditPickedBeforeIt() async throws {
         let backend = Backend()
-        backend.answer("sync/courses/1151CS1/override", body: Self.colourReply)
+        backend.answer("sync/courses/client:1151:CS1/override", body: Self.colourReply)
         let picked = OSAllocatedUnfairLock(initialState: false)
         let release = DispatchSemaphore(value: 0)
         let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { _ in
@@ -276,12 +277,12 @@ struct CloudSyncCoordinatorTests {
         let drain = Task { await coordinator.syncTick() }
         try await waitUntil { picked.withLock { $0 } }
 
-        let useServer = Task.immediate { await coordinator.discardEdits(of: ["course_colors"], courseIgnores: false) }
+        let useServer = Task.immediate { await coordinator.discardEdits(of: [.courseColors], courseIgnores: false) }
         release.signal()
         await useServer.value
         await drain.value
 
-        #expect(backend.requests("sync/courses/1151CS1/override").isEmpty)
+        #expect(backend.requests("sync/courses/client:1151:CS1/override").isEmpty)
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
 
@@ -291,12 +292,12 @@ struct CloudSyncCoordinatorTests {
         let gate = SettingsAPIStub.ReplyGate()
         SettingsAPIStub.enqueue(
             .init(statusCode: 200, body: Data(Self.colourReply.utf8), gate: gate),
-            for: backend.url("sync/courses/1151CS1/override")
+            for: backend.url("sync/courses/client:1151:CS1/override")
         )
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")?.value
         let drain = Task { await coordinator.syncTick() }
-        try await waitUntil { !backend.requests("sync/courses/1151CS1/override").isEmpty }
+        try await waitUntil { !backend.requests("sync/courses/client:1151:CS1/override").isEmpty }
         let ended = OSAllocatedUnfairLock(initialState: false)
         let watcher = Task {
             await drain.value
@@ -318,7 +319,7 @@ struct CloudSyncCoordinatorTests {
     func signOutStopsTheRestOfADrain() async throws {
         let backend = Backend()
         let courses = ["1151CS1", "1151EE2", "1151GE3"]
-        for course in courses { backend.answer("sync/courses/\(course)/override", body: Self.colourReply) }
+        for course in courses { backend.answer("sync/courses/\(Self.backendCourseKey(moodleId: course))/override", body: Self.colourReply) }
         let asks = OSAllocatedUnfairLock(initialState: 0)
         let release = DispatchSemaphore(value: 0)
         let coordinator = Self.makeCoordinator(backend, syncsCourseOverrides: { _ in
@@ -336,14 +337,14 @@ struct CloudSyncCoordinatorTests {
         await signOut.value
         await drain.value
 
-        #expect(courses.map { backend.requests("sync/courses/\($0)/override").count } == [1, 0, 0])
+        #expect(courses.map { backend.requests("sync/courses/\(Self.backendCourseKey(moodleId: $0))/override").count } == [1, 0, 0])
     }
 
     @Test("A colour or name edit counts as pending from the edit until its request is sent")
     func colourAndNameEditsArePendingUntilSent() async {
         let backend = Backend()
-        backend.answer("sync/courses/1151CS1/override", body: Self.colourReply)
-        backend.answer("sync/courses/1151EE2/override", body: Self.colourReply)
+        backend.answer("sync/courses/client:1151:CS1/override", body: Self.colourReply)
+        backend.answer("sync/courses/client:1151:EE2/override", body: Self.colourReply)
         let coordinator = Self.makeCoordinator(backend)
 
         coordinator.enqueueCourseColorOverride(moodleId: "1151CS1", semester: "1151", colorHex: "#FF6B6B")
@@ -362,7 +363,7 @@ struct CloudSyncCoordinatorTests {
 
         await coordinator.syncTick()
 
-        #expect(backend.requests("sync/courses/1151EE2/override").count == 1)
+        #expect(backend.requests("sync/courses/client:1151:EE2/override").count == 1)
         let sent = await coordinator.pendingCourseOverrides()
         #expect(sent.colors.isEmpty)
         #expect(sent.names.isEmpty)
@@ -372,7 +373,7 @@ struct CloudSyncCoordinatorTests {
     func editsQueuedAfterAReadingAreListedOnceSent() async {
         let backend = Backend()
         for course in ["1151CS0", "1151CS1", "1151EE2"] {
-            backend.answer("sync/courses/\(course)/override", body: Self.colourReply)
+            backend.answer("sync/courses/\(Self.backendCourseKey(moodleId: course))/override", body: Self.colourReply)
         }
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS0", semester: "1151", colorHex: "#4A90E2")?.value
@@ -384,7 +385,7 @@ struct CloudSyncCoordinatorTests {
         )?.value
         await coordinator.syncTick()
 
-        #expect(backend.requests("sync/courses/1151EE2/override").count == 1)
+        #expect(backend.requests("sync/courses/client:1151:EE2/override").count == 1)
         let pending = await coordinator.pendingCourseOverrides()
         #expect(pending.colors.isEmpty && pending.names.isEmpty)
         let edited = coordinator.courseOverrides(queuedAfter: reading)
@@ -396,7 +397,7 @@ struct CloudSyncCoordinatorTests {
     func aFullSyncHoldsWhatItsSampleListedAndWhatWasEditedSince() async {
         let backend = Backend()
         for course in ["1151CS0", "1151CS1", "1151EE2"] {
-            backend.answer("sync/courses/\(course)/override", body: Self.colourReply)
+            backend.answer("sync/courses/\(Self.backendCourseKey(moodleId: course))/override", body: Self.colourReply)
         }
         let coordinator = Self.makeCoordinator(backend)
         await coordinator.enqueueCourseColorOverride(moodleId: "1151CS0", semester: "1151", colorHex: "#4A90E2")?.value
@@ -411,7 +412,7 @@ struct CloudSyncCoordinatorTests {
             moodleId: "1151EE3", semester: "1151", customName: "Signals", locale: "en"
         )?.value
 
-        #expect(backend.requests("sync/courses/1151CS0/override").count == 1)
+        #expect(backend.requests("sync/courses/client:1151:CS0/override").count == 1)
         let held = coordinator.courseOverridesToHold(since: sample)
         #expect(held.colors == ["1151CS0", "1151CS1"])
         #expect(held.names == ["1151EE2", "1151EE3"])
@@ -454,9 +455,14 @@ struct CloudSyncCoordinatorTests {
 
     @Test("A mark goes out with the Assignments switch on and its re-enable check settled")
     func marksGoOutWithTheSwitchOnAndNoCheckPending() {
-        #expect(CloudSyncCoordinator.sendsAssignmentMarks(assignments: true, pendingChecks: ["courses"]))
-        #expect(!CloudSyncCoordinator.sendsAssignmentMarks(assignments: false, pendingChecks: []))
-        #expect(!CloudSyncCoordinator.sendsAssignmentMarks(assignments: true, pendingChecks: ["assignments"]))
+        func sends(assignments: Bool, pendingChecks: Set<SyncCategory>) -> Bool {
+            SyncPolicy(
+                cloudSyncEnabled: true, switchedOn: assignments ? [.assignments] : [], pendingChecks: pendingChecks
+            ).sendsAssignmentMarks
+        }
+        #expect(sends(assignments: true, pendingChecks: [.courses]))
+        #expect(!sends(assignments: false, pendingChecks: []))
+        #expect(!sends(assignments: true, pendingChecks: [.assignments]))
     }
 
     @Test("After a sign-out the next account's marks and course settings go out, though a re-enable check was pending")
@@ -470,24 +476,24 @@ struct CloudSyncCoordinatorTests {
             defer {
                 Defaults[.syncAssignments] = saved.0
                 Defaults[.syncCourses] = saved.1
-                Defaults[.pendingConflictCategories] = saved.2
-                Defaults[.assignmentMarksSyncedOnce] = saved.3
-                Defaults[.lastSeenCoursesResetAt] = saved.4
-                Defaults[.categoriesSyncedOnce] = saved.5
-                Defaults[.courseRowIdsSeen] = saved.6
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.2
+                Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = saved.3
+                Defaults[.lastSeenCoursesResetAt, for: testSignIn] = saved.4
+                Defaults[.categoriesSyncedOnce, for: testSignIn] = saved.5
+                Defaults[.courseRowIdsSeen, for: testSignIn] = saved.6
             }
             Defaults[.syncAssignments] = true
             Defaults[.syncCourses] = true
-            Defaults[.pendingConflictCategories] = ["assignments", "courses"]
-            Defaults[.assignmentMarksSyncedOnce] = true
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.assignments, .courses]
+            Defaults[.assignmentMarksSyncedOnce, for: testSignIn] = true
 
-            AppState.forgetSyncProgress()
+            SyncProgress.forget()
 
             #expect(Defaults[.pendingConflictCategories].isEmpty)
             #expect(!Defaults[.assignmentMarksSyncedOnce])
             let backend = Backend()
             backend.answer("sync/assignments/42/override", body: Self.markReply)
-            backend.answer("sync/courses/1151CS1001301/override", body: Self.ignoreReply)
+            backend.answer("sync/courses/client:1151:CS1001301/override", body: Self.ignoreReply)
             let coordinator = Self.makeCoordinator(backend, syncsAssignmentMarks: nil)
             await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
             await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
@@ -496,7 +502,7 @@ struct CloudSyncCoordinatorTests {
             await coordinator.syncTick()
 
             #expect(backend.requests("sync/assignments/42/override").count == 1)
-            #expect(backend.requests("sync/courses/1151CS1001301/override").count == 1)
+            #expect(backend.requests("sync/courses/client:1151:CS1001301/override").count == 1)
             #expect(await coordinator.outbox.pendingCount() == 0)
         }
     }
@@ -515,7 +521,7 @@ struct CloudSyncCoordinatorTests {
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
                                               moodleCourseId: nil, ignore: true)
 
-        await coordinator.discardEdits(of: ["assignments"], courseIgnores: false)
+        await coordinator.discardEdits(of: [.assignments], courseIgnores: false)
 
         #expect(await coordinator.pendingAssignmentOverrideIds().isEmpty)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
@@ -533,17 +539,17 @@ struct CloudSyncCoordinatorTests {
                                               moodleCourseId: nil, ignore: true)
         await coordinator.enqueueCourseDelete(semester: "1151", courseNo: "GE3")
 
-        await coordinator.discardEdits(of: ["courses"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.courses], courseIgnores: true)
         let afterCourses = await coordinator.pendingCourseOverrides()
         #expect(afterCourses.colors == ["1151CS1"])
         #expect(afterCourses.names == ["1151EE2"])
 
-        await coordinator.discardEdits(of: ["course_colors"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.courseColors], courseIgnores: true)
         let afterColours = await coordinator.pendingCourseOverrides()
         #expect(afterColours.colors.isEmpty)
         #expect(afterColours.names == ["1151EE2"])
 
-        await coordinator.discardEdits(of: ["course_names"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.courseNames], courseIgnores: true)
         #expect(await coordinator.pendingCourseOverrides().names.isEmpty)
         #expect(await coordinator.pendingAssignmentOverrideIds() == ["42"])
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
@@ -556,10 +562,10 @@ struct CloudSyncCoordinatorTests {
         await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
                                               moodleCourseId: nil, ignore: true)
 
-        await coordinator.discardEdits(of: ["courses", "course_colors", "course_names"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.courses, .courseColors, .courseNames], courseIgnores: true)
         #expect(await coordinator.pendingCourseIgnoreKeys() == ["1151:CS1001301"])
 
-        await coordinator.discardEdits(of: ["assignments"], courseIgnores: true)
+        await coordinator.discardEdits(of: [.assignments], courseIgnores: true)
         #expect(await coordinator.pendingCourseIgnoreKeys().isEmpty)
     }
 
@@ -569,16 +575,16 @@ struct CloudSyncCoordinatorTests {
             let saved = (Defaults[.syncAssignments], Defaults[.pendingConflictCategories])
             defer {
                 Defaults[.syncAssignments] = saved.0
-                Defaults[.pendingConflictCategories] = saved.1
+                Defaults[.pendingConflictCategories, for: testSignIn] = saved.1
             }
             Defaults[.syncAssignments] = true
-            Defaults[.pendingConflictCategories] = ["assignments", "course_colors"]
+            Defaults[.pendingConflictCategories, for: testSignIn] = [.assignments, .courseColors]
             let shown = ShownReenableConflict()
-            shown.conflict = AppState.ReenableConflict(
-                categories: ["assignments", "course_colors"], description: "",
+            shown.conflict = SyncConflicts.ReenableConflict(
+                categories: [.assignments, .courseColors], description: "",
                 serverIgnoredCourses: nil, serverMarkedAssignments: ["42"]
             )
-            let isPresented = AppState.reenableAlertIsPresented(
+            let isPresented = SyncConflicts.reenableAlertIsPresented(
                 Binding(get: { shown.conflict }, set: { shown.conflict = $0 })
             )
             let backend = Backend()
@@ -589,20 +595,24 @@ struct CloudSyncCoordinatorTests {
             await coordinator.syncTick()
 
             #expect(!isPresented.wrappedValue)
-            #expect(Defaults[.pendingConflictCategories] == ["assignments", "course_colors"])
+            #expect(Defaults[.pendingConflictCategories] == [.assignments, .courseColors])
             #expect(backend.requests("sync/assignments/42/override").isEmpty)
             #expect(await coordinator.outbox.pendingCount() == 1)
         }
     }
 
+    private static func backendCourseKey(moodleId: String) -> String {
+        "client:\(moodleId.prefix(4)):\(moodleId.dropFirst(4))"
+    }
+
     private static let colourReply =
-        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"updated_at":"2026-10-12T00:00:00+00:00"}"##
+        ##"{"id":1,"color_hex":"#FF6B6B","custom_names":{},"ignore_assignments":false,"updated_at":"2026-10-12T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"##
 
     private static let ignoreReply =
-        #"{"id":1,"color_hex":null,"custom_names":{},"ignore_assignments":true,"updated_at":"2026-10-13T00:00:00+00:00"}"#
+        #"{"id":1,"color_hex":null,"custom_names":{},"ignore_assignments":true,"updated_at":"2026-10-13T00:00:00+00:00","applied":["color_hex","custom_name","ignore_assignments"]}"#
 }
 
 @MainActor
 private final class ShownReenableConflict {
-    var conflict: AppState.ReenableConflict?
+    var conflict: SyncConflicts.ReenableConflict?
 }

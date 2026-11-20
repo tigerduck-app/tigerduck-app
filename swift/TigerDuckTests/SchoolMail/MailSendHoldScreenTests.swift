@@ -1,0 +1,226 @@
+#if os(iOS)
+import SwiftUI
+import Testing
+import UIKit
+@testable import TigerDuck
+
+@MainActor
+@Suite(.serialized)
+struct MailSendHoldScreenTests {
+    enum Look: String, CaseIterable {
+        case light, dark, largestText
+    }
+
+    private static var language: String { Bundle.main.preferredLocalizations.first ?? "en" }
+
+    private static func show(_ view: some View, look: Look) throws -> UIWindow {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 375, height: 812)
+        window.overrideUserInterfaceStyle = look == .dark ? .dark : .light
+        if look == .largestText { window.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge }
+        let still = view.tint(AppPreferences().accentColor).transaction { $0.disablesAnimations = true }
+        window.rootViewController = UIHostingController(rootView: still)
+        window.isHidden = false
+        return window
+    }
+
+    private struct ListScene: View {
+        let hold: MailSendHold
+        static let subjects = ["期末專題分組", "Re: Lab report draft", "停修申請公告", "借閱到期提醒", "Club fair volunteers"]
+
+        var body: some View {
+            List(Self.subjects, id: \.self) { subject in
+                Text(verbatim: subject)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(TigerDuckTheme.Spacing.lg)
+                    .glassCard()
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color.backgroundPrimary)
+            .safeAreaInset(edge: .bottom, alignment: .trailing) {
+                MailListBottomBar(hold: hold, showsCompose: true, accentColor: AppPreferences().accentColor) {}
+            }
+        }
+    }
+
+    @Test("the bar sits beside the compose button, whole, with Undo as a button", arguments: Look.allCases)
+    func theBarSitsBesideTheComposeButton(look: Look) async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            rig.hold.hold(await MailSendHoldTests.written(MailComposeViewModelTests.fake()))
+            defer { rig.hold.undo() }
+            let window = try Self.show(ListScene(hold: rig.hold), look: look)
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController?.view)
+            let undoLabel = String(localized: "school_mail_undo_send")
+            try await waitUntil {
+                accessibilityElement(labeled: undoLabel, in: root).map { window.bounds.contains($0.accessibilityFrame) } ?? false
+            }
+            window.saveSnapshot(as: "mail-send-hold-\(Self.language)-\(look.rawValue)")
+
+            let undo = try #require(accessibilityElement(labeled: undoLabel, in: root))
+            let text = try #require(accessibilityElement(labeled: String(localized: "school_mail_sending_hold"), in: root))
+            let compose = try #require(accessibilityElement(labeled: String(localized: "school_mail_compose"), in: root))
+            #expect(undo.accessibilityTraits.contains(.button))
+            #expect(undo.accessibilityFrame.height.rounded() >= 44, "\(undo.accessibilityFrame)")
+            // Frames that only touch meet a fraction of a point apart in floating point.
+            let undoFrame = undo.accessibilityFrame.insetBy(dx: 0.5, dy: 0.5)
+            #expect(!undoFrame.intersects(compose.accessibilityFrame), "\(undoFrame) \(compose.accessibilityFrame)")
+            #expect(!undoFrame.intersects(text.accessibilityFrame), "\(undoFrame) \(text.accessibilityFrame)")
+            for frame in [undo.accessibilityFrame, text.accessibilityFrame, compose.accessibilityFrame] {
+                #expect(window.bounds.insetBy(dx: -0.5, dy: -0.5).contains(frame), "\(frame)")
+            }
+        }
+    }
+
+    @Test("Undo reopens the composer with the recipient, subject, body and attachment", arguments: Look.allCases)
+    func theReopenedComposerKeepsTheDraft(look: Look) async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            rig.hold.hold(await MailSendHoldTests.written(MailComposeViewModelTests.fake()))
+            rig.hold.undo()
+            let reopened = try #require(rig.hold.takeReopened())
+            let window = try Self.show(MailComposeView(viewModel: reopened, hold: rig.hold), look: look)
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController?.view)
+            var shown = ["a@mail.ntust.edu.tw", "期末報告"]
+            if look != .largestText { shown += ["老師好，附上報告。", "報告.pdf"] }
+            try await waitUntil {
+                let texts = exposedAccessibilityTexts(in: root)
+                return shown.allSatisfy { text in texts.contains { $0.contains(text) } }
+            }
+            window.saveSnapshot(as: "mail-send-undone-\(Self.language)-\(look.rawValue)")
+
+            let texts = exposedAccessibilityTexts(in: root)
+            for text in shown {
+                #expect(texts.contains { $0.contains(text) }, "\(text) in \(texts)")
+            }
+        }
+    }
+
+    @Test func sendHoldsTheMailWithoutAConfirmation() async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            let model = await MailSendHoldTests.written(MailComposeViewModelTests.fake())
+            let window = try Self.show(MailComposeView(viewModel: model, hold: rig.hold), look: .light)
+            defer {
+                window.isHidden = true
+                rig.hold.undo()
+            }
+            let root = try #require(window.rootViewController?.view)
+            let send = String(localized: "school_mail_send")
+            // On iOS 26 the toolbar item's host view carries the label too, and only the button activates.
+            let sendButton = {
+                exposedAccessibilityElements(in: root).first { $0.accessibilityLabel == send && $0.accessibilityTraits.contains(.button) }
+            }
+            try await waitUntil { sendButton() != nil }
+
+            #expect(try #require(sendButton()).accessibilityActivate())
+            try await waitUntil { rig.hold.held != nil }
+            #expect(rig.hold.held?.model === model)
+            #expect(window.rootViewController?.presentedViewController == nil)
+            #expect(accessibilityElement(labeled: String(localized: "school_mail_send_confirm_title"), in: window) == nil)
+        }
+    }
+
+    @Test func theLastRowScrollsClearOfTheBarAtTheLargestText() async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            rig.hold.hold(await MailSendHoldTests.written(MailComposeViewModelTests.fake()))
+            defer { rig.hold.undo() }
+            let window = try Self.show(ListScene(hold: rig.hold), look: .largestText)
+            defer { window.isHidden = true }
+            let root = try #require(window.rootViewController?.view)
+            let undoLabel = String(localized: "school_mail_undo_send")
+            try await waitUntil {
+                accessibilityElement(labeled: undoLabel, in: root) != nil
+                    && root.descendants(ofType: UIScrollView.self).first.map { $0.contentSize.height > 0 } ?? false
+            }
+            let list = try #require(root.descendants(ofType: UIScrollView.self).first)
+            let last = try #require(ListScene.subjects.last)
+            try await waitUntil {
+                let bottom = max(-list.adjustedContentInset.top,
+                                 list.contentSize.height - list.bounds.height + list.adjustedContentInset.bottom)
+                guard abs(list.contentOffset.y - bottom) < 0.5 else {
+                    list.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+                    return false
+                }
+                return accessibilityElement(labeled: last, in: root) != nil
+            }
+
+            let row = try #require(accessibilityElement(labeled: last, in: root)).accessibilityFrame
+            let barTop = [undoLabel, String(localized: "school_mail_sending_hold"), String(localized: "school_mail_compose")]
+                .compactMap { accessibilityElement(labeled: $0, in: root)?.accessibilityFrame.minY }.min()
+            let top = try #require(barTop)
+            #expect(row.maxY <= top, "\(row) above \(top)")
+        }
+    }
+
+    @Test func aFailedSendReopensItsComposerOverAScreenOutsideMail() async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            let fake = MailComposeViewModelTests.fake()
+            await fake.update { $0.sendError = .unreachable }
+            let window = try Self.show(Text(verbatim: "課表").heldMailHost(rig.hold), look: .light)
+            defer { window.isHidden = true }
+            rig.hold.hold(await MailSendHoldTests.written(fake))
+            try await rig.sleeper.waitUntilArmed()
+            await rig.sleeper.fire()
+
+            try await waitUntil { window.rootViewController?.presentedViewController?.viewIfLoaded != nil }
+            let sheet = try #require(window.rootViewController?.presentedViewController?.view)
+            try await waitUntil { exposedAccessibilityTexts(in: sheet).contains { $0.contains("期末報告") } }
+            #expect(rig.hold.reopened.isEmpty)
+        }
+    }
+
+    @Test func anUndoneComposerOpensOverASheetThatStaysOpen() async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            let screen = Text(verbatim: "課表").sheet(isPresented: .constant(true)) { Text(verbatim: "課程") }
+            let window = try Self.show(screen.heldMailHost(rig.hold), look: .light)
+            defer { window.isHidden = true }
+            try await waitUntil { window.rootViewController?.presentedViewController != nil }
+            rig.hold.hold(await MailSendHoldTests.written(MailComposeViewModelTests.fake()))
+            rig.hold.undo()
+
+            try await waitUntil { window.rootViewController?.presentedViewController?.presentedViewController?.viewIfLoaded != nil }
+            let composer = try #require(window.rootViewController?.presentedViewController?.presentedViewController)
+            try await waitUntil { exposedAccessibilityTexts(in: composer.view).contains { $0.contains("期末報告") } }
+            #expect(composer.isModalInPresentation)
+            #expect(rig.hold.reopened.isEmpty)
+        }
+    }
+
+    @Test func closingAReopenedDraftComposerListsTheDraftAgain() async throws {
+        try await withAccessibilityAutomation {
+            let rig = MailSendHoldTests.rig()
+            let model = MailComposeViewModelTests.model(
+                MailComposeContext(mode: .draft, folder: MailComposeViewModelTests.drafts, uid: 7),
+                fake: MailComposeViewModelTests.fake()
+            )
+            await model.prepare()
+            let id = try #require(model.context.draftID)
+            let window = try Self.show(Text(verbatim: "課表").heldMailHost(rig.hold), look: .light)
+            defer { window.isHidden = true }
+            rig.hold.hold(model)
+            rig.hold.undo()
+
+            try await waitUntil { window.rootViewController?.presentedViewController?.viewIfLoaded != nil }
+            #expect(rig.hold.hides(id, for: model.signIn))
+            let sheet = try #require(window.rootViewController?.presentedViewController?.view)
+            let cancel = String(localized: "action_cancel")
+            let cancelButton = {
+                exposedAccessibilityElements(in: sheet).first { $0.accessibilityLabel == cancel && $0.accessibilityTraits.contains(.button) }
+            }
+            try await waitUntil { cancelButton() != nil }
+            #expect(try #require(cancelButton()).accessibilityActivate())
+            try await waitUntil { !rig.hold.hides(id, for: model.signIn) }
+        }
+    }
+}
+#endif

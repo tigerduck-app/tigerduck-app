@@ -35,7 +35,9 @@ actor FakeMailClient: MailClient {
     var rawSourceError: MailClientError?
     var copyError: MailClientError?
     var setFlagError: MailClientError?
+    var foldersStoringFlagged: Set<String>?
     var deletedUIDsError: MailClientError?
+    var undeletedUIDsError: MailClientError?
     var createFolderError: MailClientError?
     var createdFolderName: String?
     var listFoldersError: MailClientError?
@@ -67,6 +69,15 @@ actor FakeMailClient: MailClient {
         heldCommands.insert(command)
     }
 
+    func holdNext(_ command: String) {
+        arrivedCommands.remove(command)
+        heldCommands.insert(command)
+    }
+
+    func stopHolding(_ command: String) {
+        heldCommands.remove(command)
+    }
+
     func release(_ command: String) {
         heldCommands.remove(command)
         for gate in releaseGates.removeValue(forKey: command) ?? [] { gate.resume() }
@@ -87,7 +98,7 @@ actor FakeMailClient: MailClient {
     }
 
     private func assertUIDValidity(_ expected: UInt32?, folder: String) throws {
-        try LiveMailClient.assertUIDValidity(expected: expected, current: uidValidity[folder] ?? 1)
+        try MailIMAPFetch.assertUIDValidity(expected: expected, current: uidValidity[folder] ?? 1)
     }
 
     static func message(
@@ -109,7 +120,7 @@ actor FakeMailClient: MailClient {
             uid: uid, fromName: name, fromAddress: address, to: ["b10000000@mail.ntust.edu.tw"], cc: nil,
             subject: subject, date: Date(timeIntervalSince1970: 1_789_000_000 + TimeInterval(uid)),
             isSeen: seen, isAnswered: false, isDeleted: deleted, size: 100, hasAttachments: false,
-            isExternal: address.map { !MailWarnings.isSchoolDomain(MailWarnings.domain(ofAddress: $0)) } ?? false
+            isExternal: address.map { !MailSchoolDomain.isSchoolDomain(MailSchoolDomain.domain(ofAddress: $0)) } ?? false
         )
         let detail = MailMessageDetail(summary: summary, messageID: messageID, inReplyTo: nil, references: nil,
                                        returnPath: returnPath, replyTo: replyTo,
@@ -227,18 +238,19 @@ actor FakeMailClient: MailClient {
     func undeletedUIDs(folder: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
         calls.append("undeletedUIDs \(folder)")
         await gate("undeletedUIDs")
+        if let undeletedUIDsError { throw undeletedUIDsError }
         return ((folders[folder] ?? []).map(\.summary).filter { !$0.isDeleted }.map(\.uid), uidValidity[folder] ?? 1)
     }
 
-    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: String] {
+    func searchTexts(folder: String, uids: [UInt32], expectedUIDValidity: UInt32) async throws -> [UInt32: MailSearchText] {
         calls.append("searchTexts \(folder) \(uids)")
         await gate("searchTexts")
         if let searchTextsError { throw searchTextsError }
         if !searchTextsFailingUIDs.isDisjoint(with: uids) { throw MailClientError.protocolError("unreadable") }
         try assertUIDValidity(expectedUIDValidity, folder: folder)
-        var texts: [UInt32: String] = [:]
+        var texts: [UInt32: MailSearchText] = [:]
         for message in folders[folder] ?? [] where uids.contains(message.summary.uid) && !message.summary.isDeleted {
-            texts[message.summary.uid] = MailSearchIndex.text(of: message.summary, body: message.detail?.textBody)
+            texts[message.summary.uid] = MailSearchText(of: message.summary, body: message.detail?.textBody)
         }
         return texts
     }
@@ -253,11 +265,18 @@ actor FakeMailClient: MailClient {
             switch flag {
             case .seen: messages[index].summary.isSeen = on
             case .answered: messages[index].summary.isAnswered = on
+            case .flagged: messages[index].summary.flagged = on
             case .deleted: messages[index].summary.isDeleted = on
             case .draft: break
             }
         }
         folders[folder] = messages
+    }
+
+    func storesFlagged(folder: String) async throws -> Bool {
+        calls.append("storesFlagged \(folder)")
+        await gate("storesFlagged")
+        return foldersStoringFlagged?.contains(folder) ?? true
     }
 
     func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {
@@ -319,9 +338,12 @@ actor FakeMailClient: MailClient {
         return (folders[folder] ?? []).contains { $0.messageID == messageID }
     }
 
-    func send(_ message: Data, from sender: String, to recipients: [String]) async throws {
+    func send(
+        _ message: Data, from sender: String, to recipients: [String], unless isExpired: @escaping @MainActor () -> Bool
+    ) async throws {
         calls.append("send")
         await gate("send")
+        if await isExpired() { throw CancellationError() }
         if let sendError { throw sendError }
         sent.append((message, sender, recipients))
         if let autoSaveSentTo {

@@ -87,6 +87,9 @@ struct TLSPinDocumentTests {
         engine.acceptDocument(F.envelope(F.payload(sets: [F.set("ntust", domain: "ntust.edu.tw", pins: [F.unknownSPKI])])))
         let library = try #require(pins(engine, host: "api.lib.ntust.edu.tw"))
         #expect(library.pins == TLSPinTable.builtIn[1].pins)
+        let clubs = try #require(pins(engine, host: "clubs.ntust.edu.tw"))
+        #expect(clubs.id == "clubs")
+        #expect(clubs.pins == TLSPinTable.builtIn.first { $0.id == "clubs" }?.pins)
     }
 
     @Test("A document can move a set's expiry later, never earlier")
@@ -144,5 +147,42 @@ struct TLSPinDocumentTests {
         #expect(ntust.id == "ntust")
         #expect(engine.policy(forHost: "example.com") == .notPinned)
         #expect(engine.policy(forHost: "notntust.edu.tw") == .notPinned)
+    }
+
+    @Test("clubs.ntust.edu.tw takes the clubs set, and a host under it the ntust set")
+    func clubsMatchesOnlyItsOwnHost() {
+        let engine = F.engine()
+        #expect(pins(engine, host: "CLUBS.ntust.edu.tw.")?.id == "clubs")
+        #expect(pins(engine, host: "www.clubs.ntust.edu.tw")?.id == "ntust")
+        #expect(pins(engine, host: "moodle2.ntust.edu.tw")?.id == "ntust")
+    }
+
+    @Test("A newer document's clubs set replaces the built-in clubs pins and domains, and leaves ntust alone")
+    func aDocumentReplacesTheClubsSet() throws {
+        let engine = F.engine()
+        let envelope = F.envelope(F.payload(sets: [F.set("clubs", domain: "clubs.ntust.edu.tw", pins: [F.unknownSPKI])]))
+        #expect(engine.acceptDocument(envelope) == .applied)
+        let clubs = try #require(pins(engine, host: "clubs.ntust.edu.tw"))
+        #expect(clubs.id == "clubs")
+        #expect(clubs.pins == [F.unknownSPKI])
+        #expect(clubs.domains == [TLSPinSet.Domain(name: "clubs.ntust.edu.tw", includeSubdomains: true)])
+        #expect(pins(engine, host: "www.clubs.ntust.edu.tw")?.id == "clubs")
+        let ntust = try #require(pins(engine))
+        #expect(ntust.id == "ntust")
+        #expect(ntust.pins == TLSPinTable.builtIn[0].pins)
+    }
+
+    @Test("An acceptance stored for the clubs set adds to that set only")
+    func aClubsAcceptanceStaysInItsSet() throws {
+        let defaults = F.defaults()
+        TLSPinStorage(defaults: defaults, keys: F.keys, buildNumber: "100").persist([
+            TLSPinAcceptance(setID: "clubs", spkis: [F.unknownSPKI], buildNumber: "100", acceptedAt: F.now),
+        ])
+        let engine = F.engine(defaults: defaults, buildNumber: "100")
+        let builtInClubs = try #require(TLSPinTable.builtIn.first { $0.id == "clubs" })
+        #expect(try #require(pins(engine, host: "clubs.ntust.edu.tw")).pins == builtInClubs.pins.union([F.unknownSPKI]))
+        let ntust = try #require(pins(engine))
+        #expect(ntust.id == "ntust")
+        #expect(ntust.pins == TLSPinTable.builtIn[0].pins)
     }
 }

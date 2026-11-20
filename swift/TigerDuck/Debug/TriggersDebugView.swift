@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct TriggersDebugView: View {
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
     @State private var statusMessage: String?
     @State private var armedTick = UUID()
     @State private var samplePresentation: WhatsNewPresentation?
@@ -11,7 +11,7 @@ struct TriggersDebugView: View {
         Form {
             Section {
                 Button("Trigger What's New on next open") {
-                    UserDefaults.standard.removeObject(
+                    AppUserDefaults.standard.removeObject(
                         forKey: AppConstants.UserDefaultsKeys.lastShownWhatsNewVersion
                     )
                     statusMessage = "Cleared lastShownWhatsNewVersion. Cold-launch or scene-active fires the sheet."
@@ -27,10 +27,10 @@ struct TriggersDebugView: View {
 
             Section {
                 Button("Trigger Update Available on next open") {
-                    UpdateNotifyCoordinator.armDebugSimulatedUpdate()
+                    DebugSimulatedUpdate.arm()
                     statusMessage = "Armed synthetic update prompt. Cold-launch or scene-active fires it once."
                 }
-                if UpdateNotifyCoordinator.isDebugSimulatedUpdateArmed {
+                if DebugSimulatedUpdate.isArmed {
                     Text("Currently armed — relaunch or background/foreground to fire.")
                         .font(.caption)
                         .foregroundStyle(.orange)
@@ -79,13 +79,13 @@ struct TriggersDebugView: View {
     }
 
     private var canTriggerFlip: Bool {
-        !appState.flipToLibraryEnabled
+        !app.preferences.flipToLibraryEnabled
     }
 
     private func triggerFirstLibraryFlip() {
         FirstTriggerPromptCenter.shared.reset(.flipToLibrary)
         statusMessage = "Reset first-trigger flag. Prompt fires in 3 seconds."
-        TriggersDebugArming.shared.armFlipPrompt(appState: appState) { [self] in
+        TriggersDebugArming.shared.armFlipPrompt(app: app) { [self] in
             armedTick = UUID()
         }
         armedTick = UUID()
@@ -100,15 +100,15 @@ final class TriggersDebugArming {
     private var flipTask: Task<Void, Never>?
     var isFlipArmed: Bool { flipTask != nil }
 
-    func armFlipPrompt(appState: AppState, completion: @escaping () -> Void) {
+    func armFlipPrompt(app: AppEnvironment, completion: @escaping () -> Void) {
         guard flipTask == nil else {
             completion()
             return
         }
         flipTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(3))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(3))
             if !Task.isCancelled {
-                FlipToLibraryPromptPresenter.requestPrompt(appState: appState)
+                FlipToLibraryPromptPresenter.requestPrompt(app: app)
             }
             self?.flipTask = nil
             completion()

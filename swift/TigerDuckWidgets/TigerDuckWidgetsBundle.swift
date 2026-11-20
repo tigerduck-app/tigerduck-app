@@ -12,6 +12,7 @@ struct TigerDuckWidgetsBundle: WidgetBundle {
         WeekWidget()
         #if os(iOS)
         LibraryShortcutWidget()
+        LibraryPassControl()
         AccessoryWidget()
         #endif
     }

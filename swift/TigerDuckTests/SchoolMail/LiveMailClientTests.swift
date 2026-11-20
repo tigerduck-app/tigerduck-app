@@ -14,22 +14,22 @@ struct LiveMailClientTests {
         ("NIOSSLError.handshakeFailed(... PROTOCOL_VERSION alert)", .unreachable),
     ])
     func classifiesServerText(text: String, expected: MailClientError) {
-        #expect(LiveMailClient.classify(text, fallback: .unreachable) == expected)
+        #expect(MailIMAPErrors.classify(text, fallback: .unreachable) == expected)
     }
 
     @Test func passesMailErrorsThrough() {
-        #expect(LiveMailClient.map(MailClientError.searchUnsupported) == .searchUnsupported)
+        #expect(MailIMAPErrors.map(MailClientError.searchUnsupported) == .searchUnsupported)
     }
 
     @Test func networkShapedErrorsCountAsUnreachable() {
-        #expect(LiveMailClient.map(URLError(.timedOut)) == .unreachable)
-        #expect(LiveMailClient.map(NSError(domain: NSPOSIXErrorDomain, code: 61)) == .unreachable)
+        #expect(MailIMAPErrors.map(URLError(.timedOut)) == .unreachable)
+        #expect(MailIMAPErrors.map(NSError(domain: NSPOSIXErrorDomain, code: 61)) == .unreachable)
     }
 
     @Test func unknownErrorsThatAreNotNetworkShapedCountAsProtocolErrors() {
         struct SomethingElse: Error {}
         let error = SomethingElse()
-        #expect(LiveMailClient.map(error) == .protocolError(String(describing: error)))
+        #expect(MailIMAPErrors.map(error) == .protocolError(String(describing: error)))
     }
 
     @Test func decoderAndParserFailuresCountAsProtocolErrors() {
@@ -37,43 +37,43 @@ struct LiveMailClientTests {
         // Named-matched the way SwiftMail's own connection recycling recognizes these, since the
         // real `IMAPDecoderError` type is not re-exported. `MailFetchSectionTests` runs the real
         // one, produced by NIOIMAP's own pipeline from the bytes Mail2000 sent.
-        #expect(LiveMailClient.isDecodeFailure(StandInParserError()))
-        #expect(!LiveMailClient.isDecodeFailure(URLError(.timedOut)))
+        #expect(MailIMAPErrors.isDecodeFailure(StandInParserError()))
+        #expect(!MailIMAPErrors.isDecodeFailure(URLError(.timedOut)))
     }
 
     @Test func mapsSMTPSendErrorsToProtocolErrorCarryingTheDescription() {
         let sendError = SMTPSendError(phase: .data, acceptance: .notAccepted, reason: .connectionLost)
-        #expect(LiveMailClient.map(sendError) == .protocolError(String(describing: sendError)))
+        #expect(MailIMAPErrors.map(sendError) == .protocolError(String(describing: sendError)))
     }
 
     @Test func mapsRefusedSearchCommandsToSearchUnsupported() {
-        #expect(LiveMailClient.mapSearchError(.commandFailed("NO search not allowed")) == .searchUnsupported)
-        #expect(LiveMailClient.mapSearchError(.commandNotSupported("SEARCH not supported")) == .searchUnsupported)
+        #expect(MailIMAPErrors.mapSearchError(.commandFailed("NO search not allowed")) == .searchUnsupported)
+        #expect(MailIMAPErrors.mapSearchError(.commandNotSupported("SEARCH not supported")) == .searchUnsupported)
     }
 
     @Test func nonSearchIMAPErrorsFallThroughToTheGeneralMapping() {
-        #expect(LiveMailClient.mapSearchError(.timeout) == .unreachable)
-        #expect(LiveMailClient.mapSearchError(.loginFailed("NO")) == .authenticationFailed)
+        #expect(MailIMAPErrors.mapSearchError(.timeout) == .unreachable)
+        #expect(MailIMAPErrors.mapSearchError(.loginFailed("NO")) == .authenticationFailed)
     }
 
     @Test func onlyNetworkAndCertificateFailuresCloseTheConnection() {
-        #expect(LiveMailClient.closesConnectionOnFailure(.unreachable))
-        #expect(LiveMailClient.closesConnectionOnFailure(.certificateRejected))
-        #expect(!LiveMailClient.closesConnectionOnFailure(.authenticationFailed))
-        #expect(!LiveMailClient.closesConnectionOnFailure(.serverBusy))
-        #expect(!LiveMailClient.closesConnectionOnFailure(.searchUnsupported))
-        #expect(!LiveMailClient.closesConnectionOnFailure(.folderChanged))
-        #expect(!LiveMailClient.closesConnectionOnFailure(.protocolError("x")))
+        #expect(MailErrorClass(MailClientError.unreachable).closesConnection)
+        #expect(MailErrorClass(MailClientError.certificateRejected).closesConnection)
+        #expect(!MailErrorClass(MailClientError.authenticationFailed).closesConnection)
+        #expect(!MailErrorClass(MailClientError.serverBusy).closesConnection)
+        #expect(!MailErrorClass(MailClientError.searchUnsupported).closesConnection)
+        #expect(!MailErrorClass(MailClientError.folderChanged).closesConnection)
+        #expect(!MailErrorClass(MailClientError.protocolError("x")).closesConnection)
     }
 
     @Test func uidValidityChangeDetection() throws {
-        #expect(!LiveMailClient.uidValidityChanged(expected: nil, current: 5))
-        #expect(!LiveMailClient.uidValidityChanged(expected: 5, current: 5))
-        #expect(LiveMailClient.uidValidityChanged(expected: 5, current: 6))
-        try LiveMailClient.assertUIDValidity(expected: nil, current: 5)
-        try LiveMailClient.assertUIDValidity(expected: 5, current: 5)
+        #expect(!MailIMAPFetch.uidValidityChanged(expected: nil, current: 5))
+        #expect(!MailIMAPFetch.uidValidityChanged(expected: 5, current: 5))
+        #expect(MailIMAPFetch.uidValidityChanged(expected: 5, current: 6))
+        try MailIMAPFetch.assertUIDValidity(expected: nil, current: 5)
+        try MailIMAPFetch.assertUIDValidity(expected: 5, current: 5)
         #expect(throws: MailClientError.folderChanged) {
-            try LiveMailClient.assertUIDValidity(expected: 5, current: 6)
+            try MailIMAPFetch.assertUIDValidity(expected: 5, current: 6)
         }
     }
 
@@ -87,7 +87,7 @@ struct LiveMailClientTests {
         ("NO Authentication failed, please try again", .authenticationFailed),
     ])
     func classifiesLoginFailures(text: String, expected: MailClientError) {
-        #expect(LiveMailClient.classifyLoginFailure(text) == expected)
+        #expect(MailIMAPErrors.classifyLoginFailure(text) == expected)
     }
 
     @Test func swiftMailDecodesHeadersWithTheA5Rules() {

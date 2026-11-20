@@ -197,55 +197,8 @@ private final class SecureCaptureHostView: UIView {
         return CGSize(width: UIView.noIntrinsicMetric, height: height)
     }
 
-    /// Sizing rules, by which proposed dimensions are finite:
-    /// - Neither: `nil`, keeping `UIView`'s no-preference behavior so SwiftUI flex-fills the
-    ///   wrapper. A concrete measurement here collapses an empty `UITextField`.
-    /// - Both: the proposal as given, since the parent has already sized the wrapper.
-    /// - One: the proposed width if it is finite, since the parent decides the width, and the
-    ///   hosted content's measured height. A height proposal is the space available, not the
-    ///   space to use; echoing it makes Form rows flash tall on first paint.
     func fitting(_ proposal: ProposedViewSize) -> CGSize? {
-        let pw = finiteProposal(proposal.width)
-        let ph = finiteProposal(proposal.height)
-
-        if pw == nil && ph == nil {
-            return nil
-        }
-
-        // The parent sized the wrapper (`.aspectRatio`, `.frame`). Measuring the content instead
-        // would let its own minimums shrink the wrapper, and an outer `.aspectRatio(1, .fit)`
-        // would then snap to that smaller square: a QR code at half the phone's width.
-        if let pw, let ph {
-            return CGSize(width: pw, height: ph)
-        }
-
-        // One finite dimension, typically a Form row's width with an infinite height. Probe with
-        // a compressed-fit height so the tree reports its minimum height; an expanded-fit probe
-        // can come back unchanged from a tree not yet evaluated, painting a tall row first.
-        let probe = CGSize(
-            width: pw ?? UIView.layoutFittingExpandedSize.width,
-            height: UIView.layoutFittingCompressedSize.height
-        )
-        let measured = hostingController.sizeThatFits(in: probe)
-
-        let height: CGFloat
-        if measured.height > 0 {
-            height = measured.height
-        } else if cachedNaturalHeight > 0 {
-            height = cachedNaturalHeight
-        } else {
-            height = 0
-        }
-
-        return CGSize(
-            width: pw ?? measured.width,
-            height: height
-        )
-    }
-
-    private func finiteProposal(_ value: CGFloat?) -> CGFloat? {
-        guard let value, value.isFinite else { return nil }
-        return value
+        SecureCaptureSizing.fitting(proposal, cachedHeight: cachedNaturalHeight) { hostingController.sizeThatFits(in: $0) }
     }
 
     override func layoutSubviews() {
@@ -350,6 +303,59 @@ private final class SecureCaptureHostView: UIView {
     }
 }
 
+private enum SecureCaptureSizing {
+    /// Sizing rules, by which proposed dimensions are finite:
+    /// - Neither: `nil`, keeping `UIView`'s no-preference behavior so SwiftUI flex-fills the
+    ///   wrapper. A concrete measurement here collapses an empty `UITextField`.
+    /// - Both: the proposal as given, since the parent has already sized the wrapper.
+    /// - One: the proposed width if it is finite, since the parent decides the width, and the
+    ///   hosted content's measured height. A height proposal is the space available, not the
+    ///   space to use; echoing it makes Form rows flash tall on first paint.
+    static func fitting(_ proposal: ProposedViewSize, cachedHeight: CGFloat, measure: (CGSize) -> CGSize) -> CGSize? {
+        let pw = finiteProposal(proposal.width)
+        let ph = finiteProposal(proposal.height)
+
+        if pw == nil && ph == nil {
+            return nil
+        }
+
+        // The parent sized the wrapper (`.aspectRatio`, `.frame`). Measuring the content instead
+        // would let its own minimums shrink the wrapper, and an outer `.aspectRatio(1, .fit)`
+        // would then snap to that smaller square: a QR code at half the phone's width.
+        if let pw, let ph {
+            return CGSize(width: pw, height: ph)
+        }
+
+        // One finite dimension, typically a Form row's width with an infinite height. Probe with
+        // a compressed-fit height so the tree reports its minimum height; an expanded-fit probe
+        // can come back unchanged from a tree not yet evaluated, painting a tall row first.
+        let probe = CGSize(
+            width: pw ?? UIView.layoutFittingExpandedSize.width,
+            height: UIView.layoutFittingCompressedSize.height
+        )
+        let measured = measure(probe)
+
+        let height: CGFloat
+        if measured.height > 0 {
+            height = measured.height
+        } else if cachedHeight > 0 {
+            height = cachedHeight
+        } else {
+            height = 0
+        }
+
+        return CGSize(
+            width: pw ?? measured.width,
+            height: height
+        )
+    }
+
+    private static func finiteProposal(_ value: CGFloat?) -> CGFloat? {
+        guard let value, value.isFinite else { return nil }
+        return value
+    }
+}
+
 /// `UITextField` used only for the capture-excluded canvas that `isSecureTextEntry` creates. The
 /// field itself must never activate: a tap on a gap the hosted content leaves would raise the
 /// keyboard and steal first responder from the password field being edited.
@@ -374,104 +380,6 @@ private final class SecureCanvasHostingTextField: UITextField {
 
     override func replace(_ range: UITextRange, withText text: String) {
         onTextInput?(text)
-    }
-}
-
-#endif
-
-#if os(macOS)
-
-private struct MacSecureWindowMarker: NSViewRepresentable {
-    let active: Bool
-
-    func makeNSView(context: Context) -> MacSecureWindowMarkerView {
-        MacSecureWindowMarkerView()
-    }
-
-    func updateNSView(_ nsView: MacSecureWindowMarkerView, context: Context) {
-        nsView.setActive(active)
-    }
-}
-
-@MainActor
-private final class MacSecureWindowMarkerView: NSView {
-    private var active = false
-    private var heldWindow: NSWindow?
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if active, heldWindow !== window {
-            if let previous = heldWindow {
-                MacSecureWindowRegistry.release(previous)
-            }
-            heldWindow = window
-            if let window {
-                MacSecureWindowRegistry.acquire(window)
-            }
-        }
-    }
-
-    func setActive(_ newValue: Bool) {
-        guard newValue != active else { return }
-        active = newValue
-        if newValue {
-            if let window {
-                MacSecureWindowRegistry.acquire(window)
-                heldWindow = window
-            }
-        } else if let previous = heldWindow {
-            MacSecureWindowRegistry.release(previous)
-            heldWindow = nil
-        }
-    }
-
-    deinit {
-        // The view can go away before `updateNSView` clears `active`, as when a sheet closes
-        // mid-toggle. NSView deinit runs on the main thread, so `assumeIsolated` balances the
-        // ref-count now; a later run-loop turn would briefly strand `sharingType = .none`.
-        MainActor.assumeIsolated {
-            if active, let previous = heldWindow {
-                MacSecureWindowRegistry.release(previous)
-            }
-        }
-    }
-}
-
-@MainActor
-private enum MacSecureWindowRegistry {
-    private final class Entry {
-        var count: Int
-        let preexisting: NSWindow.SharingType
-        init(count: Int, preexisting: NSWindow.SharingType) {
-            self.count = count
-            self.preexisting = preexisting
-        }
-    }
-
-    private static var holders: [ObjectIdentifier: Entry] = [:]
-
-    static func acquire(_ window: NSWindow) {
-        let key = ObjectIdentifier(window)
-        if let entry = holders[key] {
-            entry.count += 1
-            return
-        }
-        let previous = window.sharingType
-        holders[key] = Entry(count: 1, preexisting: previous)
-        if previous != .none {
-            window.sharingType = .none
-        }
-    }
-
-    static func release(_ window: NSWindow) {
-        let key = ObjectIdentifier(window)
-        guard let entry = holders[key] else { return }
-        entry.count -= 1
-        guard entry.count <= 0 else { return }
-        holders.removeValue(forKey: key)
-        if entry.preexisting != .none {
-            window.sharingType = entry.preexisting
-        }
     }
 }
 

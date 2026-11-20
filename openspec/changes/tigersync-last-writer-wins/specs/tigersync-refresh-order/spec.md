@@ -2,34 +2,11 @@
 
 ## Purpose
 
-Fix the order in which a refresh reads the device, TigerSync and the school, and keep the
-school's data as a base layer that the user's choices sit on, so no fetch order and no TigerSync
-failure can let school data replace something the user chose.
+Keep the school's data as a base layer that the user's choices sit on, so no fetch order and no
+TigerSync failure can let school data replace something the user chose. The refresh order itself
+is the main `sync-order` spec.
 
 ## ADDED Requirements
-
-### Requirement: A refresh runs local state, then TigerSync, then the school
-A refresh that fetches school data (launch, return to the app, pull to refresh, the Mac's
-Refresh) SHALL first show the device's stored data, then run TigerSync (send unsent edits, then
-pull), and SHALL start the course selection, Moodle and grade fetches once TigerSync has
-finished or failed, or after 3 seconds if it is still running.
-
-#### Scenario: Pull to refresh on Home
-- **WHEN** the user pulls to refresh Home with TigerSync on
-- **THEN** the course selection and Moodle fetches start after the TigerSync pull returns
-
-#### Scenario: Backend unreachable
-- **WHEN** the TigerSync pull fails
-- **THEN** the school fetches start right after the failure and the refresh completes
-
-#### Scenario: Slow backend
-- **WHEN** the TigerSync pull has not returned after 3 seconds
-- **THEN** the school fetches start while the pull keeps running, and no school value replaces a
-  user choice the pull later brings
-
-#### Scenario: TigerSync off
-- **WHEN** TigerSync is off
-- **THEN** the school fetches start right after the stored data is shown
 
 ### Requirement: One refresh at a time
 A refresh started while another is running SHALL join the running one instead of starting a

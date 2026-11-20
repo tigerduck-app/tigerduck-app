@@ -1,4 +1,3 @@
-import QuickLook
 import SwiftUI
 #if canImport(AppKit)
 import AppKit
@@ -123,12 +122,8 @@ struct MoodleSharedItem: Identifiable {
 extension MoodleFile {
     nonisolated var opensInShareSheet: Bool { Self.opensInShareSheet(mimeType: mimeType, name: name) }
 
-    /// Quick Look renders HTML and SVG in the app with scripts on, which the mail screen keeps
-    /// them from too (`swift/TigerDuck/Services/Mail/Rules/MailWarnings.swift`).
     nonisolated static func opensInShareSheet(mimeType: String?, name: String) -> Bool {
-        let type = mimeType?.split(separator: ";").first.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-        if type == "text/html" || type == "image/svg+xml" { return true }
-        return ["html", "htm", "shtml", "xhtml", "mht", "mhtml", "svg"].contains((name as NSString).pathExtension.lowercased())
+        ScriptedPreview.isScripted(extension: (name as NSString).pathExtension, contentType: mimeType)
     }
 }
 
@@ -143,7 +138,7 @@ private struct MoodleFilePresentation: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .quickLookPreview($opener.preview, in: opener.previewItems)
+            .filePreview($opener.preview, in: opener.previewItems)
             #if os(iOS)
             .sheet(item: $opener.shared) { item in
                 ShareSheet(url: item.url)

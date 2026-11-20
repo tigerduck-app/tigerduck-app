@@ -108,6 +108,21 @@ def manifest(**reasons: list[str]) -> bytes:
         for category, codes in reasons.items()]})
 
 
+def with_release(project: str, settings: str) -> str:
+    """The project with a Debug configuration of no settings on the app and a Release one of these."""
+    configs = (
+        "\t\tAAAAAAAAAAAAAAAAAAAAAA20 = {\n\t\t\tisa = XCConfigurationList;\n\t\t\tbuildConfigurations = (\n"
+        "\t\t\t\tAAAAAAAAAAAAAAAAAAAAAA21,\n\t\t\t\tAAAAAAAAAAAAAAAAAAAAAA22,\n\t\t\t);\n\t\t};\n"
+        "\t\tAAAAAAAAAAAAAAAAAAAAAA21 = {\n\t\t\tisa = XCBuildConfiguration;\n"
+        "\t\t\tbuildSettings = {\n\t\t\t};\n\t\t\tname = Debug;\n\t\t};\n"
+        "\t\tAAAAAAAAAAAAAAAAAAAAAA22 = {\n\t\t\tisa = XCBuildConfiguration;\n"
+        f"\t\t\tbuildSettings = {{\n{settings}\t\t\t}};\n\t\t\tname = Release;\n\t\t}};\n"
+    )
+    return (project
+            .replace("\t\t\tname = App;\n", "\t\t\tbuildConfigurationList = AAAAAAAAAAAAAAAAAAAAAA20;\n\t\t\tname = App;\n")
+            .replace("\t};\n}\n", configs + "\t};\n}\n"))
+
+
 class PrivacyManifestTests(unittest.TestCase):
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp())
@@ -232,6 +247,32 @@ class PrivacyManifestTests(unittest.TestCase):
         self.assertEqual(len(problems), 1)
         self.assertTrue(problems[0].startswith("My Ext: swift/My Ext/PrivacyInfo.xcprivacy is not a valid property list"))
 
+
+    def test_a_target_that_builds_the_endpoint_override_template_fails(self) -> None:
+        self.write("swift/App/Secrets.example.plist", "")
+        self.assertEqual(cpm.problems(self.root), [
+            "App: builds swift/App/Secrets.example.plist; leave it out with a membership exception"])
+
+    def test_the_endpoint_override_ships_only_in_debug(self) -> None:
+        self.write("swift/App/Secrets.example.plist", "")
+        project = PROJECT.replace("\t\t\t\tInfo.plist,\n", "\t\t\t\tInfo.plist,\n\t\t\t\tSecrets.example.plist,\n")
+        plain = "\t\t\t\tEXCLUDED_SOURCE_FILE_NAMES = Secrets.plist;\n"
+        mac = '\t\t\t\t"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (\n\t\t\t\t\t"*.swift",\n\t\t\t\t\t{}\n\t\t\t\t);\n'
+        failure = ["App: the Release configuration ships Secrets.plist; "
+                   "list it in each of its EXCLUDED_SOURCE_FILE_NAMES settings"]
+        cases = {
+            "no setting": ("", failure),
+            "an empty setting": ('\t\t\t\tEXCLUDED_SOURCE_FILE_NAMES = "";\n', failure),
+            "excluded by name": (plain, []),
+            "excluded by a pattern": ('\t\t\t\tEXCLUDED_SOURCE_FILE_NAMES = "Secrets*.plist";\n', []),
+            "an SDK that brings it back": (plain + mac.format(""), failure),
+            "excluded for every SDK": (plain + mac.format("Secrets.plist,"), []),
+            "excluded only for one SDK": (mac.format("Secrets.plist,"), failure),
+        }
+        for label, (settings, expected) in cases.items():
+            with self.subTest(label):
+                self.write("swift/TigerDuck.xcodeproj/project.pbxproj", with_release(project, settings))
+                self.assertEqual(cpm.problems(self.root), expected)
 
 if __name__ == "__main__":
     unittest.main()

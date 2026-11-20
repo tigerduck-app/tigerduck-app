@@ -5,7 +5,7 @@ import os
 
 @MainActor
 @Observable
-final class BulletinsViewModel {
+final class BulletinsViewModel: AccountScoped {
     enum LoadState: Sendable, Equatable {
         case idle
         case loading
@@ -13,18 +13,11 @@ final class BulletinsViewModel {
         case failed(String)
     }
 
-    private(set) var items: [BulletinAPI.BulletinSummary] = []
+    let feed: BulletinFeed
+    private let account: AccountSession
     private(set) var loadState: LoadState = .idle
     private(set) var isPaginating: Bool = false
-    private(set) var hasMore: Bool = true
-
-    var selectedOrgs: Set<String> = [] {
-        didSet { refilter() }
-    }
-    var selectedTags: Set<String> = [] {
-        didSet { refilter() }
-    }
-    var searchText: String = "" {
+    private var filter = BulletinFilter() {
         didSet { refilter() }
     }
     var showDeleted: Bool = false {
@@ -33,57 +26,45 @@ final class BulletinsViewModel {
 
     private(set) var filteredItems: [BulletinAPI.BulletinSummary] = []
 
-    private let apiClient: BulletinAPIClient
-    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.VM")
-    private var nextCursor: Int? = nil
     private var inflight: Task<Void, Never>?
     private var prefetchTask: Task<Void, Never>?
     private var isPrefetchPaused = false
-    @ObservationIgnored private var itemsEpoch = BulletinsViewModel.listEpoch
+    private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.VM")
 
-    init(apiClient: BulletinAPIClient? = nil) {
-        self.apiClient = apiClient ?? BulletinAPIClient()
-        let cached = DataCache.shared.loadBulletinSummaries()
-        if !cached.isEmpty {
-            items = Self.sortedUnique(cached)
-            filteredItems = items
-        }
+    init(feed: BulletinFeed? = nil, account: AccountSession = .school) {
+        let feed = feed ?? BulletinFeed(for: account.currentSignIn)
+        self.feed = feed
+        self.account = account
+        filteredItems = feed.items
     }
 
-    private struct ListSession {
-        let items: [BulletinAPI.BulletinSummary]
-        let nextCursor: Int?
-        let hasMore: Bool
-        let showDeleted: Bool
-    }
+    var items: [BulletinAPI.BulletinSummary] { feed.items }
+    var hasMore: Bool { feed.hasMore }
+    var selectedOrgs: Set<String> { get { filter.orgs } set { filter.orgs = newValue } }
+    var selectedTags: Set<String> { get { filter.tags } set { filter.tags = newValue } }
+    var searchText: String { get { filter.searchText } set { filter.searchText = newValue } }
+    var hasActiveFilter: Bool { filter.isActive }
 
-    private static var listSession: ListSession?
-    private static var listEpoch = 0
+    static func forgetAccount(in storage: AccountStorage) {
+        forgetListSession()
+    }
 
     static func forgetListSession() {
-        listSession = nil
-        listEpoch &+= 1
-        Defaults[.bulletinsSyncedAt] = nil
+        BulletinFeed.forgetListSession()
     }
 
-    /// Another backend numbers its bulletins apart, so the old rows cannot be merged with its pages.
     static func endpointDidChange() {
-        DataCache.shared.saveBulletinSummaries([])
-        DataCache.shared.clearBulletinDetails()
-        forgetListSession()
+        BulletinFeed.forgetPreviousEndpointBulletins()
     }
 
     func loadIfNeeded() async {
         isPrefetchPaused = false
-        if isFromBeforeSignOut { restartAfterSignOut() }
+        if feed.isFromBeforeSignOut { restartAfterSignOut() }
         if case .loaded = loadState {
             resumePrefetchIfNeeded()
             return
         }
-        if let session = Self.listSession, session.showDeleted == showDeleted {
-            items = Self.merge(existing: items, incoming: session.items)
-            nextCursor = session.nextCursor
-            hasMore = session.hasMore
+        if feed.resumeSession(showDeleted: showDeleted) {
             loadState = .loaded
             refilter()
             resumePrefetchIfNeeded()
@@ -95,22 +76,17 @@ final class BulletinsViewModel {
 
     private func refreshFirstPage() async {
         let includeDeleted = showDeleted
-        let epoch = Self.listEpoch
-        guard let page = try? await apiClient.listBulletins(
-            limit: 30, cursor: nil, includeDeleted: includeDeleted
-        ), includeDeleted == showDeleted else { return }
-        if dropsAfterSignOut(epoch) { return }
-        noteNewestPage()
-        let knownIds = Set(items.map(\.id))
+        let signIn = await account.startingSignIn
+        guard let page = try? await feed.page(after: nil, includeDeleted: includeDeleted),
+              includeDeleted == showDeleted else { return }
+        if dropsAfterSignOut(signIn) { return }
+        noteNewestPage(for: signIn)
+        let knownIds = Set(feed.items.map(\.id))
         let reachesKeptRows = page.items.contains { knownIds.contains($0.id) }
-        items = Self.merge(existing: items, incoming: page.items)
-        if !reachesKeptRows {
-            nextCursor = page.nextCursor
-            hasMore = page.nextCursor != nil
-            startBackgroundPrefetch()
-        }
+        feed.add(page, movesCursor: !reachesKeptRows)
+        if !reachesKeptRows { startBackgroundPrefetch() }
         refilter()
-        persistSummaries()
+        persistSummaries(for: signIn)
     }
 
     func waitForPrefetch() async {
@@ -124,12 +100,12 @@ final class BulletinsViewModel {
     }
 
     private func resumePrefetchIfNeeded() {
-        guard prefetchTask == nil, hasMore, nextCursor != nil else { return }
+        guard prefetchTask == nil, feed.hasMore, feed.nextCursor != nil else { return }
         startBackgroundPrefetch()
     }
 
     func refresh() async {
-        if isFromBeforeSignOut { restartAfterSignOut() }
+        if feed.isFromBeforeSignOut { restartAfterSignOut() }
         inflight?.cancel()
         prefetchTask?.cancel()
         inflight = Task { [weak self] in
@@ -139,84 +115,40 @@ final class BulletinsViewModel {
     }
 
     func summary(forId id: Int) async throws -> BulletinAPI.BulletinSummary? {
-        if isFromBeforeSignOut { restartAfterSignOut() }
-        if let existing = items.first(where: { $0.id == id }) {
-            guard !existing.isDeleted else {
-                logger.info("summary(forId:) skipped in-memory deleted bulletin id=\(id, privacy: .public)")
-                return nil
-            }
-            return existing
-        }
-        let cached = DataCache.shared.loadBulletinSummaries()
-        if let hit = cached.first(where: { $0.id == id }) {
-            guard !hit.isDeleted else {
-                logger.info("summary(forId:) skipped cached deleted bulletin id=\(id, privacy: .public)")
-                return nil
-            }
-            return hit
-        }
-        let epoch = Self.listEpoch
-        let detail: BulletinAPI.BulletinDetail
-        do {
-            detail = try await apiClient.getBulletin(id: id)
-        } catch {
-            logger.error("summary(forId:) fetch failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
-            throw error
-        }
-        guard !detail.isDeleted else {
-            logger.info("summary(forId:) skipped deleted bulletin id=\(id, privacy: .public)")
-            return nil
-        }
-        let synthesised = BulletinAPI.BulletinSummary(
-            id: detail.id,
-            externalId: detail.externalId,
-            title: detail.title,
-            titleClean: detail.titleClean,
-            canonicalOrg: detail.canonicalOrg,
-            contentTags: detail.contentTags,
-            importance: detail.importance,
-            summary: detail.summary,
-            sourceUrl: detail.sourceUrl,
-            postedAt: detail.postedAt,
-            isDeleted: detail.isDeleted
-        )
-        if dropsAfterSignOut(epoch) { return synthesised }
-        items = Self.merge(existing: items, incoming: [synthesised])
+        if feed.isFromBeforeSignOut { restartAfterSignOut() }
+        let signIn = await account.startingSignIn
+        guard let found = try await feed.summary(forId: id) else { return nil }
+        guard found.fetched, !dropsAfterSignOut(signIn) else { return found.summary }
+        feed.add(found.summary)
         refilter()
-        persistSummaries()
-        return synthesised
+        persistSummaries(for: signIn)
+        return found.summary
     }
 
     func loadMoreIfNeeded(triggeredBy item: BulletinAPI.BulletinSummary) async {
-        if isFromBeforeSignOut { return await refresh() }
-        guard hasMore, !isPaginating else { return }
-        guard let visibleIndex = items.firstIndex(where: { $0.id == item.id }) else { return }
-        guard visibleIndex >= max(items.count - 5, 0) else { return }
+        if feed.isFromBeforeSignOut { return await refresh() }
+        guard feed.hasMore, !isPaginating else { return }
+        guard let visibleIndex = feed.items.firstIndex(where: { $0.id == item.id }) else { return }
+        guard visibleIndex >= max(feed.items.count - 5, 0) else { return }
         await paginate()
     }
 
     private func performRefresh() async {
         loadState = .loading
-        nextCursor = nil
-        let epoch = Self.listEpoch
+        feed.restartWalk()
+        let signIn = await account.startingSignIn
         do {
-            let page = try await apiClient.listBulletins(
-                limit: 30,
-                cursor: nil,
-                includeDeleted: showDeleted
-            )
-            if dropsAfterSignOut(epoch) { return }
-            items = Self.merge(existing: items, incoming: page.items)
-            nextCursor = page.nextCursor
-            hasMore = page.nextCursor != nil
+            let page = try await feed.page(after: nil, includeDeleted: showDeleted)
+            if dropsAfterSignOut(signIn) { return }
+            feed.add(page)
             loadState = .loaded
-            noteNewestPage()
+            noteNewestPage(for: signIn)
             refilter()
-            persistSummaries()
+            persistSummaries(for: signIn)
             startBackgroundPrefetch()
         } catch {
-            logger.error("refresh failed: \(error.localizedDescription, privacy: .private)")
-            if items.isEmpty {
+            Self.logger.error("refresh failed: \(error.localizedDescription, privacy: .private)")
+            if feed.items.isEmpty {
                 loadState = .failed(error.localizedDescription)
             } else {
                 loadState = .loaded
@@ -235,152 +167,79 @@ final class BulletinsViewModel {
 
     private func runBackgroundPrefetch() async {
         var consecutiveFailures = 0
-        let epoch = Self.listEpoch
-        while !Task.isCancelled, hasMore, let cursor = nextCursor {
+        let signIn = await account.startingSignIn
+        while !Task.isCancelled, feed.hasMore, let cursor = feed.nextCursor {
             do {
-                let page = try await apiClient.listBulletins(
-                    limit: 30,
-                    cursor: cursor,
-                    includeDeleted: showDeleted
-                )
-                if dropsAfterSignOut(epoch) { return }
-                items = Self.merge(existing: items, incoming: page.items)
-                nextCursor = page.nextCursor
-                hasMore = page.nextCursor != nil
+                let page = try await feed.page(after: cursor, includeDeleted: showDeleted)
+                guard !Task.isCancelled else { return }
+                if dropsAfterSignOut(signIn) { return }
+                feed.add(page)
                 refilter()
-                persistSummaries()
+                persistSummaries(for: signIn)
                 consecutiveFailures = 0
-                try? await Task.sleep(for: .milliseconds(200))
+                try? await AppClock.sleep(until: ContinuousClock.now + .milliseconds(200))
             } catch {
                 consecutiveFailures += 1
-                logger.error("prefetch page failed: \(error.localizedDescription, privacy: .private) attempt=\(consecutiveFailures, privacy: .public)")
+                Self.logger.error("prefetch page failed: \(error.localizedDescription, privacy: .private) attempt=\(consecutiveFailures, privacy: .public)")
                 if consecutiveFailures >= 3 {
-                    logger.info("prefetch backing off after repeated failures")
+                    Self.logger.info("prefetch backing off after repeated failures")
                     return
                 }
-                try? await Task.sleep(for: .seconds(2))
+                try? await AppClock.sleep(until: ContinuousClock.now + .seconds(2))
             }
         }
     }
 
     private func paginate() async {
-        guard let cursor = nextCursor else {
-            hasMore = false
+        guard let cursor = feed.nextCursor else {
+            feed.endWalk()
             return
         }
         isPaginating = true
         defer { isPaginating = false }
-        let epoch = Self.listEpoch
+        let signIn = await account.startingSignIn
         do {
-            let page = try await apiClient.listBulletins(
-                limit: 30,
-                cursor: cursor,
-                includeDeleted: showDeleted
-            )
-            if dropsAfterSignOut(epoch) { return }
-            items = Self.merge(existing: items, incoming: page.items)
-            nextCursor = page.nextCursor
-            hasMore = page.nextCursor != nil
+            let page = try await feed.page(after: cursor, includeDeleted: showDeleted)
+            if dropsAfterSignOut(signIn) { return }
+            feed.add(page)
             refilter()
-            persistSummaries()
+            persistSummaries(for: signIn)
         } catch {
-            logger.error("paginate failed (will retry on next trigger): \(error.localizedDescription, privacy: .private)")
+            Self.logger.error("paginate failed (will retry on next trigger): \(error.localizedDescription, privacy: .private)")
         }
     }
-
-    private var isFromBeforeSignOut: Bool { itemsEpoch != Self.listEpoch }
 
     private func restartAfterSignOut() {
         prefetchTask?.cancel()
         prefetchTask = nil
-        items = Self.sortedUnique(DataCache.shared.loadBulletinSummaries())
-        nextCursor = nil
-        hasMore = true
+        feed.restartAfterSignOut(for: account.currentSignIn)
         loadState = .idle
-        itemsEpoch = Self.listEpoch
         refilter()
     }
 
-    private func dropsAfterSignOut(_ epoch: Int) -> Bool {
-        guard epoch != Self.listEpoch || isFromBeforeSignOut else { return false }
-        if isFromBeforeSignOut { restartAfterSignOut() }
+    private func dropsAfterSignOut(_ signIn: SignIn) -> Bool {
+        guard !signIn.isCurrent || feed.isFromBeforeSignOut else { return false }
+        if feed.isFromBeforeSignOut { restartAfterSignOut() }
         return true
     }
 
-    private func noteNewestPage() {
-        Defaults[.bulletinsSyncedAt] = Date()
+    private func noteNewestPage(for signIn: SignIn) {
+        feed.noteSynced(for: signIn)
     }
 
-    private func persistSummaries() {
-        DataCache.shared.saveBulletinSummaries(items)
-        Self.listSession = ListSession(
-            items: items, nextCursor: nextCursor, hasMore: hasMore, showDeleted: showDeleted
-        )
-    }
-
-    private static func merge(
-        existing: [BulletinAPI.BulletinSummary],
-        incoming: [BulletinAPI.BulletinSummary]
-    ) -> [BulletinAPI.BulletinSummary] {
-        var byId: [Int: BulletinAPI.BulletinSummary] = [:]
-        for row in existing { byId[row.id] = row }
-        for row in incoming { byId[row.id] = row }
-        return sortedUnique(Array(byId.values))
-    }
-
-    private static func sortedUnique(
-        _ rows: [BulletinAPI.BulletinSummary]
-    ) -> [BulletinAPI.BulletinSummary] {
-        let distantPast = Date.distantPast
-        return rows.sorted { lhs, rhs in
-            let ld = lhs.postedAt ?? distantPast
-            let rd = rhs.postedAt ?? distantPast
-            if ld != rd { return ld > rd }
-            return lhs.id > rhs.id
-        }
+    private func persistSummaries(for signIn: SignIn) {
+        feed.persist(showDeleted: showDeleted, for: signIn)
     }
 
     private func refilter() {
-        var result = items
-        if !selectedOrgs.isEmpty {
-            result = result.filter { row in
-                guard let org = row.canonicalOrg else { return false }
-                return selectedOrgs.contains(org)
-            }
-        }
-        if !selectedTags.isEmpty {
-            result = result.filter { row in
-                !Set(row.contentTags).isDisjoint(with: selectedTags)
-            }
-        }
-        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty {
-            result = result.filter { row in
-                row.displayTitle.localizedCaseInsensitiveContains(trimmed) ||
-                row.title.localizedCaseInsensitiveContains(trimmed) ||
-                (row.summary?.localizedCaseInsensitiveContains(trimmed) ?? false)
-            }
-        }
-        filteredItems = result
+        filteredItems = filter.apply(to: feed.items)
     }
 
     func unreadShown(isRead: (Int) -> Bool) -> [Int] {
         filteredItems.filter { !isRead($0.id) }.map(\.id)
     }
 
-    func toggleOrg(_ id: String) {
-        if selectedOrgs.contains(id) {
-            selectedOrgs.remove(id)
-        } else {
-            selectedOrgs.insert(id)
-        }
-    }
+    func toggleOrg(_ id: String) { selectedOrgs.formSymmetricDifference([id]) }
 
-    func toggleTag(_ id: String) {
-        if selectedTags.contains(id) {
-            selectedTags.remove(id)
-        } else {
-            selectedTags.insert(id)
-        }
-    }
+    func toggleTag(_ id: String) { selectedTags.formSymmetricDifference([id]) }
 }

@@ -1,0 +1,55 @@
+import Defaults
+import Foundation
+import TigerDuckCore
+
+struct AppDisplayToggles {
+    var accentColorHex: Int = Defaults[.accentColorHex] {
+        didSet { Defaults[.accentColorHex] = accentColorHex }
+    }
+
+    var accentGradient: AccentGradient? = Defaults[.accentGradient] {
+        didSet { Defaults[.accentGradient] = accentGradient }
+    }
+
+    var accentGradientOnWidgets: Bool = Defaults[.accentGradientOnWidgets] {
+        didSet { Defaults[.accentGradientOnWidgets] = accentGradientOnWidgets }
+    }
+
+    var accentGradientOnWatch: Bool = Defaults[.accentGradientOnWatch] {
+        didSet { Defaults[.accentGradientOnWatch] = accentGradientOnWatch }
+    }
+
+    var accentGradientOnLiveActivities: Bool = Defaults[.accentGradientOnLiveActivities] {
+        didSet { Defaults[.accentGradientOnLiveActivities] = accentGradientOnLiveActivities }
+    }
+
+    /// The iPad Moodle app installed from the Mac App Store registers `moodlemobile://` too, so its
+    /// users can choose the deep link.
+    var moodleOpenTarget: MoodleOpenTarget = Defaults[.moodleOpenTarget] {
+        didSet { Defaults[.moodleOpenTarget] = moodleOpenTarget }
+    }
+
+    var invertSliderDirection: Bool = Defaults[.invertSliderDirection] {
+        didSet { Defaults[.invertSliderDirection] = invertSliderDirection }
+    }
+
+    var showAbsoluteAssignmentTime: Bool = Defaults[.showAbsoluteAssignmentTime] {
+        didSet { Defaults[.showAbsoluteAssignmentTime] = showAbsoluteAssignmentTime }
+    }
+
+    var alwaysShowAllPeriods: Bool = Defaults[.alwaysShowAllPeriods] {
+        didSet { Defaults[.alwaysShowAllPeriods] = alwaysShowAllPeriods }
+    }
+
+    var showClassroomInClassTable: Bool = Defaults[.showClassroomInClassTable] {
+        didSet { Defaults[.showClassroomInClassTable] = showClassroomInClassTable }
+    }
+
+    var flipToLibraryEnabled: Bool = Defaults[.flipToLibraryEnabled] {
+        didSet { Defaults[.flipToLibraryEnabled] = flipToLibraryEnabled }
+    }
+
+    var visualPreset: VisualPreset = Defaults[.visualPreset] {
+        didSet { Defaults[.visualPreset] = visualPreset }
+    }
+}

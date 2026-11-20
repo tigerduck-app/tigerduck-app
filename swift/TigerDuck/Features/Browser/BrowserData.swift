@@ -6,12 +6,13 @@ import WebKit
 /// remove it; a browser open across that closes, since it still shows the departing account.
 @MainActor
 @Observable
-final class BrowserData {
+final class BrowserData: AccountScoped {
     static let shared = BrowserData()
 
     nonisolated static let storeID = UUID(uuidString: "6F1D5B0E-7A44-4C2B-9E3D-2B8C0A51D7F4")!
 
-    private(set) var generation = 0
+    /// Counts the store's resets: a sign-in's, a sign-out's and Settings › Storage's.
+    private(set) var storeResets = 0
     @ObservationIgnored private var current: WKWebsiteDataStore?
     @ObservationIgnored private var opens = 0
     @ObservationIgnored private let loadState: () -> BrowserDataState
@@ -31,6 +32,16 @@ final class BrowserData {
         self.clear = clear
     }
 
+    /// The store a browser opens with and the resets before it; a later reset closes that browser.
+    struct Opening {
+        let store: WKWebsiteDataStore
+        let resets: Int
+        /// The refused page the student opened at their own risk, which gets a store of its own.
+        var openedAtRisk: URL?
+    }
+
+    var opening: Opening { Opening(store: store, resets: storeResets) }
+
     var store: WKWebsiteDataStore {
         if let current { return current }
         let store = WKWebsiteDataStore(forIdentifier: Self.storeID)
@@ -41,19 +52,23 @@ final class BrowserData {
     /// Runs before a browser loads anything: what a reset could not remove goes first.
     func prepare() async {
         opens += 1
-        let generation = generation
+        let resets = storeResets
         if loadState() == .stale { await clear() }
-        if self.generation == generation { saveState(.used) }
+        if storeResets == resets { saveState(.used) }
+    }
+
+    static func forgetAccount(in storage: AccountStorage) {
+        shared.reset()
     }
 
     /// Returns the removal, which tests wait for. Settings › Storage keeps each site's zoom and
     /// desktop choice, which a sign-in or a sign-out forgets with the account.
     @discardableResult
     func reset(keepingSiteChoices: Bool = false) -> Task<Void, Never>? {
-        generation += 1
+        storeResets += 1
         current = nil
         try? FileManager.default.removeItem(at: BrowserPage.downloadsRoot)
-        if !keepingSiteChoices { Defaults.reset(.browserZoom, .browserDesktopSites) }
+        if !keepingSiteChoices { BrowserSites.forget() }
         guard loadState() != .empty else { return nil }
         saveState(.stale)
         let opensAtStart = opens
@@ -84,13 +99,17 @@ final class BrowserData {
 
     nonisolated static func storeBytes(in folder: URL, inUse: Bool) -> Int? {
         guard FileManager.default.fileExists(atPath: folder.path) else { return inUse ? nil : 0 }
-        return MoodleFileDownloads.totalBytes(in: folder)
+        return FileManager.default.bytes(at: folder)
     }
 
     /// WebKit refuses while a web view still has the store, as a browser that is closing does.
-    private static func removeStore() async -> Bool {
+    static func removeStore(_ id: UUID = storeID) async -> Bool {
+        // A removal reports back through WebKit's main run loop, which only a store or web view sets
+        // up; as a launch's first WebKit call it crashes. Asking for the default store sets it up.
+        // https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/WebsiteData/Cocoa/WebsiteDataStoreCocoa.mm
+        _ = WKWebsiteDataStore.default()
         do {
-            try await WKWebsiteDataStore.remove(forIdentifier: storeID)
+            try await WKWebsiteDataStore.remove(forIdentifier: id)
             return true
         } catch {
             AppLogger.breadcrumb("browser store in use; clearing its data instead", category: "browser")

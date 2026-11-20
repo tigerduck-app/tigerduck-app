@@ -1,13 +1,16 @@
 import SwiftUI
+import UIKit
 
 struct CalendarTabView: View {
     var embedded = false
 
-    @Environment(AppState.self) private var appState
+    @Environment(AppEnvironment.self) private var app
+    @Environment(\.openURL) private var openURL
     @State private var viewModel = CalendarViewModel()
+    @State private var shownAssignment: MoodleAssignmentPage?
 
     private var pageAccessState: NTUSTProtectedAccessState {
-        appState.ntustProtectedAccessState(isEmpty: false)
+        NTUSTProtectedAccessState(signedIn: app.authService.hasStoredCredentials, isEmpty: false)
     }
 
     var body: some View {
@@ -22,8 +25,11 @@ struct CalendarTabView: View {
         content
             .onChange(of: pageAccessState, initial: true) { _, state in
                 guard state != .loginRequired else { return }
-                viewModel.load(authService: appState.authService)
+                viewModel.load { MoodleCacheContext.signedIn(app.authService, for: app.authService.session.currentSignIn) }
             }
+            .moodleAssignmentDestination(
+                $shownAssignment, signIn: app.authService.session.currentSignIn, preferences: app.preferences
+            )
     }
 
     private var content: some View {
@@ -37,7 +43,7 @@ struct CalendarTabView: View {
                             layout: .page,
                             title: String(localized: "common_not_signed_in"),
                             message: String(localized: "common_sign_in_required_feature"),
-                            onPrimary: { appState.presentNTUSTLogin() }
+                            onPrimary: { app.router.presentNTUSTLogin() }
                         )
                     case .empty, .content:
                         MonthCalendarView(viewModel: viewModel)
@@ -47,14 +53,20 @@ struct CalendarTabView: View {
 
                         DayEventListView(
                             date: viewModel.selectedDate,
-                            events: viewModel.eventsForSelectedDate
+                            events: viewModel.eventsForSelectedDate,
+                            assignment: { viewModel.assignment(for: $0) },
+                            onOpen: { assignment in
+                                MoodleAssignmentPage.open(assignment, authService: app.authService, openURL: openURL) {
+                                    shownAssignment = $0
+                                }
+                            }
                         )
                     }
                 }
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
             }
             .refreshable {
-                viewModel.triggerRefresh(authService: appState.authService)
+                viewModel.triggerRefresh(authService: app.authService)
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -68,7 +80,9 @@ struct CalendarTabView: View {
             Spacer()
             SyncStatusDot(servers: [.moodle, .backend], lastSynced: .schoolData)
             Button {
-                viewModel.goToToday()
+                withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .smoothSpring) {
+                    viewModel.goToToday()
+                }
             } label: {
                 Text(String(localized: "calendar_today"))
                     .font(.caption.weight(.semibold))

@@ -20,7 +20,7 @@ struct StoredAccountSignInTests {
         let auth = AuthService(
             keychainHasCredentials: { false },
             notificationCenter: NotificationCenter(),
-            schoolSignIn: { studentId, _ in
+            schoolSignIn: { studentId, _, _ in
                 calls.schoolSignIns.append((studentId, calls.signOuts))
                 return false
             }

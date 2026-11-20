@@ -29,6 +29,15 @@ struct ClassTableExportTests {
         #expect(name == "Class_tableTimetable_114-2_B11315000.png")
     }
 
+    @Test("a calendar file takes its own extension, and a long nickname is cut to fit a file name")
+    func calendarNameAndLongNickname() {
+        #expect(ClassTableExporter.fileName(title: "課表", semesterLabel: "115-1", studentId: "Ming", pathExtension: "ics")
+            == "課表_115-1_Ming.ics")
+        let nickname = String(repeating: "名", count: 60)
+        #expect(ClassTableExporter.fileName(title: "課表", semesterLabel: "115-1", studentId: nickname)
+            == "課表_115-1_\(String(repeating: "名", count: 40)).png")
+    }
+
     @Test("discard leaves a file outside the export directory alone")
     func discardStaysInItsDirectory() throws {
         let directory = FileManager.default.temporaryDirectory

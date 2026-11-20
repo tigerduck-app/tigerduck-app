@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
     public let version: Int
@@ -10,6 +11,7 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
     public let visualPreset: VisualPreset
     public let clockOverrideJSON: String?
     public let quietDays: Set<String>
+    public let accentGradient: AccentGradient?
 
     public static let defaultAccentHex = "#FF8800"
 
@@ -22,7 +24,8 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
         languageTag: String?,
         visualPreset: VisualPreset = .default,
         clockOverrideJSON: String? = nil,
-        quietDays: Set<String> = []
+        quietDays: Set<String> = [],
+        accentGradient: AccentGradient? = nil
     ) {
         self.version = version
         self.courses = courses
@@ -33,6 +36,7 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
         self.visualPreset = visualPreset
         self.clockOverrideJSON = clockOverrideJSON
         self.quietDays = quietDays
+        self.accentGradient = accentGradient
     }
 
     public init(from decoder: Decoder) throws {
@@ -46,6 +50,7 @@ public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
         self.visualPreset = try c.decodeIfPresent(VisualPreset.self, forKey: .visualPreset) ?? .default
         self.clockOverrideJSON = try c.decodeIfPresent(String.self, forKey: .clockOverrideJSON)
         self.quietDays = try c.decodeIfPresent(Set<String>.self, forKey: .quietDays) ?? []
+        self.accentGradient = try? c.decodeIfPresent(AccentGradient.self, forKey: .accentGradient)
     }
 
     public var syncedAt: Date {

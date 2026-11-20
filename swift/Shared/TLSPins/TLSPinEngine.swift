@@ -53,11 +53,6 @@ nonisolated enum TLSPinDocumentOutcome: Equatable, Sendable {
 nonisolated final class TLSPinEngine: @unchecked Sendable {
     static let shared = TLSPinEngine()
 
-    private enum Key {
-        static let document = "tlsPinDocumentEnvelope"
-        static let acceptances = "tlsPinAcceptances"
-    }
-
     private struct State {
         var document: TLSPinDocument?
         var acceptances: [TLSPinAcceptance] = []
@@ -66,11 +61,8 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         var failedRefreshAt: [String: Date] = [:]
     }
 
-    private let builtIn: [TLSPinSet]
-    private let baselineSerial: Int64
-    private let keys: [String: Curve25519.Signing.PublicKey]
-    private let defaults: UserDefaults
-    private let buildNumber: String
+    private let matcher: TLSPinMatcher
+    private let storage: TLSPinStorage
     private let clock: @Sendable () -> Date
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Security.TLSPin")
     private let lock = NSLock()
@@ -86,11 +78,8 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         buildNumber: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
-        self.builtIn = builtIn
-        self.baselineSerial = baselineSerial
-        self.keys = keys
-        self.defaults = defaults
-        self.buildNumber = buildNumber
+        matcher = TLSPinMatcher(builtIn: builtIn, baselineSerial: baselineSerial)
+        storage = TLSPinStorage(defaults: defaults, keys: keys, buildNumber: buildNumber)
         self.clock = clock
     }
 
@@ -115,7 +104,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
     func acceptDocument(_ envelope: Data) -> TLSPinDocumentOutcome {
         let document: TLSPinDocument
         do {
-            document = try TLSPinDocument.verify(envelope: envelope, keys: keys)
+            document = try TLSPinDocument.verify(envelope: envelope, keys: storage.keys)
         } catch {
             logger.error("TLS pin document rejected: \(String(describing: error), privacy: .private)")
             return .rejected
@@ -130,7 +119,7 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
             }
             state.document = document
             state.refusedSets = []
-            defaults.set(envelope, forKey: Key.document)
+            storage.saveDocument(envelope)
             logger.notice("TLS pin document \(document.serial, privacy: .public) applied")
             return .applied
         }
@@ -153,9 +142,9 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
                 let new = mismatch.acceptedSPKIs.subtracting(held)
                 if !new.isEmpty {
                     state.acceptances.append(TLSPinAcceptance(
-                        setID: mismatch.setID, spkis: new, buildNumber: buildNumber, acceptedAt: clock()
+                        setID: mismatch.setID, spkis: new, buildNumber: storage.buildNumber, acceptedAt: clock()
                     ))
-                    persist(state.acceptances)
+                    storage.persist(state.acceptances)
                 }
             }
             state.refusedSets.remove(set.id)
@@ -165,9 +154,9 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
 
     func replaceAcceptances(with phone: [TLSPinAcceptance]) {
         withState { state in
-            state.acceptances = phone.filter { $0.buildNumber == buildNumber }
+            state.acceptances = phone.filter { $0.buildNumber == storage.buildNumber }
             state.refusedSets = []
-            persist(state.acceptances)
+            storage.persist(state.acceptances)
         }
     }
 
@@ -205,7 +194,9 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         let anchor = chain.last.flatMap(TLSSPKI.sha256Base64(of:))
         let (mismatch, report) = withState { state in
             state.refusedSets.insert(setID)
-            return (promptEligible(setID: setID, host: host, chain: chain, anchor: anchor, in: state), self.report)
+            let mismatch = matcher.promptEligible(setID: setID, host: host, chain: chain, anchor: anchor,
+                                                  document: state.document, acceptances: state.acceptances, at: clock())
+            return (mismatch, self.report)
         }
         if let mismatch {
             logger.error("TLS pin mismatch for \(host, privacy: .public) (set \(setID, privacy: .public)); eligible for a prompt")
@@ -240,29 +231,8 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
         }
     }
 
-    /// The stored document is verified again because this build may trust other signing keys than
-    /// the build that stored it.
     private func load() -> State {
-        var state = State()
-        if let envelope = defaults.data(forKey: Key.document) {
-            state.document = try? TLSPinDocument.verify(envelope: envelope, keys: keys)
-            if state.document == nil {
-                logger.error("Stored TLS pin document failed verification; dropped")
-                defaults.removeObject(forKey: Key.document)
-            }
-        }
-        if let data = defaults.data(forKey: Key.acceptances),
-           let stored = try? JSONDecoder().decode([TLSPinAcceptance].self, from: data) {
-            state.acceptances = stored.filter { $0.buildNumber == buildNumber }
-            if state.acceptances.count != stored.count { persist(state.acceptances) }
-        }
-        return state
-    }
-
-    private func persist(_ acceptances: [TLSPinAcceptance]) {
-        if let data = try? JSONEncoder().encode(acceptances) {
-            defaults.set(data, forKey: Key.acceptances)
-        }
+        State(document: storage.reverifiedStoredDocument(), acceptances: storage.currentBuildAcceptances())
     }
 
     /// A refetch the server answered counts for the launch. After one that failed, as in a network
@@ -288,72 +258,13 @@ nonisolated final class TLSPinEngine: @unchecked Sendable {
 
     static let refreshRetryDelay: TimeInterval = 30
 
-    /// The sets the document replaces, when it is newer than the built-in table; a set it does not
-    /// list keeps the built-in pins, and an expiry it moves earlier is ignored.
-    private func effectiveSets(in state: State, at date: Date) -> [TLSPinSet] {
-        let document = state.document.flatMap { $0.serial > baselineSerial && date < $0.expiresAt ? $0 : nil }
-        return builtIn.map { local in
-            let remote = document?.pinSets.first { $0.id == local.id }
-            let accepted = state.acceptances.filter { $0.setID == local.id }.flatMap(\.spkis)
-            return TLSPinSet(
-                id: local.id,
-                domains: remote?.domains ?? local.domains,
-                pins: (remote?.pins ?? local.pins).union(accepted),
-                expiresAt: max(local.expiresAt, remote?.expiresAt ?? local.expiresAt)
-            )
-        }
-    }
-
-    /// The most specific match wins. An exact name has every label of the host, so it beats any
-    /// suffix, and a longer suffix beats a shorter one.
     private func policy(forHost host: String, in state: State, at date: Date) -> TLSPinPolicy {
-        var name = host.lowercased()
-        if name.hasSuffix(".") { name.removeLast() }
-        var best: (set: TLSPinSet, labels: Int)?
-        for set in effectiveSets(in: state, at: date) {
-            for domain in set.domains {
-                let suffix = domain.name.lowercased()
-                guard name == suffix || (domain.includeSubdomains && name.hasSuffix("." + suffix)) else { continue }
-                let labels = suffix.split(separator: ".").count
-                if labels > best?.labels ?? 0 { best = (set, labels) }
-            }
-        }
-        guard let set = best?.set else { return .notPinned }
-        return date >= set.expiresAt ? .expired(set) : .pinned(set)
-    }
-
-    /// Only a chain whose anchor is in the valid document's `prompt_roots` may be continued past,
-    /// so a root installed on the device, as an MDM profile or a proxy does, never is.
-    private func listsPromptRoot(_ anchor: String, in state: State) -> Bool {
-        guard let document = state.document, clock() < document.expiresAt else { return false }
-        return document.promptRoots.contains(anchor)
+        matcher.policy(forHost: host, document: state.document, acceptances: state.acceptances, at: date)
     }
 
     private func isPromptable(_ mismatch: TLSPinMismatch, in state: State) -> Bool {
         guard case .pinned(let set) = policy(forHost: mismatch.host, in: state, at: clock()),
               set.id == mismatch.setID, set.pins.isDisjoint(with: mismatch.chainSPKIs) else { return false }
-        return listsPromptRoot(mismatch.anchorSPKI, in: state)
-    }
-
-    /// A chain of one certificate is its own anchor, so it never gets a prompt: an acceptance holds
-    /// no anchor. Nor does one whose leaf and intermediates have no key `TLSSPKI` reads, as
-    /// Continue would store nothing.
-    private func promptEligible(
-        setID: String, host: String, chain: [SecCertificate], anchor: String?, in state: State
-    ) -> TLSPinMismatch? {
-        let accepted = Set(chain.dropLast().compactMap(TLSSPKI.sha256Base64(of:)))
-        guard chain.count > 1, !accepted.isEmpty, let anchor, listsPromptRoot(anchor, in: state) else { return nil }
-        let set = effectiveSets(in: state, at: clock()).first { $0.id == setID }
-        let summaries = chain.map { TLSCertificateSummary(der: SecCertificateCopyData($0) as Data) }
-        return TLSPinMismatch(
-            setID: setID,
-            host: host,
-            domains: set?.domains.map(\.name) ?? [],
-            issuerOrganization: summaries.first?.issuerOrganization,
-            certificates: summaries,
-            acceptedSPKIs: accepted,
-            anchorSPKI: anchor,
-            chainSPKIs: Set(chain.compactMap(TLSSPKI.sha256Base64(of:)))
-        )
+        return TLSPinMatcher.listsPromptRoot(mismatch.anchorSPKI, document: state.document, at: clock())
     }
 }

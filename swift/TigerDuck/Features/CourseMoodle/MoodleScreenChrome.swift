@@ -15,7 +15,7 @@ struct MoodlePage: Hashable {
 
     var links: (open: URL?, fallback: URL?) {
         #if os(macOS)
-        switch Defaults[.macMoodleOpenTarget] {
+        switch Defaults[.moodleOpenTarget] {
         case .app: (AppConstants.moodleDeepLink(redirectingTo: path), webURL)
         case .browser: (webURL, nil)
         }
@@ -61,7 +61,7 @@ private struct MoodleLinkOpening: ViewModifier {
         // `linkRouting()` opens a Moodle page in the TigerDuck browser, which signs it in.
         openURL(MoodlePage.browserURL(url))
         #else
-        if MoodleAutologinService.isMoodlePage(url) {
+        if SchoolWeb.isMoodlePage(url) {
             Task { await openURL(MoodlePage.browserURL(url), fallback: nil) }
             return
         }
@@ -74,10 +74,13 @@ extension View {
     func moodleListChrome(
         title: String,
         page: MoodlePage?,
+        showsSettings: Bool = true,
         willOpenPage: @escaping () -> Void = {},
         refresh: @escaping () async -> Void
     ) -> some View {
-        modifier(MoodleListChrome(title: title, page: page, willOpenPage: willOpenPage, refresh: refresh))
+        modifier(MoodleListChrome(
+            title: title, page: page, showsSettings: showsSettings, willOpenPage: willOpenPage, refresh: refresh
+        ))
     }
 
     func moodleArticleChrome(page: MoodlePage? = nil) -> some View {
@@ -101,6 +104,7 @@ extension View {
 private struct MoodleListChrome: ViewModifier {
     let title: String
     let page: MoodlePage?
+    let showsSettings: Bool
     let willOpenPage: () -> Void
     let refresh: () async -> Void
 
@@ -114,7 +118,13 @@ private struct MoodleListChrome: ViewModifier {
                 if let page {
                     ToolbarItem(placement: .topBarTrailing) { MoodleOpenButton(page: page, willOpen: willOpenPage) }
                 }
+                if showsSettings {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        PageMenuButton(page: .moodle, placement: .toolbar) { PageSettingsButton() }
+                    }
+                }
             }
+            .pageMenu(.moodle)
         #else
         content
             .navigationBarBackButtonHidden(true)
@@ -239,139 +249,40 @@ struct MoodleFirstLoadView: View {
         .padding(.vertical, 60)
     }
 
-    static func isNetworkError(_ error: any Error) -> Bool {
-        if case MoodleWebserviceError.transientNetwork = error { return true }
-        return error is URLError
-    }
+    static func isNetworkError(_ error: any Error) -> Bool { MoodleFailure.isNetworkError(error) }
 
-    static func message(for error: any Error) -> String {
-        isNetworkError(error) ? String(localized: "error_network_unavailable") : error.localizedDescription
-    }
+    static func message(for error: any Error) -> String { MoodleFailure.message(for: error) }
 }
 
-extension View {
-    func moodleRefreshFailureNote<Value>(
-        _ feed: MoodleFeed<Value>,
-        hasContent: Bool,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
-    ) -> some View {
-        modifier(MoodleRefreshFailureNote(
-            failureCount: feed.failureCount, failure: feed.failure, hasContent: hasContent, sleep: sleep
-        ))
-    }
-}
+struct MoodleSearchField: View {
+    @Binding var query: String
+    var isFocused: FocusState<Bool>.Binding
 
-@MainActor
-@Observable
-final class MoodleRefreshFailureNoteModel {
-    static let duration: Duration = .seconds(3)
-
-    private(set) var note: MoodleRefreshFailureNote.Note?
-    @ObservationIgnored private var isShown = false
-    @ObservationIgnored private var notesShown = 0
-    @ObservationIgnored private let sleep: @Sendable (Duration) async -> Void
-
-    init(sleep: @escaping @Sendable (Duration) async -> Void) {
-        self.sleep = sleep
-    }
-
-    func appeared() { isShown = true }
-
-    func disappeared() {
-        isShown = false
-        note = nil
-    }
-
-    func failed(_ failure: (any Error)?, hasContent: Bool) -> MoodleRefreshFailureNote.Note? {
-        guard let next = MoodleRefreshFailureNote.note(for: failure, hasContent: hasContent, isShown: isShown) else {
-            return nil
-        }
-        notesShown += 1
-        let shown = notesShown
-        note = next
-        let sleep = sleep
-        Task { [weak self] in
-            await sleep(Self.duration)
-            self?.hide(ifStill: shown)
-        }
-        return next
-    }
-
-    func hide(ifStill shown: Int) {
-        guard notesShown == shown else { return }
-        note = nil
-    }
-
-    func close() { note = nil }
-}
-
-struct MoodleRefreshFailureNote: ViewModifier {
-    struct Note: Equatable {
-        let text: String
-        let symbol: String
-    }
-
-    let failureCount: Int
-    let failure: (any Error)?
-    let hasContent: Bool
-    @State private var model: MoodleRefreshFailureNoteModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    init(failureCount: Int, failure: (any Error)?, hasContent: Bool, sleep: @escaping @Sendable (Duration) async -> Void) {
-        self.failureCount = failureCount
-        self.failure = failure
-        self.hasContent = hasContent
-        _model = State(initialValue: MoodleRefreshFailureNoteModel(sleep: sleep))
-    }
-
-    static func note(for failure: (any Error)?, hasContent: Bool, isShown: Bool) -> Note? {
-        guard let failure, hasContent, isShown else { return nil }
-        if MoodleFirstLoadView.isNetworkError(failure) {
-            return Note(text: String(localized: "error_network_unavailable"), symbol: "wifi.slash")
-        }
-        if case MoodleWebserviceError.siteMaintenance = failure {
-            return Note(text: String(localized: "error_moodle_site_maintenance"), symbol: "exclamationmark.triangle")
-        }
-        return Note(text: String(localized: "course_moodle_refresh_failed"), symbol: "exclamationmark.triangle")
-    }
-
-    func body(content: Content) -> some View {
-        content
-            .overlay(alignment: .top) {
-                ZStack {
-                    if let note = model.note {
-                        noteButton(note)
-                            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
-                    }
+    var body: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Color.textSecondary)
+                .accessibilityHidden(true)
+            TextField(String(localized: "action_search"), text: $query)
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                #endif
+                .submitLabel(.search)
+                .focused(isFocused)
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Color.textSecondary)
                 }
-                .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy, value: model.note)
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "action_clear_text"))
             }
-            .onAppear { model.appeared() }
-            .onDisappear { model.disappeared() }
-            .onChange(of: failureCount) { _, _ in
-                guard let note = model.failed(failure, hasContent: hasContent) else { return }
-                AccessibilityNotification.Announcement(note.text).post()
-            }
-    }
-
-    private func noteButton(_ note: Note) -> some View {
-        Button { model.close() } label: {
-            Label {
-                Text(note.text)
-                    .foregroundStyle(Color.textPrimary)
-                    .multilineTextAlignment(.leading)
-            } icon: {
-                Image(systemName: note.symbol).foregroundStyle(Color.schoolOrange)
-            }
-            .font(.subheadline.weight(.semibold))
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            .padding(.vertical, TigerDuckTheme.Spacing.md)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg))
-            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
         }
-        .buttonStyle(.plain)
-        .padding(.top, TigerDuckTheme.Spacing.sm)
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.horizontal, TigerDuckTheme.Spacing.md)
+        .padding(.vertical, TigerDuckTheme.Spacing.sm)
+        .background(Capsule().fill(.fill.tertiary))
     }
 }
 

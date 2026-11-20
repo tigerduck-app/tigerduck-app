@@ -198,7 +198,7 @@ struct MailFolderProvisionerTests {
         await h.model.load()
         #expect(h.model.deleteIsPermanent)
 
-        #expect(await h.model.prepareDelete() == false)
+        #expect(await h.model.prepareDelete() == .toTrash)
         #expect(!h.model.deleteIsPermanent)
         #expect(h.reportedRoles.last?[.trash] == Self.trash)
         #expect(!h.model.isMoving)
@@ -213,7 +213,7 @@ struct MailFolderProvisionerTests {
         await h.fake.update { $0.createFolderError = .protocolError("permission denied") }
         await h.model.load()
 
-        #expect(await h.model.prepareDelete())
+        #expect(await h.model.prepareDelete() == .permanent)
         #expect(h.model.deleteIsPermanent)
         #expect(h.reportedRoles.isEmpty)
 
@@ -225,7 +225,7 @@ struct MailFolderProvisionerTests {
     @Test func preparingADeleteWithATrashFolderCreatesNothing() async {
         let h = Self.message(trashFolderExists: true)
         await h.model.load()
-        #expect(await h.model.prepareDelete() == false)
+        #expect(await h.model.prepareDelete() == .toTrash)
         #expect(!(await h.fake.calls).contains { $0.hasPrefix("createFolder") })
         #expect(h.reportedRoles.isEmpty)
     }
@@ -233,7 +233,7 @@ struct MailFolderProvisionerTests {
     @Test func deletingInsideTrashStaysPermanentAndCreatesNothing() async {
         let h = Self.message(trashFolderExists: true, folder: Self.trash)
         await h.model.load()
-        #expect(await h.model.prepareDelete())
+        #expect(await h.model.prepareDelete() == .permanent)
         #expect(!(await h.fake.calls).contains { $0.hasPrefix("createFolder") })
     }
 
@@ -298,7 +298,7 @@ struct MailFolderProvisionerTests {
         let model = MailComposeViewModel(
             context: MailComposeContext(mode: mode),
             session: MailPageSession(idleClose: .milliseconds(10), open: { fake },
-                                     onAuthFailure: { prefs.authFailed = true }),
+                                     onAuthFailure: { _ in prefs.authFailed = true }),
             sender: MailComposeViewModelTests.me,
             folderRoles: roles,
             prefs: prefs,
@@ -306,7 +306,7 @@ struct MailFolderProvisionerTests {
             sleep: { _ in }
         )
         let reported = Reported()
-        model.onFolderRolesChanged = { reported.record($0) }
+        model.events.observe { if case let .folderRoles(roles) = $0 { reported.record(roles) } }
         return ComposeHarness(model: model, fake: fake, reportedRoles: reported)
     }
 
@@ -331,7 +331,7 @@ struct MailFolderProvisionerTests {
             cache: cache, prefs: prefs, notifier: MailNotifier(center: RecordingNotificationCenter())
         )
         let reported = Reported()
-        model.onFolderRolesChanged = { reported.record($0) }
+        model.events.observe { if case let .folderRoles(roles) = $0 { reported.record(roles) } }
         return MessageHarness(model: model, fake: fake, reportedRoles: reported)
     }
 }

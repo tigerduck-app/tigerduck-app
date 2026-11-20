@@ -34,7 +34,7 @@ struct DevMailServerView: View {
                 Text("Replaces mail.ntust.edu.tw in your own address, in the Message-ID of anything you send, and in the rules that decide the External badge and the mistyped-recipient warning. Sign in with your full address as the username if the server wants one.")
             }
 
-            serverSection(
+            DevMailServerSection(
                 title: "IMAP",
                 host: $settings.draft.imapHost,
                 port: $settings.draft.imapPort,
@@ -42,7 +42,7 @@ struct DevMailServerView: View {
                 placeholder: "imap.example.com"
             )
 
-            serverSection(
+            DevMailServerSection(
                 title: "SMTP",
                 host: $settings.draft.smtpHost,
                 port: $settings.draft.smtpPort,
@@ -95,29 +95,10 @@ struct DevMailServerView: View {
                 Text("Applying a change signs School Mail out, wipes its cached mail, folder list, unread markers and notifications, and clears the saved password — none of that state records which server it came from, so it cannot be kept. TigerDuck uses Mail2000's folder names on every server, so the first send, draft or delete on your test account creates 寄件備份匣 / 草稿匣 / 回收筒 in it and files into those — not into that account's own Sent, Drafts or Trash, which it never touches. The folders stay behind when you switch the override off.\n\nTest connection changes nothing and applies nothing: it dials what is on screen right now and reports DNS, TCP, TLS, the client's own handshake and LOGIN separately, each with the error that was actually thrown rather than the five sentences the app shows elsewhere.")
             }
 
-            Section("In force now") {
-                LabeledContent("Address domain", value: active.addressDomain)
-                LabeledContent("IMAP", value: "\(active.imapHost):\(active.imapPort) · \(active.imapScheme.title)")
-                LabeledContent("SMTP", value: "\(active.smtpHost):\(active.smtpPort) · \(active.smtpScheme.title)")
-                LabeledContent("Overridden", value: active.isOverridden ? "Yes" : "No")
-            }
+            DevMailActiveSection(active: active)
 
             if let probeOutput {
-                Section {
-                    if isTesting {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                            Text("Testing…")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Text(probeOutput)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                } header: {
-                    Text("Test connection")
-                }
+                DevMailProbeOutputSection(output: probeOutput, isTesting: isTesting)
             }
 
             if let status {
@@ -158,31 +139,6 @@ struct DevMailServerView: View {
         return Array(Set(hosts)).sorted().joined(separator: ", ")
     }
 
-    @ViewBuilder
-    private func serverSection(
-        title: String,
-        host: Binding<String>,
-        port: Binding<Int>,
-        scheme: Binding<MailTransportScheme>,
-        placeholder: String
-    ) -> some View {
-        Section(title) {
-            TextField(placeholder, text: host)
-                .textFieldStyle(.plain)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .keyboardType(.URL)
-            TextField("Port", value: port, format: .number.grouping(.never))
-                .keyboardType(.numberPad)
-            Picker("TLS", selection: scheme) {
-                ForEach(MailTransportScheme.allCases, id: \.self) { option in
-                    Text(option.title).tag(option)
-                }
-            }
-            .pickerStyle(.menu)
-        }
-    }
-
     private func apply() {
         if settings.apply() {
             status = "Applied. Signed out, caches and notifications cleared. Sign in again on the School Mail page."
@@ -196,7 +152,7 @@ struct DevMailServerView: View {
     private func test() {
         probeTask?.cancel()
         probeTask = nil
-        if let refusal = DevMailConnectionProbe.refusal(for: settings.draft) {
+        if let refusal = DevMailProbeDraft.refusal(for: settings.draft) {
             probeOutput = refusal
             return
         }
@@ -207,7 +163,7 @@ struct DevMailServerView: View {
         } else if !testPassword.isEmpty {
             .unavailable("a password was typed for the test but no username — fill both in")
         } else {
-            DevMailConnectionProbe.credentials(
+            DevMailProbeDraft.credentials(
                 username: MailAccountManager.shared.studentID,
                 password: MailCredentialStore().password(),
                 appliedIsOverridden: settings.effectiveConfig.isOverridden

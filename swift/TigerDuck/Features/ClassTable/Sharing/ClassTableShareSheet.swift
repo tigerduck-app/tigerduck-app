@@ -1,9 +1,4 @@
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 struct ClassTableShareSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -120,12 +115,7 @@ private struct CopyLinkButton: View {
     var body: some View {
         Button {
             guard let link else { return }
-            #if canImport(UIKit)
-            UIPasteboard.general.string = link
-            #elseif canImport(AppKit)
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(link, forType: .string)
-            #endif
+            Pasteboard.copy(link)
             AccessibilityNotification.Announcement(String(localized: "class_table_share_link_copied")).post()
             isCopied = true
             copies += 1
@@ -137,14 +127,14 @@ private struct CopyLinkButton: View {
         .disabled(link == nil)
         .onChange(of: link) { isCopied = false }
         .task(id: copies) {
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.5))
             if !Task.isCancelled { isCopied = false }
         }
     }
 }
 
 extension View {
-    func classTableShareSheet(model: Binding<ClassTableShareModel?>, loginGeneration: Int) -> some View {
+    func classTableShareSheet(model: Binding<ClassTableShareModel?>, signIn: SignIn) -> some View {
         sheet(item: model) { model in
             #if os(iOS)
             ClassTableShareSheet(model: model)
@@ -153,6 +143,6 @@ extension View {
             ClassTableShareSheet(model: model)
             #endif
         }
-        .onChange(of: loginGeneration) { model.wrappedValue = nil }
+        .onChange(of: signIn) { model.wrappedValue = nil }
     }
 }

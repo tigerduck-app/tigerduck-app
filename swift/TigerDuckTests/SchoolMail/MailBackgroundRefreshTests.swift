@@ -48,7 +48,7 @@ struct MailBackgroundRefreshTests {
         let suite = "MailBackgroundRefreshTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let prefs = DefaultsMailPreferences(defaults: defaults)
+        let prefs = MailSettingsStore(defaults: defaults)
         prefs.studentID = "B00000000"
         var scheduled = 0
         var checked = 0
@@ -73,7 +73,7 @@ struct MailBackgroundRefreshTests {
         let suite = "MailBackgroundRefreshTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let prefs = DefaultsMailPreferences(defaults: defaults)
+        let prefs = MailSettingsStore(defaults: defaults)
         prefs.studentID = "B00000000"
         var scheduled = 0
         var checked = 0
@@ -114,17 +114,17 @@ struct MailBackgroundRefreshTests {
         )
         SchoolMailBootstrap.install(account: account, notifier: MailNotifier(center: center))
 
-        account.onSignedOut?()
+        account.listeners.signedOut?()
         while center.removedAll < 1 { await Task.yield() }
         #expect(center.removedAll == 1)
         #expect(center.requests.isEmpty)
 
-        account.onAuthFailed?()
+        account.listeners.authFailed?()
         while center.requests.isEmpty { await Task.yield() }
         #expect(center.requests.count == 1)
         #expect(center.removedAll == 1)
 
-        account.onNotificationsDisabled?()
+        account.listeners.notificationsDisabled?()
         while center.removedAll < 2 { await Task.yield() }
         #expect(center.removedAll == 2)
     }

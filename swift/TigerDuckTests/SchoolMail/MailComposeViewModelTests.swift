@@ -32,7 +32,7 @@ struct MailComposeViewModelTests {
         MailComposeViewModel(
             context: context,
             session: MailPageSession(idleClose: .milliseconds(10), open: { fake },
-                                     onAuthFailure: { prefs.authFailed = true }),
+                                     onAuthFailure: { _ in prefs.authFailed = true }),
             sender: Self.me,
             folderRoles: roles ?? [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
             prefs: prefs,
@@ -200,6 +200,19 @@ struct MailComposeViewModelTests {
         model.body = "新內容"
         #expect(await model.saveDraft())
         #expect(await fake.folders[Self.drafts]?.map(\.summary.uid) == [2])
+    }
+
+    @Test func aReplacedDraftWhoseDeleteFailedPartwayIsClaimed() async {
+        let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
+        let prefs = InMemoryMailPreferences()
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: Self.drafts, uidValidity: 1, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake, prefs: prefs, cache: cache)
+        await model.prepare()
+        model.body = "新內容"
+        await fake.update { $0.deletedUIDsError = .serverBusy }
+        #expect(await model.saveDraft())
+        #expect(prefs.ownedDeleted(folder: Self.drafts, uidValidity: 1).uids == [1])
     }
 
     @Test func reopeningADraftRestoresItsAttachments() async {
@@ -487,7 +500,7 @@ struct MailComposeViewModelTests {
     @Test func readBoundedFailsOnAThrownMidReadErrorRatherThanTruncating() {
         struct ReadFailure: Error {}
         var calls = 0
-        let result = MailComposeView.readBounded { _ in
+        let result = MailComposeFiles.readBounded { _ in
             calls += 1
             if calls == 1 { return Data("first chunk, then the read breaks".utf8) }
             throw ReadFailure()
@@ -498,7 +511,7 @@ struct MailComposeViewModelTests {
     @Test func readBoundedReturnsEverythingReadThroughACleanEOF() {
         let chunks: [Data?] = [Data("hello ".utf8), Data("world".utf8), nil]
         var index = 0
-        let result = MailComposeView.readBounded { _ in
+        let result = MailComposeFiles.readBounded { _ in
             defer { index += 1 }
             return index < chunks.count ? chunks[index] : nil
         }
@@ -508,7 +521,7 @@ struct MailComposeViewModelTests {
     @Test func readBoundedRejectsOnceThePastLimitChunkArrivesEvenWithoutAThrow() {
         let oversized = Data(count: MailConstants.maxEncodedMessageBytes + 1)
         var served = false
-        let result = MailComposeView.readBounded { _ in
+        let result = MailComposeFiles.readBounded { _ in
             defer { served = true }
             return served ? nil : oversized
         }
@@ -558,37 +571,37 @@ struct MailComposeViewModelTests {
         #expect(model.didFinish)
     }
 
-    @Test func aFormThatFailsValidationIsNeverConfirmed() async {
+    @Test func aFormThatFailsValidationIsNotReadyToSend() async {
         let model = Self.model(MailComposeContext(mode: .new), fake: Self.fake())
         await model.prepare()
 
-        #expect(!model.confirmationIsWarranted())
+        #expect(!model.readyToSend())
         #expect(model.error != nil)
         #expect(model.errorNeedsAcknowledging)
 
         model.to = "沒有位址"
-        #expect(!model.confirmationIsWarranted())
+        #expect(!model.readyToSend())
         #expect(model.invalidRecipients == ["沒有位址"])
 
         model.to = "a@mail.ntust.edu.tw"
-        #expect(model.confirmationIsWarranted())
+        #expect(model.readyToSend())
         #expect(model.error == nil)
     }
 
-    @Test func cancellingTheConfirmationSendsNothing() async {
+    @Test func checkingReadinessSendsNothing() async {
         let fake = Self.fake()
         let model = Self.model(MailComposeContext(mode: .new), fake: fake)
         await model.prepare()
         model.to = "a@mail.ntust.edu.tw"
         model.body = "還沒寫完"
 
-        #expect(model.confirmationIsWarranted())
-        #expect(await fake.sent.isEmpty)
+        #expect(model.readyToSend())
+        #expect(await fake.calls.isEmpty)
         #expect(model.body == "還沒寫完")
         #expect(!model.didFinish)
     }
 
-    @Test func aSendInFlightCannotBeConfirmedAgain() async {
+    @Test func aSendInFlightIsNotReadyToSendAgain() async {
         let fake = Self.fake()
         let model = Self.model(MailComposeContext(mode: .new), fake: fake)
         await model.prepare()
@@ -597,10 +610,26 @@ struct MailComposeViewModelTests {
         await fake.update { $0.hold("send") }
         let send = Task { await model.send() }
         await fake.waitForArrival("send")
-        #expect(!model.confirmationIsWarranted())
+        #expect(!model.readyToSend())
         await fake.release("send")
         await send.value
         #expect(model.didFinish)
+    }
+
+    @Test func aMailWrittenBeforeTheSignInEndedIsNotReadyAndCloses() async {
+        let fake = Self.fake()
+        let account = AccountSession()
+        let model = MailComposeViewModel(
+            context: MailComposeContext(mode: .new),
+            session: MailPageSession(idleClose: .milliseconds(10), open: { fake }, onAuthFailure: { _ in }, account: account),
+            sender: Self.me, folderRoles: [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
+            prefs: InMemoryMailPreferences(), cache: SchoolMailTestDoubles.temporaryCache(), sleep: { _ in }
+        )
+        model.to = "a@mail.ntust.edu.tw"
+        account.endSignIn()
+
+        #expect(!model.readyToSend())
+        #expect(model.shouldClose)
     }
 
     @Test func repeatingTheSameFailureRaisesTheDialogAgain() async {
@@ -636,7 +665,7 @@ struct MailComposeViewModelTests {
     @discardableResult
     static func sendCollectingNotice(_ model: MailComposeViewModel, to: String = "a@mail.ntust.edu.tw") async -> String? {
         var notice: String?
-        model.onSentCopyNotice = { notice = $0 }
+        model.events.observe { if case let .sentCopyNotice(text) = $0 { notice = text } }
         await model.prepare()
         model.to = to
         await model.send()
@@ -671,7 +700,7 @@ struct MailComposeViewModelTests {
         #expect(model.sentCopy == .unknown)
         #expect(await !fake.calls.contains { $0.hasPrefix("append") })
         #expect(await fake.folders[Self.sent]?.count == 1)
-        #expect(notice == MailComposeViewModel.notice(for: .unknown))
+        #expect(notice == MailComposeSending.notice(for: .unknown))
     }
 
     @Test func aFailedAppendStillReportsTheSendAsSuccessful() async {
@@ -723,16 +752,16 @@ struct MailComposeViewModelTests {
         #expect(model.error == nil)
         #expect(model.sentCopy == .notAttempted)
         #expect(await fake.sent.count == 1)
-        #expect(notice == MailComposeViewModel.notice(for: .notAttempted))
+        #expect(notice == MailComposeSending.notice(for: .notAttempted))
     }
 
     @Test func onlyAnUnkeptCopyIsWorthANotice() {
-        #expect(MailComposeViewModel.notice(for: .filed) == nil)
-        #expect(MailComposeViewModel.notice(for: .serverFiledItself) == nil)
+        #expect(MailComposeSending.notice(for: .filed) == nil)
+        #expect(MailComposeSending.notice(for: .serverFiledItself) == nil)
         let notices = [
-            MailComposeViewModel.notice(for: .notAttempted),
-            MailComposeViewModel.notice(for: .failed(.unreachable)),
-            MailComposeViewModel.notice(for: .unknown),
+            MailComposeSending.notice(for: .notAttempted),
+            MailComposeSending.notice(for: .failed(.unreachable)),
+            MailComposeSending.notice(for: .unknown),
         ]
         #expect(notices.allSatisfy { $0?.isEmpty == false })
         #expect(Set(notices.compactMap { $0 }).count == 3)
@@ -760,6 +789,27 @@ struct MailComposeViewModelTests {
                               to: sentFolder, flags: [.seen])
         #expect(await SentCopyFiler.probe(messageID, in: sentFolder, client: demo).result == .found)
         #expect(await SentCopyFiler.probe("<someone-else@mail.ntust.edu.tw>", in: sentFolder, client: demo).result == .notFound)
+    }
+
+    @Test func aMailWrittenBeforeTheMailSignInEndedIsNeitherSentNorSaved() async {
+        let fake = Self.fake()
+        let account = AccountSession()
+        let model = MailComposeViewModel(
+            context: MailComposeContext(mode: .new),
+            session: MailPageSession(idleClose: .milliseconds(10), open: { fake }, onAuthFailure: { _ in }, account: account),
+            sender: Self.me, folderRoles: [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
+            prefs: InMemoryMailPreferences(), cache: SchoolMailTestDoubles.temporaryCache(), sleep: { _ in }
+        )
+        model.to = "a@mail.ntust.edu.tw"
+        model.body = "written as the first account"
+        account.endSignIn()
+
+        await model.send()
+        #expect(model.shouldClose)
+        #expect(!model.didFinish)
+        #expect(await model.saveDraft() == false)
+        #expect(await fake.sent.isEmpty)
+        #expect(await !fake.calls.contains { $0.hasPrefix("append") })
     }
 }
 #endif

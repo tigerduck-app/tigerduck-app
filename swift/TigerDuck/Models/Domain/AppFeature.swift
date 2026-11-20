@@ -7,6 +7,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     case announcements
 
     case gpa
+    case informationSystem
     case courseSelection
     case graduationRequirements
     case schoolMail
@@ -35,6 +36,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .announcements: String(localized: "feature_announcements")
         case .library: String(localized: "feature_library")
         case .gpa: String(localized: "feature_score")
+        case .informationSystem: String(localized: "feature_information_system")
         case .courseSelection: String(localized: "feature_course_selection")
         case .graduationRequirements: String(localized: "feature_graduation_requirements")
         case .schoolMail: String(localized: "feature_school_mail")
@@ -58,6 +60,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .announcements: String(localized: "feature_announcements_short")
         case .library: String(localized: "feature_library_short")
         case .gpa: String(localized: "feature_score_short")
+        case .informationSystem: String(localized: "feature_information_system_short")
         case .courseSelection: String(localized: "feature_course_selection_short")
         case .graduationRequirements: String(localized: "feature_graduation_requirements_short")
         case .schoolMail: String(localized: "feature_school_mail_short")
@@ -81,6 +84,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .announcements: "megaphone.fill"
         case .library: "books.vertical.fill"
         case .gpa: "chart.bar.fill"
+        case .informationSystem: "building.columns.fill"
         case .courseSelection: "pencil.and.list.clipboard"
         case .graduationRequirements: "graduationcap.fill"
         case .schoolMail: "envelope.fill"
@@ -98,7 +102,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     nonisolated var isImplemented: Bool {
         switch self {
-        case .home, .classTable, .calendar, .library, .announcements, .gpa, .emptyClassroom:
+        case .home, .classTable, .calendar, .library, .announcements, .gpa, .informationSystem, .emptyClassroom:
             return true
         case .schoolMail:
             return SchoolMailAvailability.isEnabled
@@ -110,7 +114,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     var category: FeatureCategory? {
         switch self {
         case .home, .classTable, .calendar, .schoolMail: .page
-        case .gpa, .courseSelection, .graduationRequirements: .academic
+        case .gpa, .informationSystem, .courseSelection, .graduationRequirements: .academic
         case .library, .discussionRoom, .libraryLecture: .library
         case .announcements, .freeLunch, .clubs, .emptyClassroom, .scholarship: .life
         case .englishVocab: .language
@@ -126,6 +130,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .announcements,
         .library,
         .gpa,
+        .informationSystem,
         .courseSelection,
         .graduationRequirements,
         .schoolMail,
@@ -165,6 +170,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .calendar,
         .announcements,
         .gpa,
+        .informationSystem,
         .courseSelection,
         .graduationRequirements,
         .schoolMail,

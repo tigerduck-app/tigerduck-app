@@ -87,6 +87,27 @@ struct TigerDuckPatchTests {
         #expect(recorder.hosts == ["mail.ntust.edu.tw", "mail.ntust.edu.tw"])
     }
 
+    /// NIOSSL invokes the callback on the event loop and forbids blocking there, while a verifier
+    /// runs a trust evaluation that may block on the network.
+    @Test("The verifier runs off the event loop the callback is invoked on")
+    func verifierRunsOffTheEventLoop() throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { try? group.syncShutdownGracefully() }
+        let loop = group.next()
+        let certificate = try NIOSSLCertificate(bytes: [UInt8](Data(base64Encoded: Self.leafDERBase64)!), format: .der)
+        let recorder = Recorder()
+        let verifier = MailCertificateVerifier(identifier: "test") { chain, host in
+            recorder.record(chain: chain, host: host, onLoop: loop.inEventLoop)
+            return true
+        }
+        let callback = MailTLSConfiguration.customVerificationCallback(verifier: verifier, host: "mail.ntust.edu.tw")
+        let promise = loop.makePromise(of: NIOSSLVerificationResult.self)
+        loop.execute { callback([certificate], promise) }
+
+        #expect(try promise.futureResult.wait() == .certificateVerified)
+        #expect(recorder.ranOnLoop == [false])
+    }
+
     @Test("Encoded words go through the installed charset resolver")
     func resolverOverridesIANA() {
         defer { MailCharsetResolver.setResolver(nil) }
@@ -170,11 +191,13 @@ private final class Recorder: @unchecked Sendable {
     private let lock = NSLock()
     private(set) var chains: [[[UInt8]]] = []
     private(set) var hosts: [String] = []
+    private(set) var ranOnLoop: [Bool] = []
 
-    func record(chain: [[UInt8]], host: String) {
+    func record(chain: [[UInt8]], host: String, onLoop: Bool? = nil) {
         lock.withLock {
             chains.append(chain)
             hosts.append(host)
+            if let onLoop { ranOnLoop.append(onLoop) }
         }
     }
 }

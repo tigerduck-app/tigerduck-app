@@ -1,15 +1,16 @@
 import Defaults
 import SwiftUI
 
-/// The More sheet: the page's zoom, appearance and desktop site, then find in page and print.
-/// In the bottom layout it opens with back, forward and share, which have no button there.
+/// In the bottom layout the More sheet opens with back, forward and share, which have no button there.
 struct BrowserMenu: View {
     let page: BrowserPage
     let showsNavigation: Bool
     /// Runs its work once the sheet has closed, as print presents a sheet of its own.
     let afterClosing: (@escaping () -> Void) -> Void
+    let openDownloads: () -> Void
 
     @Default(.browserAppearance) private var appearance
+    @Environment(\.openPageSettings) private var openPageSettings
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
@@ -23,12 +24,18 @@ struct BrowserMenu: View {
                     get: { page.isDesktopSite },
                     set: { page.setDesktopSite($0) }
                 ))
+                .disabled(page.isAtRisk)
                 .row()
             }
             card {
                 action("magnifyingglass", String(localized: "browser_find")) { page.find.start() }
                 Divider().padding(.leading, 52)
                 action("printer", String(localized: "browser_print")) { page.print() }
+                Divider().padding(.leading, 52)
+                downloadsRow
+            }
+            card {
+                action("gearshape", String(localized: "action_settings"), needsPage: false, openPageSettings)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -64,7 +71,25 @@ struct BrowserMenu: View {
         .row()
     }
 
-    private func action(_ symbol: String, _ title: String, _ work: @escaping () -> Void) -> some View {
+    private var downloadsRow: some View {
+        let share = page.downloads.runningShare
+        return Button(action: openDownloads) {
+            HStack(spacing: TigerDuckTheme.Spacing.md) {
+                BrowserDownloadsIcon(share: share).frame(width: 24)
+                Text(String(localized: "browser_downloads"))
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .row()
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(share.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? "")
+    }
+
+    private func action(
+        _ symbol: String, _ title: String, needsPage: Bool = true, _ work: @escaping () -> Void
+    ) -> some View {
         Button { afterClosing(work) } label: {
             HStack(spacing: TigerDuckTheme.Spacing.md) {
                 Image(systemName: symbol).foregroundStyle(.tint).frame(width: 24)
@@ -75,7 +100,7 @@ struct BrowserMenu: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .disabled(!page.canUsePage)
+        .disabled(needsPage && !page.canUsePage)
     }
 
     private func card(@ViewBuilder _ content: () -> some View) -> some View {
@@ -114,7 +139,7 @@ final class BrowserZoomPeek {
         showsCopy = true
         end?.cancel()
         end = Task {
-            try? await Task.sleep(for: Self.duration)
+            try? await AppClock.sleep(until: ContinuousClock.now + Self.duration)
             if !Task.isCancelled { isPeeking = false }
         }
     }
@@ -137,15 +162,16 @@ struct BrowserZoomButtons: View {
     var body: some View {
         HStack(spacing: 4) {
             button("textformat.size.smaller", String(localized: "browser_zoom_out"),
-                   enabled: BrowserZoom.smaller(than: page.zoom) != nil, page.zoomOut)
+                   enabled: !page.isAtRisk && BrowserZoom.smaller(than: page.zoom) != nil, page.zoomOut)
             Button { page.zoomPeek.zoom(page.resetZoom) } label: {
                 Text((Double(page.zoom) / 100).formatted(.percent))
                     .monospacedDigit()
                     .frame(minWidth: 52)
             }
             .buttonStyle(.plain)
+            .disabled(page.isAtRisk)
             button("textformat.size.larger", String(localized: "browser_zoom_in"),
-                   enabled: BrowserZoom.larger(than: page.zoom) != nil, page.zoomIn)
+                   enabled: !page.isAtRisk && BrowserZoom.larger(than: page.zoom) != nil, page.zoomIn)
         }
         .padding(3)
         .background(Color(uiColor: .tertiarySystemFill), in: Capsule())

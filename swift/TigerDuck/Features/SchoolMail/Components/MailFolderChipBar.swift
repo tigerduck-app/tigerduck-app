@@ -18,7 +18,7 @@ struct MailFolderChipBar: View {
                                     showsAllMail: Bool) -> [Entry] {
         var entries: [Entry] = []
         if showsAllMail { entries.append(.allMail) }
-        entries += MailFolderRole.allCases.compactMap { role in
+        entries += MailFolderRole.listOrder.compactMap { role in
             roles[role].map { Entry.role(role, folder: $0) }
         }
         if !others.isEmpty { entries.append(.more(others)) }

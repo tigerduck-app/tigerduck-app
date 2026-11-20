@@ -39,7 +39,7 @@ nonisolated enum MoodleFileKind: Equatable {
         case "png", "jpg", "jpeg", "gif", "heic", "webp", "bmp", "tif", "tiff", "svg": self = .image
         case "mp4", "mov", "m4v", "avi", "mkv", "webm": self = .video
         case "mp3", "m4a", "wav", "aac", "flac", "ogg": self = .audio
-        case "zip", "rar", "7z", "gz", "tar", "tgz": self = .archive
+        case _ where ArchiveFormats.extensions.contains(ext): self = .archive
         case "txt", "md": self = .text
         default: return nil
         }
@@ -70,6 +70,16 @@ nonisolated enum MoodleFileKind: Equatable {
         case .video, .audio: .pink
         case .archive, .text, .other: .gray
         }
+    }
+
+    private static let tarLabels = [".tar.gz": "TGZ", ".tar.bz2": "TBZ2", ".tar.xz": "TXZ"]
+
+    static func typeLabel(of fileName: String) -> String? {
+        let lowered = fileName.lowercased()
+        if let tar = tarLabels.first(where: { lowered.hasSuffix($0.key) }) { return tar.value }
+        let ext = (fileName as NSString).pathExtension
+        guard ext.wholeMatch(of: /[A-Za-z0-9]{1,5}/) != nil, ext.contains(where: \.isLetter) else { return nil }
+        return ext.uppercased()
     }
 }
 
@@ -126,9 +136,15 @@ struct MoodleFileRow: View {
     }
 
     private var subline: String {
-        let size = ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file)
-        guard let modified = file.modified else { return size }
-        return "\(modified.moodleDateString(now: now)) · \(size)"
+        Self.subline(name: file.name, size: Int64(file.size), modified: file.modified, now: now)
+    }
+
+    static func subline(name: String, size: Int64?, modified: Date?, now: Date) -> String {
+        [
+            modified?.moodleDateString(now: now),
+            size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) },
+            MoodleFileKind.typeLabel(of: name),
+        ].compactMap(\.self).joined(separator: " · ")
     }
 
     private var accessibilityValue: String {
@@ -215,7 +231,7 @@ struct MoodleFolderRow: View {
     }
 }
 
-private struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: View {
+struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: View {
     let indent: CGFloat
     @ViewBuilder let icon: Icon
     @ViewBuilder let text: Lines
@@ -229,7 +245,7 @@ private struct MoodleListRowLayout<Icon: View, Lines: View, Trailing: View>: Vie
             VStack(alignment: .leading, spacing: 2) { text }
                 .frame(maxWidth: .infinity, alignment: .leading)
             trailing
-                .frame(width: 30, height: 30)
+                .frame(minWidth: 30, minHeight: 30)
                 .accessibilityHidden(true)
         }
         .padding(.leading, TigerDuckTheme.Spacing.lg + indent)
@@ -251,12 +267,7 @@ private struct MoodleDownloadMark: View {
                 .foregroundStyle(Color.textSecondary)
         case .downloading(let progress):
             ZStack {
-                Circle()
-                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 2)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(.tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+                ProgressRing(fraction: progress, lineWidth: 2)
                 Image(systemName: "stop.fill")
                     .font(.system(size: 7))
                     .foregroundStyle(.tint)
@@ -316,7 +327,7 @@ extension MoodlePage {
     /// does not have, and the same file under the site's own path takes the signed-in session.
     static func browserURL(_ url: URL) -> URL {
         let prefix = "/webservice/pluginfile.php/"
-        guard MoodleAutologinService.isMoodlePage(url),
+        guard SchoolWeb.isMoodlePage(url),
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.percentEncodedPath.hasPrefix(prefix) else { return url }
         components.percentEncodedPath = "/pluginfile.php/" + components.percentEncodedPath.dropFirst(prefix.count)

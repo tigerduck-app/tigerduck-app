@@ -1,9 +1,10 @@
 import Foundation
 import Testing
+import TigerDuckCore
 @testable import TigerDuck
 
 struct EmptyClassroomScheduleTests {
-    private static let calendar = AppConstants.taipeiCalendar
+    private static let calendar = TaipeiTime.calendar
 
     private static func time(_ month: Int, _ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
         calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: hour, minute: minute)) ?? .distantPast

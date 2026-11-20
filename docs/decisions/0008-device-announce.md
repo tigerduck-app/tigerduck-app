@@ -15,7 +15,7 @@ can only 401 into the retry ladder.
 
 ## Decision
 
-- On iPhone and iPad, `PushRegistrationService.performRegister` announces the device on every
+- On iPhone and iPad, `DeviceRegistration.perform(on:)` announces the device on every
   registration attempt, and so on every launch, signed in or not, before the authenticated
   registration. The announce is best effort and sits outside the registration's do/catch, so
   its failure never marks the registration failed or starts its backoff.

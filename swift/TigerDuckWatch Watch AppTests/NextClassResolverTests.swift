@@ -1,4 +1,5 @@
 import XCTest
+import TigerDuckCore
 @testable import TigerDuckWatch_Watch_App
 
 final class NextClassResolverTests: XCTestCase {
@@ -68,7 +69,7 @@ final class NextClassResolverTests: XCTestCase {
     func test_holiday_hidesTodaysClasses() {
         let a = course("A", weekday: 1, start: "10:20", end: "11:10")
         let now = mondayAt("10:45")
-        let r = NextClassResolver.resolve(courses: [a], now: now, quietDays: [SharedTaipei.dayKey(for: now)])
+        let r = NextClassResolver.resolve(courses: [a], now: now, quietDays: [TaipeiTime.dayKey(for: now)])
         XCTAssertNil(r.current)
         XCTAssertEqual(r.next?.id, "A")
         XCTAssertEqual(r.nextDay, .later(weekday: 1))
@@ -77,8 +78,8 @@ final class NextClassResolverTests: XCTestCase {
     func test_holidayOnAnotherDay_changesNothing() {
         let a = course("A", weekday: 1, start: "10:20", end: "11:10")
         let now = mondayAt("09:00")
-        let tomorrow = SharedTaipei.calendar.date(byAdding: .day, value: 1, to: now)!
-        let r = NextClassResolver.resolve(courses: [a], now: now, quietDays: [SharedTaipei.dayKey(for: tomorrow)])
+        let tomorrow = TaipeiTime.calendar.date(byAdding: .day, value: 1, to: now)!
+        let r = NextClassResolver.resolve(courses: [a], now: now, quietDays: [TaipeiTime.dayKey(for: tomorrow)])
         XCTAssertEqual(r.next?.id, "A")
     }
 
@@ -87,7 +88,7 @@ final class NextClassResolverTests: XCTestCase {
         let skipped = WatchCourse(
             id: "A", courseNo: "A", name: "A", teacher: "", classroom: "", colorHex: "#FF8800",
             weekday: 1, startHHmm: "10:20", endHHmm: "11:10", periodLabel: "",
-            skippedDates: [SharedTaipei.dayKey(for: now)]
+            skippedDates: [TaipeiTime.dayKey(for: now)]
         )
         let b = course("B", weekday: 1, start: "13:30", end: "14:20")
         let r = NextClassResolver.resolve(courses: [skipped, b], now: now)
@@ -106,7 +107,7 @@ final class NextClassResolverTests: XCTestCase {
     func test_todaysClasses_holiday_isEmpty() {
         let a = course("A", weekday: 1, start: "10:20", end: "11:10")
         let now = mondayAt("09:00")
-        let r = NextClassResolver.todaysClasses(courses: [a], now: now, quietDays: [SharedTaipei.dayKey(for: now)])
+        let r = NextClassResolver.todaysClasses(courses: [a], now: now, quietDays: [TaipeiTime.dayKey(for: now)])
         XCTAssertTrue(r.isEmpty)
     }
 
@@ -115,7 +116,7 @@ final class NextClassResolverTests: XCTestCase {
         let skipped = WatchCourse(
             id: "A", courseNo: "A", name: "A", teacher: "", classroom: "", colorHex: "#FF8800",
             weekday: 1, startHHmm: "10:20", endHHmm: "11:10", periodLabel: "",
-            skippedDates: [SharedTaipei.dayKey(for: now)]
+            skippedDates: [TaipeiTime.dayKey(for: now)]
         )
         let b = course("B", weekday: 1, start: "13:30", end: "14:20")
         let r = NextClassResolver.todaysClasses(courses: [skipped, b], now: now, quietDays: [])
@@ -131,8 +132,8 @@ final class NextClassResolverTests: XCTestCase {
     }
 
     func test_aDaysClassesReplaceTheMeetingAndACancelledClassDrops() {
-        let thursday = SharedTaipei.calendar.date(from: DateComponents(year: 2026, month: 11, day: 5, hour: 8))!
-        let key = SharedTaipei.dayKey(for: thursday)
+        let thursday = TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 11, day: 5, hour: 8))!
+        let key = TaipeiTime.dayKey(for: thursday)
         func meeting(
             _ id: String, _ label: String, start: String, end: String, room: String = "TR-313",
             classes: [WatchCourse]? = nil, change: WatchCourseChange? = nil
@@ -158,7 +159,7 @@ final class NextClassResolverTests: XCTestCase {
         let duringPeriod2 = NextClassResolver.resolve(courses: [split], now: thursday.addingTimeInterval(80 * 60))
         XCTAssertNil(duringPeriod2.current)
         XCTAssertEqual(duringPeriod2.next?.id, "A-3")
-        let nextWeek = SharedTaipei.calendar.date(byAdding: .day, value: 7, to: thursday)!
+        let nextWeek = TaipeiTime.calendar.date(byAdding: .day, value: 7, to: thursday)!
         let later = NextClassResolver.todaysClasses(courses: [split], now: nextWeek, quietDays: [])
         XCTAssertEqual(later.map(\.periodLabel), ["2-4"])
         XCTAssertTrue(later.allSatisfy { $0.dayChange == nil })
