@@ -145,6 +145,44 @@ struct WidgetSnapshotBuilderTests {
         ])
     }
 
+    @Test func carriesTheAssessmentAndTheOnlineRoomButNoAssessmentOnACancelledClass() throws {
+        let course = SDCourse(courseNo: "CC900", courseName: "Compilers", classroom: "T4-501", schedule: [4: ["2", "3", "7"]])
+        let exam = ["note_zh": "期中考", "note_en": "Midterm exam"]
+        func row(_ id: Int, _ kind: String, _ day: String, periods: [String]? = nil) -> [String: Any] {
+            var row: [String: Any] = ["id": id, "course_no": "CC900", "kind": kind, "class_days": [day]]
+            if let periods { row["periods"] = periods }
+            if kind == "assessment" { exam.forEach { row[$0.key] = $0.value } }
+            return row
+        }
+        let feed = try JSONSerialization.data(withJSONObject: ["term": "1151", "changes": [
+            row(1, "assessment", "2026-11-05", periods: ["2", "3"]),
+            row(2, "online", "2026-11-12", periods: ["7"]),
+            row(3, "assessment", "2026-11-19"),
+            row(4, "cancelled", "2026-11-19"),
+        ]] as [String: Any])
+        let input = WidgetSnapshotBuilder.Input(
+            courses: [course], customNames: [:], colorMap: [:], isLoggedIn: true,
+            accentColorHex: 0x007AFF, now: Date(), changes: try CourseChanges(json: feed)
+        )
+
+        let changes = [
+            SnapshotCourseChange(day: "2026-11-05", periods: ["2", "3"], cancelled: false, room: nil, start: nil, end: nil, assessment: true),
+            SnapshotCourseChange(
+                day: "2026-11-12", periods: ["7"], cancelled: false, room: String(localized: "course_change_online"), start: nil, end: nil
+            ),
+            SnapshotCourseChange(day: "2026-11-19", periods: ["2", "3"], cancelled: true, room: nil, start: nil, end: nil),
+            SnapshotCourseChange(day: "2026-11-19", periods: ["7"], cancelled: true, room: nil, start: nil, end: nil),
+        ]
+        let built = try #require(WidgetSnapshotBuilder.build(input).courses.first)
+        #expect(built.changes == changes)
+        #expect(built.meetingChanges == changes)
+        let encoded = try built.changes.map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) }
+        #expect(encoded.map { $0.contains(#""assessment":true"#) } == [true, false, false, false])
+        #expect(encoded.dropFirst().allSatisfy { !$0.contains("assessment") })
+        let older = try JSONDecoder().decode(SnapshotCourseChange.self, from: Data(#"{"day":"2026-11-05","periods":["2"],"cancelled":false}"#.utf8))
+        #expect(older.assessment == nil)
+    }
+
     @Test func aCourseWithNoChosenColourGetsTheColourTheAppShows() {
         let courseNos = ["MA2001", "CS1001301", "ZZ9999999"]
         let app = ColorState(load: { [:] }, save: { _ in }, notePick: { _ in }, forgetPicks: {})

@@ -569,14 +569,6 @@ struct CourseChangesTests {
         #expect(CourseDetailChanges.changeRows(days, besides: today).map(\.summary) == rows)
     }
 
-    @Test func aMeetingWithOnlyAnAssessmentSendsNoClassChangeToTheWidgetsAndTheWatch() throws {
-        let changes = try Self.changes([Self.row(1, "assessment", values: Self.midterm)])
-
-        #expect(CourseTimeSlot.changedClasses(of: Self.course(), on: Self.thursday, changes: changes).isEmpty)
-        #expect(WidgetSnapshotBuilder.snapshotChanges(of: Self.course(), changes: changes).isEmpty)
-        #expect(WidgetSnapshotBuilder.snapshotMeetingChanges(of: Self.course(), changes: changes).isEmpty)
-    }
-
     @Test func aClassTableCellIsRedrawnWhenItsMeetingBecomesAnAssessment() throws {
         let note = Self.row(1, "note", periods: ["2"], values: ["note_zh": "帶筆電"])
         func key(_ rows: [[String: Any]]) throws -> String {

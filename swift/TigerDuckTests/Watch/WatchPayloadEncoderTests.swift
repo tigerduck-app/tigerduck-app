@@ -148,21 +148,55 @@ final class WatchPayloadEncoderTests: XCTestCase {
             languageTag: nil, visualPreset: .default, changes: try CourseChanges(json: feed)
         )
 
-        let byLabel = Dictionary(uniqueKeysWithValues: snap.courses.map { ($0.periodLabel, $0) })
+        let days = HeldClasses(snap)
+        XCTAssertEqual(days.shown("2-3", on: "2026-11-05"), ["2-3 09:10-11:10 TR-313"])
+        XCTAssertEqual(days.shown("7", on: "2026-11-05"), [])
+        XCTAssertEqual(days.shown("2-3", on: "2026-11-12"), ["2-3 09:10-11:10 TR-411"])
+        XCTAssertEqual(days.held("2-3", on: "2026-11-12").first?.dayChange, WatchCourseChange(cancelled: false, room: "TR-411"))
+        XCTAssertEqual(days.shown("2-3", on: "2026-11-19"), ["3 10:20-11:10 TR-313"])
+        XCTAssertEqual(days.shown("2-3", on: "2026-11-26"), ["2 09:10-10:00 TR-313", "3 10:20-11:10 TR-411"])
+        XCTAssertEqual(days.held("2-3", on: "2026-11-26").map(\.dayChange?.room), [nil, "TR-411"])
+    }
+
+    func test_anOnlineClassIsARoomChangeAndAnAssessmentAloneChangesNothing() throws {
+        let c = makeCourse(no: "CC900", schedule: [4: ["2", "3", "7"]])
+        let feed = try JSONSerialization.data(withJSONObject: ["term": "1151", "changes": [
+            ["id": 1, "course_no": "CC900", "kind": "online", "periods": ["2", "3"], "class_days": ["2026-11-05"]],
+            ["id": 2, "course_no": "CC900", "kind": "assessment", "note_zh": "期中考", "note_en": "Midterm exam", "class_days": ["2026-11-12"]],
+            [
+                "id": 3, "course_no": "CC900", "kind": "assessment", "note_zh": "期中考", "note_en": "Midterm exam",
+                "periods": ["2", "3"], "class_days": ["2026-11-19"],
+            ],
+            ["id": 4, "course_no": "CC900", "kind": "room", "room": "TR-411", "periods": ["3"], "class_days": ["2026-11-19"]],
+        ]] as [String: Any])
+        let snap = WatchPayloadEncoder.encode(
+            courses: [c], customNames: [:], accentHex: "#000", syncedAt: Date(), loggedIn: true,
+            languageTag: nil, visualPreset: .default, changes: try CourseChanges(json: feed)
+        )
+        let online = String(localized: "course_change_online")
+
+        let days = HeldClasses(snap)
+        XCTAssertEqual(days.shown("2-3", on: "2026-11-05"), ["2-3 09:10-11:10 \(online)"])
+        XCTAssertEqual(days.held("2-3", on: "2026-11-05").first?.dayChange, WatchCourseChange(cancelled: false, room: online))
+        XCTAssertTrue(snap.courses.allSatisfy { $0.changes?["2026-11-12"] == nil })
+        XCTAssertEqual(days.shown("2-3", on: "2026-11-19"), ["2 09:10-10:00 TR-313", "3 10:20-11:10 TR-411"])
+    }
+
+    private struct HeldClasses {
+        let byLabel: [String: WatchCourse]
+
+        init(_ snap: WatchSnapshot) {
+            byLabel = Dictionary(uniqueKeysWithValues: snap.courses.map { ($0.periodLabel, $0) })
+        }
+
         func held(_ label: String, on day: String) -> [WatchCourse] {
             let parts = day.split(separator: "-").compactMap { Int($0) }
             let noon = TaipeiTime.calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 12))!
             return byLabel[label].map { NextClassResolver.todaysClasses(courses: [$0], now: noon, quietDays: []) } ?? []
         }
+
         func shown(_ label: String, on day: String) -> [String] {
             held(label, on: day).map { "\($0.periodLabel) \($0.startHHmm)-\($0.endHHmm) \($0.classroom)" }
         }
-        XCTAssertEqual(shown("2-3", on: "2026-11-05"), ["2-3 09:10-11:10 TR-313"])
-        XCTAssertEqual(shown("7", on: "2026-11-05"), [])
-        XCTAssertEqual(shown("2-3", on: "2026-11-12"), ["2-3 09:10-11:10 TR-411"])
-        XCTAssertEqual(held("2-3", on: "2026-11-12").first?.dayChange, WatchCourseChange(cancelled: false, room: "TR-411"))
-        XCTAssertEqual(shown("2-3", on: "2026-11-19"), ["3 10:20-11:10 TR-313"])
-        XCTAssertEqual(shown("2-3", on: "2026-11-26"), ["2 09:10-10:00 TR-313", "3 10:20-11:10 TR-411"])
-        XCTAssertEqual(held("2-3", on: "2026-11-26").map(\.dayChange?.room), [nil, "TR-411"])
     }
 }
