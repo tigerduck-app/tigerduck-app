@@ -62,6 +62,17 @@ protocol DeliveredNotificationCenter {
     func removeDeliveredNotifications(withIdentifiers identifiers: [String])
 }
 
+extension DeliveredNotificationCenter {
+    /// iOS keeps a delivered notification until it is removed and has no expiry time for one.
+    func removeExpiredReminders() async {
+        let now = AppClock.now()
+        let expired = await deliveredNotificationDetails()
+            .filter { DeepLink.reminderDue(from: $0.userInfo).map { $0 <= now } ?? false }
+            .map(\.identifier)
+        removeDeliveredNotifications(withIdentifiers: expired)
+    }
+}
+
 extension UNUserNotificationCenter: DeliveredNotificationCenter {
     func deliveredNotificationDetails() async -> [(identifier: String, thread: String, userInfo: [AnyHashable: Any])] {
         await deliveredNotifications().map {

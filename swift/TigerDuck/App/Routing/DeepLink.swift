@@ -32,6 +32,12 @@ extension DeepLink {
         return assignments.first { $0.assignmentId == String(id) }
     }
 
+    static func reminderDue(from userInfo: [AnyHashable: Any]) -> Date? {
+        guard userInfo["kind"] as? String == "assignment_reminder",
+              let epoch = pushInteger(from: userInfo["due_epoch"]) else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(epoch))
+    }
+
     static func schoolMailLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
         guard userInfo["kind"] as? String == MailConstants.notificationKind else { return nil }
         let folder = userInfo["folder"] as? String ?? MailConstants.inbox

@@ -112,26 +112,27 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     var syncTriggerLimits = (answer: syncTriggerTimeLimit, send: syncTriggerSendLimit)
 
+    var deliveredNotifications: any DeliveredNotificationCenter = UNUserNotificationCenter.current()
+
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        guard userInfo["kind"] as? String == "sync_trigger", let onSyncTrigger else {
-            completionHandler(.noData)
-            return
-        }
-        logger.info("Silent sync trigger received")
-        Self.run(
-            Self.syncTriggerWork(
+        var work: () async -> UIBackgroundFetchResult = { .noData }
+        if userInfo["kind"] as? String == "sync_trigger", let onSyncTrigger {
+            logger.info("Silent sync trigger received")
+            work = Self.syncTriggerWork(
                 sync: onSyncTrigger,
                 beforeAnswering: beforeAnsweringSyncTrigger,
                 send: sendBeforeAnsweringSyncTrigger,
                 sendDeadline: .now + syncTriggerLimits.send
-            ),
-            within: syncTriggerLimits.answer,
-            then: completionHandler
-        )
+            )
+        }
+        Self.run({ [deliveredNotifications, work] in
+            await deliveredNotifications.removeExpiredReminders()
+            return await work()
+        }, within: syncTriggerLimits.answer, then: completionHandler)
     }
 
     static func syncTriggerWork(
