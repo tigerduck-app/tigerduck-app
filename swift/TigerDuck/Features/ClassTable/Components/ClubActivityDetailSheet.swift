@@ -12,10 +12,8 @@ struct ClubActivityDetailSheet: View {
                     title: club.clubName, subtitle: club.name.isEmpty ? nil : club.name, color: Color(hex: UInt(club.color))
                 )
                 EmphasisCards {
-                    EmphasisCard(
-                        label: String(localized: "class_table_club_location_label"),
-                        value: club.location.isEmpty ? "—" : club.location,
-                        policy: policy
+                    LocationCard(
+                        label: String(localized: "class_table_club_location_label"), location: club.location, policy: policy
                     )
                     EmphasisCard(
                         label: String(localized: "class_table_club_time_label"),
@@ -40,6 +38,7 @@ struct ClubActivityDetailSheet: View {
             .padding(.bottom, TigerDuckTheme.Spacing.lg)
         }
         .background(Color.backgroundPrimary)
+        .toastHost()
         .presentationDetents([.medium, .large])
     }
 
