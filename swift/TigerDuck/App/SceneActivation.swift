@@ -1,5 +1,4 @@
 import Foundation
-import UserNotifications
 
 @MainActor
 final class SceneActivation {
@@ -23,9 +22,6 @@ final class SceneActivation {
 
     func becameActive() {
         returnTask?.cancel()
-        #if os(iOS)
-        Task { await UNUserNotificationCenter.current().removeExpiredReminders() }
-        #endif
         guard !app.authService.session.currentSignIn.isDemo else {
             #if os(iOS)
             returnTask = Task { [app] in await app.liveActivity.refresh() }

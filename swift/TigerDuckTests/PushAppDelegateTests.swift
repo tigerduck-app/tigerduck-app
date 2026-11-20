@@ -46,10 +46,19 @@ struct PushAppDelegateTests {
     private static let wideLimits = (answer: Duration.seconds(600), send: Duration.seconds(590))
 
     private static func delegate(_ notifications: DeliveredNotificationsStub? = nil) -> PushAppDelegate {
-        let delegate = PushAppDelegate()
+        let delegate = PushAppDelegate(appEvents: NotificationCenter())
         delegate.syncTriggerLimits = wideLimits
         delegate.deliveredNotifications = notifications ?? DeliveredNotificationsStub()
         return delegate
+    }
+
+    private static func remindersDueAndNot() -> DeliveredNotificationsStub {
+        let now = Int(AppClock.now().timeIntervalSince1970)
+        return DeliveredNotificationsStub([
+            ("due", "assignment", ["kind": "assignment_reminder", "due_epoch": String(now - 3600)]),
+            ("not-due", "assignment", ["kind": "assignment_reminder", "due_epoch": String(now + 3600)]),
+            ("bulletin", "other", ["kind": "bulletin", "bulletin_id": "7"]),
+        ])
     }
 
     private static func answer(_ delegate: PushAppDelegate, _ userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
@@ -236,12 +245,7 @@ struct PushAppDelegateTests {
     @Test("Any background push removes the reminders already due before it is answered, whether its sync runs, fails or is not bound",
           arguments: [("bulletin", FullSyncOutcome?.some(.synced)), ("sync_trigger", nil), ("sync_trigger", .failed), ("sync_trigger", .synced)])
     func anyBackgroundPushRemovesDueRemindersBeforeTheAnswer(kind: String, sync: FullSyncOutcome?) async {
-        let now = Int(AppClock.now().timeIntervalSince1970)
-        let center = DeliveredNotificationsStub([
-            ("due", "assignment", ["kind": "assignment_reminder", "due_epoch": String(now - 3600)]),
-            ("not-due", "assignment", ["kind": "assignment_reminder", "due_epoch": String(now + 3600)]),
-            ("bulletin", "other", ["kind": "bulletin", "bulletin_id": "7"]),
-        ])
+        let center = Self.remindersDueAndNot()
         let delegate = Self.delegate(center)
         if let sync { delegate.onSyncTrigger = { sync } }
         var leftWhenAnswered: [String]?
@@ -254,6 +258,19 @@ struct PushAppDelegateTests {
         }
 
         #expect(leftWhenAnswered == ["not-due", "bulletin"])
+    }
+
+    @Test("Becoming active removes the reminders already due")
+    func becomingActiveRemovesDueReminders() async throws {
+        let appEvents = NotificationCenter()
+        let center = Self.remindersDueAndNot()
+        let delegate = PushAppDelegate(appEvents: appEvents)
+        delegate.deliveredNotifications = center
+
+        appEvents.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+
+        try await waitUntil { center.delivered.map(\.identifier) == ["not-due", "bulletin"] }
+        withExtendedLifetime(delegate) {}
     }
 }
 #endif

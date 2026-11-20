@@ -114,6 +114,22 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
 
     var deliveredNotifications: any DeliveredNotificationCenter = UNUserNotificationCenter.current()
 
+    override convenience init() {
+        self.init(appEvents: .default)
+    }
+
+    init(appEvents: NotificationCenter) {
+        super.init()
+        _ = appEvents.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let notifications = self?.deliveredNotifications else { return }
+                Task { await notifications.removeExpiredReminders() }
+            }
+        }
+    }
+
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
