@@ -13,6 +13,9 @@ struct ImportedClassTableFile {
         let importedAt: Date
         let sharedAt: Date?
         let terms: [Term]
+        /// An `ImportedPerson.Placement`; a file from before placements has none, and a later
+        /// build's placement this one does not know reads as the default too.
+        let placement: String?
     }
 
     struct Term: Codable {

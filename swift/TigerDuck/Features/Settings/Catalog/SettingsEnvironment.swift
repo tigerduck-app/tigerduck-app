@@ -16,6 +16,7 @@ extension SettingsState {
         hasWhatsNew = app.updateNotifyCoordinator.hasWhatsNewContent(in: app)
         hasMoodleApp = LinkRouting.isMoodleAppInstalled
         isCheckingForUpdate = app.updateNotifyCoordinator.isCheckingForUpdate
+        hasImportedClassTables = ImportedClassTableStore.shared.hasImportedClassTables
     }
 
     init(school: AuthService, library: LibraryAccountStatus, mail: MailAccountManager, isCloudSyncOn: Bool) {

@@ -4,13 +4,22 @@ enum ClassTableSwitcherEntry: Equatable, Identifiable {
     case importClassTable
     case person(id: UUID, nickname: String, isShown: Bool)
     case user(name: String, isShown: Bool)
+    case others([ClassTableSwitcherEntry])
 
     static func sections(in store: ImportedClassTableStore, userName: String) -> [[ClassTableSwitcherEntry]] {
-        let people = store.people.map {
-            ClassTableSwitcherEntry.person(id: $0.id, nickname: $0.nickname, isShown: $0.id == store.shownPersonID)
+        func people(_ placement: ImportedPerson.Placement) -> [ClassTableSwitcherEntry] {
+            store.people.filter { $0.placement == placement }.map {
+                .person(id: $0.id, nickname: $0.nickname, isShown: $0.id == store.shownPersonID)
+            }
         }
-        return [[.importClassTable], people, [.user(name: userName, isShown: store.shownPersonID == nil)]]
-            .filter { !$0.isEmpty }
+        let others = people(.other)
+        return [
+            [.importClassTable],
+            [.user(name: userName, isShown: store.shownPersonID == nil)] + people(.rotation),
+            people(.longPressMenu),
+            others.isEmpty ? [] : [.others(others)],
+        ]
+        .filter { !$0.isEmpty }
     }
 
     static func userName(studentId: String?) -> String {
@@ -23,6 +32,7 @@ enum ClassTableSwitcherEntry: Equatable, Identifiable {
         case .importClassTable: "import"
         case .person(let id, _, _): id.uuidString
         case .user: "user"
+        case .others: "others"
         }
     }
 
@@ -31,12 +41,13 @@ enum ClassTableSwitcherEntry: Equatable, Identifiable {
         case .importClassTable: String(localized: "class_table_import")
         case .person(_, let nickname, _): nickname
         case .user(let name, _): name
+        case .others: String(localized: ImportedPerson.Placement.other.title)
         }
     }
 
     var isShown: Bool {
         switch self {
-        case .importClassTable: false
+        case .importClassTable, .others: false
         case .person(_, _, let isShown), .user(_, let isShown): isShown
         }
     }
@@ -49,6 +60,18 @@ enum ClassTableSwitcherEntry: Equatable, Identifiable {
             store.show(id)
         case .user:
             store.show(nil)
+        case .others:
+            break
+        }
+    }
+}
+
+extension ImportedPerson.Placement {
+    var title: LocalizedStringResource {
+        switch self {
+        case .rotation: "class_table_list_section_double_tap"
+        case .longPressMenu: "class_table_list_section_long_press"
+        case .other: "class_table_list_section_other"
         }
     }
 }
@@ -107,21 +130,30 @@ struct ClassTableSwitcherMenuItems: View {
         ForEach(ClassTableSwitcherEntry.sections(in: store, userName: userName), id: \.first?.id) { section in
             Section {
                 ForEach(section) { entry in
-                    if case .importClassTable = entry {
+                    switch entry {
+                    case .importClassTable:
                         Button {
                             entry.choose(in: store, requestImport: requestImport)
                         } label: {
                             Label(entry.title, systemImage: "plus")
                         }
-                    } else {
-                        Toggle(entry.title, isOn: Binding(
-                            get: { entry.isShown },
-                            set: { _ in entry.choose(in: store, requestImport: requestImport) }
-                        ))
+                    case .others(let people):
+                        Menu(entry.title) {
+                            ForEach(people, content: toggle)
+                        }
+                    case .person, .user:
+                        toggle(entry)
                     }
                 }
             }
         }
+    }
+
+    private func toggle(_ entry: ClassTableSwitcherEntry) -> some View {
+        Toggle(entry.title, isOn: Binding(
+            get: { entry.isShown },
+            set: { _ in entry.choose(in: store, requestImport: requestImport) }
+        ))
     }
 }
 
