@@ -28,7 +28,6 @@ extension UIImage {
         try? pngData()?.write(to: out.appending(path: "\(name).png"))
     }
 
-    /// The brightness, 0 to 1, of the pixel under `point`, in points from the picture's top left.
     func brightness(at point: CGPoint) -> CGFloat? {
         guard let image = cgImage else { return nil }
         let (x, y) = (Int(point.x * scale), Int(point.y * scale))
