@@ -7,7 +7,6 @@ nonisolated enum AppIcon: String, CaseIterable, Identifiable, Sendable {
     case naihu = "Naihu"
     case tigerDuckChristmas = "TigerDuckChristmas"
 
-    /// The picker's cells, in order: `nil` is the build's primary icon, whichever that is.
     static let choices: [AppIcon?] = [nil] + allCases
 
     var id: Self { self }

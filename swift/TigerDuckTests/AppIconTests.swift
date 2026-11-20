@@ -49,7 +49,6 @@ struct AppIconTests {
         (.tigerDuckChristmas, "TigerDuck", "TigerDuckChristmas"),
     ]
 
-    /// Runs with the stored choice set to `stored`, and puts the device's own back afterwards.
     private static func withStoredChoice(_ stored: AppIcon?, _ body: () async throws -> Void) async rethrows {
         try await withExclusiveRealDefaults {
             let saved = Defaults[.appIcon]

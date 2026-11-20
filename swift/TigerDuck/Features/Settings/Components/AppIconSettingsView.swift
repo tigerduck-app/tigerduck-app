@@ -1,7 +1,6 @@
 import Defaults
 import SwiftUI
 
-/// The app icons, three to a row: the build's primary icon first, then each icon to pin.
 struct AppIconSettingsView: View {
     var host: any AlternateIconHost = UIApplication.shared
     @Default(.appIcon) private var choice
