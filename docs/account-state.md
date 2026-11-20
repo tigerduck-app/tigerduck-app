@@ -74,6 +74,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `alwaysShowAllPeriods` | device |  |
 | defaults | `appAppearance` | device |  |
 | defaults | `appHasBeenInstalled` | device |  |
+| defaults | `appIcon` | device |  |
 | defaults | `appLanguage` | device |  |
 | defaults | `assignmentLiveActivityLeadTime` | device |  |
 | defaults | `assignmentMarksSyncedOnce` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |

@@ -21,6 +21,9 @@ final class SceneActivation {
     }
 
     func becameActive() {
+        #if os(iOS)
+        Task { await AppIconSwitch.reconcile() }
+        #endif
         returnTask?.cancel()
         guard !app.authService.session.currentSignIn.isDemo else {
             #if os(iOS)

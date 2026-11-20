@@ -25,6 +25,9 @@ QuickActionSceneDelegate.swift
 # App/ContentView.swift — iOS-only
 ContentView.swift
 
+# App — alternate app icons, a UIApplication API with no counterpart in a native Mac app
+AppIconSwitch.swift
+
 # Debug — iOS-only debug surfaces
 DebugServerFailureView.swift
 DebugSettingsView.swift
