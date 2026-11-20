@@ -105,6 +105,7 @@ jobs:
               TigerDuckTests/MoodleFileRowScreenTests
               TigerDuckTests/MoodleMaterialsWeekPageTests
               TigerDuckTests/MoodleMemberCommonCoursesScreenTests
+              TigerDuckTests/MoodleMembersPinMyselfScreenTests
               TigerDuckTests/MoodleNotificationSettingsScreenTests
               TigerDuckTests/MoodleOpenInSettingTests
               TigerDuckTests/MoodleOwnProfileTests/doneUploadsOnce()

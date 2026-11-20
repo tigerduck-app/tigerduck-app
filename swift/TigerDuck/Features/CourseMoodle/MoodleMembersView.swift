@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 
 nonisolated extension MoodleMember {
@@ -60,13 +61,18 @@ nonisolated struct MoodleMemberSection: Identifiable, Equatable {
 
     var id: Placement { placement }
 
-    static func sections(of members: [MoodleMember], matching query: String = "") -> [MoodleMemberSection] {
+    static func sections(
+        of members: [MoodleMember], matching query: String = "", pinning pinned: Int? = nil
+    ) -> [MoodleMemberSection] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let shown = needle.isEmpty ? members : members.filter { $0.matches(needle) }
         return Dictionary(grouping: shown, by: Placement.init)
             .sorted { $0.key < $1.key }
             .map { placement, people in
-                MoodleMemberSection(placement: placement, members: people.sorted(by: placement.listsByStudentId ? byStudentId : byName))
+                let sorted = people.sorted(by: placement.listsByStudentId ? byStudentId : byName)
+                return MoodleMemberSection(
+                    placement: placement, members: sorted.filter { $0.id == pinned } + sorted.filter { $0.id != pinned }
+                )
             }
     }
 
@@ -97,6 +103,7 @@ struct MoodleMembersView: View {
     let open: (MoodleCourseRoute) -> Void
 
     @State private var query = ""
+    @Default(.pinMyselfInCourseMembers) private var pinsMyself
     @FocusState private var isSearchFocused: Bool
     #if os(iOS)
     @State private var isSearchRevealed = false
@@ -107,12 +114,14 @@ struct MoodleMembersView: View {
         case sections([MoodleMemberSection])
         case noMatches(query: String)
 
-        init(list: MoodleMemberList?, isRefreshing: Bool, failure: (any Error)?, query: String) {
+        init(list: MoodleMemberList?, isRefreshing: Bool, failure: (any Error)?, query: String, pinsMyself: Bool = false) {
             guard let list else {
                 self = .firstLoad(failure: isRefreshing ? nil : failure)
                 return
             }
-            let sections = MoodleMemberSection.sections(of: list.members, matching: query)
+            let sections = MoodleMemberSection.sections(
+                of: list.members, matching: query, pinning: pinsMyself ? list.ownId : nil
+            )
             let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
             self = sections.isEmpty && !needle.isEmpty ? .noMatches(query: needle) : .sections(sections)
         }
@@ -125,7 +134,7 @@ struct MoodleMembersView: View {
     var body: some View {
         let content = Content(
             list: store.members.value, isRefreshing: store.members.isRefreshing,
-            failure: store.members.failure, query: query
+            failure: store.members.failure, query: query, pinsMyself: pinsMyself
         )
         List {
             if content.hasList { searchRow }
@@ -151,8 +160,16 @@ struct MoodleMembersView: View {
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(rowInsets(top: 0, bottom: isLast ? TigerDuckTheme.Spacing.xs : 0))
+                        .listRowInsets(rowInsets(top: 0, bottom: 0))
                     }
+                    // After rows move, a List sizes a row that stayed only a frame later, so space that
+                    // depends on a member's place goes in a row of its own, which stays last.
+                    Color.clear
+                        .frame(height: TigerDuckTheme.Spacing.xs)
+                        .accessibilityHidden(true)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets())
                 }
             case .noMatches(let needle):
                 ContentUnavailableView.search(text: needle)
@@ -173,7 +190,11 @@ struct MoodleMembersView: View {
             title: String(localized: "course_detail_members_label"),
             page: .participants(courseId: store.courseId),
             refresh: { await store.refreshMembers() }
-        )
+        ) {
+            #if os(iOS)
+            Section { PageMenuToggle(row: .pinMyself, isOn: $pinsMyself) }
+            #endif
+        }
         .moodleAutoRefresh(every: store.members.ttl, fetchedAt: { store.membersFetchedAt }) {
             await store.refreshMembers()
         }

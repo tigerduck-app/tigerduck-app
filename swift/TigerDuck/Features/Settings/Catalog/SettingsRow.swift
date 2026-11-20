@@ -16,7 +16,7 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
     case mailNotifications, mailDisplayName, mailStorage
     case flipToLibrary, librarySignOut
     case addressBar, websiteData
-    case moodleNotifications, moodleOpenIn, moodleStorage
+    case moodleNotifications, moodleOpenIn, pinMyself, moodleStorage
 
     var id: Self { self }
 
@@ -69,6 +69,7 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
         case .addressBar: "browser_address_bar"
         case .moodleNotifications: "moodle_notification_settings_title"
         case .moodleOpenIn: "settings_moodle_open_in"
+        case .pinMyself: "course_members_pin_myself"
         }
     }
 }
