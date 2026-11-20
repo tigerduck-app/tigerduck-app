@@ -208,8 +208,15 @@ struct MoodleMembersView: View {
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(rowInsets(top: 0, bottom: isLast ? TigerDuckTheme.Spacing.xs : 0))
+                        .listRowInsets(rowInsets(top: 0, bottom: 0))
                     }
+                    // After rows move, a List sizes a row that stayed only a frame later, so space that
+                    // depends on a member's place goes in a row of its own, which stays last.
+                    Color.clear
+                        .frame(height: TigerDuckTheme.Spacing.xs)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets())
                 }
             case .noMatches(let needle):
                 ContentUnavailableView.search(text: needle)

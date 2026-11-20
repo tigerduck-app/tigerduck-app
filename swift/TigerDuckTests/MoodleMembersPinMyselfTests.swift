@@ -93,15 +93,27 @@ struct MoodleMembersPinMyselfTests {
 struct MoodleMembersPinMyselfScreenTests {
     typealias Menu = PageMenuScreenTests
 
+    /// The user's student ID sorts last, so the toggle moves their row between the first and the
+    /// last place of the section, the two places whose row spacing differs.
+    private nonisolated static let members = [
+        MoodleMembersPinMyselfTests.member(5, "Zed Teacher", role: "editingteacher"),
+        MoodleMembersPinMyselfTests.member(6, "Amy Teacher", role: "editingteacher"),
+        MoodleMembersPinMyselfTests.member(43, "B11399001 @ Duck One", idNumber: "B11399001"),
+        MoodleMembersPinMyselfTests.member(44, "B11399002 @ Duck Two", idNumber: "B11399002"),
+        MoodleMembersPinMyselfTests.member(MoodleMembersPinMyselfTests.ownId, "B11399009 @ Tiger Duck", idNumber: "B11399009"),
+    ]
+
+    private static let me = "Tiger Duck, \(String(localized: "course_member_me"))"
+
     private static func store(root: URL) -> MoodleCourseStore {
         let cache = TestCache(
             cacheDir: root.appendingPathComponent("cache", isDirectory: true),
             persistentDir: root.appendingPathComponent("persistent", isDirectory: true)
         )
-        let list = MoodleMemberList(ownId: MoodleMembersPinMyselfTests.ownId, members: MoodleMembersPinMyselfTests.members)
+        let list = MoodleMemberList(ownId: MoodleMembersPinMyselfTests.ownId, members: members)
         return MoodleCourseStore(
             courseId: 1, termCourseIds: [1],
-            context: MoodleCacheContext(account: "B11399005", cache: cache.moodle, signIn: testSignIn, now: { Date() }),
+            context: MoodleCacheContext(account: "B11399009", cache: cache.moodle, signIn: testSignIn, now: { Date() }),
             api: MoodleCourseAPI(
                 functions: { [MoodleCourseMembersService.membersFunction] },
                 forums: { _ in [] },
@@ -112,40 +124,49 @@ struct MoodleMembersPinMyselfScreenTests {
         )
     }
 
+    /// The members list at 375 points, tall enough that the largest text size scrolls nothing,
+    /// once the user's row is where `pinsMyself` puts it.
+    private static func showList(look: Menu.Look, pinsMyself: Bool, root: URL) async throws -> UIWindow {
+        Defaults[.pinMyselfInCourseMembers] = pinsMyself
+        let store = store(root: root)
+        await store.refreshMembers()
+        let preferences = AppPreferences()
+        let (window, _) = try SettingsScreen.show(
+            MoodleMembersView(store: store, policy: VisualStylePolicy(preset: .default)) { _ in },
+            state: SettingsScreen.allOpenButSchool(preferences), preferences: preferences,
+            width: Menu.narrowestPhoneWidth, height: 1200, style: look.style
+        )
+        window.traitOverrides.preferredContentSizeCategory = look.size
+        window.makeKey()
+        try await waitUntil { myRowLeads(in: window) == pinsMyself }
+        try await Task.sleep(for: .milliseconds(400))
+        return window
+    }
+
+    private static func myRowLeads(in window: UIWindow) -> Bool? {
+        guard let mine = accessibilityElement(labeled: me, in: window),
+              let classmate = accessibilityElement(labeled: "Duck One", in: window) else { return nil }
+        return mine.accessibilityFrame.minY < classmate.accessibilityFrame.minY
+    }
+
+    private static func temporaryRoot() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("MoodleMembersPinMyselfScreenTests-\(UUID().uuidString)", isDirectory: true)
+    }
+
     /// One tap per window: a closed menu's items stay in the window's accessibility tree, so the
     /// second open of `PageMenuScreenTests.openMenu` would find no new item.
     @Test("the members screen's ⋯ has the toggle, which shows its state and reorders the open list at once",
-          arguments: [Menu.Look.all[0], Menu.Look.all[2]], [true, false])
+          arguments: [Menu.Look.all[0], Menu.Look.all[1], Menu.Look.all[2]], [true, false])
     func theMenuTogglesThePin(look: Menu.Look, startsOn: Bool) async throws {
         try await withExclusiveRealDefaults {
             try await withAccessibilityAutomation {
-                Defaults[.pinMyselfInCourseMembers] = startsOn
                 defer { Defaults.reset(.pinMyselfInCourseMembers) }
-                let root = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("MoodleMembersPinMyselfScreenTests-\(UUID().uuidString)", isDirectory: true)
+                let root = Self.temporaryRoot()
                 defer { try? FileManager.default.removeItem(at: root) }
-                let store = Self.store(root: root)
-                await store.refreshMembers()
-                let preferences = AppPreferences()
-                // Tall enough that the largest text size scrolls nothing.
-                let (window, _) = try SettingsScreen.show(
-                    MoodleMembersView(store: store, policy: VisualStylePolicy(preset: .default)) { _ in },
-                    state: SettingsScreen.allOpenButSchool(preferences), preferences: preferences,
-                    width: Menu.narrowestPhoneWidth, height: 1200, style: look.style
-                )
-                window.traitOverrides.preferredContentSizeCategory = look.size
-                window.makeKey()
+                let window = try await Self.showList(look: look, pinsMyself: startsOn, root: root)
                 defer { window.isHidden = true }
-
-                let me = "Tiger Duck, \(String(localized: "course_member_me"))"
-                @MainActor func myRowLeads() -> Bool? {
-                    guard let mine = accessibilityElement(labeled: me, in: window),
-                          let classmate = accessibilityElement(labeled: "Duck One", in: window) else { return nil }
-                    return mine.accessibilityFrame.minY < classmate.accessibilityFrame.minY
-                }
                 let name = "\(startsOn ? "on" : "off")-\(look.name)-\(Menu.language)"
-                try await waitUntil { myRowLeads() == startsOn }
-                try await Task.sleep(for: .milliseconds(400))
                 window.saveSnapshot(as: "members-pin-myself-list-\(name)")
 
                 let items = try await Menu.openMenu(labeled: String(localized: "action_more_actions"), in: window)
@@ -160,9 +181,56 @@ struct MoodleMembersPinMyselfScreenTests {
 
                 try await Menu.tap(toggle, in: window)
                 try await waitUntil { Defaults[.pinMyselfInCourseMembers] == !startsOn }
-                try await waitUntil { myRowLeads() == !startsOn }
+                try await waitUntil { Self.myRowLeads(in: window) == !startsOn }
                 try await Task.sleep(for: .milliseconds(600))
                 window.saveSnapshot(as: "members-pin-myself-tapped-\(name)")
+            }
+        }
+    }
+
+    /// After rows move, a List sizes a row that stayed only a frame later, so a member's spacing
+    /// that depends on their place shows wrong for that frame. Whether a picture lands in it varies,
+    /// so the user's row moves back and forth, and each frame of the first half second after a move
+    /// is compared with the list that move settles on.
+    @Test("a row that moves to or from the end of its section is spaced as the settled list from the first frame",
+          arguments: [Menu.Look.all[0], Menu.Look.all[2]])
+    func theMovedRowsSpacingHolds(look: Menu.Look) async throws {
+        try await withExclusiveRealDefaults {
+            try await withAccessibilityAutomation {
+                defer { Defaults.reset(.pinMyselfInCourseMembers) }
+                let root = Self.temporaryRoot()
+                defer { try? FileManager.default.removeItem(at: root) }
+                let window = try await Self.showList(look: look, pinsMyself: true, root: root)
+                defer { window.isHidden = true }
+                let name = "\(look.name)-\(Menu.language)"
+                func pixels(_ picture: UIImage) -> Data? { picture.cgImage?.dataProvider?.data as Data? }
+                @MainActor func move(pinsMyself: Bool) async throws {
+                    Defaults[.pinMyselfInCourseMembers] = pinsMyself
+                    try await waitUntil { Self.myRowLeads(in: window) == pinsMyself }
+                }
+
+                // The first two moves go unchecked: on a busy runner, the rest of a screen that just
+                // appeared can still be settling.
+                for pinsMyself in [false, true] {
+                    try await move(pinsMyself: pinsMyself)
+                    try await Task.sleep(for: .seconds(1))
+                }
+                for step in 1...6 {
+                    try await move(pinsMyself: step.isMultiple(of: 2))
+                    var frames: [UIImage] = []
+                    for _ in 0..<10 {
+                        frames.append(window.picture())
+                        try await Task.sleep(for: .milliseconds(50))
+                    }
+                    try await Task.sleep(for: .seconds(1))
+                    let settled = window.picture()
+                    for (index, frame) in frames.enumerated() where pixels(frame) != pixels(settled) {
+                        frame.saveSnapshot(as: "members-pin-myself-moved-\(step)-\(index)-\(name)")
+                        settled.saveSnapshot(as: "members-pin-myself-moved-\(step)-settled-\(name)")
+                        Issue.record("frame \(index) after move \(step) differs from the list it settles on")
+                    }
+                }
+                window.saveSnapshot(as: "members-pin-myself-moved-\(name)")
             }
         }
     }
