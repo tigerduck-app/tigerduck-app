@@ -35,15 +35,26 @@ struct Finger {
         try digitizer.send(touch: touch, at: point, phase: .up, to: window)
     }
 
-    /// Slides in small steps, as a finger reports its way across the glass.
+    /// Slides in small steps, as a finger reports its way across the glass, and ends on its last
+    /// step, so a lift right after it leaves with the speed of the slide.
     func slide(from start: CGPoint, to end: CGPoint, steps: Int = 12, pause: Duration = .milliseconds(16)) async throws {
         for step in 1...steps {
+            try await Task.sleep(for: pause)
             let progress = CGFloat(step) / CGFloat(steps)
             let point = CGPoint(x: start.x + (end.x - start.x) * progress, y: start.y + (end.y - start.y) * progress)
             try digitizer.send(touch: touch, at: point, phase: .moved, to: window)
-            try await Task.sleep(for: pause)
         }
     }
+}
+
+/// Moves a finger from `start` to `end` in even steps over `duration` and lifts it at once, so the
+/// speed it ends with is the distance over the duration.
+@MainActor
+func fingerDrag(from start: CGPoint, to end: CGPoint, over duration: Duration, in window: UIWindow, steps: Int = 12) async throws {
+    let finger = try Finger(in: window)
+    try finger.down(at: start)
+    try await finger.slide(from: start, to: end, steps: steps, pause: duration / steps)
+    try finger.up(at: end)
 }
 
 @MainActor

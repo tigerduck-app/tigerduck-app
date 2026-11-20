@@ -47,6 +47,7 @@ UIApplication+Keyboard.swift
 HostWindow.swift
 UINavigationController+Swipeback.swift
 View+ScrollSafeGesture.swift
+View+SheetFlick.swift
 
 # Features/Archive — the archive browser and its libarchive reader, which only the iOS app links;
 # the Mac hands an archive to Quick Look as before

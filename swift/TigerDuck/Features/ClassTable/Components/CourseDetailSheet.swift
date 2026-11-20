@@ -56,6 +56,7 @@ struct CourseDetailSheet: View {
             .moodleLinkOpening()
             #if os(iOS)
             .courseDetailRootBar()
+            .flickClosesSheet(at: detent)
             #endif
             .navigationDestination(for: MoodleCourseRoute.self) { route in
                 if case .syllabus(let syllabus) = route {

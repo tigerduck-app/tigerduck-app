@@ -64,8 +64,7 @@ struct ScoreView: View {
             viewModel.triggerRefresh(authService: app.authService)
         }
         .sheet(item: $selectedCourse) { course in
-            ScoreCourseDetailSheet(course: course)
-                .presentationDetents([.medium, .large])
+            ScoreCourseDetailSheet(course: course, policy: app.preferences.visualStylePolicy)
         }
     }
 
