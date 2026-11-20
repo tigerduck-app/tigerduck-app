@@ -208,14 +208,20 @@ struct CalendarMonthSwipeScreenTests {
             try await waitUntil { isShort() }
 
             let offset = screen.pager.contentOffset.x
-            let short = try Finger(in: screen.window)
             let from = CGPoint(x: grid.midX, y: grid.midY)
             let to = CGPoint(x: grid.midX - 40, y: grid.midY)
-            screen.window.makeKeyAndVisible()
-            try short.down(at: from)
-            try await short.slide(from: from, to: to, steps: 20, pause: .milliseconds(30))
-            try await waitUntil { screen.pager.contentOffset.x > offset + 10 }
-            try short.up(at: to)
+            // On iOS 26.5, with other suites' windows on screen, a slow drag's touches sometimes never
+            // reach the grid.
+            var moved = false
+            for _ in 0..<3 where !moved {
+                let short = try Finger(in: screen.window)
+                screen.window.makeKeyAndVisible()
+                try short.down(at: from)
+                try await short.slide(from: from, to: to, steps: 20, pause: .milliseconds(30))
+                moved = try await PageMenuScreenTests.holds(within: .seconds(2)) { screen.pager.contentOffset.x > offset + 10 }
+                try short.up(at: to)
+            }
+            #expect(moved, "the short drag moved the grid")
             try await screen.settle(on: Self.december)
             try await waitUntil { isShort() }
         }
