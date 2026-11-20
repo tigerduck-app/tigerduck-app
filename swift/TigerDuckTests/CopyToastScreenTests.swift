@@ -81,7 +81,7 @@ struct CopyToastScreenTests {
 
     /// Taps again, the window brought to the front, while `text` does not show: another suite's
     /// window can cover it while suites run side by side, and on iOS 26.5 a new window's first touch
-    /// can go nowhere, as `PageMenuScreenTests.openMenu` found.
+    /// can go nowhere.
     static func tap(_ element: NSObject, in window: UIWindow, until text: String) async throws {
         let point = window.convert(element.accessibilityActivationPoint, from: window.screen.coordinateSpace)
         for _ in 0..<5 {
