@@ -607,6 +607,60 @@ struct CourseChangesTests {
         #expect(try key([note]) != key([note, Self.row(2, "assessment", periods: ["2"], values: Self.midterm)]))
     }
 
+    @Test func anAssessmentOrOnlineClassOnOnlyCancelledPeriodsLeavesTheHeldPeriodsUnmarked() throws {
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["4"], values: Self.midterm),
+            Self.row(2, "online", periods: ["4"]),
+            Self.row(3, "cancelled", periods: ["4"]),
+            Self.row(4, "assessment", periods: ["7", "8"], values: Self.midterm),
+            Self.row(5, "cancelled", periods: ["8"]),
+        ])
+        let morning = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes))
+        let afternoon = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["7", "8"], on: Self.thursday, changes: changes))
+
+        #expect(!morning.isCancelled && morning.assessment == nil && morning.online == nil)
+        #expect(morning.room == "T4-501" && !morning.hasChangedRoom)
+        #expect(afternoon.assessment?.id == 4)
+        #expect(Self.slots(changes).map(\.room) == ["T4-501", "T4-501", "T4-501", "T4-501"])
+    }
+
+    @Test func theChangesListNamesEveryAssessmentAndOnlineClassOfAMeeting() throws {
+        let (assessment, online) = (String(localized: "course_change_assessment"), String(localized: "course_change_online"))
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["2"], values: Self.midterm),
+            Self.row(2, "assessment", periods: ["4"], values: ["note_zh": "小考", "note_en": "Quiz"]),
+            Self.row(3, "online", periods: ["2"], values: ["note_zh": "第一節線上", "note_en": "First period online"]),
+            Self.row(4, "online", periods: ["4"], values: ["note_zh": "第三節線上", "note_en": "Third period online"]),
+        ])
+        let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
+        let rows = CourseDetailChanges.changeRows(days, besides: nil).map(\.summary)
+
+        #expect(rows.count == 1)
+        for listed in [
+            "\(assessment) · \(Self.local("期中考", "Midterm exam"))",
+            "\(assessment) · \(Self.local("小考", "Quiz"))",
+            "\(online) · \(Self.local("第一節線上", "First period online"))",
+            "\(online) · \(Self.local("第三節線上", "Third period online"))",
+        ] {
+            #expect(rows.first?.contains(listed) == true)
+        }
+    }
+
+    @Test func aClassTableCellShowsAChangedRoomEvenWithoutATimetableRoomCodeButOnlyWhenRoomsAreShown() throws {
+        let course = SDCourse(courseNo: "CC900", courseName: "Compilers", classroom: "", schedule: [4: ["2", "3", "4"]])
+        let online = String(localized: "course_change_online")
+        let changes = try Self.changes([Self.row(1, "online")])
+        let meeting = CourseTimeSlot.meeting(of: course, periods: ["2", "3", "4"], on: Self.thursday, changes: changes)
+        let hint = CourseRoomHint.room(for: course, weekday: 4, periodId: "2")
+
+        #expect(hint == nil)
+        let shown = CourseRoomHint.roomLine(meeting: meeting, hint: hint, showsRooms: true)
+        #expect(shown?.room == online && shown?.isChanged == true)
+        #expect(CourseRoomHint.roomLine(meeting: meeting, hint: hint, showsRooms: false) == nil)
+        let timetable = CourseRoomHint.roomLine(meeting: nil, hint: "TR-313", showsRooms: true)
+        #expect(timetable?.room == "TR-313" && timetable?.isChanged == false)
+    }
+
     @Test func aConflictCellIsRedrawnWhenOneOfItsClassesBecomesAnAssessment() {
         let other = SDCourse(courseNo: "CC901", courseName: "Parsing", classroom: "T4-502", schedule: [4: ["3", "4"]])
         let pair = ClassTableGrid.CellRole.conflictStart(

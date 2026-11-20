@@ -6,6 +6,7 @@ struct MacClassTableCourseCell: View {
     let viewModel: ClassTableViewModel
     let course: CourseStore.Course
     var roomHint: String? = nil
+    var showsRooms = false
     var meeting: CourseTimeSlot? = nil
 
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
@@ -32,9 +33,8 @@ struct MacClassTableCourseCell: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if let roomHint {
-                let changedRoom = meeting.flatMap { $0.hasChangedRoom && !$0.isCancelled ? $0.room : nil }
-                (changedRoom.map(Text.changedRoom) ?? Text(roomHint).foregroundStyle(.secondary))
+            if let line = CourseRoomHint.roomLine(meeting: meeting, hint: roomHint, showsRooms: showsRooms) {
+                (line.isChanged ? Text.changedRoom(line.room) : Text(line.room).foregroundStyle(.secondary))
                     .font(.caption2)
                     .lineLimit(1)
                     .padding(.trailing, ignored ? Self.ignoredMarkSize + 6 : 0)

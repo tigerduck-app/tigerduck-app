@@ -107,6 +107,7 @@ struct MacClassTableGrid: View {
         case let .solo(course, spanCount):
             MacClassTableCourseCell(
                 viewModel: viewModel, course: course, roomHint: roomHint(course, weekday: weekday, periodId: periodId),
+                showsRooms: app.preferences.showClassroomInClassTable,
                 meeting: viewModel.changedMeeting(of: course, weekday: weekday, at: periodId, today: AppClock.now())
             )
                 .frame(height: blockHeight(spanCount))

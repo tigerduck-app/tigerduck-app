@@ -43,6 +43,8 @@ fails without the change:
 - a background refresh, a relaunch, the Watch, widgets and macOS
 - a return to the foreground: a refresh added to the first load runs there too
 - a write that failed: it is sent again without waiting for the server's revision to move
+- a per-period course change: a meeting whose changes cover only some of its periods, beside a
+  cancellation of some of them
 
 After every `await` that precedes a write, check `signIn.isCurrent` again before writing
 (`docs/decisions/0029-account-bound-writes.md`). A late result for an old sign-in writes nothing.
