@@ -23,15 +23,21 @@ start; 68% of the 5,807 reminders went out on a day with no start for that user.
   filed. Devices without a profile (released apps) and devices with course sync off keep today's
   uploaded schedule. Starts keep today's job keys, so the two sources never hold two starts of one
   class.
+- A start shows the course's custom name in the device's language, else the course name and
+  rooms of the stored course row. A `classPreparing` start to a device that reports a profile
+  plays the default sound; `inClass` stays silent.
 - Before going live, the backend compares what it would build with what apps upload (shadow
-  mode) and counts matches and differences per field.
+  mode) for at least a week and counts matches and differences per field.
 - **BREAKING (iOS)**: iOS 4.0.0 removes the class reminder setting, its stored defaults, its
-  sync of the `courses` section of the `notification` document, its What's New page and its debug
-  push. Devices that report a profile stop getting class reminders once the owner switches it on.
-- **BREAKING (backend)**: at a date the owner sets for released apps, the backend removes the
+  sync of the `courses` section of the `notification` document, its 2.4.0 What's New page and its
+  debug push, and says so in two What's New highlights. The reminder lead time maps to nothing.
+- Devices that report a profile get class reminders and starts side by side for two weeks after
+  the iOS 4.0.0 release, then no more class reminders.
+- **BREAKING (backend)**: when the iOS versions before 4.0.0 are retired, the backend removes the
   class reminder scan, its `course` push channel, its copy, settings, portal count and docs.
-- Each device's class starts no longer depend on when its app last ran. A device with Live
-  Activities off in iOS Settings or in the app gets nothing before class, as the owner accepted.
+- Each device's class starts no longer depend on when its app last ran. A device that cannot
+  show a Live Activity (off in iOS Settings or in the app, no push-to-start token) gets nothing
+  before class, with no note in the app, as the owner accepted.
 
 Out of scope:
 
@@ -41,7 +47,8 @@ Out of scope:
 - Stopping the iOS class event upload; 4.0.0 keeps it as the fallback for devices the backend
   does not serve and as the comparison input.
 - Updating a running activity by push, and Live Activity channels (broadcast).
-- New settings screens, and any change to the in-app Live Activity settings.
+- New settings screens, a sound switch, and any change to the in-app Live Activity settings.
+- Per-device course and classroom label settings on the backend.
 - Club activities: no class Live Activity covers them today.
 
 ## Capabilities

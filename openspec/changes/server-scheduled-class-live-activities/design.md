@@ -134,9 +134,9 @@ One function decides, for the scan, the upload route and the send-time check: pl
 iPad, not deleted, a profile with `enabled` and `authorized`, `cloud_sync_enabled`,
 `sync_courses`, an active `push_to_start` token, and mode `live` (D9). The cloud sync term is the
 backend half of `effectiveLiveActivityEnabled`; course sync makes `user_courses` this device's
-timetable. Losing options: serving with course sync off (the backend's rows may then not be what
-this device shows; open decision O6); requiring course-name sync (a name mismatch, not a wrong
-class; see O1).
+timetable. A device with course sync off keeps its uploaded schedule (O6). Losing options:
+serving with course sync off (the backend's rows may then not be what this device shows);
+requiring course-name sync (a name mismatch, not a wrong class; see O1).
 
 ### D4. Every field of a start, and what the backend lacks
 
@@ -145,9 +145,9 @@ class; see O1).
 | `attributes.activityId`, `activity_id` | `{scenario}::{sourceId}` | `dedupe.activity_id` | nothing |
 | `scenario` | resolver | set by the builder | nothing |
 | `sourceId` | slot id per fragment | `class_meetings` gives one run of periods per meeting and its first period; `course_no` NULL on some hand-added rows | fragments (D5); course number from `course_key` |
-| `title` | custom name in the device's course language, else `courseName` as relabelled on the device | `custom_names` (`zh`, `en`), `course_name` as last uploaded, catalog English name, `locale` | the device's label settings and `class-name-abbr.json` (O1) |
+| `title` | custom name in the device's course language, else `courseName` as relabelled on the device | `custom_names` (`zh`, `en`), `course_name` as last uploaded, catalog English name, `locale` | the stored row and custom name (O1, D5); the device's label settings and `class-name-abbr.json` stay on the device |
 | `subtitle` (`HH:mm - HH:mm`) | `AppConstants.PeriodTimes` start and end, course changes | period starts only, course changes | period end times (D5) |
-| `locationText` | room change, else `CourseBlockRoom.room` over the relabelled `classroomMap` | `classroom_map` and `classroom` as last uploaded, room change | the block-room rule (D5); label settings and `classroom-name-abbr.json` (O1) |
+| `locationText` | room change, else `CourseBlockRoom.room` over the relabelled `classroomMap` | `classroom_map` and `classroom` as last uploaded, room change | the block-room rule over the stored row (O1, D5); label settings and `classroom-name-abbr.json` stay on the device |
 | `instructor` | `SDCourse.instructor`, nil when blank | `instructors` (iOS uploads one) | nothing |
 | `countdownTarget`, `progressStart` | start, or end and start | from the times | nothing once end times exist |
 | `roomChanged`, `timeChanged` | set when a change applies | changes known; `recheck_class_start` sets neither | logic only (D5) |
@@ -158,7 +158,7 @@ class; see O1).
 | system permission | `areActivitiesEnabled` | a push-to-start token that outlives a later "off" | profile (D2) |
 | timetable | merged school and hand-added courses minus hidden | enrolled `user_courses` with hand-added rows; a hide deletes the row | nothing with course sync on; otherwise not served (D3, O6) |
 | class days | calendar, skipped dates, course changes | terms, holidays, opt-ins, skipped dates, course changes | nothing |
-| alert sound | none | none | open decision O2 |
+| alert sound | none | none | default sound on `classPreparing` to a profile device (O2, D13) |
 
 Club activities feed no class activity today, so nothing is missing for them. The course colour
 is not part of an activity.
@@ -182,6 +182,10 @@ It gains:
 - `CourseBlockRoom.room`: the period map's rooms for the fragment's periods, split on `、，,`,
   deduplicated in order, else the deduplicated flat classroom.
 - The snapshot builder for `classPreparing` and `inClass` with `roomChanged` and `timeChanged`.
+  Its title is `user_course_overrides.custom_names` in the device's course language, else the
+  row's `course_name`; the language comes from `user_devices.locale` the way
+  `LanguageManager.resolvedCourseApiLanguage` maps a tag (Chinese codes to `zh`, others to `en`).
+  Its instructor is the first of `instructors` (O1).
 
 Tests share fixtures with the app's `CourseMeeting` tests where they can, since this is a port
 across languages. Losing option: deriving an end as start plus 50 minutes (true of every period
@@ -258,11 +262,14 @@ iOS 4.0.0:
   `courses` section in `NotificationSettingsLocalPreferences`, `NotificationSettingsDocument`,
   `NotificationSettingsSync`, `NotificationSettingsReconcile` (no seeding) and
   `NotificationSettingsSyncer`; `.classReminderSettings` and `WhatsNewClassReminderDemo` from the
-  2.4.0 list (the replay would show a removed setting); the debug "Send class reminder" kind.
+  2.4.0 list (the replay would show a removed setting, O4); the debug "Send class reminder" kind.
   Then `check_macos_sources.py --write`, `docs/account-state.md` and ADR 0002.
-- Removes the three stored defaults once with a migration in `Migrations/`. Losing option:
-  leaving them (stored values no code knows, against the folder's purpose). The stored synced
-  copy decodes as before, since decoding ignores the extra keys.
+- Removes the three stored defaults once with a migration in `Migrations/`. The reminder lead
+  time maps to nothing (O3): the Live Activity lead stays what each device has. Losing option:
+  leaving the defaults (stored values no code knows, against the folder's purpose). The stored
+  synced copy decodes as before, since decoding ignores the extra keys.
+- Adds the two `whatsnew.json` highlights of the proposed text table at the release bump, which
+  alone sets `MARKETING_VERSION`; until then it stays 2.9.1.
 
 The `courses` section stays in each document with its values: iOS stops writing it, Android and
 released iOS apps keep reading and writing it, and the backend reads it until the scan goes.
@@ -272,13 +279,18 @@ Backend, in two steps:
 
 1. `class_reminders_skip_profile_devices` (default false): when true, the reminder scan treats an
    iPhone or iPad with a profile as no recipient, and the pipeline delivers no class reminder to
-   one. It takes effect only in mode `live`, so a rollback to `shadow` brings reminders back.
-2. At the owner's date (O8): delete `scan_course_reminders` and its job, `recheck_class_reminder`
-   and the pipeline's `course` channel branches, `build_course_reminder_payload`, the
-   `course_reminder_*` settings, the portal's `_CLASS_REMINDERS_ON` count, its status and user
-   page fields and the `course` labels, and the lines in `server/AGENTS.md`, `MIGRATE.md`,
-   `README.md`, `README.en.md` and `docs/push-notification-flows.drawio`. Terminal `course` jobs
-   age out through `push_job_retention_days`. The shared meeting module stays.
+   one. It takes effect only in mode `live`, so a rollback to `shadow` brings reminders back. It
+   stays false for two weeks from the iOS 4.0.0 release while both run, then is set true (O7).
+   Until then a 4.0.0 device follows the stored `courses.enabled`, which it can no longer change;
+   a document with no `courses` section counts as on, as today.
+2. In the deploy that retires the iOS versions before 4.0.0 (O8) through the version floor the
+   `course-roster-snapshot` change plans in its D10 (410 `app_version_retired`, not built yet):
+   delete `scan_course_reminders` and its job, `recheck_class_reminder` and the pipeline's
+   `course` channel branches, `build_course_reminder_payload`, the `course_reminder_*` settings,
+   the portal's `_CLASS_REMINDERS_ON` count, its status and user page fields and the `course`
+   labels, and the lines in `server/AGENTS.md`, `MIGRATE.md`, `README.md`, `README.en.md` and
+   `docs/push-notification-flows.drawio`. Terminal `course` jobs age out through
+   `push_job_retention_days`. The shared meeting module stays.
 
 Strings: none added or removed. `settings_class_reminder`, `settings_class_reminder_footer`,
 `settings_class_reminder_lead_time`, `notification_class_preparing_title`,
@@ -290,6 +302,16 @@ Strings: none added or removed. `settings_class_reminder`, `settings_class_remin
 
 The backend deploys first at each step; see Migration Plan.
 
+### D13. A class-preparing start sounds
+
+The scan, and the upload route for a device with a profile, put the routing key
+`alert_sound: "default"` on each `classPreparing` job; `build_apns_for_job` adds it to the start's
+`alert` as `sound` and strips it from the content state with the other routing keys. `inClass`
+starts, and jobs of devices without a profile, get none, so a released app that still gets its
+class reminder hears no second sound (O2). Losing options: the sound on every `classPreparing`
+start (released apps would sound twice per class); deciding at delivery (`build_apns_for_job`
+sees the token, not the device's profile).
+
 ## Risks / Trade-offs
 
 - [Apple budgets priority-10 ActivityKit pushes per hour and may throttle past it; the budget's
@@ -297,11 +319,17 @@ The backend deploys first at each step; see Migration Plan.
   priority; only the number of devices reached grows; watch APNs errors per hour.
 - [iOS drops a start for a device whose Live Activities were turned off in iOS Settings while the
   app has not run since] → counted as sent; the profile corrects it on the next activation; the
-  owner accepted no cue for such devices.
+  owner accepted no cue for such devices (O5).
 - [The backend's timetable is stale: an edit not yet uploaded, a new term no device has uploaded]
   → served only with course sync on; the check reads current rows; `roster_requests` keeps
   enrolment fresh; a new term's classes start once a device uploads them, as reminders do today.
-- [Labels differ from the device's] → shadow counts title and room differences (O1).
+- [Labels differ from the device's: another device's language or abbreviation settings, or a
+  course-name sync left off] → the stored row was chosen (O1); shadow counts title and room
+  differences, and a per-device label upload is the follow-up if they are many.
+- [A sounded start an hour before class, every class] → `inClass` stays silent; a sound switch
+  needs its own UI discussion (O2).
+- [Two cues per class for two weeks on 4.0.0 devices, start and reminder] → the parallel run's
+  price, accepted for its counts (O7).
 - [Load of the scan] → the reminder scan's query shape every 5 minutes over current-term enrolled
   courses (the reminder scan reached 505 users last week); it replaces that scan in the end.
 - [The 5 s pipeline tick] → an `inClass` start goes out up to one tick after its class starts, as
@@ -309,23 +337,33 @@ The backend deploys first at each step; see Migration Plan.
 - [A served device with no token, or one APNs drops] → files nothing, counted by reason.
 - [The debug clock] → server starts follow real time; a tester using the debug clock turns course
   sync off so the device falls back to its uploads.
-- [Released apps lose class reminders at O8's date] → decided with the owner; see O8.
+- [Users who never update lose class reminders] → only when their versions are retired, and
+  then each sync answers 410, which iOS shows as an update request (O8).
 
 ## Migration Plan
 
+0. Gate before backend PR 1: the Android maintainer agrees to the backend API change (the
+   `live_activity` object on the shared preferences request) and to removing the `course`
+   channel; asked over the agent tunnel on 2026-11-20.
 1. Backend PR 1, released as backend 4.7.0: D2's column and field, D5, D9 with the mode. Deploy
    with backup and checks; set the mode to `shadow`. Size M.
-2. Shadow for the period O9 sets; fix every `app_only` and time difference. Size S per fix.
-3. iOS PR: D2's report and D11's iOS part, and What's New per O4. Size M.
-4. Backend PR 2, released as backend 4.8.0: D6 to D8, D10, D11 step 1. Deploy before iOS 4.0.0 is
-   released and set the mode to `live`; it serves nothing until a device reports a profile. Size M.
-5. iOS 4.0.0 release.
-6. Parallel run per O7, then the owner sets `class_reminders_skip_profile_devices`. Size S.
-7. Backend PR 3 at O8's date: D11 step 2. Size S to M.
+2. Shadow for at least one week; it passes when a whole week after the last fix has no
+   `app_only` event and no difference in `subtitle`, `countdownTarget` or `progressStart` (O9).
+   Size S per fix.
+3. iOS PR: D2's report and D11's iOS part; `MARKETING_VERSION` stays 2.9.1. Size M.
+4. Backend PR 2, released as backend 4.8.0: D6 to D8, D10, D11 step 1, D13. Deploy before iOS
+   4.0.0 is released and set the mode to `live`; it serves nothing until a device reports a
+   profile. Size M.
+5. iOS 4.0.0 release bump: the version and the two highlights, approved word for word then.
+6. Two weeks from the iOS 4.0.0 release with starts and reminders side by side and weekly
+   counts; then `class_reminders_skip_profile_devices` is set true (O7). Size S.
+7. Backend PR 3, deployed with the retirement of the iOS versions before 4.0.0: D11 step 2 (O8).
+   Size S to M.
 
-Version numbers are as of today: backend 4.6.0 is the assignment reminder release (tigerduck-backend #271). Rollback: mode `shadow` stops the scan and gives class events
-back to every device's upload, and D8 cancels pending server starts as `not_served`; the reminder
-gate stops applying. The column stays.
+Version numbers are as of today: backend 4.6.0 is the assignment reminder release
+(tigerduck-backend #271). Rollback: mode `shadow` stops the scan and gives class events back to
+every device's upload, and D8 cancels pending server starts as `not_served`; the reminder gate
+stops applying. The column stays.
 
 Production counts to compare, counts only:
 
@@ -333,66 +371,43 @@ Production counts to compare, counts only:
 - Live, weekly, as the 2026-11-20 measurement: users with a served device; their class meetings
   the scan filed, `classPreparing` starts with a sent delivery, and starts cancelled by reason;
   user-days with a class reminder sent and no `classPreparing` sent to a served device; iOS 4.0.0
-  devices not served, by reason (in-app off, iOS off, no token, cloud or course sync off); users
-  sent a class reminder who have only released apps; tick duration and starts per hour.
+  devices not served, by reason (in-app off, iOS off, no token, cloud or course sync off); tick
+  duration and starts per hour.
+- Until the retirement, weekly: users sent a class reminder who have only released apps, and
+  iPhones and iPads below 4.0.0 seen in the last 14 days, which the owner reads to date it.
 
-## Owner decisions (open)
+## Owner decisions
 
-O1. What name and room does a backend-built start show?
-- (a) The stored course row (as the last uploading device showed it) and the custom name in the
-  device's language. (b) The device reports its three label settings; the backend takes names
-  per language from the course catalog and both abbreviation tables from one shared home, such as
-  the app-translation submodule. (c) The device uploads its label per course when it changes.
-- Recommendation: (a) for 4.0.0, since most accounts have one iPhone and its own upload is the
-  stored row; move to (c) if shadow shows material title or room differences.
+Decided by the owner on 2026-11-20, each as proposed.
 
-O2. What does a user who had the 10-minute banner get, and is there a sound?
-- (a) The Live Activity as the device has it: `classPreparing` 60 minutes ahead by default, alert
-  without sound. (b) (a) with the default sound on `classPreparing` starts, `inClass` silent.
-  (c) A sound switch on the Live Activity settings (new screen copy; Android has one).
-  (d) An alerting update of the running activity at the old reminder time.
-- Recommendation: (b): the start is the only cue left, and Android already sounds its class Live
-  Update when class reminders are off. (c) needs a UI discussion first; (d) depends on the app
-  registering the activity's update token, which is not reliable.
+- O1, labels: (a) the stored course row and the custom name in the device's language (D5),
+  measured in shadow. Why: most accounts have one iPhone, whose own upload is the stored row.
+  Lost: the device reporting its label settings to the backend; a per-course label upload.
+- O2, sound: (b) the default sound on `classPreparing` starts to profile devices, `inClass`
+  silent (D13). Why: the start is the only cue left, and Android already sounds its class Live
+  Update when class reminders are off. Lost: no sound; a sound switch (needs a UI discussion);
+  an alerting update at the old reminder time (depends on update token registration).
+- O3, reminder lead time: (a) maps to nothing (D11). Why: the activity's lead is the user's own
+  choice. Lost: copying the reminder lead into the activity lead once.
+- O4, What's New: (a) two `whatsnew.json` highlights, and the 2.4.0 class reminder page leaves
+  the replay (D11). Why: the house style is terse highlight lines. Lost: a feature page; nothing.
+- O5, devices that cannot show a Live Activity: (a) nothing (D3). Why: as the owner accepted for
+  Live Activities off in iOS Settings. Lost: reminders for those devices; a note in the app.
+- O6, course sync off: (a) the uploaded schedule (D3). Why: today's coverage, from the device's
+  own timetable. Lost: the account's timetable anyway; nothing.
+- O7, when 4.0.0 devices stop getting reminders: (b) after two weeks side by side from the
+  release (D11 step 1). Why: coverage measured on real devices with no second app release. Lost:
+  at release; keeping the setting until the next release.
+- O8, when released apps stop getting reminders: (c) when the iOS versions before 4.0.0 are
+  retired (D11 step 2). Why: those users are asked to update instead of losing reminders
+  silently. Lost: a fixed date; an adoption share.
+- O9, shadow: (a) at least one week, passing with no `app_only` event and no time difference
+  (Migration Plan step 2). Why: one full week covers every weekday's timetable. Lost: two weeks.
 
-O3. Does the class reminder lead time map to anything?
-- (a) No; the stored value is dropped. (b) Once, set the class-preparing lead to the reminder
-  lead for users with reminders on who never changed the Live Activity lead.
-- Recommendation: (a); (b) changes a setting the user chose for the activity.
+## Proposed text
 
-O4. What does iOS 4.0.0 say?
-- (a) Two highlights in `whatsnew.json` (text below). (b) A feature page with a demo.
-  (c) Nothing.
-- Recommendation: (a), and remove the 2.4.0 class reminder page from the replay.
-
-O5. What do users without a startable Live Activity get (in-app off, iOS off, no token)?
-- (a) Nothing, as accepted for iOS Settings off. (b) Class reminders for those devices only.
-  (c) A one-time note in the app.
-- Recommendation: (a), with the reasons counted in rollout.
-
-O6. What does a device with course sync off get?
-- (a) Its uploaded schedule, today's coverage. (b) Starts from the account's timetable anyway.
-  (c) Nothing.
-- Recommendation: (a).
-
-O7. When do iOS 4.0.0 devices stop getting class reminders?
-- (a) At release. (b) After a two-week parallel run with both, while iOS shows no reminder
-  setting (the stored on or off is still honoured). (c) iOS 4.0.0 keeps the setting; the next
-  release removes it after the run.
-- Recommendation: (b): coverage is measured on real devices without another app release.
-
-O8. When does the backend stop class reminders for released apps?
-- (a) A fixed date. (b) When a set share of reminder recipients report a profile. (c) With
-  retiring the released versions (410 `app_version_retired`).
-- Recommendation: (c): those users are told to update instead of silently losing reminders.
-
-O9. How long does shadow run, and what passes it?
-- (a) One week with no `app_only` event and no time difference after fixes. (b) Two weeks.
-- Recommendation: (a).
-
-## Proposed text (for the owner's approval)
-
-No localization key changes. `whatsnew.json`, 4.0.0 highlights (O4 (a)):
+No localization key changes. `whatsnew.json`, 4.0.0 highlights (O4). The owner approves them
+word for word at the release bump.
 
 | Key | zh-Hant | en |
 | --- | --- | --- |
@@ -405,3 +420,6 @@ No localization key changes. `whatsnew.json`, 4.0.0 highlights (O4 (a)):
 - How many iPhones and iPads have course sync off, Live Activities off in the app (never sent
   today) or in iOS Settings, or no push-to-start token. The first rollout counts answer it; the
   plan does not depend on it.
+- The date of the retirement O8 waits for. The version floor `course-roster-snapshot` plans in
+  its D10 is not built, and its minimum version and date are still open there; O8 needs the iOS
+  floor at 4.0.0 or later.

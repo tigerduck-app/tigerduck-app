@@ -96,6 +96,48 @@ countdown the app would show.
 - **WHEN** the app in the foreground started the class's activity and registered it before the start fired
 - **THEN** the backend's start is cancelled as already running
 
+### Requirement: A class start shows the stored labels
+
+A start the backend builds SHALL take its title from the course's custom name in the device's
+course language, Chinese for a Chinese locale and English otherwise, else from the course name of
+the stored course row, and its room from that row's classroom for the meeting's periods, unless a
+course change gives the meeting a new room.
+
+#### Scenario: Custom name in the device's language
+
+- **WHEN** the course has the custom names 程式 in Chinese and Prog in English and the device reports a zh-Hant locale
+- **THEN** the start's title is 程式
+
+#### Scenario: No custom name
+
+- **WHEN** the course has no custom name
+- **THEN** the start's title is the course name as the stored row holds it
+
+#### Scenario: Room change
+
+- **WHEN** a course change gives the meeting the room TR-313
+- **THEN** the start's room is TR-313 and it is marked as changed
+
+### Requirement: A class-preparing start sounds
+
+A `classPreparing` start to a device that reports a profile SHALL carry the default alert sound.
+An `inClass` start, and any start to a device that reports no profile, SHALL carry no sound.
+
+#### Scenario: Served device
+
+- **WHEN** a `classPreparing` start goes to a device that reports a profile
+- **THEN** its alert plays the default sound
+
+#### Scenario: In class
+
+- **WHEN** an `inClass` start goes to any device
+- **THEN** its alert has no sound
+
+#### Scenario: Released app
+
+- **WHEN** a `classPreparing` start a released app uploaded goes to its device
+- **THEN** its alert has no sound, as today
+
 ### Requirement: One source of class starts per device
 
 For a served device the backend SHALL ignore the class events its app uploads and SHALL NOT cancel
@@ -165,18 +207,44 @@ section of the `notification` document, and SHALL leave that section as it is fo
 - **WHEN** iOS 4.0.0 writes the `notification` document that holds a `courses` section
 - **THEN** the section keeps its values
 
+#### Scenario: The reminder lead time
+
+- **WHEN** a user had class reminders 30 minutes ahead and a 60-minute Live Activity lead time, and updates to iOS 4.0.0
+- **THEN** the Live Activity lead time stays 60 minutes
+
+#### Scenario: What's New replay
+
+- **WHEN** a user replays the What's New pages
+- **THEN** no class reminder page is shown
+
 ### Requirement: Class reminders end
 
-The backend SHALL send no class reminder to a device that reports a profile once the owner turns
-that on, and SHALL send no class reminder at all from the date the owner sets for released apps.
-It SHALL keep sending nothing on the `course` channel to Android, as today.
+The backend SHALL keep sending class reminders to a device that reports a profile for two weeks
+after the iOS 4.0.0 release, then SHALL send it none. It SHALL send no class reminder at all once
+the iOS versions before 4.0.0 are retired, and SHALL keep sending nothing on the `course` channel
+to Android, as today.
 
-#### Scenario: Device on iOS 4.0.0
+#### Scenario: During the two weeks
 
-- **WHEN** the owner has turned reminders off for profile devices and a user's only iPhone runs iOS 4.0.0
+- **WHEN** a user's iPhone runs iOS 4.0.0, is served, and the stored class reminder setting is on
+- **THEN** it gets both the class's starts and its class reminder
+
+#### Scenario: After the two weeks
+
+- **WHEN** reminders have stopped for devices that report a profile and a user's only iPhone runs iOS 4.0.0
 - **THEN** no class reminder is filed or sent to it
 
-#### Scenario: Released app before the date
+#### Scenario: A device that cannot show a Live Activity
 
-- **WHEN** a user's only iPhone runs a released app and the owner's date has not come
+- **WHEN** reminders have stopped for devices that report a profile and an iPhone reports a profile in which iOS does not allow Live Activities
+- **THEN** it gets neither a class start nor a class reminder
+
+#### Scenario: Released app before retirement
+
+- **WHEN** a user's only iPhone runs a released app and versions before 4.0.0 are not retired yet
 - **THEN** class reminders are sent to it as today
+
+#### Scenario: Released app after retirement
+
+- **WHEN** the iOS versions before 4.0.0 are retired
+- **THEN** no class reminder is filed or sent to any device
