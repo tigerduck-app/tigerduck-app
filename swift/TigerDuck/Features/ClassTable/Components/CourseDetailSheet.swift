@@ -35,7 +35,8 @@ struct CourseDetailSheet: View {
                     VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
                         headerSection
                         CourseDetailRoomAndTime(
-                            course: course, times: times, weekday: weekday, periods: periods, meeting: shownMeeting
+                            course: course, times: times, weekday: weekday, periods: periods, meeting: shownMeeting,
+                            policy: app.preferences.visualStylePolicy
                         )
                         CourseDetailInfoRows(course: course)
                         if date != nil {
@@ -69,6 +70,7 @@ struct CourseDetailSheet: View {
                 }
             }
         }
+        .toastHost()
         .task(id: moodleKey) { [moodleKey] in
             moodle = showsMoodle
                 ? CourseMoodleDestination.store(for: course, authService: app.authService, signIn: moodleKey.signIn) : nil

@@ -27,7 +27,7 @@ struct ClubScreensTests {
     static let monday = Date(timeIntervalSince1970: 1_793_548_800)
     static let dates = (0..<7).map { monday.addingTimeInterval(Double($0) * 86_400) }
 
-    static func show(_ view: some View, look: Look, height: CGFloat = 812) throws -> UIWindow {
+    static func show(_ view: some View, look: Look, width: CGFloat = ClubScreensTests.width, height: CGFloat = 812) throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: width, height: height)

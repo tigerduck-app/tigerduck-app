@@ -1,10 +1,5 @@
 import SwiftUI
 import TigerDuckCore
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 struct CourseDetailRoomAndTime: View {
     let course: CourseStore.Course
@@ -12,24 +7,23 @@ struct CourseDetailRoomAndTime: View {
     let weekday: Int?
     let periods: [String]?
     let meeting: CourseTimeSlot?
-
-    @Environment(AppEnvironment.self) private var app
+    let policy: VisualStylePolicy
 
     var body: some View {
         let time = Self.time(of: course, times: times, weekday: weekday, meeting: meeting)
         EmphasisCards {
-            EmphasisCard(
-                label: String(localized: "course_detail_classroom_label"),
-                value: meeting?.hasChangedRoom == true ? meeting?.room ?? classroomValue : classroomValue,
+            LocationCard(
+                label: String(localized: "course_detail_location_label"),
+                location: location,
                 isChanged: meeting?.hasChangedRoom == true,
-                policy: app.preferences.visualStylePolicy
+                policy: policy
             )
             EmphasisCard(
                 label: String(localized: "course_detail_time_label"),
                 value: time.text,
                 spokenValue: time.spoken,
                 isChanged: time.isChanged,
-                policy: app.preferences.visualStylePolicy
+                policy: policy
             )
         }
     }
@@ -49,9 +43,9 @@ struct CourseDetailRoomAndTime: View {
         return (TimeRange.text(shown.start, shown.end), TimeRange.spoken(shown.start, shown.end), false)
     }
 
-    private var classroomValue: String {
-        let resolved = Self.classroom(of: course, weekday: weekday, periods: periods)
-        return resolved.isEmpty ? "—" : resolved
+    private var location: String {
+        if let meeting, meeting.hasChangedRoom { return meeting.room }
+        return Self.classroom(of: course, weekday: weekday, periods: periods)
     }
 
     static func classroom(of course: CourseStore.Course, weekday: Int?, periods: [String]?) -> String {
@@ -65,21 +59,17 @@ struct CourseDetailRoomAndTime: View {
 struct CourseDetailInfoRows: View {
     let course: CourseStore.Course
 
-    @State private var codeCopied = false
-    @State private var copyFeedback = 0
-
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
             DetailInfoRow(
                 label: String(localized: "course_detail_instructor_label"),
                 value: course.instructor.isEmpty ? "—" : course.instructor
             )
-            DetailInfoRow(
-                label: String(localized: "course_detail_code_label"),
-                value: course.courseNo,
-                copied: codeCopied,
-                onTap: copyCourseCode
-            )
+            let codeLabel = String(localized: "course_detail_code_label")
+            DetailInfoRow(label: codeLabel, value: course.courseNo, showsCopyGlyph: true)
+                .copiesOnTap(
+                    course.courseNo, labeled: codeLabel, hint: "course_detail_copy_code", toast: "course_detail_code_copied"
+                )
             if !course.dimension.isEmpty {
                 DetailInfoRow(
                     label: String(localized: "course_detail_dimension_label"),
@@ -108,7 +98,6 @@ struct CourseDetailInfoRows: View {
             )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .sensoryFeedback(.success, trigger: copyFeedback)
     }
 
     private var durationText: String? {
@@ -124,26 +113,6 @@ struct CourseDetailInfoRows: View {
         case "R": return String(localized: "course_detail_require_option_required")
         case "E": return String(localized: "course_detail_require_option_elective")
         default: return nil
-        }
-    }
-
-    private func copyCourseCode() {
-        #if canImport(UIKit)
-        UIPasteboard.general.string = course.courseNo
-        #elseif canImport(AppKit)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(course.courseNo, forType: .string)
-        #endif
-        copyFeedback += 1
-        AccessibilityNotification.Announcement(
-            String(localized: "course_detail_code_copied")
-        ).post()
-        let generation = copyFeedback
-        withAnimation { codeCopied = true }
-        Task { @MainActor in
-            try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.5))
-            guard copyFeedback == generation else { return }
-            withAnimation { codeCopied = false }
         }
     }
 }
@@ -191,39 +160,71 @@ struct EmphasisCard: View {
     }
 }
 
+struct LocationCard: View {
+    let label: String
+    let location: String
+    var isChanged = false
+    let policy: VisualStylePolicy
+
+    var body: some View {
+        let shown = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        if shown.isEmpty {
+            EmphasisCard(label: label, value: "—", isChanged: isChanged, policy: policy)
+        } else {
+            EmphasisCard(label: label, value: shown, isChanged: isChanged, policy: policy)
+                .copiesOnTap(shown, labeled: label, hint: "class_table_copy_location", toast: "class_table_location_copied")
+        }
+    }
+}
+
+extension View {
+    /// Shows `toast` through the nearest `toastHost()` above it.
+    func copiesOnTap(
+        _ text: String, labeled label: String, hint: LocalizedStringResource, toast: LocalizedStringResource
+    ) -> some View {
+        modifier(CopyOnTap(text: text, label: label, hint: hint, toast: toast))
+    }
+}
+
+private struct CopyOnTap: ViewModifier {
+    let text: String
+    let label: String
+    let hint: LocalizedStringResource
+    let toast: LocalizedStringResource
+
+    @Environment(\.showToast) private var showToast
+    @State private var copies = 0
+
+    func body(content: Content) -> some View {
+        Button {
+            Pasteboard.copy(text)
+            copies += 1
+            showToast(toast)
+        } label: {
+            content
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "\(label), \(text)"))
+        .accessibilityHint(Text(hint))
+        .sensoryFeedback(.success, trigger: copies)
+    }
+}
+
 struct DetailInfoRow: View {
     let label: String
     let value: String
-    var copied: Bool = false
-    var onTap: (() -> Void)? = nil
+    var showsCopyGlyph = false
 
     var body: some View {
-        if let onTap {
-            Button(action: onTap) { content }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("\(label), \(value)"))
-                .accessibilityHint(Text(String(localized: "course_detail_copy_code")))
-        } else {
-            content
-        }
-    }
-
-    private var content: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textSecondary)
             Spacer()
-            if onTap != nil {
-                if copied {
-                    Image(systemName: "checkmark")
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(.tint)
-                } else {
-                    Image(systemName: "doc.on.doc")
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(Color.textSecondary)
-                }
+            if showsCopyGlyph {
+                Image(systemName: "doc.on.doc")
+                    .font(TigerDuckTheme.Typography.caption)
+                    .foregroundStyle(Color.textSecondary)
             }
             Text(value)
                 .font(TigerDuckTheme.Typography.body)
