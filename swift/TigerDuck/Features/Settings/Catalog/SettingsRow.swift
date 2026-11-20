@@ -7,10 +7,10 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
     case tigerSync
     case notificationPermissions
     case language
-    case apiEndpoint, storage
+    case appIcon, apiEndpoint, storage
     case version, checkForUpdates, serverStatus, whatsNew, website, aboutOthers
     case showFullDueDate, invertSlider, assignmentReminders, liveActivity
-    case pinTodayCourses, showClassroom, outlineRequiredCourses, showAllPeriods, courseNameSize, classReminders
+    case classTableList, pinTodayCourses, showClassroom, outlineRequiredCourses, showAllPeriods, courseNameSize, classReminders
     case englishCourseNames, englishClassroomNames, mandarinClassroomNames, reassignCourseColors
     case bulletinPush
     case mailNotifications, mailDisplayName, mailStorage
@@ -37,6 +37,7 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
         case .tigerSync: "cloud_sync_title"
         case .notificationPermissions: "notification_permission_settings_nav_title"
         case .language: "settings_language"
+        case .appIcon: "settings_app_icon"
         case .apiEndpoint: "settings_api_endpoint"
         case .storage, .mailStorage, .websiteData, .moodleStorage: "settings_storage_title"
         case .version: "settings_version"
@@ -49,6 +50,7 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
         case .invertSlider: "settings_invert_slider_direction"
         case .assignmentReminders: "settings_assignment_due_reminder"
         case .liveActivity: "live_activity_settings_nav_title"
+        case .classTableList: "class_table_list_title"
         case .pinTodayCourses: "settings_class_table_pin_today"
         case .showClassroom: "settings_class_table_show_classroom"
         case .outlineRequiredCourses: "settings_class_table_outline_required"

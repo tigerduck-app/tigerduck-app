@@ -46,6 +46,7 @@ python3 tools/check_macos_sources.py
 python3 tools/check_privacy_manifests.py
 python3 tools/localization/check_keys.py
 python3 tools/generate_licenses.py --check
+python3 tools/generate_app_icon_previews.py --check
 python3 -m unittest discover -s tools -p 'test_*.py'
 ```
 
@@ -71,6 +72,12 @@ the same build folder.
 - The app and Watch app targets, unlike the others, default to `@MainActor`
   (`SWIFT_DEFAULT_ACTOR_ISOLATION`). Mark a type used off the main actor there `nonisolated`, or
   its synthesized conformances are main-actor isolated.
+- App icons are Icon Composer documents in `swift/AppIcons/`, a synchronized folder: the build
+  ships `ASSETCATALOG_COMPILER_APPICON_NAME`'s as the primary and every other one as an
+  alternate. A document's PascalCase name is its asset name and the alternate icon name devices
+  store, so a released one is never renamed; its layer images are snake_case with a two-digit
+  back-to-front index (`00_background.png`). A new one also takes an `AppIcon` case, an
+  `app_icon_name_*` key and `python3 tools/generate_app_icon_previews.py`.
 - After adding, moving or deleting an app-target Swift file, run
   `python3 tools/check_macos_sources.py --write`, listing the file in
   `tools/macos-excluded-sources.txt` first if macOS must not compile it. The script owns the

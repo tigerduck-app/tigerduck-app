@@ -876,5 +876,23 @@
         { "symbol": "square.grid.2x2", "title": "Widgets and Apple Watch", "body": "Redesigned timetable widgets, and the Watch shows class times, countdowns and rooms." }
       ]
     }
+  },
+  "4.0.1": {
+    "zh-TW": {
+      "title": "4.0.1 更新內容",
+      "items": [
+        { "symbol": "paintpalette", "title": "程式圖標", "body": "可自由調整程式圖標。" },
+        { "symbol": "calendar", "title": "課表切換", "body": "更加客製化，能夠調整顯示的順序與折疊。" },
+        { "symbol": "doc.on.doc", "title": "課程資訊", "body": "針對常用資訊，點擊可以直接複製。並最佳化拖動邏輯。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 4.0.1",
+      "items": [
+        { "symbol": "paintpalette", "title": "App icon", "body": "Choose your own app icon." },
+        { "symbol": "calendar", "title": "Class table switching", "body": "More customizable, with your own order and which tables fold away." },
+        { "symbol": "doc.on.doc", "title": "Course details", "body": "Tap common details to copy them, and dragging works better." }
+      ]
+    }
   }
 }

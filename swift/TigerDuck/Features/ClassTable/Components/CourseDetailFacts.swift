@@ -61,15 +61,8 @@ struct CourseDetailInfoRows: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-            DetailInfoRow(
-                label: String(localized: "course_detail_instructor_label"),
-                value: course.instructor.isEmpty ? "—" : course.instructor
-            )
-            let codeLabel = String(localized: "course_detail_code_label")
-            DetailInfoRow(label: codeLabel, value: course.courseNo, showsCopyGlyph: true)
-                .copiesOnTap(
-                    course.courseNo, labeled: codeLabel, hint: "course_detail_copy_code", toast: "course_detail_code_copied"
-                )
+            CopyableDetailRow.instructor(course.instructor)
+            CopyableDetailRow.code(course.courseNo)
             if !course.dimension.isEmpty {
                 DetailInfoRow(
                     label: String(localized: "course_detail_dimension_label"),
@@ -167,22 +160,27 @@ struct LocationCard: View {
     let policy: VisualStylePolicy
 
     var body: some View {
-        let shown = location.trimmingCharacters(in: .whitespacesAndNewlines)
-        if shown.isEmpty {
-            EmphasisCard(label: label, value: "—", isChanged: isChanged, policy: policy)
-        } else {
-            EmphasisCard(label: label, value: shown, isChanged: isChanged, policy: policy)
-                .copiesOnTap(shown, labeled: label, hint: "class_table_copy_location", toast: "class_table_location_copied")
+        CopyableValue(text: location, label: label, hint: "class_table_copy_location", toast: "class_table_location_copied") {
+            EmphasisCard(label: label, value: $0, isChanged: isChanged, policy: policy)
         }
     }
 }
 
-extension View {
-    /// Shows `toast` through the nearest `toastHost()` above it.
-    func copiesOnTap(
-        _ text: String, labeled label: String, hint: LocalizedStringResource, toast: LocalizedStringResource
-    ) -> some View {
-        modifier(CopyOnTap(text: text, label: label, hint: hint, toast: toast))
+/// The copy shows `toast` through the nearest `toastHost()` above it.
+struct CopyableValue<Content: View>: View {
+    let text: String
+    let label: String
+    let hint: LocalizedStringResource
+    let toast: LocalizedStringResource
+    @ViewBuilder let content: (String) -> Content
+
+    var body: some View {
+        let shown = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if shown.isEmpty {
+            content("—")
+        } else {
+            content(shown).modifier(CopyOnTap(text: shown, label: label, hint: hint, toast: toast))
+        }
     }
 }
 
@@ -213,7 +211,6 @@ private struct CopyOnTap: ViewModifier {
 struct DetailInfoRow: View {
     let label: String
     let value: String
-    var showsCopyGlyph = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -221,11 +218,6 @@ struct DetailInfoRow: View {
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textSecondary)
             Spacer()
-            if showsCopyGlyph {
-                Image(systemName: "doc.on.doc")
-                    .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(Color.textSecondary)
-            }
             Text(value)
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textPrimary)
@@ -234,5 +226,37 @@ struct DetailInfoRow: View {
         // Without this the button only reacts on the label and value text,
         // not on the gap between them.
         .contentShape(Rectangle())
+    }
+}
+
+struct CopyableDetailRow: View {
+    let label: String
+    let value: String
+    let hint: LocalizedStringResource
+    let toast: LocalizedStringResource
+
+    var body: some View {
+        CopyableValue(text: value, label: label, hint: hint, toast: toast) { DetailInfoRow(label: label, value: $0) }
+    }
+
+    static func instructor(_ instructor: String) -> CopyableDetailRow {
+        CopyableDetailRow(
+            label: String(localized: "course_detail_instructor_label"), value: instructor,
+            hint: "course_detail_copy_instructor", toast: "course_detail_instructor_copied"
+        )
+    }
+
+    static func code(_ courseNo: String) -> CopyableDetailRow {
+        CopyableDetailRow(
+            label: String(localized: "course_detail_code_label"), value: courseNo,
+            hint: "course_detail_copy_code", toast: "course_detail_code_copied"
+        )
+    }
+
+    static func location(_ classroom: String) -> CopyableDetailRow {
+        CopyableDetailRow(
+            label: String(localized: "course_detail_location_label"), value: classroom,
+            hint: "class_table_copy_location", toast: "class_table_location_copied"
+        )
     }
 }

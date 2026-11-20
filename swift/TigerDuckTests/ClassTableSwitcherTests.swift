@@ -39,7 +39,7 @@ struct ClassTableSwitcherTests {
         return People(store: store, ming: ming, hua: hua)
     }
 
-    @Test("the switcher lists import first, then the people in import order, then the user")
+    @Test("the switcher lists import first, then the user followed by the rotation in its order")
     func rowsInOrder() throws {
         let people = try Self.people(Folder())
         people.store.show(people.hua.id)
@@ -47,11 +47,37 @@ struct ClassTableSwitcherTests {
         #expect(ClassTableSwitcherEntry.sections(in: people.store, userName: "B11300000") == [
             [.importClassTable],
             [
+                .user(name: "B11300000", isShown: false),
                 .person(id: people.ming.id, nickname: "Ming", isShown: false),
                 .person(id: people.hua.id, nickname: "Hua", isShown: true),
             ],
-            [.user(name: "B11300000", isShown: false)],
         ])
+    }
+
+    @Test("the long-press people follow as a group, and Other last as a submenu, each only with someone in it",
+          arguments: [ImportedPerson.Placement.longPressMenu, .other])
+    func longPressAndOtherSections(placement: ImportedPerson.Placement) throws {
+        let people = try Self.people(Folder())
+        let wei = try #require(people.store.add(Self.code("B11300003"), nickname: "Wei", courses: [:], for: testSignIn))
+        people.store.move(people.ming.id, to: placement, before: nil, for: testSignIn)
+        people.store.show(people.ming.id)
+
+        let ming = ClassTableSwitcherEntry.person(id: people.ming.id, nickname: "Ming", isShown: true)
+        let rest: [ClassTableSwitcherEntry] = [
+            .user(name: "B11300000", isShown: false),
+            .person(id: people.hua.id, nickname: "Hua", isShown: false),
+            .person(id: wei.id, nickname: "Wei", isShown: false),
+        ]
+        #expect(ClassTableSwitcherEntry.sections(in: people.store, userName: "B11300000") == [
+            [.importClassTable], rest, placement == .other ? [.others([ming])] : [ming],
+        ])
+
+        people.store.move(wei.id, to: placement == .other ? .longPressMenu : .other, before: nil, for: testSignIn)
+        let wei2 = ClassTableSwitcherEntry.person(id: wei.id, nickname: "Wei", isShown: false)
+        #expect(ClassTableSwitcherEntry.sections(in: people.store, userName: "B11300000") == [
+            [.importClassTable], Array(rest.prefix(2)), placement == .other ? [wei2] : [ming], [.others([placement == .other ? ming : wei2])],
+        ])
+        #expect(ClassTableSwitcherEntry.others([ming]).title == String(localized: "class_table_list_section_other"))
     }
 
     @Test("with nobody imported the switcher offers the import and the user's own class table")
@@ -90,23 +116,40 @@ struct ClassTableSwitcherTests {
         #expect(people.store.shownPersonID == nil)
     }
 
-    @Test("the tab bar's menu keeps the user's row next to the tab", arguments: [true, false])
+    @Test("the tab bar's menu keeps Add class table farthest from the tab, and Other's people in their order",
+          arguments: [true, false])
     func tabMenuOrder(opensUpward: Bool) throws {
         let people = try Self.people(Folder())
-        people.store.show(people.ming.id)
+        let wei = try #require(people.store.add(Self.code("B11300003"), nickname: "Wei", courses: [:], for: testSignIn))
+        let lin = try #require(people.store.add(Self.code("B11300004"), nickname: "Lin", courses: [:], for: testSignIn))
+        people.store.move(people.hua.id, to: .longPressMenu, before: nil, for: testSignIn)
+        people.store.move(wei.id, to: .other, before: nil, for: testSignIn)
+        people.store.move(lin.id, to: .other, before: nil, for: testSignIn)
+        people.store.show(lin.id)
+        var chosen: [String] = []
 
         let menu = ClassTableTabBarHandler.menu(
             ClassTableSwitcherEntry.sections(in: people.store, userName: "B11300000"),
             opensUpward: opensUpward
-        ) { _ in }
+        ) { chosen.append($0.title) }
 
         let sections = menu.children.compactMap { $0 as? UIMenu }
-        let rows = sections.map { $0.children.compactMap { $0 as? UIAction } }
-        let expected = [[String(localized: "class_table_import")], ["Ming", "Hua"], ["B11300000"]]
-        #expect(rows.map { $0.map(\.title) } == (opensUpward ? expected : expected.reversed().map { $0.reversed() }))
+        let titles = sections.map { $0.children.map(\.title) }
+        let other = String(localized: "class_table_list_section_other")
+        let expected = [[String(localized: "class_table_import")], ["B11300000", "Ming"], ["Hua"], [other]]
+        #expect(titles == (opensUpward ? expected : expected.reversed().map { $0.reversed() }))
         #expect(sections.count == menu.children.count)
         #expect(sections.allSatisfy { $0.options.contains(.displayInline) })
-        #expect(rows.joined().filter { $0.state == .on }.map(\.title) == ["Ming"])
+        let submenu = try #require(sections.flatMap(\.children).compactMap { $0 as? UIMenu }.first)
+        #expect(!submenu.options.contains(.displayInline))
+        let others = submenu.children.compactMap { $0 as? UIAction }
+        #expect(others.map(\.title) == ["Wei", "Lin"])
+        #expect(others.filter { $0.state == .on }.map(\.title) == ["Lin"])
+        let actions = sections.flatMap(\.children).compactMap { $0 as? UIAction }
+        #expect(actions.filter { $0.state == .on }.isEmpty)
+
+        others.first?.performWithSender(nil, target: nil)
+        #expect(chosen == ["Wei"])
     }
 
     private struct Tabs: View {
@@ -138,10 +181,18 @@ struct ClassTableSwitcherTests {
         let tab: CGRect
     }
 
-    private func host(_ store: ImportedClassTableStore, requestImport: @escaping () -> Void = {}) async throws -> Hosted {
+    private func host(
+        _ store: ImportedClassTableStore, width: CGFloat? = nil, look: ClubScreensTests.Look? = nil,
+        requestImport: @escaping () -> Void = {}
+    ) async throws -> Hosted {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
+        if let width { window.frame.size.width = width }
+        if let look {
+            window.overrideUserInterfaceStyle = look.style
+            window.traitOverrides.preferredContentSizeCategory = look.textSize
+        }
         window.rootViewController = UIHostingController(
             rootView: Tabs(store: store).environment(\.requestClassTableImport, requestImport)
         )
@@ -187,9 +238,9 @@ struct ClassTableSwitcherTests {
         let people = try Self.people(Folder())
         let here = Count()
         let elsewhere = Count()
-        let hosted = try await host(people.store) { here.value += 1 }
+        let hosted = try await host(people.store, requestImport: { here.value += 1 })
         defer { hosted.window.isHidden = true }
-        let other = try await host(people.store) { elsewhere.value += 1 }
+        let other = try await host(people.store, requestImport: { elsewhere.value += 1 })
         defer { other.window.isHidden = true }
 
         ClassTableSwitcherEntry.importClassTable.choose(in: people.store, requestImport: hosted.handler.requestImport)
@@ -235,7 +286,7 @@ struct ClassTableSwitcherTests {
         #expect(people.store.shownPersonID == nil)
     }
 
-    @Test("a double tap after a pause goes back to the class table before; quick ones step through the list")
+    @Test("a double tap over 1.5 s after the last goes back to the class table before; quicker ones step through the list")
     func doubleTapGoesBackAfterAPause() async throws {
         let people = try Self.people(Folder())
         let hosted = try await host(people.store)
@@ -247,10 +298,10 @@ struct ClassTableSwitcherTests {
 
         hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start)
         #expect(people.store.shownPersonID == people.ming.id)
-        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .seconds(2))
+        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .milliseconds(1500))
         #expect(people.store.shownPersonID == people.hua.id)
-        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .seconds(4))
-        #expect(people.store.shownPersonID == nil)
+        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .milliseconds(3100))
+        #expect(people.store.shownPersonID == people.ming.id)
         hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .seconds(8))
         #expect(people.store.shownPersonID == people.hua.id)
     }
@@ -333,6 +384,89 @@ struct ClassTableSwitcherTests {
         let readOnly = window.convert(CGPoint(x: 195, y: 300), to: host)
         #expect(menus.delegate?.contextMenuInteraction(menus, configurationForMenuAtLocation: editable) != nil)
         #expect(menus.delegate?.contextMenuInteraction(menus, configurationForMenuAtLocation: readOnly) == nil)
+    }
+
+    /// Ming in the rotation, Hua in the long-press menu, and Wei and Lin in Other.
+    private static func everyPlacement(_ folder: Folder, names: [String] = ["Ming", "Hua", "Wei", "Lin"]) throws -> ImportedClassTableStore {
+        let store = ImportedClassTableStore(fileURL: folder.file, signedInStudentId: { "B11300000" })
+        let ids = try names.enumerated().map { index, name in
+            try #require(store.add(code("B1130000\(index + 1)"), nickname: name, courses: [:], for: testSignIn)).id
+        }
+        store.move(ids[1], to: .longPressMenu, before: nil, for: testSignIn)
+        store.move(ids[2], to: .other, before: nil, for: testSignIn)
+        store.move(ids[3], to: .other, before: nil, for: testSignIn)
+        return store
+    }
+
+    private static func menuItem(_ label: String, in window: UIWindow) -> NSObject? {
+        exposedAccessibilityElements(in: window).first { $0.accessibilityLabel == label && $0.accessibilityTraits.contains(.button) }
+    }
+
+    private static func center(of item: NSObject, in window: UIWindow) -> CGPoint {
+        let frame = item.accessibilityFrame
+        return window.convert(CGPoint(x: frame.midX, y: frame.midY), from: window.screen.coordinateSpace)
+    }
+
+    private func pressTab(_ hosted: Hosted, until label: String) async throws -> (Finger, CGPoint) {
+        let start = hosted.bar.convert(CGPoint(x: hosted.tab.midX, y: hosted.tab.midY), to: hosted.window)
+        let finger = try Finger(in: hosted.window)
+        try finger.down(at: start)
+        try await waitUntil(timeout: .seconds(10)) { Self.menuItem(label, in: hosted.window) != nil }
+        return (finger, start)
+    }
+
+    @Test("a finger that presses the tab, slides onto an item and lifts there runs it, inside Other too",
+          arguments: ["import", "Ming", "Hua", "Lin"])
+    func pressSlideAndLift(target: String) async throws {
+        try await withAccessibilityAutomation {
+            let store = try Self.everyPlacement(Folder())
+            let imports = Count()
+            let hosted = try await host(store, requestImport: { imports.value += 1 })
+            defer { hosted.window.isHidden = true }
+            let other = String(localized: "class_table_list_section_other")
+            let first = target == "import" ? String(localized: "class_table_import") : target == "Lin" ? other : target
+
+            let (finger, start) = try await pressTab(hosted, until: first)
+            var at = Self.center(of: try #require(Self.menuItem(first, in: hosted.window)), in: hosted.window)
+            try await finger.slide(from: start, to: at, steps: 16)
+            if target == "Lin" {
+                try await waitUntil(timeout: .seconds(10)) { Self.menuItem("Lin", in: hosted.window) != nil }
+                try await Task.sleep(for: .milliseconds(500))
+                let lin = Self.center(of: try #require(Self.menuItem("Lin", in: hosted.window)), in: hosted.window)
+                try await finger.slide(from: at, to: lin, steps: 12)
+                at = lin
+            }
+            try await Task.sleep(for: .milliseconds(300))
+            try finger.up(at: at)
+
+            if target == "import" {
+                try await waitUntil(timeout: .seconds(5)) { imports.value == 1 }
+                #expect(store.shownPersonID == nil)
+            } else {
+                try await waitUntil(timeout: .seconds(5)) { store.shownPerson?.nickname == target }
+                #expect(imports.value == 0)
+            }
+        }
+    }
+
+    @Test("the tab's menu with long nicknames, at both phone widths and in each look",
+          arguments: ClubScreensTests.looks, [CGFloat(375), 402])
+    func menuSnapshots(look: ClubScreensTests.Look, width: CGFloat) async throws {
+        try await withAccessibilityAutomation {
+            let names = ["Wolfeschlegelsteinhausenbergerdorff from the Club", "王小明的室友兼社團學長兼家教學生", "Wei", "Lin"]
+            let store = try Self.everyPlacement(Folder(), names: names)
+            let hosted = try await host(store, width: width, look: look)
+            defer { hosted.window.isHidden = true }
+
+            let (finger, start) = try await pressTab(hosted, until: names[1])
+            try await Task.sleep(for: .milliseconds(600))
+            let language = Bundle.main.preferredLocalizations.first ?? "en"
+            hosted.window.saveSnapshot(
+                as: "class-table-menu-\(look.testDescription)-\(Int(width))-\(language)-\(UIDevice.current.systemVersion)"
+            )
+            #expect(Self.menuItem(String(localized: "class_table_import"), in: hosted.window) != nil)
+            try finger.up(at: start)
+        }
     }
 
     private static func views(in view: UIView) -> [UIView] {

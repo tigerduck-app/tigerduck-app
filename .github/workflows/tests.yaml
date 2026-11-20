@@ -59,6 +59,7 @@ jobs:
               TigerDuckTests/MailMessageViewModelTests/theWebViewIsLockedDown()
               TigerDuckTests/MailReadableHTMLTests/theLinkColourIsWebKitsOwn(theme:)
               TigerDuckTests/AccentGradientScreenTests
+              TigerDuckTests/AppIconSettingsScreenTests
               TigerDuckTests/ArchiveScreensTests
               TigerDuckTests/MailSendHoldScreenTests
               TigerDuckTests/BrowserAddressSheetTests
@@ -73,11 +74,14 @@ jobs:
               TigerDuckTests/BrowserSiteSignInPageTests
               TigerDuckTests/CalendarDayListScreenTests
               TigerDuckTests/ClassTableCalendarMenuTests
+              TigerDuckTests/ClassTableListTests
               TigerDuckTests/ClassTableShareSheetTests
               TigerDuckTests/ClassTableSwitcherTests
               TigerDuckTests/ClassTableWeekHeaderTests
               TigerDuckTests/ClubScreensTests
               TigerDuckTests/CopyToastScreenTests
+              TigerDuckTests/ScoreCourseSheetScreenTests
+              TigerDuckTests/SheetFlickTests
               TigerDuckTests/CourseColorPickerSheetTests
               TigerDuckTests/CourseDetailRootBarTests
               TigerDuckTests/CourseSyllabusPageTests

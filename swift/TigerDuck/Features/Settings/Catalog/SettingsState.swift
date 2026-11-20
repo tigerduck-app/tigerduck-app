@@ -18,6 +18,7 @@ nonisolated struct SettingsState: Equatable, Sendable {
     var hasWhatsNew = false
     var hasMoodleApp = false
     var isCheckingForUpdate = false
+    var hasImportedClassTables = false
 }
 
 extension EnvironmentValues {

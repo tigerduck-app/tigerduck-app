@@ -7,11 +7,54 @@ import UIKit
 // https://github.com/lyft/Hammer makes.
 @MainActor
 func fingerTap(at point: CGPoint, in window: UIWindow, holding: Duration = .milliseconds(50)) async throws {
-    let digitizer = try Digitizer()
-    Digitizer.lastTouchID += 1
-    try digitizer.send(touch: Digitizer.lastTouchID, at: point, isDown: true, to: window)
+    let finger = try Finger(in: window)
+    try finger.down(at: point)
     try await Task.sleep(for: holding)
-    try digitizer.send(touch: Digitizer.lastTouchID, at: point, isDown: false, to: window)
+    try finger.up(at: point)
+}
+
+/// One finger that stays down while it slides, for a press that opens a menu and picks from it.
+@MainActor
+struct Finger {
+    private let digitizer: Digitizer
+    private let touch: UInt32
+    private let window: UIWindow
+
+    init(in window: UIWindow) throws {
+        digitizer = try Digitizer()
+        Digitizer.lastTouchID += 1
+        touch = Digitizer.lastTouchID
+        self.window = window
+    }
+
+    func down(at point: CGPoint) throws {
+        try digitizer.send(touch: touch, at: point, phase: .down, to: window)
+    }
+
+    func up(at point: CGPoint) throws {
+        try digitizer.send(touch: touch, at: point, phase: .up, to: window)
+    }
+
+    /// Slides in small steps, as a finger reports its way across the glass, and ends on its last
+    /// step, so a lift right after it leaves with the speed of the slide.
+    func slide(from start: CGPoint, to end: CGPoint, steps: Int = 12, pause: Duration = .milliseconds(16)) async throws {
+        for step in 1...steps {
+            try await Task.sleep(for: pause)
+            let progress = CGFloat(step) / CGFloat(steps)
+            let point = CGPoint(x: start.x + (end.x - start.x) * progress, y: start.y + (end.y - start.y) * progress)
+            try digitizer.send(touch: touch, at: point, phase: .moved, to: window)
+        }
+    }
+}
+
+/// Moves a finger from `start` to `end` in even steps over `duration` and lifts it at once, so the
+/// speed it ends with is the distance over the duration.
+@MainActor
+func fingerDrag(from start: CGPoint, to end: CGPoint, over duration: Duration, in window: UIWindow, steps: Int = 12) async throws {
+    let finger = try Finger(in: window)
+    try finger.down(at: start)
+    try await finger.slide(from: start, to: end, steps: steps, pause: duration / steps)
+    try finger.up(at: end)
 }
 
 @MainActor
@@ -39,6 +82,7 @@ private struct Digitizer {
     private static let rightIndexFinger: UInt32 = 2
     private static let rangeMask: UInt32 = 1 << 0
     private static let touchMask: UInt32 = 1 << 1
+    private static let positionMask: UInt32 = 1 << 2
     private static let majorRadiusField: UInt32 = 0xB0014
     private static let minorRadiusField: UInt32 = 0xB0015
     private static let displayIntegratedField: UInt32 = 0xB0019
@@ -65,15 +109,19 @@ private struct Digitizer {
         setDigitizerInfo = try Self.function("BKSHIDEventSetDigitizerInfo", in: backBoard)
     }
 
-    func send(touch id: UInt32, at point: CGPoint, isDown: Bool, to window: UIWindow) throws {
+    enum Phase { case down, moved, up }
+
+    func send(touch id: UInt32, at point: CGPoint, phase: Phase, to window: UIWindow) throws {
         let time = mach_absolute_time()
+        let isDown = phase != .up
+        let changed = phase == .moved ? Self.positionMask : Self.touchMask
         let hand = createHandEvent(
-            nil, time, Self.handTransducer, 0, 0, Self.touchMask, 0, 0, 0, 0, 0, 0, false, isDown, 0
+            nil, time, Self.handTransducer, 0, 0, changed, 0, 0, 0, 0, 0, 0, false, isDown, 0
         ).takeRetainedValue()
         setInteger(hand, Self.displayIntegratedField, 1)
         setSender(hand, Self.senderID)
         let finger = createFingerEvent(
-            nil, time, id, Self.rightIndexFinger, Self.rangeMask | Self.touchMask,
+            nil, time, id, Self.rightIndexFinger, phase == .moved ? Self.positionMask : Self.rangeMask | Self.touchMask,
             point.x, point.y, 0, 0, 0, isDown, isDown, 0
         ).takeRetainedValue()
         setFloat(finger, Self.majorRadiusField, Self.fingerRadius)

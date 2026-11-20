@@ -8,6 +8,7 @@ extension BrowserAppearance: Defaults.Serializable, Defaults.PreferRawRepresenta
 extension MoodleOpenTarget: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension VisualPreset: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension AppAppearance: Defaults.Serializable, Defaults.PreferRawRepresentable {}
+extension AppIcon: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension AccentGradient: Defaults.Serializable {}
 extension EditTime: Defaults.Serializable {}
 
@@ -93,6 +94,8 @@ nonisolated extension Defaults.Keys {
         default: .default
     )
     static let appAppearance = Key<AppAppearance>("appAppearance", default: .system)
+    /// Per device and never synced: `nil` follows the build's primary icon.
+    static let appIcon = Key<AppIcon?>("appIcon")
     static let assignmentReminderOffsetsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.assignmentReminderOffsets
     )

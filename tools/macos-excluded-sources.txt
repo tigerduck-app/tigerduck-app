@@ -25,6 +25,9 @@ QuickActionSceneDelegate.swift
 # App/ContentView.swift — iOS-only
 ContentView.swift
 
+# App — alternate app icons, a UIApplication API with no counterpart in a native Mac app
+AppIconSwitch.swift
+
 # Debug — iOS-only debug surfaces
 DebugServerFailureView.swift
 DebugSettingsView.swift
@@ -40,12 +43,14 @@ SettingsDeveloperSection.swift
 TigerSyncStatusView.swift
 TriggersDebugView.swift
 WhatsNewSampleFlow.swift
+UITestFixtureApp.swift
 
 # UI/ViewHelpers — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
 UIApplication+Keyboard.swift
 HostWindow.swift
 UINavigationController+Swipeback.swift
 View+ScrollSafeGesture.swift
+View+SheetFlick.swift
 
 # Features/Archive — the archive browser and its libarchive reader, which only the iOS app links;
 # the Mac hands an archive to Quick Look as before
@@ -99,6 +104,9 @@ TimetableSoloCell.swift
 # Features/ClassTable — the bar of the iPhone's search sheets; the Mac lays out its add-course
 # sheet in AddCourseMacLayout.swift
 SearchSheetChrome.swift
+
+# Features/ClassTable — the Class Tables list, which only the iPhone's class table settings open
+ClassTableListView.swift
 
 # Features/ClassTable — club subscriptions and their activities, which only the iPhone class table
 # shows for now
@@ -203,6 +211,7 @@ ScoreView.swift
 
 # Features/Settings — iOS settings screens; macOS uses MacSettingsScene
 AboutOthersView.swift
+AppIconSettingsView.swift
 AssignmentReminderSettingsView.swift
 ClassReminderSettingsView.swift
 CloudSyncSettingsView.swift

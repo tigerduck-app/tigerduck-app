@@ -59,11 +59,11 @@ nonisolated extension SettingsRow {
         case .tigerSync: .section(.tigerSync)
         case .notificationPermissions: .section(.notificationPermissions)
         case .language: .section(.language)
-        case .apiEndpoint, .storage: .section(.other)
+        case .appIcon, .apiEndpoint, .storage: .section(.other)
         case .version, .checkForUpdates, .serverStatus, .whatsNew, .website, .aboutOthers: .section(.about)
         case .showFullDueDate, .invertSlider, .assignmentReminders, .liveActivity: .page(.home)
-        case .pinTodayCourses, .showClassroom, .outlineRequiredCourses, .showAllPeriods, .courseNameSize,
-             .classReminders, .englishCourseNames, .englishClassroomNames, .mandarinClassroomNames,
+        case .classTableList, .pinTodayCourses, .showClassroom, .outlineRequiredCourses, .showAllPeriods,
+             .courseNameSize, .classReminders, .englishCourseNames, .englishClassroomNames, .mandarinClassroomNames,
              .reassignCourseColors: .page(.classTable)
         case .bulletinPush: .page(.bulletins)
         case .mailNotifications, .mailDisplayName, .mailStorage: .page(.mail)
@@ -87,6 +87,7 @@ nonisolated extension SettingsRow {
         switch self {
         case .mailAccount, .mailNotifications, .mailDisplayName, .mailStorage: state.hasSchoolMail
         case .whatsNew: state.hasWhatsNew
+        case .classTableList: state.hasImportedClassTables
         case .englishCourseNames, .englishClassroomNames: !state.isChineseUI
         case .mandarinClassroomNames: !state.isChineseUI && state.usesEnglishClassroomNames
         case .flipToLibrary: state.hasFlipToLibrary
