@@ -3,6 +3,12 @@ import Observation
 import TigerDuckCore
 
 struct ImportedPerson: Identifiable {
+    /// Where the class table switcher lists someone: in the double tap's rotation, which the menu
+    /// lists under the user, in the menu on their own, or in the menu's Other submenu.
+    nonisolated enum Placement: String, CaseIterable {
+        case rotation, longPressMenu, other
+    }
+
     struct Term {
         let semester: String
         let courseNos: [String]
@@ -15,6 +21,7 @@ struct ImportedPerson: Identifiable {
     let importedAt: Date
     let sharedAt: Date?
     let terms: [Term]
+    var placement = Placement.rotation
 
     var semesters: [String] { terms.map(\.semester).sorted { AcademicTerm.precedes($1, $0) } }
 
@@ -106,7 +113,7 @@ final class ImportedClassTableStore: AccountScoped {
             let old = people[index]
             person = ImportedPerson(
                 id: old.id, studentId: old.studentId, nickname: old.nickname,
-                importedAt: importedAt, sharedAt: code.sharedAt, terms: terms
+                importedAt: importedAt, sharedAt: code.sharedAt, terms: terms, placement: old.placement
             )
             updated[index] = person
         } else {
@@ -135,7 +142,7 @@ final class ImportedClassTableStore: AccountScoped {
         var updated = people
         updated[index] = ImportedPerson(
             id: old.id, studentId: old.studentId, nickname: name,
-            importedAt: old.importedAt, sharedAt: old.sharedAt, terms: old.terms
+            importedAt: old.importedAt, sharedAt: old.sharedAt, terms: old.terms, placement: old.placement
         )
         guard save(people: updated, owner: owner, for: signIn) else { return .failed }
         people = updated
@@ -158,7 +165,7 @@ final class ImportedClassTableStore: AccountScoped {
         var updated = people
         updated[index] = ImportedPerson(
             id: old.id, studentId: old.studentId, nickname: old.nickname,
-            importedAt: old.importedAt, sharedAt: old.sharedAt, terms: terms
+            importedAt: old.importedAt, sharedAt: old.sharedAt, terms: terms, placement: old.placement
         )
         guard save(people: updated, owner: owner, for: signIn) else { return .failed }
         people = updated
@@ -175,8 +182,21 @@ final class ImportedClassTableStore: AccountScoped {
         }
     }
 
+    /// Moves someone into `placement`, right before `next`, or after everyone there without one.
+    @discardableResult
+    func move(_ id: UUID, to placement: ImportedPerson.Placement, before next: UUID?, for signIn: SignIn) -> Change {
+        guard var moving = people.first(where: { $0.id == id }), next != id else { return .skipped }
+        moving.placement = placement
+        var updated = people.filter { $0.id != id }
+        let index = next.flatMap { next in updated.firstIndex { $0.id == next && $0.placement == placement } }
+        updated.insert(moving, at: index ?? updated.endIndex)
+        guard save(people: updated, owner: owner, for: signIn) else { return .failed }
+        people = updated
+        return .saved
+    }
+
     func showNext() {
-        let order: [UUID?] = [nil] + people.map { $0.id }
+        let order: [UUID?] = [nil] + people.filter { $0.placement == .rotation }.map(\.id)
         let index = order.firstIndex(of: shownPersonID) ?? 0
         shownPersonID = order[(index + 1) % order.count]
     }
@@ -255,7 +275,8 @@ private extension ImportedPerson {
             sharedAt: stored.sharedAt,
             terms: stored.terms.map { term in
                 Term(semester: term.semester, courseNos: term.courseNos, courses: term.courses.map { $0.toSDCourse() })
-            }
+            },
+            placement: stored.placement.flatMap(Placement.init) ?? .rotation
         )
     }
 
@@ -266,7 +287,8 @@ private extension ImportedPerson {
                 ImportedClassTableFile.Term(
                     semester: term.semester, courseNos: term.courseNos, courses: term.courses.map { CachedCourse(from: $0) }
                 )
-            }
+            },
+            placement: placement.rawValue
         )
     }
 }
