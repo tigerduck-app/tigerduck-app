@@ -72,6 +72,10 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.outlineRequiredCourses,
         default: false
     )
+    static let pinMyselfInCourseMembers = Key<Bool>(
+        AppConstants.UserDefaultsKeys.pinMyselfInCourseMembers,
+        default: true
+    )
     static let configuredTabsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.configuredTabs
     )

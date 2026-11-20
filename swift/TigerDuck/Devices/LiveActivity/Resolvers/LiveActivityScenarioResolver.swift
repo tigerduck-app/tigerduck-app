@@ -103,7 +103,7 @@ struct LiveActivityScenarioResolver {
         let matchingCourse = courses.first { $0.courseNo == assignment.courseNo }
         let instructor = matchingCourse.flatMap { nonEmpty($0.instructor) }
         let progressStart: Date? = leadTime > 0
-            ? assignment.dueDate.addingTimeInterval(-leadTime)
+            ? assignment.dueDate?.addingTimeInterval(-leadTime)
             : nil
         return LiveActivitySnapshot(
             scenario: .assignmentUrgent,
@@ -133,10 +133,12 @@ struct LiveActivityScenarioResolver {
         leadTime: TimeInterval,
         now: Date
     ) -> SDAssignment? {
-        assignments
-            .filter { isOutstanding($0) && $0.dueDate > now }
-            .filter { $0.dueDate.timeIntervalSince(now) <= leadTime }
-            .min { $0.dueDate < $1.dueDate }
+        let urgent = assignments.compactMap { assignment -> (assignment: SDAssignment, due: Date)? in
+            guard isOutstanding(assignment), let due = assignment.dueDate,
+                  due > now, due.timeIntervalSince(now) <= leadTime else { return nil }
+            return (assignment, due)
+        }
+        return urgent.min { $0.due < $1.due }?.assignment
     }
 
     static func isOutstanding(_ assignment: SDAssignment) -> Bool {

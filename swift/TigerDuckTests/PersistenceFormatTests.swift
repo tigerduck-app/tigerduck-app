@@ -141,6 +141,41 @@ struct PersistenceFormatTests {
         #expect(saved.first { $0["assignmentId"] as? String == "1" }?["semester"] as? String == "1151")
     }
 
+    @Test("an undated assignment reads back without a due date, also after an extension gave it one and was taken back")
+    func undatedAssignmentRoundTrips() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let original = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let extended = Date(timeIntervalSinceReferenceDate: 800_172_800)
+        try write(#"""
+            [{"assignmentId":"1","courseNo":"CS1001301","courseName":"Intro","title":"HW 1","dueDate":800172800,
+            "isCompleted":false,"cutoffDate":null,"submittedAt":null,"originalDueDate":800000000,
+            "extensionDueDate":800172800,"semester":"1151"},
+            {"assignmentId":"2","courseNo":"CS1001301","courseName":"Intro","title":"Lab","dueDate":800000000,"isCompleted":false}]
+            """#, "cache/assignments.json")
+        let store = cache.assignments
+
+        let dated = store.loadAssignments(semester: "1151")
+        #expect(dated.map(\.dueDate) == [extended, original])
+        #expect(dated.map(\.originalDueDate) == [original, original])
+
+        store.saveAssignments(dated + [
+            SDAssignment(assignmentId: "3", courseNo: "CS1001301", courseName: "Intro", title: "Notes", dueDate: nil),
+            SDAssignment(
+                assignmentId: "4", courseNo: "CS1001301", courseName: "Intro", title: "Essay", dueDate: nil,
+                extensionDueDate: extended
+            ),
+        ], for: testSignIn)
+        let saved = try #require(try json("cache/assignments.json") as? [[String: Any]])
+        #expect(saved.filter { $0["dueDate"] == nil }.map { $0["assignmentId"] as? String } == ["3"])
+        #expect(saved.filter { $0["originalDueDate"] == nil }.map { $0["assignmentId"] as? String } == ["3", "4"])
+
+        let loaded = store.loadAssignments(semester: "1151")
+        #expect(loaded.map(\.dueDate) == [extended, original, nil, extended])
+        let essay = try #require(loaded.last)
+        essay.extend(to: nil)
+        #expect(essay.dueDate == nil)
+    }
+
     @Test("the colour file reads back the colour map and the picks")
     func colourFilesReadTodaysFormat() throws {
         defer { try? FileManager.default.removeItem(at: root) }

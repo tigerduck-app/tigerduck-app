@@ -88,7 +88,7 @@ struct MoodleAssignmentView: View {
             Text(courseName)
                 .font(.subheadline)
                 .foregroundStyle(Color.textSecondary)
-            Text(record.name.decodingHTMLEntities())
+            Text(entry.title)
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -8,7 +8,7 @@ final class SDAssignment {
     var courseNo: String
     var courseName: String
     var title: String
-    var dueDate: Date
+    var dueDate: Date?
     var isCompleted: Bool
     var isArchived: Bool
     var isLocallyCompleted: Bool
@@ -25,7 +25,7 @@ final class SDAssignment {
         courseNo: String,
         courseName: String,
         title: String,
-        dueDate: Date,
+        dueDate: Date?,
         isCompleted: Bool = false,
         isArchived: Bool = false,
         isLocallyCompleted: Bool = false,
@@ -53,13 +53,16 @@ final class SDAssignment {
     }
 
     func extend(to extensionDate: Date?) {
-        let original = originalDueDate ?? dueDate
         extensionDueDate = extensionDate
-        dueDate = max(original, extensionDate ?? original)
+        dueDate = MoodleAssignmentRecord.dueDate(originalDueDate, extendedTo: extensionDate)
     }
 
     var isOverdue: Bool {
-        !isCompleted && dueDate < AppClock.now()
+        !isCompleted && isPastDue(now: AppClock.now())
+    }
+
+    func isPastDue(now: Date) -> Bool {
+        dueDate.map { $0 < now } ?? false
     }
 
     func status(now: Date = AppClock.now()) -> AssignmentStatus {
@@ -72,12 +75,12 @@ final class SDAssignment {
 
     func moodleStatus(now: Date = AppClock.now()) -> AssignmentStatus {
         if isCompleted {
-            if let submittedAt, submittedAt > dueDate {
+            if let submittedAt, let dueDate, submittedAt > dueDate {
                 return .submittedLate
             }
             return .submitted
         }
-        guard dueDate < now else { return .pending }
+        guard isPastDue(now: now) else { return .pending }
         if let cutoffDate, now > cutoffDate {
             return .overdueRejected
         }

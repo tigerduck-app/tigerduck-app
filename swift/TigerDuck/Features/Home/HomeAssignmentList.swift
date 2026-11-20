@@ -34,7 +34,7 @@ struct HomeAssignmentList {
     }
 
     func unfinished(for courseNo: String) -> [AssignmentStore.Assignment] {
-        all.unfinished(for: courseNo).sorted { $0.dueDate < $1.dueDate }
+        all.unfinished(for: courseNo)
     }
 
     mutating func archive(_ assignment: AssignmentStore.Assignment) {

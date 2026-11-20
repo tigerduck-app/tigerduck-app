@@ -23,13 +23,10 @@ enum AssignmentRecords {
         course.courseNos.first(where: localCourseNos.contains) ?? course.courseNo
     }
 
-    static func moodleCalendarEvent(_ assignment: SDAssignment) -> SDCalendarEvent {
-        SDCalendarEvent(
-            eventId: assignment.calendarEventId,
-            title: assignment.displayTitle,
-            date: assignment.dueDate,
-            source: .moodle
-        )
+    static func moodleCalendarEvent(_ assignment: SDAssignment) -> SDCalendarEvent? {
+        assignment.dueDate.map {
+            SDCalendarEvent(eventId: assignment.calendarEventId, title: assignment.displayTitle, date: $0, source: .moodle)
+        }
     }
 
     static func assignments(
@@ -45,7 +42,6 @@ enum AssignmentRecords {
             let status = statuses[record.assignId]
             let assignmentId = String(record.assignId)
             let extensionDate = status == nil ? extensions[assignmentId] : status?.extensionDueDate
-            guard let dueDate = record.dueDate else { return nil }
             guard !record.noSubmissions else { return nil }
 
             let moodleCourse = moodleCoursesById[record.courseId]
@@ -55,7 +51,7 @@ enum AssignmentRecords {
                 courseNo: moodleCourse.flatMap { courseNoByMoodleId[$0.id] } ?? "",
                 courseName: moodleCourse.map { courseName(from: $0.fullname) } ?? "",
                 title: record.name,
-                dueDate: dueDate,
+                dueDate: record.dueDate,
                 isCompleted: status?.isSubmitted ?? (confirmedAt != nil),
                 moodleUrl: "\(AppConstants.moodleBaseURL.absoluteString)/mod/assign/view.php?id=\(record.cmId)",
                 cutoffDate: record.cutoffDate,
@@ -73,7 +69,7 @@ enum AssignmentRecords {
     ) -> [MoodleAssignmentRecord] {
         records.filter { record in
             let id = String(record.assignId)
-            return record.dueDate != nil && !record.noSubmissions && confirmed[id] == nil
+            return !record.noSubmissions && confirmed[id] == nil
                 && !isClosed(record, askedAt: closed[id])
         }
     }

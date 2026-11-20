@@ -72,9 +72,10 @@ struct MacAssignmentsList: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(status.tint)
                     }
-                    Text(timeLabel(for: assignment, now: now))
+                    Text(assignment.dueLabel(now: now, absolute: app.preferences.showAbsoluteAssignmentTime))
                         .font(.callout.monospacedDigit())
                         .foregroundStyle(timeColor(status: status))
+                        .accessibilityHidden(assignment.dueDate == nil)
                 }
             }
             .padding(.horizontal, 14)
@@ -157,13 +158,6 @@ struct MacAssignmentsList: View {
             .frame(width: 8, height: 8)
     }
 
-    private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
-        if app.preferences.showAbsoluteAssignmentTime || assignment.dueDate < now {
-            return assignment.dueDate.absoluteTimeString
-        }
-        return assignment.dueDate.relativeTimeString(from: now)
-    }
-
     private func timeColor(status: AssignmentStatus) -> Color {
         switch status {
         case .overdueAcceptable, .overdueRejected, .archived, .locallyCompleted:
@@ -217,15 +211,13 @@ final class MacAssignmentListModel {
         let all = AssignmentStore.shared.loadAssignments()
         switch filter {
         case .incomplete:
-            return all
-                .filter { !$0.isCompleted && !$0.isArchived && !$0.isLocallyCompleted }
-                .sorted { $0.dueDate < $1.dueDate }
+            return all.upcomingSorted()
         case .all:
             return all.partitionedByDueDate(now: now)
         case .ignored:
             return all
                 .filter { $0.isArchived }
-                .sorted { $0.dueDate > $1.dueDate }
+                .sortedByDueDate(by: >)
         }
     }
 

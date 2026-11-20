@@ -88,6 +88,7 @@ jobs:
               TigerDuckTests/CourseSyllabusPageTests
               TigerDuckTests/EmptyClassroomLayoutTests
               TigerDuckTests/ForwardPagingLockTests
+              TigerDuckTests/HomeAssignmentFilterSwitchTests
               TigerDuckTests/HomeEditPageTests
               TigerDuckTests/HomeScrollAnchorTests
               TigerDuckTests/InformationSystemPageTests
@@ -105,6 +106,7 @@ jobs:
               TigerDuckTests/MoodleFileRowScreenTests
               TigerDuckTests/MoodleMaterialsWeekPageTests
               TigerDuckTests/MoodleMemberCommonCoursesScreenTests
+              TigerDuckTests/MoodleMembersPinMyselfScreenTests
               TigerDuckTests/MoodleNotificationSettingsScreenTests
               TigerDuckTests/MoodleOpenInSettingTests
               TigerDuckTests/MoodleOwnProfileTests/doneUploadsOnce()
@@ -126,6 +128,7 @@ jobs:
               TigerDuckTests/TimeSliderAccessibilityTests
               TigerDuckTests/TLSPinPromptTests
               TigerDuckTests/TodayCourseCardLayoutTests
+              TigerDuckTests/UndatedAssignmentRowScreenTests
               TigerDuckTests/PagerTests
               TigerDuckTests/WidgetLayoutTests
               TigerDuckTests/WidgetSnapshotPictureTests
