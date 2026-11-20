@@ -111,8 +111,13 @@ struct SheetFlickTests {
         }
 
         try await Self.drag(in: window, over: .milliseconds(90), from: 300)
-        #expect(stack.isPresented == pushed)
-        #expect(stack.path.count == (pushed ? 1 : 0))
+        if pushed {
+            try await waitUntil { stack.detent == .medium || !stack.isPresented }
+            #expect(stack.isPresented)
+            #expect(stack.path.count == 1)
+        } else {
+            try await waitUntil { !stack.isPresented }
+        }
     }
 
     static func present(from detent: PresentationDetent, flicks: Bool = true, startsAtBottom: Bool = false) async throws -> (Probe, UIWindow) {
@@ -129,6 +134,10 @@ struct SheetFlickTests {
     static func drag(in window: UIWindow, over duration: Duration, from top: CGFloat = 520) async throws {
         window.makeKeyAndVisible()
         try await fingerDrag(from: CGPoint(x: 201, y: top), to: CGPoint(x: 201, y: top + 300), over: duration, in: window)
+    }
+
+    /// Only for an outcome where nothing happens, which no condition can wait for.
+    static func settle() async throws {
         try await Task.sleep(for: .seconds(1.5))
     }
 
@@ -138,7 +147,7 @@ struct SheetFlickTests {
         defer { window.isHidden = true }
 
         try await Self.drag(in: window, over: .milliseconds(90), from: 300)
-        #expect(!probe.isPresented)
+        try await waitUntil { !probe.isPresented }
     }
 
     @Test("without the flick, UIKit settles the same flick at the medium detent")
@@ -150,8 +159,8 @@ struct SheetFlickTests {
         }
 
         try await Self.drag(in: window, over: .milliseconds(90), from: 300)
+        try await waitUntil { probe.detent == .medium || !probe.isPresented }
         #expect(probe.isPresented)
-        #expect(probe.detent == .medium)
     }
 
     @Test("a slow drag down from the large detent settles at the medium one")
@@ -163,8 +172,8 @@ struct SheetFlickTests {
         }
 
         try await Self.drag(in: window, over: .milliseconds(1_500), from: 300)
+        try await waitUntil { probe.detent == .medium || !probe.isPresented }
         #expect(probe.isPresented)
-        #expect(probe.detent == .medium)
     }
 
     @Test("a fast flick down on content scrolled away from its top scrolls it and keeps the sheet")
@@ -176,6 +185,7 @@ struct SheetFlickTests {
         }
 
         try await Self.drag(in: window, over: .milliseconds(90), from: 300)
+        try await Self.settle()
         #expect(probe.isPresented)
         #expect(probe.detent == .large)
     }
@@ -217,7 +227,7 @@ struct SheetFlickTests {
             #expect(presence.isPresented)
 
             try await Self.drag(in: window, over: .milliseconds(90), from: 300)
-            #expect(!presence.isPresented)
+            try await waitUntil { !presence.isPresented }
         }
     }
 
@@ -227,7 +237,7 @@ struct SheetFlickTests {
         defer { window.isHidden = true }
 
         try await Self.drag(in: window, over: .milliseconds(600))
-        #expect(!probe.isPresented)
+        try await waitUntil { !probe.isPresented }
     }
 }
 #endif
