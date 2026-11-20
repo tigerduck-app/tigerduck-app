@@ -18,14 +18,28 @@ struct CopyToastScreenTests {
     static let codeLabel = String(localized: "course_detail_code_label")
     static let copyCode = String(localized: "course_detail_copy_code")
     static let codeCopied = String(localized: "course_detail_code_copied")
+    static let instructorLabel = String(localized: "course_detail_instructor_label")
+    static let copyInstructor = String(localized: "course_detail_copy_instructor")
+    static let instructorCopied = String(localized: "course_detail_instructor_copied")
     static let longLocations = [
         "國際大樓 IB-1201 會議室（需換證）",
         "International Building IB-1201 Conference Room (exchange your ID at the desk)",
     ]
 
-    static func course(classroom: String = "TR-313") -> CourseStore.Course {
+    static let longInstructors = [
+        "王大明、陳美玲、林志豪、張雅婷、李建宏、黃淑芬",
+        "Alexander Montgomery-Richardson, Maria Fernanda Gutierrez-Lopez",
+    ]
+    static let longCourseNames = [
+        "資料結構與演算法設計實務專題研討（全英語授課）",
+        "Special Topics in the Practice of Data Structures and Algorithm Design (taught in English)",
+    ]
+
+    static func course(
+        classroom: String = "TR-313", instructor: String = "王大明", name: String = "資料結構與演算法"
+    ) -> CourseStore.Course {
         CourseStore.Course(
-            courseNo: "CS2001301", courseName: "資料結構與演算法", instructor: "王大明", credits: 3,
+            courseNo: "CS2001301", courseName: name, instructor: instructor, credits: 3,
             classroom: classroom, enrolledCount: 40, maxCount: 60, schedule: [1: ["2", "3"]], semester: ""
         )
     }
@@ -54,6 +68,7 @@ struct CopyToastScreenTests {
     struct CourseSheet: View {
         let course: CourseStore.Course
         var meeting: CourseTimeSlot?
+        var detents: Set<PresentationDetent> = [.medium, .large]
 
         var body: some View {
             ScrollView {
@@ -70,7 +85,7 @@ struct CopyToastScreenTests {
             }
             .background(Color.backgroundPrimary)
             .toastHost()
-            .presentationDetents([.medium, .large])
+            .presentationDetents(detents)
         }
     }
 
@@ -92,10 +107,50 @@ struct CopyToastScreenTests {
     }
 
     static func pixels(of element: NSObject, in window: UIWindow) -> Data? {
+        picture(of: element, in: window).pngData()
+    }
+
+    static func picture(of element: NSObject, in window: UIWindow, widenedBy margin: CGFloat = 0) -> UIImage {
         let frame = window.convert(element.accessibilityFrame, from: window.screen.coordinateSpace)
-        return UIGraphicsImageRenderer(bounds: frame).image { _ in
+        return UIGraphicsImageRenderer(bounds: frame.insetBy(dx: -margin, dy: 0)).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }.pngData()
+        }
+    }
+
+    /// The groups of drawn columns across a row, split where at least `gap` points of background lie
+    /// between them: a row's label and its value are two.
+    static func inkGroups(of element: NSObject, in window: UIWindow, gap: CGFloat = 4) throws -> Int {
+        let picture = Self.picture(of: element, in: window, widenedBy: 2)
+        let image = try #require(picture.cgImage)
+        let (width, height) = (image.width, image.height)
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = bytes.withUnsafeMutableBytes { buffer in
+            let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+            context?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return context != nil
+        }
+        try #require(drawn)
+        let background = bytes[0..<3].map(Int.init)
+        let inked = (0..<width).map { x in
+            (0..<height).contains { y in
+                let pixel = (y * width + x) * 4
+                return (0..<3).map { abs(Int(bytes[pixel + $0]) - background[$0]) }.reduce(0, +) > 60
+            }
+        }
+        let minimumGap = Int((gap * picture.scale).rounded())
+        var groups = 0, blank = minimumGap
+        for column in inked {
+            if column {
+                if blank >= minimumGap { groups += 1 }
+                blank = 0
+            } else {
+                blank += 1
+            }
+        }
+        return groups
     }
 
     @Test("a tap on the course sheet's location card copies the room it shows and says so", arguments: [false, true])
@@ -171,6 +226,61 @@ struct CopyToastScreenTests {
         }
     }
 
+    @Test("the course code row draws its label and its value and nothing between them", arguments: ClubScreensTests.looks)
+    func codeRowHasNoGlyph(look: Look) async throws {
+        try await withAccessibilityAutomation {
+            let course = Self.course()
+            let window = try ClubScreensTests.show(CourseSheet(course: course), look: look, height: 874)
+            defer { window.isHidden = true }
+
+            let row = try await Self.element("\(Self.codeLabel), \(course.courseNo)", in: window)
+            try await Task.sleep(for: .milliseconds(400))
+            #expect(try Self.inkGroups(of: row, in: window) == 2)
+        }
+    }
+
+    @Test("a tap or VoiceOver's activation of the instructor row copies the instructor and says so", arguments: [false, true])
+    func copiesTheInstructor(byVoiceOver: Bool) async throws {
+        try await withAccessibilityAutomation {
+            let course = Self.course(instructor: " 王大明 ")
+            let window = try ClubScreensTests.show(CourseSheet(course: course), look: ClubScreensTests.looks[0], height: 874)
+            defer { window.isHidden = true }
+            UIPasteboard.general.string = "before"
+
+            let row = try await Self.element("\(Self.instructorLabel), 王大明", in: window)
+            #expect(row.accessibilityTraits.contains(.button))
+            #expect(row.accessibilityHint == Self.copyInstructor)
+            if byVoiceOver {
+                #expect(row.accessibilityActivate())
+            } else {
+                try await Self.tap(row, in: window, until: Self.instructorCopied)
+            }
+
+            try await waitUntil { accessibilityElement(labeled: Self.instructorCopied, in: window) != nil }
+            #expect(UIPasteboard.general.string == "王大明")
+        }
+    }
+
+    @Test("an empty or blank instructor shows a dash that is no button and copies nothing", arguments: ["", " \n "])
+    func blankInstructor(instructor: String) async throws {
+        try await withAccessibilityAutomation {
+            let window = try ClubScreensTests.show(
+                CourseSheet(course: Self.course(instructor: instructor)), look: ClubScreensTests.looks[0], height: 874
+            )
+            defer { window.isHidden = true }
+            UIPasteboard.general.string = "before"
+
+            let dash = try await Self.element("—", in: window)
+            #expect(!exposedAccessibilityElements(in: window).contains { $0.accessibilityHint == Self.copyInstructor })
+            #expect(!dash.accessibilityTraits.contains(.button))
+            #expect(!dash.accessibilityActivate())
+            try await Task.sleep(for: .milliseconds(600))
+
+            #expect(accessibilityElement(labeled: Self.instructorCopied, in: window) == nil)
+            #expect(UIPasteboard.general.string == "before")
+        }
+    }
+
     @Test("an empty or blank location shows a dash that is no button and copies nothing", arguments: [false, true], ["", " \n "])
     func emptyLocation(onClubSheet: Bool, location: String) async throws {
         try await withAccessibilityAutomation {
@@ -194,7 +304,9 @@ struct CopyToastScreenTests {
     }
 
     struct Shot: CustomTestStringConvertible {
-        enum Kind: String { case courseLocation = "course-location", courseCode = "course-code", club }
+        enum Kind: String {
+            case courseLocation = "course-location", courseCode = "course-code", courseInstructor = "course-instructor", club
+        }
 
         let kind: Kind
         let width: CGFloat
@@ -207,7 +319,7 @@ struct CopyToastScreenTests {
         }
     }
 
-    static let shots: [Shot] = [Shot.Kind.courseLocation, .courseCode, .club].flatMap { kind in
+    static let shots: [Shot] = [Shot.Kind.courseLocation, .courseCode, .courseInstructor, .club].flatMap { kind in
         SettingsSnapshotTests.widths.flatMap { width in
             ClubScreensTests.looks.flatMap { look in
                 (kind == .courseCode ? [longLocations[0]] : longLocations).map {
@@ -220,11 +332,14 @@ struct CopyToastScreenTests {
     @Test("each sheet with its toast up keeps the toast and the cards on the phone", arguments: shots)
     func snapshot(shot: Shot) async throws {
         try await withAccessibilityAutomation {
-            let course = Self.course(classroom: shot.location)
+            let long = Self.longLocations.firstIndex(of: shot.location) ?? 0
+            let course = shot.kind == .courseInstructor
+                ? Self.course(classroom: shot.location, instructor: Self.longInstructors[long], name: Self.longCourseNames[long])
+                : Self.course(classroom: shot.location)
             let club = try Self.club(at: shot.location)
             let sheet = shot.kind == .club
                 ? AnyView(ClubActivityDetailSheet(club: club, policy: Self.policy))
-                : AnyView(CourseSheet(course: course))
+                : AnyView(CourseSheet(course: course, detents: shot.kind == .courseInstructor ? [.large] : [.medium, .large]))
             let window = try ClubScreensTests.show(
                 Color.clear.sheet(isPresented: .constant(true)) { sheet }, look: shot.look, width: shot.width, height: 874
             )
@@ -235,6 +350,7 @@ struct CopyToastScreenTests {
             let (target, toast) = switch shot.kind {
             case .courseLocation: ("\(Self.courseLocation), \(shot.location)", Self.locationCopied)
             case .courseCode: ("\(Self.codeLabel), \(course.courseNo)", Self.codeCopied)
+            case .courseInstructor: ("\(Self.instructorLabel), \(course.instructor)", Self.instructorCopied)
             case .club: ("\(Self.clubLocation), \(shot.location)", Self.locationCopied)
             }
             let card = try await Self.element(target, in: window)
