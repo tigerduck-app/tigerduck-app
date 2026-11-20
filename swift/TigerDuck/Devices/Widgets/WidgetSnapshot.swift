@@ -83,7 +83,6 @@ nonisolated struct SnapshotCourseChange: Codable, Equatable, Hashable, Sendable 
     /// `HH:mm`, Taipei time.
     let start: String?
     let end: String?
-    /// True when the class is an assessment; nil is left out of the JSON.
     var assessment: Bool? = nil
 
     var changesTheTimetable: Bool { cancelled || room != nil || start != nil || end != nil }
