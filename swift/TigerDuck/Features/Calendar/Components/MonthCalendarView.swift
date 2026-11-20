@@ -2,7 +2,89 @@ import SwiftUI
 import TigerDuckCore
 
 struct MonthCalendarView: View {
-    @Bindable var viewModel: CalendarViewModel
+    let viewModel: CalendarViewModel
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var page: Int
+    @State private var position: PagerPosition
+    @State private var weeks: Int
+
+    init(viewModel: CalendarViewModel) {
+        self.viewModel = viewModel
+        let page = CalendarViewModel.monthPage(of: viewModel.displayedMonth)
+        _page = State(initialValue: page)
+        _position = State(initialValue: PagerPosition(page: page))
+        _weeks = State(initialValue: Self.weeks(onPage: page))
+    }
+
+    private var monthTitle: String {
+        var style = Date.FormatStyle.dateTime.year().month(.wide)
+        style.timeZone = TaipeiTime.timeZone
+        return viewModel.displayedMonth.formatted(style)
+    }
+
+    var body: some View {
+        VStack(spacing: TigerDuckTheme.Spacing.md) {
+            HStack {
+                Button { turn(to: position.settledPage - 1) } label: {
+                    Image(systemName: "chevron.left")
+                        .foregroundStyle(.tint)
+                }
+                .accessibilityLabel(String(localized: "a11y_calendar_nav_prev"))
+                Spacer()
+                Text(monthTitle)
+                    .font(TigerDuckTheme.Typography.headline)
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
+                Spacer()
+                Button { turn(to: position.settledPage + 1) } label: {
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.tint)
+                }
+                .accessibilityLabel(String(localized: "a11y_calendar_nav_next"))
+            }
+            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+
+            MonthGrid(days: Array(repeating: nil, count: 7 * weeks), viewModel: viewModel)
+                .hidden()
+                .overlay(alignment: .top) {
+                    Pager(count: CalendarViewModel.monthPageCount, index: $page, position: $position) { page in
+                        MonthGrid(days: CalendarViewModel.buildCalendarDays(for: CalendarViewModel.month(atPage: page)), viewModel: viewModel)
+                            .frame(maxHeight: .infinity, alignment: .top)
+                    }
+                }
+        }
+        .onChange(of: page) { _, page in
+            viewModel.displayedMonth = CalendarViewModel.month(atPage: page)
+        }
+        .onChange(of: viewModel.displayedMonth) { _, month in
+            let target = CalendarViewModel.monthPage(of: month)
+            if target != page { turn(to: target) }
+        }
+        .onChange(of: position.visiblePages) { _, pages in
+            let tallest = pages.map(Self.weeks(onPage:)).max() ?? weeks
+            withAnimation(reduceMotion ? nil : .smoothSpring) { weeks = tallest }
+        }
+    }
+
+    /// The pager builds only the pages beside the current one, so a turn past the next month jumps.
+    private func turn(to target: Int) {
+        guard (0..<CalendarViewModel.monthPageCount).contains(target) else { return }
+        let isNextDoor = abs(target - position.settledPage) == 1
+        withAnimation(isNextDoor && !reduceMotion ? .pageTurn : nil) {
+            position.go(to: target)
+        }
+    }
+
+    private static func weeks(onPage page: Int) -> Int {
+        CalendarViewModel.buildCalendarDays(for: CalendarViewModel.month(atPage: page)).count / 7
+    }
+}
+
+private struct MonthGrid: View {
+    let days: [Date?]
+    let viewModel: CalendarViewModel
 
     private let weekdaySymbols = [
         String(localized: "weekday_sun_short"),
@@ -15,37 +97,8 @@ struct MonthCalendarView: View {
     ]
     private let columns = Array(repeating: GridItem(.flexible()), count: 7)
 
-    private var monthTitle: String {
-        var style = Date.FormatStyle.dateTime.year().month(.wide)
-        style.timeZone = TaipeiTime.timeZone
-        return viewModel.displayedMonth.formatted(style)
-    }
-
-    private var calendarDays: [Date?] { viewModel.calendarDays }
-
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.md) {
-            HStack {
-                Button(action: viewModel.previousMonth) {
-                    Image(systemName: "chevron.left")
-                        .foregroundStyle(.tint)
-                }
-                .accessibilityLabel(String(localized: "a11y_calendar_nav_prev"))
-                Spacer()
-                Text(monthTitle)
-                    .font(TigerDuckTheme.Typography.headline)
-                    .foregroundStyle(Color.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.4)
-                Spacer()
-                Button(action: viewModel.nextMonth) {
-                    Image(systemName: "chevron.right")
-                        .foregroundStyle(.tint)
-                }
-                .accessibilityLabel(String(localized: "a11y_calendar_nav_next"))
-            }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-
             LazyVGrid(columns: columns, spacing: TigerDuckTheme.Spacing.sm) {
                 ForEach(weekdaySymbols, id: \.self) { symbol in
                     Text(symbol)
@@ -55,10 +108,9 @@ struct MonthCalendarView: View {
                         .minimumScaleFactor(0.3)
                 }
             }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
             LazyVGrid(columns: columns, spacing: TigerDuckTheme.Spacing.sm) {
-                ForEach(Array(calendarDays.enumerated()), id: \.offset) { _, date in
+                ForEach(Array(days.enumerated()), id: \.offset) { _, date in
                     if let date {
                         DayCellView(
                             date: date,
@@ -74,8 +126,8 @@ struct MonthCalendarView: View {
                     }
                 }
             }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 }
 

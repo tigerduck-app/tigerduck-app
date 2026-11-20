@@ -73,6 +73,7 @@ jobs:
               TigerDuckTests/BrowserPageUITests
               TigerDuckTests/BrowserSiteSignInPageTests
               TigerDuckTests/CalendarDayListScreenTests
+              TigerDuckTests/CalendarMonthSwipeScreenTests
               TigerDuckTests/ClassTableCalendarMenuTests
               TigerDuckTests/ClassTableListTests
               TigerDuckTests/ClassTableShareSheetTests
