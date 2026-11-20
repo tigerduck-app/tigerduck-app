@@ -6,19 +6,19 @@ import UIKit
 
 @MainActor
 @Suite(.serialized)
-struct WhatsNewPagerTests {
-    @Observable final class Pager {
+struct PagerTests {
+    @Observable final class Probe {
         var index = 0
-        var position = WhatsNewPagerPosition()
+        var position = PagerPosition()
         var farthest: CGFloat = 0
     }
 
     struct Host: View {
-        @Bindable var pager: Pager
+        @Bindable var pager: Probe
         var lockedPages: Set<Int> = []
 
         var body: some View {
-            WhatsNewPager(count: 3, index: $pager.index, position: $pager.position, lockedPages: lockedPages) { _ in
+            Pager(count: 3, index: $pager.index, position: $pager.position, lockedPages: lockedPages) { _ in
                 Color.clear
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.visibleRect.minX } action: { _, minX in
@@ -86,7 +86,7 @@ struct WhatsNewPagerTests {
     /// VoiceOver's three-finger swipe and other system scrolls move the pager without a drag.
     @Test func theStepFollowsAScrollThatIsNotADrag() async throws {
         try await withAccessibilityAutomation {
-            let pager = Pager()
+            let pager = Probe()
             let (window, scrollView) = try await host(Host(pager: pager))
             defer { window.isHidden = true }
 
@@ -96,7 +96,7 @@ struct WhatsNewPagerTests {
     }
 
     @Test func theButtonsMoveThePagerAfterAScrollThatIsNotADrag() async throws {
-        let pager = Pager()
+        let pager = Probe()
         let (window, scrollView) = try await host(Host(pager: pager))
         defer { window.isHidden = true }
         let finger = Finger(scrollView)
@@ -109,7 +109,7 @@ struct WhatsNewPagerTests {
     }
 
     @Test func aSwipeIntoALockedPageLandsThereAndGoesNoFurther() async throws {
-        let pager = Pager()
+        let pager = Probe()
         let (window, scrollView) = try await host(Host(pager: pager, lockedPages: [1]))
         defer { window.isHidden = true }
         let lock = try await forwardLock(in: window)
@@ -131,7 +131,7 @@ struct WhatsNewPagerTests {
     }
 
     @Test func aScrollThatIsNotADragStopsAtALockedPage() async throws {
-        let pager = Pager()
+        let pager = Probe()
         let (window, scrollView) = try await host(Host(pager: pager, lockedPages: [1]))
         defer { window.isHidden = true }
         let finger = Finger(scrollView)
@@ -150,8 +150,8 @@ struct WhatsNewPagerTests {
     }
 
     @Test(arguments: [false, true])
-    func theLockHoldsTheWhatsNewPager(locksForward: Bool) async throws {
-        let (window, scrollView) = try await host(Host(pager: Pager(), lockedPages: locksForward ? [0] : []))
+    func theLockHoldsThePager(locksForward: Bool) async throws {
+        let (window, scrollView) = try await host(Host(pager: Probe(), lockedPages: locksForward ? [0] : []))
         defer { window.isHidden = true }
 
         let lock = try await forwardLock(in: window)
@@ -167,7 +167,7 @@ struct WhatsNewPagerTests {
     }
 
     private func swipeAndPress() async throws {
-        let pager = Pager()
+        let pager = Probe()
         let (window, scrollView) = try await host(Host(pager: pager))
         defer { window.isHidden = true }
         let finger = Finger(scrollView)
