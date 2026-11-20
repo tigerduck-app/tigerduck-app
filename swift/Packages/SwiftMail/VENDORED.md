@@ -148,6 +148,13 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
     two collections when the message has the header. Pinned by
     `AdditionalHeaderFieldsTests.testReplyToIsKeptWithTheAdditionalFields`.
 
+12. The third-party actions in `.github/workflows/swift.yml` are pinned to commits:
+    `maxim-lobanov/setup-xcode` v1.7.0, `SwiftyLab/setup-swift` `latest` and
+    `skiptools/swift-android-action` v2.9.5, each checked against the tag upstream. The workflow
+    never runs here, because GitHub reads workflows only from a repository's root
+    `.github/workflows`. The pins answer this repository's code scanner, which reads every
+    workflow file; a re-vendor that restores the tags restores only that finding.
+
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
 `SwiftMail` library target.
@@ -191,6 +198,7 @@ What each patch is protected by:
 | 9 (`search` deprecation) | compile-time |
 | 10 (transfer timeouts) | `TigerDuckPatchTests` |
 | 11 (`Reply-To` kept) | `AdditionalHeaderFieldsTests`, plus app-level `MailComposeViewModelTests` |
+| 12 (workflow action pins) | none; the workflow does not run in this repository |
 
 To move to a newer upstream:
 
