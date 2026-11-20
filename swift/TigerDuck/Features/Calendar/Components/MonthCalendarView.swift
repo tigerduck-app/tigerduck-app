@@ -20,7 +20,7 @@ struct MonthCalendarView: View {
 
     /// Tests swap it: a posted accessibility notification cannot be observed.
     static var postPageScrolled: (String) -> Void = { AccessibilityNotification.PageScrolled($0).post() }
-    static let pageScrolledDelay = Duration.milliseconds(100)
+    static var pageScrolledDelay = Duration.milliseconds(100)
 
     static func title(of month: Date) -> String {
         var style = Date.FormatStyle.dateTime.year().month(.wide)
@@ -84,6 +84,7 @@ struct MonthCalendarView: View {
 
     private func turn(to target: Int) {
         guard (0..<CalendarViewModel.monthPageCount).contains(target) else { return }
+        announcement?.cancel()
         let isNextDoor = abs(target - position.settledPage) == 1
         withAnimation(isNextDoor && !reduceMotion ? .pageTurn : nil) {
             position.go(to: target)

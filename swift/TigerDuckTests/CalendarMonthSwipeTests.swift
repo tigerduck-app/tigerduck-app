@@ -256,6 +256,30 @@ struct CalendarMonthSwipeScreenTests {
         }
     }
 
+    @Test("an arrow or Today while a page scroll's month waits to be said drops it")
+    func turnDuringTheWait() async throws {
+        try await withAccessibilityAutomation {
+            let posts = Posts()
+            let (post, delay) = (MonthCalendarView.postPageScrolled, MonthCalendarView.pageScrolledDelay)
+            MonthCalendarView.postPageScrolled = { posts.titles.append($0) }
+            MonthCalendarView.pageScrolledDelay = .seconds(2)
+            defer {
+                MonthCalendarView.postPageScrolled = post
+                MonthCalendarView.pageScrolledDelay = delay
+            }
+            let screen = try await Self.show(on: Self.december)
+            defer { screen.window.isHidden = true }
+
+            #expect(screen.scrollLeftPageAsVoiceOverDoes())
+            try await screen.settle(on: Self.january)
+            try await Task.sleep(for: .milliseconds(300))
+            screen.model.displayedMonth = Self.december
+            try await screen.settle(on: Self.december)
+            try await Task.sleep(for: .seconds(3))
+            #expect(posts.titles.isEmpty)
+        }
+    }
+
     @Test("Today brings the grid back from a far month")
     func today() async throws {
         try await withAccessibilityAutomation {
