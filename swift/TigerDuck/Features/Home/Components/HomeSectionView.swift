@@ -44,6 +44,7 @@ struct HomeSectionView: View {
     private var assignmentList: some View {
         UpcomingAssignmentsView(
             assignments: viewModel.assignments.upcoming,
+            policy: app.preferences.visualStylePolicy,
             courses: viewModel.allCourses,
             filter: viewModel.assignments.filter,
             showAbsoluteTime: app.preferences.showAbsoluteAssignmentTime,

@@ -5,6 +5,7 @@ struct UpcomingAssignmentsView: View {
     static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
 
     let assignments: [AssignmentStore.Assignment]
+    let policy: VisualStylePolicy
     var courses: [CourseStore.Course] = []
     var filter: AssignmentFilter = .incomplete
     var showAbsoluteTime: Bool = false
@@ -18,7 +19,6 @@ struct UpcomingAssignmentsView: View {
     var onUndoComplete: ((AssignmentStore.Assignment) -> Void)? = nil
     var onOpen: (AssignmentStore.Assignment) -> Void = { _ in }
 
-    @Environment(AppEnvironment.self) private var app
     @State private var ticker = MinuteTicker(interval: 60)
 
     private var courseByNo: [String: CourseStore.Course] {
@@ -28,7 +28,6 @@ struct UpcomingAssignmentsView: View {
     var body: some View {
         let _ = ticker.tick
         let now = AppClock.now()
-        let policy = app.preferences.visualStylePolicy
         let rows = filter == .all
             ? assignments.partitionedByDueDate(now: now)
             : assignments
