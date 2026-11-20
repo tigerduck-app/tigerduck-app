@@ -22,14 +22,25 @@
           "blend-mode" : "normal",
           "fill" : "none",
           "glass" : true,
-          "hidden" : false,
-          "image-name" : "tigerduck.png",
+          "hidden" : true,
+          "image-name" : "01_tiger_suit_duck.png",
           "name" : "tigerduck",
           "position" : {
             "scale" : 1.6,
             "translation-in-points" : [
               38.404854821872505,
               3.75
+            ]
+          }
+        },
+        {
+          "image-name" : "00_santa_suit_duck.png",
+          "name" : "Ghostty 2026-11-20 17.23.55",
+          "position" : {
+            "scale" : 1.4,
+            "translation-in-points" : [
+              69.00000000000003,
+              -6
             ]
           }
         }
@@ -41,6 +52,19 @@
       "translucency" : {
         "enabled" : true,
         "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
       }
     }
   ],
