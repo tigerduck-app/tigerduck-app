@@ -166,14 +166,19 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
     ) -> UIMenu {
         let ordered = opensUpward ? sections : sections.reversed().map { $0.reversed() }
         return UIMenu(children: ordered.map { section in
-            UIMenu(options: .displayInline, children: section.map { entry in
-                UIAction(
-                    title: entry.title,
-                    image: entry == .importClassTable ? UIImage(systemName: "plus") : nil,
-                    state: entry.isShown ? .on : .off
-                ) { _ in choose(entry) }
-            })
+            UIMenu(options: .displayInline, children: section.map { item($0, choose: choose) })
         })
+    }
+
+    private static func item(_ entry: ClassTableSwitcherEntry, choose: @escaping (ClassTableSwitcherEntry) -> Void) -> UIMenuElement {
+        if case .others(let people) = entry {
+            return UIMenu(title: entry.title, children: people.map { item($0, choose: choose) })
+        }
+        return UIAction(
+            title: entry.title,
+            image: entry == .importClassTable ? UIImage(systemName: "plus") : nil,
+            state: entry.isShown ? .on : .off
+        ) { _ in choose(entry) }
     }
 
     @objc private func didDoubleTap(_ recognizer: ClassTableTabDoubleTap) {

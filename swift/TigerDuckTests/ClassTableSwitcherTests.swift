@@ -39,7 +39,7 @@ struct ClassTableSwitcherTests {
         return People(store: store, ming: ming, hua: hua)
     }
 
-    @Test("the switcher lists import first, then the people in import order, then the user")
+    @Test("the switcher lists import first, then the user followed by the rotation in its order")
     func rowsInOrder() throws {
         let people = try Self.people(Folder())
         people.store.show(people.hua.id)
@@ -47,11 +47,37 @@ struct ClassTableSwitcherTests {
         #expect(ClassTableSwitcherEntry.sections(in: people.store, userName: "B11300000") == [
             [.importClassTable],
             [
+                .user(name: "B11300000", isShown: false),
                 .person(id: people.ming.id, nickname: "Ming", isShown: false),
                 .person(id: people.hua.id, nickname: "Hua", isShown: true),
             ],
-            [.user(name: "B11300000", isShown: false)],
         ])
+    }
+
+    @Test("the long-press people follow as a group, and Other last as a submenu, each only with someone in it",
+          arguments: [ImportedPerson.Placement.longPressMenu, .other])
+    func longPressAndOtherSections(placement: ImportedPerson.Placement) throws {
+        let people = try Self.people(Folder())
+        let wei = try #require(people.store.add(Self.code("B11300003"), nickname: "Wei", courses: [:], for: testSignIn))
+        people.store.move(people.ming.id, to: placement, before: nil, for: testSignIn)
+        people.store.show(people.ming.id)
+
+        let ming = ClassTableSwitcherEntry.person(id: people.ming.id, nickname: "Ming", isShown: true)
+        let rest: [ClassTableSwitcherEntry] = [
+            .user(name: "B11300000", isShown: false),
+            .person(id: people.hua.id, nickname: "Hua", isShown: false),
+            .person(id: wei.id, nickname: "Wei", isShown: false),
+        ]
+        #expect(ClassTableSwitcherEntry.sections(in: people.store, userName: "B11300000") == [
+            [.importClassTable], rest, placement == .other ? [.others([ming])] : [ming],
+        ])
+
+        people.store.move(wei.id, to: placement == .other ? .longPressMenu : .other, before: nil, for: testSignIn)
+        let wei2 = ClassTableSwitcherEntry.person(id: wei.id, nickname: "Wei", isShown: false)
+        #expect(ClassTableSwitcherEntry.sections(in: people.store, userName: "B11300000") == [
+            [.importClassTable], Array(rest.prefix(2)), placement == .other ? [wei2] : [ming], [.others([placement == .other ? ming : wei2])],
+        ])
+        #expect(ClassTableSwitcherEntry.others([ming]).title == String(localized: "class_table_list_section_other"))
     }
 
     @Test("with nobody imported the switcher offers the import and the user's own class table")
@@ -90,23 +116,40 @@ struct ClassTableSwitcherTests {
         #expect(people.store.shownPersonID == nil)
     }
 
-    @Test("the tab bar's menu keeps the user's row next to the tab", arguments: [true, false])
+    @Test("the tab bar's menu keeps Add class table farthest from the tab, and Other's people in their order",
+          arguments: [true, false])
     func tabMenuOrder(opensUpward: Bool) throws {
         let people = try Self.people(Folder())
-        people.store.show(people.ming.id)
+        let wei = try #require(people.store.add(Self.code("B11300003"), nickname: "Wei", courses: [:], for: testSignIn))
+        let lin = try #require(people.store.add(Self.code("B11300004"), nickname: "Lin", courses: [:], for: testSignIn))
+        people.store.move(people.hua.id, to: .longPressMenu, before: nil, for: testSignIn)
+        people.store.move(wei.id, to: .other, before: nil, for: testSignIn)
+        people.store.move(lin.id, to: .other, before: nil, for: testSignIn)
+        people.store.show(lin.id)
+        var chosen: [String] = []
 
         let menu = ClassTableTabBarHandler.menu(
             ClassTableSwitcherEntry.sections(in: people.store, userName: "B11300000"),
             opensUpward: opensUpward
-        ) { _ in }
+        ) { chosen.append($0.title) }
 
         let sections = menu.children.compactMap { $0 as? UIMenu }
-        let rows = sections.map { $0.children.compactMap { $0 as? UIAction } }
-        let expected = [[String(localized: "class_table_import")], ["Ming", "Hua"], ["B11300000"]]
-        #expect(rows.map { $0.map(\.title) } == (opensUpward ? expected : expected.reversed().map { $0.reversed() }))
+        let titles = sections.map { $0.children.map(\.title) }
+        let other = String(localized: "class_table_list_section_other")
+        let expected = [[String(localized: "class_table_import")], ["B11300000", "Ming"], ["Hua"], [other]]
+        #expect(titles == (opensUpward ? expected : expected.reversed().map { $0.reversed() }))
         #expect(sections.count == menu.children.count)
         #expect(sections.allSatisfy { $0.options.contains(.displayInline) })
-        #expect(rows.joined().filter { $0.state == .on }.map(\.title) == ["Ming"])
+        let submenu = try #require(sections.flatMap(\.children).compactMap { $0 as? UIMenu }.first)
+        #expect(!submenu.options.contains(.displayInline))
+        let others = submenu.children.compactMap { $0 as? UIAction }
+        #expect(others.map(\.title) == ["Wei", "Lin"])
+        #expect(others.filter { $0.state == .on }.map(\.title) == ["Lin"])
+        let actions = sections.flatMap(\.children).compactMap { $0 as? UIAction }
+        #expect(actions.filter { $0.state == .on }.isEmpty)
+
+        others.first?.performWithSender(nil, target: nil)
+        #expect(chosen == ["Wei"])
     }
 
     private struct Tabs: View {
