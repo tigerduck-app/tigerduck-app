@@ -51,7 +51,7 @@ extension Color {
     /// A value the school changed for one day, such as a moved room or a new start time.
     static let changeInk = adaptive(light: Color(hex: 0x7C2D12), dark: Color(hex: 0xFDBA74))
     /// The dashed underline of a class with an assessment, such as a midterm.
-    static let assessmentInk = adaptive(light: Color(hex: 0xB4534B), dark: Color(hex: 0xE39A92))
+    static let assessmentInk = adaptive(light: Color(hex: UInt(AssessmentInk.light)), dark: Color(hex: UInt(AssessmentInk.dark)))
     static let rowBand = Color.primary.opacity(0.08)
     static let rowBandAlternate = Color.primary.opacity(0.04)
 
@@ -84,12 +84,8 @@ extension Color {
 }
 
 extension Text {
-    /// A course name; a class with an assessment underlines it and reads `course_change_assessment` after it.
     static func courseName(_ name: String, isAssessment: Bool) -> Text {
-        guard isAssessment else { return Text(name) }
-        return Text(name)
-            .underline(pattern: .dash, color: .assessmentInk)
-            .accessibilityLabel(Text(verbatim: "\(name), \(String(localized: "course_change_assessment"))"))
+        courseName(name, assessmentInk: isAssessment ? .assessmentInk : nil)
     }
 
     /// A room the school changed for one day, or `course_change_online` for an online class.

@@ -14,6 +14,7 @@ struct WidgetPalette {
     let highlight: Color
     let highlightFill: AnyShapeStyle
     let changeInk: Color
+    let assessmentInk: Color
     let isFullColor: Bool
     var canvas: Color = .clear
     var isDark = false
@@ -33,10 +34,15 @@ struct WidgetPalette {
             highlightFill: snapshot.accentGradient?.shapeStyle { Color(widgetHex: UInt32($0)) }
                 ?? AnyShapeStyle(Color(widgetHex: snapshot.accentColorHex)),
             changeInk: base.changeInk,
+            assessmentInk: base.assessmentInk,
             isFullColor: isFullColor,
             canvas: isFullColor ? base.canvas : .clear,
             isDark: base.isDark
         )
+    }
+
+    func assessmentInk(for change: SnapshotCourseChange?) -> Color? {
+        change?.assessment == true ? assessmentInk : nil
     }
 
     func tile(_ colorHex: UInt32, isPast: Bool = false) -> WidgetTile {
@@ -70,6 +76,7 @@ struct WidgetPalette {
         highlight: .blue,
         highlightFill: AnyShapeStyle(.blue),
         changeInk: Color(widgetHex: 0x7C2D12),
+        assessmentInk: Color(widgetHex: AssessmentInk.light),
         isFullColor: true,
         canvas: .white
     )
@@ -81,6 +88,7 @@ struct WidgetPalette {
         highlight: .blue,
         highlightFill: AnyShapeStyle(.blue),
         changeInk: Color(widgetHex: 0xFDBA74),
+        assessmentInk: Color(widgetHex: AssessmentInk.dark),
         isFullColor: true,
         canvas: Color(widgetHex: 0x1C1C1E),
         isDark: true

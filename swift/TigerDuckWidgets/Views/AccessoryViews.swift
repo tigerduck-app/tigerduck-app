@@ -63,6 +63,12 @@ struct AccessoryCircularView: View {
 struct AccessoryRectangularView: View {
     let derived: WidgetDerivedState
 
+    /// The Lock Screen draws accessory widgets in its vibrant mode, by luminance, so the underline takes the
+    /// light ink of a dark background.
+    private static func assessmentInk(for change: SnapshotCourseChange?) -> Color? {
+        change?.assessment == true ? Color(widgetHex: AssessmentInk.dark) : nil
+    }
+
     var body: some View {
         switch derived {
         case .signInRequired:
@@ -70,7 +76,7 @@ struct AccessoryRectangularView: View {
         case .ongoing(let infos):
             let info = infos[0]
             VStack(alignment: .leading, spacing: 2) {
-                Text(info.course.displayName)
+                Text.courseName(info.course.displayName, assessmentInk: Self.assessmentInk(for: info.change))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Text(info.classroom)
@@ -86,7 +92,7 @@ struct AccessoryRectangularView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(info.day.headline())
                     .font(.caption2.weight(.bold))
-                Text(info.course.displayName)
+                Text.courseName(info.course.displayName, assessmentInk: Self.assessmentInk(for: info.change))
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
                 HStack(spacing: 4) {

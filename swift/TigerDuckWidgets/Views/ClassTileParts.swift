@@ -29,6 +29,7 @@ struct NameRoomLine: View {
     let room: String
     var roomChanged = false
     var isCancelled = false
+    var assessmentInk: Color? = nil
     let nameFont: Font
     let roomFont: Font
     let ink: Color
@@ -36,7 +37,7 @@ struct NameRoomLine: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(name)
+            Text.courseName(name, assessmentInk: assessmentInk)
                 .font(nameFont)
                 .strikethrough(isCancelled)
                 .lineLimit(1)

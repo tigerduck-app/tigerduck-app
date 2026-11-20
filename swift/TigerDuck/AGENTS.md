@@ -48,6 +48,8 @@ Each rule below has one home; call it instead of writing the rule again.
 - Taipei dates: `TaipeiTime` in TigerDuckCore.
 - A class time range on any screen, widget, Watch face or Live Activity, and its VoiceOver form:
   `TimeRange` in TigerDuckCore.
+- A course name underlined for an assessment, and the underline's color, in the app, the widgets
+  and the Live Activity: `Text.courseName` and `AssessmentInk` in `Shared/AssessmentMark.swift`.
 - What this device may send or apply: `Backend/Sync/SyncPolicy.swift`.
 - Whether an upload already went out: `Backend/Sync/SendLedger.swift`.
 - Requests to the TigerDuck backend: `Backend/Client/BackendClient.swift`.
