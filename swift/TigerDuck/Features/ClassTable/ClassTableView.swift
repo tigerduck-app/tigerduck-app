@@ -156,6 +156,7 @@ struct ClassTableView: View {
             ClassTableSemesterBar(viewModel: viewModel)
 
             TimetableGridView(viewModel: viewModel, switchCount: tableSwitches, onSwitch: keepRowsInPlace)
+                .environment(app.preferences)
         }
     }
 

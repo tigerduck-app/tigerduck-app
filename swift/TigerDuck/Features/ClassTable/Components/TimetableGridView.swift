@@ -21,7 +21,7 @@ struct TimetableGridView: View {
     var showsThisWeek = true
     var switchCount = 0
     var onSwitch: ((_ before: TimetableRowTops, _ after: TimetableRowTops) -> Void)? = nil
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppPreferences.self) private var preferences
 
     static let columnSpacing: CGFloat = 3
     private let rowSpacing: CGFloat = 3
@@ -31,7 +31,7 @@ struct TimetableGridView: View {
     @ScaledMetric(relativeTo: .caption2) private var periodTimeSize: CGFloat = 9
     @ScaledMetric(relativeTo: .caption2) private var periodLabelSize: CGFloat = 12
 
-    private var policy: VisualStylePolicy { app.preferences.visualStylePolicy }
+    private var policy: VisualStylePolicy { preferences.visualStylePolicy }
     private var drawsPeriodTiles: Bool { policy.classTableGridStyle == .periodTiles }
 
     private var cellHeight: CGFloat { max(52, scaledCellHeight) }
@@ -42,7 +42,7 @@ struct TimetableGridView: View {
     private var metrics: TimetableCellMetrics {
         TimetableCellMetrics(
             cellHeight: cellHeight, rowSpacing: rowSpacing,
-            courseNameSize: courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(app.preferences.courseCardFontScale)),
+            courseNameSize: courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(preferences.courseCardFontScale)),
             badgeIconSize: badgeIconSize
         )
     }
@@ -75,7 +75,7 @@ struct TimetableGridView: View {
                     let meeting = thisWeek ? changedMeeting(role, weekday: weekday, periodId: period.id, now: now) : nil
                     let key = TimetableCellTransitionID.of(
                         role, weekday: weekday, periodId: period.id, meeting: meeting,
-                        showsRooms: app.preferences.showClassroomInClassTable
+                        showsRooms: preferences.showClassroomInClassTable
                     )
                     TimetableCell(
                         viewModel: viewModel, role: role, key: key, weekday: weekday, periodId: period.id,
@@ -276,7 +276,9 @@ enum TimetableCellTransitionID {
             let room = showsRooms
                 ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId) ?? ""
                 : ""
-            let change = meeting.map { "\($0.isCancelled)|\($0.room)|\($0.start)|\($0.end)|\($0.notes.count)" } ?? ""
+            let change = meeting.map {
+                "\($0.isCancelled)|\($0.room)|\($0.start)|\($0.end)|\($0.notes.count)|\($0.assessment != nil)"
+            } ?? ""
             return "solo \(spanCount) \(shown(course))|\(room)|\(change)"
         case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
             return "pair \(combinedSpan) \(spanA) \(offsetA) \(shown(courseA)) \(spanB) \(offsetB) \(shown(courseB))"

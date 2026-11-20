@@ -1,0 +1,122 @@
+#if os(iOS)
+import Defaults
+import SwiftUI
+import Testing
+import TigerDuckCore
+import UIKit
+@testable import TigerDuck
+
+@MainActor
+@Suite(.serialized)
+struct CourseChangeScreensTests {
+    struct Look: CustomTestStringConvertible {
+        let style: UIUserInterfaceStyle
+        let width: CGFloat
+
+        var club: ClubScreensTests.Look { ClubScreensTests.Look(style: style, textSize: .large) }
+        var testDescription: String { "\(style == .dark ? "dark" : "light")-\(Int(width))" }
+    }
+
+    static let looks = [375, 820].flatMap { width in
+        [UIUserInterfaceStyle.light, .dark].map { Look(style: $0, width: CGFloat(width)) }
+    }
+
+    static let exam = ["note_zh": "期中考", "note_en": "Midterm exam"]
+    static let longName = "人工智慧與機器學習導論：從理論到實務應用"
+
+    static func courses(_ term: String) -> [SDCourse] {
+        [
+            SDCourse(courseNo: "CS3001301", courseName: "作業系統", classroom: "TR-313", schedule: [1: ["2", "3", "4"], 3: ["2", "3"]], semester: term),
+            SDCourse(courseNo: "CS3002301", courseName: "計算機網路", classroom: "IB-201", schedule: [2: ["6", "7"]], semester: term),
+            SDCourse(courseNo: "GE3005301", courseName: longName, classroom: "RB-105", schedule: [4: ["3", "4"]], semester: term),
+            SDCourse(courseNo: "EE3004301", courseName: "電子學", classroom: "EE-404", schedule: [5: ["6", "7"]], semester: term),
+        ]
+    }
+
+    @Test("this week's class table underlines an assessment but not a cancelled one, and shows an online class in its room's place", arguments: looks)
+    func classTable(look: Look) async throws {
+        try await withExclusiveRealDefaults {
+            try await withAccessibilityAutomation {
+                let signIn = testSignIn
+                let storedPick = Defaults[.classTableSelectedSemester, for: signIn]
+                let storedFeed = Defaults[.courseChangesCache]
+                let showedRooms = Defaults[.showClassroomInClassTable]
+                defer {
+                    Defaults[.classTableSelectedSemester, for: signIn] = storedPick
+                    Defaults[.courseChangesCache] = storedFeed
+                    Defaults[.showClassroomInClassTable] = showedRooms
+                }
+                let root = FileManager.default.temporaryDirectory.appending(path: "CourseChangeScreens-\(UUID().uuidString)")
+                defer { try? FileManager.default.removeItem(at: root) }
+                let store = CourseStore(folders: CacheFolders(root: root))
+                let people = ImportedClassTableStore(fileURL: root.appending(path: "imported.json"), signedInStudentId: { nil })
+                let model = ClassTableViewModel(courses: store, importedTables: people)
+                let term = SchoolTerms.current
+                let now = AppClock.now()
+                @MainActor func day(_ weekday: Int) -> [String] { [TaipeiTime.dayKey(for: ClassTableViewModel.nextDate(onWeekday: weekday, from: now))] }
+                Defaults[.showClassroomInClassTable] = true
+                Defaults[.courseChangesCache] = CourseChangesTests.feed([
+                    CourseChangesTests.row(1, "assessment", course: "CS3001301", days: day(1), values: Self.exam),
+                    CourseChangesTests.row(2, "online", course: "CS3002301", days: day(2)),
+                    CourseChangesTests.row(3, "assessment", course: "GE3005301", days: day(4), values: Self.exam),
+                    CourseChangesTests.row(4, "assessment", course: "EE3004301", days: day(5), values: Self.exam),
+                    CourseChangesTests.row(5, "cancelled", course: "EE3004301", days: day(5)),
+                ])
+                for course in Self.courses(term) { store.apply(.addByHand(course, semester: term), for: testSignIn) }
+                SchoolAccountKeys.pickSemester(term, for: signIn)
+                model.pickSemester(term, for: signIn)
+                model.reloadFromCache()
+                #expect(model.showsThisWeek)
+
+                let table = VStack { TimetableGridView(viewModel: model); Spacer(minLength: 0) }
+                    .padding(.top, 60)
+                    .environment(AppPreferences())
+                let window = try ClubScreensTests.show(table, look: look.club, width: look.width, height: 760)
+                defer { window.isHidden = true }
+                let assessment = String(localized: "course_change_assessment")
+                try await waitUntil { exposedAccessibilityLabels(in: window).contains { $0.contains("作業系統, \(assessment)") } }
+                try await Task.sleep(for: .milliseconds(400))
+                window.saveSnapshot(as: "class-table-\(look.testDescription)")
+
+                let labels = exposedAccessibilityLabels(in: window)
+                #expect(labels.filter { $0.contains("作業系統") }.count == 2)
+                #expect(labels.filter { $0.contains("作業系統, \(assessment)") }.count == 1)
+                #expect(labels.contains { $0.contains("\(Self.longName), \(assessment)") })
+                #expect(labels.contains { $0.contains("計算機網路, \(String(localized: "course_change_online"))") })
+                let cancelled = try #require(labels.first { $0.contains("電子學") })
+                #expect(cancelled.contains(String(localized: "course_card_cancelled")) && !cancelled.contains(assessment))
+            }
+        }
+    }
+
+    @Test("Home's course card underlines an assessment and shows an online class in its room's place", arguments: [looks[0], looks[1]])
+    func courseCard(look: Look) async throws {
+        try await withAccessibilityAutomation {
+            let thursday = try #require(TaipeiTime.calendar.date(from: DateComponents(year: 2026, month: 11, day: 5)))
+            let courses = [
+                SDCourse(courseNo: "CS3001301", courseName: "作業系統", instructor: "王大明", classroom: "TR-313", schedule: [4: ["2", "3", "4"]]),
+                SDCourse(courseNo: "CS3002301", courseName: "計算機網路", instructor: "林小華", classroom: "IB-201", schedule: [4: ["6", "7"]]),
+            ]
+            let changes = try CourseChanges(json: CourseChangesTests.feed([
+                CourseChangesTests.row(1, "assessment", course: "CS3001301", days: ["2026-11-05"], values: Self.exam),
+                CourseChangesTests.row(2, "online", course: "CS3002301", days: ["2026-11-05"]),
+            ]))
+            let slots = CourseTimeSlot.buildSlots(from: courses, weekday: 4, on: thursday, changes: changes)
+            let cards = VStack(spacing: 12) {
+                ForEach(slots) { CourseTimeCard(state: .inClass([.course($0)]), onSelect: { _ in }) }
+            }
+            .padding(16)
+            let window = try ClubScreensTests.show(cards, look: look.club, width: look.width, height: 260)
+            defer { window.isHidden = true }
+            let assessment = String(localized: "course_change_assessment")
+            try await waitUntil { exposedAccessibilityLabels(in: window).contains { $0.contains("作業系統, \(assessment)") } }
+            try await Task.sleep(for: .milliseconds(400))
+            window.saveSnapshot(as: "course-card-\(look.testDescription)")
+
+            let labels = exposedAccessibilityLabels(in: window)
+            #expect(labels.contains { $0.contains(String(localized: "course_change_online")) && $0.contains("計算機網路") })
+            #expect(!labels.contains { $0.contains("計算機網路, \(assessment)") })
+        }
+    }
+}
+#endif

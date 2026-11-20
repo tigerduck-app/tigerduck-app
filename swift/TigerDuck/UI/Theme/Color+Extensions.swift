@@ -50,6 +50,8 @@ extension Color {
     static let badgeRedText = adaptive(light: Color(hex: 0xD70015), dark: Color(hex: 0xFF7A72))
     /// A value the school changed for one day, such as a moved room or a new start time.
     static let changeInk = adaptive(light: Color(hex: 0x7C2D12), dark: Color(hex: 0xFDBA74))
+    /// The dashed underline of a class with an assessment, such as a midterm.
+    static let assessmentInk = adaptive(light: Color(hex: 0xB4534B), dark: Color(hex: 0xE39A92))
     static let rowBand = Color.primary.opacity(0.08)
     static let rowBandAlternate = Color.primary.opacity(0.04)
 
@@ -78,5 +80,15 @@ extension Color {
             UInt32((max(0, min(1, components[min(index, components.count - 1)])) * 255).rounded())
         }
         return (byte(0) << 16) | (byte(1) << 8) | byte(2)
+    }
+}
+
+extension Text {
+    /// A course name; a class with an assessment underlines it and reads `course_change_assessment` after it.
+    static func courseName(_ name: String, isAssessment: Bool) -> Text {
+        guard isAssessment else { return Text(name) }
+        return Text(name)
+            .underline(pattern: .dash, color: .assessmentInk)
+            .accessibilityLabel(Text(verbatim: "\(name), \(String(localized: "course_change_assessment"))"))
     }
 }

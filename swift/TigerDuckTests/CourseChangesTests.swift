@@ -577,6 +577,26 @@ struct CourseChangesTests {
         #expect(WidgetSnapshotBuilder.snapshotMeetingChanges(of: Self.course(), changes: changes).isEmpty)
     }
 
+    @Test func aClassTableCellIsRedrawnWhenItsMeetingBecomesAnAssessment() throws {
+        let note = Self.row(1, "note", periods: ["2"], values: ["note_zh": "帶筆電"])
+        func key(_ rows: [[String: Any]]) throws -> String {
+            let changes = try Self.changes(rows)
+            let meeting = CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes)
+            return TimetableCellTransitionID.of(.solo(Self.course(), spanCount: 3), weekday: 4, periodId: "2", meeting: meeting, showsRooms: true)
+        }
+
+        #expect(try key([note]) != key([note, Self.row(2, "assessment", periods: ["2"], values: Self.midterm)]))
+    }
+
+    @Test func aClassTableCellReadsTheAssessmentRightAfterTheCourseName() {
+        let course = Self.course()
+        let online = String(localized: "course_change_online")
+
+        #expect(spokenCourse(course, isAssessment: true, room: online, hasAssignment: false, ignoresAssignments: false)
+            == "Compilers, \(String(localized: "course_change_assessment")), \(online)")
+        #expect(spokenCourse(course, room: "T4-501", hasAssignment: false, ignoresAssignments: false) == "Compilers, T4-501")
+    }
+
     @Test func theStoreAsksForAssessmentsAndOnlineClassesAndReplacesTheNotesAnOlderBuildStored() async throws {
         let savedCache = Defaults[.courseChangesCache]
         let savedTag = Defaults[.courseChangesETag]
