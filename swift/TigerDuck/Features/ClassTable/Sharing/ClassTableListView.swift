@@ -123,7 +123,6 @@ struct ClassTableListRows: UIViewRepresentable {
             dataSource?.apply(snapshot, animatingDifferences: animated)
         }
 
-        /// The moved row is the one a section gained, which a move within a section also shows.
         private func reordered(_ transaction: NSDiffableDataSourceTransaction<ImportedPerson.Placement, Row>) {
             for section in transaction.sectionTransactions {
                 guard case .insert(_, let row, _)? = section.difference.insertions.first, let id = row.id else { continue }

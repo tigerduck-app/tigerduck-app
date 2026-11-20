@@ -166,7 +166,6 @@ struct LocationCard: View {
     }
 }
 
-/// Draws a dash that is no button when `text` is blank, else the trimmed text, which a tap copies.
 /// The copy shows `toast` through the nearest `toastHost()` above it.
 struct CopyableValue<Content: View>: View {
     let text: String
