@@ -226,7 +226,11 @@ struct CopyToastScreenTests {
         }
     }
 
-    @Test("the course code row draws its label and its value and nothing between them", arguments: ClubScreensTests.looks)
+    /// Default text sizes only: at the largest one the row lies below the window.
+    @Test(
+        "the course code row draws its label and its value and nothing between them",
+        arguments: ClubScreensTests.looks.filter { !$0.textSize.isAccessibilityCategory }
+    )
     func codeRowHasNoGlyph(look: Look) async throws {
         try await withAccessibilityAutomation {
             let course = Self.course()
