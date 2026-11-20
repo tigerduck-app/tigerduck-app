@@ -61,11 +61,12 @@ struct UpcomingAssignmentsView: View {
             }
             .buttonStyle(.plain)
             .homeScrollRow(scrollSectionID, in: scrollAnchor)
-            .homeListRow(
-                top: isFirst ? TigerDuckTheme.Spacing.sm : gap,
-                bottom: isLast ? 0 : gap,
-                horizontal: TigerDuckTheme.Spacing.lg
-            )
+            // A List applies a row's insets only when it configures the row's cell, which a row that
+            // stays while others come, go or move can wait seconds for, so spacing that follows the
+            // row's place in the list is padding.
+            .padding(.top, isFirst ? TigerDuckTheme.Spacing.sm : gap)
+            .padding(.bottom, isLast ? 0 : gap)
+            .homeListRow(top: 0, horizontal: TigerDuckTheme.Spacing.lg)
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 if let leading = actions.leading { swipeButton(leading) }
             }
