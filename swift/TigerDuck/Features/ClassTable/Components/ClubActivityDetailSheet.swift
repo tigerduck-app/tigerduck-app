@@ -5,6 +5,8 @@ struct ClubActivityDetailSheet: View {
     let club: ClubOccurrence
     let policy: VisualStylePolicy
 
+    @State private var detent: PresentationDetent = .medium
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
@@ -38,8 +40,9 @@ struct ClubActivityDetailSheet: View {
             .padding(.bottom, TigerDuckTheme.Spacing.lg)
         }
         .background(Color.backgroundPrimary)
+        .flickClosesSheet(at: detent)
         .toastHost()
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $detent)
     }
 
     private var kindText: String {

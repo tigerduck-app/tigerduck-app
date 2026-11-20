@@ -14,6 +14,23 @@ func fingerTap(at point: CGPoint, in window: UIWindow, holding: Duration = .mill
     try digitizer.send(touch: Digitizer.lastTouchID, at: point, isDown: false, to: window)
 }
 
+/// Moves a finger from `start` to `end` in even steps over `duration` and lifts it at once, so the
+/// speed it ends with is the distance over the duration.
+@MainActor
+func fingerDrag(from start: CGPoint, to end: CGPoint, over duration: Duration, in window: UIWindow, steps: Int = 12) async throws {
+    let digitizer = try Digitizer()
+    Digitizer.lastTouchID += 1
+    let touch = Digitizer.lastTouchID
+    try digitizer.send(touch: touch, at: start, isDown: true, to: window)
+    for step in 1...steps {
+        try await Task.sleep(for: duration / steps)
+        let progress = CGFloat(step) / CGFloat(steps)
+        let point = CGPoint(x: start.x + (end.x - start.x) * progress, y: start.y + (end.y - start.y) * progress)
+        try digitizer.send(touch: touch, at: point, isDown: true, isMove: true, to: window)
+    }
+    try digitizer.send(touch: touch, at: end, isDown: false, to: window)
+}
+
 @MainActor
 private struct Digitizer {
     private typealias CreateHandEvent = @convention(c) (
@@ -39,6 +56,7 @@ private struct Digitizer {
     private static let rightIndexFinger: UInt32 = 2
     private static let rangeMask: UInt32 = 1 << 0
     private static let touchMask: UInt32 = 1 << 1
+    private static let positionMask: UInt32 = 1 << 2
     private static let majorRadiusField: UInt32 = 0xB0014
     private static let minorRadiusField: UInt32 = 0xB0015
     private static let displayIntegratedField: UInt32 = 0xB0019
@@ -65,15 +83,16 @@ private struct Digitizer {
         setDigitizerInfo = try Self.function("BKSHIDEventSetDigitizerInfo", in: backBoard)
     }
 
-    func send(touch id: UInt32, at point: CGPoint, isDown: Bool, to window: UIWindow) throws {
+    /// A move marks only the position as changed, as the screen does for a finger that stays down.
+    func send(touch id: UInt32, at point: CGPoint, isDown: Bool, isMove: Bool = false, to window: UIWindow) throws {
         let time = mach_absolute_time()
         let hand = createHandEvent(
-            nil, time, Self.handTransducer, 0, 0, Self.touchMask, 0, 0, 0, 0, 0, 0, false, isDown, 0
+            nil, time, Self.handTransducer, 0, 0, isMove ? 0 : Self.touchMask, 0, 0, 0, 0, 0, 0, false, isDown, 0
         ).takeRetainedValue()
         setInteger(hand, Self.displayIntegratedField, 1)
         setSender(hand, Self.senderID)
         let finger = createFingerEvent(
-            nil, time, id, Self.rightIndexFinger, Self.rangeMask | Self.touchMask,
+            nil, time, id, Self.rightIndexFinger, isMove ? Self.positionMask : Self.rangeMask | Self.touchMask,
             point.x, point.y, 0, 0, 0, isDown, isDown, 0
         ).takeRetainedValue()
         setFloat(finger, Self.majorRadiusField, Self.fingerRadius)
