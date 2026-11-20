@@ -52,17 +52,67 @@ struct SheetFlickTests {
 
         var body: some View {
             Color.clear.sheet(isPresented: $probe.isPresented) {
-                ScrollView {
-                    LazyVStack {
-                        ForEach(0..<200, id: \.self) { Text(verbatim: "Row \($0)").frame(maxWidth: .infinity, minHeight: 44) }
-                    }
-                }
+                ScrollView { SheetFlickTests.rows }
                 .defaultScrollAnchor(startsAtBottom ? .bottom : .top)
                 .flickClosesSheet(at: flicks ? probe.detent : .medium)
                 .presentationDetents([.medium, .large], selection: $probe.detent)
                 .onAppear { probe.isShown = true }
             }
         }
+    }
+
+    static var rows: some View {
+        LazyVStack {
+            ForEach(0..<200, id: \.self) { Text(verbatim: "Row \($0)").frame(maxWidth: .infinity, minHeight: 44) }
+        }
+    }
+
+    @Observable
+    final class Stack {
+        var isPresented = true
+        var isShown = false
+        var path: [Int] = []
+        var detent: PresentationDetent = .large
+    }
+
+    /// Laid out as `CourseDetailSheet` is, which reads an `AppEnvironment` the test host never builds.
+    struct CourseSheet: View {
+        @Bindable var stack: Stack
+
+        var body: some View {
+            Color.clear.sheet(isPresented: $stack.isPresented) {
+                NavigationStack(path: $stack.path) {
+                    ScrollView { SheetFlickTests.rows }
+                        .courseDetailRootBar()
+                        .flickClosesSheet(at: stack.detent)
+                        .navigationDestination(for: Int.self) { _ in
+                            List(0..<200, id: \.self) { Text(verbatim: "Announcement \($0)") }
+                        }
+                }
+                .presentationDetents([.medium, .large], selection: $stack.detent)
+                .onAppear { stack.isShown = true }
+            }
+        }
+    }
+
+    @Test("on the course sheet a flick closes it from its root page, and a pushed page keeps UIKit's behaviour", arguments: [false, true])
+    func courseSheet(pushed: Bool) async throws {
+        let stack = Stack()
+        let window = try ClubScreensTests.show(CourseSheet(stack: stack), look: ClubScreensTests.looks[0], width: 402, height: 874)
+        defer {
+            window.rootViewController?.dismiss(animated: false)
+            window.isHidden = true
+        }
+        try await waitUntil { stack.isShown }
+        try await Task.sleep(for: .seconds(1))
+        if pushed {
+            stack.path.append(1)
+            try await Task.sleep(for: .seconds(1))
+        }
+
+        try await Self.drag(in: window, over: .milliseconds(90), from: 300)
+        #expect(stack.isPresented == pushed)
+        #expect(stack.path.count == (pushed ? 1 : 0))
     }
 
     static func present(from detent: PresentationDetent, flicks: Bool = true, startsAtBottom: Bool = false) async throws -> (Probe, UIWindow) {
