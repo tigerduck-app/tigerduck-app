@@ -24,7 +24,7 @@
           "glass" : true,
           "hidden" : true,
           "image-name" : "01_tiger_suit_duck.png",
-          "name" : "tigerduck",
+          "name" : "01_tiger_suit_duck",
           "position" : {
             "scale" : 1.6,
             "translation-in-points" : [
@@ -35,7 +35,7 @@
         },
         {
           "image-name" : "00_santa_suit_duck.png",
-          "name" : "Ghostty 2026-11-20 17.23.55",
+          "name" : "00_santa_suit_duck",
           "position" : {
             "scale" : 1.4,
             "translation-in-points" : [

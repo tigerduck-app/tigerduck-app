@@ -24,7 +24,7 @@
           "glass" : true,
           "hidden" : false,
           "image-name" : "00_tiger_suit_duck.png",
-          "name" : "tigerduck",
+          "name" : "00_tiger_suit_duck",
           "position" : {
             "scale" : 1.6,
             "translation-in-points" : [
