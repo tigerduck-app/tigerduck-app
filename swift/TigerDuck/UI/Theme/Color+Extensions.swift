@@ -91,4 +91,10 @@ extension Text {
             .underline(pattern: .dash, color: .assessmentInk)
             .accessibilityLabel(Text(verbatim: "\(name), \(String(localized: "course_change_assessment"))"))
     }
+
+    /// A room the school changed for one day, or `course_change_online` for an online class.
+    static func changedRoom(_ room: String) -> Text {
+        Text("\(Image(systemName: "arrow.left.arrow.right")) \(Text(room).fontWeight(.semibold))")
+            .foregroundStyle(Color.changeInk)
+    }
 }

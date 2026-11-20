@@ -131,8 +131,7 @@ struct CourseTimeCard: View {
         let classroom = slot.room.trimmingCharacters(in: .whitespaces)
         let instructor = slot.instructor.trimmingCharacters(in: .whitespaces)
         let room = slot.hasChangedRoom && !classroom.isEmpty
-            ? Text("\(Image(systemName: "arrow.left.arrow.right")) \(Text(classroom).fontWeight(.semibold))")
-                .foregroundStyle(Color.changeInk)
+            ? Text.changedRoom(classroom)
             : Text(classroom)
         switch (classroom.isEmpty, instructor.isEmpty) {
         case (true, true): return Text(verbatim: "")

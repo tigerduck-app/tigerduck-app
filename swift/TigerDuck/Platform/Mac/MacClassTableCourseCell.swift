@@ -6,6 +6,7 @@ struct MacClassTableCourseCell: View {
     let viewModel: ClassTableViewModel
     let course: CourseStore.Course
     var roomHint: String? = nil
+    var meeting: CourseTimeSlot? = nil
 
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
@@ -24,7 +25,7 @@ struct MacClassTableCourseCell: View {
         let color = TigerDuckTheme.courseColor(for: course.courseNo)
         let ignored = viewModel.editor.ignoresAssignments(of: course.courseNo)
         return VStack(alignment: .leading, spacing: 3) {
-            Text(course.displayName)
+            Text.courseName(course.displayName, isAssessment: meeting?.assessment != nil)
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(3)
@@ -37,9 +38,9 @@ struct MacClassTableCourseCell: View {
             }
             Spacer(minLength: 0)
             if let roomHint {
-                Text(roomHint)
+                let changedRoom = meeting.flatMap { $0.hasChangedRoom && !$0.isCancelled ? $0.room : nil }
+                (changedRoom.map(Text.changedRoom) ?? Text(roomHint).foregroundStyle(.secondary))
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .padding(.trailing, ignored ? Self.ignoredMarkSize + 6 : 0)
             }

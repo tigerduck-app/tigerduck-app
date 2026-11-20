@@ -106,7 +106,8 @@ struct MacClassTableGrid: View {
             emptyCell.frame(height: cellHeight)
         case let .solo(course, spanCount):
             MacClassTableCourseCell(
-                viewModel: viewModel, course: course, roomHint: roomHint(course, weekday: weekday, periodId: periodId)
+                viewModel: viewModel, course: course, roomHint: roomHint(course, weekday: weekday, periodId: periodId),
+                meeting: viewModel.changedMeeting(of: course, weekday: weekday, at: periodId, today: AppClock.now())
             )
                 .frame(height: blockHeight(spanCount))
                 .onTapGesture { viewModel.selectCourse(course, weekday: weekday, periodId: periodId) }
