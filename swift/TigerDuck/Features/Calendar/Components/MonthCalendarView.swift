@@ -74,7 +74,6 @@ struct MonthCalendarView: View {
         }
     }
 
-    /// The pager builds only the pages beside the current one, so a turn past the next month jumps.
     private func turn(to target: Int) {
         guard (0..<CalendarViewModel.monthPageCount).contains(target) else { return }
         let isNextDoor = abs(target - position.settledPage) == 1

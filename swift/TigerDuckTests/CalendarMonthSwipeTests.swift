@@ -56,7 +56,6 @@ struct CalendarMonthSwipeScreenTests {
     static let january = CalendarMonthPageTests.month(2027, 1)
     static let selected = CalendarMonthPageTests.month(2026, 12, day: 10)
     static let looks = [ClubScreensTests.looks[0], ClubScreensTests.looks[2]]
-    /// A day cell's 40 points and the grid's spacing.
     static let week = 40 + TigerDuckTheme.Spacing.sm
 
     final class Shown {

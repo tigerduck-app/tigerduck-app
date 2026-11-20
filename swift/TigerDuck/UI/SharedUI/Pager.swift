@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// `settledPage` is the page the pager rests on, or the one `go(to:)` sends it to.
 struct PagerPosition {
     var scroll: ScrollPosition
     var settledPage: Int
@@ -18,7 +17,6 @@ struct PagerPosition {
     }
 }
 
-/// Builds only the pages beside `index` and the settled one, so a jump lands on a built page.
 struct Pager<Page: View>: View {
     let count: Int
     @Binding var index: Int

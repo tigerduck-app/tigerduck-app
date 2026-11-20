@@ -27,8 +27,8 @@ struct PagerTests {
         }
     }
 
-    /// A width a fraction of a point over a whole one, as a layout can offer, from the window's edge
-    /// as the calendar's grid starts.
+    /// A layout offered the calendar's grid, at the window's edge, a width a fraction of a point
+    /// over a whole one.
     struct ManyPages: View {
         @Bindable var pager: Probe
 
