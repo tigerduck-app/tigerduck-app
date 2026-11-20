@@ -280,6 +280,33 @@ struct CourseChangesTests {
         #expect(!CourseTimeSlot.isSkipped(slotId: "CC900_20261112_7", in: courses, changes: changes))
     }
 
+    @Test func aLiveActivityMarksAnAssessmentAndShowsAnOnlineClassAsARoomChange() throws {
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["2", "3", "4"], values: Self.midterm),
+            Self.row(2, "online", periods: ["7", "8"]),
+        ])
+        let slots = Self.slots(changes)
+
+        let exam = LiveActivityScenarioResolver.classPreparingSnapshot(slot: slots[0], accentHex: 0)
+        let online = LiveActivityScenarioResolver.inClassSnapshot(slot: slots[1], now: Self.at("14:30"), accentHex: 0)
+        #expect(exam.assessment == true && exam.roomChanged == nil && exam.locationText == "T4-501")
+        #expect(online.assessment == nil && online.roomChanged == true)
+        #expect(online.locationText == String(localized: "course_change_online"))
+        #expect(!String(decoding: try JSONEncoder().encode(online), as: UTF8.self).contains("assessment"))
+    }
+
+    @Test func aLiveActivityStartFromTheServerReadsWithAndWithoutTheAssessmentKey() throws {
+        func snapshot(_ extra: String) throws -> LiveActivitySnapshot {
+            let json = #"{"snapshot":{"scenario":"classPreparing","title":"作業系統","subtitle":"09:10","#
+                + #""locationText":"線上","accentHex":0,"sourceId":"CS3001301_20261105_2","roomChanged":true\#(extra)}}"#
+            return try JSONDecoder().decode(TigerDuckActivityAttributes.ContentState.self, from: Data(json.utf8)).snapshot
+        }
+
+        #expect(try snapshot(#","assessment":true"#).assessment == true)
+        let older = try snapshot("")
+        #expect(older.assessment == nil && older.roomChanged == true && older.locationText == "線上")
+    }
+
     @Test func theLiveActivityPassesOverACancelledClassAndShowsTheChangedRoomAndStart() throws {
         let changes = try Self.changes([
             Self.row(1, "cancelled", periods: ["2", "3", "4"]),

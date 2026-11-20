@@ -73,7 +73,8 @@ struct LiveActivityScenarioResolver {
             deepLink: nil,
             sourceId: slot.id,
             roomChanged: slot.hasChangedRoom ? true : nil,
-            timeChanged: slot.hasChangedTime ? true : nil
+            timeChanged: slot.hasChangedTime ? true : nil,
+            assessment: slot.assessment == nil ? nil : true
         )
     }
 
@@ -90,7 +91,8 @@ struct LiveActivityScenarioResolver {
             deepLink: nil,
             sourceId: slot.id,
             roomChanged: slot.hasChangedRoom ? true : nil,
-            timeChanged: slot.hasChangedTime ? true : nil
+            timeChanged: slot.hasChangedTime ? true : nil,
+            assessment: slot.assessment == nil ? nil : true
         )
     }
 

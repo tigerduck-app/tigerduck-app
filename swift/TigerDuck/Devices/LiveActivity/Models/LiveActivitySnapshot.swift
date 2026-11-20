@@ -19,6 +19,8 @@ nonisolated struct LiveActivitySnapshot: Codable, Equatable, Hashable, Sendable 
     /// so an unchanged class encodes as before and the server passes the keys on untouched.
     var roomChanged: Bool? = nil
     var timeChanged: Bool? = nil
+    /// True when the class is an assessment; nil is left out of the JSON.
+    var assessment: Bool? = nil
     var accentGradient: AccentGradient? = nil
 
     /// activity and the follow-up inClass activity are distinct as far as
